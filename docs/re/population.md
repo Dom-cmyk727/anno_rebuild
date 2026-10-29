@@ -692,9 +692,19 @@ Shipped scenarios (P, `tools/sze.py` over every `.sze` under `game/app`; 50 pars
 
 `HEAD +0x5C` bits land on `+0x90` bits 24, 27, 29, 30, which are also stage bits 24…30. Shipped scenarios have those high bits clear (§15.4). The house tick does not mask to 23 bits.
 
+### 15.7 House Save slot `+0x80` on a world save (S9a)
+
+Range read: world save `0x100ae700`–`0x100ae7ea`; `--reloc` of `0x10077130`; a module scan of `call [reg+0x80]`; list walk `0x10023470`–`0x10023588`; its callers `0x10026791`–`0x1002682b`; city reader `0x100264a0` (only reloc of that walk's parent).
+
+World save `0x100ae700` (`this` = world, `ebp = ecx` at `0x100ae715`) has **no** `call [reg+0x80]`. It writes chunks through slot `+0x74` and the helpers `0x100b4aa0` / `0x100b4b00` / `0x100b4bc0` (`annowelt.md` "Save chunks, in order", including `SPIELER` per player). `--reloc` of house Save `0x10077130` is still only the house vtable slot `0x100c99d8`.
+
+A list walk `0x10023470` (`this` = list, `edi = ecx`) does call the element's slot `+0x80` at `0x10023582` with `(writer, 0, dest)`. Every reloc of `0x10023470` is the city-reader entry loop `0x100264a0` (`0x1002eadb` → `0x100264a0`, lists at city `+0xf8` / `+0x78` / …). That is the **load / Create** path (`annowelt.md` (b)), not the world save. City save `0x1002ebb0`–`0x1002f264` is still without a `+0x80` call.
+
+**Not D** for a world-save dispatcher. Next address: in the player writer `0x1001e920` and the city writer `0x1002ec00`, a `call [reg+0x80]` whose `this` is a building with house vtable `0x100c9958` (this-adjustment: the vtable dword at `[this]`).
+
 ## Open
 - T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c); T32.4 closed the stand → house path (job `0x35`, OQ-187) and the owner's house/stand clauses (OQ-103); **T32.5 closed the stage mask** (player `+0x90` / property `0x21` is saved state; city `+0x618` is derived). Still open below.
-- Who dispatches house Save slot `+0x80` on a world save (virtual only; OQ-185, T32.2 re-check still reloc `0x100c99d8` only). Next: `call [reg+0x80]` in world save `0x100ae700` / the building-list walk.
+- Who dispatches house Save slot `+0x80` on a world save (OQ-185, §15.7): world save has no `call [reg+0x80]`; the list walk `0x10023470` is the city **load** path. Next: player writer `0x1001e920` / city writer `0x1002ec00` for a house-`this` `+0x80`.
 - The `0x1001bda3` OR into `player +0x90`: property id of jump-table case `0x1001bcbd`, and what `eax` is (OQ-460). Next: the switch that indexes `0x1001be74`.
 - Constructor / load value of the unlock stamp `city +0x10` (OQ-461). Next: stores of `city +0x10` outside `0x10029610`.
 - Unit of the city store and of delivered amounts (is 256 = 1 t?); confirm with T1 and a savegame pair (M2.1).

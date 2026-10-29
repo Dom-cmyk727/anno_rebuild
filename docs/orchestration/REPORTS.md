@@ -5657,3 +5657,7 @@ Sweeps: `xref.py 0x90 0x94` (274 hits; player-`this` listed in §15.2); `xref.py
 - Report and commits; not merged.
 
 S9 (OQ-185 and house flag bits 4/5) follows this commit.
+
+### S9a — OQ-185 (house Save dispatcher)
+
+World save `0x100ae700`–`0x100ae7ea`: no `call [reg+0x80]`. `--reloc` `0x10077130` → `0x100c99d8` only. List walk `0x10023470` / `0x10023582` is city reader `0x100264a0` (load). **Not D.** Next: `0x1001e920` and `0x1002ec00` for a house-`this` `+0x80`. OQ-185 updated.

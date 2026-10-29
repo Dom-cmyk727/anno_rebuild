@@ -37,21 +37,23 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=list).encode()).hexdigest()
 
 
-def file_hash(path):
-    with open(path, "rb") as source:
-        return hashlib.sha256(source.read()).hexdigest()
+def committed_source_sha256(head, name):
+    """SHA-256 of the committed blob. A CRLF or LF checkout hashes the same bytes."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    blob = subprocess.check_output(("git", "show", "%s:tools/%s" % (head, name)), cwd=root)
+    return hashlib.sha256(blob).hexdigest()
 
 
 def provenance():
-    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
-        head = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=os.path.dirname(here), text=True).strip()
+        head = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=root, text=True).strip()
+        hashes = {name: committed_source_sha256(head, name)
+                  for name in ("join_activation.py", "join_jitter_study.py")}
     except (OSError, subprocess.CalledProcessError):
-        head = None
+        head, hashes = None, {}
     return {
-        "code_head": head,
-        "source_hashes": {name: file_hash(os.path.join(here, name)) for name in
-                          ("join_activation.py", "join_jitter_study.py")},
+        "code_head": head, "source_hashes": hashes,
         "python": sys.version.split()[0], "platform": platform.platform(),
     }
 
@@ -61,14 +63,12 @@ def recorded_provenance_valid(recorded):
     head = recorded.get("code_head") if isinstance(recorded, dict) else None
     if not isinstance(head, str) or not isinstance(recorded.get("source_hashes"), dict):
         return False
-    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
-        if subprocess.run(("git", "merge-base", "--is-ancestor", head, "HEAD"), cwd=os.path.dirname(here)).returncode:
+        if subprocess.run(("git", "merge-base", "--is-ancestor", head, "HEAD"), cwd=root).returncode:
             return False
         for name, want in recorded["source_hashes"].items():
-            got = hashlib.sha256(subprocess.check_output(("git", "show", "%s:tools/%s" % (head, name)),
-                                                         cwd=os.path.dirname(here))).hexdigest()
-            if got != want:
+            if committed_source_sha256(head, name) != want:
                 return False
     except (OSError, subprocess.CalledProcessError):
         return False

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -88,6 +89,7 @@ class PlayRunner {
     void loop();
     void one_turn();
     void publish(std::uint64_t turn_us);
+    void publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot);
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;
@@ -100,6 +102,9 @@ class PlayRunner {
     std::atomic<std::uint32_t> delay_ms_{0};
     std::thread thread_;
     std::vector<std::pair<std::chrono::steady_clock::time_point, std::uint64_t>> costs_;
+    // The lock only protects the shared_ptr copy/swap. Snapshot allocation and
+    // all simulation work happen before it is acquired.
+    mutable std::mutex snap_mu_;
     std::shared_ptr<const PlaySnapshot> snap_;
 };
 

@@ -9,10 +9,6 @@ add_library(anno_app_core
   src/still.cpp
 )
 target_include_directories(anno_app_core PUBLIC include)
-# MSVC 14.51 warns on the C++20-compatible shared_ptr atomic free functions.
-# They are the non-blocking publication primitive until this toolchain exposes
-# the atomic<shared_ptr> specialization in the project configuration.
-target_compile_definitions(anno_app_core PRIVATE _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING)
 # The play session is window-independent (tests, and --png at tick 0). The
 # window only reads the snapshot. Render is not given sim types; the bridge
 # is LinkTemplate and SceneBuilding in this library.

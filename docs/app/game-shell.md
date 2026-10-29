@@ -24,9 +24,10 @@ drawing the last snapshot.
 A turn is the original multiplayer turn (`anno::sim::Timing` in
 `src/sim/include/anno/sim/clock.hpp`): 10 real milliseconds per step, 10 steps
 per turn, 100 real milliseconds per turn. The game milliseconds of one step
-come from `multiplayer_step_ms` at 100 percent (10 game ms). The sim thread
-runs that turn through `run_turn` (`replay.hpp`), which is the path the net
-layer will use.
+come from `multiplayer_step_ms`. `--speed 50`, `100` (the default), or `200`
+means 5, 10, or 20 game ms per fixed real-time step. The sim thread runs that
+turn through `run_turn` (`replay.hpp`), which is the path the net layer will
+use.
 
 Wall time decides only **when** a turn starts. It does not change the step
 size. If a turn takes longer than 100 ms, the next turn waits until this one
@@ -35,8 +36,11 @@ steps. There is no catch-up.
 
 ## What the snapshot is
 
-The sim thread publishes a copy the window can read without a lock held
-across a frame. The first snapshot carries at least:
+The sim thread allocates each immutable snapshot before taking the publication
+mutex, then swaps its `shared_ptr` under that mutex. The window takes the same
+mutex only long enough to copy the pointer and releases it before reading or
+drawing. The lock therefore never covers a turn or snapshot allocation. The
+first snapshot carries at least:
 
 - the tick;
 - the game time;
@@ -71,7 +75,7 @@ stand-in rule.
 
 ## `--play`
 
-`anno1503 --play <file.sze>` builds the type registry with
+`anno1503 --play <file.sze> [--speed 50|100|200]` builds the type registry with
 `load_original_registry`, loads the file with `load_scenario_with_links`, and
 creates the `World`. The scene is built from the islands that load placed.
 The sim thread then runs turns as above.

@@ -256,7 +256,8 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
                           std::uint16_t local_y, const SceneBuilding& b) {
         const std::uint16_t id = static_cast<std::uint16_t>(
             (b.type & 0x0FFF) | (static_cast<std::uint16_t>(b.rotation & 3) << 14));
-        const std::uint16_t state = static_cast<std::uint16_t>(b.height) << 8;
+        const std::uint16_t state =
+            static_cast<std::uint16_t>(static_cast<std::uint16_t>(b.height) << 8);
         items.push_back(static_cast<std::uint8_t>(id & 0xFF));
         items.push_back(static_cast<std::uint8_t>(id >> 8));
         items.push_back(static_cast<std::uint8_t>(state & 0xFF));

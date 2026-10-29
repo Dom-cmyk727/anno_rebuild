@@ -160,7 +160,7 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent) : world_(std::m
     const auto step = sim::multiplayer_step_ms(speed_percent);
     step_ms_ = step.value_or(10);
     steps_ = sim::Timing{}.mp_steps_per_turn;
-    std::atomic_store(&snap_, std::make_shared<const PlaySnapshot>());
+    snap_ = std::make_shared<const PlaySnapshot>();
 }
 
 PlayRunner::~PlayRunner() {
@@ -198,7 +198,8 @@ void PlayRunner::run_n(std::uint32_t turns) {
 }
 
 std::shared_ptr<const PlaySnapshot> PlayRunner::snapshot() const {
-    return std::atomic_load(&snap_);
+    std::lock_guard lock(snap_mu_);
+    return snap_;
 }
 
 std::string PlayRunner::title_line() const {
@@ -206,7 +207,8 @@ std::string PlayRunner::title_line() const {
     char buf[192];
     std::snprintf(buf, sizeof buf, "tick %llu, game %llu ms, turn p95 %.1f ms",
                   static_cast<unsigned long long>(snap->tick),
-                  static_cast<unsigned long long>(snap->game_ms), snap->p95_us / 1000.0);
+                  static_cast<unsigned long long>(snap->game_ms),
+                  static_cast<double>(snap->p95_us) / 1000.0);
     std::string line(buf);
     if (snap->behind_ms > 0) {
         line += ", behind " + std::to_string(snap->behind_ms) + " ms";
@@ -233,9 +235,9 @@ void PlayRunner::loop() {
                 std::chrono::duration_cast<std::chrono::milliseconds>(elapsed - turn).count();
             if (over > 0) {
                 behind_ms_ += static_cast<std::uint64_t>(over);
-                auto next = std::make_shared<PlaySnapshot>(*std::atomic_load(&snap_));
+                auto next = std::make_shared<PlaySnapshot>(*snapshot());
                 next->behind_ms = behind_ms_;
-                std::atomic_store(&snap_, std::shared_ptr<const PlaySnapshot>(std::move(next)));
+                publish_snapshot(std::move(next));
             }
             continue;
         }
@@ -283,7 +285,12 @@ void PlayRunner::publish(std::uint64_t turn_us) {
     next->p95_us = p95_locked();
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
-    std::atomic_store(&snap_, std::shared_ptr<const PlaySnapshot>(std::move(next)));
+    publish_snapshot(std::move(next));
+}
+
+void PlayRunner::publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot) {
+    std::lock_guard lock(snap_mu_);
+    snap_ = std::move(snapshot);
 }
 
 std::uint64_t PlayRunner::p95_locked() const {

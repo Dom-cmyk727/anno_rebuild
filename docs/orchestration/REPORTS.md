@@ -5665,3 +5665,21 @@ World save `0x100ae700`–`0x100ae7ea`: no `call [reg+0x80]`. `--reloc` `0x10077
 ### S9b — house flag bits 4/5
 
 City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x1002b700` / `0x1002b840`. `0x1002b700` picks a kind-`0x61` house; no `+0x0c` store in the range. Immediate scan of `0x10`/`0x20`/`0x30` into `+0x0c` empty. **Not D.** Next: rest of those helpers and `0x10072a60`. OQ-462 opened.
+
+## T32.5 F1 — Stage-mask corrections — 2026-10-29 — status: IN PROGRESS
+- Branch: `task/T32-5-stage-mask` starting at `e232b02d743d623679b1ae92a2a6ae7083288f77`; worktree: `E:\anno1503-worktrees\anno1503-T32-5`. No merge, rebase, or push. P1 and T10c worktrees not touched.
+- Preflight: OK (12 checks, 0 failed). Main `a62c15fdd5c48159683c0d9e98a0c2b3d7e9ce49`; T32.5 head `e232b02d743d623679b1ae92a2a6ae7083288f77` on `task/T32-5-stage-mask` clean; P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0` on `task/P1-house-payload` clean; T10c `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1` on `codex/T10c-test-memory` clean.
+- Packet: `E:\anno1503\cache\orch-cx\packet.md` (board at `a62c15fdd5c4`). Binding excerpts win over packet prose and over the worktree's older round-cv board. PLAN §7 in this worktree is still round cv; that is noted, not re-read as live.
+- Files: `docs/re/population.md`, `docs/sim/state.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md` only.
+- Historical T32.5 FINISHED section above is kept. Its incorrect statements are superseded in this F1 section as the four findings land.
+
+### F1.1 — Full mask (in progress)
+
+- Commands: `python …\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 0x1001d389 90` → `cache\t32-5-f1\loader-1d389.txt`; `python -X utf8 cache\t32-5-f1\hist_mask.py E:\anno1503\game\app` → `cache\t32-5-f1\hist_mask.txt`. Reconstruction uses the loader OR immediates, not the review probe's shifts; `shift_mismatch=0`.
+- Loader (AnnoWelt, `this` = player `ebp`): `HEAD+0x48` at `[esp+0x140]` (`HEAD` at `[esp+0xf8]`), `and 0x7fffff`, store `player+0x90`; `HEAD+0x5C` at `[esp+0x154]`; packed bits 3/2/4/5 OR bits 24/27/29/30 (`0x01000000` / `0x08000000` / `0x20000000` / `0x40000000`). Range `0x1001d389`–`0x1001d3df`.
+- 50 files / 373 heads / 0 short / `high_bits_in_low_field=0`.
+- Low field (`HEAD+0x48`): `1` 280, `0x1f` 61, `0xf` 7, `7` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1.
+- Packed (`HEAD+0x5C`): `0` 295, `0x14` 17, `0x1c` 1, `0x3c` 60.
+- Reconstructed high: `0` 295, `0x28000000` 17, `0x29000000` 1, `0x69000000` 60.
+- Full runtime: `1` 263, `0x28000001` 17, `0x6900001f` 60, `7` 7, `0xf` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1, `0x2900001f` 1. `low_field_equal_1=280` `full_restored_mask_equal_1=263` `nonzero_high_bits=78`.
+- `Player::flags` exists (`player.hpp` default 1; hashed). `PlayerHead::parse` does not read `+0x48`/`+0x5C`; `PlayerSpec` has no flags; `scenario_formats.cpp` sets `flags_a0` only. Supersedes T32.5 claims that shipped high bits are clear and that `flags = 1` matches 280 of 373 heads.

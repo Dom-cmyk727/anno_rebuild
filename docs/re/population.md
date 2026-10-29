@@ -647,7 +647,9 @@ The house tick does **not** appear in the `+0x618` sweep. It reads the **player*
 
 Load is the `HEAD` reader in §15.2. Record: chunk `SPIELER`, record `HEAD`, offset `0x48`, width u32 (low 23 bits of the mask); `HEAD +0x5C` u8 for the four high bits.
 
-Shipped scenarios (P, `tools/sze.py` over every `.sze` under `game/app`; 50 parsed, 373 `HEAD` records of 108 bytes): every stored `HEAD +0x48` equals its low 23 bits (no high bit set). Histogram of the u32 (same as the low-23 histogram):
+Shipped scenarios (P, `tools/sze.py` over every `.sze` under `game/app`; 50 parsed, 373 `HEAD` records of 108 bytes): every stored `HEAD +0x48` equals its low 23 bits (`high_bits_in_low_field = 0`). That field is not the runtime mask. Loader `0x1001d389`–`0x1001d3df` (`this` = player, `ebp`): `eax = HEAD+0x48 & 0x7fffff` stored at `player +0x90`; `cl = HEAD+0x5C`; `test cl, 8` ORs `0x01000000` (bit 24); `test cl, 4` ORs `0x08000000` (bit 27); `test cl, 0x10` ORs `0x20000000` (bit 29); `test cl, 0x20` ORs `0x40000000` (bit 30). HEAD buffer at `[esp+0xf8]`, so `+0x48` is `[esp+0x140]` and `+0x5C` is `[esp+0x154]`. Independent reconstruction of all 373 heads (`cache/t32-5-f1/hist_mask.py` on `E:\anno1503\game\app`; `shift_mismatch = 0` against those immediates):
+
+Low field (`HEAD +0x48`):
 
 | value | count |
 |---|---|
@@ -665,7 +667,38 @@ Shipped scenarios (P, `tools/sze.py` over every `.sze` under `game/app`; 50 pars
 | `0x3ff` | 1 |
 | `0x3f` | 1 |
 
-280 of 373 are the constructor value 1 (bit 0 only). The others are a run of low bits, i.e. a pre-set stage prefix.
+Packed (`HEAD +0x5C`): `0` 295, `0x14` 17, `0x1c` 1, `0x3c` 60.
+
+Reconstructed high bits:
+
+| value | count |
+|---|---|
+| 0 | 295 |
+| `0x28000000` | 17 |
+| `0x29000000` | 1 |
+| `0x69000000` | 60 |
+
+Full runtime value `(low & 0x7fffff) | high`:
+
+| value | count |
+|---|---|
+| 1 | 263 |
+| `0x28000001` | 17 |
+| `0x6900001f` | 60 |
+| 7 | 7 |
+| `0xf` | 7 |
+| `0x1ffff` | 4 |
+| `0x7ff` | 3 |
+| `0xffff` | 3 |
+| `0x3fff` | 2 |
+| 3 | 2 |
+| `0x7fffff` | 1 |
+| `0x7fff` | 1 |
+| `0x3ff` | 1 |
+| `0x3f` | 1 |
+| `0x2900001f` | 1 |
+
+280 of 373 **low fields** are the constructor value 1 (bit 0 only). Only 263 of 373 **full reconstructed masks** are 1: the other 17 of those 280 have `HEAD +0x5C = 0x14` and restore to `0x28000001`. 78 of 373 restore a non-zero high half. The 61 low fields of `0x1f` all carry high bits (`0x2900001f` once, `0x6900001f` 60 times). The remaining low fields are a run of low bits (a pre-set stage prefix). The rebuild's `Player::flags` already exists (default 1); scenario import does not read `HEAD +0x48` / `+0x5C`, so a loaded scenario keeps that default until a later load path wires the reconstructed dword.
 
 **City `+0x618` is not saved.** Sweep of city save `0x1002ebb0`–`0x1002f264` has no `0x618`. The city reader `0x1002e170` (`HEAD` / `HEAD2` / …) is not in the `+0x618` xref list. After a load the city mask is the constructor 0, then the first stage-unlock pass recomputes it from the counters and `[BAUSTUFEN]`. Catch-up: the unlock's `last` is `city +0x10` (word). A pass that runs stores `last = tick` (`0x100298fe`–`0x10029908`), not `last += 2500`. The constructor range `0x1002f990`–`0x1002fada` does not store `+0x10` (OQ-461). If `last` is 0, the first city visit with `(u16)(tick − last) ≥ 0x9c4` (2500) runs one full loop over stages 0…30 and ORs the result into the player. Order: city tick step c, after the building lists (§3). A loaded scenario whose tick is already ≥ 2500 therefore catches up on that first city visit (≤ 500 ticks of scheduling, §3).
 
@@ -687,10 +720,10 @@ Shipped scenarios (P, `tools/sze.py` over every `.sze` under `game/app`; 50 pars
 | initial | 1 (`0x10021778`) | 0 (`0x1002face`) |
 | writers | ctor; `SetProperty` `0x10020ec3`; `HEAD` load `0x1001d39f`…; unlock OR `0x100298ee`–`0x100298fb`; side-path OR `0x1001bda3` (OQ-460) | ctor; unlock OR `0x10029683` |
 | saved | yes: `SPIELER` / `HEAD +0x48` u32 (`0x1001e99b` write, `0x1001d397` read); high bits via `HEAD +0x5C` | no (not in city save / load) |
-| after a shipped scenario | P: 373 heads, histogram in §15.4; 280 are 1 | derived: 0, then one unlock pass |
+| after a shipped scenario | P: 373 heads, histograms in §15.4; low field 280×1, full reconstructed mask 263×1; 78 restore a non-zero high half | derived: 0, then one unlock pass |
 | rebuild | **state** (kept and saved) | **derived** (recomputed; T32.1 rule) |
 
-`HEAD +0x5C` bits land on `+0x90` bits 24, 27, 29, 30, which are also stage bits 24…30. Shipped scenarios have those high bits clear (§15.4). The house tick does not mask to 23 bits.
+`HEAD +0x5C` bits land on `+0x90` bits 24, 27, 29, 30, which are also stage bits 24…30. 78 of 373 shipped heads restore a non-zero high half (§15.4). The house tick does not mask to 23 bits.
 
 ### 15.7 House Save slot `+0x80` on a world save (S9a)
 

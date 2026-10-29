@@ -684,16 +684,16 @@ Upgrade / downgrade (P3): next type `id − id%20 + 20` / previous `id − id%20
 
 P2 reads **`Player::flags`** (already S4 state, original `player +0x90`, property `0x21`). The house tick tests bit `BauFirst` of the need's good (`goods` record `+2`) in that dword: decay and "lowest need" only when the bit is set (`population.md` §15.1; full dword, not masked to 23 bits). The city mask `+0x618` is not an input of the house tick.
 
-The original **saves** the player dword in `SPIELER` / `HEAD +0x48` (low 23 bits) and `HEAD +0x5C` (bits 24 / 27 / 29 / 30). `PlayerHead` today does not parse `HEAD +0x48`; scenario import still leaves `flags = 1` unless a later stage wires it. P2 can run on the loaded-or-default `flags` **before P4**. Stage unlock (`0x10029610`, city_pass `"stages"`) writes both masks and belongs in P4 as already scheduled; P2 does not need that pass.
+The original **saves** the player dword in `SPIELER` / `HEAD +0x48` (low 23 bits) and `HEAD +0x5C` (bits 24 / 27 / 29 / 30) and **loads both** into `player +0x90` (`0x1001d389`–`0x1001d3df`). `Player::flags` already exists (S4, default 1, hashed). `PlayerHead` does not parse `HEAD +0x48` or `+0x5C`; `PlayerSpec` has no flags field; scenario import still leaves `flags = 1`. That default matches 263 of 373 reconstructed full masks, not 280 of 373 low fields, and not the 78 heads whose `HEAD +0x5C` restores a non-zero high half (`population.md` §15.4). P2 can precede P4 only after the house tick's inputs are supplied; it must not assume every shipped mask is 1. Stage unlock (`0x10029610`, city_pass `"stages"`) writes both masks and belongs in P4 as already scheduled; P2 does not need that pass.
 
 The city mask is **derived**: constructor 0, not in the city save, recomputed on the first unlock pass from the counters and `[BAUSTUFEN]` (at most one 2500-tick gate after load if `city +0x10` is 0). No new hashed field for it.
 
-Stream: **none** for P2 if it only reads `Player::flags`. Wiring `HEAD +0x48` into `flags` on scenario load is a player-scope load change, not a new stream field (the member already visits). A later unlock that ORs the city mask into `flags` is a runtime write of existing state.
+Stream: **none** for P2 if it only reads `Player::flags`. Wiring `HEAD +0x48` and `HEAD +0x5C` into `flags` on scenario load is a player-scope load change, not a new stream field (the member already visits). A later unlock that ORs the city mask into `flags` is a runtime write of existing state.
 
 Owner questions (faithful default stated):
 
-1. **Load `HEAD +0x48` into `Player::flags`.** Original does. **Default:** yes, when the scenario/load path next touches the player head (not required to start P2; P2 with `flags = 1` matches 280 of 373 shipped heads).
-2. **High bits 24 / 27 / 29 / 30.** They are both stage bits and `HEAD +0x5C` flags. The house tick tests the full dword. **Default:** test the full `flags` dword (faithful). Shipped scenarios have those bits clear.
+1. **Load `HEAD +0x48` and `HEAD +0x5C` into `Player::flags`.** Original does (the full reconstructed dword). **Default:** yes, when the scenario/load path next touches the player head. P2 with `flags = 1` matches 263 of 373 reconstructed full masks (280 of 373 low fields only). The missing import is a player-load input, not a reason to treat every shipped mask as 1.
+2. **High bits 24 / 27 / 29 / 30.** They are both stage bits and `HEAD +0x5C` flags. The house tick tests the full dword. **Default:** test the full `flags` dword (faithful). 78 of 373 shipped heads restore a non-zero high half (17×`0x28000000`, 1×`0x29000000`, 60×`0x69000000`).
 3. **The `0x1001bda3` OR** into `+0x90` (OQ-460). **Default:** omit until that case is named; it is not on the house-tick or unlock path.
 
 #### Seams and draws

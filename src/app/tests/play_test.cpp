@@ -607,6 +607,35 @@ TEST_CASE("play: a late sim catches up at most five turns") {
     runner.stop();
 }
 
+TEST_CASE("play: the sim thread matches run_turn") {
+    ManualClock clock{std::chrono::milliseconds(0)};
+    auto origin = empty_world();
+    anno::sim::World direct = origin;
+    const auto before = direct.state_hash();
+    anno::app::PlayRunner runner(std::move(origin), 100, &clock);
+    constexpr std::uint64_t kTurns = 50;
+    const auto per_turn = static_cast<std::uint64_t>(runner.step_ms()) *
+                          static_cast<std::uint64_t>(anno::sim::Timing{}.mp_steps_per_turn);
+    runner.start();
+    const auto budget = std::chrono::seconds(2);
+    REQUIRE_MESSAGE(clock.wait_until_sleeping(budget), "never slept");
+    int pumps = 0;
+    while (runner.snapshot()->game_ms < kTurns * per_turn) {
+        REQUIRE_MESSAGE(clock.release_and_wait(budget), "stalled");
+        REQUIRE_MESSAGE(++pumps < 5000, "stopped at game " << runner.snapshot()->game_ms);
+    }
+    runner.stop();
+    CHECK(runner.snapshot()->game_ms == kTurns * per_turn);
+    anno::sim::Turn turn;
+    turn.step_ms = runner.step_ms();
+    for (std::uint32_t i = 0; i < kTurns; ++i) {
+        turn.index = i;
+        anno::sim::run_turn(direct, nullptr, turn, anno::sim::Timing{}.mp_steps_per_turn);
+    }
+    CHECK(runner.state_hash() != before);
+    CHECK(runner.state_hash() == direct.state_hash());
+}
+
 TEST_CASE("play: turn cost on the heavy endless scenario") {
     const auto dir = anno::test::game_dir();
     if (!dir) {

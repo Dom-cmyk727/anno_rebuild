@@ -6702,3 +6702,187 @@ The stopped worktree checks and saved budget log read succeeded after an initial
 Decision: first correct T32.6 F1 S1/S2 on b821bbe in the same two-file scope, then finish F6 C1–C4 and every inherited R1–R4/F6 requirement on 216a4b9. New packet supersedes starts only and preserves the sequence. No F7/new feature or admission-policy expansion. Require a coverage/evidence checklist and complete independent gates before the next closure claim; ordinary in-scope failing tests do not need another permission question. Preserve historical reports and append exact corrections, tested/final heads and all remaining gates.
 
 All seven active T61 round-dh selectors and historical first-lane binding blocks remain byte-identical. Completed P1/T10c/T32.5/T60 stay protected. Only orchestrator PLAN/TASKS/REPORTS change; AGENTS.md stays untracked. Packet artifacts: cache/orch-dj/packet.md, executor-prompt-round-dj.md and lane-scoped startup/phase-switch/second-lane checks. No source changes to executor worktrees, merge, rebase, push, PR, messages or owner/ADR policy approval.
+
+## T32.5 — The stage mask — 2026-10-29 — status: FINISHED
+- Branch: `task/T32-5-stage-mask` at the report commit; worktree: `E:\anno1503-worktrees\anno1503-T32-5` from local `main` `dc265568a7f95ef29f07500f109e409231e06e2b`. No merge, no push, no amend.
+- Built: docs only. `docs/re/population.md` §15; `docs/sim/state.md` §4.7c "Stage mask (T32.5)" and the P2 row; OQ-460, OQ-461. Never `src/`, goldens, `fixtures/`, TASKS.md or AGENTS.md. No build, game run or Wine.
+- Gates: n.a. (static RE and docs). Preflight (section 0) was already recorded in the first session; not re-run.
+- Commits before this report: `b6e733181d5d872c22a1e025d47cdfdee36f6c9c` `re(annowelt): the stage mask, its writers and its save (T32.5)`; `9aa1964b3a6939057c741e965ee1ff28366a9983` `docs(sim): the stage mask DRAFT for P2 (T32.5)`; `9ffad47ef1585d285648f8e6877ac60d7d1f6759` `docs: T32.5 open questions`.
+- Board vs packet: `players.md` has no "World reader → player" section (file: `annoscene.md` §6 / `annowelt.md`, player slot `+0x54`). Packet path "city +0x10 → slot +0x1c" is house `+0x10` → city, then city slot `+0x1c` → player (`city +0x20`). City ctor store of `+0x618` is at `0x1002face`, past the packet window `0x1002f9b0`–`0x1002fa74`.
+- Time spent / subagents used: inline; no subagents.
+
+### Address ranges read (AnnoWelt.dll)
+
+| Range | What |
+|---|---|
+| `0x10076230`–`0x10076300` | house tick path to the mask |
+| `0x1008c680`–`0x1008c683` | city slot `+0x1c` |
+| `0x10020a00`–`0x10020c03` | player `GetProperty`; case `0x21` at `0x10020a6f` |
+| `0x10020c80`–`0x10020ecb` | player `SetProperty`; case `0x21` store at `0x10020ec3` |
+| `0x10021600`–`0x10021836` | player constructor; `+0x90 = 1` at `0x10021778` |
+| `0x1001d240`–`0x1001d3d5` | `SPIELER` / `HEAD` load of `+0x90` |
+| `0x1001e920`–`0x1001e9cd` | `HEAD` save of `+0x90` |
+| `0x1001bcbd`–`0x1001bdb4`, `0x1001be0d`–`0x1001be1f` | other setter; no case `0x21` dword store |
+| `0x10029610`–`0x10029914` | stage unlock |
+| `0x1002d2a0`–`0x1002d345` | per-new-stage library write |
+| `0x1002f990`–`0x1002fada` | city constructor; `+0x618 = 0` at `0x1002face` |
+| `0x1002f4e0`–`0x1002f50a` | city `GetProperty` case `0x21` |
+| `0x1002ebb0`–`0x1002f264` | city save; no `+0x618` |
+| `0x100ae700` (start) | world save; `SPIELER` per player as in `annowelt.md` |
+
+Sweeps: `xref.py 0x90 0x94` (274 hits; player-`this` listed in §15.2); `xref.py 0x618 0x61c` (7 hits, all city); `--reloc` of `0x10020a00` / `0x10020c80` in AnnoWelt (vtable slots only) and empty in AnnoGame / AnnoScene. P: 50 `.sze` parsed, 373 `HEAD` records; histogram in §15.4.
+
+### Decisions and reasoning
+
+1. The mask the house tick tests is `player +0x90` (property `0x21`, dest second dword). Path: house `+0x10` → city slot `+0x1c` → player `+0x48(0x21)`.
+2. That dword is **state**: constructor 1, saved in `HEAD +0x48` / `+0x5C`, loaded back. P2 reads existing `Player::flags`.
+3. City `+0x618` is **derived**: constructor 0, not saved, recomputed by `0x10029610`. The house tick does not read it.
+4. P2 can run before P4 on the loaded-or-default player mask. Unlock (city_pass `"stages"`) stays P4.
+5. `SetProperty` case `0x21` is `0x10020d51`, not the `0x1001be0d` setter (`+0x28d`). The extra OR at `0x1001bda3` is OQ-460.
+6. Announcement is UI (text ids via slot `+0xd0`) plus a sim write of `city +0x32c` (`0x1002d2a0`). No PRNG in `0x10029610` or `0x1002d2a0`.
+7. Packet skip rules: Part 1 FINISHED (not QUESTION), so Part 2 ran; Part 3 is independent and is this report.
+
+### S6 answer table
+
+| | player property `0x21` | city `+0x618` |
+|---|---|---|
+| object and offset | player `+0x90` | city `+0x618` |
+| width | u32 (tick tests the full dword; save uses low 23 bits) | u32, bits 0…30 |
+| initial | 1 | 0 |
+| writers | ctor `0x10021778`; `SetProperty` `0x10020ec3`; `HEAD` load `0x1001d39f`…; unlock `0x100298fb`; `0x1001bda3` (OQ-460) | ctor `0x1002face`; unlock `0x10029683` |
+| saved | yes, `SPIELER`/`HEAD +0x48` (`0x1001e99b` / `0x1001d397`) | no |
+| after shipped load | P: 280×1, 61×`0x1f`, and the rest a low-bit prefix (373 heads) | 0, then one unlock pass |
+| rebuild | state | derived |
+
+### Acceptance
+
+- Step 6's table: **D** per row; next addresses only for OQ-460 (`0x1001bda3` case id) and OQ-461 (`city +0x10` ctor/load).
+- DRAFT paragraph: present after "Tick and its place"; P2 row names the mask; enough for P2's stage-mask decision.
+- Every claim: module + address + range above. No disassembly text, no original bytes.
+- Report and commits; not merged.
+
+S9 (OQ-185 and house flag bits 4/5) follows this commit.
+
+### S9a — OQ-185 (house Save dispatcher)
+
+World save `0x100ae700`–`0x100ae7ea`: no `call [reg+0x80]`. `--reloc` `0x10077130` → `0x100c99d8` only. List walk `0x10023470` / `0x10023582` is city reader `0x100264a0` (load). **Not D.** Next: `0x1001e920` and `0x1002ec00` for a house-`this` `+0x80`. OQ-185 updated.
+
+### S9b — house flag bits 4/5
+
+City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x1002b700` / `0x1002b840`. `0x1002b700` picks a kind-`0x61` house; no `+0x0c` store in the range. Immediate scan of `0x10`/`0x20`/`0x30` into `+0x0c` empty. **Not D.** Next: rest of those helpers and `0x10072a60`. OQ-462 opened.
+
+## T32.5 F1 — Stage-mask corrections — 2026-10-29 — status: FINISHED
+- Branch: `task/T32-5-stage-mask` from parent `e232b02d743d623679b1ae92a2a6ae7083288f77`; worktree: `E:\anno1503-worktrees\anno1503-T32-5`. No merge, rebase, or push. P1 and T10c worktrees not touched (still `416993fa6a6f9dc821455df5d414cff5833ac7f0` / `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1`, clean).
+- Preflight: OK (12 checks, 0 failed). Main `a62c15fdd5c48159683c0d9e98a0c2b3d7e9ce49`; T32.5 start head `e232b02d743d623679b1ae92a2a6ae7083288f77` on `task/T32-5-stage-mask` clean; P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0` on `task/P1-house-payload` clean; T10c `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1` on `codex/T10c-test-memory` clean.
+- Packet: `E:\anno1503\cache\orch-cx\packet.md` (board at `a62c15fdd5c4`). Binding excerpts win over packet prose and over the worktree's older round-cv board. PLAN §7 in this worktree is still round cv; that is noted, not re-read as live.
+- Files: `docs/re/population.md`, `docs/sim/state.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md` only. `git diff --name-only e232b02 HEAD` is those four. `git diff --check e232b02 HEAD` clean.
+- Commits: `fcc57465c784168b830394b5c5fa39379f377b00` F1.1; `69aa5571df291713b89b5acb44bac81665872856` F1.2; `c8931f18d49675e511aa263609f4eaa8bfa576f6` F1.3; `5416fb1786fb08abd3a3e58cdbaaf7a959da74e9` F1.4; this report.
+- Historical T32.5 FINISHED section above is kept. Incorrect statements there (shipped high bits clear; `flags = 1` matches 280 heads; "else skip to the OR"; first-visit catch-up when tick ≥ 2500; duplicate OQ-462) are superseded here and in the current RE / DRAFT.
+
+### F1.1 — Full mask — MET
+
+- Commands: `python …\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 0x1001d389 90` → `cache\t32-5-f1\loader-1d389.txt`; `python -X utf8 cache\t32-5-f1\hist_mask.py E:\anno1503\game\app` → `cache\t32-5-f1\hist_mask.txt`. Reconstruction uses the loader OR immediates, not the review probe's shifts; `shift_mismatch=0`.
+- Loader (AnnoWelt, `this` = player `ebp`): `HEAD+0x48` at `[esp+0x140]` (`HEAD` at `[esp+0xf8]`), `and 0x7fffff`, store `player+0x90`; `HEAD+0x5C` at `[esp+0x154]`; packed bits 3/2/4/5 OR bits 24/27/29/30 (`0x01000000` / `0x08000000` / `0x20000000` / `0x40000000`). Range `0x1001d389`–`0x1001d3df`.
+- 50 files / 373 heads / 0 short / `high_bits_in_low_field=0`.
+- Low field (`HEAD+0x48`): `1` 280, `0x1f` 61, `0xf` 7, `7` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1.
+- Packed (`HEAD+0x5C`): `0` 295, `0x14` 17, `0x1c` 1, `0x3c` 60.
+- Reconstructed high: `0` 295, `0x28000000` 17, `0x29000000` 1, `0x69000000` 60.
+- Full runtime: `1` 263, `0x28000001` 17, `0x6900001f` 60, `7` 7, `0xf` 7, `0x1ffff` 4, `0x7ff` 3, `0xffff` 3, `0x3fff` 2, `3` 2, `0x7fffff` 1, `0x7fff` 1, `0x3ff` 1, `0x3f` 1, `0x2900001f` 1. `low_field_equal_1=280` `full_restored_mask_equal_1=263` `nonzero_high_bits=78`.
+- `Player::flags` exists (`player.hpp` default 1; hashed). `PlayerHead::parse` does not read `+0x48`/`+0x5C`; `PlayerSpec` has no flags; `scenario_formats.cpp` sets `flags_a0` only. Supersedes T32.5 claims that shipped high bits are clear and that `flags = 1` matches 280 of 373 heads.
+
+### F1.2 — Guarded player write — MET
+
+- Commands: `python …\tools\disasm.py E:\anno1503\game\app\AnnoWelt.dll 0x100296a2 50` → `cache\t32-5-f1\unlock-cmp-jae.txt`; `python …\disasm.py … 0x100298e0 60` → `cache\t32-5-f1\unlock-or-setter.txt`.
+- `cmp ecx, eax` at `0x100296c0`: two operands. `ecx` = GetProperty dest+4 (`[esp+0x28]`) `& 0x7fffff`; `eax` = `[city+0x618]`. `this` = city (`edi`); player is `esi` = `[city+0x20]`. Four callee-saves on the `0xb4` frame (`edi` then `ebx`/`ebp`/`esi`); GetProperty's two stdcall pushes have returned.
+- `jae 0x100298fe` at `0x100296c2`: one rel32 operand, unsigned greater-or-equal (CF=0), displacement `0x236`. Target is after `or ebx, edx` (`0x100298ee`) and `call [eax+0x4c]` (`0x100298fb`). Taken path skips announcement and the player OR/setter. Fall-through does both, then both paths store `last = tick`.
+- Supersedes T32.5 "else skip to the OR". An unsigned integer compare is not a bit-subset test; the setter is not called on the skipped branch.
+
+### F1.3 — Modular city timing — MET
+
+- Commands: `python …\disasm.py … 0x10029610 40` → `cache\t32-5-f1\unlock-period.txt`; `python …\disasm.py … 0x10076230 50` → `cache\t32-5-f1\house-last-plus.txt`; word examples in `cache\t32-5-f1\hist_mask.txt`.
+- City: `mov ax, word [esp+4]`; `sub ax, [edi+0x10]`; `cmp ax, 0x9c4`; `jb 0x1002990d`. Gate `(u16)(tick − last) ≥ 2500`. After a taken pass, `last = tick` at `0x10029908`.
+- With `last = 0`: tick 2499 skip; **2500 run** (passing boundary); 65535 run; **65536 skip** (difference 0); 68035 skip; 68036 run (`(u16)68036 = 2500`).
+- House stamp is separate: `house +0x0a` does `add eax, 0x9c4` / store (`0x10076259`–`0x1007625e`). OQ-450 is that house question and is not decided. OQ-461 retained for constructor/load of `city +0x10`.
+- Supersedes T32.5 "a loaded scenario whose tick is already ≥ 2500 therefore catches up on that first city visit (≤ 500 ticks)".
+
+### F1.4 — One OQ-462 — MET
+
+- Duplicate identical `## OQ-462` block removed; one complete question kept. OQ-460, OQ-461, OQ-462 each appear once as headings. OQ-463..469 unused (range reserved, not required).
+- Cross-refs: `population.md` §15 Open names OQ-185, OQ-460, OQ-461, OQ-462 with next addresses; `state.md` names OQ-460 and OQ-461; S9a/OQ-185 and S9b/OQ-462 stay open.
+
+### Historical T32.5 statements this F1 supersedes
+
+- `population.md` §15.4 / §15.6 and DRAFT owner Q1–Q2: shipped high bits clear; `flags = 1` matches 280 of 373 heads. The 280 figure is the **low field** only. Full reconstructed mask equals 1 for 263 heads; 78 restore a non-zero high half.
+- `population.md` §15.5: "else skip to the OR". `jae 0x100298fe` skips the OR and the setter.
+- `population.md` §15.4 and DRAFT city-mask sentence: first-visit catch-up when tick ≥ 2500. Gate is `(u16)(tick − last) ≥ 2500`; tick 65536 last 0 does not run.
+- `open-questions.md`: second identical OQ-462 heading.
+
+### Acceptance
+
+- Full mask, guarded update and modular timing agree across the four current documents: **MET**.
+- No duplicate OQ-462; OQ-460..462 unique: **MET**.
+- Every original-file claim has module + address or corpus command: **MET** (ranges and `cache\t32-5-f1\`).
+- Allowed unresolved: S9a/OQ-185 (next `0x1001e920` / `0x1002ec00`); S9b/OQ-462 (next rest of `0x1002b700` / `0x1002b840`, `0x10072a60`); OQ-460 (switch on `0x1001be74`); OQ-461 (`city +0x10` ctor/load). OQ-450 not decided.
+- `git diff --check e232b02 HEAD` clean; diff limited to the four files: **MET**.
+
+### Decisions and reasoning
+
+1. **F1.1 reconstruction from loader immediates, not the review probe's shifts.** Alternatives: trust `check_stage_mask.py` as an oracle; invent a reconciliation if counts differed. Evidence: AnnoWelt `0x1001d389`–`0x1001d3d5` OR immediates `0x01000000`/`0x08000000`/`0x20000000`/`0x40000000`; independent `hist_mask.py` over 50 `.sze` / 373 heads; `shift_mismatch=0` and counts match the packet's expected high histogram. Why: packet forbids blindly trusting the probe.
+2. **Treat `Player::flags` as existing state whose scenario import is missing.** Alternatives: claim P2 can run before P4 on default 1; add a `src/` import (out of scope). Evidence: `Player::flags` default 1 in `state.md` / `player.hpp`; `PlayerHead::parse` stops at colour `+0x4C`; `PlayerSpec` has no flags; `scenario_formats.cpp` writes `flags_a0` only; 110 of 373 reconstructed full masks are not 1. Why: binding text "P2 can precede P4 only after its own inputs are supplied, not by assuming all masks are 1."
+3. **Record the `jae` as skipping both announcement and the player setter.** Alternatives: keep "skip to the OR" because an OR of a subset would be a no-op. Evidence: `cmp ecx, eax` (two operands) then `jae 0x100298fe` (unsigned ≥, target after `0x100298ee` / `0x100298fb`). Unsigned integer compare is not a bit-subset test (player 2, city 1 would skip yet an OR would set bit 0). Why: packet forbids inferring setter effects on the skipped branch.
+4. **Show tick 65536 last 0 as the modular counterexample and tick 2500 as the passing boundary.** Alternatives: keep "tick ≥ 2500 catches up". Evidence: `sub ax, [edi+0x10]`; `cmp ax, 0x9c4`; `jb` return. `(u16)(65536 − 0) = 0`. House `last += 2500` is `0x10076259`–`0x1007625e`, a different field. Why: packet F1.3; OQ-461 stays for the unread initial stamp; OQ-450 is not this stamp.
+5. **Delete the second OQ-462 rather than renumber.** Alternatives: keep both; move one to OQ-463. Evidence: the two blocks were byte-identical; OQ-463..469 were unused. Why: packet "one full OQ-462"; S9b may remain open.
+
+### Left open / questions
+
+None that block F1. Allowed open: OQ-185, OQ-460, OQ-461, OQ-462 as above. No next task.
+
+- Time spent / subagents used: inline; no subagents. No Wine, no build, no game run.
+
+## T60 — AI post-list effects and returned value — 2026-10-29 — status: READY FOR REVIEW
+
+### Exact state and scope
+
+- Created `E:/anno1503-worktrees/anno1503-T60` on `codex/T60-ai-post-list` from the packet base `9c7c5d91b4e9a9677eeb436d12f618f50d3fc060`. The exact packet preflight was rerun with approved read-only access: **12 PASS, 0 failed**. Main, board and the protected T32-5/P1/T10c heads matched the packet and were clean within its stated allowance.
+- Allowed tracked files changed: `docs/re/complogic.md`, `docs/open-questions.md`, and this append-only report. No source, tools, fixtures, PLAN, TASKS or AGENTS changes; no original files, bytes or disassembly were saved to Git. No build, game launch, Wine or heavy test was run. Direct disassembly output was read in the terminal; no scratch evidence file was needed (`cache/t60/` remains unused).
+- Original module SHA-256: `CompLogic.dll` `39B622B4A62D9814068619FD4254A675ED1A2A88D6B2594CB6A969C0216D11FA`; `CompLogicClassic.dll` `544B9135E819E6270D889A7D5E7736E3FAA4D54A5CDDF329452870BD1A386A57`.
+
+### Evidence and decisions
+
+- **CompLogic post-list:** read `0x1003d880..0x1003d8d0`, `0x1003e1c0..0x1003e2fb`, `0x1003e130..0x1003e1ad`, the dispatcher case-7 tail `0x1003e2d1..0x1003e2fb`, and the direct case targets `0x1000cfb0`, `0x1000d5f0`, `0x1000d920`, `0x1000dc00`, `0x1000e200`, `0x1005a0d0`. The manager receiver is the manager; the tick is manager entry `+0x4`. Direct writes are manager `+0x2c`, and case 0 also `+0x28`/`+0x30`; case 7 may set global byte `0x1006aeb0`. The dispatcher range has no direct world/PRNG write, but the named virtual/direct callees remain unresolved transitive boundaries.
+- **Classic post-list:** read `0x1003ad90..0x1003ade0`, `0x1003b660..0x1003b79b`, `0x1003b5d0..0x1003b64d`, `0x1000b7d0`, `0x1000be10`, `0x1000c140`, `0x1000c420`, `0x1000ca20`, and `0x10056d1d` case tail. It has the same direct manager state-machine effects, independent targets, and global byte `0x10067e28` in case 7. The Classic helper `0x1003b5d0` was discovered from actual case-0 control flow; no CompLogic address was copied.
+- **Returned value:** read CompLogic `0x10003a20..0x10003ad9` and `0x10003940..0x10003a15`, plus Classic `0x10002320..0x100023d9` and `0x10002240..0x10002315`. With entry SP normalized, quotient is argument 1 at `+0x4`, tick is argument 2 at `+0x8`; the helper receives a pointer to the tick slot and writes/accumulates through it. The return loads argument 1 (`0x10003ad2`, `0x100023d2`), unchanged by the helper. The manager therefore subtracts the unchanged quotient; the tick/remaining slot separately controls the `0x10003b00`/`0x10002400` path. Classic has the concrete difference that the per-object entry clears `+0x1a14`, while its manager/helper gates use `+0x1a19`.
+
+### Acceptance and remaining questions
+
+- [x] Both manager/post-list functions read with receiver, argument, direct-effect and condition/order maps.
+- [x] Both per-object returns and helper aliases read with normalized stack offsets.
+- [x] Direct versus unresolved transitive effects are separated; no blanket no-write/no-draw claim is made.
+- [x] OQ-270 updated consistently in `complogic.md` §4/§8 and `open-questions.md`: return half answered for both variants; post-list transitive effects remain open with concrete next callees.
+- [x] `git diff --check` clean before commit; three-file limit verified. No OQ-480..489 was necessary.
+
+**Decisions and reasoning:** (1) classify the return as the unchanged quotient, not a consumed or time budget, because the helper's only caller-provided pointer aliases argument 2 and both return loads read argument 1; the alternative “helper may write the returned slot” is contradicted by the normalized stack map. (2) classify post-list effects as a bounded state-machine contract rather than “no world writes,” because direct manager/global stores are proven but the listed virtual/direct callees were not expanded; the alternative blanket negative would exceed the read boundary. (3) keep OQ-270 narrowed rather than resolved because the unresolved callee closures can still contain world/command/PRNG effects; the alternative is unsupported by the inspected ranges.
+
+**Commands/evidence:** packet preflight with `python -X utf8 -I E:\anno1503\tools\orch\preflight.py ...` (12 PASS); bounded reads with `python -X utf8 tools/disasm.py E:\anno1503\game\app\CompLogic.dll <address> <decimal-bytes>` and the corresponding Classic module; `git diff --check`. No build or runtime gate applies to this docs-only static RE task.
+
+**Next addresses:** CompLogic `0x1003e130` virtual closure, `0x1000cfb0`, `0x1000d5f0`, `0x1000d920`, `0x1000dc00`, `0x1000e200`, `0x1005a0d0`, `0x10059820`, `0x10059a00`, and kind targets from `0x10041860`; Classic counterparts listed in `complogic.md` §4 T60. OQ-271/272 and T-AI.4 remain outside this task. No merge, rebase, push, ADR approval or next task.
+
+## T60 F1 — Indexed dispatcher and direct-effect corrections — 2026-10-29 — status: READY FOR REVIEW
+
+- **Starting head:** `0e7f2ddd489c4efa8b19d45e8eefb075d0cef96f`; prior evidence commit `3c063d90b2ef25a648dfd423b2f61f1460b90bb7`; prior report parent is the starting head. Packet preflight: 15 PASS, 0 failed.
+- **Modules:** `CompLogic.dll` SHA-256 `39B622B4A62D9814068619FD4254A675ED1A2A88D6B2594CB6A969C0216D11FA`; `CompLogicClassic.dll` SHA-256 `544B9135E819E6270D889A7D5E7736E3FAA4D54A5CDDF329452870BD1A386A57`.
+- **Accepted baseline:** the helper aliases object argument 2, not argument 1, and both per-object entries return the unchanged quotient. **Rejected baseline:** the original T60 report assigned dispatcher cases by physical body order, treated the adjacent flag/callback function as case 7, and omitted bounded helper effects. This section will preserve that history and explicitly supersede it after independent original-DLL reads.
+- **Evidence location:** ignored `cache/t60-f1/extract.py`, `cache/t60-f1/CompLogic.dll.txt`, and `cache/t60-f1/CompLogicClassic.dll.txt`; no original bytes or listings enter Git.
+
+### Corrected findings and acceptance
+
+1. **F1.1 indexed mapping — MET.** `python -X utf8 cache/t60-f1/extract.py` read the PE-mapped eight LE dwords at `CompLogic.dll 0x1003e2ac` and `CompLogicClassic.dll 0x1003b74c` before bounded disassembly. Both tables map indexes 0..7 to physical bodies 0, 1, 7, 2, 3, 4, 5, 6. State 7 is `0x1003e23a` / `0x1003b6da`: it calls `0x1000d5f0` / `0x1000be10` and advances to 2 only for nonzero AL. States 2/3 have the `+0x1ca0 == 0x10` skip guards; state 6 and unsigned out-of-range return without a direct state write. `docs/re/complogic.md` §4 now gives all eight indexed transitions.
+2. **F1.2 reachability and direct effects — MET.** The dispatchers end at `0x1003e2a9` / `0x1003b749`; the table is data, and `0x1003e2d0` / `0x1003b770` begin adjacent functions. The old case-7 flag/callback attribution is superseded. State 0's selector returns to a caller that always stores `+0x30`, writes `+0x2c=1` and `+0x28` only on non-`0xffff`, and otherwise increments global `0x100692d8` / `0x10066250`. The selector's virtual calls and state helpers retain exact receiver/target boundaries in §4; no blanket transitive negative is claimed.
+3. **F1.3 helper/return audit — MET.** Re-read CompLogic `0x10003a20..0x10003ad9`, `0x10003940..0x10003a15` and Classic `0x10002320..0x100023d9`, `0x10002240..0x10002315`, with manager callers `0x1003d880..0x1003d8d0` / `0x1003ad90..0x1003ade0`. Both helpers early-return before pointer clearing, use argument 1 as a local selected-record slot after copying its pointer, and decrement selected `+0x10` at `0x10003a0e` / `0x1000230e`. Object argument 1 remains the returned quotient; object argument 2 is the tick/accumulation slot. The corrected second CompLogic LEA is `0x10003ab2`, not its following push at `0x10003ab6`.
+
+### Validation, remaining boundary, and decisions
+
+- **Commands:** `E:\anno1503\cache\orch-da\preflight.ps1` (15 PASS); `python -X utf8 cache/t60-f1/extract.py`; the script records every underlying `python -X utf8 tools/disasm.py E:\anno1503\game\app\<module> <VA> <decimal-bytes>` command and output in the ignored evidence files; `git diff --check 0e7f2ddd..HEAD` (clean).
+- **Scope checks:** commits before this report are `b599a86724c03c21eb05382b40e90f32dcbe85b0`, `80b6ef51af18c707055c81ce9980b90242d9f433`, and `1dc771b3b9578e034c2a8893f6b2e6f057acab8f`; this report commit parents `1dc771b3b9578e034c2a8893f6b2e6f057acab8f`. The final handoff, not this report, names its own hash. Relative to `0e7f2ddd`, only the three permitted tracked files differ. Existing OQs other than OQ-270 are unchanged; no OQ-480..489 heading exists. The raw Git blob is LF while this Windows checkout is CRLF, so the byte-prefix check is false solely on line endings; LF-normalized historical REPORTS content is an exact prefix and Git shows only the appended F1 section.
+- **Remaining transitive questions:** selector `0x1003e130` / `0x1003b5d0` virtual calls; state-helper targets listed in §4; cleanup calls `0x10059820` / `0x10059a00` and `0x10056480` / `0x10056bce`; and OQ-271 kind slots. OQ-270 remains narrowed, not resolved. OQ-271/272, T-AI.4, T61 and runtime implementation remain outside scope.
+- **Decisions and reasoning:** (1) use table indexes as state identities rather than address order, because PE extraction gives the eight explicit destinations; physical ordering is rejected as contradicted by state 7. (2) remove the flag/callback from the dispatcher contract because the dispatcher's `ret 4` precedes it; treating adjacency as reachability would invent an edge. (3) retain the unchanged-quotient conclusion because normalized entry-SP maps show helper aliasing only argument 2, while documenting early returns and selected-record mutation rather than overstating the helper as unconditional tick clearing. No owner decision, build, runtime test, merge, rebase, push or next task occurred.

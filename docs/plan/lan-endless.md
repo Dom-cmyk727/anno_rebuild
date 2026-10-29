@@ -2,6 +2,8 @@
 
 **Status:** plan, written by the orchestrator on 2026-10-26. The owner's decisions D1–D11 were taken the same day with the co-developer (§7) and are worked into every section below. Current execution status (2026-10-29, round cx): setup/network-design/AI-RE tasks have landed and P1 is now integrated locally. The current assignment is T32.5 F1, with the subsequent population and independent research tasks identified on the board. This does not mean the playable LAN goal is complete.
 
+**The MVP first (owner decision 2026-10-29):** the first playable release is narrower: one fixed map scaled for five players and no computer players. Its plan is [`lan-mvp.md`](lan-mvp.md). This plan stays the target after the MVP; the generator (W2), the original AI (W7) and the pirates (W8) move after the MVP.
+
 **Goal:** up to six players play an endless game on one LAN; the first real group is five. The world is generated larger than the original's and scales with the player count. Every empty seat is a computer player, and the pirates are an option. A game ends when one player remains. A custom multiplayer menu sets it all up. The display goes up to 4K. The game runs with the enhanced rules by default; the original rules, bugs included, are an option that is off by default (D11).
 
 **"Testable" means three things** (acceptance of the whole plan, §6 checkpoint D):

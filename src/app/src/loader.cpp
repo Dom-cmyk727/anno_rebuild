@@ -261,8 +261,8 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
     };
     auto append_item = [](std::vector<std::uint8_t>& items, std::uint16_t local_x,
                           std::uint16_t local_y, const SceneBuilding& b) {
-        const std::uint16_t id =
-            static_cast<std::uint16_t>(b.type | (static_cast<std::uint16_t>(b.rotation & 3) << 14));
+        const std::uint32_t packed = b.type | ((static_cast<std::uint32_t>(b.rotation) & 3u) << 14);
+        const auto id = static_cast<std::uint16_t>(packed);
         const std::uint16_t state =
             static_cast<std::uint16_t>(static_cast<std::uint16_t>(b.height) << 8);
         items.push_back(static_cast<std::uint8_t>(id & 0xFF));

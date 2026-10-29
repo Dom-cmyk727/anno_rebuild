@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <map>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -18,6 +20,8 @@
 #include <anno/sim/command.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/scenario.hpp>
+#include <anno/sim/types.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
@@ -396,6 +400,211 @@ TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place"
         CHECK_MESSAGE(outside == 0, files[i].filename().string()
                                         << " " << outside << " pixels outside omitted objects");
     }
+}
+
+/// Virtual clock. `sleep_until` and `sleep_for` both wake `overshoot` late, which
+/// is the Windows timer missing a short sleep. Absolute deadlines absorb that;
+/// a sleep aimed at now + period accumulates it. Sleeps are counted so the test
+/// can release one and wait for the next without missing a fast thread.
+class ManualClock final : public anno::app::PlaySchedule {
+  public:
+    explicit ManualClock(std::chrono::milliseconds overshoot) : overshoot_(overshoot) {}
+
+    time_point now() const override {
+        std::lock_guard lock(mu_);
+        return cur_;
+    }
+
+    void sleep_until(time_point deadline) override { block(deadline); }
+
+    void sleep_for(duration d) override {
+        time_point target;
+        {
+            std::lock_guard lock(mu_);
+            target = cur_ + d;
+        }
+        block(target);
+    }
+
+    void wake() override {
+        std::lock_guard lock(mu_);
+        abort_ = true;
+        cv_.notify_all();
+    }
+
+    [[nodiscard]] bool wait_until_sleeping(std::chrono::milliseconds budget) {
+        std::unique_lock lock(mu_);
+        return cv_.wait_for(lock, budget, [&] { return entered_ > released_ || abort_; });
+    }
+
+    /// Lets the sim thread leave its current sleep, then waits until it blocks
+    /// in the next one. Returns false on abort or timeout.
+    [[nodiscard]] bool release_and_wait(std::chrono::milliseconds budget) {
+        std::unique_lock lock(mu_);
+        if (entered_ <= released_ &&
+            !cv_.wait_for(lock, budget, [&] { return entered_ > released_ || abort_; })) {
+            return false;
+        }
+        if (abort_) {
+            return false;
+        }
+        const auto generation = entered_;
+        released_ = generation;
+        cv_.notify_all();
+        if (!cv_.wait_for(lock, budget, [&] { return completed_ >= generation || abort_; })) {
+            return false;
+        }
+        if (abort_) {
+            return false;
+        }
+        return cv_.wait_for(lock, budget, [&] { return entered_ > generation || abort_; });
+    }
+
+    [[nodiscard]] std::int64_t millis() const {
+        std::lock_guard lock(mu_);
+        return std::chrono::duration_cast<std::chrono::milliseconds>(cur_.time_since_epoch())
+            .count();
+    }
+
+  private:
+    void block(time_point target) {
+        std::unique_lock lock(mu_);
+        if (abort_) {
+            return;
+        }
+        const auto generation = ++entered_;
+        cv_.notify_all();
+        cv_.wait(lock, [&] { return released_ >= generation || abort_; });
+        if (!abort_) {
+            if (cur_ < target) {
+                cur_ = target;
+            }
+            cur_ += overshoot_;
+        }
+        completed_ = generation;
+        cv_.notify_all();
+    }
+
+    mutable std::mutex mu_;
+    std::condition_variable cv_;
+    time_point cur_{};
+    duration overshoot_{};
+    std::uint64_t entered_ = 0;
+    std::uint64_t released_ = 0;
+    std::uint64_t completed_ = 0;
+    bool abort_ = false;
+};
+
+anno::sim::World empty_world() {
+    auto made =
+        anno::sim::World::create(anno::sim::ScenarioSpec{}, anno::sim::TypeRegistry::empty());
+    REQUIRE(made);
+    return std::move(made).value();
+}
+
+TEST_CASE("play: absolute deadlines do not accumulate sleep overshoot") {
+    // 5 ms is the size of the drift the orchestrator measured (~4.7 ms/turn).
+    constexpr int kOvershootMs = 5;
+    constexpr std::uint64_t kEarlyTurn = 100;
+    constexpr std::uint64_t kLateTurn = 600;
+    const auto period = static_cast<std::uint64_t>(anno::sim::Timing{}.mp_turn_real_ms);
+    const auto budget = std::chrono::seconds(2);
+    for (const unsigned speed : {50u, 100u, 200u}) {
+        ManualClock clock{std::chrono::milliseconds(kOvershootMs)};
+        anno::app::PlayRunner runner(empty_world(), speed, &clock);
+        const auto per_turn = static_cast<std::uint64_t>(runner.step_ms()) *
+                              static_cast<std::uint64_t>(anno::sim::Timing{}.mp_steps_per_turn);
+        REQUIRE(per_turn > 0);
+        runner.start();
+        REQUIRE_MESSAGE(clock.wait_until_sleeping(budget), "speed " << speed << " never slept");
+        auto turns_of = [&] { return runner.snapshot()->game_ms / per_turn; };
+        auto lateness = [&](std::uint64_t turns) {
+            const auto scheduled = (turns - 1) * period;
+            const auto stamp = clock.millis();
+            if (stamp <= 0) {
+                return std::uint64_t{0};
+            }
+            const auto real = static_cast<std::uint64_t>(stamp);
+            return real > scheduled ? real - scheduled : std::uint64_t{0};
+        };
+        std::uint64_t seen = turns_of();
+        std::uint64_t max_late = seen == 0 ? 0 : lateness(seen);
+        struct Mark {
+            bool set = false;
+            std::uint64_t real = 0;
+            std::uint64_t game = 0;
+        };
+        Mark early;
+        Mark late;
+        auto note = [&](std::uint64_t turns) {
+            const auto game = runner.snapshot()->game_ms;
+            const auto stamp = clock.millis();
+            const auto real = stamp > 0 ? static_cast<std::uint64_t>(stamp) : std::uint64_t{0};
+            if (!early.set && turns >= kEarlyTurn) {
+                early = {true, real, game};
+            }
+            if (!late.set && turns >= kLateTurn) {
+                late = {true, real, game};
+            }
+        };
+        note(seen);
+        int pumps = 0;
+        while (seen < kLateTurn) {
+            REQUIRE_MESSAGE(clock.release_and_wait(budget), "speed " << speed << " stalled");
+            const auto now_turns = turns_of();
+            if (now_turns != seen) {
+                seen = now_turns;
+                max_late = std::max(max_late, lateness(seen));
+                note(seen);
+            }
+            REQUIRE_MESSAGE(++pumps < 20000, "speed " << speed << " did not reach " << kLateTurn
+                                                      << " turns (" << seen << ")");
+        }
+        const auto snap = runner.snapshot();
+        CHECK_MESSAGE(max_late <= static_cast<std::uint64_t>(kOvershootMs),
+                      "speed " << speed << " lateness " << max_late << " ms");
+        CHECK_MESSAGE(snap->behind_ms == 0, "speed " << speed << " behind " << snap->behind_ms);
+        REQUIRE(early.set);
+        REQUIRE(late.set);
+        REQUIRE(late.real > early.real);
+        const auto delta_game = late.game - early.game;
+        const auto delta_real = late.real - early.real;
+        const auto lhs = delta_game * period;
+        const auto rhs = per_turn * delta_real;
+        const auto diff = lhs > rhs ? lhs - rhs : rhs - lhs;
+        // 0.5 % of the expected game/real ratio: |got - want| / want <= 1/200.
+        CHECK_MESSAGE(diff * 200 <= rhs,
+                      "speed " << speed << " game " << delta_game << " real " << delta_real);
+        runner.stop();
+    }
+}
+
+TEST_CASE("play: a late sim catches up at most five turns") {
+    ManualClock clock{std::chrono::milliseconds(0)};
+    anno::app::PlayRunner runner(empty_world(), 100, &clock);
+    CHECK(runner.catchup_turns() == 5);
+    runner.set_catchup_turns(5);
+    runner.set_turn_delay(std::chrono::milliseconds(1000));
+    runner.start();
+    const auto budget = std::chrono::seconds(2);
+    int pumps = 0;
+    while (runner.snapshot()->behind_ms == 0) {
+        REQUIRE_MESSAGE(clock.wait_until_sleeping(budget), "never slept");
+        REQUIRE_MESSAGE(clock.release_and_wait(budget), "stalled");
+        REQUIRE_MESSAGE(++pumps < 10000, "behind_ms stayed 0 after " << pumps << " sleeps, game "
+                                                                     << runner.snapshot()->game_ms);
+    }
+    const auto snap = runner.snapshot();
+    const auto per_turn = static_cast<std::uint64_t>(runner.step_ms()) *
+                          static_cast<std::uint64_t>(anno::sim::Timing{}.mp_steps_per_turn);
+    CHECK(snap->game_ms == 5 * per_turn);
+    // Five 1000 ms turns end at t = 5000. The first deadline strictly after
+    // that is index 51. Slots 5..50 were not run.
+    const auto period = static_cast<std::uint64_t>(anno::sim::Timing{}.mp_turn_real_ms);
+    const std::uint64_t ended = 5ull * 1000ull;
+    const std::uint64_t next = ended / period + 1;
+    CHECK(snap->behind_ms == (next - 5) * period);
+    runner.stop();
 }
 
 TEST_CASE("play: turn cost on the heavy endless scenario") {

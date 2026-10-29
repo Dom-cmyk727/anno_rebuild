@@ -30,9 +30,20 @@ turn through `run_turn` (`replay.hpp`), which is the path the net layer will
 use.
 
 Wall time decides only **when** a turn starts. It does not change the step
-size. If a turn takes longer than 100 ms, the next turn waits until this one
-has published; missed time is counted and reported, not replayed as extra
-steps. There is no catch-up.
+size. The schedule is absolute: turn `k` is due at `t0 + k * mp_turn_real_ms`,
+and the thread waits with `sleep_until` (in slices of `mp_step_real_ms`, so
+pause and quit are noticed within one step). A late wake does not move later
+deadlines, so timer granularity does not accumulate.
+
+If the sim is still late when the next deadline arrives, the due turns run
+back to back, up to five (`PlayRunner::set_catchup_turns`, the default). Five
+turns is 500 ms at the original cadence: enough to absorb one scheduling
+hitch, and short of an unbounded backlog when the sim cannot keep up. Past
+that bound the schedule jumps to the first deadline strictly after now, and
+the skipped real milliseconds are added to the snapshot's `behind_ms`. Those
+turns are not run. Pause stops turns and shifts `t0` by the paused duration,
+so the pause is not lateness. The clock and the sleep are a `PlaySchedule`;
+the app uses `std::chrono::steady_clock`, and tests pass their own.
 
 ## What the snapshot is
 
@@ -45,7 +56,8 @@ first snapshot carries at least:
 - the tick;
 - the game time;
 - the cost of the last turn, and the p95 of turn costs over the last second
-  of turns.
+  of turns;
+- `behind_ms`, the real time the schedule skipped after the catch-up bound.
 
 The window title and the frame log show those three. The snapshot is not a
 `World`. The render library never receives a `World`, mutable or otherwise,

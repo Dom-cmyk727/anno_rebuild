@@ -57,17 +57,37 @@ struct PlaySnapshot {
     /// last second, in microseconds.
     std::uint64_t last_turn_us = 0;
     std::uint64_t p95_us = 0;
-    /// Real milliseconds a turn ran past the 100 ms turn, summed. Reported,
-    /// not replayed as extra steps.
+    /// Real milliseconds of schedule skipped after the catch-up bound.
+    /// Reported, not run as extra steps.
     std::uint64_t behind_ms = 0;
     bool paused = false;
 };
 
+/// Clock and sleep for the turn schedule. The app uses `steady_clock`. A test
+/// supplies a clock that wakes late by a fixed amount, so drift is
+/// deterministic. The runner calls these on the sim thread only. `wake`
+/// unblocks a test sleep so `stop` can join; the steady clock polls in short
+/// slices, so its `wake` does nothing.
+class PlaySchedule {
+  public:
+    using clock = std::chrono::steady_clock;
+    using time_point = clock::time_point;
+    using duration = clock::duration;
+
+    virtual ~PlaySchedule() = default;
+    [[nodiscard]] virtual time_point now() const = 0;
+    virtual void sleep_until(time_point deadline) = 0;
+    virtual void sleep_for(duration d) = 0;
+    virtual void wake() {}
+};
+
 /// Owns the world on one thread. `run_n` is the same turn the thread runs,
 /// on the caller's thread, for tests. Do not call it while `start` is running.
+/// `schedule` must outlive the runner; null uses `steady_clock`.
 class PlayRunner {
   public:
-    explicit PlayRunner(sim::World world, unsigned speed_percent = 100);
+    explicit PlayRunner(sim::World world, unsigned speed_percent = 100,
+                        PlaySchedule* schedule = nullptr);
     ~PlayRunner();
     PlayRunner(const PlayRunner&) = delete;
     PlayRunner& operator=(const PlayRunner&) = delete;
@@ -76,7 +96,15 @@ class PlayRunner {
     void stop();
     void set_paused(bool paused);
     /// Extra real time at the start of a turn. It is not added to the step.
+    /// Sliced so `stop` is noticed; call it before `start`.
     void set_turn_delay(std::chrono::milliseconds delay);
+    /// Late turns run back to back up to this many, then the schedule skips
+    /// forward and the skipped real time is added to `behind_ms`. Five is
+    /// 500 ms at `Timing::mp_turn_real_ms`: one hitch is absorbed, and a sim
+    /// that cannot keep the cadence does not queue an unbounded backlog.
+    /// Call before `start`. Zero skips as soon as a deadline is missed.
+    void set_catchup_turns(unsigned turns);
+    [[nodiscard]] unsigned catchup_turns() const { return catchup_turns_; }
     void run_n(std::uint32_t turns);
 
     [[nodiscard]] std::shared_ptr<const PlaySnapshot> snapshot() const;
@@ -90,11 +118,15 @@ class PlayRunner {
     void one_turn();
     void publish(std::uint64_t turn_us);
     void publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot);
+    void note_behind();
     [[nodiscard]] std::uint64_t p95_locked() const;
 
     sim::World world_;
+    std::unique_ptr<PlaySchedule> owned_schedule_;
+    PlaySchedule* schedule_ = nullptr;
     std::uint32_t step_ms_ = 10;
     std::uint32_t steps_ = 10;
+    unsigned catchup_turns_ = 5;
     std::uint64_t index_ = 0;
     std::uint64_t behind_ms_ = 0;
     std::atomic<bool> stop_{false};

@@ -25,6 +25,23 @@ std::string path_text(const fs::path& p) {
     return to_utf8(p);
 }
 
+class SteadySchedule final : public PlaySchedule {
+  public:
+    time_point now() const override { return clock::now(); }
+    void sleep_until(time_point deadline) override { std::this_thread::sleep_until(deadline); }
+    void sleep_for(duration d) override {
+        if (d > duration::zero()) {
+            std::this_thread::sleep_for(d);
+        }
+    }
+};
+
+PlaySchedule::time_point deadline_at(PlaySchedule::time_point origin, std::uint64_t index,
+                                     std::uint64_t period_ms) {
+    const auto ms = static_cast<std::chrono::milliseconds::rep>(index * period_ms);
+    return origin + std::chrono::milliseconds(ms);
+}
+
 std::uint64_t percentile_95(std::vector<std::uint64_t> values) {
     if (values.empty()) {
         return 0;
@@ -156,7 +173,12 @@ bool anlage_is_building(const sim::World& world, std::uint16_t anlage) {
     return world.config().layout.list_for(type->prodtype).has_value();
 }
 
-PlayRunner::PlayRunner(sim::World world, unsigned speed_percent) : world_(std::move(world)) {
+PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* schedule)
+    : world_(std::move(world)), schedule_(schedule) {
+    if (schedule_ == nullptr) {
+        owned_schedule_ = std::make_unique<SteadySchedule>();
+        schedule_ = owned_schedule_.get();
+    }
     const auto step = sim::multiplayer_step_ms(speed_percent);
     step_ms_ = step.value_or(10);
     steps_ = sim::Timing{}.mp_steps_per_turn;
@@ -177,6 +199,9 @@ void PlayRunner::start() {
 
 void PlayRunner::stop() {
     stop_.store(true);
+    if (schedule_ != nullptr) {
+        schedule_->wake();
+    }
     if (thread_.joinable()) {
         thread_.join();
     }
@@ -189,6 +214,10 @@ void PlayRunner::set_paused(bool paused) {
 void PlayRunner::set_turn_delay(std::chrono::milliseconds delay) {
     const auto ms = delay.count() < 0 ? 0 : delay.count();
     delay_ms_.store(static_cast<std::uint32_t>(ms > 60000 ? 60000 : ms));
+}
+
+void PlayRunner::set_catchup_turns(unsigned turns) {
+    catchup_turns_ = turns;
 }
 
 void PlayRunner::run_n(std::uint32_t turns) {
@@ -220,41 +249,94 @@ std::string PlayRunner::title_line() const {
 }
 
 void PlayRunner::loop() {
-    using clock = std::chrono::steady_clock;
-    const auto turn = std::chrono::milliseconds(sim::Timing{}.mp_turn_real_ms);
+    // Absolute deadlines: turn k is due at t0 + k * mp_turn_real_ms
+    // (docs/app/game-shell.md). Polling uses mp_step_real_ms so pause and
+    // stop are noticed within one original step; each wake is aimed at the
+    // deadline, not at "period minus what the last sleep was asked to take".
+    const sim::Timing timing;
+    const auto period_ms = static_cast<std::uint64_t>(timing.mp_turn_real_ms);
+    const auto poll = std::chrono::milliseconds(timing.mp_step_real_ms);
+    const unsigned bound = catchup_turns_;
+    bool armed = false;
+    bool pausing = false;
+    PlaySchedule::time_point t0{};
+    PlaySchedule::time_point pause_mark{};
+    std::uint64_t k = 0;
+    unsigned streak = 0;
+
     while (!stop_.load()) {
         if (paused_.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-        const auto started = clock::now();
-        one_turn();
-        const auto elapsed = clock::now() - started;
-        if (elapsed > turn) {
-            const auto over =
-                std::chrono::duration_cast<std::chrono::milliseconds>(elapsed - turn).count();
-            if (over > 0) {
-                behind_ms_ += static_cast<std::uint64_t>(over);
-                auto next = std::make_shared<PlaySnapshot>(*snapshot());
-                next->behind_ms = behind_ms_;
-                publish_snapshot(std::move(next));
+            if (!pausing) {
+                pausing = true;
+                pause_mark = schedule_->now();
             }
+            schedule_->sleep_for(poll);
             continue;
         }
-        auto left = std::chrono::duration_cast<std::chrono::milliseconds>(turn - elapsed);
-        while (left.count() > 0 && !stop_.load() && !paused_.load()) {
-            const auto slice = left.count() > 10 ? std::chrono::milliseconds(10) : left;
-            std::this_thread::sleep_for(slice);
-            left -= slice;
+        if (pausing) {
+            if (armed) {
+                t0 += schedule_->now() - pause_mark;
+            }
+            pausing = false;
+            streak = 0;
+        }
+        if (!armed) {
+            t0 = schedule_->now();
+            k = 0;
+            streak = 0;
+            armed = true;
+        }
+
+        const auto deadline = deadline_at(t0, k, period_ms);
+        const auto now = schedule_->now();
+        if (now < deadline) {
+            streak = 0;
+            auto wake = deadline;
+            const auto soon = now + poll;
+            if (soon < wake) {
+                wake = soon;
+            }
+            schedule_->sleep_until(wake);
+            continue;
+        }
+        // Still late after `bound` back-to-back turns: skip to the first
+        // deadline strictly after now and count the skipped slots.
+        if (streak >= bound && now > deadline) {
+            const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - t0);
+            std::uint64_t next_k = k + 1;
+            if (period_ms > 0 && elapsed_ms.count() > 0) {
+                const auto elapsed = static_cast<std::uint64_t>(elapsed_ms.count());
+                next_k = elapsed / period_ms + 1;
+            }
+            if (next_k <= k) {
+                next_k = k + 1;
+            }
+            behind_ms_ += (next_k - k) * period_ms;
+            k = next_k;
+            streak = 0;
+            note_behind();
+            continue;
+        }
+
+        one_turn();
+        if (stop_.load()) {
+            break;
+        }
+        ++k;
+        if (schedule_->now() >= deadline_at(t0, k, period_ms)) {
+            ++streak;
+        } else {
+            streak = 0;
         }
     }
 }
 
 void PlayRunner::one_turn() {
-    std::uint32_t left = delay_ms_.load();
-    while (left > 0 && !stop_.load()) {
-        const std::uint32_t slice = left > 10 ? 10 : left;
-        std::this_thread::sleep_for(std::chrono::milliseconds(slice));
+    const auto poll = std::chrono::milliseconds(sim::Timing{}.mp_step_real_ms);
+    auto left = std::chrono::milliseconds(delay_ms_.load());
+    while (left.count() > 0 && !stop_.load()) {
+        const auto slice = left > poll ? poll : left;
+        schedule_->sleep_for(slice);
         left -= slice;
     }
     if (stop_.load()) {
@@ -263,11 +345,10 @@ void PlayRunner::one_turn() {
     sim::Turn turn;
     turn.index = index_++;
     turn.step_ms = step_ms_;
-    const auto started = std::chrono::steady_clock::now();
+    const auto started = schedule_->now();
     sim::run_turn(world_, nullptr, turn, steps_);
-    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now() - started)
-                        .count();
+    const auto us =
+        std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
     publish(static_cast<std::uint64_t>(us < 0 ? 0 : us));
 }
 
@@ -283,6 +364,13 @@ void PlayRunner::publish(std::uint64_t turn_us) {
     next->game_ms = world_.clock().ms;
     next->last_turn_us = turn_us;
     next->p95_us = p95_locked();
+    next->behind_ms = behind_ms_;
+    next->paused = paused_.load();
+    publish_snapshot(std::move(next));
+}
+
+void PlayRunner::note_behind() {
+    auto next = std::make_shared<PlaySnapshot>(*snapshot());
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
     publish_snapshot(std::move(next));

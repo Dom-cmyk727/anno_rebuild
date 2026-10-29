@@ -143,13 +143,12 @@ std::vector<SceneBuilding> play_buildings(const sim::World& world) {
                     // file's island-local item). The scene's objects are island-local.
                     const std::int32_t local_x = building->x - islands[i]->tiles.x0();
                     const std::int32_t local_y = building->y - islands[i]->tiles.y0();
-                    if (local_x < 0 || local_y < 0 || local_x > 65535 || local_y > 65535 ||
-                        building->type.v > 0x0FFF) {
+                    if (local_x < 0 || local_y < 0 || local_x > 65535 || local_y > 65535) {
                         continue;
                     }
                     SceneBuilding placed;
                     placed.island = static_cast<std::uint32_t>(i);
-                    placed.type = static_cast<std::uint16_t>(building->type.v);
+                    placed.type = building->type.v;
                     placed.x = static_cast<std::uint16_t>(local_x);
                     placed.y = static_cast<std::uint16_t>(local_y);
                     placed.rotation = building->rotation;

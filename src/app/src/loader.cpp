@@ -241,10 +241,17 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
 /// and dropped. One the sim placed that the file lacks is appended.
 void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out,
                            const SceneObjects& objects) {
-    using Key = std::tuple<std::uint32_t, std::uint16_t, std::uint16_t, std::uint16_t>;
+    using Key = std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t>;
     std::set<Key> placed;
     std::map<std::uint32_t, std::vector<SceneBuilding>> by_slot;
     for (const SceneBuilding& b : objects.buildings) {
+        // PROD2 stores the Anlagen id in 12 bits (formats::insel masks with
+        // 0x0FFF). A wider id must not be truncated into that field.
+        if (b.type > 0x0FFF) {
+            out.notes.push_back("play: Anlagen id " + std::to_string(b.type) +
+                                " does not fit a PROD2 item");
+            continue;
+        }
         placed.insert({b.island, b.type, b.x, b.y});
         by_slot[b.island].push_back(b);
     }
@@ -254,8 +261,8 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
     };
     auto append_item = [](std::vector<std::uint8_t>& items, std::uint16_t local_x,
                           std::uint16_t local_y, const SceneBuilding& b) {
-        const std::uint16_t id = static_cast<std::uint16_t>(
-            (b.type & 0x0FFF) | (static_cast<std::uint16_t>(b.rotation & 3) << 14));
+        const std::uint16_t id =
+            static_cast<std::uint16_t>(b.type | (static_cast<std::uint16_t>(b.rotation & 3) << 14));
         const std::uint16_t state =
             static_cast<std::uint16_t>(static_cast<std::uint16_t>(b.height) << 8);
         items.push_back(static_cast<std::uint8_t>(id & 0xFF));
@@ -266,7 +273,15 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
         items.push_back(static_cast<std::uint8_t>(local_y));
     };
     for (insel::Island& island : islands) {
-        const std::uint32_t slot = island.number & 0xFFFFu;
+        // The island head keeps a u32. The PROD2 match uses that number as the
+        // slot. The original table index is 16 bits (AnnoScene.dll 0x10008503);
+        // a wider number is refused instead of being masked down to a slot.
+        if (island.number > 0xFFFF) {
+            out.notes.push_back("play: island number " + std::to_string(island.number) +
+                                " does not fit a PROD2 item");
+            continue;
+        }
+        const std::uint32_t slot = island.number;
         std::set<Key> drawn;
         std::vector<SceneBuilding> pending = by_slot[slot];
         for (formats::chunk::Chunk& rec : island.records) {

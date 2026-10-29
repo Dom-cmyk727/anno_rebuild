@@ -53,11 +53,13 @@ struct LinkTemplate {
 };
 
 /// A building the sim placed, in island-local tiles. `island` is the island
-/// table slot (`INSELLNK` number masked to 16 bits, or the embedded island's
-/// number). `height` is the height byte (`Building::byte0f`).
+/// table slot (the link number when it fits in 16 bits, or the embedded
+/// island's number). `type` is the Anlagen id; a value that does not fit a
+/// PROD2 item (12 bits) is refused with a note, not masked. `height` is the
+/// height byte (`Building::byte0f`).
 struct SceneBuilding {
     std::uint32_t island = 0;
-    std::uint16_t type = 0;
+    std::uint32_t type = 0;
     std::uint16_t x = 0, y = 0;
     std::uint8_t rotation = 0;
     std::uint8_t height = 0;

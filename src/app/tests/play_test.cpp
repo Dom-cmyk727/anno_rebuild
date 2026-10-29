@@ -552,6 +552,92 @@ TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place"
                          << " buildings");
 }
 
+std::vector<std::uint8_t> prod2_bytes(const anno::render::Scene& scene) {
+    std::vector<std::uint8_t> out;
+    for (const auto& island : scene.islands) {
+        for (const auto& rec : island.records) {
+            if (rec.name() != "PROD2") {
+                continue;
+            }
+            const auto payload = rec.payload;
+            out.insert(out.end(), payload.begin(), payload.end());
+        }
+    }
+    return out;
+}
+
+TEST_CASE("play: an id that does not fit PROD2 is refused") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
+    if (!fs::exists(file)) {
+        MESSAGE("skipping: Single_01.sze is not in this game directory");
+        return;
+    }
+    auto plain = anno::app::load_scene(*dir, file);
+    REQUIRE(plain);
+    REQUIRE_FALSE(plain.value().scene->islands.empty());
+    const auto& host = plain.value().scene->islands.front();
+    REQUIRE(host.width >= 2);
+    REQUIRE(host.height >= 2);
+    REQUIRE(host.number <= 0xFFFF);
+
+    // 0x10000 masked to 16 bits is 0. The scene must keep the full id in the note
+    // and leave the PROD2 records unchanged.
+    anno::app::SceneBuilding wide;
+    wide.island = host.number;
+    wide.type = 0x10000;
+    wide.x = 1;
+    wide.y = 1;
+    std::vector<anno::app::SceneBuilding> buildings{wide};
+    anno::app::SceneObjects objects;
+    objects.is_building = [](std::uint16_t) { return false; };
+    objects.buildings = buildings;
+    auto played = anno::app::load_scene(*dir, file, {}, &objects);
+    REQUIRE(played);
+    const auto id_noted = std::any_of(
+        played.value().notes.begin(), played.value().notes.end(), [](const std::string& note) {
+            return note.find("Anlagen id 65536") != std::string::npos &&
+                   note.find("does not fit a PROD2 item") != std::string::npos;
+        });
+    CHECK(id_noted);
+    CHECK(prod2_bytes(*played.value().scene) == prod2_bytes(*plain.value().scene));
+
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    REQUIRE_FALSE(templates.files.empty());
+    anno::app::PlacedIsland item;
+    item.number = 0x10000;
+    item.x = 100;
+    item.y = 100;
+    item.file = templates.files.front();
+    const std::vector<anno::app::PlacedIsland> placed_islands{item};
+    auto base = anno::app::load_placed_scene(*dir, "wide-island", placed_islands, nullptr);
+    REQUIRE(base);
+    REQUIRE_FALSE(base.value().scene->islands.empty());
+    REQUIRE(base.value().scene->islands.front().width >= 2);
+    REQUIRE(base.value().scene->islands.front().height >= 2);
+    anno::app::SceneBuilding on_slot_zero;
+    on_slot_zero.island = 0;
+    on_slot_zero.type = 1;
+    on_slot_zero.x = 1;
+    on_slot_zero.y = 1;
+    buildings = {on_slot_zero};
+    objects.buildings = buildings;
+    auto wide_island = anno::app::load_placed_scene(*dir, "wide-island", placed_islands, &objects);
+    REQUIRE(wide_island);
+    const auto number_noted =
+        std::any_of(wide_island.value().notes.begin(), wide_island.value().notes.end(),
+                    [](const std::string& note) {
+                        return note.find("island number 65536") != std::string::npos &&
+                               note.find("does not fit a PROD2 item") != std::string::npos;
+                    });
+    CHECK(number_noted);
+    CHECK(prod2_bytes(*wide_island.value().scene) == prod2_bytes(*base.value().scene));
+}
+
 /// Virtual clock. `sleep_until` and `sleep_for` both wake `overshoot` late, which
 /// is the Windows timer missing a short sleep. Absolute deadlines absorb that;
 /// a sleep aimed at now + period accumulates it. Sleeps are counted so the test

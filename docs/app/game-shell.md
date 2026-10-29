@@ -76,7 +76,9 @@ Terrain and scenery come from the island files. Buildings come from the
 - The scene's building objects are the world's buildings: type, x, y,
   rotation, and `Building::byte0f` as the height byte. The sim does not keep
   a per-object height for scenery (`walk_cells.cpp`). Scenery height stays
-  the byte in the file.
+  the byte in the file. An Anlagen id above `0x0FFF`, or an island number
+  above `0xFFFF`, does not fit a PROD2 item: the scene records a note and
+  does not mask the value into the record.
 - Terrain and scenery are the file's objects with the building items removed.
   The split uses the same type classification the scenario loader uses.
 - At tick 0, an object the sim did not place is listed and explained. It is

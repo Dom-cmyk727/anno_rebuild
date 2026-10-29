@@ -96,7 +96,20 @@ Child start_coordinator(std::uint16_t port, const std::filesystem::path& journal
     }
     Child coord = Child::start(exe, args);
     REQUIRE(static_cast<bool>(coord));
-    listening = coord.line(15000ms);
+    const auto deadline = std::chrono::steady_clock::now() + 15000ms;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto remain = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        const std::string line = coord.line(remain);
+        if (line.empty()) {
+            break;
+        }
+        if (line.rfind("LISTENING", 0) == 0 || line.rfind("BIND-FAILED", 0) == 0 ||
+            line.rfind("JOURNAL-FAILED", 0) == 0) {
+            listening = line;
+            break;
+        }
+    }
     INFO("coordinator on port " << port << " first line: '" << listening << "'");
     REQUIRE(listening.rfind("LISTENING", 0) == 0);
     return coord;

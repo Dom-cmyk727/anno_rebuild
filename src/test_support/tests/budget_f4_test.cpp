@@ -11,6 +11,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -27,6 +28,7 @@
 
 #include <anno/test/budget.hpp>
 
+#include "../src/coord_identity.hpp"
 #include "../src/coord_wire.hpp"
 #include "budget_proc_harness.hpp"
 #include "child_process.hpp"
@@ -95,6 +97,7 @@ struct OwnedCoord {
     Child child;
     std::string listening;
     std::string linux_pid;
+    std::string linux_start;
     std::string diagnostic;
     bool ready = false;
 
@@ -113,8 +116,14 @@ struct OwnedCoord {
 
     void stop_owned() {
         if (!linux_pid.empty()) {
-            wsl_capture("kill -9 " + linux_pid + " || true");
+            // Kill only while the starttime still matches. A recycled pid is not ours.
+            const std::string live = token(
+                wsl_capture("sed -n 's/.*) //p' /proc/" + linux_pid + "/stat | cut -d' ' -f20"));
+            if (linux_start.empty() || live == linux_start) {
+                wsl_capture("kill -9 " + linux_pid + " || true");
+            }
             linux_pid.clear();
+            linux_start.clear();
         }
         child.stop();
     }
@@ -124,6 +133,7 @@ struct OwnedCoord {
         child = std::move(other.child);
         listening = std::move(other.listening);
         linux_pid = std::move(other.linux_pid);
+        linux_start = std::move(other.linux_start);
         diagnostic = std::move(other.diagnostic);
         ready = other.ready;
         other.ready = false;
@@ -132,9 +142,11 @@ struct OwnedCoord {
 };
 
 OwnedCoord start_owned_host_coordinator(std::uint16_t port, const std::filesystem::path& journal,
-                                        const std::string& leak_path = {}) {
+                                        const std::string& leak_path = {},
+                                        const std::filesystem::path& binary_override = {}) {
     OwnedCoord owned;
-    const auto binary = anno::test::host_coordinator_binary();
+    const auto binary =
+        binary_override.empty() ? anno::test::host_coordinator_binary() : binary_override;
     std::error_code error;
     if (!std::filesystem::exists(binary, error) || std::filesystem::file_size(binary, error) == 0) {
         owned.diagnostic = "missing executable: " + binary.generic_string();
@@ -183,6 +195,8 @@ OwnedCoord start_owned_host_coordinator(std::uint16_t port, const std::filesyste
         seen += line + " | ";
         if (line.rfind("PID:", 0) == 0) {
             owned.linux_pid = line.substr(4);
+            owned.linux_start = token(wsl_capture("sed -n 's/.*) //p' /proc/" + owned.linux_pid +
+                                                  "/stat | cut -d' ' -f20"));
             continue;
         }
         if (line.rfind("LISTENING", 0) == 0) {
@@ -198,6 +212,10 @@ OwnedCoord start_owned_host_coordinator(std::uint16_t port, const std::filesyste
     if (owned.linux_pid.empty() && owned.child.pid() > 0) {
         owned.linux_pid = std::to_string(owned.child.pid());
     }
+    if (owned.linux_start.empty() && !owned.linux_pid.empty()) {
+        owned.linux_start = token(
+            wsl_capture("sed -n 's/.*) //p' /proc/" + owned.linux_pid + "/stat | cut -d' ' -f20"));
+    }
 #endif
     if (owned.listening.empty()) {
         owned.diagnostic = "not ready: " + seen;
@@ -206,70 +224,39 @@ OwnedCoord start_owned_host_coordinator(std::uint16_t port, const std::filesyste
         }
         return owned;
     }
-    if (!has(owned.listening, std::to_string(port)) || !has(owned.listening, "build=") ||
-        !has(owned.listening, "compat=")) {
-        owned.diagnostic = "LISTENING missing port/build/compat: " + owned.listening;
+    const anno::test::ListeningIdentity identity = anno::test::coordinator_listening_identity(
+        owned.listening, port, anno::test::coordinator_build(), anno::test::wire::kCompatVersion,
+        coordinator_config_name());
+    if (!identity.matches) {
+        owned.diagnostic = identity.diagnostic.empty() ? std::string("listening identity rejected")
+                                                       : identity.diagnostic;
         return owned;
     }
     owned.ready = true;
     return owned;
 }
 
-struct BackupArtifact {
-    std::filesystem::path original;
-    std::filesystem::path backup;
-    bool moved = false;
-
-    explicit BackupArtifact(std::filesystem::path path) : original(std::move(path)) {
-        std::error_code error;
-        if (std::filesystem::exists(original, error)) {
-            backup = original;
-            backup += ".f5bak";
-            std::filesystem::rename(original, backup, error);
-            moved = !error;
-        }
-    }
-    BackupArtifact(const BackupArtifact&) = delete;
-    BackupArtifact& operator=(const BackupArtifact&) = delete;
-    ~BackupArtifact() {
-        std::error_code error;
-        if (!moved) {
-            return;
-        }
-#if defined(_WIN32)
-        // Keep a completed prepare result so other CTest processes still have
-        // the cache file. Drop the backup.
-        if (std::filesystem::exists(original, error)) {
-            std::filesystem::remove(backup, error);
-        } else if (std::filesystem::exists(backup, error)) {
-            std::filesystem::rename(backup, original, error);
-        }
-#else
-        // Put the cmake/ASan binary back so later cases in this process do
-        // not keep an unsanitized g++ rebuild.
-        if (std::filesystem::exists(original, error)) {
-            std::filesystem::remove(original, error);
-        }
-        if (std::filesystem::exists(backup, error)) {
-            std::filesystem::rename(backup, original, error);
-        }
-#endif
-    }
-};
-
-/// Serializes cases that move or start this worktree's one cache binary so a
-/// parallel CTest run cannot rename it out from under another case.
+/// Serializes cases that start this worktree's canonical cache binary so a
+/// parallel CTest run cannot prepare it under another case. Cold F6 cases use
+/// a private root and do not take this lock.
 struct CoordArtifactLock {
+    bool acquired = false;
 #if defined(_WIN32)
     HANDLE mutex = nullptr;
     explicit CoordArtifactLock() {
         mutex = CreateMutexW(nullptr, FALSE, L"Local\\anno1503-f5-coord-artifact");
-        if (mutex != nullptr) {
-            WaitForSingleObject(mutex, 180000);
+        if (mutex == nullptr) {
+            return;
+        }
+        const DWORD wait = WaitForSingleObject(mutex, 180000);
+        acquired = wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED;
+        if (!acquired) {
+            CloseHandle(mutex);
+            mutex = nullptr;
         }
     }
     ~CoordArtifactLock() {
-        if (mutex != nullptr) {
+        if (acquired && mutex != nullptr) {
             ReleaseMutex(mutex);
             CloseHandle(mutex);
         }
@@ -277,14 +264,26 @@ struct CoordArtifactLock {
 #else
     int fd = -1;
     explicit CoordArtifactLock() {
-        fd = ::open("/tmp/anno1503-f5-coord-artifact.lock", O_CREAT | O_RDWR, 0644);
-        if (fd >= 0) {
-            ::flock(fd, LOCK_EX);
+        fd = ::open("/tmp/anno1503-f5-coord-artifact.lock", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+        if (fd < 0) {
+            return;
         }
+        const auto deadline = std::chrono::steady_clock::now() + 180000ms;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
+                acquired = true;
+                return;
+            }
+            std::this_thread::sleep_for(20ms);
+        }
+        ::close(fd);
+        fd = -1;
     }
     ~CoordArtifactLock() {
         if (fd >= 0) {
-            ::flock(fd, LOCK_UN);
+            if (acquired) {
+                ::flock(fd, LOCK_UN);
+            }
             ::close(fd);
         }
     }
@@ -325,6 +324,8 @@ struct StopWslPort {
 };
 
 } // namespace
+
+std::filesystem::path f6_dir();
 
 TEST_CASE("F4 (E1): an orphan survives a successor's reuse of its hold id and a second restart" *
           doctest::test_suite("budget")) {
@@ -693,6 +694,7 @@ TEST_CASE("F4 (N4): a descriptor the coordinator holds without close-on-exec doe
         return;
     }
     CoordArtifactLock lock;
+    REQUIRE(lock.acquired);
     run_n4_meter_descriptor_case(kPortMeterLeak);
 }
 
@@ -702,8 +704,10 @@ TEST_CASE("F5 (cold): N4 prepares this worktree's WSL binary when it is absent" 
         MESSAGE("skipping: WSL (Ubuntu) is not available; the meter path is WSL");
         return;
     }
-    CoordArtifactLock lock;
-    BackupArtifact cold(anno::test::host_coordinator_binary());
+    const auto root = f6_dir() / "cold-n4";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    Env prepare_root({{"ANNO_TEST_COORD_PREPARE_ROOT", root.string()}});
     run_n4_meter_descriptor_case(kPortCold);
 }
 
@@ -713,6 +717,7 @@ TEST_CASE("F5 (warm): N4 reuses a completed artifact" * doctest::test_suite("bud
         return;
     }
     CoordArtifactLock lock;
+    REQUIRE(lock.acquired);
     const anno::test::CoordinatorPrepare first = anno::test::prepare_host_coordinator();
     INFO("first prepare: ok=" << first.ok << " " << first.diagnostic);
     REQUIRE(first.ok);
@@ -730,6 +735,7 @@ TEST_CASE("F5 (companion): cold N4 leaves a compatible peer's pid, incarnation a
         return;
     }
     CoordArtifactLock lock;
+    REQUIRE(lock.acquired);
     const anno::test::CoordinatorPrepare prep = anno::test::prepare_host_coordinator();
     REQUIRE(prep.ok);
     const auto peer_journal = f4_dir() / "f5-peer.journal";
@@ -749,9 +755,20 @@ TEST_CASE("F5 (companion): cold N4 leaves a compatible peer's pid, incarnation a
         holder = probe({"holder", budget_path, "40"});
     }
     REQUIRE(has(want(holder, "READY", 15000ms, &seen), "READY 1"));
-    BackupArtifact cold(anno::test::host_coordinator_binary());
-    run_n4_meter_descriptor_case(kPortCompanionN4);
+    const auto cold_root = f6_dir() / "companion-cold";
+    std::filesystem::remove_all(cold_root);
+    std::filesystem::create_directories(cold_root);
+    {
+        Env prepare_root({{"ANNO_TEST_COORD_PREPARE_ROOT", cold_root.string()}});
+        run_n4_meter_descriptor_case(kPortCompanionN4);
+    }
     CHECK(peer.child.running());
+    const std::string live_start =
+        token(wsl_capture("sed -n 's/.*) //p' /proc/" + peer_pid + "/stat | cut -d' ' -f20"));
+    const std::string live_cmd = wsl_capture("tr '\\0' ' ' < /proc/" + peer_pid + "/cmdline");
+    INFO("live start=" << live_start << " cmd=" << live_cmd);
+    CHECK(live_start == peer.linux_start);
+    CHECK(has(live_cmd, "anno_budget_coord"));
     CHECK(peer.linux_pid == peer_pid);
     CHECK(peer.listening == peer_line);
     Child check;
@@ -771,8 +788,10 @@ TEST_CASE("F5 (fail): missing executable is not ready" * doctest::test_suite("bu
         MESSAGE("skipping: WSL (Ubuntu) is not available; the meter path is WSL");
         return;
     }
-    CoordArtifactLock lock;
-    BackupArtifact missing(anno::test::host_coordinator_binary());
+    const auto root = f6_dir() / "missing";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    Env prepare_root({{"ANNO_TEST_COORD_PREPARE_ROOT", root.string()}});
     const auto journal = f4_dir() / "f5-miss.journal";
     remove_file(journal);
     OwnedCoord coord = start_owned_host_coordinator(kPortFailMissing, journal);
@@ -785,9 +804,11 @@ TEST_CASE("F5 (fail): missing executable is not ready" * doctest::test_suite("bu
 }
 
 TEST_CASE("F5 (fail): forced prepare failure is not success" * doctest::test_suite("budget")) {
-    CoordArtifactLock lock;
-    BackupArtifact missing(anno::test::host_coordinator_binary());
-    Env fail({{"ANNO_TEST_COORD_PREPARE_FAIL", "1"}});
+    const auto root = f6_dir() / "prepare-fail";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    Env fail(
+        {{"ANNO_TEST_COORD_PREPARE_FAIL", "1"}, {"ANNO_TEST_COORD_PREPARE_ROOT", root.string()}});
     const anno::test::CoordinatorPrepare prep = anno::test::prepare_host_coordinator();
     INFO("prepare: ok=" << prep.ok << " " << prep.diagnostic);
     CHECK(!prep.ok);
@@ -801,6 +822,7 @@ TEST_CASE("F5 (fail): bind failure is not ready" * doctest::test_suite("budget")
         return;
     }
     CoordArtifactLock lock;
+    REQUIRE(lock.acquired);
     const anno::test::CoordinatorPrepare prep = anno::test::prepare_host_coordinator();
     REQUIRE(prep.ok);
     const auto journal_a = f4_dir() / "f5-bind-a.journal";
@@ -824,8 +846,10 @@ TEST_CASE("F5 (concurrent): two preparers contend for the same missing artifact"
         MESSAGE("skipping: WSL (Ubuntu) is not available; Windows preparation compiles in WSL");
         return;
     }
-    CoordArtifactLock lock;
-    BackupArtifact missing(anno::test::host_coordinator_binary());
+    const auto root = f6_dir() / "concurrent";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    Env prepare_root({{"ANNO_TEST_COORD_PREPARE_ROOT", root.string()}});
     anno::test::CoordinatorPrepare first;
     anno::test::CoordinatorPrepare second;
     std::latch go(2);
@@ -857,6 +881,570 @@ TEST_CASE("F5 (concurrent): two preparers contend for the same missing artifact"
     OwnedCoord coord = start_owned_host_coordinator(kPortConcurrent, journal);
     INFO("usable: " << coord.listening << " " << coord.diagnostic);
     REQUIRE(coord.ready);
+}
+
+std::filesystem::path f6_dir() {
+    const auto dir = std::filesystem::temp_directory_path() / "anno1503-f6";
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+
+std::filesystem::path self_exe() {
+#if defined(_WIN32)
+    wchar_t buffer[32768];
+    const DWORD n = GetModuleFileNameW(nullptr, buffer, 32768);
+    if (n == 0 || n >= 32768) {
+        return {};
+    }
+    return std::filesystem::path(buffer);
+#else
+    char buffer[4096];
+    const ssize_t n = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (n <= 0) {
+        return {};
+    }
+    buffer[n] = '\0';
+    return std::filesystem::path(buffer);
+#endif
+}
+
+std::filesystem::path write_f6_script(const std::string& name, const std::string& body) {
+    const auto path = f6_dir() / name;
+    std::ofstream out(path, std::ios::binary);
+    out << "#!/bin/sh\n" << body;
+    if (!body.empty() && body.back() != '\n') {
+        out << '\n';
+    }
+    out.close();
+#if !defined(_WIN32)
+    std::filesystem::permissions(path, std::filesystem::perms::owner_exec,
+                                 std::filesystem::perm_options::add);
+#endif
+    return path;
+}
+
+/// One compiler stand-in. The mode is the file name (`fake-hang.sh`, ...).
+/// It records argv and, on the success modes, writes an ELF-prefixed marker
+/// taken from `-DANNO_COORD_MARKER_LITERAL=`.
+std::filesystem::path f6_fake_compiler(const std::string& name) {
+    static const char* body =
+        "out=\n"
+        "prev=\n"
+        "marker=\n"
+        "config=\n"
+        "for a in \"$@\"; do\n"
+        "  if [ \"$prev\" = \"-o\" ]; then out=$a; fi\n"
+        "  if [ \"$prev\" = \"-include\" ]; then\n"
+        "    marker=$(sed -n 's/^#define ANNO_COORD_MARKER_LITERAL \"\\(.*\\)\"/\\1/p' \"$a\")\n"
+        "    config=$(sed -n 's/^#define ANNO_COORD_CONFIG_LITERAL \"\\(.*\\)\"/\\1/p' \"$a\")\n"
+        "  fi\n"
+        "  case \"$a\" in\n"
+        "    -DANNO_COORD_MARKER_LITERAL=*)\n"
+        "      marker=${a#-DANNO_COORD_MARKER_LITERAL=}\n"
+        "      marker=${marker#\\\"}\n"
+        "      marker=${marker%\\\"}\n"
+        "      ;;\n"
+        "  esac\n"
+        "  prev=$a\n"
+        "done\n"
+        "base=$(basename \"$0\")\n"
+        "if [ -n \"$out\" ]; then printf '%s\\n' \"$@\" > \"${out}.argv\"; fi\n"
+        "payload=$marker\n"
+        "if [ \"$config\" = \"asan+ubsan\" ]; then payload=\"${payload}__asan_init\"; fi\n"
+        "case \"$base\" in\n"
+        "  fake-partial.sh)\n"
+        "    printf 'PARTIAL-OUTPUT-NOT-AN-ARTIFACT' > \"$out\"\n"
+        "    echo partial-stdout\n"
+        "    exit 1\n"
+        "    ;;\n"
+        "  fake-bad.sh)\n"
+        "    printf 'hello-not-elf' > \"$out\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  fake-hang.sh)\n"
+        "    echo started-hang\n"
+        "    sleep 60\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  fake-hangchild.sh)\n"
+        "    echo started-child\n"
+        "    sleep 60 &\n"
+        "    wait\n"
+        "    ;;\n"
+        "  fake-slow.sh)\n"
+        "    printf 'PARTIAL' > \"$out\"\n"
+        "    sleep 2\n"
+        "    printf '\\177ELF%s' \"$payload\" > \"$out\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  fake-delay.sh)\n"
+        "    sleep 1\n"
+        "    printf '\\177ELF%s' \"$payload\" > \"$out\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  *)\n"
+        "    printf '\\177ELF%s' \"$payload\" > \"$out\"\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "esac\n";
+    return write_f6_script(name, body);
+}
+
+std::string one_line(std::string text) {
+    for (char& ch : text) {
+        if (ch == '\n' || ch == '\r') {
+            ch = ' ';
+        }
+    }
+    return text;
+}
+
+struct PrepareChild {
+    bool finished = false;
+    bool ok = false;
+    int compiler_exit = 0;
+    bool reused = false;
+    bool timed_out = false;
+    std::string binary;
+    std::string diagnostic;
+};
+
+PrepareChild run_prepare_child(const Vars& extra, std::chrono::milliseconds wall) {
+    PrepareChild result;
+    Vars vars = extra;
+    vars.push_back({"ANNO_TEST_F6_CHILD", "1"});
+    Child child;
+    {
+        Env env(vars);
+        child = Child::start(self_exe(),
+                             {"--test-case=*F6 helper prepare*", "--no-intro", "--no-version"});
+    }
+    if (!child) {
+        result.diagnostic = "prepare child failed to start";
+        return result;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + wall;
+    std::string result_line;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto remain = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now());
+        const std::string line = child.line(remain);
+        if (line.rfind("RESULT ", 0) == 0) {
+            result_line = line;
+        } else if (line.rfind("BINARY ", 0) == 0) {
+            result.binary = line.substr(7);
+        } else if (line.rfind("DIAG ", 0) == 0) {
+            result.diagnostic = line.substr(5);
+        } else if (line.empty()) {
+            break;
+        }
+        if (!result_line.empty() && !result.diagnostic.empty()) {
+            break;
+        }
+    }
+    if (result_line.empty()) {
+        child.stop();
+        result.finished = false;
+        if (result.diagnostic.empty()) {
+            result.diagnostic = "outer wall timeout";
+        }
+        return result;
+    }
+    int ok_bit = 0;
+    int reused_bit = 0;
+    int timeout_bit = 0;
+    if (std::sscanf(result_line.c_str(), "RESULT ok=%d exit=%d reused=%d timeout=%d", &ok_bit,
+                    &result.compiler_exit, &reused_bit, &timeout_bit) >= 2) {
+        result.ok = ok_bit != 0;
+        result.reused = reused_bit != 0;
+        result.timed_out = timeout_bit != 0;
+    }
+    result.finished = true;
+    child.stop();
+    return result;
+}
+
+Vars f6_prepare_env(const std::filesystem::path& root, const std::filesystem::path& compiler,
+                    const char* deadline_ms) {
+    return {{"ANNO_TEST_COORD_PREPARE_ROOT", root.string()},
+            {"ANNO_TEST_COORD_COMPILER", compiler.string()},
+            {"ANNO_TEST_COORD_PREPARE_DEADLINE_MS", deadline_ms}};
+}
+
+std::filesystem::path f6_artifact(const std::filesystem::path& root) {
+    char build[17];
+    std::snprintf(build, sizeof(build), "%016llx",
+                  static_cast<unsigned long long>(anno::test::coordinator_build()));
+    return root / (std::string("anno_budget_coord-") + build);
+}
+
+std::string slurp(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::string data;
+    if (!in) {
+        return data;
+    }
+    char buffer[4096];
+    while (in.read(buffer, static_cast<std::streamsize>(sizeof(buffer))) || in.gcount() > 0) {
+        const auto got = static_cast<std::size_t>(in.gcount());
+        if (got == 0) {
+            break;
+        }
+        data.append(buffer, got);
+    }
+    return data;
+}
+
+bool any_building(const std::filesystem::path& root) {
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(root, error)) {
+        if (entry.path().filename().string().find(".building.") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+TEST_CASE("F6 helper prepare" * doctest::test_suite("budget")) {
+    if (std::getenv("ANNO_TEST_F6_CHILD") == nullptr) {
+        return;
+    }
+    const anno::test::CoordinatorPrepare prep = anno::test::prepare_host_coordinator();
+    std::printf("RESULT ok=%d exit=%d reused=%d timeout=%d\n", prep.ok ? 1 : 0, prep.compiler_exit,
+                prep.reused ? 1 : 0, prep.timed_out ? 1 : 0);
+    std::printf("BINARY %s\n", prep.binary.generic_string().c_str());
+    std::printf("DIAG %s\n", one_line(prep.diagnostic).c_str());
+    std::fflush(stdout);
+}
+
+TEST_CASE("F6 helper hold build lock" * doctest::test_suite("budget")) {
+    const char* path = std::getenv("ANNO_TEST_F6_HOLD_LOCK");
+    if (path == nullptr || path[0] == '\0') {
+        return;
+    }
+#if defined(_WIN32)
+    const HANDLE file =
+        CreateFileA(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        std::printf("HOLD-FAILED\n");
+        std::fflush(stdout);
+        return;
+    }
+    OVERLAPPED overlapped{};
+    if (LockFileEx(file, LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &overlapped) == 0) {
+        std::printf("HOLD-FAILED\n");
+        std::fflush(stdout);
+        CloseHandle(file);
+        return;
+    }
+    std::printf("HELD\n");
+    std::fflush(stdout);
+    std::this_thread::sleep_for(30s);
+    UnlockFileEx(file, 0, 1, 0, &overlapped);
+    CloseHandle(file);
+#else
+    const int fd = ::open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    if (fd < 0 || ::flock(fd, LOCK_EX) != 0) {
+        std::printf("HOLD-FAILED\n");
+        std::fflush(stdout);
+        if (fd >= 0) {
+            ::close(fd);
+        }
+        return;
+    }
+    std::printf("HELD\n");
+    std::fflush(stdout);
+    std::this_thread::sleep_for(30s);
+    ::flock(fd, LOCK_UN);
+    ::close(fd);
+#endif
+}
+
+TEST_CASE("F6 (fail): hung compiler" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "hang";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto compiler = f6_fake_compiler("fake-hang.sh");
+    const PrepareChild got = run_prepare_child(f6_prepare_env(root, compiler, "4000"), 12000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "timeout"));
+}
+
+TEST_CASE("F6 (fail): child holds compiler pipe" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "hangchild";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto compiler = f6_fake_compiler("fake-hangchild.sh");
+    const PrepareChild got = run_prepare_child(f6_prepare_env(root, compiler, "4000"), 12000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "timeout"));
+}
+
+TEST_CASE("F6 (fail): lock held by another process" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "locked";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    char build[17];
+    std::snprintf(build, sizeof(build), "%016llx",
+                  static_cast<unsigned long long>(anno::test::coordinator_build()));
+    const auto lock_path = (root / (std::string("anno_budget_coord-") + build)).string() + ".lock";
+    Child holder;
+    {
+        Env hold({{"ANNO_TEST_F6_HOLD_LOCK", lock_path}});
+        holder = Child::start(self_exe(),
+                              {"--test-case=*hold build lock*", "--no-intro", "--no-version"});
+    }
+    REQUIRE(static_cast<bool>(holder));
+    const std::string held = want(holder, "HELD", 8000ms);
+    INFO("holder: " << held);
+    REQUIRE(has(held, "HELD"));
+    const auto compiler = f6_fake_compiler("fake-ok.sh");
+    auto env = f6_prepare_env(root, compiler, "2500");
+    const PrepareChild got = run_prepare_child(env, 8000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "prepare wait deadline"));
+    holder.stop();
+}
+
+TEST_CASE("F6 (fail): lock creation failure" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "lockcreate";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto compiler = f6_fake_compiler("fake-ok.sh");
+    auto env = f6_prepare_env(root, compiler, "4000");
+    env.push_back({"ANNO_TEST_COORD_LOCK_FAIL", "create"});
+    const PrepareChild got = run_prepare_child(env, 8000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "lock creation failed"));
+}
+
+TEST_CASE("F6 (fail): partial compiler output" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "partial";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto compiler = f6_fake_compiler("fake-partial.sh");
+    const PrepareChild got = run_prepare_child(f6_prepare_env(root, compiler, "15000"), 20000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " exit=" << got.compiler_exit
+                     << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "compiler exit"));
+}
+
+TEST_CASE("F6 (fail): unusable artifact" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "bad";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto compiler = f6_fake_compiler("fake-bad.sh");
+    const PrepareChild got = run_prepare_child(f6_prepare_env(root, compiler, "15000"), 20000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "unusable"));
+}
+
+TEST_CASE("F6 (fail): wrong listening identity" * doctest::test_suite("budget")) {
+    const auto script =
+        write_f6_script("bad-listen.sh", "echo 'LISTENING 147825 build=0000000000000000 compat=99 "
+                                         "incarnation=0000000000000001 orphans=0 config=none'\n"
+                                         "sleep 5\n");
+    const auto journal = f6_dir() / "bad-listen.journal";
+    remove_file(journal);
+    OwnedCoord coord = start_owned_host_coordinator(47825, journal, {}, script);
+    INFO("ready=" << coord.ready << " listening=" << coord.listening
+                  << " diag=" << coord.diagnostic);
+    REQUIRE(has(coord.listening, "LISTENING"));
+    CHECK(!coord.ready);
+    CHECK(has(coord.diagnostic, "identity"));
+}
+
+TEST_CASE("F6 (ok): path with spaces" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "dir with spaces";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto compiler = f6_fake_compiler("fake-ok.sh");
+    const PrepareChild got = run_prepare_child(f6_prepare_env(root, compiler, "20000"), 25000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " binary=" << got.binary
+                     << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(got.ok);
+    CHECK(has(got.binary, "dir with spaces"));
+}
+
+TEST_CASE("F6 (fail): lock acquire failure" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "lockacquire";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    auto env = f6_prepare_env(root, f6_fake_compiler("fake-ok.sh"), "4000");
+    env.push_back({"ANNO_TEST_COORD_LOCK_FAIL", "acquire"});
+    const PrepareChild got = run_prepare_child(env, 8000ms);
+    INFO("finished=" << got.finished << " ok=" << got.ok << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(has(got.diagnostic, "lock acquire failed"));
+}
+
+TEST_CASE("F6: failed rebuild keeps a verified artifact" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "keep";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const PrepareChild first =
+        run_prepare_child(f6_prepare_env(root, f6_fake_compiler("fake-ok.sh"), "20000"), 25000ms);
+    INFO("first diag=" << first.diagnostic);
+    REQUIRE(first.finished);
+    REQUIRE(first.ok);
+    const auto binary = f6_artifact(root);
+    const std::string before = slurp(binary);
+    const std::string manifest = slurp(std::filesystem::path(binary.string() + ".identity"));
+    REQUIRE(!before.empty());
+    auto again_env = f6_prepare_env(root, f6_fake_compiler("fake-partial.sh"), "15000");
+    again_env.push_back({"ANNO_TEST_COORD_PREPARE_REBUILD", "1"});
+    const PrepareChild again = run_prepare_child(again_env, 20000ms);
+    INFO("again diag=" << again.diagnostic);
+    CHECK(again.finished);
+    CHECK(!again.ok);
+    CHECK(has(again.diagnostic, "compiler exit"));
+    CHECK(slurp(binary) == before);
+    CHECK(slurp(std::filesystem::path(binary.string() + ".identity")) == manifest);
+    CHECK(!any_building(root));
+    auto fail_env = f6_prepare_env(root, f6_fake_compiler("fake-ok.sh"), "4000");
+    fail_env.push_back({"ANNO_TEST_COORD_PREPARE_FAIL", "1"});
+    const PrepareChild failed = run_prepare_child(fail_env, 8000ms);
+    CHECK(failed.finished);
+    CHECK(!failed.ok);
+    CHECK(slurp(binary) == before);
+}
+
+TEST_CASE("F6: two preparer processes" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "two";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto env = f6_prepare_env(root, f6_fake_compiler("fake-delay.sh"), "20000");
+    PrepareChild left;
+    PrepareChild right;
+    std::thread left_thread([&] { left = run_prepare_child(env, 25000ms); });
+    std::thread right_thread([&] { right = run_prepare_child(env, 25000ms); });
+    left_thread.join();
+    right_thread.join();
+    INFO("left=" << left.ok << " " << left.diagnostic << " right=" << right.ok << " "
+                 << right.diagnostic);
+    CHECK(left.finished);
+    CHECK(right.finished);
+    CHECK(left.ok);
+    CHECK(right.ok);
+    CHECK(std::filesystem::exists(f6_artifact(root)));
+    CHECK(!any_building(root));
+}
+
+TEST_CASE("F6: interrupted builder then recovery" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "recover";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const PrepareChild hung =
+        run_prepare_child(f6_prepare_env(root, f6_fake_compiler("fake-hang.sh"), "3000"), 10000ms);
+    CHECK(hung.finished);
+    CHECK(!hung.ok);
+    CHECK(!any_building(root));
+    const PrepareChild recovered =
+        run_prepare_child(f6_prepare_env(root, f6_fake_compiler("fake-ok.sh"), "20000"), 25000ms);
+    INFO("recovered diag=" << recovered.diagnostic);
+    CHECK(recovered.finished);
+    CHECK(recovered.ok);
+    CHECK(!any_building(root));
+}
+
+TEST_CASE("F6: observer never sees a partial publication" * doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "observe";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const auto binary = f6_artifact(root);
+    std::atomic<bool> stop{false};
+    std::atomic<int> saw_partial{0};
+    std::thread observer([&] {
+        while (!stop.load()) {
+            const std::string data = slurp(binary);
+            if (data.find("PARTIAL") != std::string::npos) {
+                saw_partial.store(1);
+            }
+            std::this_thread::sleep_for(5ms);
+        }
+    });
+    const PrepareChild got =
+        run_prepare_child(f6_prepare_env(root, f6_fake_compiler("fake-slow.sh"), "15000"), 20000ms);
+    stop.store(true);
+    observer.join();
+    INFO("diag=" << got.diagnostic << " saw=" << saw_partial.load());
+    CHECK(got.finished);
+    CHECK(got.ok);
+    CHECK(saw_partial.load() == 0);
+    CHECK(slurp(binary).find("PARTIAL") == std::string::npos);
+}
+
+TEST_CASE("F6 (fail): early exit is not ready" * doctest::test_suite("budget")) {
+    const auto script = write_f6_script("early-exit.sh", "exit 3\n");
+    const auto journal = f6_dir() / "early.journal";
+    remove_file(journal);
+    OwnedCoord coord = start_owned_host_coordinator(47836, journal, {}, script);
+    INFO("diag=" << coord.diagnostic);
+    CHECK(!coord.ready);
+    CHECK(has(coord.diagnostic, "not ready"));
+}
+
+TEST_CASE("F6 (fail): foreign listener is not ready" * doctest::test_suite("budget")) {
+    const auto script = write_f6_script("foreign.sh", "echo FOREIGN-LISTENER\nexit 0\n");
+    const auto journal = f6_dir() / "foreign.journal";
+    remove_file(journal);
+    OwnedCoord coord = start_owned_host_coordinator(47837, journal, {}, script);
+    INFO("diag=" << coord.diagnostic << " listening=" << coord.listening);
+    CHECK(!coord.ready);
+    CHECK(!has(coord.listening, "LISTENING"));
+}
+
+TEST_CASE("F6 (asan): private prepare keeps an instrumented coordinator" *
+          doctest::test_suite("budget")) {
+#if !defined(__SANITIZE_ADDRESS__)
+    MESSAGE("skipping: this translation unit is not built with address sanitizer");
+    return;
+#else
+    if (!wsl_available() && !std::filesystem::exists("/proc/self/maps")) {
+        MESSAGE("skipping: no Linux proc maps to check libasan");
+        return;
+    }
+    const auto root = f6_dir() / "asan";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    Env prepare_root({{"ANNO_TEST_COORD_PREPARE_ROOT", root.string()},
+                      {"ANNO_TEST_COORD_PREPARE_DEADLINE_MS", "120000"},
+                      {"ANNO_TEST_COORD_COMPILER", ""}});
+    const anno::test::CoordinatorPrepare prep = anno::test::prepare_host_coordinator();
+    INFO(prep.diagnostic);
+    REQUIRE(prep.ok);
+    CHECK(prep.config == "asan+ubsan");
+    CHECK(has(prep.flags, "fsanitize"));
+    const std::string manifest = slurp(std::filesystem::path(prep.binary.string() + ".identity"));
+    CHECK(has(manifest, "config=asan+ubsan"));
+    const auto journal = f6_dir() / "asan.journal";
+    remove_file(journal);
+    OwnedCoord coord = start_owned_host_coordinator(47838, journal, {}, prep.binary);
+    INFO(coord.diagnostic << " " << coord.listening);
+    REQUIRE(coord.ready);
+#if !defined(_WIN32)
+    const std::string maps = slurp("/proc/" + coord.linux_pid + "/maps");
+    CHECK(has(maps, "libasan"));
+#else
+    const std::string maps = wsl_capture("tr '\\n' ' ' < /proc/" + coord.linux_pid + "/maps");
+    CHECK(has(maps, "libasan"));
+#endif
+#endif
 }
 
 TEST_CASE("F4 (N4b): a descriptor the client holds without close-on-exec does not reach the "

@@ -45,5 +45,7 @@ if(ANNO_BUILD_TESTS)
   target_link_libraries(anno_test_support_tests PRIVATE anno_test_support doctest::doctest)
   target_include_directories(anno_test_support_tests PRIVATE src)
   anno_target_defaults(anno_test_support_tests)
-  anno_add_doctest(anno_test_support_tests)
+  # One WSL cache binary per worktree: F5 BackupArtifact and F3 D2's nohup
+  # relaunch share that path, so parallel CTest must not overlap them.
+  anno_add_doctest(anno_test_support_tests PROPERTIES RESOURCE_LOCK wsl_coord)
 endif()

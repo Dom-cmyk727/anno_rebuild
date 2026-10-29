@@ -109,7 +109,15 @@ class Child {
         startup.hStdError = out_write;
         std::wstring command = L"\"" + exe.wstring() + L"\"";
         for (const std::string& arg : args) {
-            command += L" \"" + std::wstring(arg.begin(), arg.end()) + L"\"";
+            const std::wstring wide(arg.begin(), arg.end());
+            command += L" ";
+            // wsl.exe treats a quoted "-d" as a Linux command, not a distro flag.
+            // Quote only empty arguments and those that contain whitespace.
+            if (wide.empty() || wide.find_first_of(L" \t\"") != std::wstring::npos) {
+                command += L"\"" + wide + L"\"";
+            } else {
+                command += wide;
+            }
         }
         PROCESS_INFORMATION info{};
         const BOOL ok = CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, TRUE,

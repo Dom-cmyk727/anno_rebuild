@@ -1577,13 +1577,19 @@ int run_budget_server(const BudgetServerOptions& options) {
     }
     server.next_hold = server.journal.max_hold_id() + 1;
 #if !defined(_WIN32)
-    // Test-only (T10c F4, N4). Never set in production. Opened without
-    // O_CLOEXEC after the start-up close of 3..255, so a meter spawn that
-    // forgets closefrom inherits it. Documented with the other test-only hooks.
+    // Test-only (T10c F4/F5, N4). Never set in production. Opened without
+    // O_CLOEXEC after the start-up close of 3..255, then moved to descriptor
+    // 256 or above so that layer does not hide a missing meter-spawn closefrom.
+    // Documented with the other test-only hooks.
     if (const char* leak = std::getenv("ANNO_TEST_COORD_LEAK_FD")) {
         if (leak[0] != '\0') {
             const int leaked = ::open(leak, O_RDONLY);
-            (void)leaked;
+            if (leaked >= 0) {
+                const int high = ::fcntl(leaked, F_DUPFD, 256);
+                if (high >= 0 && high != leaked) {
+                    ::close(leaked);
+                }
+            }
         }
     }
 #endif

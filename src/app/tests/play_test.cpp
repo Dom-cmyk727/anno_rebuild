@@ -5,6 +5,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <string>
@@ -15,6 +17,7 @@
 
 #include <anno/app/cli.hpp>
 #include <anno/app/play.hpp>
+#include <anno/formats/fixed_map.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/command.hpp>
@@ -22,6 +25,9 @@
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim_load/fixed_map.hpp>
+#include <anno/sim_load/original_registry.hpp>
+#include <anno/sim_load/scenario_load.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
@@ -42,6 +48,37 @@ fs::path single_01(const fs::path& dir) {
 fs::path endless_sze(const fs::path& dir) {
     const auto files = anno::test::files_with_ext(dir / "Scenes" / "0010SingleEndlos", "sze");
     return files.empty() ? fs::path{} : files.front();
+}
+
+void expect_play_islands(const std::string& label, const anno::app::LoadedScene& scene,
+                         const std::vector<anno::app::PlayIsland>& sim_islands) {
+    const auto& islands = scene.scene->islands;
+    REQUIRE_MESSAGE(islands.size() == sim_islands.size(), label);
+    REQUIRE_MESSAGE(scene.island_sources.size() == islands.size(), label);
+    std::map<std::uint32_t, const anno::app::PlayIsland*> by_slot;
+    for (const auto& island : sim_islands) {
+        by_slot[island.slot] = &island;
+    }
+    for (std::size_t i = 0; i < islands.size(); ++i) {
+        const auto& drawn = islands[i];
+        // The island table slot is the link number's low 16 bits
+        // (IslandLinkSpec, D AnnoScene 0x10008503).
+        const auto it = by_slot.find(drawn.number & 0xFFFFu);
+        REQUIRE_MESSAGE(it != by_slot.end(), label << " island " << drawn.number);
+        const anno::app::PlayIsland& sim = *it->second;
+        CHECK(drawn.x == sim.x);
+        CHECK(drawn.y == sim.y);
+        CHECK(drawn.width == sim.w);
+        CHECK(drawn.height == sim.h);
+        if (sim.template_key == "embedded") {
+            CHECK(scene.island_sources[i].empty());
+        } else {
+            const std::string source =
+                upper_copy(fs::path(scene.island_sources[i]).generic_string());
+            CHECK_MESSAGE(source.find(upper_copy(sim.template_key)) != std::string::npos,
+                          label << " " << sim.template_key);
+        }
+    }
 }
 
 anno::app::SceneObjects objects_of(const anno::sim::World& world,
@@ -76,82 +113,122 @@ TEST_CASE("play: islands are the ones the sim placed") {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = single_01(*dir);
-    if (!fs::exists(file)) {
-        MESSAGE("skipping: Single_01.sze is not in this game directory");
+    const auto files = anno::test::files_with_ext(*dir / "Scenes", "sze");
+    if (files.empty()) {
+        MESSAGE("skipping: no scenario files");
         return;
     }
-    auto opened = anno::app::load_play(*dir, file);
-    REQUIRE(opened);
-    const auto buildings = anno::app::play_buildings(opened.value().world);
-    auto objects = objects_of(opened.value().world, buildings);
-    auto scene = anno::app::load_scene(*dir, file, opened.value().links, &objects);
-    REQUIRE(scene);
-    const auto& islands = scene.value().scene->islands;
-    REQUIRE(islands.size() == opened.value().islands.size());
-    REQUIRE(scene.value().island_sources.size() == islands.size());
-    std::map<std::uint32_t, const anno::app::PlayIsland*> by_slot;
-    for (const auto& island : opened.value().islands) {
-        by_slot[island.slot] = &island;
-    }
-    for (std::size_t i = 0; i < islands.size(); ++i) {
-        const auto& drawn = islands[i];
-        const auto it = by_slot.find(drawn.number & 0xFFFFu);
-        REQUIRE(it != by_slot.end());
-        const anno::app::PlayIsland& sim = *it->second;
-        CHECK(drawn.x == sim.x);
-        CHECK(drawn.y == sim.y);
-        CHECK(drawn.width == sim.w);
-        CHECK(drawn.height == sim.h);
-        if (sim.template_key == "embedded") {
-            CHECK(scene.value().island_sources[i].empty());
-        } else {
-            const std::string source =
-                upper_copy(fs::path(scene.value().island_sources[i]).generic_string());
-            CHECK(source.find(upper_copy(sim.template_key)) != std::string::npos);
-        }
-    }
-
-    const fs::path linked = endless_sze(*dir);
-    if (linked.empty()) {
-        MESSAGE("no endless scenario; link templates were not checked");
-        return;
-    }
-    auto endless = anno::app::load_play(*dir, linked);
-    REQUIRE(endless);
     bool any_link = false;
-    for (const auto& island : endless.value().islands) {
-        any_link = any_link || island.template_key != "embedded";
+    for (const fs::path& file : files) {
+        const std::string label = fs::relative(file, *dir / "Scenes").generic_string();
+        auto opened = anno::app::load_play(*dir, file);
+        if (!opened) {
+            const std::string err = opened.error();
+            REQUIRE_MESSAGE(false, label << ": " << err);
+        }
+        bool file_link = false;
+        for (const auto& island : opened.value().islands) {
+            file_link = file_link || island.template_key != "embedded";
+        }
+        any_link = any_link || file_link;
+        const auto buildings = anno::app::play_buildings(opened.value().world);
+        auto objects = objects_of(opened.value().world, buildings);
+        auto scene = anno::app::load_scene(*dir, file, opened.value().links, &objects);
+        if (!scene) {
+            const std::string err = scene.error();
+            REQUIRE_MESSAGE(false, label << ": " << err);
+        }
+        if (file_link) {
+            const bool noted = std::any_of(
+                scene.value().notes.begin(), scene.value().notes.end(), [](const std::string& n) {
+                    return n.find("templates the sim placed") != std::string::npos;
+                });
+            CHECK_MESSAGE(noted, label);
+        }
+        expect_play_islands(label, scene.value(), opened.value().islands);
     }
     CHECK(any_link);
-    const auto link_buildings = anno::app::play_buildings(endless.value().world);
-    auto link_objects = objects_of(endless.value().world, link_buildings);
-    auto link_scene = anno::app::load_scene(*dir, linked, endless.value().links, &link_objects);
-    REQUIRE(link_scene);
-    CHECK(link_scene.value().notes.end() !=
-          std::find_if(link_scene.value().notes.begin(), link_scene.value().notes.end(),
-                       [](const std::string& n) {
-                           return n.find("templates the sim placed") != std::string::npos;
-                       }));
-    std::map<std::uint32_t, const anno::app::PlayIsland*> linked_slots;
-    for (const auto& island : endless.value().islands) {
-        linked_slots[island.slot] = &island;
+    MESSAGE(files.size() << " scenarios");
+}
+
+TEST_CASE("play: lan5 islands are the ones the sim placed") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
     }
-    REQUIRE(link_scene.value().scene->islands.size() == endless.value().islands.size());
-    for (std::size_t i = 0; i < link_scene.value().scene->islands.size(); ++i) {
-        const auto& drawn = link_scene.value().scene->islands[i];
-        const auto it = linked_slots.find(drawn.number & 0xFFFFu);
-        REQUIRE(it != linked_slots.end());
-        CHECK(drawn.x == it->second->x);
-        CHECK(drawn.y == it->second->y);
-        CHECK(drawn.width == it->second->w);
-        CHECK(drawn.height == it->second->h);
-        if (it->second->template_key != "embedded") {
-            const std::string source =
-                upper_copy(fs::path(link_scene.value().island_sources[i]).generic_string());
-            CHECK(source.find(upper_copy(it->second->template_key)) != std::string::npos);
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        const std::string shown = path.string();
+        REQUIRE_MESSAGE(false, "cannot read " << shown);
+    }
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), {});
+    auto parsed = anno::formats::fixed_map::parse(bytes);
+    if (!parsed) {
+        const std::string err = parsed.error().message;
+        REQUIRE_MESSAGE(false, path.filename().string() << ": " << err);
+    }
+    const auto registry =
+        anno::sim_load::load_original_registry(*dir, anno::sim_load::FigureEntries::Required);
+    REQUIRE_MESSAGE(registry.types, registry.error);
+    auto loaded = anno::sim_load::load_fixed_map(
+        parsed.value(),
+        std::vector<anno::sim::Seat>{anno::sim::Seat{anno::sim::SeatKind::Human, "P0", 0, 0},
+                                     anno::sim::Seat{anno::sim::SeatKind::Human, "P1", 1, 0}},
+        *dir, *registry.types, {});
+    if (!loaded) {
+        const std::string err = loaded.error();
+        REQUIRE_MESSAGE(false, err);
+    }
+    auto created = anno::sim::World::create(loaded.value().spec, registry.types);
+    if (!created) {
+        const std::string err = created.error();
+        REQUIRE_MESSAGE(false, err);
+    }
+
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    std::map<std::string, std::size_t> by_name;
+    for (std::size_t i = 0; i < templates.summaries.size(); ++i) {
+        by_name.emplace(templates.summaries[i].name, i);
+    }
+    std::vector<anno::app::PlacedIsland> placed;
+    std::map<std::uint32_t, std::string> key_by_slot;
+    for (const anno::sim::IslandLinkSpec& link : loaded.value().links) {
+        const auto found = by_name.find(upper_copy(link.path));
+        REQUIRE_MESSAGE(found != by_name.end(), link.path);
+        anno::app::PlacedIsland item;
+        item.number = link.number;
+        item.x = static_cast<std::int32_t>(link.x);
+        item.y = static_cast<std::int32_t>(link.y);
+        item.file = templates.files[found->second];
+        placed.push_back(std::move(item));
+        key_by_slot.emplace(link.number & 0xFFFFu, link.path);
+    }
+    auto scene = anno::app::load_placed_scene(*dir, "lan5", placed, nullptr);
+    if (!scene) {
+        const std::string err = scene.error();
+        REQUIRE_MESSAGE(false, err);
+    }
+
+    std::vector<anno::app::PlayIsland> sim_islands;
+    for (const auto& island : created.value().islands()) {
+        if (!island) {
+            continue;
         }
+        anno::app::PlayIsland row;
+        row.slot = island->index.v;
+        row.x = island->rect().x0;
+        row.y = island->rect().y0;
+        row.w = island->rect().w;
+        row.h = island->rect().h;
+        const auto key = key_by_slot.find(row.slot);
+        row.template_key = key == key_by_slot.end() ? "embedded" : key->second;
+        sim_islands.push_back(std::move(row));
     }
+    expect_play_islands("lan5", scene.value(), sim_islands);
+    CHECK_FALSE(sim_islands.empty());
 }
 
 TEST_CASE("play: runner turns match run_turn and ignore the wall clock") {

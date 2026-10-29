@@ -268,6 +268,9 @@ void PlayRunner::loop() {
             if (!pausing) {
                 pausing = true;
                 pause_mark = schedule_->now();
+                // The window title reads the snapshot. A pause publishes no
+                // turn, so record it here or the title stays on the last turn.
+                note_behind();
             }
             schedule_->sleep_for(poll);
             continue;

@@ -6159,3 +6159,69 @@ Only `docs/` files. Part A's gates at `1104a7d` stand for this head.
 ### Commits
 
 On `codex/T10c-test-memory`, one concern each, PowerShell here-string, `git diff --check` clean, attribution `Co-Authored-By: Cursor Grok 4.6`. Nothing under `game/`, `cache/`, `TASKS.md` or `AGENTS.md`. P1 untouched. No merge, no push.
+
+## P1 — House payload, group table, scenario import — 2026-10-29 — status: FINISHED (validated on the combined head ef6121a7482de79f9faa3feb070ecd37642d01ad)
+
+Worktree `E:\anno1503-worktrees\anno1503-T10c`, branch `codex/T10c-test-memory`. P1 base `416993fa6a6f9dc821455df5d414cff5833ac7f0` (`task/P1-house-payload`, left untouched). Combined tested head: `ef6121a7482de79f9faa3feb070ecd37642d01ad` (P1 is an ancestor; Part 1 added only the two docs commits `dd32d76` and `ef6121a`). Binding text: packet `E:\anno1503\cache\orch-cv\packet.md`. The earlier P1 section in this file (2026-10-28, BLOCKED) is not rewritten.
+
+Results on the combined head are not attributed to P1 alone (round cp).
+
+### Decisions and reasoning
+
+1. **B0 starts.** Part 1's verdict is "no throughput regression measured" (A2/B2 = 1.039, the only counted pair). Alternative: skip Part 2 (rejected: the skip rule is only for a QUESTION).
+2. **Corpus summary from the committed file and the BLOCKED section.** Header `# kStateHashVersion=115 kPrngTimelineVersion=2`. Every row has `HouseResetNotApplied=0`. The printed summary line from the passing non-heavy P1 run is `scenario corpus: houses 3283, residents in the records 43162, residents of the created houses 43162, HouseResetNotApplied 0`. Evidence: `fixtures/synthetic/sim/scenario_corpus.txt`; REPORTS P1 2026-10-28. Alternative: re-run the corpus printer (rejected: the file is the committed oracle, and the unmutated sim suite includes the corpus case).
+3. **Linux builds use the F4 cmake and the warning-script compilers.** `g++-13` 13.3.0, Clang 18.1.3 from `~/clang18`, cmake `3.31.8` at `$HOME/cmake-lnx/...`, doctest from `build/msvc/_deps/doctest-src`, `-O3 -DNDEBUG` Release, `ANNO_WARNINGS_AS_ERRORS=ON`, viewer/GPU off. Evidence: `cache\f4\partb\linux_sim_formats.sh`, `linux_sim_formats.out.txt`. Alternative: compile-only like `check_unix_warnings.sh` (rejected: the packet asks for the test binaries and their case/assertion counts).
+4. **Clang assertion counts differ from GCC by 6.** GCC sim game 3173284, Clang 3173278; nogame 3155860 vs 3155854. Both 664/664 passed. Recorded as measured; not called host variance. Evidence: `cache\f4\partb\linux_run_tests.out.txt`.
+5. **Mutants 3 and 5 first replacements did not compile.** `if (false)` left `lower` unused (`warning C4189` as error). `ar::seq` of a temporary empty span is not an lvalue (`error C2664`). Second replacements: `HouseResetNotApplied` → `UnknownRecord` at the one `warn.add`; `digest_registry(..., groups)` → `digest_registry(..., {})` at `finish`. Both compile and fail their tests. First logs kept as `*-first.txt`. Alternative: report them as survivors (rejected: a failed build is not a test of the mutant).
+6. **Restored sources need a forced rebuild.** `shutil.copy2` put the original mtimes back; incremental MSVC kept mutant `.obj` files. The first unmutated run failed cases that matched leftovers of mutants 3–5. Deleted `types.obj`, `scenario_formats.obj`, `driver.obj`, rebuilt those three TUs, then 664/664 both ways. Evidence: `cache\f4\partb\unmutated\sim-game.txt` vs `sim-game-rebuilt.txt`. Alternative: treat the first failure as a real regression (rejected: sources were unmutated; the rebuild compiled the three files and the suite passed).
+
+### Gates
+
+| Gate | Result |
+|---|---|
+| Part A `cmake --build --preset msvc` | exit 0, on the combined head `1104a7d`, docs-only diff since (`git diff --stat 1104a7d HEAD` is `docs/orchestration/REPORTS.md` and `docs/perf/README.md`) |
+| Part A CTest with game | **1096/1096**, 912.31 s, coordinator `cee55b5e74257911` `compat=3`, on `1104a7d`, docs-only diff since |
+| Part A CTest without game | **1096/1096**, 34.16 s, same binaries, on `1104a7d`, docs-only diff since |
+| Part A clang-format 23.1.3 | **PASS**, on `1104a7d`, docs-only diff since |
+| Part A `python -I tools/lint_sim.py` | **PASS** `lint_sim: ok`, on `1104a7d`, docs-only diff since |
+| `python -I tools/sim_stream.py --check` | **PASS** `goldens agree` (`cache\f4\partb\sim_stream.txt`) |
+| WSL GCC 13.3 configure / build | **PASS** exit 0 / 0 (`cache\f4\partb\gcc-configure.txt`, `gcc-build.txt`) |
+| WSL GCC formats game / nogame | **PASS** 66/66, 20436260 / 1755 assertions (`linux_run_tests.out.txt`) |
+| WSL GCC sim game / nogame | **PASS** 664/664, 3173284 / 3155860 assertions |
+| WSL Clang 18.1.3 configure / build | **PASS** exit 0 / 0 (`clang-configure.txt`, `clang-build.txt`) |
+| WSL Clang formats game / nogame | **PASS** 66/66, 20436260 / 1755 assertions |
+| WSL Clang sim game / nogame | **PASS** 664/664, 3173278 / 3155854 assertions |
+| Unmutated MSVC `anno_sim_tests` game / nogame | **PASS** 664/664, 3173284 / 3155860 after the forced rebuild (`cache\f4\partb\unmutated\sim-*-rebuilt.txt`) |
+
+### B3 mutations (`cache\f4\mutants\p1\`)
+
+| # | Replacement (once) | Build | Named test | First failing assertion |
+|---|---|---|---|---|
+| 1 | `scenario_formats.cpp`: `house.e = residents << 7` → `<< 6` | 0 | `P1 import: a v2 house record*` | `CHECK( h.e == 10U * 128U )` 640 == 1280 |
+| 2 | `scenario_formats.cpp`: `s_j[j]` → `s_j[j + 1]` | 0 | `P1 import: a v2 house record*` | `CHECK( h.stock[0] == 4373 )` 2186 == 4373 |
+| 3 | `scenario_formats.cpp`: `HouseResetNotApplied` → `UnknownRecord` at the one `warn.add` | 0 | `P1 import: the reset predicate*` | `CHECK( warnings_of(fires, Kind::HouseResetNotApplied) == 2 )` 0 == 2 |
+| 4 | `driver.cpp`: `TickKind::House` writes `h->last = ctx.t` | 0 | `G7 (P1)*` | `CHECK( after.last == before.last )` 9965 == 0 |
+| 5 | `types.cpp`: `digest_registry(..., groups)` → `... , {}` | 0 | `registry digest: the group table*` | `CHECK( none.build().value()->digest() != d )` equal hashes |
+| 6 | `types.cpp`: size check `if (false && !groups.empty() && …)` | 0 | `registry: a non-empty group table*` | `REQUIRE_FALSE( r.ok() )` |
+
+No survivor. No test-file change. Full CTest was not re-run (packet: only if a test file changed).
+
+### Corpus summary
+
+`scenario corpus: houses 3283, residents in the records 43162, residents of the created houses 43162, HouseResetNotApplied 0`
+
+### Acceptance
+
+- A loaded `single36` house has residents and stocks. Met. `scenario corpus: every .sze loads, creates and runs five minutes` in the unmutated 664 (`cache\f4\partb\unmutated\sim-game-rebuilt.txt`); the corpus case `CHECK`s `record_residents > 0` and `houses_with_stock > 0` for `single36` (`src/sim/tests/scenario_test.cpp`).
+- `HouseRecordNotModelled` is gone and `HouseResetNotApplied` is 0 across the corpus. Met. No `HouseRecordNotModelled` under `src/`. Corpus file every row `HouseResetNotApplied=0`; unmutated suite includes `CHECK` of that total.
+- The created houses' residents sum to `resident_sum`. Met. Summary 43162 and 43162; `CHECK(total_record_residents == total_created_residents)` in the corpus case.
+- Save then load is exact. Met. Corpus `CHECK(r.save_identity)` and `P1 import: created houses sum to resident_sum, save then load is exact` in the 664.
+- The House tick changes nothing. Met. `TickKind::House` returns at once (`driver.cpp:239-241`); `G7 (P1): the created population world, and the House tick changes nothing` in the 664.
+- Goldens and corpus are re-recorded at version 115, with `p1_g7_create`. Met. `sim_stream.py --check` = `goldens agree`; corpus header 115/2; `p1_g7_create` in the goldens.
+- No city-store take, no draw, no `kPrngTimelineVersion` change. Met in the committed source; `kPrngTimelineVersion` is 2.
+- Every gate passes, and every listed mutation fails its test. Met. Table above.
+- Nothing from `game/` is in git. Met for this report commit: docs only.
+
+### Commits
+
+Report only on `codex/T10c-test-memory`. P1's branch stays at `416993fa`. No merge, no push, no TASKS/AGENTS edit.

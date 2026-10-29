@@ -6619,3 +6619,56 @@ The same H1 class and the two H4 lag tests, pointed at an ignored `git archive` 
 Control and the loading-joiner case pass on that archive. The archive is `cache/t61-f2/dn/old30964/` and is not committed.
 
 Next: phase 2, N1 then N2, N3, N4, N6, each shown passing, then the N7 gates and JM1–JM8.
+
+## T61 F2 closure — progress, phase 2 — 2026-10-30 00:09 +01:00 — status: IN PROGRESS
+
+HEAD of the tested code: `89f300845e61285d98002b23adb1c077fea0fe27` on `codex/T61-join-jitter`. This section is the phase 2 progress commit, and it does not change the tools. No reset.
+
+| commit | subject |
+| --- | --- |
+| `de6a48a` | fix(tools): hash committed jitter sources, not the working tree |
+| `5fcd8f2` | fix(tools): reject a study whose metrics or config disagree with the replay |
+| `6034f5f` | fix(tools): require the repeat and asymmetric diagnostics |
+| `622787a` | fix(tools): supervise jitter study validation replay |
+| `17699d7` | fix(tools): derive reassembly peaks from acquire events |
+| `448662d` | test(tools): close T61 fail-first file handles |
+| `367af75` | test(tools): add JM1-JM8 scheduler mutants and hash-seed gate |
+| `985b99e` | test(tools): catch jitter mutants JM1-JM8 and check fresh-process hashes |
+| `89f3008` | test(tools): lock zero-jitter rows to the 917efea projection |
+
+N1. Provenance and verification both hash `git show <head>:tools/<name>`. `test_n1_provenance_hashes_the_committed_blob` and `test_n1_crlf_and_lf_checkouts_validate_the_same_blob` passed (`cache/t61-f2/dn/gates/n1.stderr.txt`, and again inside the full suite). The working-tree bytes are still CRLF and are not the hash input.
+
+N2. `--validate` compares the canonical JSON of recorded metrics and config with the replay before the hash check. Edited `ack_bytes`, edited rate, edited jitter, and metrics reduced to `validators` are rejected. Log: `cache/t61-f2/dn/gates/n2.stderr.txt` (7 tests, OK).
+
+N3. The validate replay goes through `controlled_run` with the minimum of the CLI and manifest row deadline and the study bound. A 0.05 s deadline returns a timeout and leaves no worker. Log: `cache/t61-f2/dn/gates/n3.stderr.txt` (3 tests, OK).
+
+N4. `repeat` and `asymmetric-data-delay` are required even when the manifest omits them. The repeat row must match its primary hashes, and the asymmetric script is the declared 100 ms entry. Log: `cache/t61-f2/dn/gates/n4.stderr.txt` (4 tests, OK).
+
+N6. `peak_reassembly_fragments` and `peak_reassembly_bytes` are reconstructed from `reasm_acquire` / `reasm_release` records. On `fragment_loss` they are 8 fragments and 8500 bytes, the same numbers the simulator field holds on an honest run. The ownership test passes inside the full suite.
+
+N7. One job at a time, free memory above 4096 MiB (15366 MiB, then 15587 MiB).
+
+| gate | result | log |
+| --- | --- | --- |
+| `python -I -B tools/test_join_activation.py -v` | exit 0, Ran 262 tests in 296.643s, OK (floor was 222) | `cache/t61-f2/dn/gates/join-suite.stderr.txt` |
+| `python -I -B tools/test_snapshot_catchup.py -v` | exit 0, Ran 64 tests in 18.780s, OK | `cache/t61-f2/dn/gates/snapshot-suite.stderr.txt` |
+| existing `MUTANTS` plus JM1–JM8 | inside the 262; each JM mutant also failed its named assertion in `cache/t61-f2/dn/gates/jm-mutants.txt` | same |
+| fresh processes, `PYTHONHASHSEED` 1 and 2 | `test_n7d_fresh_processes_agree_under_different_hash_seeds` OK | inside the join suite |
+| zero-jitter vs `917efea` | 10 serialized rows at both rates match with jitter fields and `tx_id` removed; 13 unserialized rows match after also dropping `ack_send` (that audit record is new on the unserialized path). `failed 0` | `cache/t61-f2/dn/gates/zero-jitter-baseline.txt` |
+
+| mutant | named test | assertion under the patch |
+| --- | --- | --- |
+| JM1 ignore ACK jitter | `test_jm1_ack_jitter_matches_the_independent_sample` | `AssertionError: 0 != 15` |
+| JM2 reuse attempt-1 jitter for retries | `test_jm2_retries_do_not_reuse_attempt_one_identity` | `assertNotEqual` failed: both identities are `('data', 'H', 'J1', 1, 0, 0, 1)` |
+| JM3 omit epoch and channel | `test_jm3_identities_include_epoch_and_channel` | `AssertionError: 5 != 7` |
+| JM4 force zero jitter on the un-serialized path | `test_jm4_unserialized_jitter_matches_the_independent_sample` | `AssertionError: 0 != 15` |
+| JM5 floor the serialized callback only | `test_jm5_serialized_callback_is_not_early` | `AssertionError: 165 != 166` |
+| JM6 forge the logged sample and the arrival together | `test_jm6_a_live_sim_matches_the_independent_profile` | `AssertionError: 16 != 15` |
+| JM7 swap attempt identities | `test_jm7_attempt_identities_are_not_swapped` | `AssertionError: 2 != 1` |
+| JM8 erase an in-horizon arrival | `test_jm8_each_in_horizon_send_has_an_outcome` | `AssertionError: (1, 1) not found in set()` |
+
+Unmutated, those eight tests and the hash-seed test passed (`cache/t61-f2/dn/gates/jm-unmutated.stderr.txt`, 9 tests, OK). JM5 floors inside `link_plan` only. The validator still ceilings, which is why 165 is not 166.
+
+The §4 note remains a QUESTION: on this checkout `join_jitter_study.py` is CRLF on disk, like the other two tools, because `core.autocrlf=true`. Hashing the committed blob is what makes a CRLF checkout and an LF checkout agree.
+
+Next: reviewer pass 1, then the final study. The final study has not been started.

@@ -5597,3 +5597,47 @@ T10c F4 Part A (`codex/T10c-test-memory` at `1104a7d`, six commits on `94cf3cb`,
 3. T32.5, static RE of the player's reached-stage mask. P2's house tick gates decay on that mask, and its source is unread.
 
 Nothing merged or pushed.
+
+
+## Orchestrator review — Round cw overnight packet — 2026-10-29 — status: REVIEW COMPLETE
+
+### Scope and exact heads
+
+Review only: T10c F4 continuation, P1 combined validation, T32.5. Main before this review was `dc265568a7f95ef29f07500f109e409231e06e2b`. The completed worktrees were clean: T10c `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1` (combined tested head `ef6121a7482de79f9faa3feb070ecd37642d01ad`), T32.5 `e232b02d743d623679b1ae92a2a6ae7083288f77`. P1's branch remains `416993fa6a6f9dc821455df5d414cff5833ac7f0`. No task branch was edited, no merge/rebase/push, no ADR approval or next feature task.
+
+The owner's T40 correction is verified: `git merge-base --is-ancestor 862475a main` exits 0; merge `1fdc0ff` and HISTORY round br mark it DONE. Its executor report's historical "Not merged" does not reopen it. OQ-240 is answered; OQ-270..272 remain subsequent research, not a T40 F-fix. No T40 task was dispatched.
+
+### T10c F4 continuation — accepted
+
+- `git diff --stat 1104a7d 5b10ed3`: only `docs/orchestration/REPORTS.md` and `docs/perf/README.md`, 141 insertions / 10 deletions. The accepted Part A code and gate evidence are unchanged. The hooks, F3 timing qualification and six-row A/B table are corrected as requested.
+- Checked the saved run metadata: A2 197.0702322 s / B2 204.7589379 s, zero wait lines; A3 193.4372055 s / B3 199.7418259 s, zero / two wait lines. A1/B1 also waited. Round cv explicitly excludes any pair with a wait and permits the verdict to rest on A2/B2 when the one repeat waits. Its B/A ratio rounds to 1.039, below 1.050. Accept the specified verdict, "no throughput regression measured", with that limited meaning. No fresh benchmark was run.
+- Continuation `c1-procs.txt` records the unchanged B renderer/coordinator lengths and modification times. Saved coordinator identities agree with prior runs: A `a969992d481424ed`, protocol 2; B `cee55b5e74257911`, compatibility 3. These are saved provenance observations, not a new binary-hash measurement by this review.
+
+### P1 on the combined head — accepted
+
+- Read the P1 branch diff for group parsing, registry digest/validation, House payload and field visitor, creation, original-record import, no-op tick, tests and stream oracle. The subsequent T10c diff changes no P1 production code or goldens; its sim differences are CMake and the reported GCC test fix.
+- Saved F4 `ctest-game/ctest.log`: 1096 tests listed, zero failures, 912.31 s. `ctest-nogame/ctest.log`: 1096 listed, zero failures, 34.16 s; the two scenario-replay tests skip explicitly. The copied `ctest-output.log` files are empty; the evidence is `ctest.log` and `LastTest.log`, not those empty copies. Part A sanitizer/compiler/format evidence was already accepted in round cv and applies through the docs-only continuation.
+- Checked Part B's GCC 13.3 / Clang 18.1.3 build and run logs: formats 66/66 in each mode, sim 664/664 in each mode. GCC/MSVC sim assertion counts 3173284 with files / 3155860 without; Clang 3173278 / 3155854, reported without inventing an explanation for the six-assertion difference.
+- Inspected all six mutation results and the replacement driver. Mutants 3 and 5 originally did not compile; their corrected runs compile and fail the named warning/digest assertions. The others fail the named E, stock, last and wrong-group-count checks. The restore-mtime problem is explicitly documented; `unmutated/sim-*-rebuilt.txt` confirms 664/664 after recompiling affected translation units. This review did not rerun mutations or alter their sources.
+- The rebuilt game log contains `scenario corpus: houses 3283, residents in the records 43162, residents of the created houses 43162, HouseResetNotApplied 0`. The corpus test checks resident equality per scenario, stocks for single36, save identity, determinism and warning totals.
+- Fresh review command: set `ANNO1503_GAME_DIR=E:/anno1503/game/app`; run the combined Release `anno_sim_tests.exe --test-case=P1*,G7 (P1)*,house groups*,registry*group*,House* --no-intro`. Result: **15/15 cases, 401/401 assertions**, 649 unselected cases. No corpus-wide or heavy suite rerun.
+- Fresh `python -I <T10c>/tools/sim_stream.py --check`: **goldens agree**. Fresh `python -I <T10c>/tools/lint_sim.py`: **lint_sim: ok**. Branch diff whitespace checks passed. Results belong to the combined tree, not standalone P1.
+
+### T32.5 — changes required
+
+The core object path and saved-field identification are useful and accepted: house -> city -> player property 0x21, absolute player +0x90; city +0x618 is a different mask. The low-field histogram reproduces from all 50 scenes / 373 player HEAD records. S9a/S9b's unresolved next addresses are permitted by the assignment. Three factual corrections and one duplicate prevent accepting the docs as written:
+
+1. **P2 priority: restore and count the high bits before claiming they are clear.** `docs/re/population.md:693` and `docs/sim/state.md:696` contradict the shipped corpus. The original reader at AnnoWelt `0x1001d389`–`0x1001d3df` maps HEAD+0x5c bits 3/2/4/5 to player-mask bits 24/27/29/30. A fresh read-only probe counts 295 zero high masks, 17 `0x28000000`, 1 `0x29000000`, 60 `0x69000000`: **78/373 nonzero**. HEAD+0x48 equals 1 in 280 records, but the full restored mask equals 1 in only **263**. Correct the RE, DRAFT and report; distinguish the low-field histogram from the restored mask. The DRAFT's default-mask justification cannot be used to defer faithful import without an explicit P2 decision.
+2. **P2 priority: preserve the comparison's guard on the player write.** `population.md:678` incorrectly says "else skip to the OR". Directly verified AnnoWelt `0x10029610`–`0x100296c8` and `0x100298e0`–`0x10029914`: unsigned greater-or-equal at `0x100296c2` branches to `0x100298fe`, past the OR at `0x100298ee` and SetProperty call at `0x100298fb`. It skips both announcement and player write. This matters beyond an idempotent OR: the setter `0x10020d51`–`0x10020ecb` also adjusts other fields and can emit notifications. Correct the write condition wherever summarized.
+3. **P2 priority: retain the 16-bit gate in the catch-up conclusion.** `population.md:670` concludes any loaded tick >=2500 catches up on its first city visit (<=500 ticks). Even with last=0, tick=65536 has word difference zero, so it fails the original gate. The observed condition is `(u16)(tick-last) >= 2500`; the initial stamp is itself still OQ-461. Replace the unconditional bound with the actual conditional statement, and keep the unknown load/constructor value explicit.
+4. **P3 priority: OQ-462 is duplicated.** Identical sections at `docs/open-questions.md:1975` and `:1982`; retain one canonical entry.
+
+Evidence retained under `cache/orch-cw-review-overnight/`: `check_stage_mask.py`, `stage-mask-evidence.txt`. The script reads originals only and prints counts and addresses. Command: `python cache/orch-cw-review-overnight/check_stage_mask.py`. No original bytes or disassembly are added to git. The snapshot line references above are at `e232b02`.
+
+### Decisions and reasoning
+
+1. **Accept T10c/P1 without repeating all heavy gates.** Alternative: rerun full builds/corpus/mutations. The continuation is docs-only, the board explicitly preserves Part A evidence, saved Part B logs are available, and fresh targeted tests/oracle/lint pass. Repeating heavy work would add no evidence for changed code in this packet.
+2. **Keep the benchmark verdict qualified.** Alternative: call it a speed-up or statistically establish no overhead. Only one pair meets the board's counting rule, and it is 3.9% slower; the evidence supports the threshold verdict only.
+3. **Return T32.5 for docs correction, not game-behavior implementation.** Alternative: implement the player loader or stage unlock now. That exceeds this review and the static-RE assignment. The errors are directly checkable from original records/instructions. P2 input loading and P4 unlock design need explicit later decisions.
+4. **Preserve S9 and OQ-460/461 as open research.** Alternative: guess missing dispatch or stamp behavior. The board permits an exact next address; the review does not claim to resolve those gaps.
+5. **Update only the orchestrator board/report and stop.** Alternative: merge accepted branches or send a new executor assignment. The owner requested review. Task branches, P1, original files and AGENTS remain unchanged; no new executor work is started. No subagents were used.

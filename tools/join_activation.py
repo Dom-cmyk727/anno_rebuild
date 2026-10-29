@@ -213,9 +213,11 @@ class Cfg:
             problems.append("link_queue_bytes %d cannot hold one full datagram" % self.link_queue_bytes)
         if self.reassembly_fragments_max < 1 or self.fragment_max < 1:
             problems.append("reassembly limits < 1")
-        if self.jitter_min_ms < 0 or self.jitter_max_ms < self.jitter_min_ms:
+        if (not isinstance(self.jitter_min_ms, int) or isinstance(self.jitter_min_ms, bool)
+                or not isinstance(self.jitter_max_ms, int) or isinstance(self.jitter_max_ms, bool)
+                or self.jitter_min_ms < 0 or self.jitter_max_ms < self.jitter_min_ms):
             problems.append("invalid jitter range [%d, %d]" % (self.jitter_min_ms, self.jitter_max_ms))
-        if self.jitter_seed < 0:
+        if not isinstance(self.jitter_seed, int) or isinstance(self.jitter_seed, bool) or self.jitter_seed < 0:
             problems.append("jitter_seed < 0")
         try:
             script = dict(self.jitter_script)
@@ -225,11 +227,13 @@ class Cfg:
         if len(script) != len(self.jitter_script):
             problems.append("jitter_script has duplicate identities")
         for identity, value in script.items():
-            if (not isinstance(identity, tuple) or not isinstance(value, int) or value < 0
+            if (not isinstance(identity, tuple) or not isinstance(value, int) or isinstance(value, bool) or value < 0
                     or (identity and identity[0] == "data" and len(identity) != 7)
                     or (identity and identity[0] == "ack" and len(identity) != 6)
                     or not identity or identity[0] not in ("data", "ack")):
                 problems.append("invalid jitter_script entry %r" % ((identity, value),))
+            elif identity[0] == "data" and (not isinstance(identity[-1], int) or identity[-1] < 1):
+                problems.append("data jitter script attempt must be >= 1")
         if problems:
             raise ValueError("impossible join configuration: " + "; ".join(problems))
         return self
@@ -1877,28 +1881,42 @@ def _check_jitter(events, cfg, end_t, delays=None):
     any expected-arrival field.  It works for the un-serialized comparison path as well as the
     shared-link path, and therefore catches a trace whose sample and arrival were forged together.
     """
-    if cfg.jitter_min_ms == cfg.jitter_max_ms == 0 and not cfg.jitter_script:
-        return []  # historical hand-written logs have no timing evidence
     out, delays = [], delays or {}
 
     def bad(t, text):
         out.append(("xviii", "t=%s %s" % (t, text)))
 
+    # Old hand-written zero-jitter fixtures predate audit fields.  They remain valid only when
+    # timing evidence is wholly absent; any supplied evidence is checked, even when its value is 0.
+    supplied = any(e["kind"] in ("send", "ack_send") and "jitter_ms" in e for e in events)
+    if not supplied and cfg.jitter_min_ms == cfg.jitter_max_ms == 0 and not cfg.jitter_script:
+        return []
+    finish, planned, by_lid = {}, {}, {}
+    data_out, ack_out = {}, {}
+    for e in events:
+        if e["kind"] == "link_finish":
+            finish.setdefault(e.get("lid"), []).append(e)
+        elif e["kind"] == "link_arrive":
+            planned.setdefault(e.get("lid"), []).append(e)
+        elif e["kind"] in ("arrive", "arrive_refused"):
+            key = (e.get("src"), e.get("dst"), e.get("ch"), e.get("epoch"), e.get("sid"), e.get("attempt"))
+            data_out.setdefault(key, []).append(e)
+        elif e["kind"] == "ack":
+            key = (e.get("dst"), e.get("src"), e.get("ch"), e.get("epoch"), e.get("idx"))
+            ack_out.setdefault(key, []).append(e)
+        if e.get("lid") is not None:
+            by_lid.setdefault(e["lid"], []).append(e)
     for tx in (e for e in events if e["kind"] in ("send", "ack_send")):
         if tx["kind"] == "send":
             # Deliberately spell the tuple out rather than calling the scheduler helper.
             ident = ("data", tx["src"], tx["dst"], tx["ch"], tx["epoch"], tx["seq"], tx["attempt"])
             declared = delays.get((tx["msg"], "%s>%s" % (tx["src"], tx["dst"]), tx["seq"], tx["attempt"]),
                                   delays.get((tx["msg"], "%s>%s" % (tx["src"], tx["dst"]), None, tx["attempt"]), 0))
-            outcome = lambda e: (e["kind"] in ("arrive", "arrive_refused", "stale_epoch") and
-                                 e.get("src") == tx["src"] and e.get("dst") == tx["dst"] and
-                                 e.get("ch") == tx["ch"] and e.get("sid") == tx["sid"] and
-                                 e.get("attempt") == tx["attempt"])
+            outcome_key = (tx["src"], tx["dst"], tx["ch"], tx["epoch"], tx["sid"], tx["attempt"])
         else:
             ident = ("ack", tx["src"], tx["dst"], tx["ch"], tx["epoch"], tx["idx"])
             declared = 0
-            outcome = lambda e: (e["kind"] in ("ack", "stale_epoch") and e.get("src") == tx["dst"] and
-                                 e.get("dst") == tx["src"] and e.get("ch") == tx["ch"] and e.get("idx") == tx["idx"])
+            outcome_key = (tx["src"], tx["dst"], tx["ch"], tx["epoch"], tx["idx"])
         want = _expected_jitter(cfg, ident)
         if tuple(tx.get("jitter_id", ())) != ident:
             bad(tx["t"], "transmission has identity %r, expected %r" % (tx.get("jitter_id"), ident))
@@ -1909,17 +1927,25 @@ def _check_jitter(events, cfg, end_t, delays=None):
         if tx.get("lid") is None:
             want_t = tx["t"] + cfg.one_way_ms + declared + want
         else:
-            finish = next((e for e in events if e["kind"] == "link_finish" and e["lid"] == tx["lid"]), None)
-            arrived = next((e for e in events if e["kind"] == "link_arrive" and e["lid"] == tx["lid"]), None)
-            if finish is None or arrived is None:
+            finishes, arrivals = finish.get(tx["lid"], ()), planned.get(tx["lid"], ())
+            if len(finishes) != 1 or len(arrivals) != 1:
                 bad(tx["t"], "served jitter transmission lacks link finish/arrival evidence")
                 continue
-            want_ns = finish["t_ns"] + (cfg.one_way_ms + declared + want) * NS_PER_MS
+            finish_event, arrived = finishes[0], arrivals[0]
+            want_ns = finish_event["t_ns"] + (cfg.one_way_ms + declared + want) * NS_PER_MS
             want_t = arrival_ms(want_ns)
             if arrived.get("arrival_ns") != want_ns or arrived.get("sched_ms") != want_t:
                 bad(tx["t"], "link arrival does not equal independently derived jitter arrival")
-        if want_t <= end_t and not any(outcome(e) and e["t"] == want_t for e in events):
-            bad(want_t, "served transmission %r has no matching outcome at its derived arrival" % (ident,))
+        if tx["kind"] == "send":
+            outcomes = data_out.get(outcome_key, [])
+        else:
+            outcomes = ack_out.get(outcome_key, [])
+        # Stale records intentionally lack mutable packet details.  Their immutable link id binds
+        # them to exactly one transmission in serialized mode.
+        outcomes += [e for e in by_lid.get(tx.get("lid"), ()) if e["kind"] == "stale_epoch"]
+        at_time = [e for e in outcomes if e["t"] == want_t]
+        if want_t <= end_t and len(at_time) != 1:
+            bad(want_t, "served transmission %r has %d matching outcomes at its derived arrival" % (ident, len(at_time)))
     return out[:12]
 
 

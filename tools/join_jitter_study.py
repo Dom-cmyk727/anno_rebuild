@@ -39,12 +39,19 @@ def horizon_lag(sim):
 
 def maximum_lag(sim):
     applied = {"H": 0}
+    members = set()
     greatest = 0
     for event in sim.events:
+        if event["kind"] == "seated":
+            members.add(event["peer"])
+        elif event["kind"] == "input_on":
+            members.add(event["peer"])
+        elif event["kind"] == "drop_seated":
+            members.discard(event["peer"])
         if event["kind"] == "apply":
             applied[event["peer"]] = event["turn"]
             host = applied.get("H", 0)
-            greatest = max(greatest, max([host - value for name, value in applied.items() if name != "H"] or [0]))
+            greatest = max(greatest, max([host - applied.get(name, 0) for name in members] or [0]))
     return greatest
 
 
@@ -102,7 +109,7 @@ def rows(include_diagnostics=False):
                     yield rate, timer, workload, profile, ()
     if include_diagnostics:
         # Declared diagnostics: exact repeat and asymmetric script with a large selected delay.
-        yield "100M", 300, "one_fragment", "uniform25-seed6101", ()
+        yield "100M", 300, "one_fragment", "uniform25-seed6101", (("diagnostic-repeat",),)
         yield "100M", 300, "one_fragment", "zero", ((('data', 'H', 'J1', 1, 1, 0, 1), 100),)
 
 
@@ -116,8 +123,14 @@ def main(argv=None):
     if args.validate:
         data = [json.loads(line) for line in open(args.output, encoding="utf-8") if line.strip()]
         primary = [row for row in data if row["kind"] == "primary"]
-        if len(primary) != 72 or any(row["metrics"]["validators"] for row in data):
-            raise SystemExit("invalid study: expected 72 validator-clean primary rows")
+        expected = {(rate, timer, workload, profile) for rate in RATES for timer in TIMERS
+                    for workload in ROWS for profile in PROFILES}
+        actual = {(row.get("rate"), row.get("resend_ms"), row.get("workload"), row.get("profile")) for row in primary}
+        required = {"config", "config_hash", "result_hash", "semantic_trace_hash", "wall_seconds", "metrics"}
+        if (len(primary) != 72 or actual != expected or any(not required <= set(row) for row in data)
+                or any(row["metrics"].get("validators") for row in data)
+                or len({row["config_hash"] for row in primary}) != 72):
+            raise SystemExit("invalid study: require exactly the 72 distinct, validator-clean primary configurations")
         print("valid: %d primary rows, %d diagnostics" % (len(primary), len(data) - len(primary)))
         return 0
     started = time.monotonic()

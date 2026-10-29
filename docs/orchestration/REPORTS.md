@@ -5698,3 +5698,8 @@ City events `0x1002ba80` (`this` = city, period `[city+0xe]`, 12500) call `0x100
 - With `last = 0`: tick 2499 skip; **2500 run** (passing boundary); 65535 run; **65536 skip** (difference 0); 68035 skip; 68036 run (`(u16)68036 = 2500`).
 - House stamp is separate: `house +0x0a` does `add eax, 0x9c4` / store (`0x10076259`–`0x1007625e`). OQ-450 is that house question and is not decided. OQ-461 retained for constructor/load of `city +0x10`.
 - Supersedes T32.5 "a loaded scenario whose tick is already ≥ 2500 therefore catches up on that first city visit (≤ 500 ticks)".
+
+### F1.4 — One OQ-462 (in progress)
+
+- Duplicate identical `## OQ-462` block removed; one complete question kept. OQ-460, OQ-461, OQ-462 each appear once as headings. OQ-463..469 unused (range reserved, not required).
+- Cross-refs: `population.md` §15 Open names OQ-185, OQ-460, OQ-461, OQ-462 with next addresses; `state.md` names OQ-460 and OQ-461; S9a/OQ-185 and S9b/OQ-462 stay open.

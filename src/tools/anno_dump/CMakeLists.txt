@@ -9,7 +9,7 @@ anno_target_defaults(anno_dump)
 # Agreement with the Python references (tools/agree.py): the synthetic
 # fixtures always, the original corpus when ANNO1503_GAME_DIR is set. Grows
 # with each ported command.
-set(ANNO_DUMP_PORTED_COMMANDS "chunks,tex,inc,colors,figuren,frames,anlagen,insel,sze,keyed,texte,zei,bigbrother,walk-tables" CACHE STRING "anno-dump commands checked by tools/agree.py")
+set(ANNO_DUMP_PORTED_COMMANDS "chunks,tex,inc,colors,figuren,frames,anlagen,insel,sze,keyed,texte,zei,bigbrother,walk-tables,fixed-map" CACHE STRING "anno-dump commands checked by tools/agree.py")
 if(ANNO_BUILD_TESTS)
   find_package(Python3 COMPONENTS Interpreter)
   if(Python3_FOUND)

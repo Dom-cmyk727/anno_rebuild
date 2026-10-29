@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+#include <anno/formats/fixed_map.hpp>
+
 namespace anno::dump {
 
 std::uint64_t fnv64(Bytes bytes) {
@@ -70,6 +72,17 @@ void palette_rows(const formats::tex::Palette& p, std::string& out) {
         }
         out += "\n";
     }
+}
+
+bool dump_fixed_map(Bytes buf, bool, std::string& out) {
+    auto map = formats::fixed_map::parse(buf);
+    if (!map) {
+        out += formats::fixed_map::error_line(map.error());
+        out.push_back('\n');
+        return false;
+    }
+    out += formats::fixed_map::summary(map.value());
+    return true;
 }
 
 } // namespace anno::dump

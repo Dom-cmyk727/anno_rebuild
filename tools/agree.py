@@ -113,6 +113,8 @@ def cases(game):
     if game:
         c.append(('walk-tables', 'annowelt_tables.py', ['dump'], ['walk-tables'],
                   lambda: [game / 'AnnoWelt.dll']))
+    # fixed-map: our own layouts (docs/sim/fixed-map.md). No original corpus.
+    c.append(('fixed-map', 'fixed_map.py', ['dump'], ['fixed-map'], lambda: fixture('fixed_map')))
     return c
 
 

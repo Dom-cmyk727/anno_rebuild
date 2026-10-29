@@ -7232,3 +7232,21 @@ Objects the sim had not placed were left undrawn; the stderr of those runs liste
 - W4.2 and W4.3 are not started.
 - A 3840×2160 client cannot be shown on this desktop. The measured large client is 3840×1421.
 - This lane stops for review. No merge.
+
+## Round do — Review of W4.1 F1 — 2026-10-29 — status: ACCEPTED, merged (8ea19ba)
+
+- **Reviewed:** `task/W4-1-play-mode` at `964f922` (tested code `f9db0bb`). Report "W4.1 F1 — Play-mode corrections". All of F1.1–F1.9 are answered with commits and evidence.
+- **Re-run by the orchestrator:**
+  - **Cadence:** `--play` on `00_1024_easyentry_01.sze` (the build of `f9db0bb`), two window titles 30.0 s apart: game 2100 → 32100 ms in 30004 ms of real time, ratio 0.9999. Before the fix it was 0.955 (round dm).
+  - **Fast play tests:** the absolute-deadline, hitch catch-up, sim-thread, wall-clock, id-fit, slow-turn, lan5 and demolish cases, MSVC Release with the game files: 7 cases, 26361 assertions passed.
+  - **Test changes:** the 25 removed position, size and template assertions moved into a shared helper (`play_test.cpp:57-79`) that the corpus-wide case calls. Nothing was loosened.
+- **Accepted as reported** (logs in the W4-1 worktree's `cache/w41/`):
+  - full ctest with the game files: 1118/1118, including the heavy render corpus `#286`/`#287` (now owed by no one);
+  - full ctest without them: 1116 passed, 2 skipped;
+  - clang-format; GCC 13.3 and Clang 18 warnings clean;
+  - five mutations, each failing its named assertion.
+- **Notes, not blocking:**
+  - `anno_render_gpu_tests` now links `anno_app_core` for the play GPU case. That is a test-only edge from render's tests to app; the libraries keep their direction. Move the case into the app tests with `RESOURCE_LOCK gpu` if that edge becomes a problem.
+  - 3840×2160 cannot be shown on the 2560×1440 desktop, so it was measured at 3840×1421 (0.6 ms per frame).
+  - PROD2 re-encoding stays for tick 0. The object-list builder is W4.3's seam (`docs/app/game-shell.md`).
+- **Merge:** the REPORTS append conflict was resolved as base + main's sections + W4.1's sections (checked line by line). No other file conflicted.

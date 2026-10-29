@@ -4,7 +4,7 @@
 
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, resource-budgeted concurrency under round cp, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-29 dn — **T61 F2's unreported continuation reviewed: CHANGES REQUIRED (N1–N8) on lane 2.** Earlier (dm): **W4.1 reviewed: owner check passed, CHANGES REQUIRED (F1.1–F1.9) on lane 3; MAP.2 released to a new lane 4 with the owner's layout rule.** MAP.1 merged (6db51eb). Lanes 1 and 2 unchanged; F6 paused; GitLab `fuitable/open1503` (private) is the remote, pushed over SSH.
+Last update: 2026-10-29 do — **W4.1 accepted and merged (8ea19ba).** Earlier (dn): **T61 F2's unreported continuation reviewed: CHANGES REQUIRED (N1–N8) on lane 2.** Earlier (dm): **W4.1 reviewed: owner check passed, CHANGES REQUIRED (F1.1–F1.9) on lane 3; MAP.2 released to a new lane 4 with the owner's layout rule.** MAP.1 merged (6db51eb). Lanes 1 and 2 unchanged; F6 paused; GitLab `fuitable/open1503` (private) is the remote, pushed over SSH.
 
 **Round dn (2026-10-29, orchestrator): T61 F2 continuation review.**
 - **T61 F2 `CHANGES REQUIRED — continuation N1–N8`** (REPORTS "Round dn"):
@@ -404,7 +404,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
   5. **Tests:** the lan5 test with the chosen layout (2–5 seats, five minutes, MSVC = GCC hash). Measure the sim tick on the chosen map with five cities (`lan-mvp.md` §3).
 - **Acceptance:** the targets measured and documented; the fairness rule and tolerances in the spec; the candidates pass it; the owner's pick committed; the gates of board §1 items 4, 9 and 12.
 
-#### W4.1 — Play mode: the sim runs in the app, the scene shows the sim's world · `CHANGES REQUIRED — W4.1 F1` (round dm; owner check passed; findings F1.1–F1.9 in REPORTS "Round dm") · lane 3 (round dk; round dl: continued on its branch) · `PARALLEL-OK` with lanes 1 and 2 · branch `task/W4-1-play-mode` from MAP.1's report head `328f267` (an ancestor of main; started in round dk, continued in round dl) · worktree `E:\anno1503-worktrees\anno1503-W4-1` · new OQs OQ-500..509
+#### W4.1 — Play mode: the sim runs in the app, the scene shows the sim's world · `DONE` (round do; merge 8ea19ba, accepted at `964f922`; owner check passed) · lane 3
 - **Why:** `lan-endless.md` W4 steps 1–2 and `lan-mvp.md` §4: MVP-A needs the app to run the deterministic sim at a fixed cadence and the renderer to show the sim's world. Stage 1 sets the split between static content (terrain, scenery: from the files) and dynamic content (buildings: from the sim) and the threading contract. Building changes after tick 0, figures and input are W4.2–W4.4.
 - **Facts this task builds on (orchestrator's read, 2026-10-29; re-check each):**
   - The app links only `anno_render` (`src/app/CMakeLists.txt:11`); modes: `--view` plus `--png`, window loop in `Viewer::run` (`viewer.cpp:438`); `Viewer` holds `const render::Scene&`.

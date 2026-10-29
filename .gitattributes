@@ -3,3 +3,4 @@
 *.sh text eol=lf
 # Fixed-map fixtures include a CRLF copy. Keep the committed bytes.
 fixtures/synthetic/fixed_map/** -text
+fixtures/synthetic/fixed_map_game/** -text

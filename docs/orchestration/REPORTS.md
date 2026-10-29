@@ -6452,3 +6452,31 @@ Owner requested another task while the first executor continues F5/T32.6. **Assi
 - **Decisions and reasoning:** selected docs-only T60 over the larger T61 checker experiment to add useful independent progress with little host load and no ADR/default choice. Kept one second-executor task rather than implicitly authorizing the rest of the queue. Allowed REPORTS appends only in separate worktrees rather than concurrent edits to a shared checkout; integration must retain both histories. Preserve the running primary packet and verify a narrowly additive continuation rather than moving its base or stopping/restarting its work. T32.5 remains accepted pending integration; P1/T10c integrated, T40 DONE; no ADR approved.
 
 The second-executor artifact is `cache/orch-cz/packet.md`, generated from the committed round-cz board, with `executor-prompt-round-cz.md` kickoff and `preflight.log`. Its branch is `codex/T60-ai-post-list` in `E:/anno1503-worktrees/anno1503-T60`, created by that executor from the packet's exact base, then report/commit and stop. No task worktree was created or modified by this preparation; pre-existing untracked AGENTS.md remains untouched.
+
+## T60 — AI post-list effects and returned value — 2026-10-29 — status: READY FOR REVIEW
+
+### Exact state and scope
+
+- Created `E:/anno1503-worktrees/anno1503-T60` on `codex/T60-ai-post-list` from the packet base `9c7c5d91b4e9a9677eeb436d12f618f50d3fc060`. The exact packet preflight was rerun with approved read-only access: **12 PASS, 0 failed**. Main, board and the protected T32-5/P1/T10c heads matched the packet and were clean within its stated allowance.
+- Allowed tracked files changed: `docs/re/complogic.md`, `docs/open-questions.md`, and this append-only report. No source, tools, fixtures, PLAN, TASKS or AGENTS changes; no original files, bytes or disassembly were saved to Git. No build, game launch, Wine or heavy test was run. Direct disassembly output was read in the terminal; no scratch evidence file was needed (`cache/t60/` remains unused).
+- Original module SHA-256: `CompLogic.dll` `39B622B4A62D9814068619FD4254A675ED1A2A88D6B2594CB6A969C0216D11FA`; `CompLogicClassic.dll` `544B9135E819E6270D889A7D5E7736E3FAA4D54A5CDDF329452870BD1A386A57`.
+
+### Evidence and decisions
+
+- **CompLogic post-list:** read `0x1003d880..0x1003d8d0`, `0x1003e1c0..0x1003e2fb`, `0x1003e130..0x1003e1ad`, the dispatcher case-7 tail `0x1003e2d1..0x1003e2fb`, and the direct case targets `0x1000cfb0`, `0x1000d5f0`, `0x1000d920`, `0x1000dc00`, `0x1000e200`, `0x1005a0d0`. The manager receiver is the manager; the tick is manager entry `+0x4`. Direct writes are manager `+0x2c`, and case 0 also `+0x28`/`+0x30`; case 7 may set global byte `0x1006aeb0`. The dispatcher range has no direct world/PRNG write, but the named virtual/direct callees remain unresolved transitive boundaries.
+- **Classic post-list:** read `0x1003ad90..0x1003ade0`, `0x1003b660..0x1003b79b`, `0x1003b5d0..0x1003b64d`, `0x1000b7d0`, `0x1000be10`, `0x1000c140`, `0x1000c420`, `0x1000ca20`, and `0x10056d1d` case tail. It has the same direct manager state-machine effects, independent targets, and global byte `0x10067e28` in case 7. The Classic helper `0x1003b5d0` was discovered from actual case-0 control flow; no CompLogic address was copied.
+- **Returned value:** read CompLogic `0x10003a20..0x10003ad9` and `0x10003940..0x10003a15`, plus Classic `0x10002320..0x100023d9` and `0x10002240..0x10002315`. With entry SP normalized, quotient is argument 1 at `+0x4`, tick is argument 2 at `+0x8`; the helper receives a pointer to the tick slot and writes/accumulates through it. The return loads argument 1 (`0x10003ad2`, `0x100023d2`), unchanged by the helper. The manager therefore subtracts the unchanged quotient; the tick/remaining slot separately controls the `0x10003b00`/`0x10002400` path. Classic has the concrete difference that the per-object entry clears `+0x1a14`, while its manager/helper gates use `+0x1a19`.
+
+### Acceptance and remaining questions
+
+- [x] Both manager/post-list functions read with receiver, argument, direct-effect and condition/order maps.
+- [x] Both per-object returns and helper aliases read with normalized stack offsets.
+- [x] Direct versus unresolved transitive effects are separated; no blanket no-write/no-draw claim is made.
+- [x] OQ-270 updated consistently in `complogic.md` §4/§8 and `open-questions.md`: return half answered for both variants; post-list transitive effects remain open with concrete next callees.
+- [x] `git diff --check` clean before commit; three-file limit verified. No OQ-480..489 was necessary.
+
+**Decisions and reasoning:** (1) classify the return as the unchanged quotient, not a consumed or time budget, because the helper's only caller-provided pointer aliases argument 2 and both return loads read argument 1; the alternative “helper may write the returned slot” is contradicted by the normalized stack map. (2) classify post-list effects as a bounded state-machine contract rather than “no world writes,” because direct manager/global stores are proven but the listed virtual/direct callees were not expanded; the alternative blanket negative would exceed the read boundary. (3) keep OQ-270 narrowed rather than resolved because the unresolved callee closures can still contain world/command/PRNG effects; the alternative is unsupported by the inspected ranges.
+
+**Commands/evidence:** packet preflight with `python -X utf8 -I E:\anno1503\tools\orch\preflight.py ...` (12 PASS); bounded reads with `python -X utf8 tools/disasm.py E:\anno1503\game\app\CompLogic.dll <address> <decimal-bytes>` and the corresponding Classic module; `git diff --check`. No build or runtime gate applies to this docs-only static RE task.
+
+**Next addresses:** CompLogic `0x1003e130` virtual closure, `0x1000cfb0`, `0x1000d5f0`, `0x1000d920`, `0x1000dc00`, `0x1000e200`, `0x1005a0d0`, `0x10059820`, `0x10059a00`, and kind targets from `0x10041860`; Classic counterparts listed in `complogic.md` §4 T60. OQ-271/272 and T-AI.4 remain outside this task. No merge, rebase, push, ADR approval or next task.

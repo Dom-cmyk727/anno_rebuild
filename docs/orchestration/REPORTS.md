@@ -6991,3 +6991,20 @@ OQ-490. The developer start gives the whole start island to the city. The origin
 - OQ-490.
 - The two heavy render tests (`#286`, `#287`) were not admitted. Re-run them when free RAM after the 4096 MiB headroom can hold a 6.5 GiB reservation. They are not MAP.1 behaviour.
 - W4.1 is the next part of this lane and is not started in this report.
+
+## Round dl — Review of MAP.1 — 2026-10-29 — status: ACCEPTED (code), LAYOUT REJECTED BY THE OWNER
+
+- **Reviewed:** `task/MAP-1-fixed-map` at `1665f60` (code), plus the report `328f267`, which was committed after the review had started (it changes only this file). Merged into main with `--no-ff` as 6db51eb.
+- **Re-run by the orchestrator** (not taken from the executor's logs):
+  - MSVC build of `anno_formats_tests`, `anno_sim_tests` and `anno-dump`. Fixed-map cases with the game files: formats 4 cases and 85 assertions, sim 5 cases and 166 assertions, all passed. lan5 five-minute hash `fec6c75b10075eab`.
+  - GCC 13.3 in WSL (`build/gcc-release`, rebuilt at `1665f60`): the same 5 cases pass with the same hash `fec6c75b10075eab`. Without `ANNO1503_GAME_DIR` the lan5 case prints the skip message and returns.
+  - `python -I tools/agree.py --dump …/anno-dump.exe --commands fixed-map --game-dir …`: `ok fixed-map (fixtures, 12 args)`, 1 of 1 agree.
+  - `python -I tools/fixed_map.py check data/maps/lan5.txt`: ok, 21 islands, 5 starts, edge 1431×1431. `fixed_map_layout.py` re-run: `lan5.txt` unchanged. `fixed_map_fixtures.py` re-run: the synthetic fixtures unchanged. They are our own bytes, so no original data entered git.
+  - clang-format 23.1.3 `--dry-run --Werror` over the 13 changed C++ files: clean. `tools/check_unix_warnings.sh`: GCC 13.3 and Clang 18, 178 files, clean; Clang without GPU, 9 files, clean.
+  - Registry move: `replay-{before,after}-{00,03}.txt` compared line by line. The only difference is the `time load …` line (wall clock). The hashes and every count are equal.
+  - Mutations: the five logs fail at the named assertions: climate `0 == 2`; overlap `REQUIRE_FALSE(loaded)`; CRLF digest; `TileNotOwned` `13 != 13` together with the owner-run checks; unseated city `spare->cities.empty()`.
+- **Code read:** `src/sim_load/src/fixed_map.cpp` and `src/sim/tests/fixed_map_load_test.cpp` in full; the reader, the spec and the Python tool where they matter. The loader validates seats, slots, overlap, bounds, templates and the Kontor footprint before `place_island_links`. It sets the template's own climate, makes no draws, and gives the whole start island to the seat's city (`owner_runs`, OQ-490). Its deviations from the brief (signature without `IslandTemplates`/`Rules`; human kind 8 or 11, `docs/formats/sze.md:87`; player 31 not copied) are explained in the report and accepted.
+- **Small gaps, not blocking:** no test seats more players than there are start regions (only the one-seat refusal is tested; the code refuses both through the same check). The preview legend has colour swatches without labels; MAP.2 adds labels.
+- **Gates not closed here:** `#286` and `#287` (heavy render corpus) were refused by the memory coordinator in both of the executor's runs, at about 5.2 GiB available against a 6.5 GiB request. MAP.1 changes no render code. Owed by the next full gate run on main.
+- **Owner verdict on the layout:** "not a good map layout". Too artificial and symmetric. Direction: original-like, fair by measure. Measurement of the nine original endless maps: 16–28 islands per 1024², 19–46% rectangle coverage, all six climates, median nearest gap 16–32 tiles. lan5 has 21 islands on 1431² (23% coverage). Follow-up: MAP.2 (board, round dl).
+- **Process:** the report came after the owner had been told the task was done. A ctest from 19:40 was still running in the worktree during the review. See round dl's process notes.

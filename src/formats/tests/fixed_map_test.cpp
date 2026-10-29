@@ -128,9 +128,18 @@ TEST_CASE("fixed map: comments and a blank line do not change the digest") {
 
 TEST_CASE("fixed map: the synthetic fixtures parse") {
     const std::filesystem::path dir = std::filesystem::path(ANNO_FIXTURES_DIR) / "fixed_map";
-    auto ok = fm::parse(read_all(dir / "ok.txt"));
-    auto crlf = fm::parse(read_all(dir / "ok_crlf.txt"));
+    const std::vector<std::uint8_t> ok_bytes = read_all(dir / "ok.txt");
+    auto ok = fm::parse(ok_bytes);
     REQUIRE(ok);
+    // Built here, not committed: a CRLF file is trailing whitespace to git diff --check.
+    std::vector<std::uint8_t> crlf_bytes;
+    for (std::uint8_t b : ok_bytes) {
+        if (b == '\n') {
+            crlf_bytes.push_back('\r');
+        }
+        crlf_bytes.push_back(b);
+    }
+    auto crlf = fm::parse(crlf_bytes);
     REQUIRE(crlf);
     CHECK(fm::digest(ok.value()) == fm::digest(crlf.value()));
     auto bad = fm::parse(read_all(dir / "bad_unknown.txt"));

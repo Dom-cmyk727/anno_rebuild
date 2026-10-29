@@ -6440,3 +6440,82 @@ The round-cy packet assigns **A: T10c F5**, then **B: T32.6**, and stops. Both u
 4. **Scope remains bounded.** T60/T61 remain identified but not assigned by this packet. T40 is DONE; OQ-270..272 are separate later research, never a T40 F-fix. ADRs remain Proposed, no P2 implementation, T34 stage 2, T-AI.4 or production networking. This review/request prepares tasks, not a new integration; T32.5 is accepted pending integration. Nothing pushed.
 
 Generated artifact: `cache/orch-cy/packet.md` with verbatim committed board excerpts, `executor-prompt-round-cy.md` for kickoff, and the exact `preflight.log`. The preflight pins main/board and all three unchanged completed worktrees; task setup checks that the two new branch/path names are unused before creating them. The earlier round-cx packet is historical and must not be reused after this board update.
+## T10c F5 — Cold-cache coordinator preparation — 2026-10-29 — status: BLOCKED (game-dir CTest wait-deadline)
+
+- Branch: `codex/T10c-f5-cold-cache`; worktree: `E:\anno1503-worktrees\anno1503-T10c-F5`
+- Packet: `E:\anno1503\cache\orch-cy\packet.md` (board at `fa4820447e53a4d50468e8edb24a865a2147d15f`)
+- Preflight: 12/12 PASS (main `fa4820447e53a4d50468e8edb24a865a2147d15f`; T32.5 `1fc598eb0b57f0d487fb50d315d7c4ad9c0d8af2` `task/T32-5-stage-mask` clean; P1 `416993fa6a6f9dc821455df5d414cff5833ac7f0` `task/P1-house-payload` clean; T10c `5b10ed3ecb0f0c6446ca96a4d556f82a7b00aff1` `codex/T10c-test-memory` clean). Untracked `AGENTS.md` on main left alone.
+- Setup: branch and directory were unused. Created with `git -C E:/anno1503 worktree add E:/anno1503-worktrees/anno1503-T10c-F5 -b codex/T10c-f5-cold-cache fa4820447e53a4d50468e8edb24a865a2147d15f`. Did not continue `codex/T10c-test-memory`. P1/T10c/T32.5 worktrees not edited.
+
+### Fail-first (step 1)
+
+Configured `build/msvc` in this worktree with `FETCHCONTENT_SOURCE_DIR_*` from `E:/anno1503/build/msvc/_deps` (main's old `build/msvc` cache refers to a former C: checkout). Built `anno_test_support_tests` / probe / coordinator.
+
+Moved only this worktree's cache binary `cache/coord/anno_budget_coord-dd1ac8fb40068285` aside and ran `F4 (N4):*` with no other budget case first. Exit 1. `REQUIRE(!coord_pid.empty())` failed. Logged `start: STARTED` and `nohup: failed to run command '.../anno_budget_coord-dd1ac8fb40068285': No such file or directory`. Evidence: `cache/f5/failfirst/`. Restored the file. Shared coordinator pid 486 on 47631 (`/mnt/e/anno1503/cache/coord/anno_budget_coord-dd1ac8fb40068285`) was not stopped.
+
+### Preparation contract (step 2)
+
+`prepare_host_coordinator()` obtains the artifact and does not start it. Windows reuses the existing WSL `g++ -std=c++20 -O2 -pthread` command, writes `*.building`, renames only after compiler exit 0 and a non-empty file, serializes on mutex `Local\anno1503-coord-build` (120 s). Linux keeps the cmake-built binary beside the test process when present; if absent it compiles with the same flags under flock `/tmp/anno1503-coord-build.lock` plus an in-process mutex. `ANNO_TEST_COORD_PREPARE_FAIL=1` returns failure without producing the file. `ensure_wsl_coordinator` now prepares then detaches as before. No admission/headroom/compat change. Compat stays 3.
+
+### Owned process and readiness (step 3)
+
+Tests start the prepared binary as an owned `Child` (`wsl.exe -d Ubuntu --` on Windows). Wait for a `LISTENING` line with port, `build=` and `compat=`. Missing executable, `BIND-FAILED`, `JOURNAL-FAILED` or child exit are specific diagnostics. Cleanup kills only the captured linux pid. `Child::start` quotes CreateProcess arguments only when empty or containing whitespace: quoting `-d` made `wsl.exe` treat it as a Linux command (`-d: command not found`). Leak hook `ANNO_TEST_COORD_LEAK_FD` opens after the 3..255 close and `F_DUPFD` ≥ 256.
+
+Observed identity after the hashed-source change (`budget.hpp` prepare API, `coord_server.cpp` leak-hook dup): `build=74b3f0803cbd5520 compat=3`. Fail-first used `dd1ac8fb40068285`. Isolated N4: pid 8303, meter 8304, `LISTENING 47825 build=74b3f0803cbd5520 compat=3`.
+
+### Regressions (step 4)
+
+| case | result | identity |
+|---|---|---|
+| isolated cold N4 (47829), binary absent | 1/1, 10 assertions | pid 8163 `LISTENING 47829 build=74b3f0803cbd5520 compat=3` |
+| isolated warm N4 (47830) | 1/1 | pid 8190 incarnation `5a77330c4542f5aa` |
+| companion peer 47827 + cold N4 47831 | 1/1, 21 assertions | peer incarnation `7b410a150631f4b6` unchanged; N4 pid 8233 |
+| missing executable | `!ready`, diagnostic `missing executable`, no `STARTED` | — |
+| forced `ANNO_TEST_COORD_PREPARE_FAIL` | `!ok`, no artifact | — |
+| bind failure 47832 | second start `BIND-FAILED`, no `STARTED` | — |
+| concurrent preparers then usable start 47833 | both `ok`, ELF magic, start ready | — |
+| parallel no-game CTest, this binary absent | 1103/1103, 96.23 s, two clean scenario skips | binary recreated; pid 486 still on 47631 |
+
+First parallel no-game run (shared port 47825, no `RESOURCE_LOCK`) failed 4 F5/N4 cases (`cache/f5/gates/ctest-nogame/`). Unique ports plus CTest `RESOURCE_LOCK wsl_coord` on `anno_test_support_tests` (F5 BackupArtifact vs F3 D2's `nohup` of the same cache path) made the rerun green. A later always-restore destructor that deleted a just-prepared Windows cache file was reverted on Windows; Linux still restores the cmake/ASan binary.
+
+### Mutations on the final source (step 5)
+
+| mutant | change | named failure |
+|---|---|---|
+| A | skip `prepare_host_coordinator` in N4 | cold: `missing executable: .../anno_budget_coord-74b3f0803cbd5520` |
+| B | missing-exe path reports `STARTED` as ready | `F5 (fail): missing executable is not ready` wants `!ready` |
+| C | drop meter-spawn `close_descriptors_from_3` | N4 `meter_has == 0` fails (`1 == 0`); leak at fd ≥ 256 still held by the coordinator |
+
+Restored sources, force-rebuilt (`coordinator build 74b3f0803cbd5520`). Unmutated cold/fail/N4 pass. Logs: `cache/f5/mutants/final/`. Mutant C temporarily hashed as `d23bac8426ed9ae0`.
+
+### Gates (step 6)
+
+- MSVC Release: `cmake --build --preset msvc` exit 0, no warnings (after stopping a leftover worktree `anno_budget_coord.exe` on test port 47632, not pid 486).
+- clang-format 23.1.3 `--dry-run --Werror` on the changed C++ files: clean.
+- No-game CTest `-j 16`, `ANNO_TEST_HEADROOM_MB=4096`, binary absent: 1103/1103, skips 1088 and 1089 only (`cache/f5/gates/ctest-nogame-lock/`).
+- Game-dir CTest `-j 16`, `ANNO1503_GAME_DIR=E:\anno1503\game\app` (this worktree has no `game/`; originals read-only): **BLOCKED**. Heavy cases waited 1800 s (`wait deadline`) with headroom 4096 MiB unchanged, pending ≈ 2.6 GiB, using shared coordinator **pid 486** `build=dd1ac8fb40068285 compat=3` on 47631. Failures include `anno_sim_tests.scenario corpus: the ten scenarios with the most buildings run 20000 ticks more` (1803.53 s) and `anno_render_tests.river raster agrees with the river the original draws` (1800.18 s). Log: `cache/f5/gates/ctest-game/`. Did not lower headroom or stop owner applications. Did not rerun after the same shortage.
+- WSL GCC 13.3 / Clang 18.1.3 `-O3 -Werror`: 173 + 173 + 9 files clean (`tools/check_unix_warnings.sh /mnt/e/anno1503/build/msvc/_deps`).
+- ASan/UBSan budget suite (WSL RelWithDebInfo, `ANNO_SANITIZE=ON`): 56/56 cases, 538/538 assertions, `build=74b3f0803cbd5520 compat=3`.
+- `tools/lint_sim.py`: ok. `tools/sim_stream.py --check`: goldens agree. `agree.py` n.a. (no `anno-dump` command change).
+- No new throughput claim.
+
+### Acceptance
+
+| item | status |
+|---|---|
+| exact coordinator prepared independently of prior tests | **met** (cold N4 + no-game CTest with this binary absent) |
+| no partial artifact or false readiness | **met** (staging rename, missing-exe / bind-fail / `PREPARE_FAIL`; no `STARTED`) |
+| descriptor check still catches the layer mutant | **met** (mutant C `meter_has == 1`) |
+| cold / warm / parallel / compatible-peer | **met** |
+| all required gates with identities recorded | **open / blocked**: game-dir CTest wait-deadline under 4096 MiB headroom (external). Other gates passed. |
+
+### Decisions and reasoning
+
+1. **Separate prepare from start.** Alternative: warm the cache in the N4 case or treat a compatible shared server as setup. Rejected: round-cx cold log shows `STARTED` with no file, and pid 486 is another worktree's build. Evidence: `cache/f5/failfirst/n4-cold.log`.
+2. **Owned `Child` + `LISTENING`, not `pgrep`.** Alternative: keep the nohup/pgrep wait. Rejected: that printed `STARTED` on a missing executable. Evidence: same fail-first log vs isolated N4 `LISTENING 47825 build=74b3f0803cbd5520`.
+3. **Quote CreateProcess args only when needed.** Alternative: quote every argument. Rejected: `wsl.exe` then ran `-d` as a Linux command (`-d: command not found`). Evidence: `cache/f5/regress/cold-quoted-wsl-fail.log`.
+4. **Unique ports plus `RESOURCE_LOCK wsl_coord`.** Alternative: one shared F5 port, or serialize only BackupArtifact with a mutex held across concurrent `prepare` threads. Unique ports alone left F3 D2's `nohup` of the cache path racing BackupArtifact (replacement not listening in 5 s). Holding the compile mutex for BackupArtifact's lifetime deadlocks the concurrent-preparer test (main thread owns the mutex, workers call `prepare`). CTest `RESOURCE_LOCK` serializes `anno_test_support_tests` only. Evidence: `cache/f5/gates/ctest-nogame/` (4 fails) vs `ctest-nogame-lock/` (1103/1103) vs `ctest-nogame-keep/` (F3 D2 fail).
+5. **Linux prepare compiles when the cmake binary is missing; Windows BackupArtifact keeps the new file.** Alternative: skip F5 cold on Linux, or always restore the backup. ASan 3 fails were cold/companion/concurrent (`prepare.ok` false). Always-restore on Windows deleted the cache file under parallel CTest. Evidence: `cache/f5/gates/asan/budget.txt`; ASan rerun 56/56 after Linux compile.
+6. **Game-dir wait-deadline is an external blocker.** Alternative: lower `ANNO_TEST_HEADROOM_MB` or kill pid 486. Forbidden by the packet. Evidence: `[anno-test memory] refuse ... reason=wait deadline` with headroom=4294967296, coordinator pid=486.
+
+No merge, no push, no TASKS/AGENTS edit, no Wine, no original files in git. Subagents: none.

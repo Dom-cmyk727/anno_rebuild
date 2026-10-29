@@ -326,8 +326,8 @@ std::shared_ptr<const sim::TypeRegistry> scenario_registry() {
         return sim::TypeRegistry::empty();
     }
     // FigurenHeader stays optional, with the same note, then any later failure.
-    const anno::sim_load::OriginalRegistryLoad loaded = anno::sim_load::load_original_registry(
-        dir, anno::sim_load::FigureEntries::OptionalNote);
+    const anno::sim_load::OriginalRegistryLoad loaded =
+        anno::sim_load::load_original_registry(dir, anno::sim_load::FigureEntries::OptionalNote);
     if (!loaded.figure_note.empty()) {
         std::cout << loaded.figure_note << "\n";
     }

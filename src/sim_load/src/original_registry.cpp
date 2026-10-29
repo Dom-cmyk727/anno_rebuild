@@ -1,6 +1,4 @@
 // The original-data registry build. See original_registry.hpp.
-#include <anno/sim_load/original_registry.hpp>
-
 #include <fstream>
 #include <iterator>
 #include <utility>
@@ -10,6 +8,7 @@
 #include <anno/formats/annowelt.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/sim/house_groups.hpp>
+#include <anno/sim_load/original_registry.hpp>
 
 namespace anno::sim_load {
 

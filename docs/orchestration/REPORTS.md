@@ -6440,3 +6440,40 @@ The round-cy packet assigns **A: T10c F5**, then **B: T32.6**, and stops. Both u
 4. **Scope remains bounded.** T60/T61 remain identified but not assigned by this packet. T40 is DONE; OQ-270..272 are separate later research, never a T40 F-fix. ADRs remain Proposed, no P2 implementation, T34 stage 2, T-AI.4 or production networking. This review/request prepares tasks, not a new integration; T32.5 is accepted pending integration. Nothing pushed.
 
 Generated artifact: `cache/orch-cy/packet.md` with verbatim committed board excerpts, `executor-prompt-round-cy.md` for kickoff, and the exact `preflight.log`. The preflight pins main/board and all three unchanged completed worktrees; task setup checks that the two new branch/path names are unused before creating them. The earlier round-cx packet is historical and must not be reused after this board update.
+
+## T32.6 — House-tick readiness audit — 2026-10-29 — status: FINISHED
+
+- Branch: `codex/T32-6-house-tick-inputs`; worktree: `E:\anno1503-worktrees\anno1503-T32-6`
+- Start: `fa4820447e53a4d50468e8edb24a865a2147d15f` (same pinned main as F5; not stacked on F5).
+- Inspected code: this tree (P1 integrated). Stage-mask evidence: `git show 1fc598eb0b57f0d487fb50d315d7c4ad9c0d8af2:docs/re/population.md` section 15 and OQ-460..462; T32.5 worktree not edited.
+- Written: `docs/sim/house-tick-readiness.md` and this section. No `src/`, goldens, fixtures, OQ file, TASKS/AGENTS, merge, push, Wine, or build.
+
+### Steps
+
+1. **Inputs.** Table in the readiness note: every tick/mood/growth input with address, width, producer, first reader, gap. `Player::flags` exists but scenario import never writes `HEAD +0x48` / `+0x5C`. `GoodsInfo` has no `BauFirst`/`IdSec`. `HouseGroup` omits derived endpoints and id-to-slot. T26 helpers are import-only.
+2. **Three paths.** Play create: `stamp_placement` skips houses (`last = 0`). Original import: `last = 0` (matches original Load / owner Q1 catch-up). Own-save: exact `last` (P1 decision 4). Property `0x23` is `0x100733ac`. House gate is `last += 2500` at `0x10076230`; city stamp `city +0x10` is a different field (T32.5 / OQ-461).
+3. **Order.** Gate, mask via player property 0x21, `E` smooth, per-need decay, walker (P5), mood, `VermehrTab`, clamp/upgrade/downgrade/remove. No city-store take. OQ-451/452 kept separate. This-adjustment: house `esi = ecx` at `0x10076239`.
+4. **Split.** P2 needs mask plus `BauFirst` plus endpoints before a live tick. Propose a pure `HouseTickIn` to `HouseTickOut` kernel with would-fire flags and no draws. P3 upgrade, P4 booking/unlock, P5 walker/`IdSec`.
+5. **Tests.** Modular gate, wrap at 65536, mask bits, `E`/`s_j`/mood/growth, G7, save/resync, named mutations. OQ-450 left as owner question.
+6. **Stop.** Candidate OQ-470..472 in the readiness note only. OQ-450 not collapsed.
+
+### Acceptance
+
+| item | status |
+|---|---|
+| every input has evidence and a producer or named gap | **met** |
+| three lifecycle paths distinct | **met** |
+| original facts / owner decisions / proposed design separated | **met** |
+| P2/P3/P4/P5 effects and tests explicit | **met** |
+| OQ-450 resolved only by existing decision, else owner question | **open** (Q1 + exact-save do not settle own-save catch-up) |
+
+FINISHED means the inventory is complete, not that P2 is ready. Blockers: OQ-450, missing `BauFirst`/mask import (OQ-470/471), mood endpoints (OQ-472), OQ-460..462.
+
+### Decisions and reasoning
+
+1. Cite T32.5 at `1fc598eb` without copying files. Packet rule; avoids overwriting P1 docs.
+2. Keep OQ-450 open. Owner Q1 is original Load; P1 exact-save is own-save. Evidence: `state.md` section 4.7c Q1 vs decision 4 vs OQ-450 text.
+3. Propose a partial kernel, not live `tick_building`. Audit-only packet.
+4. Reserved OQ-470..472 for Waren `BauFirst`, `HEAD` mask import, and `+0xcc`/`+0xcd` derivation. Did not edit `open-questions.md`.
+
+`git diff --check` clean. Subagents: none. P1 `416993fa`, T10c `5b10ed3`, T32.5 `1fc598eb` untouched.

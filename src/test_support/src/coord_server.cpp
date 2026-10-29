@@ -200,7 +200,15 @@ class HostMeter {
         posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
         // The meter inherits no coordinator descriptor: the listening socket
         // stayed open in this child after the coordinator died (T10c F3, D2).
-        close_descriptors_from_3(&actions);
+        if (!close_descriptors_from_3(&actions)) {
+            posix_spawn_file_actions_destroy(&actions);
+            ::close(in_pipe[0]);
+            ::close(in_pipe[1]);
+            ::close(out_pipe[0]);
+            ::close(out_pipe[1]);
+            unavailable_ = true;
+            return;
+        }
         std::string exe = fixed;
         std::string a1 = "-NoProfile";
         std::string a2 = "-NonInteractive";

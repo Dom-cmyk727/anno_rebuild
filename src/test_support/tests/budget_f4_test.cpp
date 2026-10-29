@@ -33,7 +33,12 @@
 #include "budget_proc_harness.hpp"
 #include "child_process.hpp"
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
@@ -59,8 +64,23 @@ constexpr std::uint16_t kPortFailBind = 47832;    // F5 bind-failure diagnostic
 constexpr std::uint16_t kPortConcurrent = 47833;  // F5 concurrent usable start
 constexpr std::uint16_t kPortFailMissing = 47834; // F5 missing-executable
 
+std::string process_scratch_token() {
+    static const std::string token = [] {
+#if defined(_WIN32)
+        const auto pid = static_cast<unsigned long long>(GetCurrentProcessId());
+#else
+        const auto pid = static_cast<unsigned long long>(::getpid());
+#endif
+        const auto stamp = static_cast<unsigned long long>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+        return std::to_string(pid) + "-" + std::to_string(stamp);
+    }();
+    return token;
+}
+
 std::filesystem::path f4_dir() {
-    const auto dir = std::filesystem::temp_directory_path() / "anno1503-f4";
+    static const auto dir =
+        std::filesystem::temp_directory_path() / ("anno1503-f4-" + process_scratch_token());
     std::filesystem::create_directories(dir);
     return dir;
 }
@@ -230,6 +250,14 @@ OwnedCoord start_owned_host_coordinator(std::uint16_t port, const std::filesyste
     if (!identity.matches) {
         owned.diagnostic = identity.diagnostic.empty() ? std::string("listening identity rejected")
                                                        : identity.diagnostic;
+        return owned;
+    }
+    if (!owned.child.running()) {
+        owned.diagnostic = "listening line but process has exited";
+        return owned;
+    }
+    if (!anno::test::wire::local_port_accepts(port, 2000ms)) {
+        owned.diagnostic = "listening line but no listener";
         return owned;
     }
     owned.ready = true;
@@ -884,7 +912,8 @@ TEST_CASE("F5 (concurrent): two preparers contend for the same missing artifact"
 }
 
 std::filesystem::path f6_dir() {
-    const auto dir = std::filesystem::temp_directory_path() / "anno1503-f6";
+    static const auto dir =
+        std::filesystem::temp_directory_path() / ("anno1503-f6-" + process_scratch_token());
     std::filesystem::create_directories(dir);
     return dir;
 }
@@ -932,11 +961,13 @@ std::filesystem::path f6_fake_compiler(const std::string& name) {
         "prev=\n"
         "marker=\n"
         "config=\n"
+        "build=\n"
         "for a in \"$@\"; do\n"
         "  if [ \"$prev\" = \"-o\" ]; then out=$a; fi\n"
         "  if [ \"$prev\" = \"-include\" ]; then\n"
         "    marker=$(sed -n 's/^#define ANNO_COORD_MARKER_LITERAL \"\\(.*\\)\"/\\1/p' \"$a\")\n"
         "    config=$(sed -n 's/^#define ANNO_COORD_CONFIG_LITERAL \"\\(.*\\)\"/\\1/p' \"$a\")\n"
+        "    build=$(sed -n 's/^#define ANNO_COORD_BUILD 0x\\([0-9a-fA-F]*\\)ULL/\\1/p' \"$a\")\n"
         "  fi\n"
         "  case \"$a\" in\n"
         "    -DANNO_COORD_MARKER_LITERAL=*)\n"
@@ -951,6 +982,27 @@ std::filesystem::path f6_fake_compiler(const std::string& name) {
         "if [ -n \"$out\" ]; then printf '%s\\n' \"$@\" > \"${out}.argv\"; fi\n"
         "payload=$marker\n"
         "if [ \"$config\" = \"asan+ubsan\" ]; then payload=\"${payload}__asan_init\"; fi\n"
+        "emit_identity() {\n"
+        "  src=\"${out}.c\"\n"
+        "  cat > \"$src\" << 'END'\n"
+        "#include <stdio.h>\n"
+        "#include <string.h>\n"
+        "int main(int argc, char** argv) {\n"
+        "  if (argc > 1 && strcmp(argv[1], \"--identity\") == 0) {\n"
+        "    printf(\"COORD-IDENTITY build=%s config=%s marker=%s\\n\", \"BUILDTOKEN\", "
+        "\"CONFIGTOKEN\", \"MARKERTOKEN\");\n"
+        "    return 0;\n"
+        "  }\n"
+        "  return 2;\n"
+        "}\n"
+        "END\n"
+        "  sed -i \"s|BUILDTOKEN|$build|g; s|CONFIGTOKEN|$config|g; s|MARKERTOKEN|$marker|g\" "
+        "\"$src\"\n"
+        "  g++ -O0 -o \"$out\" \"$src\"\n"
+        "  rc=$?\n"
+        "  rm -f \"$src\"\n"
+        "  return $rc\n"
+        "}\n"
         "case \"$base\" in\n"
         "  fake-partial.sh)\n"
         "    printf 'PARTIAL-OUTPUT-NOT-AN-ARTIFACT' > \"$out\"\n"
@@ -974,16 +1026,30 @@ std::filesystem::path f6_fake_compiler(const std::string& name) {
         "  fake-slow.sh)\n"
         "    printf 'PARTIAL' > \"$out\"\n"
         "    sleep 2\n"
-        "    printf '\\177ELF%s' \"$payload\" > \"$out\"\n"
+        "    emit_identity || exit 1\n"
         "    exit 0\n"
         "    ;;\n"
         "  fake-delay.sh)\n"
         "    sleep 1\n"
+        "    emit_identity || exit 1\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  fake-prefix.sh)\n"
         "    printf '\\177ELF%s' \"$payload\" > \"$out\"\n"
         "    exit 0\n"
         "    ;;\n"
+        "  fake-closefd.sh)\n"
+        "    exec 1>&- 2>&-\n"
+        "    sleep 0.2\n"
+        "    exit 0\n"
+        "    ;;\n"
+        "  fake-big.sh)\n"
+        "    emit_identity || exit 1\n"
+        "    dd if=/dev/zero bs=1024 count=2048 >> \"$out\" 2>/dev/null\n"
+        "    exit 0\n"
+        "    ;;\n"
         "  *)\n"
-        "    printf '\\177ELF%s' \"$payload\" > \"$out\"\n"
+        "    emit_identity || exit 1\n"
         "    exit 0\n"
         "    ;;\n"
         "esac\n";
@@ -1481,4 +1547,97 @@ TEST_CASE("F4 (N4b): a descriptor the client holds without close-on-exec does no
     wsl_capture("kill -9 " + coord_pid + " || true");
     wsl_capture("pkill -f '[a]nno_budget_coord[^ ]* " + port + "' || true");
 #endif
+}
+
+TEST_CASE("F6 (R1): orphans=garbage is not a listening identity" * doctest::test_suite("budget")) {
+    char line[320];
+    std::snprintf(line, sizeof(line),
+                  "LISTENING 47839 build=%016llx compat=%llu incarnation=0000000000000001 "
+                  "orphans=garbage config=%s",
+                  static_cast<unsigned long long>(anno::test::coordinator_build()),
+                  static_cast<unsigned long long>(anno::test::wire::kCompatVersion),
+                  coordinator_config_name());
+    const auto identity = anno::test::coordinator_listening_identity(
+        line, 47839, anno::test::coordinator_build(), anno::test::wire::kCompatVersion,
+        coordinator_config_name());
+    INFO(identity.diagnostic);
+    CHECK(!identity.matches);
+}
+
+TEST_CASE("F6 (R1): an ELF prefix plus the marker is not a reusable executable" *
+          doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "r1-prefix";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const PrepareChild got = run_prepare_child(
+        f6_prepare_env(root, f6_fake_compiler("fake-prefix.sh"), "20000"), 25000ms);
+    INFO("ok=" << got.ok << " reused=" << got.reused << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.ok);
+    CHECK(!got.reused);
+}
+
+TEST_CASE("F6 (R1): a forged LISTENING line with no listener is not ready" *
+          doctest::test_suite("budget")) {
+    char body[400];
+    std::snprintf(body, sizeof(body),
+                  "echo \"LISTENING $1 build=%016llx compat=%llu incarnation=0000000000000001 "
+                  "orphans=0 config=%s\"\n"
+                  "exit 0\n",
+                  static_cast<unsigned long long>(anno::test::coordinator_build()),
+                  static_cast<unsigned long long>(anno::test::wire::kCompatVersion),
+                  coordinator_config_name());
+    const auto script = write_f6_script("forged-listen.sh", body);
+    const auto journal = f6_dir() / "forged.journal";
+    remove_file(journal);
+    OwnedCoord coord = start_owned_host_coordinator(47839, journal, {}, script);
+    INFO("ready=" << coord.ready << " listening=" << coord.listening
+                  << " diag=" << coord.diagnostic);
+    CHECK(!coord.ready);
+}
+
+TEST_CASE("F6 (R2): closing stdout does not time out a child that exits inside the deadline" *
+          doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "r2-closefd";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const PrepareChild got = run_prepare_child(
+        f6_prepare_env(root, f6_fake_compiler("fake-closefd.sh"), "1000"), 8000ms);
+    INFO("ok=" << got.ok << " timeout=" << got.timed_out << " exit=" << got.compiler_exit
+               << " diag=" << got.diagnostic);
+    CHECK(got.finished);
+    CHECK(!got.timed_out);
+    CHECK(got.compiler_exit == 0);
+}
+
+TEST_CASE("F6 (R2): hashing a warm artifact does not succeed after the deadline" *
+          doctest::test_suite("budget")) {
+    const auto root = f6_dir() / "r2-big";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+    const PrepareChild first =
+        run_prepare_child(f6_prepare_env(root, f6_fake_compiler("fake-big.sh"), "30000"), 40000ms);
+    INFO("first ok=" << first.ok << " diag=" << first.diagnostic);
+    REQUIRE(first.finished);
+    REQUIRE(first.ok);
+    const PrepareChild second =
+        run_prepare_child(f6_prepare_env(root, f6_fake_compiler("fake-big.sh"), "1"), 15000ms);
+    INFO("second ok=" << second.ok << " reused=" << second.reused << " timeout=" << second.timed_out
+                      << " diag=" << second.diagnostic);
+    CHECK(second.finished);
+    CHECK(!second.ok);
+    CHECK(second.timed_out);
+}
+
+TEST_CASE("F6 (R3): the F6 scratch directory is owned by this process" *
+          doctest::test_suite("budget")) {
+    const auto name = f6_dir().filename().string();
+    INFO(name);
+    CHECK(name.rfind("anno1503-f6-", 0) == 0);
+#if defined(_WIN32)
+    const auto pid_text = std::to_string(GetCurrentProcessId());
+#else
+    const auto pid_text = std::to_string(static_cast<unsigned long>(::getpid()));
+#endif
+    CHECK(name.find(pid_text) != std::string::npos);
 }

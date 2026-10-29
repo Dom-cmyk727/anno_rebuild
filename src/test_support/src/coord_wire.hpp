@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -11,6 +12,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <string>
 #include <string_view>
 
@@ -468,21 +470,89 @@ inline bool make_pipe(int fds[2]) {
 ///  - Elsewhere: one close action per descriptor from 3 to the open-file limit,
 ///    capped at 4096. A close of a descriptor that is not open succeeds in glibc
 ///    (checked in cache/f3/exp/fdexp.out), so the loop is safe.
-inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
+inline bool close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
 #if defined(__GLIBC__) && defined(__USE_GNU) &&                                                    \
     (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
-    posix_spawn_file_actions_addclosefrom_np(actions, 3);
+    return posix_spawn_file_actions_addclosefrom_np(actions, 3) == 0;
 #else
     long limit = ::sysconf(_SC_OPEN_MAX);
     if (limit < 0 || limit > 4096) {
         limit = 4096;
     }
     for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
-        posix_spawn_file_actions_addclose(actions, fd);
+        if (posix_spawn_file_actions_addclose(actions, fd) != 0) {
+            return false;
+        }
     }
+    return true;
 #endif
 }
+
 #endif
+
+/// True when 127.0.0.1:port accepts one TCP connection within `budget`. A
+/// printed LISTENING line is not this check. The WSL localhost relay can lag
+/// the LISTENING line, so callers use a short budget rather than one instant.
+inline bool local_port_accepts(std::uint16_t port, std::chrono::milliseconds budget) {
+    const auto deadline = std::chrono::steady_clock::now() + budget;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const Native fd = open_socket();
+        if (fd == kInvalid) {
+            return false;
+        }
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_port = htons(port);
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        bool accepted = false;
+#if defined(_WIN32)
+        u_long nonblocking = 1;
+        ::ioctlsocket(static_cast<SOCKET>(fd), FIONBIO, &nonblocking);
+        const int started = ::connect(static_cast<SOCKET>(fd), reinterpret_cast<sockaddr*>(&address),
+                                      sizeof(address));
+        if (started == 0) {
+            accepted = true;
+        } else {
+            fd_set writable;
+            FD_ZERO(&writable);
+            FD_SET(static_cast<SOCKET>(fd), &writable);
+            timeval wait{};
+            wait.tv_usec = 200000;
+            const int ready = ::select(0, nullptr, &writable, nullptr, &wait);
+            int error = 0;
+            int length = sizeof(error);
+            ::getsockopt(static_cast<SOCKET>(fd), SOL_SOCKET, SO_ERROR,
+                         reinterpret_cast<char*>(&error), &length);
+            accepted = ready > 0 && error == 0;
+        }
+#else
+        const int flags = ::fcntl(static_cast<int>(fd), F_GETFL, 0);
+        if (flags >= 0) {
+            ::fcntl(static_cast<int>(fd), F_SETFL, flags | O_NONBLOCK);
+        }
+        const int started = ::connect(static_cast<int>(fd), reinterpret_cast<sockaddr*>(&address),
+                                      sizeof(address));
+        if (started == 0) {
+            accepted = true;
+        } else if (errno == EINPROGRESS) {
+            pollfd polled{};
+            polled.fd = static_cast<int>(fd);
+            polled.events = POLLOUT;
+            const int ready = ::poll(&polled, 1, 200);
+            int error = 0;
+            socklen_t length = sizeof(error);
+            ::getsockopt(static_cast<int>(fd), SOL_SOCKET, SO_ERROR, &error, &length);
+            accepted = ready > 0 && error == 0;
+        }
+#endif
+        close_fd(fd);
+        if (accepted) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
 
 /// Positive: bytes read. 0: the peer closed. -2: no byte is ready yet.
 inline int recv_some(Native fd, std::uint8_t* dest, std::size_t cap) {

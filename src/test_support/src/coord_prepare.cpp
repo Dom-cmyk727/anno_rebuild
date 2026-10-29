@@ -2,6 +2,7 @@
 // One wall deadline covers the lock, the compiler, validation and cleanup of
 // processes this call spawned. A nonempty file is not a usable artifact.
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -209,12 +210,36 @@ bool file_contains(const std::filesystem::path& path, std::string_view needle) {
     return data.find(needle) != std::string::npos;
 }
 
-bool elf_file(const std::filesystem::path& path) {
+bool elf_executable(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
-    char magic[4] = {};
-    in.read(magic, 4);
-    return static_cast<bool>(in) && magic[0] == '\x7f' && magic[1] == 'E' && magic[2] == 'L' &&
-           magic[3] == 'F';
+    unsigned char header[64] = {};
+    in.read(reinterpret_cast<char*>(header), 64);
+    if (!in || header[0] != 0x7f || header[1] != 'E' || header[2] != 'L' || header[3] != 'F') {
+        return false;
+    }
+    if (header[4] != 2 || header[5] != 1 || header[6] != 1) {
+        return false;
+    }
+    const unsigned type = header[16] | (static_cast<unsigned>(header[17]) << 8);
+    const unsigned machine = header[18] | (static_cast<unsigned>(header[19]) << 8);
+    if ((type != 2 && type != 3) || machine != 62) {
+        return false;
+    }
+    std::uint64_t phoff = 0;
+    for (int i = 0; i < 8; ++i) {
+        phoff |= static_cast<std::uint64_t>(header[32 + i]) << (8 * i);
+    }
+    const unsigned phentsize = header[54] | (static_cast<unsigned>(header[55]) << 8);
+    const unsigned phnum = header[56] | (static_cast<unsigned>(header[57]) << 8);
+    if (phnum == 0 || phentsize < 56) {
+        return false;
+    }
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || phoff > size || static_cast<std::uint64_t>(phnum) * phentsize > size - phoff) {
+        return false;
+    }
+    return true;
 }
 
 bool instrumented_file(const std::filesystem::path& path) {
@@ -369,7 +394,7 @@ void kill_linux_group(const std::filesystem::path& wsl, const std::string& pid) 
                        CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) == 0) {
         return;
     }
-    WaitForSingleObject(process.hProcess, 2000);
+    WaitForSingleObject(process.hProcess, 200);
     TerminateProcess(process.hProcess, 1);
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
@@ -426,52 +451,54 @@ Captured run_bounded(const std::vector<std::string>& argv, const std::filesystem
         return captured;
     }
     HANDLE job = CreateJobObjectW(nullptr, nullptr);
-    if (job != nullptr) {
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof(info));
-        if (AssignProcessToJobObject(job, process.hProcess) == 0) {
-            CloseHandle(job);
-            job = nullptr;
-        }
+    if (job == nullptr) {
+        TerminateProcess(process.hProcess, 1);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        CloseHandle(read_end);
+        captured.spawn_failed = true;
+        return captured;
+    }
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof(info)) == 0 ||
+        AssignProcessToJobObject(job, process.hProcess) == 0) {
+        TerminateProcess(process.hProcess, 1);
+        CloseHandle(job);
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
+        CloseHandle(read_end);
+        captured.spawn_failed = true;
+        return captured;
     }
     ResumeThread(process.hThread);
     CloseHandle(process.hThread);
     bool eof = false;
-    while (clock::now() < deadline && !eof) {
-        DWORD available = 0;
-        if (PeekNamedPipe(read_end, nullptr, 0, nullptr, &available, nullptr) == 0) {
-            eof = true;
-            break;
-        }
-        if (available > 0) {
-            char buffer[512];
-            const DWORD want =
-                available < sizeof(buffer) ? available : static_cast<DWORD>(sizeof(buffer));
-            DWORD got = 0;
-            if (ReadFile(read_end, buffer, want, &got, nullptr) != 0 && got > 0) {
-                append_tail(captured.output, buffer, got);
+    while (clock::now() < deadline) {
+        if (!eof) {
+            DWORD available = 0;
+            if (PeekNamedPipe(read_end, nullptr, 0, nullptr, &available, nullptr) == 0) {
+                eof = true;
+            } else if (available > 0) {
+                char buffer[512];
+                const DWORD want =
+                    available < sizeof(buffer) ? available : static_cast<DWORD>(sizeof(buffer));
+                DWORD got = 0;
+                if (ReadFile(read_end, buffer, want, &got, nullptr) != 0 && got > 0) {
+                    append_tail(captured.output, buffer, got);
+                }
+                continue;
             }
-            continue;
         }
         DWORD code = 0;
-        const bool dead = GetExitCodeProcess(process.hProcess, &code) != 0 && code != STILL_ACTIVE;
-        if (dead) {
-            DWORD again = 0;
-            if (PeekNamedPipe(read_end, nullptr, 0, nullptr, &again, nullptr) == 0 || again == 0) {
-                // A still-open pipe with no bytes means a child kept the write
-                // end. That is not EOF; the deadline still applies.
-                if (PeekNamedPipe(read_end, nullptr, 0, nullptr, &again, nullptr) == 0) {
-                    eof = true;
-                    captured.exited = true;
-                    captured.exit_code = static_cast<int>(code);
-                    break;
-                }
-            }
+        if (GetExitCodeProcess(process.hProcess, &code) != 0 && code != STILL_ACTIVE) {
+            captured.exited = true;
+            captured.exit_code = static_cast<int>(code);
+            break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    if (!eof) {
+    if (!captured.exited) {
         captured.timed_out = true;
         std::string pid;
         {
@@ -479,18 +506,14 @@ Captured run_bounded(const std::vector<std::string>& argv, const std::filesystem
             std::getline(in, pid);
         }
         kill_linux_group(wsl, pid);
-        if (job != nullptr) {
-            TerminateJobObject(job, 1);
-        } else {
-            TerminateProcess(process.hProcess, 1);
-        }
-        WaitForSingleObject(process.hProcess, 2000);
-    } else if (!captured.exited) {
-        DWORD code = 0;
-        if (GetExitCodeProcess(process.hProcess, &code) != 0 && code != STILL_ACTIVE) {
-            captured.exited = true;
-            captured.exit_code = static_cast<int>(code);
-        }
+        TerminateJobObject(job, 1);
+        const auto left = clock::now() < deadline
+                              ? std::chrono::duration_cast<std::chrono::milliseconds>(deadline -
+                                                                                     clock::now())
+                                    .count()
+                              : 0;
+        const DWORD reap = static_cast<DWORD>(left > 0 ? left : 0);
+        WaitForSingleObject(process.hProcess, reap > 200 ? 200 : reap);
     }
     CloseHandle(process.hProcess);
     CloseHandle(read_end);
@@ -524,12 +547,19 @@ Captured run_bounded(const std::vector<std::string>& argv, const std::filesystem
         captured.spawn_failed = true;
         return captured;
     }
-    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
-    posix_spawnattr_setpgroup(&attr, 0);
-    posix_spawn_file_actions_adddup2(&actions, pipe_fd[1], 1);
-    posix_spawn_file_actions_adddup2(&actions, pipe_fd[1], 2);
-    posix_spawn_file_actions_addclose(&actions, pipe_fd[0]);
-    wire::close_descriptors_from_3(&actions);
+    if (posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP) != 0 ||
+        posix_spawnattr_setpgroup(&attr, 0) != 0 ||
+        posix_spawn_file_actions_adddup2(&actions, pipe_fd[1], 1) != 0 ||
+        posix_spawn_file_actions_adddup2(&actions, pipe_fd[1], 2) != 0 ||
+        posix_spawn_file_actions_addclose(&actions, pipe_fd[0]) != 0 ||
+        !wire::close_descriptors_from_3(&actions)) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attr);
+        ::close(pipe_fd[0]);
+        ::close(pipe_fd[1]);
+        captured.spawn_failed = true;
+        return captured;
+    }
     std::vector<std::string> owned = argv;
     std::vector<char*> raw;
     raw.reserve(owned.size() + 1);
@@ -548,22 +578,30 @@ Captured run_bounded(const std::vector<std::string>& argv, const std::filesystem
         return captured;
     }
     const int flags = ::fcntl(pipe_fd[0], F_GETFL, 0);
-    if (flags >= 0) {
-        ::fcntl(pipe_fd[0], F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0 || ::fcntl(pipe_fd[0], F_SETFL, flags | O_NONBLOCK) != 0) {
+        kill_group(pid);
+        ::waitpid(pid, nullptr, 0);
+        ::close(pipe_fd[0]);
+        captured.spawn_failed = true;
+        return captured;
     }
     bool eof = false;
-    while (clock::now() < deadline && !eof) {
-        pollfd polled{};
-        polled.fd = pipe_fd[0];
-        polled.events = POLLIN;
-        const int ready = ::poll(&polled, 1, 50);
-        if (ready > 0 && (polled.revents & (POLLIN | POLLHUP)) != 0) {
-            char buffer[512];
-            const ssize_t got = ::read(pipe_fd[0], buffer, sizeof(buffer));
-            if (got > 0) {
-                append_tail(captured.output, buffer, static_cast<std::size_t>(got));
-            } else if (got == 0) {
-                eof = true;
+    while (clock::now() < deadline) {
+        if (!eof) {
+            pollfd polled{};
+            polled.fd = pipe_fd[0];
+            polled.events = POLLIN;
+            const int ready = ::poll(&polled, 1, 50);
+            if (ready > 0 && (polled.revents & (POLLIN | POLLHUP)) != 0) {
+                char buffer[512];
+                const ssize_t got = ::read(pipe_fd[0], buffer, sizeof(buffer));
+                if (got > 0) {
+                    append_tail(captured.output, buffer, static_cast<std::size_t>(got));
+                    continue;
+                }
+                if (got == 0) {
+                    eof = true;
+                }
             }
         }
         int status = 0;
@@ -572,26 +610,19 @@ Captured run_bounded(const std::vector<std::string>& argv, const std::filesystem
             captured.exited = true;
             if (WIFEXITED(status)) {
                 captured.exit_code = WEXITSTATUS(status);
+            } else if (WIFSIGNALED(status)) {
+                captured.exit_code = 128 + WTERMSIG(status);
             }
-            if (eof) {
-                break;
-            }
+            break;
+        }
+        if (eof) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
-    if (eof && !captured.exited) {
-        int status = 0;
-        const pid_t got = ::waitpid(pid, &status, WNOHANG);
-        if (got == pid) {
-            captured.exited = true;
-            if (WIFEXITED(status)) {
-                captured.exit_code = WEXITSTATUS(status);
-            }
-        }
-    }
-    if (!(eof && captured.exited)) {
+    if (!captured.exited) {
         captured.timed_out = true;
         kill_group(pid);
-        const auto reap_until = clock::now() + std::chrono::seconds(2);
+        const auto reap_until = clock::now() < deadline ? deadline : clock::now();
         while (clock::now() < reap_until) {
             int status = 0;
             const pid_t got = ::waitpid(pid, &status, WNOHANG);
@@ -600,6 +631,7 @@ Captured run_bounded(const std::vector<std::string>& argv, const std::filesystem
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        ::waitpid(pid, nullptr, 0);
     }
     ::close(pipe_fd[0]);
     return captured;
@@ -679,7 +711,7 @@ bool expected_identity(const Manifest& manifest) {
 bool binary_bytes_ok(const std::filesystem::path& binary) {
     std::error_code error;
     if (!std::filesystem::is_regular_file(binary, error) ||
-        std::filesystem::file_size(binary, error) == 0 || !elf_file(binary) ||
+        std::filesystem::file_size(binary, error) == 0 || !elf_executable(binary) ||
         !file_contains(binary, coordinator_marker())) {
         return false;
     }
@@ -689,13 +721,73 @@ bool binary_bytes_ok(const std::filesystem::path& binary) {
     return true;
 }
 
-bool artifact_usable(const std::filesystem::path& binary, CoordinatorPrepare& result) {
+bool identity_probe(const std::filesystem::path& binary, clock::time_point deadline,
+                    CoordinatorPrepare& result) {
+    if (clock::now() >= deadline) {
+        result.timed_out = true;
+        result.diagnostic = "prepare wait deadline";
+        return false;
+    }
+    std::vector<std::string> args;
+#if defined(_WIN32)
+    args.push_back(to_wsl_path(binary));
+#else
+    args.push_back(binary.string());
+#endif
+    args.emplace_back("--identity");
+    const auto pidfile = std::filesystem::path(binary.string() + ".probe.pid");
+    const Captured captured = run_bounded(args, pidfile, deadline);
+    std::error_code error;
+    std::filesystem::remove(pidfile, error);
+    if (captured.spawn_failed) {
+        result.diagnostic = "unusable artifact";
+        return false;
+    }
+    if (captured.timed_out || !captured.exited) {
+        result.timed_out = true;
+        result.diagnostic = "prepare wait deadline";
+        return false;
+    }
+    if (clock::now() >= deadline) {
+        result.timed_out = true;
+        result.diagnostic = "prepare wait deadline";
+        return false;
+    }
+    const std::string expect = "COORD-IDENTITY build=" + hex64(coordinator_build()) + " config=" +
+                               coordinator_config_name() + " marker=" + coordinator_marker();
+    if (captured.exit_code != 0 || captured.output.find(expect) == std::string::npos) {
+        result.diagnostic = "unusable artifact";
+        return false;
+    }
+    if (std::string(coordinator_config_name()) == "asan+ubsan" &&
+        captured.output.find("instrumented=libasan") == std::string::npos) {
+        result.diagnostic = "sanitized coordinator artifact is not instrumented";
+        return false;
+    }
+    return true;
+}
+
+bool artifact_usable(const std::filesystem::path& binary, CoordinatorPrepare& result,
+                     clock::time_point deadline) {
+    if (clock::now() >= deadline) {
+        result.timed_out = true;
+        result.diagnostic = "prepare wait deadline";
+        return false;
+    }
     const Manifest manifest = read_manifest(std::filesystem::path(binary.string() + ".identity"));
     if (!expected_identity(manifest) || !binary_bytes_ok(binary)) {
         return false;
     }
     const std::string content = hash_file(binary);
+    if (clock::now() >= deadline) {
+        result.timed_out = true;
+        result.diagnostic = "prepare wait deadline";
+        return false;
+    }
     if (content.empty() || content != manifest.content) {
+        return false;
+    }
+    if (!identity_probe(binary, deadline, result)) {
         return false;
     }
     result.content = content;
@@ -830,6 +922,18 @@ std::vector<std::string> split_flags(const char* text) {
 bool publish_staged(const std::filesystem::path& staging, const std::filesystem::path& final_path,
                     const std::string& compiler, CoordinatorPrepare& result) {
     std::error_code error;
+#if !defined(_WIN32)
+    std::filesystem::permissions(staging,
+                                 std::filesystem::perms::owner_exec |
+                                     std::filesystem::perms::group_exec |
+                                     std::filesystem::perms::others_exec,
+                                 std::filesystem::perm_options::add, error);
+#endif
+    const auto staged_identity = std::filesystem::path(staging.string() + ".identity");
+    if (!write_manifest(staging, compiler, result)) {
+        result.diagnostic = "identity manifest failed";
+        return false;
+    }
     const auto hold = std::filesystem::path(final_path.string() + ".hold." +
                                             hex64(static_cast<std::uint64_t>(
 #if defined(_WIN32)
@@ -838,43 +942,58 @@ bool publish_staged(const std::filesystem::path& staging, const std::filesystem:
                                                 static_cast<std::uint64_t>(::getpid())
 #endif
                                                     )));
+    const auto hold_identity = std::filesystem::path(hold.string() + ".identity");
+    const auto final_identity = std::filesystem::path(final_path.string() + ".identity");
+    auto restore_previous = [&] {
+        std::error_code restore;
+        if (std::filesystem::exists(hold, restore)) {
+            std::filesystem::rename(hold, final_path, restore);
+        }
+        if (std::filesystem::exists(hold_identity, restore)) {
+            std::filesystem::rename(hold_identity, final_identity, restore);
+        }
+        std::filesystem::remove(staged_identity, restore);
+    };
     bool displaced = false;
     if (std::filesystem::exists(final_path, error)) {
         std::filesystem::rename(final_path, hold, error);
         if (error) {
+            std::filesystem::remove(staged_identity, error);
             result.diagnostic = "rename of completed artifact failed";
-            std::filesystem::remove(staging, error);
             return false;
         }
         displaced = true;
     }
+    if (std::filesystem::exists(final_identity, error)) {
+        std::filesystem::rename(final_identity, hold_identity, error);
+        if (error) {
+            restore_previous();
+            result.diagnostic = "rename of completed artifact failed";
+            return false;
+        }
+    }
+    if (env_is("ANNO_TEST_COORD_PUBLISH_FAIL", "rename")) {
+        restore_previous();
+        result.diagnostic = "rename of completed artifact failed";
+        return false;
+    }
     std::filesystem::rename(staging, final_path, error);
     if (error) {
-        if (displaced) {
-            std::error_code restore;
-            std::filesystem::rename(hold, final_path, restore);
-        }
+        restore_previous();
         std::filesystem::remove(staging, error);
         result.diagnostic = "rename of completed artifact failed";
         return false;
     }
-#if !defined(_WIN32)
-    std::filesystem::permissions(final_path,
-                                 std::filesystem::perms::owner_exec |
-                                     std::filesystem::perms::group_exec |
-                                     std::filesystem::perms::others_exec,
-                                 std::filesystem::perm_options::add, error);
-#endif
-    if (!write_manifest(final_path, compiler, result)) {
+    std::filesystem::rename(staged_identity, final_identity, error);
+    if (error) {
         std::filesystem::remove(final_path, error);
-        if (displaced) {
-            std::filesystem::rename(hold, final_path, error);
-        }
+        restore_previous();
         result.diagnostic = "identity manifest failed";
         return false;
     }
     if (displaced) {
         std::filesystem::remove(hold, error);
+        std::filesystem::remove(hold_identity, error);
     }
     return true;
 }
@@ -955,6 +1074,15 @@ ListeningIdentity coordinator_listening_identity(std::string_view line, std::uin
     if (end == nullptr || *end != '\0' || identity.incarnation == 0) {
         return fail("malformed incarnation");
     }
+    if (orphans_text.empty() || orphans_text[0] < '0' || orphans_text[0] > '9') {
+        return fail("malformed orphans");
+    }
+    errno = 0;
+    const unsigned long long orphans = std::strtoull(orphans_text.c_str(), &end, 10);
+    if (end == nullptr || *end != '\0' || errno == ERANGE) {
+        return fail("malformed orphans");
+    }
+    identity.orphans = orphans;
     if (identity.port != port) {
         return fail("port mismatch");
     }
@@ -1035,10 +1163,15 @@ CoordinatorPrepare prepare_host_coordinator() {
         return result;
     }
     const bool rebuild = env_is("ANNO_TEST_COORD_PREPARE_REBUILD", "1");
-    if (!rebuild && artifact_usable(result.binary, result)) {
-        result.ok = true;
-        result.reused = true;
-        return result;
+    if (!rebuild) {
+        if (artifact_usable(result.binary, result, deadline)) {
+            result.ok = true;
+            result.reused = true;
+            return result;
+        }
+        if (result.timed_out) {
+            return result;
+        }
     }
     const bool private_root = env_text("ANNO_TEST_COORD_PREPARE_ROOT") != nullptr;
 #if !defined(_WIN32)
@@ -1050,15 +1183,30 @@ CoordinatorPrepare prepare_host_coordinator() {
         const Manifest existing =
             read_manifest(std::filesystem::path(result.binary.string() + ".identity"));
         if (binary_bytes_ok(result.binary) && !existing.ok) {
+            if (!identity_probe(result.binary, deadline, result)) {
+                if (!result.timed_out) {
+                    result.diagnostic = "canonical coordinator artifact failed identity validation";
+                }
+                return result;
+            }
             if (!write_manifest(result.binary, "cmake", result)) {
                 result.diagnostic = "identity manifest failed";
+                return result;
+            }
+            if (clock::now() >= deadline) {
+                result.ok = false;
+                result.timed_out = true;
+                result.diagnostic = "prepare wait deadline";
                 return result;
             }
             result.ok = true;
             result.reused = true;
             return result;
         }
-        if (!artifact_usable(result.binary, result)) {
+        if (!artifact_usable(result.binary, result, deadline)) {
+            if (result.timed_out) {
+                return result;
+            }
             const bool asan = std::string(coordinator_config_name()) == "asan+ubsan";
             const bool marker_ok = file_contains(result.binary, coordinator_marker());
             result.diagnostic = asan && marker_ok && !instrumented_file(result.binary)
@@ -1168,9 +1316,17 @@ CoordinatorPrepare prepare_host_coordinator() {
         }
         return result;
     }
-    if (!binary_bytes_ok(staging)) {
+    if (clock::now() >= deadline) {
         cleanup_staging();
-        result.diagnostic = "unusable artifact";
+        result.timed_out = true;
+        result.diagnostic = "prepare wait deadline";
+        return result;
+    }
+    if (!binary_bytes_ok(staging) || !identity_probe(staging, deadline, result)) {
+        cleanup_staging();
+        if (!result.timed_out) {
+            result.diagnostic = "unusable artifact";
+        }
         if (!captured.output.empty()) {
             result.diagnostic.push_back('\n');
             result.diagnostic += captured.output;

@@ -222,7 +222,9 @@ std::filesystem::path host_coordinator_binary();
 /// and cleanup of processes this call spawned. Callers are serialized on
 /// <artifact>.lock (and an in-process timed mutex). A nonempty file is not
 /// enough: reuse requires a manifest whose build, compatibility, config, flags
-/// and content hash match, and the binary must contain the identity marker.
+/// and content hash match, a loadable ELF64 executable, and a supervised
+/// `--identity` probe of that file. The same deadline covers the hash and the
+/// probe: a match that finishes after the deadline is not success.
 /// A failed attempt deletes only its own staging file. Test-only hooks, all
 /// documented in docs/perf/README.md: ANNO_TEST_COORD_PREPARE_FAIL,
 /// ANNO_TEST_COORD_PREPARE_DEADLINE_MS, ANNO_TEST_COORD_PREPARE_ROOT,
@@ -238,6 +240,8 @@ struct ListeningIdentity {
     std::uint64_t build = 0;
     std::uint64_t compat = 0;
     std::uint64_t incarnation = 0;
+    /// Decimal `orphans=` count. A non-numeric value does not match.
+    std::uint64_t orphans = 0;
     std::string config;
     std::string diagnostic;
 };

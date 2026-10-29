@@ -165,7 +165,11 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         posix_spawnattr_destroy(&attr);
         return false;
     }
-    close_descriptors_from_3(&actions);
+    if (!close_descriptors_from_3(&actions)) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
     std::string path = exe.string();
     std::string port_text = std::to_string(port);
     std::string mode = all_interfaces ? "any" : "local";

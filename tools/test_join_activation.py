@@ -7,13 +7,22 @@ A failing assertion prints the full event trace.
 """
 
 import contextlib
+import hashlib
+import inspect
+import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
 import unittest
+import multiprocessing
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import join_activation as ja
+import join_jitter_study as jj
 
 RULES = os.environ.get("JOIN_RULES", "F2")
 
@@ -2941,5 +2950,422 @@ MUTANTS.update({
 })
 
 
+# ---- round dn: H1-H4 and N1-N4 regressions (failing on the defective source) ----
+def _repo_root():
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _git_show(spec):
+    return subprocess.check_output(["git", "show", spec], cwd=_repo_root())
+
+
+def _blob_sha256(name, head="HEAD"):
+    return hashlib.sha256(_git_show("%s:tools/%s" % (head, name))).hexdigest()
+
+
+def _jitter_codes(events, end_t=1000, cfg=None):
+    return {code for code, _ in ja.validate(events, cfg or ja.Cfg(), end_t)}
+
+
+def _served_send(lost=False):
+    """One un-serialized data transmission whose derived arrival is t=150."""
+    ident = ("data", "H", "J1", 0, 1, 4, 1)
+    # JoinGrant, not a Turn: the retention checker only maps Turn sends, and this fixture
+    # is about transmission identity rather than the retained-turn log.
+    send = ev("send", 0, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", attempt=1, lost=lost,
+              sid=7, epoch=1, size=10, jitter_ms=0, jitter_id=ident, jitter_source="seed")
+    arrive = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=1,
+                attempt=1, dup=False)
+    return ident, send, arrive
+
+
+class RoundDnH1Conservation(unittest.TestCase):
+    """Round-dh H1. These pass on the fixed checker and fail on the 30964c2 archive."""
+
+    def test_h1_control_one_matching_arrival_is_accepted(self):
+        _, send, arrive = _served_send()
+        self.assertNotIn("xviii", _jitter_codes([send, arrive]))
+
+    def test_h1a_wrong_time_extra_arrival_is_rejected(self):
+        _, send, arrive = _served_send()
+        extra = ev("arrive", 200, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=1,
+                   attempt=1, dup=False)
+        self.assertIn("xviii", _jitter_codes([send, arrive, extra]))
+
+    def test_h1b_orphan_arrival_with_a_changed_sid_is_rejected(self):
+        _, send, arrive = _served_send()
+        orphan = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=99, epoch=1,
+                    attempt=1, dup=False)
+        self.assertIn("xviii", _jitter_codes([send, arrive, orphan]))
+
+    def test_h1c_outcome_of_a_lost_transmission_is_rejected(self):
+        _, send, arrive = _served_send(lost=True)
+        self.assertIn("xviii", _jitter_codes([send, arrive]))
+
+    def test_h1d_boolean_attempt_script_is_rejected(self):
+        ident = ("data", "H", "J1", 0, 0, 0, True)
+        with self.assertRaises(ValueError):
+            ja.Cfg(jitter_script=((ident, 5),)).validate()
+
+    def test_h1e_negative_epoch_script_is_rejected(self):
+        ident = ("data", "H", "J1", 0, -1, 0, 1)
+        with self.assertRaises(ValueError):
+            ja.Cfg(jitter_script=((ident, 5),)).validate()
+
+    def test_h1f_empty_endpoint_script_is_rejected(self):
+        ident = ("data", "", "J1", 0, 0, 0, 1)
+        with self.assertRaises(ValueError):
+            ja.Cfg(jitter_script=((ident, 5),)).validate()
+
+
+class _Events:
+    def __init__(self, events):
+        self.events = events
+
+
+class RoundDnH4Metrics(unittest.TestCase):
+    """Round-dh H4 and the F2.4 evidence metrics."""
+
+    def test_h4_input_on_samples_maximum_lag_without_a_later_apply(self):
+        sim = _Events([
+            {"kind": "apply", "peer": "H", "turn": 100, "t": 0},
+            {"kind": "input_on", "peer": "J1", "applied": 98, "t": 1},
+        ])
+        self.assertEqual(jj.maximum_lag(sim), 2)
+
+    def test_h4_a_loading_joiner_does_not_increase_seated_lag(self):
+        # Seated P1 is 2 turns behind. Loading J1 has applied turn 2 and is not seated
+        # and has not opened input, so its 100-turn gap is not the seated maximum.
+        sim = _Events([
+            {"kind": "seated", "peer": "P1", "t": 0},
+            {"kind": "apply", "peer": "P1", "turn": 100, "t": 1},
+            {"kind": "apply", "peer": "H", "turn": 102, "t": 2},
+            {"kind": "admit", "name": "J1", "t": 3},
+            {"kind": "apply", "peer": "J1", "turn": 2, "t": 4},
+        ])
+        self.assertEqual(jj.maximum_lag(sim), 2)
+
+    def test_n6_peak_retained_turns_and_bytes_match_a_hand_vector(self):
+        sim = _Events([
+            {"kind": "retain", "turn": 1, "bytes": 10},
+            {"kind": "retain", "turn": 2, "bytes": 25},
+            {"kind": "release", "turn": 1},
+            {"kind": "retain", "turn": 3, "bytes": 5},
+        ])
+        # Two turns and 35 bytes are held together, then turn 1 leaves, then turn 3 joins
+        # the surviving 25 bytes. The peaks are 2 turns and 35 bytes.
+        self.assertEqual(jj.peak_retained(sim), (2, 35))
+
+    def test_n6_queued_network_traffic_is_not_every_scheduler_event(self):
+        sim = ja.one_join(ja.link_cfg("100M"), until=2000)
+
+        def not_network():
+            return None
+
+        sim.q.append((sim.t, 0, 0, not_network, ()))
+        got = jj.metrics(sim)
+        network = sum(1 for item in sim.q if item[3].__name__ in ("arrive", "take_ack"))
+        self.assertEqual(got["pending_scheduler_events"], len(sim.q))
+        self.assertEqual(got["pending_network_callbacks"], network)
+        self.assertLess(got["pending_network_callbacks"], got["pending_scheduler_events"])
+        self.assertEqual(got["pending_wire_bytes"], sum(link["occ"] for link in sim.links.values()))
+
+    def test_n6_reassembly_ownership_is_read_from_events(self):
+        sim = ja.one_join(ja.link_cfg("100M"), until=2000)
+        sim.peak_reasm_frags = -1
+        held = [event["held"] for event in sim.events if event["kind"] == "reasm_acquire"]
+        self.assertEqual(jj.metrics(sim)["peak_reassembly_fragments"], max(held or [0]))
+
+
+def _manifest(diagnostics):
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=_repo_root(), text=True).strip()
+    return {
+        "kind": "manifest", "run_id": "round-dn-fixture",
+        "provenance": {
+            "code_head": head,
+            "source_hashes": {
+                "join_activation.py": _blob_sha256("join_activation.py"),
+                "join_jitter_study.py": _blob_sha256("join_jitter_study.py"),
+            },
+            "python": "test", "platform": "test",
+        },
+        "row_timeout_seconds": 300, "study_timeout_seconds": 5400, "diagnostics": list(diagnostics),
+    }
+
+
+def _write_study(path, rows, diagnostics):
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(_manifest(diagnostics), sort_keys=True) + "\n")
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True, default=list) + "\n")
+
+
+def _production_validate(path, full_matrix=False, extra_args=()):
+    """Run the production validator. A fixture strips only the 72-row cardinality."""
+    source = inspect.getsource(jj.main)
+    if not full_matrix:
+        source = source.replace("len(primary) != 72", "len(primary) != len(expected)")
+        source = source.replace('len({row["config_hash"] for row in primary}) != 72',
+                                'len({row["config_hash"] for row in primary}) != len(expected)')
+    saved = jj.main
+    exec(compile(source, jj.__file__, "exec"), jj.__dict__)
+    try:
+        try:
+            code = jj.main(["--validate", "--output", path, *extra_args])
+        except SystemExit as exc:
+            return (exc.code if isinstance(exc.code, int) else 1), str(exc.code or exc)
+        return (0 if code in (None, 0) else code), ""
+    finally:
+        jj.main = saved
+
+
+@contextlib.contextmanager
+def _fixture_matrix():
+    saved = (jj.RATES, jj.TIMERS, jj.ROWS, jj.PROFILES)
+    jj.RATES = ("100M",)
+    jj.TIMERS = (300,)
+    jj.ROWS = ("one_fragment",)
+    jj.PROFILES = {name: saved[3][name] for name in ("zero", "uniform25-seed6101")}
+    try:
+        yield
+    finally:
+        jj.RATES, jj.TIMERS, jj.ROWS, jj.PROFILES = saved
+
+
+def _finished(profile, script=(), diagnostic=None):
+    row = jj.run("100M", 300, "one_fragment", profile, script, diagnostic)
+    row["wall_seconds"] = 1.0
+    return row
+
+
+class RoundDnStudyEvidence(unittest.TestCase):
+    """N1-N4 and the round-dh H2/H3 tamper and diagnostic evidence. One small matrix, never 72 rows."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._dir = tempfile.mkdtemp(prefix="t61-dn-", dir=os.path.join(_repo_root(), "cache", "t61-f2", "dn"))
+        script = ((("data", "H", "J1", 1, 0, 0, 1), 100),)
+        zero = _finished("zero")
+        keyed = _finished("uniform25-seed6101")
+        repeat = dict(keyed)
+        repeat["kind"] = "diagnostic"
+        repeat["diagnostic"] = "repeat"
+        asymmetric = _finished("zero", script, "asymmetric-data-delay")
+        cls.rows = [zero, keyed, repeat, asymmetric]
+        cls.script = script
+        cls.path = os.path.join(cls._dir, "clean.jsonl")
+        _write_study(cls.path, cls.rows, ["repeat", "asymmetric-data-delay"])
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls._dir, ignore_errors=True)
+
+    def _copy(self, name, mutate, diagnostics=None):
+        path = os.path.join(self._dir, name)
+        rows = json.loads(json.dumps(self.rows, default=list))
+        # json round-trip above used the in-memory rows; rewrite from the originals via dumps.
+        rows = [json.loads(json.dumps(row, sort_keys=True, default=list)) for row in self.rows]
+        mutate(rows)
+        names = ["repeat", "asymmetric-data-delay"] if diagnostics is None else diagnostics
+        _write_study(path, rows, names)
+        return path
+
+    def _check(self, path, extra_args=()):
+        with _fixture_matrix():
+            return _production_validate(path, full_matrix=False, extra_args=extra_args)
+
+    def test_clean_fixture_is_accepted(self):
+        code, text = self._check(self.path)
+        self.assertEqual(code, 0, text)
+
+    def test_h2_invented_result_hash_is_rejected(self):
+        def edit(rows):
+            rows[0]["result_hash"] = "0" * 64
+        code, text = self._check(self._copy("hash.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+
+    def test_h2_invented_semantic_trace_hash_is_rejected(self):
+        def edit(rows):
+            rows[0]["semantic_trace_hash"] = "1" * 64
+        code, text = self._check(self._copy("trace.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+
+    def test_h2_metrics_reduced_to_validators_are_rejected(self):
+        def edit(rows):
+            rows[0]["metrics"] = {"validators": []}
+        code, text = self._check(self._copy("metrics-dropped.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("metrics", text)
+
+    def test_h2_edited_ack_bytes_are_rejected(self):
+        def edit(rows):
+            rows[0]["metrics"]["ack_bytes"] += 1000
+        code, text = self._check(self._copy("ack.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("metrics", text)
+
+    def test_h2_edited_config_rate_is_rejected(self):
+        def edit(rows):
+            rows[0]["config"]["rate_bps"] += 1
+        code, text = self._check(self._copy("rate.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("config", text)
+
+    def test_h2_edited_config_jitter_is_rejected(self):
+        def edit(rows):
+            rows[0]["config"]["jitter_max_ms"] += 1
+        code, text = self._check(self._copy("jitter.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("config", text)
+
+    def test_h2_nan_wall_seconds_are_rejected(self):
+        def edit(rows):
+            rows[0]["wall_seconds"] = float("nan")
+        code, text = self._check(self._copy("nan.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+
+    def test_h2_wall_seconds_past_the_row_bound_are_rejected(self):
+        def edit(rows):
+            rows[0]["wall_seconds"] = 301
+        code, text = self._check(self._copy("wall.jsonl", edit))
+        self.assertNotEqual(code, 0, text)
+
+    def test_h2_removing_both_diagnostics_is_rejected(self):
+        path = os.path.join(self._dir, "no-diag.jsonl")
+        primaries = [row for row in self.rows if row["kind"] == "primary"]
+        _write_study(path, primaries, [])
+        code, text = self._check(path)
+        self.assertNotEqual(code, 0, text)
+        self.assertIn("diagnostic", text)
+
+    def test_h2_non_ancestor_head_is_rejected(self):
+        path = os.path.join(self._dir, "ancestor.jsonl")
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=_repo_root(), text=True).strip()
+        body = open(self.path, encoding="utf-8").read().replace('"code_head": "%s"' % head, '"code_head": "%s"' % ("0" * 40), 1)
+        open(path, "w", encoding="utf-8", newline="\n").write(body)
+        code, detail = self._check(path)
+        self.assertNotEqual(code, 0, detail)
+
+    def test_h2_changed_source_hash_is_rejected(self):
+        path = os.path.join(self._dir, "source.jsonl")
+        body = open(self.path, encoding="utf-8").read()
+        current = _blob_sha256("join_activation.py")
+        open(path, "w", encoding="utf-8", newline="\n").write(body.replace(current, "a" * 64, 1))
+        code, detail = self._check(path)
+        self.assertNotEqual(code, 0, detail)
+
+    def test_n1_provenance_hashes_the_committed_blob(self):
+        recorded = jj.provenance()["source_hashes"]
+        for name in ("join_activation.py", "join_jitter_study.py"):
+            blob = _git_show("HEAD:tools/%s" % name)
+            raw = open(os.path.join(_repo_root(), "tools", name), "rb").read()
+            self.assertNotEqual(raw, blob)
+            self.assertEqual(recorded[name], hashlib.sha256(blob).hexdigest())
+            self.assertNotEqual(recorded[name], hashlib.sha256(raw).hexdigest())
+
+    def test_n1_crlf_and_lf_checkouts_validate_the_same_blob(self):
+        tmp = os.path.join(self._dir, "eol-repo")
+        os.makedirs(os.path.join(tmp, "tools"))
+        blobs = {}
+        for name in ("join_activation.py", "join_jitter_study.py"):
+            blobs[name] = _git_show("HEAD:tools/%s" % name)
+            open(os.path.join(tmp, "tools", name), "wb").write(blobs[name])
+        git = ["git", "-c", "user.name=t61", "-c", "user.email=t61@example.invalid", "-c", "core.autocrlf=false"]
+        subprocess.check_call(["git", "init"], cwd=tmp)
+        subprocess.check_call(git + ["add", "tools"], cwd=tmp)
+        subprocess.check_call(git + ["commit", "-m", "lf blob"], cwd=tmp)
+        probe = os.path.join(tmp, "tools", "_prov.py")
+        open(probe, "w", encoding="utf-8", newline="\n").write(
+            "import os, sys\n"
+            "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+            "import join_jitter_study as jj\n"
+            "print(jj.provenance()['source_hashes']['join_activation.py'])\n"
+            "print(jj.provenance()['source_hashes']['join_jitter_study.py'])\n")
+
+        def recorded(mode):
+            # git checkout -c core.autocrlf left this host's worktree as LF, so the two
+            # encodings are written explicitly from the same committed blob.
+            for name, blob in blobs.items():
+                data = blob if mode == "lf" else blob.replace(b"\n", b"\r\n")
+                open(os.path.join(tmp, "tools", name), "wb").write(data)
+            raw = open(os.path.join(tmp, "tools", "join_activation.py"), "rb").read()
+            if mode == "crlf":
+                self.assertIn(b"\r\n", raw)
+                self.assertNotEqual(raw, blobs["join_activation.py"])
+            else:
+                self.assertEqual(raw, blobs["join_activation.py"])
+            proc = subprocess.run([sys.executable, "-I", "-B", "_prov.py"], cwd=os.path.join(tmp, "tools"),
+                                  capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return proc.stdout.split()
+
+        crlf = recorded("crlf")
+        lf = recorded("lf")
+        self.assertEqual(crlf, lf)
+        self.assertEqual(crlf[0], hashlib.sha256(blobs["join_activation.py"]).hexdigest())
+
+    def test_n3_a_short_deadline_reaps_the_owned_worker(self):
+        before = {process.pid for process in multiprocessing.active_children()}
+        started = time.monotonic()
+        result = jj.controlled_run(("100M", 300, "one_fragment", "zero", (), None), 0.001)
+        self.assertEqual(result["status"], "timeout")
+        self.assertLess(time.monotonic() - started, 5)
+        left = [process for process in multiprocessing.active_children()
+                if process.pid not in before and process.is_alive()]
+        self.assertEqual(left, [])
+
+    def test_n3_validate_replay_obeys_the_row_deadline(self):
+        started = time.monotonic()
+        code, text = self._check(self.path, extra_args=("--row-timeout", "0.001"))
+        self.assertNotEqual(code, 0, text)
+        self.assertLess(time.monotonic() - started, 5)
+        self.assertIn("timeout", text)
+        self.assertEqual([process for process in multiprocessing.active_children() if process.is_alive()], [])
+
+    def test_h3_repeat_matches_its_primary_projection(self):
+        primary = _finished("uniform25-seed6101")
+        repeat = _finished("uniform25-seed6101", (), "repeat")
+        self.assertEqual(repeat["result_hash"], primary["result_hash"])
+        self.assertEqual(repeat["semantic_trace_hash"], primary["semantic_trace_hash"])
+
+    def test_h3_asymmetric_delay_is_the_scripted_100ms(self):
+        ident = self.script[0][0]
+        zero = _drive_one_fragment("zero", ())
+        shifted = _drive_one_fragment("zero", self.script)
+        def arrival(sim):
+            sent = next(event for event in sim.events
+                        if event["kind"] == "send" and tuple(event.get("jitter_id", ())) == ident)
+            self.assertEqual(sent["jitter_source"], "script" if sim is shifted else "seed")
+            arrived = next(event for event in sim.events
+                           if event["kind"] == "arrive" and event.get("sid") == sent["sid"]
+                           and event.get("attempt") == sent["attempt"] and event.get("src") == sent["src"])
+            return sent, arrived
+        zero_send, zero_arrive = arrival(zero)
+        shift_send, shift_arrive = arrival(shifted)
+        self.assertEqual(shift_send["jitter_ms"], 100)
+        self.assertEqual(zero_send["jitter_ms"], 0)
+        self.assertEqual(shift_arrive["t"] - zero_arrive["t"], 100)
+        used = {tuple(event["jitter_id"]) for event in shifted.events
+                if event["kind"] in ("send", "ack_send") and event.get("jitter_source") == "script"}
+        self.assertEqual(used, {ident})
+
+
+def _drive_one_fragment(profile, script):
+    lo, hi, seed, configured = jj.PROFILES[profile]
+    original = ja.link_cfg
+
+    def config(selected_rate, **kw):
+        return original(selected_rate, jitter_min_ms=lo, jitter_max_ms=hi, jitter_seed=seed,
+                        jitter_script=tuple(configured) + tuple(script), **kw)
+
+    ja.link_cfg = config
+    try:
+        return ja.SENS_ROWS["one_fragment"][0]("100M", 300)
+    finally:
+        ja.link_cfg = original
+
+
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     unittest.main()
+

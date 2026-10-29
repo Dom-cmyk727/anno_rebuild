@@ -300,8 +300,9 @@ def main(argv=None):
             raise SystemExit("invalid study: repeat diagnostic does not match its primary row")
         declared = [(["data", "H", "J1", 1, 0, 0, 1], 100)]
         asym = next(row for row in diagnostics if row.get("diagnostic") == "asymmetric-data-delay")
-        if canon(asym["config"].get("jitter_script")) != canon(declared) or not asym.get("script_hits"):
-            raise SystemExit("invalid study: asymmetric diagnostic did not hit its script")
+        if (canon(asym["config"].get("jitter_script")) != canon(declared)
+                or asym.get("script_hits") != len(declared)):
+            raise SystemExit("invalid study: asymmetric diagnostic did not cover its 100 ms script")
         print("valid: %d primary rows, %d diagnostics" % (len(primary), len(diagnostics)))
         return 0
     started = time.monotonic()

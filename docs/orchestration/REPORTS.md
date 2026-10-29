@@ -6886,3 +6886,84 @@ None that block F1. Allowed open: OQ-185, OQ-460, OQ-461, OQ-462 as above. No ne
 - **Scope checks:** commits before this report are `b599a86724c03c21eb05382b40e90f32dcbe85b0`, `80b6ef51af18c707055c81ce9980b90242d9f433`, and `1dc771b3b9578e034c2a8893f6b2e6f057acab8f`; this report commit parents `1dc771b3b9578e034c2a8893f6b2e6f057acab8f`. The final handoff, not this report, names its own hash. Relative to `0e7f2ddd`, only the three permitted tracked files differ. Existing OQs other than OQ-270 are unchanged; no OQ-480..489 heading exists. The raw Git blob is LF while this Windows checkout is CRLF, so the byte-prefix check is false solely on line endings; LF-normalized historical REPORTS content is an exact prefix and Git shows only the appended F1 section.
 - **Remaining transitive questions:** selector `0x1003e130` / `0x1003b5d0` virtual calls; state-helper targets listed in §4; cleanup calls `0x10059820` / `0x10059a00` and `0x10056480` / `0x10056bce`; and OQ-271 kind slots. OQ-270 remains narrowed, not resolved. OQ-271/272, T-AI.4, T61 and runtime implementation remain outside scope.
 - **Decisions and reasoning:** (1) use table indexes as state identities rather than address order, because PE extraction gives the eight explicit destinations; physical ordering is rejected as contradicted by state 7. (2) remove the flag/callback from the dispatcher contract because the dispatcher's `ret 4` precedes it; treating adjacency as reachability would invent an edge. (3) retain the unchanged-quotient conclusion because normalized entry-SP maps show helper aliasing only argument 2, while documenting early returns and selected-record mutation rather than overstating the helper as unconditional tick clearing. No owner decision, build, runtime test, merge, rebase, push or next task occurred.
+
+## P2.1 — Full player mask on import — 2026-10-29 — status: FINISHED
+
+- **Worktree:** `E:\anno1503-worktrees\anno1503-P2-1`. **Branch:** `task/P2-1-player-mask`.
+- **Start HEAD:** `7f1868ce4dccc8f66c94707562b7e11e4539f63d`. **Tested code HEAD:** `62b14254f211b97b2195baaa863eb6f151f73528` (the commit this section follows; the gates ran on that tree). This report commit is the one after it.
+- **Rule:** `decode_player_flags` in `src/sim/src/scenario_formats.cpp`, called from `read_player_head`. `ScenarioSpec::PlayerSpec::flags` is `optional<uint32_t>`: absent keeps `Player::flags` at its constructor default 1; a stored value, including 0, is assigned in `World::create` by a direct store. `kStateHashVersion` is 116. `kPrngTimelineVersion` stays 2. `kCommandWireVersion` stays 1. `anno::formats::sze` and `anno-dump sze` are unchanged. `TickKind::House` was not touched (`driver.cpp` is not in the diff).
+
+### Evidence
+
+AnnoWelt `0x1001d389`–`0x1001d3df` (disassembly in the worktree's ignored `cache/p21/annowelt-1001d370.txt`). `eax` is HEAD+0x48 (`[esp+0x140]`, the HEAD buffer is at `esp+0xf8`); `cl` is HEAD+0x5c (`[esp+0x154]`). `and eax, 0x7fffff` keeps the low 23 bits. Bit 3 of the packed byte ORs `0x01000000` (bit 24), bit 2 ORs `0x08000000` (bit 27), bit 4 ORs `0x20000000` (bit 29), bit 5 ORs `0x40000000` (bit 30). That is the mapping in `docs/re/population.md` §15.2 and the board. No QUESTION.
+
+### Corpus histograms
+
+Measured on the created world's players during the existing 50-file corpus run (not a second create). 373 heads, 78 with a non-zero high half. Low HEAD+0x48: 1×280, 0x1f×61, 0xf×7, 7×7, 0x1ffff×4, 0x7ff×3, 0xffff×3, 0x3fff×2, 3×2, 0x7fffff×1, 0x7fff×1, 0x3ff×1, 0x3f×1. Packed high half: 0×295, 0x28000000×17, 0x29000000×1, 0x69000000×60. Full: 1×263, 0x6900001f×60, 0x28000001×17, 7×7, 0xf×7, 0x1ffff×4, 0x7ff×3, 0xffff×3, 0x3fff×2, 3×2, 0x7fffff×1, 0x7fff×1, 0x3ff×1, 0x3f×1, 0x2900001f×1. These are the T32.5 tables in `population.md` §15.4. The test asserts them.
+
+### Gates
+
+`ANNO_TEST_HEADROOM_MB=4096` throughout. No forced admission.
+
+- MSVC: `cmake --preset msvc` and `cmake --build --preset msvc` from this worktree, exit 0.
+- CTest without `ANNO1503_GAME_DIR`: 1097 passed, 2 not run (`anno_sim_replay_scenario_single_01`, `anno_sim_replay_scenario_endless_03_links`), real 39.56 s. Preset log `build/msvc/Testing/ctest-output.log` (overwritten by the next run); copy `cache/p21/ctest-nongame-output.log`, `cache/p21/ctest-nongame-LastTest.log`.
+- CTest with `ANNO1503_GAME_DIR=E:\anno1503\game\app`, `ANNO_TEST_THREADS=16`, `ctest --preset msvc -j 16`: 1097 passed, 0 failed, real 560.93 s (heavy 3123.52 s·proc, gpu 219.80 s·proc). Copy `cache/p21/ctest-gamedir-output.log`, `cache/p21/ctest-gamedir-LastTest.log`.
+- clang-format 23.1.3 `--dry-run --Werror` on the edited C++ sources, clean.
+- `tools/check_unix_warnings.sh`: GCC 13.3.0, viewer and GPU on, 173 files, clean; Clang 18.1.3, viewer and GPU on, 173 files, clean; Clang 18.1.3, viewer without GPU, 9 files, clean.
+- `tools/lint_sim.py --root .` ok; `--self-test` 70 cases, 0 failures (also registered as ctest).
+- `python tools/sim_stream.py --check`: goldens agree, corpus header matches 116 / timeline 2.
+- `git diff --check 7f1868ce` clean. The corpus checkout warns that Git will turn LF into CRLF; that is not a whitespace error.
+
+### Mutations
+
+Both were restored before the gates. The restored tree is `62b1425`.
+
+1. **High-bit reconstruction omitted** (`decode_player_flags` returned only `head_48 & 0x7fffff`). `scenario import restores the player mask on the created world`: 6 failed, 140 passed. The failures are the four single high bits (`0x01000000`, `0x08000000`, `0x20000000`, `0x40000000`), the combined `0x6900001f`, and the save/load of that mask. Explicit zero, the low-23 mask, and the ignored packed bits still passed, because those rows do not need the ORs.
+2. **Assignment to `Player::flags` dropped.** The same test failed the world-versus-spec check on every imported head, the explicit zero, the low-23 mask of `0xffffffff`, each high bit, a stored 0, and the save/load. An omitted `PlayerSpec::flags` still created flags 1, which is the constructor default.
+
+### Recorded hashes
+
+`kStateHashVersion` 115 → 116 is in the import commit because the hashed header contains the version and a scenario whose mask is not 1 creates a different player word. The field list is unchanged. No PRNG site is drawn.
+
+Synthetic goldens omit `PlayerSpec::flags`, so their players stay at 1. Their full-state digests moved only because of the version word. `tools/sim_stream.py` (`STATE_HASH_VERSION = 116`, player `flags` still 1) reproduces G0, G1, S5 and S6. The empty-world hash in `sim_test.cpp` moved from `0xb19fa605834ad5ae` to `0xf437905c6e27429e`.
+
+| name | was (115) | now (116) |
+| --- | --- | --- |
+| g0_step1 | da835204addcff76 | 1747138d3ece0e86 |
+| g0_step100 | 3e6f3cdf7469bd0d | f449caa6f5acec5d |
+| g0_step1000 | 0e2320b799f0dc2f | 07bac6eef5f1c93f |
+| g1_players_step100 | a147e3f504bc1583 | 0fd9a13b69efafdf |
+| g1_players_step700 | 425aad3ba3d41d5a | 47315ca3bb69db9e |
+| s5_islands_create | acf5a74eb1a0f8ca | 0980cdec4470731a |
+| s5_islands_step100 | cd2bc322473f4b29 | 962341b85c26b019 |
+| s6_g1_create | 79ce5609bd3ba4bb | 3c4fa9a8b75240e9 |
+| s6_g1_step100 | 096a63e9fa1c647e | f7dd0bb96296fb3c |
+| s7_g1_mp_checkpoints | cbf65e210d957824 | f38f19ef4bf4f31d |
+| s7_g1_mp_end | b98a81d0eea9c1f2 | 02f67e63560c0df0 |
+| s7_g1_events | d705f409820828d2 | d705f409820828d2 |
+| s7_g1_sp_end | 59bd7249ab255199 | ec5f1758162095ff |
+| s10_g2_end | 5ba3c3db78d9cb61 | 6a42cfd4a203d630 |
+| s11_g3_checkpoints | c2f662f045f01eca | 5e6f3dca25014e18 |
+| s11_g3_end | 37c859e2dcb21e9e | 3adceec9a610a77c |
+| s11_g3_events | 3140bd8e1eb7db86 | 3140bd8e1eb7db86 |
+| s12_g4_checkpoints | 7dbe41187f0684a7 | 193fd8a6b44a560b |
+| s12_g4_end | 182c6de1ea15748f | 736e9802df26a6bd |
+| s12_g4_events | 39c10f583d4b7cc8 | 39c10f583d4b7cc8 |
+| s13_g5_checkpoints | 937b74857944599e | d5e807b6f64dcb4a |
+| s13_g5_end | e99415b5ff20e7ff | b4b30562deef040d |
+| t24_g6_checkpoints | 1c5b3104692b9abb | a4268e55c9d1a97e |
+| t24_g6_end | 0857b195f9c631cf | fa135dfdd465bde1 |
+| p1_g7_create | 2caa5c9c9118e6e0 | 115e52d99c3ab76e |
+
+`s7_g1_events`, `s11_g3_events` and `s12_g4_events` hash the event list, not the world header, so the digest is unchanged and only the recorded stream version on the line moved. `p1_g7_create` is a hand-built spec that omits `flags`, so its player word stays 1; the digest moved with the version word. G7's house payload is unchanged after 2000 steps of 10 ms, which is the existing House-tick no-op check.
+
+`fixtures/synthetic/sim/g2.log` through `g6.log` are the byte-identical replay logs. Each embeds the stream version (the bytes at the old offsets changed from 115 to 116) and the checkpoint state hashes. Sizes are unchanged. The event-list digests above did not move.
+
+`scenario_corpus.txt`: header `kStateHashVersion=116 kPrngTimelineVersion=2`. All 50 lines changed in `create_hash` only. Every file's hash includes the version word. The 110 heads whose full mask is not 1 (373 − 263) also store a player word other than the old default 1.
+
+### Decisions and reasoning
+
+1. The rule lives in the sim scenario adapter, not `formats::sze`. `anno-dump sze` and `tools/agree.py` then stay unchanged. The disassembly matched the board's bit mapping, so the step was not stopped as a QUESTION.
+2. `optional` rather than a plain `uint32_t` defaulting to 0. A missing value must keep the constructor default 1, and a file that stores 0 must stay 0. A zero-filled synthetic HEAD is an explicit 0. `World::create` assigns the field directly: no setter, no city-unlock recompute, no house tick.
+3. The version bump is in the same commit as the import. Stream 110 was bumped for the same kind of change (island-link import changed created state without a new field). The layout is unchanged and nothing draws from the PRNG, so the timeline stays 2 and the command wire stays 1.
+4. The histogram is taken from the world the corpus already creates, and the worker records a mismatch instead of calling doctest. The measured tables match T32.5. No new question in OQ-510..514: the mapping, the optional, and the version were decided by the packet and confirmed against the DLL.

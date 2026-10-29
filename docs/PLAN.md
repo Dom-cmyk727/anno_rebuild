@@ -99,6 +99,7 @@ The owner's first target is a LAN multiplayer endless game. The plan, with its w
   - **AI:** the original AI is rebuilt first, from the original files (M5's AI line is decided).
   - **Colours:** one recolouring system for flags, units and ships over a colour table that is data.
   - **Players:** 6 is this release's default maximum. §0.6's 8 stays the project's target. Nothing hard-codes either (§0.1).
+- **The LAN MVP first (owner decision 2026-10-29):** to shorten the path to the first playable game, the first release has **one fixed map**, larger than the original's and scaled for **five players**, and **no computer players**. The plan is [`docs/plan/lan-mvp.md`](plan/lan-mvp.md). The generator, the original AI and the pirates move after the MVP; the scope above stays the target after it.
 
 ## 1. Milestone M0 — Repository and tooling skeleton
 

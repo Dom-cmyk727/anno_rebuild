@@ -302,6 +302,12 @@ Last update: 2026-10-29 di — **T32.6 F1 first; T10c F6 closure then review.** 
 Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report says so), `REVIEW` (reported, orchestrator reviewing), `OWNER-CHECK` (waits for the owner's look), `DONE`, `BLOCKED`, `LATER`.
 
 ### The LAN endless lane (`docs/plan/lan-endless.md`, owner decisions D1–D11 of 2026-10-26; round bn)
+
+**LAN MVP (owner decision 2026-10-29): one fixed map scaled for five players, no computer players.** Plan: `docs/plan/lan-mvp.md`. Effect on this queue, as planning only: no running packet changes by this note.
+- **Stays on the critical path:** T32.6 → P2.1 → P2.2 → P2.3 → P3–P5 (population), then ships and settling (W6.1).
+- **After the MVP:** the generator (W2; `world-scaling.md` stays the spec), the original AI's port and T-AI.4 (W7), the pirates (W8). T60 is integrated as accepted, then the AI RE lane is parked.
+- **New, `PLANNED`, released one packet at a time:** MAP (the fixed map, `lan-mvp.md` §3), W4 (the game shell), ADR 0004 and W5 (menus, HUD), W3 (the C++ `net` library, after the owner approves ADR 0003), the docs-only RE of ships and settling.
+- **Open owner questions:** `lan-mvp.md` §8.
 #### P1 — Population stage 1: the house payload, the group table, scenario import · `DONE` (round cx; merged locally as `b173d02`, P1 branch unchanged at `416993fa`; combined tested head `ef6121a`, report tip `5b10ed3`) · the main executor · branch `task/P1-house-payload` from local `main` at the round-cm board commit or later · worktree `E:\anno1503-worktrees\anno1503-P1` · new OQs OQ-450..459
 - **Why:** W6 is the LAN plan's critical path (`docs/plan/lan-endless.md` §5 W6.2, §6), and population is the first W6 stage. A house is an `Inert` payload today: the residents and stocks in the scenario files are dropped (`HouseRecordNotModelled`), and T26's three pure functions are tested but not applied. P1 gives the house its state and loads it. It adds no house tick (that is P2).
 - **Spec:** `docs/sim/state.md` §4.7c "Population (DRAFT, T32)", with the **P1 decisions** below, which override the draft where they differ. Evidence: `docs/re/population.md` §1 (the loader formulas), §11.2 (the house fields), §12.1 (the `BGruppen.dat` field map). Owner decisions of 2026-10-25: §4.7c owner questions 1 and 3.

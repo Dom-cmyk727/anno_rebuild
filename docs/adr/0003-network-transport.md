@@ -678,6 +678,12 @@ From W3's acceptance (`docs/plan/lan-endless.md`):
 
 Two real PCs on a LAN finding each other is a person test (`docs/plan/lan-endless.md` W3), not a `netsim` case.
 
+## 15. T61 synthetic jitter experiment (not a network measurement)
+
+`tools/join_activation.py` now has an opt-in checker input for nonnegative integer-millisecond propagation jitter after queue service. Its default is `[0, 0]`, preserving the historical zero-jitter traces. A sample is keyed by algorithm version, seed and immutable transmission identity: endpoints, channel, epoch, and either data sequence plus attempt or ACK ordinal. The script override is exact-identity only and takes precedence over the keyed sample. It may reorder network arrivals; channel ordering still governs application delivery. Invalid ranges, seeds and scripts are refused.
+
+The independent trace validator derives samples and arrival times from raw transmission evidence and configuration rather than from scheduler state. It covers data, retries and ACK-only datagrams in both un-serialized and serialized paths. The study runner executes the matched 2 rates × 3 resend candidates × 3 workloads × 4 profiles = 72 primary rows sequentially, plus at most two declared diagnostics. Profiles (`[0,25]` at seeds 6101/6102 and `[0,100]` at 6101) are synthetic sensitivity assumptions, not measured LAN distributions. The 300 ms default, all deadlines, caps and ADR status remain unchanged; results can be incomplete or restart without being retuned into a pass. OQ-371 remains open pending measured-network evidence and owner approval.
+
 ## Open choices
 
 - **OQ-250.** The UDP port. No original value was found in `tick-loop.md`. No default is set.

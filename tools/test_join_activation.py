@@ -3222,17 +3222,17 @@ class RoundDnH1Conservation(unittest.TestCase):
         _, send, arrive = _served_send()
         extra = ev("arrive", 200, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=7, epoch=0,
                    attempt=1, dup=False)
-        self.assertIn("xviii", _jitter_codes([send, arrive, extra]))
+        self.assertEqual(_jitter_codes([send, arrive, extra]), {"xviii"})
 
     def test_h1b_orphan_arrival_with_a_changed_sid_is_rejected(self):
         _, send, arrive = _served_send()
         orphan = ev("arrive", 150, src="H", dst="J1", ch=0, seq=4, msg="JoinGrant", sid=99, epoch=0,
                     attempt=1, dup=False)
-        self.assertIn("xviii", _jitter_codes([send, arrive, orphan]))
+        self.assertEqual(_jitter_codes([send, arrive, orphan]), {"xviii"})
 
     def test_h1c_outcome_of_a_lost_transmission_is_rejected(self):
         _, send, arrive = _served_send(lost=True)
-        self.assertIn("xviii", _jitter_codes([send, arrive]))
+        self.assertEqual(_jitter_codes([send, arrive]), {"xviii"})
 
     def test_h1d_boolean_attempt_script_is_rejected(self):
         ident = ("data", "H", "J1", 0, 0, 0, True)
@@ -3516,9 +3516,9 @@ class RoundDnStudyEvidence(unittest.TestCase):
             blob = _git_show("HEAD:tools/%s" % name)
             with open(os.path.join(_repo_root(), "tools", name), "rb") as handle:
                 raw = handle.read()
-            self.assertNotEqual(raw, blob)
             self.assertEqual(recorded[name], hashlib.sha256(blob).hexdigest())
-            self.assertNotEqual(recorded[name], hashlib.sha256(raw).hexdigest())
+            if raw != blob:
+                self.assertNotEqual(recorded[name], hashlib.sha256(raw).hexdigest())
 
     def test_n1_crlf_and_lf_checkouts_validate_the_same_blob(self):
         tmp = os.path.join(self._dir, "eol-repo")

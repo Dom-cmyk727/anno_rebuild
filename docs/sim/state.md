@@ -680,6 +680,22 @@ Taxes are city_pass index 3 = `0x10029950` (already named in `Seams::city_pass`,
 
 Upgrade / downgrade (P3): next type `id − id%20 + 20` / previous `id − id%20 − 20` else `− 19`; `SetGroup`; materials goods `0x29`–`0x2d`. Walker spawn and island `+0xcc` as remove stay **likely** — P1–P3 do not spawn or demolish a house that way (owner Q5).
 
+#### Stage mask (T32.5)
+
+P2 reads **`Player::flags`** (already S4 state, original `player +0x90`, property `0x21`). The house tick tests bit `BauFirst` of the need's good (`goods` record `+2`) in that dword: decay and "lowest need" only when the bit is set (`population.md` §15.1; full dword, not masked to 23 bits). The city mask `+0x618` is not an input of the house tick.
+
+The original **saves** the player dword in `SPIELER` / `HEAD +0x48` (low 23 bits) and `HEAD +0x5C` (bits 24 / 27 / 29 / 30). `PlayerHead` today does not parse `HEAD +0x48`; scenario import still leaves `flags = 1` unless a later stage wires it. P2 can run on the loaded-or-default `flags` **before P4**. Stage unlock (`0x10029610`, city_pass `"stages"`) writes both masks and belongs in P4 as already scheduled; P2 does not need that pass.
+
+The city mask is **derived**: constructor 0, not in the city save, recomputed on the first unlock pass from the counters and `[BAUSTUFEN]` (at most one 2500-tick gate after load if `city +0x10` is 0). No new hashed field for it.
+
+Stream: **none** for P2 if it only reads `Player::flags`. Wiring `HEAD +0x48` into `flags` on scenario load is a player-scope load change, not a new stream field (the member already visits). A later unlock that ORs the city mask into `flags` is a runtime write of existing state.
+
+Owner questions (faithful default stated):
+
+1. **Load `HEAD +0x48` into `Player::flags`.** Original does. **Default:** yes, when the scenario/load path next touches the player head (not required to start P2; P2 with `flags = 1` matches 280 of 373 shipped heads).
+2. **High bits 24 / 27 / 29 / 30.** They are both stage bits and `HEAD +0x5C` flags. The house tick tests the full dword. **Default:** test the full `flags` dword (faithful). Shipped scenarios have those bits clear.
+3. **The `0x1001bda3` OR** into `+0x90` (OQ-460). **Default:** omit until that case is named; it is not on the house-tick or unlock path.
+
 #### Seams and draws
 
 No new seam for the house tick (it is `tick_building`). Booking and stage unlock fill existing `city_pass` slots by name (`"booking"`, `"stages"`). Upgrade that changes `Building::type` is an `Effects` entry (append-only; P3).
@@ -720,7 +736,7 @@ P1 adds the `House` payload alternative at the end of the building variant (appe
 | Stage | What | Acceptance |
 |---|---|---|
 | **P1** | `House` payload, registry groups, Load/Save, T26 functions applied, derived city totals, `TickKind::House` still a no-op (or the 2500 gate only, no decay). Stream bump, G7 create hash, corpus. | Orchestrator: a loaded `single36` house has residents and stocks; `HouseRecordNotModelled` absent; goldens/corpus re-recorded; no city-store take. |
-| **P2** | House tick: `E` smooth, stock decay, mood, `VermehrTab`, floors; no upgrade, no walker. | G7 residents and stocks match the §12.2 integer formulas for N updates; city store unchanged. |
+| **P2** | House tick: `E` smooth, stock decay, mood, `VermehrTab`, floors; no upgrade, no walker. Decay and lowest-need use `Player::flags` bit `BauFirst` of the need's good (T32.5); city `+0x618` is not read. | G7 residents and stocks match the §12.2 integer formulas for N updates; city store unchanged. |
 | **P3** | UpgradeCheck / Upgrade / Downgrade / `SetGroup`. | G7 upgrades when the next tables are > 0 and materials are in store; type id `+ 20`; house_counts move. |
 | **P4** | Booking city_pass (taxes into player money); stage mask optional. | G7 money matches `(sum(Preis+PreisLevel)·billed + 128) >> 8` after a forced billed vector. |
 | **P5** | Job `0x35` walker (`population.md` §14): spawn `+0x118`; step A search (house `HEAD[0x11]` area, mask `0x21`, highest `+0xd4`); step B stall `+0xac` `take = 1` (`0x10056480`); step C house `+0xc0` (`0x10057d70`). | A stall take reduces `CityStock` and raises billed; a house delivery raises house stock by `amount·16`. |

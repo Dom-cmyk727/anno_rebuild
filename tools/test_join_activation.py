@@ -2773,6 +2773,125 @@ class LinkRows(TraceCase):
         self.check(sim, validate_clean(sim) == [], "")
 
 
+# ---- T61: deterministic propagation jitter, written before the implementation -----------------
+class JoinJitter(TraceCase):
+    def _sim(self, link=False, losses=()):
+        c = cfg(link_bps=100_000_000, link_queue_bytes=131072,
+                jitter_min_ms=0, jitter_max_ms=25, jitter_seed=6101) if link else cfg(
+                    jitter_min_ms=0, jitter_max_ms=25, jitter_seed=6101)
+        return ja.one_join(c, losses=losses, until=9000)
+
+    def test_defaults_are_zero_and_invalid_jitter_is_rejected(self):
+        self.assertEqual((ja.Cfg().jitter_min_ms, ja.Cfg().jitter_max_ms, ja.Cfg().jitter_seed), (0, 0, 0))
+        for kw in ({"jitter_min_ms": -1}, {"jitter_min_ms": 9, "jitter_max_ms": 8},
+                   {"jitter_seed": -1}, {"jitter_script": (("bad", 1),)}):
+            with self.assertRaises(ValueError):
+                ja.Sim(cfg(**kw))
+
+    def test_samples_are_keyed_by_immutable_data_and_ack_identities(self):
+        data = ja.jitter_identity("data", "H", "J1", 1, 3, 7, 2)
+        retry = ja.jitter_identity("data", "H", "J1", 1, 3, 7, 3)
+        ack = ja.jitter_identity("ack", "J1", "H", 1, 3, 4)
+        c = cfg(jitter_min_ms=0, jitter_max_ms=25, jitter_seed=6101)
+        self.assertNotEqual(data, retry)
+        self.assertNotEqual(data, ack)
+        self.assertEqual(ja.jitter_delay(c, data), ja.jitter_delay(c, data))
+        self.assertTrue(0 <= ja.jitter_delay(c, data) <= 25)
+
+    def test_every_data_attempt_and_ack_has_a_sample_in_both_modes(self):
+        for link in (False, True):
+            sim = self._sim(link, losses=ja.lose("JoinGrant", "H>J1", (1,)))
+            tx = [e for e in sim.events if e["kind"] in ("send", "ack_send")]
+            self.check(sim, tx and all("jitter_ms" in e and "jitter_id" in e for e in tx), repr(tx[:2]))
+            retries = [e for e in tx if e["kind"] == "send" and e["attempt"] > 1]
+            self.check(sim, retries and len({tuple(e["jitter_id"]) for e in retries}) == len(retries), repr(retries))
+            self.check(sim, validate_clean(sim) == [], repr(validate_clean(sim)[:3]))
+
+    def test_zero_jitter_preserves_the_legacy_semantic_projection(self):
+        old = ja.one_join(cfg(), until=6000)
+        zero = ja.one_join(cfg(jitter_min_ms=0, jitter_max_ms=0, jitter_seed=999), until=6000)
+        ignored = {"jitter_ms", "jitter_id", "jitter_source"}
+        def project(events):
+            return [{k: v for k, v in e.items() if k not in ignored} for e in events]
+        self.assertEqual(project(old.events), project(zero.events))
+
+    def test_validator_rebuilds_arrival_and_rejects_a_consistent_forgery(self):
+        sim = self._sim(True)
+        clean = validate_clean(sim)
+        self.assertEqual(clean, [], clean[:3])
+        forged = [dict(e) for e in sim.events]
+        sent = next(e for e in forged if e["kind"] == "send" and not e["lost"])
+        sent["jitter_ms"] += 1
+        lid = sent["lid"]
+        for e in forged:
+            if e.get("lid") == lid and e["kind"] in ("link_enqueue", "link_arrive", "arrive"):
+                if e["kind"] == "link_arrive":
+                    e["arrival_ns"] += ja.NS_PER_MS
+                    e["sched_ms"] += 1
+                elif e["kind"] == "arrive":
+                    e["t"] += 1
+                else:
+                    e["jitter_ms"] += 1
+        self.assertIn("xviii", {code for code, _ in ja.validate(forged, sim.cfg, sim.t, delays=sim.delays)})
+
+    def test_j1_through_j8_timing_mutants_are_each_caught_independently(self):
+        def fresh(link=True, losses=()):
+            return self._sim(link, losses)
+
+        def codes(sim, log):
+            return {c for c, _ in ja.validate(log, sim.cfg, sim.t, delays=sim.delays)}
+
+        # J1: ACK propagation silently ignores the profile.
+        sim = fresh()
+        log = [dict(e) for e in sim.events]
+        next(e for e in log if e["kind"] == "ack_send")["jitter_ms"] = 0
+        self.assertIn("xviii", codes(sim, log))
+        # J2: a retry reuses attempt one's sample and identity.
+        sim = fresh(losses=ja.lose("JoinGrant", "H>J1", (1,)))
+        log = [dict(e) for e in sim.events]
+        retry = next(e for e in log if e["kind"] == "send" and e["attempt"] == 2)
+        retry["jitter_id"] = tuple(retry["jitter_id"][:-1]) + (1,)
+        retry["jitter_ms"] = ja.jitter_delay(sim.cfg, tuple(retry["jitter_id"]))
+        self.assertIn("xviii", codes(sim, log))
+        # J3: channel/epoch are omitted from a sample identity.
+        sim = fresh()
+        log = [dict(e) for e in sim.events]
+        data = next(e for e in log if e["kind"] == "send")
+        data["jitter_id"] = ("data", data["src"], data["dst"], data["seq"], data["attempt"])
+        self.assertIn("xviii", codes(sim, log))
+        # J4: the un-serialized path zeros all propagation jitter.
+        sim = fresh(False)
+        log = [dict(e) for e in sim.events]
+        next(e for e in log if e["kind"] == "send")["jitter_ms"] = 0
+        self.assertIn("xviii", codes(sim, log))
+        # J5: a serialized callback is rounded down, together with its consumer.
+        sim = fresh()
+        log = [dict(e) for e in sim.events]
+        send = next(e for e in log if e["kind"] == "send" and not e["lost"])
+        for e in log:
+            if e.get("lid") == send["lid"] and e["kind"] == "link_arrive":
+                e["sched_ms"] -= 1
+            elif e.get("lid") == send["lid"] and e["kind"] == "arrive":
+                e["t"] -= 1
+        self.assertIn("xviii", codes(sim, log))
+        # J6: a logged sample and arrival are forged consistently (covered above, independently repeated).
+        sim = fresh()
+        log = [dict(e) for e in sim.events]
+        next(e for e in log if e["kind"] == "send")["jitter_ms"] += 1
+        self.assertIn("xviii", codes(sim, log))
+        # J7: two attempts exchange sample identities.
+        sim = fresh(losses=ja.lose("JoinGrant", "H>J1", (1,)))
+        log = [dict(e) for e in sim.events]
+        a, b = [e for e in log if e["kind"] == "send" and e["msg"] == "JoinGrant"][:2]
+        a["jitter_id"], b["jitter_id"] = b["jitter_id"], a["jitter_id"]
+        self.assertIn("xviii", codes(sim, log))
+        # J8: an in-horizon served packet has its outcome erased.
+        sim = fresh(False)
+        send = next(e for e in sim.events if e["kind"] == "send" and not e["lost"])
+        log = [dict(e) for e in sim.events if not (e["kind"] == "arrive" and e.get("sid") == send["sid"] and e.get("attempt") == send["attempt"])]
+        self.assertIn("xviii", codes(sim, log))
+
+
 MUTANTS.update({
     "charge every retry one byte": (_patch_one_byte_retries, [
         "LinkValidation.test_retransmissions_are_charged_their_wire_size"]),

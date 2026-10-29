@@ -36,6 +36,7 @@ Run:
 from __future__ import annotations
 
 import heapq
+import hashlib
 import sys
 from collections import Counter, deque
 from dataclasses import dataclass, replace
@@ -50,6 +51,46 @@ IP_UDP = 28
 WIRE = HEADER + EPOCH_BYTES + IP_UDP
 ASK_PAYLOAD = 5  # JoinAsk: epoch u16, seat u8, ask id u16
 NS_PER_MS = 10 ** 6
+JITTER_ALGORITHM = "sha256-mod-v1"
+
+
+def jitter_identity(kind, src, dst, ch, epoch, logical, attempt=None):
+    """Immutable identity for an additive propagation sample.
+
+    Data uses its logical sequence and attempt; ACK-only traffic uses its ordinal and no
+    attempt.  This deliberately names endpoints, channel and epoch so a retry or a new
+    incarnation cannot inherit a prior packet's timing sample.
+    """
+    if kind == "data":
+        return ("data", src, dst, ch, epoch, logical, attempt)
+    if kind == "ack" and attempt is None:
+        return ("ack", src, dst, ch, epoch, logical)
+    raise ValueError("invalid jitter identity")
+
+
+def _jitter_digest(seed, identity):
+    text = "%s|%d|%s" % (JITTER_ALGORITHM, seed, "|".join(map(str, identity)))
+    return int.from_bytes(hashlib.sha256(text.encode("ascii")).digest()[:8], "big")
+
+
+def jitter_delay(cfg, identity):
+    """Scheduler-side deterministic nonnegative propagation jitter in whole milliseconds."""
+    overrides = dict(cfg.jitter_script)
+    if identity in overrides:
+        return overrides[identity]
+    span = cfg.jitter_max_ms - cfg.jitter_min_ms + 1
+    return cfg.jitter_min_ms + _jitter_digest(cfg.jitter_seed, identity) % span
+
+
+def _expected_jitter(cfg, identity):
+    """Validator-side derivation kept separate from the scheduler routine."""
+    for key, value in cfg.jitter_script:
+        if key == identity:
+            return value
+    payload = (JITTER_ALGORITHM + "|" + str(cfg.jitter_seed) + "|" +
+               "|".join(str(piece) for piece in identity)).encode("ascii")
+    width = cfg.jitter_max_ms - cfg.jitter_min_ms + 1
+    return cfg.jitter_min_ms + int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") % width
 
 
 def service_ns(wire, bps):
@@ -103,6 +144,12 @@ class Cfg:
     # peer-to-host datagram. link_bps 0 keeps the un-serialized comparison mode (the default).
     link_bps: int = 0
     link_queue_bytes: int = 0  # finite wire bytes admitted and not yet fully transmitted, per direction
+    # T61 experiment input, not a measured LAN property: extra propagation after service.
+    # The default [0, 0] exactly preserves the historical comparison mode.
+    jitter_min_ms: int = 0
+    jitter_max_ms: int = 0
+    jitter_seed: int = 0
+    jitter_script: tuple = ()  # exact (immutable_identity, nonnegative_ms) overrides
     select_margin_ms: int = 100
     deadline_rtts: int = 2
     # F3 liveness limit for a seated peer without an outage record (validator iv), in turns.
@@ -166,6 +213,23 @@ class Cfg:
             problems.append("link_queue_bytes %d cannot hold one full datagram" % self.link_queue_bytes)
         if self.reassembly_fragments_max < 1 or self.fragment_max < 1:
             problems.append("reassembly limits < 1")
+        if self.jitter_min_ms < 0 or self.jitter_max_ms < self.jitter_min_ms:
+            problems.append("invalid jitter range [%d, %d]" % (self.jitter_min_ms, self.jitter_max_ms))
+        if self.jitter_seed < 0:
+            problems.append("jitter_seed < 0")
+        try:
+            script = dict(self.jitter_script)
+        except (TypeError, ValueError):
+            problems.append("jitter_script is not identity/value pairs")
+            script = {}
+        if len(script) != len(self.jitter_script):
+            problems.append("jitter_script has duplicate identities")
+        for identity, value in script.items():
+            if (not isinstance(identity, tuple) or not isinstance(value, int) or value < 0
+                    or (identity and identity[0] == "data" and len(identity) != 7)
+                    or (identity and identity[0] == "ack" and len(identity) != 6)
+                    or not identity or identity[0] not in ("data", "ack")):
+                problems.append("invalid jitter_script entry %r" % ((identity, value),))
         if problems:
             raise ValueError("impossible join configuration: " + "; ".join(problems))
         return self
@@ -489,7 +553,8 @@ class Sim:
     def link_cap(self):
         return self.cfg.link_queue_bytes
 
-    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, epoch=None, idx=None):
+    def link_plan(self, src, dst, wire, kind, ch, sid, attempt, lost_key, extra_ms, epoch=None, idx=None,
+                  jitter_ms=0, jitter_id=None):
         """Route one datagram through the shared link of its direction (egress: from the host,
         ingress: to the host). Returns (lid, arrival millisecond) or (lid, None) when it is rejected
         at enqueue or lost after transmission.
@@ -509,13 +574,14 @@ class Sim:
         now = self.t * NS_PER_MS
         if direction is None:
             lost = lost_key or self.cut_active(src, dst)
-            return lid, (None if lost else self.t + cfg.one_way_ms + extra_ms)
+            return lid, (None if lost else self.t + cfg.one_way_ms + extra_ms + jitter_ms)
         L = self.links.setdefault(direction, {"busy": 0, "inflight": deque(), "occ": 0})
         st = self.link_stats[direction]
         while L["inflight"] and L["inflight"][0][0] <= now:
             L["occ"] -= L["inflight"].popleft()[1]
         self.ev("link_enqueue", link=direction, lid=lid, t_ns=now, wire=wire, msg=kind, ch=ch, src=src, dst=dst,
-                sid=sid, attempt=attempt, epoch=epoch, idx=idx, extra_ms=extra_ms)
+                sid=sid, attempt=attempt, epoch=epoch, idx=idx, extra_ms=extra_ms,
+                jitter_ms=jitter_ms, jitter_id=jitter_id)
         if L["occ"] + wire > self.link_cap():
             self.ev("link_drop", link=direction, lid=lid, t_ns=now, reason="queue", wire=wire)
             st["drop_queue"] += 1
@@ -540,7 +606,7 @@ class Sim:
             self.ev("link_drop", link=direction, lid=lid, t_ns=fin, reason="loss", wire=wire)
             st["drop_loss"] += 1
             return lid, None
-        arr = fin + (cfg.one_way_ms + extra_ms) * NS_PER_MS
+        arr = fin + (cfg.one_way_ms + extra_ms + jitter_ms) * NS_PER_MS
         sched = arrival_ms(arr)
         self.ev("link_arrive", link=direction, lid=lid, arrival_ns=arr, sched_ms=sched, sid=sid, msg=kind)
         return lid, sched
@@ -561,6 +627,8 @@ class Sim:
             d["sid"] = self.sid
             d["epoch"] = self.ep_of(src, dst)  # the wire field
         key = self.key(d["kind"], src, dst, d["seq"], d["attempt"])
+        jitter_id = jitter_identity("data", src, dst, ch, d["epoch"], d["seq"], d["attempt"])
+        jitter_ms = jitter_delay(self.cfg, jitter_id)
         wire = d["size"] + WIRE
         self.stat(src, dst, "data")
         self.stat(src, dst, "bytes", wire)
@@ -568,18 +636,19 @@ class Sim:
         delay = self.delays.get(key, self.delays.get((key[0], key[1], None, key[3]), 0))
         if self.cfg.link_bps:
             lid, link_arrival = self.link_plan(src, dst, wire, d["kind"], ch, d["sid"], d["attempt"], self.lost(key), delay,
-                                               epoch=d["epoch"])
+                                               epoch=d["epoch"], jitter_ms=jitter_ms, jitter_id=jitter_id)
             lost = link_arrival is None
         else:
             lid = None
             lost = self.lost(key) or self.cut_active(src, dst)
         self.ev("send", src=src, dst=dst, ch=ch, seq=d["seq"], msg=d["kind"], attempt=d["attempt"],
                 lost=lost, turn=d.get("turn"), C=d.get("C"), size=d["size"], sid=d["sid"], epoch=d["epoch"],
-                frag=d.get("frag", 0), nfrag=d.get("nfrag", 1), mid=d.get("mid"), lid=lid)
+                frag=d.get("frag", 0), nfrag=d.get("nfrag", 1), mid=d.get("mid"), lid=lid,
+                jitter_ms=jitter_ms, jitter_id=jitter_id, jitter_source="script" if jitter_id in dict(self.cfg.jitter_script) else "seed")
         if lost:
             self.log("%s %s>%s ch%d seq%d %s -- LOST" % (tag, src, dst, ch, d["seq"], d["kind"]))
         else:
-            arrive = link_arrival if self.cfg.link_bps else self.t + self.cfg.one_way_ms + delay
+            arrive = link_arrival if self.cfg.link_bps else self.t + self.cfg.one_way_ms + delay + jitter_ms
             self.log("%s %s>%s ch%d seq%d %s -> arrives %d" % (
                 tag, src, dst, ch, d["seq"], d["kind"], arrive))
             self.schedule(arrive, P_DELIVER, self.arrive, src, dst, ch, d, d["epoch"], lid, d["attempt"])
@@ -815,18 +884,23 @@ class Sim:
         idx = c.acks_sent
         c.acks_sent += 1
         key = ("Ack", "%s>%s" % (dst, src), idx, 1)
+        ack_epoch = self.ep_of(dst, src)
+        jitter_id = jitter_identity("ack", dst, src, ch, ack_epoch, idx)
+        jitter_ms = jitter_delay(self.cfg, jitter_id)
         self.stat(dst, src, "ack")
         self.ack_ch[(dst, src, ch)] += 1
         self.stat(dst, src, "bytes", WIRE)
         lid = None
         if self.cfg.link_bps:
             lid, ack_arrival = self.link_plan(dst, src, WIRE, "ack", ch, None, 1, self.lost(key), 0,
-                                              epoch=self.ep_of(dst, src), idx=idx)
+                                              epoch=ack_epoch, idx=idx, jitter_ms=jitter_ms, jitter_id=jitter_id)
             lost = ack_arrival is None
-            self.ev("ack_send", src=dst, dst=src, ch=ch, idx=idx, wire=WIRE, epoch=self.ep_of(dst, src), lid=lid, lost=lost)
         else:
             lost = self.lost(key) or self.cut_active(dst, src)
-            ack_arrival = self.t + self.cfg.one_way_ms
+            ack_arrival = self.t + self.cfg.one_way_ms + jitter_ms
+        self.ev("ack_send", src=dst, dst=src, ch=ch, idx=idx, wire=WIRE, epoch=ack_epoch, lid=lid, lost=lost,
+                jitter_ms=jitter_ms, jitter_id=jitter_id,
+                jitter_source="script" if jitter_id in dict(self.cfg.jitter_script) else "seed")
         if lost:
             self.log("ack-only %s>%s ch%d #%d ack=%d -- LOST" % (dst, src, ch, idx, ack))
             return
@@ -1796,6 +1870,59 @@ class Joiner(Peer):
 
 
 # ---- independent validators ---------------------------------------------------------------
+def _check_jitter(events, cfg, end_t, delays=None):
+    """(xviii) Independently derive each propagation sample and its callback time.
+
+    This intentionally does not consult the scheduler's `jitter_delay` routine, link plan, or
+    any expected-arrival field.  It works for the un-serialized comparison path as well as the
+    shared-link path, and therefore catches a trace whose sample and arrival were forged together.
+    """
+    if cfg.jitter_min_ms == cfg.jitter_max_ms == 0 and not cfg.jitter_script:
+        return []  # historical hand-written logs have no timing evidence
+    out, delays = [], delays or {}
+
+    def bad(t, text):
+        out.append(("xviii", "t=%s %s" % (t, text)))
+
+    for tx in (e for e in events if e["kind"] in ("send", "ack_send")):
+        if tx["kind"] == "send":
+            # Deliberately spell the tuple out rather than calling the scheduler helper.
+            ident = ("data", tx["src"], tx["dst"], tx["ch"], tx["epoch"], tx["seq"], tx["attempt"])
+            declared = delays.get((tx["msg"], "%s>%s" % (tx["src"], tx["dst"]), tx["seq"], tx["attempt"]),
+                                  delays.get((tx["msg"], "%s>%s" % (tx["src"], tx["dst"]), None, tx["attempt"]), 0))
+            outcome = lambda e: (e["kind"] in ("arrive", "arrive_refused", "stale_epoch") and
+                                 e.get("src") == tx["src"] and e.get("dst") == tx["dst"] and
+                                 e.get("ch") == tx["ch"] and e.get("sid") == tx["sid"] and
+                                 e.get("attempt") == tx["attempt"])
+        else:
+            ident = ("ack", tx["src"], tx["dst"], tx["ch"], tx["epoch"], tx["idx"])
+            declared = 0
+            outcome = lambda e: (e["kind"] in ("ack", "stale_epoch") and e.get("src") == tx["dst"] and
+                                 e.get("dst") == tx["src"] and e.get("ch") == tx["ch"] and e.get("idx") == tx["idx"])
+        want = _expected_jitter(cfg, ident)
+        if tuple(tx.get("jitter_id", ())) != ident:
+            bad(tx["t"], "transmission has identity %r, expected %r" % (tx.get("jitter_id"), ident))
+        if tx.get("jitter_ms") != want:
+            bad(tx["t"], "transmission has jitter %r ms, expected %d ms for %r" % (tx.get("jitter_ms"), want, ident))
+        if tx.get("lost"):
+            continue
+        if tx.get("lid") is None:
+            want_t = tx["t"] + cfg.one_way_ms + declared + want
+        else:
+            finish = next((e for e in events if e["kind"] == "link_finish" and e["lid"] == tx["lid"]), None)
+            arrived = next((e for e in events if e["kind"] == "link_arrive" and e["lid"] == tx["lid"]), None)
+            if finish is None or arrived is None:
+                bad(tx["t"], "served jitter transmission lacks link finish/arrival evidence")
+                continue
+            want_ns = finish["t_ns"] + (cfg.one_way_ms + declared + want) * NS_PER_MS
+            want_t = arrival_ms(want_ns)
+            if arrived.get("arrival_ns") != want_ns or arrived.get("sched_ms") != want_t:
+                bad(tx["t"], "link arrival does not equal independently derived jitter arrival")
+        if want_t <= end_t and not any(outcome(e) and e["t"] == want_t for e in events):
+            bad(want_t, "served transmission %r has no matching outcome at its derived arrival" % (ident,))
+    return out[:12]
+
+
 def validate(events, cfg, end_t, oracle_lag=None, delays=None):
     """Re-derive the transport and protocol checks from the raw event log.
 
@@ -1822,6 +1949,7 @@ def validate(events, cfg, end_t, oracle_lag=None, delays=None):
     out += _check_input_drop(events)
     out += _check_reassembly(events, cfg)
     out += _check_fragment_sizes(events, cfg)
+    out += _check_jitter(events, cfg, end_t, delays)
     if cfg.link_bps:
         out += _check_link(events, cfg, end_t, delays)
     return out
@@ -2393,11 +2521,20 @@ def _check_link(events, cfg, end_t=None, delays=None):
             if q["extra_ms"] != declared:
                 bad(q["t"], "lid %s labels an extra delay of %d ms, which differs from the declared %d ms" % (
                     lid, q["extra_ms"], declared))
+            if t is not None:
+                jitter_ident = (jitter_identity("data", t["src"], t["dst"], t["ch"], t["epoch"], t["seq"], t["attempt"])
+                               if claimed[lid][0] == "d" else
+                               jitter_identity("ack", t["src"], t["dst"], t["ch"], t["epoch"], t["idx"]))
+                want_jitter = _expected_jitter(cfg, jitter_ident)
+                if q.get("jitter_ms") != want_jitter or tuple(q.get("jitter_id", ())) != jitter_ident:
+                    bad(q["t"], "lid %s has jitter evidence inconsistent with its immutable identity" % lid)
+            else:
+                want_jitter = 0
             floor = want_fin + cfg.one_way_ms * ns
             if a["arrival_ns"] < floor:
                 bad(q["t"], "lid %s arrives at %d ns, before the physical floor finish + one-way delay (%d ns)" % (
                     lid, a["arrival_ns"], floor))
-            want_arr = want_fin + (cfg.one_way_ms + declared) * ns
+            want_arr = want_fin + (cfg.one_way_ms + declared + want_jitter) * ns
             if a["arrival_ns"] != want_arr:
                 bad(q["t"], "lid %s arrives at %d ns, finish + delay is %d" % (lid, a["arrival_ns"], want_arr))
             if a["sched_ms"] != -(-want_arr // ns):

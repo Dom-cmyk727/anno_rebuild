@@ -155,7 +155,7 @@ def rows(include_diagnostics=False):
     if include_diagnostics:
         # Declared diagnostics: exact repeat and asymmetric script with a large selected delay.
         yield "100M", 300, "one_fragment", "uniform25-seed6101", (), "repeat"
-        yield "100M", 300, "one_fragment", "zero", ((('data', 'H', 'J1', 1, 1, 0, 1), 100),), "asymmetric-data-delay"
+        yield "100M", 300, "one_fragment", "zero", ((('data', 'H', 'J1', 1, 0, 0, 1), 100),), "asymmetric-data-delay"
 
 
 def _worker(queue, args):

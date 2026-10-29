@@ -18,7 +18,8 @@
 namespace anno::app {
 
 inline constexpr const char* kUsage =
-    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> [--game-dir <dir>] [--speed 50|100|200] [--group "
+    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> [--game-dir <dir>] [--speed "
+    "50|100|200] [--group "
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "

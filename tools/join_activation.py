@@ -2547,7 +2547,9 @@ def _check_link(events, cfg, end_t=None, delays=None):
             if q["extra_ms"] != declared:
                 bad(q["t"], "lid %s labels an extra delay of %d ms, which differs from the declared %d ms" % (
                     lid, q["extra_ms"], declared))
-            if t is not None:
+            # T61 audit fields are optional only for wholly legacy zero-jitter fixtures.
+            if t is not None and ("jitter_ms" in q or "jitter_id" in q
+                                  or cfg.jitter_min_ms != 0 or cfg.jitter_max_ms != 0 or cfg.jitter_script):
                 jitter_ident = (jitter_identity("data", t["src"], t["dst"], t["ch"], t["epoch"], t["seq"], t["attempt"])
                                if claimed[lid][0] == "d" else
                                jitter_identity("ack", t["src"], t["dst"], t["ch"], t["epoch"], t["idx"]))

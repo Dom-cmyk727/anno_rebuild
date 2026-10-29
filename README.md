@@ -63,3 +63,9 @@ The window title shows the renderer (GPU and its name, or CPU) and the frames pe
 - Performance (Rust; the C++ `bench_frame` is in `docs/perf/README.md`): `cargo run --release -p anno-render --features gpu --example bench_frame -- <game folder> <file.sze>` (method and results: [`docs/perf/README.md`](docs/perf/README.md)).
 - Preview package (C++ build): `packaging/package-preview.sh <name>` on a macOS/Linux host (Windows with MinGW-w64, Linux in Docker; into `share/`), `packaging/package-preview-windows-host.sh <name>` on a Windows host (Git Bash and Docker Desktop: both builds in containers); the Rust one: `packaging/package-preview-rust.sh`.
 - Tests that need the game files read `ANNO1503_GAME_DIR` and skip without it: `ANNO1503_GAME_DIR=<game folder> ctest --preset dev -j` (Rust: `cargo test --workspace`).
+
+## License and disclaimer
+
+This project is free software under the GNU General Public License, version 3 or (at your option) any later version; see [`LICENSE`](LICENSE). The third-party software it uses and their licenses are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+ANNO 1503 is © its rights holders (Max Design, Sunflowers, now Ubisoft); "ANNO" is a trademark of its owner. This is an independent fan project, not affiliated with or endorsed by them. It contains no original game files and needs your own legally obtained copy of the game.

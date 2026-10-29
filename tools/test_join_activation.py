@@ -2489,6 +2489,68 @@ def _patch_round_the_arrival_down():
     return mock.patch.object(ja, "arrival_ms", lambda ns: ns // ja.NS_PER_MS)
 
 
+def _patch_jm1_ignore_ack_jitter():
+    original = ja.jitter_delay
+
+    def wrapped(cfg, identity):
+        if identity and identity[0] == "ack":
+            return 0
+        return original(cfg, identity)
+    return mock.patch.object(ja, "jitter_delay", wrapped)
+
+
+def _patch_jm2_reuse_attempt_one_jitter():
+    original = ja.jitter_identity
+
+    def wrapped(kind, src, dst, ch, epoch, logical, attempt=None):
+        if kind == "data" and attempt and attempt > 1:
+            attempt = 1
+        return original(kind, src, dst, ch, epoch, logical, attempt)
+    return mock.patch.object(ja, "jitter_identity", wrapped)
+
+
+def _patch_jm3_omit_epoch_and_channel():
+    def wrapped(kind, src, dst, ch, epoch, logical, attempt=None):
+        if kind == "data":
+            return ("data", src, dst, logical, attempt)
+        return ("ack", src, dst, logical)
+    return mock.patch.object(ja, "jitter_identity", wrapped)
+
+
+def _patch_jm4_zero_unserialized_jitter():
+    original = ja.jitter_delay
+
+    def wrapped(cfg, identity):
+        if not cfg.link_bps:
+            return 0
+        return original(cfg, identity)
+    return mock.patch.object(ja, "jitter_delay", wrapped)
+
+
+def _patch_jm6_shift_every_sample():
+    original = ja.jitter_delay
+
+    def wrapped(cfg, identity):
+        return original(cfg, identity) + 1
+    return mock.patch.object(ja, "jitter_delay", wrapped)
+
+
+def _patch_jm7_swap_attempt_identities():
+    original = ja.jitter_identity
+
+    def wrapped(kind, src, dst, ch, epoch, logical, attempt=None):
+        if kind == "data" and attempt in (1, 2):
+            attempt = 3 - attempt
+        return original(kind, src, dst, ch, epoch, logical, attempt)
+    return mock.patch.object(ja, "jitter_identity", wrapped)
+
+
+def _patch_jm8_erase_in_horizon_arrival():
+    def arrive(self, *args, **kwargs):
+        return None
+    return mock.patch.object(ja.Sim, "arrive", arrive)
+
+
 def _patch_breach_the_queue_cap():
     return mock.patch.object(ja.Sim, "link_cap", lambda self: 10 ** 12)
 
@@ -2910,6 +2972,100 @@ class JoinJitter(TraceCase):
         self.assertIn("xviii", codes(sim, log))
 
 
+class JoinJitterMutantGates(TraceCase):
+    """Scheduler mutants JM1–JM8. J1 is a joiner name; these patches are unambiguous."""
+
+    def _sim(self, link=False, losses=()):
+        c = cfg(link_bps=100_000_000, link_queue_bytes=131072,
+                jitter_min_ms=0, jitter_max_ms=25, jitter_seed=6101) if link else cfg(
+                    jitter_min_ms=0, jitter_max_ms=25, jitter_seed=6101)
+        return ja.one_join(c, losses=losses, until=9000)
+
+    def test_jm1_ack_jitter_matches_the_independent_sample(self):
+        sim = self._sim(True)
+        acks = [event for event in sim.events if event["kind"] == "ack_send"]
+        self.assertTrue(acks)
+        for event in acks:
+            ident = tuple(event["jitter_id"])
+            self.assertEqual(event["jitter_ms"], ja._expected_jitter(sim.cfg, ident))
+
+    def test_jm2_retries_do_not_reuse_attempt_one_identity(self):
+        sim = self._sim(True, losses=ja.lose("JoinGrant", "H>J1", (1,)))
+        grants = [event for event in sim.events if event["kind"] == "send" and event["msg"] == "JoinGrant"]
+        first = next(event for event in grants if event["attempt"] == 1)
+        retry = next(event for event in grants if event["attempt"] == 2)
+        self.assertNotEqual(tuple(first["jitter_id"]), tuple(retry["jitter_id"]))
+        self.assertEqual(tuple(retry["jitter_id"])[-1], 2)
+
+    def test_jm3_identities_include_epoch_and_channel(self):
+        sim = self._sim(True)
+        send = next(event for event in sim.events if event["kind"] == "send")
+        ident = tuple(send["jitter_id"])
+        self.assertEqual(len(ident), 7)
+        self.assertEqual(ident[3], send["ch"])
+        self.assertEqual(ident[4], send["epoch"])
+
+    def test_jm4_unserialized_jitter_matches_the_independent_sample(self):
+        sim = self._sim(False)
+        sends = [event for event in sim.events if event["kind"] == "send"]
+        self.assertTrue(sends)
+        for event in sends:
+            self.assertEqual(event["jitter_ms"], ja._expected_jitter(sim.cfg, tuple(event["jitter_id"])))
+
+    def test_jm5_serialized_callback_is_not_early(self):
+        sim = self._sim(True)
+        self.assertEqual(validate_clean(sim), [])
+
+    def test_jm6_a_live_sim_matches_the_independent_profile(self):
+        sim = self._sim(True)
+        send = next(event for event in sim.events if event["kind"] == "send")
+        self.assertEqual(send["jitter_ms"], ja._expected_jitter(sim.cfg, tuple(send["jitter_id"])))
+        self.assertEqual(validate_clean(sim), [])
+
+    def test_jm7_attempt_identities_are_not_swapped(self):
+        sim = self._sim(True, losses=ja.lose("JoinGrant", "H>J1", (1,)))
+        grants = [event for event in sim.events if event["kind"] == "send" and event["msg"] == "JoinGrant"]
+        first = next(event for event in grants if event["attempt"] == 1)
+        retry = next(event for event in grants if event["attempt"] == 2)
+        self.assertEqual(tuple(first["jitter_id"])[-1], 1)
+        self.assertEqual(tuple(retry["jitter_id"])[-1], 2)
+
+    def test_jm8_each_in_horizon_send_has_an_outcome(self):
+        sim = self._sim(False)
+        sends = [event for event in sim.events if event["kind"] == "send" and not event["lost"]]
+        arrives = {(event.get("sid"), event.get("attempt")) for event in sim.events if event["kind"] == "arrive"}
+        self.assertTrue(sends)
+        for send in sends:
+            want = send["t"] + sim.cfg.one_way_ms + send.get("jitter_ms", 0)
+            if want <= sim.t:
+                self.assertIn((send["sid"], send["attempt"]), arrives)
+
+
+class JoinJitterN7Gates(unittest.TestCase):
+    def test_n7d_fresh_processes_agree_under_different_hash_seeds(self):
+        tools = os.path.dirname(os.path.abspath(__file__))
+        script = (
+            "import sys\n"
+            "sys.path.insert(0, %r)\n"
+            "import join_jitter_study as jj\n"
+            "row = jj.run('100M', 300, 'one_fragment', 'uniform25-seed6101')\n"
+            "print(row['result_hash'])\n"
+            "print(row['semantic_trace_hash'])\n" % tools
+        )
+
+        def once(seed):
+            env = os.environ.copy()
+            env["PYTHONHASHSEED"] = str(seed)
+            proc = subprocess.run([sys.executable, "-I", "-c", script], cwd=_repo_root(),
+                                  env=env, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+            self.assertEqual(len(lines), 2, proc.stdout)
+            return tuple(lines)
+
+        self.assertEqual(once(1), once(2))
+
+
 MUTANTS.update({
     "charge every retry one byte": (_patch_one_byte_retries, [
         "LinkValidation.test_retransmissions_are_charged_their_wire_size"]),
@@ -2947,6 +3103,22 @@ MUTANTS.update({
         "LinkValidation.test_v7_an_overflow_exceeds_the_configured_cap_not_one_fragment_less"]),
     "V8/P8: the overflow is recorded but the receive side stays open": (_patch_overflow_leaves_the_side_open, [
         "LinkValidation.test_v8_an_overflowed_receive_side_takes_no_arrival"]),
+    "JM1 ignore ACK jitter": (_patch_jm1_ignore_ack_jitter, [
+        "JoinJitterMutantGates.test_jm1_ack_jitter_matches_the_independent_sample"]),
+    "JM2 reuse attempt-1 jitter for retries": (_patch_jm2_reuse_attempt_one_jitter, [
+        "JoinJitterMutantGates.test_jm2_retries_do_not_reuse_attempt_one_identity"]),
+    "JM3 omit epoch and channel from the sample identity": (_patch_jm3_omit_epoch_and_channel, [
+        "JoinJitterMutantGates.test_jm3_identities_include_epoch_and_channel"]),
+    "JM4 force zero jitter on the un-serialized path": (_patch_jm4_zero_unserialized_jitter, [
+        "JoinJitterMutantGates.test_jm4_unserialized_jitter_matches_the_independent_sample"]),
+    "JM5 round a sub-millisecond serialized arrival down": (_patch_round_the_arrival_down, [
+        "JoinJitterMutantGates.test_jm5_serialized_callback_is_not_early"]),
+    "JM6 forge logged jitter and arrival together": (_patch_jm6_shift_every_sample, [
+        "JoinJitterMutantGates.test_jm6_a_live_sim_matches_the_independent_profile"]),
+    "JM7 swap two attempts' arrival identities": (_patch_jm7_swap_attempt_identities, [
+        "JoinJitterMutantGates.test_jm7_attempt_identities_are_not_swapped"]),
+    "JM8 erase an in-horizon served arrival": (_patch_jm8_erase_in_horizon_arrival, [
+        "JoinJitterMutantGates.test_jm8_each_in_horizon_send_has_an_outcome"]),
 })
 
 

@@ -192,6 +192,29 @@ Reservation reserve_cpu_setup();
 /// (wire::kCompatVersion).
 std::uint64_t coordinator_build();
 
+/// Result of preparing this build's host coordinator artifact. Preparation does
+/// not start a coordinator.
+struct CoordinatorPrepare {
+    bool ok = false;
+    std::filesystem::path binary;
+    int compiler_exit = 0;
+    std::string diagnostic;
+};
+
+/// Path of this build's host coordinator artifact: on Windows the WSL binary
+/// named by coordinator_build() under the source tree's cache/coord; on Linux
+/// the cmake-built binary beside this process.
+std::filesystem::path host_coordinator_binary();
+
+/// Obtains a completed usable host coordinator artifact. Does not start it.
+/// Concurrent callers are serialized (Windows: mutex Local\\anno1503-coord-build
+/// with a 120 s wait; Linux: flock /tmp/anno1503-coord-build.lock and an
+/// in-process mutex). A failed or partial compile is not success: the output is
+/// written to a staging name and renamed only after a zero compiler exit.
+/// Test-only ANNO_TEST_COORD_PREPARE_FAIL=1 forces a failure without producing
+/// the file.
+CoordinatorPrepare prepare_host_coordinator();
+
 struct BudgetServerOptions {
     std::uint16_t port = 47631;
     /// Every interface (the WSL host coordinator), else loopback only.

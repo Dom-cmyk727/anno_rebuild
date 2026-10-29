@@ -13,6 +13,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
@@ -31,7 +32,11 @@
 #include "coord_wire.hpp"
 
 #if !defined(_WIN32)
+#include <fcntl.h>
 #include <spawn.h>
+#include <sys/file.h>
+#include <sys/wait.h>
+#include <unistd.h>
 extern char** environ;
 #endif
 
@@ -173,40 +178,212 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
 #endif
 }
 
+std::pair<int, std::string> run_captured(const std::string& command) {
+    std::string out;
 #if defined(_WIN32)
-bool ensure_wsl_coordinator(std::uint16_t port) {
+    FILE* pipe = _popen((command + " 2>&1").c_str(), "r");
+#else
+    FILE* pipe = ::popen((command + " 2>&1").c_str(), "r");
+#endif
+    if (pipe == nullptr) {
+        return {-1, "popen failed"};
+    }
+    char buffer[512];
+    while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        out += buffer;
+    }
+#if defined(_WIN32)
+    const int rc = _pclose(pipe);
+    return {rc, out};
+#else
+    const int status = ::pclose(pipe);
+    if (status == -1) {
+        return {-1, out};
+    }
+    if (WIFEXITED(status)) {
+        return {WEXITSTATUS(status), out};
+    }
+    return {-1, out};
+#endif
+}
+
+std::filesystem::path host_coordinator_binary_path() {
+#if defined(_WIN32)
     const std::filesystem::path root =
         std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
-    // Named by the build id (the hash of the coordinator's sources at
-    // configure time): a binary of this name is this build's coordinator.
-    const std::string id = hex64(coordinator_build());
-    const std::filesystem::path binary = root / "cache" / "coord" / ("anno_budget_coord-" + id);
+    return root / "cache" / "coord" / ("anno_budget_coord-" + hex64(coordinator_build()));
+#else
+    return module_directory() / "anno_budget_coord";
+#endif
+}
+
+CoordinatorPrepare prepare_host_coordinator_impl() {
+    CoordinatorPrepare result;
+    result.binary = host_coordinator_binary_path();
     std::error_code error;
-    std::filesystem::create_directories(binary.parent_path(), error);
+#if defined(_WIN32)
+    const std::filesystem::path root =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
+    std::filesystem::create_directories(result.binary.parent_path(), error);
     const HANDLE mutex = CreateMutexW(nullptr, FALSE, L"Local\\anno1503-coord-build");
+    bool held = false;
     if (mutex != nullptr) {
-        WaitForSingleObject(mutex, 120000);
+        const DWORD wait = WaitForSingleObject(mutex, 120000);
+        held = wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED;
+        if (!held) {
+            result.diagnostic = "prepare wait deadline (120 s)";
+            CloseHandle(mutex);
+            return result;
+        }
     }
+    const auto release = [&] {
+        if (mutex != nullptr) {
+            if (held) {
+                ReleaseMutex(mutex);
+            }
+            CloseHandle(mutex);
+        }
+    };
+    if (const char* fail = std::getenv("ANNO_TEST_COORD_PREPARE_FAIL")) {
+        if (fail[0] != '\0' && std::string(fail) != "0") {
+            result.diagnostic = "ANNO_TEST_COORD_PREPARE_FAIL";
+            release();
+            return result;
+        }
+    }
+    if (std::filesystem::exists(result.binary, error) &&
+        std::filesystem::file_size(result.binary, error) > 0) {
+        result.ok = true;
+        release();
+        return result;
+    }
+    const std::string id = hex64(coordinator_build());
     const std::filesystem::path source_dir = root / "src" / "test_support" / "src";
-    bool compiled = std::filesystem::exists(binary, error);
-    if (!compiled) {
-        const std::string include = to_wsl_path(root / "src" / "test_support" / "include");
-        const std::string out = to_wsl_path(binary);
-        const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread "
-                                "-DANNO_COORD_BUILD=0x" +
-                                id + "ULL -I" + include + " " +
-                                to_wsl_path(source_dir / "budget_coord.cpp") + " " +
-                                to_wsl_path(source_dir / "coord_server.cpp") + " " +
-                                to_wsl_path(source_dir / "memory.cpp") + " -o " + out;
-        compiled = std::system(cmd.c_str()) == 0;
+    const std::filesystem::path staging =
+        result.binary.parent_path() / (result.binary.filename().string() + ".building");
+    std::filesystem::remove(staging, error);
+    const std::string include = to_wsl_path(root / "src" / "test_support" / "include");
+    // Same compiler command as the former ensure_wsl_coordinator path; only the
+    // output name is the staging file so a failed or partial compile cannot be
+    // the usable artifact.
+    const std::string cmd = "wsl.exe -d Ubuntu -- g++ -std=c++20 -O2 -pthread "
+                            "-DANNO_COORD_BUILD=0x" +
+                            id + "ULL -I" + include + " " +
+                            to_wsl_path(source_dir / "budget_coord.cpp") + " " +
+                            to_wsl_path(source_dir / "coord_server.cpp") + " " +
+                            to_wsl_path(source_dir / "memory.cpp") + " -o " + to_wsl_path(staging);
+    const auto [rc, output] = run_captured(cmd);
+    result.compiler_exit = rc;
+    if (rc != 0) {
+        std::filesystem::remove(staging, error);
+        std::filesystem::remove(result.binary, error);
+        result.diagnostic = "compiler exit " + std::to_string(rc) + "\n" + output;
+        release();
+        return result;
     }
-    if (mutex != nullptr) {
-        ReleaseMutex(mutex);
-        CloseHandle(mutex);
+    if (!std::filesystem::exists(staging, error) ||
+        std::filesystem::file_size(staging, error) == 0) {
+        std::filesystem::remove(staging, error);
+        result.diagnostic = "compiler produced no artifact\n" + output;
+        release();
+        return result;
     }
-    if (!compiled) {
+    std::filesystem::remove(result.binary, error);
+    std::filesystem::rename(staging, result.binary, error);
+    if (error || !std::filesystem::exists(result.binary, error) ||
+        std::filesystem::file_size(result.binary, error) == 0) {
+        std::filesystem::remove(staging, error);
+        std::filesystem::remove(result.binary, error);
+        result.diagnostic = "rename of completed artifact failed";
+        release();
+        return result;
+    }
+    result.ok = true;
+    release();
+    return result;
+#else
+    const std::filesystem::path root =
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
+    std::filesystem::create_directories(result.binary.parent_path(), error);
+    static std::mutex compile_mu;
+    const std::lock_guard<std::mutex> in_process(compile_mu);
+    const int lock_fd = ::open("/tmp/anno1503-coord-build.lock", O_CREAT | O_RDWR, 0644);
+    if (lock_fd >= 0) {
+        if (::flock(lock_fd, LOCK_EX) != 0) {
+            result.diagnostic = "prepare flock failed";
+            ::close(lock_fd);
+            return result;
+        }
+    }
+    const auto release = [&] {
+        if (lock_fd >= 0) {
+            ::flock(lock_fd, LOCK_UN);
+            ::close(lock_fd);
+        }
+    };
+    if (const char* fail = std::getenv("ANNO_TEST_COORD_PREPARE_FAIL")) {
+        if (fail[0] != '\0' && std::string(fail) != "0") {
+            result.diagnostic = "ANNO_TEST_COORD_PREPARE_FAIL";
+            release();
+            return result;
+        }
+    }
+    if (std::filesystem::exists(result.binary, error) &&
+        std::filesystem::file_size(result.binary, error) > 0) {
+        result.ok = true;
+        release();
+        return result;
+    }
+    const std::string id = hex64(coordinator_build());
+    const std::filesystem::path source_dir = root / "src" / "test_support" / "src";
+    const std::filesystem::path staging =
+        result.binary.parent_path() / (result.binary.filename().string() + ".building");
+    std::filesystem::remove(staging, error);
+    const std::string include = (root / "src" / "test_support" / "include").generic_string();
+    const std::string cmd = "g++ -std=c++20 -O2 -pthread -DANNO_COORD_BUILD=0x" + id + "ULL -I" +
+                            include + " " + (source_dir / "budget_coord.cpp").generic_string() +
+                            " " + (source_dir / "coord_server.cpp").generic_string() + " " +
+                            (source_dir / "memory.cpp").generic_string() + " -o " +
+                            staging.generic_string();
+    const auto [rc, output] = run_captured(cmd);
+    result.compiler_exit = rc;
+    if (rc != 0) {
+        std::filesystem::remove(staging, error);
+        std::filesystem::remove(result.binary, error);
+        result.diagnostic = "compiler exit " + std::to_string(rc) + "\n" + output;
+        release();
+        return result;
+    }
+    if (!std::filesystem::exists(staging, error) ||
+        std::filesystem::file_size(staging, error) == 0) {
+        std::filesystem::remove(staging, error);
+        result.diagnostic = "compiler produced no artifact\n" + output;
+        release();
+        return result;
+    }
+    std::filesystem::remove(result.binary, error);
+    std::filesystem::rename(staging, result.binary, error);
+    if (error || !std::filesystem::exists(result.binary, error) ||
+        std::filesystem::file_size(result.binary, error) == 0) {
+        std::filesystem::remove(staging, error);
+        std::filesystem::remove(result.binary, error);
+        result.diagnostic = "rename of completed artifact failed";
+        release();
+        return result;
+    }
+    result.ok = true;
+    release();
+    return result;
+#endif
+}
+
+#if defined(_WIN32)
+bool ensure_wsl_coordinator(std::uint16_t port) {
+    const CoordinatorPrepare prep = prepare_host_coordinator_impl();
+    if (!prep.ok) {
         return false;
     }
+    const std::filesystem::path binary = prep.binary;
     // wsl.exe stays up for the life of the coordinator. Detach it so this
     // client does not wait, and so the coordinator is not tied to the
     // client's stdin pipe.
@@ -724,6 +901,14 @@ CoordResult transact(Session& session, Frame request, std::uint64_t bytes, bool 
 }
 
 } // namespace
+
+std::filesystem::path host_coordinator_binary() {
+    return host_coordinator_binary_path();
+}
+
+CoordinatorPrepare prepare_host_coordinator() {
+    return prepare_host_coordinator_impl();
+}
 
 namespace {
 

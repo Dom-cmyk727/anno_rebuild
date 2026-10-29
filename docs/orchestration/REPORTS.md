@@ -6886,3 +6886,108 @@ None that block F1. Allowed open: OQ-185, OQ-460, OQ-461, OQ-462 as above. No ne
 - **Scope checks:** commits before this report are `b599a86724c03c21eb05382b40e90f32dcbe85b0`, `80b6ef51af18c707055c81ce9980b90242d9f433`, and `1dc771b3b9578e034c2a8893f6b2e6f057acab8f`; this report commit parents `1dc771b3b9578e034c2a8893f6b2e6f057acab8f`. The final handoff, not this report, names its own hash. Relative to `0e7f2ddd`, only the three permitted tracked files differ. Existing OQs other than OQ-270 are unchanged; no OQ-480..489 heading exists. The raw Git blob is LF while this Windows checkout is CRLF, so the byte-prefix check is false solely on line endings; LF-normalized historical REPORTS content is an exact prefix and Git shows only the appended F1 section.
 - **Remaining transitive questions:** selector `0x1003e130` / `0x1003b5d0` virtual calls; state-helper targets listed in §4; cleanup calls `0x10059820` / `0x10059a00` and `0x10056480` / `0x10056bce`; and OQ-271 kind slots. OQ-270 remains narrowed, not resolved. OQ-271/272, T-AI.4, T61 and runtime implementation remain outside scope.
 - **Decisions and reasoning:** (1) use table indexes as state identities rather than address order, because PE extraction gives the eight explicit destinations; physical ordering is rejected as contradicted by state 7. (2) remove the flag/callback from the dispatcher contract because the dispatcher's `ret 4` precedes it; treating adjacency as reachability would invent an edge. (3) retain the unchanged-quotient conclusion because normalized entry-SP maps show helper aliasing only argument 2, while documenting early returns and selected-record mutation rather than overstating the helper as unconditional tick clearing. No owner decision, build, runtime test, merge, rebase, push or next task occurred.
+
+## MAP.1 — The fixed map — 2026-10-29 — status: FINISHED
+
+- Branch: `task/MAP-1-fixed-map` from board `7f1868ce4dccc8f66c94707562b7e11e4539f63d`. Worktree: `E:\anno1503-worktrees\anno1503-MAP-1`. Code head the gates ran against after the warning fix: `1665f60d4c5855d342ca251be3177a2cbad8983f`. The full MSVC ctest was run at `071ef95` (the commit before the sign-conversion fix). That fix does not change parsed values or the world hash. The report commit is the child of `1665f60`.
+- Commits, oldest first: `7fc799b` refactor(sim_load): one loader for the original-data type registry; `c6e58a0` docs(sim): the fixed-map format and loader; `c3f37d5` style: clang-format the shared registry loader; `b5e26c0` feat(formats): read a fixed-map layout; `0f3deea` fix(formats): check the CRLF digest in memory; `63f9225` feat(tools): dump a fixed map and agree with Python; `0bc5b74` feat(sim_load): build a scenario from a fixed map with the developer start; `2294a0c` feat(tools): check, preview and fairness for a fixed map; `58785e8` feat(data): the first five-player fixed map; `bc62b09` fix(sim_load): take start money from a kind-8 or kind-11 human; `b202e51` test(sim): load lan5 for two to five seats; `071ef95` docs: note the Kontor territory question and the MAP.1 status; `1665f60` fix(formats): compile the fixed-map reader under sign conversion.
+- `git diff --check 7f1868ce..HEAD` clean. `ANNO_TEST_HEADROOM_MB` left unset (default 4096). No golden rewritten. `kStateHashVersion` not bumped.
+
+### Step 1 fact table
+
+The board facts hold. `load_scenario_with_links` is load plus resolve plus `place_island_links`. `island_from_insel` is file-local. `place_island_links` overwrites climate from `IslandLinkSpec::climate` (default 0) and does not draw. Settings come from SCENE HEAD. Raw materials and ores still reach no state. No prior code placed a developer-start warehouse. The registry was built twice and is now `load_original_registry`. Kinds 8 and 11 are both human (`docs/formats/sze.md`). Player 31 is not required for `World::create`.
+
+### Steps
+
+1. Facts re-checked. They hold.
+2. One registry loader. `sim_replay` hashes of `00_1024_easyentry_01.sze` and `03_1024_med_256.sze` stayed `c350707953439555` and `501c6628a1a062cb` at tick 0, 429 templates. Wall-clock time lines ignored.
+3. Spec `docs/sim/fixed-map.md` written before the reader.
+4. Reader, `anno-dump fixed-map`, `tools/fixed_map.py`, `agree.py`. `python -I tools/agree.py --dump build/msvc/src/tools/anno_dump/Release/anno-dump.exe --commands fixed-map`: 1 of 1 cases agree, 12 args (synthetic fixtures plus `data/maps/lan5.txt`).
+5. `load_fixed_map`. Signature is `Result<LoadedScenario, string> load_fixed_map(const FixedMap&, span<const Seat>, game_dir, TypeRegistry&, SimConfig, FixedMapOptions)`. The board's shorter signature is recorded under Decisions.
+6. `data/maps/lan5.txt` written by `tools/fixed_map_layout.py` (re-run is byte-identical). `python -I tools/fixed_map.py check data/maps/lan5.txt --game-dir E:\anno1503\game\app` printed `ok ... 21 islands, 5 starts, edge 1431x1431`.
+7. Fairness measured on that file. Land by climate and size is the same in all five regions. Kontor-to-centre distances are 571.9, 596.3, 589.6, 593.1, 579.3. Preview: `C:\Users\altin\Pictures\anno-review\MAP-1\lan5-preview.png`.
+8. Tests below.
+9. Gates below.
+10. Mutations below. Each was restored and the suite re-run green before the next.
+
+### Tests
+
+Synthetic, no game files, in `anno_sim_tests` and `anno_formats_tests`:
+
+- `fixed map: a layout parses, sorts and digests independent of line endings`
+- `fixed map: comments and a blank line do not change the digest`
+- `fixed map: the reader names the line` (unknown record, missing field, extra field, duplicate name, duplicate slot, non-number, out of range, bad version)
+- `fixed map: the synthetic fixtures parse` (LF and in-memory CRLF digests)
+- `fixed map: the loader builds the seated world from the base scenario` (players, climates 2 and 4, Kontor, owner run, unseated island, 3000 advances of 100 ms, hash match, bow maker `BuildCmd` at (10, 10) is not `TileNotOwned`; synthetic kontor id 9008)
+- `fixed map: money in the layout replaces the base scenario's`
+- `fixed map: the loader refuses a layout the world would also refuse`
+- `fixed map: the developer start can be turned off`
+
+With `ANNO1503_GAME_DIR=E:\anno1503\game\app`:
+
+- `fixed map: lan5 loads for two to five seats`. `World::create` for 2, 3, 4 and 5 seats. Five minutes (3000 advances of 100 ms) on 5 seats, `check_invariants` empty, two runs the same hash. MSVC and GCC 13.3 both print `lan5 five-minute hash fec6c75b10075eab`. Money is 30000 (kind 11 human in `03_1024_med_256.sze`). Kontor type 1302.
+- Without the game dir the same case returns after `skipping: ANNO1503_GAME_DIR not set`.
+
+MSVC fixed-map binaries after `1665f60`: sim 5 cases, 166 assertions; formats 4 cases, 85 assertions. Both SUCCESS.
+
+### Gates
+
+Coordinator on the runs that logged it: `coordinator build=dd1ac8fb40068285 compat=3`. Headroom in those lines is `4294967296` (4096 MiB). It was not lowered.
+
+- MSVC `cmake --build --preset msvc`: clean.
+- `ctest --preset msvc -j 16` with the game dir, log `cache/map1/ctest-with-game-1.txt`. 1104 of 1105 finished before the process was aborted; 4 failed, all admission, none an assertion on MAP.1 output:
+  - `#35` F4 coordinator binary missing on the first try (`nohup: failed to run command '.../anno_budget_coord-dd1ac8fb40068285'`). Alone: Passed 0.80 s (`cache/map1/ctest-with-game-rerun.txt`).
+  - `#149` chunk draw lists: aborted in the loaded run. Alone: Passed 92.26 s.
+  - `#747` scenario corpus: `refused estimate=1073741824 reason=wait deadline` under the loaded run. Alone: Passed 18.47 s.
+  - `#286` scene digests and `#287` legacy river shading: `wait deadline` under load and again alone. Alone, free memory stayed near 9.1–9.8 GiB, so available after 4096 MiB headroom was about 5.2 GiB. The heavy item asks for 6843933440 bytes (about 6.5 GiB) and a younger 2.5 GiB item waits behind it. Both refused. Not re-run a third time. These two tests do not execute MAP.1 code.
+- `ctest --preset msvc -j 16` without the game dir, log `cache/map1/ctest-without-game.txt`. 1105/1105 passed, exit 0. Two ctest skips: `anno_sim_replay_scenario_single_01` and `anno_sim_replay_scenario_endless_03_links`. Doctest game-file cases return cleanly.
+- clang-format 23.1.3 `--dry-run --Werror` on the changed C++ sources: clean.
+- `tools/check_unix_warnings.sh`: GCC 13.3.0 and Clang 18.1.3, viewer and GPU on, 178 files, clean; Clang viewer without GPU, 9 files, clean. First run failed on sign conversion and `ANNO_SOURCE_DIR`; fixed in `1665f60` and re-run clean.
+- `tools/agree.py --commands fixed-map`: 1 of 1 agree.
+- `tools/lint_sim.py`: ok. The change is not under `src/sim` sources that lint scans, apart from tests.
+- GCC 13.3.0 Release (`g++-13`, Unix Makefiles, `build/gcc-release`, viewer and GPU off so SDL was not required). `anno_sim_tests` with the game dir: 669 passed, 0 failed, hash `fec6c75b10075eab`. Without the game dir: 669 passed, 0 failed. Logs `cache/map1/gcc-sim-with-game.txt` and `cache/map1/gcc-sim-without-game.txt`. Ninja is not on the WSL PATH, so this was not the `release` preset.
+
+### Mutations
+
+| change | test | assertion |
+|---|---|---|
+| `link.climate = 0` | `fixed map: the loader builds the seated world from the base scenario` | `CHECK( nord->climate == 2 )` is NOT correct, values `CHECK( 0 == 2 )` |
+| overlap test forced false | `fixed map: the loader refuses a layout the world would also refuse` | `REQUIRE_FALSE( loaded )` is NOT correct (the overlap layout was accepted) |
+| CR kept on string fields, so the digest follows the raw line | `fixed map: the synthetic fixtures parse` | `CHECK( fm::digest(ok.value()) == fm::digest(crlf.value()) )` is NOT correct, values `CHECK( 14356388378462581749 == 14986571949241462205 )` |
+| owner run written as city 15 | same build test | `CHECK( built.status != anno::sim::Reject::TileNotOwned )` is NOT correct, values `CHECK( 13 != 13 )` |
+| city created for an unseated start | same build test | `CHECK( spare->cities.empty() )` is NOT correct, values `CHECK( false )` |
+
+Each edit was reverted with `git checkout` before the next. Logs: `cache/map1/mut1.txt` through `mut5.txt` (mut3 is the digest run).
+
+### Fairness and preview
+
+`data/maps/lan5.txt`, edge 1431, base `Scenes/0010SingleEndlos/03_1024_med_256.sze`, seed 1, no money record. Five regions, each: nord 256 land 29461 (climate 2), praerie 80 land 2170 (climate 3), dschungel 128 land 5225 (climate 4), steppe 64 land 1516 (climate 5). One contested tundra 128, land 8753 (climate 1). Raw materials and ores: not applied (existing gap).
+
+Kontor-to-centre distances differ by up to about 24 tiles (571.9 to 596.3). Nearest-rival distances are 677.3, 690.1, 690.1, 664.8, 664.8. The templates and land counts match. The coast tile and the 8-grid snap are not a five-fold symmetry on a square grid. A polar ring at radius 180 does not fit beside the inward satellites, so the contested middle is the one tundra island.
+
+Preview: `C:\Users\altin\Pictures\anno-review\MAP-1\lan5-preview.png`. Five large islands in a ring, a satellite on each side and one outward, a grey island in the middle, a red mark on the outer coast of each home.
+
+### OQ
+
+OQ-490. The developer start gives the whole start island to the city. The original Kontor territory radius is unread.
+
+### Decisions and reasoning
+
+- Loader signature takes the game directory and scans templates inside, and takes `FixedMapOptions` (`developer_start` default true, `kontor_type` default 1302). The board text listed `IslandTemplates` and `Rules` as parameters. Putting the scan in the loader keeps the call site from building a second registry of paths. `Rules` is not needed: the developer start is a loader option, not a sim rule.
+- Player 31 is not copied. `SimConfig::neutral_player` only skips bankruptcy when that player exists. Neutral tiles use city number 15. The player table is exactly the seats.
+- City number is the seat index. Seats 0..4 are below `city_slots` and are not `neutral_owner`.
+- Default money is the first kind-8 or kind-11 HEAD money. `03_1024_med_256.sze` has a kind-11 human with 30000 and no kind 8 (`docs/formats/sze.md`; `python` read of the HEAD records). Kind 8 alone would refuse this base. Layout money still overrides. lan5 sets no money, so 30000 applies. Start money remains an owner question.
+- Edge stays 1431. `WorldSettings` does not require a multiple of 8. Island origins are snapped to the 8-grid.
+- Kontor id 1302 is the original Anlagen entry (HEAD bytes 4 by 4). Synthetic tests pass `kontor_type` 9008 because that registry's kontor is not 1302.
+- Name is one token. A space would be a second field.
+- CRLF digest is built in memory. A committed CRLF fixture is trailing whitespace to `git diff --check`.
+- Tests live in `anno_sim_tests`, which already links `anno_sim_load`. `formats` does not depend on `sim`.
+- The optional polar ring was omitted because the inward 80s occupied that band. The 80s were then moved outward so the fairness measure assigns each one to its seat. Same template in every region: `NORD/N_256X256_0002_2B.SCP`, `DSCHUNGEL/D_128X128_0001_1B.SCP`, `STEPPE/S_064X064_0001_1B.SCP`, `PRAERIE/PR_080X080_0001_1B.SCP`, and contested `TUNDRA/T_128X128_0038_2B_PO.SCP`.
+
+### Left open
+
+- Owner question: the map design (`docs/plan/lan-mvp.md` section 8 question 6). Preview and fairness are above.
+- Owner question: start money. lan5 uses the base scenario's kind-11 human money, 30000.
+- OQ-490.
+- The two heavy render tests (`#286`, `#287`) were not admitted. Re-run them when free RAM after the 4096 MiB headroom can hold a 6.5 GiB reservation. They are not MAP.1 behaviour.
+- W4.1 is the next part of this lane and is not started in this report.

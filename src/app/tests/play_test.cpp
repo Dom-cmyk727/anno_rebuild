@@ -414,6 +414,39 @@ TEST_CASE("play: demolish before the scene drops that building") {
     CHECK(kept_px.pixels != edited_px.pixels);
 }
 
+namespace {
+
+bool screen_in(const anno::render::Rect& r, int x, int y) {
+    return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+/// Pixels of `play` that differ from `view` and sit outside the omitted-object
+/// boxes. Equal canvases return 0 without a scan.
+std::size_t diffs_outside(const anno::render::Canvas& play, const anno::render::Canvas& view,
+                          const anno::render::Rect& rect,
+                          const std::vector<anno::render::Rect>& boxes) {
+    if (play.pixels == view.pixels) {
+        return 0;
+    }
+    std::size_t outside = 0;
+    for (std::size_t p = 0; p < play.pixels.size(); p += 4) {
+        if (std::memcmp(play.pixels.data() + p, view.pixels.data() + p, 4) == 0) {
+            continue;
+        }
+        const int x = rect.x + static_cast<int>((p / 4) % play.width);
+        const int y = rect.y + static_cast<int>((p / 4) / play.width);
+        const bool inside =
+            std::any_of(boxes.begin(), boxes.end(),
+                        [&](const anno::render::Rect& b) { return screen_in(b, x, y); });
+        if (!inside) {
+            ++outside;
+        }
+    }
+    return outside;
+}
+
+} // namespace
+
 TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
@@ -421,62 +454,102 @@ TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place"
         return;
     }
     const auto files = anno::test::files_with_ext(*dir / "Scenes" / "0200Single", "sze");
-    if (files.size() < 10) {
-        MESSAGE("fewer than ten 0200Single scenarios");
-    }
-    const std::size_t n = std::min<std::size_t>(files.size(), 10);
+    // The ten campaign scenarios. A short directory is a missing install, not a pass.
+    REQUIRE(files.size() == 10);
+    // One window is 512² RGBA, 1 MiB. A full 0200Single frame is far larger, which
+    // is why the previous check kept a 640×360 corner. Test bound only: the windows
+    // tile each island, so raising this constant compares the same pixels in fewer
+    // pieces.
+    constexpr int kWin = 512;
     anno::render::Layers layers = anno::render::Layers::all();
-    for (std::size_t i = 0; i < n; ++i) {
-        auto play = anno::app::load_play(*dir, files[i]);
+    std::size_t windows = 0;
+    std::size_t building_count = 0;
+    for (const fs::path& file : files) {
+        auto play = anno::app::load_play(*dir, file);
         REQUIRE(play);
         const auto buildings = anno::app::play_buildings(play.value().world);
         auto objects = objects_of(play.value().world, buildings);
-        auto played = anno::app::load_scene(*dir, files[i], play.value().links, &objects);
-        auto viewed = anno::app::load_scene(*dir, files[i]);
+        auto played = anno::app::load_scene(*dir, file, play.value().links, &objects);
+        auto viewed = anno::app::load_scene(*dir, file);
         REQUIRE(played);
         REQUIRE(viewed);
         const auto& scene = *played.value().scene;
-        const auto bounds = scene.bounds(2);
-        REQUIRE(bounds);
-        const auto bytes = std::uint64_t(bounds->w) * std::uint64_t(bounds->h) * 4;
-        anno::render::Rect rect = *bounds;
-        if (bytes > 48ull * 1024 * 1024) {
-            rect = {bounds->x, bounds->y, std::min(bounds->w, 640), std::min(bounds->h, 360)};
-            MESSAGE(files[i].filename().string()
-                    << " is " << (bytes >> 20) << " MiB; compared a corner");
-        }
-        const auto [play_px, play_st] = scene.render(rect, 2, layers);
-        const auto [view_px, view_st] = viewed.value().scene->render(rect, 2, layers);
-        (void)play_st;
-        (void)view_st;
-        REQUIRE(play_px.pixels.size() == view_px.pixels.size());
-        if (play_px.pixels == view_px.pixels) {
-            continue;
-        }
+        const auto& layout = scene.layouts[2];
+        REQUIRE(layout.size() == scene.islands.size());
         std::vector<anno::render::Rect> boxes;
         for (const auto& o : played.value().omitted) {
             const auto [ax, ay] = anno::render::tile_top(static_cast<int>(o.origin_x) + o.x,
                                                          static_cast<int>(o.origin_y) + o.y, 2);
             boxes.push_back({ax - 160, ay - 80, 360, 280});
         }
-        std::size_t outside = 0;
-        for (std::size_t p = 0; p < play_px.pixels.size(); p += 4) {
-            if (std::memcmp(play_px.pixels.data() + p, view_px.pixels.data() + p, 4) == 0) {
-                continue;
+        std::vector<anno::render::Rect> compared;
+        auto compare_window = [&](anno::render::Rect rect) {
+            if (rect.w <= 0 || rect.h <= 0) {
+                return;
             }
-            const int x = rect.x + static_cast<int>((p / 4) % play_px.width);
-            const int y = rect.y + static_cast<int>((p / 4) / play_px.width);
-            const bool inside =
-                std::any_of(boxes.begin(), boxes.end(), [&](const anno::render::Rect& b) {
-                    return x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h;
-                });
-            if (!inside) {
-                ++outside;
+            const auto [play_px, play_st] = scene.render(rect, 2, layers);
+            const auto [view_px, view_st] = viewed.value().scene->render(rect, 2, layers);
+            (void)play_st;
+            (void)view_st;
+            REQUIRE(play_px.pixels.size() == view_px.pixels.size());
+            const std::size_t outside = diffs_outside(play_px, view_px, rect, boxes);
+            CHECK_MESSAGE(outside == 0, file.filename().string()
+                                            << " " << outside
+                                            << " pixels outside omitted objects at " << rect.x
+                                            << "," << rect.y);
+            compared.push_back(rect);
+            ++windows;
+        };
+        auto tile = [&](const anno::render::Rect& area) {
+            for (int y = area.y; y < area.y + area.h; y += kWin) {
+                for (int x = area.x; x < area.x + area.w; x += kWin) {
+                    const int w = std::min(kWin, area.x + area.w - x);
+                    const int h = std::min(kWin, area.y + area.h - y);
+                    compare_window({x, y, w, h});
+                }
             }
+        };
+        for (const anno::render::Placement& place : layout) {
+            CHECK(place.bounds.w > 0);
+            CHECK(place.bounds.h > 0);
+            tile(place.bounds);
         }
-        CHECK_MESSAGE(outside == 0, files[i].filename().string()
-                                        << " " << outside << " pixels outside omitted objects");
+        auto covered = [&](int x, int y) {
+            return std::any_of(compared.begin(), compared.end(),
+                               [&](const anno::render::Rect& r) { return screen_in(r, x, y); });
+        };
+        for (const anno::app::SceneBuilding& b : buildings) {
+            ++building_count;
+            const auto host =
+                std::find_if(scene.islands.begin(), scene.islands.end(), [&](const auto& island) {
+                    return (island.number & 0xFFFFu) == b.island;
+                });
+            REQUIRE_MESSAGE(host != scene.islands.end(), file.filename().string()
+                                                             << " building island " << b.island);
+            const auto [sx, sy] = anno::render::tile_top(static_cast<int>(host->x) + b.x,
+                                                         static_cast<int>(host->y) + b.y, 2);
+            if (!covered(sx, sy)) {
+                compare_window({sx - kWin / 2, sy - kWin / 2, kWin, kWin});
+            }
+            CHECK_MESSAGE(covered(sx, sy), file.filename().string()
+                                               << " building " << b.type << " at " << sx << ","
+                                               << sy << " is outside the compared windows");
+        }
+        for (const anno::app::OmittedObject& o : played.value().omitted) {
+            const auto [sx, sy] = anno::render::tile_top(static_cast<int>(o.origin_x) + o.x,
+                                                         static_cast<int>(o.origin_y) + o.y, 2);
+            if (!covered(sx, sy)) {
+                compare_window({sx - kWin / 2, sy - kWin / 2, kWin, kWin});
+            }
+            CHECK_MESSAGE(covered(sx, sy), file.filename().string()
+                                               << " omitted " << o.type << " at " << sx << "," << sy
+                                               << " is outside the compared windows");
+        }
     }
+    CHECK(windows > 0);
+    CHECK(building_count > 0);
+    MESSAGE(files.size() << " scenarios, " << windows << " windows, " << building_count
+                         << " buildings");
 }
 
 /// Virtual clock. `sleep_until` and `sleep_for` both wake `overshoot` late, which

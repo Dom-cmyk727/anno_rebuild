@@ -106,6 +106,22 @@ def maximum_lag(sim):
     return greatest
 
 
+def peak_reassembly(sim):
+    """Fragment and byte high-water marks from acquire and release records, not simulator fields."""
+    owned = {}
+    peak_frags, peak_bytes = 0, 0
+    for event in sim.events:
+        if event["kind"] == "reasm_acquire":
+            owned[(event["src"], event["dst"], event["ch"], event["mid"], event["frag"])] = event["size"]
+            peak_frags = max(peak_frags, event["held"])
+            peak_bytes = max(peak_bytes, sum(owned.values()))
+        elif event["kind"] == "reasm_release":
+            for frag in event.get("frags", ()):
+                index = frag[0] if isinstance(frag, (tuple, list)) else frag
+                owned.pop((event["src"], event["dst"], event["ch"], event["mid"], index), None)
+    return peak_frags, peak_bytes
+
+
 def peak_retained(sim):
     held, peak_turns, peak_bytes = {}, 0, 0
     for event in sim.events:
@@ -127,6 +143,7 @@ def metrics(sim):
         peak_queue = max(peak_queue, stat["peak_bytes"])
     join = sim.host.joins.get("J1")
     retained_turns, retained_bytes = peak_retained(sim)
+    reasm_frags, reasm_bytes = peak_reassembly(sim)
     return {
         "outcome": ja.sens_outcome(sim), "completion_ms": getattr(sim.joiners.get("J1"), "active_ms", None),
         "restart_ms": getattr(join, "restart_ms", None), "restart_reason": getattr(join, "restart_reason", None),
@@ -136,7 +153,7 @@ def metrics(sim):
         "pending_wire_bytes": sum(link["occ"] for link in sim.links.values()),
         "first_bytes": totals["first_bytes"], "retry_bytes": totals["retry_bytes"], "ack_bytes": totals["ack_bytes"],
         "queue_rejects": totals["drop_queue"], "loss_drops": totals["drop_loss"], "peak_queue_bytes": peak_queue,
-        "peak_reassembly_fragments": sim.peak_reasm_frags, "peak_reassembly_bytes": sim.peak_reasm_bytes,
+        "peak_reassembly_fragments": reasm_frags, "peak_reassembly_bytes": reasm_bytes,
         "retained_turns": len(sim.host.log_turns), "peak_retained_turns": retained_turns,
         "peak_retained_bytes": retained_bytes, "max_seated_lag": maximum_lag(sim),
         "horizon_seated_lag": horizon_lag(sim), "validators": ja.validate_sim(sim),

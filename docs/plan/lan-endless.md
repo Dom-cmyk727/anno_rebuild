@@ -1,6 +1,6 @@
 # Plan: a testable LAN multiplayer endless game (owner request 2026-10-26)
 
-**Status:** plan, written by the orchestrator on 2026-10-26. The owner's decisions D1–D11 were taken the same day with the co-developer (§7) and are worked into every section below. No executor task has been written from it yet.
+**Status:** plan, written by the orchestrator on 2026-10-26. The owner's decisions D1–D11 were taken the same day with the co-developer (§7) and are worked into every section below. Current execution status (2026-10-29, round cx): setup/network-design/AI-RE tasks have landed and P1 is now integrated locally. The current assignment is T32.5 F1, with the subsequent population and independent research tasks identified on the board. This does not mean the playable LAN goal is complete.
 
 **Goal:** up to six players play an endless game on one LAN; the first real group is five. The world is generated larger than the original's and scales with the player count. Every empty seat is a computer player, and the pirates are an option. A game ends when one player remains. A custom multiplayer menu sets it all up. The display goes up to 4K. The game runs with the enhanced rules by default; the original rules, bugs included, are an option that is off by default (D11).
 
@@ -235,9 +235,9 @@ Each workstream has stages. A stage becomes one or more board tasks (`docs/orche
 - **Acceptance:** a scripted UI test drives every menu path; the HUD checked at 1280 × 720, 1920 × 1080, 2560 × 1440 and 3840 × 2160; the owner's visual check (`docs/testing/checklist.md`).
 
 ### W6. The sim systems a game needs (XL) — the critical path
-The current lane (T33.5, then P1) is part of this workstream. An endless game needs, in this order, each with the original's rules (RE first, as T33):
+The current population lane follows integrated P1; round cx splits its remaining inputs, lifecycle decisions and house update into reviewable tasks. An endless game needs, in this order, each with the original's rules (RE first, as T33):
 1. **Ships and settling:** the start ship with its cargo, moving ships, founding a warehouse on a new island from the materials on board (by ship or by scout [H/Kontor_uebernehmen]), loading and unloading. RE: `docs/re/fire-and-ships.md` and `production.md` §ships.
-2. **Population, needs and taxes:** P1–P5 (`state.md` §4.7c), already specified. **Status 2026-10-28: P1 done** (the house payload, the `BGruppen.dat` group table in the registry, the scenario import applied, stream 115, G7 create hash `p1_g7_create`); the house tick (P2) is next.
+2. **Population, needs and taxes:** P1–P5 (`state.md` §4.7c), already specified. **Status 2026-10-29: P1 integrated locally as `b173d02`** (the house payload, the `BGruppen.dat` group table in the registry, the scenario import applied, stream 115, G7 create hash `p1_g7_create`); the House tick remains a no-op. Before live P2: correct T32.5 (F1), import the full player mask (P2.1), audit lifecycle/side effects and OQ-450 (T32.6), then supply the missing immutable inputs (P2.2). P2.3 needs those prerequisites and an explicit bounded implementation decision. P3–P5 stay separate.
 3. **Trade:** the city's buy/sell lists (already read, T26) and the Venetian trader.
 4. **Fire and disease:** a known desync cause in the original (ISS-033), so a priority for the hash tests.
 5. **Military and combat:** soldiers, warships, attack, taking over warehouses and market buildings [H/Kontor_uebernehmen].

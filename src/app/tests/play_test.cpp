@@ -887,8 +887,9 @@ TEST_CASE("play: turn cost on the heavy endless scenario") {
     REQUIRE(opened);
     anno::app::PlayRunner runner(std::move(opened.value().world));
     std::vector<double> ms;
-    ms.reserve(8);
-    for (int i = 0; i < 8; ++i) {
+    constexpr int kTurns = 3000;
+    ms.reserve(kTurns);
+    for (int i = 0; i < kTurns; ++i) {
         const auto t0 = std::chrono::steady_clock::now();
         runner.run_n(1);
         ms.push_back(
@@ -903,8 +904,8 @@ TEST_CASE("play: turn cost on the heavy endless scenario") {
         }
         return ms[std::min(ms.size(), i) - 1];
     };
-    MESSAGE("heavy 8 turns ms p50 " << at(1, 2) << " p95 " << at(95, 100) << " p99 " << at(99, 100)
-                                    << " max " << ms.back());
+    MESSAGE("heavy " << kTurns << " turns ms p50 " << at(1, 2) << " p95 " << at(95, 100) << " p99 "
+                     << at(99, 100) << " max " << ms.back());
     CHECK(runner.step_ms() == 10);
     CHECK(runner.snapshot()->tick > 0);
 }

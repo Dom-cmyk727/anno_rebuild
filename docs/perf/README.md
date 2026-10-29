@@ -936,3 +936,14 @@ The window (`anno1503 --renderer gpu --group 2`, 1280×800, `00_1024_easyentry_0
 Host: Windows, Ryzen 9800X3D, RTX 4090. Release MSVC. Code head `6b95fcd`. Not a `bench_frame` run.
 
 Three thousand `PlayRunner::run_n(1)` calls on `Scenes/0010SingleEndlos/06_1024_heavy_256.sze` (`play: turn cost on the heavy endless scenario`). One sample: p50 0.2561 ms, p95 0.3114 ms, p99 0.3681 ms, max 0.6834 ms. Log: the test message in the F1 report. That is the CPU time of one turn, not the 100 ms wall cadence.
+
+Window thread on the same host, code head `f9db0bb`, `--play` of `00_1024_easyentry_01.sze`, group 2, GPU NVIDIA GeForce RTX 4090 (Vulkan). The viewer's own 2 s meter (`cache/w41/frames-meter.txt`):
+
+| state | client | fps | frame avg | worst | turn p95 |
+| --- | --- | --- | --- | --- | --- |
+| running | 1920×1080 | 501.5 | 0.5 ms | 1.2 ms | 0.4 ms |
+| running | 3840×1421 | 501.4 | 0.6 ms | 1.1 ms | 0.5 ms |
+| paused | 1920×1080 | (loop waiting) | 0.7 ms | 13.4 ms, of which surface configure 12.3 | 0.5 ms |
+| paused | 3840×1421 | (loop waiting) | 0.4 ms | 13.0 ms, of which surface configure 9.6 | 0.3 ms |
+
+A requested 3840×2160 client is clamped to 3840×1421: the primary display is 2560×1440 and the virtual screen is 4480×1440. Pause stops the frame loop (`SDL_WaitEventTimeout`), so a paused interval has no steady fps; the averages above are the frames of the event that woke it, and the play line of that meter said `paused`. Across a 5 s pause at 3840×1421 the tick stayed put, then the wake-up line had advanced 100 ticks (200 ms of game time).

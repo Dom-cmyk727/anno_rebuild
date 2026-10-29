@@ -6599,3 +6599,58 @@ Game-dir gate, started 2026-10-29T12:38:43+01:00. Before the run: headroom 4096 
 7. **The game-dir wait stays an open gate.** Lowering headroom, killing pid 486, or rerunning without a changed condition is outside this task. The bounded log is the reproducer.
 
 No merge, no push, no TASKS/AGENTS/PLAN edit, no Wine, no original files in git.
+
+## T10c F6 continuation — review closure — 2026-10-29 — status: BLOCKED
+
+This section supersedes the F6.1–F6.4 claims that preparation was fully met. Those paragraphs stay as history. The game-directory gate is still not met. Headroom stayed 4096 MiB. Goldens and kStateHashVersion were not changed. Compatibility stayed 3.
+
+- Worktree: E:\\anno1503-worktrees\\anno1503-T10c-F5
+- Branch: codex/T10c-f5-cold-cache
+- Start HEAD: 6f40a71275d17e76115628bac892032d8d71d359
+- Tested code HEAD: 9c26cf9dbb500617b3cd58d954f33c3cc4200bca (the budget suite ran on that tree before the report commit)
+- Contract note: 4bc570f004d919e4d8f2fb6f07bf2243d1b4ca01
+- Coordinator build of the tested binary: f344cf5784426c7c, config none. The shared coordinator was left at dd1ac8fb40068285.
+
+### Review findings
+
+Regressions were added on 6f40a71 and run before the production change. Log: cache/f6/gates/r-fail-before-fix.log. Five cases failed and the stdout-close case passed on Windows (WSL does not deliver pipe EOF while the child is still alive).
+
+| Finding | Before the fix | After the fix |
+|---|---|---|
+| R1 orphans=garbage matches | failed: matches was true | passes |
+| R1 36-byte ELF prefix plus marker is reused | failed: ok=true | passes: not ok |
+| R1 forged LISTENING line with no listener is ready | failed: ready=true | passes |
+| R2 1 ms deadline reuses a 2 MiB warm artifact | failed: ok=true reused=true | passes: timed out, not ok |
+| R3 scratch directory is the shared anno1503-f6 | failed | passes: anno1503-f6-<pid>-<stamp> |
+
+After the fix, cache/f6/gates/r-after-fix.log is 6 passed. cache/f6/gates/f6-cases-after-fix.log is 24 passed, 0 failed; the ASan case skipped because this TU is not sanitized. cache/f6/gates/budget-suite-after-fix.log is 80 passed, 2 failed, 14 skipped, 635 assertions passed of 639. The two failures are F3 handover and F3 crash handover: the successor replayed pending=50 and the later claim stayed reason=waiting. They are not the identity-probe failures. N4b still skips on Windows.
+
+R1–R4 in code: a reusable artifact must be an ELF64 x86-64 executable and answer --identity before the deadline; orphans must be a decimal; readiness requires the process to still be running and 127.0.0.1:port to accept a connection within 2 s; pipe EOF does not abort the wait while the child is inside the deadline; F4 and F6 scratch directories include the process id; a failed replacement rename restores the previous binary and identity (ANNO_TEST_COORD_PUBLISH_FAIL=rename). The mutation matrix a–g was not re-run on this source.
+
+### Admission
+
+No new full game-directory CTest. The saved log cache/f6/gates/ctest-game.log is still the gate: it stopped at 1109/1121 with 1105 passed and 4 failed, all wait deadline (scenario corpus #764, legacy river shading #308, river raster #309, scene digests #307). A refusal line for the corpus job is estimate=1073741824 available=4105881600 free=11188883456 headroom=4294967296 pending=2788034560 resident=0 reason=wait deadline, coordinator build dd1ac8fb40068285 compat 3. Free physical memory was about 10.4 GiB. available was about 3.8 GiB, which cannot cover the 4 GiB headroom plus about 2.6 GiB already pending plus the 1 GiB estimate. The same pending total is on the other three failures. That is the blocker. Headroom was not lowered. The shared coordinator was not killed or replaced. Nothing in this round changed that condition, so the gate stays BLOCKED.
+
+### Gates this round
+
+| Gate | Result | Log |
+|---|---|---|
+| R1–R3 before the fix | 1 passed, 5 failed | cache/f6/gates/r-fail-before-fix.log |
+| R1–R3 after the fix | 6 passed | cache/f6/gates/r-after-fix.log |
+| F6 cases | 24 passed, ASan skipped | cache/f6/gates/f6-cases-after-fix.log |
+| Budget suite | 80 passed, 2 failed, 14 skipped | cache/f6/gates/budget-suite-after-fix.log |
+| MSVC targets anno_test_support_tests and anno_budget_coord | built | build/msvc |
+| Full Release tree, cold no-game CTest, GCC/Clang warnings, WSL ASan, lint_sim, stream oracle, mutants a–g | not re-run | — |
+| Game-directory CTest | not re-run; still BLOCKED | cache/f6/gates/ctest-game.log |
+
+clang-format 23.1.3 is not installed on this host (the Visual Studio binary is 19.1.5 and was not used). git diff --check against 6f40a71 was clean.
+
+### Decisions and reasoning
+
+1. Keep the fake success compiler as a real g++ program that answers --identity. The 36-byte prefix case stays the negative oracle.
+2. Do not treat Windows pipe EOF as the Linux bug. The Linux wait now stays on the deadline after EOF. The Windows case already exited 0 inside 1 s.
+3. Retry the listener connect for 2 s. A single 200 ms connect from Windows missed the WSL relay after LISTENING and failed N4 and F5. Two seconds accepts the real coordinator and still rejects a script that only prints the line.
+4. Do not rerun the game-directory gate. The saved refusal already shows pending plus headroom above available while free RAM is large. Forcing admission or lowering headroom is outside this round.
+5. Leave the two F3 handover failures visible. They wait with reason=waiting after pending=50. That is not fixed by the preparation change, and it is not claimed as met.
+
+No merge, rebase, push, or edit of T61, P1, the completed T10c tree, T32.5, or T60.

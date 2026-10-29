@@ -1,0 +1,2 @@
+anno1503-fixed-map 1
+edge foo 1

@@ -1,3 +1,5 @@
 # Shell scripts run in WSL/Linux: keep LF in every checkout, also on Windows
 # with core.autocrlf=true (bash fails on a CRLF script).
 *.sh text eol=lf
+# Fixed-map fixtures include a CRLF copy. Keep the committed bytes.
+fixtures/synthetic/fixed_map/** -text

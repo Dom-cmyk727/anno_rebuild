@@ -1,0 +1,13 @@
+# comment before the version
+
+anno1503-fixed-map 1
+name LanTest
+edge 1431 1431
+base Scenes/0010SingleEndlos/03_1024_med_256.sze
+seed 7
+island 2 16 32 islands\nord\a.scp
+raw 2 4 5
+island 1 0 8 ISLANDS/nord/b.scp
+ore 1 9
+start 1 2 20 36 1
+start 0 1 4 12 0

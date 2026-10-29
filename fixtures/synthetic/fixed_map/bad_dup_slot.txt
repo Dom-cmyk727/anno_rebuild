@@ -1,0 +1,7 @@
+anno1503-fixed-map 1
+name A
+edge 64 64
+base b.sze
+seed 1
+island 3 0 0 A.SCP
+island 3 8 0 B.SCP

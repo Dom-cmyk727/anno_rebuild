@@ -1,0 +1,8 @@
+anno1503-fixed-map 1
+name Money
+edge 64 64
+base Scenes/x.sze
+seed 1
+money -12
+island 0 0 0 A.SCP
+start 0 0 1 1 0

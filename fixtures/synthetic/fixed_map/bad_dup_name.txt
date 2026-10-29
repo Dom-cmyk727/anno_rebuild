@@ -1,0 +1,3 @@
+anno1503-fixed-map 1
+name A
+name B

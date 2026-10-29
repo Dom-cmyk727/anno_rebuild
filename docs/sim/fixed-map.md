@@ -35,7 +35,7 @@ values. A `raw` or `ore` whose slot is not an island is
 
 | Record | Fields | Notes |
 |---|---|---|
-| `name` | one token | The layout's name. Kept as written. |
+| `name` | one token | The layout's name. One token, so a space is a second field and is refused. Kept as written. |
 | `edge` | `<width> <height>` | World size in tiles. Each is an integer in `1 .. 16384` (`kWorldEdgeBound`, `config.hpp`). |
 | `base` | one token | Path of an original endless `.sze`, relative to the game folder, `/`-separated. Kept as written. |
 | `seed` | `<u32>` | `ScenarioSpec::seed`. |

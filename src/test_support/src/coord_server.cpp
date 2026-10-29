@@ -47,6 +47,7 @@
 #include <anno/test/parallel.hpp>
 
 #include "admit_detail.hpp"
+#include "coord_identity.hpp"
 #include "coord_wire.hpp"
 
 #if !defined(_WIN32)
@@ -1594,11 +1595,23 @@ int run_budget_server(const BudgetServerOptions& options) {
     }
 #endif
     server.meters.start();
-    // A test that starts its own coordinator waits for this line.
-    std::printf("LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu\n",
-                static_cast<unsigned>(port), static_cast<unsigned long long>(server.build),
-                static_cast<unsigned long long>(server.compat),
-                static_cast<unsigned long long>(server.incarnation), server.orphans.size());
+    // Publish the marker through a volatile store so -O2 cannot drop the string
+    // after folding a prefix check. Preparation searches the binary for it.
+    static volatile const char* published_marker = nullptr;
+    published_marker = coordinator_marker();
+    if (published_marker == nullptr || published_marker[0] == '\0') {
+        std::fputs("IDENTITY-FAILED\n", stdout);
+        std::fflush(stdout);
+        return 5;
+    }
+    // A test that starts its own coordinator waits for this line. config is its
+    // own field; port, build and compat are exact tokens, not substrings.
+    std::printf(
+        "LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu config=%s\n",
+        static_cast<unsigned>(port), static_cast<unsigned long long>(server.build),
+        static_cast<unsigned long long>(server.compat),
+        static_cast<unsigned long long>(server.incarnation), server.orphans.size(),
+        coordinator_config_name());
     std::fflush(stdout);
     const auto period = detail::recheck_period();
     auto idle_since = std::chrono::steady_clock::now();

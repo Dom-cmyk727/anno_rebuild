@@ -1,6 +1,6 @@
 # Helpers shared by the test suites: the game directory and file lists.
 add_library(anno_test_support src/game_dir.cpp src/memory.cpp src/budget.cpp src/coord.cpp
-  src/coord_server.cpp)
+  src/coord_server.cpp src/coord_prepare.cpp)
 target_include_directories(anno_test_support PUBLIC include)
 target_include_directories(anno_test_support PRIVATE src)
 target_compile_features(anno_test_support PUBLIC cxx_std_20)
@@ -26,8 +26,27 @@ endforeach()
 string(SHA256 _anno_coord_id "${_anno_coord_hashes}")
 string(SUBSTRING "${_anno_coord_id}" 0 16 ANNO_COORD_BUILD_ID)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${ANNO_COORD_SOURCES})
-target_compile_definitions(anno_test_support PRIVATE ANNO_COORD_BUILD=0x${ANNO_COORD_BUILD_ID}ULL)
-message(STATUS "Test budget coordinator build ${ANNO_COORD_BUILD_ID}")
+# The marker is the artifact identity (T10c F6). g++ fallback passes these same
+# literals. Compatibility is read from the header so the two cannot drift.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/src/coord_wire.hpp" _anno_wire)
+if(NOT _anno_wire MATCHES "kCompatVersion = ([0-9]+)")
+  message(FATAL_ERROR "kCompatVersion not found in coord_wire.hpp")
+endif()
+set(_anno_coord_compat "${CMAKE_MATCH_1}")
+if(ANNO_SANITIZE AND NOT MSVC)
+  set(_anno_coord_config "asan+ubsan")
+  set(_anno_coord_flags "-std=c++20 -O1 -g -pthread -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer")
+else()
+  set(_anno_coord_config "none")
+  set(_anno_coord_flags "-std=c++20 -O2 -pthread")
+endif()
+set(_anno_coord_marker "anno1503-coord-id build=${ANNO_COORD_BUILD_ID} compat=${_anno_coord_compat} config=${_anno_coord_config} flags=${_anno_coord_flags}")
+target_compile_definitions(anno_test_support PUBLIC
+  ANNO_COORD_BUILD=0x${ANNO_COORD_BUILD_ID}ULL
+  "ANNO_COORD_CONFIG_LITERAL=\"${_anno_coord_config}\""
+  "ANNO_COORD_FLAGS_LITERAL=\"${_anno_coord_flags}\""
+  "ANNO_COORD_MARKER_LITERAL=\"${_anno_coord_marker}\"")
+message(STATUS "Test budget coordinator build ${ANNO_COORD_BUILD_ID} config ${_anno_coord_config}")
 
 if(ANNO_BUILD_TESTS)
   add_executable(anno_budget_coord src/budget_coord.cpp)
@@ -45,7 +64,8 @@ if(ANNO_BUILD_TESTS)
   target_link_libraries(anno_test_support_tests PRIVATE anno_test_support doctest::doctest)
   target_include_directories(anno_test_support_tests PRIVATE src)
   anno_target_defaults(anno_test_support_tests)
-  # One WSL cache binary per worktree: F5 BackupArtifact and F3 D2's nohup
-  # relaunch share that path, so parallel CTest must not overlap them.
+  # Canonical cache path is still shared with F3 D2's nohup relaunch. Cold F6
+  # cases use ANNO_TEST_COORD_PREPARE_ROOT and do not rename that file.
+  # No throughput claim.
   anno_add_doctest(anno_test_support_tests PROPERTIES RESOURCE_LOCK wsl_coord)
 endif()

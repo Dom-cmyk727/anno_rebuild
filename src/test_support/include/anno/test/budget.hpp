@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace anno::test {
 
@@ -193,27 +194,57 @@ Reservation reserve_cpu_setup();
 std::uint64_t coordinator_build();
 
 /// Result of preparing this build's host coordinator artifact. Preparation does
-/// not start a coordinator.
+/// not start a coordinator. `reused` is a validated manifest hit. `timed_out`
+/// is the preparation deadline, which covers the lock, the compiler, validation
+/// and owned cleanup (default 120 s; ANNO_TEST_COORD_PREPARE_DEADLINE_MS).
 struct CoordinatorPrepare {
     bool ok = false;
     std::filesystem::path binary;
     int compiler_exit = 0;
     std::string diagnostic;
+    bool reused = false;
+    bool timed_out = false;
+    std::string content;
+    std::string config;
+    std::string compiler;
+    std::string flags;
 };
 
-/// Path of this build's host coordinator artifact: on Windows the WSL binary
-/// named by coordinator_build() under the source tree's cache/coord; on Linux
-/// the cmake-built binary beside this process.
+/// Path of this build's host coordinator artifact. On Windows that is the WSL
+/// binary named by coordinator_build() under the source tree's cache/coord; on
+/// Linux it is the cmake-built binary beside this process. ANNO_TEST_COORD_PREPARE_ROOT,
+/// when set, selects <root>/anno_budget_coord-<build> instead, so a cold test
+/// does not rename the canonical file.
 std::filesystem::path host_coordinator_binary();
 
 /// Obtains a completed usable host coordinator artifact. Does not start it.
-/// Concurrent callers are serialized (Windows: mutex Local\\anno1503-coord-build
-/// with a 120 s wait; Linux: flock /tmp/anno1503-coord-build.lock and an
-/// in-process mutex). A failed or partial compile is not success: the output is
-/// written to a staging name and renamed only after a zero compiler exit.
-/// Test-only ANNO_TEST_COORD_PREPARE_FAIL=1 forces a failure without producing
-/// the file.
+/// One wall deadline (default 120 s) covers the lock, compilation, validation
+/// and cleanup of processes this call spawned. Callers are serialized on
+/// <artifact>.lock (and an in-process timed mutex). A nonempty file is not
+/// enough: reuse requires a manifest whose build, compatibility, config, flags
+/// and content hash match, and the binary must contain the identity marker.
+/// A failed attempt deletes only its own staging file. Test-only hooks, all
+/// documented in docs/perf/README.md: ANNO_TEST_COORD_PREPARE_FAIL,
+/// ANNO_TEST_COORD_PREPARE_DEADLINE_MS, ANNO_TEST_COORD_PREPARE_ROOT,
+/// ANNO_TEST_COORD_COMPILER, ANNO_TEST_COORD_LOCK_FAIL, ANNO_TEST_COORD_PREPARE_REBUILD.
 CoordinatorPrepare prepare_host_coordinator();
+
+/// Exact fields of a coordinator LISTENING line. `matches` is true only when
+/// every field is well formed and equals the expected port, build, compatibility
+/// version and config. A substring of the port is not a match.
+struct ListeningIdentity {
+    bool matches = false;
+    std::uint16_t port = 0;
+    std::uint64_t build = 0;
+    std::uint64_t compat = 0;
+    std::uint64_t incarnation = 0;
+    std::string config;
+    std::string diagnostic;
+};
+
+ListeningIdentity coordinator_listening_identity(std::string_view line, std::uint16_t port,
+                                                 std::uint64_t build, std::uint64_t compat,
+                                                 std::string_view config);
 
 struct BudgetServerOptions {
     std::uint16_t port = 47631;

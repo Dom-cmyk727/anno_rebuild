@@ -6735,3 +6735,25 @@ Disposition (ranked findings):
 | 9 | six-file scope | Confirmed. No action. |
 
 Affected re-run after the two fix commits: 11 tests OK in 1.505 s (H1, N1, N6, H3, clean fixture). Next: join suite at this head, then the final study (N8). No round-2 of this reviewer pass: remaining NOT MET is N8 by design.
+
+## T61 F2 closure — progress, phase 3 — 2026-10-30 00:40 +01:00 — status: IN PROGRESS
+
+The section above was committed at `e34c9b1` from a parallel note. The reviewer passes actually run in this session are the three below. Prompts are in `cache/t61-f2/dn/review-1/`. The reviewer did not edit tracked files.
+
+Pass 1, round 1, head `ea7624c`, subagent `4eaf1170-fc15-45e8-b9f6-a389efdaac56`. Findings file: `cache/t61-f2/dn/review-1/findings.md`.
+
+| finding | disposition |
+| --- | --- |
+| N6 fragment peak copied `held` | Fixed in `69f8e34` (`len(owned)`) and locked by the forged-`held` vector in `fb83654`. Round 2: CONFIRMED. |
+| N7e committed test covered two rows | Fixed in `fb83654`: every `LINK_ROWS` rate and every `ROWS` name. Round 2: CONFIRMED (25.760 s, OK). |
+| H1 control still had `xi` | Fixed in `fb83654`: epoch 0 and `validate == []`. Round 2: CONFIRMED. H1a–c assert the code set is exactly `{xviii}`. |
+| blank line at EOF | Removed. `git diff --check be08b7b fb83654` is clean. Round 2: CONFIRMED. |
+| live study clock had a test; recorded duration did not | The zero-timeout test landed in `fb83654`. Round 2 still found a recorded sum past the study budget starting a replay. Fixed in `3c5ecb6`. |
+
+Pass 1, round 2, head `fb83654`, subagent `f0b5330a-654c-4e8a-b7d5-5dfdf8c24c6a`. Findings: `cache/t61-f2/dn/review-1/findings-round2.md`. Items 1–4 CONFIRMED. Item 5 NOT MET (recorded `wall_seconds`).
+
+Pass 1, round 3, head `3c5ecb6`, subagent `c8bbb7db-4bea-44bd-bdde-a8c85bd34649`. The recorded-sum check is CONFIRMED: `test_n3_recorded_duration_cannot_exceed_the_study_budget` OK in 0.329 s, and the sum is rejected before `controlled_run`. Findings: `cache/t61-f2/dn/review-1/findings-round3.md`.
+
+Join suite after the round-1 fixes, at `fb83654`: Ran 263 tests in 250.387 s, OK. Log: `cache/t61-f2/dn/gates/join-suite-r2.stderr.txt`. Snapshot suite unchanged since phase 2 (64 OK). The budget fix is covered by the four-test re-run in `cache/t61-f2/dn/gates/n3-recorded-budget.stderr.txt` (OK).
+
+Next: the final study at the tool source of `3c5ecb6`, then `--validate`.

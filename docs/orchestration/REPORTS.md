@@ -8391,3 +8391,76 @@ The T10c reservation model assumes 256 MiB per render item. The measured peak RS
 ### Next single reviewable task
 
 Review and approve the per-island object-list seam (`docs/app/game-shell.md`, "Ownership: the measured cost, and the seam proposed"). Then the next executor unit is steps 9a–9d with the stale-completion test (7d), on that seam.
+
+## W4.3 round du — CPU unit: immutable per-island object lists, selective invalidation, stale completions — 2026-10-30 — status: REVIEW (CPU unit only; GPU and input not started)
+
+**Preflight:** `tools/orch/preflight.py` on `2f81f02` (board) and `e7934ee` (branch): 6 of 6 PASS. Branch from `e7934ee`, host support already merged (`6eabad0`), no merge into main, no push.
+
+**Heads.** Code: `task/W4-3-live-buildings` at `549ffc4` (tests), with the commits of this unit in order: `e594108` (spec), `e9f107a` (render: lists and generations), `d988e4d` (render: stamped chunks, stale rule, invalidation), `3c2f2f0` (app: per-island writer; publication comment), `346f4db` (app: ScenePicture), `549ffc4` (tests), `b64d283` (perf notes), and the spec status commit after it. Host support: `task/MAC-1-host-support` at `abc1f8c` (unchanged in this unit).
+
+### Steps (round du, 1–7)
+
+| step | state | evidence |
+|---|---|---|
+| 1 spec, static/dynamic, painter order, classification boundary | done | `docs/app/game-shell.md` "Immutable per-island object lists"; test "no building type of the registry is a river, fall or surf piece" (286 types checked, 0 river/fall/surf) |
+| 2 off-thread build, commit rule | done | `ScenePicture` workers; test "a second change during a rebuild supersedes the first" (1 commit for 2 requests) |
+| 3 retained-generation bound and stress | done as design + test | spec §7: alive generations <= 1 + threads; test "repeated updates keep the live generations bounded" (50 updates, bound 1 + threads + 2 asserted) |
+| 4 sprite boxes, all zoom levels and derived parents | done | `Scene::object_bounds` (frame headers, reach with overrun slack, shadows); `chunk_keys_touching`; test "every changed pixel lies in an invalidated key, at every zoom level" (derived levels included) |
+| 5 controlled tests and mutants | done (listed below) | 9 picture tests pass; 3 mutants caught |
+| 6 mailbox explanation | done | `play.cpp` `publish` comment corrected; spec §12; test "a prepared copy made when full is unused if the consumer empties the mailbox first" |
+| 7 measurements, Release and Debug | done | `docs/perf/README.md` "W4.3 round du"; K = 3 misses in Debug (80 ms), meets it in Release (13 ms), object-list stage only |
+
+### Tests and counts (this Mac, `dev` unless stated)
+
+- `scene_picture` suite, game files: **9 of 9 pass**, 468 s (`cache/orch-du-calib/picture-suite-final.log`). Cases: after a move (fresh-scene pixels equal; only marked keys rebuilt; a far key is neither marked nor rebuilt); a stale completion (discarded; key rebuilt from the newer generation); a second change during a rebuild; a resync after a delayed consumer; every changed pixel in a marked key, at every zoom level (derived levels included); an object crossing a chunk boundary; no batch; the live generations bound; the registry boundary.
+- `mailbox` suite: **7 of 7 pass** (new: the prepared copy unused when the window empties the mailbox first).
+- Render suite without game files (`ctest -R anno_render -LE heavy`): **363 of 365 pass** across render, app and test_support non-heavy sets (the combined run); the two failures are `anno_render_gpu_tests` "river flow on the GPU …" and "every pass of a frame is timed …": the same two Metal timestamp failures as before, unchanged assertions, not waived.
+- Not run in this unit: the full non-heavy suite with game files on this head (the earlier run, before this unit's render changes, passed 1142 of 1144 with the same two failures). The render digests with game files (`scene renders match the recorded digests`, heavy) are not rerun: the heavy calibration could not be admitted (below).
+
+### Mutants (each applied, the named cases run, the file restored, restoration checked)
+
+| mutant | caught by | distinct failing check |
+|---|---|---|
+| M1: no invalidation (`frames.invalidate` removed) | all three marked-key cases | `CHECK_FALSE(marked.empty())`, `REQUIRE_FALSE(marked.empty())`, `stale_generation(key) == 1` (every changed pixel) |
+| M2: invalidate everything (every key of every level's bounds) | "after a move" | `far` key: `chunk_rebuilds(far) == 0` and `chunk->generation == 0` fail; "every changed pixel" correctly still passes (over-marking is allowed) |
+| M3: stale completion accepted (generation check off) | "a stale completion …" | `stale_discarded() >= 1` and the pixel comparison with a fresh scene both fail |
+
+### Calibration and the heavy budget (corrected)
+
+- The earlier comparison "peak RSS 4 933 392 KiB = 4.70 GiB, a 20x under-estimate" was invalid and is withdrawn. The reservation is 256 MiB + 36 bytes/pixel + 1 GiB catalog (not loaded) per item; the RSS is the whole process. No constant was changed.
+- Item measurement (`ANNO_TEST_MEASURE_ITEMS=1`, one worker, 8192 MiB headroom): 16 items ran. The largest, 155 523 200 pixels, reserved 5.46 GiB and grew 4.70 GiB (0.86). Every measured item grew less than its reservation (table in `docs/perf/README.md`).
+- The run did **not** complete: the 17th item (estimate 6.84 GB) waited 1800 s and was refused (`wait deadline`), because free memory stayed below estimate + 8 GiB headroom while the compressor held about 24 GiB. CTest finished (the stdio fix works), so this is an admission result, not a hang. Staged calibration continues when capacity allows (1 worker first, then 2 and 4). No owner decision is needed for it.
+- Compile and light-test profile unchanged: 16 compile jobs (cold 14.0 s); 8 CTest jobs with one internal worker.
+
+### Sanitizers
+
+- Host support (`task/MAC-1-host-support` at `abc1f8c`, the exact code of the stdio fix): `asan` preset, focused `anno_test_support` + `test_names`: **71 of 71 pass, 0 sanitizer reports** (`cache/orch-du-calib/asan-host-tests.log`). This replaces the earlier log that ended before the stdio commit.
+- W4 picture suite under ASan/UBSan (`asan` preset, `anno_app_tests -ts=scene_picture`): **9 of 9 pass, 0 sanitizer reports** (1429 s; `cache/orch-du-calib/picture-suite-asan.log`, the build `build/asan` of the W4 branch at `e767ccb`'s code, which equals `549ffc4` plus docs). The rest of the W4 app and render sets are not run under ASan in this unit.
+
+### Decisions and reasoning
+
+1. **Generations are whole `Scene` objects that share the static parts.** Alternatives: one scene with copy-on-write island objects (every chunk job would have to pass a snapshot into every Scene method) and a whole-scene rebuild per change (rejected by measurement). Chosen: the derived scene shares caches and assets, so no method changes its signature and a job reads one immutable object. Evidence: the derivation test (pixels equal a fresh scene) and the compile-time check that every access went through the lists pointer.
+2. **Water and flow are shared only while the river inputs are equal.** Evidence: `IslandWater::build` reads rivers, heights and gfx ids; `river_mask` reads rivers, falls and river sprites (`river.cpp`). Buildings do not change any of them unless their id is a river, fall or surf piece, which is checked for every registry type.
+3. **The flow builders hold their scene only for a solve.** Alternative: join the builder threads in the destructor. Rejected: the last generation can be released by a builder, which would join itself. Chosen: the builders hold a weak request and a strong reference during the solve; the destructor detaches.
+4. **Invalidation boxes come from the frame headers, not from decoded sprites.** Evidence: `SpriteDraw::reach()` (frame width/height, anchor, overrun slack); the window thread never decodes.
+5. **Invalidation marks keys whether or not they are cached.** Evidence: a chunk in flight for an old generation must be rejected; the stale test needs the mark on an uncached key.
+6. **Chunks are stamped with the generation of their scene and a completed stale chunk is discarded, not replaced.** Alternative: replace and rebuild. Rejected: a stale chunk could reach the cache after a newer one (the packet's rule).
+7. **The object lists are rebuilt from the island's full record set, not merged.** Evidence: the pixel-equality tests; the painter order is the one `prepare_objects` sorts by.
+8. **Each commit owns its island's bytes.** The worker copies the island's head and records into its own storage, so a committed island needs no older generation's buffers. Cost: one island's payload copied per change (bounded by the island's size).
+9. **The Debug timing is reported as a miss.** Evidence: 80 ms against K = 3 (50 ms). Release meets the object-list stage (13 ms). The chunk rebuild and upload stage is not measured here.
+10. **The invalidation rules were tested with enhanced rivers off** (the legacy river look), because a river flow that finishes later rebuilds chunks for its own reason. Enhanced rivers stay on in the probe and in the app; the rule is unchanged for them.
+
+### Remaining before the GPU and input unit (for review)
+
+- **Step 10 (GPU compositor replacement, Metal adapter, slow-build injection, latency at 1080p and 4K, 50-build burst on the frame loop):** not started. The GPU path (`gpu.cpp`) still takes `const Scene&` in its frame call; the viewer must pass the owning generation before the GPU path can be trusted with generations. Not done here.
+- **Viewer wiring:** the viewer still holds the loaded scene by reference; `ScenePicture` is not yet in `viewer.cpp`. Not started (input and viewer work belongs to the next unit).
+- **Heavy calibration** to completion (1, then 2 and 4 workers): not done (admission).
+- **Full non-heavy suite with game files on the final head:** not run in this unit.
+- **Target hosts:** Windows MSVC, WSL GCC 13 and Clang 18 `-Werror` (`tools/check_unix_warnings.sh`), RTX 4090 and Radeon runs: outstanding.
+- **Metal timestamp failures:** open; assertions unchanged.
+- **Darwin host support:** descriptor enumeration (`PROC_PIDLISTFDS`) and memory accounting semantics still need independent review.
+- **Linux behaviour of the stdio change** (`/dev/null` for the detached coordinator, POSIX branch): not measured on Linux.
+
+### Next single reviewable task
+
+Review this CPU unit (the commits above). After approval: the viewer wiring (the window applies `ScenePicture::apply` and `commit` per frame, takes the owning generation into `FrameRenderer::render` and the GPU frame) with the GPU replacement tests (step 10), then the developer input (step 11).

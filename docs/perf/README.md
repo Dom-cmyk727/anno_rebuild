@@ -963,3 +963,47 @@ Probe: `src/app/tests/scene_probe_test.cpp` (`ANNO_PROBE=1`, game files, not a g
 The burst costs one rebuild, as the coalescing rule intends: the cost is per rebuild, not per build. The probe's memory line (private bytes of one held scene) reads +0 MiB: freed pages are reused, so this method does not measure a scene's size. Not measured: the scene's resident size.
 
 Reading: whole-scene replacement costs at least 0.47 s + 0.25 s per change on this map even with every static asset reused, and it rebuilds the sea pattern and the river caches of islands that did not change. A change would be visible about 0.7 s after the sim turn, against the K = 3 frame target (about 50 ms at 60 Hz). See `docs/app/game-shell.md`, "Ownership and generations": the per-island object list is proposed instead.
+
+## W4.3 round du — object-list path and the heavy-item calibration (Mac, 2026-10-30)
+
+Host: Apple M5 Max (18 CPU cores), macOS 27.0.1, arm64, Apple clang 21.0.0, Metal not used here.
+Source: `task/W4-3-live-buildings` after commit `549ffc4` (the probe is `scene_probe_test.cpp`,
+`ANNO_PROBE=1`, game files; not a gate). Map `data/maps/lan5.txt`: 21 islands, 2 buildings at tick 0.
+One change moves one building two tiles right; the burst adds 50 buildings in one batch.
+
+| measure | Debug (`dev`) | Release (`release`) |
+|---|---|---|
+| one island's object-list build (worker), 2 runs x 2 thread settings | 64.98 to 65.92 ms | 9.71 to 10.05 ms |
+| commit on the window thread (new generation, invalidation) | 14.0 to 14.3 ms | 2.8 to 3.0 ms |
+| one change, apply to commit (frames at 60 Hz / 120 Hz) | 79.2 to 80.0 ms (4.8 / 9.6) | 12.5 to 13.1 ms (0.76 / 1.5) |
+| 50-build burst, coalesced into one island rebuild (frames at 60 Hz / 120 Hz) | 80.0 to 80.1 ms (4.8 / 9.6) | 12.7 to 13.1 ms (0.77 / 1.6) |
+
+Latency target (game-shell.md, step 10): K = 3 frames is 50 ms at 60 Hz and 25 ms at 120 Hz. The
+object-list stage meets it in Release (13 ms) and misses it in Debug (80 ms: the build is 65 ms
+of it). The chunk rebuild and the upload are not in these figures: they are measured with the
+GPU and the frame loop (outstanding). The burst costs one rebuild per island, as coalescing intends.
+
+Heavy-item calibration (round du, step "heavy budget"; the reservation model is unchanged): the render
+corpus reserves 256 MiB + 36 bytes per pixel + 1 GiB for the catalog while it is not loaded (render_corpus_test.cpp).
+One process, one worker, `ANNO_TEST_MEASURE_ITEMS=1`, `ANNO_TEST_HEADROOM_MB=8192`, the default stop
+threshold 2048 MiB, the scene renders case ("scene renders match the recorded digests"); log
+`cache/orch-du-calib/heavy-1w-run1.log`, sampler `heavy-1w-run1.samples.csv`. The 16 items that ran:
+
+| item | pixels | reserved GiB | measured growth GiB | growth / reserved |
+|---|---|---|---|---|
+| Single_01 g2 (the largest) | 155 523 200 | 5.46 | 4.70 | 0.86 |
+| Single_10 g0 | 159 244 640 | 5.59 | 4.04 | 0.72 |
+| Single_06 g0 | 32 403 280 | 1.34 | 0.76 | 0.57 |
+| Single_05 g0 | 29 750 640 | 1.25 | 0.57 | 0.46 |
+| the other 12 items | 1 440 000 to 9 728 400 | 0.30 to 0.58 | 0.00 to 0.20 | 0.00 to 0.34 |
+
+The largest growth over a reservation is 0.86: the model is conservative for every measured item.
+Earlier comparison (RSS 4 933 392 KiB against the reservation) was not a valid comparison: the
+process RSS includes everything else in the process, and the reservation is per item. The run did
+not complete: the 17th item (estimate 6 843 933 440 bytes) was refused with `wait deadline` after
+the default 1800 s, because free memory stayed below estimate + headroom (free 9.7 to 15.4 GB,
+headroom 8.6 GB, system compressor occupancy about 24 GiB at the time). The stdio fix did let CTest
+finish (no orphan), so the run ends as a test failure, not a hang. Not yet done: a complete heavy run
+at 1 worker, then 2 and 4 (staged by round du, only when the measured capacity allows).
+
+Object-list path, Debug and Release: `docs/app/game-shell.md`, "Immutable per-island object lists".

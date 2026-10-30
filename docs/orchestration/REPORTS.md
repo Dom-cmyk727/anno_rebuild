@@ -7769,3 +7769,49 @@ None blocking. The first owner question comes with part B: the default bindings 
   4. *Removed then added, each in building order.* Chosen so that a demolish-and-rebuild of one tile is applied in a fixed order.
 - **Still open for A3/A4:** the GCC/Clang gate; the full ctest; and the choice of the picture-side object list (A4), which needs `gpu.cpp`'s replacement path read.
 - **Next:** A4 (apply the deltas to the picture and invalidate the affected chunks, CPU and GPU).
+
+## W4.3 + W4.4 — progress, corrections and A5 — 2026-10-30 10:30 +0100 — status: IN PROGRESS (not an owner-check)
+
+- **Commits since the A3 report (`a688b37`):** `c20dfb7` fix(app) mailbox bound and one publication lock; `15fba61` feat(app) `--commands` (A5).
+- **Head:** `15fba61` plus this report commit. Branch `task/W4-3-live-buildings`, worktree `E:\anno1503-worktrees\anno1503-W4-3`.
+
+### Orchestrator correction 1: bounded mailbox with resync (done)
+- `BuildingMailbox` (`building_delta.hpp`): bound = one second of turns, `1000 / Timing::mp_turn_real_ms` = 10 batches (`PlayRunner` constructor). Past the bound, the waiting batches collapse into one **resync** batch carrying the full sorted list after the newest turn. `apply_batches` replaces the picture's list by it and reports the diff against the previous list as the invalidation set.
+- Tests (`building_mailbox_test.cpp`, 10 cases in the app binary): batches kept in order up to the bound; past the bound one resync with `full == current`; a picture that takes once after a collapse equals the world's list after 20 turns; a normal apply and a resync reach the same list and deltas; a delta for a missing building is reported as inconsistent.
+- The window must invalidate what the resync changes. That is A4, not done yet.
+
+### Orchestrator correction 2: one publication (done)
+- `publish()` pushes the batch into the mailbox and swaps the snapshot under **one** lock, batch first. The snapshot now carries its `turn`.
+- Test: in `commands_file_test.cpp`, after each turn of the scripted run, `snapshot()->turn == index`, and the turn's batch is pending exactly when a direct diff of the same world changed a building. This is the synchronous form of the schedule check; a real two-thread race is not tested.
+
+### A5: `--play <file> --commands <path>` (done)
+- `commands_file.hpp/.cpp`: parser for `turn <n> build <type> <x> <y> <rot> [<x> <y> <rot>]...` and `turn <n> demolish <x> <y> [<x> <y>]...`. Errors name the line. Turns must not decrease. Rotation 0..3. A line with no wire form (over 4 095 placements or 8 190 tiles) is refused at load (`has_wire_form`).
+- City: `developer_player()` = player slot 1; the build or demolish names that player's city on the island of its first tile. No such city is an error (no city is invented).
+- The runner applies each turn's commands in file order before its steps (`set_script`, `Turn::commands`). `--commands` without `--play` is a usage error.
+- **Spec:** game-shell.md says a line with no city of player 1 is "sent anyway, so the sim refuses it". The code refuses it at load instead. Changed in the code; the spec text is not yet updated (to do with A7).
+
+### Evidence
+- `anno_app_tests`: 40 of 40 cases pass **without** game files and 40 of 40 **with** `ANNO1503_GAME_DIR=E:\anno1503\game\app` (MSVC, Release). clang-format 23.1.3 `--dry-run --Werror` clean on all changed files.
+- **A6(d) determinism (done):** the same 12-turn script through the runner and through `run_turn` directly gives the same `World::state_hash()` at every turn (`play: scripted commands match run_turn turn by turn (A6 d)`).
+- The determinism run's batch check: 3 of 12 turns changed a building (with the cheapest building type, no rejections), and on every turn the pending batch matched the direct diff.
+- **Finding:** the first choice of building type (the first in the layout) was refused as `CannotAfford` on the developer start; the cheapest type with no goods cost was accepted. The developer start's money is therefore a real limit on what the owner can build. An owner question, see below.
+- **Finding (crash, resolved in the test):** doctest's `REQUIRE_MESSAGE(parsed, parsed.error())` on a `Result` aborted the test with `Terminate handler called`; stating the check as a bool and a string fixed it. No app code involved. Recorded because it cost time.
+
+### Not done (A4 onward, and part B)
+- **A4 (apply and invalidate):** the window applies `take_building_batches()` to its list (`apply_batches`), maps the deltas to stale chunks per zoom group, and invalidates them. Design recorded in game-shell.md. Still open:
+  - the scene is rebuilt per change (`render::Scene` keeps islands by value and prepares them lazily, `scene.hpp:430`), so the chunk workers must keep the old scene alive until they finish, or it is a use-after-free;
+  - the GPU check: `gpu.cpp` already re-uploads a key whose CPU chunk serial changed (`gpu.cpp:1971-1975`, `replace_chunk` at ~2045), so the GPU needs no change if the CPU side produces a new serial. Confirmed by reading; not yet run.
+- **A6(a), (b), (c), (e):** need A4 (the pixel comparisons, the GPU run on the RTX 4090, the slow-rebuild hook, the rejected-command pixel test).
+- **A7:** this report section is the progress record; the final section comes with part B.
+- **Part B (B1–B6):** not started. Picking (inverse projection with heights), the command queue with its measured push time, the picker and rotation, click and drag, demolish, the preview and its choice (option 1 or 2), CommandRejected feedback, money and goods on screen, and the tests and mutations.
+- **Gates still to run:** full `ctest` with and without game files (the test binary is run, not ctest); `tools/check_unix_warnings.sh` in WSL (GCC 13.3, Clang 18, with and without `ANNO_VIEWER_GPU`); the stills and the frame measurements.
+
+### Decisions and reasoning (this continuation)
+1. *Collapse to resync, not drop.* Alternatives: drop the oldest batches (silent loss), or grow without bound. A resync keeps the picture exact and bounded in memory. The collapse copies the sorted list (O(buildings)) under the lock; the window only swaps the mailbox out, so its wait is the copy's length when the mailbox is full.
+2. *Bound = one second of turns.* Reason: the window takes once per frame, so under normal running the mailbox holds about one frame's batches; one second covers a long stall without a resync. Configurable with `set_batch_bound`.
+3. *Command file resolves the city, the file does not name it.* Alternative: a city number in the file. Rejected: a city number is a sim detail the owner should not have to know.
+4. *A line with no city is refused at load.* Alternative: send it so the sim refuses it, which needs a made-up city number. Rejected (no invented ids). Spec text to be updated in A7.
+
+### Owner questions (new)
+1. **Developer start money.** On `lan5.txt` the developer player can't afford the first building type in the layout (refused `CannotAfford`); the cheapest no-goods type is accepted. Should the developer start have more gold, or should the developer picker list only affordable types? (The sim's rule is unchanged; this is the start's money, MAP.1.)
+2. **Preview on refusals (OQ-052).** Carried over from the brief; decided with part B.

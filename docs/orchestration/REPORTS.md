@@ -6782,7 +6782,7 @@ Retained outcomes, none retuned, validators empty on all 74 rows: 68 primary row
 
 Next: reconcile ADR 0003 §15 and OQ-371 with these results (Proposed stays Proposed, OQ-371 stays open), then reviewer pass 2 on that head and the closure draft.
 
-## T61 F2 closure — 2026-10-30 — status: READY FOR REVIEW
+## T61 F2 closure — 2026-10-30 — status: IN PROGRESS (pass 2 round 2 pending)
 
 Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starting head `be08b7b88025b78083e1d6292c7330a29ceba70a`. Final tested source (last tool change) `3c5ecb6097e6485d191bc7a8b87be925b3a317e1`. Accepted study recorded at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (`python` blobs identical to `3c5ecb6`). ADR/OQ reconciliation `0f1e984dff8a0b23f030042640462b2e2768eda9`. Report tip is this commit. No push, PR, TASKS/PLAN/AGENTS, merge or rebase. No other worktree was read or edited.
 
@@ -6827,7 +6827,7 @@ Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starti
 | phase 2, `89f3008` | 262 in 297.907 s, OK | 64 in 19.131 s, OK |
 | after review-1 round 1, `fb83654` | 263 in 250.387 s, OK | 64 unchanged |
 | after N3 recorded-budget, `3c5ecb6` | **264** in 308.460 s, OK (`cache/t61-f2/dn/gates/join-3c5ecb6.err`, meta head `3c5ecb6`) | 64 in 16.884 s, OK (`snapshot-3c5ecb6.err`; meta head `eb6da43`, same tool blobs) |
-| at the closure draft, `e3fde09` | **264** in 247.091 s, OK (`join-suite-final.stderr.txt`; process started at `0f1e984`, exit file head `e3fde09`) | not re-run; snapshot sources unchanged |
+| while the closure draft was current | **264** in 247.091 s, OK (`join-suite-final.stderr.txt`). Exit file `join-suite-final.exit.txt` records head `e3fde09` only. No start-head line was saved. Tool blobs match `3c5ecb6`. | not re-run; snapshot sources unchanged |
 
 ### Fail-first then passing (§5)
 
@@ -6849,7 +6849,7 @@ Fail-first on `be08b7b`/`a9c8281`: 30 tests, 9 failures (`cache/t61-f2/dn/fail-f
 | H4 `input_on` lag 2 | `0 != 2` on `30964c2` | `maximum_lag` 2 |
 | H4 loading joiner | already passed | seated lag 2 |
 | N1 working-tree hash | CRLF disk ≠ blob | blob SHA-256; disk inequality only if bytes differ |
-| N3 row deadline | validate succeeded in 0.05 s | `controlled_run` timeout, no leftover worker |
+| N3 row deadline | `AssertionError: 0 == 0` in `round-dn.stderr.txt` (validate accepted the short deadline) | `controlled_run` timeout, no leftover worker |
 | N3 recorded sum | missing until review-1 r2 | `3c5ecb6` rejects sum > study budget |
 | N6 reassembly | `-1 != 0` (trusted `held`) | `len(owned)`; lying `held=99` expects `(2, 150)` |
 
@@ -6922,15 +6922,19 @@ A parallel note at `e34c9b1` recorded the same pass from this session's first fi
 
 ### Reviewer pass 2
 
-Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Subagent [T61 reviewer pass 2](1ee78e8e-21af-45a7-871a-40db48504358). Findings: `cache/t61-f2/dn/review-2/findings.md`. Named head `e3fde09`; reviewed `5f83bc9` (REPORTS-only move during the pass). Independent `--validate` printed `valid: 72 primary rows, 2 diagnostics` (200.519 s). N1–N8 and §5 CONFIRMED. No High or Important NOT MET.
+Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Round 1 subagent [T61 closure draft review](b5164b1e-fc29-444c-a14d-721db59dd7cf), head `5f83bc9`. Findings: `cache/t61-f2/dn/review-2/findings.md`. It did not re-run `--validate`. The saved acceptance is `cache/t61-f2/dn/final/validate.stdout.txt` / `validate.exit.txt`: `valid: 72 primary rows, 2 diagnostics`, exit 0, 200.741 s, head `eb6da43`. A figure of 200.519 s and subagent `1ee78e8e` were written into `0bd7526` and are not in any file under `cache/t61-f2/dn`. They are not evidence.
+
+`0bd7526` had already marked this section READY and had named both H1 logs. The five findings from `b5164b1e` are below. N1–N8 gates were CONFIRMED by that pass. No High or Important NOT MET.
 
 | # | finding | disposition |
 | --- | --- | --- |
-| 1 | Low: H1a–c fail-first quoted `'xi'` from the epoch-1 log | **Fixed** in this commit: both logs named (`h1-30964c2.err` vs `h1-h4-on-30964c2.stderr.txt`). Tests already `assertEqual(..., {"xviii"})`. |
-| 2 | Low: commit table stopped at `0f1e984` | **Fixed** in this commit: `e3fde09`, `5f83bc9`, and this report tip added. |
-| 3 | Low: H3 and loading-joiner never failed on the defective head | **Recorded, tests kept.** H3 was already fixed at `ee46458` before this continuation. Loading-joiner is a membership spec (`maximum_lag` only seated members); the H4 defect is `test_h4_input_on_samples_maximum_lag_without_a_later_apply` (`0 != 2`). No new fixture: that would be a tool/test change after the accepted study. |
+| 1 | Low: H1a–c quote did not match `h1-h4-on-30964c2.stderr.txt` (`set()`, not `{'xi'}`) | **Fixed** in `0bd7526`: the table names `h1-30964c2.err` for `{'xi'}` and `h1-h4-on-30964c2.stderr.txt` for `set()`. |
+| 2 | Low: N3 fail-first said the defective validate finished in 0.05 s | **Fixed** in the following docs commit: the cited log is `AssertionError: 0 == 0`. No 0.05 s line exists under `cache/t61-f2/dn`. |
+| 3 | Low: the 247.091 s suite row claimed a start head `0f1e984` that the exit file does not record | **Fixed** in the following docs commit: the row cites `join-suite-final.stderr.txt` and exit head `e3fde09` only. |
+| 4 | Low: `study.meta.txt` and `validate.meta.txt` still describe the overwritten `e34c9b1` run | **Fixed** by renaming those files to `study.meta.e34c9b1.txt` and `validate.meta.e34c9b1.txt`. The accepted run is `cmdline.txt` and `validate.exit.txt` at `eb6da43`. |
+| 5 | Low: “the report tip is the commit that adds it” was one commit behind | **Fixed** in `0bd7526` for that commit. The tip after this correction is the commit that contains this paragraph. |
 
-No second full `--validate` round: tools and `study.jsonl` are unchanged since the pass-2 independent replay at `5f83bc9`, and the three findings are report text. Affected gate: none (docs only). Round 2 of this pass is this disposition table, not a new tool run.
+Affected gate for these five: none. They are report text and ignored cache names. Python blobs are unchanged since `3c5ecb6`, so the study at `eb6da43` stays the accepted file. Round 2 of this pass re-reads the corrected sentences.
 
 ### Decisions and reasoning
 

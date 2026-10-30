@@ -8263,3 +8263,131 @@ Inline; Wine passes 3 and 4; no subagents. Lanes 1, 3, 4 not touched. No merge, 
   4. Screens not reached: trade sliders, help on a building, statistics/quit, ship panel, messages, diplomacy, a later stage. Diplomacy and messages are reachable with computer opponents in the original.
   5. The other resolutions need the owner's desktop harness: an owner checklist, not a runner task.
 - **Merge:** `df6dcc7`. The REPORTS conflict was resolved as main's file plus the branch's appended sections (7722 + 8025 − 7707 = 8040 lines). `docs/re/ui.md`, `tools/ui_layout.py` and `data/ui/construction.txt` are byte-identical to the branch; `check-files` passes on main.
+
+## Mac executor — host readiness, then the W4.3 continuation — 2026-10-30 — status: REVIEW (A4 QUESTION: the seam)
+
+**Scope:** `cache/orch-handover-2026-10-30/EXECUTOR_HANDOVER.txt` steps 1–7, 8, 11 (not started), 12 (not started), 13 (partly). Main is unchanged at `632229e`.
+
+### Heads (exact)
+
+| branch | worktree | head | note |
+|---|---|---|---|
+| `main` | `anno1503` | `632229e` | not touched |
+| `task/MAC-1-host-support` (new, from `632229e`) | `anno1503-worktrees/anno1503-MAC-1` | `abc1f8c` | host support, 4 commits: `870a527`, `4cc0a3a`, `837fb5f`, `abc1f8c` |
+| `task/W4-3-live-buildings` | `anno1503-worktrees/anno1503-W4-3` | `a8a8e7a` | merged `main` and the host branch (`f978e43`, `6eabad0`); then `4986050` (A8), `1df238e` (probe), `41f2ead` (spec), `a8a8e7a` (format) |
+
+Preflight (handover step 2): 6 of 6 PASS on `8972b3d` before the merge. The W4 checkout had a Windows `.git` pointer; repaired by `git worktree repair` (metadata backed up under `cache/mac-recovery-2026-10-30/`). Not pruned.
+
+### Step 1–2: the workspace
+
+- 13 copied checkouts repaired with `git worktree repair` (the two `C:/Users/altin/.codex` entries have no directory here and stay prunable).
+- The 506 main changes and the 5 other checkouts' changes were CRLF-only. Each file was proven equal to its committed blob after CRLF folding (`eolcheck.py`, scratch), then restored to the committed bytes; the CRLF copies are archived in `cache/mac-recovery-2026-10-30/eol-crlf-*.tar`. No normalization commit.
+- The UI F2 checkout's `docs/testing/checklist.md` (F2.3, real content) is kept; its patch is saved.
+
+### Step 3: toolchain (this Mac)
+
+- Apple M5 Max, 18 CPU cores, macOS 27.0.1, arm64; Apple clang 21.0.0; Python 3.14.6.
+- cmake 3.31.10, ninja 1.13.2, clang-format 23.1.3, installed into `cache/mac-tools/venv` (system Python not changed). CTest from the cmake wheel.
+- Fresh build directories `build/dev` (Ninja, Debug) in the host, W4 and base worktrees; `build/asan` in the host worktree.
+- The dev preset configures in about 150 s (dependency fetch), builds all 457 steps in 27 s at 6 jobs (cold).
+- Two `ld` warnings in every link: `ignoring duplicate libraries: src/sim/libanno_sim.a` (Apple ld). Not fixed here (a CMake link-list issue; Linux/Windows not affected by this message).
+
+### Step 4: host readiness (the host branch)
+
+Defects measured on the unmodified main (`632229e`, detached worktree): `test_support` 33 of 64 pass. Causes and fixes:
+
+| defect | evidence | fix (commit) |
+|---|---|---|
+| memory readings nullopt on Apple | `memory.cpp` had no Apple branch | `870a527`: `hw.memsize`; `host_statistics64` free − speculative + inactive; `task_info` `phys_footprint` |
+| `module_directory` and the test child's `sibling()` read `/proc/self/exe` (empty on Darwin) | every spawn-based case: `REQUIRE(exists(exe))` failed | `4cc0a3a`: `proc_pidpath(getpid())` |
+| `process_started` and the owner check read `/proc` | owner treated as gone on Darwin | `4cc0a3a`: `proc_pidinfo(PROC_PIDTBSDINFO)`; ESRCH gone, changed start time = stopped owner, other errors unknown |
+| coordinator could not spawn: `posix_spawn` with close actions on unopened fds returns EBADF (probed: rc 9 with 4093 actions) | "could not start the test budget coordinator" | `4cc0a3a`: close only the fds listed by `PROC_PIDLISTFDS`; refuse the spawn if the list is unreadable |
+| the detached coordinator kept the starter's stdout: ctest waited for EOF (hung 15 min after the heavy case; killed by hand) | `ps`: orphan `anno_budget_coord`, parent 1 | `abc1f8c`: stdio to `/dev/null` (POSIX branch; Linux runs the same branch, not measured here) |
+| WSL-only cases ran on Darwin (`wsl_available()` returned true on every non-Windows host) | D2 waited for a meter child that does not exist; N3/N4 read `/proc` | `837fb5f`: false on Darwin with the skip message; Linux/Windows unchanged |
+| race: silent probe quit by `send` only; the coordinator bound while the listener still held the port (BIND-FAILED, under ASan) | ASan run, 1 of 3 | `837fb5f`: `quit_and_wait` |
+| Zombie reads Gone on macOS 27 (ESRCH), not a distinct state | host test | `837fb5f`: the test asserts "not Running", the measured property |
+
+Host contract (handover 4c): `host_test.cpp` (suite `host`, 7 cases: memory present and consistent; a touched 64 MiB allocation moves private bytes; the coordinator binary is found; this process's start stamp matches proc_pidinfo; a live child is Running then Gone once killed and reaped; an unreaped zombie is not Running; a pid with no process is Gone). The admission and coordinator cases (`budget_test`, `budget_f1..f4`) run unchanged and pass; they are the evidence for "small reservation admitted and released", "second client waits", and "unknown reading never forces admission".
+
+Results:
+- `anno_test_support` focused set, `dev`: 70 of 70 (after `abc1f8c`); 71 of 71 before `abc1f8c` (the 71st is `test_names`).
+- ASan + UBSan (`asan` preset, `-fsanitize=address,undefined,float-cast-overflow`): 71 of 71, zero sanitizer reports.
+- clang-format 23.1.3 `--dry-run --Werror`: clean on every changed file.
+- Not run: the Windows `msvc` build and the WSL GCC/Clang `-Werror` gate (`tools/check_unix_warnings.sh`). They are target-host gates (outstanding).
+
+### Step 5: calibration (this Mac; single measurements unless stated)
+
+| measure | result | choice |
+|---|---|---|
+| cold compile, same tree (`ninja -t clean` then build) | j6 27.0 s, j12 17.0 s, j16 14.0 s; no-op 0.1 s | 16 jobs (fastest; two cores left) |
+| non-heavy suite, no game files, 1113 cases, `ANNO_TEST_THREADS=1` | j8 45.2 s, j12 43.7 s, j16 42.6 s | 8 jobs: the critical path is one case, `anno_sim_tests` "rejected command leaves the hash unchanged" (40.9 s), so more jobs do not shorten the run |
+| one heavy case at one worker: `anno_render_tests` "scene renders match the recorded digests" (game files) | wall 863 s; peak RSS 4.93 GB | 1 worker. Not known whether it passed: CTest was blocked by the orphan coordinator (fixed in `abc1f8c`). Rerun with the full game-file gate |
+| memory pressure during runs | 36–37% free, 16 GB total in the pressure tool's report | not used as a budget; the admission reading (free + inactive) is in `host_test` |
+
+The T10c reservation model assumes 256 MiB per render item. The measured peak RSS of one heavy case is 4.93 GB. The reservation therefore under-counts heavy renders by about 20×. This is a finding for the owner and the orchestrator (the heavy-admission budget), not changed here.
+
+### Step 6–7: W4 state, and the scene-ownership decision (QUESTION)
+
+- The branch's audited state (`8972b3d`, plus `6c469cd`) is unchanged in code. The viewer does not consume the building batches; `apply_batches` runs only in tests.
+- **Probe** (`scene_probe_test.cpp`, `ANNO_PROBE=1`, game files; `docs/perf/README.md` "W4.3 A7b"), fixed map `lan5` (21 islands, 2 buildings at tick 0):
+
+| measure | time |
+|---|---|
+| one change: whole scene built from files as `--play` does (5 runs) | 6.73–6.85 s |
+| `Scene` constructor from the parts a scene holds (copies, no file read) | 0.47 s |
+| first sea pattern of a fresh scene | 0.25 s |
+| 50-build burst, one coalesced rebuild | 6.77 s (one rebuild, as designed) |
+
+- **Decision (7c):** whole-scene generations miss the K = 3 frame target by about an order of magnitude on this map (at least 0.7 s after the sim turn). Proposed instead: the per-island object list (`docs/app/game-shell.md`, "Ownership: the measured cost, and the seam proposed"). Checked for it: buildings do not reach the island water or the sea pattern (`sea.cpp` `IslandWater::build`, `SeaPattern::build`), so the seam holds the objects lists only.
+- **Not implemented** (9a–9d, 7d, 10): they depend on this decision. The seam needs your approval before it is written.
+
+### Step 8: publication (done)
+
+`publish()` copied the full list inside the publication lock when the mailbox collapsed. The copy is now made before the lock when `BuildingMailbox::full()` says the push will collapse (`4986050`). Equivalence test: `mailbox: a prepared push collapses to the same resync as push`. The mailbox cases pass (27 assertions). Stalled-consumer and skipped-snapshot interleavings beyond the existing tests are not added.
+
+### Steps 9–12: not done
+
+- 9 (selective invalidation): blocked on the decision in step 7.
+- 10 (GPU replacement, Metal runs, slow-build injection, latency, 1080p/4K): not run. The GPU timing tests fail on Metal on **both** `main` and this branch: `anno_render_gpu_tests` "river flow on the GPU …" and "every pass of a frame is timed …", both with `REQUIRE(pass.has_value())` in `gpu.cpp` `read_timestamps` (a pass with equal begin and end ticks is "no reading", by design). Pre-existing, not introduced here; open.
+- 11 (input wiring): not started. The developer picker, the command queue and the picking math exist and are tested; no SDL mapping, no viewer pick.
+- 12 (preview, refusals, resources): refusals and money/goods reach the title line (W4.4 B5). No footprint preview is drawn.
+
+### Step 13: gates on `a8a8e7a`
+
+- Formatting: clang-format 23.1.3 clean on all 31 changed C++ files of the branch against `632229e` (three fixed in `a8a8e7a`).
+- Non-heavy suite without game files (`ctest -LE heavy -j 8`): 1142 of 1144 pass. The two failures are the Metal timing cases above (also failing on main).
+- Non-heavy suite with game files: see the line below.
+- Heavy suite (10 cases, `anno_render_tests`, game files): not run to completion. One case took 863 s at one worker (calibration above).
+- `anno_app_tests` probe with game files: passes; it measures, it is not a gate.
+- ASan/UBSan of the W4 branch: not run for this head (outstanding; the host set passed).
+- Windows MSVC full gate, WSL GCC/Clang `-Werror`, RTX 4090 and Radeon runs, and the owner's desktop captures: outstanding (target hosts).
+
+- Non-heavy suite **with** game files (`ANNO1503_GAME_DIR`, `ctest -LE heavy -j 8`, 1144 cases, 1251 s): 1142 of 1144 pass; the same two Metal timing cases fail.
+
+### Decisions and reasoning (this session)
+
+1. **Host branch separate, merged into W4 by merge** (not cherry-pick). Reason: the host fixes stay reviewable as one unit and W4's tests can run on the Mac.
+2. **Darwin free memory = free − speculative + inactive.** Alternatives: free only (very conservative: admission would wait on most of the machine's reclaimable memory); all of free + inactive + purgeable (purgeable needs work to hand out). Chosen: the analogue of Linux MemAvailable. Evidence: `vm_stat` semantics (free_count includes speculative pages).
+3. **Darwin process memory = `phys_footprint`.** Alternatives: RSS (counts shared clean pages); resident-private (not exposed). Chosen: the figure Activity Monitor reports as Memory, closest to Windows PrivateUsage.
+4. **Spawn descriptors on Darwin: list open descriptors, do not add a close per index.** Probed: a close on an unopened fd fails the spawn.
+5. **Zombie = Gone on Darwin.** Measured (ESRCH). The owner check treats both as stopped.
+6. **WSL-only cases skip on Darwin with their own message.** They read `/proc` or need the PowerShell meter, neither exists there.
+7. **Detached coordinator stdio to `/dev/null`.** Alternative: a log file (useful for diagnosis; not needed by any reader today). Chosen: no hang, no new file.
+8. **Scene ownership: whole-scene generation rejected on measurement; per-island list proposed.** Evidence: the probe above; the seam is the one the spec already describes.
+9. **The mailbox copy is made before the lock.** Alternative: a second lock (more complex, no gain). The copy only happens when full; full cannot go back to empty between the check and the push because only the window takes.
+
+### Owner / orchestrator decisions needed
+
+1. Approve the per-island object-list seam (game-shell.md, "Ownership") before step 9 starts.
+2. The heavy-admission model: measured 4.93 GB per heavy render at one worker, against the 256 MiB per item in the T10c model. The budget needs the measured figure or a per-case measurement.
+3. Developer bindings (step 11) are not decided by the board. Proposed for the developer tool only (not the original UI): `B` toggles the tool; while on, left click places or demolishes (drag builds a road line); `N`/`P` next/previous type; `.` rotates; `X` toggles demolish; right click cancels; WASD/arrows still pan; left-drag pans only while the tool is off. Existing keys (Esc/Q quit, E, R, zoom, Space, Home, 0) are unchanged.
+
+### Remaining blockers and target-host checks
+
+- The seam decision (above).
+- Windows MSVC and WSL GCC/Clang gates for `task/MAC-1-host-support` and the W4 branch; RTX 4090 and Radeon GPU runs.
+- Heavy suite on the Mac with the fixed harness (about 14 min per heavy case at one worker, 4.9 GB each): owner decision on running it in the background.
+
+### Next single reviewable task
+
+Review and approve the per-island object-list seam (`docs/app/game-shell.md`, "Ownership: the measured cost, and the seam proposed"). Then the next executor unit is steps 9a–9d with the stale-completion test (7d), on that seam.

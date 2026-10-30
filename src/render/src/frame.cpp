@@ -320,7 +320,61 @@ Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy, bool s
     return render_chunk(scene, group, cx, cy, options);
 }
 
-ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads) : scene_(scene) {
+namespace {
+
+/// A shared_ptr that does not own `scene`: the caller keeps the scene alive.
+std::shared_ptr<const Scene> non_owning(const Scene& scene) {
+    return std::shared_ptr<const Scene>(std::shared_ptr<const Scene>{}, &scene);
+}
+
+} // namespace
+
+std::vector<ChunkKey> chunk_keys_touching(const Scene& scene, Rect box, std::size_t group) {
+    std::vector<ChunkKey> keys;
+    if (box.w <= 0 || box.h <= 0) {
+        return keys;
+    }
+    // The keys of one level whose chunk rectangles meet `b` (level pixels).
+    auto add = [&](std::size_t level, Rect b) {
+        if (b.w <= 0 || b.h <= 0) {
+            return;
+        }
+        const int x0 = div_euclid(b.x, kChunk), x1 = div_euclid(b.x + b.w - 1, kChunk);
+        const int y0 = div_euclid(b.y, kChunk), y1 = div_euclid(b.y + b.h - 1, kChunk);
+        for (int cy = y0; cy <= y1; ++cy) {
+            for (int cx = x0; cx <= x1; ++cx) {
+                keys.emplace_back(level, cx, cy);
+            }
+        }
+    };
+    add(group, box);
+    const ZoomLevels& levels = scene.levels();
+    for (std::size_t level = levels.built_count(); level < levels.size(); ++level) {
+        if (levels.ancestor(level) != group) {
+            continue;
+        }
+        // pixel(level) = pixel(group) * den / num (ratio_w: tile(group) / tile(level)).
+        const auto [num_w, den_w] = levels.ratio_w(group, level);
+        const auto [num_h, den_h] = levels.ratio_h(group, level);
+        auto lo = [](std::int64_t v, std::int64_t num, std::int64_t den) {
+            return static_cast<int>(std::floor(static_cast<double>(v) * static_cast<double>(den) /
+                                               static_cast<double>(num))) -
+                   1;
+        };
+        auto hi = [](std::int64_t v, std::int64_t num, std::int64_t den) {
+            return static_cast<int>(std::ceil(static_cast<double>(v) * static_cast<double>(den) /
+                                              static_cast<double>(num))) +
+                   1;
+        };
+        const int x0 = lo(box.x, num_w, den_w), y0 = lo(box.y, num_h, den_h);
+        const int x1 = hi(box.x + box.w, num_w, den_w), y1 = hi(box.y + box.h, num_h, den_h);
+        add(level, Rect{x0, y0, x1 - x0, y1 - y0});
+    }
+    return keys;
+}
+
+ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads)
+    : default_scene_(non_owning(scene)) {
     for (std::size_t i = 0; i < std::max<std::size_t>(threads, 1); ++i) {
         threads_.emplace_back([this] { run(); });
     }
@@ -389,16 +443,22 @@ void ChunkWorkers::run() {
         }
         const ChunkKey key = job.key;
         const auto [group, cx, cy] = key;
+        // The job's own generation (kept alive by the job until it completes).
+        const std::shared_ptr<const Scene> scene_ptr = job.scene ? job.scene : default_scene_;
+        const Scene& scene = *scene_ptr;
         std::optional<Chunk> chunk;
         const auto built_at = Clock::now();
         try {
-            if (group >= scene_.levels().built_count() && group < scene_.levels().size() &&
+            if (group >= scene.levels().built_count() && group < scene.levels().size() &&
                 job.kids[0]) {
                 // Reduced from the cached children the job carries (shared, not copied).
                 // A job without children (derive_from_cache off) is built from nothing.
-                chunk = render_derived_chunk(scene_, job.kids);
+                chunk = render_derived_chunk(scene, job.kids);
             } else {
-                chunk = render_chunk(scene_, group, cx, cy, options);
+                chunk = render_chunk(scene, group, cx, cy, options);
+            }
+            if (chunk) {
+                chunk->generation = scene.generation();
             }
         } catch (const std::exception& e) {
             // E.g. out of memory: the chunk stays missing (open sea) and is not
@@ -434,6 +494,11 @@ void ChunkWorkers::wait_idle() {
 
 bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, bool ships, ChunkBuilder builder,
                           std::uint32_t bin_px) {
+    return submit(wanted, default_scene_, ships, builder, bin_px);
+}
+
+bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<const Scene> scene,
+                          bool ships, ChunkBuilder builder, std::uint32_t bin_px) {
     const std::lock_guard lock(mutex_);
     ships_ = ships;
     builder_ = builder;
@@ -448,6 +513,7 @@ bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, bool ships, Chunk
     for (const auto& j : wanted) {
         if (!busy_.contains(j.key) && !failed_.contains(j.key) && !finished.contains(j.key)) {
             jobs_.push_back(j);
+            jobs_.back().scene = scene;
         }
     }
     ready_.notify_all();
@@ -461,6 +527,15 @@ std::vector<std::pair<ChunkKey, Chunk>> ChunkWorkers::take_done() {
 
 FrameRenderer::FrameRenderer(std::size_t threads_, bool ships_in_chunks)
     : threads(std::max<std::size_t>(threads_, 1)), ships_(ships_in_chunks) {}
+
+void FrameRenderer::invalidate(const std::vector<ChunkKey>& keys, std::uint64_t generation) {
+    for (const ChunkKey& key : keys) {
+        auto [it, inserted] = dirty_.try_emplace(key, generation);
+        if (!inserted && it->second < generation) {
+            it->second = generation;
+        }
+    }
+}
 
 void FrameRenderer::set_workers(std::unique_ptr<ChunkWorkers> workers) {
     workers_ = std::move(workers);
@@ -485,6 +560,14 @@ void FrameRenderer::insert_chunk(const ChunkKey& key, Chunk chunk) {
 
 std::tuple<std::size_t, double, std::size_t>
 FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
+    return update_chunks(non_owning(scene), view, group);
+}
+
+std::tuple<std::size_t, double, std::size_t>
+FrameRenderer::update_chunks(const std::shared_ptr<const Scene>& scene_ptr, Rect view,
+                             std::size_t group) {
+    const Scene& scene = *scene_ptr;
+    job_scene_ = scene_ptr;
     sync_levels(scene);
     const auto t = Clock::now();
     const auto chunks = visible_chunks(view);
@@ -507,11 +590,18 @@ FrameRenderer::update_chunks(const Scene& scene, Rect view, std::size_t group) {
 
 FrameStats FrameRenderer::render(const Scene& scene, Rect view, std::size_t group,
                                  std::uint64_t time_ms, WaterStyle style, std::uint32_t* out) {
+    return render(non_owning(scene), view, group, time_ms, style, out);
+}
+
+FrameStats FrameRenderer::render(const std::shared_ptr<const Scene>& scene_ptr, Rect view,
+                                 std::size_t group, std::uint64_t time_ms, WaterStyle style,
+                                 std::uint32_t* out) {
+    const Scene& scene = *scene_ptr;
     const auto start = Clock::now();
     FrameStats stats;
     const auto chunks = visible_chunks(view);
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
-        update_chunks(scene, view, group);
+        update_chunks(scene_ptr, view, group);
     static const Chunk empty;
     // Visible chunks that are not built: the nearest group's chunks, scaled
     // (stand_ins), else open sea.
@@ -759,11 +849,22 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     // A chunk replaced by its rebuild (the river flow arrived) is freed on the
     // reaper thread, like the evicted ones: freeing its ~4 MB of vectors costs
     // the window thread about a millisecond each.
-    std::vector<ChunkPtr> replaced;
+    std::vector<ChunkPtr> replaced, outdated;
     for (auto& [key, chunk] : workers_->take_done()) {
         // Workers shared with a renderer of the other ship setting: rebuilt.
         if (chunk.ships != ships_ || chunk.built_by != chunk_builder) {
             continue;
+        }
+        // Round du, step 8: a chunk built from a generation older than the invalidation that
+        // marked its key is discarded; the mark stays and the key is requested again. A chunk
+        // of the generation that marked it (or a newer one) clears the mark.
+        if (const auto mark = dirty_.find(key); mark != dirty_.end()) {
+            if (chunk.generation < mark->second) {
+                ++stale_discarded_;
+                outdated.push_back(std::make_shared<const Chunk>(std::move(chunk)));
+                continue;
+            }
+            dirty_.erase(mark);
         }
         // The chunk is moved into its shared owner (vectors moved, no plane copied).
         ChunkPtr owned = std::make_shared<const Chunk>(std::move(chunk));
@@ -779,6 +880,9 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     }
     if (!replaced.empty()) {
         workers_->discard(std::move(replaced));
+    }
+    if (!outdated.empty()) {
+        workers_->discard(std::move(outdated));
     }
     // The time a request takes to come back: a build on a free worker, doubled for
     // the queue in front of it, and the frames in between.
@@ -796,14 +900,15 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     };
     std::vector<ChunkKey> todo;
     for (const auto& k : order) {
-        if (!cache_.contains(k) || stale(k)) {
+        if (!cache_.contains(k) || stale(k) || dirty_.contains(k)) {
             todo.push_back(k);
         }
     }
     // A derived chunk is reduced from its four children as the cache holds them; the
     // missing ones are jobs before it (and kept, with it, past the trim below).
     const std::vector<ChunkJob> jobs = plan_jobs(todo, keep);
-    pending_ = workers_->submit(jobs, ships_, chunk_builder, bin_px);
+    pending_ = workers_->submit(jobs, job_scene_ ? job_scene_ : non_owning(scene), ships_,
+                                chunk_builder, bin_px);
     const std::set<ChunkKey> retain = stand_in_retain(group, visible);
     trim(group, view, keep, retain);
     return received;
@@ -893,10 +998,10 @@ std::vector<ChunkJob> FrameRenderer::plan_jobs(const std::vector<ChunkKey>& want
         keep.insert(key);
         const std::size_t group = std::get<0>(key);
         if (group < levels_.built_count() || group >= levels_.size() || !derive_from_cache) {
-            jobs.push_back({key, {}});
+            jobs.push_back({key, {}, nullptr});
             return;
         }
-        ChunkJob job{key, {}};
+        ChunkJob job{key, {}, nullptr};
         bool complete = true;
         const auto kids = derived_children(key, levels_);
         for (std::size_t q = 0; q < 4; ++q) {
@@ -940,7 +1045,8 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
                                       const std::vector<std::pair<int, int>>& wanted) {
     std::vector<ChunkKey> missing;
     for (const auto& [cx, cy] : wanted) {
-        if (!cache_.contains({group, cx, cy})) {
+        // A marked key is rebuilt from this scene, as a missing one is (round du, step 8).
+        if (!cache_.contains({group, cx, cy}) || dirty_.contains({group, cx, cy})) {
             missing.push_back({group, cx, cy});
         }
     }
@@ -968,12 +1074,17 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
             return render_chunk(scene, g, cx, cy, options);
         });
         for (std::size_t i = 0; i < jobs.size(); ++i) {
+            built[i].generation = scene.generation();
+            if (dirty_.erase(jobs[i].key) != 0 && cache_.contains(jobs[i].key)) {
+                ++rebuilds_[jobs[i].key];
+            }
             cache_.insert_or_assign(jobs[i].key,
                                     std::make_shared<const Chunk>(std::move(built[i])));
             ++builds_[jobs[i].key];
         }
         built_count += jobs.size();
-        std::erase_if(missing, [&](const ChunkKey& k) { return cache_.contains(k); });
+        std::erase_if(missing,
+                      [&](const ChunkKey& k) { return cache_.contains(k) && !dirty_.contains(k); });
     }
     std::set<ChunkKey> keep;
     for (const auto& [cx, cy] : wanted) {

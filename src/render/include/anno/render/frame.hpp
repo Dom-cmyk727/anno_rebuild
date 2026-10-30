@@ -95,6 +95,9 @@ struct Chunk {
     /// that keeps a copy (the GPU compositor's textures) sees that a chunk of
     /// the same key was rebuilt (e.g. after its river flow arrived).
     std::uint64_t serial = 0;
+    /// The generation of the scene the chunk was built from (Scene::generation): a
+    /// completed chunk older than an invalidation of its key is discarded (round du, step 8).
+    std::uint64_t generation = 0;
     /// The heap memory the chunk holds (its vectors' capacities), in bytes.
     [[nodiscard]] std::size_t bytes() const {
         auto of = [](const auto& v) { return v.capacity() * sizeof(v[0]); };
@@ -148,7 +151,16 @@ Chunk render_derived_chunk(const Scene& scene, const std::array<ChunkPtr, 4>& ki
 struct ChunkJob {
     ChunkKey key;
     std::array<ChunkPtr, 4> kids{};
+    /// The scene generation the job reads. A job owns it until it completes, so a
+    /// retired generation is freed only after its last job (ownership, not a bound).
+    std::shared_ptr<const Scene> scene;
 };
+
+/// The chunk keys (at every zoom level the scene has) that a scene box of `group`
+/// touches: `box` in the scene pixels of the built group, then at each derived level
+/// that descends from it, scaled by the level's exact ratio and grown by one pixel so
+/// that rounding never misses a key. A key a box only grazes is included.
+std::vector<ChunkKey> chunk_keys_touching(const Scene& scene, Rect box, std::size_t group);
 
 /// Background chunk builders: a priority job list and a result queue. The
 /// scene must outlive them. Destroying them stops the builders and waits for
@@ -156,6 +168,8 @@ struct ChunkJob {
 /// the end of the viewer's thread scope instead).
 class ChunkWorkers {
   public:
+    /// `scene` is the default scene of jobs submitted without one. It is not owned: it
+    /// must outlive the workers (tests and single-generation callers).
     ChunkWorkers(const Scene& scene, std::size_t threads);
     ~ChunkWorkers();
     ChunkWorkers(const ChunkWorkers&) = delete;
@@ -163,7 +177,12 @@ class ChunkWorkers {
 
     /// Replaces the job list with `wanted` (priority order) minus the chunks
     /// being built, built with or without ships (render_chunk); whether any
-    /// work is queued or running.
+    /// work is queued or running. Every job reads `scene`, which it keeps alive
+    /// until it completes.
+    bool submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<const Scene> scene,
+                bool ships = true, ChunkBuilder builder = ChunkBuilder::Cpu,
+                std::uint32_t bin_px = kDefaultBinPx);
+    /// submit with the default scene.
     bool submit(const std::vector<ChunkJob>& wanted, bool ships = true,
                 ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
@@ -184,7 +203,8 @@ class ChunkWorkers {
     void run();
     void reap();
 
-    const Scene& scene_;
+    /// The scene of jobs submitted without one (non-owning).
+    std::shared_ptr<const Scene> default_scene_;
     std::mutex mutex_;
     std::condition_variable ready_, garbage_ready_, idle_;
     std::vector<ChunkPtr> garbage_;
@@ -246,6 +266,22 @@ class FrameRenderer {
     /// visible chunks still missing).
     std::tuple<std::size_t, double, std::size_t> update_chunks(const Scene& scene, Rect view,
                                                                std::size_t group);
+    /// update_chunks for a scene the workers may outlive: the jobs keep it alive.
+    std::tuple<std::size_t, double, std::size_t>
+    update_chunks(const std::shared_ptr<const Scene>& scene, Rect view, std::size_t group);
+    /// Marks the keys as stale from generation `generation` on (round du, step 8-9): a
+    /// cached key keeps drawing until its replacement, built from a generation at least
+    /// this new, arrives; a completed chunk of an older generation is discarded and the key
+    /// stays marked. Marks are kept whether or not the key is cached, so a chunk in flight
+    /// is covered too. A key marked again keeps the newest generation.
+    void invalidate(const std::vector<ChunkKey>& keys, std::uint64_t generation);
+    /// Whether the key is marked stale, and by which generation (0: not marked).
+    [[nodiscard]] std::uint64_t stale_generation(const ChunkKey& key) const {
+        const auto it = dirty_.find(key);
+        return it == dirty_.end() ? 0 : it->second;
+    }
+    /// Completed chunks discarded because they were built before an invalidation of their key.
+    [[nodiscard]] std::uint64_t stale_discarded() const { return stale_discarded_; }
     /// The chunks of the neighbouring zoom groups that update_chunks keeps built
     /// for the view a zoom step would show (a ring included), both groups
     /// interleaved, nearest to the view (as it will be in a moment) first. Not
@@ -280,6 +316,9 @@ class FrameRenderer {
     /// chunk without a scene to build it from); it gets a new serial.
     void insert_chunk(const ChunkKey& key, Chunk chunk);
     /// Draws `view` at time_ms into `out` (view.w × view.h, row-major 0RGB).
+    /// render for a scene the workers may outlive (the jobs keep it alive).
+    FrameStats render(const std::shared_ptr<const Scene>& scene, Rect view, std::size_t group,
+                      std::uint64_t time_ms, WaterStyle style, std::uint32_t* out);
     FrameStats render(const Scene& scene, Rect view, std::size_t group, std::uint64_t time_ms,
                       WaterStyle style, std::uint32_t* out);
 
@@ -393,6 +432,11 @@ class FrameRenderer {
 
     std::map<ChunkKey, ChunkPtr> cache_;
     std::map<ChunkKey, std::size_t> builds_, rebuilds_;
+    /// Keys marked stale, with the generation of the invalidation that marked them (step 8).
+    std::map<ChunkKey, std::uint64_t> dirty_;
+    std::uint64_t stale_discarded_ = 0;
+    /// The scene the jobs of the current update read (set by update_chunks).
+    std::shared_ptr<const Scene> job_scene_;
     /// The jobs for `wanted` (most urgent first) and, for a derived key whose
     /// children are cached, the children; a missing child is a job of its own,
     /// before its parent, and the parent waits for the next frame in which all four

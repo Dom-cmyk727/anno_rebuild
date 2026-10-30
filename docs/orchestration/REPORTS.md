@@ -7750,3 +7750,22 @@ These need code, a configured MSVC build in this worktree (`build/msvc` does not
 ## Owner questions (so far)
 
 None blocking. The first owner question comes with part B: the default bindings and whether the preview may show refusals the stand-in placement rule would accept (OQ-052), per the brief.
+
+## W4.3 + W4.4 — progress, part A3 — 2026-10-30 10:06 +0100 — status: IN PROGRESS
+
+- **Commits:** `b7e879b` docs (spec: mailbox instead of snapshot), `f0d051d` feat(app) (diff and batch). Head at this report: this commit.
+- **What changed:** `src/app/include/anno/app/building_delta.hpp`, `src/app/src/building_delta.cpp` (`building_before`, `sort_buildings`, `diff_sorted_buildings`, a sorted multiset difference); `PlayRunner` keeps the last sorted list on the sim thread, diffs it after each turn (`one_turn`, timed separately from the turn cost), and pushes a non-empty `BuildingBatch` to a mailbox; `take_building_batches()` swaps the mailbox out under the existing publication mutex. `SceneBuilding` gained a defaulted `operator==`.
+- **Design change from the spec (recorded in game-shell.md):** the batch is not carried in the snapshot. The window reads only the latest snapshot, so a batch in it would be lost when two turns pass between frames. The mailbox keeps every batch until the window takes them.
+- **Evidence:** `anno_app_tests` built clean (MSVC, Release, `build/msvc`); 33 of 33 cases pass without game files and 33 of 33 with `ANNO1503_GAME_DIR=E:\anno1503\game\app` (30 425 and 39 623 assertions). New cases: `building delta: equal lists give no change`, `add, remove, and a rotation change as a pair`, `a building listed twice on one side is counted`, `the order is total on the record`, `play: a turn with no commands publishes no building changes` (Single_01, 50 turns: 0 batches), `play: the building diff on the heavy endless scenario`, `cost at 1000 and 5000 buildings`.
+- **Measurements** (MSVC Release, this PC):
+  - sort + diff at 1 000 buildings, one changed per turn: p50 0.014 ms, p95 0.015 ms, max 0.018 ms (200 runs).
+  - sort + diff at 5 000 buildings: p50 0.092 ms, p95 0.100 ms, max 0.178 ms (200 runs). Target was at most 0.2 ms p95: met.
+  - `06_1024_heavy_256.sze` as loaded: **0 buildings** (the endless scenario has no city at load), so the diff there is only the floor (p95 0.0002 ms). This is not the 'hundreds of buildings' case; the realistic figure is the synthetic one. Turn cost with and without publishing on the heavy scenario is therefore not separable yet: it needs buildings placed by commands (A5).
+- **Gates not yet run for A3:** clang-format 23.1.3 clean on all six changed files (`--dry-run --Werror`, after `-i` on my files); GCC 13.3 / Clang 18 `-Werror` in WSL (`tools/check_unix_warnings.sh`) not run yet; the full `ctest` (both with and without game files) not run yet (only `anno_app_tests`).
+- **Decisions and reasoning (A3):**
+  1. *Mailbox, not snapshot.* Alternative: carry the batch in the latest snapshot. Rejected: a skipped snapshot would lose a turn's changes silently. Cost: an unbounded list if the window never takes it; bounded in practice by the number of changes.
+  2. *Diff on the sim thread, timed apart from the turn cost.* Alternative: a sim change log. Rejected (state and hash). The turn cost stays the sim's cost; the diff is reported separately.
+  3. *Multiset difference on sorted lists.* Alternative: hash sets. Rejected: ordered containers, no pointer or hash order (CLAUDE.md determinism rules); the record is a total order.
+  4. *Removed then added, each in building order.* Chosen so that a demolish-and-rebuild of one tile is applied in a fixed order.
+- **Still open for A3/A4:** the GCC/Clang gate; the full ctest; and the choice of the picture-side object list (A4), which needs `gpu.cpp`'s replacement path read.
+- **Next:** A4 (apply the deltas to the picture and invalidate the affected chunks, CPU and GPU).

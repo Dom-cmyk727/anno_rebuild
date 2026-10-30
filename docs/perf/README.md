@@ -947,3 +947,19 @@ Window thread on the same host, code head `f9db0bb`, `--play` of `00_1024_easyen
 | paused | 3840×1421 | (loop waiting) | 0.4 ms | 13.0 ms, of which surface configure 9.6 | 0.3 ms |
 
 A requested 3840×2160 client is clamped to 3840×1421: the primary display is 2560×1440 and the virtual screen is 4480×1440. Pause stops the frame loop (`SDL_WaitEventTimeout`), so a paused interval has no steady fps; the averages above are the frames of the event that woke it, and the play line of that meter said `paused`. Across a 5 s pause at 3840×1421 the tick stayed put, then the wake-up line had advanced 100 ticks (200 ms of game time).
+
+## W4.3 A7b — whole-scene rebuild cost on the fixed map (Mac M5 Max, 2026-10-30)
+
+Probe: `src/app/tests/scene_probe_test.cpp` (`ANNO_PROBE=1`, game files, not a gate). Host: Apple M5 Max, macOS 27.0.1, arm64, Apple clang 21, Debug build (`dev` preset), commit of the W4.3 branch at the probe (the merge of the Mac host support plus A8). Map: `data/maps/lan5.txt` (21 islands, 2 tick-0 buildings; the 50-build burst adds 50 copies). Times are single runs per row, except the first row (5 runs).
+
+| measure | time |
+|---|---|
+| one change: full scene build as `--play` does it (file reads of `Felder.tex` and `Anlagen.dat`, parse, textures, buildings, `Scene` constructor, units), 5 runs | 6.73 to 6.85 s |
+| `Scene` constructor from the parts a built scene holds (copies, no file read or parse) | 0.47 s |
+| first sea pattern of a fresh scene (`sea(group 2)`, built lazily) | 0.25 s |
+| `prefetch_river_flow` of a fresh scene (no flow is built by it) | 0.1 ms |
+| 50-build burst, one coalesced rebuild (52 buildings) | 6.77 s |
+
+The burst costs one rebuild, as the coalescing rule intends: the cost is per rebuild, not per build. The probe's memory line (private bytes of one held scene) reads +0 MiB: freed pages are reused, so this method does not measure a scene's size. Not measured: the scene's resident size.
+
+Reading: whole-scene replacement costs at least 0.47 s + 0.25 s per change on this map even with every static asset reused, and it rebuilds the sea pattern and the river caches of islands that did not change. A change would be visible about 0.7 s after the sim turn, against the K = 3 frame target (about 50 ms at 60 Hz). See `docs/app/game-shell.md`, "Ownership and generations": the per-island object list is proposed instead.

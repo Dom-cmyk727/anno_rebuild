@@ -268,3 +268,50 @@ turn <n> demolish <x> <y> [<x> <y>]...
 
 The window's commands (W4.4) and the file's commands use the same queue, so
 both reach a turn the same way.
+
+### Ownership: the measured cost, and the seam proposed (A4, A7b, for review)
+
+Status: **decision for review, not implemented.** The first design was whole-scene
+generations: each change builds a new `render::Scene` as an immutable
+`shared_ptr`, and each chunk job holds the generation it reads. It is kept below
+as the rejected alternative. The measurement (`docs/perf/README.md`, "W4.3 A7b")
+rejects it for the live path: one change costs at least 0.47 s (the `Scene`
+constructor from the parts a scene holds) plus 0.25 s (the first sea pattern of
+the new scene), and 6.8 s with the file reads. The K = 3 frame target is about
+50 ms, so whole-scene replacement misses it by about an order of magnitude, and a
+burst of builds coalesced into one rebuild costs the same.
+
+**Proposed seam (the narrower one this section already describes, handover 7c):**
+
+- The scene keeps each island's *dynamic* objects (the PROD2 items of its
+  buildings) in one `std::shared_ptr<const IslandObjects>` per island. Terrain,
+  scenery, the sea pattern, the flow and the river masks are not in it, so they
+  are not rebuilt for a building change.
+- A batch that touches an island builds that island's new `IslandObjects` (the
+  objects of one island, not the scene) on the window thread's worker pool, and
+  the window thread swaps the pointer. A chunk job captures the pointer it starts
+  from, so the old objects live until the job ends; nothing is replaced under a
+  running worker, and no pool is stopped or joined.
+- Chunk keys stay the unit of staleness. Each cached chunk records the object
+  generation of each island it was built from; an invalidation names the keys it
+  dirties (9a-9b); a job that completes for an older generation does not clear a
+  newer dirty mark (7d).
+
+**Open before the code (for the review, not decided here):**
+
+1. **Checked (A7b):** a building does not change the water or the shore. The island
+   water reads the heights grid, the ground-id grid and the river pieces only
+   (`sea.cpp` `IslandWater::build`, from `scene.cpp` `island_water`); the sea pattern
+   reads the Anlagen file only (`sea.cpp` `SeaPattern::build`). Buildings reach the
+   picture through the objects lists only (`scene.cpp` `prepare_objects` into
+   `IslandData::below/above/other`). The seam therefore holds the objects lists and
+   nothing else. Re-check this if a building type is ever a river piece (`kRiverAnlagen`).
+2. The cost of one island's `IslandObjects` build. Expected to be milliseconds
+   (one island's `prepare_objects`); to be measured with the same probe before
+   the code is written.
+3. Memory: the old and new `IslandObjects` of an island live together for one
+   job's duration; the bound is one extra copy per touched island.
+
+Rejected alternative, for the record: a whole-scene generation per change (see
+the measurement above). It is simpler and needs no change to `scene.cpp`, but it
+does not meet the latency goal on this map.

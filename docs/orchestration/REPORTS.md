@@ -7704,3 +7704,28 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
   2. Two executor sessions wrote this worktree overnight; the commits interleave. Accepted, because the history is linear and the accepted study is the `eb6da43` file with tool blobs equal to `3c5ecb6` and `8cc9928`. Owner note: give one prompt to one session only.
   3. A tool once checked out `task/T33-1-walk-tables` in this worktree and it was restored before edits. Noted; no effect on the branch.
 - **Merge:** `d1a8c11`. The merge base is `917efea`, so the merge brings all of T61 (F1 reviewed in rounds df/dh, F2 here). The REPORTS append conflict was resolved as main's file plus the branch's appended sections (line counts checked: 7252 + 6956 − 6519 = 7689). The four tool and ADR files in the merge are byte-identical to the branch.
+
+---
+
+## UI.1 — progress, step 1 — 2026-10-30 11:30 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re` from `064b4a2`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: re-check of packet §4 and `docs/re/ui-and-placement.md`. Spec started as `docs/re/ui.md`. OQ-535..538 opened. Glossary rows for BauMenü, Abreißen, Statusbar, Fenster.
+- Not done: inventory tables (`data/ui/`), Wine captures, pixel positions, construction-menu tree, oracle, rest of the tree, implementation-status.
+- Evidence (commands, counts; no original pixels or strings in git):
+  - `python -I cache/ui1_step1_inventory.py` against `E:\anno1503\game\app` (script under gitignored `cache/`).
+  - ToolGfx: 2 431 files (1 211 `.tex`, 1 210 `.inc`, 9 `.zei`, 1 `.ok`) = packet count.
+  - `8` suffix: 552 `.tex` pairs; first-texture sizes `fenster` 245×248 vs 191×194, `statusbar` 746×35 vs 583×27; ratio ≈ 800/1024; `HEAD.u06` = 8 on both (not 8-bit).
+  - `Data/*.dat` with `Access`: `statusbar.dat` (13 names), `htmlpic.dat` (1), `ScapeIcon.dat` (4). `Felder.dat` has `[TEXTURE]` but no `Access`.
+  - `help/*.htm`: 582 (packet said 854; `manual-and-help.md` already 582).
+  - `Texte.dat`: 118 sections; construction family `TOOLTIP:BAUMENU_*`.
+  - `fenster.inc` / `fenster8.inc`: 218 ACCESS records, same names (`WELTKARTE` 2, `STATUSBAR` 6, `LUPE` 7, `MAINTAB` 8, `VIEWBAUTAB` 16, …).
+  - `docs/plan/lan-mvp.md` is not in this tree at `064b4a2`. Read PLAN §0.1–0.3, §0.7 and `lan-endless.md` W5 instead.
+- Next: step 2, inventory every UI `Data/*.dat` and every `ToolGfx` `.inc` into `docs/re/ui.md` plus `data/ui/`.
+- Subagents: none.
+- Isolation: `move_agent_to_root` checked `codex/T61-join-jitter` out in this worktree (T61 then detached). Restored `task/UI-1-ingame-ui-re` at `064b4a2` and T61 to `codex/T61-join-jitter` before this commit. No T61 files were committed here.
+
+### Decisions and reasoning
+1. **`8` suffix is a second size set, not 8-bit.** Alternatives: 8-bit colour, a third zoom, an addon pack. Evidence: paired ACCESS ids, `u06=8` on both, pixel ratios 0.780–0.783 against 800/1024 = 0.78125. Which mode loads it stays OQ-535.
+2. **Do not treat `screens.json` fractions as the pixel spec.** Alternative: copy them into `data/ui/` as if they were pixels. Rejected: the task asks for pixels at 1024 × 768 plus anchoring from other resolutions; fractions stay a click map until step 4 measures.
+3. **OQ-535..538 only**, from the re-check. Alternative: open one OQ per unverified first-pass building name. Rejected: those collapse into OQ-537 (cell → type) once captures exist.
+4. **`lan-mvp.md` missing is a QUESTION, not a stop.** The packet names it; the board commit has `lan-endless.md` and PLAN §0.7. W5 is the relevant HUD workstream. Continued with those.

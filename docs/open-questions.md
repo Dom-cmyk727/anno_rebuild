@@ -2007,3 +2007,31 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** how far from a starting Kontor does the original claim tiles, and does that claim stop at the island edge?
 - **What is known:** nothing in the sim derives territory from a Kontor (`docs/sim/fixed-map.md`). Tiles get an owner only from `IslandSpec::owner_runs`. A player can build only on tiles their city owns (`footprint_owner_rule`, `placement.hpp`). The load-time building path does not read the coast flag (OQ-052). MAP.1 therefore writes one owner run over every tile of a seated start island so the developer start can build.
 - **How to resolve:** find the game-start claim that walks out from the Kontor (AnnoWelt, the city or island init after a warehouse is placed) and name the radius and the stop condition. Do not copy this into OQ-027 or OQ-052.
+
+## OQ-535: Resolutions the original offers, and which ToolGfx set each uses (UI.1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** What is the complete list of resolutions in the original's Options (main-menu graphics and in-game), and which `ToolGfx` set (plain vs `*8`) each mode loads?
+- **What we know:** Wine-runner and Windows harness menus are 800 × 600; a running game is 1024 × 768 (`docs/testing/original-wine.md` §2.1, `original-harness.md`). ISS-024 advises 800 × 600 on weak PCs. Paired `ToolGfx` files (e.g. `fenster.tex` / `fenster8.tex`, `statusbar.tex` / `statusbar8.tex`) share ACCESS names and texture ids; pixel sizes sit at 800/1024 = 0.78125 (`docs/re/ui.md` §0.1, §0.4). `TEXTURE/HEAD.unknown_06` is 8 on both sets, so the suffix is not "8-bit". Fonts `Main*8.zei` are separately authored (different glyph row counts, `zei.md`). The Options resolution list has not been captured.
+- **How to resolve:** Wine-runner capture of the main-menu Options graphics list and of the in-game Options; one HUD screenshot per listed mode; match which atlas is drawn (plain vs `8`) by pixel size.
+
+## OQ-536: Two `STATUSBAR` sources (`fenster.tex` vs `statusbar.tex`) (UI.1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which graphic is the in-game info bar: `Data/statusbar.dat` ACCESS `STATUSBAR` in `toolgfx\statusbar.tex` (746 × 35, plus `STATUSBAR02` 873 × 35 and `STATUSBAR03` 1001 × 35), or `ToolGfx/fenster.inc` ACCESS `STATUSBAR` (texture id 6 in `fenster.tex`)? When is each of the three bar widths used? Is `fenster.inc` `WELTKARTE` (id 2, 245 × 248) the minimap frame?
+- **What we know:** both ACCESS names exist; `fenster.tex` has 1 606 textures; `fenster.inc` names 218 of them; `statusbar.tex` has 60 textures. First-pass minimap box is ~205 × 154 px, smaller than 245 × 248.
+- **How to resolve:** mock both candidates (`tools/ui_layout.py --mock`) against a Wine-runner HUD screenshot.
+
+## OQ-537: Construction-menu cell → Anlagen type, and tooltip section → category banner (UI.1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** For every construction-menu cell, what is the Anlagen type id, and which `Texte.dat` `TOOLTIP:BAUMENU_*` section is the banner/tooltip for each of the eight categories? What field and value draw a `?` lock (working hypothesis: `INFRAMIN` vs city stage)?
+- **What we know:** eight categories in order (`playbook.md` §1, `tools/orig/screens.json`, 2026-10-25). Seven Citizen-start cells are typed in `opening.json` (801, 805, 807, 1001, 1023, 1301, 2520) with costs equal to `Anlagen.dat`. Other Citizen-start labels in `screens.json` (`coin-I`, stall, market tent, coastal cells) were read from icons only. First pass left several names "not verified".
+- **How to resolve:** Wine-runner captures of every category at the Citizen start (and a second settlement stage if reachable); info-panel name keyed to `[ANLAGEN]` id; lock cells compared with `INFRAMIN`. Disassembly only where the data is silent.
+
+## OQ-538: Four `STATUSBAR_BAUMAT` segments and marble on the info bar (UI.1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which four building-material icons are `STATUSBAR_BAUMAT` segments 0..3, and does the 1024 × 768 info bar show marble as the manual says ([M 15])? First pass and `screens.json` list gold, tools, wood, bricks, civilians, soldiers, help — no marble.
+- **What we know:** `Data/statusbar.dat` `STATUSBAR_BAUMAT` Size 30 × 30, Segments 4, 1; `STATUSBAR_ROSHTOFFE` (file spelling) Segments 12, 1; `STATUSBAR_GELDSYMBOL`; `STATUSBAR_EINWOHNER`.
+- **How to resolve:** capture the idle HUD and a placement with a marble-cost building; map segments by pixel compare.

@@ -108,6 +108,8 @@ struct Args {
     bool play = false;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
+    /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).
+    std::optional<std::filesystem::path> commands;
     std::optional<std::filesystem::path> game_dir;
     std::optional<std::size_t> group;
     std::optional<std::filesystem::path> png;

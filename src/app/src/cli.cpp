@@ -81,6 +81,8 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.play_speed = *speed;
+        } else if (a == "--commands") {
+            out.commands = utf8_path(v);
         } else if (a == "--game-dir") {
             out.game_dir = utf8_path(v);
         } else if (a == "--group") {

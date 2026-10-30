@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <anno/app/building_delta.hpp>
+#include <anno/app/commands_file.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/world.hpp>
@@ -122,6 +123,9 @@ class PlayRunner {
     /// How many batches the mailbox holds before it collapses them into a resync
     /// (BuildingMailbox). Default: one second of turns. Call before `start`.
     void set_batch_bound(std::size_t bound);
+    /// Commands for the turns, in file order (commands_file.hpp). A turn applies
+    /// the ones that name it, before its steps (`Turn::commands`). Call before `start`.
+    void set_script(std::vector<ScriptedCommand> script);
     [[nodiscard]] std::string title_line() const;
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
@@ -159,6 +163,9 @@ class PlayRunner {
     mutable std::mutex snap_mu_;
     std::shared_ptr<const PlaySnapshot> snap_;
     BuildingMailbox mailbox_{1};
+    // The script and its cursor (sim thread only once started).
+    std::vector<ScriptedCommand> script_;
+    std::size_t script_next_ = 0;
 };
 
 } // namespace anno::app

@@ -355,6 +355,13 @@ void PlayRunner::one_turn() {
     sim::Turn turn;
     turn.index = index_++;
     turn.step_ms = step_ms_;
+    // The script's commands for this turn, in file order (the file is sorted by turn).
+    while (script_next_ < script_.size() && script_[script_next_].turn <= turn.index) {
+        if (script_[script_next_].turn == turn.index) {
+            turn.commands.push_back(script_[script_next_].command);
+        }
+        ++script_next_;
+    }
     const auto started = schedule_->now();
     sim::run_turn(world_, nullptr, turn, steps_);
     const auto us =
@@ -420,6 +427,11 @@ std::vector<std::uint64_t> PlayRunner::pending_batch_turns() const {
 
 void PlayRunner::set_batch_bound(std::size_t bound) {
     mailbox_ = BuildingMailbox(bound);
+}
+
+void PlayRunner::set_script(std::vector<ScriptedCommand> script) {
+    script_ = std::move(script);
+    script_next_ = 0;
 }
 
 void PlayRunner::note_behind() {

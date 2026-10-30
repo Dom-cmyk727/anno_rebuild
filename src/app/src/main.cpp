@@ -168,9 +168,14 @@ int run(const std::vector<std::string>& raw) {
     }
     std::optional<anno::app::PlayLoad> play;
     std::vector<anno::app::SceneBuilding> buildings;
+    std::vector<anno::app::ScriptedCommand> commands;
     anno::app::SceneObjects objects;
     const anno::app::SceneObjects* objects_ptr = nullptr;
     std::span<const anno::app::LinkTemplate> links;
+    if (args->commands && !args->play) {
+        std::fprintf(stderr, "%s: --commands needs --play\n", name.c_str());
+        return 2;
+    }
     if (args->play) {
         auto opened = anno::app::load_play(dir.value(), args->file);
         if (!opened) {
@@ -178,6 +183,16 @@ int run(const std::vector<std::string>& raw) {
             return 1;
         }
         play = std::move(opened).value();
+        if (args->commands) {
+            // Parsed against the loaded world, before the world moves into the runner.
+            auto parsed = anno::app::load_commands(*args->commands, play->world,
+                                                   anno::app::developer_player());
+            if (!parsed) {
+                std::fprintf(stderr, "%s: %s\n", name.c_str(), parsed.error().c_str());
+                return 1;
+            }
+            commands = std::move(parsed).value();
+        }
         buildings = anno::app::play_buildings(play->world);
         objects.is_building = [&](std::uint16_t id) {
             return anno::app::anlage_is_building(play->world, id);
@@ -247,6 +262,7 @@ int run(const std::vector<std::string>& raw) {
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
     if (play) {
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
+        runner->set_script(std::move(commands));
         runner->start();
         hooks.title = [&] { return runner->title_line(); };
         hooks.on_pause = [&](bool paused) { runner->set_paused(paused); };

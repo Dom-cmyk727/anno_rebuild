@@ -35,6 +35,7 @@ if(ANNO_BUILD_TESTS)
     tests/render_test.cpp
     tests/residency_test.cpp
     tests/river_flow_corpus_test.cpp
+    tests/river_lifecycle_test.cpp
     tests/river_flow_test.cpp
     tests/river_shade_test.cpp
     tests/sprite_fidelity_test.cpp

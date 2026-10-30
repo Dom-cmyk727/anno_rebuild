@@ -30,23 +30,35 @@ constexpr std::uint8_t kFlowIdle = 0, kFlowQueued = 1, kFlowReady = 2, kFlowFail
 
 } // namespace
 
-/// The flow of one island and how far its build is (rivers.md 3.1).
+/// A scene that asked for a flow (see FlowSlot::waiters). A shared scene is held weakly; a
+/// non-shared one (no shared_ptr) by its address, and its destructor removes the entry before the
+/// scene is gone (Scene::~Scene), so the address is valid whenever the entry is.
+struct Scene::FlowWaiter {
+    std::weak_ptr<const Scene> owner;
+    const Scene* raw = nullptr;
+    bool shared = false;
+};
+
+/// The flow of one island and how far its build is (rivers.md 3.1). Shared by the generations
+/// whose river inputs are equal. `waiters` (guarded by FlowBuild::mutex) lists the scenes that
+/// asked for it: a request whose own scene is gone is solved for a surviving waiter, so a queued
+/// flow never stays queued without a solver (round dv, R1).
 struct Scene::FlowSlot {
     std::once_flag once;
     std::atomic<std::uint8_t> state{kFlowIdle};
     /// Written once under `once`, published by `state` (release).
     std::shared_ptr<const river::RiverFlow> flow;
+    std::vector<FlowWaiter> waiters;
 };
 
-/// A river flow to build: the island and the scene that asked for it. A scene made by
-/// with_islands is owned by a shared_ptr: the request holds it weakly, and the builder holds
-/// it strongly for the solve, so a retired generation is never used after it is destroyed.
-/// A scene on the stack (tests) is used through `raw` and must outlive its builders.
-struct FlowRequest {
+/// A river flow to build: the island, the slot it fills, and the scene that asked for it. The
+/// request holds its slot (so the slot outlives the request) and its asker weakly (shared) or by
+/// address (non-shared). The builder solves with the asker, or with a surviving waiter of the slot,
+/// and holds that scene strongly for the solve (so it is not destroyed under the solve).
+struct Scene::FlowRequest {
     std::size_t index = 0;
-    std::weak_ptr<const Scene> owner;
-    bool shared = false;
-    const Scene* raw = nullptr;
+    std::shared_ptr<FlowSlot> slot;
+    FlowWaiter asker;
 };
 
 /// The background builders of river flows: a queue of requests. Shared by the generations of a
@@ -55,11 +67,16 @@ struct Scene::FlowBuild {
     std::mutex mutex;
     std::condition_variable wake;
     std::condition_variable idle;
+    /// Signalled when a solve ends (a non-shared scene's destructor waits for its own solve).
+    std::condition_variable solved;
     std::deque<FlowRequest> queue;
     bool stop = false, paused = false;
     /// Builds popped from the queue and not finished yet. With `queue` empty
     /// and this at 0, nothing is in flight (wait_river_flow_builders).
     unsigned inflight = 0;
+    /// The scene a builder is solving in right now (null when none): the scene's destructor waits
+    /// while it is its own, so the solve never reads a destroyed scene.
+    const Scene* solving = nullptr;
     std::vector<std::thread> threads;
 };
 
@@ -432,10 +449,68 @@ std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
 }
 
 std::shared_ptr<const Scene> Scene::with_islands(std::vector<IslandUpdate> updates) const {
-    return std::shared_ptr<const Scene>(new Scene(*this, std::move(updates)));
+    std::shared_ptr<const Scene> next(new Scene(*this, std::move(updates)));
+    if (caches_->flow_build) {
+        // The new generation can solve the flows of the slots it shares with this one, should this
+        // generation be retired while its requests are queued. Entries of retired generations go.
+        FlowBuild& fb = *caches_->flow_build;
+        const std::lock_guard lock(fb.mutex);
+        for (std::size_t i = 0; i < next->objects_.size(); ++i) {
+            FlowSlot& slot = *next->objects_[i].flow;
+            if (slot.state.load(std::memory_order_acquire) == kFlowFailed) {
+                continue;
+            }
+            std::erase_if(slot.waiters,
+                          [](const FlowWaiter& w) { return w.shared && w.owner.expired(); });
+            if (std::find_if(slot.waiters.begin(), slot.waiters.end(),
+                             [&next](const FlowWaiter& w) { return w.owner.lock() == next; }) ==
+                slot.waiters.end()) {
+                FlowWaiter me;
+                me.owner = next;
+                me.shared = true;
+                slot.waiters.push_back(std::move(me));
+            }
+        }
+    }
+    return next;
 }
 
-Scene::~Scene() = default;
+Scene::~Scene() {
+    if (!caches_ || !caches_->flow_build) {
+        return;
+    }
+    FlowBuild& fb = *caches_->flow_build;
+    std::unique_lock lock(fb.mutex);
+    // Nothing may refer to this scene afterwards: its own queued requests (non-shared askers) are
+    // dropped, its entries leave every slot it used, and a solve of this scene in progress finishes
+    // first (the builder reads the scene).
+    std::vector<std::shared_ptr<FlowSlot>> touched;
+    for (const IslandData& d : objects_) {
+        if (d.flow) {
+            touched.push_back(d.flow);
+        }
+    }
+    for (auto it = fb.queue.begin(); it != fb.queue.end();) {
+        if (!it->asker.shared && it->asker.raw == this) {
+            touched.push_back(it->slot);
+            it = fb.queue.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (const std::shared_ptr<FlowSlot>& slot : touched) {
+        std::erase_if(slot->waiters,
+                      [this](const FlowWaiter& w) { return w.raw == this && !w.shared; });
+        // A slot whose only request was dropped has no solver left: it is not Queued any more.
+        const bool requested = std::any_of(fb.queue.begin(), fb.queue.end(),
+                                           [&](const FlowRequest& r) { return r.slot == slot; });
+        if (!requested) {
+            std::uint8_t queued = kFlowQueued;
+            slot->state.compare_exchange_strong(queued, kFlowIdle, std::memory_order_acq_rel);
+        }
+    }
+    fb.solved.wait(lock, [this, &fb] { return fb.solving != this; });
+}
 
 void Scene::set_levels(ZoomLevels levels) {
     levels_ = std::move(levels);
@@ -1655,14 +1730,61 @@ void Scene::start_flow_builders() const {
                     fb->queue.pop_front();
                     ++fb->inflight;
                 }
-                // A shared scene is held for its solve (the request's weak reference may
-                // have expired: it was retired before its turn, and nothing is built).
-                if (std::shared_ptr<const Scene> keep = req.owner.lock()) {
-                    keep->build_flow(req.index);
-                } else if (!req.shared && req.raw != nullptr) {
-                    req.raw->build_flow(req.index);
+                // The solver: the asker if it is alive, else a surviving waiter of the slot (the
+                // same island in another generation whose river inputs are equal). A non-shared
+                // asker or waiter is valid here: its destructor removes it under this lock and
+                // waits for a solve in progress. `keep` holds a shared solver for the solve.
+                std::shared_ptr<const Scene> keep;
+                const Scene* solver = nullptr;
+                {
+                    const std::lock_guard lock(fb->mutex);
+                    if (!req.asker.shared) {
+                        solver = req.asker.raw;
+                    } else if ((keep = req.asker.owner.lock())) {
+                        solver = keep.get();
+                    } else {
+                        for (const FlowWaiter& w : req.slot->waiters) {
+                            if (!w.shared) {
+                                solver = w.raw;
+                                break;
+                            }
+                            if ((keep = w.owner.lock())) {
+                                solver = keep.get();
+                                break;
+                            }
+                        }
+                    }
+                    if (solver != nullptr) {
+                        fb->solving = solver;
+                    } else {
+                        // Nobody can build this flow now: the slot is not Queued any more, so a
+                        // later request for it (from a generation created later) starts it.
+                        std::uint8_t queued = kFlowQueued;
+                        req.slot->state.compare_exchange_strong(queued, kFlowIdle,
+                                                                std::memory_order_acq_rel);
+                    }
                 }
-                req = FlowRequest{};
+                if (solver != nullptr) {
+                    try {
+                        solver->build_flow(req.index);
+                    } catch (...) {
+                        // An allocation failure outside build_flow's own handler: the slot is
+                        // final-failed, the builder keeps running, and the picture keeps its last
+                        // good state (round dv, R4e).
+                        req.slot->state.store(kFlowFailed, std::memory_order_release);
+                    }
+                }
+                {
+                    const std::lock_guard lock(fb->mutex);
+                    fb->solving = nullptr;
+                }
+                fb->solved.notify_all();
+                // The last reference to a shared solver may be this one: it is released here, on
+                // the builder, after the marker is cleared (so the scene's destructor does not wait
+                // for itself) and before the in-flight count goes down (so that a caller of
+                // wait_river_flow_builders sees the destruction too). The window thread never
+                // destroys a scene here.
+                keep.reset();
                 {
                     const std::lock_guard lock(fb->mutex);
                     --fb->inflight;
@@ -1670,6 +1792,7 @@ void Scene::start_flow_builders() const {
                         fb->idle.notify_all();
                     }
                 }
+                req = FlowRequest{};
             }
         });
     }
@@ -1679,16 +1802,23 @@ void Scene::queue_flow(std::size_t index) const {
     std::call_once(caches_->flow_build_once, [this] { start_flow_builders(); });
     FlowRequest req;
     req.index = index;
-    req.owner = weak_from_this();
-    // weak_from_this() is empty for a scene that no shared_ptr owns (tests on the stack).
-    req.shared = !(req.owner.owner_before(std::weak_ptr<const Scene>{}) ||
-                   std::weak_ptr<const Scene>{}.owner_before(req.owner));
-    req.raw = this;
+    req.slot = objects_[index].flow;
+    // weak_from_this() is empty (expired) for a scene that no shared_ptr owns (tests, tools), and
+    // non-empty and alive for a generation that is owned: the expiry test tells the two apart.
+    req.asker.owner = weak_from_this();
+    req.asker.shared = !req.asker.owner.expired();
+    req.asker.raw = this;
+    FlowBuild& fb = *caches_->flow_build;
     {
-        const std::lock_guard lock(caches_->flow_build->mutex);
-        caches_->flow_build->queue.push_back(std::move(req));
+        const std::lock_guard lock(fb.mutex);
+        const bool known = std::any_of(req.slot->waiters.begin(), req.slot->waiters.end(),
+                                       [this](const FlowWaiter& w) { return w.raw == this; });
+        if (!known) {
+            req.slot->waiters.push_back(req.asker);
+        }
+        fb.queue.push_back(std::move(req));
     }
-    caches_->flow_build->wake.notify_one();
+    fb.wake.notify_one();
 }
 
 bool Scene::river_active() const {

@@ -243,6 +243,8 @@ class Scene : public std::enable_shared_from_this<Scene> {
     struct WaterSlot;
     struct FlowSlot;
     struct FlowBuild;
+    struct FlowWaiter;
+    struct FlowRequest;
     std::shared_ptr<SceneAssets> assets_;
     std::shared_ptr<SceneCaches> caches_;
 

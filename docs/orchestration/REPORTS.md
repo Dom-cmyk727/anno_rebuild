@@ -7815,3 +7815,92 @@ None blocking. The first owner question comes with part B: the default bindings 
 ### Owner questions (new)
 1. **Developer start money.** On `lan5.txt` the developer player can't afford the first building type in the layout (refused `CannotAfford`); the cheapest no-goods type is accepted. Should the developer start have more gold, or should the developer picker list only affordable types? (The sim's rule is unchanged; this is the start's money, MAP.1.)
 2. **Preview on refusals (OQ-052).** Carried over from the brief; decided with part B.
+
+## W4.3 + W4.4 — Live buildings and developer input — 2026-10-30 — status: QUESTION (A4); part B partly done; review stop, not an OWNER-CHECK
+
+- **Branch and head:** `task/W4-3-live-buildings`, worktree `E:\anno1503-worktrees\anno1503-W4-3`, head `6c469cd`. Commits since the last report (`ad35885`): `7763e37` spec (the command file refuses a line with no developer city), `d5db909` sim_load developer resources, `b9daa4b` --play fixed map, `c93551a` --play routing by extension, `e7defdd` picking (B1), `bc3d161` command queue (B2), `0311004` picker (B3 logic and B6 tests), `72f13f2` refusals and money/goods (B5), `6c469cd` test name and a comment.
+- Nothing merged, pushed or PR'd. No TASKS, PLAN or AGENTS edits. No net, no W5 widgets, no figure drawing.
+
+### Step table
+
+| Step | State | What | Evidence |
+|---|---|---|---|
+| A1 facts | done | all 8 facts hold; one addition: `run_turn` also drops a command with no wire form | report `a688b37` |
+| A2 spec | done | game-shell.md section "Building changes after tick 0" and the command file | `dc197ee`, `b7e879b`, `7763e37` |
+| A3 publish | done | app-side diff per turn; bounded mailbox with resync; one publication lock | `f0d051d`, `c20dfb7`; `building_delta_test`, `building_mailbox_test` |
+| A4 apply and invalidate (CPU, GPU) | QUESTION, not built | see QUESTION 1 | none |
+| A5 `--commands` | done | parser, runner feed, CLI; a line with no developer city is refused at load | `15fba61`; `commands_file_test` |
+| A6 (d) determinism | done | 12 turns: runner hash equals direct run_turn hash at every turn | `commands_file_test` |
+| A6 (a), (b), (c), (e) | not done | need A4: picture comparison, RTX 4090 run, slow-rebuild hook, refused-command pixels | none |
+| A7 progress | done for what exists | this section and the earlier ones | REPORTS |
+| B1 picking | done as math; viewer wiring not done | `render/picking.hpp`; round trip at 3 groups, continuous scale 0.45 to 2.0, sloped ground, sea | `e7defdd`; `picking_test`, 5/5 |
+| B2 queue | done as structure; not wired into the viewer | `command_queue.hpp`; runner `post_command`, `applied_commands`; text form | `bc3d161` |
+| B3 picker | done as logic; no SDL mapping | `dev_input.hpp/.cpp`: cycle, rotate, click, road drag, demolish, cancel | `0311004`; picker test |
+| B4 preview | not done | footprint is available (`DevInput::footprint_at`); no drawing; option 2 chosen | none |
+| B5 feedback | done for the title line | refusals (last 256, mailbox) with reason; money and the city's goods in the snapshot; title shows them | `72f13f2`; feedback test |
+| B6 tests | done for the parts built | queue order; push time; picker sequence; replay to the same hash | `input_test`, 6 cases |
+
+### Evidence
+
+- **Unit tests:** `anno_app_tests` 49/49 without game files and 49/49 with them, measured before the last two test changes. The picking and queue cases were re-run after the mutation restore (5/5 and 2/2). The feedback and replay cases pass.
+- **Full ctest on the head before `6c469cd`:**
+  - Without game files: 1147/1147 pass (35 s).
+  - With game files: 1141 pass. Six failed with the coordinator's `wait deadline` refusal: available memory 5.6 GB against a 4 GiB headroom, with estimates of 0.3 to 6.8 GB. At that moment the host showed 11.5 GB free. Rerun alone with game files, all six pass.
+  - The first full run also had `test_names_are_selectable` fail on a `;` in a test name. Fixed in `6c469cd`.
+  - One `anno_test_support_tests.F4` case failed once under `-j 8` and passed on rerun (8/8).
+  - The final ctest on `6c469cd` was not rerun in full.
+- **WSL check (`tools/check_unix_warnings.sh`, head `72f13f2`):**
+  - GCC 13.3, viewer and GPU on, 190 files: clean.
+  - Clang 18.1.3, viewer and GPU on, 190 files: clean.
+  - Clang 18.1.3, viewer without GPU, 19 files: clean.
+  - The script has no GCC step without GPU.
+- **Mutations** (each run, then restored; the restored tree rebuilt and the cases re-run):
+  - Picking off by one tile (`floor(u) + 1`): fails `picking_test.cpp:56` (`picked->first == x`).
+  - Queue applied in reverse: fails `input_test.cpp:75` (`in_order`).
+  - Not run: no invalidation, invalidate-everything, and window-waits-for-a-turn (these need A4 and the window side).
+- **Measurements:**
+  - Sort and diff of buildings, one changed per turn: 1000 buildings p95 0.015 ms; 5000 buildings p95 0.10 ms (target 0.2 ms).
+  - `06_1024_heavy_256.sze` has no buildings at load, so the turn cost with and without publishing cannot be separated there. Not measured.
+  - Queue push, 20 000 pushes against a take every 2 ms: p50 0 µs, p99 0.3 µs, max 205 µs (a turn is 100 ms).
+  - Frame time and frame latency from snapshot to drawn change: not measured (A4 missing).
+- **Stills** (`lan5.txt`, tick 0, group 0, 1920×1080, `C:\Users\altin\Pictures\anno-review\W4-3\`):
+  - `lan5_tick0_g0_1920x1080.png`: centre of the start island (NORD template). Forest, a river, a rocky coast and sea. No building in the frame.
+  - `lan5_tick0_kontor_g0_1920x1080.png`: centred on the developer Kontor at (1284, 540). A wooden building on stilts at the coast, drawn from the sim's record, with gravel beach, shallow water and forest behind. No holes, seams or pixelation at this view.
+  - Not run: the RTX 4090 and Radeon iGPU comparison, and the 1280×800 and 2560×1440 views.
+
+### Decisions and reasoning (this part)
+
+1. **`--play` routes by extension, not by content.** Alternative: try the fixed-map parser on any file. Rejected: the owner can predict a rule by extension. `.txt` is a fixed map; anything else is a scenario file.
+2. **Developer test resources: 10 000 000 gold and 190 t of every goods in each start city.** Sources: `docs/formats/endless-presets.md`, the endless01 table (human money 10 000 000) and the endless02 table (largest city stock, computer player, 190 t). Applied to every seat of the developer start, because the option is for testing. Off by default in `FixedMapOptions`; `--play` of a fixed map turns it on. No sim rule changed.
+3. **Picking is header-only and exact.** `iso::tile_top` truncates in integer arithmetic; the odd tile height of group 1 (21) gives half a pixel. The picker uses the exact values, so its round trip is exact. The truncation is in the picture; not changed here.
+4. **The queue is a mutex around one push or one swap.** Alternative: a lock-free queue. Chosen for simplicity; the measured p99 is 0.3 µs, so the lock is not the cost. Revisit if measurement says otherwise.
+5. **The refusal list keeps the last 256.** A refusal is a turn and a short name. The title shows a refusal for 30 turns.
+6. **The picker has no key bindings yet.** The viewer's SDL mapping is not in this change. The owner (round dr) keeps B3 a test tool, and the bindings belong with the viewer work that is not done.
+
+### QUESTION 1: A4 needs a render ownership change (brief §9)
+
+The brief's rule: invalidation that needs a render change outside the chunk cache and the compositor is a QUESTION.
+
+- `Viewer` holds `const render::Scene& scene_` (`viewer.cpp:345`). `ChunkWorkers` is built with `const Scene&` (`viewer.cpp:575`). A changed building means a new `Scene`: the island's PROD2 records change, and `Scene` keeps islands by value and prepares them lazily (`scene.hpp:430`). The workers must not see a scene replaced under them.
+- The GPU compositor already re-uploads a key whose CPU chunk serial changed (`gpu.cpp:1971-1975`; `replace_chunk` at about 2045). So the GPU needs no change if the CPU side produces a new serial. Confirmed by reading, not run.
+- Options:
+  - (a) The viewer and the play path hold `shared_ptr<const Scene>`. A change builds a new scene. The workers take the scene per job. The old scene is kept until the workers are idle. Cost: a scene build per change batch, to be measured.
+  - (b) Keep one `Scene`, and make each island's object data a `shared_ptr` swapped atomically; workers load it at job start. Cost: edits to `scene.cpp` throughout.
+- **My recommendation: (a),** with the scene-build cost measured first; (b) if that cost is too high for a burst of 50 builds. Both change `viewer.cpp` and `frame.cpp`. An owner or orchestrator decision is needed.
+
+### QUESTION 2: preview (B4)
+
+Option 2 (footprint plus the sim's verdict) is what I would build. Drawing the footprint is a viewer change, and it can only be checked interactively. Confirm option 2, or ask for option 1 (the window runs the sim's checks on published data).
+
+### Owner questions carried over
+
+- Developer start money: answered in round dr (generous test resources, configurable, off for original scenarios).
+- OQ-052 (refusals the stand-in placement rule would accept): relevant to B4, unresolved.
+
+### Not done, in order
+
+1. A4, after QUESTION 1 is answered; then A6 (a), (b), (c), (e) with the RTX 4090 run.
+2. B1 and B2 wiring into the viewer: the camera-to-scene mapping, `pick_tile` with `Scene::ground_height`, SDL events to `DevEvent`, `post_command` on the viewer thread.
+3. B4 preview drawing (option 2 unless the owner says otherwise).
+4. A full ctest on the final head.
+5. The interactive check of the picker in `--play`. I have stills, not an interaction.

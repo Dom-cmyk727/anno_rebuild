@@ -41,6 +41,16 @@ BuildingMailbox::BuildingMailbox(std::size_t bound) : bound_(bound == 0 ? 1 : bo
 
 void BuildingMailbox::push(std::shared_ptr<const BuildingBatch> batch,
                            const std::vector<SceneBuilding>& current) {
+    // The copy is made here only when the push collapses.
+    if (batch && full()) {
+        push_prepared(std::move(batch), current);
+        return;
+    }
+    push_prepared(std::move(batch), {});
+}
+
+void BuildingMailbox::push_prepared(std::shared_ptr<const BuildingBatch> batch,
+                                    std::vector<SceneBuilding> current) {
     if (!batch) {
         return;
     }
@@ -53,7 +63,7 @@ void BuildingMailbox::push(std::shared_ptr<const BuildingBatch> batch,
     auto resync = std::make_shared<BuildingBatch>();
     resync->turn = batch->turn;
     resync->resync = true;
-    resync->full = current;
+    resync->full = std::move(current);
     pending_.clear();
     pending_.push_back(std::move(resync));
 }

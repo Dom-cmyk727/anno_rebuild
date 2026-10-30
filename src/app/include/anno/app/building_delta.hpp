@@ -63,10 +63,20 @@ class BuildingMailbox {
     /// `bound` >= 1. The runner uses one second of turns (PlayRunner).
     explicit BuildingMailbox(std::size_t bound);
 
+    /// Whether the next push collapses: the waiting batches are at the bound. The
+    /// sim thread is the only pusher and the window only takes, so once this is true
+    /// it stays true until the next take.
+    [[nodiscard]] bool full() const { return pending_.size() >= bound_; }
     /// Adds `batch`. `current` is the sorted building list after the batch's turn,
     /// copied only when the mailbox collapses.
     void push(std::shared_ptr<const BuildingBatch> batch,
               const std::vector<SceneBuilding>& current);
+    /// Adds `batch`, taking the list after its turn by move. A caller that holds a
+    /// lock copies the list before taking it, when full() says the push will collapse,
+    /// so the copy is not made under the lock (PlayRunner::publish). The list is used
+    /// only if the mailbox collapses; a list given when it does not is dropped.
+    void push_prepared(std::shared_ptr<const BuildingBatch> batch,
+                       std::vector<SceneBuilding> current);
     /// Every waiting batch, oldest first; the mailbox is empty afterwards.
     [[nodiscard]] std::vector<std::shared_ptr<const BuildingBatch>> take();
 

@@ -126,3 +126,36 @@ TEST_CASE("mailbox: a delta for a building the picture does not hold is reported
     CHECK_FALSE(result.consistent);
     CHECK(picture.size() == 1);
 }
+
+TEST_CASE("mailbox: a prepared push collapses to the same resync as push" *
+          doctest::test_suite("app")) {
+    using anno::app::BuildingBatch;
+    using anno::app::BuildingMailbox;
+    using anno::app::SceneBuilding;
+    const std::vector<SceneBuilding> list = {SceneBuilding{0, 7, 10, 12, 1, 0},
+                                             SceneBuilding{1, 9, 3, 4, 2, 5}};
+    auto batch = [](std::uint64_t turn) {
+        auto b = std::make_shared<BuildingBatch>();
+        b->turn = turn;
+        return b;
+    };
+    BuildingMailbox plain(2);
+    BuildingMailbox prepared(2);
+    for (std::uint64_t turn = 1; turn <= 3; ++turn) {
+        plain.push(batch(turn), list);
+        // What PlayRunner::publish does: copy only when full() says the push collapses.
+        if (prepared.full()) {
+            prepared.push_prepared(batch(turn), list);
+        } else {
+            prepared.push_prepared(batch(turn), {});
+        }
+    }
+    const auto a = plain.take();
+    const auto b = prepared.take();
+    REQUIRE(a.size() == 1);
+    REQUIRE(b.size() == 1);
+    CHECK(b.front()->resync);
+    CHECK(b.front()->turn == 3);
+    CHECK(b.front()->full == a.front()->full);
+    CHECK(b.front()->full == list);
+}

@@ -1,0 +1,23 @@
+# Derived ACCESS tables from Data/*.dat. No original pixels.
+anno1503-ui-dat 1
+dat statusbar.dat file "toolgfx\x5cstatusbar.tex" textures 13
+tex access "STATUSBAR" pos 0 0 size 746 35 segments -
+tex access "STATUSBAR_FRAGEZEICHEN" pos 0 0 size 34 35 segments 2 1
+tex access "STATUSBAR_ICON" pos 0 0 size 35 35 segments 33 1
+tex access "STATUSBAR_BAUMAT" pos 0 0 size 30 30 segments 4 1
+tex access "STATUSBAR_ROSHTOFFE" pos 0 0 size 30 30 segments 12 1
+tex access "STATUSBAR_GELDSYMBOL" pos 0 0 size 33 35 segments 1 1
+tex access "STATUSBAR_EINWOHNER" pos 0 0 size 40 35 segments 1 1
+tex access "STATUSBAR_BALKEN" pos 0 0 size 5 29 segments 1 1
+tex access "STATUSBAR02" pos 0 0 size 873 35 segments -
+tex access "STATUSBAR03" pos 0 0 size 1001 35 segments -
+tex access "FUELLER01" pos 0 0 size 245 192 segments -
+tex access "FUELLER02" pos 0 0 size 245 96 segments -
+tex access "FUELLER03" pos 0 0 size 245 256 segments -
+dat htmlpic.dat file "toolgfx\x5cPK_Kleidung.tex" textures 1
+tex access "image001.pcx" pos 0 0 size 700 567 segments -
+dat ScapeIcon.dat file "textures\x5cScapeIcon.tex" textures 4
+tex access "MONEY" pos 6 3 size 30 30 segments -
+tex access "BAUMAT" pos 6 34 size 30 30 segments 1 3 0 31
+tex access "BGRUPPE" pos 6 127 size 30 30 segments -
+tex access "RASTER01" pos 0 0 size 128 128 segments -

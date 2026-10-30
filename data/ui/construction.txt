@@ -1,0 +1,179 @@
+# Construction menu at 1024 x 768. No original strings.
+# Cell ids: View.dll 8-byte records (first u32 = Anlagen id, 1 = empty).
+# Addon tables for military (0x100a6d70) and ornamental (0x100a7430):
+# GOG 2.0.0.5 occupancy matches those counts. Other categories identical.
+# Costs from Anlagen.dat HEAD / PROD3. Lock: INFRAMIN vs INFRA_EVER at Citizen.
+# Grid: NO_KLICK 50 x 50 at origin 808,305 stride 52; click centre = origin + 25.
+anno1503-ui-construction 1
+resolution 1024 768
+open_key B
+leave_key ESC
+shot r2_construction_public
+grid cols 4 rows 8 cell_px 52 origin_x 808 origin_y 305 sprite 50 method sprite-sad shot r2_construction_public
+grid_click_x 833 885 937 989
+grid_click_y 330 382 432 484 536 588 640 692
+category public index 1 y 325 banner_key public tooltip_section TOOLTIP:BAUMENU_DIVERSES thumbnail THUMBNAILDIVERSES table 0x100a7330 records 32 shot r2_construction_public
+category roads index 2 y 373 banner_key roads tooltip_section TOOLTIP:BAUMENU_WEG thumbnail THUMBNAILWEG table 0x100a6eb0 records 12 shot r2_construction_roads
+category farms index 3 y 418 banner_key farms tooltip_section TOOLTIP:BAUMENU_LANDWIRTSCHAFT thumbnail THUMBNAILLANDWIRTSCHAFT table 0x100a7070 records 32 shot r2_construction_farms
+category workshops index 4 y 463 banner_key workshops tooltip_section TOOLTIP:BAUMENU_HANDWERK thumbnail THUMBNAILHANDWERK table 0x100a6fb0 records 24 shot r2_construction_workshops
+category coastal index 5 y 508 banner_key coastal tooltip_section TOOLTIP:BAUMENU_SCHIFF thumbnail THUMBNAILSEEFAHRT table 0x100a71d0 records 12 shot r2_construction_coastal
+category mines index 6 y 553 banner_key mines tooltip_section TOOLTIP:BAUMENU_BERGBAU thumbnail THUMBNAILBERGBAU table 0x100a6f10 records 20 shot r2_construction_mines
+category military index 7 y 598 banner_key military tooltip_section TOOLTIP:BAUMENU_MILITAR thumbnail THUMBNAILMILITAR table 0x100a6d70 records 20 shot r2_construction_military
+category ornamental index 8 y 643 banner_key ornamental tooltip_section TOOLTIP:BAUMENU_WIGWAMS thumbnail THUMBNAILZIERDE table 0x100a7430 records 32 shot r2_construction_ornamental
+cell public 0 0 id 501 state unlocked inframin INFRA_EVER gold 0 tools 0 wood 3 bricks 0 marble 0 upkeep 0 source view_dll shot r2_info_pioneer_house
+cell public 1 0 id 580 state locked inframin INFRA_STUFE_4F gold 0 tools 12 wood 10 bricks 20 marble 5 upkeep 0 source view_dll shot -
+cell public 2 0 id 1301 state unlocked inframin INFRA_EVER gold 250 tools 3 wood 7 bricks 0 marble 0 upkeep 10 source view_dll shot r2_info_market_1301
+cell public 3 0 id 1310 state unlocked inframin INFRA_EVER gold 50 tools 1 wood 1 bricks 0 marble 0 upkeep 5 source view_dll shot f12_info_stall_1310
+cell public 0 1 id 1335 state locked inframin INFRA_STUFE_1B gold 500 tools 5 wood 9 bricks 0 marble 0 upkeep 20 source view_dll shot -
+cell public 1 1 id 1336 state locked inframin INFRA_STUFE_4A gold 900 tools 8 wood 10 bricks 8 marble 0 upkeep 50 source view_dll shot -
+cell public 2 1 id 1303 state locked inframin INFRA_STUFE_2B gold 500 tools 5 wood 12 bricks 0 marble 0 upkeep 15 source view_dll shot -
+cell public 3 1 id 1314 state unlocked inframin INFRA_EVER gold 50 tools 1 wood 1 bricks 0 marble 0 upkeep 5 source view_dll shot f12_info_stall_1314
+cell public 0 2 id 1320 state locked inframin INFRA_STUFE_1C gold 700 tools 6 wood 10 bricks 0 marble 0 upkeep 15 source view_dll shot -
+cell public 1 2 id 1325 state locked inframin INFRA_STUFE_2F gold 1600 tools 9 wood 15 bricks 20 marble 0 upkeep 50 source view_dll shot -
+cell public 2 2 id 1305 state locked inframin INFRA_STUFE_3B gold 800 tools 10 wood 8 bricks 12 marble 0 upkeep 30 source view_dll shot -
+cell public 3 2 id 1315 state locked inframin INFRA_STUFE_2C gold 50 tools 1 wood 1 bricks 0 marble 0 upkeep 5 source view_dll shot -
+cell public 0 3 id 1346 state locked inframin INFRA_STUFE_2B gold 400 tools 5 wood 8 bricks 6 marble 0 upkeep 10 source view_dll shot -
+cell public 1 3 id 1379 state locked inframin INFRA_STUFE_3C gold 2500 tools 25 wood 30 bricks 32 marble 0 upkeep 150 source view_dll shot -
+cell public 2 3 id 1378 state locked inframin INFRA_STUFE_FORSCH gold 2000 tools 20 wood 12 bricks 24 marble 12 upkeep 100 source view_dll shot -
+cell public 3 3 id 1317 state locked inframin INFRA_STUFE_3D gold 50 tools 1 wood 1 bricks 0 marble 0 upkeep 5 source view_dll shot -
+cell public 0 4 id 1350 state locked inframin INFRA_STUFE_FORSCH gold 200 tools 4 wood 6 bricks 0 marble 0 upkeep 15 source view_dll shot -
+cell public 1 4 id 1337 state locked inframin INFRA_STUFE_FORSCH gold 500 tools 4 wood 8 bricks 5 marble 0 upkeep 20 source view_dll shot -
+cell public 2 4 id 1326 state locked inframin INFRA_STUFE_3C gold 500 tools 5 wood 9 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell public 3 4 id 1318 state locked inframin INFRA_STUFE_3C gold 50 tools 1 wood 1 bricks 0 marble 0 upkeep 5 source view_dll shot -
+cell public 0 5 id 1377 state locked inframin INFRA_STUFE_3D gold 1600 tools 20 wood 15 bricks 25 marble 10 upkeep 90 source view_dll shot -
+cell public 1 5 id 1376 state locked inframin INFRA_STUFE_4E gold 2500 tools 35 wood 15 bricks 30 marble 20 upkeep 200 source view_dll shot -
+cell public 2 5 id 1339 state locked inframin INFRA_STUFE_FORSCH gold 600 tools 4 wood 7 bricks 6 marble 0 upkeep 20 source view_dll shot -
+cell public 3 5 id 1313 state locked inframin INFRA_STUFE_4F gold 80 tools 1 wood 0 bricks 1 marble 0 upkeep 5 source view_dll shot -
+cell public 0 6 id 1386 state locked inframin INFRA_STUFE_4E gold 600 tools 10 wood 5 bricks 6 marble 3 upkeep 40 source view_dll shot -
+cell public 1 6 id 2564 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell public 2 6 id 2556 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell public 3 6 id 1316 state locked inframin INFRA_STUFE_4F gold 80 tools 1 wood 1 bricks 0 marble 0 upkeep 5 source view_dll shot -
+cell public 0 7 id 2559 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell roads 0 0 id 2520 state unlocked inframin INFRA_EVER gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot r2_info_dirt_road
+cell roads 1 0 id 2500 state locked inframin INFRA_STUFE_2B gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell roads 0 1 id 2550 state locked inframin INFRA_STUFE_2A gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell roads 1 1 id 2551 state locked inframin INFRA_STUFE_2A gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell roads 2 1 id 2552 state locked inframin INFRA_STUFE_3A gold 40 tools 0 wood 0 bricks 4 marble 0 upkeep 0 source view_dll shot -
+cell roads 0 2 id 2518 state locked inframin INFRA_STUFE_4A gold 500 tools 0 wood 0 bricks 3 marble 0 upkeep 0 source view_dll shot -
+cell farms 0 0 id 807 state unlocked inframin INFRA_EVER gold 220 tools 2 wood 4 bricks 0 marble 0 upkeep 10 source view_dll shot r2_info_sheep_807
+cell farms 1 0 id 805 state unlocked inframin INFRA_EVER gold 140 tools 1 wood 3 bricks 0 marble 0 upkeep 20 source view_dll shot r2_info_hunter_805
+cell farms 2 0 id 820 state locked inframin INFRA_STUFE_2B gold 300 tools 5 wood 8 bricks 4 marble 0 upkeep 15 source view_dll shot -
+cell farms 3 0 id 824 state locked inframin INFRA_STUFE_3F gold 100 tools 5 wood 6 bricks 0 marble 0 upkeep 20 source view_dll shot -
+cell farms 0 1 id 801 state unlocked inframin INFRA_EVER gold 150 tools 2 wood 0 bricks 0 marble 0 upkeep 12 source view_dll shot r2_info_forester_801
+cell farms 1 1 id 104 state unlocked inframin INFRA_EVER gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot f12_info_field_104
+cell farms 2 1 id 809 state unlocked inframin INFRA_EVER gold 250 tools 2 wood 4 bricks 0 marble 0 upkeep 20 source view_dll shot f12_info_farm_809
+cell farms 3 1 id 708 state unlocked inframin INFRA_EVER gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot f12_info_field_708
+cell farms 0 2 id 808 state locked inframin INFRA_STUFE_2A gold 200 tools 2 wood 5 bricks 0 marble 0 upkeep 18 source view_dll shot -
+cell farms 1 2 id 704 state locked inframin INFRA_STUFE_2A gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 2 2 id 813 state locked inframin INFRA_STUFE_2C gold 350 tools 4 wood 5 bricks 8 marble 0 upkeep 30 source view_dll shot -
+cell farms 3 2 id 736 state locked inframin INFRA_STUFE_2C gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 0 3 id 812 state locked inframin INFRA_STUFE_2C gold 390 tools 4 wood 5 bricks 8 marble 0 upkeep 40 source view_dll shot -
+cell farms 1 3 id 732 state locked inframin INFRA_STUFE_2C gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 2 3 id 815 state locked inframin INFRA_STUFE_2G gold 250 tools 5 wood 3 bricks 4 marble 0 upkeep 18 source view_dll shot -
+cell farms 3 3 id 720 state locked inframin INFRA_STUFE_2G gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 0 4 id 811 state locked inframin INFRA_STUFE_3B gold 200 tools 2 wood 3 bricks 3 marble 0 upkeep 10 source view_dll shot -
+cell farms 1 4 id 712 state locked inframin INFRA_STUFE_3B gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 2 4 id 823 state locked inframin INFRA_STUFE_FORSCH gold 200 tools 3 wood 5 bricks 5 marble 0 upkeep 15 source view_dll shot -
+cell farms 3 4 id 744 state locked inframin INFRA_STUFE_FORSCH gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 0 5 id 819 state locked inframin INFRA_STUFE_3A gold 380 tools 5 wood 2 bricks 4 marble 0 upkeep 20 source view_dll shot -
+cell farms 1 5 id 728 state locked inframin INFRA_STUFE_3A gold 6 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 2 5 id 814 state locked inframin INFRA_STUFE_3B gold 310 tools 4 wood 4 bricks 4 marble 0 upkeep 18 source view_dll shot -
+cell farms 3 5 id 724 state locked inframin INFRA_STUFE_3B gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 0 6 id 817 state locked inframin INFRA_STUFE_3C gold 300 tools 5 wood 5 bricks 6 marble 0 upkeep 35 source view_dll shot -
+cell farms 1 6 id 740 state locked inframin INFRA_STUFE_3C gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 2 6 id 818 state locked inframin INFRA_STUFE_3C gold 200 tools 3 wood 2 bricks 5 marble 0 upkeep 40 source view_dll shot -
+cell farms 3 6 id 700 state locked inframin INFRA_STUFE_3C gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 0 7 id 822 state locked inframin INFRA_STUFE_4C gold 400 tools 5 wood 5 bricks 8 marble 0 upkeep 45 source view_dll shot -
+cell farms 1 7 id 716 state locked inframin INFRA_STUFE_4C gold 5 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell farms 2 7 id 1341 state locked inframin INFRA_STUFE_FORSCH gold 100 tools 4 wood 2 bricks 3 marble 0 upkeep 0 source view_dll shot -
+cell workshops 0 0 id 1023 state unlocked inframin INFRA_EVER gold 300 tools 2 wood 5 bricks 0 marble 0 upkeep 9 source view_dll shot r2_info_tannery_1023
+cell workshops 0 1 id 1001 state unlocked inframin INFRA_EVER gold 300 tools 3 wood 4 bricks 0 marble 0 upkeep 15 source view_dll shot r2_info_weaver_1001
+cell workshops 1 1 id 1005 state locked inframin INFRA_STUFE_FORSCH gold 500 tools 4 wood 2 bricks 8 marble 0 upkeep 30 source view_dll shot -
+cell workshops 2 1 id 1009 state locked inframin INFRA_STUFE_3C gold 500 tools 7 wood 2 bricks 8 marble 0 upkeep 40 source view_dll shot -
+cell workshops 3 1 id 1027 state locked inframin INFRA_STUFE_3F gold 500 tools 5 wood 5 bricks 5 marble 0 upkeep 30 source view_dll shot -
+cell workshops 0 2 id 1014 state locked inframin INFRA_STUFE_2G gold 300 tools 3 wood 4 bricks 4 marble 0 upkeep 20 source view_dll shot -
+cell workshops 1 2 id 1013 state locked inframin INFRA_STUFE_3B gold 300 tools 5 wood 6 bricks 1 marble 0 upkeep 20 source view_dll shot -
+cell workshops 0 3 id 1008 state locked inframin INFRA_STUFE_2C gold 300 tools 4 wood 2 bricks 6 marble 0 upkeep 16 source view_dll shot -
+cell workshops 1 3 id 1030 state locked inframin INFRA_STUFE_2A gold 400 tools 3 wood 5 bricks 0 marble 0 upkeep 16 source view_dll shot -
+cell workshops 2 3 id 1028 state locked inframin INFRA_STUFE_3D gold 500 tools 5 wood 5 bricks 5 marble 0 upkeep 20 source view_dll shot -
+cell workshops 0 4 id 1018 state locked inframin INFRA_STUFE_2B gold 350 tools 4 wood 5 bricks 4 marble 0 upkeep 22 source view_dll shot -
+cell workshops 1 4 id 1002 state locked inframin INFRA_STUFE_3B gold 300 tools 4 wood 3 bricks 3 marble 0 upkeep 16 source view_dll shot -
+cell workshops 2 4 id 1004 state locked inframin INFRA_STUFE_3B gold 300 tools 5 wood 3 bricks 5 marble 0 upkeep 15 source view_dll shot -
+cell workshops 0 5 id 1019 state locked inframin INFRA_STUFE_2C gold 500 tools 3 wood 4 bricks 8 marble 0 upkeep 25 source view_dll shot -
+cell workshops 1 5 id 1039 state locked inframin INFRA_STUFE_4C gold 300 tools 6 wood 7 bricks 11 marble 0 upkeep 40 source view_dll shot -
+cell workshops 2 5 id 1035 state locked inframin INFRA_STUFE_3D gold 100 tools 2 wood 2 bricks 0 marble 0 upkeep 12 source view_dll shot -
+cell coastal 0 0 id 1302 state unlocked inframin INFRA_EVER gold 350 tools 5 wood 12 bricks 0 marble 0 upkeep 15 source view_dll shot f12_info_kontor_1302
+cell coastal 1 0 id 1304 state locked inframin INFRA_STUFE_2B gold 500 tools 5 wood 12 bricks 0 marble 0 upkeep 25 source view_dll shot -
+cell coastal 2 0 id 1306 state locked inframin INFRA_STUFE_3B gold 800 tools 10 wood 8 bricks 12 marble 0 upkeep 35 source view_dll shot -
+cell coastal 0 1 id 810 state unlocked inframin INFRA_EVER gold 180 tools 2 wood 6 bricks 0 marble 0 upkeep 20 source view_dll shot f12_info_fisher_810
+cell coastal 1 1 id 1020 state locked inframin INFRA_STUFE_2A gold 1200 tools 15 wood 18 bricks 12 marble 0 upkeep 0 source view_dll shot -
+cell coastal 0 2 id 821 state locked inframin INFRA_STUFE_3D gold 500 tools 5 wood 5 bricks 5 marble 0 upkeep 20 source view_dll shot -
+cell coastal 1 2 id 1021 state locked inframin INFRA_STUFE_4A gold 2000 tools 20 wood 20 bricks 18 marble 0 upkeep 0 source view_dll shot -
+cell mines 0 0 id 1203 state locked inframin INFRA_STUFE_1C gold 700 tools 5 wood 15 bricks 0 marble 0 upkeep 25 source view_dll shot -
+cell mines 1 0 id 1201 state locked inframin INFRA_STUFE_2B gold 300 tools 3 wood 3 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell mines 2 0 id 1218 state locked inframin INFRA_STUFE_3C gold 400 tools 3 wood 3 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell mines 0 1 id 1022 state locked inframin INFRA_STUFE_1C gold 400 tools 5 wood 5 bricks 0 marble 0 upkeep 30 source view_dll shot -
+cell mines 1 1 id 804 state locked inframin INFRA_STUFE_2B gold 250 tools 3 wood 3 bricks 0 marble 0 upkeep 18 source view_dll shot -
+cell mines 2 1 id 803 state locked inframin INFRA_STUFE_3C gold 300 tools 5 wood 4 bricks 10 marble 0 upkeep 18 source view_dll shot -
+cell mines 0 2 id 1205 state locked inframin INFRA_STUFE_2C gold 1200 tools 5 wood 15 bricks 0 marble 0 upkeep 40 source view_dll shot -
+cell mines 1 2 id 1216 state locked inframin INFRA_STUFE_FORSCH gold 1700 tools 8 wood 20 bricks 10 marble 0 upkeep 65 source view_dll shot -
+cell mines 0 3 id 1017 state locked inframin INFRA_STUFE_2C gold 800 tools 10 wood 4 bricks 10 marble 0 upkeep 40 source view_dll shot -
+cell mines 1 3 id 1034 state locked inframin INFRA_STUFE_3F gold 1000 tools 10 wood 10 bricks 20 marble 0 upkeep 75 source view_dll shot -
+cell mines 0 4 id 1206 state locked inframin INFRA_STUFE_4C gold 1500 tools 15 wood 12 bricks 4 marble 0 upkeep 50 source view_dll shot -
+cell mines 1 4 id 1214 state locked inframin INFRA_STUFE_4C gold 1500 tools 8 wood 4 bricks 10 marble 0 upkeep 80 source view_dll shot -
+cell military 0 0 id 2220 state locked inframin INFRA_STUFE_1A gold 600 tools 10 wood 20 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell military 1 0 id 2221 state locked inframin INFRA_STUFE_3A gold 1000 tools 10 wood 15 bricks 20 marble 0 upkeep 0 source view_dll shot -
+cell military 2 0 id 2223 state locked inframin INFRA_STUFE_4A gold 2500 tools 20 wood 15 bricks 30 marble 0 upkeep 0 source view_dll shot -
+cell military 0 1 id 2240 state locked inframin INFRA_STUFE_2B gold 50 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell military 1 1 id 2249 state locked inframin INFRA_STUFE_2B gold 70 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell military 2 1 id 2234 state locked inframin INFRA_STUFE_2B gold 150 tools 0 wood 1 bricks 6 marble 0 upkeep 0 source view_dll shot -
+cell military 3 1 id 2233 state locked inframin INFRA_STUFE_3B gold 200 tools 0 wood 2 bricks 10 marble 0 upkeep 0 source view_dll shot -
+cell military 0 2 id 2246 state locked inframin INFRA_STUFE_2B gold 100 tools 2 wood 8 bricks 5 marble 0 upkeep 0 source view_dll shot -
+cell military 1 2 id 2230 state locked inframin INFRA_STUFE_2D gold 200 tools 3 wood 8 bricks 8 marble 0 upkeep 0 source view_dll shot -
+cell military 2 2 id 2229 state locked inframin INFRA_STUFE_3D gold 650 tools 10 wood 12 bricks 16 marble 0 upkeep 0 source view_dll shot -
+cell military 0 3 id 1029 state locked inframin INFRA_STUFE_2C gold 300 tools 5 wood 8 bricks 2 marble 0 upkeep 30 source view_dll shot -
+cell military 1 3 id 1006 state locked inframin INFRA_STUFE_FORSCH gold 500 tools 6 wood 4 bricks 4 marble 0 upkeep 30 source view_dll shot -
+cell military 2 3 id 1012 state locked inframin INFRA_STUFE_FORSCH gold 500 tools 6 wood 3 bricks 8 marble 0 upkeep 40 source view_dll shot -
+cell military 3 3 id 1038 state locked inframin INFRA_STUFE_FORSCH gold 800 tools 10 wood 10 bricks 10 marble 0 upkeep 0 source view_dll shot -
+cell military 0 4 id 1037 state locked inframin INFRA_STUFE_FORSCH gold 200 tools 4 wood 4 bricks 2 marble 0 upkeep 40 source view_dll shot -
+cell military 1 4 id 1036 state locked inframin INFRA_STUFE_FORSCH gold 300 tools 5 wood 5 bricks 3 marble 0 upkeep 35 source view_dll shot -
+cell military 2 4 id 1010 state locked inframin INFRA_STUFE_FORSCH gold 500 tools 8 wood 6 bricks 2 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 0 0 id 2556 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 1 0 id 2672 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 2 0 id 2553 state locked inframin INFRA_STUFE_DENKMAL gold 0 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 3 0 id 1380 state locked inframin INFRA_STUFE_5C gold 15000 tools 40 wood 15 bricks 50 marble 20 upkeep 100 source view_dll shot -
+cell ornamental 0 1 id 2559 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 1 1 id 2566 state locked inframin INFRA_STUFE_4E gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 2 1 id 2780 state locked inframin INFRA_STUFE_TRIUMPH gold 0 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 3 1 id 1381 state locked inframin INFRA_STUFE_5D gold 5000 tools 30 wood 10 bricks 30 marble 15 upkeep 30 source view_dll shot -
+cell ornamental 0 2 id 2563 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 1 2 id 2567 state locked inframin INFRA_STUFE_4E gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 2 2 id 2554 state locked inframin INFRA_STUFE_5A gold 1000 tools 3 wood 0 bricks 5 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 3 2 id 1382 state locked inframin INFRA_STUFE_5D gold 5000 tools 30 wood 10 bricks 30 marble 15 upkeep 30 source view_dll shot -
+cell ornamental 0 3 id 2560 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 1 3 id 2568 state locked inframin INFRA_STUFE_4E gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 2 3 id 2555 state locked inframin INFRA_STUFE_5A gold 1000 tools 5 wood 0 bricks 10 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 3 3 id 1383 state locked inframin INFRA_STUFE_5D gold 3000 tools 30 wood 10 bricks 30 marble 15 upkeep 20 source view_dll shot -
+cell ornamental 0 4 id 2561 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 1 4 id 2569 state locked inframin INFRA_STUFE_4E gold 10 tools 0 wood 0 bricks 1 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 2 4 id 1391 state locked inframin INFRA_STUFE_3E gold 1500 tools 10 wood 5 bricks 15 marble 10 upkeep 2 source view_dll shot -
+cell ornamental 3 4 id 1384 state locked inframin INFRA_STUFE_5E gold 3000 tools 30 wood 10 bricks 30 marble 15 upkeep 5 source view_dll shot -
+cell ornamental 0 5 id 2564 state locked inframin INFRA_STUFE_4E gold 20 tools 0 wood 0 bricks 0 marble 0 upkeep 0 source view_dll shot -
+cell ornamental 1 5 id 1389 state locked inframin INFRA_STUFE_4A gold 2000 tools 5 wood 0 bricks 20 marble 10 upkeep 2 source view_dll shot -
+cell ornamental 2 5 id 1390 state locked inframin INFRA_STUFE_4B gold 1500 tools 10 wood 0 bricks 15 marble 10 upkeep 2 source view_dll shot -
+cell ornamental 3 5 id 1392 state locked inframin INFRA_STUFE_5D gold 3000 tools 30 wood 15 bricks 30 marble 20 upkeep 10 source view_dll shot -
+cell ornamental 0 6 id 1393 state locked inframin INFRA_STUFE_3D gold 100 tools 1 wood 0 bricks 10 marble 4 upkeep 0 source view_dll shot -
+cell ornamental 1 6 id 1395 state locked inframin INFRA_STUFE_3F gold 200 tools 1 wood 2 bricks 5 marble 1 upkeep 0 source view_dll shot -
+cell ornamental 2 6 id 1388 state locked inframin INFRA_STUFE_4D gold 3000 tools 15 wood 0 bricks 30 marble 15 upkeep 5 source view_dll shot -
+cell ornamental 3 6 id 1385 state locked inframin INFRA_STUFE_5D gold 10000 tools 40 wood 15 bricks 50 marble 20 upkeep 50 source view_dll shot -
+cell ornamental 0 7 id 1330 state locked inframin INFRA_STUFE_5B gold 12000 tools 40 wood 30 bricks 60 marble 30 upkeep 80 source view_dll shot -
+cell ornamental 1 7 id 1387 state locked inframin INFRA_STUFE_5A gold 2000 tools 10 wood 0 bricks 20 marble 10 upkeep 2 source view_dll shot -
+occupancy public ULUU LLLU LLLL LLLL LLLL LLLL LLLL L---
+occupancy roads UL-- LLL- L--- ---- ---- ---- ---- ----
+occupancy farms UULL UUUU LLLL LLLL LLLL LLLL LLLL LLL-
+occupancy workshops U--- ULLL LL-- LLL- LLL- LLL- ---- ----
+occupancy coastal ULL- UL-- LL-- ---- ---- ---- ---- ----
+occupancy mines LLL- LLL- LL-- LL-- LL-- ---- ---- ----
+occupancy military LLL- LLLL LLL- LLLL LLL- ---- ---- ----
+occupancy ornamental LLLL LLLL LLLL LLLL LLLL LLLL LLLL LL--
+demolish pos 993 714 shot r2_demolish access ABRISSICON

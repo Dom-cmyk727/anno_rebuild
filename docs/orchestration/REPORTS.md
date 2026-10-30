@@ -7748,3 +7748,88 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 1. **Inventory format is line-oriented ASCII, quoted ACCESS names, same quote alphabet as `tex.py` dump** (backslash as `\x5c`). Alternative: JSON. Rejected so it matches `data/maps/lan5.txt` and can be grepped; JSON would also be fine later if UI.2 wants it.
 2. **Filename groups are closed.** Only stems with a `Data/*.dat` `[FILE]` pointer or a documented HUD/construction name. Alternative: group every `B_*` and every `IH_*`. Rejected: `IH_*` are instant-help illustrations, not HUD chrome; extra `B_*` wait until a capture shows them on a panel.
 3. **Do not bind `THUMBNAIL*` to banners yet.** The ACCESS names exist; file order disagrees with the measured category column. Binding is OQ-537 / step 5.
+
+---
+
+## UI.1 — progress, step 3 — 2026-10-30 12:40 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: Wine-runner captures of the HUD, construction menu (8 categories), info/placement, demolish, tabs, options, player menu. Capture index in `docs/re/ui.md` section 7. Screen tree in section 1.
+- Evidence:
+  - Two silent WineBackend passes, display :91, frame 1024x768, `in_game`, VOLUME -250. Stopped clean both times.
+  - Pass 1 `d91-20261030-112327` (27 shots, key P parchment). Pass 2 `d91-20261030-112532` (32 r2_ shots + hud_idle_running, F8). Merged index 59 names. Copies in `cache/orig/ui-1/shots/` (git-ignored).
+  - Demolish hit at (0.97, 0.93); (0.764, 0.92) missed. ESC between categories in pass 1 closed the menu; pass 2 kept B open.
+- Next: pixel tables (`data/ui/hud.txt`).
+- Subagents: none.
+
+### Decisions and reasoning
+1. **F8, not P.** Pause draws a parchment that hides the map. Alternative: pause for a still cursor. Rejected after pass 1.
+2. **Canonical shots are pass 2.** Pass 1 kept only as pause-overlay evidence.
+
+---
+
+## UI.1 — progress, step 4 — 2026-10-30 12:50 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: pixel rectangles at 1024x768 in `data/ui/hud.txt` and `docs/re/ui.md` section 2 / 4. OQ-536 narrowed: drawn bar is 746x35 at (0,733) = `statusbar.dat` STATUSBAR, not fenster 780x43.
+- Evidence:
+  - `hud_idle_running.png` x=20 y=732 water (25,77,107), y=733 bar (214,210,206). Panel x=779 = 1024-245.
+  - Clicks from screens.json fractions times 1024x768. Demolish (993,714). Cancel-X (1009,730).
+  - Material digits absent on idle bar, present with construction open. Marble not seen (OQ-538).
+- Next: construction occupancy.
+- Subagents: none.
+
+### Decisions and reasoning
+1. **Do not copy screens.json fractions as the spec.** Pixels are measured; fractions stay the click map.
+2. **fenster STATUSBAR is a different graphic.** Candidate y=725 does not match the shot.
+
+---
+
+## UI.1 — progress, step 5 — 2026-10-30 13:00 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: construction tree in `data/ui/construction.txt`. Occupancy at Citizen start for all 8 categories. Eight typed cells.
+- Evidence:
+  - Grey-? signature (RGB-sum mean 465-495, sd 90-120) on r2_construction_*. Counts match screens.json grid_cells.pioneers cell strings (29/6/31/16/7/12/17/30).
+  - Info panels: 501 (pioneer house, OQ-103), 1301, 2520, 807, 805, 801, 1023, 1001. Weaver is (0,1) under tannery, not beside it.
+  - screens.json market-tent at 1-based [1,3] is type 1301. Tooltip section to banner still OQ-537. THUMBNAIL* unbound. Second settlement stage not reached.
+- Next: oracle self-test / validate / mock / compare.
+- Subagents: none.
+
+### Decisions and reasoning
+1. **Occupancy from the locked-cell pixel signature, not saturation.** Question-mark tiles are desaturated like empty stone; the grey-? mean/sd separates them.
+2. **Anlagen id only with an info-panel match** (or OQ-103 for 501). Remaining U cells stay id -.
+
+---
+
+## UI.1 — progress, step 6 — 2026-10-30 13:10 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: `tools/ui_layout.py` `self-test` / `validate` / `mock` / `compare` (flag aliases too). `tools/test_ui_layout.py`.
+- Gates: `python -I tools/ui_layout.py --self-test` ok checks=13; `python -I tools/test_ui_layout.py` 6 tests OK; `validate --layout data/ui` ok; `compare` against `cache/orig/ui-1/shots/hud_idle_running.png` ok. No C++ / ctest / clang-format (Python and docs only). write-inventory unchanged.
+- Next: rest of the screen tree (partial from step 3 shots) and implementation-status.
+- Subagents: none.
+
+### Decisions and reasoning
+1. **compare checks documented coordinates against the shot** (bar y-1 is water, bar y is not, panel x at y=100 is not water). Alternative: re-detect panel_x by scanning. Rejected: stats-column icons are blue enough to fake a water edge at x=763.
+2. **mock emits both STATUSBAR candidates** (746x35 at y=733 and 780x43 at y=725) for OQ-536.
+
+---
+
+## UI.1 — progress, step 7 — 2026-10-30 13:15 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: rest of the in-game tree that this session reached. Military tab = player menu. Options tab is in-panel Main-menu. Pause is parchment. Not captured: S/C/Q, save/load dialogs, diplomacy cycle, messages, second stage, marble-cost building, Options resolution list (OQ-535).
+- Evidence: `r2_tab_military`, `r2_player_menu`, `r2_options`, `r2_tab_help`, pass 1 `options_key_O`.
+- Next: implementation-status.
+- Subagents: none.
+
+---
+
+## UI.1 — step 8, FINISHED — 2026-10-30 13:20 — status: FINISHED
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Built: spec `docs/re/ui.md`; layout `data/ui/{dat,inc,groups,hud,construction}.txt`; oracle `tools/ui_layout.py` + `tools/test_ui_layout.py`. No `src/` edits. No original pixels or strings in git.
+- Gates: Python self-test 13 checks; unittest 6 OK; validate ok; compare ok on the idle HUD shot. write-inventory not re-run against game files in this step (byte-identical in step 2). No MSVC/ctest/GCC/ASan (out of scope). Wine stopped after pass 2.
+- Evidence: 59 Wine shots under `cache/orig/ui-1/` (git-ignored); occupancy counts; 8 typed cells; HUD (0,733) 746x35 and panel x=779.
+- Reviewers: none yet.
+- Left open: OQ-535 (resolutions / 8-suffix set); OQ-536 (`WELTKARTE` vs painted minimap; fenster STATUSBAR unused at 1024x768); OQ-537 (remaining cell ids, THUMBNAIL* and TOOLTIP:BAUMENU_* bind, INFRAMIN lock); OQ-538 (marble / BAUMAT segments). Not captured: ship/city lists, rating, save/load sliders, diplomacy cycle, messages, second settlement stage.
+- Time spent / subagents used: this session; no subagents. Isolation: did not call move_agent_to_root.
+
+### Decisions and reasoning
+1. **Sim coverage is command-side, not UI.** create_building / DemolishCmd exist; house population is still a placeholder. No src/ui.
+2. **Priority HUD + construction + demolish + status bar + minimap** is specified in pixels. The rest of the tree is named and shot where reached.

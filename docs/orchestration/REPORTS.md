@@ -6782,9 +6782,9 @@ Retained outcomes, none retuned, validators empty on all 74 rows: 68 primary row
 
 Next: reconcile ADR 0003 §15 and OQ-371 with these results (Proposed stays Proposed, OQ-371 stays open), then reviewer pass 2 on that head and the closure draft.
 
-## T61 F2 closure — 2026-10-30 — status: IN PROGRESS (reviewer pass 2 pending)
+## T61 F2 closure — 2026-10-30 — status: READY FOR REVIEW
 
-Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starting head `be08b7b88025b78083e1d6292c7330a29ceba70a`. Final tested source (last tool change) `3c5ecb6097e6485d191bc7a8b87be925b3a317e1`. Accepted study recorded at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (`python` blobs identical to `3c5ecb6`). ADR/OQ reconciliation `0f1e984dff8a0b23f030042640462b2e2768eda9`. This section is the closure draft for reviewer pass 2; the report tip is the commit that adds it. No push, PR, TASKS/PLAN/AGENTS, merge or rebase. No other worktree was read or edited.
+Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starting head `be08b7b88025b78083e1d6292c7330a29ceba70a`. Final tested source (last tool change) `3c5ecb6097e6485d191bc7a8b87be925b3a317e1`. Accepted study recorded at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (`python` blobs identical to `3c5ecb6`). ADR/OQ reconciliation `0f1e984dff8a0b23f030042640462b2e2768eda9`. Report tip is this commit. No push, PR, TASKS/PLAN/AGENTS, merge or rebase. No other worktree was read or edited.
 
 ### Commits since `be08b7b` (concern per commit)
 
@@ -6813,6 +6813,9 @@ Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starti
 | `eb6da43` | docs: record T61 F2 phase 3 reviewer rounds |
 | `775e8e8` | docs: record T61 F2 phase 4 study |
 | `0f1e984` | docs: reconcile T61 study with ADR 0003 and OQ-371 |
+| `e3fde09` | docs(orchestration): T61 F2 closure draft for reviewer pass 2 |
+| `5f83bc9` | docs: correct the T61 closure draft before review |
+| (this commit) | docs: T61 F2 pass-2 dispositions and READY FOR REVIEW |
 
 `git diff --stat be08b7b..HEAD`: `docs/adr/0003-network-transport.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md`, `tools/join_jitter_study.py`, `tools/test_join_activation.py`. Five of the six allowed files; `tools/join_activation.py` was already at the H1 conservation head before this continuation. `git diff --check be08b7b HEAD` is clean.
 
@@ -6832,9 +6835,9 @@ Fail-first on `be08b7b`/`a9c8281`: 30 tests, 9 failures (`cache/t61-f2/dn/fail-f
 
 | item | fail-first | pass |
 | --- | --- | --- |
-| H1a extra arrival | `'xviii' not found in {'xi'}` on `30964c2` | `assertEqual(..., {"xviii"})` |
-| H1b orphan sid | same | same |
-| H1c lost outcome | same | same |
+| H1a extra arrival | epoch-1 archive log `h1-30964c2.err`: `'xviii' not found in {'xi'}`; current epoch-0 fixture on `30964c2` (`h1-h4-on-30964c2.stderr.txt`): `'xviii' not found in set()` | `assertEqual(..., {"xviii"})` |
+| H1b orphan sid | same two logs | same |
+| H1c lost outcome | same two logs | same |
 | H1d bool attempt | `ValueError not raised` | Cfg rejects |
 | H1e negative epoch | `ValueError not raised` | Cfg rejects |
 | H1f empty endpoint | `ValueError not raised` | Cfg rejects |
@@ -6919,7 +6922,15 @@ A parallel note at `e34c9b1` recorded the same pass from this session's first fi
 
 ### Reviewer pass 2
 
-Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Findings and dispositions follow that pass.
+Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Subagent [T61 reviewer pass 2](1ee78e8e-21af-45a7-871a-40db48504358). Findings: `cache/t61-f2/dn/review-2/findings.md`. Named head `e3fde09`; reviewed `5f83bc9` (REPORTS-only move during the pass). Independent `--validate` printed `valid: 72 primary rows, 2 diagnostics` (200.519 s). N1–N8 and §5 CONFIRMED. No High or Important NOT MET.
+
+| # | finding | disposition |
+| --- | --- | --- |
+| 1 | Low: H1a–c fail-first quoted `'xi'` from the epoch-1 log | **Fixed** in this commit: both logs named (`h1-30964c2.err` vs `h1-h4-on-30964c2.stderr.txt`). Tests already `assertEqual(..., {"xviii"})`. |
+| 2 | Low: commit table stopped at `0f1e984` | **Fixed** in this commit: `e3fde09`, `5f83bc9`, and this report tip added. |
+| 3 | Low: H3 and loading-joiner never failed on the defective head | **Recorded, tests kept.** H3 was already fixed at `ee46458` before this continuation. Loading-joiner is a membership spec (`maximum_lag` only seated members); the H4 defect is `test_h4_input_on_samples_maximum_lag_without_a_later_apply` (`0 != 2`). No new fixture: that would be a tool/test change after the accepted study. |
+
+No second full `--validate` round: tools and `study.jsonl` are unchanged since the pass-2 independent replay at `5f83bc9`, and the three findings are report text. Affected gate: none (docs only). Round 2 of this pass is this disposition table, not a new tool run.
 
 ### Decisions and reasoning
 

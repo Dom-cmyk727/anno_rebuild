@@ -7728,4 +7728,23 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 1. **`8` suffix is a second size set, not 8-bit.** Alternatives: 8-bit colour, a third zoom, an addon pack. Evidence: paired ACCESS ids, `u06=8` on both, pixel ratios 0.780–0.783 against 800/1024 = 0.78125. Which mode loads it stays OQ-535.
 2. **Do not treat `screens.json` fractions as the pixel spec.** Alternative: copy them into `data/ui/` as if they were pixels. Rejected: the task asks for pixels at 1024 × 768 plus anchoring from other resolutions; fractions stay a click map until step 4 measures.
 3. **OQ-535..538 only**, from the re-check. Alternative: open one OQ per unverified first-pass building name. Rejected: those collapse into OQ-537 (cell → type) once captures exist.
-4. **`lan-mvp.md` missing is a QUESTION, not a stop.** The packet names it; the board commit has `lan-endless.md` and PLAN §0.7. W5 is the relevant HUD workstream. Continued with those.
+4. **`lan-mvp.md` missing is a QUESTION, not a stop.** The packet names it; the board commit has `lan-endless.md` and PLAN §0.7. W5 is the relevant HUD workstream. Continued with those. **Withdrawn in step 2:** the file is on `064b4a2`; step 1 listed it missing because `move_agent_to_root` had checked `codex/T61-join-jitter` out in this worktree.
+
+---
+
+## UI.1 — progress, step 2 — 2026-10-30 11:50 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: inventory of every UI `Data/*.dat` ACCESS table and every `ToolGfx` `.inc`. Layout files under `data/ui/`. Generator `tools/ui_layout.py write-inventory`. Spec §6.1. OQ-537 updated with `THUMBNAIL*` ACCESS names.
+- Evidence:
+  - `python -I tools/ui_layout.py write-inventory --game-dir E:\anno1503\game\app --out data/ui` then the same into `cache/ui-inv-rerun`: `dat.txt` / `inc.txt` / `groups.txt` byte-identical.
+  - Output: 3 dat files, 18 ACCESS; 1 210 inc, 1 555 ACCESS, 338 empty; 551 eight-suffix pairs.
+  - `fenster.inc` `STATUSBAR` id 6 is 780 × 43; `Data/statusbar.dat` `STATUSBAR` is 746 × 35 (OQ-536).
+  - Eight `THUMBNAIL*` ACCESS names in `fenster.inc` (50 × 50 / 39 × 39). No `KARTEMINUS` ACCESS name.
+  - `git ls-files docs/plan/lan-mvp.md` at this head: present (`064b4a2`). Step 1 QUESTION withdrawn.
+- Next: step 3, Wine-runner captures of the HUD, construction menu, info panel, demolish, status bar, minimap (silent).
+- Subagents: none.
+
+### Decisions and reasoning
+1. **Inventory format is line-oriented ASCII, quoted ACCESS names, same quote alphabet as `tex.py` dump** (backslash as `\x5c`). Alternative: JSON. Rejected so it matches `data/maps/lan5.txt` and can be grepped; JSON would also be fine later if UI.2 wants it.
+2. **Filename groups are closed.** Only stems with a `Data/*.dat` `[FILE]` pointer or a documented HUD/construction name. Alternative: group every `B_*` and every `IH_*`. Rejected: `IH_*` are instant-help illustrations, not HUD chrome; extra `B_*` wait until a capture shows them on a panel.
+3. **Do not bind `THUMBNAIL*` to banners yet.** The ACCESS names exist; file order disagrees with the measured category column. Binding is OQ-537 / step 5.

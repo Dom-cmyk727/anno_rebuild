@@ -1,0 +1,2767 @@
+# Derived ACCESS records from ToolGfx/*.inc plus .tex sizes. No original pixels.
+anno1503-ui-inc 1
+inc "AH_aendern.inc" stem "AH_aendern" eight 0 group - records 2
+access "image001.pcx" id 1 width 50 height 54
+access "image002.pcx" id 2 width 46 height 43
+inc "AH_festlegen.inc" stem "AH_festlegen" eight 0 group - records 2
+access "image001.pcx" id 1 width 46 height 43
+access "image002.pcx" id 2 width 42 height 46
+inc "AH_festlegen8.inc" stem "AH_festlegen" eight 1 group - records 2
+access "image001.pcx" id 1 width 36 height 34
+access "image002.pcx" id 2 width 33 height 36
+inc "AH_loeschen.inc" stem "AH_loeschen" eight 0 group - records 1
+access "image001.pcx" id 1 width 46 height 42
+inc "AH_loeschen8.inc" stem "AH_loeschen" eight 1 group - records 1
+access "image001.pcx" id 1 width 36 height 33
+inc "AH_stoppen.inc" stem "AH_stoppen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 54
+inc "AH_stoppen8.inc" stem "AH_stoppen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 42
+inc "Abreissen_Gebaeude.inc" stem "Abreissen_Gebaeude" eight 0 group demolish records 1
+access "image001.pcx" id 1 width 73 height 65
+inc "Abreissen_Gebaeude8.inc" stem "Abreissen_Gebaeude" eight 1 group demolish records 1
+access "image001.pcx" id 1 width 57 height 51
+inc "Activate your pionier.inc" stem "Activate your pionier" eight 0 group - records 0
+inc "Activate your pionier8.inc" stem "Activate your pionier" eight 1 group - records 0
+inc "Activate your ship.inc" stem "Activate your ship" eight 0 group - records 0
+inc "Activate your ship8.inc" stem "Activate your ship" eight 1 group - records 0
+inc "Aexte.inc" stem "Aexte" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Aexte8.inc" stem "Aexte" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Aktive Hilfe.inc" stem "Aktive Hilfe" eight 0 group - records 1
+access "image001.pcx" id 1 width 65 height 58
+inc "Aktive_Hilfe.inc" stem "Aktive_Hilfe" eight 0 group - records 1
+access "image001.pcx" id 1 width 65 height 58
+inc "Aktive_Hilfe8.inc" stem "Aktive_Hilfe" eight 1 group - records 1
+access "image001.pcx" id 1 width 51 height 45
+inc "Alkohol.inc" stem "Alkohol" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Alkohol8.inc" stem "Alkohol" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Amtsgericht8.inc" stem "Amtsgericht" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Anzahl_Wohnhausbewohner.inc" stem "Anzahl_Wohnhausbewohner" eight 0 group - records 1
+access "image001.pcx" id 1 width 88 height 36
+inc "Anzahl_Wohnhausbewohner8.inc" stem "Anzahl_Wohnhausbewohner" eight 1 group - records 1
+access "image001.pcx" id 1 width 69 height 28
+inc "Aristokraten.inc" stem "Aristokraten" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Aristokraten8.inc" stem "Aristokraten" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "Armbrueste.inc" stem "Armbrueste" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Armbrueste8.inc" stem "Armbrueste" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Armbrustschuetze.inc" stem "Armbrustschuetze" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Armbrustschuetze8.inc" stem "Armbrustschuetze" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Aufstand.inc" stem "Aufstand" eight 0 group - records 0
+inc "Aufstand8.inc" stem "Aufstand" eight 1 group - records 0
+inc "Aufstiegsbedingungen.inc" stem "Aufstiegsbedingungen" eight 0 group promotion records 0
+inc "Aufstiegsbedingungen8.inc" stem "Aufstiegsbedingungen" eight 1 group promotion records 0
+inc "Auftrag.inc" stem "Auftrag" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Auftrag8.inc" stem "Auftrag" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Auftrag_single01.inc" stem "Auftrag_single01" eight 0 group - records 0
+inc "Auftrag_single018.inc" stem "Auftrag_single01" eight 1 group - records 0
+inc "Auftrag_single04.inc" stem "Auftrag_single04" eight 0 group - records 0
+inc "Auftrag_single048.inc" stem "Auftrag_single04" eight 1 group - records 0
+inc "Auftrag_single05.inc" stem "Auftrag_single05" eight 0 group - records 0
+inc "Auftrag_single058.inc" stem "Auftrag_single05" eight 1 group - records 0
+inc "Auftrag_single06.inc" stem "Auftrag_single06" eight 0 group - records 0
+inc "Auftrag_single068.inc" stem "Auftrag_single06" eight 1 group - records 0
+inc "Auftrag_single07.inc" stem "Auftrag_single07" eight 0 group - records 0
+inc "Auftrag_single078.inc" stem "Auftrag_single07" eight 1 group - records 0
+inc "Auftrag_single08.inc" stem "Auftrag_single0" eight 1 group - records 0
+inc "Auftrag_single088.inc" stem "Auftrag_single08" eight 1 group - records 0
+inc "Auftrag_single09.inc" stem "Auftrag_single09" eight 0 group - records 0
+inc "Auftrag_single098.inc" stem "Auftrag_single09" eight 1 group - records 0
+inc "Auftrag_single10.inc" stem "Auftrag_single10" eight 0 group - records 0
+inc "Auftrag_single108.inc" stem "Auftrag_single10" eight 1 group - records 0
+inc "Auftrag_single12.inc" stem "Auftrag_single12" eight 0 group - records 0
+inc "Auftrag_single128.inc" stem "Auftrag_single12" eight 1 group - records 0
+inc "Auftrag_single14.inc" stem "Auftrag_single14" eight 0 group - records 0
+inc "Auftrag_single148.inc" stem "Auftrag_single14" eight 1 group - records 0
+inc "Auftrag_single15.inc" stem "Auftrag_single15" eight 0 group - records 0
+inc "Auftrag_single158.inc" stem "Auftrag_single15" eight 1 group - records 0
+inc "Auftrag_single16.inc" stem "Auftrag_single16" eight 0 group - records 0
+inc "Auftrag_single168.inc" stem "Auftrag_single16" eight 1 group - records 0
+inc "Auftrag_single21.inc" stem "Auftrag_single21" eight 0 group - records 0
+inc "Auftrag_single218.inc" stem "Auftrag_single21" eight 1 group - records 0
+inc "Auftrag_single24.inc" stem "Auftrag_single24" eight 0 group - records 0
+inc "Auftrag_single248.inc" stem "Auftrag_single24" eight 1 group - records 0
+inc "Ausbau_Wohnhaeuser.inc" stem "Ausbau_Wohnhaeuser" eight 0 group - records 1
+access "image001.pcx" id 1 width 182 height 54
+inc "Ausbau_Wohnhaeuser8.inc" stem "Ausbau_Wohnhaeuser" eight 1 group - records 1
+access "image001.pcx" id 1 width 142 height 42
+inc "Auslastung.inc" stem "Auslastung" eight 0 group - records 1
+access "image001.pcx" id 1 width 63 height 101
+inc "Auslastung8.inc" stem "Auslastung" eight 1 group - records 1
+access "image001.pcx" id 1 width 49 height 79
+inc "Auslastung_F_und_P.inc" stem "Auslastung_F_und_P" eight 0 group - records 1
+access "image001.pcx" id 1 width 52 height 392
+inc "Auslastung_F_und_P8.inc" stem "Auslastung_F_und_P" eight 1 group - records 1
+access "image001.pcx" id 1 width 41 height 306
+inc "Auslastung_H_und_WV.inc" stem "Auslastung_H_und_WV" eight 0 group - records 1
+access "image001.pcx" id 1 width 52 height 56
+inc "Auslastung_H_und_WV8.inc" stem "Auslastung_H_und_WV" eight 1 group - records 1
+access "image001.pcx" id 1 width 41 height 44
+inc "Auslastung_K_und_MH.inc" stem "Auslastung_K_und_MH" eight 0 group - records 1
+access "image001.pcx" id 1 width 52 height 56
+inc "Auslastung_Marktstand.inc" stem "Auslastung_Marktstand" eight 0 group - records 0
+inc "Auslastung_Marktstand8.inc" stem "Auslastung_Marktstand" eight 1 group - records 0
+inc "Auslastung_OeffentlicheGebaeude.inc" stem "Auslastung_OeffentlicheGebaeude" eight 0 group - records 0
+inc "Ausrichtung_von_Gebaeuden.inc" stem "Ausrichtung_von_Gebaeuden" eight 0 group - records 0
+inc "Ausrichtung_von_Gebaeuden8.inc" stem "Ausrichtung_von_Gebaeuden" eight 1 group - records 0
+inc "Automatische_Handelsroute.inc" stem "Automatische_Handelsroute" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Automatische_Handelsroute8.inc" stem "Automatische_Handelsroute" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "B_Baukosten.inc" stem "B_Baukosten" eight 0 group construction records 1
+access "image001.pcx" id 1 width 32 height 29
+inc "B_Baukosten8.inc" stem "B_Baukosten" eight 1 group construction records 1
+access "image001.pcx" id 1 width 25 height 23
+inc "B_Baumenue.inc" stem "B_Baumenue" eight 0 group construction records 1
+access "image001.pcx" id 1 width 60 height 63
+inc "B_Baumenue8.inc" stem "B_Baumenue" eight 1 group construction records 1
+access "image001.pcx" id 1 width 47 height 49
+inc "B_Belohnungsbauten.inc" stem "B_Belohnungsbauten" eight 0 group construction records 0
+inc "B_Belohnungsbauten8.inc" stem "B_Belohnungsbauten" eight 1 group construction records 0
+inc "B_Betriebskosten.inc" stem "B_Betriebskosten" eight 0 group construction records 1
+access "image001.pcx" id 1 width 40 height 37
+inc "B_Betriebskosten8.inc" stem "B_Betriebskosten" eight 1 group construction records 1
+access "image001.pcx" id 1 width 31 height 29
+inc "Badehaus.inc" stem "Badehaus" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Badehaus8.inc" stem "Badehaus" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Baeckerei.inc" stem "Baeckerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Baeckerei8.inc" stem "Baeckerei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Bauen.inc" stem "Bauen" eight 0 group - records 0
+inc "Bauen8.inc" stem "Bauen" eight 1 group - records 0
+inc "Baumaterial.inc" stem "Baumaterial" eight 0 group - records 1
+access "image001.pcx" id 1 width 226 height 35
+inc "Baumaterial8.inc" stem "Baumaterial" eight 1 group - records 1
+access "image001.pcx" id 1 width 177 height 27
+inc "Baumaterialzugang_sperren.inc" stem "Baumaterialzugang_sperren" eight 0 group - records 1
+access "image001.pcx" id 1 width 91 height 54
+inc "Baumaterialzugang_sperren8.inc" stem "Baumaterialzugang_sperren" eight 1 group - records 1
+access "image001.pcx" id 1 width 71 height 42
+inc "Baumwollfeld.inc" stem "Baumwollfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Baumwollfeld8.inc" stem "Baumwollfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Baumwollplantage.inc" stem "Baumwollplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Baumwollplantage8.inc" stem "Baumwollplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Bedarfsgueter.inc" stem "Bedarfsgueter" eight 0 group - records 0
+inc "Bedarfsgueter8.inc" stem "Bedarfsgueter" eight 1 group - records 0
+inc "Bedienmannschaft.inc" stem "Bedienmannschaft" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Bedienmannschaft8.inc" stem "Bedienmannschaft" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Beduerfnisse_Einwohner.inc" stem "Beduerfnisse_Einwohner" eight 0 group - records 1
+access "image001.pcx" id 1 width 103 height 200
+inc "Beduerfnisse_Einwohner8.inc" stem "Beduerfnisse_Einwohner" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 156
+inc "Belagerungstuerme.inc" stem "Belagerungstuerme" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Belagerungstuerme8.inc" stem "Belagerungstuerme" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Berg.inc" stem "Berg" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Berg8.inc" stem "Berg" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Bergwerke_und_Minen.inc" stem "Bergwerke_und_Minen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Bergwerke_und_Minen8.inc" stem "Bergwerke_und_Minen" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Beschimpfen.inc" stem "Beschimpfen" eight 0 group - records 0
+inc "Beschimpfen8.inc" stem "Beschimpfen" eight 1 group - records 0
+inc "Beschuetzen_von_Objekten.inc" stem "Beschuetzen_von_Objekten" eight 0 group - records 0
+inc "Beschuetzen_von_Objekten8.inc" stem "Beschuetzen_von_Objekten" eight 1 group - records 0
+inc "Besiedlung.inc" stem "Besiedlung" eight 0 group - records 0
+inc "Besiedlung8.inc" stem "Besiedlung" eight 1 group - records 0
+inc "Bevoelkerungswachstum.inc" stem "Bevoelkerungswachstum" eight 0 group - records 0
+inc "Bevoelkerungswachstum8.inc" stem "Bevoelkerungswachstum" eight 1 group - records 0
+inc "Bewerten_Inseln.inc" stem "Bewerten_Inseln" eight 0 group - records 0
+inc "Bewertung.inc" stem "Bewertung" eight 0 group - records 0
+inc "Bewertung8.inc" stem "Bewertung" eight 1 group - records 0
+inc "Bibliothek.inc" stem "Bibliothek" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Bibliothek8.inc" stem "Bibliothek" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Bilanz.inc" stem "Bilanz" eight 0 group - records 1
+access "image001.pcx" id 1 width 88 height 36
+inc "Bilanz8.inc" stem "Bilanz" eight 1 group - records 1
+access "image001.pcx" id 1 width 69 height 28
+inc "Bodenschaetze.inc" stem "Bodenschaetze" eight 0 group - records 1
+access "image001.pcx" id 1 width 250 height 50
+inc "Bodenschaetze8.inc" stem "Bodenschaetze" eight 1 group - records 1
+access "image001.pcx" id 1 width 195 height 39
+inc "Bodensch\xe4tze.inc" stem "Bodensch\xe4tze" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Boegen.inc" stem "Boegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Boegen8.inc" stem "Boegen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Bogenmacher.inc" stem "Bogenmacher" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Bogenmacher8.inc" stem "Bogenmacher" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Bogenschuetze.inc" stem "Bogenschuetze" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Bogenschuetze8.inc" stem "Bogenschuetze" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Brandpfeile.inc" stem "Brandpfeile" eight 0 group - records 1
+access "image001.pcx" id 1 width 56 height 54
+inc "Brandpfeile8.inc" stem "Brandpfeile" eight 1 group - records 1
+access "image001.pcx" id 1 width 44 height 42
+inc "Brauerei.inc" stem "Brauerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Brauerei8.inc" stem "Brauerei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Brunnen.inc" stem "Brunnen" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Brunnen8.inc" stem "Brunnen" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Buchdruck.inc" stem "Buchdruck" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Buecher.inc" stem "Buecher" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Buechsenmacher.inc" stem "Buechsenmacher" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Buechsenmacher8.inc" stem "Buechsenmacher" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Buerger.inc" stem "Buerger" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Buerger8.inc" stem "Buerger" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "Build 6 houses to live in.inc" stem "Build 6 houses to live in" eight 0 group - records 0
+inc "Build 6 houses to live in8.inc" stem "Build 6 houses to live in" eight 1 group - records 0
+inc "Build a Tannery.inc" stem "Build a Tannery" eight 0 group - records 0
+inc "Build a Tannery8.inc" stem "Build a Tannery" eight 1 group - records 0
+inc "Build a fisherman.inc" stem "Build a fisherman" eight 0 group - records 0
+inc "Build a fisherman8.inc" stem "Build a fisherman" eight 1 group - records 0
+inc "Build a hunters hut.inc" stem "Build a hunters hut" eight 0 group - records 0
+inc "Build a hunters hut8.inc" stem "Build a hunters hut" eight 1 group - records 0
+inc "Build a marked place.inc" stem "Build a marked place" eight 0 group - records 0
+inc "Build a marked place8.inc" stem "Build a marked place" eight 1 group - records 0
+inc "Build a sheep farm.inc" stem "Build a sheep farm" eight 0 group - records 0
+inc "Build a sheep farm8.inc" stem "Build a sheep farm" eight 1 group - records 0
+inc "Build a weaver.inc" stem "Build a weaver" eight 0 group - records 0
+inc "Build a weaver8.inc" stem "Build a weaver" eight 1 group - records 0
+inc "Build a wood cutter.inc" stem "Build a wood cutter" eight 0 group - records 0
+inc "Build a wood cutter8.inc" stem "Build a wood cutter" eight 1 group - records 0
+inc "Build market booth for food and stoffe.inc" stem "Build market booth for food and stoffe" eight 0 group - records 0
+inc "Build market booth for food and stoffe8.inc" stem "Build market booth for food and stoffe" eight 1 group - records 0
+inc "Burg_put.inc" stem "Burg_put" eight 0 group - records 0
+inc "Burg_put8.inc" stem "Burg_put" eight 1 group - records 0
+inc "CAMPAIGN01_02_03.inc" stem "CAMPAIGN01_02_03" eight 0 group - records 0
+inc "CAMPAIGN01_02_038.inc" stem "CAMPAIGN01_02_03" eight 1 group - records 0
+inc "CAMPAIGN01_02_covana_dead.inc" stem "CAMPAIGN01_02_covana_dead" eight 0 group - records 0
+inc "Campaign01_02_Covana_Dead8.inc" stem "Campaign01_02_Covana_Dead" eight 1 group - records 0
+inc "Campaign01_04_Seafarer_1.inc" stem "Campaign01_04_Seafarer_1" eight 0 group - records 0
+inc "Campaign01_04_Seafarer_18.inc" stem "Campaign01_04_Seafarer_1" eight 1 group - records 0
+inc "Campaign01_04_Seafarer_2.inc" stem "Campaign01_04_Seafarer_2" eight 0 group - records 0
+inc "Campaign01_04_Seafarer_28.inc" stem "Campaign01_04_Seafarer_2" eight 1 group - records 0
+inc "Campaign01_04_Seafarer_3.inc" stem "Campaign01_04_Seafarer_3" eight 0 group - records 0
+inc "Campaign01_04_Seafarer_38.inc" stem "Campaign01_04_Seafarer_3" eight 1 group - records 0
+inc "Campaign01_04_Seafarer_Dead.inc" stem "Campaign01_04_Seafarer_Dead" eight 0 group - records 0
+inc "Campaign01_04_Seafarer_Dead8.inc" stem "Campaign01_04_Seafarer_Dead" eight 1 group - records 0
+inc "Campaign01_05_Crew_Dead.inc" stem "Campaign01_05_Crew_Dead" eight 0 group - records 0
+inc "Campaign01_05_Crew_Dead8.inc" stem "Campaign01_05_Crew_Dead" eight 1 group - records 0
+inc "Campaign01_05_Food_ok.inc" stem "Campaign01_05_Food_ok" eight 0 group - records 0
+inc "Campaign01_05_Food_ok8.inc" stem "Campaign01_05_Food_ok" eight 1 group - records 0
+inc "Campaign01_11_Ship_Away.inc" stem "Campaign01_11_Ship_Away" eight 0 group - records 0
+inc "Campaign01_11_Ship_Away8.inc" stem "Campaign01_11_Ship_Away" eight 1 group - records 0
+inc "Campaign01_Player_Dead.inc" stem "Campaign01_Player_Dead" eight 0 group - records 0
+inc "Campaign01_Player_Dead8.inc" stem "Campaign01_Player_Dead" eight 1 group - records 0
+inc "Congratulations.inc" stem "Congratulations" eight 0 group - records 0
+inc "Congratulations8.inc" stem "Congratulations" eight 1 group - records 0
+inc "Connect Tannery with kontor.inc" stem "Connect Tannery with kontor" eight 0 group - records 0
+inc "Connect Tannery with kontor8.inc" stem "Connect Tannery with kontor" eight 1 group - records 0
+inc "Connect all market booth with kontor.inc" stem "Connect all market booth with kontor" eight 0 group - records 0
+inc "Connect all market booth with kontor8.inc" stem "Connect all market booth with kontor" eight 1 group - records 0
+inc "Connect hunters hut with kontor.inc" stem "Connect hunters hut with kontor" eight 0 group - records 0
+inc "Connect hunters hut with kontor8.inc" stem "Connect hunters hut with kontor" eight 1 group - records 0
+inc "Connect sheep farm with weaver.inc" stem "Connect sheep farm with weaver" eight 0 group - records 0
+inc "Connect sheep farm with weaver8.inc" stem "Connect sheep farm with weaver" eight 1 group - records 0
+inc "Connect weaver with kontor.inc" stem "Connect weaver with kontor" eight 0 group - records 0
+inc "Connect weaver with kontor8.inc" stem "Connect weaver with kontor" eight 1 group - records 0
+inc "Connect_Wood_Fish.inc" stem "Connect_Wood_Fish" eight 0 group - records 0
+inc "Connect_Wood_Fish8.inc" stem "Connect_Wood_Fish" eight 1 group - records 0
+inc "Denkmal.inc" stem "Denkmal" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Denkmal8.inc" stem "Denkmal" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Diplomatie.inc" stem "Diplomatie" eight 0 group - records 0
+inc "Diplomatiemenue.inc" stem "Diplomatiemenue" eight 0 group - records 1
+access "image001.pcx" id 1 width 60 height 63
+inc "Diplomatiemenue8.inc" stem "Diplomatiemenue" eight 1 group - records 1
+access "image001.pcx" id 1 width 47 height 49
+inc "Diplomatiestatus.inc" stem "Diplomatiestatus" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Diplomatiestatus8.inc" stem "Diplomatiestatus" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Druckerei.inc" stem "Druckerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 102
+inc "Duerre.inc" stem "Duerre" eight 0 group - records 0
+inc "Duerre8.inc" stem "Duerre" eight 1 group - records 0
+inc "Edelsteinmine.inc" stem "Edelsteinmine" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Edelsteinmine8.inc" stem "Edelsteinmine" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Edelsteinvorkommen.inc" stem "Edelsteinvorkommen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Edelsteinvorkommen8.inc" stem "Edelsteinvorkommen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Eingeborene.inc" stem "Eingeborene" eight 0 group - records 0
+inc "Eingeborene8.inc" stem "Eingeborene" eight 1 group - records 0
+inc "Einheiten_auf Schiff_laden.inc" stem "Einheiten_auf Schiff_laden" eight 0 group - records 0
+inc "Einheiten_bewegen.inc" stem "Einheiten_bewegen" eight 0 group - records 0
+inc "Einheiten_gruppieren.inc" stem "Einheiten_gruppieren" eight 0 group - records 0
+inc "Einheiten_gruppieren8.inc" stem "Einheiten_gruppieren" eight 1 group - records 0
+inc "Einkauf_Waren.inc" stem "Einkauf_Waren" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Einkauf_Waren8.inc" stem "Einkauf_Waren" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Einschmeicheln.inc" stem "Einschmeicheln" eight 0 group - records 0
+inc "Einschmeicheln8.inc" stem "Einschmeicheln" eight 1 group - records 0
+inc "Einwohner.inc" stem "Einwohner" eight 0 group - records 1
+access "image001.pcx" id 1 width 58 height 35
+inc "Einwohner8.inc" stem "Einwohner" eight 1 group - records 1
+access "image001.pcx" id 1 width 45 height 27
+inc "Einwohnerstatus.inc" stem "Einwohnerstatus" eight 0 group - records 0
+inc "Einwohnerstatus8.inc" stem "Einwohnerstatus" eight 1 group - records 0
+inc "Einzugsbereich.inc" stem "Einzugsbereich" eight 0 group - records 0
+inc "Einzugsbereich8.inc" stem "Einzugsbereich" eight 1 group - records 0
+inc "Einzugsbereich_FarmenPlantagen.inc" stem "Einzugsbereich_FarmenPlantagen" eight 0 group - records 0
+inc "Einzugsbereich_FarmenPlantagen8.inc" stem "Einzugsbereich_FarmenPlantagen" eight 1 group - records 0
+inc "Einzugsbereich_Hafenanlagen.inc" stem "Einzugsbereich_Hafenanlagen" eight 0 group - records 0
+inc "Einzugsbereich_Handwerksbetriebe.inc" stem "Einzugsbereich_Handwerksbetriebe" eight 0 group - records 0
+inc "Einzugsbereich_Handwerksbetriebe8.inc" stem "Einzugsbereich_Handwerksbetriebe" eight 1 group - records 0
+inc "Einzugsbereich_Marktstaende.inc" stem "Einzugsbereich_Marktstaende" eight 0 group - records 0
+inc "Einzugsbereich_MilitaerischeAnlagen.inc" stem "Einzugsbereich_MilitaerischeAnlagen" eight 0 group - records 0
+inc "Einzugsbereich_OeffentlicheGebaeude.inc" stem "Einzugsbereich_OeffentlicheGebaeude" eight 0 group - records 0
+inc "Einzugsbereich_OeffentlicheGebaeude8.inc" stem "Einzugsbereich_OeffentlicheGebaeude" eight 1 group - records 0
+inc "Einzugsbereich_Wohnhaeuser.inc" stem "Einzugsbereich_Wohnhaeuser" eight 0 group - records 0
+inc "Entdecken.inc" stem "Entdecken" eight 0 group - records 0
+inc "Entdecken_Staedte.inc" stem "Entdecken_Staedte" eight 0 group - records 0
+inc "Entdecken_Staedte8.inc" stem "Entdecken_Staedte" eight 1 group - records 0
+inc "Entdecken_und_Erkunden.inc" stem "Entdecken_und_Erkunden" eight 0 group - records 0
+inc "Entdecken_und_Erkunden8.inc" stem "Entdecken_und_Erkunden" eight 1 group - records 0
+inc "Entern.inc" stem "Entern" eight 0 group - records 1
+access "image001.pcx" id 1 width 82 height 69
+inc "Entern8.inc" stem "Entern" eight 1 group - records 1
+access "image001.pcx" id 1 width 64 height 54
+inc "Entern_stoppen.inc" stem "Entern_stoppen" eight 0 group - records 1
+access "image001.pcx" id 1 width 82 height 69
+inc "Entern_stoppen8.inc" stem "Entern_stoppen" eight 1 group - records 1
+access "image001.pcx" id 1 width 64 height 54
+inc "Erzmine_erschoepft.inc" stem "Erzmine_erschoepft" eight 0 group - records 1
+access "image001.pcx" id 1 width 52 height 56
+inc "Erzmine_erschoepft8.inc" stem "Erzmine_erschoepft" eight 1 group - records 1
+access "image001.pcx" id 1 width 41 height 44
+inc "Erzvorkommen.inc" stem "Erzvorkommen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Erzvorkommen8.inc" stem "Erzvorkommen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Erzvorkommenjb.inc" stem "Erzvorkommenjb" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "F_Keil.inc" stem "F_Keil" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "F_Linie.inc" stem "F_Linie" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "F_Rechteck.inc" stem "F_Rechteck" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "F_Reihe.inc" stem "F_Reihe" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "F_Ring.inc" stem "F_Ring" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "F_Standard.inc" stem "F_Standard" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Faerberei.inc" stem "Faerberei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Faerberei8.inc" stem "Faerberei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Farmen_und_Plantagen.inc" stem "Farmen_und_Plantagen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Farmen_und_Plantagen8.inc" stem "Farmen_und_Plantagen" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Felder_bauen.inc" stem "Felder_bauen" eight 0 group - records 1
+access "image001.pcx" id 1 width 52 height 82
+inc "Felder_bauen8.inc" stem "Felder_bauen" eight 1 group - records 1
+access "image001.pcx" id 1 width 41 height 64
+inc "Feldweg.inc" stem "Feldweg" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Feldweg8.inc" stem "Feldweg" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Festung.inc" stem "Festung" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 102
+inc "Festungen.inc" stem "Festungen" eight 0 group - records 0
+inc "Festungen8.inc" stem "Festungen" eight 1 group - records 0
+inc "Festungsstatus.inc" stem "Festungsstatus" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Festungsstatus8.inc" stem "Festungsstatus" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Feuer.inc" stem "Feuer" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Feuer8.inc" stem "Feuer" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "Feuerwehr.inc" stem "Feuerwehr" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Feuerwehr8.inc" stem "Feuerwehr" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Fischerhuette.inc" stem "Fischerhuette" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Fischerhuette8.inc" stem "Fischerhuette" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Fleischerei.inc" stem "Fleischerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Fleischerei8.inc" stem "Fleischerei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Fluch.inc" stem "Fluch" eight 0 group - records 0
+inc "Formationen.inc" stem "Formationen" eight 0 group - records 1
+access "image001.pcx" id 1 width 300 height 50
+inc "Formationen8.inc" stem "Formationen" eight 1 group - records 1
+access "image001.pcx" id 1 width 234 height 39
+inc "Forschung.inc" stem "Forschung" eight 0 group - records 0
+inc "Forschung8.inc" stem "Forschung" eight 1 group - records 0
+inc "Forschung_MarineTechniken.inc" stem "Forschung_MarineTechniken" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Forschung_MarineTechniken8.inc" stem "Forschung_MarineTechniken" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Forschung_MilitaerischeErweiterung.inc" stem "Forschung_MilitaerischeErweiterung" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Forschung_MilitaerischeErweiterung8.inc" stem "Forschung_MilitaerischeErweiterung" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Forschung_SchnellereHeilung.inc" stem "Forschung_SchnellereHeilung" eight 0 group - records 0
+inc "Forschung_SchnellereHeilung8.inc" stem "Forschung_SchnellereHeilung" eight 1 group - records 0
+inc "Forschung_Waffenproduktion.inc" stem "Forschung_Waffenproduktion" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Forschung_Waffenproduktion8.inc" stem "Forschung_Waffenproduktion" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Forschung_ZivileForschung.inc" stem "Forschung_ZivileForschung" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Forschung_ZivileForschung8.inc" stem "Forschung_ZivileForschung" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Forsthaus.inc" stem "Forsthaus" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Forsthaus8.inc" stem "Forsthaus" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Friedensvertrag.inc" stem "Friedensvertrag" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Friedensvertrag8.inc" stem "Friedensvertrag" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Fruchtbarkeit.inc" stem "Fruchtbarkeit" eight 0 group - records 0
+inc "Fruchtbarkeit8.inc" stem "Fruchtbarkeit" eight 1 group - records 0
+inc "Fruchtbarkeitsbalken.inc" stem "Fruchtbarkeitsbalken" eight 0 group - records 1
+access "image001.pcx" id 1 width 123 height 101
+inc "Fruchtbarkeitsbalken8.inc" stem "Fruchtbarkeitsbalken" eight 1 group - records 1
+access "image001.pcx" id 1 width 96 height 79
+inc "GB_Kleidungsstand.inc" stem "GB_Kleidungsstand" eight 0 group - records 0
+inc "GB_Lampenoelstand.inc" stem "GB_Lampenoelstand" eight 0 group - records 0
+inc "GB_Nahrungsstand.inc" stem "GB_Nahrungsstand" eight 0 group - records 0
+inc "GB_Schmuckstand.inc" stem "GB_Schmuckstand" eight 0 group - records 0
+inc "GB_Stoffstand.inc" stem "GB_Stoffstand" eight 0 group - records 0
+inc "GB_Tabakstand.inc" stem "GB_Tabakstand" eight 0 group - records 0
+inc "GB_Weinstand.inc" stem "GB_Weinstand" eight 0 group - records 0
+inc "Galgen.inc" stem "Galgen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 350
+inc "Galgen8.inc" stem "Galgen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 273
+inc "Gebaeude.inc" stem "Gebaeude" eight 0 group - records 0
+inc "Gebaeude_stilllegen.inc" stem "Gebaeude_stilllegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 37 height 67
+inc "Gebaeudekategorien.inc" stem "Gebaeudekategorien" eight 0 group - records 0
+inc "Gebaeudekategorien8.inc" stem "Gebaeudekategorien" eight 1 group - records 0
+inc "Gefiederte_Pfeile.inc" stem "Gefiederte_Pfeile" eight 0 group - records 1
+access "image001.pcx" id 1 width 56 height 54
+inc "Geld.inc" stem "Geld" eight 0 group - records 0
+inc "Geld8.inc" stem "Geld" eight 1 group - records 0
+inc "Gerberei.inc" stem "Gerberei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Gerberei8.inc" stem "Gerberei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Gesamtbilanz.inc" stem "Gesamtbilanz" eight 0 group - records 1
+access "image001.pcx" id 1 width 88 height 36
+inc "Gesamtbilanz8.inc" stem "Gesamtbilanz" eight 1 group - records 1
+access "image001.pcx" id 1 width 69 height 28
+inc "Gesamteinwohnerzahl.inc" stem "Gesamteinwohnerzahl" eight 0 group - records 1
+access "image001.pcx" id 1 width 58 height 35
+inc "Gesamteinwohnerzahl8.inc" stem "Gesamteinwohnerzahl" eight 1 group - records 1
+access "image001.pcx" id 1 width 45 height 27
+inc "Gesamteinzugsbereich.inc" stem "Gesamteinzugsbereich" eight 0 group - records 0
+inc "Gesamteinzugsbereich8.inc" stem "Gesamteinzugsbereich" eight 1 group - records 0
+inc "Gesamteinzugsbereich_vergroessern.inc" stem "Gesamteinzugsbereich_vergroessern" eight 0 group - records 0
+inc "Getreidefarm.inc" stem "Getreidefarm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Getreidefarm8.inc" stem "Getreidefarm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Getreidefeld.inc" stem "Getreidefeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Getreidefeld8.inc" stem "Getreidefeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Gewuerze.inc" stem "Gewuerze" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Gewuerze8.inc" stem "Gewuerze" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Gewuerzfeld.inc" stem "Gewuerzfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Gewuerzfeld8.inc" stem "Gewuerzfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Gewuerzplantage.inc" stem "Gewuerzplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Gewuerzplantage8.inc" stem "Gewuerzplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Goldmine.inc" stem "Goldmine" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Goldmine8.inc" stem "Goldmine" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Goldschmied.inc" stem "Goldschmied" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Goldschmied8.inc" stem "Goldschmied" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Goldstuecke.inc" stem "Goldstuecke" eight 0 group - records 1
+access "image001.pcx" id 1 width 32 height 29
+inc "Goldstuecke8.inc" stem "Goldstuecke" eight 1 group - records 1
+access "image001.pcx" id 1 width 25 height 23
+inc "Goldvorkommen.inc" stem "Goldvorkommen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Goldvorkommen8.inc" stem "Goldvorkommen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Grosse_Erzmine.inc" stem "Grosse_Erzmine" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Grosse_Erzmine8.inc" stem "Grosse_Erzmine" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Grosse_Erzschmelze.inc" stem "Grosse_Erzschmelze" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Grosse_Erzschmelze8.inc" stem "Grosse_Erzschmelze" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Grosse_Festung.inc" stem "Grosse_Festung" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Grosse_Festung8.inc" stem "Grosse_Festung" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Grosse_Waffenschmiede.inc" stem "Grosse_Waffenschmiede" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Grosse_Waffenschmiede8.inc" stem "Grosse_Waffenschmiede" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Grosser_Kanonenturm.inc" stem "Grosser_Kanonenturm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 102
+inc "Grosser_Kanonenturm8.inc" stem "Grosser_Kanonenturm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 80
+inc "Gruppen_speichern.inc" stem "Gruppen_speichern" eight 0 group - records 0
+inc "Gruppen_speichern8.inc" stem "Gruppen_speichern" eight 1 group - records 0
+inc "H_Kulturen.inc" stem "H_Kulturen" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "H_Kulturen8.inc" stem "H_Kulturen" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "H_Landweg.inc" stem "H_Landweg" eight 0 group - records 0
+inc "H_Landweg8.inc" stem "H_Landweg" eight 1 group - records 0
+inc "H_Piraten.inc" stem "H_Piraten" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "H_Piraten8.inc" stem "H_Piraten" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "H_Seeweg.inc" stem "H_Seeweg" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "H_Seeweg8.inc" stem "H_Seeweg" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "H_Venezianer.inc" stem "H_Venezianer" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "H_Venezianer8.inc" stem "H_Venezianer" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Hafenanlagen_und_Fischereibetriebe.inc" stem "Hafenanlagen_und_Fischereibetriebe" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Hafenanlagen_und_Fischereibetriebe8.inc" stem "Hafenanlagen_und_Fischereibetriebe" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Handel.inc" stem "Handel" eight 0 group - records 1
+access "image001.pcx" id 1 width 74 height 82
+inc "Handel8.inc" stem "Handel" eight 1 group - records 1
+access "image001.pcx" id 1 width 58 height 64
+inc "Handelsbilanz.inc" stem "Handelsbilanz" eight 0 group - records 0
+inc "Handelsbilanz8.inc" stem "Handelsbilanz" eight 1 group - records 0
+inc "Handelsschiffe.inc" stem "Handelsschiffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 136 height 134
+inc "Handelsschiffe8.inc" stem "Handelsschiffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 106 height 105
+inc "Handelsvertrag.inc" stem "Handelsvertrag" eight 0 group - records 1
+access "image001.pcx" id 1 width 74 height 82
+inc "Handelsvertrag8.inc" stem "Handelsvertrag" eight 1 group - records 1
+access "image001.pcx" id 1 width 58 height 64
+inc "Handwerks-_und_weiterverarbeitende_Betriebe.inc" stem "Handwerks-_und_weiterverarbeitende_Betriebe" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Handwerks-_und_weiterverarbeitende_Betriebe8.inc" stem "Handwerks-_und_weiterverarbeitende_Betriebe" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Hanffeld.inc" stem "Hanffeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Hanffeld8.inc" stem "Hanffeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Hanfplantage.inc" stem "Hanfplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Hanfplantage8.inc" stem "Hanfplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Heilkraeuter.inc" stem "Heilkraeuter" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Heilkraeuter8.inc" stem "Heilkraeuter" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Heilkraeuterfeld.inc" stem "Heilkraeuterfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Heilkraeuterfeld8.inc" stem "Heilkraeuterfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Heilkraeuterplantage.inc" stem "Heilkraeuterplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Heilkraeuterplantage8.inc" stem "Heilkraeuterplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Help.inc" stem "Help" eight 0 group - records 8
+access "HELPPLATTE" id 1 width 779 height 230
+access "HELPBUTTONS" id 2 width 33 height 30
+access "INDEXFELD" id 14 width 292 height 29
+access "SLIDER_KNUPPEL" id 15 width 10 height 18
+access "SLIDER_FUEHRUNG" id 17 width 14 height 176
+access "SLIDER_PFEILOBEN" id 18 width 18 height 15
+access "SLIDER_PFEILUNTEN" id 20 width 18 height 15
+access "SEPERATOR" id 22 width 292 height 29
+inc "Hoheitsgebiet.inc" stem "Hoheitsgebiet" eight 0 group - records 0
+inc "Hoheitsgebiet8.inc" stem "Hoheitsgebiet" eight 1 group - records 0
+inc "Holz.inc" stem "Holz" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Holz8.inc" stem "Holz" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Holzbruecke.inc" stem "Holzbruecke" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Holzbruecke8.inc" stem "Holzbruecke" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Holzpier.inc" stem "Holzpier" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Holzpier8.inc" stem "Holzpier" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Hopfenfarm.inc" stem "Hopfenfarm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Hopfenfarm8.inc" stem "Hopfenfarm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Hopfenfeld.inc" stem "Hopfenfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Hopfenfeld8.inc" stem "Hopfenfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "IH_Baumatausladen.inc" stem "IH_Baumatausladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 258 height 171
+inc "IH_Baumatausladen8.inc" stem "IH_Baumatausladen" eight 1 group - records 1
+access "image001.pcx" id 1 width 202 height 134
+inc "IH_Betrieb_Strasse_Fehlt.inc" stem "IH_Betrieb_Strasse_Fehlt" eight 0 group - records 1
+access "image001.pcx" id 1 width 230 height 116
+inc "IH_Betrieb_Strasse_Fehlt8.inc" stem "IH_Betrieb_Strasse_Fehlt" eight 1 group - records 1
+access "image001.pcx" id 1 width 180 height 91
+inc "IH_Felder_Fehlen_Weideland_Rinderfarm.inc" stem "IH_Felder_Fehlen_Weideland_Rinderfarm" eight 0 group - records 1
+access "image001.pcx" id 1 width 173 height 129
+inc "IH_Felder_Fehlen_Weideland_Schaffarm_wie.inc" stem "IH_Felder_Fehlen_Weideland_Schaffarm_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 180 height 151
+inc "IH_Felderfalsch_Schaffarm_wie.inc" stem "IH_Felderfalsch_Schaffarm_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 180 height 151
+inc "IH_Felderfalsch_Schaffarm_wie8.inc" stem "IH_Felderfalsch_Schaffarm_wie" eight 1 group - records 1
+access "image001.pcx" id 1 width 141 height 118
+inc "IH_Kontor_Bauen_Aktiviertes_Schiff.inc" stem "IH_Kontor_Bauen_Aktiviertes_Schiff" eight 0 group - records 1
+access "image001.pcx" id 1 width 258 height 171
+inc "IH_Lager_Voll.inc" stem "IH_Lager_Voll" eight 0 group - records 1
+access "image001.pcx" id 1 width 52 height 56
+inc "IH_Lager_Voll8.inc" stem "IH_Lager_Voll" eight 1 group - records 1
+access "image001.pcx" id 1 width 41 height 44
+inc "IH_Marktstandfehlt.inc" stem "IH_Marktstandfehlt" eight 0 group - records 1
+access "image001.pcx" id 1 width 341 height 243
+inc "IH_Produktionfehlt_Nahrung_wie8.inc" stem "IH_Produktionfehlt_Nahrung_wie" eight 1 group - records 1
+access "image001.pcx" id 1 width 364 height 312
+inc "IH_Produktionfehlt_Salz_wie.inc" stem "IH_Produktionfehlt_Salz_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 472 height 119
+inc "IH_Schiff_Aktivieren.inc" stem "IH_Schiff_Aktivieren" eight 0 group - records 1
+access "image001.pcx" id 1 width 214 height 174
+inc "IH_Schiff_Aktivieren8.inc" stem "IH_Schiff_Aktivieren" eight 1 group - records 1
+access "image001.pcx" id 1 width 167 height 136
+inc "IH_Wareek_Eisen_wie8.inc" stem "IH_Wareek_Eisen_wie" eight 1 group - records 1
+access "image001.pcx" id 1 width 382 height 258
+inc "IH_Wareek_Werkzeug_wie8.inc" stem "IH_Wareek_Werkzeug_wie" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "Idol.inc" stem "Idol" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Idol8.inc" stem "Idol" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Index in Spalten.inc" stem "Index in Spalten" eight 0 group - records 0
+inc "Index8.inc" stem "Index" eight 1 group - records 0
+inc "Indigofeld.inc" stem "Indigofeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Indigofeld8.inc" stem "Indigofeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Indigoplantage.inc" stem "Indigoplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Indigoplantage8.inc" stem "Indigoplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Individuelle_Formation.inc" stem "Individuelle_Formation" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Individuelle_Formation8.inc" stem "Individuelle_Formation" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Infomodus.inc" stem "Infomodus" eight 0 group - records 1
+access "image001.pcx" id 1 width 60 height 64
+inc "Infomodus8.inc" stem "Infomodus" eight 1 group - records 1
+access "image001.pcx" id 1 width 47 height 50
+inc "Inseln.inc" stem "Inseln" eight 0 group - records 0
+inc "Inseln8.inc" stem "Inseln" eight 1 group - records 0
+inc "Inselwelt_entdecken.inc" stem "Inselwelt_entdecken" eight 0 group - records 0
+inc "Jagdhuette.inc" stem "Jagdhuette" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Jagdhuette8.inc" stem "Jagdhuette" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "KRIEGSMASCHINEN8.inc" stem "KRIEGSMASCHINEN" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "K_Angriff.inc" stem "K_Angriff" eight 0 group - records 0
+inc "K_Angriff8.inc" stem "K_Angriff" eight 1 group - records 0
+inc "K_Gruppen.inc" stem "K_Gruppen" eight 0 group - records 0
+inc "K_Gruppen8.inc" stem "K_Gruppen" eight 1 group - records 0
+inc "K_Landeinheiten.inc" stem "K_Landeinheiten" eight 0 group - records 0
+inc "K_Landeinheiten8.inc" stem "K_Landeinheiten" eight 1 group - records 0
+inc "K_Seeeinheiten.inc" stem "K_Seeeinheiten" eight 0 group - records 0
+inc "K_Seeeinheiten8.inc" stem "K_Seeeinheiten" eight 1 group - records 0
+inc "Kampf.inc" stem "Kampf" eight 0 group - records 0
+inc "Kanonen.inc" stem "Kanonen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kanonen8.inc" stem "Kanonen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Kanonengiesserei.inc" stem "Kanonengiesserei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kanonengiesserei8.inc" stem "Kanonengiesserei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kanonenturm.inc" stem "Kanonenturm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kanonenturm8.inc" stem "Kanonenturm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kapelle.inc" stem "Kapelle" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kapelle8.inc" stem "Kapelle" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kapitulation.inc" stem "Kapitulation" eight 0 group - records 0
+inc "Kapitulation8.inc" stem "Kapitulation" eight 1 group - records 0
+inc "Karawane.inc" stem "Karawane" eight 0 group - records 0
+inc "Karawane_beschuetzen.inc" stem "Karawane_beschuetzen" eight 0 group - records 0
+inc "Karawane_bewegen.inc" stem "Karawane_bewegen" eight 0 group - records 0
+inc "Karawane_bilden.inc" stem "Karawane_bilden" eight 0 group - records 0
+inc "Karawane_uebernehmen.inc" stem "Karawane_uebernehmen" eight 0 group - records 0
+inc "Karawane_vergroe\xdfern.inc" stem "Karawane_vergroe\xdfern" eight 0 group - records 0
+inc "Kartoffelfeld.inc" stem "Kartoffelfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kartoffelfeld8.inc" stem "Kartoffelfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Katapulte.inc" stem "Katapulte" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Katapulte8.inc" stem "Katapulte" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Katastrophen.inc" stem "Katastrophen" eight 0 group - records 0
+inc "Katastrophen8.inc" stem "Katastrophen" eight 1 group - records 0
+inc "Kathedrale.inc" stem "Kathedrale" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kathedrale8.inc" stem "Kathedrale" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kaufleute.inc" stem "Kaufleute" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Kaufleute8.inc" stem "Kaufleute" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "Kavallerie.inc" stem "Kavallerie" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kavallerie8.inc" stem "Kavallerie" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Keilformation.inc" stem "Keilformation" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Keilformation8.inc" stem "Keilformation" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Kirche.inc" stem "Kirche" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kirche8.inc" stem "Kirche" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleidung.inc" stem "Kleidung" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kleidung8.inc" stem "Kleidung" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Kleidungsstand.inc" stem "Kleidungsstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleidungsstand8.inc" stem "Kleidungsstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleine_Erzmine.inc" stem "Kleine_Erzmine" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleine_Erzmine8.inc" stem "Kleine_Erzmine" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleine_Erzschmelze.inc" stem "Kleine_Erzschmelze" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleine_Erzschmelze8.inc" stem "Kleine_Erzschmelze" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleine_Farm.inc" stem "Kleine_Farm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleine_Farm8.inc" stem "Kleine_Farm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleine_Festung.inc" stem "Kleine_Festung" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleine_Festung8.inc" stem "Kleine_Festung" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleine_Waffenschmiede.inc" stem "Kleine_Waffenschmiede" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleine_Waffenschmiede8.inc" stem "Kleine_Waffenschmiede" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kleine_Werft.inc" stem "Kleine_Werft" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Kleine_Werft8.inc" stem "Kleine_Werft" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Klimazonen.inc" stem "Klimazonen" eight 0 group - records 0
+inc "Koehlerei.inc" stem "Koehlerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Koehlerei8.inc" stem "Koehlerei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Kontor.inc" stem "Kontor" eight 0 group - records 1
+access "image001.pcx" id 1 width 158 height 53
+inc "Kontor8.inc" stem "Kontor" eight 1 group - records 1
+access "image001.pcx" id 1 width 123 height 41
+inc "Kreisformation.inc" stem "Kreisformation" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kreisformation8.inc" stem "Kreisformation" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Kriegsdrohung.inc" stem "Kriegsdrohung" eight 0 group - records 0
+inc "Kriegsdrohung8.inc" stem "Kriegsdrohung" eight 1 group - records 0
+inc "Kriegserklaerung.inc" stem "Kriegserklaerung" eight 0 group - records 0
+inc "Kriegserklaerung8.inc" stem "Kriegserklaerung" eight 1 group - records 0
+inc "Kriegsmaschinen.inc" stem "Kriegsmaschinen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kriegsmaschinen_bewegen.inc" stem "Kriegsmaschinen_bewegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kriegsmaschinen_bewegen8.inc" stem "Kriegsmaschinen_bewegen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Kriegsmaschinen_entlassen.inc" stem "Kriegsmaschinen_entlassen" eight 0 group - records 0
+inc "Kriegsmaschinen_entlassen8.inc" stem "Kriegsmaschinen_entlassen" eight 1 group - records 0
+inc "Kriegsmaschinen_formieren.inc" stem "Kriegsmaschinen_formieren" eight 0 group - records 1
+access "image001.pcx" id 1 width 62 height 59
+inc "Kriegsmaschinen_herstellen.inc" stem "Kriegsmaschinen_herstellen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kriegsmaschinen_uebernehmen.inc" stem "Kriegsmaschinen_uebernehmen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Kriegsmaschinen_uebernehmen8.inc" stem "Kriegsmaschinen_uebernehmen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Kriegsmaschinen_verladen.inc" stem "Kriegsmaschinen_verladen" eight 0 group - records 0
+inc "Kriegsmaschinen_verladen8.inc" stem "Kriegsmaschinen_verladen" eight 1 group - records 0
+inc "Kriegsmaschinenbauer.inc" stem "Kriegsmaschinenbauer" eight 0 group - records 1
+access "image002.pcx" id 1 width 102 height 714
+inc "Kriegsmaschinenbauer8.inc" stem "Kriegsmaschinenbauer" eight 1 group - records 1
+access "image002.pcx" id 1 width 80 height 558
+inc "Kriegsschiffe.inc" stem "Kriegsschiffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 150 height 134
+inc "Kriegsschiffe8.inc" stem "Kriegsschiffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 117 height 105
+inc "Ku_Afrikaner.inc" stem "Ku_Afrikaner" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Afrikaner8.inc" stem "Ku_Afrikaner" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Azteken.inc" stem "Ku_Azteken" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Azteken8.inc" stem "Ku_Azteken" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Beduinen.inc" stem "Ku_Beduinen" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Beduinen8.inc" stem "Ku_Beduinen" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Eskimos.inc" stem "Ku_Eskimos" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Eskimos8.inc" stem "Ku_Eskimos" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Indianer.inc" stem "Ku_Indianer" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Indianer8.inc" stem "Ku_Indianer" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Mauren.inc" stem "Ku_Mauren" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Mauren8.inc" stem "Ku_Mauren" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Mongolen.inc" stem "Ku_Mongolen" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Mongolen8.inc" stem "Ku_Mongolen" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Polynesier.inc" stem "Ku_Polynesier" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Polynesier8.inc" stem "Ku_Polynesier" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Ku_Suedseebewohner.inc" stem "Ku_Suedseebewohner" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Venezianer.inc" stem "Ku_Venezianer" eight 0 group - records 1
+access "image001.pcx" id 1 width 48 height 57
+inc "Ku_Venezianer8.inc" stem "Ku_Venezianer" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 45
+inc "Kueste.inc" stem "Kueste" eight 0 group - records 0
+inc "Kueste8.inc" stem "Kueste" eight 1 group - records 0
+inc "Kulturen.inc" stem "Kulturen" eight 0 group - records 0
+inc "Kulturen8.inc" stem "Kulturen" eight 1 group - records 0
+inc "LAGER.inc" stem "LAGER" eight 0 group - records 0
+inc "Laden von Spielstaenden.inc" stem "Laden von Spielstaenden" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Lager8.inc" stem "Lager" eight 1 group - records 0
+inc "Lagerkapazitaet_erhoehen.inc" stem "Lagerkapazitaet_erhoehen" eight 0 group - records 0
+inc "Lagerkapazitaet_erhoehen8.inc" stem "Lagerkapazitaet_erhoehen" eight 1 group - records 0
+inc "Lampenoel.inc" stem "Lampenoel" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Lampenoel8.inc" stem "Lampenoel" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Lampenoelstand.inc" stem "Lampenoelstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Lampenoelstand8.inc" stem "Lampenoelstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Lanzen.inc" stem "Lanzen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Lanzen8.inc" stem "Lanzen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Lanzentraeger.inc" stem "Lanzentraeger" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Lanzentraeger8.inc" stem "Lanzentraeger" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Leder.inc" stem "Leder" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Leder8.inc" stem "Leder" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Markthaupthaus.inc" stem "Markthaupthaus" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Markthaupthaus8.inc" stem "Markthaupthaus" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Marktkarren.inc" stem "Marktkarren" eight 0 group - records 1
+access "image001.pcx" id 1 width 81 height 68
+inc "Marktkarren8.inc" stem "Marktkarren" eight 1 group - records 1
+access "image001.pcx" id 1 width 63 height 53
+inc "Marktstaende.inc" stem "Marktstaende" eight 0 group - records 0
+inc "Marktstaende8.inc" stem "Marktstaende" eight 1 group - records 0
+inc "Marmor.inc" stem "Marmor" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Marmor8.inc" stem "Marmor" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Marmorstein.inc" stem "Marmorstein" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Marmorstein8.inc" stem "Marmorstein" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Marmorsteinbruch.inc" stem "Marmorsteinbruch" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Marmorsteinbruch8.inc" stem "Marmorsteinbruch" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Marmorsteinmetz.inc" stem "Marmorsteinmetz" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Marmorsteinmetz8.inc" stem "Marmorsteinmetz" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Marmorvorkommen.inc" stem "Marmorvorkommen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Marmorvorkommen8.inc" stem "Marmorvorkommen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Marschformation.inc" stem "Marschformation" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Marschformation8.inc" stem "Marschformation" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Maueraufgang8.inc" stem "Maueraufgang" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Medikus.inc" stem "Medikus" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Medikus8.inc" stem "Medikus" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Militaerbuendnis.inc" stem "Militaerbuendnis" eight 0 group - records 1
+access "image001.pcx" id 1 width 74 height 82
+inc "Militaerbuendnis8.inc" stem "Militaerbuendnis" eight 1 group - records 1
+access "image001.pcx" id 1 width 58 height 64
+inc "Militaerische_Anlagen.inc" stem "Militaerische_Anlagen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Militaerische_Anlagen8.inc" stem "Militaerische_Anlagen" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Missionfailed_single10.inc" stem "Missionfailed_single10" eight 0 group - records 0
+inc "Missionfailed_single108.inc" stem "Missionfailed_single10" eight 1 group - records 0
+inc "Missionfailed_single14.inc" stem "Missionfailed_single14" eight 0 group - records 0
+inc "Missionfailed_single148.inc" stem "Missionfailed_single14" eight 1 group - records 0
+inc "Missionfailed_single24.inc" stem "Missionfailed_single24" eight 0 group - records 0
+inc "Missionfailed_single248.inc" stem "Missionfailed_single24" eight 1 group - records 0
+inc "Missionok_single01.inc" stem "Missionok_single01" eight 0 group - records 0
+inc "Missionok_single018.inc" stem "Missionok_single01" eight 1 group - records 0
+inc "Missionok_single04.inc" stem "Missionok_single04" eight 0 group - records 0
+inc "Missionok_single048.inc" stem "Missionok_single04" eight 1 group - records 0
+inc "Missionok_single05.inc" stem "Missionok_single05" eight 0 group - records 0
+inc "Missionok_single058.inc" stem "Missionok_single05" eight 1 group - records 0
+inc "Missionok_single06.inc" stem "Missionok_single06" eight 0 group - records 0
+inc "Missionok_single068.inc" stem "Missionok_single06" eight 1 group - records 0
+inc "Missionok_single07.inc" stem "Missionok_single07" eight 0 group - records 0
+inc "Missionok_single078.inc" stem "Missionok_single07" eight 1 group - records 0
+inc "Missionok_single08.inc" stem "Missionok_single0" eight 1 group - records 0
+inc "Missionok_single088.inc" stem "Missionok_single08" eight 1 group - records 0
+inc "Missionok_single09.inc" stem "Missionok_single09" eight 0 group - records 0
+inc "Missionok_single098.inc" stem "Missionok_single09" eight 1 group - records 0
+inc "Missionok_single10.inc" stem "Missionok_single10" eight 0 group - records 0
+inc "Missionok_single108.inc" stem "Missionok_single10" eight 1 group - records 0
+inc "Missionok_single12.inc" stem "Missionok_single12" eight 0 group - records 0
+inc "Missionok_single128.inc" stem "Missionok_single12" eight 1 group - records 0
+inc "Missionok_single14.inc" stem "Missionok_single14" eight 0 group - records 0
+inc "Missionok_single148.inc" stem "Missionok_single14" eight 1 group - records 0
+inc "Missionok_single15.inc" stem "Missionok_single15" eight 0 group - records 0
+inc "Missionok_single158.inc" stem "Missionok_single15" eight 1 group - records 0
+inc "Missionok_single16.inc" stem "Missionok_single16" eight 0 group - records 0
+inc "Missionok_single168.inc" stem "Missionok_single16" eight 1 group - records 0
+inc "Missionok_single21.inc" stem "Missionok_single21" eight 0 group - records 0
+inc "Missionok_single218.inc" stem "Missionok_single21" eight 1 group - records 0
+inc "Missionok_single24.inc" stem "Missionok_single24" eight 0 group - records 0
+inc "Missionok_single248.inc" stem "Missionok_single24" eight 1 group - records 0
+inc "Mittlere_Festung.inc" stem "Mittlere_Festung" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Mittlere_Festung8.inc" stem "Mittlere_Festung" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Moerser.inc" stem "Moerser" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Moerser8.inc" stem "Moerser" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Muehle.inc" stem "Muehle" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Muehle8.inc" stem "Muehle" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Musik.inc" stem "Musik" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Musik8.inc" stem "Musik" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Musketen.inc" stem "Musketen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Musketen8.inc" stem "Musketen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Musketenschuetze.inc" stem "Musketenschuetze" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Musketenschuetze8.inc" stem "Musketenschuetze" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Musketier.inc" stem "Musketier" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Musketier8.inc" stem "Musketier" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "NP_Baeckerei.inc" stem "NP_Baeckerei" eight 0 group - records 0
+inc "NP_Fischerhuette.inc" stem "NP_Fischerhuette" eight 0 group - records 0
+inc "NP_Fleischerei.inc" stem "NP_Fleischerei" eight 0 group - records 0
+inc "NP_Jagdhuette.inc" stem "NP_Jagdhuette" eight 0 group - records 0
+inc "NP_KleineFarm.inc" stem "NP_KleineFarm" eight 0 group - records 0
+inc "Nachricht_senden.inc" stem "Nachricht_senden" eight 0 group - records 1
+access "image001.pcx" id 1 width 55 height 58
+inc "Nachricht_senden8.inc" stem "Nachricht_senden" eight 1 group - records 1
+access "image001.pcx" id 1 width 43 height 45
+inc "Nahrung.inc" stem "Nahrung" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Nahrung8.inc" stem "Nahrung" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Nahrungsproduktion.inc" stem "Nahrungsproduktion" eight 0 group - records 0
+inc "Nahrungsstand.inc" stem "Nahrungsstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Nahrungsstand8.inc" stem "Nahrungsstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Nahrungsversorgung.inc" stem "Nahrungsversorgung" eight 0 group - records 0
+inc "Natives_Krieg.inc" stem "Natives_Krieg" eight 0 group - records 0
+inc "Natives_Krieg8.inc" stem "Natives_Krieg" eight 1 group - records 0
+inc "Oeffentliche_Gebaeude.inc" stem "Oeffentliche_Gebaeude" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Oeffentliche_Gebaeude8.inc" stem "Oeffentliche_Gebaeude" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Oeffentlicher_Platz.inc" stem "Oeffentlicher_Platz" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Oeffentlicher_Platz8.inc" stem "Oeffentlicher_Platz" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Offene_Reihe_Formation.inc" stem "Offene_Reihe_Formation" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Offene_Reihe_Formation8.inc" stem "Offene_Reihe_Formation" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Optionsmenue.inc" stem "Optionsmenue" eight 0 group - records 1
+access "image001.pcx" id 1 width 60 height 63
+inc "Optionsmenue8.inc" stem "Optionsmenue" eight 1 group - records 1
+access "image001.pcx" id 1 width 47 height 49
+inc "PK_Aexte.inc" stem "PK_Aexte" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "PK_Aexte8.inc" stem "PK_Aexte" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "PK_Alkohol.inc" stem "PK_Alkohol" eight 0 group - records 1
+access "image001.pcx" id 1 width 674 height 403
+inc "PK_Alkohol8.inc" stem "PK_Alkohol" eight 1 group - records 1
+access "image001.pcx" id 1 width 526 height 315
+inc "PK_Alkohol_B.inc" stem "PK_Alkohol_B" eight 0 group - records 1
+access "image001.pcx" id 1 width 602 height 121
+inc "PK_Alkohol_B8.inc" stem "PK_Alkohol_B" eight 1 group - records 1
+access "image001.pcx" id 1 width 470 height 95
+inc "PK_Alkohol_KF.inc" stem "PK_Alkohol_KF" eight 0 group - records 1
+access "image001.pcx" id 1 width 432 height 119
+inc "PK_Alkohol_KF8.inc" stem "PK_Alkohol_KF" eight 1 group - records 1
+access "image001.pcx" id 1 width 338 height 93
+inc "PK_Alkohol_RB.inc" stem "PK_Alkohol_RB" eight 0 group - records 1
+access "image001.pcx" id 1 width 644 height 122
+inc "PK_Alkohol_RB8.inc" stem "PK_Alkohol_RB" eight 1 group - records 1
+access "image001.pcx" id 1 width 504 height 95
+inc "PK_Armbrueste.inc" stem "PK_Armbrueste" eight 0 group - records 1
+access "image001.pcx" id 1 width 288 height 246
+inc "PK_Armbrueste8.inc" stem "PK_Armbrueste" eight 1 group - records 1
+access "image001.pcx" id 1 width 224 height 193
+inc "PK_Belagerungstuerme.inc" stem "PK_Belagerungstuerme" eight 0 group - records 1
+access "image001.pcx" id 1 width 330 height 246
+inc "PK_Belagerungstuerme8.inc" stem "PK_Belagerungstuerme" eight 1 group - records 1
+access "image001.pcx" id 1 width 258 height 192
+inc "PK_Boegen.inc" stem "PK_Boegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 288 height 245
+inc "PK_Boegen8.inc" stem "PK_Boegen" eight 1 group - records 1
+access "image001.pcx" id 1 width 224 height 192
+inc "PK_Buecher.inc" stem "PK_Buecher" eight 0 group - records 1
+access "image001.pcx" id 1 width 600 height 119
+inc "PK_Eisen.inc" stem "PK_Eisen" eight 0 group - records 1
+access "image001.pcx" id 1 width 460 height 311
+inc "PK_Eisen8.inc" stem "PK_Eisen" eight 1 group - records 1
+access "image001.pcx" id 1 width 358 height 243
+inc "PK_Gewuerze.inc" stem "PK_Gewuerze" eight 0 group - records 1
+access "image001.pcx" id 1 width 442 height 142
+inc "PK_Gewuerze8.inc" stem "PK_Gewuerze" eight 1 group - records 1
+access "image001.pcx" id 1 width 346 height 111
+inc "PK_Heilkraeuter.inc" stem "PK_Heilkraeuter" eight 0 group - records 1
+access "image001.pcx" id 1 width 378 height 138
+inc "PK_Heilkraeuter8.inc" stem "PK_Heilkraeuter" eight 1 group - records 1
+access "image001.pcx" id 1 width 294 height 108
+inc "PK_Holz.inc" stem "PK_Holz" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 116
+inc "PK_Holz8.inc" stem "PK_Holz" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 91
+inc "PK_Holzkohle.inc" stem "PK_Holzkohle" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 116
+inc "PK_Holzkohle8.inc" stem "PK_Holzkohle" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 91
+inc "PK_Kanonen.inc" stem "PK_Kanonen" eight 0 group - records 1
+access "image001.pcx" id 1 width 290 height 264
+inc "PK_Kanonen8.inc" stem "PK_Kanonen" eight 1 group - records 1
+access "image001.pcx" id 1 width 226 height 206
+inc "PK_Katapulte.inc" stem "PK_Katapulte" eight 0 group - records 1
+access "image001.pcx" id 1 width 330 height 246
+inc "PK_Katapulte8.inc" stem "PK_Katapulte" eight 1 group - records 1
+access "image001.pcx" id 1 width 258 height 192
+inc "PK_Kleidung.inc" stem "PK_Kleidung" eight 0 group - records 1
+access "image001.pcx" id 1 width 680 height 480
+inc "PK_Kleidung8.inc" stem "PK_Kleidung" eight 1 group - records 1
+access "image001.pcx" id 1 width 530 height 375
+inc "PK_Lampenoel.inc" stem "PK_Lampenoel" eight 0 group - records 1
+access "image001.pcx" id 1 width 610 height 135
+inc "PK_Lampenoel8.inc" stem "PK_Lampenoel" eight 1 group - records 1
+access "image001.pcx" id 1 width 476 height 105
+inc "PK_Lanzen.inc" stem "PK_Lanzen" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "PK_Lanzen8.inc" stem "PK_Lanzen" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "PK_Leder.inc" stem "PK_Leder" eight 0 group - records 1
+access "image001.pcx" id 1 width 626 height 135
+inc "PK_Leder8.inc" stem "PK_Leder" eight 1 group - records 1
+access "image001.pcx" id 1 width 490 height 105
+inc "PK_Leder_JH.inc" stem "PK_Leder_JH" eight 0 group - records 1
+access "image001.pcx" id 1 width 626 height 135
+inc "PK_Leder_JH8.inc" stem "PK_Leder_JH" eight 1 group - records 1
+access "image001.pcx" id 1 width 490 height 105
+inc "PK_Leder_RF.inc" stem "PK_Leder_RF" eight 0 group - records 1
+access "image001.pcx" id 1 width 640 height 259
+inc "PK_Marmor.inc" stem "PK_Marmor" eight 0 group - records 1
+access "image001.pcx" id 1 width 310 height 119
+inc "PK_Marmor8.inc" stem "PK_Marmor" eight 1 group - records 1
+access "image001.pcx" id 1 width 242 height 93
+inc "PK_Moerser.inc" stem "PK_Moerser" eight 0 group - records 1
+access "image001.pcx" id 1 width 290 height 264
+inc "PK_Moerser8.inc" stem "PK_Moerser" eight 1 group - records 1
+access "image001.pcx" id 1 width 226 height 206
+inc "PK_Musketen.inc" stem "PK_Musketen" eight 0 group - records 1
+access "image001.pcx" id 1 width 276 height 246
+inc "PK_Musketen8.inc" stem "PK_Musketen" eight 1 group - records 1
+access "image001.pcx" id 1 width 216 height 192
+inc "PK_Nahrung.inc" stem "PK_Nahrung" eight 0 group - records 1
+access "image001.pcx" id 1 width 706 height 680
+inc "PK_Nahrung8.inc" stem "PK_Nahrung" eight 1 group - records 1
+access "image001.pcx" id 1 width 552 height 531
+inc "PK_Nahrung_FH.inc" stem "PK_Nahrung_FH" eight 0 group - records 1
+access "image001.pcx" id 1 width 438 height 134
+inc "PK_Nahrung_FH8.inc" stem "PK_Nahrung_FH" eight 1 group - records 1
+access "image001.pcx" id 1 width 342 height 105
+inc "PK_Nahrung_GF.inc" stem "PK_Nahrung_GF" eight 0 group - records 1
+access "image001.pcx" id 1 width 630 height 266
+inc "PK_Nahrung_GF8.inc" stem "PK_Nahrung_GF" eight 1 group - records 1
+access "image001.pcx" id 1 width 492 height 208
+inc "PK_Nahrung_JH.inc" stem "PK_Nahrung_JH" eight 0 group - records 1
+access "image001.pcx" id 1 width 442 height 135
+inc "PK_Nahrung_JH8.inc" stem "PK_Nahrung_JH" eight 1 group - records 1
+access "image001.pcx" id 1 width 346 height 105
+inc "PK_Nahrung_KF.inc" stem "PK_Nahrung_KF" eight 0 group - records 1
+access "image001.pcx" id 1 width 436 height 160
+inc "PK_Nahrung_KF8.inc" stem "PK_Nahrung_KF" eight 1 group - records 1
+access "image001.pcx" id 1 width 340 height 125
+inc "PK_Nahrung_RF.inc" stem "PK_Nahrung_RF" eight 0 group - records 1
+access "image001.pcx" id 1 width 636 height 135
+inc "PK_Nahrung_RF8.inc" stem "PK_Nahrung_RF" eight 1 group - records 1
+access "image001.pcx" id 1 width 496 height 105
+inc "PK_Papier.inc" stem "PK_Papier" eight 0 group - records 1
+access "image001.pcx" id 1 width 242 height 119
+inc "PK_Ruestungen.inc" stem "PK_Ruestungen" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "PK_Ruestungen8.inc" stem "PK_Ruestungen" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "PK_Salz.inc" stem "PK_Salz" eight 0 group - records 1
+access "image001.pcx" id 1 width 618 height 132
+inc "PK_Salz8.inc" stem "PK_Salz" eight 1 group - records 1
+access "image001.pcx" id 1 width 482 height 103
+inc "PK_Schiffskanonen.inc" stem "PK_Schiffskanonen" eight 0 group - records 1
+access "image001.pcx" id 1 width 276 height 246
+inc "PK_Schiffskanonen8.inc" stem "PK_Schiffskanonen" eight 1 group - records 1
+access "image001.pcx" id 1 width 216 height 192
+inc "PK_Schmuck.inc" stem "PK_Schmuck" eight 0 group - records 1
+access "image001.pcx" id 1 width 600 height 260
+inc "PK_Schmuck8.inc" stem "PK_Schmuck" eight 1 group - records 1
+access "image001.pcx" id 1 width 470 height 203
+inc "PK_Schwerter.inc" stem "PK_Schwerter" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "PK_Schwerter8.inc" stem "PK_Schwerter" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "PK_Seidenstoffe.inc" stem "PK_Seidenstoffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 616 height 268
+inc "PK_Seidenstoffe8.inc" stem "PK_Seidenstoffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 480 height 209
+inc "PK_Seile.inc" stem "PK_Seile" eight 0 group - records 1
+access "image001.pcx" id 1 width 488 height 119
+inc "PK_Seile8.inc" stem "PK_Seile" eight 1 group - records 1
+access "image001.pcx" id 1 width 380 height 93
+inc "PK_Speere.inc" stem "PK_Speere" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "PK_Speere8.inc" stem "PK_Speere" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "PK_Stoffe.inc" stem "PK_Stoffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 646 height 301
+inc "PK_Stoffe8.inc" stem "PK_Stoffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 504 height 235
+inc "PK_Stoffe_BP.inc" stem "PK_Stoffe_BP" eight 0 group - records 1
+access "image001.pcx" id 1 width 644 height 247
+inc "PK_Stoffe_BP8.inc" stem "PK_Stoffe_BP" eight 1 group - records 1
+access "image001.pcx" id 1 width 504 height 193
+inc "PK_Stoffe_SF.inc" stem "PK_Stoffe_SF" eight 0 group - records 1
+access "image001.pcx" id 1 width 632 height 247
+inc "PK_Stoffe_SF8.inc" stem "PK_Stoffe_SF" eight 1 group - records 1
+access "image001.pcx" id 1 width 494 height 193
+inc "PK_Tabakwaren.inc" stem "PK_Tabakwaren" eight 0 group - records 1
+access "image001.pcx" id 1 width 616 height 135
+inc "PK_Tabakwaren8.inc" stem "PK_Tabakwaren" eight 1 group - records 1
+access "image001.pcx" id 1 width 482 height 106
+inc "PK_Wein.inc" stem "PK_Wein" eight 0 group - records 1
+access "image001.pcx" id 1 width 544 height 134
+inc "PK_Wein8.inc" stem "PK_Wein" eight 1 group - records 1
+access "image001.pcx" id 1 width 426 height 105
+inc "PK_Werkzeuge.inc" stem "PK_Werkzeuge" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "PK_Werkzeuge8.inc" stem "PK_Werkzeuge" eight 1 group - records 1
+access "image001.pcx" id 1 width 218 height 192
+inc "PK_Wissen.inc" stem "PK_Wissen" eight 0 group - records 1
+access "image001.pcx" id 1 width 254 height 244
+inc "PK_Ziegel.inc" stem "PK_Ziegel" eight 0 group - records 1
+access "image001.pcx" id 1 width 428 height 119
+inc "PK_Ziegel8.inc" stem "PK_Ziegel" eight 1 group - records 1
+access "image001.pcx" id 1 width 334 height 93
+inc "Papier.inc" stem "Papier" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Papiermuehle.inc" stem "Papiermuehle" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 102
+inc "Parkanlage.inc" stem "Parkanlage" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 574
+inc "Parkanlage8.inc" stem "Parkanlage" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 448
+inc "Patrouille festlegen.inc" stem "Patrouille festlegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Patrouille festlegen8.inc" stem "Patrouille festlegen" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Patrouille.inc" stem "Patrouille" eight 0 group - records 0
+inc "Patrouille8.inc" stem "Patrouille" eight 1 group - records 0
+inc "Patrouille_festlegen.inc" stem "Patrouille_festlegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Patrouille_festlegen8.inc" stem "Patrouille_festlegen" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Patrouille_loeschen.inc" stem "Patrouille_loeschen" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Patrouille_loeschen8.inc" stem "Patrouille_loeschen" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Pause.inc" stem "Pause" eight 0 group - records 0
+inc "Pause8.inc" stem "Pause" eight 1 group - records 0
+inc "Pavillon.inc" stem "Pavillon" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Pavillon8.inc" stem "Pavillon" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Pelze.inc" stem "Pelze" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Pelze8.inc" stem "Pelze" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Pelztiere.inc" stem "Pelztiere" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Pelztiere8.inc" stem "Pelztiere" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Pelztierjaeger.inc" stem "Pelztierjaeger" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Pelztierjaeger8.inc" stem "Pelztierjaeger" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Pest.inc" stem "Pest" eight 0 group - records 1
+access "image001.pcx" id 1 width 32 height 31
+inc "Pest8.inc" stem "Pest" eight 1 group - records 1
+access "image001.pcx" id 1 width 26 height 23
+inc "Pflasterstrasse.inc" stem "Pflasterstrasse" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Pflasterstrasse8.inc" stem "Pflasterstrasse" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Pikenier.inc" stem "Pikenier" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Pikenier8.inc" stem "Pikenier" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Pioniere.inc" stem "Pioniere" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Pioniere8.inc" stem "Pioniere" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "Piraten.inc" stem "Piraten" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Piraten8.inc" stem "Piraten" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Plaetze_und_Strassen.inc" stem "Plaetze_und_Strassen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Plaetze_und_Strassen8.inc" stem "Plaetze_und_Strassen" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Produktion_stilllegen.inc" stem "Produktion_stilllegen" eight 0 group - records 1
+access "image001.pcx" id 1 width 37 height 67
+inc "Produktion_stilllegen8.inc" stem "Produktion_stilllegen" eight 1 group - records 1
+access "image001.pcx" id 1 width 29 height 52
+inc "Produktionsketten.inc" stem "Produktionsketten" eight 0 group - records 0
+inc "Produktionsketten8.inc" stem "Produktionsketten" eight 1 group - records 0
+inc "Questlog_Campaign01018.inc" stem "Questlog_Campaign0101" eight 1 group - records 12
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+access "image001.pcx" id 5 width 10 height 8
+access "image002.pcx" id 6 width 15 height 13
+access "image001.pcx" id 7 width 10 height 8
+access "image002.pcx" id 8 width 15 height 13
+access "image001.pcx" id 9 width 10 height 8
+access "image002.pcx" id 10 width 15 height 13
+access "image001.pcx" id 11 width 10 height 8
+access "image002.pcx" id 12 width 15 height 13
+inc "Questlog_Campaign01058.inc" stem "Questlog_Campaign0105" eight 1 group - records 8
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+access "image001.pcx" id 5 width 10 height 8
+access "image002.pcx" id 6 width 15 height 13
+access "image001.pcx" id 7 width 10 height 8
+access "image002.pcx" id 8 width 15 height 13
+inc "Questlogtest_treibjagd.inc" stem "Questlogtest_treibjagd" eight 0 group - records 6
+access "image001.pcx" id 1 width 88 height 78
+access "image002.pcx" id 2 width 90 height 80
+access "image001.pcx" id 3 width 88 height 78
+access "image002.pcx" id 4 width 90 height 80
+access "image001.pcx" id 5 width 88 height 78
+access "image002.pcx" id 6 width 90 height 80
+inc "R_Edelsteine.inc" stem "R_Edelsteine" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Edelsteine8.inc" stem "R_Edelsteine" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Eisen.inc" stem "R_Eisen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Eisen8.inc" stem "R_Eisen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Eisenerz.inc" stem "R_Eisenerz" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Eisenerz8.inc" stem "R_Eisenerz" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Farbstoffe.inc" stem "R_Farbstoffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Farbstoffe8.inc" stem "R_Farbstoffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Getreide.inc" stem "R_Getreide" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Getreide8.inc" stem "R_Getreide" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Gold.inc" stem "R_Gold" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Gold8.inc" stem "R_Gold" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Hanf.inc" stem "R_Hanf" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Hanf8.inc" stem "R_Hanf" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Holzkohle.inc" stem "R_Holzkohle" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Holzkohle8.inc" stem "R_Holzkohle" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Hopfen.inc" stem "R_Hopfen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Hopfen8.inc" stem "R_Hopfen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Mehl.inc" stem "R_Mehl" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Mehl8.inc" stem "R_Mehl" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Salzstein.inc" stem "R_Salzstein" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Salzstein8.inc" stem "R_Salzstein" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Schlachtvieh.inc" stem "R_Schlachtvieh" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Schlachtvieh8.inc" stem "R_Schlachtvieh" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Seide.inc" stem "R_Seide" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Seide8.inc" stem "R_Seide" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Seile.inc" stem "R_Seile" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Seile8.inc" stem "R_Seile" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Tabak.inc" stem "R_Tabak" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Tabak8.inc" stem "R_Tabak" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Tierhaeute.inc" stem "R_Tierhaeute" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Tierhaeute8.inc" stem "R_Tierhaeute" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Walspeck.inc" stem "R_Walspeck" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Walspeck8.inc" stem "R_Walspeck" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Wissen.inc" stem "R_Wissen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Wolle.inc" stem "R_Wolle" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Wolle8.inc" stem "R_Wolle" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "R_Zuckerrohr.inc" stem "R_Zuckerrohr" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "R_Zuckerrohr8.inc" stem "R_Zuckerrohr" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Raeuber.inc" stem "Raeuber" eight 0 group - records 0
+inc "Raeuber8.inc" stem "Raeuber" eight 1 group - records 0
+inc "Rechteckformation.inc" stem "Rechteckformation" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Rechteckformation8.inc" stem "Rechteckformation" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Ressourcenleiste.inc" stem "Ressourcenleiste" eight 0 group - records 0
+inc "Ressourcenleiste8.inc" stem "Ressourcenleiste" eight 1 group - records 0
+inc "Rinderfarm.inc" stem "Rinderfarm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Rinderfarm8.inc" stem "Rinderfarm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Rohstoffe.inc" stem "Rohstoffe" eight 0 group - records 0
+inc "Rohstoffe8.inc" stem "Rohstoffe" eight 1 group - records 0
+inc "Routenpunkte_setzen.inc" stem "Routenpunkte_setzen" eight 0 group - records 0
+inc "Routenpunkte_setzen8.inc" stem "Routenpunkte_setzen" eight 1 group - records 0
+inc "Ruestungen.inc" stem "Ruestungen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Ruestungen8.inc" stem "Ruestungen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Ruestungsbauer.inc" stem "Ruestungsbauer" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Ruestungsbauer8.inc" stem "Ruestungsbauer" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Rumbrennerei.inc" stem "Rumbrennerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Rumbrennerei8.inc" stem "Rumbrennerei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "SCHAFFARM8.inc" stem "SCHAFFARM" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "SCOUT8.inc" stem "SCOUT" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "STEINE8.inc" stem "STEINE" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Saline.inc" stem "Saline" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Saline8.inc" stem "Saline" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Salz.inc" stem "Salz" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Salz8.inc" stem "Salz" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Salzbergwerk.inc" stem "Salzbergwerk" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Salzbergwerk8.inc" stem "Salzbergwerk" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Salzvorkommen.inc" stem "Salzvorkommen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Salzvorkommen8.inc" stem "Salzvorkommen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Sammelpunkt_setzen.inc" stem "Sammelpunkt_setzen" eight 0 group - records 1
+access "image001.pcx" id 1 width 43 height 62
+inc "Sammelpunkt_setzen8.inc" stem "Sammelpunkt_setzen" eight 1 group - records 1
+access "image001.pcx" id 1 width 34 height 48
+inc "Sanitaeter.inc" stem "Sanitaeter" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Sanitaeter8.inc" stem "Sanitaeter" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Schaffarm.inc" stem "Schaffarm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Schatztruhe.inc" stem "Schatztruhe" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Schatztruhe8.inc" stem "Schatztruhe" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Schiff_bauen.inc" stem "Schiff_bauen" eight 0 group - records 1
+access "image001.pcx" id 1 width 57 height 56
+inc "Schiff_bauen8.inc" stem "Schiff_bauen" eight 1 group - records 1
+access "image001.pcx" id 1 width 45 height 44
+inc "Schiff_beladen.inc" stem "Schiff_beladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 216 height 53
+inc "Schiff_beladen8.inc" stem "Schiff_beladen" eight 1 group - records 1
+access "image001.pcx" id 1 width 169 height 41
+inc "Schiff_beschuetzen.inc" stem "Schiff_beschuetzen" eight 0 group - records 1
+access "image001.pcx" id 1 width 66 height 66
+inc "Schiff_beschuetzen8.inc" stem "Schiff_beschuetzen" eight 1 group - records 1
+access "image001.pcx" id 1 width 52 height 52
+inc "Schiff_bewaffnen.inc" stem "Schiff_bewaffnen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Schiff_bewaffnen8.inc" stem "Schiff_bewaffnen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Schiff_bewegen.inc" stem "Schiff_bewegen" eight 0 group - records 0
+inc "Schiff_bewegen8.inc" stem "Schiff_bewegen" eight 1 group - records 0
+inc "Schiff_entern.inc" stem "Schiff_entern" eight 0 group - records 0
+inc "Schiff_entladen.inc" stem "Schiff_entladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 216 height 53
+inc "Schiff_finden.inc" stem "Schiff_finden" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Schiff_finden8.inc" stem "Schiff_finden" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Schiff_formieren.inc" stem "Schiff_formieren" eight 0 group - records 1
+access "image001.pcx" id 1 width 300 height 50
+inc "Schiff_formieren8.inc" stem "Schiff_formieren" eight 1 group - records 1
+access "image001.pcx" id 1 width 234 height 39
+inc "Schiff_reparieren.inc" stem "Schiff_reparieren" eight 0 group - records 1
+access "image001.pcx" id 1 width 69 height 82
+inc "Schiff_reparieren8.inc" stem "Schiff_reparieren" eight 1 group - records 1
+access "image001.pcx" id 1 width 54 height 64
+inc "Schiff_verkaufen.inc" stem "Schiff_verkaufen" eight 0 group - records 1
+access "image001.pcx" id 1 width 49 height 54
+inc "Schiff_verkaufen8.inc" stem "Schiff_verkaufen" eight 1 group - records 1
+access "image001.pcx" id 1 width 38 height 42
+inc "Schiff_versenken.inc" stem "Schiff_versenken" eight 0 group - records 1
+access "image001.pcx" id 1 width 69 height 82
+inc "Schiff_versenken8.inc" stem "Schiff_versenken" eight 1 group - records 1
+access "image001.pcx" id 1 width 54 height 64
+inc "Schiffe.inc" stem "Schiffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Schiffskanonen.inc" stem "Schiffskanonen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Schiffskanonen8.inc" stem "Schiffskanonen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Schiffsliste.inc" stem "Schiffsliste" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Schiffsliste8.inc" stem "Schiffsliste" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Schiffsmenue.inc" stem "Schiffsmenue" eight 0 group - records 0
+inc "Schiffsmenue8.inc" stem "Schiffsmenue" eight 1 group - records 0
+inc "Schiffsname.inc" stem "Schiffsname" eight 0 group - records 1
+access "image001.pcx" id 1 width 239 height 56
+inc "Schiffsname8.inc" stem "Schiffsname" eight 1 group - records 1
+access "image001.pcx" id 1 width 187 height 44
+inc "Schiffstatus.inc" stem "Schiffstatus" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Schiffstatus8.inc" stem "Schiffstatus" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Schiffverhalten.inc" stem "Schiffverhalten" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Schiffverhalten8.inc" stem "Schiffverhalten" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Schloss.inc" stem "Schloss" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Schloss8.inc" stem "Schloss" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Schmied.inc" stem "Schmied" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Schmied8.inc" stem "Schmied" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Schmuck.inc" stem "Schmuck" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Schmuck8.inc" stem "Schmuck" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Schmuckstand.inc" stem "Schmuckstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Schmuckstand8.inc" stem "Schmuckstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Schneiderei.inc" stem "Schneiderei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Schneiderei8.inc" stem "Schneiderei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Schule.inc" stem "Schule" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Schule8.inc" stem "Schule" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Schutzgeld.inc" stem "Schutzgeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Schutzgeld8.inc" stem "Schutzgeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Schwerter.inc" stem "Schwerter" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Schwerter8.inc" stem "Schwerter" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Schwertkaempfer.inc" stem "Schwertkaempfer" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Schwertkaempfer8.inc" stem "Schwertkaempfer" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Scout.inc" stem "Scout" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Scout_Markthaupthaus.inc" stem "Scout_Markthaupthaus" eight 0 group - records 0
+inc "Scout_ausbilden.inc" stem "Scout_ausbilden" eight 0 group - records 0
+inc "Scout_ausbilden8.inc" stem "Scout_ausbilden" eight 1 group - records 0
+inc "Scout_ausladen.inc" stem "Scout_ausladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Scout_ausladen8.inc" stem "Scout_ausladen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Scout_beladen.inc" stem "Scout_beladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Scout_beladen8.inc" stem "Scout_beladen" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Scout_bewegen.inc" stem "Scout_bewegen" eight 0 group - records 0
+inc "Scout_einladen.inc" stem "Scout_einladen" eight 0 group - records 0
+inc "Scout_entladen.inc" stem "Scout_entladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Scout_finden.inc" stem "Scout_finden" eight 0 group - records 0
+inc "Scout_finden8.inc" stem "Scout_finden" eight 1 group - records 0
+inc "Seidenanbaufeld.inc" stem "Seidenanbaufeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Seidenfeld.inc" stem "Seidenfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Seidenfeld8.inc" stem "Seidenfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Seidenplantage.inc" stem "Seidenplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Seidenplantage8.inc" stem "Seidenplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Seidenstoffe.inc" stem "Seidenstoffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Seidenstoffe8.inc" stem "Seidenstoffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Seilerei.inc" stem "Seilerei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Seilerei8.inc" stem "Seilerei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Siedler.inc" stem "Siedler" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Siedler8.inc" stem "Siedler" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "Singleplayer018.inc" stem "Singleplayer01" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer048.inc" stem "Singleplayer04" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer05.inc" stem "Singleplayer05" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer058.inc" stem "Singleplayer05" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer06.inc" stem "Singleplayer06" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer068.inc" stem "Singleplayer06" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer07.inc" stem "Singleplayer07" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer078.inc" stem "Singleplayer07" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer08.inc" stem "Singleplayer0" eight 1 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer088.inc" stem "Singleplayer08" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer09.inc" stem "Singleplayer09" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer098.inc" stem "Singleplayer09" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer10.inc" stem "Singleplayer10" eight 0 group - records 8
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+access "image001.pcx" id 5 width 14 height 11
+access "image002.pcx" id 6 width 19 height 17
+access "image001.pcx" id 7 width 14 height 11
+access "image002.pcx" id 8 width 19 height 17
+inc "Singleplayer108.inc" stem "Singleplayer10" eight 1 group - records 8
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+access "image001.pcx" id 5 width 10 height 8
+access "image002.pcx" id 6 width 15 height 13
+access "image001.pcx" id 7 width 10 height 8
+access "image002.pcx" id 8 width 15 height 13
+inc "Singleplayer12.inc" stem "Singleplayer12" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer128.inc" stem "Singleplayer12" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer14.inc" stem "Singleplayer14" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer148.inc" stem "Singleplayer14" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer15.inc" stem "Singleplayer15" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer158.inc" stem "Singleplayer15" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Singleplayer16.inc" stem "Singleplayer16" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "Singleplayer168.inc" stem "Singleplayer16" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "Soldaten.inc" stem "Soldaten" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Soldaten_Angriffsverhalten.inc" stem "Soldaten_Angriffsverhalten" eight 0 group - records 0
+inc "Soldaten_Angriffsverhalten8.inc" stem "Soldaten_Angriffsverhalten" eight 1 group - records 0
+inc "Soldaten_Erfahrung.inc" stem "Soldaten_Erfahrung" eight 0 group - records 1
+access "image001.pcx" id 1 width 46 height 82
+inc "Soldaten_Erfahrung8.inc" stem "Soldaten_Erfahrung" eight 1 group - records 1
+access "image001.pcx" id 1 width 36 height 64
+inc "Soldaten_Gesundheitszustand.inc" stem "Soldaten_Gesundheitszustand" eight 0 group - records 1
+access "image001.pcx" id 1 width 46 height 82
+inc "Soldaten_Gesundheitszustand8.inc" stem "Soldaten_Gesundheitszustand" eight 1 group - records 1
+access "image001.pcx" id 1 width 36 height 64
+inc "Soldaten_ausbilden.inc" stem "Soldaten_ausbilden" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Soldaten_ausbilden8.inc" stem "Soldaten_ausbilden" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Soldaten_ausladen.inc" stem "Soldaten_ausladen" eight 0 group - records 0
+inc "Soldaten_bewegen.inc" stem "Soldaten_bewegen" eight 0 group - records 0
+inc "Soldaten_bewegen8.inc" stem "Soldaten_bewegen" eight 1 group - records 0
+inc "Soldaten_einladen.inc" stem "Soldaten_einladen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Soldaten_einladen8.inc" stem "Soldaten_einladen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Soldaten_einsetzen.inc" stem "Soldaten_einsetzen" eight 0 group - records 0
+inc "Soldaten_entlassen8.inc" stem "Soldaten_entlassen" eight 1 group - records 1
+access "image001.pcx" id 1 width 56 height 64
+inc "Soldaten_entleihen.inc" stem "Soldaten_entleihen" eight 0 group - records 0
+inc "Soldaten_finden.inc" stem "Soldaten_finden" eight 0 group - records 0
+inc "Soldaten_finden8.inc" stem "Soldaten_finden" eight 1 group - records 0
+inc "Soldaten_formieren.inc" stem "Soldaten_formieren" eight 0 group - records 1
+access "image001.pcx" id 1 width 300 height 50
+inc "Soldaten_formieren8.inc" stem "Soldaten_formieren" eight 1 group - records 1
+access "image001.pcx" id 1 width 234 height 39
+inc "Soldaten_heilen.inc" stem "Soldaten_heilen" eight 0 group - records 0
+inc "Soldaten_heilen8.inc" stem "Soldaten_heilen" eight 1 group - records 0
+inc "Soldaten_leihen.inc" stem "Soldaten_leihen" eight 0 group - records 0
+inc "Speere.inc" stem "Speere" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Spiel beenden.inc" stem "Spiel beenden" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 70
+inc "Spiel_beenden8.inc" stem "Spiel_beenden" eight 1 group - records 1
+access "image001.pcx" id 1 width 70 height 74
+inc "Spielerinfo.inc" stem "Spielerinfo" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Spielerinfo8.inc" stem "Spielerinfo" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Spielgeschwindigkeit.inc" stem "Spielgeschwindigkeit" eight 0 group - records 0
+inc "Spielgeschwindigkeit8.inc" stem "Spielgeschwindigkeit" eight 1 group - records 0
+inc "Spielstand_laden.inc" stem "Spielstand_laden" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Spielstand_laden8.inc" stem "Spielstand_laden" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Spielstand_loeschen.inc" stem "Spielstand_loeschen" eight 0 group - records 1
+access "image001.pcx" id 1 width 63 height 82
+inc "Spielstand_loeschen8.inc" stem "Spielstand_loeschen" eight 1 group - records 1
+access "image001.pcx" id 1 width 49 height 64
+inc "Spielstand_speichern.inc" stem "Spielstand_speichern" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Spielstand_speichern8.inc" stem "Spielstand_speichern" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Spion.inc" stem "Spion" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Spion_ausbilden.inc" stem "Spion_ausbilden" eight 0 group - records 0
+inc "Spion_ausladen.inc" stem "Spion_ausladen" eight 0 group - records 0
+inc "Spion_bewegen.inc" stem "Spion_bewegen" eight 0 group - records 0
+inc "Spion_einladen.inc" stem "Spion_einladen" eight 0 group - records 0
+inc "Spion_einsetzen.inc" stem "Spion_einsetzen" eight 0 group - records 0
+inc "Sprachmeldungen.inc" stem "Sprachmeldungen" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Sprachmeldungen8.inc" stem "Sprachmeldungen" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Stadtbilanz.inc" stem "Stadtbilanz" eight 0 group - records 1
+access "image001.pcx" id 1 width 88 height 36
+inc "Stadtbilanz8.inc" stem "Stadtbilanz" eight 1 group - records 1
+access "image001.pcx" id 1 width 69 height 28
+inc "Stadtliste.inc" stem "Stadtliste" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Stadtliste8.inc" stem "Stadtliste" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Stadtmauer.inc" stem "Stadtmauer" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Stadtmauer8.inc" stem "Stadtmauer" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Stadttor.inc" stem "Stadttor" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Stadttor8.inc" stem "Stadttor" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Startup.inc" stem "Startup" eight 0 group fonts records 46
+access "PROGRESSBAR" id 1 width 464 height 75
+access "STARTUP_ENDLOSCUSTOMIZE" id 3 width 800 height 600
+access "PLANKEN_ENDLOSCUSTOMIZE" id 4 width 311 height 55
+access "STARTUP" id 20 width 800 height 600
+access "PLANKEN01" id 21 width 420 height 75
+access "MP_HIDE" id 33 width 275 height 51
+access "STARTUPMULTIPLAYER" id 34 width 800 height 600
+access "PLANKEN_MULTIAUSWAHL" id 35 width 318 height 58
+access "SERVERAUSWAHL" id 43 width 800 height 600
+access "PLANKEN_SERVERAUSWAHL" id 44 width 209 height 61
+access "SESSIONNAME" id 48 width 800 height 600
+access "CLIENTWAIT" id 49 width 800 height 600
+access "SERVERSPIELTYP" id 50 width 800 height 600
+access "PLANKEN_SPIELTYP" id 51 width 318 height 58
+access "SZENARIOAUSWAHL" id 61 width 800 height 600
+access "PLANKEN_SZENARIOAUSWAHL" id 62 width 209 height 61
+access "PFEILE_SZENARIOAUSWAHL" id 68 width 39 height 31
+access "FARBAUSWAHLEINZEL_BURG" id 72 width 800 height 600
+access "FARBAUSWAHLEINZEL_HIMMEL" id 73 width 800 height 600
+access "FARBAUSWAHLEINZEL_FAHNEN" id 74 width 54 height 34
+access "CUSTOM_PLANKEN" id 330 width 205 height 92
+access "FARBAUSWAHLMULTISPIELER" id 334 width 800 height 600
+access "PLANKEN_MULTIFARBAUSWAHL" id 335 width 311 height 55
+access "FARBSCHILDER_MULTI" id 345 width 42 height 62
+access "FARBSCHILDER_MULTIKLEIN" id 361 width 22 height 24
+access "PFEILE_MULTIFARBAUSWAHL" id 371 width 39 height 31
+access "FARB_KRONE" id 375 width 34 height 28
+access "AUFTRAGSTEXT" id 376 width 800 height 600
+access "PLANKEN_AUFTRAGSTEXT" id 377 width 230 height 63
+access "PFEILE_AUFTRAGSTEXT" id 379 width 39 height 31
+access "PROFILEVERWALTUNG" id 383 width 800 height 600
+access "PROFIL_EINGABEFELD" id 384 width 309 height 105
+access "PLANKEN_PROFILEVERWALTUNG" id 385 width 282 height 61
+access "PROFIL_PFEILE" id 393 width 39 height 31
+access "SCENARIOB_SPIELDAUER" id 397 width 21 height 21
+access "SCENARIOB_SCHWIERIGKEIT" id 406 width 30 height 21
+access "SCENARIOB_SPIELERMIN" id 410 width 22 height 21
+access "SCENARIOB_SPIELERMAX" id 419 width 22 height 21
+access "ENTERTAINMENT_LAUB" id 428 width 198 height 216
+access "ENTERTAINMENT_RING1" id 444 width 146 height 146
+access "ENTERTAINMENT_RING2" id 460 width 141 height 131
+access "ENTERTAINMENT_ANNOPLANKE" id 476 width 630 height 278
+access "OPTION_BK" id 492 width 800 height 600
+access "PLANKEN_OPTION" id 493 width 274 height 56
+access "MESSAGEBOX_BK" id 507 width 579 height 386
+access "MESSAGEBOX_BUTTON" id 508 width 244 height 67
+inc "Statue.inc" stem "Statue" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Statue8.inc" stem "Statue" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Steinbruch.inc" stem "Steinbruch" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Steinbruch8.inc" stem "Steinbruch" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Steinbruecke.inc" stem "Steinbruecke" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Steinbruecke8.inc" stem "Steinbruecke" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Steine.inc" stem "Steine" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Steinmetz.inc" stem "Steinmetz" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Steinmetz8.inc" stem "Steinmetz" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Stoffe.inc" stem "Stoffe" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Stoffe8.inc" stem "Stoffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Stoffstand.inc" stem "Stoffstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Stoffstand8.inc" stem "Stoffstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Strassenanschluss8.inc" stem "Strassenanschluss" eight 1 group - records 0
+inc "Tabakfeld.inc" stem "Tabakfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Tabakfeld8.inc" stem "Tabakfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Tabakplantage.inc" stem "Tabakplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Tabakplantage8.inc" stem "Tabakplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Tabakstand.inc" stem "Tabakstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Tabakstand8.inc" stem "Tabakstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Tabakverarbeitung.inc" stem "Tabakverarbeitung" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Tabakverarbeitung8.inc" stem "Tabakverarbeitung" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Tabakwaren.inc" stem "Tabakwaren" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Tabakwaren8.inc" stem "Tabakwaren" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Theater.inc" stem "Theater" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Theater8.inc" stem "Theater" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Tiefe_Erzmine.inc" stem "Tiefe_Erzmine" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 102
+inc "Tiefer_Brunnen.inc" stem "Tiefer_Brunnen" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Tiefer_Brunnen8.inc" stem "Tiefer_Brunnen" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Transiederei.inc" stem "Transiederei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Transiederei8.inc" stem "Transiederei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Tribut_anbieten.inc" stem "Tribut_anbieten" eight 0 group - records 1
+access "image001.pcx" id 1 width 55 height 58
+inc "Tribut_anbieten8.inc" stem "Tribut_anbieten" eight 1 group - records 1
+access "image001.pcx" id 1 width 43 height 45
+inc "Tribut_fordern.inc" stem "Tribut_fordern" eight 0 group - records 1
+access "image001.pcx" id 1 width 55 height 58
+inc "Tribut_fordern8.inc" stem "Tribut_fordern" eight 1 group - records 1
+access "image001.pcx" id 1 width 43 height 45
+inc "Triumphbogen.inc" stem "Triumphbogen" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Triumphbogen8.inc" stem "Triumphbogen" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Uebersichtskarte.inc" stem "Uebersichtskarte" eight 0 group - records 0
+inc "Uebersichtskarte8.inc" stem "Uebersichtskarte" eight 1 group - records 0
+inc "Universitaet.inc" stem "Universitaet" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Universitaet8.inc" stem "Universitaet" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Verkauf_Waren.inc" stem "Verkauf_Waren" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Verkauf_Waren8.inc" stem "Verkauf_Waren" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Vertraege_abschliessen.inc" stem "Vertraege_abschliessen" eight 0 group - records 1
+access "image001.pcx" id 1 width 74 height 82
+inc "Vertraege_abschliessen8.inc" stem "Vertraege_abschliessen" eight 1 group - records 1
+access "image001.pcx" id 1 width 58 height 64
+inc "Vertraege_beenden.inc" stem "Vertraege_beenden" eight 0 group - records 1
+access "image001.pcx" id 1 width 74 height 82
+inc "Vertraege_beenden8.inc" stem "Vertraege_beenden" eight 1 group - records 1
+access "image001.pcx" id 1 width 58 height 64
+inc "Vertraege_brechen.inc" stem "Vertraege_brechen" eight 0 group - records 1
+access "image001.pcx" id 1 width 92 height 82
+inc "Vertraege_brechen8.inc" stem "Vertraege_brechen" eight 1 group - records 1
+access "image001.pcx" id 1 width 72 height 64
+inc "Vertragsstatus.inc" stem "Vertragsstatus" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Vertragsstatus8.inc" stem "Vertragsstatus" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Volles_Lager.inc" stem "Volles_Lager" eight 0 group - records 0
+inc "Volles_Lager8.inc" stem "Volles_Lager" eight 1 group - records 0
+inc "Vulkanausbruch.inc" stem "Vulkanausbruch" eight 0 group - records 0
+inc "Vulkanausbruch8.inc" stem "Vulkanausbruch" eight 1 group - records 0
+inc "Wachturm.inc" stem "Wachturm" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Wachturm8.inc" stem "Wachturm" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Waffen.inc" stem "Waffen" eight 0 group - records 0
+inc "Waffen8.inc" stem "Waffen" eight 1 group - records 0
+inc "Waffen_uebernehmen.inc" stem "Waffen_uebernehmen" eight 0 group - records 0
+inc "Waffen_uebernehmen8.inc" stem "Waffen_uebernehmen" eight 1 group - records 0
+inc "Waffenproduktion.inc" stem "Waffenproduktion" eight 0 group - records 0
+inc "Waffenproduktion8.inc" stem "Waffenproduktion" eight 1 group - records 0
+inc "Waffenschmiede.inc" stem "Waffenschmiede" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 102
+inc "Waffenstillstand.inc" stem "Waffenstillstand" eight 0 group - records 0
+inc "Waffenstillstand8.inc" stem "Waffenstillstand" eight 1 group - records 0
+inc "Wald.inc" stem "Wald" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Wald8.inc" stem "Wald" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Waldgebiet.inc" stem "Waldgebiet" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Waldgebiet8.inc" stem "Waldgebiet" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Walfaenger.inc" stem "Walfaenger" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Walfaenger8.inc" stem "Walfaenger" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Waren_ueberBord.inc" stem "Waren_ueberBord" eight 0 group - records 1
+access "image001.pcx" id 1 width 60 height 60
+inc "Waren_ueberBord8.inc" stem "Waren_ueberBord" eight 1 group - records 1
+access "image001.pcx" id 1 width 47 height 47
+inc "Weberei.inc" stem "Weberei" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Weberei8.inc" stem "Weberei" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Webstube.inc" stem "Webstube" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Webstube8.inc" stem "Webstube" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Weideland.inc" stem "Weideland" eight 0 group - records 0
+inc "Weideland8.inc" stem "Weideland" eight 1 group - records 0
+inc "Weideland_roden.inc" stem "Weideland_roden" eight 0 group - records 1
+access "image001.pcx" id 1 width 73 height 65
+inc "Weideland_roden8.inc" stem "Weideland_roden" eight 1 group - records 1
+access "image001.pcx" id 1 width 57 height 51
+inc "Wein.inc" stem "Wein" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Wein8.inc" stem "Wein" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Weinanbaufeld.inc" stem "Weinanbaufeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Weinanbaufeld8.inc" stem "Weinanbaufeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Weingut.inc" stem "Weingut" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Weingut8.inc" stem "Weingut" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Weinstand.inc" stem "Weinstand" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Weinstand8.inc" stem "Weinstand" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Weisse_Flagge.inc" stem "Weisse_Flagge" eight 0 group - records 1
+access "image001.pcx" id 1 width 66 height 82
+inc "Weisse_Flagge8.inc" stem "Weisse_Flagge" eight 1 group - records 1
+access "image001.pcx" id 1 width 52 height 64
+inc "Werft.inc" stem "Werft" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Werft8.inc" stem "Werft" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Werkzeuge.inc" stem "Werkzeuge" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Werkzeuge8.inc" stem "Werkzeuge" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Wildtiere.inc" stem "Wildtiere" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Wildtiere8.inc" stem "Wildtiere" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Wirtshaus.inc" stem "Wirtshaus" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Wirtshaus8.inc" stem "Wirtshaus" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Wissen.inc" stem "Wissen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Wissen8.inc" stem "Wissen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Wohnhaus.inc" stem "Wohnhaus" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Wohnhaus8.inc" stem "Wohnhaus" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Wrong_War.inc" stem "Wrong_War" eight 0 group - records 0
+inc "Wrong_War8.inc" stem "Wrong_War" eight 1 group - records 0
+inc "Zahlungsaufschub.inc" stem "Zahlungsaufschub" eight 0 group - records 0
+inc "Zahlungsaufschub8.inc" stem "Zahlungsaufschub" eight 1 group - records 0
+inc "Ziegel.inc" stem "Ziegel" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Ziegel8.inc" stem "Ziegel" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Zieranlagen_und_Prunkbauten.inc" stem "Zieranlagen_und_Prunkbauten" eight 0 group - records 1
+access "image001.pcx" id 1 width 42 height 46
+inc "Zieranlagen_und_Prunkbauten8.inc" stem "Zieranlagen_und_Prunkbauten" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "Zivilisationsstufen.inc" stem "Zivilisationsstufen" eight 0 group - records 0
+inc "Zivilisationsstufen8.inc" stem "Zivilisationsstufen" eight 1 group - records 0
+inc "Zuckerrohrfeld.inc" stem "Zuckerrohrfeld" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "Zuckerrohrfeld8.inc" stem "Zuckerrohrfeld" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "Zuckerrohrplantage.inc" stem "Zuckerrohrplantage" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "Zuckerrohrplantage8.inc" stem "Zuckerrohrplantage" eight 1 group - records 1
+access "image001.pcx" id 1 width 80 height 558
+inc "Zufriedenheit_Einwohner.inc" stem "Zufriedenheit_Einwohner" eight 0 group - records 1
+access "image001.pcx" id 1 width 100 height 108
+inc "Zufriedenheit_Einwohner8.inc" stem "Zufriedenheit_Einwohner" eight 1 group - records 1
+access "image001.pcx" id 1 width 78 height 84
+inc "amtsgericht.inc" stem "amtsgericht" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "arbeiter_weg.inc" stem "arbeiter_weg" eight 0 group - records 0
+inc "arbeiter_weg8.inc" stem "arbeiter_weg" eight 1 group - records 0
+inc "explosivgeschosse.inc" stem "explosivgeschosse" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "explosivgeschosse8.inc" stem "explosivgeschosse" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "fenster.inc" stem "fenster" eight 0 group hud-chrome records 218
+access "WELTKARTE" id 2 width 245 height 248
+access "MAINUNTERGRUND" id 4 width 245 height 524
+access "MAX_PIC" id 5 width 245 height 524
+access "STATUSBAR" id 6 width 780 height 43
+access "LUPE" id 7 width 42 height 45
+access "MAINTAB" id 8 width 61 height 63
+access "VIEWBAUTAB" id 16 width 42 height 46
+access "INFOUNTERGRUND_LEER" id 32 width 220 height 466
+access "INFOUNTERGRUND" id 33 width 220 height 466
+access "INFOROTPFEIL" id 34 width 33 height 38
+access "INFOEXIT" id 38 width 33 height 38
+access "KARTEPLUS" id 40 width 19 height 21
+access "KARTE_NORDUNG" id 52 width 256 height 133
+access "NO_KLICK" id 56 width 50 height 50
+access "THUMBNAILLANDWIRTSCHAFT" id 58 width 50 height 50
+access "THUMBNAILDIVERSES" id 154 width 50 height 50
+access "THUMBNAILWEG" id 241 width 50 height 50
+access "THUMBNAILHANDWERK" id 277 width 50 height 50
+access "THUMBNAILSEEFAHRT" id 355 width 50 height 50
+access "THUMBNAILBERGBAU" id 385 width 50 height 50
+access "THUMBNAILMILITAR" id 439 width 50 height 50
+access "THUMBNAILZIERDE" id 499 width 50 height 50
+access "THUMBNAILZIERDE_ADDON" id 562 width 50 height 50
+access "WARENADDITIV" id 658 width 50 height 50
+access "ABRISSICON" id 659 width 53 height 53
+access "VIEWINFOSTADTTAB" id 661 width 42 height 46
+access "STADT_BILANZ_BK" id 677 width 245 height 468
+access "VIEWINFOSTADTAUSBAUSTOP" id 678 width 112 height 60
+access "STADTLISTEN_MELDUNGEN" id 680 width 26 height 28
+access "WARENICONS_ROHSTOFF" id 685 width 50 height 50
+access "WARENICONS_ROHSTOFF_GREY" id 706 width 50 height 50
+access "WARENICONS_BEDARF" id 727 width 50 height 50
+access "WARENICONS_BEDARF_GREY" id 741 width 50 height 50
+access "WARENICONS_BAUMATERIAL" id 755 width 50 height 50
+access "WARENICONS_BAUMATERIAL_GREY" id 759 width 50 height 50
+access "WARENICONS_WAFFEN" id 763 width 50 height 50
+access "WARENICONS_INFRA" id 771 width 50 height 50
+access "WARENICONS_INFRA_GREY" id 785 width 50 height 50
+access "VIEWBURGTAB" id 799 width 42 height 46
+access "WARENICONS_SOLDAT" id 803 width 50 height 50
+access "WARENICONS_SCHIFF" id 825 width 66 height 66
+access "BALKENSCHIFF" id 832 width 6 height 64
+access "WARENVKEKBEZEICHNUNG" id 833 width 20 height 19
+access "WARENRAHMEN" id 835 width 50 height 50
+access "CHOOSEWAREN_TAB" id 836 width 55 height 58
+access "SLIDER_FUEHRUNG_VKEK" id 844 width 153 height 23
+access "SLIDER_KNUPPEL" id 845 width 20 height 39
+access "SLIDER_FUEHRUNG" id 847 width 153 height 23
+access "SLIDER_MINUS" id 848 width 26 height 37
+access "SLIDER_PLUS" id 850 width 28 height 37
+access "LISTENSLIDER_FUEHRUNG" id 852 width 10 height 168
+access "LISTENSLIDER_KNUPPEL" id 853 width 20 height 20
+access "VKEK_HINTERGRUND" id 855 width 243 height 467
+access "VKEK_HINZUFUEGEN_VERWERFEN_NEW" id 856 width 45 height 54
+access "LAGERMENGENBALKEN" id 860 width 150 height 3
+access "SLIDER_MITTELTEILUNTEN" id 861 width 158 height 25
+access "SLIDER_MITTELTEILOBEN" id 862 width 158 height 25
+access "VK_SLIDER_MINUS" id 863 width 21 height 32
+access "VK_SLIDER_PLUS" id 865 width 23 height 32
+access "VKEK_HINZUFUEGEN_VERWERFEN" id 867 width 42 height 47
+access "VKEK_WARENFACH_LEER" id 871 width 50 height 50
+access "PROUDUKTION_HINTERGRUND" id 872 width 245 height 468
+access "PROUDUKTION_KOSTENRAHMEN" id 873 width 124 height 33
+access "PROUDUKTION_STILLLEGEN" id 874 width 41 height 69
+access "PROUDUKTION_AUSLASTUNG" id 876 width 64 height 29
+access "PROD_INLEFT" id 877 width 20 height 32
+access "MARKTSTAND_RAHMEN_1" id 879 width 71 height 34
+access "MARKTSTAND_RAHMEN_2" id 880 width 179 height 34
+access "PROUDUKTION_GOLDSTUECK" id 881 width 21 height 24
+access "WARENICONS_ROTESKREUZ" id 882 width 36 height 35
+access "WOHNHAUS_PLATTE" id 883 width 244 height 469
+access "PIONIER_LAUNE" id 884 width 167 height 180
+access "SIEDLER_LAUNE" id 889 width 167 height 180
+access "BUERGER_LAUNE" id 894 width 167 height 180
+access "KAUFLEUTE_LAUNE" id 899 width 167 height 180
+access "ARISTOKRATEN_LAUNE" id 904 width 167 height 180
+access "VIEWINFOSCHIFFWERF_BK" id 909 width 219 height 466
+access "VIEWINFOSCHIFFTAB" id 910 width 42 height 46
+access "VIEWINFOSCHIFFTAB_ADD" id 924 width 42 height 46
+access "SCHIFF_LISTENENERGY" id 940 width 4 height 23
+access "VIEWINFOSCHIFFVERKAUFEN_BK" id 962 width 245 height 466
+access "SCHIFFVERKAUFFLIP" id 963 width 54 height 64
+access "SCHIFFVERKAUFPLUSMINUS" id 965 width 24 height 37
+access "VIEWINFOSCHIFFKAUFEN_BK" id 970 width 245 height 466
+access "SCHIFFKAUF_ICON" id 971 width 80 height 55
+access "VIEWINFOSCHIFFMAIN_BK" id 973 width 245 height 467
+access "VIEWINFOPIONIERMAIN_BK" id 974 width 245 height 467
+access "VIEWINFOPIONIER_TAB" id 975 width 42 height 46
+access "VIEWINFOSCHIFFMAIN_SEPERATOR" id 981 width 174 height 13
+access "MAKEKONTORICON" id 982 width 107 height 111
+access "VIEWINFOSCHIFFKAMPF_BK" id 986 width 245 height 465
+access "VIEWINFOSCHIFFKAMPF_ICONS" id 987 width 84 height 65
+access "VIEWINFOSCHIFF_MENGENBALL" id 995 width 38 height 30
+access "VIEWINFOSCHIFF_MENGENPFEILE" id 1003 width 34 height 45
+access "VIEWINFOSCHIFF_SCROLL_PFEILE" id 1007 width 87 height 20
+access "SCHATTENPLATTE" id 1011 width 212 height 404
+access "VERKAUFSFACH_LISTENBUTTON" id 1012 width 86 height 28
+access "VIEWINFOSCHIFF_WERFTREPERATUR" id 1016 width 54 height 52
+access "PLANKEKLEIN" id 1018 width 214 height 48
+access "PLANKEGROSS" id 1019 width 241 height 48
+access "LISTENUNTERGRUND" id 1020 width 210 height 24
+access "SLIDERAKTIVIERENICONS" id 1021 width 40 height 29
+access "NIX_BK" id 1023 width 245 height 465
+access "FORSCHUNGSTAB" id 1024 width 42 height 46
+access "WISSENICON" id 1034 width 50 height 50
+access "FORSCHUNGMILITAR1" id 1035 width 50 height 50
+access "FORSCHUNGMILITAR1_GRAU" id 1048 width 50 height 50
+access "FORSCHUNGMILITAR1PFEILE" id 1061 width 167 height 346
+access "FORSCHUNG_MAINBK" id 1062 width 245 height 468
+access "FORSCHUNG_ZIVILBK" id 1063 width 245 height 468
+access "FORSCHUNGMILITAR2" id 1064 width 50 height 50
+access "FORSCHUNGMILITAR2_GRAU" id 1073 width 50 height 50
+access "FORSCHUNGMILITAR2PFEILE" id 1082 width 80 height 322
+access "FORSCHUNGSCHIFFE" id 1083 width 50 height 50
+access "FORSCHUNGSCHIFFE_GRAU" id 1092 width 50 height 50
+access "FORSCHUNGSCHIFFEPFEILE" id 1101 width 127 height 134
+access "FORSCHUNGZIVIL" id 1102 width 50 height 50
+access "FORSCHUNGZIVIL_GRAU" id 1113 width 50 height 50
+access "FORSCHUNGZIVILPFEILE" id 1124 width 141 height 243
+access "FORSCHUNGFRAGEUNDX" id 1125 width 50 height 50
+access "FORSCHUNGRAHMEN" id 1127 width 48 height 48
+access "SPIELER_BILANZ_BK" id 1128 width 245 height 468
+access "DIPLISTE_UNTERGRUND" id 1129 width 210 height 28
+access "DIPLISTE_SCROLL_PFEILE" id 1141 width 87 height 20
+access "SCHATTENPLATTE_KLEIN" id 1145 width 212 height 181
+access "DIPACTIONS_TAB" id 1146 width 55 height 58
+access "DIPACTIONS_BEISTAND" id 1154 width 70 height 78
+access "DIPACTIONS_HANDEL" id 1158 width 70 height 78
+access "DIPACTIONS_KRIEG" id 1162 width 120 height 129
+access "DIPACTIONS_STIMMUNGSBALKEN" id 1166 width 9 height 67
+access "TRIBUTEFORDERUNG_BK" id 1167 width 213 height 178
+access "TRIBUTZAHLEN" id 1168 width 205 height 59
+access "TRIBUT_RAHMEN" id 1170 width 213 height 31
+access "MELDUNGSPLATTE" id 1171 width 177 height 173
+access "MELDUNGS_ICONS" id 1172 width 27 height 28
+access "VIEWINFOPIELERTAB" id 1184 width 42 height 46
+access "ROUTENACTIONS_TAB" id 1194 width 55 height 58
+access "ROUTE_SCHTEENPLATTE" id 1202 width 213 height 151
+access "ROUTE_HINTERGRUND" id 1203 width 219 height 179
+access "ROUTE_SCROLL_PFEILE" id 1204 width 86 height 22
+access "ROUTEAKTIV" id 1208 width 53 height 50
+access "VERLADEPFEILE" id 1210 width 31 height 34
+access "SLIDER_MENGENPFEILE" id 1212 width 25 height 21
+access "ROUTENPUNKT_SETZEN" id 1214 width 41 height 37
+access "ROUTENPUNKT_VERWERFEN" id 1218 width 36 height 43
+access "MENGENBALKEN" id 1222 width 13 height 50
+access "KASERNE_SOLDATENICONS" id 1223 width 50 height 50
+access "KASERNE_SOLDATENFRAGEZ" id 1249 width 50 height 50
+access "KASERNE_AUSSCHLEUSE" id 1251 width 40 height 56
+access "WERFT_SCHIFFICONS_FRAGEZEICHEN" id 1253 width 66 height 66
+access "WERFT_SCHIFFICONS" id 1254 width 66 height 66
+access "WERFT_KANONENICON" id 1266 width 65 height 50
+access "WERFT_PFEILE" id 1267 width 24 height 17
+access "WERFT_SCHIFFBAUEN" id 1271 width 54 height 56
+access "WERFT_SCHIFFKOSTEN" id 1275 width 216 height 33
+access "KRIEGSMSCHINEN" id 1277 width 66 height 66
+access "INPFEIL" id 1285 width 44 height 76
+access "BALKENORANGE" id 1287 width 6 height 48
+access "BALKENWOHNHAUS" id 1289 width 6 height 48
+access "SOLDATEN_BACKGROUNDNEW" id 1290 width 245 height 465
+access "SOLDATEN_GRUPPE_ICON" id 1291 width 32 height 32
+access "PASSIV_AGGRESSIV" id 1312 width 50 height 50
+access "FORMATION" id 1318 width 50 height 50
+access "AUFLOESEN" id 1330 width 77 height 56
+access "SOLDAT_KUENDIGEN" id 1334 width 68 height 77
+access "ENERGYBALKEN_GRUEN" id 1336 width 3 height 63
+access "SCHIFFENERGYBALKEN_GRUEN" id 1338 width 3 height 63
+access "EINHEITEN_STOP" id 1340 width 54 height 68
+access "TESTDAUMEN" id 1342 width 42 height 30
+access "STIMMUNG_PLAYER" id 1349 width 4 height 2
+access "KLPLAYERSCHILDER" id 1393 width 28 height 28
+access "GRPLAYERSCHILDER" id 1403 width 42 height 54
+access "KLNATIVESCHILDER" id 1411 width 32 height 28
+access "GRNATIVESCHILDER" id 1421 width 45 height 52
+access "SCHIFF_ROUTE" id 1434 width 32 height 28
+access "PIRTAT_TAB" id 1436 width 42 height 46
+access "PIRTAT_BEZAHLEN" id 1442 width 102 height 70
+access "PIRTAT_SCHILDER" id 1444 width 30 height 42
+access "PIRTAT_SCHILDERRAHMEN" id 1460 width 36 height 48
+access "PIRTAT_BACKGROUND" id 1461 width 245 height 246
+access "WALFAENGER_SCHIFFICON" id 1463 width 66 height 66
+access "WALFAENGER_SCHIFFBAUSTART" id 1465 width 52 height 59
+access "KOSTEN_RAHMENICON" id 1467 width 162 height 33
+access "OPTION_SLIDER" id 1470 width 24 height 35
+access "OPTION_BACKGROUND" id 1475 width 245 height 467
+access "OPTION_TABS" id 1476 width 42 height 46
+access "OPTION_BILANZ" id 1486 width 69 height 61
+access "OPTION_HELPPLAYER" id 1488 width 64 height 55
+access "OPTION_LADEN" id 1490 width 94 height 81
+access "OPTION_EXIT" id 1492 width 92 height 100
+access "OPTION_MUSIKICONS" id 1494 width 51 height 55
+access "OPTION_HACKERL" id 1496 width 14 height 11
+access "OPTION_BACKGROUND_LIST" id 1498 width 245 height 467
+access "OPTION_BK_SAVELIST" id 1499 width 245 height 467
+access "OPTION_SPEICHERN" id 1500 width 94 height 83
+access "OPTION_LOESCHEN" id 1502 width 56 height 69
+access "OPTION_SCROLLER" id 1504 width 87 height 20
+access "OPTION_EINGABEPLANKE" id 1508 width 239 height 52
+access "STATISTIK_UNTERGRUND" id 1509 width 1024 height 768
+access "HISCORE_UNTERGRUND" id 1510 width 1024 height 768
+access "FREMDERKONTOR_UNTERGRUND" id 1511 width 245 height 468
+access "MESSAGEBOX_BK" id 1512 width 579 height 386
+access "MESSAGEBOX_BUTTONS" id 1513 width 244 height 67
+access "BUBBLEPFEIL" id 1517 width 46 height 49
+access "BOING" id 1518 width 42 height 1
+access "CHAT_SCHILDER" id 1556 width 35 height 35
+access "TIMER_UHR" id 1565 width 18 height 21
+access "ENTERHACKEN" id 1566 width 92 height 69
+access "WARENSTATISTIK_BK1" id 1568 width 1024 height 768
+access "WARENSTATISTIK_BK2" id 1569 width 1024 height 768
+access "ADDON_LISTBUTTON" id 1570 width 209 height 95
+access "ADDON_LAGERPROD" id 1574 width 103 height 84
+access "ADDON_FELDERBAUEN" id 1578 width 47 height 79
+access "ADDON_SPIELERSTATISTIK" id 1580 width 94 height 82
+access "ADDON_SPSTAT_EXIT" id 1582 width 48 height 47
+access "ADDON_SPSTAT_MEMORY" id 1584 width 50 height 50
+access "ADDON_SPSTAT_LAGERSWITCH" id 1600 width 104 height 80
+access "ADDON_PIONIERITEMS" id 1604 width 43 height 100
+inc "fenster8.inc" stem "fenster" eight 1 group hud-chrome records 218
+access "WELTKARTE" id 2 width 191 height 194
+access "MAINUNTERGRUND" id 4 width 191 height 409
+access "MAX_PIC" id 5 width 191 height 409
+access "STATUSBAR" id 6 width 609 height 34
+access "LUPE" id 7 width 33 height 35
+access "MAINTAB" id 8 width 48 height 49
+access "VIEWBAUTAB" id 16 width 33 height 36
+access "INFOUNTERGRUND_LEER" id 32 width 172 height 364
+access "INFOUNTERGRUND" id 33 width 172 height 364
+access "INFOROTPFEIL" id 34 width 26 height 30
+access "INFOEXIT" id 38 width 26 height 30
+access "KARTEPLUS" id 40 width 15 height 16
+access "KARTE_NORDUNG" id 52 width 200 height 104
+access "NO_KLICK" id 56 width 39 height 39
+access "THUMBNAILLANDWIRTSCHAFT" id 58 width 39 height 39
+access "THUMBNAILDIVERSES" id 154 width 39 height 39
+access "THUMBNAILWEG" id 241 width 39 height 39
+access "THUMBNAILHANDWERK" id 277 width 39 height 39
+access "THUMBNAILSEEFAHRT" id 355 width 39 height 39
+access "THUMBNAILBERGBAU" id 385 width 39 height 39
+access "THUMBNAILMILITAR" id 439 width 39 height 39
+access "THUMBNAILZIERDE" id 499 width 39 height 39
+access "THUMBNAILZIERDE_ADDON" id 562 width 39 height 39
+access "WARENADDITIV" id 658 width 39 height 39
+access "ABRISSICON" id 659 width 41 height 41
+access "VIEWINFOSTADTTAB" id 661 width 33 height 36
+access "STADT_BILANZ_BK" id 677 width 191 height 366
+access "VIEWINFOSTADTAUSBAUSTOP" id 678 width 88 height 47
+access "STADTLISTEN_MELDUNGEN" id 680 width 20 height 22
+access "WARENICONS_ROHSTOFF" id 685 width 39 height 39
+access "WARENICONS_ROHSTOFF_GREY" id 706 width 39 height 39
+access "WARENICONS_BEDARF" id 727 width 39 height 39
+access "WARENICONS_BEDARF_GREY" id 741 width 39 height 39
+access "WARENICONS_BAUMATERIAL" id 755 width 39 height 39
+access "WARENICONS_BAUMATERIAL_GREY" id 759 width 39 height 39
+access "WARENICONS_WAFFEN" id 763 width 39 height 39
+access "WARENICONS_INFRA" id 771 width 39 height 39
+access "WARENICONS_INFRA_GREY" id 785 width 39 height 39
+access "VIEWBURGTAB" id 799 width 33 height 36
+access "WARENICONS_SOLDAT" id 803 width 39 height 39
+access "WARENICONS_SCHIFF" id 825 width 52 height 52
+access "BALKENSCHIFF" id 832 width 4 height 50
+access "WARENVKEKBEZEICHNUNG" id 833 width 16 height 15
+access "WARENRAHMEN" id 835 width 39 height 39
+access "CHOOSEWAREN_TAB" id 836 width 43 height 45
+access "SLIDER_FUEHRUNG_VKEK" id 844 width 120 height 18
+access "SLIDER_KNUPPEL" id 845 width 16 height 30
+access "SLIDER_FUEHRUNG" id 847 width 120 height 19
+access "SLIDER_MINUS" id 848 width 20 height 29
+access "SLIDER_PLUS" id 850 width 22 height 29
+access "LISTENSLIDER_FUEHRUNG" id 852 width 10 height 131
+access "LISTENSLIDER_KNUPPEL" id 853 width 16 height 16
+access "VKEK_HINTERGRUND" id 855 width 190 height 365
+access "VKEK_HINZUFUEGEN_VERWERFEN_NEW" id 856 width 35 height 42
+access "LAGERMENGENBALKEN" id 860 width 117 height 2
+access "SLIDER_MITTELTEILUNTEN" id 861 width 123 height 20
+access "SLIDER_MITTELTEILOBEN" id 862 width 123 height 20
+access "VK_SLIDER_MINUS" id 863 width 16 height 25
+access "VK_SLIDER_PLUS" id 865 width 18 height 25
+access "VKEK_HINZUFUEGEN_VERWERFEN" id 867 width 32 height 37
+access "VKEK_WARENFACH_LEER" id 871 width 39 height 39
+access "PROUDUKTION_HINTERGRUND" id 872 width 191 height 366
+access "PROUDUKTION_KOSTENRAHMEN" id 873 width 96 height 26
+access "PROUDUKTION_STILLLEGEN" id 874 width 32 height 54
+access "PROUDUKTION_AUSLASTUNG" id 876 width 50 height 23
+access "PROD_INLEFT" id 877 width 16 height 25
+access "MARKTSTAND_RAHMEN_1" id 879 width 55 height 27
+access "MARKTSTAND_RAHMEN_2" id 880 width 140 height 27
+access "PROUDUKTION_GOLDSTUECK" id 881 width 16 height 19
+access "WARENICONS_ROTESKREUZ" id 882 width 28 height 27
+access "WOHNHAUS_PLATTE" id 883 width 191 height 366
+access "PIONIER_LAUNE" id 884 width 130 height 141
+access "SIEDLER_LAUNE" id 889 width 130 height 141
+access "BUERGER_LAUNE" id 894 width 130 height 141
+access "KAUFLEUTE_LAUNE" id 899 width 130 height 141
+access "ARISTOKRATEN_LAUNE" id 904 width 130 height 141
+access "VIEWINFOSCHIFFWERF_BK" id 909 width 171 height 364
+access "VIEWINFOSCHIFFTAB" id 910 width 33 height 36
+access "VIEWINFOSCHIFFTAB_ADD" id 924 width 33 height 36
+access "SCHIFF_LISTENENERGY" id 940 width 3 height 18
+access "VIEWINFOSCHIFFVERKAUFEN_BK" id 962 width 191 height 364
+access "SCHIFFVERKAUFFLIP" id 963 width 42 height 50
+access "SCHIFFVERKAUFPLUSMINUS" id 965 width 19 height 29
+access "VIEWINFOSCHIFFKAUFEN_BK" id 970 width 191 height 364
+access "SCHIFFKAUF_ICON" id 971 width 62 height 43
+access "VIEWINFOSCHIFFMAIN_BK" id 973 width 191 height 365
+access "VIEWINFOPIONIERMAIN_BK" id 974 width 191 height 365
+access "VIEWINFOPIONIER_TAB" id 975 width 33 height 36
+access "VIEWINFOSCHIFFMAIN_SEPERATOR" id 981 width 134 height 10
+access "MAKEKONTORICON" id 982 width 84 height 87
+access "VIEWINFOSCHIFFKAMPF_BK" id 986 width 191 height 363
+access "VIEWINFOSCHIFFKAMPF_ICONS" id 987 width 66 height 51
+access "VIEWINFOSCHIFF_MENGENBALL" id 995 width 30 height 24
+access "VIEWINFOSCHIFF_MENGENPFEILE" id 1003 width 27 height 35
+access "VIEWINFOSCHIFF_SCROLL_PFEILE" id 1007 width 68 height 16
+access "SCHATTENPLATTE" id 1011 width 166 height 316
+access "VERKAUFSFACH_LISTENBUTTON" id 1012 width 67 height 22
+access "VIEWINFOSCHIFF_WERFTREPERATUR" id 1016 width 42 height 40
+access "PLANKEKLEIN" id 1018 width 167 height 38
+access "PLANKEGROSS" id 1019 width 188 height 38
+access "LISTENUNTERGRUND" id 1020 width 164 height 19
+access "SLIDERAKTIVIERENICONS" id 1021 width 30 height 22
+access "NIX_BK" id 1023 width 191 height 363
+access "FORSCHUNGSTAB" id 1024 width 33 height 36
+access "WISSENICON" id 1034 width 39 height 39
+access "FORSCHUNGMILITAR1" id 1035 width 39 height 39
+access "FORSCHUNGMILITAR1_GRAU" id 1048 width 39 height 39
+access "FORSCHUNGMILITAR1PFEILE" id 1061 width 130 height 270
+access "FORSCHUNG_MAINBK" id 1062 width 191 height 366
+access "FORSCHUNG_ZIVILBK" id 1063 width 191 height 366
+access "FORSCHUNGMILITAR2" id 1064 width 39 height 39
+access "FORSCHUNGMILITAR2_GRAU" id 1073 width 39 height 39
+access "FORSCHUNGMILITAR2PFEILE" id 1082 width 63 height 252
+access "FORSCHUNGSCHIFFE" id 1083 width 39 height 39
+access "FORSCHUNGSCHIFFE_GRAU" id 1092 width 39 height 39
+access "FORSCHUNGSCHIFFEPFEILE" id 1101 width 99 height 105
+access "FORSCHUNGZIVIL" id 1102 width 39 height 39
+access "FORSCHUNGZIVIL_GRAU" id 1113 width 39 height 39
+access "FORSCHUNGZIVILPFEILE" id 1124 width 110 height 190
+access "FORSCHUNGFRAGEUNDX" id 1125 width 39 height 39
+access "FORSCHUNGRAHMEN" id 1127 width 38 height 37
+access "SPIELER_BILANZ_BK" id 1128 width 191 height 366
+access "DIPLISTE_UNTERGRUND" id 1129 width 164 height 22
+access "DIPLISTE_SCROLL_PFEILE" id 1141 width 68 height 16
+access "SCHATTENPLATTE_KLEIN" id 1145 width 166 height 142
+access "DIPACTIONS_TAB" id 1146 width 43 height 45
+access "DIPACTIONS_BEISTAND" id 1154 width 55 height 61
+access "DIPACTIONS_HANDEL" id 1158 width 55 height 61
+access "DIPACTIONS_KRIEG" id 1162 width 94 height 101
+access "DIPACTIONS_STIMMUNGSBALKEN" id 1166 width 7 height 52
+access "TRIBUTEFORDERUNG_BK" id 1167 width 166 height 139
+access "TRIBUTZAHLEN" id 1168 width 160 height 46
+access "TRIBUT_RAHMEN" id 1170 width 166 height 24
+access "MELDUNGSPLATTE" id 1171 width 138 height 135
+access "MELDUNGS_ICONS" id 1172 width 21 height 22
+access "VIEWINFOPIELERTAB" id 1184 width 33 height 36
+access "ROUTENACTIONS_TAB" id 1194 width 43 height 45
+access "ROUTE_SCHTEENPLATTE" id 1202 width 166 height 118
+access "ROUTE_HINTERGRUND" id 1203 width 171 height 140
+access "ROUTE_SCROLL_PFEILE" id 1204 width 67 height 17
+access "ROUTEAKTIV" id 1208 width 41 height 39
+access "VERLADEPFEILE" id 1210 width 24 height 26
+access "SLIDER_MENGENPFEILE" id 1212 width 20 height 16
+access "ROUTENPUNKT_SETZEN" id 1214 width 32 height 29
+access "ROUTENPUNKT_VERWERFEN" id 1218 width 28 height 33
+access "MENGENBALKEN" id 1222 width 10 height 39
+access "KASERNE_SOLDATENICONS" id 1223 width 39 height 39
+access "KASERNE_SOLDATENFRAGEZ" id 1249 width 39 height 39
+access "KASERNE_AUSSCHLEUSE" id 1251 width 32 height 44
+access "WERFT_SCHIFFICONS_FRAGEZEICHEN" id 1253 width 52 height 52
+access "WERFT_SCHIFFICONS" id 1254 width 52 height 52
+access "WERFT_KANONENICON" id 1266 width 51 height 39
+access "WERFT_PFEILE" id 1267 width 18 height 13
+access "WERFT_SCHIFFBAUEN" id 1271 width 42 height 44
+access "WERFT_SCHIFFKOSTEN" id 1275 width 169 height 26
+access "KRIEGSMSCHINEN" id 1277 width 52 height 52
+access "INPFEIL" id 1285 width 34 height 59
+access "BALKENORANGE" id 1287 width 4 height 38
+access "BALKENWOHNHAUS" id 1289 width 4 height 38
+access "SOLDATEN_BACKGROUNDNEW" id 1290 width 191 height 363
+access "SOLDATEN_GRUPPE_ICON" id 1291 width 25 height 25
+access "PASSIV_AGGRESSIV" id 1312 width 39 height 39
+access "FORMATION" id 1318 width 39 height 39
+access "AUFLOESEN" id 1330 width 60 height 44
+access "SOLDAT_KUENDIGEN" id 1334 width 53 height 60
+access "ENERGYBALKEN_GRUEN" id 1336 width 2 height 49
+access "SCHIFFENERGYBALKEN_GRUEN" id 1338 width 2 height 49
+access "EINHEITEN_STOP" id 1340 width 42 height 53
+access "TESTDAUMEN" id 1342 width 32 height 23
+access "STIMMUNG_PLAYER" id 1349 width 3 height 1
+access "KLPLAYERSCHILDER" id 1393 width 22 height 22
+access "GRPLAYERSCHILDER" id 1403 width 33 height 42
+access "KLNATIVESCHILDER" id 1411 width 24 height 22
+access "GRNATIVESCHILDER" id 1421 width 35 height 41
+access "SCHIFF_ROUTE" id 1434 width 24 height 22
+access "PIRTAT_TAB" id 1436 width 33 height 36
+access "PIRTAT_BEZAHLEN" id 1442 width 80 height 55
+access "PIRTAT_SCHILDER" id 1444 width 24 height 33
+access "PIRTAT_SCHILDERRAHMEN" id 1460 width 28 height 37
+access "PIRTAT_BACKGROUND" id 1461 width 191 height 192
+access "WALFAENGER_SCHIFFICON" id 1463 width 52 height 52
+access "WALFAENGER_SCHIFFBAUSTART" id 1465 width 41 height 46
+access "KOSTEN_RAHMENICON" id 1467 width 126 height 26
+access "OPTION_SLIDER" id 1470 width 19 height 27
+access "OPTION_BACKGROUND" id 1475 width 191 height 365
+access "OPTION_TABS" id 1476 width 33 height 36
+access "OPTION_BILANZ" id 1486 width 54 height 47
+access "OPTION_HELPPLAYER" id 1488 width 50 height 42
+access "OPTION_LADEN" id 1490 width 73 height 63
+access "OPTION_EXIT" id 1492 width 72 height 78
+access "OPTION_MUSIKICONS" id 1494 width 40 height 43
+access "OPTION_HACKERL" id 1496 width 10 height 8
+access "OPTION_BACKGROUND_LIST" id 1498 width 191 height 365
+access "OPTION_BK_SAVELIST" id 1499 width 191 height 365
+access "OPTION_SPEICHERN" id 1500 width 72 height 65
+access "OPTION_LOESCHEN" id 1502 width 44 height 54
+access "OPTION_SCROLLER" id 1504 width 68 height 16
+access "OPTION_EINGABEPLANKE" id 1508 width 187 height 41
+access "STATISTIK_UNTERGRUND" id 1509 width 800 height 600
+access "HISCORE_UNTERGRUND" id 1510 width 800 height 600
+access "FREMDERKONTOR_UNTERGRUND" id 1511 width 191 height 366
+access "MESSAGEBOX_BK" id 1512 width 452 height 302
+access "MESSAGEBOX_BUTTONS" id 1513 width 191 height 52
+access "BUBBLEPFEIL" id 1517 width 36 height 38
+access "BOING" id 1518 width 34 height 1
+access "CHAT_SCHILDER" id 1556 width 27 height 27
+access "TIMER_UHR" id 1565 width 12 height 16
+access "ENTERHACKEN" id 1566 width 72 height 54
+access "WARENSTATISTIK_BK1" id 1568 width 800 height 600
+access "WARENSTATISTIK_BK2" id 1569 width 800 height 600
+access "ADDON_LISTBUTTON" id 1570 width 163 height 74
+access "ADDON_LAGERPROD" id 1574 width 80 height 66
+access "ADDON_FELDERBAUEN" id 1578 width 37 height 62
+access "ADDON_SPIELERSTATISTIK" id 1580 width 73 height 64
+access "ADDON_SPSTAT_EXIT" id 1582 width 38 height 37
+access "ADDON_SPSTAT_MEMORY" id 1584 width 39 height 39
+access "ADDON_SPSTAT_LAGERSWITCH" id 1600 width 81 height 63
+access "ADDON_PIONIERITEMS" id 1604 width 34 height 78
+inc "g_farmen.inc" stem "g_farmen" eight 0 group - records 9
+access "image002.pcx" id 1 width 150 height 107
+access "image004.pcx" id 2 width 138 height 130
+access "image006.pcx" id 3 width 138 height 109
+access "image008.pcx" id 4 width 138 height 111
+access "image010.pcx" id 5 width 187 height 156
+access "image012.pcx" id 6 width 138 height 99
+access "image014.pcx" id 7 width 138 height 107
+access "image016.pcx" id 8 width 162 height 123
+access "image018.pcx" id 9 width 187 height 168
+inc "gefiederte_pfeile8.inc" stem "gefiederte_pfeile" eight 1 group - records 1
+access "image001.pcx" id 1 width 44 height 42
+inc "gehaertete_spitzen.inc" stem "gehaertete_spitzen" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "gehaertete_spitzen8.inc" stem "gehaertete_spitzen" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "genormte_kaliber.inc" stem "genormte_kaliber" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "genormte_kaliber8.inc" stem "genormte_kaliber" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "ih_produktionfehlt_alkohol_wie.inc" stem "ih_produktionfehlt_alkohol_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 540 height 434
+inc "ih_produktionfehlt_nahrung_wie.inc" stem "ih_produktionfehlt_nahrung_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 466 height 399
+inc "ih_rohstoff_fehlt_nahrung_wie.inc" stem "ih_rohstoff_fehlt_nahrung_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 718 height 680
+inc "ih_wareek_eisen_wie.inc" stem "ih_wareek_eisen_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 490 height 329
+inc "ih_wareek_werkzeug_wie.inc" stem "ih_wareek_werkzeug_wie" eight 0 group - records 1
+access "image001.pcx" id 1 width 280 height 246
+inc "index.inc" stem "index" eight 0 group - records 0
+inc "kapitulation_campaign11.inc" stem "kapitulation_campaign11" eight 0 group - records 0
+inc "maueraufgang.inc" stem "maueraufgang" eight 0 group - records 1
+access "image001.pcx" id 1 width 102 height 714
+inc "moerserpulver.inc" stem "moerserpulver" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "moerserpulver8.inc" stem "moerserpulver" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "questlog_campaign0101.inc" stem "questlog_campaign0101" eight 0 group - records 12
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+access "image001.pcx" id 5 width 14 height 11
+access "image002.pcx" id 6 width 19 height 17
+access "image001.pcx" id 7 width 14 height 11
+access "image002.pcx" id 8 width 19 height 17
+access "image001.pcx" id 9 width 14 height 11
+access "image002.pcx" id 10 width 19 height 17
+access "image001.pcx" id 11 width 14 height 11
+access "image002.pcx" id 12 width 19 height 17
+inc "questlog_campaign0102.inc" stem "questlog_campaign0102" eight 0 group - records 8
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+access "image001.pcx" id 5 width 14 height 11
+access "image002.pcx" id 6 width 19 height 17
+access "image001.pcx" id 7 width 14 height 11
+access "image002.pcx" id 8 width 19 height 17
+inc "questlog_campaign01028.inc" stem "questlog_campaign0102" eight 1 group - records 8
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+access "image001.pcx" id 5 width 10 height 8
+access "image002.pcx" id 6 width 15 height 13
+access "image001.pcx" id 7 width 10 height 8
+access "image002.pcx" id 8 width 15 height 13
+inc "questlog_campaign0103.inc" stem "questlog_campaign0103" eight 0 group - records 4
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+inc "questlog_campaign01038.inc" stem "questlog_campaign0103" eight 1 group - records 4
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+inc "questlog_campaign0104.inc" stem "questlog_campaign0104" eight 0 group - records 6
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+access "image001.pcx" id 5 width 14 height 11
+access "image002.pcx" id 6 width 19 height 17
+inc "questlog_campaign01048.inc" stem "questlog_campaign0104" eight 1 group - records 6
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+access "image001.pcx" id 5 width 10 height 8
+access "image002.pcx" id 6 width 15 height 13
+inc "questlog_campaign0105.inc" stem "questlog_campaign0105" eight 0 group - records 8
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+access "image001.pcx" id 5 width 14 height 11
+access "image002.pcx" id 6 width 19 height 17
+access "image001.pcx" id 7 width 14 height 11
+access "image002.pcx" id 8 width 19 height 17
+inc "questlog_campaign0106.inc" stem "questlog_campaign0106" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "questlog_campaign01068.inc" stem "questlog_campaign0106" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "questlog_campaign0107.inc" stem "questlog_campaign0107" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "questlog_campaign01078.inc" stem "questlog_campaign0107" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "questlog_campaign0108.inc" stem "questlog_campaign010" eight 1 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "questlog_campaign01088.inc" stem "questlog_campaign0108" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "questlog_campaign0109.inc" stem "questlog_campaign0109" eight 0 group - records 6
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+access "image001.pcx" id 5 width 14 height 11
+access "image002.pcx" id 6 width 19 height 17
+inc "questlog_campaign01098.inc" stem "questlog_campaign0109" eight 1 group - records 6
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+access "image001.pcx" id 5 width 10 height 8
+access "image002.pcx" id 6 width 15 height 13
+inc "questlog_campaign0110.inc" stem "questlog_campaign0110" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "questlog_campaign01108.inc" stem "questlog_campaign0110" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "questlog_campaign0111.inc" stem "questlog_campaign0111" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "questlog_campaign01118.inc" stem "questlog_campaign0111" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "questlog_campaign0112.inc" stem "questlog_campaign0112" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "questlog_campaign01128.inc" stem "questlog_campaign0112" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "questlog_campaign0113.inc" stem "questlog_campaign0113" eight 0 group - records 0
+inc "questlog_campaign01138.inc" stem "questlog_campaign0113" eight 1 group - records 0
+inc "radschloss.inc" stem "radschloss" eight 0 group - records 1
+access "image001.pcx" id 1 width 50 height 50
+inc "radschloss8.inc" stem "radschloss" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "schiffe8.inc" stem "schiffe" eight 1 group - records 1
+access "image001.pcx" id 1 width 33 height 36
+inc "singleplayer01.inc" stem "singleplayer01" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "singleplayer02.inc" stem "singleplayer02" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "singleplayer03.inc" stem "singleplayer03" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "singleplayer04.inc" stem "singleplayer04" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "singleplayer21.inc" stem "singleplayer21" eight 0 group - records 4
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+access "image001.pcx" id 3 width 14 height 11
+access "image002.pcx" id 4 width 19 height 17
+inc "singleplayer218.inc" stem "singleplayer21" eight 1 group - records 4
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+access "image001.pcx" id 3 width 10 height 8
+access "image002.pcx" id 4 width 15 height 13
+inc "singleplayer24.inc" stem "singleplayer24" eight 0 group - records 2
+access "image001.pcx" id 1 width 14 height 11
+access "image002.pcx" id 2 width 19 height 17
+inc "singleplayer248.inc" stem "singleplayer24" eight 1 group - records 2
+access "image001.pcx" id 1 width 10 height 8
+access "image002.pcx" id 2 width 15 height 13
+inc "soldaten8.inc" stem "soldaten" eight 1 group - records 1
+access "image001.pcx" id 1 width 39 height 39
+inc "soldaten_entlassen.inc" stem "soldaten_entlassen" eight 0 group - records 1
+access "image001.pcx" id 1 width 72 height 82
+inc "spiel_beenden.inc" stem "spiel_beenden" eight 0 group - records 1
+access "image001.pcx" id 1 width 90 height 95
+inc "statusbar.inc" stem "statusbar" eight 0 group statusbar records 13
+access "STATUSBAR" id 0 width 746 height 35
+access "STATUSBAR_FRAGEZEICHEN" id 1 width 34 height 35
+access "STATUSBAR_ICON" id 3 width 35 height 35
+access "STATUSBAR_BAUMAT" id 36 width 30 height 30
+access "STATUSBAR_ROSHTOFFE" id 40 width 30 height 30
+access "STATUSBAR_GELDSYMBOL" id 52 width 33 height 35
+access "STATUSBAR_EINWOHNER" id 53 width 38 height 35
+access "STATUSBAR_BALKEN" id 54 width 5 height 29
+access "STATUSBAR02" id 55 width 873 height 35
+access "STATUSBAR03" id 56 width 1001 height 35
+access "FUELLER01" id 57 width 245 height 192
+access "FUELLER02" id 58 width 245 height 96
+access "FUELLER03" id 59 width 245 height 256
+inc "statusbar8.inc" stem "statusbar" eight 1 group statusbar records 12
+access "STATUSBAR" id 0 width 583 height 27
+access "STATUSBAR_FRAGEZEICHEN" id 1 width 27 height 27
+access "STATUSBAR_ICON" id 3 width 27 height 27
+access "STATUSBAR_BAUMAT" id 35 width 27 height 27
+access "STATUSBAR_ROSHTOFFE" id 39 width 24 height 23
+access "STATUSBAR_GELDSYMBOL" id 51 width 23 height 23
+access "STATUSBAR_EINWOHNER" id 52 width 26 height 27
+access "STATUSBAR_BALKEN" id 53 width 30 height 27
+access "STATUSBAR02" id 54 width 4 height 23
+access "STATUSBAR03" id 55 width 682 height 27
+access "FUELLER01" id 56 width 782 height 27
+access "FUELLER02" id 57 width 191 height 150
+inc "statusbaraddon.inc" stem "statusbaraddon" eight 0 group statusbar records 13
+access "STATUSBAR" id 0 width 746 height 35
+access "STATUSBAR_FRAGEZEICHEN" id 1 width 34 height 35
+access "STATUSBAR_ICON" id 3 width 35 height 35
+access "STATUSBAR_BAUMAT" id 37 width 30 height 30
+access "STATUSBAR_ROSHTOFFE" id 41 width 30 height 30
+access "STATUSBAR_GELDSYMBOL" id 53 width 33 height 35
+access "STATUSBAR_EINWOHNER" id 54 width 38 height 35
+access "STATUSBAR_BALKEN" id 55 width 5 height 29
+access "STATUSBAR02" id 56 width 873 height 35
+access "STATUSBAR03" id 57 width 1001 height 35
+access "FUELLER01" id 58 width 245 height 192
+access "FUELLER02" id 59 width 245 height 96
+access "FUELLER03" id 60 width 245 height 256
+inc "statusbaraddon8.inc" stem "statusbaraddon" eight 1 group statusbar records 13
+access "STATUSBAR" id 0 width 583 height 27
+access "STATUSBAR_FRAGEZEICHEN" id 1 width 27 height 27
+access "STATUSBAR_ICON" id 3 width 27 height 27
+access "STATUSBAR_BAUMAT" id 37 width 23 height 23
+access "STATUSBAR_ROSHTOFFE" id 41 width 23 height 23
+access "STATUSBAR_GELDSYMBOL" id 53 width 26 height 27
+access "STATUSBAR_EINWOHNER" id 54 width 30 height 27
+access "STATUSBAR_BALKEN" id 55 width 4 height 23
+access "STATUSBAR02" id 56 width 682 height 27
+access "STATUSBAR03" id 57 width 782 height 27
+access "FUELLER01" id 58 width 191 height 150
+access "FUELLER02" id 59 width 191 height 75
+access "FUELLER03" id 60 width 191 height 200
+inc "strassenanschluss.inc" stem "strassenanschluss" eight 0 group - records 0
+inc "tochter.inc" stem "tochter" eight 0 group - records 0
+inc "tochter_tot.inc" stem "tochter_tot" eight 0 group - records 0
+inc "tochter_tot8.inc" stem "tochter_tot" eight 1 group - records 0

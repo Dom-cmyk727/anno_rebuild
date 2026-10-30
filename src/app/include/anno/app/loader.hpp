@@ -74,6 +74,16 @@ struct SceneObjects {
     std::span<const SceneBuilding> buildings;
 };
 
+/// One island's buildings written into its records (play mode): the per-island form of
+/// apply_world_buildings, used by ScenePicture (docs/app/game-shell.md). `buildings` are the
+/// sim's buildings of this island; the payloads it writes go to `owned_out`, whose buffers keep
+/// their addresses when moved; notes and omitted objects go to `notes` and `omitted`.
+void apply_island_buildings(formats::insel::Island& island,
+                            const std::vector<SceneBuilding>& buildings,
+                            const SceneObjects& objects,
+                            std::vector<std::vector<std::uint8_t>>& owned_out,
+                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted);
+
 /// The game directory: `explicit_dir`, else `env_dir` (the value of
 /// ANNO1503_GAME_DIR, read by the caller), else the nearest ancestor of
 /// `file` that contains Anlagen.dat.

@@ -239,25 +239,25 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
 /// Building items become the sim's set. A file building the sim also placed
 /// keeps its bytes (phase and draw order). One the sim did not place is listed
 /// and dropped. One the sim placed that the file lacks is appended.
-void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out,
-                           const SceneObjects& objects) {
+/// One island's buildings rewritten into its records (play mode, round du: the per-island form of
+/// apply_world_buildings). `buildings` are the sim's buildings of this island; the payloads of
+/// the records it writes are stored in `owned_out` (each buffer keeps its address when moved,
+/// so the spans stay valid while the owner lives). Notes and omitted objects go to `notes` and
+/// `omitted`. The island's records must be the ones of the scene the buildings belong to;
+/// re-applying to records already rewritten gives the same records as applying to the file's,
+/// because buildings the sim no longer places are dropped and the new ones are added.
+void apply_island_buildings(insel::Island& island, const std::vector<SceneBuilding>& buildings,
+                            const SceneObjects& objects,
+                            std::vector<std::vector<std::uint8_t>>& owned_out,
+                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted) {
     using Key = std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t>;
     std::set<Key> placed;
-    std::map<std::uint32_t, std::vector<SceneBuilding>> by_slot;
-    for (const SceneBuilding& b : objects.buildings) {
-        // PROD2 stores the Anlagen id in 12 bits (formats::insel masks with
-        // 0x0FFF). A wider id must not be truncated into that field.
-        if (b.type > 0x0FFF) {
-            out.notes.push_back("play: Anlagen id " + std::to_string(b.type) +
-                                " does not fit a PROD2 item");
-            continue;
-        }
+    for (const SceneBuilding& b : buildings) {
         placed.insert({b.island, b.type, b.x, b.y});
-        by_slot[b.island].push_back(b);
     }
     auto owned = [&](std::vector<std::uint8_t> payload) -> formats::Bytes {
-        out.buffers.push_back(std::move(payload));
-        return formats::Bytes(out.buffers.back().data(), out.buffers.back().size());
+        owned_out.push_back(std::move(payload));
+        return formats::Bytes(owned_out.back().data(), owned_out.back().size());
     };
     auto append_item = [](std::vector<std::uint8_t>& items, std::uint16_t local_x,
                           std::uint16_t local_y, const SceneBuilding& b) {
@@ -272,125 +272,142 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
         items.push_back(static_cast<std::uint8_t>(local_x));
         items.push_back(static_cast<std::uint8_t>(local_y));
     };
-    for (insel::Island& island : islands) {
-        // The island head keeps a u32. The PROD2 match uses that number as the
-        // slot. The original table index is 16 bits (AnnoScene.dll 0x10008503);
-        // a wider number is refused instead of being masked down to a slot.
-        if (island.number > 0xFFFF) {
-            out.notes.push_back("play: island number " + std::to_string(island.number) +
-                                " does not fit a PROD2 item");
+    // The island head keeps a u32. The PROD2 match uses that number as the
+    // slot. The original table index is 16 bits (AnnoScene.dll 0x10008503);
+    // a wider number is refused instead of being masked down to a slot.
+    if (island.number > 0xFFFF) {
+        notes.push_back("play: island number " + std::to_string(island.number) +
+                        " does not fit a PROD2 item");
+        return;
+    }
+    const std::uint32_t slot = island.number;
+    std::set<Key> drawn;
+    std::vector<SceneBuilding> pending = buildings;
+    for (formats::chunk::Chunk& rec : island.records) {
+        const std::string_view name = rec.name();
+        if (name != "GELAENDE" && name != "PROD2" && name != "FLUESSE") {
             continue;
         }
-        const std::uint32_t slot = island.number;
-        std::set<Key> drawn;
-        std::vector<SceneBuilding> pending = by_slot[slot];
-        for (formats::chunk::Chunk& rec : island.records) {
-            const std::string_view name = rec.name();
-            if (name != "GELAENDE" && name != "PROD2" && name != "FLUESSE") {
-                continue;
-            }
-            auto parsed = insel::Block::parse(rec.payload);
-            if (!parsed || parsed.value().data.size() % insel::kItemLen != 0) {
-                continue;
-            }
-            const insel::Block& block = parsed.value();
-            std::vector<std::uint8_t> items;
-            bool changed = false;
-            for (std::size_t o = 0; o < block.data.size(); o += insel::kItemLen) {
-                const insel::PlacedObject obj =
-                    insel::PlacedObject::parse(block.data.subspan(o, insel::kItemLen), block);
-                if (objects.is_building(obj.anlage)) {
-                    const Key key{slot, obj.anlage, obj.x, obj.y};
-                    if (placed.count(key) == 0) {
-                        changed = true;
-                        out.notes.push_back("play: island " + std::to_string(slot) + " object " +
-                                            std::to_string(obj.anlage) + " at " +
-                                            std::to_string(obj.x) + "," + std::to_string(obj.y) +
-                                            " was not placed by the sim, so it is not drawn");
-                        out.omitted.push_back(
-                            OmittedObject{slot, island.x, island.y, obj.anlage, obj.x, obj.y});
-                        continue;
-                    }
-                    drawn.insert(key);
-                }
-                items.insert(items.end(), block.data.begin() + static_cast<std::ptrdiff_t>(o),
-                             block.data.begin() + static_cast<std::ptrdiff_t>(o + insel::kItemLen));
-            }
-            if (name == "PROD2") {
-                std::vector<SceneBuilding> left;
-                for (const SceneBuilding& b : pending) {
-                    const Key key{slot, b.type, b.x, b.y};
-                    if (drawn.count(key) != 0) {
-                        continue;
-                    }
-                    const bool inside = b.x >= block.x && b.y >= block.y &&
-                                        b.x < static_cast<std::uint32_t>(block.x) + block.width &&
-                                        b.y < static_cast<std::uint32_t>(block.y) + block.height;
-                    if (!inside) {
-                        left.push_back(b);
-                        continue;
-                    }
-                    append_item(items, static_cast<std::uint16_t>(b.x - block.x),
-                                static_cast<std::uint16_t>(b.y - block.y), b);
-                    drawn.insert(key);
+        auto parsed = insel::Block::parse(rec.payload);
+        if (!parsed || parsed.value().data.size() % insel::kItemLen != 0) {
+            continue;
+        }
+        const insel::Block& block = parsed.value();
+        std::vector<std::uint8_t> items;
+        bool changed = false;
+        for (std::size_t o = 0; o < block.data.size(); o += insel::kItemLen) {
+            const insel::PlacedObject obj =
+                insel::PlacedObject::parse(block.data.subspan(o, insel::kItemLen), block);
+            if (objects.is_building(obj.anlage)) {
+                const Key key{slot, obj.anlage, obj.x, obj.y};
+                if (placed.count(key) == 0) {
                     changed = true;
+                    notes.push_back("play: island " + std::to_string(slot) + " object " +
+                                    std::to_string(obj.anlage) + " at " + std::to_string(obj.x) +
+                                    "," + std::to_string(obj.y) +
+                                    " was not placed by the sim, so it is not drawn");
+                    omitted.push_back(
+                        OmittedObject{slot, island.x, island.y, obj.anlage, obj.x, obj.y});
+                    continue;
                 }
-                pending = std::move(left);
+                drawn.insert(key);
             }
-            if (!changed) {
-                continue;
-            }
-            const auto hdr = block.header_bytes();
-            std::vector<std::uint8_t> payload(hdr.begin(), hdr.end());
-            payload.insert(payload.end(), items.begin(), items.end());
-            rec.payload = owned(std::move(payload));
+            items.insert(items.end(), block.data.begin() + static_cast<std::ptrdiff_t>(o),
+                         block.data.begin() + static_cast<std::ptrdiff_t>(o + insel::kItemLen));
         }
-        std::map<std::pair<std::uint16_t, std::uint16_t>, std::vector<SceneBuilding>> extra;
-        for (const SceneBuilding& b : pending) {
-            const Key key{slot, b.type, b.x, b.y};
-            if (drawn.count(key) != 0) {
-                continue;
-            }
-            const auto bx = static_cast<std::uint16_t>((b.x / insel::kBlock) * insel::kBlock);
-            const auto by = static_cast<std::uint16_t>((b.y / insel::kBlock) * insel::kBlock);
-            extra[{bx, by}].push_back(b);
-        }
-        const auto name = formats::chunk::name_field("PROD2");
-        if (!name) {
-            continue;
-        }
-        for (const auto& [origin, group] : extra) {
-            if (origin.first >= island.width || origin.second >= island.height) {
-                continue;
-            }
-            insel::Block block;
-            block.x = origin.first;
-            block.y = origin.second;
-            block.width = static_cast<std::uint8_t>(
-                std::min<std::uint32_t>(insel::kBlock, island.width - origin.first));
-            block.height = static_cast<std::uint8_t>(
-                std::min<std::uint32_t>(insel::kBlock, island.height - origin.second));
-            std::vector<std::uint8_t> items;
-            for (const SceneBuilding& b : group) {
-                if (b.x < block.x || b.y < block.y ||
-                    b.x >= static_cast<std::uint32_t>(block.x) + block.width ||
-                    b.y >= static_cast<std::uint32_t>(block.y) + block.height) {
+        if (name == "PROD2") {
+            std::vector<SceneBuilding> left;
+            for (const SceneBuilding& b : pending) {
+                const Key key{slot, b.type, b.x, b.y};
+                if (drawn.count(key) != 0) {
+                    continue;
+                }
+                const bool inside = b.x >= block.x && b.y >= block.y &&
+                                    b.x < static_cast<std::uint32_t>(block.x) + block.width &&
+                                    b.y < static_cast<std::uint32_t>(block.y) + block.height;
+                if (!inside) {
+                    left.push_back(b);
                     continue;
                 }
                 append_item(items, static_cast<std::uint16_t>(b.x - block.x),
                             static_cast<std::uint16_t>(b.y - block.y), b);
+                drawn.insert(key);
+                changed = true;
             }
-            if (items.empty()) {
+            pending = std::move(left);
+        }
+        if (!changed) {
+            continue;
+        }
+        const auto hdr = block.header_bytes();
+        std::vector<std::uint8_t> payload(hdr.begin(), hdr.end());
+        payload.insert(payload.end(), items.begin(), items.end());
+        rec.payload = owned(std::move(payload));
+    }
+    std::map<std::pair<std::uint16_t, std::uint16_t>, std::vector<SceneBuilding>> extra;
+    for (const SceneBuilding& b : pending) {
+        const Key key{slot, b.type, b.x, b.y};
+        if (drawn.count(key) != 0) {
+            continue;
+        }
+        const auto bx = static_cast<std::uint16_t>((b.x / insel::kBlock) * insel::kBlock);
+        const auto by = static_cast<std::uint16_t>((b.y / insel::kBlock) * insel::kBlock);
+        extra[{bx, by}].push_back(b);
+    }
+    const auto name = formats::chunk::name_field("PROD2");
+    if (!name) {
+        return;
+    }
+    for (const auto& [origin, group] : extra) {
+        if (origin.first >= island.width || origin.second >= island.height) {
+            continue;
+        }
+        insel::Block block;
+        block.x = origin.first;
+        block.y = origin.second;
+        block.width = static_cast<std::uint8_t>(
+            std::min<std::uint32_t>(insel::kBlock, island.width - origin.first));
+        block.height = static_cast<std::uint8_t>(
+            std::min<std::uint32_t>(insel::kBlock, island.height - origin.second));
+        std::vector<std::uint8_t> items;
+        for (const SceneBuilding& b : group) {
+            if (b.x < block.x || b.y < block.y ||
+                b.x >= static_cast<std::uint32_t>(block.x) + block.width ||
+                b.y >= static_cast<std::uint32_t>(block.y) + block.height) {
                 continue;
             }
-            const auto hdr = block.header_bytes();
-            std::vector<std::uint8_t> payload(hdr.begin(), hdr.end());
-            payload.insert(payload.end(), items.begin(), items.end());
-            formats::chunk::Chunk chunk;
-            chunk.name_field = *name;
-            chunk.payload = owned(std::move(payload));
-            island.records.push_back(std::move(chunk));
+            append_item(items, static_cast<std::uint16_t>(b.x - block.x),
+                        static_cast<std::uint16_t>(b.y - block.y), b);
         }
+        if (items.empty()) {
+            continue;
+        }
+        const auto hdr = block.header_bytes();
+        std::vector<std::uint8_t> payload(hdr.begin(), hdr.end());
+        payload.insert(payload.end(), items.begin(), items.end());
+        formats::chunk::Chunk chunk;
+        chunk.name_field = *name;
+        chunk.payload = owned(std::move(payload));
+        island.records.push_back(std::move(chunk));
+    }
+}
+
+void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out,
+                           const SceneObjects& objects) {
+    std::map<std::uint32_t, std::vector<SceneBuilding>> by_slot;
+    for (const SceneBuilding& b : objects.buildings) {
+        // PROD2 stores the Anlagen id in 12 bits (formats::insel masks with
+        // 0x0FFF). A wider id must not be truncated into that field.
+        if (b.type > 0x0FFF) {
+            out.notes.push_back("play: Anlagen id " + std::to_string(b.type) +
+                                " does not fit a PROD2 item");
+            continue;
+        }
+        by_slot[b.island].push_back(b);
+    }
+    for (insel::Island& island : islands) {
+        apply_island_buildings(island, by_slot[island.number], objects, out.buffers, out.notes,
+                               out.omitted);
     }
 }
 

@@ -562,9 +562,13 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
     // One publication: the batch goes into the mailbox and the snapshot is swapped
     // under the same lock, batch first. A reader that sees snapshot N therefore
     // sees turn N's batch already waiting (W4.3, orchestrator correction 2).
-    // A collapse copies the list. That copy is made before the lock: the lock
-    // covers only the swap and the push (W4.3 A8). The mailbox can only fill
-    // between this check and the push, never empty, so the copy is not wasted.
+    // A collapse copies the list before the lock (W4.3 A8). Between this check and the
+    // push only the window can change the mailbox, and it can only take the waiting
+    // batches (empty it); the sim thread is the only pusher. So a copy made for a
+    // collapse can be unused, when the window emptied the mailbox in the gap. That copy
+    // is then destroyed while the lock is held: its cost is the list's size, bounded by
+    // the island count, and the test "a prepared copy made when full is unused" covers the
+    // interleaving (round du, step 6).
     std::vector<SceneBuilding> full_list;
     bool may_collapse = false;
     {

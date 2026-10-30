@@ -7874,3 +7874,27 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 2. **GOG uses the addon tables for military and ornamental.** Alternative: classic WIGWAMS 24 records / military without 2229. Rejected: occupancy is 30 ornamental and military (2,2) is occupied; those match 0x100a7430 and 0x100a6d70. View.dll test al,2 takes that branch.
 3. **Lock rule stated from data+disassembly, not a second-stage capture.** Alternative: grow a city in the runner or load a save. The runner Citizen start cannot raise INFRAMIN; no original save with a later stage was found in game/app. Packet allows data+disassembly when the second stage is not reached; remaining pixel check is OQ-539.
 4. **Type 104 and 708 stay in the table.** Alternative: treat them as name-collision leftovers. Rejected: they are View.dll records, INFRA_EVER, occupancy U, and f12_info_field_104 / f12_info_field_708 open a cost-5 panel matching HEAD.
+
+## UI.1.F1 — progress, F1.3 — 2026-10-30 13:10 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: measured rectangles of the build-test surface at 1024 x 768 (sprite-sad against named ACCESS / tex ids). Hover, valid/refused placement, rotation and a road-drag captured. Category-column ACCESS, LUPE/compass rects, zoom-minus, pressed frames, portrait x and CTRL-align are OQs, not guesses.
+- Evidence:
+  - Tabs (779/840/901/962, 181) 61 x 63 `MAINTAB` frames 8-11 unselected / 12-15 selected. Construction idle mean 10.8 (`hud_idle_running`); selected mean 11.3 (`r2_construction_public` frame 12); options selected frame 15 mean 11.8.
+  - Grid origin (808, 305) stride 52 sprite 50. `NO_KLICK` id 56 mean 12.927 on every locked public cell, ~190 on U cells.
+  - Status bar (0, 733) 746 x 35 tex id 0. Gold id 52 at (0,733) mean 11.6. BAUMAT 36-39 at x=132,192,252,312 y=735 mean 7.4-9.1 on `r2_construction_public` = tools, wood, bricks, marble (OQ-538 resolved). `?` id 1 at (746,733) mean 10.2.
+  - Info panel `INFOUNTERGRUND` id 33 at (804, 302) 220 x 466 mean 29.5. `INFOEXIT` (984,725) mean 11.0. Rotate left `INFOROTPFEIL` id 34 (808,451) mean 10.6.
+  - Pickaxe `ABRISSICON` (970,710) id 659 mean 6.7 on construction, id 660 mean 6.3 on demolish.
+  - Zoom + tex id 44 at (959,7) mean 2.9 (ACCESS `KARTEPLUS` is id 40; OQ-542).
+  - Wine runner display :91 session ui-1 `d91-20261030-130440`, 25 `f13_*` shots, silent, `watchdog_stopped`, leftover_pids empty. `f13_place_land` yellow house footprint; `f13_place_water` yellow empty rectangle; `f13_place_rot_dot` turns the ghost.
+  - `python -I tools/ui_layout.py check-files --root .` -> check-files ok .
+  - `python -I tools/ui_layout.py validate --layout data/ui` -> validate ok data/ui
+- Next: F1.4, real mock PNG and per-pixel compare.
+- Subagents: none.
+- OQ-538 resolved. Open: 535, 536, 539-546.
+
+### Decisions and reasoning
+1. **Spec values are sprite-sad origins, not screens.json fractions.** Alternative: keep the fraction centres because they happened to equal origin+25 for the grid. Rejected: the packet says a fraction is a click hint. The grid spec is (808,305) 50 x 50 stride 52; the old 833,330 is the centre of that rectangle.
+2. **BAUMAT ids 36-39 are tools/wood/bricks/marble.** Alternative: wait for a marble-cost building. Rejected: id 39 at (312,735) mean 8.9 is on `r2_construction_public` with digit 0; the four consecutive 30 x 30 textures match the four changed columns vs pass-2 idle.
+3. **Category column ACCESS is OQ-540, not THUMBNAIL*.** Alternative: write the pushed `THUMBNAIL*` names as the drawn icons. Rejected: SAD mean >140; claiming them as the pixels would be a guess.
+4. **Pressed states from consecutive tex ids, not a mouse-down shot.** Alternative: add a mousedown command to the Wine agent. That is `src/`-adjacent / tools/orig, outside this step's file set. Hover used `move` (`f13_hover_*`).
+5. **CTRL alignment is OQ-546.** Alternative: `key('CTRL', hold=1)` then click. Rejected: the agent keyups before the click returns; it would not be CTRL-at-click.

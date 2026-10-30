@@ -1,6 +1,6 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 steps 1-8 plus F1.2 cell table (2026-10-30). Reverse-engineering and specification only; no engine code.
+**Status:** UI.1 steps 1-8 plus F1.2 cell table and F1.3 measured build-test surface (2026-10-30). Reverse-engineering and specification only; no engine code.
 **Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.
@@ -118,29 +118,98 @@ Reachable from a running single-player endless (Citizen) game. How each screen i
 
 The military tab and key **D** open the same player-list panel (`r2_tab_military`, `r2_player_menu`). The military-tab tooltip is `Texte.dat` `TOOLTIP:CONTROLFELD` index 2 and index 3 (two identical lines). The options tab is an in-panel menu (`TOOLTIP:OPTION*` family), not a parchment. Pause (**P**) is a parchment dialog over the map.
 
-## 2. HUD at 1024 × 768
+## 2. HUD at 1024 × 768 (build-test surface, F1.3)
 
-Pixel table from `hud_idle_running.png` (1024 × 768 RGB) plus ACCESS sizes. Machine-readable copy: [`data/ui/hud.txt`](../../data/ui/hud.txt). Click centres below that are still `screens.json` fractions times 1024 × 768 (integer nearest); F1.3 replaces those with shot-measured rectangles.
+Machine-readable copy: [`data/ui/hud.txt`](../../data/ui/hud.txt). Rectangles are **measured**, not `screens.json` fractions. Method **sprite-sad**: decode the named `.tex` id to RGBA and take the (x, y) of minimum mean absolute RGB error on opaque pixels, inside a stated search box, on a named shot. A match is kept when that mean is below 15 (clean overlay) or is the atlas under live content (minimap / status bar digits, mean 40–50).
 
-| Element | Pixel pos / size | ACCESS / file | Method | Shot |
+### 2.1 Right chrome and tabs
+
+| Element | Pixel pos / size | Graphic | Frames / states | Method / shot | Click / hotkey |
+|---|---|---|---|---|---|
+| Right chrome | (779, 0) 245 × 733 | `fenster.inc` `MAINUNTERGRUND` 245 × 524 stacked under `WELTKARTE` | always | atlas-right; `MAINUNTERGRUND` sprite-sad (779, 244) mean 82 on `hud_idle_running` (tabs sit on it) | — |
+| Minimap atlas | (779, 0) 245 × 248 | `WELTKARTE` id 2 | map paints on top | sprite-sad mean 43.3 `hud_idle_running` | — |
+| Construction tab | (779, 181) 61 × 63 | `MAINTAB` ids 8–15 (8 frames) | idle 8, selected 12 | sprite-sad mean 10.8 idle / 11.3 on `r2_construction_public` | centre (809, 212); key **B** opens the same menu |
+| Military tab | (840, 181) 61 × 63 | `MAINTAB` | idle 9, selected 13 | sprite-sad mean 10.6 on `r2_construction_public`; selected 13 on `r2_tab_military` (cursor overlap raises the mean) | centre (870, 212); key **D** opens the same player list |
+| Help tab | (901, 181) 61 × 63 | `MAINTAB` | idle 10, selected 14 | sprite-sad mean 9.6 idle-help slot | centre (931, 212) |
+| Options tab | (962, 181) 61 × 63 | `MAINTAB` | idle 11, selected 15 | sprite-sad mean 10.5 idle / 11.8 on `r2_options` | centre (992, 212) |
+
+Tab stride is **61** px from x=779 (the ACCESS width), not the old 51 px fraction spacing. `tGadKlickGfx` uses eight consecutive textures: ids 8–11 unselected, 12–15 selected, one pair per tab in column order. Hover/pressed frames were not separated: the runner has `move` (hover shots `f13_hover_tab_*`) but no held mouse-down command (OQ-544). The military-tab tooltip remains `TOOLTIP:CONTROLFELD` index 2 and 3 (F1.1). That section has **8** lines; the other six indices are OQ-541.
+
+`fenster.inc` `STATUSBAR` id 6 780 × 43 is still not the drawn bar (OQ-536 closed for the 1024 × 768 bar: the drawn one is `Data/statusbar.dat` `STATUSBAR`).
+
+### 2.2 Minimap controls
+
+| Element | Pixel pos / size | Graphic | Notes |
+|---|---|---|---|
+| Zoom + | (959, 7) 19 × 21 | `fenster.tex` id **44** (not ACCESS id 40) | sprite-sad mean **2.9** on `hud_idle_running`. `KARTEPLUS` ACCESS number is 40; ids 40–45 are 19 × 21. The idle unpressed + is frame 44. |
+| Zoom − | visible left of + on the parchment | no ACCESS name `KARTEMINUS` | ids 40–45 do not SAD-match a second 19 × 21 at x<959 (best mean 93). Rectangle and ACCESS: OQ-542 |
+| `LUPE` | ACCESS 42 × 45, id 7 | below the parchment, left, on the shot | sprite-sad mean >150 in both the tab-strip and the below-minimap band. The drawn glass sits on a wood plate; the ACCESS alone is not the plate. Rectangle: OQ-543 |
+| Compass / north | right of the lupe on the shot | `KARTE_NORDUNG` 256 × 133 is the parchment-sized graphic, not the small compass | 256 px does not fit in the 245 px chrome; search missed. OQ-543 |
+
+### 2.3 Status / info bar
+
+Drawn bar: `statusbar.tex` id **0** = `Data/statusbar.dat` `STATUSBAR` 746 × 35 at **(0, 733)** (pixel-row y=733; sprite-sad mean 49.4 because digits and portraits sit on the graphic).
+
+| Element | Pixel pos / size | ACCESS / tex id | Visibility | Shot |
 |---|---|---|---|---|
-| Status / info bar | (0, 733) 746 × 35 | `Data/statusbar.dat` `STATUSBAR` in `toolgfx/statusbar.tex` | first non-water row at x=20 is y=733; height 768-733=35 | `hud_idle_running` |
-| Right chrome / panel | (779, 0) 245 × 733 | `fenster.inc` `MAINUNTERGRUND` 245 × 524 | 1024-245=779; x=779 y=100 is stone | `hud_idle_running` |
-| Minimap atlas candidate | (779, 0) 245 × 248 | `fenster.inc` `WELTKARTE` | atlas size; the painted map is smaller than 245 × 248 (OQ-536) | `hud_idle_running` |
-| Four tabs (click centres) | (819, 219), (870, 219), (922, 219), (973, 219) | `MAINTAB` 61 × 63 | 0.80/0.85/0.90/0.95 × 0.285 | r2 tab shots |
-| Category column x | 782 | `B_Baumenue.tex` 60 × 63 | 0.764 × 1024 | `r2_construction_*` |
-| Cancel-X | (1009, 730) | - | 0.985 × 0.95 | `r2_info_*` |
-| Demolish pickaxe | (993, 714) | `ABRISSICON` 53 × 53 | 0.97 × 0.93, hit in pass 2 | `r2_demolish` |
-| Lupe (magnifier, below minimap left) | size 42 × 45 | `LUPE` | visible on idle HUD | `hud_idle_running` |
-| Minimap zoom + | click (1004, 16) | `KARTEPLUS` 19 × 21 | top-right of minimap; a minus sits beside it with no `KARTEMINUS` ACCESS name | `hud_idle_running` |
+| Gold coin | (0, 733) 33 × 35 | `STATUSBAR_GELDSYMBOL` id 52 | idle and construction | sprite-sad mean 11.6 `hud_idle_running` |
+| Tools | (132, 735) 30 × 30 | `STATUSBAR_BAUMAT` id 36 segment 0 | on `r2_construction_public` and `f13_hud_cursor_map`; absent from pass-2 `hud_idle_running` | mean 9.1 `r2_construction_public` |
+| Wood | (192, 735) 30 × 30 | id 37 segment 1 | same | mean 8.1 |
+| Bricks | (252, 735) 30 × 30 | id 38 segment 2 | same | mean 7.4 |
+| Marble | (312, 735) 30 × 30 | id 39 segment 3 | same; digit 0 at Citizen | mean 8.9 |
+| Help `?` | (746, 733) 34 × 35 | `STATUSBAR_FRAGEZEICHEN` id 1 (id 2 is the other segment) | always | mean 10.2 `hud_idle_running` |
+| Four portrait slots | right of marble, left of `?` | `STATUSBAR_ICON` ids 3–35 (33 segments, 35 × 35) | always (green civ portraits) | not a clean SAD of id 3 at a 40 px grid; exact x of each portrait OQ-545 |
+| `STATUSBAR_ROSHTOFFE` | 12 × 30 × 30, tex ids 40–51 | goods icons | **not** on this bar at Citizen | no SAD < 15 at the four BAUMAT x |
 
-`fenster.inc` `STATUSBAR` id 6 is 780 × 43, a different graphic from the 746 × 35 bar that matches the capture (OQ-536). Candidate placement if that atlas entry were the bar: y = 768-43 = 725, width 780 -- it does not match y=733.
+Pass-2 idle vs construction: pixel runs that appear are those four BAUMAT columns (x 132-178, 192-238, 252-291, 312-351) plus a fifth run at 401-445 (portrait digits / OQ-545). Marble **is** a numbered slot on `r2_construction_public` (OQ-538 resolved). On the F1.3 idle `f13_hud_cursor_map` the four icons are already present.
 
-Nameplate y about 269 (0.35 × 768). Idle gold reads 500000; material digits (tools/wood/bricks) are **absent** on the idle bar and **present** once the construction menu is open (`r2_construction_public` vs `hud_idle_running`). Marble as a numbered slot was not observed at the Citizen start (OQ-538).
+`TOOLTIP:STATUSBAR` has 346 lines; `TOOLTIP:STATUSBARICON` has 6. Line-to-slot bind: OQ-541.
+
+### 2.4 Construction menu chrome
+
+Grid (confirmed by `NO_KLICK` id 56, mean **12.927** on every locked public cell, mean ~190 on every U cell): origin **(808, 305)**, stride **52**, sprite **50 × 50**. Click centre = origin + 25 → (833, 330) for (0,0), which happens to equal the old fraction centres. Spec is the rectangle, not the fraction. Empty records (id 1) are panel stone, not `NO_KLICK`.
+
+| Element | Pixel pos / size | Graphic | Shot / method |
+|---|---|---|---|
+| Locked cell | origin + (col,row)×52, 50 × 50 | `NO_KLICK` id 56; id 57 is the next 50 × 50 (likely hover/pressed, not captured as a hold) | `r2_construction_public` |
+| Category column | click x=782, y as in `construction.txt` | `THUMBNAIL*` ACCESS names are **pushed** next to each category in `View.dll` (F1.2) but do **not** SAD-match the drawn  column (mean >140). `VIEWBAUTAB` 42 × 46 ids 16–31 also miss (mean >110). | OQ-540 |
+| Banner | wood plaque over the nameplate when a category is selected | text from `TOOLTIP:BAUMENU_*` (F1.2 bind); graphic ACCESS not isolated | `r2_construction_*` |
+| Pickaxe | (970, 710) 53 × 53 | `ABRISSICON` id 659 mean 6.7 on `r2_construction_public`; id 660 mean 6.3 on `r2_demolish` (active) | hidden on idle HUD (mean 95) |
+| Cancel-X | (984, 725) 33 × 38 | `INFOEXIT` id 38 mean 11.0 | on the **info / placement** panel only; not on the category grid (search mean 94) |
+
+No scroll control was observed: every category fits in the 4 × 8 grid (max 32 records).
+
+### 2.5 Building info / placement panel
+
+| Element | Pixel pos / size | Graphic | Notes |
+|---|---|---|---|
+| Panel background | (804, 302) 220 × 466 | `INFOUNTERGRUND` id 33 mean 29.5 (preview and costs sit on it). Empty variant `INFOUNTERGRUND_LEER` id 32 mean 75.5 at the same origin (worse). | `r2_info_pioneer_house` |
+| Rotate left | (808, 451) 33 × 38 | `INFOROTPFEIL` id 34 mean 10.6 | keys **DOT** / **COMMA** (`game-mechanics.md` §1) also rotate |
+| Rotate right | (987, 451) 33 × 38 | id 36 best of 34–37 at that slot, mean 55 (preview overlap) | same |
+| Cancel-X | (984, 725) 33 × 38 | `INFOEXIT` id 38 | leaves placement |
+| Cost row | tools / wood / bricks / marble / gold on the panel | `B_Baukosten.tex` 32 × 29 did not SAD-match (mean 117). Icons follow the same four BAUMAT plus gold, not a second ACCESS that matched. | costs as numbers match HEAD (F1.2) |
+| Upkeep | bottom of the panel | `B_Betriebskosten.tex` 40 × 37 mean 106, not a clean overlay | type 501 panel shows 5 vs PROD3 0 (house) |
+| Name | above the preview | `Texte.dat` `[ANLAGEN]` id line (not stored here) | |
+
+Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC / right click / cancel-X leaves.
+
+### 2.6 Demolish and placement preview
+
+- Demolish: click pickaxe (996, 736). Cursor class `tCursorAbriss`; graphic `Abreissen_Gebaeude.tex` 73 × 65 (that cursor did not SAD-match a 200×200 corner of `r2_demolish`, mean 171: it is a hardware/OS cursor overlay, not a blit at a fixed origin). Land under the cursor is highlighted; `r2_demolish` shows a yellow-green tile. Tooltip family `TOOLTIP:ABRISS` (4 lines).
+- Placement preview: `r2_place_pioneer_house` vs `r2_info_pioneer_house` differ in 125 k map pixels (water animation), so that pair does **not** isolate the ghost. `f13_place_land`: yellow house footprint on grass (valid). `f13_place_water`: yellow empty rectangle on water (refused). Sim refusal rule stays OQ-T15-PLACEREFUSE.
+- Rotation in placement: key DOT turns the ghost (`f13_place_rot_dot` vs `f13_place_land`); COMMA is the other direction (`f13_place_rot_comma`).
+- Road drag: `backend.drag` after selecting dirt road (`f13_road_drag`). The drag on this Citizen island did not leave a painted road (forest / water under the path); the dirt-road info panel stayed open.
+- CTRL alignment: the runner's `key` call cannot hold a modifier across a later `click` (keydown/up is one command). Not captured; manual p15 still states it (OQ-546).
+
+### 2.7 What is still fraction-based
+
+Category-column **click** y values in `construction.txt` remain the 2026-10-25 centres (they hit). Their **rectangles** and ACCESS are OQ-540. `LUPE`, zoom minus, compass, portrait xs: OQ-542/543/545. Hover shots bind the remaining tooltip indices (OQ-541) once the tooltip box is measured against `Texte.dat` line lengths; that comparison is not in this step's oracle.
+
+Nameplate y about 269. Idle gold reads 500000.
 
 ## 3. Construction menu tree
 
-Machine-readable copy: [`data/ui/construction.txt`](../../data/ui/construction.txt). 148 non-empty cells at the GOG 2.0.0.5 Citizen start (addon tables). Grid click centres from `screens.json` `grid.col_x` / `row_y` (2026-10-25) times 1024 x 768: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Cell 52 px. Empty slots (`id` 1 in the View.dll table) are panel stone, not a `?`.
+Machine-readable copy: [`data/ui/construction.txt`](../../data/ui/construction.txt). 148 non-empty cells at the GOG 2.0.0.5 Citizen start (addon tables). Grid origin (808, 305), stride 52, sprite 50 x 50 (`NO_KLICK` id 56, mean 12.927 on every locked public cell). Click centre = origin + 25: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Empty slots (`id` 1 in the View.dll table) are panel stone, not a `?`.
 
 Convention in `data/ui/`: cell = (column, row) **0-based**, same as `opening.json`. `screens.json` `grid_cells` is [row, col] **1-based** and several icon labels there are wrong (the market-tent at 1-based [1,3] is type 1301).
 
@@ -303,14 +372,14 @@ Type 501 panel upkeep read 5 on `r2_info_pioneer_house`; both `PROD3` u16 are 0 
 
 ## 4. Placement and demolish (as the UI presents it)
 
-From the r2 info / place / demolish shots plus the manual:
+Measured rectangles in section 2.5-2.6. Summary:
 
-- Select a cell: info panel (name, isometric preview, costs in tools/wood/bricks/gold, upkeep, rotate arrows) and placement mode; yellow cancel-X at (1009, 730).
-- Left click places and stays in mode (`r2_place_*`); ESC / right click / cancel-X leaves.
-- Rotate object: `.` / `,` (`game-mechanics.md` section 1). Hold **CTRL** while placing to align the entrance to a street (manual p15). Not re-captured as a dedicated shot.
-- Demolish: pickaxe at (993, 714) (`fenster.inc` `ABRISSICON`); land highlight yellow; tooltip key family `TOOLTIP:ABRISS`; cancel-X; cursor class `tCursorAbriss`; graphic `Abreissen_Gebaeude.tex` 73 × 65. Click (0.764, 0.92) missed the pickaxe in pass 2; (0.97, 0.93) hit.
+- Select a U cell: info panel at (804, 302) 220 x 466 plus placement mode; cancel-X `INFOEXIT` at (984, 725) 33 x 38.
+- Valid preview: yellow building footprint (`f13_place_land`). Refused: yellow empty rectangle (`f13_place_water`). Left click on valid land places and stays in mode (`r2_place_*`); ESC / right click / cancel-X leaves.
+- Rotate: DOT / COMMA (`f13_place_rot_dot`, `f13_place_rot_comma`). CTRL alignment is in the manual (p15) and was not captured (OQ-546).
+- Demolish: pickaxe `ABRISSICON` at (970, 710) 53 x 53 (id 659 idle-in-menu, id 660 while demolishing). Tooltip family `TOOLTIP:ABRISS` (4 lines). Cursor `tCursorAbriss` / `Abreissen_Gebaeude.tex` 73 x 65 as the OS cursor, not a blit.
 
-Refusal display and fertility bar: not isolated in a dedicated shot (place shots exist). Sim refusal rule stays OQ-T15-PLACEREFUSE.
+Sim refusal rule stays OQ-T15-PLACEREFUSE.
 
 ## 5. Resolutions
 
@@ -401,6 +470,14 @@ Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Loo
 | `f12_info_field_104` / `f12_info_farm_809` / `f12_info_field_708` | farms (1,1) / (2,1) / (3,1) |
 | `f12_info_kontor_1302` / `f12_info_fisher_810` | coastal (0,0) / (0,1) |
 | `f12_locked_{580,2500,820,1005,1304,1203,2220,2556}` | one locked cell per category; no info panel |
+| `f13_hud_cursor_map` | cursor on the map, F1.3 idle |
+| `f13_hover_tab_{construction,military,help,options}` | move onto each MAINTAB, no click |
+| `f13_hover_zoom_plus` / `f13_hover_lupe_guess` | minimap + / lupe guesses |
+| `f13_hover_cat_{public,roads,farms}` / `f13_hover_cell_501` / `f13_hover_cell_locked` | construction hover |
+| `f13_hover_pickaxe` / `f13_hover_rotate_left` / `f13_hover_rotate_right` / `f13_hover_cancel_x` | chrome hover |
+| `f13_place_land` / `f13_place_water` | valid yellow footprint vs refused yellow rectangle |
+| `f13_place_rot_dot` / `f13_place_rot_comma` | DOT / COMMA in placement |
+| `f13_road_drag` | dirt-road drag |
 | `r2_demolish` | pickaxe (0.97, 0.93) |
 | `r2_tab_help` | help tab |
 | `r2_tab_military` | military tab |

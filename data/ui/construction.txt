@@ -3,13 +3,13 @@
 # Addon tables for military (0x100a6d70) and ornamental (0x100a7430):
 # GOG 2.0.0.5 occupancy matches those counts. Other categories identical.
 # Costs from Anlagen.dat HEAD / PROD3. Lock: INFRAMIN vs INFRA_EVER at Citizen.
-# Grid click centres remain screens.json fractions times 1024 x 768 pending F1.3.
+# Grid: NO_KLICK 50 x 50 at origin 808,305 stride 52; click centre = origin + 25.
 anno1503-ui-construction 1
 resolution 1024 768
 open_key B
 leave_key ESC
 shot r2_construction_public
-grid cols 4 rows 8 cell_px 52
+grid cols 4 rows 8 cell_px 52 origin_x 808 origin_y 305 sprite 50 method sprite-sad shot r2_construction_public
 grid_click_x 833 885 937 989
 grid_click_y 330 382 432 484 536 588 640 692
 category public index 1 y 325 banner_key public tooltip_section TOOLTIP:BAUMENU_DIVERSES thumbnail THUMBNAILDIVERSES table 0x100a7330 records 32 shot r2_construction_public

@@ -31,7 +31,7 @@ whole field means “absent”.
 | `dat.txt` | `anno1503-ui-dat 1` | Every `[TEXTURE]` ACCESS record in `Data/*.dat` that names a `.tex`. `segments` is `-` or one or more integers from the file (not truncated) |
 | `inc.txt` | `anno1503-ui-inc 1` | Every `ToolGfx/*.inc` ACCESS record, with texture width/height when the matching `.tex` parses |
 | `groups.txt` | `anno1503-ui-groups 1` | Filename groups with evidence (a `Data/*.dat` `[FILE]` pointer, or a stem that is a documented HUD/construction graphic) |
-| `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 × 768, each naming the screenshot and the method |
+| `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 x 768 for the HUD and build-test surface, each naming the screenshot and the method (sprite-sad, pixel-row, atlas-right) |
 | `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories, `THUMBNAIL*` / `TOOLTIP:BAUMENU_*` binds, and every cell id from `View.dll` tables plus HEAD costs |
 
 `write-inventory` rewrites only `dat.txt`, `inc.txt` and `groups.txt`. `hud.txt`

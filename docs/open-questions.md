@@ -2030,7 +2030,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** info-panel capture of every remaining unlocked cell; a second stage for the lock rule; bind `THUMBNAIL*` and `TOOLTIP:BAUMENU_*` by capture or disassembly.
 
 ## OQ-538: Four `STATUSBAR_BAUMAT` segments and marble on the info bar (UI.1)
-- **Status:** open.
+- **Status:** resolved (F1.3, 2026-10-30). Segments 0..3 = tools, wood, bricks, marble at (132,192,252,312), y=735, 30 x 30, `statusbar.tex` ids 36-39, mean 7.4-9.1 on `r2_construction_public`. Marble digit is 0 at Citizen. `STATUSBAR_ROSHTOFFE` ids 40-51 are not on this bar.
 - **Area:** UI / original.
 - **Question:** Which four building-material icons are `STATUSBAR_BAUMAT` segments 0..3, and does the 1024 × 768 info bar show marble as the manual says ([M 15])? First pass and `screens.json` list gold, tools, wood, bricks, civilians, soldiers, help — no marble.
 - **What we know:** `Data/statusbar.dat` `STATUSBAR_BAUMAT` Size 30 × 30, Segments 4, 1; `STATUSBAR_ROSHTOFFE` (file spelling) Segments 12, 1; `STATUSBAR_GELDSYMBOL`; `STATUSBAR_EINWOHNER`. On `hud_idle_running` the bar shows gold and the four portrait slots; tools/wood/bricks digits are absent. On `r2_construction_public` those three material digits appear (tools 30, wood 30, bricks 0). Marble as a numbered slot was not observed at the Citizen start with the construction menu open.
@@ -2042,3 +2042,52 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Does a later city stage mask (for example `INFRA_STUFE_1A` = 30 pioneers) change occupancy from `?` to icon for cells whose `INFRAMIN` is that stage? Which of the eight `TOOLTIP:BAUMENUTAB` / `TOOLTIP:BAUMENU_EX` lines is the tooltip of which category button?
 - **What we know:** at Citizen start, occupancy U iff `INFRAMIN = INFRA_EVER` for all 148 non-empty View.dll cells (`docs/re/ui.md` section 3.2). `View.dll` `0x1002c260` reads type slot `+0x64` (the stage index) when creating a cell. TAB and EX are 8 identical lines; `View.dll` `0x1002bb42` / `0x1002c08f` with `VIEWBAUTAB`. Second stage not reached; no hover shot of the category column.
 - **How to resolve:** an original savegame or a grown city in the Wine runner; hover each category button and match the tooltip line index.
+
+## OQ-540: Category-column graphic ACCESS (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which ACCESS / tex id is the drawn 8-icon category column? `View.dll` pushes `THUMBNAIL*` next to each category, but those 50 x 50 sprites do not SAD-match the column (mean >140). `VIEWBAUTAB` 42 x 46 ids 16-31 also miss (mean >110). Click centres in `construction.txt` still hit.
+- **What we know:** column sits left of the grid origin (808, 305); chrome starts at x=779 (29 px gap). Banner text is the `TOOLTIP:BAUMENU_*` bind from F1.2.
+- **How to resolve:** overlay candidate frames (including `B_Baumenue.tex`) with a colour-key, or read the gadget create at `View.dll` `0x1002c360`.
+
+## OQ-541: HUD tooltip line indices other than military (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which `TOOLTIP:CONTROLFELD` index (8 lines) is each of the four tabs, and which `TOOLTIP:STATUSBAR` / `STATUSBARICON` / `ABRISS` lines are the gold, BAUMAT, portraits, `?` and pickaxe tooltips?
+- **What we know:** military tab is `TOOLTIP:CONTROLFELD` 2 and 3 (F1.1, 11-byte match). Hover shots `f13_hover_tab_*` and `f13_hover_pickaxe` exist; strings are not stored. `TOOLTIP:STATUSBAR` has 346 lines.
+- **How to resolve:** measure the tooltip box on those shots and match rendered `MainSmall.zei` line lengths, or a Wine memory read of the gadget text id.
+
+## OQ-542: Zoom-minus ACCESS and `KARTEPLUS` frame 44 (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Why is the drawn zoom + `fenster.tex` id 44 (mean 2.9 at 959,7) rather than ACCESS `KARTEPLUS` id 40? Which id is zoom minus (visible left of +; ids 40-45 do not SAD-match there, best mean 93)? There is no `KARTEMINUS` ACCESS name.
+- **What we know:** ids 40-45 are all 19 x 21. Plus unpressed is 44.
+- **How to resolve:** hover/pressed shots of + and - scored against 40-45; gadget create near the minimap.
+
+## OQ-543: `LUPE` and compass rectangles (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Pixel rectangle of the magnifying glass and of the small compass below the parchment. `LUPE` id 7 42 x 45 does not SAD-match (mean >150). `KARTE_NORDUNG` 256 x 133 does not fit in the 245 px chrome.
+- **What we know:** both controls are visible under the parchment and above the tabs on `hud_idle_running` / `f13_hover_lupe_guess`.
+- **How to resolve:** edge the wood plates on the shot; try `LUPE` composited onto a plate from `MAINUNTERGRUND`.
+
+## OQ-544: Pressed gadget frames (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which of the consecutive `tGadKlickGfx` frames is hover vs pressed vs disabled for `MAINTAB`, `ABRISSICON`, `INFOEXIT`, `INFOROTPFEIL`, `NO_KLICK`?
+- **What we know:** the Wine agent has `move` (hover shots taken) but no held mouse-down command; `key` down/up is one call. Selected vs unselected `MAINTAB` is ids 8-11 vs 12-15. `ABRISSICON` 659 vs 660 (menu vs demolish). `NO_KLICK` 56 vs 57 unused.
+- **How to resolve:** an agent command that screenshots between mousedown and mouseup, or disassembly of the gadget frame index.
+
+## OQ-545: Status-bar portrait x positions (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Exact x of each of the four civ-level portraits on the 746 x 35 bar (`STATUSBAR_ICON` ids 3-35, 35 x 35).
+- **What we know:** they sit right of marble (x=312) and left of `?` (x=746). Id 3 did not SAD-match a 40 px grid. A fifth pixel-run at x=401-445 appears between pass-2 idle and construction.
+- **How to resolve:** sprite-sad of several ICON ids along y=733, x=350-740.
+
+## OQ-546: CTRL-align capture (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Pixel evidence of holding CTRL while placing (entrance snaps to a street, manual p15).
+- **What we know:** runner `key` cannot hold a modifier across a later `click`.
+- **How to resolve:** a combined keydown+click in one xdotool sequence, or an owner desktop capture.

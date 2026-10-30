@@ -1,25 +1,44 @@
-# HUD rectangles at 1024 x 768. Derived facts. Screenshots in cache/orig/ui-1/shots/.
-# method pixel-row: first row from the bottom of hud_idle_running.png at x=20
-# whose RGB is not water-blue (y=733). Height 35 matches Data/statusbar.dat STATUSBAR.
-# method atlas-right: 1024 - fenster.inc MAINUNTERGRUND width 245 = 779; hud_idle_running
-# x=779 y=100 is stone, x=20 y=732 is still water.
-# Clicks: screens.json fractions times 1024 x 768, integer nearest (measured 2026-10-25).
+# HUD and build-test surface at 1024 x 768. Derived facts. Shots in cache/orig/ui-1/shots/.
+# method sprite-sad: mean abs RGB on opaque tex pixels vs the named shot; mean quoted in docs/re/ui.md.
+# method pixel-row: first non-water row at x=20 (statusbar y).
+# method atlas-right: 1024 minus fenster MAINUNTERGRUND width 245.
+# Clicks are rectangle centres, not screens.json fractions.
 anno1503-ui-hud 1
 resolution 1024 768
 shot hud_idle_running
-element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR method pixel-row
+element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR tex_id 0 method sprite-sad shot hud_idle_running
+element gold pos 0 733 size 33 35 file toolgfx/statusbar.tex access STATUSBAR_GELDSYMBOL tex_id 52 method sprite-sad shot hud_idle_running
+element baumat_tools pos 132 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 36 segment 0 method sprite-sad shot r2_construction_public
+element baumat_wood pos 192 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 37 segment 1 method sprite-sad shot r2_construction_public
+element baumat_bricks pos 252 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 38 segment 2 method sprite-sad shot r2_construction_public
+element baumat_marble pos 312 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 39 segment 3 method sprite-sad shot r2_construction_public
+element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 method sprite-sad shot hud_idle_running
+element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 method sprite-sad shot hud_idle_running
+element mainuntergrund pos 779 244 size 245 524 file toolgfx/fenster.tex access MAINUNTERGRUND tex_id 4 method sprite-sad shot hud_idle_running
 element panel pos 779 0 size 245 733 file toolgfx/fenster.tex access MAINUNTERGRUND method atlas-right
-element minimap_atlas pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE method atlas-right
-element maintab size 61 63 file toolgfx/fenster.tex access MAINTAB method inc-size
-element lupe size 42 45 file toolgfx/fenster.tex access LUPE method inc-size
-element karteplus size 19 21 file toolgfx/fenster.tex access KARTEPLUS method inc-size
-element abrissicon size 53 53 file toolgfx/fenster.tex access ABRISSICON method inc-size
+element tab_construction pos 779 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 8 frame_idle 8 frame_selected 12 hotkey B method sprite-sad shot hud_idle_running
+element tab_military pos 840 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 9 frame_idle 9 frame_selected 13 hotkey D method sprite-sad shot r2_construction_public
+element tab_help pos 901 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 10 frame_idle 10 frame_selected 14 method sprite-sad shot r2_construction_public
+element tab_options pos 962 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 11 frame_idle 11 frame_selected 15 method sprite-sad shot r2_construction_public
+element zoom_plus pos 959 7 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 44 method sprite-sad shot hud_idle_running
+element lupe size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 method inc-size
+element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
+element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
+element abrissicon pos 970 710 size 53 53 file toolgfx/fenster.tex access ABRISSICON tex_id 659 frame_normal 659 frame_active 660 method sprite-sad shot r2_construction_public
+element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFOUNTERGRUND tex_id 33 method sprite-sad shot r2_info_pioneer_house
+element infoexit pos 984 725 size 33 38 file toolgfx/fenster.tex access INFOEXIT tex_id 38 method sprite-sad shot r2_info_pioneer_house
+element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 method sprite-sad shot r2_info_pioneer_house
+element rotate_right pos 987 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 method sprite-sad shot r2_info_pioneer_house
+element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 method sprite-sad shot r2_construction_public
 element fenster_statusbar size 780 43 file toolgfx/fenster.tex access STATUSBAR method inc-size
-click tab_construction pos 819 219
-click tab_military pos 870 219
-click tab_help pos 922 219
-click tab_options pos 973 219
+click tab_construction pos 809 212
+click tab_military pos 870 212
+click tab_help pos 931 212
+click tab_options pos 992 212
+click zoom_plus pos 968 17
+click cancel_x pos 1000 744
+click demolish pos 996 736
+click rotate_left pos 824 470
+click rotate_right pos 1003 470
 click category_column_x 782
-click cancel_x pos 1009 730
-click demolish pos 993 714
-click minimap_zoom_plus pos 1004 16
+click cell_origin pos 808 305

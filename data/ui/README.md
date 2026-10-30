@@ -32,8 +32,10 @@ whole field means “absent”.
 | `inc.txt` | `anno1503-ui-inc 1` | Every `ToolGfx/*.inc` ACCESS record, with texture width/height when the matching `.tex` parses |
 | `groups.txt` | `anno1503-ui-groups 1` | Filename groups with evidence (a `Data/*.dat` `[FILE]` pointer, or a stem that is a documented HUD/construction graphic) |
 | `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 × 768, each naming the screenshot and the method |
-| `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories and cells (Anlagen id only when an info-panel capture matched `opening.json` / `Anlagen.dat`) |
+| `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories, `THUMBNAIL*` / `TOOLTIP:BAUMENU_*` binds, and every cell id from `View.dll` tables plus HEAD costs |
 
 `write-inventory` rewrites only `dat.txt`, `inc.txt` and `groups.txt`. `hud.txt`
-and `construction.txt` are hand-measured from Wine-runner shots (`docs/re/ui.md`
-§7) and must stay byte-stable across inventory reruns.
+is measured from Wine-runner shots (`docs/re/ui.md` section 7). `construction.txt`
+cell ids come from View.dll 8-byte tables plus Anlagen.dat HEAD costs; occupancy
+and confirmation shots are from the runner. Inventory reruns leave both files
+byte-stable.

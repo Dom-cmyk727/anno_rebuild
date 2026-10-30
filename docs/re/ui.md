@@ -1,6 +1,6 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 steps 1–8 (2026-10-30). Reverse-engineering and specification only; no engine code.
+**Status:** UI.1 steps 1-8 plus F1.2 cell table (2026-10-30). Reverse-engineering and specification only; no engine code.
 **Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.
@@ -140,37 +140,166 @@ Nameplate y about 269 (0.35 × 768). Idle gold reads 500000; material digits (to
 
 ## 3. Construction menu tree
 
-Machine-readable copy: [`data/ui/construction.txt`](../../data/ui/construction.txt). Grid click centres from `screens.json` `grid.col_x` / `row_y` (2026-10-25) times 1024 × 768: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Cell 52 px. A category shows only as many cells as it has buildings (empty slots are panel stone, not a `?`).
+Machine-readable copy: [`data/ui/construction.txt`](../../data/ui/construction.txt). 148 non-empty cells at the GOG 2.0.0.5 Citizen start (addon tables). Grid click centres from `screens.json` `grid.col_x` / `row_y` (2026-10-25) times 1024 x 768: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Cell 52 px. Empty slots (`id` 1 in the View.dll table) are panel stone, not a `?`.
 
 Convention in `data/ui/`: cell = (column, row) **0-based**, same as `opening.json`. `screens.json` `grid_cells` is [row, col] **1-based** and several icon labels there are wrong (the market-tent at 1-based [1,3] is type 1301).
 
-| # | Layout key | Category y (px) | Tooltip section (not bound) | Occupancy at Citizen start (U=unlocked, L=locked `?`, -=absent) |
+### 3.1 Where the original assigns types to cells
+
+The assignment is **not** `Anlagen.dat` file order, not `[ANLAGEN]` name order, and not `HEAD` unused bytes. `Texte.dat` `TOOLTIP:BAUMENU_*` even-lines often match `[ANLAGEN]` names but are the tooltip text, not the id table. Empty candidates checked: those four, plus `BGruppen.dat` `[BAUSTUFEN]` (stage names and thresholds only), plus `BAUMENU` / `THUMBNAIL` strings in `AnnoFrame.dll` / `AnnoGame.dll` / `AnnoDisplay.dll` (absent).
+
+**Source of the cell table:** `View.dll` (image base `0x10000000`). Each category setup pushes a `THUMBNAIL*` ACCESS name, a `TOOLTIP:BAUMENU_*` section name, a classic/addon flag, a table pointer and a record count, then calls `0x1002c360` (chrome) and `0x1002c650` (cells). `0x1002c650` walks `count` records of **8 bytes**, reads the first dword as the Anlagen id, skips gadget creation when the id is **1** (`cmp eax, 1` at `0x1002c67b`), else looks up the type and creates the cell gadget (`0x1002c260`). Record index `i` is cell `(i % 4, i / 4)`.
+
+GOG 2.0.0.5 takes the addon branch (`test al, 2`) for military and ornamental: occupancy 17 and 30 match the addon tables (`0x100a6d70`, `0x100a7430`), not the classic tables (military (2,2) empty in classic, 2229 in addon; ornamental 24 vs 32 records). The other six categories are identical on both tables.
+
+| # | Layout key | y (px) | Tooltip section | Thumbnail ACCESS | Table VA | Records | Occupancy |
+|---|---|---|---|---|---|---|---|
+| 1 | `public` | 325 | `TOOLTIP:BAUMENU_DIVERSES` | `THUMBNAILDIVERSES` | `0x100a7330` | 32 | ULUU LLLU LLLL LLLL LLLL LLLL LLLL L--- (4 U, 25 L) |
+| 2 | `roads` | 373 | `TOOLTIP:BAUMENU_WEG` | `THUMBNAILWEG` | `0x100a6eb0` | 12 | UL-- LLL- L--- ---- ---- ---- ---- ---- (1 U, 5 L) |
+| 3 | `farms` | 418 | `TOOLTIP:BAUMENU_LANDWIRTSCHAFT` | `THUMBNAILLANDWIRTSCHAFT` | `0x100a7070` | 32 | UULL UUUU LLLL LLLL LLLL LLLL LLLL LLL- (6 U, 25 L) |
+| 4 | `workshops` | 463 | `TOOLTIP:BAUMENU_HANDWERK` | `THUMBNAILHANDWERK` | `0x100a6fb0` | 24 | U--- ULLL LL-- LLL- LLL- LLL- ---- ---- (2 U, 14 L) |
+| 5 | `coastal` | 508 | `TOOLTIP:BAUMENU_SCHIFF` | `THUMBNAILSEEFAHRT` | `0x100a71d0` | 12 | ULL- UL-- LL-- ---- ---- ---- ---- ---- (2 U, 5 L) |
+| 6 | `mines` | 553 | `TOOLTIP:BAUMENU_BERGBAU` | `THUMBNAILBERGBAU` | `0x100a6f10` | 20 | LLL- LLL- LL-- LL-- LL-- ---- ---- ---- (0 U, 12 L) |
+| 7 | `military` | 598 | `TOOLTIP:BAUMENU_MILITAR` | `THUMBNAILMILITAR` | `0x100a6d70` | 20 | LLL- LLLL LLL- LLLL LLL- ---- ---- ---- (0 U, 17 L) |
+| 8 | `ornamental` | 643 | `TOOLTIP:BAUMENU_WIGWAMS` | `THUMBNAILZIERDE` | `0x100a7430` | 32 | LLLL LLLL LLLL LLLL LLLL LLLL LLLL LL-- (0 U, 30 L) |
+
+Locked-cell occupancy is the grey-`?` pixel signature at those click centres on the `r2_construction_*` shots (RGB-sum mean 465-495, sd 90-120, 20 px window). Counts match the View.dll non-empty records. `TOOLTIP:BAUMENUTAB` is 8 lines, byte-identical to `TOOLTIP:BAUMENU_EX`; `View.dll` `0x1002bb42` / `0x1002c08f` reference them with `VIEWBAUTAB`. Which TAB line is which category button is OQ-539 (not required to type cells).
+
+### 3.2 Lock rule
+
+`Anlagen.dat` `INFRAMIN` is a stage name. `AnnoGame.dll` `0x10009871`-`0x10009908` compares the record name to `INFRAMIN` (`0x10024458`), looks the payload up in the kind-`0x21` table (32 names, `INFRA_EVER` = index 0 at `0x10025f18` / table `0x10024bd0`), and stores the index at type object `+0x23`. Slot `+0x64` (`0x10007d70`) returns that byte. `View.dll` `0x1002c260` reads it when creating a construction cell.
+
+At the Citizen start every non-empty cell with `INFRAMIN = INFRA_EVER` is occupancy **U** (15 cells) and every cell with a later `INFRA_STUFE_*` or `INFRA_STUFE_FORSCH` is occupancy **L** (133 cells). No EVER cell is locked; no later/FORSCH cell is unlocked. Empty records (id 1) are occupancy `-`. A second settlement stage was not reached (OQ-539): the unlock of a later Stufe is the same field, not pixel-verified at a higher mask.
+
+### 3.3 Cell ids (0-based col,row; `-` = empty record id 1)
+
+**public**
+
+| row | c0 | c1 | c2 | c3 |
 |---|---|---|---|---|
-| 1 | `public` | 325 | `TOOLTIP:BAUMENU_EX` ? OQ-537 | `ULUU LLLU` + 5 × `LLLL` + `L---` (29 cells; 4 U) |
-| 2 | `roads` | 373 | `TOOLTIP:BAUMENU_WEG` ? | `UL-- LLL- L---` (6 cells; 1 U) |
-| 3 | `farms` | 418 | `TOOLTIP:BAUMENU_LANDWIRTSCHAFT` ? | `UULL UUUU` + 5 × `LLLL` + `LLL-` (31 cells; 6 U) |
-| 4 | `workshops` | 463 | `TOOLTIP:BAUMENU_HANDWERK` ? | `U--- ULLL LL--` + 3 × `LLL-` (16 cells; 2 U) |
-| 5 | `coastal` | 508 | `TOOLTIP:BAUMENU_SCHIFF` ? | `ULL- UL-- LL--` (7 cells; 2 U) |
-| 6 | `mines` | 553 | `TOOLTIP:BAUMENU_BERGBAU` ? | `LLL- LLL-` + 3 × `LL--` (12 cells; 0 U) |
-| 7 | `military` | 598 | `TOOLTIP:BAUMENU_MILITAR` ? | `LLL- LLLL LLL- LLLL LLL-` (17 cells; 0 U) |
-| 8 | `ornamental` | 643 | `TOOLTIP:BAUMENU_DIVERSES` ? | 7 × `LLLL` + `LL--` (30 cells; 0 U) |
+| 0 | 501 | 580 | 1301 | 1310 |
+| 1 | 1335 | 1336 | 1303 | 1314 |
+| 2 | 1320 | 1325 | 1305 | 1315 |
+| 3 | 1346 | 1379 | 1378 | 1317 |
+| 4 | 1350 | 1337 | 1326 | 1318 |
+| 5 | 1377 | 1376 | 1339 | 1313 |
+| 6 | 1386 | 2564 | 2556 | 1316 |
+| 7 | 2559 | - | - | - |
 
-Locked-cell occupancy is the grey-`?` pixel signature at those click centres on the `r2_construction_*` shots (RGB-sum mean 465-495, sd 90-120, 20 px window). Counts match `screens.json` `grid_cells.pioneers.*.cells` strings. Banner floating-text on the map matches the wooden banner for every category (keys only in git). Tooltip section to banner is still OQ-537; the eight `THUMBNAIL*` ACCESS names are still unbound.
+**roads**
 
-Verified Citizen-start cells (info-panel costs = `opening.json` = `Anlagen.dat` HEAD, except 501):
-
-| Layout key | Cell (col, row 0-based) | Anlagen id | Shot | Panel costs (tools / wood / bricks / gold / upkeep) |
+| row | c0 | c1 | c2 | c3 |
 |---|---|---|---|---|
-| `public` | 0, 0 | 501 | `r2_info_pioneer_house` | 0 / 3 / 0 / 0 / 5. Type 501 is the pioneer house placed in OQ-103; not in `opening.json` |
-| `public` | 2, 0 | 1301 | `r2_info_market_1301` | 3 / 7 / 0 / 250 / 10 |
-| `roads` | 0, 0 | 2520 | `r2_info_dirt_road` | 0 / 0 / 0 / 5 / 0 |
-| `farms` | 0, 0 | 807 | `r2_info_sheep_807` | (`opening.json`) |
-| `farms` | 1, 0 | 805 | `r2_info_hunter_805` | |
-| `farms` | 0, 1 | 801 | `r2_info_forester_801` | 2 / 0 / 0 / 150 / 12 |
-| `workshops` | 0, 0 | 1023 | `r2_info_tannery_1023` | |
-| `workshops` | 0, 1 | 1001 | `r2_info_weaver_1001` | 3 / 4 / 0 / 300 / 15 |
+| 0 | 2520 | 2500 | - | - |
+| 1 | 2550 | 2551 | 2552 | - |
+| 2 | 2518 | - | - | - |
+| 3 | - | - | - | - |
+| 4 | - | - | - | - |
+| 5 | - | - | - | - |
+| 6 | - | - | - | - |
+| 7 | - | - | - | - |
 
-Other unlocked cells (icon only, id `-`): public (3,0) stall and (3,1); farms (1,1) (2,1) (3,1); coastal (0,0) and (0,1) (shipyard-looking). Lock rule (`INFRAMIN` vs city stage) is still the working hypothesis: mines/military/ornamental are all `?` at Citizen start; a second settlement stage was not reached.
+**farms**
+
+| row | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|
+| 0 | 807 | 805 | 820 | 824 |
+| 1 | 801 | 104 | 809 | 708 |
+| 2 | 808 | 704 | 813 | 736 |
+| 3 | 812 | 732 | 815 | 720 |
+| 4 | 811 | 712 | 823 | 744 |
+| 5 | 819 | 728 | 814 | 724 |
+| 6 | 817 | 740 | 818 | 700 |
+| 7 | 822 | 716 | 1341 | - |
+
+**workshops**
+
+| row | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|
+| 0 | 1023 | - | - | - |
+| 1 | 1001 | 1005 | 1009 | 1027 |
+| 2 | 1014 | 1013 | - | - |
+| 3 | 1008 | 1030 | 1028 | - |
+| 4 | 1018 | 1002 | 1004 | - |
+| 5 | 1019 | 1039 | 1035 | - |
+| 6 | - | - | - | - |
+| 7 | - | - | - | - |
+
+**coastal**
+
+| row | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|
+| 0 | 1302 | 1304 | 1306 | - |
+| 1 | 810 | 1020 | - | - |
+| 2 | 821 | 1021 | - | - |
+| 3 | - | - | - | - |
+| 4 | - | - | - | - |
+| 5 | - | - | - | - |
+| 6 | - | - | - | - |
+| 7 | - | - | - | - |
+
+**mines**
+
+| row | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|
+| 0 | 1203 | 1201 | 1218 | - |
+| 1 | 1022 | 804 | 803 | - |
+| 2 | 1205 | 1216 | - | - |
+| 3 | 1017 | 1034 | - | - |
+| 4 | 1206 | 1214 | - | - |
+| 5 | - | - | - | - |
+| 6 | - | - | - | - |
+| 7 | - | - | - | - |
+
+**military**
+
+| row | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|
+| 0 | 2220 | 2221 | 2223 | - |
+| 1 | 2240 | 2249 | 2234 | 2233 |
+| 2 | 2246 | 2230 | 2229 | - |
+| 3 | 1029 | 1006 | 1012 | 1038 |
+| 4 | 1037 | 1036 | 1010 | - |
+| 5 | - | - | - | - |
+| 6 | - | - | - | - |
+| 7 | - | - | - | - |
+
+**ornamental**
+
+| row | c0 | c1 | c2 | c3 |
+|---|---|---|---|---|
+| 0 | 2556 | 2672 | 2553 | 1380 |
+| 1 | 2559 | 2566 | 2780 | 1381 |
+| 2 | 2563 | 2567 | 2554 | 1382 |
+| 3 | 2560 | 2568 | 2555 | 1383 |
+| 4 | 2561 | 2569 | 1391 | 1384 |
+| 5 | 2564 | 1389 | 1390 | 1392 |
+| 6 | 1393 | 1395 | 1388 | 1385 |
+| 7 | 1330 | 1387 | - | - |
+
+Typed non-empty cells: 148 (U=15, L=133).
+
+Citizen-start **U** cells. All 15 have info-panel shots: eight from pass 2 (`r2_info_*`), seven from F1.2 (`f12_info_*`). Panel costs match HEAD for every captured U cell.
+
+| Layout key | Cell | Id | `INFRAMIN` | gold / tools / wood / bricks / marble / upkeep | Shot |
+|---|---|---|---|---|---|
+| `public` | 0, 0 | 501 | `INFRA_EVER` | 0 / 0 / 3 / 0 / 0 / 0 | `r2_info_pioneer_house` |
+| `public` | 2, 0 | 1301 | `INFRA_EVER` | 250 / 3 / 7 / 0 / 0 / 10 | `r2_info_market_1301` |
+| `public` | 3, 0 | 1310 | `INFRA_EVER` | 50 / 1 / 1 / 0 / 0 / 5 | `f12_info_stall_1310` |
+| `public` | 3, 1 | 1314 | `INFRA_EVER` | 50 / 1 / 1 / 0 / 0 / 5 | `f12_info_stall_1314` |
+| `roads` | 0, 0 | 2520 | `INFRA_EVER` | 5 / 0 / 0 / 0 / 0 / 0 | `r2_info_dirt_road` |
+| `farms` | 0, 0 | 807 | `INFRA_EVER` | 220 / 2 / 4 / 0 / 0 / 10 | `r2_info_sheep_807` |
+| `farms` | 1, 0 | 805 | `INFRA_EVER` | 140 / 1 / 3 / 0 / 0 / 20 | `r2_info_hunter_805` |
+| `farms` | 0, 1 | 801 | `INFRA_EVER` | 150 / 2 / 0 / 0 / 0 / 12 | `r2_info_forester_801` |
+| `farms` | 1, 1 | 104 | `INFRA_EVER` | 5 / 0 / 0 / 0 / 0 / 0 | `f12_info_field_104` |
+| `farms` | 2, 1 | 809 | `INFRA_EVER` | 250 / 2 / 4 / 0 / 0 / 20 | `f12_info_farm_809` |
+| `farms` | 3, 1 | 708 | `INFRA_EVER` | 5 / 0 / 0 / 0 / 0 / 0 | `f12_info_field_708` |
+| `workshops` | 0, 0 | 1023 | `INFRA_EVER` | 300 / 2 / 5 / 0 / 0 / 9 | `r2_info_tannery_1023` |
+| `workshops` | 0, 1 | 1001 | `INFRA_EVER` | 300 / 3 / 4 / 0 / 0 / 15 | `r2_info_weaver_1001` |
+| `coastal` | 0, 0 | 1302 | `INFRA_EVER` | 350 / 5 / 12 / 0 / 0 / 15 | `f12_info_kontor_1302` |
+| `coastal` | 0, 1 | 810 | `INFRA_EVER` | 180 / 2 / 6 / 0 / 0 / 20 | `f12_info_fisher_810` |
+
+Type 501 panel upkeep read 5 on `r2_info_pioneer_house`; both `PROD3` u16 are 0 (house type). F1.2 info-panel costs match HEAD for 1310, 1314, 104, 809, 708, 1302 and 810. Type 104 at farms (1,1) is a placeable forest tile (`PRODTYPE` `ROHSTWACHS`, gold 5). Type 708 is a potato field. Clicking a locked `?` in each category (`f12_locked_*`) does not open the info panel.
 
 ## 4. Placement and demolish (as the UI presents it)
 
@@ -239,7 +368,7 @@ Construction-category thumbnails in `fenster.inc` (all 50 × 50 on the plain set
 | `THUMBNAILZIERDE` | 499 |
 | `THUMBNAILZIERDE_ADDON` | 562 |
 
-Eight non-addon thumbnails. Binding each to a banner and to the measured `category_column_y` is OQ-537. There is no ACCESS name `THUMBNAIL` + public-buildings German; `THUMBNAILDIVERSES` is a candidate, not a fact.
+Eight non-addon thumbnails. Bound to categories in section 3.1 (`View.dll` push of ACCESS name next to `TOOLTIP:BAUMENU_*`). Public uses `THUMBNAILDIVERSES`; ornamental uses `THUMBNAILZIERDE` (addon graphic `THUMBNAILZIERDE_ADDON` at `0x100a865c`). File order in `fenster.inc` is still not the column order.
 
 `8` suffix sizes on these 50 × 50 thumbs are 39 × 39, same 800/1024 ratio as §0.1.
 
@@ -268,6 +397,10 @@ Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Loo
 | `r2_info_hunter_805` / `r2_place_hunter_805` | farms (1,0) |
 | `r2_info_tannery_1023` / `r2_place_tannery_1023` | workshops (0,0) |
 | `r2_info_weaver_1001` / `r2_place_weaver_1001` | workshops (0,1) |
+| `f12_info_stall_1310` / `f12_info_stall_1314` | public (3,0) / (3,1) |
+| `f12_info_field_104` / `f12_info_farm_809` / `f12_info_field_708` | farms (1,1) / (2,1) / (3,1) |
+| `f12_info_kontor_1302` / `f12_info_fisher_810` | coastal (0,0) / (0,1) |
+| `f12_locked_{580,2500,820,1005,1304,1203,2220,2556}` | one locked cell per category; no info panel |
 | `r2_demolish` | pickaxe (0.97, 0.93) |
 | `r2_tab_help` | help tab |
 | `r2_tab_military` | military tab |
@@ -299,8 +432,10 @@ Typed construction cells vs sim (Citizen start):
 | 2520 | roads (0,0) dirt road | `create_building`; walk/road codes in `anlagen_roads` |
 | 807 / 805 / 801 | farms sheep / hunter / forester | `create_building`; production stage present |
 | 1023 / 1001 | workshops tannery / weaver | `create_building`; production stage present |
-| other U cells | public stall, extra farms, two coastal | type unknown (OQ-537); cannot claim sim coverage |
-| all L cells | mines, military, ornamental, remaining `?` | types exist in `Anlagen.dat` when named; UI lock (`INFRAMIN`) is not enforced in the command layer the way the menu paints `?` |
+| 1310 / 1314 | public (3,0) / (3,1) stalls | `create_building`; stall class exists |
+| 104 / 809 / 708 | farms (1,1) / (2,1) / (3,1) | `create_building`; 104 is `ROHSTWACHS` |
+| 1302 / 810 | coastal (0,0) Kontor / (0,1) fisher | `create_building`; Kontor / fisher classes exist |
+| all L cells | remaining 133 | types exist in `Anlagen.dat`; UI lock (`INFRAMIN` / type `+0x23`) is not enforced in the command layer the way the menu paints `?` |
 
 ## 9. Glossary (new in this note)
 

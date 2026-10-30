@@ -7852,3 +7852,25 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 1. **Rewrite by splicing a file written with the file tool, not by patching bytes.** Alternative: search-replace of 0x0c -> `f`. Rejected: the review asked for a rewrite from shots and data; a patch would miss split table rows.
 2. **Military-tab tooltip key is `TOOLTIP:CONTROLFELD` 2 and 3**, not `TOOLTIP:SPIELERINFOMAIN_TAB`. Evidence: exact byte match of the 11-byte tooltip in `Texte.dat`; SPIELERINFOMAIN_TAB also has 11-byte lines but F1.1 only required replacing the one English string in git.
 3. **`check-files` covers `docs/re/ui.md`, every `data/ui/*`, and the OQ-535-onward slice of `open-questions.md`.** Alternative: the whole of `open-questions.md`. Rejected: the packet named the OQ section; earlier OQs are other tasks' tables.
+
+## UI.1.F1 — progress, F1.2 — 2026-10-30 14:40 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: every construction cell typed from View.dll tables; lock rule from INFRAMIN at type+0x23; eight THUMBNAIL* / TOOLTIP:BAUMENU_* binds; 15 U cells confirmed by info-panel shots; eight locked samples.
+- Evidence:
+  - Empty candidates (not the cell table): Anlagen.dat file order; Texte.dat [ANLAGEN] name order; HEAD unused bytes; BGruppen.dat [BAUSTUFEN] (stage names only); BAUMENU / THUMBNAIL strings in AnnoFrame.dll / AnnoGame.dll / AnnoDisplay.dll (absent).
+  - Source: View.dll image base 0x10000000. Category setup pushes THUMBNAIL* ACCESS, TOOLTIP:BAUMENU_* section, classic/addon flag, table VA, count, then 0x1002c360 (chrome) and 0x1002c650 (cells). 0x1002c650 walks 8-byte records, first dword = Anlagen id, skips id 1 at cmp eax,1 0x1002c67b. Index i -> cell (i%4, i/4).
+  - Tables (GOG addon for military and ornamental): public 0x100a7330 n=32; roads 0x100a6eb0 n=12; farms 0x100a7070 n=32; workshops 0x100a6fb0 n=24; coastal 0x100a71d0 n=12; mines 0x100a6f10 n=20; military 0x100a6d70 n=20; ornamental 0x100a7430 n=32. Non-empty 148 (U=15, L=133). Occupancy on r2_construction_* matches those counts.
+  - Lock: AnnoGame 0x10009871-0x10009908 stores INFRAMIN index at type+0x23; slot +0x64 = 0x10007d70; View 0x1002c260 reads it. Citizen start: U iff INFRAMIN=INFRA_EVER. Second stage not reached (OQ-539).
+  - Binds: public THUMBNAILDIVERSES + BAUMENU_DIVERSES; roads THUMBNAILWEG + BAUMENU_WEG; farms THUMBNAILLANDWIRTSCHAFT + BAUMENU_LANDWIRTSCHAFT; workshops THUMBNAILHANDWERK + BAUMENU_HANDWERK; coastal THUMBNAILSEEFAHRT + BAUMENU_SCHIFF; mines THUMBNAILBERGBAU + BAUMENU_BERGBAU; military THUMBNAILMILITAR + BAUMENU_MILITAR; ornamental THUMBNAILZIERDE + BAUMENU_WIGWAMS.
+  - Confirmation shots (Wine runner display :91, session ui-1, d91-20261030-124726, 15 shots, silent, stopped clean): f12_info_stall_1310, f12_info_stall_1314, f12_info_field_104, f12_info_farm_809, f12_info_field_708, f12_info_kontor_1302, f12_info_fisher_810 (panel costs match HEAD); f12_locked_{580,2500,820,1005,1304,1203,2220,2556} do not open the info panel. Pass-2 r2_info_* already covered the other eight U cells.
+  - `python -I tools/ui_layout.py check-files --root .` -> check-files ok .
+  - `python -I tools/ui_layout.py validate --layout data/ui` -> validate ok data/ui
+- Next: F1.3, measured rectangles of the build-test surface (not screens.json fractions).
+- Subagents: none.
+- OQ-537 resolved. OQ-539 open (later-stage lock pixel check; BAUMENUTAB line vs category button).
+
+### Decisions and reasoning
+1. **Cell table is View.dll, not Texte.dat PREFIX.** Alternative: match TOOLTIP:BAUMENU even-lines to [ANLAGEN] names. Rejected: PREFIX assigned EVER types to locked cells (upgraded Kontor/market names); occupancy only matches the View.dll 8-byte ids.
+2. **GOG uses the addon tables for military and ornamental.** Alternative: classic WIGWAMS 24 records / military without 2229. Rejected: occupancy is 30 ornamental and military (2,2) is occupied; those match 0x100a7430 and 0x100a6d70. View.dll test al,2 takes that branch.
+3. **Lock rule stated from data+disassembly, not a second-stage capture.** Alternative: grow a city in the runner or load a save. The runner Citizen start cannot raise INFRAMIN; no original save with a later stage was found in game/app. Packet allows data+disassembly when the second stage is not reached; remaining pixel check is OQ-539.
+4. **Type 104 and 708 stay in the table.** Alternative: treat them as name-collision leftovers. Rejected: they are View.dll records, INFRA_EVER, occupancy U, and f12_info_field_104 / f12_info_field_708 open a cost-5 panel matching HEAD.

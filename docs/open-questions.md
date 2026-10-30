@@ -2023,7 +2023,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** `--compare` the remaining candidate (`fenster` STATUSBAR at y=725) against the shot; bind `WELTKARTE` vs the painted map by overlay. The 746 × 35 bar is the one drawn at 1024 × 768.
 
 ## OQ-537: Construction-menu cell → Anlagen type, and tooltip section → category banner (UI.1)
-- **Status:** open.
+- **Status:** resolved (F1.2, 2026-10-30). 148 cell ids from `View.dll` 8-byte tables (`0x1002c650`); category tooltip/thumbnail pairs from the same module; lock field `INFRAMIN` → type `+0x23` (`AnnoGame` `0x10009871`, slot `+0x64` = `0x10007d70`). Remaining: OQ-539.
 - **Area:** UI / original.
 - **Question:** For every construction-menu cell, what is the Anlagen type id, and which `Texte.dat` `TOOLTIP:BAUMENU_*` section is the banner/tooltip for each of the eight categories? What field and value draw a `?` lock (working hypothesis: `INFRAMIN` vs city stage)?
 - **What we know:** eight categories in order (`playbook.md` §1, `tools/orig/screens.json`, 2026-10-25). Occupancy at the Citizen start is in `data/ui/construction.txt` (grey-`?` signature on `r2_construction_*`). Eight cells are typed: 501 (pioneer house, info panel + OQ-103), and the seven `opening.json` ids 801, 805, 807, 1001, 1023, 1301, 2520 with costs equal to `Anlagen.dat`. Remaining unlocked cells (public stall, farms row 1 extras, two coastal) are icon-only. Mines / military / ornamental are all locked. `fenster.inc` names eight non-addon 50 × 50 thumbs (`THUMBNAILLANDWIRTSCHAFT`, `THUMBNAILDIVERSES`, `THUMBNAILWEG`, `THUMBNAILHANDWERK`, `THUMBNAILSEEFAHRT`, `THUMBNAILBERGBAU`, `THUMBNAILMILITAR`, `THUMBNAILZIERDE`) plus `THUMBNAILZIERDE_ADDON`. File order is not the category-column order. No ACCESS name encodes “public buildings”. Tooltip section → banner still unbound. Second settlement stage not reached.
@@ -2035,3 +2035,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Which four building-material icons are `STATUSBAR_BAUMAT` segments 0..3, and does the 1024 × 768 info bar show marble as the manual says ([M 15])? First pass and `screens.json` list gold, tools, wood, bricks, civilians, soldiers, help — no marble.
 - **What we know:** `Data/statusbar.dat` `STATUSBAR_BAUMAT` Size 30 × 30, Segments 4, 1; `STATUSBAR_ROSHTOFFE` (file spelling) Segments 12, 1; `STATUSBAR_GELDSYMBOL`; `STATUSBAR_EINWOHNER`. On `hud_idle_running` the bar shows gold and the four portrait slots; tools/wood/bricks digits are absent. On `r2_construction_public` those three material digits appear (tools 30, wood 30, bricks 0). Marble as a numbered slot was not observed at the Citizen start with the construction menu open.
 - **How to resolve:** select a marble-cost building (none unlocked at Citizen); map the four `BAUMAT` segments by overlaying `statusbar.tex` on the bar.
+
+## OQ-539: Construction lock at a later stage, and BAUMENUTAB line order (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Does a later city stage mask (for example `INFRA_STUFE_1A` = 30 pioneers) change occupancy from `?` to icon for cells whose `INFRAMIN` is that stage? Which of the eight `TOOLTIP:BAUMENUTAB` / `TOOLTIP:BAUMENU_EX` lines is the tooltip of which category button?
+- **What we know:** at Citizen start, occupancy U iff `INFRAMIN = INFRA_EVER` for all 148 non-empty View.dll cells (`docs/re/ui.md` section 3.2). `View.dll` `0x1002c260` reads type slot `+0x64` (the stage index) when creating a cell. TAB and EX are 8 identical lines; `View.dll` `0x1002bb42` / `0x1002c08f` with `VIEWBAUTAB`. Second stage not reached; no hover shot of the category column.
+- **How to resolve:** an original savegame or a grown city in the Wine runner; hover each category button and match the tooltip line index.

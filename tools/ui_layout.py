@@ -2,9 +2,14 @@
 
   python -I tools/ui_layout.py write-inventory --game-dir DIR --out data/ui
   python -I tools/ui_layout.py summary --game-dir DIR
+  python -I tools/ui_layout.py self-test
+  python -I tools/ui_layout.py validate --layout data/ui [--game-dir DIR]
+  python -I tools/ui_layout.py mock --layout data/ui
+  python -I tools/ui_layout.py compare --layout data/ui --shot PNG
 
+`--self-test` / `--validate` / `--mock` / `--compare` are accepted as well.
 Derived facts only. Does not copy original pixels or UI strings.
-Stdlib plus tools/text.py and tools/tex.py.
+Stdlib plus tools/text.py and tools/tex.py. compare uses Pillow when present.
 """
 from __future__ import annotations
 
@@ -286,7 +291,509 @@ def print_summary(game_dir: str) -> None:
         print(f"dat {fn} file={tex_file} textures={n}")
 
 
+ALLOWED = set(range(0x20, 0x7F)) | {0x09, 0x0A, 0x0D}
+REPO = os.path.dirname(HERE)
+CATEGORY_KEYS = (
+    "public",
+    "roads",
+    "farms",
+    "workshops",
+    "coastal",
+    "mines",
+    "military",
+    "ornamental",
+)
+
+
+class LayoutError(ValueError):
+    pass
+
+
+def check_ascii(buf: bytes, path: str) -> None:
+    for i, b in enumerate(buf):
+        if b not in ALLOWED:
+            raise LayoutError(f"{path}: byte 0x{b:02x} at {i} is outside the layout alphabet")
+
+
+def layout_lines(path: str) -> list[tuple[int, str]]:
+    with open(path, "rb") as fh:
+        buf = fh.read()
+    check_ascii(buf, path)
+    out = []
+    for n, raw in enumerate(buf.split(b"\n"), 1):
+        if raw.endswith(b"\r"):
+            raw = raw[:-1]
+        line = raw.decode("ascii")
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        out.append((n, stripped))
+    return out
+
+
+def expect_version(lines: list[tuple[int, str]], kind: str, path: str) -> list[tuple[int, str]]:
+    if not lines:
+        raise LayoutError(f"{path}: empty")
+    want = f"anno1503-ui-{kind} 1"
+    if lines[0][1] != want:
+        raise LayoutError(f"{path}:{lines[0][0]}: expected {want!r}, got {lines[0][1]!r}")
+    return lines[1:]
+
+
+def parse_hud(path: str) -> dict:
+    body = expect_version(layout_lines(path), "hud", path)
+    rec: dict = {"elements": [], "clicks": [], "resolution": None, "shot": None}
+    for n, line in body:
+        f = line.split()
+        if not f:
+            continue
+        if f[0] == "resolution" and len(f) == 3:
+            rec["resolution"] = (int(f[1]), int(f[2]))
+        elif f[0] == "shot" and len(f) == 2:
+            rec["shot"] = f[1]
+        elif f[0] == "element":
+            rec["elements"].append(_parse_element(f, path, n))
+        elif f[0] == "click":
+            rec["clicks"].append(_parse_click(f, path, n))
+        else:
+            raise LayoutError(f"{path}:{n}: unknown hud field {f[0]!r}")
+    if rec["resolution"] is None:
+        raise LayoutError(f"{path}: missing resolution")
+    return rec
+
+
+def _kv_after(fields: list[str], start: int) -> dict:
+    out: dict = {}
+    i = start
+    while i < len(fields):
+        key = fields[i]
+        if i + 1 >= len(fields):
+            out[key] = True
+            break
+        if key in ("pos", "size") and i + 2 < len(fields):
+            out[key] = (int(fields[i + 1]), int(fields[i + 2]))
+            i += 3
+            continue
+        out[key] = fields[i + 1]
+        i += 2
+    return out
+
+
+def _parse_element(f: list[str], path: str, n: int) -> dict:
+    if len(f) < 2:
+        raise LayoutError(f"{path}:{n}: element needs a name")
+    kv = _kv_after(f, 2)
+    kv["name"] = f[1]
+    return kv
+
+
+def _parse_click(f: list[str], path: str, n: int) -> dict:
+    if len(f) < 2:
+        raise LayoutError(f"{path}:{n}: click needs a name")
+    if len(f) == 3:
+        return {"name": f[1], "x": int(f[2])}
+    kv = _kv_after(f, 2)
+    kv["name"] = f[1]
+    return kv
+
+
+def parse_construction(path: str) -> dict:
+    body = expect_version(layout_lines(path), "construction", path)
+    rec: dict = {
+        "categories": {},
+        "cells": [],
+        "occupancy": {},
+        "resolution": None,
+        "shot": None,
+        "grid_click_x": [],
+        "grid_click_y": [],
+        "open_key": None,
+        "leave_key": None,
+        "demolish": None,
+        "grid": {},
+    }
+    for n, line in body:
+        f = line.split()
+        if f[0] == "resolution" and len(f) == 3:
+            rec["resolution"] = (int(f[1]), int(f[2]))
+        elif f[0] == "shot" and len(f) == 2:
+            rec["shot"] = f[1]
+        elif f[0] == "open_key" and len(f) == 2:
+            rec["open_key"] = f[1]
+        elif f[0] == "leave_key" and len(f) == 2:
+            rec["leave_key"] = f[1]
+        elif f[0] == "grid":
+            rec["grid"] = _kv_after(f, 1)
+        elif f[0] == "grid_click_x":
+            rec["grid_click_x"] = [int(x) for x in f[1:]]
+        elif f[0] == "grid_click_y":
+            rec["grid_click_y"] = [int(x) for x in f[1:]]
+        elif f[0] == "category":
+            kv = _kv_after(f, 2)
+            kv["key"] = f[1]
+            rec["categories"][f[1]] = kv
+        elif f[0] == "cell":
+            if len(f) < 4:
+                raise LayoutError(f"{path}:{n}: cell needs category col row")
+            kv = _kv_after(f, 4)
+            kv["category"] = f[1]
+            kv["col"] = int(f[2])
+            kv["row"] = int(f[3])
+            rec["cells"].append(kv)
+        elif f[0] == "occupancy":
+            if len(f) < 10:
+                raise LayoutError(f"{path}:{n}: occupancy needs 8 row strings")
+            rows = f[2:10]
+            for r, row in enumerate(rows):
+                if len(row) != 4 or any(ch not in "UL-" for ch in row):
+                    raise LayoutError(f"{path}:{n}: occupancy row {r} {row!r}")
+            rec["occupancy"][f[1]] = rows
+        elif f[0] == "demolish":
+            rec["demolish"] = _kv_after(f, 1)
+        else:
+            raise LayoutError(f"{path}:{n}: unknown construction field {f[0]!r}")
+    if rec["resolution"] is None:
+        raise LayoutError(f"{path}: missing resolution")
+    return rec
+
+
+def access_names_from_inc(path: str) -> set[str]:
+    names: set[str] = set()
+    if not os.path.isfile(path):
+        return names
+    for _n, line in layout_lines(path):
+        f = line.split()
+        if f and f[0] == "access" and len(f) >= 2:
+            raw = f[1]
+            if raw.startswith('"') and raw.endswith('"'):
+                names.add(raw[1:-1])
+            else:
+                names.add(raw)
+    return names
+
+
+def access_names_from_dat(path: str) -> set[str]:
+    names: set[str] = set()
+    if not os.path.isfile(path):
+        return names
+    for _n, line in layout_lines(path):
+        f = line.split()
+        if f and f[0] == "tex" and "access" in f:
+            i = f.index("access")
+            if i + 1 < len(f):
+                raw = f[i + 1]
+                if raw.startswith('"') and raw.endswith('"'):
+                    names.add(raw[1:-1])
+                else:
+                    names.add(raw)
+    return names
+
+
+def validate_layout(layout_dir: str) -> list[str]:
+    errors: list[str] = []
+    hud_path = os.path.join(layout_dir, "hud.txt")
+    con_path = os.path.join(layout_dir, "construction.txt")
+    try:
+        hud = parse_hud(hud_path)
+    except LayoutError as e:
+        errors.append(str(e))
+        hud = None
+    try:
+        con = parse_construction(con_path)
+    except LayoutError as e:
+        errors.append(str(e))
+        con = None
+    inc_names = access_names_from_inc(os.path.join(layout_dir, "inc.txt"))
+    dat_names = access_names_from_dat(os.path.join(layout_dir, "dat.txt"))
+    all_names = inc_names | dat_names
+    if hud:
+        w, h = hud["resolution"]
+        for el in hud["elements"]:
+            pos = el.get("pos")
+            size = el.get("size")
+            if pos and (pos[0] < 0 or pos[1] < 0 or pos[0] >= w or pos[1] >= h):
+                errors.append(f"hud element {el['name']} pos {pos} outside {w}x{h}")
+            if size and (size[0] <= 0 or size[1] <= 0):
+                errors.append(f"hud element {el['name']} size {size}")
+            acc = el.get("access")
+            if acc and all_names and acc not in all_names:
+                errors.append(f"hud element {el['name']} ACCESS {acc} not in inventory")
+        for cl in hud["clicks"]:
+            pos = cl.get("pos")
+            if pos and (pos[0] < 0 or pos[1] < 0 or pos[0] >= w or pos[1] >= h):
+                errors.append(f"hud click {cl['name']} pos {pos} outside {w}x{h}")
+    if con:
+        w, h = con["resolution"]
+        if set(con["categories"]) != set(CATEGORY_KEYS):
+            errors.append(f"construction categories {sorted(con['categories'])} != {list(CATEGORY_KEYS)}")
+        if len(con["grid_click_x"]) != 4 or len(con["grid_click_y"]) != 8:
+            errors.append("construction grid_click must be 4 x and 8 y")
+        seen = set()
+        occ = con["occupancy"]
+        for cell in con["cells"]:
+            key = (cell["category"], cell["col"], cell["row"])
+            if key in seen:
+                errors.append(f"duplicate cell {key}")
+            seen.add(key)
+            if cell["category"] not in CATEGORY_KEYS:
+                errors.append(f"cell category {cell['category']}")
+            if not (0 <= cell["col"] < 4 and 0 <= cell["row"] < 8):
+                errors.append(f"cell {key} out of 4x8")
+            rows = occ.get(cell["category"])
+            if rows:
+                mark = rows[cell["row"]][cell["col"]]
+                if cell.get("state") == "unlocked" and mark != "U":
+                    errors.append(f"cell {key} state unlocked but occupancy {mark}")
+        for cat, rows in occ.items():
+            if cat not in CATEGORY_KEYS:
+                errors.append(f"occupancy category {cat}")
+            if len(rows) != 8:
+                errors.append(f"occupancy {cat} has {len(rows)} rows")
+        for x in con["grid_click_x"]:
+            if x < 0 or x >= w:
+                errors.append(f"grid click x {x} outside width {w}")
+        for y in con["grid_click_y"]:
+            if y < 0 or y >= h:
+                errors.append(f"grid click y {y} outside height {h}")
+    return errors
+
+
+def mock_lines(layout_dir: str) -> list[str]:
+    hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
+    lines = ["anno1503-ui-mock 1"]
+    w, h = hud["resolution"]
+    lines.append(f"resolution {w} {h}")
+    for el in hud["elements"]:
+        pos = el.get("pos")
+        size = el.get("size")
+        if pos and size:
+            lines.append(
+                "rect {name} {x} {y} {w} {h}".format(
+                    name=el["name"], x=pos[0], y=pos[1], w=size[0], h=size[1]
+                )
+            )
+        elif size:
+            lines.append(f"size {el['name']} {size[0]} {size[1]}")
+    # OQ-536 candidates
+    lines.append("candidate statusbar_dat 0 733 746 35")
+    lines.append("candidate statusbar_fenster 0 725 780 43")
+    lines.append("candidate weltkarte 779 0 245 248")
+    return lines
+
+
+def _is_water(rgb: tuple[int, ...]) -> bool:
+    r, g, b = rgb[0], rgb[1], rgb[2]
+    return b > 90 and r < 80 and g < 140
+
+
+def measure_hud_shot(path: str) -> dict:
+    try:
+        from PIL import Image
+    except ImportError as e:
+        raise LayoutError("Pillow is required for compare") from e
+    im = Image.open(path).convert("RGB")
+    pix = im.load()
+    w, h = im.size
+    return {"width": w, "height": h, "pix": pix, "im": im}
+
+
+def compare_shot(shot: str, layout_dir: str) -> list[str]:
+    hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
+    meas = measure_hud_shot(shot)
+    errors = []
+    w, h = hud["resolution"]
+    if (meas["width"], meas["height"]) != (w, h):
+        errors.append(f"shot size {meas['width']}x{meas['height']} != {w}x{h}")
+        return errors
+    pix = meas["pix"]
+    bar = next((e for e in hud["elements"] if e["name"] == "statusbar"), None)
+    panel = next((e for e in hud["elements"] if e["name"] == "panel"), None)
+    if bar:
+        x, y = bar["pos"]
+        bw, _bh = bar["size"]
+        if y <= 0 or y >= h:
+            errors.append(f"bar y {y} outside shot")
+        else:
+            if _is_water(pix[20, y]):
+                errors.append(f"bar_top {y} is water in the shot")
+            if y > 0 and not _is_water(pix[20, y - 1]):
+                errors.append(f"row {y - 1} above the bar is not water")
+            if x + bw > w + 2:
+                errors.append(f"bar width {bw} overruns {w}")
+    if panel:
+        px, _py = panel["pos"]
+        if _is_water(pix[px, 100]):
+            errors.append(f"panel_x {px} y=100 is water")
+    return errors
+
+
+def _write_synthetic_inc(path: str) -> None:
+    # Minimal .inc ACCESS records matching tex.access_records: len-prefixed?
+    # write-inventory is tested with a fake game dir of .dat only for self-test
+    # of layout parse; inventory self-test uses a tiny keyed dat file.
+    pass
+
+
+def self_test() -> int:
+    import tempfile
+
+    n_ok = 0
+
+    def check(cond: bool, msg: str) -> None:
+        nonlocal n_ok
+        if not cond:
+            raise AssertionError(msg)
+        n_ok += 1
+
+    with tempfile.TemporaryDirectory() as td:
+        hud = os.path.join(td, "hud.txt")
+        con = os.path.join(td, "construction.txt")
+        write_lines(
+            hud,
+            [
+                "anno1503-ui-hud 1",
+                "resolution 1024 768",
+                "shot hud_idle_running",
+                "element statusbar pos 0 733 size 746 35 access STATUSBAR method pixel-row",
+                "element panel pos 779 0 size 245 733 access MAINUNTERGRUND method atlas-right",
+                "click tab_construction pos 819 219",
+            ],
+        )
+        occ = "occupancy public ULUU LLLU LLLL LLLL LLLL LLLL LLLL L---"
+        write_lines(
+            con,
+            [
+                "anno1503-ui-construction 1",
+                "resolution 1024 768",
+                "open_key B",
+                "leave_key ESC",
+                "grid cols 4 rows 8 cell_px 52",
+                "grid_click_x 833 885 937 989",
+                "grid_click_y 330 382 432 484 536 588 640 692",
+                "category public index 1 y 325 banner_key public tooltip_section - shot r2",
+                "category roads index 2 y 373 banner_key roads tooltip_section - shot r2",
+                "category farms index 3 y 418 banner_key farms tooltip_section - shot r2",
+                "category workshops index 4 y 463 banner_key workshops tooltip_section - shot r2",
+                "category coastal index 5 y 508 banner_key coastal tooltip_section - shot r2",
+                "category mines index 6 y 553 banner_key mines tooltip_section - shot r2",
+                "category military index 7 y 598 banner_key military tooltip_section - shot r2",
+                "category ornamental index 8 y 643 banner_key ornamental tooltip_section - shot r2",
+                "cell public 0 0 id 501 state unlocked shot r2_info_pioneer_house",
+                "cell public 2 0 id 1301 state unlocked shot r2_info_market_1301",
+                occ,
+                "occupancy roads UL-- LLL- L--- ---- ---- ---- ---- ----",
+                "occupancy farms UULL UUUU LLLL LLLL LLLL LLLL LLLL LLL-",
+                "occupancy workshops U--- ULLL LL-- LLL- LLL- LLL- ---- ----",
+                "occupancy coastal ULL- UL-- LL-- ---- ---- ---- ---- ----",
+                "occupancy mines LLL- LLL- LL-- LL-- LL-- ---- ---- ----",
+                "occupancy military LLL- LLLL LLL- LLLL LLL- ---- ---- ----",
+                "occupancy ornamental LLLL LLLL LLLL LLLL LLLL LLLL LLLL LL--",
+            ],
+        )
+        parsed = parse_hud(hud)
+        check(parsed["resolution"] == (1024, 768), "hud resolution")
+        check(parsed["elements"][0]["name"] == "statusbar", "hud element")
+        check(parsed["elements"][0]["pos"] == (0, 733), "hud pos")
+        parsed_c = parse_construction(con)
+        check(parsed_c["cells"][0]["id"] == "501", "cell id")
+        check(parsed_c["occupancy"]["public"][0] == "ULUU", "occupancy")
+        errs = validate_layout(td)
+        check(errs == [], f"validate clean, got {errs}")
+        # occupancy vs unlocked mismatch
+        write_lines(
+            os.path.join(td, "construction.txt"),
+            [
+                "anno1503-ui-construction 1",
+                "resolution 1024 768",
+                "grid_click_x 833 885 937 989",
+                "grid_click_y 330 382 432 484 536 588 640 692",
+                "category public index 1 y 325 banner_key public tooltip_section - shot r2",
+                "category roads index 2 y 373 banner_key roads tooltip_section - shot r2",
+                "category farms index 3 y 418 banner_key farms tooltip_section - shot r2",
+                "category workshops index 4 y 463 banner_key workshops tooltip_section - shot r2",
+                "category coastal index 5 y 508 banner_key coastal tooltip_section - shot r2",
+                "category mines index 6 y 553 banner_key mines tooltip_section - shot r2",
+                "category military index 7 y 598 banner_key military tooltip_section - shot r2",
+                "category ornamental index 8 y 643 banner_key ornamental tooltip_section - shot r2",
+                "cell public 1 0 id - state unlocked shot x",
+                occ,
+                "occupancy roads UL-- LLL- L--- ---- ---- ---- ---- ----",
+                "occupancy farms UULL UUUU LLLL LLLL LLLL LLLL LLLL LLL-",
+                "occupancy workshops U--- ULLL LL-- LLL- LLL- LLL- ---- ----",
+                "occupancy coastal ULL- UL-- LL-- ---- ---- ---- ---- ----",
+                "occupancy mines LLL- LLL- LL-- LL-- LL-- ---- ---- ----",
+                "occupancy military LLL- LLLL LLL- LLLL LLL- ---- ---- ----",
+                "occupancy ornamental LLLL LLLL LLLL LLLL LLLL LLLL LLLL LL--",
+            ],
+        )
+        errs = validate_layout(td)
+        check(any("unlocked but occupancy" in e for e in errs), f"mismatch not caught: {errs}")
+        bad = os.path.join(td, "bad.txt")
+        with open(bad, "wb") as fh:
+            fh.write(b"anno1503-ui-hud 1\n\xff\n")
+        try:
+            layout_lines(bad)
+            check(False, "non-ascii must raise")
+        except LayoutError:
+            n_ok += 1
+        mock = mock_lines(td)
+        check(mock[0] == "anno1503-ui-mock 1", "mock header")
+        check(any(l.startswith("rect statusbar 0 733 746 35") for l in mock), "mock statusbar")
+        check(any("candidate statusbar_fenster 0 725 780 43" in l for l in mock), "mock fenster")
+        try:
+            from PIL import Image
+        except ImportError:
+            print("self-test skip compare (no Pillow)")
+        else:
+            im = Image.new("RGB", (1024, 768), (25, 86, 136))
+            for y in range(733, 768):
+                for x in range(0, 746):
+                    im.putpixel((x, y), (214, 210, 206))
+            for y in range(0, 733):
+                for x in range(779, 1024):
+                    im.putpixel((x, y), (140, 120, 100))
+            png = os.path.join(td, "hud.png")
+            im.save(png)
+            write_lines(
+                hud,
+                [
+                    "anno1503-ui-hud 1",
+                    "resolution 1024 768",
+                    "element statusbar pos 0 733 size 746 35 access STATUSBAR method pixel-row",
+                    "element panel pos 779 0 size 245 733 access MAINUNTERGRUND method atlas-right",
+                ],
+            )
+            cerr = compare_shot(png, td)
+            check(cerr == [], f"compare clean, got {cerr}")
+            for yy in range(733, 738):
+                im.putpixel((20, yy), (25, 86, 136))
+            im.save(png)
+            cerr = compare_shot(png, td)
+            check(any("bar_top" in e for e in cerr), f"bar_top mismatch not caught: {cerr}")
+    print(f"self-test ok checks={n_ok}")
+    return 0
+
+
+def _normalize_argv(argv: list[str] | None) -> list[str] | None:
+    if argv is None:
+        argv = sys.argv[1:]
+        owned = True
+    else:
+        owned = False
+        argv = list(argv)
+    aliases = {
+        "--self-test": "self-test",
+        "--validate": "validate",
+        "--mock": "mock",
+        "--compare": "compare",
+    }
+    if argv and argv[0] in aliases:
+        argv = [aliases[argv[0]]] + argv[1:]
+    return argv if owned or argv is not None else None
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = _normalize_argv(argv)
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
     w = sub.add_parser("write-inventory")
@@ -294,6 +801,15 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--out", required=True)
     s = sub.add_parser("summary")
     s.add_argument("--game-dir", required=True)
+    sub.add_parser("self-test")
+    v = sub.add_parser("validate")
+    v.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
+    v.add_argument("--game-dir")
+    m = sub.add_parser("mock")
+    m.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
+    c = sub.add_parser("compare")
+    c.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
+    c.add_argument("--shot", required=True)
     args = p.parse_args(argv)
     if args.cmd == "write-inventory":
         info = write_inventory(args.game_dir, args.out)
@@ -310,6 +826,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "summary":
         print_summary(args.game_dir)
+        return 0
+    if args.cmd == "self-test":
+        return self_test()
+    if args.cmd == "validate":
+        errs = validate_layout(args.layout)
+        if errs:
+            for e in errs:
+                print("validate:", e, file=sys.stderr)
+            return 1
+        print(f"validate ok {args.layout}")
+        return 0
+    if args.cmd == "mock":
+        for line in mock_lines(args.layout):
+            print(line)
+        return 0
+    if args.cmd == "compare":
+        errs = compare_shot(args.shot, args.layout)
+        if errs:
+            for e in errs:
+                print("compare:", e, file=sys.stderr)
+            return 1
+        print(f"compare ok {args.shot}")
         return 0
     return 2
 

@@ -8,6 +8,8 @@
 |---|---|
 | M1 | **One fixed map**, larger than the original's and scaled for **five players**. It replaces the generator (W2) for the MVP. |
 | M2 | **No computer players** in the MVP. It replaces the original AI's port (W7) for the MVP. |
+| M3 | (2026-10-30) **The owner tests building and demolishing in person, through the original's in-game UI.** The UI is reverse-engineered with high precision (UI.1). Every menu and submenu exists; a feature or building that is not implemented yet is a placeholder that leads nowhere until it is (UI.2). A limited set of buildings during those tests is fine. |
+| M4 | (2026-10-30) **Developer test resources:** for testing, the developer start gets generous gold and goods (a developer option, not an original rule). |
 
 The purpose is a shorter path to the first LAN game the group of five can play.
 
@@ -55,7 +57,7 @@ The purpose is a shorter path to the first LAN game the group of five can play.
 | **MAP** | §3. | S | none |
 | W3 networking | As planned, for five peers, in the order of §2 R14. No computer seats, no AI takeover. | L | **ADR 0003 approved** (Proposed since 2026-10-26) |
 | W4 game shell | Unchanged: the app runs the sim at a fixed tick, the renderer draws the live world, input becomes commands, save and load. | M | none |
-| W5 menus, HUD, resolution | The smaller lobby of §2 R11, the HUD, resolution and UI scale, recolouring for the colour table. | M | ADR 0004 written (D4 already decided) |
+| W5 menus, HUD, resolution | The smaller lobby of §2 R11, the HUD, resolution and UI scale, recolouring for the colour table. **M3:** the in-game UI is UI.1 (the RE of the original's UI) then UI.2 (every menu, placeholders where the sim has no feature). | M | ADR 0004 written (D4 already decided); UI.2 after UI.1 |
 | W6 sim content | Unchanged, and still the critical path: population P2–P5, ships and settling, trade (per §8 item 1), fire, military and combat, elimination. | XL | per stage, RE first |
 | W9 tests | Five peers instead of six in `netsim`; no computer seats; the LAN playtest with five PCs. | M, runs along | — |
 | W2 generator | **After the MVP.** The spec stays. | — | — |

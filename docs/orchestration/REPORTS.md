@@ -6823,7 +6823,8 @@ Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starti
 | phase 0, `be08b7b` | 222 in 416.063 s, OK | 64 in 18.154 s, OK |
 | phase 2, `89f3008` | 262 in 297.907 s, OK | 64 in 19.131 s, OK |
 | after review-1 round 1, `fb83654` | 263 in 250.387 s, OK | 64 unchanged |
-| after N3 recorded-budget, `3c5ecb6` | **264** in 308.460 s, OK (`cache/t61-f2/dn/gates/join-3c5ecb6.err`) | 64 in 16.884 s, OK (`snapshot-3c5ecb6.err`) |
+| after N3 recorded-budget, `3c5ecb6` | **264** in 308.460 s, OK (`cache/t61-f2/dn/gates/join-3c5ecb6.err`, meta head `3c5ecb6`) | 64 in 16.884 s, OK (`snapshot-3c5ecb6.err`; meta head `eb6da43`, same tool blobs) |
+| at the closure draft, `e3fde09` | **264** in 247.091 s, OK (`join-suite-final.stderr.txt`; process started at `0f1e984`, exit file head `e3fde09`) | not re-run; snapshot sources unchanged |
 
 ### Fail-first then passing (§5)
 
@@ -6851,7 +6852,7 @@ Fail-first on `be08b7b`/`a9c8281`: 30 tests, 9 failures (`cache/t61-f2/dn/fail-f
 
 ### N1–N8
 
-**N1.** `committed_source_sha256` / `git cat-file blob <head>:tools/<name>`. Tests `test_n1_provenance_hashes_the_committed_blob`, `test_n1_crlf_and_lf_checkouts_validate_the_same_blob`. Commit `de6a48a`, CRLF-independence `83193c3`.
+**N1.** `committed_source_sha256` runs `git show <head>:tools/<name>` and hashes those bytes. Tests `test_n1_provenance_hashes_the_committed_blob`, `test_n1_crlf_and_lf_checkouts_validate_the_same_blob`. Commit `de6a48a`, CRLF-independence `83193c3`.
 
 **N2.** `--validate` compares `canon(metrics)` and `canon(config)` with the replay, then the hashes. H2 tampers fail. `5fcd8f2`.
 
@@ -6863,7 +6864,7 @@ Fail-first on `be08b7b`/`a9c8281`: 30 tests, 9 failures (`cache/t61-f2/dn/fail-f
 
 **N6.** Peak retained turns/bytes from retain/release events. Reassembly from acquire/release using `len(owned)` (`17699d7`, `69f8e34`). Network callbacks distinct from scheduler events. Hand vectors in `RoundDnH4Metrics`.
 
-**N7.** (a) 264 join / 64 snapshot. (b) existing `MUTANTS` plus (c) JM1–JM8: `MutantTable` OK; each JM fails a named assertion (table below). (d) `test_n7d_fresh_processes_agree_under_different_hash_seeds`: two processes, `PYTHONHASHSEED` 1 and 2, identical `result_hash`/`semantic_trace_hash` for `100M`/300/`one_fragment`/`uniform25-seed6101`. That row in the study is `result_hash` `8f93f591d2b6daf88174dc8769a01145e41bf2cedc4a430c551413f073fe0f6f`, `semantic_trace_hash` `68221c55ccdc0efe4ceb6f38bed04caa65466e42427373e4e7aba09bc3a29d20`. (e) `test_n7e_zero_jitter_projection_matches_917efea` walks every `LINK_ROWS` rate and every `ROWS` name; `compare917.py` matched 6 SENS_ROWS × 2 rates. Unserialized rows drop the new `ack_send` audit record.
+**N7.** (a) 264 join / 64 snapshot, including a 264-test run at `3c5ecb6` (308.460 s) and again while this draft was current (247.091 s). (b) existing `MUTANTS` plus (c) JM1–JM8: `MutantTable` OK; each JM fails a named assertion (table below). (d) `test_n7d_fresh_processes_agree_under_different_hash_seeds`: two processes, `PYTHONHASHSEED` 1 and 2, identical `result_hash`/`semantic_trace_hash` for `100M`/300/`one_fragment`/`uniform25-seed6101`. That row in the study is `result_hash` `8f93f591d2b6daf88174dc8769a01145e41bf2cedc4a430c551413f073fe0f6f`, `semantic_trace_hash` `68221c55ccdc0efe4ceb6f38bed04caa65466e42427373e4e7aba09bc3a29d20`. (e) `test_n7e_zero_jitter_projection_matches_917efea` walks every `LINK_ROWS` name at both rates and every `ROWS` name. The projection strips `jitter_ms`, `jitter_id`, `jitter_source` and `tx_id`, and drops `ack_send` on unserialized rows. `cache/t61-f2/dn/gates/zero-jitter-baseline.txt` has the same matrix, every line `same=True`, no `same=False`. `SENS_ROWS` has three names (`one_fragment`, `endless02`, `fragment_loss`); that is the study matrix, not the 917efea gate. An earlier progress note that said six `SENS_ROWS` was wrong.
 
 **N8.** After N1–N7 and reviewer pass 1 (three rounds, last tool fix `3c5ecb6`):
 
@@ -6922,12 +6923,12 @@ Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Findings and dispositions
 
 ### Decisions and reasoning
 
-1. **N1 hashing basis.** SHA-256 of the committed blob (`git cat-file` / `git show`), not LF-normalised working bytes and not `hash-object` of the checkout. Evidence: every tool file on this host is CRLF on disk (`core.autocrlf=true`) while blobs are LF; hashing disk bytes made a genuine study fail `--validate` (phase 0, `di-final/study.jsonl`). Alternative (LF-normalise the working file) would accept an unsaved substitute that happens to normalise equal.
+1. **N1 hashing basis.** SHA-256 of `git show <head>:tools/<name>`, not LF-normalised working bytes and not `hash-object` of the checkout. Evidence: every tool file on this host is CRLF on disk (`core.autocrlf=true`) while blobs are LF; hashing disk bytes made a genuine study fail `--validate` (phase 0, `di-final/study.jsonl`). Alternative (LF-normalise the working file) would accept an unsaved substitute that happens to normalise equal.
 2. **N2 binding.** Canonical JSON of `metrics` and `config` compared with the replay, then the hashes. Alternative: hash-only. Rejected because an edited `ack_bytes` with a matching hash rewrite would otherwise need a second independent check; `canon` catches the field first.
 3. **Replay supervision.** `controlled_run` with `min(CLI, manifest)` deadlines, plus a recorded-sum check before replay (`3c5ecb6`). Alternative: in-process replay. Rejected because a stalled worker would ignore the 300 s row bound.
 4. **JM names.** JM1–JM8, not J1–J8: J1 is a joiner id in the checker.
 5. **Fixture shape.** 2–3 row injectable study via `_fixture_matrix` / `inspect.getsource`, never the 72-row matrix in a unit test. Asymmetric coverage is `script_hits == len(declared)` in `--validate`; the 100 ms arrival delta vs zero is a separate unit sim, because a second zero-jitter sim inside `--validate` of 72 rows would not fit the 300 s remaining bound on a long row.
-6. **917efea extraction.** `git show` / `git cat-file`, not `git archive \| tar` (Windows tar checksum damage).
+6. **917efea extraction.** `git show 917efea:tools/join_activation.py` into a temp file, not `git archive | tar` (Windows tar checksum damage) and not the CRLF-smudged cache copy.
 
 ### Questions for the morning
 

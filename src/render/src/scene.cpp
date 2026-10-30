@@ -327,9 +327,9 @@ Scene::build_island_lists(const insel::Island& i, const formats::anlagen::Anlage
 
 Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
              assets::island::GroundTextures textures_, formats::anlagen::AnlagenFile anlagen_,
-             Lift lift_)
-    : assets_(
-          std::make_shared<SceneAssets>(SceneAssets{std::move(textures_), std::move(anlagen_)})),
+             Lift lift_, Backing backing_)
+    : assets_(std::make_shared<SceneAssets>(
+          SceneAssets{std::move(textures_), std::move(anlagen_), std::move(backing_)})),
       caches_(std::make_shared<SceneCaches>()), name(std::move(name_)),
       islands(std::move(islands_)), textures(assets_->textures), anlagen(assets_->anlagen),
       sprites(caches_->sprites), frame_table(caches_->frame_table), lift(lift_) {

@@ -232,12 +232,21 @@ struct IslandLists {
 /// river pieces are unchanged) and carries new object lists for the islands it
 /// names. A generation is immutable once another thread can see it.
 class Scene : public std::enable_shared_from_this<Scene> {
+  public:
+    /// The byte buffers that the islands and `anlagen` view (their Bytes spans). The scene
+    /// owns them through its assets, so every generation derived from it keeps them alive:
+    /// nothing outside the scene has to outlive it (round dv, R3). Null when the caller keeps
+    /// the bytes alive itself.
+    using Backing = std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>;
+
   private:
     /// Owned by the scene: the assets (textures, Anlagen) and the caches shared by all of
     /// its generations. Declared before the public references below, which bind to them.
     struct SceneAssets {
         assets::island::GroundTextures textures;
         formats::anlagen::AnlagenFile anlagen;
+        /// The bytes the islands' records and Anlagen.dat view (see Scene::Backing).
+        Backing backing;
     };
     struct SceneCaches;
     struct WaterSlot;
@@ -252,8 +261,8 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// Open water gets sea_floor_colour() if there is one, else the colour
     /// already set in `textures`.
     Scene(std::string name, std::vector<formats::insel::Island> islands,
-          assets::island::GroundTextures textures, formats::anlagen::AnlagenFile anlagen,
-          Lift lift);
+          assets::island::GroundTextures textures, formats::anlagen::AnlagenFile anlagen, Lift lift,
+          Backing backing = {});
     ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
@@ -283,6 +292,11 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// The lists of island `index` in this generation.
     [[nodiscard]] const IslandLists& island_lists(std::size_t index) const {
         return *objects_[index].lists;
+    }
+    /// The same lists as a shared handle: the identity of this generation's lists of an island
+    /// (generations that share the island's lists hand out the same object).
+    [[nodiscard]] std::shared_ptr<const IslandLists> island_lists_handle(std::size_t index) const {
+        return objects_[index].lists;
     }
     /// The screen rectangle at `group` (scene pixels) that object `o` of island `index`
     /// can draw into: the union of the reach (frame rectangle plus overrun slack) of every

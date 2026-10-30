@@ -155,29 +155,23 @@ TEST_CASE("derived freshness: a warm parent is refreshed through the workers (as
 // finishes on its own schedule, which is not this test's subject (river_lifecycle_test covers it).
 namespace {
 
-/// The river-free island D_256x256_0045_5B as a shared scene with two derived levels; `buffers`
-/// keeps the file bytes its islands point into.
-struct IslandBuffers {
-    std::shared_ptr<std::vector<std::uint8_t>> island, anlagen, felder;
-};
-
-std::shared_ptr<render::Scene> island_scene(const std::filesystem::path& dir,
-                                            IslandBuffers& buffers) {
-    buffers.island = std::make_shared<std::vector<std::uint8_t>>(
+/// The river-free island D_256x256_0045_5B as a shared scene with two derived levels. The scene
+/// owns the file bytes its islands and Anlagen view (render::Scene::Backing).
+std::shared_ptr<render::Scene> island_scene(const std::filesystem::path& dir) {
+    auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    bytes->push_back(
         anno::test::read_file(dir / "Scenes" / "Islands" / "Dschungel" / "D_256x256_0045_5B.scp"));
-    buffers.anlagen =
-        std::make_shared<std::vector<std::uint8_t>>(anno::test::read_file(dir / "Anlagen.dat"));
-    buffers.felder = std::make_shared<std::vector<std::uint8_t>>(
-        anno::test::read_file(dir / "Textures" / "Felder.tex"));
-    auto anlagen = anno::formats::anlagen::AnlagenFile::parse(*buffers.anlagen).value();
-    const auto felder = anno::formats::tex::TexFile::parse(*buffers.felder).value();
+    bytes->push_back(anno::test::read_file(dir / "Anlagen.dat"));
+    bytes->push_back(anno::test::read_file(dir / "Textures" / "Felder.tex"));
+    auto anlagen = anno::formats::anlagen::AnlagenFile::parse((*bytes)[1]).value();
+    const auto felder = anno::formats::tex::TexFile::parse((*bytes)[2]).value();
     auto textures = anno::assets::island::GroundTextures::load(felder).value();
     if (const auto c = render::water_colour(anlagen)) {
         textures.set_water(*c);
     }
     auto scene = std::make_shared<render::Scene>(
-        "derived island", anno::formats::insel::islands(*buffers.island).value(),
-        std::move(textures), std::move(anlagen), render::kHeightLift);
+        "derived island", anno::formats::insel::islands((*bytes)[0]).value(), std::move(textures),
+        std::move(anlagen), render::kHeightLift, bytes);
     scene->river_cfg.enabled = false;
     scene->set_levels(render::ZoomLevels::with_derived(2));
     return scene;
@@ -193,8 +187,7 @@ TEST_CASE("derived freshness: a warm chain over a real island refreshes to the f
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    IslandBuffers buffers;
-    const auto scene = island_scene(*dir, buffers);
+    const auto scene = island_scene(*dir);
     const auto view = scene->bounds(2);
     REQUIRE(view.has_value());
 

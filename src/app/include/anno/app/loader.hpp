@@ -27,7 +27,9 @@ struct OmittedObject {
     std::uint16_t x = 0, y = 0;
 };
 
-/// A scene and the file buffers its islands and Anlagen.dat refer to.
+/// A scene and the file buffers its islands and Anlagen.dat refer to. While the scene is
+/// loaded the buffers are staged here; they move into the scene (render::Scene::Backing) once
+/// it exists, so `buffers` is empty afterwards and the scene keeps the bytes alive.
 struct LoadedScene {
     std::vector<std::vector<std::uint8_t>> buffers;
     std::unique_ptr<render::Scene> scene;

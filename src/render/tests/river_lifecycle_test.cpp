@@ -28,35 +28,28 @@ namespace fs = std::filesystem;
 
 namespace {
 
-/// A scene and the file buffers its islands point into. The buffers are kept by the test (the
-/// generation's own ownership of its backing bytes is a separate contract, round dv R3).
-struct Island {
-    std::shared_ptr<std::vector<std::uint8_t>> island_buf, anl_buf, felder_buf;
-};
-
-/// The river island D_256x256_0045_5B as a new scene (the caller owns it). `buffers` keeps its
-/// bytes alive for the test.
-render::Scene* new_river_scene(const fs::path& dir, Island& buffers) {
-    buffers.island_buf = std::make_shared<std::vector<std::uint8_t>>(
+/// The river island D_256x256_0045_5B as a new scene (the caller owns it). The scene owns the file
+/// bytes its islands and Anlagen view (render::Scene::Backing, round dv R3).
+render::Scene* new_river_scene(const fs::path& dir) {
+    auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    bytes->push_back(
         anno::test::read_file(dir / "Scenes" / "Islands/Dschungel/D_256x256_0045_5B.scp"));
-    buffers.anl_buf =
-        std::make_shared<std::vector<std::uint8_t>>(anno::test::read_file(dir / "Anlagen.dat"));
-    buffers.felder_buf = std::make_shared<std::vector<std::uint8_t>>(
-        anno::test::read_file(dir / "Textures" / "Felder.tex"));
-    auto anlagen = anno::formats::anlagen::AnlagenFile::parse(*buffers.anl_buf).value();
-    const auto felder = anno::formats::tex::TexFile::parse(*buffers.felder_buf).value();
+    bytes->push_back(anno::test::read_file(dir / "Anlagen.dat"));
+    bytes->push_back(anno::test::read_file(dir / "Textures" / "Felder.tex"));
+    auto anlagen = anno::formats::anlagen::AnlagenFile::parse((*bytes)[1]).value();
+    const auto felder = anno::formats::tex::TexFile::parse((*bytes)[2]).value();
     auto textures = anno::assets::island::GroundTextures::load(felder).value();
     if (const auto c = render::water_colour(anlagen)) {
         textures.set_water(*c);
     }
-    return new render::Scene("river lifecycle",
-                             anno::formats::insel::islands(*buffers.island_buf).value(),
-                             std::move(textures), std::move(anlagen), render::kHeightLift);
+    auto islands = anno::formats::insel::islands((*bytes)[0]).value();
+    return new render::Scene("river lifecycle", std::move(islands), std::move(textures),
+                             std::move(anlagen), render::kHeightLift, bytes);
 }
 
 /// The same scene, shared-owned (a with_islands generation can follow it).
-std::shared_ptr<render::Scene> river_scene(const fs::path& dir, Island& buffers) {
-    return std::shared_ptr<render::Scene>(new_river_scene(dir, buffers));
+std::shared_ptr<render::Scene> river_scene(const fs::path& dir) {
+    return std::shared_ptr<render::Scene>(new_river_scene(dir));
 }
 
 /// A two-party gate: the solve calls enter(); the test waits in wait_entered() and then calls
@@ -98,14 +91,16 @@ TEST_CASE(
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    Island buffers;
-    auto requester = river_scene(*dir, buffers);
+    auto requester = river_scene(*dir);
     requester->pause_river_flow_builders(true);
     REQUIRE(requester->river_flow(0, false).pending);
     // A successor shares the island's flow slot (its rivers are the same), then the requester is
     // retired while the request is still queued.
     std::shared_ptr<const render::Scene> sharer = requester->with_islands({});
     requester.reset();
+    // The retired generation held the only other reference to the island's bytes (round dv, R3):
+    // the survivor reads them itself.
+    CHECK_FALSE(sharer->islands.front().head.empty());
     sharer->pause_river_flow_builders(false);
     sharer->wait_river_flow_builders();
     CHECK(sharer->river_flow_done(0));
@@ -121,17 +116,15 @@ TEST_CASE(
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    Island buffers;
     // A scene that no shared_ptr owns (the form the tests and tools use).
-    std::unique_ptr<render::Scene> scene(new_river_scene(*dir, buffers));
+    std::unique_ptr<render::Scene> scene(new_river_scene(*dir));
     scene->pause_river_flow_builders(true);
     REQUIRE(scene->river_flow(0, false).pending);
     // Destroyed while its request is queued: the request is dropped, and nothing refers to the
     // scene afterwards.
     scene.reset();
     // The builders are still usable: a fresh scene's flow is solved by them.
-    Island again;
-    auto fresh = river_scene(*dir, again);
+    auto fresh = river_scene(*dir);
     fresh->pause_river_flow_builders(false);
     CHECK(fresh->river_flow(0, false).pending);
     fresh->wait_river_flow_builders();
@@ -146,8 +139,7 @@ TEST_CASE("river lifecycle: destroying a non-shared scene waits for its running 
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    Island buffers;
-    std::unique_ptr<render::Scene> scene(new_river_scene(*dir, buffers));
+    std::unique_ptr<render::Scene> scene(new_river_scene(*dir));
     Gate gate;
     scene->flow_build_fault = [&gate](std::size_t) { gate.enter(); };
     REQUIRE(scene->river_flow(0, false).pending);
@@ -167,16 +159,14 @@ TEST_CASE("river lifecycle: the last generation released by the solving builder 
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    Island buffers;
     // The deleter reports where the scene is destroyed. It owns nothing else: the only references
     // are the test's and the solving builder's.
     std::promise<std::thread::id> destroyed_on;
     auto destroyed = destroyed_on.get_future();
-    std::shared_ptr<render::Scene> scene(new_river_scene(*dir, buffers),
-                                         [&destroyed_on](render::Scene* p) {
-                                             delete p;
-                                             destroyed_on.set_value(std::this_thread::get_id());
-                                         });
+    std::shared_ptr<render::Scene> scene(new_river_scene(*dir), [&destroyed_on](render::Scene* p) {
+        delete p;
+        destroyed_on.set_value(std::this_thread::get_id());
+    });
     Gate gate;
     scene->flow_build_fault = [&gate](std::size_t) { gate.enter(); };
     REQUIRE(scene->river_flow(0, false).pending);
@@ -197,8 +187,7 @@ TEST_CASE("river lifecycle: a second sharer does not reset or requeue a slot ano
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    Island buffers;
-    auto first = river_scene(*dir, buffers);
+    auto first = river_scene(*dir);
     Gate gate;
     first->flow_build_fault = [&gate](std::size_t) { gate.enter(); };
     REQUIRE(first->river_flow(0, false).pending);

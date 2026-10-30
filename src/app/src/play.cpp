@@ -182,6 +182,9 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
     step_ms_ = step.value_or(10);
     steps_ = sim::Timing{}.mp_steps_per_turn;
     snap_ = std::make_shared<const PlaySnapshot>();
+    // The picture was built from these buildings at load, so the first diff starts here.
+    buildings_ = play_buildings(world_);
+    sort_buildings(buildings_);
 }
 
 PlayRunner::~PlayRunner() {
@@ -351,10 +354,26 @@ void PlayRunner::one_turn() {
     sim::run_turn(world_, nullptr, turn, steps_);
     const auto us =
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
-    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us));
+    // The turn cost above is the sim's; the diff that publishes its changes is
+    // timed separately (the bench reports both).
+    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), building_batch(turn.index));
 }
 
-void PlayRunner::publish(std::uint64_t turn_us) {
+std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
+    std::vector<SceneBuilding> cur = play_buildings(world_);
+    sort_buildings(cur);
+    std::vector<BuildingDelta> deltas = diff_sorted_buildings(buildings_, cur);
+    buildings_ = std::move(cur);
+    if (deltas.empty()) {
+        return nullptr;
+    }
+    auto batch = std::make_shared<BuildingBatch>();
+    batch->turn = turn;
+    batch->deltas = std::move(deltas);
+    return batch;
+}
+
+void PlayRunner::publish(std::uint64_t turn_us, std::shared_ptr<const BuildingBatch> batch) {
     const auto now = std::chrono::steady_clock::now();
     costs_.push_back({now, turn_us});
     const auto cut = now - std::chrono::seconds(1);
@@ -369,6 +388,17 @@ void PlayRunner::publish(std::uint64_t turn_us) {
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
     publish_snapshot(std::move(next));
+    if (batch) {
+        std::lock_guard lock(snap_mu_);
+        batches_.push_back(std::move(batch));
+    }
+}
+
+std::vector<std::shared_ptr<const BuildingBatch>> PlayRunner::take_building_batches() {
+    std::vector<std::shared_ptr<const BuildingBatch>> out;
+    std::lock_guard lock(snap_mu_);
+    out.swap(batches_);
+    return out;
 }
 
 void PlayRunner::note_behind() {

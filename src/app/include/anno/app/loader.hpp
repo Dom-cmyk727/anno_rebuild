@@ -63,6 +63,7 @@ struct SceneBuilding {
     std::uint16_t x = 0, y = 0;
     std::uint8_t rotation = 0;
     std::uint8_t height = 0;
+    friend bool operator==(const SceneBuilding&, const SceneBuilding&) = default;
 };
 
 /// How --play replaces building sprites. Null for --view, which is unchanged.

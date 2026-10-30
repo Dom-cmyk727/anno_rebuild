@@ -14,6 +14,7 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/building_delta.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/world.hpp>
@@ -108,6 +109,10 @@ class PlayRunner {
     void run_n(std::uint32_t turns);
 
     [[nodiscard]] std::shared_ptr<const PlaySnapshot> snapshot() const;
+    /// Every building batch published since the last call, oldest first. The
+    /// window calls it once per frame. It takes all of them, not only the latest
+    /// snapshot's, so a turn between two frames is never skipped (W4.3 spec).
+    [[nodiscard]] std::vector<std::shared_ptr<const BuildingBatch>> take_building_batches();
     [[nodiscard]] std::string title_line() const;
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
@@ -116,8 +121,10 @@ class PlayRunner {
   private:
     void loop();
     void one_turn();
-    void publish(std::uint64_t turn_us);
+    void publish(std::uint64_t turn_us, std::shared_ptr<const BuildingBatch> batch);
     void publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot);
+    /// The buildings after the turn, diffed against the last list (sim thread).
+    [[nodiscard]] std::shared_ptr<const BuildingBatch> building_batch(std::uint64_t turn);
     void note_behind();
     [[nodiscard]] std::uint64_t p95_locked() const;
 
@@ -134,10 +141,14 @@ class PlayRunner {
     std::atomic<std::uint32_t> delay_ms_{0};
     std::thread thread_;
     std::vector<std::pair<std::chrono::steady_clock::time_point, std::uint64_t>> costs_;
-    // The lock only protects the shared_ptr copy/swap. Snapshot allocation and
-    // all simulation work happen before it is acquired.
+    // The sorted building list the picture has been given so far (sim thread only).
+    std::vector<SceneBuilding> buildings_;
+    // The lock only protects the shared_ptr copy/swap and the mailbox's push or
+    // take. Snapshot allocation, the building diff and all simulation work
+    // happen before it is acquired.
     mutable std::mutex snap_mu_;
     std::shared_ptr<const PlaySnapshot> snap_;
+    std::vector<std::shared_ptr<const BuildingBatch>> batches_;
 };
 
 } // namespace anno::app

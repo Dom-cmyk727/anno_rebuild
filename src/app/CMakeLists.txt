@@ -2,6 +2,7 @@
 # the window-independent parts (scene loading, PNG output) so tests can use
 # them; the window needs SDL3 (ANNO_BUILD_VIEWER).
 add_library(anno_app_core
+  src/building_delta.cpp
   src/cli.cpp
   src/loader.cpp
   src/play.cpp
@@ -35,7 +36,8 @@ if(ANNO_BUILD_VIEWER)
 endif()
 
 if(ANNO_BUILD_TESTS)
-  add_executable(anno_app_tests tests/main.cpp tests/app_test.cpp tests/play_test.cpp)
+  add_executable(anno_app_tests tests/main.cpp tests/app_test.cpp tests/play_test.cpp
+    tests/building_delta_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")

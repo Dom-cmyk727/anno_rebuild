@@ -271,9 +271,11 @@ both reach a turn the same way.
 
 ### Immutable per-island object lists (W4.3, round du)
 
-Status: the specification for the seam approved in round du (board round du,
-`cache/orch-du`). Written before the code. The numbers are in
-`docs/perf/README.md` ("W4.3 round du"). The whole-scene generation measured and
+Status: implemented in the Mac continuation of round du (`render::Scene::with_islands`,
+`render::FrameRenderer::invalidate`, `app::ScenePicture`; tests `scene_picture_test.cpp`).
+The specification was written before the code. The measurements are in
+`docs/perf/README.md` ("W4.3 round du"). Still open: the chunk rebuild and upload latency and
+the GPU compositor (step 10 of round du), which need the GPU and the frame loop. The whole-scene generation measured and
 rejected earlier is recorded there too (6.8 s from files, 0.47 s for the
 constructor with reused parts, 0.25 s for the first sea pattern). Nothing here
 changes the simulation: the picture consumes published batches.

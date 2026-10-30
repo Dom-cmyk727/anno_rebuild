@@ -199,10 +199,53 @@ struct UnitSprite {
     bool draw(Canvas& canvas, std::size_t group, Lift lift, std::pair<int, int> offset) const;
 };
 
+/// The dynamic object lists of one island in one scene generation (round du, docs/app/
+/// game-shell.md, "Immutable per-island object lists"). Built by Scene::build_island_lists
+/// from the island's GELAENDE, PROD2 and FLUESSE records through prepare_objects, so the
+/// draw order is the one a fresh scene gives. Immutable once shared.
+struct IslandLists {
+    std::vector<Prepared> below, below_enhanced, above, above_enhanced, other;
+    std::vector<sea::RiverPiece> rivers;
+    /// Waterfalls and mouths (kRiverFallAnlagen) under / at or above the
+    /// sea surface: their sprites in original water, river-water shapes
+    /// in enhanced water.
+    std::vector<Prepared> falls_below, falls_above;
+    /// The river pieces' sprites (kRiverAnlagen, at or above the sea
+    /// surface): the extent of the painted riverbed (Scene::water_field_from).
+    std::vector<Prepared> river_sprites;
+
+    [[nodiscard]] const std::vector<Prepared>& below_list(WaterStyle s) const {
+        return s == WaterStyle::Original ? below : below_enhanced;
+    }
+    [[nodiscard]] const std::vector<Prepared>& above_list(WaterStyle s) const {
+        return s == WaterStyle::Original ? above : above_enhanced;
+    }
+};
+
 /// Everything needed to draw a scenario. Islands and Anlagen.dat refer to
 /// the caller's file buffers, which must outlive the scene. Every `group`
 /// argument must be < kGroups (callers validate user input).
-class Scene {
+///
+/// A scene is a generation (generation()). with_islands() derives the next one: it
+/// shares the static parts (assets, sprite and frame caches, sea patterns, the
+/// flow builders, each island's grids, and an island's water and flow while its
+/// river pieces are unchanged) and carries new object lists for the islands it
+/// names. A generation is immutable once another thread can see it.
+class Scene : public std::enable_shared_from_this<Scene> {
+  private:
+    /// Owned by the scene: the assets (textures, Anlagen) and the caches shared by all of
+    /// its generations. Declared before the public references below, which bind to them.
+    struct SceneAssets {
+        assets::island::GroundTextures textures;
+        formats::anlagen::AnlagenFile anlagen;
+    };
+    struct SceneCaches;
+    struct WaterSlot;
+    struct FlowSlot;
+    struct FlowBuild;
+    std::shared_ptr<SceneAssets> assets_;
+    std::shared_ptr<SceneCaches> caches_;
+
   public:
     /// Open water gets sea_floor_colour() if there is one, else the colour
     /// already set in `textures`.
@@ -213,17 +256,52 @@ class Scene {
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
 
+    /// The next generation: the islands in `updates` get their new object lists (and the
+    /// island record they came from); every other island, and all static data, is shared.
+    /// Generation numbers count up by one from the scene this is called on.
+    struct IslandUpdate {
+        std::size_t index = 0;
+        /// The island with its records after the change (the buildings' PROD2 items).
+        formats::insel::Island island;
+        /// Scene::build_island_lists(island, anlagen), built off the window thread.
+        std::shared_ptr<const IslandLists> lists;
+        /// The byte buffers the island's records point into (the payloads the change wrote).
+        /// The new generation keeps them alive for as long as it holds the island.
+        std::shared_ptr<const std::vector<std::vector<std::uint8_t>>> storage;
+    };
+    [[nodiscard]] std::shared_ptr<const Scene>
+    with_islands(std::vector<IslandUpdate> updates) const;
+    /// This scene's generation: 0 for a scene built from files, one more for each derivation.
+    [[nodiscard]] std::uint64_t generation() const { return generation_; }
+    /// The object lists of `island` as prepare_objects gives them for the scene (the same
+    /// records and draw order the constructor uses). Pure: safe on any thread.
+    [[nodiscard]] static std::shared_ptr<const IslandLists>
+    build_island_lists(const formats::insel::Island& island,
+                       const formats::anlagen::AnlagenFile& anlagen);
+    /// The lists of island `index` in this generation.
+    [[nodiscard]] const IslandLists& island_lists(std::size_t index) const {
+        return *objects_[index].lists;
+    }
+    /// The screen rectangle at `group` (scene pixels) that object `o` of island `index`
+    /// can draw into: the union of the reach (frame rectangle plus overrun slack) of every
+    /// frame of its sprite set at that group, shadows included, so every animation frame
+    /// and every rotation is covered. Read from the frame headers only; nullopt when the
+    /// object draws nothing (no sprite set, or no placement for the island at `group`).
+    [[nodiscard]] std::optional<Rect> object_bounds(std::size_t index, const Prepared& o,
+                                                    std::size_t group) const;
+
     std::string name;
     std::vector<formats::insel::Island> islands;
-    assets::island::GroundTextures textures;
-    formats::anlagen::AnlagenFile anlagen;
+    /// Shared by every generation of the scene (owned by the scene's assets).
+    const assets::island::GroundTextures& textures;
+    const formats::anlagen::AnlagenFile& anlagen;
     /// Placements per zoom group, in draw order.
     std::array<std::vector<Placement>, kGroups> layouts;
-    /// Decoded sprite frames, shared by all renders and threads.
-    mutable SpriteCache sprites;
+    /// Decoded sprite frames, shared by all renders, threads and generations.
+    SpriteCache& sprites;
     /// The frames chunk draw lists name (gpu-chunks.md 4.1), interned by the
     /// threads that build lists; ids never change meaning within a scene.
-    mutable FrameTable frame_table;
+    FrameTable& frame_table;
     Lift lift;
     /// Ships and soldiers (empty unless set by the caller).
     std::vector<UnitSprite> units;
@@ -263,7 +341,7 @@ class Scene {
     [[nodiscard]] bool river_active() const;
     /// Whether island `index` has river pieces.
     [[nodiscard]] bool has_river(std::size_t index) const {
-        return !objects_[index].rivers.empty();
+        return !objects_[index].lists->rivers.empty();
     }
     /// The flow lattice (rivers.md 3.3) for the pixels of `area` at `group`:
     /// the global lattice texels that cover `area` (texel pixels are multiples
@@ -326,7 +404,7 @@ class Scene {
     }
     /// QA/debug: the river pieces (kRiverAnlagen) of island `index`.
     [[nodiscard]] std::span<const sea::RiverPiece> river_pieces(std::size_t index) const {
-        return objects_[index].rivers;
+        return objects_[index].lists->rivers;
     }
     /// The tile-space river raster of island `index` (rivers.md R1-R4): the
     /// shipped enhanced-water criteria (river level over the Catmull-Rom bed,
@@ -383,28 +461,21 @@ class Scene {
     [[nodiscard]] std::optional<Rect> bounds(std::size_t group) const;
 
   private:
+    /// One island in one generation: its lists (always its own), and the static parts it
+    /// shares with the generation it was derived from (grids always; water and flow while the
+    /// island's river pieces are unchanged).
     struct IslandData {
-        std::vector<Prepared> below, below_enhanced, above, above_enhanced, other;
-        std::vector<sea::RiverPiece> rivers;
-        /// Waterfalls and mouths (kRiverFallAnlagen) under / at or above the
-        /// sea surface: their sprites in original water, river-water shapes
-        /// in enhanced water.
-        std::vector<Prepared> falls_below, falls_above;
-        /// The river pieces' sprites (kRiverAnlagen, at or above the sea
-        /// surface): the extent of the painted riverbed (Scene::water_field_from).
-        std::vector<Prepared> river_sprites;
-        /// nullopt if a grid cannot be read (no ground drawn).
-        std::optional<std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>> grids;
-        std::unique_ptr<std::once_flag> water_once = std::make_unique<std::once_flag>();
-        std::optional<sea::IslandWater> water;
-
-        [[nodiscard]] const std::vector<Prepared>& below_list(WaterStyle s) const {
-            return s == WaterStyle::Original ? below : below_enhanced;
-        }
-        [[nodiscard]] const std::vector<Prepared>& above_list(WaterStyle s) const {
-            return s == WaterStyle::Original ? above : above_enhanced;
-        }
+        std::shared_ptr<const IslandLists> lists;
+        /// The island's ground grids (gfx ids, heights); null if they cannot be read.
+        std::shared_ptr<const std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>>
+            grids;
+        std::shared_ptr<WaterSlot> water;
+        std::shared_ptr<FlowSlot> flow;
     };
+    /// Private constructor of with_islands: shares everything except the islands in `updates`.
+    Scene(const Scene& base, std::vector<IslandUpdate>&& updates);
+    /// Per island (empty entry: the record bytes are owned by the caller of the first scene).
+    std::vector<std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>> island_storage_;
     struct SeaSlot {
         std::once_flag once;
         std::optional<sea::SeaPattern> pattern;
@@ -421,22 +492,13 @@ class Scene {
     [[nodiscard]] std::optional<Rect> unit_rect(const UnitSprite& u, std::size_t group) const;
     std::size_t draw_units(Canvas& canvas, std::size_t group) const;
 
-    struct FlowSlot;
-    struct FlowBuild;
     void build_flow(std::size_t index) const;
     void queue_flow(std::size_t index) const;
     void start_flow_builders() const;
 
     mutable std::vector<IslandData> objects_;
-    mutable std::array<SeaSlot, kGroups> seas_;
     ZoomLevels levels_ = ZoomLevels::original();
-    /// The sea patterns of the derived levels (index level - built_count()).
-    mutable std::deque<SeaSlot> derived_seas_;
-    mutable std::vector<std::unique_ptr<FlowSlot>> flow_slots_;
-    mutable std::unique_ptr<FlowBuild> flow_build_;
-    mutable std::once_flag flow_build_once_;
-    mutable std::once_flag river_cfg_once_;
-    mutable bool river_cfg_ok_ = true;
+    std::uint64_t generation_ = 0;
 };
 
 } // namespace anno::render

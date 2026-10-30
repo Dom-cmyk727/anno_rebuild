@@ -515,22 +515,22 @@ river::RiverMask Scene::river_mask(std::size_t index, const river::RiverConfig& 
         s.cells = river::detail::cover_from_alpha(proj, plane, rx, ry);
         covers.push_back(std::move(s));
     };
-    for (const Prepared& p : d.river_sprites) {
+    for (const Prepared& p : d.lists->river_sprites) {
         add(p, river::SpriteCover::Kind::Bed, true);
     }
-    for (const Prepared& p : d.falls_above) {
+    for (const Prepared& p : d.lists->falls_above) {
         add(p,
             p.first.anlage == kRiverFallAnlagen[0] ? river::SpriteCover::Kind::Fall
                                                    : river::SpriteCover::Kind::Mouth,
             true);
     }
-    for (const Prepared& p : d.falls_below) {
+    for (const Prepared& p : d.lists->falls_below) {
         add(p,
             p.first.anlage == kRiverFallAnlagen[0] ? river::SpriteCover::Kind::Fall
                                                    : river::SpriteCover::Kind::Mouth,
             false);
     }
-    return river::RiverMask::from_island(*iw, d.rivers, covers, cfg);
+    return river::RiverMask::from_island(*iw, d.lists->rivers, covers, cfg);
 }
 
 } // namespace anno::render

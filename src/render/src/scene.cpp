@@ -38,12 +38,24 @@ struct Scene::FlowSlot {
     std::shared_ptr<const river::RiverFlow> flow;
 };
 
-/// The background builders of river flows: a queue of island indices.
+/// A river flow to build: the island and the scene that asked for it. A scene made by
+/// with_islands is owned by a shared_ptr: the request holds it weakly, and the builder holds
+/// it strongly for the solve, so a retired generation is never used after it is destroyed.
+/// A scene on the stack (tests) is used through `raw` and must outlive its builders.
+struct FlowRequest {
+    std::size_t index = 0;
+    std::weak_ptr<const Scene> owner;
+    bool shared = false;
+    const Scene* raw = nullptr;
+};
+
+/// The background builders of river flows: a queue of requests. Shared by the generations of a
+/// scene (SceneCaches); the threads hold it, so it outlives its last user.
 struct Scene::FlowBuild {
     std::mutex mutex;
     std::condition_variable wake;
     std::condition_variable idle;
-    std::deque<std::size_t> queue;
+    std::deque<FlowRequest> queue;
     bool stop = false, paused = false;
     /// Builds popped from the queue and not finished yet. With `queue` empty
     /// and this at 0, nothing is in flight (wait_river_flow_builders).
@@ -204,13 +216,108 @@ bool UnitSprite::draw(Canvas& canvas, std::size_t group, Lift lift,
     return hit;
 }
 
+namespace {
+
+/// The ground grids of an island (gfx ids and heights), null if they cannot be read.
+std::shared_ptr<const std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>>
+ground_grids(const insel::Island& island) {
+    auto gfx = island.gfx_ids();
+    auto heights = island.heights();
+    if (!gfx || !heights) {
+        return nullptr;
+    }
+    return std::make_shared<const std::pair<std::vector<std::uint16_t>, std::vector<std::uint8_t>>>(
+        std::move(gfx).value(), std::move(heights).value());
+}
+
+} // namespace
+
+/// The water of one island: built on first use, and shared by the generations in which the
+/// island's river pieces are unchanged (IslandWater reads the rivers, the heights and the
+/// ground ids only).
+struct Scene::WaterSlot {
+    std::once_flag once;
+    std::optional<sea::IslandWater> water;
+};
+
+/// The caches every generation of a scene shares: the sea patterns, the flow builders, the
+/// river configuration check, the decoded sprites and the frame table's storage lives in the
+/// scene's assets (see SceneAssets). Destroying the last generation stops the flow builders.
+struct Scene::SceneCaches {
+    std::array<SeaSlot, kGroups> seas;
+    std::deque<SeaSlot> derived_seas;
+    std::shared_ptr<FlowBuild> flow_build;
+    std::once_flag flow_build_once;
+    std::once_flag river_cfg_once;
+    bool river_cfg_ok = true;
+    SpriteCache sprites;
+    FrameTable frame_table;
+
+    // Not joined here: the last generation can be released by a flow builder itself (it
+    // holds the scene for a solve), and a thread cannot join itself. The builders hold the
+    // FlowBuild, stop when they see `stop`, and touch no scene without holding one.
+    ~SceneCaches() {
+        if (flow_build) {
+            {
+                const std::lock_guard lock(flow_build->mutex);
+                flow_build->stop = true;
+            }
+            flow_build->wake.notify_all();
+            for (auto& t : flow_build->threads) {
+                if (t.joinable()) {
+                    t.detach();
+                }
+            }
+        }
+    }
+};
+
+std::shared_ptr<const IslandLists>
+Scene::build_island_lists(const insel::Island& i, const formats::anlagen::AnlagenFile& anlagen) {
+    auto out = std::make_shared<IslandLists>();
+    IslandLists& d = *out;
+    auto list = [&](Objects which) { return prepare_objects(i, anlagen, kObjectRecords, which); };
+    auto in = [](const auto& ids, const insel::PlacedObject& o) {
+        return std::find(ids.begin(), ids.end(), o.anlage) != ids.end();
+    };
+    // Enhanced water: river pieces become the river surface
+    // (sea::IslandWater); waterfalls and mouths give it their shape
+    // (falls_below/falls_above, Scene::water_field_from); surf is drawn
+    // by the sea itself.
+    d.below = list(Objects::WaterBelowSea);
+    for (const auto& p : d.below) {
+        if (in(kRiverFallAnlagen, p.first)) {
+            d.falls_below.push_back(p);
+        } else if (p.first.anlage != kSurfAnlage) {
+            d.below_enhanced.push_back(p);
+        }
+    }
+    d.above = list(Objects::WaterAboveSea);
+    for (const auto& p : d.above) {
+        if (in(kRiverAnlagen, p.first)) {
+            d.river_sprites.push_back(p);
+            d.rivers.emplace_back(p.first.x, p.first.y, p.second.first, p.second.second,
+                                  p.first.height());
+        } else if (in(kRiverFallAnlagen, p.first)) {
+            d.falls_above.push_back(p);
+        } else {
+            d.above_enhanced.push_back(p);
+        }
+    }
+    d.other = list(Objects::NotWater);
+    return out;
+}
+
 Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
              assets::island::GroundTextures textures_, formats::anlagen::AnlagenFile anlagen_,
              Lift lift_)
-    : name(std::move(name_)), islands(std::move(islands_)), textures(std::move(textures_)),
-      anlagen(std::move(anlagen_)), lift(lift_) {
-    if (const auto c = sea_floor_colour(islands, textures)) {
-        textures.set_water(*c);
+    : assets_(
+          std::make_shared<SceneAssets>(SceneAssets{std::move(textures_), std::move(anlagen_)})),
+      caches_(std::make_shared<SceneCaches>()), name(std::move(name_)),
+      islands(std::move(islands_)), textures(assets_->textures), anlagen(assets_->anlagen),
+      sprites(caches_->sprites), frame_table(caches_->frame_table), lift(lift_) {
+    if (const auto c = sea_floor_colour(islands, assets_->textures)) {
+        assets_->textures.set_water(*c);
     }
     std::vector<IslandBox> boxes;
     for (const auto& i : islands) {
@@ -220,53 +327,121 @@ Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
         layouts[g] = layout(boxes, g);
     }
     for (const auto& i : islands) {
-        auto list = [&](Objects which) {
-            return prepare_objects(i, anlagen, kObjectRecords, which);
-        };
         IslandData d;
-        auto in = [](const auto& ids, const insel::PlacedObject& o) {
-            return std::find(ids.begin(), ids.end(), o.anlage) != ids.end();
-        };
-        // Enhanced water: river pieces become the river surface
-        // (sea::IslandWater); waterfalls and mouths give it their shape
-        // (falls_below/falls_above, Scene::water_field_from); surf is drawn
-        // by the sea itself.
-        d.below = list(Objects::WaterBelowSea);
-        for (const auto& p : d.below) {
-            if (in(kRiverFallAnlagen, p.first)) {
-                d.falls_below.push_back(p);
-            } else if (p.first.anlage != kSurfAnlage) {
-                d.below_enhanced.push_back(p);
-            }
-        }
-        d.above = list(Objects::WaterAboveSea);
-        for (const auto& p : d.above) {
-            if (in(kRiverAnlagen, p.first)) {
-                d.river_sprites.push_back(p);
-                d.rivers.emplace_back(p.first.x, p.first.y, p.second.first, p.second.second,
-                                      p.first.height());
-            } else if (in(kRiverFallAnlagen, p.first)) {
-                d.falls_above.push_back(p);
-            } else {
-                d.above_enhanced.push_back(p);
-            }
-        }
-        d.other = list(Objects::NotWater);
-        auto gfx = i.gfx_ids();
-        auto heights = i.heights();
-        if (gfx && heights) {
-            d.grids = std::pair{std::move(gfx).value(), std::move(heights).value()};
-        }
+        d.lists = build_island_lists(i, anlagen);
+        d.grids = ground_grids(i);
+        d.water = std::make_shared<WaterSlot>();
+        d.flow = std::make_shared<FlowSlot>();
         objects_.push_back(std::move(d));
-        flow_slots_.push_back(std::make_unique<FlowSlot>());
     }
 }
 
+Scene::Scene(const Scene& base, std::vector<IslandUpdate>&& updates)
+    : assets_(base.assets_), caches_(base.caches_), name(base.name), islands(base.islands),
+      textures(base.textures), anlagen(base.anlagen), layouts(base.layouts), sprites(base.sprites),
+      frame_table(base.frame_table), lift(base.lift), units(base.units), river_cfg(base.river_cfg),
+      flow_build_fault(base.flow_build_fault), island_storage_(base.island_storage_),
+      objects_(base.objects_), levels_(base.levels_), generation_(base.generation_ + 1) {
+    island_storage_.resize(islands.size());
+    for (IslandUpdate& u : updates) {
+        assert(u.index < objects_.size() && u.lists);
+        const IslandLists& old = *objects_[u.index].lists;
+        // Water and flow read the rivers, the falls and the river sprites only (IslandWater,
+        // river_mask): they are shared while those lists are equal to the old ones.
+        const bool same_river_input =
+            old.rivers.size() == u.lists->rivers.size() &&
+            old.falls_below.size() == u.lists->falls_below.size() &&
+            old.falls_above.size() == u.lists->falls_above.size() &&
+            old.river_sprites.size() == u.lists->river_sprites.size() &&
+            std::equal(old.rivers.begin(), old.rivers.end(), u.lists->rivers.begin()) &&
+            std::equal(old.falls_below.begin(), old.falls_below.end(),
+                       u.lists->falls_below.begin()) &&
+            std::equal(old.falls_above.begin(), old.falls_above.end(),
+                       u.lists->falls_above.begin()) &&
+            std::equal(old.river_sprites.begin(), old.river_sprites.end(),
+                       u.lists->river_sprites.begin());
+        islands[u.index] = std::move(u.island);
+        island_storage_[u.index] = std::move(u.storage);
+        IslandData& d = objects_[u.index];
+        d.lists = std::move(u.lists);
+        if (!same_river_input) {
+            d.water = std::make_shared<WaterSlot>();
+            d.flow = std::make_shared<FlowSlot>();
+        }
+    }
+}
+
+std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
+                                         std::size_t group) const {
+    assert(group < kGroups);
+    const formats::figuren::Entry* entry = anlagen.entry(o.first.anlage);
+    if (entry == nullptr || entry->gfx.empty()) {
+        return std::nullopt;
+    }
+    const formats::figuren::GfxSet& set = entry->gfx.front();
+    // The island's local point (0, 0) on screen at this group (Placement::offset).
+    std::optional<std::pair<int, int>> offset;
+    for (const Placement& p : layouts[group]) {
+        if (p.index == index) {
+            offset = p.offset;
+            break;
+        }
+    }
+    if (!offset) {
+        return std::nullopt;
+    }
+    // The anchor place_prepared computes for this object (the same formula).
+    const auto g = static_cast<std::uint32_t>(group);
+    const auto [tw, th] = kTile[group];
+    const auto [w, h] = o.second;
+    const int cx2 = 2 * int{o.first.x} + int{w};
+    const int cy2 = 2 * int{o.first.y} + int{h};
+    const std::int64_t z2 = 2 * std::int64_t{o.first.height()};
+    const int raise = lift.scaled(z2, 2, group);
+    const std::pair<int, int> anchor{(cx2 - cy2) * tw / 4 + offset->first,
+                                     (cx2 + cy2) * th / 4 - raise + offset->second};
+    std::optional<Rect> out;
+    auto grow = [&](const formats::figuren::FrameSet& fs, bool shadow) {
+        for (const formats::figuren::Frame& frame : fs.frames) {
+            const SpriteDraw d{{o.first.anlage, 0, shadow, g, 0}, &frame, anchor, o.first.height()};
+            const auto r = d.reach();
+            const Rect rect{r[0], r[1], r[2], r[3]};
+            if (!out) {
+                out = rect;
+                continue;
+            }
+            const int x0 = std::min(out->x, rect.x), y0 = std::min(out->y, rect.y);
+            const int x1 = std::max(out->x + out->w, rect.x + rect.w);
+            const int y1 = std::max(out->y + out->h, rect.y + rect.h);
+            out = Rect{x0, y0, x1 - x0, y1 - y0};
+        }
+    };
+    for (const auto& fs : set.frame_sets) {
+        if (fs.group == g) {
+            grow(fs, false);
+        }
+    }
+    if (set.shadow) {
+        for (const auto& fs : set.shadow->frame_sets) {
+            if (fs.group == g) {
+                grow(fs, true);
+            }
+        }
+    }
+    return out;
+}
+
+std::shared_ptr<const Scene> Scene::with_islands(std::vector<IslandUpdate> updates) const {
+    return std::shared_ptr<const Scene>(new Scene(*this, std::move(updates)));
+}
+
+Scene::~Scene() = default;
+
 void Scene::set_levels(ZoomLevels levels) {
     levels_ = std::move(levels);
-    derived_seas_.clear();
+    caches_->derived_seas.clear();
     for (std::size_t i = levels_.built_count(); i < levels_.size(); ++i) {
-        derived_seas_.emplace_back();
+        caches_->derived_seas.emplace_back();
     }
 }
 
@@ -276,7 +451,7 @@ const sea::SeaPattern* Scene::sea(std::size_t group) const {
         if (group >= levels_.size()) {
             return nullptr;
         }
-        SeaSlot& d = derived_seas_[group - levels_.built_count()];
+        SeaSlot& d = caches_->derived_seas[group - levels_.built_count()];
         std::call_once(d.once, [&] {
             if (const sea::SeaPattern* src = sea(levels_[group].source)) {
                 d.pattern = sea::SeaPattern::reduced(*src);
@@ -285,7 +460,7 @@ const sea::SeaPattern* Scene::sea(std::size_t group) const {
         });
         return d.pattern ? &*d.pattern : nullptr;
     }
-    SeaSlot& s = seas_[group];
+    SeaSlot& s = caches_->seas[group];
     std::call_once(s.once, [&] {
         s.pattern = sea::SeaPattern::build(anlagen, group, lift, textures.water(), sprites);
         s.ready.store(true, std::memory_order_release);
@@ -296,9 +471,9 @@ const sea::SeaPattern* Scene::sea(std::size_t group) const {
 const sea::SeaPattern* Scene::sea_if_ready(std::size_t group) const {
     const SeaSlot* s = nullptr;
     if (group < kGroups) {
-        s = &seas_[group];
+        s = &caches_->seas[group];
     } else if (group < levels_.size()) {
-        s = &derived_seas_[group - levels_.built_count()];
+        s = &caches_->derived_seas[group - levels_.built_count()];
     } else {
         return nullptr;
     }
@@ -310,15 +485,16 @@ const sea::SeaPattern* Scene::sea_if_ready(std::size_t group) const {
 
 bool Scene::sea_built(std::size_t group) const {
     if (group < kGroups) {
-        return seas_[group].ready.load(std::memory_order_acquire);
+        return caches_->seas[group].ready.load(std::memory_order_acquire);
     }
     return group < levels_.size() &&
-           derived_seas_[group - levels_.built_count()].ready.load(std::memory_order_acquire);
+           caches_->derived_seas[group - levels_.built_count()].ready.load(
+               std::memory_order_acquire);
 }
 
 std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
     const auto& o = objects_[index];
-    return {!o.below.empty(), !o.above.empty()};
+    return {!o.lists->below.empty(), !o.lists->above.empty()};
 }
 
 std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uint64_t time_ms,
@@ -332,9 +508,10 @@ std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uin
             continue;
         }
         const auto& o = objects_[p.index];
-        const std::vector<Prepared>& list = layer == SpriteLayer::WaterBelow   ? o.below_list(style)
-                                            : layer == SpriteLayer::WaterAbove ? o.above_list(style)
-                                                                               : o.other;
+        const std::vector<Prepared>& list =
+            layer == SpriteLayer::WaterBelow   ? o.lists->below_list(style)
+            : layer == SpriteLayer::WaterAbove ? o.lists->above_list(style)
+                                               : o.lists->other;
         const std::size_t start = out.size();
         place_prepared(
             list, anlagen, group, lift, time_ms,
@@ -357,11 +534,12 @@ std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uin
 
 const sea::IslandWater* Scene::island_water(std::size_t i) const {
     IslandData& d = objects_[i];
-    std::call_once(*d.water_once, [&] {
+    std::call_once(d.water->once, [&] {
         const profile::Scope stage(profile::Stage::island_water);
-        d.water = sea::IslandWater::build(islands[i], d.rivers, river_cfg.gap_patch_tiles);
+        d.water->water =
+            sea::IslandWater::build(islands[i], d.lists->rivers, river_cfg.gap_patch_tiles);
     });
-    return d.water ? &*d.water : nullptr;
+    return d.water->water ? &*d.water->water : nullptr;
 }
 
 sea::WaterField Scene::water_field(Rect rect, std::size_t group) const {
@@ -616,7 +794,8 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
             continue;
         }
         const auto& o = objects_[p.index];
-        if (o.falls_below.empty() && o.falls_above.empty() && o.river_sprites.empty()) {
+        if (o.lists->falls_below.empty() && o.lists->falls_above.empty() &&
+            o.lists->river_sprites.empty()) {
             continue;
         }
         any = true;
@@ -631,19 +810,20 @@ sea::WaterField Scene::water_field_from(Rect rect, const sea::SceneProbe& probe,
         // The river pieces' own sprites (depth-tested as the original draws them)
         // give the extent of the painted bed: the river water never ends short
         // of it (apply_fall_masks, `beds`).
-        if (!o.river_sprites.empty()) {
+        if (!o.lists->river_sprites.empty()) {
             Canvas local = blank(Rect{r->x - off.first, r->y - off.second, r->w, r->h});
-            draw_prepared_tested(local, o.river_sprites, anlagen, group, lift, 0, sprites, 0, keep);
+            draw_prepared_tested(local, o.lists->river_sprites, anlagen, group, lift, 0, sprites, 0,
+                                 keep);
             keep_opaque(bed_pieces, std::move(local), off);
         }
         for (const bool fall : {true, false}) {
             std::vector<Prepared> below, above;
-            for (const auto& q : o.falls_below) {
+            for (const auto& q : o.lists->falls_below) {
                 if ((q.first.anlage == kRiverFallAnlagen[0]) == fall) {
                     below.push_back(q);
                 }
             }
-            for (const auto& q : o.falls_above) {
+            for (const auto& q : o.lists->falls_above) {
                 if ((q.first.anlage == kRiverFallAnlagen[0]) == fall) {
                     above.push_back(q);
                 }
@@ -896,7 +1076,7 @@ void detail::blend_rivers_into_sea(sea::WaterField& f, std::size_t group, Window
 
 std::size_t Scene::river_piece_count(std::size_t index) const {
     const auto& o = objects_[index];
-    return o.rivers.size() + o.falls_below.size() + o.falls_above.size();
+    return o.lists->rivers.size() + o.lists->falls_below.size() + o.lists->falls_above.size();
 }
 
 Canvas Scene::river_sprites(Rect rect, const sea::SceneProbe& probe, std::size_t group) const {
@@ -914,8 +1094,10 @@ Canvas Scene::river_sprites(Rect rect, const sea::SceneProbe& probe, std::size_t
         }
         const auto& o = objects_[p.index];
         std::vector<Prepared> below, above;
-        std::copy_if(o.below.begin(), o.below.end(), std::back_inserter(below), is_river);
-        std::copy_if(o.above.begin(), o.above.end(), std::back_inserter(above), is_river);
+        std::copy_if(o.lists->below.begin(), o.lists->below.end(), std::back_inserter(below),
+                     is_river);
+        std::copy_if(o.lists->above.begin(), o.lists->above.end(), std::back_inserter(above),
+                     is_river);
         if (below.empty() && above.empty()) {
             continue;
         }
@@ -1096,8 +1278,8 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
             const auto& objects = objects_[p.index];
             const bool first = pass == 0;
             const bool wanted =
-                first ? layers.ground || (layers.water_below && !objects.below.empty())
-                      : (layers.water_above && !objects.above.empty()) || layers.objects;
+                first ? layers.ground || (layers.water_below && !objects.lists->below.empty())
+                      : (layers.water_above && !objects.lists->above.empty()) || layers.objects;
             if (!wanted) {
                 continue;
             }
@@ -1118,8 +1300,8 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
                 }
                 if (layers.water_below) {
                     stats.objects.add(draw_prepared_tested(
-                        local, objects.below_list(layers.water_style), anlagen, group, lift, t,
-                        sprites, water_variant, [](int, int, std::uint8_t) { return true; }));
+                        local, objects.lists->below_list(layers.water_style), anlagen, group, lift,
+                        t, sprites, water_variant, [](int, int, std::uint8_t) { return true; }));
                 }
             } else {
                 if (layers.water_above) {
@@ -1136,13 +1318,13 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
                                                            : terrain_at(*probe, rect, sx, sy);
                         return !z || *z <= static_cast<float>(h) + kRiverTolerance;
                     };
-                    stats.objects.add(
-                        draw_prepared_tested(local, objects.above_list(layers.water_style), anlagen,
-                                             group, lift, t, sprites, water_variant, keep));
+                    stats.objects.add(draw_prepared_tested(
+                        local, objects.lists->above_list(layers.water_style), anlagen, group, lift,
+                        t, sprites, water_variant, keep));
                 }
                 if (layers.objects) {
                     const auto [s, units_drawn] =
-                        draw_island_objects(local, p, objects.other, group);
+                        draw_island_objects(local, p, objects.lists->other, group);
                     stats.objects.add(s);
                     stats.units += units_drawn;
                 }
@@ -1308,7 +1490,7 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
         // draw_island_objects: the island's soldiers are merged into its
         // objects by the key of their 1 x 1 footprint.
         const auto& island = islands[p.index];
-        const std::span<const Prepared> list = objects_[p.index].other;
+        const std::span<const Prepared> list = objects_[p.index].lists->other;
         const float ix = static_cast<float>(island.x), iy = static_cast<float>(island.y);
         const float w = static_cast<float>(island.width), h = static_cast<float>(island.height);
         using Key = std::pair<std::uint32_t, std::uint32_t>;
@@ -1425,21 +1607,8 @@ std::size_t Scene::draw_units(Canvas& canvas, std::size_t group) const {
     return n;
 }
 
-Scene::~Scene() {
-    if (flow_build_) {
-        {
-            const std::lock_guard lock(flow_build_->mutex);
-            flow_build_->stop = true;
-        }
-        flow_build_->wake.notify_all();
-        for (auto& t : flow_build_->threads) {
-            t.join();
-        }
-    }
-}
-
 void Scene::build_flow(std::size_t index) const {
-    FlowSlot& slot = *flow_slots_[index];
+    FlowSlot& slot = *objects_[index].flow;
     std::call_once(slot.once, [&] {
         const profile::Scope stage(profile::Stage::flow_solve);
         try {
@@ -1460,7 +1629,7 @@ void Scene::build_flow(std::size_t index) const {
 }
 
 void Scene::start_flow_builders() const {
-    flow_build_ = std::make_unique<FlowBuild>();
+    caches_->flow_build = std::make_shared<FlowBuild>();
     // Threads: RiverConfig::flow_threads, else a quarter of the hardware
     // threads (1-4): a solve is 10-60 ms, so a few threads clear a scene's
     // islands in the first second without taking cores from the chunk
@@ -1468,12 +1637,13 @@ void Scene::start_flow_builders() const {
     const unsigned hw = std::thread::hardware_concurrency();
     const unsigned n =
         river_cfg.flow_threads != 0 ? river_cfg.flow_threads : std::clamp(hw / 4, 1U, 4U);
-    FlowBuild* fb = flow_build_.get();
+    std::shared_ptr<FlowBuild> self = caches_->flow_build;
     for (unsigned i = 0; i < n; ++i) {
-        fb->threads.emplace_back([this, fb] {
+        self->threads.emplace_back([self] {
+            FlowBuild* fb = self.get();
             lower_thread_priority();
             for (;;) {
-                std::size_t index = 0;
+                FlowRequest req;
                 {
                     std::unique_lock lock(fb->mutex);
                     fb->wake.wait(lock,
@@ -1481,11 +1651,18 @@ void Scene::start_flow_builders() const {
                     if (fb->stop) {
                         return;
                     }
-                    index = fb->queue.front();
+                    req = std::move(fb->queue.front());
                     fb->queue.pop_front();
                     ++fb->inflight;
                 }
-                build_flow(index);
+                // A shared scene is held for its solve (the request's weak reference may
+                // have expired: it was retired before its turn, and nothing is built).
+                if (std::shared_ptr<const Scene> keep = req.owner.lock()) {
+                    keep->build_flow(req.index);
+                } else if (!req.shared && req.raw != nullptr) {
+                    req.raw->build_flow(req.index);
+                }
+                req = FlowRequest{};
                 {
                     const std::lock_guard lock(fb->mutex);
                     --fb->inflight;
@@ -1499,12 +1676,19 @@ void Scene::start_flow_builders() const {
 }
 
 void Scene::queue_flow(std::size_t index) const {
-    std::call_once(flow_build_once_, [this] { start_flow_builders(); });
+    std::call_once(caches_->flow_build_once, [this] { start_flow_builders(); });
+    FlowRequest req;
+    req.index = index;
+    req.owner = weak_from_this();
+    // weak_from_this() is empty for a scene that no shared_ptr owns (tests on the stack).
+    req.shared = !(req.owner.owner_before(std::weak_ptr<const Scene>{}) ||
+                   std::weak_ptr<const Scene>{}.owner_before(req.owner));
+    req.raw = this;
     {
-        const std::lock_guard lock(flow_build_->mutex);
-        flow_build_->queue.push_back(index);
+        const std::lock_guard lock(caches_->flow_build->mutex);
+        caches_->flow_build->queue.push_back(std::move(req));
     }
-    flow_build_->wake.notify_one();
+    caches_->flow_build->wake.notify_one();
 }
 
 bool Scene::river_active() const {
@@ -1515,22 +1699,22 @@ bool Scene::river_active() const {
     // leaves the enhanced rivers on the legacy look (a valid stride, a bounded
     // extension grid and periods that divide the hour are what the shading
     // and the lattice rely on).
-    std::call_once(river_cfg_once_, [this] {
+    std::call_once(caches_->river_cfg_once, [this] {
         const std::string problem = river_cfg.validate(kChunk, kGroups);
         if (!problem.empty()) {
             std::fprintf(stderr, "river configuration refused, rivers keep the legacy look: %s\n",
                          problem.c_str());
-            river_cfg_ok_ = false;
+            caches_->river_cfg_ok = false;
         }
     });
-    return river_cfg_ok_;
+    return caches_->river_cfg_ok;
 }
 
 Scene::RiverFlowResult Scene::river_flow(std::size_t index, bool wait) const {
     if (!river_active() || !has_river(index)) {
         return {};
     }
-    FlowSlot& slot = *flow_slots_[index];
+    FlowSlot& slot = *objects_[index].flow;
     auto ready = [&]() -> std::optional<RiverFlowResult> {
         switch (slot.state.load(std::memory_order_acquire)) {
         case kFlowReady:
@@ -1568,28 +1752,28 @@ void Scene::prefetch_river_flow() const {
 
 void Scene::pause_river_flow_builders(bool pause) const {
     // The builders (and their queue) exist from the first request on.
-    std::call_once(flow_build_once_, [this] { start_flow_builders(); });
+    std::call_once(caches_->flow_build_once, [this] { start_flow_builders(); });
     {
-        const std::lock_guard lock(flow_build_->mutex);
-        flow_build_->paused = pause;
+        const std::lock_guard lock(caches_->flow_build->mutex);
+        caches_->flow_build->paused = pause;
     }
-    flow_build_->wake.notify_all();
+    caches_->flow_build->wake.notify_all();
 }
 
 void Scene::wait_river_flow_builders() const {
-    if (!flow_build_) {
+    if (!caches_->flow_build) {
         return;
     }
-    std::unique_lock lock(flow_build_->mutex);
-    flow_build_->idle.wait(
-        lock, [fb = flow_build_.get()] { return fb->queue.empty() && fb->inflight == 0; });
+    std::unique_lock lock(caches_->flow_build->mutex);
+    caches_->flow_build->idle.wait(
+        lock, [fb = caches_->flow_build.get()] { return fb->queue.empty() && fb->inflight == 0; });
 }
 
 bool Scene::river_flow_done(std::size_t index) const {
     if (!river_active() || !has_river(index)) {
         return true;
     }
-    return flow_slots_[index]->state.load(std::memory_order_acquire) >= kFlowReady;
+    return objects_[index].flow->state.load(std::memory_order_acquire) >= kFlowReady;
 }
 
 river::FlowPlane Scene::flow_plane(Rect area, std::size_t group, const sea::SceneProbe& probe,

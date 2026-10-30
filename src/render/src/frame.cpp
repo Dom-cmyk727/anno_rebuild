@@ -866,6 +866,14 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
             }
             dirty_.erase(mark);
         }
+        // A chunk older than the cached one (a late completion of an earlier generation) never
+        // replaces it (round dv, R2): the newer chunk stays.
+        if (const auto cached = cache_.find(key);
+            cached != cache_.end() && cached->second->generation > chunk.generation) {
+            ++stale_discarded_;
+            outdated.push_back(std::make_shared<const Chunk>(std::move(chunk)));
+            continue;
+        }
         // The chunk is moved into its shared owner (vectors moved, no plane copied).
         ChunkPtr owned = std::make_shared<const Chunk>(std::move(chunk));
         if (const auto it = cache_.find(key); it != cache_.end()) {
@@ -1005,7 +1013,11 @@ std::vector<ChunkJob> FrameRenderer::plan_jobs(const std::vector<ChunkKey>& want
         bool complete = true;
         const auto kids = derived_children(key, levels_);
         for (std::size_t q = 0; q < 4; ++q) {
-            if (const auto it = cache_.find(kids[q]); it != cache_.end()) {
+            // A marked child is stale (its pixels predate an invalidation): the parent is reduced
+            // from the child's rebuild, not from the stale copy (round dv, R2). An unmarked cached
+            // child is fresh for the generation of the invalidations so far, and is reused.
+            const auto it = cache_.find(kids[q]);
+            if (it != cache_.end() && !dirty_.contains(kids[q])) {
                 job.kids[q] = it->second;
                 keep.insert(kids[q]); // until the parent is built
             } else {
@@ -1073,16 +1085,32 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
             options.bin_px = bin_px;
             return render_chunk(scene, g, cx, cy, options);
         });
+        std::size_t inserted = 0;
         for (std::size_t i = 0; i < jobs.size(); ++i) {
+            const ChunkKey& key = jobs[i].key;
             built[i].generation = scene.generation();
-            if (dirty_.erase(jobs[i].key) != 0 && cache_.contains(jobs[i].key)) {
-                ++rebuilds_[jobs[i].key];
+            // The same monotonic rule as the workers (round dv, R2): a chunk built from an older
+            // generation than the invalidation that marked its key, or than the cached chunk, never
+            // replaces what is there, and clears nothing.
+            if (const auto mark = dirty_.find(key);
+                mark != dirty_.end() && built[i].generation < mark->second) {
+                continue;
             }
-            cache_.insert_or_assign(jobs[i].key,
-                                    std::make_shared<const Chunk>(std::move(built[i])));
-            ++builds_[jobs[i].key];
+            if (const auto old = cache_.find(key);
+                old != cache_.end() && old->second->generation > built[i].generation) {
+                continue;
+            }
+            if (dirty_.erase(key) != 0 && cache_.contains(key)) {
+                ++rebuilds_[key];
+            }
+            cache_.insert_or_assign(key, std::make_shared<const Chunk>(std::move(built[i])));
+            ++builds_[key];
+            ++inserted;
         }
-        built_count += jobs.size();
+        if (inserted == 0) {
+            break; // nothing is fresh enough to insert: the rest stays missing (no busy loop)
+        }
+        built_count += inserted;
         std::erase_if(missing,
                       [&](const ChunkKey& k) { return cache_.contains(k) && !dirty_.contains(k); });
     }

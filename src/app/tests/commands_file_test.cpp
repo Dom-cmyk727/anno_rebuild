@@ -27,8 +27,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// The lan5 world, built as the play test builds it (fixed map, two seats).
-std::optional<anno::sim::World> lan5_world(const fs::path& dir) {
+// The lan5 world, built as the play test builds it (fixed map, two seats). The
+// developer's test resources are on unless `resources` is false.
+std::optional<anno::sim::World> lan5_world(const fs::path& dir, bool resources = true) {
     const fs::path path =
         fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
     std::ifstream in(path, std::ios::binary);
@@ -45,11 +46,13 @@ std::optional<anno::sim::World> lan5_world(const fs::path& dir) {
     if (!registry.types) {
         return std::nullopt;
     }
+    anno::sim_load::FixedMapOptions options;
+    options.resources.enabled = resources;
     auto loaded = anno::sim_load::load_fixed_map(
         parsed.value(),
         std::vector<anno::sim::Seat>{anno::sim::Seat{anno::sim::SeatKind::Human, "P0", 0, 0},
                                      anno::sim::Seat{anno::sim::SeatKind::Human, "P1", 1, 0}},
-        dir, *registry.types, {});
+        dir, *registry.types, {}, options);
     if (!loaded) {
         return std::nullopt;
     }
@@ -215,4 +218,87 @@ TEST_CASE("play: scripted commands match run_turn turn by turn (A6 d)") {
         CHECK_MESSAGE(runner.state_hash() == world_b->state_hash(), "turn " << index);
     }
     MESSAGE("turns that changed a building: " << changed_turns << " of " << kTurns);
+}
+
+TEST_CASE("play: --play takes the fixed map and places its islands") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    auto loaded = anno::app::load_play(*dir, path);
+    const bool loaded_ok = loaded.ok();
+    const std::string why = loaded_ok ? std::string() : loaded.error();
+    REQUIRE_MESSAGE(loaded_ok, why);
+    CHECK(loaded.value().fixed_map);
+    CHECK(loaded.value().name == "lan5");
+    CHECK(!loaded.value().placed.empty());
+    // Every placed template is an island the sim placed.
+    CHECK(loaded.value().placed.size() <= loaded.value().islands.size());
+}
+
+TEST_CASE("developer resources: a Build too expensive for the start is refused without them") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // The most expensive building type (gold, goods not considered) and the cheapest
+    // one with no goods cost, on the same tile of the developer start.
+    auto off = lan5_world(*dir, false);
+    auto on = lan5_world(*dir, true);
+    REQUIRE(off.has_value());
+    REQUIRE(on.has_value());
+    const auto origin = developer_origin(*off);
+    REQUIRE(origin.has_value());
+    std::optional<std::uint32_t> dearest;
+    std::int64_t dearest_gold = -1;
+    for (std::uint32_t id = 1; id <= 0xFFFFu; ++id) {
+        if (!anno::app::anlage_is_building(*off, static_cast<std::uint16_t>(id))) {
+            continue;
+        }
+        const anno::sim::BuildingType* type = off->types().find(anno::sim::TypeId{id});
+        if (type != nullptr && static_cast<std::int64_t>(type->cost_gold) > dearest_gold) {
+            dearest = id;
+            dearest_gold = static_cast<std::int64_t>(type->cost_gold);
+        }
+    }
+    REQUIRE(dearest.has_value());
+    const auto cheapest = first_building_type(*on);
+    REQUIRE(cheapest.has_value());
+
+    const auto build = [&](anno::sim::World& world, std::uint32_t type) {
+        anno::sim::Command cmd;
+        cmd.issuer = anno::app::developer_player();
+        anno::sim::BuildCmd body;
+        // The developer player's city on the island of the origin.
+        bool found = false;
+        for (const auto& island : world.islands()) {
+            if (!island || found) {
+                continue;
+            }
+            for (const auto& city : island->cities) {
+                if (city && city->owner == anno::app::developer_player() && !found) {
+                    body.city = anno::sim::CityRef{island->index, city->number};
+                    found = true;
+                }
+            }
+        }
+        REQUIRE(found);
+        anno::sim::PlacementWire placement;
+        placement.type = anno::sim::TypeId{type};
+        placement.x = origin->x + 4;
+        placement.y = origin->y + 4;
+        placement.rotation = 0;
+        body.placements.push_back(placement);
+        cmd.body = std::move(body);
+        return world.apply(cmd);
+    };
+    const anno::sim::ApplyResult refused = build(*off, *dearest);
+    CHECK_MESSAGE(refused.status == anno::sim::Reject::CannotAfford,
+                  "without resources the dearest build is refused as too expensive");
+    const anno::sim::ApplyResult accepted = build(*on, *cheapest);
+    CHECK_MESSAGE(accepted.ok(), "with resources the cheapest build is affordable");
 }

@@ -38,6 +38,12 @@ struct PlayLoad {
     sim::World world;
     std::vector<PlayIsland> islands;
     std::vector<LinkTemplate> links;
+    /// A fixed map (the layout text, data/maps/*.txt): its scene is built from
+    /// `placed` by load_placed_scene, not from a scenario file.
+    bool fixed_map = false;
+    std::vector<PlacedIsland> placed;
+    /// The scene name (the file's stem).
+    std::string name;
 };
 
 /// Registry, `load_scenario_with_links`, `World::create`. The link list names

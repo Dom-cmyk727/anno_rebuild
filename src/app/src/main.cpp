@@ -201,7 +201,11 @@ int run(const std::vector<std::string>& raw) {
         objects_ptr = &objects;
         links = play->links;
     }
-    auto loaded = anno::app::load_scene(dir.value(), args->file, links, objects_ptr);
+    // A fixed map is drawn from the islands the sim placed (play->placed); a scenario
+    // file goes through the viewer's loader with the sim's link templates.
+    auto loaded = play && play->fixed_map
+                      ? anno::app::load_placed_scene(dir.value(), play->name, play->placed, objects_ptr)
+                      : anno::app::load_scene(dir.value(), args->file, links, objects_ptr);
     if (!loaded) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), loaded.error().c_str());
         return 1;

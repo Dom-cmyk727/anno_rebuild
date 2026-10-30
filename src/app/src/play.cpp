@@ -1,17 +1,22 @@
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <thread>
 #include <utility>
 
 #include <anno/app/cli.hpp>
 #include <anno/app/play.hpp>
+#include <anno/formats/fixed_map.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/game_setup.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim_load/fixed_map.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 
@@ -59,6 +64,75 @@ std::uint64_t percentile_95(std::vector<std::uint64_t> values) {
 
 } // namespace
 
+namespace {
+
+// A fixed map (the layout text) with the developer start and the developer's test
+// resources on (DeveloperResources): the world, the placed islands for the scene
+// (the same construction as the lan5 test), and the island rows.
+formats::Result<PlayLoad, std::string>
+load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& map,
+                const std::shared_ptr<const sim::TypeRegistry>& types,
+                const sim_load::IslandTemplates& templates, const fs::path& file) {
+    // Two human seats, as the lan5 test and the developer start use them.
+    const std::vector<sim::Seat> seats{sim::Seat{sim::SeatKind::Human, "P0", 0, 0},
+                                       sim::Seat{sim::SeatKind::Human, "P1", 1, 0}};
+    sim_load::FixedMapOptions options;
+    options.resources.enabled = true;
+    const sim::SimConfig cfg;
+    auto loaded = sim_load::load_fixed_map(map, seats, game_dir, *types, cfg, options);
+    if (!loaded) {
+        return loaded.error();
+    }
+    auto created = sim::World::create(loaded.value().spec, types, cfg);
+    if (!created) {
+        return created.error();
+    }
+
+    std::map<std::string, std::size_t> by_name;
+    for (std::size_t i = 0; i < templates.summaries.size(); ++i) {
+        by_name.emplace(templates.summaries[i].name, i);
+    }
+    PlayLoad out;
+    std::map<std::uint32_t, std::string> key_by_slot;
+    for (const sim::IslandLinkSpec& link : loaded.value().links) {
+        std::string upper = link.path;
+        for (char& c : upper) {
+            c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        }
+        const auto found = by_name.find(upper);
+        if (found == by_name.end()) {
+            return "link template " + link.path + " is not in Scenes/Islands";
+        }
+        PlacedIsland item;
+        item.number = link.number;
+        item.x = static_cast<std::int32_t>(link.x);
+        item.y = static_cast<std::int32_t>(link.y);
+        item.file = templates.files[found->second];
+        out.placed.push_back(std::move(item));
+        key_by_slot.emplace(link.number & 0xFFFFu, link.path);
+    }
+    for (const auto& island : created.value().islands()) {
+        if (!island) {
+            continue;
+        }
+        PlayIsland row;
+        row.slot = island->index.v;
+        row.x = island->rect().x0;
+        row.y = island->rect().y0;
+        row.w = island->rect().w;
+        row.h = island->rect().h;
+        const auto key = key_by_slot.find(row.slot);
+        row.template_key = key == key_by_slot.end() ? "embedded" : key->second;
+        out.islands.push_back(std::move(row));
+    }
+    out.world = std::move(created).value();
+    out.fixed_map = true;
+    out.name = file.stem().string();
+    return out;
+}
+
+} // namespace
+
 formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const fs::path& file) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
@@ -72,6 +146,10 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     }
     const anno::sim_load::IslandTemplates templates =
         anno::sim_load::scan_island_templates(game_dir);
+    // A fixed map (the layout text, data/maps/*.txt) or a scenario file (.sze).
+    if (auto fixed = anno::formats::fixed_map::parse(buf)) {
+        return load_fixed_play(game_dir, fixed.value(), registry.types, templates, file);
+    }
     const sim::SimConfig cfg;
     auto resolved =
         anno::sim_load::load_scenario_with_links(buf, templates, *registry.types, cfg, {});

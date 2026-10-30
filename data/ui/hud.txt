@@ -16,8 +16,10 @@ element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access ST
 element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 method sprite-sad shot hud_idle_running
 element mainuntergrund pos 779 244 size 245 524 file toolgfx/fenster.tex access MAINUNTERGRUND tex_id 4 method sprite-sad shot hud_idle_running
 element panel pos 779 0 size 245 733 file toolgfx/fenster.tex access MAINUNTERGRUND method atlas-right
+# Default HUD (hud_idle_running / f13_hud_cursor_map / r2_player_menu): military uses frame_selected 13.
+# Unselected military (frame 9) is on r2_construction_public, r2_options, r2_tab_help.
 element tab_construction pos 779 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 8 frame_idle 8 frame_selected 12 hotkey B method sprite-sad shot hud_idle_running
-element tab_military pos 840 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 9 frame_idle 9 frame_selected 13 hotkey D method sprite-sad shot r2_construction_public
+element tab_military pos 840 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 13 frame_idle 9 frame_selected 13 hotkey D method sprite-sad shot hud_idle_running
 element tab_help pos 901 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 10 frame_idle 10 frame_selected 14 method sprite-sad shot r2_construction_public
 element tab_options pos 962 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 11 frame_idle 11 frame_selected 15 method sprite-sad shot r2_construction_public
 element zoom_plus pos 959 7 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 44 method sprite-sad shot hud_idle_running

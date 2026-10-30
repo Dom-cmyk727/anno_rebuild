@@ -4,8 +4,9 @@
   python -I tools/ui_layout.py summary --game-dir DIR
   python -I tools/ui_layout.py self-test
   python -I tools/ui_layout.py validate --layout data/ui [--game-dir DIR]
-  python -I tools/ui_layout.py mock --layout data/ui
+  python -I tools/ui_layout.py mock --layout data/ui [--screen NAME --game-dir DIR --out cache/ui-mock]
   python -I tools/ui_layout.py compare --layout data/ui --shot PNG
+  python -I tools/ui_layout.py compare --layout data/ui --screen NAME --shot PNG --game-dir DIR --out cache/ui-mock
 
 `--self-test` / `--validate` / `--mock` / `--compare` are accepted as well.
 Derived facts only. Does not copy original pixels or UI strings.
@@ -630,6 +631,379 @@ def validate_layout(layout_dir: str) -> list[str]:
     return errors
 
 
+COMPARE_CHANNEL = 48
+COMPARE_BAD_FRACTION = 0.12
+SCREENS = {
+    "hud_idle": {"shot": "hud_idle_running", "kind": "hud"},
+    "construction_public": {"shot": "r2_construction_public", "kind": "construction", "category": "public"},
+    "construction_roads": {"shot": "r2_construction_roads", "kind": "construction", "category": "roads"},
+    "construction_farms": {"shot": "r2_construction_farms", "kind": "construction", "category": "farms"},
+    "construction_workshops": {"shot": "r2_construction_workshops", "kind": "construction", "category": "workshops"},
+    "construction_coastal": {"shot": "r2_construction_coastal", "kind": "construction", "category": "coastal"},
+    "construction_mines": {"shot": "r2_construction_mines", "kind": "construction", "category": "mines"},
+    "construction_military": {"shot": "r2_construction_military", "kind": "construction", "category": "military"},
+    "construction_ornamental": {"shot": "r2_construction_ornamental", "kind": "construction", "category": "ornamental"},
+}
+
+
+def parse_masks(path: str) -> dict:
+    body = expect_version(layout_lines(path), "masks", path)
+    rec: dict = {"masks": [], "resolution": None}
+    for n, line in body:
+        f = line.split()
+        if f[0] == "resolution" and len(f) == 3:
+            rec["resolution"] = (int(f[1]), int(f[2]))
+        elif f[0] == "mask":
+            kv = _kv_after(f, 2)
+            kv["name"] = f[1]
+            rec["masks"].append(kv)
+        else:
+            raise LayoutError(f"{path}:{n}: unknown masks field {f[0]!r}")
+    if rec["resolution"] is None:
+        raise LayoutError(f"{path}: missing resolution")
+    return rec
+
+
+def _tex_bank(path: str) -> tuple[dict, dict]:
+    buf = open(path, "rb").read()
+    pals: dict = {}
+    texs: dict = {}
+    for kind, e in tex.entries(buf):
+        if kind == "COLOR":
+            pals[e["id"]] = e["rgb"]
+        else:
+            texs[e["id"]] = e
+    return pals, texs
+
+
+_TEX_CACHE: dict = {}
+
+
+def decode_tex_rgba(tex_path: str, tid: int) -> tuple[int, int, bytes] | None:
+    key = (os.path.normcase(os.path.abspath(tex_path)), tid)
+    if key in _TEX_CACHE:
+        return _TEX_CACHE[key]
+    if not os.path.isfile(tex_path):
+        return None
+    pals, texs = _tex_bank(tex_path)
+    e = texs.get(tid)
+    if e is None:
+        return None
+    w, h = e["width"], e["height"]
+    px = tex.decode(e)
+    pal = pals[e["palette"]]
+    out = bytearray(w * h * 4)
+    for i, p in enumerate(px):
+        if p is None:
+            continue
+        r, g, b = pal[p]
+        o = i * 4
+        out[o] = r
+        out[o + 1] = g
+        out[o + 2] = b
+        out[o + 3] = 255
+    rec = (w, h, bytes(out))
+    _TEX_CACHE[key] = rec
+    return rec
+
+
+def blit_rgba(dst, dw: int, dh: int, sprite, x: int, y: int) -> None:
+    sw, sh, buf = sprite
+    for sy in range(sh):
+        dy = y + sy
+        if dy < 0 or dy >= dh:
+            continue
+        srow = sy * sw * 4
+        for sx in range(sw):
+            if buf[srow + sx * 4 + 3] == 0:
+                continue
+            dx = x + sx
+            if dx < 0 or dx >= dw:
+                continue
+            d = (dy * dw + dx) * 3
+            so = srow + sx * 4
+            dst[d] = buf[so]
+            dst[d + 1] = buf[so + 1]
+            dst[d + 2] = buf[so + 2]
+
+
+def _game_tex(game_dir: str, rel: str) -> str:
+    rel = rel.replace("/", os.sep)
+    return os.path.join(game_dir, rel)
+
+
+def compose_screen(layout_dir: str, screen: str, game_dir: str) -> "object":
+    from PIL import Image
+
+    if screen not in SCREENS:
+        raise LayoutError(f"unknown screen {screen}")
+    spec = SCREENS[screen]
+    hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
+    con = parse_construction(os.path.join(layout_dir, "construction.txt"))
+    w, h = hud["resolution"]
+    rgb = bytearray([0, 0, 0]) * (w * h)
+    by_name = {el["name"]: el for el in hud["elements"]}
+
+    def blit_el(name: str, tex_id: int | None = None) -> None:
+        el = by_name.get(name)
+        if not el or not el.get("pos") or not el.get("file"):
+            return
+        tid = tex_id if tex_id is not None else int(el.get("tex_id", "0"))
+        sprite = decode_tex_rgba(_game_tex(game_dir, el["file"]), tid)
+        if sprite is None:
+            return
+        blit_rgba(rgb, w, h, sprite, el["pos"][0], el["pos"][1])
+
+    blit_el("weltkarte")
+    blit_el("mainuntergrund")
+    if spec["kind"] == "hud":
+        blit_el("tab_construction", 8)
+        blit_el("tab_military", 13)
+        blit_el("tab_help", 10)
+        blit_el("tab_options", 11)
+    else:
+        blit_el("tab_construction", 12)
+        blit_el("tab_military", 9)
+        blit_el("tab_help", 10)
+        blit_el("tab_options", 11)
+    blit_el("statusbar")
+    blit_el("gold")
+    if spec["kind"] == "construction":
+        blit_el("baumat_tools")
+        blit_el("baumat_wood")
+        blit_el("baumat_bricks")
+        blit_el("baumat_marble")
+    blit_el("fragezeichen")
+    blit_el("zoom_plus")
+    if spec["kind"] == "construction":
+        blit_el("abrissicon", 659)
+        ox = int(con["grid"].get("origin_x", 808))
+        oy = int(con["grid"].get("origin_y", 305))
+        stride = int(con["grid"].get("cell_px", 52))
+        lock_el = by_name.get("no_klick")
+        lock_id = int(lock_el.get("tex_id", 56)) if lock_el else 56
+        lock_file = (lock_el or {}).get("file") or "toolgfx/fenster.tex"
+        sprite = decode_tex_rgba(_game_tex(game_dir, lock_file), lock_id)
+        if sprite is not None:
+            for cell in con["cells"]:
+                if cell["category"] != spec["category"]:
+                    continue
+                if cell.get("state") != "locked":
+                    continue
+                blit_rgba(rgb, w, h, sprite, ox + cell["col"] * stride, oy + cell["row"] * stride)
+    im = Image.frombytes("RGB", (w, h), bytes(rgb))
+    return im
+
+
+def load_mask_set(layout_dir: str, extra: list[tuple[int, int, int, int]] | None = None) -> set[tuple[int, int]]:
+    path = os.path.join(layout_dir, "masks.txt")
+    masked: set[tuple[int, int]] = set()
+    if os.path.isfile(path):
+        rec = parse_masks(path)
+        for m in rec["masks"]:
+            x, y = m["pos"]
+            mw, mh = m["size"]
+            for yy in range(y, y + mh):
+                for xx in range(x, x + mw):
+                    masked.add((xx, yy))
+    if extra:
+        for x, y, mw, mh in extra:
+            for yy in range(y, y + mh):
+                for xx in range(x, x + mw):
+                    masked.add((xx, yy))
+    return masked
+
+
+def unlocked_cell_rects(con: dict, category: str) -> list[tuple[int, int, int, int]]:
+    ox = int(con["grid"].get("origin_x", 808))
+    oy = int(con["grid"].get("origin_y", 305))
+    stride = int(con["grid"].get("cell_px", 52))
+    sp = int(con["grid"].get("sprite", 50))
+    out = []
+    for cell in con["cells"]:
+        if cell["category"] == category and cell.get("state") == "unlocked":
+            out.append((ox + cell["col"] * stride, oy + cell["row"] * stride, sp, sp))
+    return out
+
+
+def compare_images(mock, shot, masked: set, channel: int = COMPARE_CHANNEL) -> dict:
+    mw, mh = mock.size
+    sw, sh = shot.size
+    if (mw, mh) != (sw, sh):
+        return {"error": f"size {sw}x{sh} != mock {mw}x{mh}"}
+    mpx = mock.tobytes()
+    spx = shot.tobytes()
+    n = mw * mh
+    unmasked = 0
+    bad = 0
+    sad = 0
+    diff = bytearray(n * 3)
+    for i in range(n):
+        x = i % mw
+        y = i // mw
+        if (x, y) in masked:
+            diff[i * 3 : i * 3 + 3] = b"\x00\x00\x00"
+            continue
+        unmasked += 1
+        o = i * 3
+        dr = abs(mpx[o] - spx[o])
+        dg = abs(mpx[o + 1] - spx[o + 1])
+        db = abs(mpx[o + 2] - spx[o + 2])
+        sad += dr + dg + db
+        if dr > channel or dg > channel or db > channel:
+            bad += 1
+            diff[o] = 255
+            diff[o + 1] = 0
+            diff[o + 2] = 0
+        else:
+            g = (dr + dg + db) // 3
+            diff[o] = g
+            diff[o + 1] = g
+            diff[o + 2] = g
+    frac = (bad / unmasked) if unmasked else 0.0
+    mean = (sad / unmasked) if unmasked else 0.0
+    return {
+        "unmasked": unmasked,
+        "bad": bad,
+        "fraction": frac,
+        "mean_sad": mean,
+        "diff": bytes(diff),
+        "size": (mw, mh),
+    }
+
+
+def write_png(path: str, im) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    im.save(path)
+
+
+def compare_screen(layout_dir: str, screen: str, shot_path: str, game_dir: str, out_dir: str) -> dict:
+    from PIL import Image
+
+    if screen not in SCREENS:
+        raise LayoutError(f"unknown screen {screen}")
+    spec = SCREENS[screen]
+    mock = compose_screen(layout_dir, screen, game_dir)
+    shot = Image.open(shot_path).convert("RGB")
+    extra = []
+    if spec["kind"] == "hud":
+        extra.append((779, 244, 245, 489))
+    if spec["kind"] == "construction":
+        con = parse_construction(os.path.join(layout_dir, "construction.txt"))
+        extra = unlocked_cell_rects(con, spec["category"])
+    masked = load_mask_set(layout_dir, extra)
+    rec = compare_images(mock, shot, masked)
+    if "error" in rec:
+        return rec
+    os.makedirs(out_dir, exist_ok=True)
+    mock_path = os.path.join(out_dir, f"{screen}_mock.png")
+    diff_path = os.path.join(out_dir, f"{screen}_diff.png")
+    write_png(mock_path, mock)
+    dim = Image.frombytes("RGB", rec["size"], rec["diff"])
+    write_png(diff_path, dim)
+    summary_path = os.path.join(out_dir, f"{screen}_compare.txt")
+    lines = [
+        f"screen {screen}",
+        f"shot {shot_path}",
+        f"mock {mock_path}",
+        f"diff {diff_path}",
+        f"unmasked {rec['unmasked']}",
+        f"bad {rec['bad']}",
+        f"fraction {rec['fraction']:.6f}",
+        f"mean_sad {rec['mean_sad']:.3f}",
+        f"channel {COMPARE_CHANNEL}",
+        f"limit {COMPARE_BAD_FRACTION}",
+        f"pass {int(rec['fraction'] <= COMPARE_BAD_FRACTION)}",
+    ]
+    with open(summary_path, "w", encoding="ascii", newline="\n") as fh:
+        fh.write("\n".join(lines) + "\n")
+    rec["mock_path"] = mock_path
+    rec["diff_path"] = diff_path
+    rec["summary_path"] = summary_path
+    rec["pass"] = rec["fraction"] <= COMPARE_BAD_FRACTION
+    rec["diff"] = None
+    return rec
+
+
+def texte_section_names(game_dir: str) -> set[str]:
+    path = os.path.join(game_dir, "Texte.dat")
+    if not os.path.isfile(path):
+        return set()
+    buf = open(path, "rb").read()
+    names: set[str] = set()
+    for _n, t, _e in text.lines(buf):
+        h = text.header(t)
+        if h is not None:
+            names.add(h.decode("latin1"))
+    return names
+
+
+def anlagen_ids(game_dir: str) -> set[int]:
+    import figuren
+
+    path = os.path.join(game_dir, "Anlagen.dat")
+    if not os.path.isfile(path):
+        return set()
+    buf = open(path, "rb").read()
+    top = figuren.records(buf, 16, 16 + __import__("struct").unpack_from("<I", buf, 12)[0])
+    anl = next((p for n, p in top if n == "ANLAGEN"), None)
+    ids: set[int] = set()
+    if anl is None:
+        return ids
+    for n, p in figuren.records(anl, 0, len(anl)):
+        if n == "ENTRY":
+            ids.add(figuren.entry(p)["id"])
+    return ids
+
+
+def validate_against_game(layout_dir: str, game_dir: str) -> list[str]:
+    errors: list[str] = []
+    hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
+    con = parse_construction(os.path.join(layout_dir, "construction.txt"))
+    banks: dict = {}
+    for el in hud["elements"]:
+        acc_file = el.get("file")
+        tid = el.get("tex_id")
+        if not acc_file or tid is None:
+            continue
+        path = _game_tex(game_dir, acc_file)
+        if path not in banks:
+            if not os.path.isfile(path):
+                errors.append(f"missing tex {acc_file}")
+                banks[path] = None
+                continue
+            _pals, texs = _tex_bank(path)
+            banks[path] = texs
+        texs = banks[path]
+        if texs is None:
+            continue
+        n = int(tid)
+        if n not in texs:
+            errors.append(f"element {el['name']} tex_id {n} not in {acc_file}")
+        else:
+            for key in ("frame_idle", "frame_selected", "frame_normal", "frame_active"):
+                if key in el:
+                    fn = int(el[key])
+                    if fn not in texs:
+                        errors.append(f"element {el['name']} {key} {fn} not in {acc_file}")
+    ids = anlagen_ids(game_dir)
+    if ids:
+        for cell in con["cells"]:
+            cid = cell.get("id")
+            if cid in (None, "-"):
+                continue
+            n = int(cid)
+            if n not in ids:
+                errors.append(f"cell {cell['category']} {cell['col']} {cell['row']} id {n} not in Anlagen.dat")
+    sections = texte_section_names(game_dir)
+    if sections:
+        for cat in con["categories"].values():
+            sec = cat.get("tooltip_section")
+            if sec and sec != "-" and sec not in sections:
+                errors.append(f"tooltip_section {sec} not in Texte.dat")
+    return errors
+
+
 def mock_lines(layout_dir: str) -> list[str]:
     hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
     lines = ["anno1503-ui-mock 1"]
@@ -842,6 +1216,56 @@ def self_test() -> int:
             im.save(png)
             cerr = compare_shot(png, td)
             check(any("bar_top" in e for e in cerr), f"bar_top mismatch not caught: {cerr}")
+            syn_mock = Image.new("RGB", (8, 8), (10, 20, 30))
+            syn_shot = syn_mock.copy()
+            syn_shot.putpixel((1, 1), (200, 0, 0))
+            crec = compare_images(syn_mock, syn_shot, masked=set())
+            check(crec["bad"] == 1, f"synthetic bad {crec['bad']}")
+            crec_m = compare_images(syn_mock, syn_shot, masked={(1, 1)})
+            check(crec_m["bad"] == 0, "synthetic mask hides mismatch")
+        write_lines(
+            os.path.join(td, "masks.txt"),
+            [
+                "anno1503-ui-masks 1",
+                "resolution 1024 768",
+                "mask live_map pos 0 0 size 10 10 reason isometric-world",
+            ],
+        )
+        masks = parse_masks(os.path.join(td, "masks.txt"))
+        check(masks["masks"][0]["name"] == "live_map", "masks name")
+        check(masks["masks"][0]["pos"] == (0, 0), "masks pos")
+        gdir = os.path.join(td, "nogame")
+        os.makedirs(gdir)
+        write_lines(
+            hud,
+            [
+                "anno1503-ui-hud 1",
+                "resolution 1024 768",
+                "element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR tex_id 0",
+            ],
+        )
+        write_lines(
+            con,
+            [
+                "anno1503-ui-construction 1",
+                "resolution 1024 768",
+                "grid_click_x 833 885 937 989",
+                "grid_click_y 330 382 432 484 536 588 640 692",
+                "category public index 1 y 325 banner_key public tooltip_section TOOLTIP:BAUMENU_DIVERSES shot r2",
+                "category roads index 2 y 373 banner_key roads tooltip_section - shot r2",
+                "category farms index 3 y 418 banner_key farms tooltip_section - shot r2",
+                "category workshops index 4 y 463 banner_key workshops tooltip_section - shot r2",
+                "category coastal index 5 y 508 banner_key coastal tooltip_section - shot r2",
+                "category mines index 6 y 553 banner_key mines tooltip_section - shot r2",
+                "category military index 7 y 598 banner_key military tooltip_section - shot r2",
+                "category ornamental index 8 y 643 banner_key ornamental tooltip_section - shot r2",
+                "cell public 0 0 id 501 state unlocked",
+            ],
+        )
+        gerr = validate_against_game(td, gdir)
+        check(any("missing tex" in e for e in gerr), f"missing tex not caught: {gerr}")
+        blank = compose_screen(td, "hud_idle", gdir)
+        check(blank.size == (1024, 768), f"mock size {blank.size}")
         check(control_byte_errors(b"ok\n", "x") == [], "lf ok")
         check(control_byte_errors(b"ok\r\n", "x") == [], "crlf ok")
         check(len(control_byte_errors(b"ok" + bytes([9]) + b"no", "x")) == 1, "tab refused")
@@ -894,9 +1318,15 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--game-dir")
     m = sub.add_parser("mock")
     m.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
+    m.add_argument("--screen")
+    m.add_argument("--game-dir")
+    m.add_argument("--out", default=os.path.join(REPO, "cache", "ui-mock"))
     c = sub.add_parser("compare")
     c.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
     c.add_argument("--shot", required=True)
+    c.add_argument("--screen")
+    c.add_argument("--game-dir")
+    c.add_argument("--out", default=os.path.join(REPO, "cache", "ui-mock"))
     args = p.parse_args(argv)
     if args.cmd == "write-inventory":
         info = write_inventory(args.game_dir, args.out)
@@ -926,6 +1356,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "validate":
         errs = validate_layout(args.layout)
+        if args.game_dir:
+            errs.extend(validate_against_game(args.layout, args.game_dir))
         if errs:
             for e in errs:
                 print("validate:", e, file=sys.stderr)
@@ -933,10 +1365,38 @@ def main(argv: list[str] | None = None) -> int:
         print(f"validate ok {args.layout}")
         return 0
     if args.cmd == "mock":
+        if args.screen:
+            if not args.game_dir:
+                print("mock --screen needs --game-dir", file=sys.stderr)
+                return 2
+            im = compose_screen(args.layout, args.screen, args.game_dir)
+            dest = os.path.join(args.out, f"{args.screen}_mock.png")
+            write_png(dest, im)
+            print(f"mock wrote {dest}")
+            return 0
         for line in mock_lines(args.layout):
             print(line)
         return 0
     if args.cmd == "compare":
+        if args.screen:
+            if not args.game_dir:
+                print("compare --screen needs --game-dir", file=sys.stderr)
+                return 2
+            rec = compare_screen(args.layout, args.screen, args.shot, args.game_dir, args.out)
+            if rec.get("error"):
+                print("compare:", rec["error"], file=sys.stderr)
+                return 1
+            print(
+                "compare {s} unmasked={u} bad={b} fraction={f:.4f} mean_sad={m:.1f} pass={p}".format(
+                    s=args.screen,
+                    u=rec["unmasked"],
+                    b=rec["bad"],
+                    f=rec["fraction"],
+                    m=rec["mean_sad"],
+                    p=int(rec["pass"]),
+                )
+            )
+            return 0 if rec["pass"] else 1
         errs = compare_shot(args.shot, args.layout)
         if errs:
             for e in errs:

@@ -1,6 +1,6 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 steps 1-8 plus F1.2 cell table and F1.3 measured build-test surface (2026-10-30). Reverse-engineering and specification only; no engine code.
+**Status:** UI.1 steps 1-8 plus F1.2 cell table, F1.3 measured build-test surface, F1.4 oracle mock and per-pixel compare (2026-10-30). Reverse-engineering and specification only; no engine code.
 **Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.
@@ -128,12 +128,12 @@ Machine-readable copy: [`data/ui/hud.txt`](../../data/ui/hud.txt). Rectangles ar
 |---|---|---|---|---|---|
 | Right chrome | (779, 0) 245 × 733 | `fenster.inc` `MAINUNTERGRUND` 245 × 524 stacked under `WELTKARTE` | always | atlas-right; `MAINUNTERGRUND` sprite-sad (779, 244) mean 82 on `hud_idle_running` (tabs sit on it) | — |
 | Minimap atlas | (779, 0) 245 × 248 | `WELTKARTE` id 2 | map paints on top | sprite-sad mean 43.3 `hud_idle_running` | — |
-| Construction tab | (779, 181) 61 × 63 | `MAINTAB` ids 8–15 (8 frames) | idle 8, selected 12 | sprite-sad mean 10.8 idle / 11.3 on `r2_construction_public` | centre (809, 212); key **B** opens the same menu |
-| Military tab | (840, 181) 61 × 63 | `MAINTAB` | idle 9, selected 13 | sprite-sad mean 10.6 on `r2_construction_public`; selected 13 on `r2_tab_military` (cursor overlap raises the mean) | centre (870, 212); key **D** opens the same player list |
-| Help tab | (901, 181) 61 × 63 | `MAINTAB` | idle 10, selected 14 | sprite-sad mean 9.6 idle-help slot | centre (931, 212) |
-| Options tab | (962, 181) 61 × 63 | `MAINTAB` | idle 11, selected 15 | sprite-sad mean 10.5 idle / 11.8 on `r2_options` | centre (992, 212) |
+| Construction tab | (779, 181) 61 × 63 | `MAINTAB` ids 8–15 (8 frames) | unselected 8, selected 12 | sprite-sad mean 10.85 on `hud_idle_running`; selected 11.31 on `r2_construction_public` | centre (809, 212); key **B** opens the same menu |
+| Military tab | (840, 181) 61 × 63 | `MAINTAB` | unselected 9, selected 13 | **Default HUD draws selected 13** (mean 11.17 on `hud_idle_running`, `f13_hud_cursor_map`, `r2_player_menu`). Unselected 9 mean 10.63 on `r2_construction_public`. Selected with cursor on `r2_tab_military` mean 50. | centre (870, 212); key **D** opens the same player list |
+| Help tab | (901, 181) 61 × 63 | `MAINTAB` | unselected 10, selected 14 | unselected mean 9.6 on `hud_idle_running`; selected 14 on `r2_tab_help` (cursor overlap, mean 49.9) | centre (931, 212) |
+| Options tab | (962, 181) 61 × 63 | `MAINTAB` | unselected 11, selected 15 | unselected mean 10.46 idle; selected 15 mean 11.84 on `r2_options` | centre (992, 212) |
 
-Tab stride is **61** px from x=779 (the ACCESS width), not the old 51 px fraction spacing. `tGadKlickGfx` uses eight consecutive textures: ids 8–11 unselected, 12–15 selected, one pair per tab in column order. Hover/pressed frames were not separated: the runner has `move` (hover shots `f13_hover_tab_*`) but no held mouse-down command (OQ-544). The military-tab tooltip remains `TOOLTIP:CONTROLFELD` index 2 and 3 (F1.1). That section has **8** lines; the other six indices are OQ-541.
+Tab stride is **61** px from x=779 (the ACCESS width), not the old 51 px fraction spacing. `tGadKlickGfx` uses eight consecutive textures: ids 8–11 unselected, 12–15 selected, one pair per tab in column order. The default right-hand panel (Citizen start, no construction/help/options open) is the player/settlement view, so the military tab is selected on idle. Hover/pressed frames were not separated: the runner has `move` (hover shots `f13_hover_tab_*`) but no held mouse-down command (OQ-544). The military-tab tooltip remains `TOOLTIP:CONTROLFELD` index 2 and 3 (F1.1). That section has **8** lines; the other six indices are OQ-541.
 
 `fenster.inc` `STATUSBAR` id 6 780 × 43 is still not the drawn bar (OQ-536 closed for the 1024 × 768 bar: the drawn one is `Data/statusbar.dat` `STATUSBAR`).
 
@@ -206,6 +206,40 @@ Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_loc
 Category-column **click** y values in `construction.txt` remain the 2026-10-25 centres (they hit). Their **rectangles** and ACCESS are OQ-540. `LUPE`, zoom minus, compass, portrait xs: OQ-542/543/545. Hover shots bind the remaining tooltip indices (OQ-541) once the tooltip box is measured against `Texte.dat` line lengths; that comparison is not in this step's oracle.
 
 Nameplate y about 269. Idle gold reads 500000.
+
+### 2.8 Oracle mock and per-pixel compare (F1.4)
+
+`python -I tools/ui_layout.py mock --layout data/ui --screen <name> --game-dir <game/app> --out cache/ui-mock` decodes the named `.tex` ids with `tools/tex.py` and blits them at the `hud.txt` rectangles. `compare --screen <name> --shot <png>` writes `{name}_mock.png`, `{name}_diff.png` and `{name}_compare.txt` under `cache/ui-mock/` (git-ignored). `validate --game-dir` also checks every `hud.txt` tex id exists in its `.tex`, every construction `tooltip_section` in `Texte.dat`, and every cell Anlagen id in `Anlagen.dat`.
+
+Tolerance, stated here and as `COMPARE_CHANNEL` / `COMPARE_BAD_FRACTION` in `tools/ui_layout.py`: a pixel is bad when any RGB channel differs by more than **48**; the compare fails when the bad fraction of unmasked pixels exceeds **0.12**. Masks: `data/ui/masks.txt` plus extra rectangles at compare time (idle HUD: settlement panel (779, 244) 245 × 489; construction: every unlocked 50 × 50 cell).
+
+Screens and the named shots they are compared against:
+
+| Screen | Shot | unmasked | bad | fraction | mean SAD | pass |
+|---|---|---|---|---|---|---|
+| `hud_idle` | `hud_idle_running` | 45430 | 642 | 0.0141 | 22.1 | 1 |
+| `construction_public` | `r2_construction_public` | 131771 | 2443 | 0.0185 | 24.0 | 1 |
+| `construction_roads` | `r2_construction_roads` | 139271 | 7316 | 0.0525 | 46.0 | 1 |
+| `construction_farms` | `r2_construction_farms` | 126771 | 2151 | 0.0170 | 22.4 | 1 |
+| `construction_workshops` | `r2_construction_workshops` | 136771 | 4566 | 0.0334 | 35.3 | 1 |
+| `construction_coastal` | `r2_construction_coastal` | 136771 | 6936 | 0.0507 | 45.4 | 1 |
+| `construction_mines` | `r2_construction_mines` | 141771 | 5463 | 0.0385 | 38.6 | 1 |
+| `construction_military` | `r2_construction_military` | 141771 | 4603 | 0.0325 | 34.2 | 1 |
+| `construction_ornamental` | `r2_construction_ornamental` | 141771 | 2349 | 0.0166 | 22.5 | 1 |
+
+`hud_idle` blits military frame 13 (the measured default) and omits BAUMAT (those four icons are absent from pass-2 `hud_idle_running`; they are present on `r2_construction_*` and `f13_hud_cursor_map`). Construction mocks blit BAUMAT ids 36-39 and construction tab frame 12.
+
+No screen exceeded 0.12. Residual bad pixels (channel > 48, still under the fraction) and the reason they are not a layout error:
+
+| Where | Why (evidence) |
+|---|---|
+| Minimap parchment corners, left of + (red triangles on every `_diff.png`) | Zoom minus / compass overlays are not bound (OQ-542, OQ-543). `WELTKARTE` id 2 at (779, 0) includes the parchment; `minimap_paint` masks (790, 8) 220 × 140, not the 19 × 21 minus slot. |
+| Empty construction cells and 2 px gutters (stride 52 minus sprite 50) | Mock fills them from `MAINUNTERGRUND` id 4. That atlas mean vs the idle chrome is 82 (section 2.1); the construction panel stone is a different overlay, not a second ACCESS that SAD-matched. Worst on categories with many empties (`roads` 0.0525, `coastal` 0.0507). |
+| Locked-cell edges | `NO_KLICK` id 56 mean 12.9 on cell interiors (section 2.4). The 2 px gutter and the sprite's transparent border show the same MAINUNTERGRUND mismatch. |
+| Nameplate / banner left of (800, 248) | Banner wood is live text + unbound graphic (OQ-540). Mask is (800, 248) 220 × 54; a strip left of x=800 remains. |
+| Category column | Masked 29 × 400 at (779, 300) (OQ-540). Pixels right of that strip that are not a cell are MAINUNTERGRUND. |
+| Status-bar right of x=779 | `STATUSBAR` is 746 × 35; chrome below the pickaxe is panel stone, not the bar. |
+| BAUMAT on idle | Pass-2 `hud_idle_running` does not draw ids 36–39 (section 2.3). The mock therefore omits them for `kind=hud` and draws them for construction. |
 
 ## 3. Construction menu tree
 

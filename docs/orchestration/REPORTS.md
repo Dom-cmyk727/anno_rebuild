@@ -7898,3 +7898,25 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 3. **Category column ACCESS is OQ-540, not THUMBNAIL*.** Alternative: write the pushed `THUMBNAIL*` names as the drawn icons. Rejected: SAD mean >140; claiming them as the pixels would be a guess.
 4. **Pressed states from consecutive tex ids, not a mouse-down shot.** Alternative: add a mousedown command to the Wine agent. That is `src/`-adjacent / tools/orig, outside this step's file set. Hover used `move` (`f13_hover_*`).
 5. **CTRL alignment is OQ-546.** Alternative: `key('CTRL', hold=1)` then click. Rejected: the agent keyups before the click returns; it would not be CTRL-at-click.
+
+## UI.1.F1 — progress, F1.4 — 2026-10-30 15:20 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: oracle `mock --screen` blits original textures (`tools/tex.py`) at `data/ui/` rectangles into `cache/ui-mock/`. `compare --screen` diffs per pixel over unmasked chrome, writes mock/diff/summary, fails above channel 48 / fraction 0.12. `validate --game-dir` checks tex ids, Texte sections, Anlagen ids. Idle HUD and all eight construction categories compared.
+- Evidence:
+  - `hud_idle` vs `hud_idle_running`: unmasked 45430 bad 642 fraction 0.0141 mean_sad 22.1 pass=1
+  - construction fractions 0.0166-0.0525, all pass (roads 0.0525 worst, many empty cells on MAINUNTERGRUND)
+  - Default HUD draws military tab frame 13 (mean 11.17 on `hud_idle_running`); construction open uses construction 12 / military 9
+  - BAUMAT ids 36-39 absent from pass-2 idle, present on construction; mock follows that
+  - `python -I tools/test_ui_layout.py` 11 tests ok; self-test checks=25
+  - `python -I tools/ui_layout.py check-files --root .` -> check-files ok .
+  - `python -I tools/ui_layout.py validate --layout data/ui --game-dir E:\anno1503\game\app` -> validate ok data/ui
+- Next: F1.5 rest of the screen tree.
+- Subagents: none.
+- Open: 535, 536, 539-546. No new OQ.
+
+### Decisions and reasoning
+1. **Tolerance channel 48 / fraction 0.12.** Alternative: require mean SAD under 15 as in sprite-sad. Rejected: the mock is a blit of ACCESS graphics, not the full composite (live digits, map, unlocked icons, unbound LUPE/minus). 0.12 is above the highest measured fraction (roads 0.0525).
+2. **Idle HUD military tab is selected frame 13.** Alternative: blit unselected 9 as "idle". Rejected: sprite-sad on `hud_idle_running` and `f13_hud_cursor_map` is mean 11.17 for id 13 vs 82.48 for id 9. The default right panel is the player/settlement view.
+3. **Do not blit BAUMAT on the idle mock.** Alternative: always blit ids 36-39. Rejected: they are absent from pass-2 `hud_idle_running` (section 2.3) and were the largest idle-diff cluster when blitted.
+4. **Mask the idle settlement panel, not the construction grid.** Alternative: one mask for the whole right chrome below the tabs. Rejected: construction compare must see locked `NO_KLICK` cells.
+5. **Residual empty-cell stone is MAINUNTERGRUND, not a second ACCESS.** Alternative: invent a construction-panel fill. Rejected: no ACCESS SAD-matched; listed as explained residual, not a guess in the spec.

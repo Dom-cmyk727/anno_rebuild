@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -61,6 +62,48 @@ class SelfTest(unittest.TestCase):
         bad = "| a | b |\n|---|---|\n| 1 |\n"
         self.assertEqual(ui_layout.markdown_table_errors(good, "t"), [])
         self.assertTrue(ui_layout.markdown_table_errors(bad, "t"))
+
+    def test_compare_images_respects_mask(self) -> None:
+        from PIL import Image
+
+        mock = Image.new("RGB", (4, 4), (1, 2, 3))
+        shot = mock.copy()
+        shot.putpixel((2, 2), (200, 0, 0))
+        rec = ui_layout.compare_images(mock, shot, masked=set())
+        self.assertGreater(rec["bad"], 0)
+        rec2 = ui_layout.compare_images(mock, shot, masked={(2, 2)})
+        self.assertEqual(rec2["bad"], 0)
+
+    def test_validate_against_game_missing_tex(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            ui_layout.write_lines(
+                os.path.join(td, "hud.txt"),
+                [
+                    "anno1503-ui-hud 1",
+                    "resolution 1024 768",
+                    "element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR tex_id 0",
+                ],
+            )
+            cats = [
+                f"category {k} index {i} y 1 banner_key {k} tooltip_section - shot r2"
+                for i, k in enumerate(ui_layout.CATEGORY_KEYS, 1)
+            ]
+            ui_layout.write_lines(
+                os.path.join(td, "construction.txt"),
+                [
+                    "anno1503-ui-construction 1",
+                    "resolution 1024 768",
+                    "grid_click_x 833 885 937 989",
+                    "grid_click_y 330 382 432 484 536 588 640 692",
+                    *cats,
+                ],
+            )
+            gdir = os.path.join(td, "g")
+            os.makedirs(gdir)
+            errs = ui_layout.validate_against_game(td, gdir)
+            self.assertTrue(any("missing tex" in e for e in errs), errs)
 
     def test_non_ascii_is_refused(self) -> None:
         import tempfile

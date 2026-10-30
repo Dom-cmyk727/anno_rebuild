@@ -33,9 +33,14 @@ whole field means “absent”.
 | `groups.txt` | `anno1503-ui-groups 1` | Filename groups with evidence (a `Data/*.dat` `[FILE]` pointer, or a stem that is a documented HUD/construction graphic) |
 | `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 x 768 for the HUD and build-test surface, each naming the screenshot and the method (sprite-sad, pixel-row, atlas-right) |
 | `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories, `THUMBNAIL*` / `TOOLTIP:BAUMENU_*` binds, and every cell id from `View.dll` tables plus HEAD costs |
+| `masks.txt` | `anno1503-ui-masks 1` | Rectangles the oracle skips in `compare` (live map, digits, portraits, unbound chrome) |
 
 `write-inventory` rewrites only `dat.txt`, `inc.txt` and `groups.txt`. `hud.txt`
 is measured from Wine-runner shots (`docs/re/ui.md` section 7). `construction.txt`
 cell ids come from View.dll 8-byte tables plus Anlagen.dat HEAD costs; occupancy
 and confirmation shots are from the runner. Inventory reruns leave both files
 byte-stable.
+
+`mock --screen` / `compare --screen` compose a PNG from the original textures at
+these rectangles and diff it against a named Wine-runner shot over the unmasked
+chrome (`docs/re/ui.md` section 2.8). Outputs stay in `cache/ui-mock/`.

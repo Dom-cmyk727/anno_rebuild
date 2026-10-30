@@ -309,7 +309,7 @@ TEST_CASE("replay: a recorded session replays through --commands to the same sta
     CHECK(replay == hashes);
 }
 
-TEST_CASE("feedback: a refused build is reported once with its reason; money is shown") {
+TEST_CASE("feedback: a refused build is reported once with its reason, and money is shown") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

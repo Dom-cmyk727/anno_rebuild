@@ -4,9 +4,11 @@
 // was given; it never reads the World. The viewer maps SDL events to DevEvent; the
 // tests drive DevInput with synthetic events. The sim decides every command.
 //
-// Defaults (owner round dr: the input is for testing; the original's controls are for
-// UI.1/UI.2): cycle with [ and ], rotate with R, left press and release place or
-// demolish, right click or Escape leaves a mode. See docs/app/game-shell.md.
+// No key or mouse binding is wired in this change: the viewer's SDL mapping (keys,
+// the pointer, the pick through render::pick_tile) is not in it, so nothing in the
+// window produces these events yet. The events are the contract that mapping feeds.
+// The owner's round-dr decision keeps this a test tool; the original's controls are
+// for UI.1/UI.2 (docs/app/game-shell.md).
 #pragma once
 
 #include <cstdint>

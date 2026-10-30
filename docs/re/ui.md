@@ -1,7 +1,7 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 steps 1-8 plus F1.1-F1.6 (2026-10-30). Reverse-engineering and specification only; no engine code. F1.4 oracle compare holds; remaining acceptance gaps are OQ-535 and OQ-547..549.
-**Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
+**Status:** UI.1 steps 1-8 plus F1.1-F1.6 and F2.1 (2026-10-30). Reverse-engineering and specification only; no engine code. F2.1 oracle compare holds with reduced masks and restated tolerance; remaining acceptance gaps are OQ-535 and OQ-547..549.
+**Branch:** `task/UI-1-F2-ui-remaining`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.
 
@@ -150,10 +150,13 @@ Tab stride is **61** px from x=779 (the ACCESS width), not the old 51 px fractio
 
 | Element | Pixel pos / size | Graphic | Notes |
 |---|---|---|---|
-| Zoom + | (959, 7) 19 × 21 | `fenster.tex` id **44** (not ACCESS id 40) | sprite-sad mean **2.9** on `hud_idle_running`. `KARTEPLUS` ACCESS number is 40; ids 40–45 are 19 × 21. The idle unpressed + is frame 44. |
-| Zoom − | visible left of + on the parchment | no ACCESS name `KARTEMINUS` | ids 40–45 do not SAD-match a second 19 × 21 at x<959 (best mean 93). Rectangle and ACCESS: OQ-542 |
-| `LUPE` | ACCESS 42 × 45, id 7 | below the parchment, left, on the shot | sprite-sad mean >150 in both the tab-strip and the below-minimap band. The drawn glass sits on a wood plate; the ACCESS alone is not the plate. Rectangle: OQ-543 |
-| Compass / north | right of the lupe on the shot | `KARTE_NORDUNG` 256 × 133 is the parchment-sized graphic, not the small compass | 256 px does not fit in the 245 px chrome; search missed. OQ-543 |
+| Zoom + | (959, 7) 19 × 21 | `fenster.tex` id **44** | sprite-sad mean **2.885** on `hud_idle_running`. |
+| Zoom − | (982, 19) 19 × 21 | `fenster.tex` id **46** | sprite-sad mean **1.915** on `hud_idle_running`. To the right of +, not the left. |
+| `LUPE` | (805, 132) 42 × 45 | `fenster.inc` `LUPE` id **7** | sprite-sad mean 51.6 opaque / **38.4** with a grey-key (the ACCESS includes a dark halo). |
+| Compass west | (965, 140) 19 × 31 | `fenster.tex` id **48** | sprite-sad mean **3.088**. Yellow chevron. |
+| Compass east | (986, 140) 19 × 31 | `fenster.tex` id **50** | sprite-sad mean **3.652**. Pair with 48. |
+
+`View.dll` `0x10034388` looks up ACCESS `KARTEPLUS` (id 40), then creates **six** gadgets of class `0xb09` (`cmp edi, 6` at `0x10034500`). After the lookup, `lea esi, [ecx-2]` / `add esi, 2` per gadget: each gadget consumes two consecutive textures (idle, pressed). Sizes: `push 0x15; push 0x13` = 19 × 21 for the first four; one case sets 19 × 31 (`0x1f` × `0x13`) for the chevrons. Drawn idle frames: 44 (+), 46 (−), 48 and 50 (compass). Ids 40 and 42 are 19 × 21 on the wood bar (yellow plus matching the lupe handle, mean 5.4 / 3.6 — treated as the other two `0xb09` gadgets of the group). `KARTE_NORDUNG` ids 52–55 are 256 × 133 and do not fit the 245 px chrome; they are not the small compass. Parent gadget `0xb02` is 244 × 63 (`push 0x3f; push 0xf4` at `0x1003457e`), the wood strip under the parchment.
 
 ### 2.3 Status / info bar
 
@@ -167,10 +170,12 @@ Drawn bar: `statusbar.tex` id **0** = `Data/statusbar.dat` `STATUSBAR` 746 × 35
 | Bricks | (252, 735) 30 × 30 | id 38 segment 2 | same | mean 7.4 |
 | Marble | (312, 735) 30 × 30 | id 39 segment 3 | same; digit 0 at Citizen | mean 8.9 |
 | Help `?` | (746, 733) 34 × 35 | `STATUSBAR_FRAGEZEICHEN` id 1 (id 2 is the other segment) | always | mean 10.2 `hud_idle_running` |
-| Four portrait slots | right of marble, left of `?` | `STATUSBAR_ICON` ids 3–35 (33 segments, 35 × 35) | always (green civ portraits) | not a clean SAD of id 3 at a 40 px grid; exact x of each portrait OQ-545 |
-| `STATUSBAR_ROSHTOFFE` | 12 × 30 × 30, tex ids 40–51 | goods icons | **not** on this bar at Citizen | no SAD < 15 at the four BAUMAT x |
+| Population head | (401, 733) 38 x 35 | `STATUSBAR_EINWOHNER` id 53 | on construction / `f13_hud_cursor_map` / house; absent from pass-2 idle | sprite-sad mean **4.74** `r2_construction_public`; idle mean 55 (empty bar). `STATUSBAR_ICON` id 3 is a fire glyph |
+| Goods 0 | (547, 735) 30 x 30 | `STATUSBAR_ROSHTOFFE` id **46** segment 6 | idle and construction | grey-key mean **14.70** (opaque 23.15). F1 searched only BAUMAT x |
+| Goods 1 | (587, 735) 30 x 30 | id **48** segment 8 | idle and construction | grey-key mean **11.38** |
+| Goods 2 | (627, 735) 30 x 30 | id **51** segment 11 | idle and construction | grey-key mean 18.48; unique winner at that x |
 
-Pass-2 idle vs construction: pixel runs that appear are those four BAUMAT columns (x 132-178, 192-238, 252-291, 312-351) plus a fifth run at 401-445 (portrait digits / OQ-545). Marble **is** a numbered slot on `r2_construction_public` (OQ-538 resolved). On the F1.3 idle `f13_hud_cursor_map` the four icons are already present.
+Pass-2 idle vs construction: pixel runs that appear are those four BAUMAT columns (x 132-178, 192-238, 252-291, 312-351) plus `STATUSBAR_EINWOHNER` at 401-438. Marble **is** a numbered slot on `r2_construction_public` (OQ-538 resolved). On the F1.3 idle `f13_hud_cursor_map` the four BAUMAT icons are already present. The three ROSHTOFFE icons sit on idle as well.
 
 `TOOLTIP:STATUSBAR` has 346 lines; `TOOLTIP:STATUSBARICON` has 6. Line-to-slot bind: OQ-541.
 
@@ -180,9 +185,10 @@ Grid (confirmed by `NO_KLICK` id 56, mean **12.927** on every locked public cell
 
 | Element | Pixel pos / size | Graphic | Shot / method |
 |---|---|---|---|
-| Locked cell | origin + (col,row)×52, 50 × 50 | `NO_KLICK` id 56; id 57 is the next 50 × 50 (likely hover/pressed, not captured as a hold) | `r2_construction_public` |
-| Category column | click x=782, y as in `construction.txt` | `THUMBNAIL*` ACCESS names are **pushed** next to each category in `View.dll` (F1.2) but do **not** SAD-match the drawn  column (mean >140). `VIEWBAUTAB` 42 × 46 ids 16–31 also miss (mean >110). | OQ-540 |
-| Banner | wood plaque over the nameplate when a category is selected | text from `TOOLTIP:BAUMENU_*` (F1.2 bind); graphic ACCESS not isolated | `r2_construction_*` |
+| Locked cell | origin + (col,row)×52, 50 × 50 | `NO_KLICK` id 56; id 57 is the next 50 × 50 (pressed). A locked cell does **not** show its `THUMBNAIL` (mean 230 vs `NO_KLICK` 12.9 on public (1,0)). | `r2_construction_public` |
+| Unlocked cell icon | same origin, 50 × 50 | `fenster.tex` id = category `THUMBNAIL*` ACCESS id + **3 × record_index** (`record_index = row*4+col`, empty id-1 slots included) | gadget `0xb0c` 50 × 50 in chrome builder `0x1002c360`. Public (2,0) type 1301 = 154+6 = **160** mean 7.98; (3,0) **163** mean 9.59; (3,1) **175** mean 9.77; workshops (0,1) weaver = 277+12 = **289** mean 10.0. Three consecutive frames per record (idle, hover, pressed). Locked cells keep the textures in the file but draw `NO_KLICK` on top. |
+| Category column | (779, click_y−23) 42 × 46, eight gadgets | `VIEWBAUTAB` ids 16, 18, …, 30 (idle); +1 pressed/selected | `View.dll` `0x1002bb4f` copies `VIEWBAUTAB`, loop `cmp ebp, 8` / `add esi, 2`, gadget `0xb0d`, size `push 0x2e; push 0x2a`. Id 16 is the public house-in-circle (decoded). Opaque SAD vs the 29 px drawn strip remains >110 (the 42 px gadget is clipped to the column); the column mask stays. `B_Baumenue.tex` 60 × 63 is a different house glyph, not the column. |
+| Banner | (783, 252) 241 × 48 | `PLANKEGROSS` id **1019** | gadget `0xb17` after the eight tabs, size `push 0x30; push 0xf1` = 48 × 241 (`0x1002bd15` string `PLANKEGROSS`). Sprite-sad mean **38.75** on `r2_construction_public` (text sits on the plank). |
 | Pickaxe | (970, 710) 53 × 53 | `ABRISSICON` id 659 mean 6.7 on `r2_construction_public`; id 660 mean 6.3 on `r2_demolish` (active) | hidden on idle HUD (mean 95) |
 | Cancel-X | (984, 725) 33 × 38 | `INFOEXIT` id 38 mean 11.0 | on the **info / placement** panel only; not on the category grid (search mean 94) |
 
@@ -196,8 +202,8 @@ No scroll control was observed: every category fits in the 4 × 8 grid (max 32 r
 | Rotate left | (808, 451) 33 × 38 | `INFOROTPFEIL` id 34 mean 10.6 | keys **DOT** / **COMMA** (`game-mechanics.md` §1) also rotate |
 | Rotate right | (987, 451) 33 × 38 | id 36 best of 34–37 at that slot, mean 55 (preview overlap) | same |
 | Cancel-X | (984, 725) 33 × 38 | `INFOEXIT` id 38 | leaves placement |
-| Cost row | tools / wood / bricks / marble / gold on the panel | `B_Baukosten.tex` 32 × 29 did not SAD-match (mean 117). Icons follow the same four BAUMAT plus gold, not a second ACCESS that matched. | costs as numbers match HEAD (F1.2) |
-| Upkeep | bottom of the panel | `B_Betriebskosten.tex` 40 × 37 mean 106, not a clean overlay | type 501 panel shows 5 vs PROD3 0 (house) |
+| Cost row | tools / wood / bricks / marble / gold on the panel | Gold coin is `B_Baukosten.tex` id 1 (32 × 29). Materials are the same `STATUSBAR_BAUMAT` ids 36–39 already bound on the bar. Opaque SAD on the panel is >100 because those sprites carry a grey fill; the decoded coin/hammer/wood match the drawn glyphs. | costs as numbers match HEAD (F1.2) |
+| Upkeep | (815, 674) 40 x 37 | `B_Betriebskosten.tex` id 1 (coin with orange arrow) | grey-key mean **12.76** on `r2_info_pioneer_house`; type 501 panel shows 5 vs PROD3 0 (house) |
 | Name | above the preview | `Texte.dat` `[ANLAGEN]` id line (not stored here) | |
 
 Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_locked_*`). Left click on a valid tile places and stays in mode (`r2_place_*`). ESC / right click / cancel-X leaves.
@@ -212,43 +218,44 @@ Click a U cell: info panel + placement mode. Click an L cell: no panel (`f12_loc
 
 ### 2.7 What is still fraction-based
 
-Category-column **click** y values in `construction.txt` remain the 2026-10-25 centres (they hit). Their **rectangles** and ACCESS are OQ-540. `LUPE`, zoom minus, compass, portrait xs: OQ-542/543/545. Hover shots bind the remaining tooltip indices (OQ-541) once the tooltip box is measured against `Texte.dat` line lengths; that comparison is not in this step's oracle.
+Category-column **click** y values in `construction.txt` remain the 2026-10-25 centres (they hit). Their rectangles are bound in F2.1 (`VIEWBAUTAB` 42 x 46, clipped to 29 px). `LUPE`, zoom minus, compass, `STATUSBAR_EINWOHNER` and the three `STATUSBAR_ROSHTOFFE` slots are bound (sections 2.2-2.3). Hover shots bind the remaining tooltip indices (OQ-541) once the tooltip box is measured against `Texte.dat` line lengths; that comparison is not in this step's oracle.
 
 Nameplate y about 269. Idle gold reads 500000.
 
-### 2.8 Oracle mock and per-pixel compare (F1.4)
+### 2.8 Oracle mock and per-pixel compare (F1.4, restated F2.1)
 
-`python -I tools/ui_layout.py mock --layout data/ui --screen <name> --game-dir <game/app> --out cache/ui-mock` decodes the named `.tex` ids with `tools/tex.py` and blits them at the `hud.txt` rectangles. `compare --screen <name> --shot <png>` writes `{name}_mock.png`, `{name}_diff.png` and `{name}_compare.txt` under `cache/ui-mock/` (git-ignored). `validate --game-dir` also checks every `hud.txt` tex id exists in its `.tex`, every construction `tooltip_section` in `Texte.dat`, and every cell Anlagen id in `Anlagen.dat`.
+`python -I tools/ui_layout.py mock --layout data/ui --screen <name> --game-dir <game/app> --out cache/ui-mock` decodes the named `.tex` ids with `tools/tex.py` and blits them at the `hud.txt` rectangles. F2.1 also blits unlocked-cell `THUMBNAIL` icons, `PLANKEGROSS`, zoom minus, `LUPE` and the compass pair. `compare --screen <name> --shot <png>` writes `{name}_mock.png`, `{name}_diff.png` and `{name}_compare.txt` under `cache/ui-mock/` (git-ignored). `validate --game-dir` also checks every `hud.txt` tex id exists in its `.tex`, every construction `tooltip_section` in `Texte.dat`, and every cell Anlagen id in `Anlagen.dat`.
 
-Tolerance, stated here and as `COMPARE_CHANNEL` / `COMPARE_BAD_FRACTION` in `tools/ui_layout.py`: a pixel is bad when any RGB channel differs by more than **48**; the compare fails when the bad fraction of unmasked pixels exceeds **0.12**. Masks: `data/ui/masks.txt` plus extra rectangles at compare time (idle HUD: settlement panel (779, 244) 245 × 489; construction: every unlocked 50 × 50 cell).
+Tolerance, restated from the F2.1 spread (`COMPARE_CHANNEL` / `COMPARE_BAD_FRACTION` in `tools/ui_layout.py`): a pixel is bad when any RGB channel differs by more than **48**; the compare fails when the bad fraction of unmasked pixels exceeds **0.08**. Correct screens sit at 0.0164-0.0480 after the portrait-mask shrink. Negative controls (must fail): public mock vs roads shot 0.1968; whole-grid one-cell shift 0.1901; pickaxe rectangle wiped (`pick_fraction` 0.983). Masks: `data/ui/masks.txt` plus, for idle HUD only, the settlement panel (779, 244) 245 x 489. Unlocked cells are no longer extra-masked. The category column stays masked (`VIEWBAUTAB` 42 x 46 is clipped to 29 px). The old 346 px portraits mask is now `einwohner_digits` (439, 733) 108 x 35.
 
 Screens and the named shots they are compared against:
 
-| Screen | Shot | unmasked | bad | fraction | mean SAD | pass |
-|---|---|---|---|---|---|---|
-| `hud_idle` | `hud_idle_running` | 45430 | 642 | 0.0141 | 22.1 | 1 |
-| `construction_public` | `r2_construction_public` | 131771 | 2443 | 0.0185 | 24.0 | 1 |
-| `construction_roads` | `r2_construction_roads` | 139271 | 7316 | 0.0525 | 46.0 | 1 |
-| `construction_farms` | `r2_construction_farms` | 126771 | 2151 | 0.0170 | 22.4 | 1 |
-| `construction_workshops` | `r2_construction_workshops` | 136771 | 4566 | 0.0334 | 35.3 | 1 |
-| `construction_coastal` | `r2_construction_coastal` | 136771 | 6936 | 0.0507 | 45.4 | 1 |
-| `construction_mines` | `r2_construction_mines` | 141771 | 5463 | 0.0385 | 38.6 | 1 |
-| `construction_military` | `r2_construction_military` | 141771 | 4603 | 0.0325 | 34.2 | 1 |
-| `construction_ornamental` | `r2_construction_ornamental` | 141771 | 2349 | 0.0166 | 22.5 | 1 |
+| Screen | Shot | unmasked | fraction | mean SAD | pass |
+|---|---|---|---|---|---|
+| `hud_idle` | `hud_idle_running` | 53760 | 0.0207 | 23.70 | 1 |
+| `construction_public` | `r2_construction_public` | 157565 | 0.0189 | 22.81 | 1 |
+| `construction_roads` | `r2_construction_roads` | 157565 | 0.0480 | 42.35 | 1 |
+| `construction_farms` | `r2_construction_farms` | 157565 | 0.0170 | 21.02 | 1 |
+| `construction_workshops` | `r2_construction_workshops` | 157565 | 0.0304 | 32.40 | 1 |
+| `construction_coastal` | `r2_construction_coastal` | 157565 | 0.0455 | 41.21 | 1 |
+| `construction_mines` | `r2_construction_mines` | 157565 | 0.0361 | 36.22 | 1 |
+| `construction_military` | `r2_construction_military` | 157565 | 0.0307 | 32.26 | 1 |
+| `construction_ornamental` | `r2_construction_ornamental` | 157565 | 0.0164 | 21.69 | 1 |
 
 `hud_idle` blits military frame 13 (the measured default) and omits BAUMAT (those four icons are absent from pass-2 `hud_idle_running`; they are present on `r2_construction_*` and `f13_hud_cursor_map`). Construction mocks blit BAUMAT ids 36-39 and construction tab frame 12.
 
-No screen exceeded 0.12. Residual bad pixels (channel > 48, still under the fraction) and the reason they are not a layout error:
+No screen exceeded 0.08. Residual bad pixels (channel > 48, still under the fraction) and the reason they are not a layout error:
 
 | Where | Why (evidence) |
 |---|---|
-| Minimap parchment corners, left of + (red triangles on every `_diff.png`) | Zoom minus / compass overlays are not bound (OQ-542, OQ-543). `WELTKARTE` id 2 at (779, 0) includes the parchment; `minimap_paint` masks (790, 8) 220 × 140, not the 19 × 21 minus slot. |
-| Empty construction cells and 2 px gutters (stride 52 minus sprite 50) | Mock fills them from `MAINUNTERGRUND` id 4. That atlas mean vs the idle chrome is 82 (section 2.1); the construction panel stone is a different overlay, not a second ACCESS that SAD-matched. Worst on categories with many empties (`roads` 0.0525, `coastal` 0.0507). |
-| Locked-cell edges | `NO_KLICK` id 56 mean 12.9 on cell interiors (section 2.4). The 2 px gutter and the sprite's transparent border show the same MAINUNTERGRUND mismatch. |
-| Nameplate / banner left of (800, 248) | Banner wood is live text + unbound graphic (OQ-540). Mask is (800, 248) 220 × 54; a strip left of x=800 remains. |
-| Category column | Masked 29 × 400 at (779, 300) (OQ-540). Pixels right of that strip that are not a cell are MAINUNTERGRUND. |
-| Status-bar right of x=779 | `STATUSBAR` is 746 × 35; chrome below the pickaxe is panel stone, not the bar. |
-| BAUMAT on idle | Pass-2 `hud_idle_running` does not draw ids 36–39 (section 2.3). The mock therefore omits them for `kind=hud` and draws them for construction. |
+| `LUPE` halo at (805, 132) | ACCESS 7 includes a dark halo; grey-key mean 38.4. |
+| Empty construction cells and 2 px gutters (stride 52 minus sprite 50) | Mock fills them from `MAINUNTERGRUND` id 4. Worst on categories with many empties (`roads` 0.0480, `coastal` 0.0455). |
+| Locked-cell edges | `NO_KLICK` id 56 mean 12.9 on cell interiors (section 2.4). |
+| Banner text | `PLANKEGROSS` mean 38.75; the name string is live. Mask (800, 258) 200 x 22. |
+| Category column | Masked 29 x 400 at (779, 300). `VIEWBAUTAB` is bound from `View.dll` `0x1002bb4f` but the 42 x 46 gadget is clipped. |
+| `STATUSBAR_EINWOHNER` count | Mask (439, 733) 108 x 35. The head at (401, 733) is compared on construction. |
+| Status-bar right of x=779 | `STATUSBAR` is 746 × 35; chrome below the pickaxe is panel stone. |
+| BAUMAT on idle | Pass-2 `hud_idle_running` does not draw ids 36–39. |
 
 ## 3. Construction menu tree
 
@@ -633,7 +640,7 @@ Key **C**: same chrome, one occupied city row (`f15_city_list`). `TOOLTIP:INFOST
 
 ### 9.4 Pause
 
-Key **P**: parchment over the map, HUD chrome stays (`f15_pause`). No `PAUSE` ACCESS name in `fenster.inc`. `MESSAGEBOX_BK` id 1512 is 579 x 386, not this parchment. Leave with **P** again. Shot has a leftover speech submenu on the right from the options probe.
+Key **P**: parchment over the map, HUD chrome stays (`f15_pause`). `ToolGfx/Pause.tex` has **0** textures. The parchment is `fenster.inc` `MESSAGEBOX_BK` id **1512** 579 x 386 at **(222, 191)** (the geometric centre of 1024 x 768; opaque mean 27.2, grey-key 26.4; the ACCESS stores a dark field around the scroll). "Continue game" is `MESSAGEBOX_BUTTONS` id 1513 244 x 67 at **(286, 500)**, mean **11.61**. Leave with **P** again. Shot has a leftover speech submenu on the right from the options probe.
 
 ### 9.5 Rating
 
@@ -645,7 +652,7 @@ Help tab selects `MAINTAB` frame 14 and shows an info-mode cursor (`r2_tab_help`
 
 ### 9.7 Selected house
 
-Place public (0,0) type 501, ESC, click the house: right panel with portrait and need icons (`f15_selected_house`). `VIEWINFOPIONIERMAIN_BK` id 974 245 x 467 (inc size; origin SAD not clean, mean 60). `TOOLTIP:WOHNHAUSINFO` 3 lines. `VIEWINFOPIONIER_TAB` id 975 42 x 46.
+Place public (0,0) type 501, ESC, click the house: right panel with portrait and need icons (`f15_selected_house`). Portrait graphic is `ToolGfx/Pioniere.tex` id 1 100 x 108 at **(812, 355)** (grey-key mean 34.2; the live needs digits sit on the sprite). Panel plate: `VIEWINFOPIONIERMAIN_BK` id 974 245 x 467 at **(783, 252)**, grey-key mean **17.8**. `WOHNHAUS_PLATTE` id 883 244 x 469 is the other plate (opaque mean 32 at (779, 244); not the better origin). `TOOLTIP:WOHNHAUSINFO` 3 lines. `VIEWINFOPIONIER_TAB` id 975 42 x 46.
 
 ### 9.8 Deselect
 

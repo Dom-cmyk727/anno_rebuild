@@ -30,6 +30,15 @@ std::string path_text(const fs::path& p) {
     return to_utf8(p);
 }
 
+// The extension with a leading dot, lower case ("" for none).
+std::string extension_lower(const fs::path& p) {
+    std::string ext = p.extension().string();
+    for (char& c : ext) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return ext;
+}
+
 class SteadySchedule final : public PlaySchedule {
   public:
     time_point now() const override { return clock::now(); }
@@ -146,9 +155,20 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     }
     const anno::sim_load::IslandTemplates templates =
         anno::sim_load::scan_island_templates(game_dir);
-    // A fixed map (the layout text, data/maps/*.txt) or a scenario file (.sze).
-    if (auto fixed = anno::formats::fixed_map::parse(buf)) {
-        return load_fixed_play(game_dir, fixed.value(), registry.types, templates, file);
+    // The route is the extension, not the content: `.txt` is a fixed map (the layout
+    // text, data/maps) through load_fixed_map; anything else is a scenario file through
+    // load_scenario_with_links. A failure names the file and the loader that refused it.
+    if (extension_lower(file) == ".txt") {
+        auto fixed = anno::formats::fixed_map::parse(buf);
+        if (!fixed) {
+            return path_text(file) +
+                   ": parse_fixed_map: " + anno::formats::fixed_map::error_line(fixed.error());
+        }
+        auto built = load_fixed_play(game_dir, fixed.value(), registry.types, templates, file);
+        if (!built) {
+            return path_text(file) + ": load_fixed_map: " + built.error();
+        }
+        return std::move(built).value();
     }
     const sim::SimConfig cfg;
     auto resolved =

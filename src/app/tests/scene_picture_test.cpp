@@ -4,13 +4,18 @@
 // reaches the same list; every changed pixel lies in an invalidated key, at every zoom level;
 // the number of live generations is bounded. Needs the game files (skips without them).
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -65,10 +70,9 @@ bool is_building(const Fixture& f, std::uint16_t id) {
     return anno::app::anlage_is_building(f.play.world, id);
 }
 
-/// A scene built from `buildings`, with the storage its islands point into.
+/// A scene built from `buildings` (its byte buffers are owned by the scene).
 struct Built {
     std::shared_ptr<const render::Scene> scene;
-    std::shared_ptr<const void> owner;
 };
 
 Built build(const Fixture& f, const std::vector<SceneBuilding>& buildings,
@@ -85,8 +89,7 @@ Built build(const Fixture& f, const std::vector<SceneBuilding>& buildings,
     if (levels) {
         ls.scene->set_levels(*levels);
     }
-    auto owner = std::make_shared<std::vector<std::vector<std::uint8_t>>>(std::move(ls.buffers));
-    return {std::shared_ptr<const render::Scene>(std::move(ls.scene)), owner};
+    return {std::shared_ptr<const render::Scene>(std::move(ls.scene))};
 }
 
 std::shared_ptr<const BuildingBatch> batch(std::uint64_t turn, std::vector<BuildingDelta> deltas) {
@@ -224,8 +227,7 @@ TEST_CASE(
     const Change c = move_one(*f, pick, 2);
 
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        2);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 2);
     FrameRenderer frames(2);
     auto workers = std::make_unique<render::ChunkWorkers>(*base.scene, 2);
     render::ChunkWorkers* raw = workers.get();
@@ -308,8 +310,7 @@ TEST_CASE("scene picture: a stale completion neither overwrites nor clears the n
     const Built base = build(*f, f->buildings);
     const Change c = move_one(*f, f->buildings.size() / 2, 2);
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        2);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 2);
     FrameRenderer frames(2);
     auto workers = std::make_unique<render::ChunkWorkers>(*base.scene, 2);
     render::ChunkWorkers* raw = workers.get();
@@ -362,8 +363,7 @@ TEST_CASE("scene picture: a second change during a rebuild supersedes the first"
     anno::app::sort_buildings(mid);
 
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        1);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1);
     FrameRenderer frames(1);
     auto workers = std::make_unique<render::ChunkWorkers>(*base.scene, 1);
     frames.set_workers(std::move(workers));
@@ -415,8 +415,7 @@ TEST_CASE("scene picture: a resync after a delayed consumer reaches the same lis
     CHECK(taken.front()->full == list);
 
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        1);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1);
     FrameRenderer frames(1);
     picture.apply(taken);
     CHECK(picture.buildings() == list);
@@ -442,8 +441,7 @@ TEST_CASE("scene picture: every changed pixel lies in an invalidated key, at eve
     const Built base = build(*f, f->buildings, levels);
     const Change c = move_one(*f, f->buildings.size() / 3, 3);
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        1);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1);
     FrameRenderer frames(1);
     picture.apply({batch(1, c.deltas)});
     picture.wait_idle();
@@ -493,8 +491,9 @@ TEST_CASE("scene picture: every changed pixel lies in an invalidated key, at eve
     CHECK(derived_marks > 0);
 }
 
-TEST_CASE("scene picture: an object whose box crosses a chunk boundary marks every chunk it touches" *
-          doctest::test_suite("scene_picture")) {
+TEST_CASE(
+    "scene picture: an object whose box crosses a chunk boundary marks every chunk it touches" *
+    doctest::test_suite("scene_picture")) {
     const auto f = load_fixture();
     if (!f) {
         MESSAGE("skipping: no game files");
@@ -542,7 +541,8 @@ TEST_CASE("scene picture: an object whose box crosses a chunk boundary marks eve
     REQUIRE(pick.has_value());
     REQUIRE(dx_pick.has_value());
     const Change c = move_one(*f, *pick, *dx_pick);
-    ScenePicture picture(base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1);
+    ScenePicture picture(
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1);
     FrameRenderer frames(1);
     picture.apply({batch(1, c.deltas)});
     picture.wait_idle();
@@ -557,12 +557,14 @@ TEST_CASE("scene picture: an object whose box crosses a chunk boundary marks eve
     std::size_t changed = 0;
     for (int y = 0; y < view.h; ++y) {
         for (int x = 0; x < view.w; ++x) {
-            const auto i = static_cast<std::size_t>(y) * static_cast<std::size_t>(view.w) + static_cast<std::size_t>(x);
+            const auto i = static_cast<std::size_t>(y) * static_cast<std::size_t>(view.w) +
+                           static_cast<std::size_t>(x);
             if (old_pixels[i] == new_pixels[i]) {
                 continue;
             }
             ++changed;
-            const render::ChunkKey key{2, render::div_euclid(view.x + x, render::kChunk), render::div_euclid(view.y + y, render::kChunk)};
+            const render::ChunkKey key{2, render::div_euclid(view.x + x, render::kChunk),
+                                       render::div_euclid(view.y + y, render::kChunk)};
             CHECK(frames.stale_generation(key) == 1);
             marked.insert(key);
         }
@@ -603,8 +605,7 @@ TEST_CASE("scene picture: no batch, no commit and no mark" * doctest::test_suite
     }
     const Built base = build(*f, f->buildings);
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        1);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1);
     FrameRenderer frames(1);
     CHECK(picture.apply({}) == 0);
     CHECK(picture.pending() == 0);
@@ -623,8 +624,7 @@ TEST_CASE("scene picture: repeated updates keep the live generations bounded" *
     const std::size_t threads = 2;
     const Built base = build(*f, f->buildings);
     ScenePicture picture(
-        base.scene, base.owner, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); },
-        threads);
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, threads);
     FrameRenderer frames(1);
     std::vector<std::weak_ptr<const render::Scene>> seen;
     seen.push_back(base.scene);
@@ -655,5 +655,253 @@ TEST_CASE("scene picture: repeated updates keep the live generations bounded" *
     // The current generation, plus at most one per worker in flight, plus the reaper's backlog.
     CHECK(max_alive <= 1 + threads + 2);
     CHECK(picture.stats().committed >= 1);
+    CHECK(picture.buildings() == list);
+}
+
+// Retained work (round dv, R4; docs/app/game-shell.md, "Retained work"). Each case bounds one
+// retention path with the counters of ScenePicture::Stats. Stalls are gates the test opens; no case
+// depends on timing except that a released gate lets the blocked thread proceed.
+namespace {
+
+/// A gate: a thread that calls pass() waits until the test calls release().
+class Gate {
+  public:
+    void pass() {
+        std::unique_lock lock(mutex_);
+        cv_.wait(lock, [this] { return open_; });
+    }
+    void release() {
+        {
+            const std::lock_guard lock(mutex_);
+            open_ = true;
+        }
+        cv_.notify_all();
+    }
+
+  private:
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool open_ = false;
+};
+
+/// The first building of each island of the fixture, in island order: the buildings the bounds
+/// cases move. (The five-player map has buildings on two islands.)
+std::vector<SceneBuilding> first_of_each_island(const std::vector<SceneBuilding>& buildings) {
+    std::map<std::uint32_t, SceneBuilding> first;
+    for (const SceneBuilding& b : buildings) {
+        first.try_emplace(b.island, b);
+    }
+    std::vector<SceneBuilding> out;
+    for (const auto& [island, b] : first) {
+        out.push_back(b);
+    }
+    return out;
+}
+
+/// A change for a tracked building: it moves one tile, as one batch of the sim would send it. The
+/// tracked building `current` is updated to the moved one, and `list` follows the picture.
+void move_tracked(ScenePicture& picture, std::vector<SceneBuilding>& list, SceneBuilding& current,
+                  std::uint64_t turn) {
+    SceneBuilding moved = current;
+    moved.x = static_cast<std::uint16_t>(current.x + (turn % 2 == 0 ? 1 : -1));
+    picture.apply({batch(turn, {removed(current), added(moved)})});
+    const auto it = std::find(list.begin(), list.end(), current);
+    REQUIRE(it != list.end());
+    *it = moved;
+    anno::app::sort_buildings(list);
+    current = moved;
+}
+
+} // namespace
+
+TEST_CASE("scene picture bounds: a stalled commit holds the outstanding islands to the limit" *
+          doctest::test_suite("scene_picture")) {
+    const auto f = load_fixture();
+    if (!f) {
+        MESSAGE("skipping: no game files");
+        return;
+    }
+    std::vector<SceneBuilding> current = first_of_each_island(f->buildings);
+    REQUIRE(current.size() >= 2);
+    const Built base = build(*f, f->buildings);
+    ScenePicture::Limits limits;
+    limits.max_outstanding = 1;
+    ScenePicture picture(
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 2, limits);
+    // One change in every island, applied without a commit: the outstanding limit defers the rest.
+    std::vector<SceneBuilding> list = f->buildings;
+    std::uint64_t turn = 1;
+    for (SceneBuilding& c : current) {
+        move_tracked(picture, list, c, turn++);
+    }
+    picture.wait_idle();
+    const auto before = picture.stats();
+    CHECK(before.outstanding_peak <= limits.max_outstanding);
+    CHECK(before.deferred >= current.size() - limits.max_outstanding);
+    CHECK(picture.pending() == current.size());
+    // Commits start the deferred builds, so every island is committed in turn: progress is not
+    // lost.
+    FrameRenderer frames(1);
+    for (int round = 0; round < 20 && picture.pending() > 0; ++round) {
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    CHECK(picture.pending() == 0);
+    const auto after = picture.stats();
+    CHECK(after.committed == current.size());
+    CHECK(after.started_deferred >= current.size() - limits.max_outstanding);
+    CHECK(after.outstanding_peak <= limits.max_outstanding);
+    CHECK(picture.buildings() == list);
+}
+
+TEST_CASE(
+    "scene picture bounds: a stalled reaper makes commits wait, and the backlog stays bounded" *
+    doctest::test_suite("scene_picture")) {
+    const auto f = load_fixture();
+    if (!f) {
+        MESSAGE("skipping: no game files");
+        return;
+    }
+    std::vector<SceneBuilding> current = first_of_each_island(f->buildings);
+    REQUIRE(current.size() >= 2);
+    const Built base = build(*f, f->buildings);
+    Gate gate;
+    ScenePicture::Limits limits;
+    limits.max_reclaim_backlog = 2;
+    limits.reclaim_gate = [&gate] { gate.pass(); };
+    ScenePicture picture(
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 1, limits);
+    FrameRenderer frames(1);
+    std::vector<SceneBuilding> list = f->buildings;
+    std::uint64_t turn = 1;
+    // The reaper is stuck on its first item: every commit adds generations to its backlog.
+    for (int round = 0; round < 12; ++round) {
+        move_tracked(picture, list, current[static_cast<std::size_t>(round) % current.size()],
+                     turn++);
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    const auto stalled = picture.stats();
+    CHECK(stalled.commit_skipped >= 1);
+    // The backlog is checked before each commit and each request, so its peak is the bound plus
+    // what one commit adds: its replaced generation, the rebased jobs' generations and the results'
+    // lists (at most one each per outstanding island; docs/app/game-shell.md, "Retained work").
+    CHECK(stalled.reclaim_backlog_peak <=
+          limits.max_reclaim_backlog + 1 + 2 * limits.max_outstanding);
+    gate.release();
+    for (int round = 0; round < 40 && picture.pending() > 0; ++round) {
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    CHECK(picture.pending() == 0);
+    CHECK(picture.buildings() == list);
+    CHECK(picture.stats().reclaimed >= stalled.reclaimed);
+}
+
+TEST_CASE("scene picture bounds: a failed build is counted, and its island can be requested again" *
+          doctest::test_suite("scene_picture")) {
+    const auto f = load_fixture();
+    if (!f) {
+        MESSAGE("skipping: no game files");
+        return;
+    }
+    std::vector<SceneBuilding> current = first_of_each_island(f->buildings);
+    REQUIRE(current.size() >= 2);
+    const Built base = build(*f, f->buildings);
+    const std::uint32_t target = current.front().island;
+    std::atomic<int> failures{1};
+    ScenePicture::Limits limits;
+    limits.build_fault = [&](std::size_t index) {
+        // Injected: the first build of the target island throws; later builds run.
+        if (base.scene->islands[index].number == target && failures.fetch_sub(1) > 0) {
+            throw std::runtime_error("injected build failure");
+        }
+    };
+    ScenePicture picture(
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 2, limits);
+    FrameRenderer frames(1);
+    std::vector<SceneBuilding> list = f->buildings;
+    move_tracked(picture, list, current.front(), 1);
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 0); // the failed island has nothing to commit
+    CHECK(picture.stats().build_failures == 1);
+    CHECK(picture.pending() == 0);
+    // The island is requested again by the next change, and the picture follows.
+    move_tracked(picture, list, current.front(), 2);
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 1);
+    CHECK(picture.buildings() == list);
+}
+
+TEST_CASE(
+    "scene picture bounds: destroying the picture with blocked workers and queued builds returns" *
+    doctest::test_suite("scene_picture")) {
+    const auto f = load_fixture();
+    if (!f) {
+        MESSAGE("skipping: no game files");
+        return;
+    }
+    std::vector<SceneBuilding> current = first_of_each_island(f->buildings);
+    REQUIRE(current.size() >= 2);
+    const Built base = build(*f, f->buildings);
+    Gate gate;
+    ScenePicture::Limits limits;
+    limits.build_fault = [&gate](std::size_t) { gate.pass(); };
+    std::thread opener;
+    {
+        ScenePicture picture(
+            base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 2,
+            limits);
+        std::vector<SceneBuilding> list = f->buildings;
+        std::uint64_t turn = 1;
+        for (SceneBuilding& c : current) {
+            move_tracked(picture, list, c, turn++);
+        }
+        // The workers are blocked in their builds, and the destructor waits for them: another
+        // thread lets them go while the destructor waits.
+        opener = std::thread([&gate] { gate.release(); });
+    }
+    // Reaching this line is the check: the destructor joined the workers, and the queued builds and
+    // generations were released on the reaper (ASan reports a dangling reference or a leak
+    // otherwise).
+    opener.join();
+    CHECK(true);
+}
+
+TEST_CASE("scene picture bounds: sustained edits keep the window's change work to the worker's" *
+          doctest::test_suite("scene_picture")) {
+    const auto f = load_fixture();
+    if (!f) {
+        MESSAGE("skipping: no game files");
+        return;
+    }
+    std::vector<SceneBuilding> current = first_of_each_island(f->buildings);
+    REQUIRE(current.size() >= 2);
+    const Built base = build(*f, f->buildings);
+    ScenePicture::Limits limits;
+    limits.max_outstanding = 1;
+    ScenePicture picture(
+        base.scene, f->buildings, [&](std::uint16_t id) { return is_building(*f, id); }, 3, limits);
+    FrameRenderer frames(1);
+    std::vector<SceneBuilding> list = f->buildings;
+    std::uint64_t turn = 1;
+    for (int round = 0; round < 120; ++round) {
+        move_tracked(picture, list, current[static_cast<std::size_t>(round) % current.size()],
+                     turn++);
+        if (round % 3 == 2) {
+            picture.wait_idle();
+            picture.commit(frames);
+        }
+    }
+    for (int round = 0; round < 200 && picture.pending() > 0; ++round) {
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    const auto st = picture.stats();
+    CHECK(picture.pending() == 0);
+    CHECK(st.outstanding_peak <= limits.max_outstanding);
+    // The change set of every commit came from the worker: the window took none of it.
+    CHECK(st.recomputed_changes == 0);
+    CHECK(st.reclaimed > 0);
     CHECK(picture.buildings() == list);
 }

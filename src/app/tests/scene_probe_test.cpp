@@ -151,7 +151,6 @@ TEST_CASE("probe: per-island object-list build, commit and a 50-build burst (Sce
     REQUIRE(built.ok());
     anno::app::LoadedScene ls = std::move(built).value();
     ls.scene->river_cfg.enabled = true;
-    auto owner = std::make_shared<std::vector<std::vector<std::uint8_t>>>(std::move(ls.buffers));
     const std::shared_ptr<const anno::render::Scene> base(std::move(ls.scene));
     const auto is_building = [&](std::uint16_t id) {
         return anno::app::anlage_is_building(play.world, id);
@@ -159,7 +158,7 @@ TEST_CASE("probe: per-island object-list build, commit and a 50-build burst (Sce
     const double frame60 = 1000.0 / 60.0, frame120 = 1000.0 / 120.0;
 
     for (int threads : {1, 2}) {
-        anno::app::ScenePicture picture(base, owner, buildings, is_building,
+        anno::app::ScenePicture picture(base, buildings, is_building,
                                         static_cast<std::size_t>(threads));
         anno::render::FrameRenderer frames(1);
         // One change: the first building moves two tiles right.

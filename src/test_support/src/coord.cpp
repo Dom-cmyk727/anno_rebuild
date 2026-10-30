@@ -160,13 +160,20 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         return false;
     }
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
-    // The coordinator is detached: it keeps stdio and no other descriptor of
-    // the starting client (T10c F3, D2).
+    // The coordinator is detached: it keeps no descriptor of the starting client
+    // (T10c F3, D2). Its stdio is /dev/null, below.
     posix_spawn_file_actions_t actions;
     if (posix_spawn_file_actions_init(&actions) != 0) {
         posix_spawnattr_destroy(&attr);
         return false;
     }
+    // The coordinator outlives the test that starts it, so it must not keep the
+    // starter's stdout: an inherited pipe kept ctest waiting for end-of-file (the
+    // Mac, 2026-10-30: the render corpus case finished and ctest hung until the
+    // orphan was killed). The coordinator's own lines reach no reader here.
+    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
     if (!close_descriptors_from_3(&actions)) {
         posix_spawn_file_actions_destroy(&actions);
         posix_spawnattr_destroy(&attr);

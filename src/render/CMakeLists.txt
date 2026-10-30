@@ -29,6 +29,7 @@ if(ANNO_BUILD_TESTS)
     tests/chunk_draws_test.cpp
     tests/chunk_reduce_test.cpp
     tests/fluid_test.cpp
+    tests/picking_test.cpp
     tests/main.cpp
     tests/render_corpus_test.cpp
     tests/render_test.cpp

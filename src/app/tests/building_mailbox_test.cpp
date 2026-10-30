@@ -159,3 +159,37 @@ TEST_CASE("mailbox: a prepared push collapses to the same resync as push" *
     CHECK(b.front()->full == a.front()->full);
     CHECK(b.front()->full == list);
 }
+
+TEST_CASE(
+    "mailbox: a prepared copy made when full is unused if the consumer empties the mailbox first" *
+    doctest::test_suite("app")) {
+    // The publication order of PlayRunner::publish: check full(), copy outside the lock, then push
+    // under the lock. Between the check and the push only the window can change the mailbox, and
+    // it can only take (empty) it. Here the window takes the waiting batches in that gap.
+    using anno::app::BuildingBatch;
+    using anno::app::BuildingMailbox;
+    using anno::app::SceneBuilding;
+    const std::vector<SceneBuilding> list = {SceneBuilding{0, 7, 10, 12, 1, 0}};
+    auto batch = [](std::uint64_t turn) {
+        auto b = std::make_shared<BuildingBatch>();
+        b->turn = turn;
+        return b;
+    };
+    BuildingMailbox mailbox(2);
+    mailbox.push(batch(1), list);
+    mailbox.push(batch(2), list);
+    REQUIRE(mailbox.full());
+    // The sim thread copies the list before taking the lock ...
+    std::vector<SceneBuilding> copy = list;
+    // ... the window takes the two waiting batches in the gap ...
+    const auto taken = mailbox.take();
+    CHECK(taken.size() == 2);
+    CHECK_FALSE(mailbox.full());
+    // ... and the push under the lock adds turn 3 without a collapse: the copy is unused.
+    mailbox.push_prepared(batch(3), std::move(copy));
+    const auto after = mailbox.take();
+    REQUIRE(after.size() == 1);
+    CHECK_FALSE(after.front()->resync);
+    CHECK(after.front()->turn == 3);
+    CHECK(after.front()->full.empty());
+}

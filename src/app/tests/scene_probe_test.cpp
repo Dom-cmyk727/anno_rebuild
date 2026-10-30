@@ -13,6 +13,8 @@
 
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/scene_picture.hpp>
+#include <anno/render/frame.hpp>
 #include <anno/test/budget.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -118,5 +120,93 @@ TEST_CASE("probe: whole-scene rebuild and a coalesced 50-build burst on the fixe
             MESSAGE("probe one scene held: private bytes +" << (*held - *before) / (1024 * 1024)
                                                             << " MiB");
         }
+    }
+}
+
+// W4.3 round du, step 7: the object-list path through ScenePicture. One change on one island, and a
+// 50-build burst coalesced into one rebuild per island. Milliseconds, and frames at 60 Hz (16.7 ms)
+// and 120 Hz (8.3 ms). A probe, not a gate (ANNO_PROBE=1).
+TEST_CASE("probe: per-island object-list build, commit and a 50-build burst (ScenePicture)" *
+          doctest::test_suite("probe")) {
+    if (std::getenv("ANNO_PROBE") == nullptr) {
+        MESSAGE("skipping: set ANNO_PROBE=1 to measure");
+        return;
+    }
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: no game files");
+        return;
+    }
+    auto loaded = anno::app::load_play(*dir, fixed_map());
+    REQUIRE(loaded.ok());
+    anno::app::PlayLoad play = std::move(loaded).value();
+    std::vector<anno::app::SceneBuilding> buildings = anno::app::play_buildings(play.world);
+    anno::app::sort_buildings(buildings);
+    anno::app::SceneObjects objects;
+    objects.is_building = [&](std::uint16_t id) {
+        return anno::app::anlage_is_building(play.world, id);
+    };
+    objects.buildings = buildings;
+    auto built = anno::app::load_placed_scene(*dir, play.name, play.placed, &objects);
+    REQUIRE(built.ok());
+    anno::app::LoadedScene ls = std::move(built).value();
+    ls.scene->river_cfg.enabled = true;
+    auto owner = std::make_shared<std::vector<std::vector<std::uint8_t>>>(std::move(ls.buffers));
+    const std::shared_ptr<const anno::render::Scene> base(std::move(ls.scene));
+    const auto is_building = [&](std::uint16_t id) {
+        return anno::app::anlage_is_building(play.world, id);
+    };
+    const double frame60 = 1000.0 / 60.0, frame120 = 1000.0 / 120.0;
+
+    for (int threads : {1, 2}) {
+        anno::app::ScenePicture picture(base, owner, buildings, is_building,
+                                        static_cast<std::size_t>(threads));
+        anno::render::FrameRenderer frames(1);
+        // One change: the first building moves two tiles right.
+        auto one = buildings.front();
+        one.x = static_cast<std::uint16_t>(one.x + 2);
+        auto batch1 = std::make_shared<anno::app::BuildingBatch>();
+        batch1->turn = 1;
+        batch1->deltas = {{anno::app::BuildingDelta::Kind::Removed, buildings.front()},
+                          {anno::app::BuildingDelta::Kind::Added, one}};
+        const auto t0 = std::chrono::steady_clock::now();
+        picture.apply({batch1});
+        picture.wait_idle();
+        const double wait_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                .count();
+        const std::size_t n = picture.commit(frames);
+        const double total_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                .count();
+        const auto st = picture.stats();
+        MESSAGE("probe threads=" << threads << " one change: islands=" << n
+                                 << " build=" << st.last_build_ms
+                                 << " ms commit=" << st.last_commit_ms << " ms wait=" << wait_ms
+                                 << " ms total=" << total_ms << " ms (" << total_ms / frame60
+                                 << " frames at 60 Hz, " << total_ms / frame120
+                                 << " at 120 Hz) invalidated keys=" << st.invalidated_keys);
+
+        // A burst: 50 added buildings in one batch (one turn), coalesced per island.
+        auto burst = std::make_shared<anno::app::BuildingBatch>();
+        burst->turn = 2;
+        for (int i = 0; i < 50; ++i) {
+            auto extra = buildings.front();
+            extra.x = static_cast<std::uint16_t>(extra.x + i + 1);
+            burst->deltas.push_back({anno::app::BuildingDelta::Kind::Added, extra});
+        }
+        const auto t1 = std::chrono::steady_clock::now();
+        const std::size_t requested = picture.apply({burst});
+        picture.wait_idle();
+        const std::size_t committed = picture.commit(frames);
+        const double burst_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1)
+                .count();
+        const auto sb = picture.stats();
+        MESSAGE("probe threads=" << threads << " 50-build burst: islands requested=" << requested
+                                 << " committed=" << committed << " build=" << sb.last_build_ms
+                                 << " ms commit=" << sb.last_commit_ms << " ms total=" << burst_ms
+                                 << " ms (" << burst_ms / frame60 << " frames at 60 Hz, "
+                                 << burst_ms / frame120 << " at 120 Hz)");
     }
 }

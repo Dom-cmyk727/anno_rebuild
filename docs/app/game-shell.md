@@ -150,10 +150,15 @@ buildings it owns before and after each turn, and publishes the difference.
   the tile, the rotation, the height byte, and the screen box the building
   occupied when the picture last drew it (for a removed delta, the box it had,
   so its old chunks are invalidated too).
-- The turn's list is an immutable `std::shared_ptr<const std::vector<BuildingDelta>>`
-  built on the sim thread after the turn, before the publication mutex (as the
-  snapshot is). When nothing changed the list is one shared empty vector: no
-  allocation, no copy.
+- The turn's changes are one immutable `BuildingBatch` (turn index and deltas),
+  built on the sim thread after the turn, before the publication mutex. A turn
+  that changed nothing publishes no batch: no allocation, no copy.
+- Delivery is a mailbox, not the snapshot. The snapshot is latest-only, so a
+  batch carried in it would be lost when two turns pass between two frames. The
+  runner keeps every batch published since the window last took them
+  (`PlayRunner::take_building_batches`, swapped out under the publication mutex,
+  O(1)); the window applies them in turn order. The snapshot stays the three
+  figures and the title, as before.
 - Why a diff and not a version counter: a per-island version needs a field in
   `World` (a state change, refused). Why not the applied commands: the command
   list does not cover what a turn changes on its own (buildings that finish or
@@ -167,8 +172,8 @@ buildings it owns before and after each turn, and publishes the difference.
 
 ### How the picture learns which chunks are stale
 
-The window thread drains the deltas of every snapshot it has not yet applied
-(a turn index says which), once per frame.
+The window thread takes every batch in the mailbox once per frame and applies
+their deltas in turn order.
 
 - For each delta and each zoom group, the screen box is the footprint diamond
   of the building grown by its sprite's extent at that group (the frame's

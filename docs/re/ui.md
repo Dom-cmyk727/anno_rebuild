@@ -1,7 +1,7 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 in progress (2026-10-30). Reverse-engineering and specification only; no engine code.
-**Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py` (from step 6). First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
+**Status:** UI.1 steps 1–8 (2026-10-30). Reverse-engineering and specification only; no engine code.
+**Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.
 
@@ -95,71 +95,122 @@ Wine runner is pre-authorized and must stay silent (`original-wine.md` §2.2). D
 
 ## 1. Screen tree
 
-Filled from step 3 onward. Reachable from a running single-player endless (Citizen) game. How each screen is reached will name the key or tab and the screenshot.
+Reachable from a running single-player endless (Citizen) game. How each screen is reached names the key or tab and the screenshot under cache/orig/ui-1/shots/ (git-ignored). Canonical set: pass 2 (
+2_*, hud_idle_running), F8 half-speed, no pause. Pass 1 used key **P**; pause draws a parchment overlay that hides the map but not the HUD chrome, so pass 1 shots are not used for pixel tables.
 
-**Pre-game** (menus at 800 × 600; not the owner’s in-game test surface, listed for completeness): intros → main menu → singleplayer → choose game → in game. Coordinates in `tools/orig/menus.json`.
+**Pre-game** (menus at 800 x 600; not the owner in-game test surface): intros -> main menu -> singleplayer -> choose game -> in game. Coordinates in 	ools/orig/menus.json.
 
 **In-game (priority for UI.2 / owner build tests):**
 
-1. HUD idle (minimap, four tabs, nameplate, statistics column, status bar).
-2. Construction menu: eight categories, every cell, banner, cost/info panel, lock `?`.
-3. Placement mode (ghost, rotate, cancel-X, valid / refused).
-4. Demolish tool (`tCursorAbriss`, `Abreissen_Gebaeude.tex`, `TOOLTIP:ABRISS`).
-5. Building / settlement info panel (click a placed object).
-6. Minimap controls (`+`/`−`, rotate arrows; `fenster.inc` ACCESS `LUPE`, `WELTKARTE`).
+| # | Screen | How reached | Shot |
+|---|---|---|---|
+| 1 | HUD idle | macros.new_game citizen, F8 | hud_idle_running |
+| 2 | Settlement selected | click Kontor (~0.38, 0.47) | 
+2_hud_kontor |
+| 3 | Construction menu, 8 categories | **B**, then category column | 
+2_construction_* |
+| 4 | Building info / placement | click a grid cell | 
+2_info_* / 
+2_place_* |
+| 5 | Demolish | pickaxe click (993, 714) | 
+2_demolish |
+| 6 | Help / info mode | help tab (922, 219) | 
+2_tab_help |
+| 7 | Military tab (= player menu) | military tab (870, 219) | 
+2_tab_military |
+| 8 | Options tab (in-panel main menu) | options tab (973, 219) | 
+2_options |
+| 9 | Player menu | key **D** | 
+2_player_menu |
+| 10 | Pause overlay | key **P** | pass 1 options_key_O (parchment; also shows the options tab) |
 
-**Then:** military tab; help/info; options / game menu and every submenu; settlement, statistics, trade; ships; diplomacy; messages and dialogs.
+**Not captured in this session** (still in the tree, no shot): ship list **S**, city list **C**, rating **Q**, save/load/speech sliders as separate dialogs, diplomacy treaty cycle, in-game messages, a second settlement stage, a marble-cost building selected, Options resolution list (OQ-535).
 
-## 2. HUD at 1024 × 768
+The military tab and key **D** open the same player-list panel (
+2_tab_military tooltip Player-menu; 
+2_player_menu the same chrome). The options tab is an in-panel Main-menu (disk, chart, book, music, speech, door), not a parchment. Pause (**P**) is a parchment dialog over the map.
 
-Pixel table: after step 4. Until then the measured fractions in `tools/orig/screens.json` `hud` are the working click map, not the spec.
+## 2. HUD at 1024 x 768
 
-| Element | First-pass fraction | Data / ACCESS so far | Pixel pos / size | Notes |
+Pixel table from hud_idle_running.png (1024 x 768 RGB) plus ACCESS sizes. Machine-readable copy: [data/ui/hud.txt](../../data/ui/hud.txt). Clicks are screens.json fractions times 1024 x 768, integer nearest.
+
+| Element | Pixel pos / size | ACCESS / file | Method | Shot |
 |---|---|---|---|---|
-| Minimap | 0.78–0.98 ×, 0.02–0.22 y | `fenster.inc` `WELTKARTE` id 2; first `fenster.tex` texture 245 × 248 | — | Frame size 245 × 248 is larger than the 0.20 × 0.20 fraction box (~205 × 154). Do not assume they are the same sprite. OQ-536 |
-| Four tabs | y ≈ 0.285; x ≈ 0.80 / 0.85 / 0.90 / 0.95 | `MAINTAB`, `VIEWBAUTAB` | — | |
-| Status bar | bottom | `statusbar.dat` / `statusbar.tex`; also `fenster.inc` `STATUSBAR` | bar widths 746 / 873 / 1001 × 35 | OQ-536, OQ-538 |
-| Construction category column | x ≈ 0.764 | `B_Baumenue.tex` 60 × 63 | y in `screens.json` `category_column_y` | Eight icons |
+| Status / info bar | (0, 733) 746 x 35 | Data/statusbar.dat STATUSBAR in 	oolgfx/statusbar.tex | first non-water row at x=20 is y=733; height 768-733=35 | hud_idle_running |
+| Right chrome / panel | (779, 0) 245 x 733 | enster.inc MAINUNTERGRUND 245 x 524 | 1024-245=779; x=779 y=100 is stone | hud_idle_running |
+| Minimap atlas candidate | (779, 0) 245 x 248 | enster.inc WELTKARTE | atlas size; the painted map is smaller than 245 x 248 (OQ-536) | hud_idle_running |
+| Four tabs (click centres) | (819, 219), (870, 219), (922, 219), (973, 219) | MAINTAB 61 x 63 | 0.80/0.85/0.90/0.95 x 0.285 | r2 tab shots |
+| Category column x | 782 | B_Baumenue.tex 60 x 63 | 0.764 x 1024 | 
+2_construction_* |
+| Cancel-X | (1009, 730) | - | 0.985 x 0.95 | 
+2_info_* |
+| Demolish pickaxe | (993, 714) | ABRISSICON 53 x 53 | 0.97 x 0.93, hit in pass 2 | 
+2_demolish |
+| Lupe (magnifier, below minimap left) | size 42 x 45 | LUPE | visible on idle HUD | hud_idle_running |
+| Minimap zoom + | click (1004, 16) | KARTEPLUS 19 x 21 | top-right of minimap; a minus sits beside it with no KARTEMINUS ACCESS name | hud_idle_running |
+
+enster.inc STATUSBAR id 6 is 780 x 43, a different graphic from the 746 x 35 bar that matches the capture (OQ-536). Candidate placement if that atlas entry were the bar: y = 768-43 = 725, width 780 -- it does not match y=733.
+
+Nameplate y ~ 269 (0.35 x 768). Idle gold reads 500000; material digits (tools/wood/bricks) are **absent** on the idle bar and **present** once the construction menu is open (
+2_construction_public vs hud_idle_running). Marble as a numbered slot was not observed at the Citizen start (OQ-538).
 
 ## 3. Construction menu tree
 
-Step 5. Working click map: `tools/orig/screens.json` `construction_menu` and `tools/orig/opening.json` `menu`. Category order (manual + 2026-10-25 measurement):
+Machine-readable copy: [data/ui/construction.txt](../../data/ui/construction.txt). Grid click centres from screens.json grid.col_x / 
+ow_y (2026-10-25) times 1024 x 768: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Cell 52 px. A category shows only as many cells as it has buildings (empty slots are panel stone, not a ?).
 
-| # | Layout key | Banner in `screens.json` | `category_column_y` | Tooltip section name (not yet bound) |
+Convention in data/ui/: cell = (column, row) **0-based**, same as opening.json. screens.json grid_cells is [row, col] **1-based** and several icon labels there are wrong (the market-tent at 1-based [1,3] is type 1301).
+
+| # | Layout key | Category y (px) | Tooltip section (not bound) | Occupancy at Citizen start (U=unlocked, L=locked ?, -=absent) |
 |---|---|---|---|---|
-| 1 | `public` | Public buildings | 0.423 | `TOOLTIP:BAUMENU_EX` ? OQ-537 |
-| 2 | `roads` | Squares, Streets | 0.486 | `TOOLTIP:BAUMENU_WEG` ? |
-| 3 | `farms` | Farms, Plantations | 0.544 | `TOOLTIP:BAUMENU_LANDWIRTSCHAFT` ? |
-| 4 | `workshops` | Workshops | 0.603 | `TOOLTIP:BAUMENU_HANDWERK` ? |
-| 5 | `coastal` | Coastal buildings | 0.661 | `TOOLTIP:BAUMENU_SCHIFF` ? |
-| 6 | `mines` | Pits, Mines | 0.720 | `TOOLTIP:BAUMENU_BERGBAU` ? |
-| 7 | `military` | Military installations | 0.779 | `TOOLTIP:BAUMENU_MILITAR` ? |
-| 8 | `ornamental` | Ornamentals | 0.837 | `TOOLTIP:BAUMENU_DIVERSES` ? |
+| 1 | public | 325 | TOOLTIP:BAUMENU_EX ? OQ-537 | ULUU LLLU + 5 x LLLL + L--- (29 cells; 4 U) |
+| 2 | 
+oads | 373 | TOOLTIP:BAUMENU_WEG ? | UL-- LLL- L--- (6 cells; 1 U) |
+| 3 | arms | 418 | TOOLTIP:BAUMENU_LANDWIRTSCHAFT ? | UULL UUUU + 5 x LLLL + LLL- (31 cells; 6 U) |
+| 4 | workshops | 463 | TOOLTIP:BAUMENU_HANDWERK ? | U--- ULLL LL-- + 3 x LLL- (16 cells; 2 U) |
+| 5 | coastal | 508 | TOOLTIP:BAUMENU_SCHIFF ? | ULL- UL-- LL-- (7 cells; 2 U) |
+| 6 | mines | 553 | TOOLTIP:BAUMENU_BERGBAU ? | LLL- LLL- + 3 x LL-- (12 cells; 0 U) |
+| 7 | military | 598 | TOOLTIP:BAUMENU_MILITAR ? | LLL- LLLL LLL- LLLL LLL- (17 cells; 0 U) |
+| 8 | ornamental | 643 | TOOLTIP:BAUMENU_DIVERSES ? | 7 x LLLL + LL-- (30 cells; 0 U) |
 
-The `?` in the last column means the German section name has not been matched to a banner by a capture yet. Grid: 4 columns × 8 rows, cell 52 px, `col_x` / `row_y` in `screens.json`. Lock rule (`?` cell): `INFRAMIN` vs city stage is the working hypothesis from the first pass; verify in step 5 (two settlement stages or data + disassembly).
+Locked-cell occupancy is the grey-? pixel signature at those click centres on the 
+2_construction_* shots (RGB-sum mean 465-495, sd 90-120, 20 px window). Counts match screens.json grid_cells.pioneers.*.cells strings. Banner floating-text on the map matches the wooden banner for every category (keys only in git). Tooltip section -> banner is still OQ-537; the eight THUMBNAIL* ACCESS names are still unbound.
 
-Verified Citizen-start cells (cost panel + `Anlagen.dat`, `opening.json`):
+Verified Citizen-start cells (info-panel costs = opening.json = Anlagen.dat HEAD, except 501):
 
-| Layout key | Cell (opening.json, col,row 0-based) | Anlagen id | Name key (not the string) |
-|---|---|---|---|
-| `farms` | 0, 1 | 801 | `Texte.dat` `[ANLAGEN]` id 801 |
-| `farms` | 1, 0 | 805 | 805 |
-| `farms` | 0, 0 | 807 | 807 |
-| `workshops` | 0, 0 | 1023 | 1023 |
-| `workshops` | 0, 1 | 1001 | 1001 |
-| `public` | 2, 0 | 1301 | 1301 |
-| `roads` | 0, 0 | 2520 | 2520 |
+| Layout key | Cell (col, row 0-based) | Anlagen id | Shot | Panel costs (tools / wood / bricks / gold / upkeep) |
+|---|---|---|---|---|
+| public | 0, 0 | 501 | 
+2_info_pioneer_house | 0 / 3 / 0 / 0 / 5. Type 501 is the pioneer house placed in OQ-103; not in opening.json |
+| public | 2, 0 | 1301 | 
+2_info_market_1301 | 3 / 7 / 0 / 250 / 10 |
+| 
+oads | 0, 0 | 2520 | 
+2_info_dirt_road | 0 / 0 / 0 / 5 / 0 |
+| arms | 0, 0 | 807 | 
+2_info_sheep_807 | (opening.json) |
+| arms | 1, 0 | 805 | 
+2_info_hunter_805 | |
+| arms | 0, 1 | 801 | 
+2_info_forester_801 | 2 / 0 / 0 / 150 / 12 |
+| workshops | 0, 0 | 1023 | 
+2_info_tannery_1023 | |
+| workshops | 0, 1 | 1001 | 
+2_info_weaver_1001 | 3 / 4 / 0 / 300 / 15 |
+
+Other unlocked cells (icon only, id -): public (3,0) stall and (3,1); farms (1,1) (2,1) (3,1); coastal (0,0) and (0,1) (shipyard-looking). Lock rule (INFRAMIN vs city stage) is still the working hypothesis: mines/military/ornamental are all ? at Citizen start; a second settlement stage was not reached.
 
 ## 4. Placement and demolish (as the UI presents it)
 
-From the first pass plus the manual, still to be pixel-specified in step 4:
+From the r2 info / place / demolish shots plus the manual:
 
-- Select a cell → info panel (name, isometric preview, costs, rotate arrows) and placement mode; yellow cancel-X ~ (0.985, 0.95).
-- Left click places and stays in mode; ESC / right click / cancel-X leaves.
-- Rotate object: `.` / `,` (`game-mechanics.md` §1). Hold **CTRL** while placing to align the entrance to a street (manual p15).
-- Demolish: pickaxe in the right-hand menu (`playbook.md` §1); cursor class `tCursorAbriss`; graphic `Abreissen_Gebaeude.tex` 73 × 65.
+- Select a cell -> info panel (name, isometric preview, costs in tools/wood/bricks/gold, upkeep, rotate arrows) and placement mode; yellow cancel-X at (1009, 730).
+- Left click places and stays in mode (
+2_place_*); ESC / right click / cancel-X leaves.
+- Rotate object: . / , (game-mechanics.md section 1). Hold **CTRL** while placing to align the entrance to a street (manual p15). Not re-captured as a dedicated shot.
+- Demolish: pickaxe at (993, 714) (enster.inc ABRISSICON); land highlight yellow; tooltip key family TOOLTIP:ABRISS; cancel-X; cursor class 	CursorAbriss; graphic Abreissen_Gebaeude.tex 73 x 65. Click (0.764, 0.92) missed the pickaxe in pass 2; (0.97, 0.93) hit.
 
-Refusal display and fertility bar: capture in step 3, specify in step 4. Sim refusal rule stays OQ-T15-PLACEREFUSE.
+Refusal display and fertility bar: not isolated in a dedicated shot (place shots exist). Sim refusal rule stays OQ-T15-PLACEREFUSE.
 
 ## 5. Resolutions
 
@@ -223,11 +274,62 @@ Eight non-addon thumbnails. Binding each to a banner and to the measured `catego
 
 ## 7. Capture index
 
-`cache/orig/ui-1/` (git-ignored). Table filled in step 3.
+`cache/orig/ui-1/` (git-ignored). Two Wine-runner passes on display `:91`, `WineBackend` silent (`VOLUME` −250, no Pulse). Frame 1024 × 768, `in_game`. One instance; both stopped clean.
+
+| Pass | Dir | Shots | Speed | Notes |
+|---|---|---|---|---|
+| 1 | `d91-20261030-112327` | 27 | **P** pause | Parchment covers the map; ESC after a cell closed the construction menu, so later category shots were idle HUD. Keep only as pause + options-tab evidence |
+| 2 | `d91-20261030-112532` | 32 `r2_*` + `hud_idle_running` | **F8** | Canonical. No ESC between categories; **B** reopened before each info cell. Demolish at (0.97, 0.93) |
+
+Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Look at these:
+
+| Shot | Steps (after `macros.new_game citizen` + F8 unless noted) |
+|---|---|
+| `hud_idle_running` | none (pass 2 start) |
+| `r2_hud_kontor` | click Kontor (0.38, 0.47) |
+| `r2_construction_open` | **B** |
+| `r2_construction_{public,roads,farms,workshops,coastal,mines,military,ornamental}` | **B**, click category at (0.764, `category_column_y`) |
+| `r2_info_pioneer_house` / `r2_place_pioneer_house` | public cell (0,0) |
+| `r2_info_market_1301` / `r2_place_market_1301` | public cell (2,0) |
+| `r2_info_dirt_road` / `r2_place_dirt_road` | roads cell (0,0) |
+| `r2_info_sheep_807` / `r2_place_sheep_807` | farms (0,0) |
+| `r2_info_forester_801` / `r2_place_forester_801` | farms (0,1) |
+| `r2_info_hunter_805` / `r2_place_hunter_805` | farms (1,0) |
+| `r2_info_tannery_1023` / `r2_place_tannery_1023` | workshops (0,0) |
+| `r2_info_weaver_1001` / `r2_place_weaver_1001` | workshops (0,1) |
+| `r2_demolish` | pickaxe (0.97, 0.93) |
+| `r2_tab_help` | help tab |
+| `r2_tab_military` | military tab |
+| `r2_options` | options tab |
+| `r2_player_menu` | key **D** |
+| pass 1 `options_key_O` | **P** then **O** (parchment + options tab) |
 
 ## 8. Implementation-status (for UI.2)
 
-Step 8. Per menu entry and per building cell: whether `src/sim` has the feature today (implemented / placeholder). Read-only against `src/sim` and the board.
+Read-only against `src/sim` at this board (`064b4a2` plus this branch). There is no `src/ui`. Chrome, menus and overlays are **not drawn**. The sim can already apply the matching commands for some of the same verbs.
+
+| UI surface | Original | `src/sim` today |
+|---|---|---|
+| HUD idle, minimap, tabs, status bar | captured | none (no UI library) |
+| Construction menu, banners, `?` locks | captured | none |
+| Building info panel (name, preview, costs) | captured | none; costs live in `Anlagen.dat` HEAD via `TypeRegistry` |
+| Placement ghost / rotate / cancel-X | captured | `BuildCmd` / `create_building` places; no overlay |
+| Demolish pickaxe | captured | `DemolishCmd` + `remove_building` (S10) |
+| Pause parchment | captured | none |
+| Options tab / player menu / help-info | captured as chrome | none |
+| Ship list, city list, trade sliders, messages | not captured | `SetTradeFlagCmd` / `SetTradeSlotCmd` exist; no UI |
+
+Typed construction cells vs sim (Citizen start):
+
+| Id | Cell | Sim |
+|---|---|---|
+| 501 | public (0,0) pioneer house | `create_building` accepts the type; house population is **not applied** (`HouseRecordNotModelled`; `docs/sim/state.md`) |
+| 1301 | public (2,0) market | `create_building`; market payload / city store exist |
+| 2520 | roads (0,0) dirt road | `create_building`; walk/road codes in `anlagen_roads` |
+| 807 / 805 / 801 | farms sheep / hunter / forester | `create_building`; production stage present |
+| 1023 / 1001 | workshops tannery / weaver | `create_building`; production stage present |
+| other U cells | public stall, extra farms, two coastal | type unknown (OQ-537); cannot claim sim coverage |
+| all L cells | mines, military, ornamental, remaining `?` | types exist in `Anlagen.dat` when named; UI lock (`INFRAMIN`) is not enforced in the command layer the way the menu paints `?` |
 
 ## 9. Glossary (new in this note)
 

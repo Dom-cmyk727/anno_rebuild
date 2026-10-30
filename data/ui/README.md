@@ -31,7 +31,9 @@ whole field means “absent”.
 | `dat.txt` | `anno1503-ui-dat 1` | Every `[TEXTURE]` ACCESS record in `Data/*.dat` that names a `.tex`. `segments` is `-` or one or more integers from the file (not truncated) |
 | `inc.txt` | `anno1503-ui-inc 1` | Every `ToolGfx/*.inc` ACCESS record, with texture width/height when the matching `.tex` parses |
 | `groups.txt` | `anno1503-ui-groups 1` | Filename groups with evidence (a `Data/*.dat` `[FILE]` pointer, or a stem that is a documented HUD/construction graphic) |
+| `hud.txt` | `anno1503-ui-hud 1` | Pixel rectangles at 1024 × 768, each naming the screenshot and the method |
+| `construction.txt` | `anno1503-ui-construction 1` | Construction-menu categories and cells (Anlagen id only when an info-panel capture matched `opening.json` / `Anlagen.dat`) |
 
-Screen-tree positions in pixels, construction-menu cells and text keys are
-added in later UI.1 steps as further files of this family, not as edits to the
-original files.
+`write-inventory` rewrites only `dat.txt`, `inc.txt` and `groups.txt`. `hud.txt`
+and `construction.txt` are hand-measured from Wine-runner shots (`docs/re/ui.md`
+§7) and must stay byte-stable across inventory reruns.

@@ -1,0 +1,25 @@
+# HUD rectangles at 1024 x 768. Derived facts. Screenshots in cache/orig/ui-1/shots/.
+# method pixel-row: first row from the bottom of hud_idle_running.png at x=20
+# whose RGB is not water-blue (y=733). Height 35 matches Data/statusbar.dat STATUSBAR.
+# method atlas-right: 1024 - fenster.inc MAINUNTERGRUND width 245 = 779; hud_idle_running
+# x=779 y=100 is stone, x=20 y=732 is still water.
+# Clicks: screens.json fractions times 1024 x 768, integer nearest (measured 2026-10-25).
+anno1503-ui-hud 1
+resolution 1024 768
+shot hud_idle_running
+element statusbar pos 0 733 size 746 35 file toolgfx/statusbar.tex access STATUSBAR method pixel-row
+element panel pos 779 0 size 245 733 file toolgfx/fenster.tex access MAINUNTERGRUND method atlas-right
+element minimap_atlas pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE method atlas-right
+element maintab size 61 63 file toolgfx/fenster.tex access MAINTAB method inc-size
+element lupe size 42 45 file toolgfx/fenster.tex access LUPE method inc-size
+element karteplus size 19 21 file toolgfx/fenster.tex access KARTEPLUS method inc-size
+element abrissicon size 53 53 file toolgfx/fenster.tex access ABRISSICON method inc-size
+element fenster_statusbar size 780 43 file toolgfx/fenster.tex access STATUSBAR method inc-size
+click tab_construction pos 819 219
+click tab_military pos 870 219
+click tab_help pos 922 219
+click tab_options pos 973 219
+click category_column_x 782
+click cancel_x pos 1009 730
+click demolish pos 993 714
+click minimap_zoom_plus pos 1004 16

@@ -1,0 +1,48 @@
+# Construction menu at 1024 x 768. No original strings.
+# Banner keys only; English GOG banner text is not stored.
+# cell id is set only when an r2 info-panel capture matched opening.json / Anlagen.dat.
+# Grid click centres: screens.json col_x/row_y times 1024 x 768, integer nearest.
+# occupancy: U unlocked icon, L locked ?, - absent. Locked cells match a
+# grey-? signature (RGB-sum mean 465-495, sd 90-120) at the click centre on
+# r2_construction_*. False U near the pickaxe or category column is written as
+# L or - from the screenshot, not from that signature.
+anno1503-ui-construction 1
+resolution 1024 768
+open_key B
+leave_key ESC
+shot r2_construction_public
+grid cols 4 rows 8 cell_px 52
+grid_click_x 833 885 937 989
+grid_click_y 330 382 432 484 536 588 640 692
+category public index 1 y 325 banner_key public tooltip_section - shot r2_construction_public
+category roads index 2 y 373 banner_key roads tooltip_section - shot r2_construction_roads
+category farms index 3 y 418 banner_key farms tooltip_section - shot r2_construction_farms
+category workshops index 4 y 463 banner_key workshops tooltip_section - shot r2_construction_workshops
+category coastal index 5 y 508 banner_key coastal tooltip_section - shot r2_construction_coastal
+category mines index 6 y 553 banner_key mines tooltip_section - shot r2_construction_mines
+category military index 7 y 598 banner_key military tooltip_section - shot r2_construction_military
+category ornamental index 8 y 643 banner_key ornamental tooltip_section - shot r2_construction_ornamental
+cell public 0 0 id 501 state unlocked shot r2_info_pioneer_house
+cell public 2 0 id 1301 state unlocked shot r2_info_market_1301
+cell public 3 0 id - state unlocked shot r2_construction_public
+cell public 3 1 id - state unlocked shot r2_construction_public
+cell farms 0 0 id 807 state unlocked shot r2_info_sheep_807
+cell farms 1 0 id 805 state unlocked shot r2_info_hunter_805
+cell farms 0 1 id 801 state unlocked shot r2_info_forester_801
+cell farms 1 1 id - state unlocked shot r2_construction_farms
+cell farms 2 1 id - state unlocked shot r2_construction_farms
+cell farms 3 1 id - state unlocked shot r2_construction_farms
+cell workshops 0 0 id 1023 state unlocked shot r2_info_tannery_1023
+cell workshops 0 1 id 1001 state unlocked shot r2_info_weaver_1001
+cell roads 0 0 id 2520 state unlocked shot r2_info_dirt_road
+cell coastal 0 0 id - state unlocked shot r2_construction_coastal
+cell coastal 0 1 id - state unlocked shot r2_construction_coastal
+occupancy public ULUU LLLU LLLL LLLL LLLL LLLL LLLL L---
+occupancy roads UL-- LLL- L--- ---- ---- ---- ---- ----
+occupancy farms UULL UUUU LLLL LLLL LLLL LLLL LLLL LLL-
+occupancy workshops U--- ULLL LL-- LLL- LLL- LLL- ---- ----
+occupancy coastal ULL- UL-- LL-- ---- ---- ---- ---- ----
+occupancy mines LLL- LLL- LL-- LL-- LL-- ---- ---- ----
+occupancy military LLL- LLLL LLL- LLLL LLL- ---- ---- ----
+occupancy ornamental LLLL LLLL LLLL LLLL LLLL LLLL LLLL LL--
+demolish pos 993 714 shot r2_demolish access ABRISSICON

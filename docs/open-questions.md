@@ -2009,11 +2009,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** find the game-start claim that walks out from the Kontor (AnnoWelt, the city or island init after a warehouse is placed) and name the radius and the stop condition. Do not copy this into OQ-027 or OQ-052.
 
 ## OQ-535: Resolutions the original offers, and which ToolGfx set each uses (UI.1)
-- **Status:** open.
+- **Status:** open (list captured F1.6; set-per-mode and in-game shots at other modes not done).
 - **Area:** UI / original.
-- **Question:** What is the complete list of resolutions in the original's Options (main-menu graphics and in-game), and which `ToolGfx` set (plain vs `*8`) each mode loads?
-- **What we know:** Wine-runner and Windows harness menus are 800 × 600; a running game is 1024 × 768 (`docs/testing/original-wine.md` §2.1, `original-harness.md`). ISS-024 advises 800 × 600 on weak PCs. Paired `ToolGfx` files (e.g. `fenster.tex` / `fenster8.tex`, `statusbar.tex` / `statusbar8.tex`) share ACCESS names and texture ids; pixel sizes sit at 800/1024 = 0.78125 (`docs/re/ui.md` §0.1, §0.4). `TEXTURE/HEAD.unknown_06` is 8 on both sets, so the suffix is not "8-bit". Fonts `Main*8.zei` are separately authored (different glyph row counts, `zei.md`). The Options resolution list has not been captured.
-- **How to resolve:** Wine-runner capture of the main-menu Options graphics list and of the in-game Options; one HUD screenshot per listed mode; match which atlas is drawn (plain vs `8`) by pixel size.
+- **Question:** Which `ToolGfx` set (plain vs `*8`) each Options mode loads, and what are the HUD / construction rectangles at 800 × 600, 1152 × 864, 1280 × 960 and 1280 × 1024?
+- **What we know:** Main-menu Options (`f16_options_graphics`, frame 800 × 600) lists 800 × 600, 1024 × 768 (tick), 1152 × 864, 1280 × 960, 1280 × 1024 (`docs/re/ui.md` §5). Wine-runner desktop is fixed 1024 × 768; the agent notes the game never switches display modes there. In-game at Citizen is 1024 × 768 with the plain sizes (status bar 746 × 35, chrome 245). Paired `*8` files sit at 800/1024 = 0.78125. `TEXTURE/HEAD.unknown_06` is 8 on both sets. Clicks on the Options planks did not move the tick (`f16_opt_click_*`).
+- **How to resolve:** the Windows harness (owner desktop, out of this packet) or a runner that can change the game mode; then one HUD and one open-construction shot per mode, compared to plain vs `8` texture sizes.
 
 ## OQ-536: Two `STATUSBAR` sources (`fenster.tex` vs `statusbar.tex`) (UI.1)
 - **Status:** open.

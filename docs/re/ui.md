@@ -424,9 +424,34 @@ Measured rectangles in section 2.5-2.6. Summary:
 
 Sim refusal rule stays OQ-T15-PLACEREFUSE.
 
-## 5. Resolutions
+## 5. Resolutions (F1.6)
 
-Observed: menus **800 × 600**, in-game **1024 × 768**. ISS-024 (community/patch notes) advises 800 × 600 on weak PCs, so in-game 800 × 600 is plausible. The `8` suffix graphics scale as 800/1024. Full list the Options screen offers, and which set each mode loads: **OQ-535**. UI.2’s own scale (W5) is a rebuild choice, not an original fact.
+Main-menu Options (graphics) at menu frame **800 × 600**, `f16_options_graphics` (Wine `d91-20261030-133242`, `macros.press main_menu options` -> `options_graphics`). Five listed modes, top to bottom, with a tick on **1024 × 768**:
+
+| # | Mode (px) | Tick on `f16_options_graphics` |
+|---|---|---|
+| 1 | 800 × 600 | no |
+| 2 | 1024 × 768 | yes |
+| 3 | 1152 × 864 | no |
+| 4 | 1280 × 960 | no |
+| 5 | 1280 × 1024 | no |
+
+A details toggle and a Back plank sit below the list (`STARTUP:OPTIONS` has 8 lines; line-to-plank bind not made). Seven clicks on the planks did not move the tick (`f16_opt_click_0..6`).
+
+In-game HUD and construction at those modes were **not** captured: the Wine runner's virtual desktop is fixed 1024 × 768 and `tools/orig/wine/agent.py` records that the game never switches display modes there. The owner's Windows harness is out of scope (packet: never the desktop). Which ToolGfx set (plain vs `8`) each mode loads is still **OQ-535**. Size ratio of paired files remains 800/1024 = 0.78125, so the `8` set is the candidate for 800 × 600 in-game, not a pixel check.
+
+Anchoring at the captured 1024 × 768 in-game frame (section 2):
+
+| Band | Rule at 1024 × 768 | Evidence |
+|---|---|---|
+| Right chrome | x = W − 245, width 245 | `WELTKARTE` / `MAINUNTERGRUND` width; x=779 |
+| Status bar | y = H − 35, 746 × 35 at (0, 733) | `Data/statusbar.dat` `STATUSBAR`; pixel-row |
+| Construction grid | origin (W − 216, 305), stride 52, sprite 50 | 808 = 1024 − 245 + 29; `NO_KLICK` |
+| Tabs | y = 181, stride 61 from x = W − 245 | `MAINTAB` 61 × 63 |
+
+Those subtractions are identities at 1024 × 768, not a verified rule at 800 / 1152 / 1280.
+
+UI.2’s own scale (W5) is a rebuild choice, not an original fact.
 
 ## 6. `data/ui/` layout format
 
@@ -486,15 +511,16 @@ Eight non-addon thumbnails. Bound to categories in section 3.1 (`View.dll` push 
 
 ## 7. Capture index
 
-`cache/orig/ui-1/` (git-ignored). Two Wine-runner passes on display `:91`, `WineBackend` silent (`VOLUME` −250, no Pulse). Frame 1024 × 768, `in_game`. One instance; both stopped clean.
+`cache/orig/ui-1/` (git-ignored). Four Wine-runner passes on display `:91`, `WineBackend` silent (`VOLUME` −250, no Pulse). In-game frame 1024 × 768; menus 800 × 600. Each instance stopped clean.
 
 | Pass | Dir | Shots | Speed | Notes |
 |---|---|---|---|---|
 | 1 | `d91-20261030-112327` | 27 | **P** pause | Parchment covers the map; ESC after a cell closed the construction menu, so later category shots were idle HUD. Keep only as pause + options-tab evidence |
 | 2 | `d91-20261030-112532` | 32 `r2_*` + `hud_idle_running` | **F8** | Canonical. No ESC between categories; **B** reopened before each info cell. Demolish at (0.97, 0.93) |
 | 3 | `d91-20261030-132532` | 31 `f15_*` | **F8** | Screen-tree remainder. Silent. |
+| 4 | `d91-20261030-133242` | 9 `f16_*` | menus | Main-menu Options graphics. Frame 800 x 600. Silent. |
 
-Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Look at these:
+Merged `index.json` is append-only across passes. Stable copies: `cache/orig/ui-1/shots/`. Look at these:
 
 | Shot | Steps (after `macros.new_game citizen` + F8 unless noted) |
 |---|---|
@@ -538,8 +564,12 @@ Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Loo
 | `f15_pause` | key **P** (speech submenu leftover on the right) |
 | `f15_help_tab` / `f15_help_on_kontor` | help tab, then click Kontor |
 | `f15_placed_house` / `f15_selected_house` | **B**, public (0,0), click land, ESC, click the house |
+| `f16_main_menu` | skip intros |
+| `f16_options_graphics` | `macros.press main_menu options` |
+| `f16_opt_click_0..6` | clicks on the Options planks; tick stayed on 1024 x 768 |
 
 Pass 3: Wine `d91-20261030-132532`, 31 `f15_*` shots, silent, `watchdog_stopped`, leftover_pids empty.
+Pass 4: Wine `d91-20261030-133242`, 9 `f16_*` shots, silent, `watchdog_stopped`, leftover_pids empty.
 
 ## 8. Implementation-status (for UI.2)
 

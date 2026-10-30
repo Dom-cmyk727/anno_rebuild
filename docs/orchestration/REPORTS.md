@@ -7939,3 +7939,19 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 1. **Record misses as OQs, not guessed panels.** Alternative: label the Kontor lower icons as trade sliders from `screens.json`. Rejected: the four clicks did not change the panel.
 2. **Rating is key Q, not the options graph.** Alternative: wait to click the orange graph. Rejected: `STATISTIK_UNTERGRUND` already SAD-matches `f15_rating` at (0,0) mean 23.41; the options-graph target stays OQ-549.
 3. **Ship panel from the list, not a missed map click.** Alternative: keep probing water pixels. Rejected: four named guesses opened `MAX_PIC`; key **S** already shows the list. Opening the ship from the list row is still open (not an OQ number; F1.6 if time).
+
+## UI.1.F1 — progress, F1.6 — 2026-10-30 16:40 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: captured the main-menu Options graphics list. In-game HUD/construction at other modes not captured: Wine desktop is fixed 1024 x 768.
+- Evidence:
+  - `f16_options_graphics` frame 800 x 600: modes 800 x 600, 1024 x 768 (tick), 1152 x 864, 1280 x 960, 1280 x 1024.
+  - `macros.press main_menu options` -> `options_graphics`. Seven plank clicks did not move the tick (`f16_opt_click_0..6`).
+  - Wine `d91-20261030-133242` silent, leftover_pids empty.
+  - Anchoring identities at 1024 x 768 in `docs/re/ui.md` section 5. ToolGfx set per mode still OQ-535.
+- Next: final report (QUESTION: acceptance lines that still fail).
+- Subagents: none.
+- Open: 535 (list captured, set-per-mode open), 536, 539-549.
+
+### Decisions and reasoning
+1. **Do not claim the `8` set is loaded at 800 x 600 in-game.** Alternative: the 800/1024 size ratio. Rejected: no in-game shot at 800 x 600 (Wine cannot switch modes). Ratio stays a candidate in OQ-535.
+2. **Do not drive the owner's desktop harness for other modes.** Packet forbids it. OQ-535 stays open for those shots.

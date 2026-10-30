@@ -8064,3 +8064,23 @@ Inline; Wine passes 3 and 4; no subagents. Lanes 1, 3, 4 not touched. No merge, 
   4. Screens not reached: trade sliders, help on a building, statistics/quit, ship panel, messages, diplomacy, a later stage. Diplomacy and messages are reachable with computer opponents in the original.
   5. The other resolutions need the owner's desktop harness: an owner checklist, not a runner task.
 - **Merge:** `df6dcc7`. The REPORTS conflict was resolved as main's file plus the branch's appended sections (7722 + 8025 − 7707 = 8040 lines). `docs/re/ui.md`, `tools/ui_layout.py` and `data/ui/construction.txt` are byte-identical to the branch; `check-files` passes on main.
+
+## UI.1.F2 — progress, F2.1 — 2026-10-30 14:40 — status: IN PROGRESS
+- Branch: `task/UI-1-F2-ui-remaining` at `0354071`; worktree `E:\anno1503-worktrees\anno1503-UI-1-F2`. Parent `632229e` (board). Not pushed.
+- Commits: `351513b` data/ui + oracle; `0354071` spec/OQs. This section.
+- Built: unlocked-cell `THUMBNAIL` formula (`View.dll` `0x1002c360` gadget `0xb0c`, id = ACCESS + 3*record_index); `VIEWBAUTAB` column (`0x1002bb4f` gadget `0xb0d`); `PLANKEGROSS` 1019 at (783, 252); `KARTEPLUS` minus 46 at (982, 19), `LUPE` 7 at (805, 132), compass 48/50 at (965, 140)/(986, 140) (`0x10034388` six `0xb09`); `STATUSBAR_EINWOHNER` 53 at (401, 733) mean 4.74; `STATUSBAR_ROSHTOFFE` 46/48/51 at 547/587/627; `B_Betriebskosten` at (815, 674) mean 12.76; pause `MESSAGEBOX_BK` 1512 at (222, 191), button 1513 at (286, 500) mean 11.61; house `Pioniere.tex` at (812, 355), `VIEWINFOPIONIERMAIN_BK` at (783, 252) grey 17.8. Pressed = ACCESS+1 (`add esi, 2`); cells use three frames.
+- Gates: `python -I tools/test_ui_layout.py` 13 ok, self-test checks=28; `check-files --root .` ok; `validate --game-dir` ok; no `src/`; nothing under `game/`.
+- Compare (channel 48, fraction 0.08): hud_idle 0.0207; construction 0.0164-0.0480 (roads worst). Unmasked 53760 idle / 157565 construction (unlocked cells and ROSHTOFFE compared). Negatives fail: public-vs-roads 0.1968; one-cell shift 0.1901; pickaxe `pick_fraction` 0.983.
+- Masks reduced: unlocked cells no extra-mask; portraits 346 px -> `einwohner_digits` 108 px; nameplate 220x54 -> 200x22; category column kept (clip, not unbound).
+- OQs closed: 540, 542, 543, 544 (frame index; press not pixel-captured), 545. Still open: 535, 536, 539, 541, 546, 547, 548, 549.
+- Next: F2.2 reachable screens with computer opponents; F2.3 owner checklist.
+- Wine: none started this part; F1 shots reused from `cache/orig/ui-1/shots`.
+
+### Decisions and reasoning
+1. **Cell icon = `THUMBNAIL*` + 3 x record_index, including empty id-1 holes.** Alternative: nonempty-only index. Rejected: nonempty-only missed the weaver (277+12=289 mean 10.0; nonempty-only failed). Chrome builder `0x1002c360` gadget `0xb0c`.
+2. **Column is `VIEWBAUTAB`, not `THUMBNAIL*` or `B_Baumenue.tex`.** Evidence: `0x1002bb4f` copies that ACCESS, eight `0xb0d` 42 x 46. Opaque SAD >110 because the gadget is clipped to 29 px; the column mask stays.
+3. **Zoom minus is `KARTEPLUS` id 46, right of plus, not left.** Evidence: `0x10034388` six `0xb09`, `add esi, 2`; mean 1.915 at (982, 19).
+4. **Compass is `KARTEPLUS` 48/50, not `KARTE_NORDUNG`.** Means 3.09 / 3.65. `KARTE_NORDUNG` is 256 x 133.
+5. **F1 "four portraits" were `STATUSBAR_EINWOHNER` + three `STATUSBAR_ROSHTOFFE`.** Id 53 at (401, 733) mean 4.74; goods 46/48/51 at 547/587/627. `STATUSBAR_ICON` 3 is fire.
+6. **Tolerance 0.08, not 0.12.** Correct max 0.0480, wrong-category 0.1968. Channel 48 kept.
+7. **Pause parchment at screen centre (222, 191).** Button (286, 500) mean 11.61 is the clean bind; parchment mean 27.2 from the ACCESS dark field. `Pause.tex` has 0 textures.

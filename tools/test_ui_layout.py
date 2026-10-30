@@ -74,6 +74,32 @@ class SelfTest(unittest.TestCase):
         rec2 = ui_layout.compare_images(mock, shot, masked={(2, 2)})
         self.assertEqual(rec2["bad"], 0)
 
+    def test_cell_icon_tex_id_formula(self) -> None:
+        self.assertEqual(ui_layout.cell_icon_tex_id(154, 0, 0), 154)
+        self.assertEqual(ui_layout.cell_icon_tex_id(154, 2, 0), 160)
+        self.assertEqual(ui_layout.cell_icon_tex_id(154, 3, 1), 175)
+        self.assertEqual(ui_layout.cell_icon_tex_id(277, 0, 1), 289)
+
+    def test_negative_controls_fail_when_shots_present(self) -> None:
+        root = ROOT
+        shots = root / "cache" / "orig" / "ui-1" / "shots"
+        game = os.environ.get("ANNO1503_GAME_DIR", r"E:\anno1503\game\app")
+        pub = shots / "r2_construction_public.png"
+        roads = shots / "r2_construction_roads.png"
+        if not pub.is_file() or not roads.is_file():
+            self.skipTest("Wine construction shots not on this machine")
+        if not os.path.isfile(os.path.join(game, "ToolGfx", "fenster.tex")):
+            self.skipTest("game files not present")
+        cases = ui_layout.negative_control_results(
+            str(root / "data" / "ui"), game, str(shots)
+        )
+        self.assertEqual(len(cases), 3)
+        for rec in cases:
+            self.assertFalse(
+                rec["pass"],
+                f"{rec['name']} fraction {rec['fraction']:.4f} should fail",
+            )
+
     def test_validate_against_game_missing_tex(self) -> None:
         import tempfile
 

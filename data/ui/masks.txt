@@ -1,7 +1,8 @@
 # Compare masks at 1024 x 768. Unmasked chrome is compared. No original pixels.
-# live_map: isometric world. minimap_paint: islands on WELTKARTE. digits/portraits: live HUD.
+# live_map: isometric world. minimap_paint: islands on WELTKARTE. digits: live HUD.
 # unlocked_cells are generated from construction.txt at compare time, not listed here.
 # hud_idle extra-masks (779,244,245,489): settlement statistics on MAINUNTERGRUND.
+# F2.1: portraits mask reduced; STATUSBAR_EINWOHNER / ROSHTOFFE icons are bound and compared.
 anno1503-ui-masks 1
 resolution 1024 768
 mask live_map pos 0 0 size 779 733 reason isometric-world
@@ -11,6 +12,6 @@ mask baumat_tools_d pos 162 733 size 28 35 reason live-digits
 mask baumat_wood_d pos 222 733 size 28 35 reason live-digits
 mask baumat_bricks_d pos 282 733 size 28 35 reason live-digits
 mask baumat_marble_d pos 342 733 size 28 35 reason live-digits
-mask portraits pos 400 733 size 346 35 reason live-portraits
-mask category_column pos 779 300 size 29 400 reason oq-540
-mask nameplate pos 800 248 size 220 54 reason live-text
+mask einwohner_digits pos 439 733 size 108 35 reason live-digits
+mask category_column pos 779 300 size 29 400 reason viewbautab-clip
+mask nameplate pos 800 258 size 200 22 reason live-banner-text

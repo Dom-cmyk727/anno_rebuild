@@ -12,6 +12,10 @@ element baumat_tools pos 132 735 size 30 30 file toolgfx/statusbar.tex access ST
 element baumat_wood pos 192 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 37 segment 1 method sprite-sad shot r2_construction_public
 element baumat_bricks pos 252 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 38 segment 2 method sprite-sad shot r2_construction_public
 element baumat_marble pos 312 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_BAUMAT tex_id 39 segment 3 method sprite-sad shot r2_construction_public
+element einwohner pos 401 733 size 38 35 file toolgfx/statusbar.tex access STATUSBAR_EINWOHNER tex_id 53 method sprite-sad shot r2_construction_public
+element rosh_46 pos 547 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 46 segment 6 method sprite-sad shot hud_idle_running
+element rosh_48 pos 587 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 48 segment 8 method sprite-sad shot hud_idle_running
+element rosh_51 pos 627 735 size 30 30 file toolgfx/statusbar.tex access STATUSBAR_ROSHTOFFE tex_id 51 segment 11 method sprite-sad shot hud_idle_running
 element fragezeichen pos 746 733 size 34 35 file toolgfx/statusbar.tex access STATUSBAR_FRAGEZEICHEN tex_id 1 method sprite-sad shot hud_idle_running
 element weltkarte pos 779 0 size 245 248 file toolgfx/fenster.tex access WELTKARTE tex_id 2 method sprite-sad shot hud_idle_running
 element mainuntergrund pos 779 244 size 245 524 file toolgfx/fenster.tex access MAINUNTERGRUND tex_id 4 method sprite-sad shot hud_idle_running
@@ -23,9 +27,20 @@ element tab_military pos 840 181 size 61 63 file toolgfx/fenster.tex access MAIN
 element tab_help pos 901 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 10 frame_idle 10 frame_selected 14 method sprite-sad shot r2_construction_public
 element tab_options pos 962 181 size 61 63 file toolgfx/fenster.tex access MAINTAB tex_id 11 frame_idle 11 frame_selected 15 method sprite-sad shot r2_construction_public
 element zoom_plus pos 959 7 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 44 method sprite-sad shot hud_idle_running
-element lupe size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 method inc-size
+element zoom_minus pos 982 19 size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 46 method sprite-sad shot hud_idle_running
+element lupe pos 805 132 size 42 45 file toolgfx/fenster.tex access LUPE tex_id 7 method sprite-sad shot hud_idle_running
+element compass_w pos 965 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 48 method sprite-sad shot hud_idle_running
+element compass_e pos 986 140 size 19 31 file toolgfx/fenster.tex access KARTEPLUS tex_id 50 method sprite-sad shot hud_idle_running
 element karteplus_access size 19 21 file toolgfx/fenster.tex access KARTEPLUS tex_id 40 method inc-size
 element karte_nordung size 256 133 file toolgfx/fenster.tex access KARTE_NORDUNG tex_id 52 method inc-size
+element plankegross pos 783 252 size 241 48 file toolgfx/fenster.tex access PLANKEGROSS tex_id 1019 method sprite-sad shot r2_construction_public
+element viewbautab_0 pos 779 302 size 42 46 file toolgfx/fenster.tex access VIEWBAUTAB tex_id 16 frame_idle 16 frame_selected 17 method view-dll
+element baukosten size 32 29 file toolgfx/B_Baukosten.tex access image001.pcx tex_id 1 method inc-size
+element betriebskosten pos 815 674 size 40 37 file toolgfx/B_Betriebskosten.tex access image001.pcx tex_id 1 method sprite-sad shot r2_info_pioneer_house
+element wohnhaus_platte size 244 469 file toolgfx/fenster.tex access WOHNHAUS_PLATTE tex_id 883 method inc-size
+element house_portrait pos 812 355 size 100 108 file toolgfx/Pioniere.tex access image001.pcx tex_id 1 method sprite-sad shot f15_selected_house
+element pause_parchment pos 222 191 size 579 386 file toolgfx/fenster.tex access MESSAGEBOX_BK tex_id 1512 method sprite-sad shot f15_pause
+element pause_button pos 286 500 size 244 67 file toolgfx/fenster.tex access MESSAGEBOX_BUTTONS tex_id 1513 method sprite-sad shot f15_pause
 element abrissicon pos 970 710 size 53 53 file toolgfx/fenster.tex access ABRISSICON tex_id 659 frame_normal 659 frame_active 660 method sprite-sad shot r2_construction_public
 element info_panel pos 804 302 size 220 466 file toolgfx/fenster.tex access INFOUNTERGRUND tex_id 33 method sprite-sad shot r2_info_pioneer_house
 element infoexit pos 984 725 size 33 38 file toolgfx/fenster.tex access INFOEXIT tex_id 38 method sprite-sad shot r2_info_pioneer_house
@@ -34,7 +49,7 @@ element rotate_right pos 987 451 size 33 38 file toolgfx/fenster.tex access INFO
 element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 method sprite-sad shot r2_construction_public
 element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 method sprite-sad shot r2_options
 element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating
-element pionier_bk size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 method inc-size
+element pionier_bk pos 783 252 size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 method sprite-sad shot f15_selected_house
 element option_background size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 method inc-size
 element fenster_statusbar size 780 43 file toolgfx/fenster.tex access STATUSBAR method inc-size
 click tab_construction pos 809 212

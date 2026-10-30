@@ -2007,3 +2007,108 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** how far from a starting Kontor does the original claim tiles, and does that claim stop at the island edge?
 - **What is known:** nothing in the sim derives territory from a Kontor (`docs/sim/fixed-map.md`). Tiles get an owner only from `IslandSpec::owner_runs`. A player can build only on tiles their city owns (`footprint_owner_rule`, `placement.hpp`). The load-time building path does not read the coast flag (OQ-052). MAP.1 therefore writes one owner run over every tile of a seated start island so the developer start can build.
 - **How to resolve:** find the game-start claim that walks out from the Kontor (AnnoWelt, the city or island init after a warehouse is placed) and name the radius and the stop condition. Do not copy this into OQ-027 or OQ-052.
+
+## OQ-535: Resolutions the original offers, and which ToolGfx set each uses (UI.1)
+- **Status:** open (list captured F1.6; set-per-mode and in-game shots at other modes not done).
+- **Area:** UI / original.
+- **Question:** Which `ToolGfx` set (plain vs `*8`) each Options mode loads, and what are the HUD / construction rectangles at 800 × 600, 1152 × 864, 1280 × 960 and 1280 × 1024?
+- **What we know:** Main-menu Options (`f16_options_graphics`, frame 800 × 600) lists 800 × 600, 1024 × 768 (tick), 1152 × 864, 1280 × 960, 1280 × 1024 (`docs/re/ui.md` §5). Wine-runner desktop is fixed 1024 × 768; the agent notes the game never switches display modes there. In-game at Citizen is 1024 × 768 with the plain sizes (status bar 746 × 35, chrome 245). Paired `*8` files sit at 800/1024 = 0.78125. `TEXTURE/HEAD.unknown_06` is 8 on both sets. Clicks on the Options planks did not move the tick (`f16_opt_click_*`).
+- **How to resolve:** the Windows harness (owner desktop, out of this packet) or a runner that can change the game mode; then one HUD and one open-construction shot per mode, compared to plain vs `8` texture sizes.
+
+## OQ-536: Two `STATUSBAR` sources (`fenster.tex` vs `statusbar.tex`) (UI.1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which graphic is the in-game info bar: `Data/statusbar.dat` ACCESS `STATUSBAR` in `toolgfx\statusbar.tex` (746 × 35, plus `STATUSBAR02` 873 × 35 and `STATUSBAR03` 1001 × 35), or `ToolGfx/fenster.inc` ACCESS `STATUSBAR` (texture id 6 in `fenster.tex`)? When is each of the three bar widths used? Is `fenster.inc` `WELTKARTE` (id 2, 245 × 248) the minimap frame?
+- **What we know:** both ACCESS names exist; `fenster.tex` has 1 606 textures; `fenster.inc` names 218 of them; `statusbar.tex` has 60 textures. First-pass minimap box is ~205 × 154 px, smaller than 245 × 248. Wine pass 2 `hud_idle_running.png`: the drawn bar is **746 × 35 at (0, 733)**, matching `Data/statusbar.dat` `STATUSBAR`, not `fenster.inc` `STATUSBAR` 780 × 43 (that candidate would start at y=725). Right chrome starts at x=779 (1024−245). `WELTKARTE` 245 × 248 still larger than the painted minimap.
+- **How to resolve:** `--compare` the remaining candidate (`fenster` STATUSBAR at y=725) against the shot; bind `WELTKARTE` vs the painted map by overlay. The 746 × 35 bar is the one drawn at 1024 × 768.
+
+## OQ-537: Construction-menu cell → Anlagen type, and tooltip section → category banner (UI.1)
+- **Status:** resolved (F1.2, 2026-10-30). 148 cell ids from `View.dll` 8-byte tables (`0x1002c650`); category tooltip/thumbnail pairs from the same module; lock field `INFRAMIN` → type `+0x23` (`AnnoGame` `0x10009871`, slot `+0x64` = `0x10007d70`). Remaining: OQ-539.
+- **Area:** UI / original.
+- **Question:** For every construction-menu cell, what is the Anlagen type id, and which `Texte.dat` `TOOLTIP:BAUMENU_*` section is the banner/tooltip for each of the eight categories? What field and value draw a `?` lock (working hypothesis: `INFRAMIN` vs city stage)?
+- **What we know:** eight categories in order (`playbook.md` §1, `tools/orig/screens.json`, 2026-10-25). Occupancy at the Citizen start is in `data/ui/construction.txt` (grey-`?` signature on `r2_construction_*`). Eight cells are typed: 501 (pioneer house, info panel + OQ-103), and the seven `opening.json` ids 801, 805, 807, 1001, 1023, 1301, 2520 with costs equal to `Anlagen.dat`. Remaining unlocked cells (public stall, farms row 1 extras, two coastal) are icon-only. Mines / military / ornamental are all locked. `fenster.inc` names eight non-addon 50 × 50 thumbs (`THUMBNAILLANDWIRTSCHAFT`, `THUMBNAILDIVERSES`, `THUMBNAILWEG`, `THUMBNAILHANDWERK`, `THUMBNAILSEEFAHRT`, `THUMBNAILBERGBAU`, `THUMBNAILMILITAR`, `THUMBNAILZIERDE`) plus `THUMBNAILZIERDE_ADDON`. File order is not the category-column order. No ACCESS name encodes “public buildings”. Tooltip section → banner still unbound. Second settlement stage not reached.
+- **How to resolve:** info-panel capture of every remaining unlocked cell; a second stage for the lock rule; bind `THUMBNAIL*` and `TOOLTIP:BAUMENU_*` by capture or disassembly.
+
+## OQ-538: Four `STATUSBAR_BAUMAT` segments and marble on the info bar (UI.1)
+- **Status:** resolved (F1.3, 2026-10-30). Segments 0..3 = tools, wood, bricks, marble at (132,192,252,312), y=735, 30 x 30, `statusbar.tex` ids 36-39, mean 7.4-9.1 on `r2_construction_public`. Marble digit is 0 at Citizen. `STATUSBAR_ROSHTOFFE` ids 40-51 are not on this bar.
+- **Area:** UI / original.
+- **Question:** Which four building-material icons are `STATUSBAR_BAUMAT` segments 0..3, and does the 1024 × 768 info bar show marble as the manual says ([M 15])? First pass and `screens.json` list gold, tools, wood, bricks, civilians, soldiers, help — no marble.
+- **What we know:** `Data/statusbar.dat` `STATUSBAR_BAUMAT` Size 30 × 30, Segments 4, 1; `STATUSBAR_ROSHTOFFE` (file spelling) Segments 12, 1; `STATUSBAR_GELDSYMBOL`; `STATUSBAR_EINWOHNER`. On `hud_idle_running` the bar shows gold and the four portrait slots; tools/wood/bricks digits are absent. On `r2_construction_public` those three material digits appear (tools 30, wood 30, bricks 0). Marble as a numbered slot was not observed at the Citizen start with the construction menu open.
+- **How to resolve:** select a marble-cost building (none unlocked at Citizen); map the four `BAUMAT` segments by overlaying `statusbar.tex` on the bar.
+
+## OQ-539: Construction lock at a later stage, and BAUMENUTAB line order (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Does a later city stage mask (for example `INFRA_STUFE_1A` = 30 pioneers) change occupancy from `?` to icon for cells whose `INFRAMIN` is that stage? Which of the eight `TOOLTIP:BAUMENUTAB` / `TOOLTIP:BAUMENU_EX` lines is the tooltip of which category button?
+- **What we know:** at Citizen start, occupancy U iff `INFRAMIN = INFRA_EVER` for all 148 non-empty View.dll cells (`docs/re/ui.md` section 3.2). `View.dll` `0x1002c260` reads type slot `+0x64` (the stage index) when creating a cell. TAB and EX are 8 identical lines; `View.dll` `0x1002bb42` / `0x1002c08f` with `VIEWBAUTAB`. Second stage not reached; no hover shot of the category column.
+- **How to resolve:** an original savegame or a grown city in the Wine runner; hover each category button and match the tooltip line index.
+
+## OQ-540: Category-column graphic ACCESS (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which ACCESS / tex id is the drawn 8-icon category column? `View.dll` pushes `THUMBNAIL*` next to each category, but those 50 x 50 sprites do not SAD-match the column (mean >140). `VIEWBAUTAB` 42 x 46 ids 16-31 also miss (mean >110). Click centres in `construction.txt` still hit.
+- **What we know:** column sits left of the grid origin (808, 305); chrome starts at x=779 (29 px gap). Banner text is the `TOOLTIP:BAUMENU_*` bind from F1.2.
+- **How to resolve:** overlay candidate frames (including `B_Baumenue.tex`) with a colour-key, or read the gadget create at `View.dll` `0x1002c360`.
+
+## OQ-541: HUD tooltip line indices other than military (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which `TOOLTIP:CONTROLFELD` index (8 lines) is each of the four tabs, and which `TOOLTIP:STATUSBAR` / `STATUSBARICON` / `ABRISS` lines are the gold, BAUMAT, portraits, `?` and pickaxe tooltips?
+- **What we know:** military tab is `TOOLTIP:CONTROLFELD` 2 and 3 (F1.1, 11-byte match). Hover shots `f13_hover_tab_*` and `f13_hover_pickaxe` exist; strings are not stored. `TOOLTIP:STATUSBAR` has 346 lines.
+- **How to resolve:** measure the tooltip box on those shots and match rendered `MainSmall.zei` line lengths, or a Wine memory read of the gadget text id.
+
+## OQ-542: Zoom-minus ACCESS and `KARTEPLUS` frame 44 (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Why is the drawn zoom + `fenster.tex` id 44 (mean 2.9 at 959,7) rather than ACCESS `KARTEPLUS` id 40? Which id is zoom minus (visible left of +; ids 40-45 do not SAD-match there, best mean 93)? There is no `KARTEMINUS` ACCESS name.
+- **What we know:** ids 40-45 are all 19 x 21. Plus unpressed is 44.
+- **How to resolve:** hover/pressed shots of + and - scored against 40-45; gadget create near the minimap.
+
+## OQ-543: `LUPE` and compass rectangles (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Pixel rectangle of the magnifying glass and of the small compass below the parchment. `LUPE` id 7 42 x 45 does not SAD-match (mean >150). `KARTE_NORDUNG` 256 x 133 does not fit in the 245 px chrome.
+- **What we know:** both controls are visible under the parchment and above the tabs on `hud_idle_running` / `f13_hover_lupe_guess`.
+- **How to resolve:** edge the wood plates on the shot; try `LUPE` composited onto a plate from `MAINUNTERGRUND`.
+
+## OQ-544: Pressed gadget frames (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which of the consecutive `tGadKlickGfx` frames is hover vs pressed vs disabled for `MAINTAB`, `ABRISSICON`, `INFOEXIT`, `INFOROTPFEIL`, `NO_KLICK`?
+- **What we know:** the Wine agent has `move` (hover shots taken) but no held mouse-down command; `key` down/up is one call. Selected vs unselected `MAINTAB` is ids 8-11 vs 12-15. `ABRISSICON` 659 vs 660 (menu vs demolish). `NO_KLICK` 56 vs 57 unused.
+- **How to resolve:** an agent command that screenshots between mousedown and mouseup, or disassembly of the gadget frame index.
+
+## OQ-545: Status-bar portrait x positions (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Exact x of each of the four civ-level portraits on the 746 x 35 bar (`STATUSBAR_ICON` ids 3-35, 35 x 35).
+- **What we know:** they sit right of marble (x=312) and left of `?` (x=746). Id 3 did not SAD-match a 40 px grid. A fifth pixel-run at x=401-445 appears between pass-2 idle and construction.
+- **How to resolve:** sprite-sad of several ICON ids along y=733, x=350-740.
+
+## OQ-546: CTRL-align capture (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Pixel evidence of holding CTRL while placing (entrance snaps to a street, manual p15).
+- **What we know:** runner `key` cannot hold a modifier across a later `click`.
+- **How to resolve:** a combined keydown+click in one xdotool sequence, or an owner desktop capture.
+
+## OQ-547: Kontor buy/sell sliders (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Pixel rectangles and ACCESS of the Kontor/settlement buy and sell sliders (upper stock-limit / keep, lower price; `screens.json` `panels.kontor`).
+- **What we know:** click Kontor at (0.38, 0.47) opens the goods column (`f15_kontor`, `r2_hud_kontor`). `TOOLTIP:INFOSTADT_WAREN_EIN-VERKAUF` has 6 lines. Four clicks at (820, 870, 920, 970), y=680, did not change the panel (`f15_kontor_btn_*`). `VIEWINFOSTADTTAB` id 661 is 42 x 46.
+- **How to resolve:** sprite-sad `VIEWINFOSTADTTAB` frames on `f15_kontor`; click those centres; or a hover tooltip bind.
+
+## OQ-548: Help page on a placed building (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** What does the help/info-mode cursor open when clicking a placed building? Which `help/*.htm` or `TOOLTIP:HELPMAIN` line is it?
+- **What we know:** help tab selects `MAINTAB` frame 14 (`r2_tab_help`, `f15_help_tab`). Clicking the Kontor afterwards opened `MAX_PIC`, not a help page (`f15_help_on_kontor`). `TOOLTIP:HELPMAIN` has 7 lines. Instant help is `InstantHelpLinks.txt`.
+- **How to resolve:** enter info mode, click a house (`f15_selected_house` is the selected-house panel, not help mode); or read the gadget on `tCursorInfo`.
+
+## OQ-549: Options statistics, quit confirm, and unused option icons (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which options-tab icons open the full-frame statistics (`STATISTIK_UNTERGRUND` is already bound to key **Q**, mean 23.41 on `f15_rating`), the quit `MESSAGEBOX`, and the right-side book/crest on `f15_options_tab`?
+- **What we know:** column x=800 opens load/save/music/speech at y=360/410/460/510. `OPTION_EXIT` id 1492 is (927, 660) 92 x 100 mean 11.23 on `r2_options`; a click there while speech was open did nothing (`f15_options_exit`). `OPTION_BILANZ` id 1486 69 x 61 best mean 66 on `r2_options`.
+- **How to resolve:** click the orange graph, the book, the green crest, and `OPTION_EXIT` from the main options list (`f15_options_tab`) without a leftover submenu.

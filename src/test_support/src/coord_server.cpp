@@ -199,7 +199,15 @@ class HostMeter {
         posix_spawn_file_actions_addclose(&actions, out_pipe[0]);
         // The meter inherits no coordinator descriptor: the listening socket
         // stayed open in this child after the coordinator died (T10c F3, D2).
-        close_descriptors_from_3(&actions);
+        if (!close_descriptors_from_3(&actions)) {
+            posix_spawn_file_actions_destroy(&actions);
+            ::close(in_pipe[0]);
+            ::close(in_pipe[1]);
+            ::close(out_pipe[0]);
+            ::close(out_pipe[1]);
+            unavailable_ = true;
+            return;
+        }
         std::string exe = fixed;
         std::string a1 = "-NoProfile";
         std::string a2 = "-NonInteractive";
@@ -1400,6 +1408,20 @@ std::optional<bool> owner_alive(Server& server, const Owner& owner) {
         stamp.LowPart = created.dwLowDateTime;
         stamp.HighPart = created.dwHighDateTime;
         return stamp.QuadPart == owner.started && code == STILL_ACTIVE;
+#elif defined(__APPLE__)
+        // proc_pidinfo: Gone and Exited are a stopped owner; a start time that
+        // differs is a reused pid, also a stopped owner. Unknown is never a stop.
+        const DarwinProcInfo proc = darwin_proc_info(static_cast<int>(owner.pid));
+        if (proc.state == DarwinProc::Unknown) {
+            return std::nullopt;
+        }
+        if (proc.state != DarwinProc::Running) {
+            return false;
+        }
+        if (proc.started == 0) {
+            return std::nullopt;
+        }
+        return proc.started == owner.started;
 #else
         const std::string stat = "/proc/" + std::to_string(owner.pid) + "/stat";
         if (::access(stat.c_str(), F_OK) != 0) {

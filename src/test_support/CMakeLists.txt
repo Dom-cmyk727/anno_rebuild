@@ -41,7 +41,8 @@ if(ANNO_BUILD_TESTS)
 
   add_executable(anno_test_support_tests tests/main.cpp tests/game_dir_test.cpp
     tests/parallel_test.cpp tests/budget_test.cpp tests/budget_f1_test.cpp
-    tests/budget_f2_test.cpp tests/budget_f3_test.cpp tests/budget_f4_test.cpp)
+    tests/budget_f2_test.cpp tests/budget_f3_test.cpp tests/budget_f4_test.cpp
+    tests/host_test.cpp)
   target_link_libraries(anno_test_support_tests PRIVATE anno_test_support doctest::doctest)
   target_include_directories(anno_test_support_tests PRIVATE src)
   anno_target_defaults(anno_test_support_tests)

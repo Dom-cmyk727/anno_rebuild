@@ -55,6 +55,10 @@ Sources abbreviated below: GFA = `docs/research/game-files-analysis.md`, CL = `d
 | Klima | climate | Climate zone of island templates (Polar, Nord, Steppe, Praerie, Dschungel, …) | `Scenes/Islands/<Klima>/*.scp` (GFA §2) |
 | ADDON / ANNOADDON1 | add-on | Root chunk marking add-on scenario content | `.sze` root `ANNOADDON1` (27 files) vs. `ANNO` (23) (GFA §2, CL §3) |
 | zei | unconfirmed (possibly Zeichen, "characters") | Font file, root `CHARSET` | `*.zei` (11 files) (GFA §2) |
+| BauMenü / `BAUMENU` | construction menu | Right-hand in-game build menu (eight categories) | `Texte.dat` `TOOLTIP:BAUMENU_*`; `ToolGfx/B_Baumenue.tex`; `docs/re/ui.md` |
+| Abreißen / `ABRISS` | tear down | Demolish tool | `ToolGfx/Abreissen_Gebaeude.tex`; AnnoFrame RTTI `tCursorAbriss`; `Texte.dat` `TOOLTIP:ABRISS` |
+| Statusbar | status / info bar | Bottom HUD bar | `Data/statusbar.dat`; `ToolGfx/statusbar.tex`; `docs/re/ui.md` |
+| Fenster | window | HUD chrome atlas | `ToolGfx/fenster.tex` + `fenster.inc` (`WELTKARTE`, `MAINTAB`, `LUPE`, …) |
 
 ## Chunk names seen so far
 

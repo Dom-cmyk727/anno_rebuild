@@ -102,6 +102,18 @@ Child start_coordinator(std::uint16_t port, const std::filesystem::path& journal
     return coord;
 }
 
+/// Quits a probe and waits until it has exited, so that its listening socket is
+/// closed before the next child binds the same port. `send` alone is
+/// asynchronous: a coordinator started at once lost the race (BIND-FAILED under
+/// ASan, and on the Mac, 2026-10-30).
+inline void quit_and_wait(Child& child) {
+    child.send("q\n");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (child.running() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
 Child probe(const std::vector<std::string>& args) {
     const auto exe = sibling("anno_budget_probe");
     REQUIRE(std::filesystem::exists(exe));
@@ -186,6 +198,10 @@ std::string token(const std::string& text) {
 bool wsl_available() {
 #if defined(_WIN32)
     return std::system("wsl.exe -d Ubuntu -- true >nul 2>&1") == 0;
+#elif defined(__APPLE__)
+    // Darwin has neither WSL nor /proc: the WSL-only cases (the PowerShell meter,
+    // /proc descriptor listings) do not apply here, and say so when they skip.
+    return false;
 #else
     return std::system("true") == 0;
 #endif

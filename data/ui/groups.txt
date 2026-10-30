@@ -1,0 +1,22 @@
+# Filename groups with evidence in docs/re/ui.md section 0. Ungrouped stems are omitted.
+anno1503-ui-groups 1
+group hud-chrome stems 1
+stem "fenster" group hud-chrome
+group statusbar stems 2
+stem "statusbar" group statusbar
+stem "statusbaraddon" group statusbar
+group construction stems 4
+stem "B_Baumenue" group construction
+stem "B_Baukosten" group construction
+stem "B_Betriebskosten" group construction
+stem "B_Belohnungsbauten" group construction
+group demolish stems 1
+stem "Abreissen_Gebaeude" group demolish
+group promotion stems 1
+stem "Aufstiegsbedingungen" group promotion
+group fonts stems 5
+stem "MainSmall" group fonts
+stem "MainMedium" group fonts
+stem "MainLarge" group fonts
+stem "HelpNormal" group fonts
+stem "Startup" group fonts

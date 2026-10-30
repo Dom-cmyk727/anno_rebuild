@@ -7704,3 +7704,49 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
   2. Two executor sessions wrote this worktree overnight; the commits interleave. Accepted, because the history is linear and the accepted study is the `eb6da43` file with tool blobs equal to `3c5ecb6` and `8cc9928`. Owner note: give one prompt to one session only.
   3. A tool once checked out `task/T33-1-walk-tables` in this worktree and it was restored before edits. Noted; no effect on the branch.
 - **Merge:** `d1a8c11`. The merge base is `917efea`, so the merge brings all of T61 (F1 reviewed in rounds df/dh, F2 here). The REPORTS append conflict was resolved as main's file plus the branch's appended sections (line counts checked: 7252 + 6956 − 6519 = 7689). The four tool and ADR files in the merge are byte-identical to the branch.
+
+## W4.3 + W4.4 — Live buildings and developer input — progress, part A (stopped after A2) — 2026-10-30 09:39 +0100 — status: IN PROGRESS
+
+- **Branch and head:** `task/W4-3-live-buildings` in `E:\anno1503-worktrees\anno1503-W4-3`, from the round-dq board commit `c0aec17`. Commit `dc197ee` (docs(app): the W4.3 spec). Nothing merged, pushed or edited outside the branch. No old worktree (`C:\Users\altin\anno1503-T33-*`) was used.
+- **Session note:** this session started in `E:\anno1503`, not in a removed worktree.
+- **Preflight:** `lane3-preflight.ps1`: 4 of 4 PASS (main HEAD c0aec17; status AGENTS.md only; lane bindings unchanged; the new worktree path was free).
+
+### Step A1: facts of §3, re-checked at c0aec17
+
+| # | Fact (packet §3 / W4.3 facts) | Result | Evidence |
+|---|---|---|---|
+| 1 | `PlayRunner::one_turn` sends a turn with no commands through `sim::run_turn(world_, nullptr, turn, steps_)`; `PlaySnapshot` has tick, game time, turn costs, `behind_ms`, `paused` | holds | `src/app/src/play.cpp:336-356`; `play.hpp:53-64` |
+| 2 | scene buildings from `play_buildings(play->world)` at load; re-encoded as PROD2 | holds | `main.cpp` play path; `game-shell.md` "Why the scene re-encodes PROD2" |
+| 3 | `FrameRenderer`: `std::map<ChunkKey, ChunkPtr> cache_`, `update_chunks`, `ChunkWorkers`, `release()`, `chunk_rebuilds`/`rebuilds_` | holds | `frame.hpp:216-394` (`cache_` at 394, `rebuilds_` at 395); replace path `frame.cpp:768-775` |
+| 4 | `BuildCmd` (city + placements in stream order), `PlacementWire` (type, x, y, rotation, byte7/byte8), `DemolishCmd` (city + tiles); wire limits 4 095 / 8 190 | holds, one addition | `command.hpp:31-52`; `has_wire_form` documents the limits (`command.hpp` near 143). **Addition:** `run_turn` with `rec == nullptr` also skips a command without a wire form (`replay.hpp:125-132`), so an over-long line must be refused before the turn, not sent. |
+| 5 | rejected command: no hashed change, one `CommandRejected` UI event; Build charges `cost_gold` and goods | holds | `apply.hpp:27-28`; `world.hpp:240-241`; `apply.cpp` affordability block (`Reject::CannotAfford`), cost waiver OQ-126 |
+| 6 | default placement rule reads only whether a footprint tile carries an object; not the coast/mountain/road flags | holds | `placement.hpp:25-42`; OQ-052 |
+| 7 | left-button drag pans (`viewer.cpp` mouse block ~740-756); keys WASD/arrows, Space, E, R, +/- | holds | `viewer.cpp:740-756`; key cases in the `SDL_EVENT_KEY_DOWN` block |
+| 8 | developer start gives player 1 the whole start island (OQ-490) | holds | `docs/open-questions.md` OQ-490 (MAP.1 writes one owner run over the start island) |
+
+No fact failed. Fact 4 gained one addition (the direct path also drops a command with no wire form). Nothing in §3 changes the design.
+
+Two more facts, found while writing the spec:
+- `Turn::commands` (`replay.hpp:117-123`) already exists and `run_turn` applies it first. The scripted-command path (A5) therefore needs no sim change; the runner only has to fill the field.
+- `TileCleanup` events go to `seams_.tile_cleanup` (`events.cpp:29-32`); play mode installs no handler, so a tile change by an event cannot reach the picture today. Recorded as a gap in the spec.
+
+### Step A2: spec first (done, commit `dc197ee`)
+
+`docs/app/game-shell.md`, new section "Building changes after tick 0 (W4.3)": the publishing choice, the stale-key rule, the copy-on-change object list, target K = 3 frames, the in-flight rule, and the `--commands` format. Choices and their reasons are in the next section. Numbers marked "target" are open until the measurements (A3, A6, A7) are in.
+
+### Not started: A3–A7 and part B (B1–B6)
+
+These need code, a configured MSVC build in this worktree (`build/msvc` does not exist here yet), the coordinator-gated test runs, GPU checks on the RTX 4090, and stills. This session has not started them, and I am not claiming any of them. The next session begins at A3 with the measurement of the diff cost on `06_1024_heavy_256.sze` (before publishing), then A4 (which needs `gpu.cpp`'s replacement path read first).
+
+## Decisions and reasoning (part A, so far)
+
+1. **Publish building changes as an app-side diff, not a sim log or version counter.** Alternatives: (a) a per-island version counter in `World`; (b) a log of applied commands; (c) a diff of the sim's buildings per turn. Chose (c). (a) changes `World` state, which the hash may see, and the brief forbids state or hash changes. (b) misses what a turn changes on its own. (c) is complete and needs no sim change. Cost target: at most 0.2 ms p95 per turn on `06_1024_heavy_256.sze`, measured in A3; a per-island hash is the fallback if it misses.
+2. **Invalidation keeps the old chunk in `cache_` and replaces it on arrival.** Alternative: erase the key and show a hole or wait. Rejected by the brief (no hole, no wait). The precedent is the river rebuild (`frame.cpp:768-775`).
+3. **Copy-on-change object lists per island.** Alternative: mutate the scene in place. Rejected: chunk workers read the scene concurrently without locks (CLAUDE.md, the W4.1 contract). A chunk job holds the list it started from.
+4. **Latency target K = 3 frames.** Alternative: a larger bound with no measurement behind it. Chose a small target that A7 must confirm or change.
+5. **Command file: `build` and `demolish` lines, with extra triples or tiles on the same line for one command.** Alternative: one line per placement, which would send several commands. Chose one line per command, so a drag or a multi-tile demolish is one command as in `BuildCmd`/`DemolishCmd`. The `CityRef` is resolved by the runner, not in the file, so a file names no city.
+6. **A line over the wire limit is refused at load, not split.** Splitting is the window's drag rule (B3). The file is explicit and the user sees the refusal.
+
+## Owner questions (so far)
+
+None blocking. The first owner question comes with part B: the default bindings and whether the preview may show refusals the stand-in placement rule would accept (OQ-052), per the brief.

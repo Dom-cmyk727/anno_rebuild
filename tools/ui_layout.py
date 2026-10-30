@@ -309,6 +309,78 @@ class LayoutError(ValueError):
     pass
 
 
+def control_byte_errors(buf: bytes, path: str) -> list[str]:
+    """Bytes below 0x20 are refused, except LF and CR immediately before LF."""
+    errors = []
+    n = len(buf)
+    i = 0
+    while i < n:
+        b = buf[i]
+        if b >= 0x20 or b == 0x0A:
+            i += 1
+            continue
+        if b == 0x0D and i + 1 < n and buf[i + 1] == 0x0A:
+            i += 1
+            continue
+        errors.append(f"{path}: byte 0x{b:02x} at {i}")
+        i += 1
+    return errors
+
+
+def markdown_table_errors(text: str, path: str) -> list[str]:
+    errors = []
+    cols = None
+    header_line = 0
+    for n, line in enumerate(text.splitlines(), 1):
+        raw = line.rstrip("\r")
+        if raw.startswith("|"):
+            c = raw.count("|") - 1
+            if cols is None:
+                cols = c
+                header_line = n
+            elif c != cols:
+                errors.append(
+                    f"{path}:{n}: table row has {c} columns, table at line {header_line} has {cols}"
+                )
+        else:
+            cols = None
+    return errors
+
+
+def ui1_paths(root: str) -> list[str]:
+    paths = [os.path.join(root, "docs", "re", "ui.md")]
+    data = os.path.join(root, "data", "ui")
+    if os.path.isdir(data):
+        for name in sorted(os.listdir(data)):
+            p = os.path.join(data, name)
+            if os.path.isfile(p):
+                paths.append(p)
+    return paths
+
+
+def check_ui1_repo(root: str) -> list[str]:
+    errors: list[str] = []
+    for p in ui1_paths(root):
+        with open(p, "rb") as fh:
+            buf = fh.read()
+        errors.extend(control_byte_errors(buf, p))
+        if p.endswith(".md"):
+            errors.extend(markdown_table_errors(buf.decode("utf-8"), p))
+    oq = os.path.join(root, "docs", "open-questions.md")
+    if os.path.isfile(oq):
+        with open(oq, "rb") as fh:
+            buf = fh.read()
+        text = buf.decode("utf-8")
+        mark = "## OQ-535"
+        i = text.find(mark)
+        if i >= 0:
+            slice_text = text[i:]
+            tag = oq + "#OQ-535"
+            errors.extend(control_byte_errors(slice_text.encode("utf-8"), tag))
+            errors.extend(markdown_table_errors(slice_text, tag))
+    return errors
+
+
 def check_ascii(buf: bytes, path: str) -> None:
     for i, b in enumerate(buf):
         if b not in ALLOWED:
@@ -770,6 +842,19 @@ def self_test() -> int:
             im.save(png)
             cerr = compare_shot(png, td)
             check(any("bar_top" in e for e in cerr), f"bar_top mismatch not caught: {cerr}")
+        check(control_byte_errors(b"ok\n", "x") == [], "lf ok")
+        check(control_byte_errors(b"ok\r\n", "x") == [], "crlf ok")
+        check(len(control_byte_errors(b"ok" + bytes([9]) + b"no", "x")) == 1, "tab refused")
+        check(
+            markdown_table_errors("| a | b |\n|---|---|\n| 1 | 2 |\n", "t") == [],
+            "table ok",
+        )
+        check(
+            markdown_table_errors("| a | b |\n|---|---|\n| 1 |\n", "t") != [],
+            "table bad",
+        )
+        repo_errs = check_ui1_repo(REPO)
+        check(repo_errs == [], "ui1 repo files: " + "; ".join(repo_errs[:8]))
     print(f"self-test ok checks={n_ok}")
     return 0
 
@@ -802,6 +887,8 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("summary")
     s.add_argument("--game-dir", required=True)
     sub.add_parser("self-test")
+    cf = sub.add_parser("check-files")
+    cf.add_argument("--root", default=REPO)
     v = sub.add_parser("validate")
     v.add_argument("--layout", default=os.path.join(REPO, "data", "ui"))
     v.add_argument("--game-dir")
@@ -829,6 +916,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "self-test":
         return self_test()
+    if args.cmd == "check-files":
+        errs = check_ui1_repo(args.root)
+        if errs:
+            for e in errs:
+                print("check-files:", e, file=sys.stderr)
+            return 1
+        print(f"check-files ok {args.root}")
+        return 0
     if args.cmd == "validate":
         errs = validate_layout(args.layout)
         if errs:

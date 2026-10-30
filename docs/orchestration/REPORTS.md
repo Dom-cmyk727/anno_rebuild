@@ -7833,3 +7833,22 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 ### Decisions and reasoning
 1. **Sim coverage is command-side, not UI.** create_building / DemolishCmd exist; house population is still a placeholder. No src/ui.
 2. **Priority HUD + construction + demolish + status bar + minimap** is specified in pixels. The rest of the tree is named and shot where reached.
+
+---
+
+## UI.1.F1 — progress, F1.1 — 2026-10-30 12:45 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re` from `3c0ce65`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: rewrote `docs/re/ui.md` sections 1-4 from the shots and layout files (not a byte patch). Control bytes gone. English UI string `Player-menu` replaced with `TOOLTIP:CONTROLFELD` index 2 and 3. Added `check-files` / `control_byte_errors` / `markdown_table_errors` and tests.
+- Evidence:
+  - Before: 11 bytes below 0x20 in `docs/re/ui.md` (TAB 0x09, FF 0x0c); 28 split lines (`r2_*` -> CR + `2_*`, `fenster.inc` -> FF + `enster.inc`). After splice: 0 control bytes, `r2_hud_kontor` and `fenster.inc` present, `Player-menu` absent.
+  - `python -I tools/ui_layout.py check-files --root .` -> `check-files ok .`
+  - `python -I tools/ui_layout.py --self-test` -> `ok checks=19`
+  - `python -I tools/test_ui_layout.py` -> 9 tests OK. Mutations: TAB byte must fail `control_byte_errors`; a 2-column table with a 1-column row must fail `markdown_table_errors`.
+  - Tooltip bind: `Texte.dat` `TOOLTIP:CONTROLFELD` index 2 and 3 are the two identical lines of length 11 that match the military-tab tooltip (exact match, strings not stored).
+- Next: F1.2, the full construction cell table from data and disassembly first.
+- Subagents: none.
+
+### Decisions and reasoning
+1. **Rewrite by splicing a file written with the file tool, not by patching bytes.** Alternative: search-replace of 0x0c -> `f`. Rejected: the review asked for a rewrite from shots and data; a patch would miss split table rows.
+2. **Military-tab tooltip key is `TOOLTIP:CONTROLFELD` 2 and 3**, not `TOOLTIP:SPIELERINFOMAIN_TAB`. Evidence: exact byte match of the 11-byte tooltip in `Texte.dat`; SPIELERINFOMAIN_TAB also has 11-byte lines but F1.1 only required replacing the one English string in git.
+3. **`check-files` covers `docs/re/ui.md`, every `data/ui/*`, and the OQ-535-onward slice of `open-questions.md`.** Alternative: the whole of `open-questions.md`. Rejected: the packet named the OQ section; earlier OQs are other tasks' tables.

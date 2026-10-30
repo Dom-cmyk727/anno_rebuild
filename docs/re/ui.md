@@ -95,120 +95,91 @@ Wine runner is pre-authorized and must stay silent (`original-wine.md` §2.2). D
 
 ## 1. Screen tree
 
-Reachable from a running single-player endless (Citizen) game. How each screen is reached names the key or tab and the screenshot under cache/orig/ui-1/shots/ (git-ignored). Canonical set: pass 2 (
-2_*, hud_idle_running), F8 half-speed, no pause. Pass 1 used key **P**; pause draws a parchment overlay that hides the map but not the HUD chrome, so pass 1 shots are not used for pixel tables.
+Reachable from a running single-player endless (Citizen) game. How each screen is reached names the key or tab and the screenshot under `cache/orig/ui-1/shots/` (git-ignored). Canonical set: pass 2 (`r2_*`, `hud_idle_running`), F8 half-speed, no pause. Pass 1 used key **P**; pause draws a parchment overlay that hides the map but not the HUD chrome, so pass 1 shots are not used for pixel tables.
 
-**Pre-game** (menus at 800 x 600; not the owner in-game test surface): intros -> main menu -> singleplayer -> choose game -> in game. Coordinates in 	ools/orig/menus.json.
+**Pre-game** (menus at 800 × 600; not the owner in-game test surface): intros to main menu to singleplayer to choose game to in game. Coordinates in `tools/orig/menus.json`.
 
 **In-game (priority for UI.2 / owner build tests):**
 
 | # | Screen | How reached | Shot |
 |---|---|---|---|
-| 1 | HUD idle | macros.new_game citizen, F8 | hud_idle_running |
-| 2 | Settlement selected | click Kontor (~0.38, 0.47) | 
-2_hud_kontor |
-| 3 | Construction menu, 8 categories | **B**, then category column | 
-2_construction_* |
-| 4 | Building info / placement | click a grid cell | 
-2_info_* / 
-2_place_* |
-| 5 | Demolish | pickaxe click (993, 714) | 
-2_demolish |
-| 6 | Help / info mode | help tab (922, 219) | 
-2_tab_help |
-| 7 | Military tab (= player menu) | military tab (870, 219) | 
-2_tab_military |
-| 8 | Options tab (in-panel main menu) | options tab (973, 219) | 
-2_options |
-| 9 | Player menu | key **D** | 
-2_player_menu |
-| 10 | Pause overlay | key **P** | pass 1 options_key_O (parchment; also shows the options tab) |
+| 1 | HUD idle | `macros.new_game citizen`, F8 | `hud_idle_running` |
+| 2 | Settlement selected | click Kontor (about 0.38, 0.47) | `r2_hud_kontor` |
+| 3 | Construction menu, 8 categories | **B**, then category column | `r2_construction_*` |
+| 4 | Building info / placement | click a grid cell | `r2_info_*` / `r2_place_*` |
+| 5 | Demolish | pickaxe click (993, 714) | `r2_demolish` |
+| 6 | Help / info mode | help tab (922, 219) | `r2_tab_help` |
+| 7 | Military tab (same chrome as key D) | military tab (870, 219) | `r2_tab_military` |
+| 8 | Options tab (in-panel) | options tab (973, 219) | `r2_options` |
+| 9 | Player list (key D) | key **D** | `r2_player_menu` |
+| 10 | Pause overlay | key **P** | pass 1 `options_key_O` (parchment; also shows the options tab) |
 
 **Not captured in this session** (still in the tree, no shot): ship list **S**, city list **C**, rating **Q**, save/load/speech sliders as separate dialogs, diplomacy treaty cycle, in-game messages, a second settlement stage, a marble-cost building selected, Options resolution list (OQ-535).
 
-The military tab and key **D** open the same player-list panel (
-2_tab_military tooltip Player-menu; 
-2_player_menu the same chrome). The options tab is an in-panel Main-menu (disk, chart, book, music, speech, door), not a parchment. Pause (**P**) is a parchment dialog over the map.
+The military tab and key **D** open the same player-list panel (`r2_tab_military`, `r2_player_menu`). The military-tab tooltip is `Texte.dat` `TOOLTIP:CONTROLFELD` index 2 and index 3 (two identical lines). The options tab is an in-panel menu (`TOOLTIP:OPTION*` family), not a parchment. Pause (**P**) is a parchment dialog over the map.
 
-## 2. HUD at 1024 x 768
+## 2. HUD at 1024 × 768
 
-Pixel table from hud_idle_running.png (1024 x 768 RGB) plus ACCESS sizes. Machine-readable copy: [data/ui/hud.txt](../../data/ui/hud.txt). Clicks are screens.json fractions times 1024 x 768, integer nearest.
+Pixel table from `hud_idle_running.png` (1024 × 768 RGB) plus ACCESS sizes. Machine-readable copy: [`data/ui/hud.txt`](../../data/ui/hud.txt). Click centres below that are still `screens.json` fractions times 1024 × 768 (integer nearest); F1.3 replaces those with shot-measured rectangles.
 
 | Element | Pixel pos / size | ACCESS / file | Method | Shot |
 |---|---|---|---|---|
-| Status / info bar | (0, 733) 746 x 35 | Data/statusbar.dat STATUSBAR in 	oolgfx/statusbar.tex | first non-water row at x=20 is y=733; height 768-733=35 | hud_idle_running |
-| Right chrome / panel | (779, 0) 245 x 733 | enster.inc MAINUNTERGRUND 245 x 524 | 1024-245=779; x=779 y=100 is stone | hud_idle_running |
-| Minimap atlas candidate | (779, 0) 245 x 248 | enster.inc WELTKARTE | atlas size; the painted map is smaller than 245 x 248 (OQ-536) | hud_idle_running |
-| Four tabs (click centres) | (819, 219), (870, 219), (922, 219), (973, 219) | MAINTAB 61 x 63 | 0.80/0.85/0.90/0.95 x 0.285 | r2 tab shots |
-| Category column x | 782 | B_Baumenue.tex 60 x 63 | 0.764 x 1024 | 
-2_construction_* |
-| Cancel-X | (1009, 730) | - | 0.985 x 0.95 | 
-2_info_* |
-| Demolish pickaxe | (993, 714) | ABRISSICON 53 x 53 | 0.97 x 0.93, hit in pass 2 | 
-2_demolish |
-| Lupe (magnifier, below minimap left) | size 42 x 45 | LUPE | visible on idle HUD | hud_idle_running |
-| Minimap zoom + | click (1004, 16) | KARTEPLUS 19 x 21 | top-right of minimap; a minus sits beside it with no KARTEMINUS ACCESS name | hud_idle_running |
+| Status / info bar | (0, 733) 746 × 35 | `Data/statusbar.dat` `STATUSBAR` in `toolgfx/statusbar.tex` | first non-water row at x=20 is y=733; height 768-733=35 | `hud_idle_running` |
+| Right chrome / panel | (779, 0) 245 × 733 | `fenster.inc` `MAINUNTERGRUND` 245 × 524 | 1024-245=779; x=779 y=100 is stone | `hud_idle_running` |
+| Minimap atlas candidate | (779, 0) 245 × 248 | `fenster.inc` `WELTKARTE` | atlas size; the painted map is smaller than 245 × 248 (OQ-536) | `hud_idle_running` |
+| Four tabs (click centres) | (819, 219), (870, 219), (922, 219), (973, 219) | `MAINTAB` 61 × 63 | 0.80/0.85/0.90/0.95 × 0.285 | r2 tab shots |
+| Category column x | 782 | `B_Baumenue.tex` 60 × 63 | 0.764 × 1024 | `r2_construction_*` |
+| Cancel-X | (1009, 730) | - | 0.985 × 0.95 | `r2_info_*` |
+| Demolish pickaxe | (993, 714) | `ABRISSICON` 53 × 53 | 0.97 × 0.93, hit in pass 2 | `r2_demolish` |
+| Lupe (magnifier, below minimap left) | size 42 × 45 | `LUPE` | visible on idle HUD | `hud_idle_running` |
+| Minimap zoom + | click (1004, 16) | `KARTEPLUS` 19 × 21 | top-right of minimap; a minus sits beside it with no `KARTEMINUS` ACCESS name | `hud_idle_running` |
 
-enster.inc STATUSBAR id 6 is 780 x 43, a different graphic from the 746 x 35 bar that matches the capture (OQ-536). Candidate placement if that atlas entry were the bar: y = 768-43 = 725, width 780 -- it does not match y=733.
+`fenster.inc` `STATUSBAR` id 6 is 780 × 43, a different graphic from the 746 × 35 bar that matches the capture (OQ-536). Candidate placement if that atlas entry were the bar: y = 768-43 = 725, width 780 -- it does not match y=733.
 
-Nameplate y ~ 269 (0.35 x 768). Idle gold reads 500000; material digits (tools/wood/bricks) are **absent** on the idle bar and **present** once the construction menu is open (
-2_construction_public vs hud_idle_running). Marble as a numbered slot was not observed at the Citizen start (OQ-538).
+Nameplate y about 269 (0.35 × 768). Idle gold reads 500000; material digits (tools/wood/bricks) are **absent** on the idle bar and **present** once the construction menu is open (`r2_construction_public` vs `hud_idle_running`). Marble as a numbered slot was not observed at the Citizen start (OQ-538).
 
 ## 3. Construction menu tree
 
-Machine-readable copy: [data/ui/construction.txt](../../data/ui/construction.txt). Grid click centres from screens.json grid.col_x / 
-ow_y (2026-10-25) times 1024 x 768: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Cell 52 px. A category shows only as many cells as it has buildings (empty slots are panel stone, not a ?).
+Machine-readable copy: [`data/ui/construction.txt`](../../data/ui/construction.txt). Grid click centres from `screens.json` `grid.col_x` / `row_y` (2026-10-25) times 1024 × 768: x = 833, 885, 937, 989; y = 330, 382, 432, 484, 536, 588, 640, 692. Cell 52 px. A category shows only as many cells as it has buildings (empty slots are panel stone, not a `?`).
 
-Convention in data/ui/: cell = (column, row) **0-based**, same as opening.json. screens.json grid_cells is [row, col] **1-based** and several icon labels there are wrong (the market-tent at 1-based [1,3] is type 1301).
+Convention in `data/ui/`: cell = (column, row) **0-based**, same as `opening.json`. `screens.json` `grid_cells` is [row, col] **1-based** and several icon labels there are wrong (the market-tent at 1-based [1,3] is type 1301).
 
-| # | Layout key | Category y (px) | Tooltip section (not bound) | Occupancy at Citizen start (U=unlocked, L=locked ?, -=absent) |
+| # | Layout key | Category y (px) | Tooltip section (not bound) | Occupancy at Citizen start (U=unlocked, L=locked `?`, -=absent) |
 |---|---|---|---|---|
-| 1 | public | 325 | TOOLTIP:BAUMENU_EX ? OQ-537 | ULUU LLLU + 5 x LLLL + L--- (29 cells; 4 U) |
-| 2 | 
-oads | 373 | TOOLTIP:BAUMENU_WEG ? | UL-- LLL- L--- (6 cells; 1 U) |
-| 3 | arms | 418 | TOOLTIP:BAUMENU_LANDWIRTSCHAFT ? | UULL UUUU + 5 x LLLL + LLL- (31 cells; 6 U) |
-| 4 | workshops | 463 | TOOLTIP:BAUMENU_HANDWERK ? | U--- ULLL LL-- + 3 x LLL- (16 cells; 2 U) |
-| 5 | coastal | 508 | TOOLTIP:BAUMENU_SCHIFF ? | ULL- UL-- LL-- (7 cells; 2 U) |
-| 6 | mines | 553 | TOOLTIP:BAUMENU_BERGBAU ? | LLL- LLL- + 3 x LL-- (12 cells; 0 U) |
-| 7 | military | 598 | TOOLTIP:BAUMENU_MILITAR ? | LLL- LLLL LLL- LLLL LLL- (17 cells; 0 U) |
-| 8 | ornamental | 643 | TOOLTIP:BAUMENU_DIVERSES ? | 7 x LLLL + LL-- (30 cells; 0 U) |
+| 1 | `public` | 325 | `TOOLTIP:BAUMENU_EX` ? OQ-537 | `ULUU LLLU` + 5 × `LLLL` + `L---` (29 cells; 4 U) |
+| 2 | `roads` | 373 | `TOOLTIP:BAUMENU_WEG` ? | `UL-- LLL- L---` (6 cells; 1 U) |
+| 3 | `farms` | 418 | `TOOLTIP:BAUMENU_LANDWIRTSCHAFT` ? | `UULL UUUU` + 5 × `LLLL` + `LLL-` (31 cells; 6 U) |
+| 4 | `workshops` | 463 | `TOOLTIP:BAUMENU_HANDWERK` ? | `U--- ULLL LL--` + 3 × `LLL-` (16 cells; 2 U) |
+| 5 | `coastal` | 508 | `TOOLTIP:BAUMENU_SCHIFF` ? | `ULL- UL-- LL--` (7 cells; 2 U) |
+| 6 | `mines` | 553 | `TOOLTIP:BAUMENU_BERGBAU` ? | `LLL- LLL-` + 3 × `LL--` (12 cells; 0 U) |
+| 7 | `military` | 598 | `TOOLTIP:BAUMENU_MILITAR` ? | `LLL- LLLL LLL- LLLL LLL-` (17 cells; 0 U) |
+| 8 | `ornamental` | 643 | `TOOLTIP:BAUMENU_DIVERSES` ? | 7 × `LLLL` + `LL--` (30 cells; 0 U) |
 
-Locked-cell occupancy is the grey-? pixel signature at those click centres on the 
-2_construction_* shots (RGB-sum mean 465-495, sd 90-120, 20 px window). Counts match screens.json grid_cells.pioneers.*.cells strings. Banner floating-text on the map matches the wooden banner for every category (keys only in git). Tooltip section -> banner is still OQ-537; the eight THUMBNAIL* ACCESS names are still unbound.
+Locked-cell occupancy is the grey-`?` pixel signature at those click centres on the `r2_construction_*` shots (RGB-sum mean 465-495, sd 90-120, 20 px window). Counts match `screens.json` `grid_cells.pioneers.*.cells` strings. Banner floating-text on the map matches the wooden banner for every category (keys only in git). Tooltip section to banner is still OQ-537; the eight `THUMBNAIL*` ACCESS names are still unbound.
 
-Verified Citizen-start cells (info-panel costs = opening.json = Anlagen.dat HEAD, except 501):
+Verified Citizen-start cells (info-panel costs = `opening.json` = `Anlagen.dat` HEAD, except 501):
 
 | Layout key | Cell (col, row 0-based) | Anlagen id | Shot | Panel costs (tools / wood / bricks / gold / upkeep) |
 |---|---|---|---|---|
-| public | 0, 0 | 501 | 
-2_info_pioneer_house | 0 / 3 / 0 / 0 / 5. Type 501 is the pioneer house placed in OQ-103; not in opening.json |
-| public | 2, 0 | 1301 | 
-2_info_market_1301 | 3 / 7 / 0 / 250 / 10 |
-| 
-oads | 0, 0 | 2520 | 
-2_info_dirt_road | 0 / 0 / 0 / 5 / 0 |
-| arms | 0, 0 | 807 | 
-2_info_sheep_807 | (opening.json) |
-| arms | 1, 0 | 805 | 
-2_info_hunter_805 | |
-| arms | 0, 1 | 801 | 
-2_info_forester_801 | 2 / 0 / 0 / 150 / 12 |
-| workshops | 0, 0 | 1023 | 
-2_info_tannery_1023 | |
-| workshops | 0, 1 | 1001 | 
-2_info_weaver_1001 | 3 / 4 / 0 / 300 / 15 |
+| `public` | 0, 0 | 501 | `r2_info_pioneer_house` | 0 / 3 / 0 / 0 / 5. Type 501 is the pioneer house placed in OQ-103; not in `opening.json` |
+| `public` | 2, 0 | 1301 | `r2_info_market_1301` | 3 / 7 / 0 / 250 / 10 |
+| `roads` | 0, 0 | 2520 | `r2_info_dirt_road` | 0 / 0 / 0 / 5 / 0 |
+| `farms` | 0, 0 | 807 | `r2_info_sheep_807` | (`opening.json`) |
+| `farms` | 1, 0 | 805 | `r2_info_hunter_805` | |
+| `farms` | 0, 1 | 801 | `r2_info_forester_801` | 2 / 0 / 0 / 150 / 12 |
+| `workshops` | 0, 0 | 1023 | `r2_info_tannery_1023` | |
+| `workshops` | 0, 1 | 1001 | `r2_info_weaver_1001` | 3 / 4 / 0 / 300 / 15 |
 
-Other unlocked cells (icon only, id -): public (3,0) stall and (3,1); farms (1,1) (2,1) (3,1); coastal (0,0) and (0,1) (shipyard-looking). Lock rule (INFRAMIN vs city stage) is still the working hypothesis: mines/military/ornamental are all ? at Citizen start; a second settlement stage was not reached.
+Other unlocked cells (icon only, id `-`): public (3,0) stall and (3,1); farms (1,1) (2,1) (3,1); coastal (0,0) and (0,1) (shipyard-looking). Lock rule (`INFRAMIN` vs city stage) is still the working hypothesis: mines/military/ornamental are all `?` at Citizen start; a second settlement stage was not reached.
 
 ## 4. Placement and demolish (as the UI presents it)
 
 From the r2 info / place / demolish shots plus the manual:
 
-- Select a cell -> info panel (name, isometric preview, costs in tools/wood/bricks/gold, upkeep, rotate arrows) and placement mode; yellow cancel-X at (1009, 730).
-- Left click places and stays in mode (
-2_place_*); ESC / right click / cancel-X leaves.
-- Rotate object: . / , (game-mechanics.md section 1). Hold **CTRL** while placing to align the entrance to a street (manual p15). Not re-captured as a dedicated shot.
-- Demolish: pickaxe at (993, 714) (enster.inc ABRISSICON); land highlight yellow; tooltip key family TOOLTIP:ABRISS; cancel-X; cursor class 	CursorAbriss; graphic Abreissen_Gebaeude.tex 73 x 65. Click (0.764, 0.92) missed the pickaxe in pass 2; (0.97, 0.93) hit.
+- Select a cell: info panel (name, isometric preview, costs in tools/wood/bricks/gold, upkeep, rotate arrows) and placement mode; yellow cancel-X at (1009, 730).
+- Left click places and stays in mode (`r2_place_*`); ESC / right click / cancel-X leaves.
+- Rotate object: `.` / `,` (`game-mechanics.md` section 1). Hold **CTRL** while placing to align the entrance to a street (manual p15). Not re-captured as a dedicated shot.
+- Demolish: pickaxe at (993, 714) (`fenster.inc` `ABRISSICON`); land highlight yellow; tooltip key family `TOOLTIP:ABRISS`; cancel-X; cursor class `tCursorAbriss`; graphic `Abreissen_Gebaeude.tex` 73 × 65. Click (0.764, 0.92) missed the pickaxe in pass 2; (0.97, 0.93) hit.
 
 Refusal display and fertility bar: not isolated in a dedicated shot (place shots exist). Sim refusal rule stays OQ-T15-PLACEREFUSE.
 

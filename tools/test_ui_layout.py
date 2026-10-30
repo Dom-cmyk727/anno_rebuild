@@ -46,6 +46,22 @@ class SelfTest(unittest.TestCase):
             self.skipTest("Wine HUD shot not on this machine")
         self.assertEqual(ui_layout.compare_shot(str(shot), str(layout)), [])
 
+    def test_ui1_files_have_no_control_bytes_or_ragged_tables(self) -> None:
+        errs = ui_layout.check_ui1_repo(str(ROOT))
+        self.assertEqual(errs, [])
+
+    def test_control_bytes_refuse_tab_and_bare_cr(self) -> None:
+        self.assertEqual(ui_layout.control_byte_errors(b"ok\n", "x"), [])
+        self.assertEqual(ui_layout.control_byte_errors(b"ok\r\n", "x"), [])
+        self.assertTrue(ui_layout.control_byte_errors(b"ok" + bytes([9]) + b"x", "x"))
+        self.assertTrue(ui_layout.control_byte_errors(b"ok\rx", "x"))
+
+    def test_markdown_tables_need_matching_columns(self) -> None:
+        good = "| a | b |\n|---|---|\n| 1 | 2 |\n"
+        bad = "| a | b |\n|---|---|\n| 1 |\n"
+        self.assertEqual(ui_layout.markdown_table_errors(good, "t"), [])
+        self.assertTrue(ui_layout.markdown_table_errors(bad, "t"))
+
     def test_non_ascii_is_refused(self) -> None:
         import tempfile
 

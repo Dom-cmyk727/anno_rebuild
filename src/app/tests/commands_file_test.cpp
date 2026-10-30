@@ -198,8 +198,9 @@ TEST_CASE("play: scripted commands match run_turn turn by turn (A6 d)") {
             changed_turns += changed ? 1 : 0;
             for (const anno::sim::SimEvent& e : world_b->drain_events()) {
                 if (e.kind == anno::sim::SimEventKind::CommandRejected) {
-                    MESSAGE("turn " << index << " rejected: "
-                                    << anno::sim::reject_name(static_cast<anno::sim::Reject>(e.code)));
+                    MESSAGE("turn "
+                            << index << " rejected: "
+                            << anno::sim::reject_name(static_cast<anno::sim::Reject>(e.code)));
                 }
             }
             runner.run_n(1);

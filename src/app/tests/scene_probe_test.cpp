@@ -104,8 +104,8 @@ TEST_CASE("probe: whole-scene rebuild and a coalesced 50-build burst on the fixe
         auto built = build(burst);
         const double ms = ms_since(start);
         REQUIRE(built.ok());
-        MESSAGE("probe 50-build burst, one coalesced scene build: " << ms << " ms ("
-                                                                   << burst.size() << " buildings)");
+        MESSAGE("probe 50-build burst, one coalesced scene build: " << ms << " ms (" << burst.size()
+                                                                    << " buildings)");
     }
 
     // Memory of one live scene: the private-bytes delta of holding it.

@@ -104,6 +104,13 @@ std::filesystem::path module_directory() {
         return {};
     }
     return std::filesystem::path(buffer).parent_path();
+#elif defined(__APPLE__)
+    // proc_pidpath names the executable of this process (libproc.h); no /proc.
+    char buffer[PROC_PIDPATHINFO_MAXSIZE];
+    if (::proc_pidpath(static_cast<int>(::getpid()), buffer, sizeof(buffer)) <= 0) {
+        return {};
+    }
+    return std::filesystem::path(buffer).parent_path();
 #else
     char buffer[4096];
     const ssize_t n = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
@@ -160,7 +167,11 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         posix_spawnattr_destroy(&attr);
         return false;
     }
-    close_descriptors_from_3(&actions);
+    if (!close_descriptors_from_3(&actions)) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
     std::string path = exe.string();
     std::string port_text = std::to_string(port);
     std::string mode = all_interfaces ? "any" : "local";

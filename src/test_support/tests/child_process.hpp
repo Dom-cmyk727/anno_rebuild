@@ -28,6 +28,9 @@
 #include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 #include <unistd.h>
 extern char** environ;
 #endif
@@ -55,6 +58,12 @@ inline std::filesystem::path sibling(const char* name) {
         return {};
     }
     return std::filesystem::path(buffer).parent_path() / (std::string(name) + ".exe");
+#elif defined(__APPLE__)
+    char buffer[PROC_PIDPATHINFO_MAXSIZE];
+    if (::proc_pidpath(static_cast<int>(::getpid()), buffer, sizeof(buffer)) <= 0) {
+        return {};
+    }
+    return std::filesystem::path(buffer).parent_path() / name;
 #else
     char buffer[4096];
     const ssize_t n = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);

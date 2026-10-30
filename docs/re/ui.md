@@ -1,6 +1,6 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 steps 1-8 plus F1.2-F1.5 (cell table, measured HUD, oracle compare, rest of the screen tree). Reverse-engineering and specification only; no engine code.
+**Status:** UI.1 steps 1-8 plus F1.1-F1.6 (2026-10-30). Reverse-engineering and specification only; no engine code. F1.4 oracle compare holds; remaining acceptance gaps are OQ-535 and OQ-547..549.
 **Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.

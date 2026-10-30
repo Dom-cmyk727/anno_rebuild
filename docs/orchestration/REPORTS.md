@@ -7955,3 +7955,70 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 ### Decisions and reasoning
 1. **Do not claim the `8` set is loaded at 800 x 600 in-game.** Alternative: the 800/1024 size ratio. Rejected: no in-game shot at 800 x 600 (Wine cannot switch modes). Ratio stays a candidate in OQ-535.
 2. **Do not drive the owner's desktop harness for other modes.** Packet forbids it. OQ-535 stays open for those shots.
+
+## UI.1.F1 — The original's in-game UI, completion — 2026-10-30 — status: QUESTION
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`. Not pushed. Parent of this report: `12dd960`.
+- Starting point: `3c0ce65` (UI.1 first run, round-ds CHANGES REQUIRED).
+- F1 commits:
+  - `e82b3c6` F1.1 repair `docs/re/ui.md` sections 1-4 + byte/table test
+  - `bf99588` F1.2 construction cell table from View.dll
+  - `108ed93` F1.3 measured build-test surface
+  - `cc5866d` F1.4 mock PNG and per-pixel compare
+  - `f265370` F1.5 rest of the screen tree
+  - `12dd960` F1.6 Options resolution list
+- Built: docs, `data/ui/` (including `masks.txt`), `tools/ui_layout.py` + `tools/test_ui_layout.py`. No `src/` change.
+- Gates: `python -I tools/test_ui_layout.py` 11 ok, self-test checks=25; `check-files --root .` ok; `validate --layout data/ui --game-dir E:\anno1503\game\app` ok; `agree.py` n.a. (anno-dump untouched); no files under `game/`; screenshots stay in `cache/orig/ui-1/` and `cache/ui-mock/`.
+- Wine: display :91, silent (`VOLUME` -250), leftover_pids empty on every stop. Last instance `d91-20261030-133242`.
+
+### UI.1 acceptance, line by line
+
+| Acceptance line | Holds? | Evidence / open |
+|---|---|---|
+| Every screen reachable in a running game has a captured screenshot and a spec entry | **open** | Captured and specified: HUD, 8 construction categories, info/placement, demolish, help tab, military/player, options main + load/save/music/speech, pause, ship list, city list, rating, selected house, Kontor/settlement, main-menu Options graphics. Missing shots/spec depth: Kontor trade sliders (OQ-547, steps tried); help page on a building (OQ-548); options statistics, quit confirm, book/crest (OQ-549); diplomacy treaty cycle (no second player); `MESSAGEBOX` (none fired); ship panel from the list row; second settlement stage (OQ-539); in-game HUD/construction at 800/1152/1280 (OQ-535, Wine cannot switch). |
+| Every element traces to a file entry or a disassembly address | **open** | Traced: status bar, gold, BAUMAT 36-39, `?`, `WELTKARTE`, `MAINUNTERGRUND`, `MAINTAB` 8-15, zoom+ id 44, `NO_KLICK` 56, `ABRISSICON` 659/660, `INFOUNTERGRUND` 33, `INFOEXIT` 38, rotate, `OPTION_EXIT` 1492, `STATISTIK_UNTERGRUND` 1509, View.dll cell tables. Unbound: category-column ACCESS (OQ-540), zoom minus / `KARTEPLUS` 44 (OQ-542), `LUPE`/compass rects (OQ-543), portrait x (OQ-545), pressed frames (OQ-544), pause parchment ACCESS, house-panel origin. |
+| Oracle mock of the HUD and of the open construction menu matches Wine-runner shots at 1024 x 768 within a stated tolerance; differences listed and explained | **holds** | Channel 48, fraction 0.12. `hud_idle` 0.0141; construction 0.0166-0.0525 (roads worst). Residuals in `docs/re/ui.md` §2.8. `validate --game-dir` ok. |
+| Unknowns are OQs, never guesses stated as fact | **holds** | OQ-535, 536, 539-549. 537 and 538 resolved. |
+
+FINISHED requires every line holds; this report is QUESTION on the first two.
+
+### Screen tree coverage
+
+| Surface | Captured | Specified | Open |
+|---|---|---|---|
+| HUD idle / construction 8 cats / info / demolish | yes | pixels + ACCESS | OQ-540..545 |
+| Options load/save/music/speech | yes | click y + text keys | statistics, quit, book/crest OQ-549 |
+| Pause, rating, ship list, city list, player, house | yes | keys + ACCESS where SAD-matched | pause graphic ACCESS; ship from list |
+| Kontor/settlement | yes | panel | trade sliders OQ-547 |
+| Help-on-building, diplomacy cycle, messages | tried | — | OQ-548; no AI; no MESSAGEBOX |
+| Other in-game resolutions | list only | 5 modes | OQ-535 set + shots |
+
+### Oracle compare (F1.4)
+
+Tolerance: any RGB channel > 48 is bad; fail if bad/unmasked > 0.12.
+
+| Screen | fraction | pass |
+|---|---|---|
+| hud_idle | 0.0141 | 1 |
+| construction_public | 0.0185 | 1 |
+| construction_roads | 0.0525 | 1 |
+| construction_farms | 0.0170 | 1 |
+| construction_workshops | 0.0334 | 1 |
+| construction_coastal | 0.0507 | 1 |
+| construction_mines | 0.0385 | 1 |
+| construction_military | 0.0325 | 1 |
+| construction_ornamental | 0.0166 | 1 |
+
+### Cell table (F1.2)
+
+148 non-empty View.dll records, all typed (Anlagen id + HEAD costs). Occupancy at Citizen: 15 U / 133 L / empties `-`. U iff `INFRAMIN = INFRA_EVER`. All 15 U have info-panel shots. Lock at a later stage: OQ-539.
+
+### Decisions and reasoning
+1. **QUESTION, not FINISHED.** Alternative: call F1.1-F1.4 enough because they were the packet minimum. Rejected: the final report must check the UI.1 acceptance line by line; two lines are open.
+2. **Wine cannot supply the other in-game resolutions.** Alternative: the desktop harness. Rejected by the packet. Recorded in OQ-535.
+3. **Missed screens are OQs with the steps tried.** Alternative: silence. Rejected by F1.5.
+
+### OQs
+Open: 535 (list captured; set-per-mode and other-mode HUD open), 536 (`fenster` STATUSBAR unused at 1024 x 768), 539-549. Resolved this F1: 537, 538.
+
+### Time / subagents
+Inline; Wine passes 3 and 4; no subagents. Lanes 1, 3, 4 not touched. No merge, rebase, push, PR, TASKS/PLAN/AGENTS edits.

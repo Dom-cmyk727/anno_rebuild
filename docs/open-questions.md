@@ -2044,7 +2044,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** an original savegame or a grown city in the Wine runner; hover each category button and match the tooltip line index.
 
 ## OQ-540: Category-column graphic ACCESS (UI.1.F1)
-- **Status:** open.
+- **Status:** resolved (F2.1, 2026-10-30). The column is `VIEWBAUTAB` (fenster.inc id 16, 42 x 46). `View.dll` `0x1002bb4f` copies that ACCESS, creates eight gadgets of class `0xb0d`, size 42 x 46, `add esi, 2` per button (idle + pressed). Id 16 decodes as the public house-in-circle. `THUMBNAIL*` is the **cell** icon range, not the column (`0x1002c360` gadget `0xb0c` 50 x 50). `PLANKEGROSS` id 1019 is the banner (gadget `0xb17`, 241 x 48 at (783, 252), mean 38.75). Opaque SAD of the 42 x 46 frames onto the 29 px drawn strip stays >110 (the gadget is clipped); the column mask remains. `B_Baumenue.tex` 60 x 63 is a different house glyph.
 - **Area:** UI / original.
 - **Question:** Which ACCESS / tex id is the drawn 8-icon category column? `View.dll` pushes `THUMBNAIL*` next to each category, but those 50 x 50 sprites do not SAD-match the column (mean >140). `VIEWBAUTAB` 42 x 46 ids 16-31 also miss (mean >110). Click centres in `construction.txt` still hit.
 - **What we know:** column sits left of the grid origin (808, 305); chrome starts at x=779 (29 px gap). Banner text is the `TOOLTIP:BAUMENU_*` bind from F1.2.
@@ -2058,32 +2058,32 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **How to resolve:** measure the tooltip box on those shots and match rendered `MainSmall.zei` line lengths, or a Wine memory read of the gadget text id.
 
 ## OQ-542: Zoom-minus ACCESS and `KARTEPLUS` frame 44 (UI.1.F1)
-- **Status:** open.
+- **Status:** resolved (F2.1, 2026-10-30). `View.dll` `0x10034388` looks up `KARTEPLUS` (id 40) and creates six gadgets of class `0xb09` (`cmp edi, 6`). Each gadget takes two consecutive textures (`add esi, 2`). Idle plus is id 44 at (959, 7) mean 2.885; idle minus is id 46 at (982, 19) mean 1.915 (right of +, not left). There is no `KARTEMINUS` ACCESS name; minus is a frame of the `KARTEPLUS` group. Pressed frames are 45 and 47.
 - **Area:** UI / original.
 - **Question:** Why is the drawn zoom + `fenster.tex` id 44 (mean 2.9 at 959,7) rather than ACCESS `KARTEPLUS` id 40? Which id is zoom minus (visible left of +; ids 40-45 do not SAD-match there, best mean 93)? There is no `KARTEMINUS` ACCESS name.
 - **What we know:** ids 40-45 are all 19 x 21. Plus unpressed is 44.
 - **How to resolve:** hover/pressed shots of + and - scored against 40-45; gadget create near the minimap.
 
 ## OQ-543: `LUPE` and compass rectangles (UI.1.F1)
-- **Status:** open.
+- **Status:** resolved (F2.1, 2026-10-30). `LUPE` id 7 at (805, 132) 42 x 45, mean 51.6 opaque / 38.4 grey-key (halo). Compass is not `KARTE_NORDUNG` (256 x 133, ids 52-55): it is `KARTEPLUS` group ids 48 and 50 (19 x 31 chevrons) at (965, 140) and (986, 140), means 3.088 and 3.652, created with the six `0xb09` gadgets at `View.dll` `0x10034500`. Parent strip gadget `0xb02` is 244 x 63 (`0x1003457e`).
 - **Area:** UI / original.
 - **Question:** Pixel rectangle of the magnifying glass and of the small compass below the parchment. `LUPE` id 7 42 x 45 does not SAD-match (mean >150). `KARTE_NORDUNG` 256 x 133 does not fit in the 245 px chrome.
 - **What we know:** both controls are visible under the parchment and above the tabs on `hud_idle_running` / `f13_hover_lupe_guess`.
 - **How to resolve:** edge the wood plates on the shot; try `LUPE` composited onto a plate from `MAINUNTERGRUND`.
 
 ## OQ-544: Pressed gadget frames (UI.1.F1)
-- **Status:** open.
+- **Status:** resolved for the frame index (F2.1, 2026-10-30); press not pixel-captured. `View.dll` gadget creates that look up an ACCESS then `add esi, 2` (`0xb09` minimap at `0x10034436`, `0xb0d` category at `0x1002bc88`) assign two consecutive textures per gadget: idle = ACCESS id (or the measured idle frame), pressed = id+1. Cell gadgets `0xb0c` use **three** consecutive textures (`THUMBNAIL` base + 3*record_index, +0 idle / +1 hover / +2 pressed). `NO_KLICK` 56/57 and `ABRISSICON` 659/660 fit the two-frame rule. `MAINTAB` stays the 8-11 / 12-15 selected group from F1.3 (not +1). Hover vs press was not separated: the runner has no held mouse-down command.
 - **Area:** UI / original.
 - **Question:** Which of the consecutive `tGadKlickGfx` frames is hover vs pressed vs disabled for `MAINTAB`, `ABRISSICON`, `INFOEXIT`, `INFOROTPFEIL`, `NO_KLICK`?
 - **What we know:** the Wine agent has `move` (hover shots taken) but no held mouse-down command; `key` down/up is one call. Selected vs unselected `MAINTAB` is ids 8-11 vs 12-15. `ABRISSICON` 659 vs 660 (menu vs demolish). `NO_KLICK` 56 vs 57 unused.
 - **How to resolve:** an agent command that screenshots between mousedown and mouseup, or disassembly of the gadget frame index.
 
 ## OQ-545: Status-bar portrait x positions (UI.1.F1)
-- **Status:** open.
+- **Status:** resolved (F2.1, 2026-10-30). F1's "four portrait slots" were one population head plus three goods icons. `STATUSBAR_EINWOHNER` id 53 38 x 35 at **(401, 733)**, mean **4.74** on `r2_construction_public` / `f13_hud_cursor_map` (absent from pass-2 `hud_idle_running`). `STATUSBAR_ROSHTOFFE` ids **46, 48, 51** (segments 6, 8, 11 of ACCESS id 40) at **(547, 735), (587, 735), (627, 735)**, grey-key means 14.70 / 11.38 / 18.48. `STATUSBAR_ICON` id 3 is a fire glyph; `Einwohner.tex` 58 x 35 is a different face (mean 14.7 at x=399, worse than id 53). The 346 px portraits mask is reduced to `einwohner_digits` (439, 733) 108 x 35.
 - **Area:** UI / original.
-- **Question:** Exact x of each of the four civ-level portraits on the 746 x 35 bar (`STATUSBAR_ICON` ids 3-35, 35 x 35).
+- **Question:** Exact x of each of the four civ-level portraits on the 746 x 35 bar, and which file/ACCESS they are (not `STATUSBAR_ICON`).
 - **What we know:** they sit right of marble (x=312) and left of `?` (x=746). Id 3 did not SAD-match a 40 px grid. A fifth pixel-run at x=401-445 appears between pass-2 idle and construction.
-- **How to resolve:** sprite-sad of several ICON ids along y=733, x=350-740.
+- **How to resolve:** a figure-palette or player-colour remap before SAD, or a Wine memory read of the statusbar gadget.
 
 ## OQ-546: CTRL-align capture (UI.1.F1)
 - **Status:** open.

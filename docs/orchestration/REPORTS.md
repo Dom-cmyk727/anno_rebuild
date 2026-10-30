@@ -8037,3 +8037,30 @@ Open: 535 (list captured; set-per-mode and other-mode HUD open), 536 (`fenster` 
 
 ### Time / subagents
 Inline; Wine passes 3 and 4; no subagents. Lanes 1, 3, 4 not touched. No merge, rebase, push, PR, TASKS/PLAN/AGENTS edits.
+
+---
+
+## Round dt — Review of UI.1.F1 — 2026-10-30 — status: ACCEPTED as the spec base, merged (df6dcc7); open items in UI.1.F2
+- **Reviewed:** `task/UI-1-ingame-ui-re` at `690d4c4` (F1: 7 commits from `3c0ce65`; 9 files). No `src/` change; worktree clean; no original pixels, strings or shots in git. The executor's report is QUESTION on two acceptance lines, which is the honest status.
+- **Re-run by the orchestrator:**
+  - `--self-test` → `ok checks=25`; `tools/test_ui_layout.py` → OK; `check-files --root .` → ok; `validate --layout data/ui --game-dir game/app` → ok.
+  - **Cell table, independently:** a separate PE reader over `View.dll` (sections mapped from the headers, image base `0x10000000`) read the eight tables at the stated addresses (8-byte records, id 1 = empty). 148 non-empty records, **0 mismatches** against `data/ui/construction.txt`, cell = (i mod 4, i div 4). Every table address is referenced twice in the code. The second dword of every record is 0 in the file.
+  - **Compare:** `hud_idle` 0.0141, `construction_public` 0.0185, `construction_roads` 0.0525 (all pass, as reported). **Negative control:** the public mock against the roads shot gives 0.1817 and fails. Looked at `construction_public_mock.png` beside `r2_construction_public.png`: the minimap frame, tabs, `NO_KLICK` grid, status bar with the four BAUMAT icons and the pickaxe line up. Not drawn: the category column, the banner and the unlocked cell icons (masked).
+- **Accepted:**
+  - every construction cell typed from View.dll;
+  - the lock rule (INFRAMIN at type + 0x23, read at View `0x1002c260`) from data and disassembly;
+  - the THUMBNAIL / `TOOLTIP:BAUMENU_*` binds;
+  - 15 unlocked cells confirmed by info panels;
+  - measured rectangles (grid origin (808, 305), stride 52; tabs `MAINTAB` 8–15; status bar with BAUMAT 36–39 = tools, wood, bricks, marble; info panel `INFOUNTERGRUND` at (804, 302));
+  - a real mock and per-pixel compare;
+  - the rest of the screen tree as far as the runner reached, misses recorded as OQ-547..549;
+  - the Options resolution list (5 modes);
+  - the F1.1 repair and byte/table guard.
+- **Why merge with two acceptance lines open:** the open items are bounded and listed. UI.2 cannot start before W4.4 and ADR 0004, so they do not delay it. The build-test surface is specified well enough that the rest is binding graphics, not structure. Main gets the verified spec now.
+- **Findings carried into UI.1.F2 (non-blocking for the merge):**
+  1. The building icon of an unlocked cell has no source in the spec and is masked in the compare. UI.2 cannot draw the menu faithfully without it.
+  2. The category column (OQ-540), the banner, the cost and upkeep icons, the zoom minus, `LUPE`/compass, the portrait x positions, the pressed frames and the pause parchment are unbound.
+  3. The tolerance (channel 48, fraction 0.12) was set after the measurements and leaves little margin to the wrong-category control (0.18). The idle compare masks most of the right panel (45 430 unmasked pixels). Restate the tolerance with negative tests.
+  4. Screens not reached: trade sliders, help on a building, statistics/quit, ship panel, messages, diplomacy, a later stage. Diplomacy and messages are reachable with computer opponents in the original.
+  5. The other resolutions need the owner's desktop harness: an owner checklist, not a runner task.
+- **Merge:** `df6dcc7`. The REPORTS conflict was resolved as main's file plus the branch's appended sections (7722 + 8025 − 7707 = 8040 lines). `docs/re/ui.md`, `tools/ui_layout.py` and `data/ui/construction.txt` are byte-identical to the branch; `check-files` passes on main.

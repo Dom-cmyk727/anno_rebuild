@@ -3,6 +3,7 @@
 #include <optional>
 #include <sstream>
 #include <utility>
+#include <variant>
 
 #include <anno/app/commands_file.hpp>
 #include <anno/sim/island.hpp>
@@ -212,6 +213,44 @@ parse_commands(std::string_view text, const sim::World& world, sim::PlayerId pla
             break;
         }
         start = end + 1;
+    }
+    return out;
+}
+
+formats::Result<std::string, FormatError>
+format_commands(const std::vector<ScriptedCommand>& commands) {
+    std::string out;
+    for (const ScriptedCommand& scripted : commands) {
+        const std::string turn = "turn " + std::to_string(scripted.turn) + " ";
+        if (const auto* build = std::get_if<sim::BuildCmd>(&scripted.command.body)) {
+            // The line names one type, then the placements as <x> <y> <rotation>.
+            if (build->placements.empty()) {
+                return FormatError{"a build without placements has no line form"};
+            }
+            const sim::TypeId type = build->placements.front().type;
+            out += turn + "build " + std::to_string(type.v);
+            for (const sim::PlacementWire& p : build->placements) {
+                if (p.type != type) {
+                    return FormatError{"a build with more than one type has no line form"};
+                }
+                if (p.byte7 != 0 || p.byte8 != 0) {
+                    return FormatError{"a placement with byte7/byte8 set has no line form"};
+                }
+                out += ' ' + std::to_string(p.x) + ' ' + std::to_string(p.y) + ' ' +
+                       std::to_string(p.rotation);
+            }
+            out += '\n';
+            continue;
+        }
+        if (const auto* demolish = std::get_if<sim::DemolishCmd>(&scripted.command.body)) {
+            out += turn + "demolish";
+            for (const sim::TileXY& t : demolish->tiles) {
+                out += ' ' + std::to_string(t.x) + ' ' + std::to_string(t.y);
+            }
+            out += '\n';
+            continue;
+        }
+        return FormatError{"a command other than Build or Demolish has no line form"};
     }
     return out;
 }

@@ -33,6 +33,18 @@ struct ScriptedCommand {
 [[nodiscard]] formats::Result<std::vector<ScriptedCommand>, std::string>
 parse_commands(std::string_view text, const sim::World& world, sim::PlayerId player);
 
+/// The text of `commands`, one line per command, in the file's format: the inverse
+/// of parse_commands, so a recorded session (PlayRunner::applied_commands) can be
+/// replayed through --commands. A command the format cannot carry (a body other than
+/// Build or Demolish, or a placement with byte7/byte8 set) is an error.
+/// The reason a command has no line form (a struct, so the error is not the value's type).
+struct FormatError {
+    std::string message;
+};
+
+[[nodiscard]] formats::Result<std::string, FormatError>
+format_commands(const std::vector<ScriptedCommand>& commands);
+
 /// Reads `file` and parses it with parse_commands.
 [[nodiscard]] formats::Result<std::vector<ScriptedCommand>, std::string>
 load_commands(const std::filesystem::path& file, const sim::World& world, sim::PlayerId player);

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <anno/app/building_delta.hpp>
+#include <anno/app/command_queue.hpp>
 #include <anno/app/commands_file.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/formats/result.hpp>
@@ -132,6 +133,13 @@ class PlayRunner {
     /// Commands for the turns, in file order (commands_file.hpp). A turn applies
     /// the ones that name it, before its steps (`Turn::commands`). Call before `start`.
     void set_script(std::vector<ScriptedCommand> script);
+    /// Queues a command for the next turn to start (the window's input; W4.4 B2).
+    /// Thread-safe. The turn applies its scripted commands first, then the queued
+    /// ones in push order (CommandQueue).
+    void post_command(sim::Command command);
+    /// Every command applied so far, with the turn that applied it, oldest first:
+    /// the record a determinism test replays. Thread-safe.
+    [[nodiscard]] std::vector<ScriptedCommand> applied_commands() const;
     [[nodiscard]] std::string title_line() const;
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
@@ -172,6 +180,10 @@ class PlayRunner {
     // The script and its cursor (sim thread only once started).
     std::vector<ScriptedCommand> script_;
     std::size_t script_next_ = 0;
+    // The window's commands (thread-safe by itself) and the record of what was applied
+    // (written by the sim thread under snap_mu_; read by applied_commands under it).
+    CommandQueue queue_;
+    std::vector<ScriptedCommand> applied_;
 };
 
 } // namespace anno::app

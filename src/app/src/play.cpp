@@ -460,6 +460,17 @@ void PlayRunner::one_turn() {
         }
         ++script_next_;
     }
+    // The window's commands queued before this turn started, in push order. Which turn
+    // takes a command depends on wall time; its content and order do not (CommandQueue).
+    for (sim::Command& command : queue_.take()) {
+        turn.commands.push_back(std::move(command));
+    }
+    {
+        std::lock_guard lock(snap_mu_);
+        for (const sim::Command& command : turn.commands) {
+            applied_.push_back({turn.index, command});
+        }
+    }
     const auto started = schedule_->now();
     sim::run_turn(world_, nullptr, turn, steps_);
     const auto us =
@@ -530,6 +541,15 @@ void PlayRunner::set_batch_bound(std::size_t bound) {
 void PlayRunner::set_script(std::vector<ScriptedCommand> script) {
     script_ = std::move(script);
     script_next_ = 0;
+}
+
+void PlayRunner::post_command(sim::Command command) {
+    queue_.push(std::move(command));
+}
+
+std::vector<ScriptedCommand> PlayRunner::applied_commands() const {
+    std::lock_guard lock(snap_mu_);
+    return applied_;
 }
 
 void PlayRunner::note_behind() {

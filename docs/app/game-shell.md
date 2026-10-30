@@ -250,10 +250,15 @@ turn <n> demolish <x> <y> [<x> <y>]...
 
 - `<type>` is the registry's `TypeId` value (a number); `<x> <y>` is the tile of
   the placement (`PlacementWire::x`, `y`); `<rotation>` is 0..3.
-- One `build` line is one `BuildCmd` for the player's city on the island under
-  its first placement (the runner resolves the `CityRef`). The extra triples
-  are more placements in stream order, in the same command.
-- One `demolish` line is one `DemolishCmd` over the listed tiles.
+- One `build` line is one `BuildCmd` for the developer player's city on the
+  island under its first placement. The file does not name a city: the runner
+  resolves the `CityRef` from the world (`developer_player()`, player slot 1).
+  The extra triples are more placements in stream order, in the same command.
+- One `demolish` line is one `DemolishCmd` over the listed tiles, for the
+  developer player's city on the island under its first tile.
+- A line with no such city (no city of the developer player on that island) is
+  refused at load time with its line number. No city id is invented, so the
+  sim never sees a command the file made up.
 - A `build` with more than 4 095 placements or a `demolish` with more than
   8 190 tiles has no wire form (`has_wire_form`, `command.hpp`); the runner
   refuses that line at load time with a message. It is not split silently; the

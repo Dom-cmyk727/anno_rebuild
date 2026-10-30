@@ -6782,9 +6782,9 @@ Retained outcomes, none retuned, validators empty on all 74 rows: 68 primary row
 
 Next: reconcile ADR 0003 §15 and OQ-371 with these results (Proposed stays Proposed, OQ-371 stays open), then reviewer pass 2 on that head and the closure draft.
 
-## T61 F2 closure — 2026-10-30 — status: IN PROGRESS (pass 2 round 2 pending)
+## T61 F2 closure — 2026-10-30 — status: READY FOR REVIEW
 
-Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starting head `be08b7b88025b78083e1d6292c7330a29ceba70a`. Final tested source (last tool change) `3c5ecb6097e6485d191bc7a8b87be925b3a317e1`. Accepted study recorded at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (`python` blobs identical to `3c5ecb6`). ADR/OQ reconciliation `0f1e984dff8a0b23f030042640462b2e2768eda9`. Report tip is this commit. No push, PR, TASKS/PLAN/AGENTS, merge or rebase. No other worktree was read or edited.
+Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starting head `be08b7b88025b78083e1d6292c7330a29ceba70a`. Final tested source (last tool change) `3c5ecb6097e6485d191bc7a8b87be925b3a317e1`. Accepted study recorded at `eb6da4387ffb6af4859d93a57fc7a84f65656bd5` (`python` blobs identical to `3c5ecb6`). ADR/OQ reconciliation `0f1e984dff8a0b23f030042640462b2e2768eda9`. Report head is the commit that contains this READY heading. No push, PR, TASKS/PLAN/AGENTS, merge or rebase. No other worktree was read or edited.
 
 ### Commits since `be08b7b` (concern per commit)
 
@@ -6815,7 +6815,9 @@ Worktree `E:\anno1503-worktrees\anno1503-T61` on `codex/T61-join-jitter`. Starti
 | `0f1e984` | docs: reconcile T61 study with ADR 0003 and OQ-371 |
 | `e3fde09` | docs(orchestration): T61 F2 closure draft for reviewer pass 2 |
 | `5f83bc9` | docs: correct the T61 closure draft before review |
-| (this commit) | docs: T61 F2 pass-2 dispositions and READY FOR REVIEW |
+| `0bd7526` | docs: T61 F2 pass-2 dispositions and READY FOR REVIEW |
+| `313d176` | docs: correct T61 pass-2 report mismatches |
+| (this commit) | docs: record T61 F2 pass-2 round 2 and close |
 
 `git diff --stat be08b7b..HEAD`: `docs/adr/0003-network-transport.md`, `docs/open-questions.md`, `docs/orchestration/REPORTS.md`, `tools/join_jitter_study.py`, `tools/test_join_activation.py`. Five of the six allowed files; `tools/join_activation.py` was already at the H1 conservation head before this continuation. `git diff --check be08b7b HEAD` is clean.
 
@@ -6929,12 +6931,14 @@ Prompt verbatim: `cache/t61-f2/dn/review-2/prompt.md`. Round 1 subagent [T61 clo
 | # | finding | disposition |
 | --- | --- | --- |
 | 1 | Low: H1a–c quote did not match `h1-h4-on-30964c2.stderr.txt` (`set()`, not `{'xi'}`) | **Fixed** in `0bd7526`: the table names `h1-30964c2.err` for `{'xi'}` and `h1-h4-on-30964c2.stderr.txt` for `set()`. |
-| 2 | Low: N3 fail-first said the defective validate finished in 0.05 s | **Fixed** in the following docs commit: the cited log is `AssertionError: 0 == 0`. No 0.05 s line exists under `cache/t61-f2/dn`. |
-| 3 | Low: the 247.091 s suite row claimed a start head `0f1e984` that the exit file does not record | **Fixed** in the following docs commit: the row cites `join-suite-final.stderr.txt` and exit head `e3fde09` only. |
+| 2 | Low: N3 fail-first said the defective validate finished in 0.05 s | **Fixed** in `313d176`: the cited log is `AssertionError: 0 == 0`. No 0.05 s line exists in the fail-first log. |
+| 3 | Low: the 247.091 s suite row claimed a start head `0f1e984` that the exit file does not record | **Fixed** in `313d176`: the row cites `join-suite-final.stderr.txt` and exit head `e3fde09` only. |
 | 4 | Low: `study.meta.txt` and `validate.meta.txt` still describe the overwritten `e34c9b1` run | **Fixed** by renaming those files to `study.meta.e34c9b1.txt` and `validate.meta.e34c9b1.txt`. The accepted run is `cmdline.txt` and `validate.exit.txt` at `eb6da43`. |
 | 5 | Low: “the report tip is the commit that adds it” was one commit behind | **Fixed** in `0bd7526` for that commit. The tip after this correction is the commit that contains this paragraph. |
 
-Affected gate for these five: none. They are report text and ignored cache names. Python blobs are unchanged since `3c5ecb6`, so the study at `eb6da43` stays the accepted file. Round 2 of this pass re-reads the corrected sentences.
+Affected gate for these five: none. They are report text and ignored cache names. Python blobs are unchanged since `3c5ecb6`, so the study at `eb6da43` stays the accepted file.
+
+Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f156ef29c08f). Prompt: `cache/t61-f2/dn/review-2/prompt-round2.md`. Findings: `cache/t61-f2/dn/review-2/findings-round2.md`. All five checks CONFIRMED. No suite, study, or `--validate` was re-run. No OPEN finding.
 
 ### Decisions and reasoning
 

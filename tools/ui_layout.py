@@ -632,7 +632,26 @@ def validate_layout(layout_dir: str) -> list[str]:
 
 
 COMPARE_CHANNEL = 48
-COMPARE_BAD_FRACTION = 0.12
+COMPARE_BAD_FRACTION = 0.08
+# F2.1 restated from the measured spread (Wine shots, reduced masks):
+# correct screens 0.0144-0.0478 (worst construction_roads); public mock vs
+# roads shot 0.2049; whole-grid one-cell shift 0.1978. Channel 48 is the
+# F1.3 opaque-match band. A missing pickaxe is scored on its 53 x 53 rect
+# (pick_fraction 0.98), because 2809 px sit under the global fraction.
+
+
+def cell_icon_tex_id(thumb_tex: int, col: int, row: int) -> int:
+    """fenster.tex id for a construction cell. Record index i = row*4+col.
+
+    Chrome builder View.dll 0x1002c360 creates gadget 0xb0c (50 x 50) per
+    non-empty record and looks up the category THUMBNAIL* ACCESS once.
+    Three consecutive textures per record (idle, hover, pressed), including
+    empty id-1 slots that skip the gadget: workshops (0,1) weaver is
+    THUMBNAILHANDWERK 277 + 3*4 = 289 (mean 10.0 on r2_construction_workshops).
+    """
+    return thumb_tex + 3 * (row * 4 + col)
+
+
 SCREENS = {
     "hud_idle": {"shot": "hud_idle_running", "kind": "hud"},
     "construction_public": {"shot": "r2_construction_public", "kind": "construction", "category": "public"},
@@ -774,23 +793,40 @@ def compose_screen(layout_dir: str, screen: str, game_dir: str) -> "object":
         blit_el("baumat_bricks")
         blit_el("baumat_marble")
     blit_el("fragezeichen")
-    blit_el("zoom_plus")
+    blit_el("rosh_46")
+    blit_el("rosh_48")
+    blit_el("rosh_51")
     if spec["kind"] == "construction":
+        blit_el("einwohner")
+    blit_el("zoom_plus")
+    blit_el("zoom_minus")
+    blit_el("lupe")
+    blit_el("compass_w")
+    blit_el("compass_e")
+    if spec["kind"] == "construction":
+        blit_el("plankegross")
         blit_el("abrissicon", 659)
         ox = int(con["grid"].get("origin_x", 808))
         oy = int(con["grid"].get("origin_y", 305))
         stride = int(con["grid"].get("cell_px", 52))
+        cat = con["categories"].get(spec["category"], {})
+        thumb = int(cat.get("thumb_tex", "0"))
+        fen = _game_tex(game_dir, "toolgfx/fenster.tex")
         lock_el = by_name.get("no_klick")
         lock_id = int(lock_el.get("tex_id", 56)) if lock_el else 56
         lock_file = (lock_el or {}).get("file") or "toolgfx/fenster.tex"
-        sprite = decode_tex_rgba(_game_tex(game_dir, lock_file), lock_id)
-        if sprite is not None:
-            for cell in con["cells"]:
-                if cell["category"] != spec["category"]:
-                    continue
-                if cell.get("state") != "locked":
-                    continue
-                blit_rgba(rgb, w, h, sprite, ox + cell["col"] * stride, oy + cell["row"] * stride)
+        lock_sprite = decode_tex_rgba(_game_tex(game_dir, lock_file), lock_id)
+        for cell in con["cells"]:
+            if cell["category"] != spec["category"]:
+                continue
+            x = ox + cell["col"] * stride
+            y = oy + cell["row"] * stride
+            if cell.get("state") == "unlocked" and thumb:
+                icon = decode_tex_rgba(fen, cell_icon_tex_id(thumb, cell["col"], cell["row"]))
+                if icon is not None:
+                    blit_rgba(rgb, w, h, icon, x, y)
+            elif cell.get("state") == "locked" and lock_sprite is not None:
+                blit_rgba(rgb, w, h, lock_sprite, x, y)
     im = Image.frombytes("RGB", (w, h), bytes(rgb))
     return im
 
@@ -888,9 +924,6 @@ def compare_screen(layout_dir: str, screen: str, shot_path: str, game_dir: str, 
     extra = []
     if spec["kind"] == "hud":
         extra.append((779, 244, 245, 489))
-    if spec["kind"] == "construction":
-        con = parse_construction(os.path.join(layout_dir, "construction.txt"))
-        extra = unlocked_cell_rects(con, spec["category"])
     masked = load_mask_set(layout_dir, extra)
     rec = compare_images(mock, shot, masked)
     if "error" in rec:
@@ -1043,6 +1076,74 @@ def measure_hud_shot(path: str) -> dict:
     return {"width": w, "height": h, "pix": pix, "im": im}
 
 
+def negative_control_results(
+    layout_dir: str, game_dir: str, shots_dir: str
+) -> list[dict]:
+    """Wrong category, one-cell shift, and missing pickaxe must fail.
+
+    Returns one dict per case with keys name, fraction, pass (expected False).
+    """
+    from PIL import Image
+
+    out = []
+    pub_shot = os.path.join(shots_dir, "r2_construction_public.png")
+    roads_shot = os.path.join(shots_dir, "r2_construction_roads.png")
+    if not (os.path.isfile(pub_shot) and os.path.isfile(roads_shot)):
+        return out
+    masks = load_mask_set(layout_dir)
+    pub_mock = compose_screen(layout_dir, "construction_public", game_dir)
+    roads_im = Image.open(roads_shot).convert("RGB")
+    rec = compare_images(pub_mock, roads_im, masks)
+    rec["name"] = "public_mock_vs_roads_shot"
+    rec["pass"] = rec["fraction"] <= COMPARE_BAD_FRACTION
+    rec["diff"] = None
+    out.append(rec)
+
+    shifted = pub_mock.copy()
+    ox, oy, gw, gh = 808, 305, 52 * 4, 52 * 8
+    grid = shifted.crop((ox, oy, ox + gw, oy + gh))
+    for yy in range(oy, oy + gh):
+        for xx in range(ox, ox + gw):
+            shifted.putpixel((xx, yy), (80, 70, 60))
+    shifted.paste(grid, (ox + 52, oy))
+    pub_im = Image.open(pub_shot).convert("RGB")
+    rec2 = compare_images(shifted, pub_im, masks)
+    rec2["name"] = "one_cell_shift"
+    rec2["pass"] = rec2["fraction"] <= COMPARE_BAD_FRACTION
+    rec2["diff"] = None
+    out.append(rec2)
+
+    # Missing pickaxe: wipe ABRISSICON (970,710) 53 x 53. The rect itself
+    # must be mostly bad; a 53 x 53 hole can sit under the global fraction.
+    missing = pub_mock.copy()
+    for y in range(710, 763):
+        for x in range(970, 1023):
+            missing.putpixel((x, y), (0, 0, 0))
+    rec3 = compare_images(missing, pub_im, masks)
+    rec3["name"] = "missing_pickaxe"
+    pick_bad = 0
+    pick_n = 0
+    mp = missing.tobytes()
+    sp = pub_im.tobytes()
+    for y in range(710, 763):
+        for x in range(970, 1023):
+            if (x, y) in masks:
+                continue
+            pick_n += 1
+            o = (y * 1024 + x) * 3
+            if (
+                abs(mp[o] - sp[o]) > COMPARE_CHANNEL
+                or abs(mp[o + 1] - sp[o + 1]) > COMPARE_CHANNEL
+                or abs(mp[o + 2] - sp[o + 2]) > COMPARE_CHANNEL
+            ):
+                pick_bad += 1
+    rec3["pick_fraction"] = (pick_bad / pick_n) if pick_n else 1.0
+    rec3["pass"] = rec3["pick_fraction"] <= 0.5
+    rec3["diff"] = None
+    out.append(rec3)
+    return out
+
+
 def compare_shot(shot: str, layout_dir: str) -> list[str]:
     hud = parse_hud(os.path.join(layout_dir, "hud.txt"))
     meas = measure_hud_shot(shot)
@@ -1143,6 +1244,9 @@ def self_test() -> int:
         parsed_c = parse_construction(con)
         check(parsed_c["cells"][0]["id"] == "501", "cell id")
         check(parsed_c["occupancy"]["public"][0] == "ULUU", "occupancy")
+        check(cell_icon_tex_id(154, 0, 0) == 154, "thumb public 0,0")
+        check(cell_icon_tex_id(154, 2, 0) == 160, "thumb public 2,0")
+        check(cell_icon_tex_id(277, 0, 1) == 289, "thumb weaver")
         errs = validate_layout(td)
         check(errs == [], f"validate clean, got {errs}")
         # occupancy vs unlocked mismatch

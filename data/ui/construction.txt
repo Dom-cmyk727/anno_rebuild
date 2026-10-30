@@ -12,14 +12,16 @@ shot r2_construction_public
 grid cols 4 rows 8 cell_px 52 origin_x 808 origin_y 305 sprite 50 method sprite-sad shot r2_construction_public
 grid_click_x 833 885 937 989
 grid_click_y 330 382 432 484 536 588 640 692
-category public index 1 y 325 banner_key public tooltip_section TOOLTIP:BAUMENU_DIVERSES thumbnail THUMBNAILDIVERSES table 0x100a7330 records 32 shot r2_construction_public
-category roads index 2 y 373 banner_key roads tooltip_section TOOLTIP:BAUMENU_WEG thumbnail THUMBNAILWEG table 0x100a6eb0 records 12 shot r2_construction_roads
-category farms index 3 y 418 banner_key farms tooltip_section TOOLTIP:BAUMENU_LANDWIRTSCHAFT thumbnail THUMBNAILLANDWIRTSCHAFT table 0x100a7070 records 32 shot r2_construction_farms
-category workshops index 4 y 463 banner_key workshops tooltip_section TOOLTIP:BAUMENU_HANDWERK thumbnail THUMBNAILHANDWERK table 0x100a6fb0 records 24 shot r2_construction_workshops
-category coastal index 5 y 508 banner_key coastal tooltip_section TOOLTIP:BAUMENU_SCHIFF thumbnail THUMBNAILSEEFAHRT table 0x100a71d0 records 12 shot r2_construction_coastal
-category mines index 6 y 553 banner_key mines tooltip_section TOOLTIP:BAUMENU_BERGBAU thumbnail THUMBNAILBERGBAU table 0x100a6f10 records 20 shot r2_construction_mines
-category military index 7 y 598 banner_key military tooltip_section TOOLTIP:BAUMENU_MILITAR thumbnail THUMBNAILMILITAR table 0x100a6d70 records 20 shot r2_construction_military
-category ornamental index 8 y 643 banner_key ornamental tooltip_section TOOLTIP:BAUMENU_WIGWAMS thumbnail THUMBNAILZIERDE table 0x100a7430 records 32 shot r2_construction_ornamental
+# thumb_tex = fenster.inc ACCESS id of THUMBNAIL*. Unlocked icon = thumb_tex + 3 * record_index (row*4+col), including empty slots.
+# Cell gadget 0xb0c, View.dll 0x1002c360 / 0x1002c650. Three consecutive frames (idle, hover, pressed).
+category public index 1 y 325 banner_key public tooltip_section TOOLTIP:BAUMENU_DIVERSES thumbnail THUMBNAILDIVERSES thumb_tex 154 table 0x100a7330 records 32 shot r2_construction_public
+category roads index 2 y 373 banner_key roads tooltip_section TOOLTIP:BAUMENU_WEG thumbnail THUMBNAILWEG thumb_tex 241 table 0x100a6eb0 records 12 shot r2_construction_roads
+category farms index 3 y 418 banner_key farms tooltip_section TOOLTIP:BAUMENU_LANDWIRTSCHAFT thumbnail THUMBNAILLANDWIRTSCHAFT thumb_tex 58 table 0x100a7070 records 32 shot r2_construction_farms
+category workshops index 4 y 463 banner_key workshops tooltip_section TOOLTIP:BAUMENU_HANDWERK thumbnail THUMBNAILHANDWERK thumb_tex 277 table 0x100a6fb0 records 24 shot r2_construction_workshops
+category coastal index 5 y 508 banner_key coastal tooltip_section TOOLTIP:BAUMENU_SCHIFF thumbnail THUMBNAILSEEFAHRT thumb_tex 355 table 0x100a71d0 records 12 shot r2_construction_coastal
+category mines index 6 y 553 banner_key mines tooltip_section TOOLTIP:BAUMENU_BERGBAU thumbnail THUMBNAILBERGBAU thumb_tex 385 table 0x100a6f10 records 20 shot r2_construction_mines
+category military index 7 y 598 banner_key military tooltip_section TOOLTIP:BAUMENU_MILITAR thumbnail THUMBNAILMILITAR thumb_tex 439 table 0x100a6d70 records 20 shot r2_construction_military
+category ornamental index 8 y 643 banner_key ornamental tooltip_section TOOLTIP:BAUMENU_WIGWAMS thumbnail THUMBNAILZIERDE thumb_tex 499 table 0x100a7430 records 32 shot r2_construction_ornamental
 cell public 0 0 id 501 state unlocked inframin INFRA_EVER gold 0 tools 0 wood 3 bricks 0 marble 0 upkeep 0 source view_dll shot r2_info_pioneer_house
 cell public 1 0 id 580 state locked inframin INFRA_STUFE_4F gold 0 tools 12 wood 10 bricks 20 marble 5 upkeep 0 source view_dll shot -
 cell public 2 0 id 1301 state unlocked inframin INFRA_EVER gold 250 tools 3 wood 7 bricks 0 marble 0 upkeep 10 source view_dll shot r2_info_market_1301

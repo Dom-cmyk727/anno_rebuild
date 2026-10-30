@@ -127,3 +127,134 @@ What that leaves for the later steps:
 `load_original_registry`, loads the file with `load_scenario_with_links`, and
 creates the `World`. The scene is built from the islands that load placed.
 The sim thread then runs turns as above.
+
+## Building changes after tick 0 (W4.3)
+
+Status: specification, written in round dq before the code. Numbers marked
+"target" are checked by measurement (W4.3 tests A6 and the perf notes) and
+change this text if they miss.
+
+### What the sim publishes: an app-side diff, not a sim log
+
+The sim keeps no change log of buildings, and this spec adds none: a new
+counter or log in `World` would be state that the hash may see, and the
+brief forbids a state or hash change. The sim thread therefore diffs the
+buildings it owns before and after each turn, and publishes the difference.
+
+- Per island slot, the sim thread keeps the building list it published last
+  (ordered by the `World`'s building id). After the turn it walks the
+  `World`'s current buildings of that slot and emits one delta per building
+  added, removed, or changed in type, tile, rotation, or height byte. A
+  changed building is one removed delta and one added delta.
+- Each delta carries: the island slot, the kind (added, removed), the type,
+  the tile, the rotation, the height byte, and the screen box the building
+  occupied when the picture last drew it (for a removed delta, the box it had,
+  so its old chunks are invalidated too).
+- The turn's list is an immutable `std::shared_ptr<const std::vector<BuildingDelta>>`
+  built on the sim thread after the turn, before the publication mutex (as the
+  snapshot is). When nothing changed the list is one shared empty vector: no
+  allocation, no copy.
+- Why a diff and not a version counter: a per-island version needs a field in
+  `World` (a state change, refused). Why not the applied commands: the command
+  list does not cover what a turn changes on its own (buildings that finish or
+  disappear in the sim's steps). The diff is the only complete source that
+  needs no sim change.
+- Cost, target: O(buildings in the world) comparisons per turn. A 5-player map
+  carries on the order of 10³ buildings; the target is at most 0.2 ms p95 per
+  turn for the diff on `06_1024_heavy_256.sze`, measured before and after
+  publishing (A3). If it misses, the diff keeps a per-island hash of the last
+  list and skips unchanged islands.
+
+### How the picture learns which chunks are stale
+
+The window thread drains the deltas of every snapshot it has not yet applied
+(a turn index says which), once per frame.
+
+- For each delta and each zoom group, the screen box is the footprint diamond
+  of the building grown by its sprite's extent at that group (the frame's
+  anchor and its width and height, the numbers the draw list uses), so tall
+  sprites and overhangs are included. A building can reach a neighbouring
+  chunk; every chunk whose rectangle meets the box is stale.
+- Stale keys go to `FrameRenderer` as an invalidation set. A stale key stays in
+  `cache_` and is queued for a rebuild in the same priority list as a
+  river-flow rebuild (`chunk_rebuilds`, `rebuilds_`, `frame.cpp:773`). When the
+  worker's chunk arrives it replaces the cached one under the same key (the
+  precedent at `frame.cpp:768-775`), so the old chunk draws until the new one
+  is in.
+- The GPU compositor replaces the uploaded planes of a key when its chunk is
+  replaced. Whether `gpu.cpp` already refreshes a key on a replacement is
+  checked in A4; if it does not, that path is added there and recorded.
+- Tile changes other than buildings: `TileCleanup` events go to
+  `seams_.tile_cleanup` (`events.cpp:29`). Play mode installs no handler, so
+  today such an event changes nothing. A future handler that changes tiles
+  must add a tile delta kind; it is not a silent edit. Recorded as a gap, not
+  solved here.
+
+### The immutable object list a chunk is built from
+
+A chunk worker reads the scene while the window keeps running, so a worker
+never sees an object list that changes under it. The rule is copy-on-change:
+
+- The dynamic objects of an island (the PROD2 records of its buildings, or
+  the object list the A4 choice builds) are held in a shared immutable list per
+  island. A change batch builds a new list for each island it touches and swaps
+  the pointer on the window thread. A chunk job holds the list it started from;
+  if a delta arrives while it runs, its key is stale again and it is rebuilt
+  against the new list.
+- Static terrain and scenery stay in the scene built once from the file (the
+  split above). Only the dynamic part is swapped.
+- The cost is O(objects in that island) per batch, once per touched island, not
+  per delta. A batch of 50 builds in one turn is one list build per island.
+
+### Latency bound
+
+Let turn N apply a change on the sim thread, and let snapshot N be published
+after it.
+
+- The first frame that takes snapshot N applies its deltas before drawing.
+- The stale chunks are queued; each chunk build runs on a worker in the
+  background (about a millisecond of CPU per chunk at group 0, the figure in
+  `docs/perf/README.md`).
+- The new chunk replaces the old one at the first frame after its build has
+  finished and been uploaded.
+
+Target **K = 3 frames**: one frame to see the snapshot and invalidate, one for
+the worker, one for the upload (the GPU path). Measured in A7 as the number of
+frames from the snapshot's publication to the first frame that draws the
+change, over the 50-build burst. A measured K above 3 changes this text first.
+
+### While a rebuild is in flight
+
+The old chunk keeps drawing, always. Invalidation never removes a key from
+`cache_`, and the window never waits for a worker or a chunk. A second change
+to a key whose rebuild is pending keeps the key stale; the rebuild that
+replaces the chunk reads the newest list, so one rebuild covers both changes.
+
+### The command file (`--commands`)
+
+`anno1503 --play <file.sze> --commands <path>`. One command per line; `#`
+starts a comment; blank lines are ignored. A turn index counts from 0, the first
+turn the runner applies. Turns must not decrease. A line that does not parse,
+or names a turn already past, is an error with its line number, and the run
+stops before turn 0.
+
+```
+turn <n> build <type> <x> <y> <rotation> [<x> <y> <rotation>]...
+turn <n> demolish <x> <y> [<x> <y>]...
+```
+
+- `<type>` is the registry's `TypeId` value (a number); `<x> <y>` is the tile of
+  the placement (`PlacementWire::x`, `y`); `<rotation>` is 0..3.
+- One `build` line is one `BuildCmd` for the player's city on the island under
+  its first placement (the runner resolves the `CityRef`). The extra triples
+  are more placements in stream order, in the same command.
+- One `demolish` line is one `DemolishCmd` over the listed tiles.
+- A `build` with more than 4 095 placements or a `demolish` with more than
+  8 190 tiles has no wire form (`has_wire_form`, `command.hpp`); the runner
+  refuses that line at load time with a message. It is not split silently; the
+  window's drag splits a longer path (B3).
+- The runner applies a turn's commands in file order, then runs the turn's
+  steps (`Turn::commands` is applied first by `run_turn`).
+
+The window's commands (W4.4) and the file's commands use the same queue, so
+both reach a turn the same way.

@@ -269,49 +269,94 @@ turn <n> demolish <x> <y> [<x> <y>]...
 The window's commands (W4.4) and the file's commands use the same queue, so
 both reach a turn the same way.
 
-### Ownership: the measured cost, and the seam proposed (A4, A7b, for review)
+### Immutable per-island object lists (W4.3, round du)
 
-Status: **decision for review, not implemented.** The first design was whole-scene
-generations: each change builds a new `render::Scene` as an immutable
-`shared_ptr`, and each chunk job holds the generation it reads. It is kept below
-as the rejected alternative. The measurement (`docs/perf/README.md`, "W4.3 A7b")
-rejects it for the live path: one change costs at least 0.47 s (the `Scene`
-constructor from the parts a scene holds) plus 0.25 s (the first sea pattern of
-the new scene), and 6.8 s with the file reads. The K = 3 frame target is about
-50 ms, so whole-scene replacement misses it by about an order of magnitude, and a
-burst of builds coalesced into one rebuild costs the same.
+Status: the specification for the seam approved in round du (board round du,
+`cache/orch-du`). Written before the code. The numbers are in
+`docs/perf/README.md` ("W4.3 round du"). The whole-scene generation measured and
+rejected earlier is recorded there too (6.8 s from files, 0.47 s for the
+constructor with reused parts, 0.25 s for the first sea pattern). Nothing here
+changes the simulation: the picture consumes published batches.
 
-**Proposed seam (the narrower one this section already describes, handover 7c):**
+**1. Static and dynamic.** Shared by every generation of a scene: the Anlagen
+file, the ground textures, the sprite cache, the frame table, the zoom levels,
+the placement layouts, the sea patterns, each island's ground grids, and, for an
+island whose river pieces did not change, its water (`IslandWater`) and its river
+flow. Per island and per generation, immutable: the object lists `below`,
+`below_enhanced`, `above`, `above_enhanced`, `other`, `falls_below`,
+`falls_above`, `river_sprites` and `rivers`. They come from the island's
+`GELAENDE`, `PROD2` and `FLUESSE` records (`kObjectRecords`) through
+`prepare_objects`, which returns plain values and no pointer into a file buffer.
 
-- The scene keeps each island's *dynamic* objects (the PROD2 items of its
-  buildings) in one `std::shared_ptr<const IslandObjects>` per island. Terrain,
-  scenery, the sea pattern, the flow and the river masks are not in it, so they
-  are not rebuilt for a building change.
-- A batch that touches an island builds that island's new `IslandObjects` (the
-  objects of one island, not the scene) on the window thread's worker pool, and
-  the window thread swaps the pointer. A chunk job captures the pointer it starts
-  from, so the old objects live until the job ends; nothing is replaced under a
-  running worker, and no pool is stopped or joined.
-- Chunk keys stay the unit of staleness. Each cached chunk records the object
-  generation of each island it was built from; an invalidation names the keys it
-  dirties (9a-9b); a job that completes for an older generation does not clear a
-  newer dirty mark (7d).
+**2. Painter order and overlap.** A building and a scenery object stay in one
+draw-ordered list, as now. A change re-runs `prepare_objects` over the island's
+complete record set, so each object, static or dynamic, comes out in the order a
+fresh scene gives. No list is merged by hand, and no object moves to another
+layer. Occlusion inside a chunk is unchanged, because the chunk replays the same
+list.
 
-**Open before the code (for the review, not decided here):**
+**3. The classification boundary.** Every object, a building included, is
+classified by one rule: its Anlagen gfx prefix (water kind) and its height against
+the waterline (`prepare_objects`). The river-related Anlagen ids are river pieces
+`2701, 2705, 2706, 2707`, falls `2702, 2703, 2704` and surf `2708` (`scene.hpp`,
+`iso.hpp`). A building with one of those ids changes its island's rivers, so the
+derived island rebuilds its water and flow instead of sharing them. Correctness
+does not rest on the boundary: a share is taken only when the river list is equal.
+The registry's supported building types are checked against those ids by a test
+that needs the game files.
 
-1. **Checked (A7b):** a building does not change the water or the shore. The island
-   water reads the heights grid, the ground-id grid and the river pieces only
-   (`sea.cpp` `IslandWater::build`, from `scene.cpp` `island_water`); the sea pattern
-   reads the Anlagen file only (`sea.cpp` `SeaPattern::build`). Buildings reach the
-   picture through the objects lists only (`scene.cpp` `prepare_objects` into
-   `IslandData::below/above/other`). The seam therefore holds the objects lists and
-   nothing else. Re-check this if a building type is ever a river piece (`kRiverAnlagen`).
-2. The cost of one island's `IslandObjects` build. Expected to be milliseconds
-   (one island's `prepare_objects`); to be measured with the same probe before
-   the code is written.
-3. Memory: the old and new `IslandObjects` of an island live together for one
-   job's duration; the bound is one extra copy per touched island.
+**4. Generations.** `Scene::with_islands(...)` returns a new immutable scene
+(`std::shared_ptr<const Scene>`, generation `g + 1`). It shares the static parts
+of the scene it derives from and carries new object lists for the islands it
+replaces. A generation is never changed once another thread can see it.
 
-Rejected alternative, for the record: a whole-scene generation per change (see
-the measurement above). It is simpler and needs no change to `scene.cpp`, but it
-does not meet the latency goal on this map.
+**5. Off the window thread.** A touched island's object list is built on a worker
+from an immutable input: the island's record set after the batch, and the
+generation's Anlagen file, kept alive by the request. The window thread never runs
+`prepare_objects` and never waits for a worker.
+
+**6. Commit rule.** Each island has one request sequence number. The builder keeps
+the newest request per island; a finished result whose sequence is not the newest
+for its island is dropped. The window thread commits the current results of one
+frame in a single derived generation.
+
+**7. Retained-generation bound.** A generation is alive while it is current or a
+chunk job holds it. `ChunkWorkers::submit` replaces the queue, so queued jobs share
+one generation, and the running jobs (at most one per thread) hold at most `threads`
+others. Alive generations are at most `1 + threads`. The memory they hold beyond the
+current one is the object lists of the islands they replaced: at most `(1 + threads)`
+times the sum of the touched islands' lists. Pending object builds are at most one
+per touched island (step 6). A retired generation is released on a background
+thread: freeing its lists is not free, and the window thread must not do it.
+
+**8. Stale completions.** Each chunk records the generation it was built from. An
+invalidation names the generation `m` that caused it and marks each affected key
+with `m`. A completed chunk built from generation `g` replaces the cached one and
+clears the mark only when `g >= m`. A chunk with `g < m` is discarded and the mark
+stays, so the next request rebuilds the key from the current generation. A key
+without a mark is never touched by this rule, so unchanged keys are reused.
+
+**9. Invalidation.** A changed building marks every key that its old screen box and
+its new one intersect, at every zoom level of the scene, derived levels included: a
+derived chunk is reduced from its children, so a child's change reaches its parent.
+The box is the footprint diamond of the building, grown by the largest sprite
+extent of its frames at that level (anchor, width and height, shadows included),
+read from the same frame data the draw list uses. A cached key stays in the cache
+and keeps drawing until its replacement arrives (the river-flow precedent). Marks go
+on keys whether or not they are cached, so a chunk in flight is covered too.
+
+**10. Latency.** K frames from the frame that first takes the snapshot to the first
+frame that draws the change. At 60 Hz K = 3 is 50 ms; at 120 Hz it is 25 ms. The
+object-list build and the chunk rebuild add to it. The targets are measured in
+Release and Debug, and each miss is reported.
+
+**11. Rejected commands.** A refused command publishes no batch, so no key is
+marked and no pixel changes.
+
+**12. Mailbox and publication.** Only the sim thread pushes and only the window
+thread takes. Between the fullness check in `PlayRunner::publish` and the push, the
+window can empty the mailbox but cannot fill it, so the mailbox never becomes full
+after the check. The prepared copy is then unused in that interleaving; it is
+destroyed under the publication lock, which the design accepts and the report
+states. The allocation is outside the lock; the destruction of an unused copy is
+inside it, and bounded by the list size.

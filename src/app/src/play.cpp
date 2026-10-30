@@ -185,6 +185,11 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
     // The picture was built from these buildings at load, so the first diff starts here.
     buildings_ = play_buildings(world_);
     sort_buildings(buildings_);
+    // One second of turns. A window takes the mailbox once per frame, so it holds
+    // about one frame's batches; a stalled or minimised window reaches the bound
+    // after a second of turns and collapses to a resync (BuildingMailbox).
+    const auto turn_ms = static_cast<std::size_t>(sim::Timing{}.mp_turn_real_ms);
+    mailbox_ = BuildingMailbox(turn_ms == 0 ? 1 : std::max<std::size_t>(1, 1000 / turn_ms));
 }
 
 PlayRunner::~PlayRunner() {
@@ -356,7 +361,7 @@ void PlayRunner::one_turn() {
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
     // The turn cost above is the sim's; the diff that publishes its changes is
     // timed separately (the bench reports both).
-    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), building_batch(turn.index));
+    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, building_batch(turn.index));
 }
 
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
@@ -373,7 +378,8 @@ std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t tu
     return batch;
 }
 
-void PlayRunner::publish(std::uint64_t turn_us, std::shared_ptr<const BuildingBatch> batch) {
+void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
+                         std::shared_ptr<const BuildingBatch> batch) {
     const auto now = std::chrono::steady_clock::now();
     costs_.push_back({now, turn_us});
     const auto cut = now - std::chrono::seconds(1);
@@ -387,18 +393,33 @@ void PlayRunner::publish(std::uint64_t turn_us, std::shared_ptr<const BuildingBa
     next->p95_us = p95_locked();
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
-    publish_snapshot(std::move(next));
+    next->turn = turn;
+    // One publication: the batch goes into the mailbox and the snapshot is swapped
+    // under the same lock, batch first. A reader that sees snapshot N therefore
+    // sees turn N's batch already waiting (W4.3, orchestrator correction 2).
+    std::lock_guard lock(snap_mu_);
     if (batch) {
-        std::lock_guard lock(snap_mu_);
-        batches_.push_back(std::move(batch));
+        mailbox_.push(std::move(batch), buildings_);
     }
+    snap_ = std::move(next);
 }
 
 std::vector<std::shared_ptr<const BuildingBatch>> PlayRunner::take_building_batches() {
-    std::vector<std::shared_ptr<const BuildingBatch>> out;
     std::lock_guard lock(snap_mu_);
-    out.swap(batches_);
-    return out;
+    return mailbox_.take();
+}
+
+std::vector<std::uint64_t> PlayRunner::pending_batch_turns() const {
+    std::lock_guard lock(snap_mu_);
+    std::vector<std::uint64_t> turns;
+    for (const auto& batch : mailbox_.waiting()) {
+        turns.push_back(batch->turn);
+    }
+    return turns;
+}
+
+void PlayRunner::set_batch_bound(std::size_t bound) {
+    mailbox_ = BuildingMailbox(bound);
 }
 
 void PlayRunner::note_behind() {

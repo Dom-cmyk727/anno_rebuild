@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <iterator>
 #include <tuple>
+#include <utility>
 
 #include <anno/app/building_delta.hpp>
 
@@ -34,6 +35,79 @@ std::vector<BuildingDelta> diff_sorted_buildings(const std::vector<SceneBuilding
         out.push_back({BuildingDelta::Kind::Added, b});
     }
     return out;
+}
+
+BuildingMailbox::BuildingMailbox(std::size_t bound) : bound_(bound == 0 ? 1 : bound) {}
+
+void BuildingMailbox::push(std::shared_ptr<const BuildingBatch> batch,
+                           const std::vector<SceneBuilding>& current) {
+    if (!batch) {
+        return;
+    }
+    if (pending_.size() < bound_) {
+        pending_.push_back(std::move(batch));
+        return;
+    }
+    // Full: this batch would be one more than the bound. The waiting batches and
+    // this one collapse into a resync that carries the list after this turn.
+    auto resync = std::make_shared<BuildingBatch>();
+    resync->turn = batch->turn;
+    resync->resync = true;
+    resync->full = current;
+    pending_.clear();
+    pending_.push_back(std::move(resync));
+}
+
+std::vector<std::shared_ptr<const BuildingBatch>> BuildingMailbox::take() {
+    std::vector<std::shared_ptr<const BuildingBatch>> out;
+    out.swap(pending_);
+    return out;
+}
+
+namespace {
+
+// Removes one building equal to `b` from the sorted `picture`. False when none is there.
+bool erase_one(std::vector<SceneBuilding>& picture, const SceneBuilding& b) {
+    const auto it = std::lower_bound(picture.begin(), picture.end(), b, building_before);
+    if (it == picture.end() || !(*it == b)) {
+        return false;
+    }
+    picture.erase(it);
+    return true;
+}
+
+void insert_sorted(std::vector<SceneBuilding>& picture, const SceneBuilding& b) {
+    picture.insert(std::lower_bound(picture.begin(), picture.end(), b, building_before), b);
+}
+
+} // namespace
+
+ApplyResult apply_batches(std::vector<SceneBuilding>& picture,
+                          const std::vector<std::shared_ptr<const BuildingBatch>>& batches) {
+    ApplyResult result;
+    for (const auto& batch : batches) {
+        if (!batch) {
+            continue;
+        }
+        if (batch->resync) {
+            std::vector<BuildingDelta> diff = diff_sorted_buildings(picture, batch->full);
+            picture = batch->full;
+            result.deltas.insert(result.deltas.end(), diff.begin(), diff.end());
+            continue;
+        }
+        for (const BuildingDelta& delta : batch->deltas) {
+            if (delta.kind == BuildingDelta::Kind::Removed) {
+                if (!erase_one(picture, delta.building)) {
+                    result.consistent = false;
+                    continue;
+                }
+            } else {
+                insert_sorted(picture, delta.building);
+            }
+            result.deltas.push_back(delta);
+        }
+    }
+    return result;
 }
 
 } // namespace anno::app

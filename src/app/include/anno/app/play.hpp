@@ -62,6 +62,9 @@ struct PlaySnapshot {
     /// Reported, not run as extra steps.
     std::uint64_t behind_ms = 0;
     bool paused = false;
+    /// The last turn this snapshot follows (its index), so a reader can check
+    /// the snapshot against the mailbox.
+    std::uint64_t turn = 0;
 };
 
 /// Clock and sleep for the turn schedule. The app uses `steady_clock`. A test
@@ -113,6 +116,12 @@ class PlayRunner {
     /// window calls it once per frame. It takes all of them, not only the latest
     /// snapshot's, so a turn between two frames is never skipped (W4.3 spec).
     [[nodiscard]] std::vector<std::shared_ptr<const BuildingBatch>> take_building_batches();
+    /// The turns whose batches are waiting, oldest first (tests; the window
+    /// uses take_building_batches). Taken under the same lock as a snapshot swap.
+    [[nodiscard]] std::vector<std::uint64_t> pending_batch_turns() const;
+    /// How many batches the mailbox holds before it collapses them into a resync
+    /// (BuildingMailbox). Default: one second of turns. Call before `start`.
+    void set_batch_bound(std::size_t bound);
     [[nodiscard]] std::string title_line() const;
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
@@ -121,7 +130,8 @@ class PlayRunner {
   private:
     void loop();
     void one_turn();
-    void publish(std::uint64_t turn_us, std::shared_ptr<const BuildingBatch> batch);
+    void publish(std::uint64_t turn_us, std::uint64_t turn,
+                 std::shared_ptr<const BuildingBatch> batch);
     void publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot);
     /// The buildings after the turn, diffed against the last list (sim thread).
     [[nodiscard]] std::shared_ptr<const BuildingBatch> building_batch(std::uint64_t turn);
@@ -148,7 +158,7 @@ class PlayRunner {
     // happen before it is acquired.
     mutable std::mutex snap_mu_;
     std::shared_ptr<const PlaySnapshot> snap_;
-    std::vector<std::shared_ptr<const BuildingBatch>> batches_;
+    BuildingMailbox mailbox_{1};
 };
 
 } // namespace anno::app

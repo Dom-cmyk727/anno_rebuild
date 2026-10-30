@@ -7687,3 +7687,20 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 1. Packet §4 said `join_jitter_study.py` is LF on disk. On this checkout all three tools are CRLF. Blob hashing is the N1 answer; confirm that is acceptable.
 2. Two executor sessions wrote this worktree overnight. Commits interleave; no reset or rebase. The study that `--validate` accepts is the `eb6da43` file, not the earlier `e34c9b1` file it overwrote.
 3. `move_agent_to_root` once checked `task/T33-1-walk-tables` out of this worktree; it was restored to `codex/T61-join-jitter` before edits. Not repeated.
+
+## Round dp — Review of T61 F2 closure — 2026-10-30 — status: ACCEPTED, merged (d1a8c11)
+
+- **Reviewed:** `codex/T61-join-jitter` at `8cc9928`, report "T61 F2 closure" and its progress sections (phases 0–4, reviewer passes 1 and 2). N1–N8 of round dn are each answered with a commit, a test and evidence. Scope stayed inside the six allowed files; no push, PR or board edit.
+- **Re-run by the orchestrator** (logs in the orchestrator's scratchpad, `t61/`):
+  - **Genuine study, CRLF checkout:** `--validate` on a copy of the accepted `cache/t61-f2/dn/final/study.jsonl` in the T61 worktree (`core.autocrlf=true`, CRLF files on disk): `valid: 72 primary rows, 2 diagnostics`, exit 0, 253 s.
+  - **Genuine study, LF checkout:** the same file in a fresh clone at `8cc9928` with `core.autocrlf=false` (LF files on disk): `valid: 72 primary rows, 2 diagnostics`, exit 0, 258 s. The round-dn CRLF defect is closed.
+  - **Tamper, round dn's probe** (row 5 `ack_bytes` +1000): `invalid study: recorded metrics do not match the replay`, exit 1, 8 s.
+  - **Suites:** join `Ran 264 tests in 326.726s`, OK (floor 222, none removed); snapshot `Ran 64 tests`, OK.
+  - **Code read:** `committed_source_sha256` hashes `git show <head>:tools/<name>`; `--validate` replays through `controlled_run` with `min(CLI, manifest)` row and study bounds, checks the recorded durations before the replay, compares canonical `metrics` and `config`, requires both diagnostics, matches `repeat` to its primary and the asymmetric row to the declared 100 ms script.
+- **Accepted as reported:** fail-first logs for H1–H4 and N1–N6; JM1–JM8 each failing a named assertion; fresh-process hash-seed determinism; the zero-jitter projection equal to `917efea` for every named row and rate; ADR 0003 §15 and OQ-371 separate the verified synthetic result from assumptions (Proposed stays Proposed, OQ-371 stays open, nothing retuned).
+- **Finding, not blocking (fix when the tool is next touched):** `recorded_provenance_valid` accepts an empty or partial `source_hashes`. Measured: the accepted study with `source_hashes` set to `{}` validates (`valid: 72 primary rows, 2 diagnostics`, 181 s). The replay still binds every recorded row to the current source, so no recorded result is wrong; the provenance should still require exactly the keys `join_activation.py` and `join_jitter_study.py`. Related: the diagnostics check is set equality, so a manifest declaring a duplicate diagnostic row would pass with only the first `repeat` row compared to its primary.
+- **Executor questions answered:**
+  1. Round dn §4 said `join_jitter_study.py` is LF on disk. That was the orchestrator's mistake: with `core.autocrlf=true` every tool is CRLF on disk. Hashing the committed blob is the right N1 answer.
+  2. Two executor sessions wrote this worktree overnight; the commits interleave. Accepted, because the history is linear and the accepted study is the `eb6da43` file with tool blobs equal to `3c5ecb6` and `8cc9928`. Owner note: give one prompt to one session only.
+  3. A tool once checked out `task/T33-1-walk-tables` in this worktree and it was restored before edits. Noted; no effect on the branch.
+- **Merge:** `d1a8c11`. The merge base is `917efea`, so the merge brings all of T61 (F1 reviewed in rounds df/dh, F2 here). The REPORTS append conflict was resolved as main's file plus the branch's appended sections (line counts checked: 7252 + 6956 − 6519 = 7689). The four tool and ADR files in the merge are byte-identical to the branch.

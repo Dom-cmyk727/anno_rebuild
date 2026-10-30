@@ -308,3 +308,74 @@ TEST_CASE("replay: a recorded session replays through --commands to the same sta
     }
     CHECK(replay == hashes);
 }
+
+TEST_CASE("feedback: a refused build is reported once with its reason; money is shown") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const fs::path path =
+        fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+    auto loaded = anno::app::load_play(*dir, path);
+    REQUIRE(loaded.ok());
+    const auto& islands = loaded.value().world.islands();
+    std::optional<sim::CityRef> city;
+    std::optional<sim::TileXY> origin;
+    for (std::size_t i = 0; i < islands.size() && !city; ++i) {
+        if (!islands[i]) {
+            continue;
+        }
+        for (const auto& c : islands[i]->cities) {
+            if (c && c->owner == anno::app::developer_player() && !city) {
+                city = sim::CityRef{islands[i]->index, c->number};
+                origin = sim::TileXY{islands[i]->tiles.x0(), islands[i]->tiles.y0()};
+            }
+        }
+    }
+    REQUIRE(city.has_value());
+    std::optional<std::uint32_t> plain;
+    for (std::uint32_t id = 1; id <= 0xFFFFu && !plain; ++id) {
+        const sim::BuildingType* type = loaded.value().world.types().find(sim::TypeId{id});
+        if (type != nullptr && type->cost_goods.empty() &&
+            anno::app::anlage_is_building(loaded.value().world, static_cast<std::uint16_t>(id))) {
+            plain = id;
+        }
+    }
+    REQUIRE(plain.has_value());
+
+    anno::app::PlayRunner runner(std::move(loaded.value().world));
+    const auto build_at = [&](std::int32_t x, std::int32_t y) {
+        sim::Command cmd;
+        cmd.issuer = anno::app::developer_player();
+        sim::BuildCmd build;
+        build.city = *city;
+        sim::PlacementWire placement;
+        placement.type = sim::TypeId{*plain};
+        placement.x = origin->x + x;
+        placement.y = origin->y + y;
+        placement.rotation = 0;
+        build.placements.push_back(placement);
+        cmd.body = std::move(build);
+        return cmd;
+    };
+    runner.post_command(build_at(4, 4));
+    runner.run_n(1);
+    CHECK(runner.take_rejections().empty());
+    // The same tile again: the sim refuses it (occupied), and nothing else changes.
+    runner.post_command(build_at(4, 4));
+    runner.run_n(1);
+    const auto refused = runner.take_rejections();
+    REQUIRE(refused.size() == 1);
+    CHECK(refused[0].turn == 1);
+    CHECK_FALSE(refused[0].reason.empty());
+    CHECK(runner.take_rejections().empty());
+
+    const auto snap = runner.snapshot();
+    CHECK(snap->last_rejection == refused[0].reason);
+    CHECK(runner.title_line().find("refused: " + refused[0].reason) != std::string::npos);
+    CHECK(snap->money > 0);
+    CHECK(snap->money <= 10000000);
+    CHECK_FALSE(snap->goods.empty());
+    MESSAGE("refused build: " << refused[0].reason << "; title: " << runner.title_line());
+}

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -14,6 +15,7 @@
 #include <anno/formats/fixed_map.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/game_setup.hpp>
+#include <anno/sim/reject.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim_load/fixed_map.hpp>
@@ -283,6 +285,18 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
     // The picture was built from these buildings at load, so the first diff starts here.
     buildings_ = play_buildings(world_);
     sort_buildings(buildings_);
+    // The developer player's first city (the one the developer input builds in).
+    for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
+        const auto& island = world_.islands()[i];
+        if (!island) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (city && city->owner == developer_player() && !developer_city_) {
+                developer_city_ = sim::CityRef{island->index, city->number};
+            }
+        }
+    }
     // One second of turns. A window takes the mailbox once per frame, so it holds
     // about one frame's batches; a stalled or minimised window reaches the bound
     // after a second of turns and collapses to a resync (BuildingMailbox).
@@ -349,6 +363,12 @@ std::string PlayRunner::title_line() const {
     }
     if (snap->paused) {
         line += ", paused";
+    }
+    if (developer_city_) {
+        line += ", money " + std::to_string(snap->money);
+    }
+    if (!snap->last_rejection.empty()) {
+        line += ", refused: " + snap->last_rejection;
     }
     return line;
 }
@@ -477,7 +497,16 @@ void PlayRunner::one_turn() {
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
     // The turn cost above is the sim's; the diff that publishes its changes is
     // timed separately (the bench reports both).
-    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, building_batch(turn.index));
+    // The refusals of this turn (the sim's host events, CommandRejected only).
+    std::vector<RejectionNote> rejected;
+    for (const sim::SimEvent& event : world_.drain_events()) {
+        if (event.kind == sim::SimEventKind::CommandRejected) {
+            rejected.push_back(RejectionNote{
+                turn.index, std::string(sim::reject_name(static_cast<sim::Reject>(event.code)))});
+        }
+    }
+    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, building_batch(turn.index),
+            std::move(rejected));
 }
 
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
@@ -495,7 +524,8 @@ std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t tu
 }
 
 void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
-                         std::shared_ptr<const BuildingBatch> batch) {
+                         std::shared_ptr<const BuildingBatch> batch,
+                         std::vector<RejectionNote> rejected) {
     const auto now = std::chrono::steady_clock::now();
     costs_.push_back({now, turn_us});
     const auto cut = now - std::chrono::seconds(1);
@@ -510,12 +540,39 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
     next->turn = turn;
+    // The developer player's money and its city's goods (copied; the window never reads the World).
+    if (developer_city_) {
+        if (const sim::Player* player = world_.players().find(developer_player())) {
+            next->money = player->money;
+        }
+        const auto& island = world_.islands()[developer_city_->island.v];
+        if (island && developer_city_->city.v < island->cities.size() &&
+            island->cities[developer_city_->city.v]) {
+            next->goods = island->cities[developer_city_->city.v]->stock.stock;
+        }
+    }
+    if (!rejected.empty()) {
+        last_reason_ = rejected.back().reason;
+        last_reason_turn_ = rejected.back().turn;
+    }
+    if (!last_reason_.empty() && turn >= last_reason_turn_ + kRejectionShowTurns) {
+        last_reason_.clear();
+    }
+    next->last_rejection = last_reason_;
     // One publication: the batch goes into the mailbox and the snapshot is swapped
     // under the same lock, batch first. A reader that sees snapshot N therefore
     // sees turn N's batch already waiting (W4.3, orchestrator correction 2).
     std::lock_guard lock(snap_mu_);
     if (batch) {
         mailbox_.push(std::move(batch), buildings_);
+    }
+    for (RejectionNote& note : rejected) {
+        rejections_.push_back(std::move(note));
+    }
+    if (rejections_.size() > kRejectionKeep) {
+        rejections_.erase(rejections_.begin(),
+                          rejections_.begin() +
+                              static_cast<std::ptrdiff_t>(rejections_.size() - kRejectionKeep));
     }
     snap_ = std::move(next);
 }
@@ -545,6 +602,13 @@ void PlayRunner::set_script(std::vector<ScriptedCommand> script) {
 
 void PlayRunner::post_command(sim::Command command) {
     queue_.push(std::move(command));
+}
+
+std::vector<RejectionNote> PlayRunner::take_rejections() {
+    std::lock_guard lock(snap_mu_);
+    std::vector<RejectionNote> out;
+    out.swap(rejections_);
+    return out;
 }
 
 std::vector<ScriptedCommand> PlayRunner::applied_commands() const {

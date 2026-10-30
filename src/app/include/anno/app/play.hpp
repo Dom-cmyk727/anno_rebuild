@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -73,6 +74,20 @@ struct PlaySnapshot {
     /// The last turn this snapshot follows (its index), so a reader can check
     /// the snapshot against the mailbox.
     std::uint64_t turn = 0;
+    /// The developer player's money after the turn, and the goods stock (8.8 tons,
+    /// per goods number) of its city. Empty when the player has no city.
+    std::int64_t money = 0;
+    std::vector<std::uint32_t> goods;
+    /// The reason of the last refused command, kept for a few seconds of turns
+    /// (empty when none). The full list is take_rejections().
+    std::string last_rejection;
+};
+
+/// A command the sim refused (CommandRejected, the host's UI event): the turn
+/// that refused it and the reason name (sim::reject_name).
+struct RejectionNote {
+    std::uint64_t turn = 0;
+    std::string reason;
 };
 
 /// Clock and sleep for the turn schedule. The app uses `steady_clock`. A test
@@ -127,6 +142,10 @@ class PlayRunner {
     /// The turns whose batches are waiting, oldest first (tests; the window
     /// uses take_building_batches). Taken under the same lock as a snapshot swap.
     [[nodiscard]] std::vector<std::uint64_t> pending_batch_turns() const;
+    /// Every refused command since the last call, oldest first (the window takes them
+    /// once per frame, as the batches). The list is kept to the last 256 refusals
+    /// (kRejectionKeep): a window that stops taking them loses the oldest, not the newest.
+    [[nodiscard]] std::vector<RejectionNote> take_rejections();
     /// How many batches the mailbox holds before it collapses them into a resync
     /// (BuildingMailbox). Default: one second of turns. Call before `start`.
     void set_batch_bound(std::size_t bound);
@@ -149,7 +168,13 @@ class PlayRunner {
     void loop();
     void one_turn();
     void publish(std::uint64_t turn_us, std::uint64_t turn,
-                 std::shared_ptr<const BuildingBatch> batch);
+                 std::shared_ptr<const BuildingBatch> batch, std::vector<RejectionNote> rejected);
+    /// Refusals kept for take_rejections. Reason: a refusal is a turn and a short
+    /// name, and 256 is about a minute of refusals at a few per second. Making it a
+    /// setting is a small change if a session needs more.
+    static constexpr std::size_t kRejectionKeep = 256;
+    /// Seconds of turns the title keeps showing the last refusal (30 turns).
+    static constexpr std::uint64_t kRejectionShowTurns = 30;
     void publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot);
     /// The buildings after the turn, diffed against the last list (sim thread).
     [[nodiscard]] std::shared_ptr<const BuildingBatch> building_batch(std::uint64_t turn);
@@ -184,6 +209,12 @@ class PlayRunner {
     // (written by the sim thread under snap_mu_; read by applied_commands under it).
     CommandQueue queue_;
     std::vector<ScriptedCommand> applied_;
+    // The developer player's city (sim thread, found at construction), the refusals
+    // waiting for the window (under snap_mu_), and the last refusal shown in the title.
+    std::optional<sim::CityRef> developer_city_;
+    std::vector<RejectionNote> rejections_;
+    std::string last_reason_;
+    std::uint64_t last_reason_turn_ = 0;
 };
 
 } // namespace anno::app

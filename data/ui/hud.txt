@@ -32,6 +32,10 @@ element infoexit pos 984 725 size 33 38 file toolgfx/fenster.tex access INFOEXIT
 element rotate_left pos 808 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 34 method sprite-sad shot r2_info_pioneer_house
 element rotate_right pos 987 451 size 33 38 file toolgfx/fenster.tex access INFOROTPFEIL tex_id 36 method sprite-sad shot r2_info_pioneer_house
 element no_klick pos 860 305 size 50 50 file toolgfx/fenster.tex access NO_KLICK tex_id 56 method sprite-sad shot r2_construction_public
+element option_exit pos 927 660 size 92 100 file toolgfx/fenster.tex access OPTION_EXIT tex_id 1492 method sprite-sad shot r2_options
+element rating_bg pos 0 0 size 1024 768 file toolgfx/fenster.tex access STATISTIK_UNTERGRUND tex_id 1509 method sprite-sad shot f15_rating
+element pionier_bk size 245 467 file toolgfx/fenster.tex access VIEWINFOPIONIERMAIN_BK tex_id 974 method inc-size
+element option_background size 245 467 file toolgfx/fenster.tex access OPTION_BACKGROUND tex_id 1475 method inc-size
 element fenster_statusbar size 780 43 file toolgfx/fenster.tex access STATUSBAR method inc-size
 click tab_construction pos 809 212
 click tab_military pos 870 212

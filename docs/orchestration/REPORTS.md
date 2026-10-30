@@ -7920,3 +7920,22 @@ Round 2, head `313d176`, subagent [T61 pass-2 recheck](a35162d3-c196-43ad-9b01-f
 3. **Do not blit BAUMAT on the idle mock.** Alternative: always blit ids 36-39. Rejected: they are absent from pass-2 `hud_idle_running` (section 2.3) and were the largest idle-diff cluster when blitted.
 4. **Mask the idle settlement panel, not the construction grid.** Alternative: one mask for the whole right chrome below the tabs. Rejected: construction compare must see locked `NO_KLICK` cells.
 5. **Residual empty-cell stone is MAINUNTERGRUND, not a second ACCESS.** Alternative: invent a construction-panel fill. Rejected: no ACCESS SAD-matched; listed as explained residual, not a guess in the spec.
+
+## UI.1.F1 — progress, F1.5 — 2026-10-30 16:10 — status: IN PROGRESS
+- Branch: `task/UI-1-ingame-ui-re`; worktree: `E:\anno1503-worktrees\anno1503-UI-1`
+- Done: captured and specified the rest of the in-game tree at Citizen / 1024 x 768. Wine pass 3 silent `d91-20261030-132532`, 31 `f15_*` shots, leftover_pids empty. Tried steps for the screens that did not open are in OQ-547..549.
+- Evidence:
+  - Kontor/settlement: `f15_kontor` (goods column; `TOOLTIP:INFOSTADT*`). Trade sliders not opened (OQ-547).
+  - Options: load `f15_options_y360`, save `f15_options_y410`, music `f15_options_y460`, speech `f15_options_y510`. `OPTION_EXIT` (927, 660) 92 x 100 mean 11.23 on `r2_options`. Statistics/quit confirm not opened (OQ-549).
+  - Ship list **S** `f15_ship_list`; city list **C** `f15_city_list`; rating **Q** `STATISTIK_UNTERGRUND` id 1509 mean 23.41 on `f15_rating`; pause **P** `f15_pause`.
+  - Player menu **D** + diplomacy hover `f15_hover_diplo_hand` (`TOOLTIP:SPIELERINFO_VERTRAG`). No second player, so no treaty cycle.
+  - Selected house `f15_selected_house` (`VIEWINFOPIONIERMAIN_BK`, `TOOLTIP:WOHNHAUSINFO`). Help-on-building click opened `MAX_PIC` (OQ-548).
+  - `python -I tools/ui_layout.py check-files --root .` and `validate --layout data/ui --game-dir E:\anno1503\game\app` run after this commit's files.
+- Next: F1.6 resolutions (OQ-535).
+- Subagents: none.
+- Open: 535, 536, 539-549.
+
+### Decisions and reasoning
+1. **Record misses as OQs, not guessed panels.** Alternative: label the Kontor lower icons as trade sliders from `screens.json`. Rejected: the four clicks did not change the panel.
+2. **Rating is key Q, not the options graph.** Alternative: wait to click the orange graph. Rejected: `STATISTIK_UNTERGRUND` already SAD-matches `f15_rating` at (0,0) mean 23.41; the options-graph target stays OQ-549.
+3. **Ship panel from the list, not a missed map click.** Alternative: keep probing water pixels. Rejected: four named guesses opened `MAX_PIC`; key **S** already shows the list. Opening the ship from the list row is still open (not an OQ number; F1.6 if time).

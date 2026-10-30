@@ -1,6 +1,6 @@
 # In-game UI (original, GOG 2.0.0.5)
 
-**Status:** UI.1 steps 1-8 plus F1.2 cell table, F1.3 measured build-test surface, F1.4 oracle mock and per-pixel compare (2026-10-30). Reverse-engineering and specification only; no engine code.
+**Status:** UI.1 steps 1-8 plus F1.2-F1.5 (cell table, measured HUD, oracle compare, rest of the screen tree). Reverse-engineering and specification only; no engine code.
 **Branch:** `task/UI-1-ingame-ui-re`. Layout data: [`data/ui/`](../../data/ui/) (derived facts; no original pixels or strings). Oracle: `tools/ui_layout.py`. First pass, superseded where this note disagrees: [`ui-and-placement.md`](ui-and-placement.md).
 
 Every claim here names its evidence: a file entry (path, section, key or ACCESS name), a module + address, or a Wine-runner screenshot under `cache/orig/ui-1/` with the steps that reached it. Anything not established is an OQ (OQ-535..549), never a guess written as fact.
@@ -104,19 +104,28 @@ Reachable from a running single-player endless (Citizen) game. How each screen i
 | # | Screen | How reached | Shot |
 |---|---|---|---|
 | 1 | HUD idle | `macros.new_game citizen`, F8 | `hud_idle_running` |
-| 2 | Settlement selected | click Kontor (about 0.38, 0.47) | `r2_hud_kontor` |
+| 2 | Settlement / Kontor panel | click Kontor (0.38, 0.47) | `r2_hud_kontor`, `f15_kontor` |
 | 3 | Construction menu, 8 categories | **B**, then category column | `r2_construction_*` |
 | 4 | Building info / placement | click a grid cell | `r2_info_*` / `r2_place_*` |
-| 5 | Demolish | pickaxe click (993, 714) | `r2_demolish` |
-| 6 | Help / info mode | help tab (922, 219) | `r2_tab_help` |
-| 7 | Military tab (same chrome as key D) | military tab (870, 219) | `r2_tab_military` |
-| 8 | Options tab (in-panel) | options tab (973, 219) | `r2_options` |
-| 9 | Player list (key D) | key **D** | `r2_player_menu` |
-| 10 | Pause overlay | key **P** | pass 1 `options_key_O` (parchment; also shows the options tab) |
+| 5 | Demolish | pickaxe click (996, 736) | `r2_demolish` |
+| 6 | Help / info mode | help tab centre (931, 212) | `r2_tab_help`, `f15_help_tab` |
+| 7 | Military tab (same chrome as key D) | military tab (870, 212) | `r2_tab_military` |
+| 8 | Options tab (in-panel) | options tab (992, 212) or key **O** | `r2_options`, `f15_options_tab` |
+| 9 | Player list | key **D** | `r2_player_menu`, `f15_player_menu` |
+| 10 | Pause overlay | key **P** | `f15_pause` |
+| 11 | Options load | options tab, click (800, 360) | `f15_options_y360` |
+| 12 | Options save | options tab, click (800, 410) | `f15_options_y410` |
+| 13 | Options music | options tab, click (800, 460) | `f15_options_y460` |
+| 14 | Options speech | options tab, click (800, 510) | `f15_options_y510` |
+| 15 | Ship list | key **S** | `f15_ship_list` |
+| 16 | City list | key **C** | `f15_city_list` |
+| 17 | Rating (full frame) | key **Q** | `f15_rating` |
+| 18 | Selected house | place type 501, click it | `f15_selected_house` |
+| 19 | Deselected right panel | ESC from Kontor, or a miss-click | `f15_ship_guess_0` (`MAX_PIC`) |
 
-**Not captured in this session** (still in the tree, no shot): ship list **S**, city list **C**, rating **Q**, save/load/speech sliders as separate dialogs, diplomacy treaty cycle, in-game messages, a second settlement stage, a marble-cost building selected, Options resolution list (OQ-535).
+**Tried, not reached** (QUESTION / OQ, not silence): Kontor trade sliders (OQ-547); help-page on a building (OQ-548); options statistics, quit confirm, right-side book/crest (OQ-549); diplomacy treaty cycle (no second player at Citizen); in-game `MESSAGEBOX` (none fired); ship panel from a map click (four guesses missed; list is `f15_ship_list`); second settlement stage (OQ-539); Options resolution list (OQ-535).
 
-The military tab and key **D** open the same player-list panel (`r2_tab_military`, `r2_player_menu`). The military-tab tooltip is `Texte.dat` `TOOLTIP:CONTROLFELD` index 2 and index 3 (two identical lines). The options tab is an in-panel menu (`TOOLTIP:OPTION*` family), not a parchment. Pause (**P**) is a parchment dialog over the map.
+The military tab and key **D** open the same player-list panel (`r2_tab_military`, `r2_player_menu`). The military-tab tooltip is `Texte.dat` `TOOLTIP:CONTROLFELD` index 2 and index 3 (two identical lines). The options tab is an in-panel menu (`TOOLTIP:OPTION*` family), not a parchment. Pause (**P**) is a parchment dialog over the map. Key **O** opens the same in-panel options as the gear tab (`f15_key_O` after a leftover speech submenu still showed `OPTIONSUBS_TEXTE`; the clean open is `f15_options_tab`).
 
 ## 2. HUD at 1024 × 768 (build-test surface, F1.3)
 
@@ -483,6 +492,7 @@ Eight non-addon thumbnails. Bound to categories in section 3.1 (`View.dll` push 
 |---|---|---|---|---|
 | 1 | `d91-20261030-112327` | 27 | **P** pause | Parchment covers the map; ESC after a cell closed the construction menu, so later category shots were idle HUD. Keep only as pause + options-tab evidence |
 | 2 | `d91-20261030-112532` | 32 `r2_*` + `hud_idle_running` | **F8** | Canonical. No ESC between categories; **B** reopened before each info cell. Demolish at (0.97, 0.93) |
+| 3 | `d91-20261030-132532` | 31 `f15_*` | **F8** | Screen-tree remainder. Silent. |
 
 Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Look at these:
 
@@ -518,6 +528,18 @@ Merged `index.json` lists 59 names. Stable copies: `cache/orig/ui-1/shots/`. Loo
 | `r2_options` | options tab |
 | `r2_player_menu` | key **D** |
 | pass 1 `options_key_O` | **P** then **O** (parchment + options tab) |
+| `f15_kontor` | click Kontor (0.38, 0.47) |
+| `f15_kontor_btn_{a,b,c,d}` | click lower Kontor icons (820-970, 680); no trade panel opened |
+| `f15_ship_guess_0..3` | map clicks near the ship; all missed (`MAX_PIC`) |
+| `f15_ship_list` / `f15_city_list` / `f15_rating` | keys **S** / **C** / **Q** |
+| `f15_player_menu` / `f15_hover_diplo_*` / `f15_diplo_click_hand` | key **D**, hover/click diplomacy cluster |
+| `f15_options_tab` | options tab |
+| `f15_options_y{360,410,460,510}` | options column x=800, those y |
+| `f15_pause` | key **P** (speech submenu leftover on the right) |
+| `f15_help_tab` / `f15_help_on_kontor` | help tab, then click Kontor |
+| `f15_placed_house` / `f15_selected_house` | **B**, public (0,0), click land, ESC, click the house |
+
+Pass 3: Wine `d91-20261030-132532`, 31 `f15_*` shots, silent, `watchdog_stopped`, leftover_pids empty.
 
 ## 8. Implementation-status (for UI.2)
 
@@ -532,7 +554,8 @@ Read-only against `src/sim` at this board (`064b4a2` plus this branch). There is
 | Demolish pickaxe | captured | `DemolishCmd` + `remove_building` (S10) |
 | Pause parchment | captured | none |
 | Options tab / player menu / help-info | captured as chrome | none |
-| Ship list, city list, trade sliders, messages | not captured | `SetTradeFlagCmd` / `SetTradeSlotCmd` exist; no UI |
+| Ship list, city list, rating, pause, options load/save/music/speech | captured F1.5 | none |
+| Kontor trade sliders, help-page on a building, options statistics/quit | not opened (OQ-547..549) | `SetTradeFlagCmd` / `SetTradeSlotCmd` exist; no UI |
 
 Typed construction cells vs sim (Citizen start):
 
@@ -548,7 +571,57 @@ Typed construction cells vs sim (Citizen start):
 | 1302 / 810 | coastal (0,0) Kontor / (0,1) fisher | `create_building`; Kontor / fisher classes exist |
 | all L cells | remaining 133 | types exist in `Anlagen.dat`; UI lock (`INFRAMIN` / type `+0x23`) is not enforced in the command layer the way the menu paints `?` |
 
-## 9. Glossary (new in this note)
+## 9. Rest of the screen tree (F1.5)
+
+Wine pass 3 `d91-20261030-132532`. Clicks are rectangle centres. No original strings stored; text families are `Texte.dat` section names.
+
+### 9.1 Settlement / Kontor
+
+Click Kontor (0.38, 0.47): right panel with nameplate and a goods column (`f15_kontor`, same as `r2_hud_kontor`). Text families `TOOLTIP:INFOSTADT*` (`INFOSTADTTAB` 16 lines, `STADTMAIN` 12, `WAREN_EIN-VERKAUF` 6). `INFOUNTERGRUND` id 33 does not SAD-match this panel (best mean 78.7). Four clicks at (820-970, 680) did not open a buy/sell slider (OQ-547).
+
+### 9.2 Options submenus
+
+Options tab (992, 212) / `MAINTAB` frame 15. Main list `f15_options_tab` / `r2_options`. `TOOLTIP:OPTION` 5 lines, `TOOLTIP:OPTION_MAIN` 4, `TOOLTIP:OPTION_MAIN_ADDON` 5.
+
+| Click (x, y) | Panel | Shot | Text / ACCESS |
+|---|---|---|---|
+| (800, 360) | load list | `f15_options_y360` | `TOOLTIP:OPTION_LOAD` (1 line); `OPTION_LADEN` id 1490 94 x 81 (no SAD < 40) |
+| (800, 410) | save list + name plank | `f15_options_y410` | `TOOLTIP:OPTION_SAVE` (2); `OPTION_EINGABEPLANKE` id 1508 239 x 52; `OPTION_SPEICHERN` id 1500 |
+| (800, 460) | music ticks + slider | `f15_options_y460` | `TOOLTIP:OPTION_MUSIC` (1); `OPTION_SLIDER` id 1470 24 x 35; `OPTION_HACKERL` id 1496 14 x 11 |
+| (800, 510) | speech ticks | `f15_options_y510` | `OPTIONSUBS_TEXTE` (5 lines) |
+| (973, 710) door | quit | not opened | `OPTION_EXIT` id 1492 at **(927, 660)** 92 x 100, mean **11.23** on `r2_options`. Click while speech was still open was a no-op (`f15_options_exit`). OQ-549 |
+
+Statistics from this menu and the right-side book/crest were not hit (OQ-549). Rating **Q** is a different full-frame screen (9.5).
+
+### 9.3 Player, ship list, city list, diplomacy
+
+Key **D** / military tab: player rows + a diplomacy icon cluster (`f15_player_menu`). `TOOLTIP:SPIELERINFOMAIN` 6, `SPIELERINFOTAB` 8, `SPIELERINFO_VERTRAG` 24. Hover on the cluster (`f15_hover_diplo_hand`) shows a treaty tooltip; click does not open a second-player treaty panel at Citizen (no discovered AI).
+
+Key **S**: same chrome, one occupied ship row (`f15_ship_list`). `TOOLTIP:SCHIFF_LISTE` 3 lines. Map clicks at four water points missed the hull (`f15_ship_guess_*` = `MAX_PIC` id 5 empty panel).
+
+Key **C**: same chrome, one occupied city row (`f15_city_list`). `TOOLTIP:INFOSTADT_LISTEN` 3 lines.
+
+### 9.4 Pause
+
+Key **P**: parchment over the map, HUD chrome stays (`f15_pause`). No `PAUSE` ACCESS name in `fenster.inc`. `MESSAGEBOX_BK` id 1512 is 579 x 386, not this parchment. Leave with **P** again. Shot has a leftover speech submenu on the right from the options probe.
+
+### 9.5 Rating
+
+Key **Q**: full 1024 x 768 overlay. `STATISTIK_UNTERGRUND` id 1509 at (0, 0), sprite-sad mean **23.41** on `f15_rating`. `Texte.dat` `STATISTIK` 19 lines. Leave control: a plank at the bottom-left (ACCESS not bound).
+
+### 9.6 Help / info on a building
+
+Help tab selects `MAINTAB` frame 14 and shows an info-mode cursor (`r2_tab_help`, `f15_help_tab`). Clicking the Kontor afterwards opened `MAX_PIC`, not a help page (`f15_help_on_kontor`). `TOOLTIP:HELPMAIN` 7 lines. OQ-548.
+
+### 9.7 Selected house
+
+Place public (0,0) type 501, ESC, click the house: right panel with portrait and need icons (`f15_selected_house`). `VIEWINFOPIONIERMAIN_BK` id 974 245 x 467 (inc size; origin SAD not clean, mean 60). `TOOLTIP:WOHNHAUSINFO` 3 lines. `VIEWINFOPIONIER_TAB` id 975 42 x 46.
+
+### 9.8 Deselect
+
+After ESC from Kontor, or a miss-click, the right panel is `MAX_PIC` id 5 245 x 524 (the castle illustration on `f15_ship_guess_0`). Default new-game idle is the settlement view with military tab frame 13, not `MAX_PIC`.
+
+## 10. Glossary (new in this note)
 
 | Term | Literal | Meaning here |
 |---|---|---|
@@ -560,4 +633,5 @@ Typed construction cells vs sim (Citizen start):
 | Lupe | magnifying glass | `fenster.inc` ACCESS `LUPE` (zoom control graphic; role confirmed in step 4) |
 | Weltkarte | world map | `fenster.inc` ACCESS `WELTKARTE` (minimap frame candidate) |
 | Füller | filler | `statusbar.dat` `FUELLER01`–`03`, large fills 245 × 192 / 96 / 256 |
+| Statistik | rating / statistics | Full-frame `STATISTIK_UNTERGRUND` id 1509; `Texte.dat` `STATISTIK` 19 lines; key **Q** |
 | Gadget / `tGad*` | gadget | AnnoFrame widget classes (`tGadKlick`, `tGadSlider`, …) |

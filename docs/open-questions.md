@@ -2091,3 +2091,24 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Pixel evidence of holding CTRL while placing (entrance snaps to a street, manual p15).
 - **What we know:** runner `key` cannot hold a modifier across a later `click`.
 - **How to resolve:** a combined keydown+click in one xdotool sequence, or an owner desktop capture.
+
+## OQ-547: Kontor buy/sell sliders (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Pixel rectangles and ACCESS of the Kontor/settlement buy and sell sliders (upper stock-limit / keep, lower price; `screens.json` `panels.kontor`).
+- **What we know:** click Kontor at (0.38, 0.47) opens the goods column (`f15_kontor`, `r2_hud_kontor`). `TOOLTIP:INFOSTADT_WAREN_EIN-VERKAUF` has 6 lines. Four clicks at (820, 870, 920, 970), y=680, did not change the panel (`f15_kontor_btn_*`). `VIEWINFOSTADTTAB` id 661 is 42 x 46.
+- **How to resolve:** sprite-sad `VIEWINFOSTADTTAB` frames on `f15_kontor`; click those centres; or a hover tooltip bind.
+
+## OQ-548: Help page on a placed building (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** What does the help/info-mode cursor open when clicking a placed building? Which `help/*.htm` or `TOOLTIP:HELPMAIN` line is it?
+- **What we know:** help tab selects `MAINTAB` frame 14 (`r2_tab_help`, `f15_help_tab`). Clicking the Kontor afterwards opened `MAX_PIC`, not a help page (`f15_help_on_kontor`). `TOOLTIP:HELPMAIN` has 7 lines. Instant help is `InstantHelpLinks.txt`.
+- **How to resolve:** enter info mode, click a house (`f15_selected_house` is the selected-house panel, not help mode); or read the gadget on `tCursorInfo`.
+
+## OQ-549: Options statistics, quit confirm, and unused option icons (UI.1.F1)
+- **Status:** open.
+- **Area:** UI / original.
+- **Question:** Which options-tab icons open the full-frame statistics (`STATISTIK_UNTERGRUND` is already bound to key **Q**, mean 23.41 on `f15_rating`), the quit `MESSAGEBOX`, and the right-side book/crest on `f15_options_tab`?
+- **What we know:** column x=800 opens load/save/music/speech at y=360/410/460/510. `OPTION_EXIT` id 1492 is (927, 660) 92 x 100 mean 11.23 on `r2_options`; a click there while speech was open did nothing (`f15_options_exit`). `OPTION_BILANZ` id 1486 69 x 61 best mean 66 on `r2_options`.
+- **How to resolve:** click the orange graph, the book, the green crest, and `OPTION_EXIT` from the main options list (`f15_options_tab`) without a leftover submenu.

@@ -51,6 +51,12 @@ is 6 bytes and `ESEL` is a separate 8-byte record).
 the building whose counter the figure holds. These units have no building.
 Nesting uses a new parent link, not `home`.
 
+The hierarchy is the human ship in `03_1024_med_256.sze`, read as
+`SCHIFF` / `PRIVAT` / `CREW` / `ENTRY` / `PRIVAT` / `ESEL`. The ship is
+figure 1502. The crew entry is scout 717 in slot 0. The `ESEL` record is
+inside that scout and identifies donkey 718. The donkey is not a child of
+the ship.
+
 Gold is `Player.money` on the player in slot `seat`. The constructor's
 initial 10000 is replaced by the baseline's 30000. No second purse is
 created.
@@ -153,13 +159,20 @@ Parent and crew slot:
 |---|---|---|---|
 | Ship | `PlayerId(seat)` | invalid | none |
 | Scout | same player | the ship's `FigureId` | 0 |
-| Donkey | same player | the ship's `FigureId` | none |
+| Donkey | same player | the scout's `FigureId` | none |
+
+Seat 0 is figure ids 1, 2, 3 with parents invalid, 1, 2. Seat 4 is ids
+13, 14, 15 with parents invalid, 13, 14. A donkey whose parent is the ship
+fails this baseline expectation. It is a different tree from the file.
 
 `validate_figures` keeps the rule that every id is in `1 .. next_figure-1`
 and unique. The load unit adds, without relaxing that rule: a parent is
 either invalid or the id of a figure in this registry; the parent is not
-the figure itself; following parents ends. The scout's parent and the
-donkey's parent are the ship. A missing parent is a validation failure.
+the figure itself; following parents ends; a child has the same owner as
+its parent; a crew slot requires a parent and is unique among that
+parent's children. A missing parent, a cycle, or two children with the
+same crew slot is a validation failure. The baseline expectation is
+stricter than that graph check: the donkey's parent is the scout.
 
 The original `CREW/ENTRY` also stores a u16 crew-member id. That field was
 not given an instance meaning here. The scout's instance id is its
@@ -221,7 +234,7 @@ Headless. No GPU. No movement and no founding.
 
 | Test | Pass |
 |---|---|
-| Load each baseline candidate | Five players in slots 0..4, `money` 30000. Fifteen figures, ids 1..15, `next_figure` 16. Each ship kind 1502, parent invalid, four holds in file order with the two tools entries unmerged. Scout kind 717 and donkey kind 718, both parented to that seat's ship, scout crew slot 0. `cargo_goods` and `cargo_88` are 0. Zero cities. `developer_start` is off. |
+| Load each baseline candidate | Five players in slots 0..4, `money` 30000. Fifteen figures, ids 1..15, `next_figure` 16. Each ship kind 1502, parent invalid, no crew slot, four holds in file order with the two tools entries unmerged. Scout kind 717, parent the ship, crew slot 0. Donkey kind 718, parent the scout, no crew slot. A donkey parented to the ship fails the baseline expectation. `cargo_goods` and `cargo_88` are 0. Zero cities. `developer_start` is off. |
 | Positions | Each spawn centre `1000*t+500` is stored as `256*t+128`. A milli-tile not divisible by 125, such as 1, is rejected and no world is published. |
 | Facing | Manifest 0, 1, 2, 3 is stored as `dir16` 12, 8, 4, 0 on the ship, the scout and the donkey. Facing 4 is rejected. The manifest bytes are unchanged. |
 | Save and load | Positions, `dir16`, holds, parents, gold and the empty city list match. `by_id` after the load equals a rebuild. |

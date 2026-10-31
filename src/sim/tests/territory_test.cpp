@@ -205,7 +205,7 @@ TEST_CASE("territory: the emulated original's owner grids") {
     CHECK(grids.size() > 10);
 }
 
-TEST_CASE("territory: only neutral tiles change; own and rival tiles survive") {
+TEST_CASE("territory: only neutral tiles change, own and rival tiles survive") {
     sim::TileLayer t = make_layer(0, 0, 30, 30);
     // Own city 4 block and rival city 9 block, both inside the disc of R = 6 around (12, 12) 4x4.
     for (std::int32_t y = 10; y < 13; ++y) {

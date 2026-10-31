@@ -192,6 +192,15 @@ Reservation reserve_cpu_setup();
 /// (wire::kCompatVersion).
 std::uint64_t coordinator_build();
 
+/// The canonical journal of `port`: ANNO_TEST_BUDGET_JOURNAL, else coord-<port>.journal in the
+/// user's cache. The same file for every compatibility version.
+std::filesystem::path coordinator_default_journal(std::uint16_t port);
+
+/// Where a coordinator that refused to start (the previous version's journal holds promises it
+/// cannot account for) leaves its explanation: the journal's name plus ".refused". Removed by
+/// the next start-up that is not refused. A client that started the coordinator reads it.
+std::filesystem::path coordinator_refusal_notice(const std::filesystem::path& journal);
+
 struct BudgetServerOptions {
     std::uint16_t port = 47631;
     /// Every interface (the WSL host coordinator), else loopback only.
@@ -207,7 +216,8 @@ struct BudgetServerOptions {
 };
 
 /// Process entry for anno_budget_coord. Prints "LISTENING <port> ..." once it
-/// owns the port and the journal, "BIND-FAILED" or "JOURNAL-FAILED" otherwise.
+/// owns the port and the journal, "BIND-FAILED", "JOURNAL-FAILED" (exit 4)
+/// or "JOURNAL-REFUSED" (exit 5: the previous version's journal holds promises) otherwise.
 int run_budget_server(const BudgetServerOptions& options);
 
 } // namespace anno::test

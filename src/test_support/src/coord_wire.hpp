@@ -65,9 +65,11 @@ constexpr std::uint32_t kMagic = 0x32434E41u;
 /// forever (a dead owner's reservation is never released), and it accepted the client under
 /// version 3 (evidence: cache/map2-repair2-evidence/06-mixed-old-successor.txt), so a version-3
 /// coordinator and a version-4 client must refuse each other (the idle one steps aside, a busy
-/// one is waited for with a diagnostic), and a version-4 coordinator uses its own journal name
-/// (coord-<port>-v4.journal, see coord_server.cpp default_journal), which no older coordinator
-/// reads or rewrites.
+/// one is waited for with a diagnostic). Journals: every version uses the one coord-<port>.journal
+/// since MAP-2 repair 3. The coord-<port>-v4.journal of the compat-4 build published before that
+/// repair is never read or rewritten; a start-up that finds promises in it refuses (MAP-2
+/// repair 4, coord_server.cpp inspect_predecessor). Both builds advertise compat 4, so the number
+/// alone cannot tell their persisted state apart.
 constexpr std::uint32_t kCompatVersion = 4;
 constexpr std::size_t kFrameBytes = 96;
 constexpr std::uint16_t kSharedPort = 47631;

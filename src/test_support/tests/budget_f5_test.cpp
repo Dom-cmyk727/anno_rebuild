@@ -22,6 +22,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -871,5 +873,328 @@ TEST_CASE("H7: the handoffs again with the real older coordinator (opt-in ANNO_T
     run_h1(Kind::Memory, kPortH1 + 10, "h7m", old);
     run_h1(Kind::Cpu, kPortH2 + 10, "h7c", old);
     run_h5(kPortH5 + 10, "h7d", old);
+}
+#endif
+
+// ---- MAP-2 repair 4: the previously published compat-4 coordinator's versioned journal --------
+//
+// That build kept its promises in <cache>/coord-<port>-v4.journal, which the repaired build
+// never reads. Both advertise compat 4, so only the persisted state tells them apart. A start-up
+// that finds outstanding or unprovable promises in the predecessor's file refuses, before it
+// announces anything, admits anything or rewrites any journal.
+//
+//   V1/V2 (opt-in ANNO_TEST_V4_COORD + ANNO_TEST_V4_PROBE: the real published binaries) a live
+//         memory holder / CPU token of the predecessor is not forgotten: the successor refuses
+//         to start, the bytes are unchanged, a client that starts it is told why, and a recovery
+//         (the holder gone, the file moved aside) works.
+//   V3    the journal-state matrix (absent, empty, released, open memory, open CPU, dead owner,
+//         unknown owner, unreadable, malformed, truncated, both journals present, repeated starts).
+//   V4    a predecessor journal of another port does not block.
+// Ports 47900..47919, a private HOME per case.
+#if !defined(_WIN32)
+namespace {
+
+constexpr std::uint16_t kPortV1 = 47900;
+constexpr std::uint16_t kPortV2 = 47901;
+constexpr std::uint16_t kPortV3 = 47902; // + case index, up to 47919
+constexpr std::uint16_t kPortV4 = 47920;
+
+void put(const std::filesystem::path& path, const std::string& bytes) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << bytes;
+}
+
+std::string slurp(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream all;
+    all << in.rdbuf();
+    return all.str();
+}
+
+/// Every journal file under the home's cache directory, name -> bytes ("<directory>" for a
+/// directory). The refusal notice is a new file by design and is not a journal.
+std::map<std::string, std::string> journal_snapshot(const Home& home) {
+    std::map<std::string, std::string> all;
+    const auto dir = home.dir / ".cache" / "anno1503";
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        const std::string name = entry.path().filename().string();
+        if (name.size() > 8 && name.compare(name.size() - 8, 8, ".refused") == 0) {
+            continue;
+        }
+        all[name] = entry.is_directory() ? "<directory>" : slurp(entry.path());
+    }
+    return all;
+}
+
+bool gone(Child& child, std::chrono::milliseconds limit) {
+    const auto end = std::chrono::steady_clock::now() + limit;
+    while (child.running()) {
+        if (std::chrono::steady_clock::now() >= end) {
+            return false;
+        }
+        std::this_thread::sleep_for(20ms);
+    }
+    return true;
+}
+
+struct Start {
+    Child coord;
+    std::string first;
+};
+
+/// Starts the coordinator of this build on the home's default journal and returns whatever its
+/// first line is (LISTENING, JOURNAL-REFUSED, ...); no requirement on it.
+Start start_unchecked(std::uint16_t port, const Home& home) {
+    const auto exe = sibling("anno_budget_coord");
+    REQUIRE(std::filesystem::exists(exe));
+    Env env(home.vars());
+    Start s;
+    s.coord = Child::start(exe, {std::to_string(port), "local"});
+    REQUIRE(static_cast<bool>(s.coord));
+    s.first = s.coord.line(15000ms);
+    return s;
+}
+
+struct Expect {
+    const char* name;
+    std::optional<std::string> predecessor; // nullopt: no such file
+    bool blocks;
+    const char* word; // in the refusal text
+};
+
+} // namespace
+
+TEST_CASE("V3: the predecessor journal states: clean ones start, outstanding or unprovable ones "
+          "refuse without touching a byte" *
+          doctest::test_suite("budget")) {
+    const std::string hold = "A 1 7 50 3 999999 1 0\n";
+    const std::string cpu = "C 1 3 999999 1\n";
+    const std::vector<Expect> cases = {
+        {"absent", std::nullopt, false, ""},
+        {"empty", std::string(), false, ""},
+        {"released", hold + "R 1 7\n" + cpu + "D 1 3 999999 1\n", false, ""},
+        {"open-memory", hold, true, "holds promises"},
+        {"open-cpu-token", cpu, true, "holds promises"},
+        {"known-dead-owner", hold + "R 1 7\n" + hold, true, "holds promises"},
+        {"unknown-owner", "A 1 7 50 99 5 5 0\n", true, "holds promises"},
+        {"malformed", "this is not a journal\n", true, "malformed or truncated"},
+        {"truncated-record", hold + "R 1", true, "malformed or truncated"},
+        {"truncated-but-parses", hold + "R 1 7", true, "malformed or truncated"},
+        {"released-then-garbage", hold + "R 1 7\n???\n", true, "malformed or truncated"},
+    };
+    REQUIRE(cases.size() <= 17);
+    std::uint16_t port = kPortV3;
+    for (const Expect& c : cases) {
+        INFO("case " << c.name);
+        Home home((std::string("v3-") + c.name).c_str());
+        if (c.predecessor) {
+            put(home.journal(port, "-v4"), *c.predecessor);
+        }
+        const auto before = journal_snapshot(home);
+        Start s = start_unchecked(port, home);
+        if (c.blocks) {
+            CHECK(s.first.rfind("JOURNAL-REFUSED", 0) == 0);
+            CHECK(has(s.first, c.word));
+            CHECK(has(s.first, "Recovery"));
+            CHECK(has(s.first, "-v4.journal"));
+            CHECK(gone(s.coord, 5000ms));
+            CHECK(journal_snapshot(home) == before); // not a byte, and no canonical journal
+            CHECK_FALSE(std::filesystem::exists(home.journal(port)));
+            // The answer is stable: a repeated start refuses again, still touching nothing.
+            for (int i = 0; i < 2; ++i) {
+                Start again = start_unchecked(port, home);
+                CHECK(again.first.rfind("JOURNAL-REFUSED", 0) == 0);
+                CHECK(gone(again.coord, 5000ms));
+                CHECK(journal_snapshot(home) == before);
+            }
+        } else {
+            CHECK(s.first.rfind("LISTENING", 0) == 0);
+            CHECK(has(s.first, " orphans=0"));
+            CHECK(std::filesystem::exists(home.journal(port)));
+            if (c.predecessor) {
+                CHECK(slurp(home.journal(port, "-v4")) == *c.predecessor); // read, never changed
+            }
+        }
+        port += 1;
+    }
+    // An unreadable predecessor: a directory where the file belongs, then a file without read
+    // permission (skipped for a user who can read it anyway).
+    {
+        Home home("v3-unreadable-directory");
+        std::filesystem::create_directories(home.journal(port, "-v4"));
+        Start s = start_unchecked(port, home);
+        CHECK(s.first.rfind("JOURNAL-REFUSED", 0) == 0);
+        CHECK(has(s.first, "cannot be read"));
+        CHECK(gone(s.coord, 5000ms));
+        CHECK_FALSE(std::filesystem::exists(home.journal(port)));
+        port += 1;
+    }
+    {
+        Home home("v3-unreadable-mode");
+        put(home.journal(port, "-v4"), hold + "R 1 7\n");
+        std::filesystem::permissions(home.journal(port, "-v4"), std::filesystem::perms::none);
+        if (std::ifstream(home.journal(port, "-v4")).good()) {
+            MESSAGE("this user can read a mode-000 file; the permission variant is not run");
+        } else {
+            Start s = start_unchecked(port, home);
+            CHECK(s.first.rfind("JOURNAL-REFUSED", 0) == 0);
+            CHECK(has(s.first, "cannot be read"));
+            CHECK(gone(s.coord, 5000ms));
+            CHECK_FALSE(std::filesystem::exists(home.journal(port)));
+        }
+        std::filesystem::permissions(home.journal(port, "-v4"),
+                                     std::filesystem::perms::owner_read |
+                                         std::filesystem::perms::owner_write);
+        port += 1;
+    }
+    REQUIRE(port <= kPortV4);
+}
+
+TEST_CASE("V3b: both journals present, and the recovery path after a refusal" *
+          doctest::test_suite("budget")) {
+    const std::string canonical = "A 1 5 30 99 5 5 0\n"; // an unattributable orphan: kept
+    const std::string released = "A 1 7 50 3 999999 1 0\nR 1 7\n";
+    const std::string open = "A 1 7 50 3 999999 1 0\n";
+    constexpr std::uint16_t port = kPortV4 + 1;
+    {
+        Home home("v3b-released");
+        put(home.journal(port), canonical);
+        put(home.journal(port, "-v4"), released);
+        Start s = start_unchecked(port, home);
+        CHECK(s.first.rfind("LISTENING", 0) == 0);
+        CHECK(has(s.first, " orphans=1")); // the canonical record is honoured as before
+        CHECK(slurp(home.journal(port, "-v4")) == released);
+    }
+    Home home("v3b-open");
+    put(home.journal(port), canonical);
+    put(home.journal(port, "-v4"), open);
+    const auto before = journal_snapshot(home);
+    {
+        Start s = start_unchecked(port, home);
+        CHECK(s.first.rfind("JOURNAL-REFUSED", 0) == 0);
+        CHECK(gone(s.coord, 5000ms));
+        CHECK(journal_snapshot(home) == before); // the canonical journal is not rewritten either
+    }
+    // The documented recovery: the operator has confirmed the owners are gone and moves the file
+    // aside. Nothing is deleted or merged.
+    std::filesystem::rename(home.journal(port, "-v4"),
+                            home.journal(port, "-v4").string() + ".retired");
+    Start s = start_unchecked(port, home);
+    CHECK(s.first.rfind("LISTENING", 0) == 0);
+    CHECK(has(s.first, " orphans=1"));
+    CHECK(slurp(home.journal(port, "-v4").string() + ".retired") == open);
+    CHECK_FALSE(std::filesystem::exists(home.journal(port).string() + ".refused"));
+}
+
+TEST_CASE("V4: a predecessor journal of another port does not block" *
+          doctest::test_suite("budget")) {
+    Home home("v4-other-port");
+    put(home.journal(kPortV4 + 5, "-v4"), "A 1 7 50 3 999999 1 0\n");
+    Start s = start_unchecked(kPortV4 + 2, home);
+    CHECK(s.first.rfind("LISTENING", 0) == 0);
+}
+
+namespace {
+
+/// The real published predecessor: its coordinator and probe, hash-checked by the caller.
+void run_predecessor(Kind kind, std::uint16_t port, const char* name, const char* coord_exe,
+                     const char* probe_exe) {
+    Env cpu_env({{"ANNO_TEST_CPU_BUDGET", "1"}});
+    Home home(name);
+    const std::string budget_path = (f5_dir() / (std::string(name) + ".budget")).string();
+    Vars vars = client_vars(port, name, "30");
+    for (const auto& v : home.vars()) {
+        vars.push_back(v);
+    }
+    std::string seen;
+    Child old_coord;
+    Child holder;
+    {
+        Env env(vars);
+        old_coord = Child::start(coord_exe, {std::to_string(port), "local"});
+        REQUIRE(static_cast<bool>(old_coord));
+        const std::string listening = old_coord.line(15000ms);
+        REQUIRE(listening.rfind("LISTENING", 0) == 0);
+        REQUIRE(has(listening, " compat=4"));
+        holder = Child::start(probe_exe,
+                              {kind == Kind::Memory ? "holder" : "cpu-holder", budget_path, "50"});
+        REQUIRE(static_cast<bool>(holder));
+        REQUIRE(has(want(holder, "READY", 15000ms, &seen), "READY 1"));
+    }
+    // The promise is in the versioned journal, and only there.
+    const auto v4 = home.journal(port, "-v4");
+    REQUIRE(std::filesystem::exists(v4));
+    CHECK(slurp(v4).find(kind == Kind::Memory ? "A " : "C ") != std::string::npos);
+    CHECK_FALSE(std::filesystem::exists(home.journal(port)));
+    old_coord.stop(); // only the coordinator this case started; the holder lives on
+    REQUIRE(holder.running());
+    const std::string bytes = slurp(v4);
+
+    // Direct start: refused before anything is announced or admitted.
+    Start s = start_unchecked(port, home);
+    CHECK(s.first.rfind("JOURNAL-REFUSED", 0) == 0);
+    CHECK(gone(s.coord, 5000ms));
+    CHECK(slurp(v4) == bytes);
+    CHECK_FALSE(std::filesystem::exists(home.journal(port)));
+
+    // The ordinary client path: a request that starts the coordinator itself is not admitted and
+    // its reason names the refusal. Bounded: a short wait, nothing admitted beside the holder.
+    if (kind == Kind::Memory) {
+        Vars ask = vars;
+        for (auto& v : ask) {
+            if (v.first == "ANNO_TEST_BUDGET_SPAWN") {
+                v.second = "1";
+            }
+            if (v.first == "ANNO_TEST_ADMIT_WAIT_S") {
+                v.second = "8";
+            }
+        }
+        Env env(ask);
+        const auto t0 = std::chrono::steady_clock::now();
+        Child waiter = probe({"waiter", budget_path, "80"});
+        const std::string line = want(waiter, "ADMITTED", 30000ms);
+        CHECK(has(line, "ADMITTED 0"));
+        CHECK(has(line, "startup refused"));
+        CHECK(has(line, "-v4.journal"));
+        CHECK(std::chrono::steady_clock::now() - t0 < 20s);
+        CHECK(slurp(v4) == bytes);
+        CHECK_FALSE(std::filesystem::exists(home.journal(port)));
+    }
+
+    // Recovery: the owner is gone (confirmed by the operator), the file is moved aside.
+    holder.stop();
+    std::filesystem::rename(v4, v4.string() + ".retired");
+    Start ok = start_unchecked(port, home);
+    CHECK(ok.first.rfind("LISTENING", 0) == 0);
+    CHECK(slurp(v4.string() + ".retired") == bytes);
+}
+
+} // namespace
+
+TEST_CASE("V1: the real published compat-4 coordinator's live memory holder blocks the successor "
+          "(opt-in ANNO_TEST_V4_COORD, ANNO_TEST_V4_PROBE)" *
+          doctest::test_suite("budget")) {
+    const char* coord = std::getenv("ANNO_TEST_V4_COORD");
+    const char* probe_exe = std::getenv("ANNO_TEST_V4_PROBE");
+    if (coord == nullptr || coord[0] == '\0' || probe_exe == nullptr || probe_exe[0] == '\0') {
+        MESSAGE("skipping: set ANNO_TEST_V4_COORD and ANNO_TEST_V4_PROBE to the published "
+                "compat-4 binaries to run");
+        return;
+    }
+    run_predecessor(Kind::Memory, kPortV1, "v1", coord, probe_exe);
+}
+
+TEST_CASE("V2: the same for the CPU token (opt-in ANNO_TEST_V4_COORD, ANNO_TEST_V4_PROBE)" *
+          doctest::test_suite("budget")) {
+    const char* coord = std::getenv("ANNO_TEST_V4_COORD");
+    const char* probe_exe = std::getenv("ANNO_TEST_V4_PROBE");
+    if (coord == nullptr || coord[0] == '\0' || probe_exe == nullptr || probe_exe[0] == '\0') {
+        MESSAGE("skipping: set ANNO_TEST_V4_COORD and ANNO_TEST_V4_PROBE to the published "
+                "compat-4 binaries to run");
+        return;
+    }
+    run_predecessor(Kind::Cpu, kPortV2, "v2", coord, probe_exe);
 }
 #endif

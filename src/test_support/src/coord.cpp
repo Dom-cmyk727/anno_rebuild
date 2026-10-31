@@ -13,6 +13,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
@@ -826,6 +827,31 @@ detail::ConnectOutcome detail::coord_connect_once(const ConnectArgs& args,
     Native fd = connect_loopback(port);
     if (fd == kInvalid) {
         out.kind = Attempt::NotReady;
+        if (progress.spawned) {
+            // The coordinator this client started may have refused to start (the previous
+            // version's journal holds promises): its stdio is /dev/null, so it left a notice
+            // beside the journal. Terminal for this connect: starting it again cannot change
+            // the answer, and waiting for the admission deadline would only hide it.
+            const std::filesystem::path notice =
+                coordinator_refusal_notice(coordinator_default_journal(port));
+            std::error_code error;
+            const auto written = std::filesystem::last_write_time(notice, error);
+            if (!error && written >= progress.spawned_at) {
+                std::string text;
+                if (std::FILE* in = std::fopen(notice.string().c_str(), "r")) {
+                    char buffer[2048];
+                    const std::size_t got = std::fread(buffer, 1, sizeof(buffer) - 1, in);
+                    text.assign(buffer, got);
+                    std::fclose(in);
+                }
+                while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+                    text.pop_back();
+                }
+                out.kind = Attempt::Failed;
+                out.diagnostic = "infrastructure blocker: " + where + " did not start: " + text;
+                return out;
+            }
+        }
         if (!may_spawn()) {
             out.diagnostic = "no test budget coordinator is listening on port " +
                              std::to_string(port) + " (ANNO_TEST_BUDGET_SPAWN=0)";
@@ -838,6 +864,8 @@ detail::ConnectOutcome detail::coord_connect_once(const ConnectArgs& args,
             return out;
         }
         progress.next_spawn = now + std::chrono::seconds(2);
+        progress.spawned = true;
+        progress.spawned_at = std::filesystem::file_time_type::clock::now();
         if (!start_coordinator_process(shared, port)) {
             out.kind = Attempt::Failed;
             out.diagnostic =

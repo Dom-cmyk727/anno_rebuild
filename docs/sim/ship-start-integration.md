@@ -312,7 +312,7 @@ requirement that the file carry a hash.
 seats and the baseline cargo are constraints of manifest version 2 and of this adapter; `World`,
 `FigureRegistry` and `validate_figures` contain no seat or cargo limit.
 
-**State stream.** `kStateHashVersion` 115 -> 116: the figure record gains `u8 dir16`, `u64 parent`,
+**State stream (historical: this is the 116 layout; the hold amount became a u64 raw 1/256-ton count at 117, see "Exact cargo" at the end).** `kStateHashVersion` 115 -> 116: the figure record gains `u8 dir16`, `u64 parent`,
 optional `u32 crew_slot` and the hold list (`u64` count, `u32 goods`, `u32 tons` each); 14 -> 18
 serialized fields. A figure without them writes 0, none, none, empty (18 bytes). Every golden moved
 through the header; no rule or tick behaviour changed (the three event digests are identical to

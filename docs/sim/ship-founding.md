@@ -55,7 +55,7 @@ Everything is re-evaluated when the command runs (ADAPTATION, `state.md` §8.2);
 - ORIGINAL order: gold; goods in ascending goods id, holds in ascending index, each hold giving `min(amount, remaining)`; then the city and the building (with the "already paid" flag, so `Place` does not charge again). The original checks by summing all holds of a goods and commits without re-checking. A hold taken to zero gets its goods id cleared to 0.
 - ORIGINAL: gold is subtracted without a floor.
 - ORIGINAL (D): the order of gold, goods, then the ring allocation means a full city ring loses the payment. ADAPTATION: P13 is checked first.
-- REBUILD today: `ShipHold { goods, tons }` in whole tons, which cannot represent original 8.8 holds. This is a limitation to be removed (section 11 B, ShipHold row), not evidence that fractional cargo is invalid. The original's hold amount is a u16; the rebuild takes the 8.8 semantics and no inherited capacity limit.
+- REBUILD: since stream 117 (task MAP-2, package B) `ShipHold { goods, amount_88 }` is an exact u64 count of 1/256 ton, so original 8.8 holds are representable; at 116 it was whole tons. The original's hold amount is a u16; the rebuild takes the 8.8 semantics and no inherited capacity limit.
 - ADAPTATION: checks first, effects after, charged once.
 
 ## 6. Successful effects, in the original's order
@@ -108,11 +108,11 @@ Verified against the tree at baseline `62ddaf1`. Nothing in this table is a rule
 | Registry type data | **present**: `BuildingType::{prodtype, width, height, action_radius, flags_word}`; `footprint(type, rotation)`; the PRODTYPE name table. The cost entries exist | `types.hpp`, `building.hpp`. Nothing identifies a "ship-founding type": decision C3 |
 | Existing placement rules | **present, different semantics**: `footprint_owner_rule` (`Build`: needs an existing city), `stand_in_placement_rule` (D17: any object refuses). They are not the founding rules and are not changed | `placement.hpp` |
 | City slots, neutral owner | **present**: `SimConfig::city_slots` (16), `neutral_owner` (15), `Island::cities`, `CityRing {stamp, cursor}` (cursor is an unsigned index; the original starts at −1) | needs the allocation rule (section 11 B, ring row) |
-| Figure position | **present**: `Figure::pos` Q24.8 (`FixedPos`), owner, `holds` (whole tons) | precision and class below |
+| Figure position | **present**: `Figure::pos` Q24.8 (`FixedPos`), owner, `holds` (u64 raw 1/256 ton since stream 117) | precision and class below |
 | Territory ownership writes | **present**: `TileLayer::set_owner` with dirty/hash accounting | the claim algorithm is missing: task U3 |
 | Figure classes, hull/range data | **missing**: no BEWOHNTYPE in the registry, no `HEAD[0x10]`/`LOGIC[0x25]`, no crew occupancy, no state-word bits | needed for the veto |
 | Relation (diplomacy) table | **missing** | needed only for the hostile branch of the veto (C5) |
-| Cargo at 8.8 | **missing** (whole tons today) | limitation to remove, not evidence against fractional cargo |
+| Cargo at 8.8 | **present** since stream 117 (`ShipHold::amount_88`, u64 raw 1/256 ton; manifest tons converted once at loading) | the payment itself is the next unit |
 | City registration data, name list and draw, Kontor counter (island property `0x11`), KONTID | **missing** (KONTID "not kept", OQ-158) | |
 | `LOCKED` island flag | **missing** (the `LOCKED` record is not read) | one persisted byte per island |
 | Discovery state of island objects | **missing** (island objects other than deposits are not modelled) | decision C8 |

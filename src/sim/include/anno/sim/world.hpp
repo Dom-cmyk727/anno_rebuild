@@ -86,7 +86,7 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // (u64 count, 0 when there is none). No PRNG site is drawn (the timeline stays 2).
 // Stream at 116 (task MAP-2, the ship-start load): the figure record gains u8 dir16, u64
 // parent (invalid = max), an optional u32 crew slot and the ship's holds (u64 count, then u32
-// goods, u32 tons each). A figure that no loader gave these keeps 0, invalid, none and empty,
+// goods, u32 tons each; 117 widens the amount, below). A figure that no loader gave these keeps 0, invalid, none and empty,
 // so a world without ships changes hash only because its stream grew. No PRNG site.
 // Stream at 117 (task MAP-2, exact cargo): a ship hold's amount is a u64 count of 1/256 ton
 // (`amount_88`) instead of a u32 count of whole tons, so a hold is 12 bytes (u32 goods, u64

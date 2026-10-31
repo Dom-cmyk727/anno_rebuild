@@ -97,6 +97,11 @@ jobs:
         run: sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
       - if: runner.os == 'macOS'
         run: brew install ninja
+      - name: evidence preflight before configure and build
+        shell: bash
+        run: |
+          python3 -I tools/test/run_selected.py --preflight-only
+          python3 -I tools/test/workflow_test.py
       - run: cmake --preset ${{ matrix.preset }}
       - name: build
         shell: bash
@@ -145,11 +150,24 @@ jobs:
           # that linux-gcc makes deterministically on lavapipe (OQ-089). The
           # MSVC build of the GPU code is still checked; the owner's 4090 runs
           # the cases locally (docs/testing/gpu-tests.md).
-          EXCLUDE=""
+          GATE_ARGS=(--build-dir "build/${{ matrix.preset }}" --select . --jobs 4
+                     --log test.log --asset-policy unavailable)
           if [ "${{ matrix.name }}" = "windows-msvc" ]; then
-            EXCLUDE="-LE gpu"
+            GATE_ARGS+=(--exclude-label gpu --config Release)
           fi
-          ctest --preset ${{ matrix.preset }} -j 4 $EXCLUDE 2>&1 | tee test.log
+          if [ "${{ matrix.name }}" != "linux-gcc" ]; then
+            GATE_ARGS+=(--allow-skip gpu)
+          fi
+          python3 -I tools/test/run_selected.py "${GATE_ARGS[@]}"
+      - name: preserve test evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-evidence-${{ matrix.name }}
+          path: |
+            test.log
+            test.log.inventory.json
+          if-no-files-found: ignore
       # T13: linux-gcc pins lavapipe with ANNO_REQUIRE_GPU=1 so the GPU parity
       # tests run there deterministically instead of skipping; the other jobs
       # still warn when they skip (the step can still fire on macos-clang,

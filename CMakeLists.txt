@@ -123,6 +123,14 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME test_names_are_selectable
            COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
                    -P ${CMAKE_SOURCE_DIR}/cmake/CheckTestNames.cmake)
+  # These contracts are also run before expensive gates; CTest registration keeps
+  # the workflow itself covered by the ordinary CI selection.
+  find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME test_verdict_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
+  add_test(NAME test_workflow_contract
+           COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/workflow_test.py)
+  set_tests_properties(test_verdict_contract test_workflow_contract PROPERTIES LABELS "workflow")
   add_subdirectory(src/test_support)
 endif()
 

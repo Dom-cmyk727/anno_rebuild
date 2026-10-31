@@ -13,12 +13,23 @@ foreach(f ${sources})
       list(APPEND bad "${f}: ${name}")
     endif()
   endforeach()
-  # file(STRINGS) splits at ';', so look for it in the raw text.
+  # file(STRINGS) splits at ';', so look for it in the raw text, over the whole name: a name may
+  # start on the line after TEST_CASE( and continue over several adjacent literals (round dz: such
+  # a name with ';' was not found by the line check above and ran no test case). The ';' is
+  # replaced first, so the match list is not split at it.
   file(READ "${f}" text)
-  string(REGEX MATCHALL "TEST_CASE\\(\"[^\"\n]*;[^\"\n]*\"" semis "${text}")
-  if(semis)
-    list(APPEND bad "${f}: a TEST_CASE name with ';'")
-  endif()
+  string(REPLACE ";" "<semicolon>" text "${text}")
+  string(REGEX MATCHALL "TEST_CASE\\([ \t\r\n]*(\"[^\"\n]*\"[ \t\r\n]*)+" names "${text}")
+  foreach(name IN LISTS names)
+    if(name MATCHES "<semicolon>")
+      string(REGEX REPLACE "[ \t\r\n]+" " " shown "${name}")
+      string(REPLACE "<semicolon>" " (semicolon) " shown "${shown}")
+      list(APPEND bad "${f}: a TEST_CASE name with a semicolon: ${shown}")
+    elseif(name MATCHES "[*?\\]" OR name MATCHES "\\[" OR name MATCHES "\\]")
+      string(REGEX REPLACE "[ \t\r\n]+" " " shown "${name}")
+      list(APPEND bad "${f}: ${shown}")
+    endif()
+  endforeach()
 endforeach()
 if(bad)
   string(REPLACE ";" "\n" msg "${bad}")

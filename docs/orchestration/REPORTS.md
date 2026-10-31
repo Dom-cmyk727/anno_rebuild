@@ -8580,7 +8580,7 @@ gates). `0628f08` test: a numeric memory sampler (DW6c).
 at 1800 s on the 6,843,933,440-byte estimate with 1,138,180,096 bytes available (a wait refusal, not an exit); the
 first admission 591 s later; 16 completed items, all with growth below their reservation; the largest reservation
 Single_10 case 0 (6,001,242,496 B, 5.59 GiB, growth 4.04 GiB) and the largest growth Single_01 case 1 (growth
-5,045,358,144 B, 4.70 GiB, reservation 5.47 GiB) are different items; one admitted 6.84 GB estimate has an end
+5,045,358,144 B, 4.70 GiB, reservation 5,867,270,656 B, 5.46 GiB) are different items; one admitted 6.84 GB estimate has an end
 record but no item record (unexplained, open); CTest test #291 ended with `Timeout 3600.05 sec` and exit 8. Round
 dw's heavy run on the same test (#312 here) passed in 865 s with 8 GiB headroom and one worker.
 
@@ -8664,7 +8664,7 @@ incremental lists, not started); the chunk rebuild on the workers is untimed.
    this round's sources; to be checked on the Windows and Linux hosts.
 4. `scene_probe` (opt-in), 2- and 4-worker heavy calibration, raw per-frame sample dumps, chunk-rebuild timing,
    reclamation time, peak live bytes of generations, real simulation-contention runs.
-5. The picture's illegal-duplicate semantics (investigation 2) and the 40-object-per-island build cost.
+5. The picture's illegal-duplicate semantics (investigation 2) and the per-island build cost of about 14 ms.
 6. The unexplained admitted item without an item record in the saved round-dv heavy log.
 
 ### Next review task

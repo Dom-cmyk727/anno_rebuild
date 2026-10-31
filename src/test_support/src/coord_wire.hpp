@@ -38,6 +38,11 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+#if defined(__APPLE__)
+#include <libproc.h>
+#include <sys/proc.h>
+#include <sys/proc_info.h>
+#endif
 
 namespace anno::test::wire {
 
@@ -582,8 +587,45 @@ inline bool linux_zombie(const std::string& stat_path) {
 }
 #endif
 
+#if defined(__APPLE__)
+/// What macOS tells about a process (it has no /proc): proc_pidinfo with
+/// PROC_PIDTBSDINFO. The start time, in microseconds since the epoch
+/// (pbi_start_tvsec, pbi_start_tvusec), names one process together with its
+/// pid, as the /proc starttime does on Linux.
+struct DarwinProcess {
+    enum class State { Gone, Unknown, Zombie, Running };
+    State state = State::Unknown;
+    std::uint64_t started = 0;
+};
+
+inline DarwinProcess darwin_process(std::uint64_t pid) {
+    DarwinProcess out;
+    if (pid == 0 || pid > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
+        out.state = DarwinProcess::State::Gone;
+        return out;
+    }
+    proc_bsdinfo info{};
+    errno = 0;
+    const int n = ::proc_pidinfo(static_cast<pid_t>(pid), PROC_PIDTBSDINFO, 0, &info,
+                                 static_cast<int>(sizeof(info)));
+    if (n != static_cast<int>(sizeof(info))) {
+        // ESRCH: no such process. Anything else (EPERM for another user's
+        // process): cannot tell.
+        out.state = errno == ESRCH ? DarwinProcess::State::Gone : DarwinProcess::State::Unknown;
+        return out;
+    }
+    out.started = static_cast<std::uint64_t>(info.pbi_start_tvsec) * 1000000u +
+                  static_cast<std::uint64_t>(info.pbi_start_tvusec);
+    out.state = info.pbi_status == static_cast<std::uint32_t>(SZOMB)
+                    ? DarwinProcess::State::Zombie
+                    : DarwinProcess::State::Running;
+    return out;
+}
+#endif
+
 /// The creation stamp that, with the pid, names one process: Windows
-/// GetProcessTimes creation (FILETIME), Linux /proc starttime.
+/// GetProcessTimes creation (FILETIME), Linux /proc starttime, macOS the
+/// proc_pidinfo start time (darwin_process).
 inline std::uint64_t process_started() {
 #if defined(_WIN32)
     FILETIME created{};
@@ -597,6 +639,8 @@ inline std::uint64_t process_started() {
     stamp.LowPart = created.dwLowDateTime;
     stamp.HighPart = created.dwHighDateTime;
     return stamp.QuadPart;
+#elif defined(__APPLE__)
+    return darwin_process(static_cast<std::uint64_t>(::getpid())).started;
 #else
     return linux_start_time("/proc/self/stat");
 #endif

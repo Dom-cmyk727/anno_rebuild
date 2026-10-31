@@ -17,17 +17,17 @@ namespace anno::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 19> kNames = {
-    "desired",     "admitted",     "deferred",          "started",  "built",
-    "failed",      "superseded",   "dropped",           "requeued", "committed",
-    "generation",  "chunks_ready", "no_visible_change", "retired",  "reclaimed",
-    "drain_start", "drain_end",    "converged",         "run_end"};
+constexpr std::array<std::string_view, 21> kNames = {
+    "desired",           "admitted", "deferred",  "started",     "built",      "failed",
+    "superseded",        "dropped",  "requeued",  "committed",   "generation", "chunks_ready",
+    "no_visible_change", "retired",  "reclaimed", "drain_start", "drain_end",  "converged",
+    "run_end",           "gpu_mode", "gpu_ready"};
 
 struct Edit {
     double t0 = 0;
     std::uint32_t island = 0;
     std::uint64_t version = 0;
-    double t1 = -1, t2 = -1;
+    double t1 = -1, t2 = -1, t3 = -1;
     std::uint64_t generation = 0;
     bool coalesced = false, offscreen = false;
 };
@@ -126,6 +126,18 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
                 }
             }
             break;
+        case TraceKind::GpuReady:
+            // The GPU boundary of the same island and generation, not before the commit.
+            for (Edit& d : edits) {
+                if (d.island == e.island && d.generation == e.version && d.t1 >= 0 && d.t3 < 0 &&
+                    !d.offscreen && e.t_ms >= d.t1) {
+                    d.t3 = e.t_ms;
+                }
+            }
+            break;
+        case TraceKind::GpuMode:
+            s.gpu_mode = true;
+            break;
         case TraceKind::NoVisibleChange:
             for (Edit& d : edits) {
                 if (d.island == e.island && d.generation == e.version && d.t2 < 0) {
@@ -193,7 +205,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             break;
         }
     }
-    std::vector<double> object, visible;
+    std::vector<double> object, visible, gpu;
     for (const Edit& d : edits) {
         if (d.t1 < 0) {
             ++s.unfinished;
@@ -210,7 +222,16 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             ++s.visible_ready;
             visible.push_back(d.t2 - d.t0);
         }
+        if (s.gpu_mode && !d.offscreen) {
+            if (d.t3 >= 0) {
+                ++s.gpu_ready;
+                gpu.push_back(d.t3 - d.t0);
+            } else if (d.t2 >= 0) {
+                ++s.gpu_unfinished;
+            }
+        }
     }
+    s.gpu_ms = distribution(std::move(gpu));
     s.object_ms = distribution(std::move(object));
     s.visible_ms = distribution(std::move(visible));
     s.reclaim_ms = distribution(std::move(reclaim));
@@ -342,6 +363,13 @@ std::string format_summary(const TraceSummary& s) {
       << " reclaimed=" << s.reclaimed << "\n";
     line(o, "object_ready", s.object_ms);
     line(o, "visible_cpu_chunks_ready", s.visible_ms);
+    if (s.gpu_mode) {
+        o << "gpu_mode=1 gpu_ready=" << s.gpu_ready << " gpu_unfinished=" << s.gpu_unfinished
+          << " gpu_completion=unobserved presentation=unmeasured\n";
+        line(o, "visible_gpu_usable", s.gpu_ms);
+    } else {
+        o << "gpu_mode=0\n";
+    }
     line(o, "reclamation_delay", s.reclaim_ms);
     line(o, "build_queue_delay", s.queue_ms);
     line(o, "build_time_worker", s.build_ms);

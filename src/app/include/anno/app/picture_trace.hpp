@@ -75,6 +75,16 @@ enum class TraceKind : std::uint8_t {
     /// The run ended; `version` is its exit status (0: finished and verified). The last event of a
     /// complete trace.
     RunEnd,
+    /// The run draws its frames with the GPU compositor (round eb, 5A); at the start, `version` 1.
+    /// A trace without it measures CPU stages only.
+    GpuMode,
+    /// Every visible key island `island`'s change invalidated in generation `version` is
+    /// GPU-usable (gpu::GpuFrame::chunk_state: the compositor's copy is that CPU chunk's, whole,
+    /// not
+    /// dissolving), all at the same observation, after a frame's render; the time is that frame's
+    /// submission (the return of GpuFrame::render, after wgpuQueueSubmit), so the event names the
+    /// frame that draws them. Not GPU completion and not presentation (neither is observed).
+    GpuReady,
 };
 
 [[nodiscard]] std::string_view trace_kind_name(TraceKind k);
@@ -104,6 +114,12 @@ struct TraceSummary {
     /// intermediate publications of the Monotonic policy (round dz).
     std::size_t intermediate_commits = 0;
     Distribution object_ms, visible_ms, reclaim_ms;
+    /// GPU mode (a GpuMode event): edits whose visible change became GPU-usable (gpu_ready, latency
+    /// gpu_ms from the edit's Desired event), and edits whose visible chunks were CPU-ready but
+    /// never GPU-usable before the trace ended (gpu_unfinished).
+    bool gpu_mode = false;
+    std::size_t gpu_ready = 0, gpu_unfinished = 0;
+    Distribution gpu_ms;
     /// Per build (an island and version with both events): the queue delay (Admitted to Started)
     /// and the build time on a worker (Started to Built, Superseded or Failed).
     Distribution queue_ms, build_ms;

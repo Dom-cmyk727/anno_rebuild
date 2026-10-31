@@ -112,9 +112,10 @@ def main():
         print(f"picture_table: {matrix / 'results.tsv'}: {e.strerror or e}", file=sys.stderr)
         return 2
     print("| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU "
-          "chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | "
-          "unfinished | worker build ms p50 / max |")
-    print("|---|---:|---:|---|---|---:|---:|---:|---:|---|")
+          "chunks ready ms n / p50 / p95 / p99 / max | visible GPU-usable ms n / p50 / p95 / p99 "
+          "/ max (unfinished) | max age ms | coalesced | offscreen | unfinished | worker build ms "
+          "p50 / max |")
+    print("|---|---:|---:|---|---|---|---:|---:|---:|---:|---|")
     stage_rows = []
     memory_rows = []
     progress_rows = []
@@ -142,9 +143,18 @@ def main():
                 return (f"{d['n']} / {float(d['p50_ms']):.1f} / {d['p95_ms']} / {d['p99_ms']} / "
                         f"{float(d['max_ms']):.1f}")
             age = kv(one_line(agg, "max_age_ms", "the aggregate"))
+            # GPU mode (round eb): the GPU-usable boundary and the edits that never reached it. A
+            # CPU-only trace (or one aggregated by a binary before round eb) has no GPU cell.
+            gpu_lines = [l for l in agg if l.startswith("gpu_mode=")]
+            gpu = kv(gpu_lines[0]) if gpu_lines else {"gpu_mode": "0"}
+            if gpu["gpu_mode"] == "1":
+                gpu_cell = f"{cells('visible_gpu_usable')} ({gpu['gpu_unfinished']})"
+            else:
+                gpu_cell = "cpu only"
             build = kv(lines["build_time_worker"])
             row = (f"| {name} | {status} | {first['edits']} | {cells('object_ready')} | "
-                   f"{cells('visible_cpu_chunks_ready')} | {float(age['max_age_ms']):.1f} | "
+                   f"{cells('visible_cpu_chunks_ready')} | {gpu_cell} | "
+                   f"{float(age['max_age_ms']):.1f} | "
                    f"{first['coalesced']} | {first['offscreen']} | {first['unfinished']} | "
                    f"{float(build['p50_ms']):.1f} / {float(build['max_ms']):.1f} |")
             all_frames = read_frames(case / "frames.tsv")
@@ -161,7 +171,8 @@ def main():
                     f"{dist([float(f['reindex_ms']) for f in publishing])} | "
                     f"{dist([float(f['dispatch_ms']) for f in publishing])} | "
                     f"{dist([float(f['commit_ms']) for f in committing])} | "
-                    f"{dist([float(f['update_ms']) for f in frames])} |")
+                    f"{dist([float(f['update_ms']) for f in frames])} | "
+                    f"{dist([float(f['apply_ms']) + float(f['commit_ms']) + float(f['update_ms']) for f in frames])} |")
             summary = read_lines(case / "summary.txt")
             mem = kv(one_line(summary, "memory ", "summary.txt"))
             stats = kv(one_line(summary, "stats ", "summary.txt"))
@@ -196,11 +207,14 @@ def main():
         progress_rows.append(progress)
     print()
     print("Window stages per frame, by phase, ms: n / p50 / p95 / p99 / max (apply stages over "
-          "the frames that published, commit over the frames that committed).")
+          "the frames that published, commit over the frames that committed). Chunk update: the "
+          "CPU path's update_chunks, or in GPU mode the compositor's render up to its submission "
+          "(chunk planning, uploads, recording, submit; GPU execution and presentation are not in "
+          "it). Frame: apply + commit + chunk update, the window thread's work for the frame.")
     print()
     print("| case | phase | frames | apply: list | apply: reindex | apply: dispatch and copies | "
-          "commit | chunk update |")
-    print("|---|---|---:|---|---|---|---|---|")
+          "commit | chunk update | frame |")
+    print("|---|---|---:|---|---|---|---|---|---|")
     for r in stage_rows:
         print(r)
     print()

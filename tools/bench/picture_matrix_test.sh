@@ -153,6 +153,19 @@ for kind in missing malformed cut; do
     grep -q "case bad: evidence not usable" "$WORK/table.stderr" || fail "$kind trace: no stderr line"
 done
 grep -q "trace incomplete: run=INCOMPLETE" "$WORK/table.stdout" || fail "cut trace: reason not given"
+grep -q "^| good | 0 | 1 | 1 / 6.0 / insufficient / insufficient / 6.0 | 1 / 9.0 / insufficient / insufficient / 9.0 | cpu only | " \
+    "$WORK/table.stdout" || fail "table: a CPU trace has no GPU cell"
+# A GPU-mode trace: the GPU-usable cell, and an edit that was CPU-ready but never GPU-usable is
+# counted, not dropped.
+printf '%s\n0.0\tgpu_mode\t0\t1\n0.0\tdesired\t0\t1\n0.5\tdesired\t1\t1\n1.0\tadmitted\t0\t1\n2.0\tstarted\t0\t1\n5.0\tbuilt\t0\t1\n6.0\tcommitted\t0\t1\n6.0\tcommitted\t1\t1\n6.0\tgeneration\t0\t1\n9.0\tchunks_ready\t0\t1\n9.0\tchunks_ready\t1\t1\n12.0\tgpu_ready\t0\t1\n12.0\tdrain_start\t0\t0\n12.0\tdrain_end\t0\t0\n12.0\trun_end\t0\t0\n' \
+    "$HEADER" > "$WORK/gpu.tsv"
+aggregate "$WORK/gpu.tsv" 0 "aggregate of a complete GPU-mode run"
+grep -q "gpu_mode=1 gpu_ready=1 gpu_unfinished=1" "$WORK/agg.stdout" || fail "GPU run: counts"
+new_matrix "$WORK/m_gpu"
+make_case "$WORK/m_gpu" gpu "$WORK/gpu.tsv"
+table "$BENCH" "$WORK/m_gpu" 0 "table of a GPU-mode case"
+grep -q "| 1 / 12.0 / insufficient / insufficient / 12.0 (1) |" "$WORK/table.stdout" ||
+    fail "table: the GPU cell or its unfinished count"
 new_matrix "$WORK/m_nosummary"
 make_case "$WORK/m_nosummary" bad "$WORK/productive.tsv" "" none
 table "$BENCH" "$WORK/m_nosummary" 1 "table with a case without summary.txt"

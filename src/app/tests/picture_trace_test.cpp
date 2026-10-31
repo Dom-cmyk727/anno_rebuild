@@ -472,3 +472,45 @@ TEST_CASE("picture trace: intermediate publications are counted against the desi
     CHECK(s.coalesced == 1); // v2 reached through v3
     CHECK(app::format_summary(s).find("intermediate_commits=1") != std::string::npos);
 }
+
+TEST_CASE("picture trace: the GPU boundary is measured per island and generation, after the CPU "
+          "one, and an edit never GPU-usable is reported unfinished" *
+          doctest::test_suite("picture_trace")) {
+    // GPU mode (round eb, 5A). Island 0: desired at 0, committed in generation 1 at 4, CPU-ready
+    // at 7, GPU-usable at 9 (two frames later). Island 1: desired at 1, committed in generation 1,
+    // CPU-ready at 8 and never GPU-usable before the end. Island 2: offscreen (no visible key).
+    // A GpuReady of island 0 for another generation (2) is not island 0's generation-1 latency.
+    const std::vector<app::TraceEvent> events{
+        {0, K::GpuMode, 0, 1},   {0, K::Desired, 0, 1},     {1, K::Desired, 1, 1},
+        {2, K::Desired, 2, 1},   {4, K::Committed, 0, 1},   {4, K::Committed, 1, 1},
+        {4, K::Committed, 2, 1}, {4, K::Generation, 0, 1},  {4, K::NoVisibleChange, 2, 1},
+        {6, K::GpuReady, 0, 2},  {7, K::ChunksReady, 0, 1}, {8, K::ChunksReady, 1, 1},
+        {9, K::GpuReady, 0, 1},  {12, K::RunEnd, 0, 0},
+    };
+    const app::TraceSummary s = app::summarize(events);
+    CHECK(s.gpu_mode);
+    CHECK(s.visible_ready == 2);
+    CHECK(s.offscreen == 1);
+    CHECK(s.gpu_ready == 1);
+    CHECK(s.gpu_unfinished == 1);
+    REQUIRE(s.gpu_ms.n == 1);
+    CHECK(s.gpu_ms.p50 == doctest::Approx(9.0));
+    const std::string text = app::format_summary(s);
+    CHECK(text.find("gpu_mode=1 gpu_ready=1 gpu_unfinished=1 gpu_completion=unobserved "
+                    "presentation=unmeasured") != std::string::npos);
+    CHECK(text.find("visible_gpu_usable n=1 p50_ms=9.000") != std::string::npos);
+    // The events survive the saved text.
+    const auto back = app::parse_tsv(app::to_tsv(events));
+    REQUIRE(back.ok());
+    CHECK(app::summarize(back.value()).gpu_ready == 1);
+    // A CPU-only trace says so.
+    const std::vector<app::TraceEvent> cpu{{0, K::Desired, 0, 1},
+                                           {1, K::Committed, 0, 1},
+                                           {1, K::Generation, 0, 1},
+                                           {2, K::ChunksReady, 0, 1},
+                                           {3, K::RunEnd, 0, 0}};
+    const app::TraceSummary c = app::summarize(cpu);
+    CHECK(!c.gpu_mode);
+    CHECK(c.gpu_unfinished == 0);
+    CHECK(app::format_summary(c).find("gpu_mode=0") != std::string::npos);
+}

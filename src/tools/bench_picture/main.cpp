@@ -16,22 +16,30 @@
 //   offscreen  --edits edits on the cities outside the view; after the drain the view pans to the
 //              last edited island at group 2, then zooms out to the first derived level
 // Publication: --publish monotonic (the default) or latest (the diagnostic LatestOnly policy).
-// Timing: --timing paced (a frame every --frame-ms of wall time; the loop sleeps to the deadline)
-// or saturation (frames back to back, no sleep). Edits are generated through the sim before the
-// measured loop (LegalWorkload: one Build or Demolish command and one turn each), so the loop only
-// publishes their batches when they are due; --sim-contention 1 runs a second, independent world
-// through the same production turn path on its own thread while the loop runs (the real headless
-// simulation), --busy n adds arithmetic threads (a labelled proxy, not a simulation).
-// Every case ends with the independent oracle: the committed generation against a freshly loaded
-// scene of the final desired state (every island's PROD2 items, and the chunk layers of the final
-// view; for offscreen also the panned view and its derived level).
-// Raw files in --out: manifest.txt, events.tsv (picture_trace.hpp), frames.tsv, chunks.tsv,
-// memory.tsv, sim.tsv (with --sim-contention), summary.txt. Exit status: 0 the case ran and
-// verified; 1 verification failed; 2 bad options; 3 the drain did not converge; 4 the workload or
-// the scene could not be built; 5 an evidence file could not be saved (each one is named). The
-// trace is saved last and ends with run_end, which carries the verdict when every other file was
-// saved and 5 when one was not; when the trace itself cannot be saved there is none (and no
-// summary.txt). --aggregate exits 0 only for a complete trace of a successful run (6 for an
+// GPU (round eb, 5A; built with ANNO_BUILD_GPU): --gpu 1 draws every frame with the GPU compositor
+// into an offscreen target of the view's size, with the interactive window's limits
+// (gpu::GpuLimits::interactive) unless --gpu-uploads N (chunks per frame), --gpu-budget-ms X
+// (upload time per frame; 0 = whole chunks) or --gpu-fade-ms N (the dissolve over a stand-in) set
+// them. The trace then has gpu_mode and gpu_ready events: every visible key of an island's change
+// GPU-usable at one observation, timed at the submission of the frame that draws them. GPU
+// completion is not observed and nothing is presented (headless): both are labelled so, never
+// inferred. The oracle adds the GPU's final view against a compositor of its own drawing the fresh
+// scene (exact), after the measured loop (a read-back waits for the GPU). Timing: --timing paced (a
+// frame every --frame-ms of wall time; the loop sleeps to the deadline) or saturation (frames back
+// to back, no sleep). Edits are generated through the sim before the measured loop (LegalWorkload:
+// one Build or Demolish command and one turn each), so the loop only publishes their batches when
+// they are due; --sim-contention 1 runs a second, independent world through the same production
+// turn path on its own thread while the loop runs (the real headless simulation), --busy n adds
+// arithmetic threads (a labelled proxy, not a simulation). Every case ends with the independent
+// oracle: the committed generation against a freshly loaded scene of the final desired state (every
+// island's PROD2 items, and the chunk layers of the final view; for offscreen also the panned view
+// and its derived level). Raw files in --out: manifest.txt, events.tsv (picture_trace.hpp),
+// frames.tsv, chunks.tsv, memory.tsv, sim.tsv (with --sim-contention), summary.txt. Exit status: 0
+// the case ran and verified; 1 verification failed; 2 bad options; 3 the drain did not converge; 4
+// the workload or the scene could not be built; 5 an evidence file could not be saved (each one is
+// named). The trace is saved last and ends with run_end, which carries the verdict when every other
+// file was saved and 5 when one was not; when the trace itself cannot be saved there is none (and
+// no summary.txt). --aggregate exits 0 only for a complete trace of a successful run (6 for an
 // incomplete or failed one, 2 for an unreadable, malformed or missing one).
 #include <algorithm>
 #include <atomic>
@@ -75,6 +83,10 @@
 #include <anno/app/scene_picture.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
+#ifdef ANNO_BENCH_GPU
+#include <anno/render/gpu.hpp>
+#include <anno/render/wgpu.hpp>
+#endif
 
 namespace fs = std::filesystem;
 namespace render = anno::render;
@@ -311,7 +323,8 @@ std::shared_ptr<const render::Scene> scene_of(const fs::path& dir, const app::Pl
 /// build of `fresh`. Returns the diff (all keys compared, objects in view).
 app::ChunkDiff check_view(const render::FrameRenderer& frames, const render::Scene& fresh,
                           render::Rect view, std::size_t level) {
-    render::FrameRenderer reference(1);
+    // The same ship setting as the measured renderer (the GPU mode's chunks leave ships out).
+    render::FrameRenderer reference(1, frames.ships_in_chunks());
     const int mul = 1 << static_cast<int>(level - 2);
     const render::Rect base_view{view.x * mul, view.y * mul, view.w * mul, view.h * mul};
     for (int round = 0; round < 4; ++round) {
@@ -357,6 +370,9 @@ int main(int argc, char** argv) {
                 view_w = 1920, view_h = 1080, frames_max = 100000;
     double frame_ms = 1000.0 / 60.0, duration_s = 5, rate = 10;
     bool edits_given = false;
+    std::size_t gpu = 0, gpu_uploads = 0, gpu_fade_ms = 0;
+    double gpu_budget_ms = -1;
+    bool gpu_uploads_given = false, gpu_fade_given = false;
     for (int i = 2; i < argc; ++i) {
         const std::string key = argv[i];
         if (i + 1 >= argc) {
@@ -423,6 +439,16 @@ int main(int argc, char** argv) {
             publish = std::string(val);
         } else if (key == "--sim-unpaced") {
             sim_unpaced = parse_count(key, val, 0, 1);
+        } else if (key == "--gpu") {
+            gpu = parse_count(key, val, 0, 1);
+        } else if (key == "--gpu-uploads") {
+            gpu_uploads = parse_count(key, val, 1, 100000);
+            gpu_uploads_given = true;
+        } else if (key == "--gpu-budget-ms") {
+            gpu_budget_ms = parse_real(key, val, 0, 1000);
+        } else if (key == "--gpu-fade-ms") {
+            gpu_fade_ms = parse_count(key, val, 0, 10000);
+            gpu_fade_given = true;
         } else if (key == "--drain-s") {
             drain_s = parse_count(key, val, 1, 3600);
         } else if (key == "--view") {
@@ -542,13 +568,99 @@ int main(int argc, char** argv) {
         return app::anlage_is_building(play.world, id);
     };
     auto picture = std::make_unique<app::ScenePicture>(base, initial, is_building, threads, limits);
-    render::FrameRenderer frames(1);
+    // The GPU compositor draws the ships itself: its chunks leave them out (as the viewer's).
+    render::FrameRenderer frames(1, gpu == 0);
+#ifdef ANNO_BENCH_GPU
+    std::optional<render::gpu::Context> gpu_ctx;
+    std::unique_ptr<render::gpu::GpuFrame> gpu_frame;
+    std::pair<render::gpu::Texture, render::gpu::TextureView> gpu_target;
+    render::gpu::GpuLimits gpu_limits = render::gpu::GpuLimits::interactive();
+    if (gpu != 0) {
+        auto made_ctx = render::gpu::headless_context();
+        if (!made_ctx) {
+            fail(4, "--gpu 1: no GPU device: " + made_ctx.error());
+        }
+        gpu_ctx = std::move(made_ctx).value();
+        if (gpu_uploads_given) {
+            gpu_limits.uploads_per_frame = gpu_uploads;
+        }
+        if (gpu_budget_ms >= 0) {
+            gpu_limits.upload_budget_ms = gpu_budget_ms;
+        }
+        if (gpu_fade_given) {
+            gpu_limits.chunk_fade_ms = gpu_fade_ms;
+        }
+        auto made =
+            render::gpu::GpuFrame::create(*gpu_ctx, WGPUTextureFormat_RGBA8Unorm, gpu_limits);
+        if (!made) {
+            fail(4, "--gpu 1: the compositor: " + made.error());
+        }
+        gpu_frame = std::move(made).value();
+        gpu_target = gpu_frame->offscreen_target(static_cast<std::uint32_t>(view_w),
+                                                 static_cast<std::uint32_t>(view_h));
+    }
+#else
+    if (gpu != 0) {
+        fail(2, "--gpu 1: built without the GPU compositor (ANNO_BUILD_GPU)");
+    }
+#endif
+    // A frame's chunk update: the CPU path's update_chunks, or the GPU compositor's render (which
+    // updates the chunks itself, then uploads, records and submits). Returns the chunks received.
+    struct FrameWork {
+        std::size_t built = 0, uploaded = 0;
+        bool gpu_pending = false;
+    };
+    auto frame_work = [&](const std::shared_ptr<const render::Scene>& gen, render::Rect v,
+                          std::size_t level, double t_ms) {
+        FrameWork w;
+#ifdef ANNO_BENCH_GPU
+        if (gpu_frame) {
+            const auto gs = gpu_frame->render(
+                frames, gen, v, level, static_cast<std::uint64_t>(std::max(t_ms, 0.0)),
+                render::WaterStyle::Original, gpu_target.second.get());
+            w.built = gs.chunks_built;
+            w.uploaded = gs.chunks_uploaded;
+            w.gpu_pending = gpu_frame->work_pending();
+            return w;
+        }
+#endif
+        static_cast<void>(t_ms);
+        w.built = std::get<0>(frames.update_chunks(gen, v, level));
+        return w;
+    };
+    // GPU-usable: the CPU chunk is fresh and the compositor's copy is it, whole and not dissolving.
+    auto gpu_usable = [&](const render::ChunkKey& k) {
+        const render::Chunk* c = frames.chunk(k);
+        if (c == nullptr || frames.stale_generation(k) != 0) {
+            return false;
+        }
+#ifdef ANNO_BENCH_GPU
+        if (gpu_frame) {
+            const auto st = gpu_frame->chunk_state(k);
+            return st.serial == c->serial && !st.fading;
+        }
+#endif
+        return true;
+    };
     auto workers_owned = std::make_unique<render::ChunkWorkers>(*base, chunk_threads);
     render::ChunkWorkers* chunk_workers = workers_owned.get();
     frames.set_workers(std::move(workers_owned));
-    // Warm the view (not measured): the loop measures what the edits change.
-    for (int round = 0; round < 200 && !keys_ready(frames, keys_at(*base, view, 2)); ++round) {
-        frames.update_chunks(base, view, 2);
+    // Warm the view (not measured): the loop measures what the edits change. On the GPU, every
+    // visible chunk is on the GPU too.
+    const auto warm_keys = keys_at(*base, view, 2);
+    auto warm = [&] {
+        if (!keys_ready(frames, warm_keys)) {
+            return false;
+        }
+        for (const auto& k : warm_keys) {
+            if (!gpu_usable(k)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    for (int round = 0; round < 400 && !warm(); ++round) {
+        static_cast<void>(frame_work(base, view, 2, 0));
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
@@ -625,7 +737,7 @@ int main(int argc, char** argv) {
     std::ostringstream frame_rows, chunk_rows, memory_rows;
     frame_rows << "frame\tt_ms\tphase\tpublished\tapply_ms\tapply_list_ms\treindex_ms\tdispatch_ms"
                   "\tcommit_ms\tcommitted\tupdate_ms\tchunks_built\tpending\toutstanding"
-                  "\toutstanding_bytes\tchunk_build_ms\n";
+                  "\toutstanding_bytes\tchunk_build_ms\tt_submit_ms\tgpu_uploads\tgpu_pending\n";
     chunk_rows << "t_ms\tisland\tgeneration\tlevel\tx\ty\tstate\n";
     memory_rows << "t_ms\trss\tfootprint\tmajflt\tminflt\tpressure\tsys_pageins\tsys_pageouts"
                    "\tsys_swapins\tsys_swapouts\toutstanding_bytes\tincremental\tbaseline\tbacking"
@@ -635,6 +747,9 @@ int main(int argc, char** argv) {
     // within the view, fresh at the same poll (ReadinessTracker; round dz, 2b/2d).
     app::ReadinessTracker readiness;
     std::vector<app::ReadinessTracker::KeyEvent> key_events;
+    // The same sets against the GPU boundary (GPU mode): GPU-usable at one observation.
+    app::ReadinessTracker gpu_readiness;
+    std::vector<app::ReadinessTracker::KeyEvent> gpu_key_events;
     bool converged_seen = false;
     // Peaks over the samples (one per frame and after the drain): a sampled peak can miss a
     // shorter maximum between two samples. The exact peaks are the counters' own (the payload
@@ -717,6 +832,9 @@ int main(int argc, char** argv) {
                 if (set.keys.empty()) {
                     rec.add(app::TraceKind::NoVisibleChange, set.island, g);
                 } else {
+                    if (gpu != 0) {
+                        gpu_readiness.add(set);
+                    }
                     readiness.add(std::move(set));
                 }
             }
@@ -733,11 +851,11 @@ int main(int argc, char** argv) {
             stall_released = true;
         }
         const auto u0 = Clock::now();
-        const auto [built_chunks, unused_ms, unused_n] =
-            frames.update_chunks(picture->scene(), v, level);
-        static_cast<void>(unused_ms);
-        static_cast<void>(unused_n);
+        const FrameWork work = frame_work(picture->scene(), v, level, t);
+        const std::size_t built_chunks = work.built;
         const double update_ms = ms_between(u0, Clock::now());
+        // CPU mode: the end of the chunk update; GPU mode: the frame's submission (render
+        // returned).
         const double t_end = rec.now_ms();
         const std::size_t logged = key_events.size();
         for (const app::ReadinessTracker::Set& ready : readiness.poll(
@@ -753,8 +871,16 @@ int main(int argc, char** argv) {
                        << std::get<0>(k.key) << "\t" << std::get<1>(k.key) << "\t"
                        << std::get<2>(k.key) << "\t" << (k.fresh ? "fresh" : "stale") << "\n";
         }
+        // The GPU boundary of the same frame, after the CPU one (a key is GPU-usable only once it
+        // is CPU-ready, so its event never precedes the CPU event of the same observation).
+        if (gpu != 0) {
+            for (const app::ReadinessTracker::Set& ready :
+                 gpu_readiness.poll(gpu_usable, t_end, gpu_key_events)) {
+                rec.add(app::TraceKind::GpuReady, ready.island, ready.generation);
+            }
+        }
         if (!converged_seen && next_edit >= plan.size() && picture->pending() == 0 &&
-            readiness.waiting() == 0) {
+            readiness.waiting() == 0 && gpu_readiness.waiting() == 0) {
             // Eventual convergence: every desired version committed, no visible readiness left.
             rec.add(app::TraceKind::Converged, 0, 0);
             converged_seen = true;
@@ -764,7 +890,10 @@ int main(int argc, char** argv) {
                    << "\t" << list_ms << "\t" << reindex_ms << "\t" << dispatch_ms << "\t"
                    << commit_ms << "\t" << committed << "\t" << update_ms << "\t" << built_chunks
                    << "\t" << picture->pending() << "\t" << st.outstanding << "\t"
-                   << st.outstanding_bytes << "\t" << chunk_workers->build_ms() << "\n";
+                   << st.outstanding_bytes << "\t" << chunk_workers->build_ms() << "\t"
+                   << (gpu != 0 ? t_end : -1.0) << "\t"
+                   << (gpu != 0 ? static_cast<long long>(work.uploaded) : -1) << "\t"
+                   << (gpu != 0 ? (work.gpu_pending ? 1 : 0) : -1) << "\n";
         if (frame % 30 == 0) {
             sample(t_end);
         }
@@ -780,6 +909,9 @@ int main(int argc, char** argv) {
     // side load start here, after the setup (the view's warm-up, the contention world).
     const double duration_ms = 1000.0 * duration_s;
     rec.restart();
+    if (gpu != 0) {
+        rec.add(app::TraceKind::GpuMode, 0, 1);
+    }
     side_go.store(true);
     while (frame < frames_max) {
         const bool all_published = next_edit >= plan.size();
@@ -792,7 +924,8 @@ int main(int argc, char** argv) {
     // The drain: frames go on until the picture converges and the visible chunks are ready.
     rec.add(app::TraceKind::DrainStart, 0, 0);
     const auto drain_end = Clock::now() + std::chrono::seconds(drain_s);
-    while (picture->pending() > 0 || readiness.waiting() > 0 || stalled) {
+    while (picture->pending() > 0 || readiness.waiting() > 0 || gpu_readiness.waiting() > 0 ||
+           stalled) {
         if (Clock::now() > drain_end) {
             reclaim_open.store(true);
             break;
@@ -800,7 +933,8 @@ int main(int argc, char** argv) {
         run_frame("drain", view, 2);
     }
     rec.add(app::TraceKind::DrainEnd, 0, 0);
-    const bool converged = picture->pending() == 0 && readiness.waiting() == 0;
+    const bool converged =
+        picture->pending() == 0 && readiness.waiting() == 0 && gpu_readiness.waiting() == 0;
     reclaim_open.store(true);
     // The offscreen case: pan to the last edited island at group 2, then zoom out one level.
     double pan_ready_ms = -1, zoom_ready_ms = -1;
@@ -848,7 +982,7 @@ int main(int argc, char** argv) {
         verdict = 3;
         verify << "drain did not converge within " << drain_s << " s: pending "
                << picture->pending() << ", visible island changes waiting " << readiness.waiting()
-               << "\n";
+               << ", GPU-usable waiting " << gpu_readiness.waiting() << "\n";
     }
     if (picture->buildings() != desired_final) {
         verdict = 1;
@@ -894,6 +1028,46 @@ int main(int argc, char** argv) {
             verdict = verdict == 0 ? 1 : verdict;
         }
     }
+#ifdef ANNO_BENCH_GPU
+    if (gpu_frame) {
+        // The GPU's final view, after the loop (the read-backs wait for the GPU): drawn until every
+        // visible key is GPU-usable, then against a compositor of its own drawing the fresh scene,
+        // exactly.
+        const auto final_keys = keys_at(*committed_scene, view, 2);
+        for (int round = 0; round < 2000; ++round) {
+            static_cast<void>(frame_work(committed_scene, view, 2, 0));
+            if (keys_ready(frames, final_keys) &&
+                std::all_of(final_keys.begin(), final_keys.end(), gpu_usable)) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        static_cast<void>(frame_work(committed_scene, view, 2, 0));
+        const auto got =
+            gpu_frame->read_back(gpu_target.first.get(), static_cast<std::uint32_t>(view_w),
+                                 static_cast<std::uint32_t>(view_h));
+        auto other = render::gpu::GpuFrame::create(*gpu_ctx, WGPUTextureFormat_RGBA8Unorm, {});
+        bool equal = false;
+        if (other) {
+            render::FrameRenderer own(4, false);
+            auto target = other.value()->offscreen_target(static_cast<std::uint32_t>(view_w),
+                                                          static_cast<std::uint32_t>(view_h));
+            for (int round = 0; round < 3; ++round) {
+                other.value()->render(own, fresh, view, 2, 0, render::WaterStyle::Original,
+                                      target.second.get());
+            }
+            equal =
+                !got.empty() && got == other.value()->read_back(target.first.get(),
+                                                                static_cast<std::uint32_t>(view_w),
+                                                                static_cast<std::uint32_t>(view_h));
+        }
+        verify << "verify gpu final view: equal=" << (equal ? 1 : 0)
+               << " (exact, against a compositor of its own drawing the fresh scene)\n";
+        if (!equal) {
+            verdict = verdict == 0 ? 1 : verdict;
+        }
+    }
+#endif
     if (sim_world && !sim_invariants.empty()) {
         verdict = verdict == 0 ? 1 : verdict;
         verify << "the contention world's invariants do not hold: " << sim_invariants << "\n";
@@ -931,9 +1105,20 @@ int main(int argc, char** argv) {
              << " chunk_threads=" << chunk_threads << " max_outstanding=" << max_outstanding
              << " commit_every=" << commit_every << " stall_ms=" << stall_ms << " busy=" << busy
              << " sim_contention=" << sim_contention << " sim_unpaced=" << sim_unpaced
-             << " publish=" << publish << " view=" << view_w << "x" << view_h
+             << " publish=" << publish << " gpu=" << gpu << " view=" << view_w << "x" << view_h
              << " view_island=" << view_island << " view_tile=" << view_x << "," << view_y
              << " map=" << map.string() << " workload_build_ms=" << build_ms << "\n";
+#ifdef ANNO_BENCH_GPU
+    if (gpu_ctx) {
+        manifest << "gpu adapter=\"" << gpu_ctx->name
+                 << "\" uploads_per_frame=" << gpu_limits.uploads_per_frame
+                 << " upload_budget_ms=" << gpu_limits.upload_budget_ms
+                 << " chunk_fade_ms=" << gpu_limits.chunk_fade_ms
+                 << " stand_ins=" << (gpu_limits.stand_ins ? 1 : 0)
+                 << " prefetch_chunks=" << gpu_limits.prefetch_chunks
+                 << " target=offscreen presentation=unmeasured gpu_completion=unobserved\n";
+    }
+#endif
     manifest << "--- workload at the start of the loop\n" << manifest_initial;
     manifest << "--- workload after the edits\n" << workload->manifest();
     if (sim_world) {

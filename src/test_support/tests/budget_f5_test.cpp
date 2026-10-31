@@ -184,7 +184,7 @@ void restart(Held& h, std::uint16_t port, std::string* successor_line = nullptr)
 
 } // namespace
 
-TEST_CASE("O1: a live holder keeps its reservation through a restart; its exit releases it" *
+TEST_CASE("O1: a live holder keeps its reservation through a restart and its exit releases it" *
           doctest::test_suite("budget")) {
     Held h = start_held(kPortLive, "o1");
     // The record names this host's own namespace and a real start stamp (not 0).

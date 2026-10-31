@@ -1,24 +1,33 @@
-// bench_picture: the cost of following the sim's buildings with the picture (ScenePicture,
-// docs/app/game-shell.md, "Retained work and reclamation"; method and numbers:
-// docs/perf/README.md).
+// bench_picture: the cost of following the sim's buildings with the picture (ScenePicture) on a
+// legal city workload, CPU stages only (round dy, Packages C/D; method, definitions and numbers:
+// docs/perf/README.md, "Picture on a legal city workload").
 //
-//   bench_picture <game_dir> [--mode micro|async] [--map file] [--tier baseline|five|dense]
-//                 [--islands n] [--per-island m] [--seed s] [--manifest file]
-//                 [--cycles n] [--changes k] [--commit-every c] [--max-outstanding m]
-//                 [--threads t] [--frames n] [--edit-every e] [--burst b] [--busy n]
-//                 [--view w,h] [--drain-s s] [--verify 0|1]
+//   bench_picture <game_dir> --scenario NAME --out DIR [options]
+//   bench_picture --aggregate DIR/events.tsv
 //
-// micro: a SYNCHRONOUS microbenchmark. Each cycle applies a batch, waits for the builds
-// (wait_idle),
-//        commits, and updates the chunks of the view. It is not a presentation measurement.
-// async: a bounded-viewport frame loop with real chunk workers. Each frame commits what is ready
-// and
-//        updates the view's chunks; changes arrive on a fixed cadence (every `edit-every` frames,
-//        `burst` changes) while earlier builds are still running. No wait_idle inside the loop.
-//        After the last frame the picture is drained with a diagnostic timeout, and the final
-//        chunks of the view are compared with a synchronous CPU reference (--verify 1).
-// Workloads are deterministic: the seed fixes the buildings; the manifest records the parameters
-// and a hash of the building list. Every option is validated before any asset is loaded.
+// Scenarios (each runs one case; the matrix script runs several, tools/bench/picture_matrix.sh):
+//   idle       no edit; the frame loop runs for --duration-s
+//   one        one build in city 0, inside the view
+//   burst      --edits edits (default 50) across the cities, published in one frame
+//   stream     an edit every 1 / --rate seconds of wall time, --edits of them (paced), or one edit
+//              per frame (saturation); round-robin over the cities, build and demolish alternating
+//   delayed    a stream with commits every --commit-every frames, and the process reclaimer
+//              stalled for --stall-ms after the first commit (a delayed consumer and reclaimer)
+//   offscreen  --edits edits on the cities outside the view; after the drain the view pans to the
+//              last edited island at group 2, then zooms out to the first derived level
+// Timing: --timing paced (a frame every --frame-ms of wall time; the loop sleeps to the deadline)
+// or saturation (frames back to back, no sleep). Edits are generated through the sim before the
+// measured loop (LegalWorkload: one Build or Demolish command and one turn each), so the loop only
+// publishes their batches when they are due; --sim-contention 1 runs a second, independent world
+// through the same production turn path on its own thread while the loop runs (the real headless
+// simulation), --busy n adds arithmetic threads (a labelled proxy, not a simulation).
+// Every case ends with the independent oracle: the committed generation against a freshly loaded
+// scene of the final desired state (every island's PROD2 items, and the chunk layers of the final
+// view; for offscreen also the panned view and its derived level).
+// Raw files in --out: manifest.txt, events.tsv (picture_trace.hpp), frames.tsv, chunks.tsv,
+// memory.tsv, sim.tsv (with --sim-contention), summary.txt. Exit status: 0 the case ran and
+// verified; 1 verification failed; 2 bad options; 3 the drain did not converge; 4 the workload or
+// the scene could not be built.
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -26,24 +35,35 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
-#include <limits>
+#include <iterator>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <sys/resource.h>
 #include <thread>
-#include <tuple>
 #include <vector>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <sys/sysctl.h>
+#endif
 
 #include <anno/app/building_delta.hpp>
+#include <anno/app/legal_workload.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/picture_check.hpp>
+#include <anno/app/picture_trace.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/scene_picture.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/scene.hpp>
 
 namespace fs = std::filesystem;
 namespace render = anno::render;
@@ -52,730 +72,836 @@ using Clock = std::chrono::steady_clock;
 
 namespace {
 
-[[noreturn]] void usage_error(const std::string& message) {
+[[noreturn]] void fail(int code, const std::string& message) {
     std::cerr << "bench_picture: " << message << "\n";
-    std::exit(2);
+    std::exit(code);
 }
 
-/// Parses an unsigned option value in [lo, hi]. Rejects empty, signed, non-numeric and overflowing
-/// values.
 std::size_t parse_count(std::string_view option, std::string_view text, std::size_t lo,
                         std::size_t hi) {
     std::size_t value = 0;
-    const char* first = text.data();
-    const char* last = text.data() + text.size();
-    const auto [ptr, ec] = std::from_chars(first, last, value);
-    if (text.empty() || ec != std::errc{} || ptr != last) {
-        usage_error(std::string(option) + " needs a whole number, got '" + std::string(text) + "'");
+    const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (text.empty() || ec != std::errc{} || ptr != text.data() + text.size()) {
+        fail(2, std::string(option) + " needs a whole number, got '" + std::string(text) + "'");
     }
     if (value < lo || value > hi) {
-        usage_error(std::string(option) + " must be in [" + std::to_string(lo) + ", " +
+        fail(2, std::string(option) + " must be in [" + std::to_string(lo) + ", " +
                     std::to_string(hi) + "], got " + std::string(text));
     }
     return value;
+}
+
+double parse_real(std::string_view option, std::string_view text, double lo, double hi) {
+    const std::string s(text);
+    char* end = nullptr;
+    const double v = std::strtod(s.c_str(), &end);
+    if (s.empty() || end != s.c_str() + s.size() || !(v >= lo && v <= hi)) {
+        fail(2, std::string(option) + " must be a number in [" + std::to_string(lo) + ", " +
+                    std::to_string(hi) + "], got '" + s + "'");
+    }
+    return v;
 }
 
 double ms_between(Clock::time_point a, Clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
 }
 
-/// Nearest-rank percentile of a sample (the caller sorts).
-double percentile(const std::vector<double>& sorted, double p) {
-    if (sorted.empty()) {
-        return 0;
-    }
-    const auto rank = static_cast<std::size_t>(std::ceil(p * static_cast<double>(sorted.size())));
-    return sorted[std::clamp<std::size_t>(rank == 0 ? 0 : rank - 1, 0, sorted.size() - 1)];
-}
-
-struct Series {
-    std::string name;
-    std::vector<double> ms;
-    void print() const {
-        std::vector<double> s = ms;
-        std::sort(s.begin(), s.end());
-        std::printf("| %s | %zu | %.3f | %.3f | %.3f | %.3f |\n", name.c_str(), s.size(),
-                    percentile(s, 0.50), percentile(s, 0.95), percentile(s, 0.99),
-                    s.empty() ? 0.0 : s.back());
-    }
+/// The process's memory as the host reports it; a field the host does not give is -1.
+struct MemorySample {
+    long long rss = -1, footprint = -1, majflt = -1, minflt = -1, pressure = -1;
+    long long sys_pageins = -1, sys_pageouts = -1, sys_swapins = -1, sys_swapouts = -1;
 };
 
-/// A small deterministic generator (xorshift64*): the same seed gives the same workload on every
-/// host.
-struct Rng {
-    std::uint64_t state;
-    explicit Rng(std::uint64_t seed) : state(seed == 0 ? 0x9E3779B97F4A7C15ULL : seed) {}
-    std::uint64_t next() {
-        state ^= state >> 12;
-        state ^= state << 25;
-        state ^= state >> 27;
-        return state * 2685821657736338717ULL;
+MemorySample sample_memory() {
+    MemorySample m;
+    rusage ru{};
+    if (getrusage(RUSAGE_SELF, &ru) == 0) {
+        m.majflt = ru.ru_majflt;
+        m.minflt = ru.ru_minflt;
     }
-    std::size_t below(std::size_t n) { return static_cast<std::size_t>(next() % n); }
-};
-
-std::uint64_t fnv1a(const std::vector<app::SceneBuilding>& list) {
-    std::uint64_t h = 1469598103934665603ULL;
-    auto mix = [&h](std::uint64_t v) {
-        for (int i = 0; i < 8; ++i) {
-            h ^= (v >> (8 * i)) & 0xFF;
-            h *= 1099511628211ULL;
-        }
-    };
-    for (const app::SceneBuilding& b : list) {
-        mix(b.island);
-        mix(b.type);
-        mix(b.x);
-        mix(b.y);
-        mix(b.rotation);
-        mix(b.height);
+#if defined(__APPLE__)
+    task_vm_info_data_t vm{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&vm), &count) ==
+        KERN_SUCCESS) {
+        m.rss = static_cast<long long>(vm.resident_size);
+        m.footprint = static_cast<long long>(vm.phys_footprint);
     }
-    return h;
+    int level = 0;
+    std::size_t size = sizeof level;
+    if (sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nullptr, 0) == 0) {
+        m.pressure = level;
+    }
+    vm_statistics64_data_t host{};
+    mach_msg_type_number_t hcount = HOST_VM_INFO64_COUNT;
+    if (host_statistics64(mach_host_self(), HOST_VM_INFO64, reinterpret_cast<host_info64_t>(&host),
+                          &hcount) == KERN_SUCCESS) {
+        m.sys_pageins = static_cast<long long>(host.pageins);
+        m.sys_pageouts = static_cast<long long>(host.pageouts);
+        m.sys_swapins = static_cast<long long>(host.swapins);
+        m.sys_swapouts = static_cast<long long>(host.swapouts);
+    }
+#endif
+    return m;
 }
 
-/// The building items (anlage, x, y) of an island's records, as the loader and the picture write
-/// them.
-std::multiset<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>>
-building_items(const anno::formats::insel::Island& island, const app::SceneObjects& so) {
-    std::multiset<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>> keys;
-    for (const anno::formats::chunk::Chunk& rec : island.records) {
-        if (rec.name() != "PROD2") {
+/// A group-`group` view of w x h scene pixels centred on island-local tile (x, y) of the island
+/// numbered `number`.
+render::Rect view_at(const render::Scene& scene, std::uint32_t number, std::int32_t x,
+                     std::int32_t y, int w, int h, std::size_t group) {
+    for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+        if (scene.islands[i].number != number) {
             continue;
         }
-        auto parsed = anno::formats::insel::Block::parse(rec.payload);
-        if (!parsed) {
-            continue;
-        }
-        const anno::formats::insel::Block& block = parsed.value();
-        for (std::size_t o = 0; o + anno::formats::insel::kItemLen <= block.data.size();
-             o += anno::formats::insel::kItemLen) {
-            const auto obj = anno::formats::insel::PlacedObject::parse(
-                block.data.subspan(o, anno::formats::insel::kItemLen), block);
-            if (so.is_building(obj.anlage)) {
-                keys.insert({obj.anlage, obj.x, obj.y});
+        for (const render::Placement& p : scene.layouts[group]) {
+            if (p.index == i) {
+                const auto [tw, th] = render::kTile[group];
+                const int cx2 = 2 * x + 1, cy2 = 2 * y + 1;
+                const int sx = (cx2 - cy2) * tw / 4 + p.offset.first;
+                const int sy = (cx2 + cy2) * th / 4 + p.offset.second;
+                return render::Rect{sx - w / 2, sy - h / 2, w, h};
             }
         }
     }
-    return keys;
+    fail(4, "no island " + std::to_string(number) + " in the scene's layout");
 }
 
-std::shared_ptr<const app::BuildingBatch> batch_of(std::uint64_t turn,
-                                                   std::vector<app::BuildingDelta> d) {
-    auto b = std::make_shared<app::BuildingBatch>();
-    b->turn = turn;
-    b->deltas = std::move(d);
-    return b;
+/// A view at derived level `level` covering the same scene area as `view` at group 2 (each
+/// derived level halves the scene pixels).
+render::Rect at_level(render::Rect view, std::size_t level) {
+    const int div = 1 << static_cast<int>(level - 2);
+    return render::Rect{view.x / div, view.y / div, std::max(1, view.w / div),
+                        std::max(1, view.h / div)};
+}
+
+std::vector<render::ChunkKey> keys_at(const render::Scene& scene, render::Rect view,
+                                      std::size_t level) {
+    // chunk_keys_touching takes a box at the built group 2 and lists every level below it.
+    const int div = 1 << static_cast<int>(level - 2);
+    const render::Rect box{view.x * div, view.y * div, view.w * div, view.h * div};
+    std::vector<render::ChunkKey> out;
+    for (const render::ChunkKey& k : render::chunk_keys_touching(scene, box, 2)) {
+        if (static_cast<std::size_t>(std::get<0>(k)) == level) {
+            out.push_back(k);
+        }
+    }
+    return out;
+}
+
+bool keys_ready(const render::FrameRenderer& frames, const std::vector<render::ChunkKey>& keys) {
+    return std::all_of(keys.begin(), keys.end(), [&frames](const render::ChunkKey& k) {
+        return frames.chunk(k) != nullptr && frames.stale_generation(k) == 0;
+    });
+}
+
+void write_file(const fs::path& path, const std::string& text) {
+    std::ofstream out(path, std::ios::binary);
+    out << text;
+}
+
+/// The events of the run: the bridge's seam (workers and window) and the bench's own.
+class Recorder {
+  public:
+    explicit Recorder(Clock::time_point t0) : t0_(t0) {}
+    void add(app::TraceKind k, std::uint32_t island, std::uint64_t version) {
+        const double t = ms_between(t0_, Clock::now());
+        const std::lock_guard lock(mutex_);
+        events_.push_back({t, k, island, version});
+    }
+    [[nodiscard]] std::vector<app::TraceEvent> events() const {
+        const std::lock_guard lock(mutex_);
+        return events_;
+    }
+    [[nodiscard]] double now_ms() const { return ms_between(t0_, Clock::now()); }
+
+  private:
+    Clock::time_point t0_;
+    mutable std::mutex mutex_;
+    std::vector<app::TraceEvent> events_;
+};
+
+app::TraceKind kind_of(app::PictureEvent e) {
+    switch (e) {
+    case app::PictureEvent::Desired:
+        return app::TraceKind::Desired;
+    case app::PictureEvent::Admitted:
+        return app::TraceKind::Admitted;
+    case app::PictureEvent::Deferred:
+        return app::TraceKind::Deferred;
+    case app::PictureEvent::Started:
+        return app::TraceKind::Started;
+    case app::PictureEvent::Built:
+        return app::TraceKind::Built;
+    case app::PictureEvent::Failed:
+        return app::TraceKind::Failed;
+    case app::PictureEvent::Superseded:
+        return app::TraceKind::Superseded;
+    case app::PictureEvent::Dropped:
+        return app::TraceKind::Dropped;
+    case app::PictureEvent::Requeued:
+        return app::TraceKind::Requeued;
+    case app::PictureEvent::Committed:
+        return app::TraceKind::Committed;
+    }
+    return app::TraceKind::Desired;
+}
+
+struct PlannedEdit {
+    double at_ms = 0;
+    app::LegalEdit edit;
+};
+
+std::shared_ptr<const render::Scene> scene_of(const fs::path& dir, const app::PlayLoad& play,
+                                              const std::vector<app::SceneBuilding>& buildings) {
+    app::SceneObjects objects;
+    objects.is_building = [&play](std::uint16_t id) {
+        return app::anlage_is_building(play.world, id);
+    };
+    objects.buildings = buildings;
+    auto loaded = app::load_placed_scene(dir, play.name, play.placed, &objects);
+    if (!loaded.ok()) {
+        fail(4, "scene: " + loaded.error());
+    }
+    app::LoadedScene ls = std::move(loaded).value();
+    // Rivers off: the building check is the legacy look (river flow is asynchronous and tested
+    // apart); two derived levels below group 2 for the zoom-out case.
+    ls.scene->river_cfg.enabled = false;
+    ls.scene->set_levels(render::ZoomLevels::with_derived(2));
+    return std::shared_ptr<const render::Scene>(std::move(ls.scene));
+}
+
+/// The oracle on one view at one level: the frame renderer's chunks against a fresh synchronous
+/// build of `fresh`. Returns the diff (all keys compared, objects in view).
+app::ChunkDiff check_view(const render::FrameRenderer& frames, const render::Scene& fresh,
+                          render::Rect view, std::size_t level) {
+    render::FrameRenderer reference(1);
+    const int mul = 1 << static_cast<int>(level - 2);
+    const render::Rect base_view{view.x * mul, view.y * mul, view.w * mul, view.h * mul};
+    for (int round = 0; round < 4; ++round) {
+        reference.update_chunks(fresh, base_view, 2);
+        for (std::size_t l = 3; l <= level; ++l) {
+            reference.update_chunks(fresh, at_level(base_view, l), l);
+        }
+    }
+    const auto keys = keys_at(fresh, view, level);
+    return app::compare_chunks(
+        keys, [&frames](const render::ChunkKey& k) { return frames.chunk(k); },
+        [&reference](const render::ChunkKey& k) { return reference.chunk(k); });
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string_view(argv[1]) == "--aggregate") {
+        std::ifstream in(argv[2], std::ios::binary);
+        const std::string text{std::istreambuf_iterator<char>(in), {}};
+        const auto events = app::parse_tsv(text);
+        if (!events.ok()) {
+            fail(2, events.error());
+        }
+        std::cout << app::format_summary(app::summarize(events.value()));
+        return 0;
+    }
     if (argc < 2) {
-        usage_error("usage: bench_picture <game_dir> [options]; see the header of this file");
+        fail(2, "usage: bench_picture <game_dir> --scenario NAME --out DIR [options] (see the "
+                "header of src/tools/bench_picture/main.cpp)");
     }
     const fs::path dir = argv[1];
-    std::string mode = "micro", tier = "five", manifest_path;
-    fs::path map = "data/maps/lan5.txt";
-    std::size_t islands = 5, per_island = 40, seed = 1, cycles = 200, changes = 4, commit_every = 1,
-                max_outstanding = 8, threads = 2, frame_count = 600, edit_every = 10, burst = 8,
-                busy = 0, drain_s = 60, verify = 1, view_w = 1024, view_h = 768;
+    std::string scenario, timing = "paced";
+    fs::path out, map = "data/maps/lan5.txt";
+    app::LegalWorkloadOptions wl;
+    std::size_t edits = 0, threads = 2, chunk_threads = 2, max_outstanding = 8, commit_every = 1,
+                stall_ms = 0, busy = 0, sim_contention = 0, sim_unpaced = 0, drain_s = 120,
+                view_w = 1920, view_h = 1080, frames_max = 100000;
+    double frame_ms = 1000.0 / 60.0, duration_s = 5, rate = 10;
+    bool edits_given = false;
     for (int i = 2; i < argc; ++i) {
         const std::string key = argv[i];
         if (i + 1 >= argc) {
-            usage_error("option " + key + " needs a value");
+            fail(2, "option " + key + " needs a value");
         }
         const std::string_view val = argv[++i];
-        if (key == "--mode") {
-            if (val != "micro" && val != "async") {
-                usage_error("--mode must be micro or async, got " + std::string(val));
+        if (key == "--scenario") {
+            const std::set<std::string_view> known{"idle",   "one",     "burst",
+                                                   "stream", "delayed", "offscreen"};
+            if (known.count(val) == 0) {
+                fail(2, "--scenario: unknown " + std::string(val));
             }
-            mode = std::string(val);
-        } else if (key == "--tier") {
-            if (val != "baseline" && val != "five" && val != "dense") {
-                usage_error("--tier must be baseline, five or dense, got " + std::string(val));
+            scenario = std::string(val);
+        } else if (key == "--timing") {
+            if (val != "paced" && val != "saturation") {
+                fail(2, "--timing must be paced or saturation");
             }
-            tier = std::string(val);
+            timing = std::string(val);
+        } else if (key == "--out") {
+            out = std::string(val);
         } else if (key == "--map") {
             map = std::string(val);
-        } else if (key == "--manifest") {
-            manifest_path = std::string(val);
-        } else if (key == "--islands") {
-            islands = parse_count(key, val, 1, 64);
-        } else if (key == "--per-island") {
-            per_island = parse_count(key, val, 1, 100000);
+        } else if (key == "--cities") {
+            wl.cities = parse_count(key, val, 1, 64);
+        } else if (key == "--per-city") {
+            wl.buildings_per_city = parse_count(key, val, 1, 100000);
+        } else if (key == "--unrelated-extra") {
+            wl.unrelated_extra = parse_count(key, val, 0, 100000);
+        } else if (key == "--attempts") {
+            wl.attempts_per_city = parse_count(key, val, 1, 100000000);
+        } else if (key == "--goods-tons") {
+            wl.goods_tons = static_cast<std::uint32_t>(parse_count(key, val, 1, 1000000));
         } else if (key == "--seed") {
-            seed = parse_count(key, val, 1, std::numeric_limits<std::uint32_t>::max());
-        } else if (key == "--cycles") {
-            cycles = parse_count(key, val, 1, 1000000);
-        } else if (key == "--changes") {
-            changes = parse_count(key, val, 1, 100000);
-        } else if (key == "--commit-every") {
-            commit_every = parse_count(key, val, 1, 1000000);
-        } else if (key == "--max-outstanding") {
-            max_outstanding = parse_count(key, val, 1, 1000);
+            wl.seed = parse_count(key, val, 1, 0xFFFFFFFFULL);
+        } else if (key == "--edits") {
+            edits = parse_count(key, val, 0, 1000000);
+            edits_given = true;
+        } else if (key == "--rate") {
+            rate = parse_real(key, val, 0.01, 100000);
+        } else if (key == "--frame-ms") {
+            frame_ms = parse_real(key, val, 0.1, 1000);
+        } else if (key == "--duration-s") {
+            duration_s = parse_real(key, val, 0.1, 3600);
+        } else if (key == "--frames-max") {
+            frames_max = parse_count(key, val, 1, 100000000);
         } else if (key == "--threads") {
             threads = parse_count(key, val, 1, 64);
-        } else if (key == "--frames") {
-            frame_count = parse_count(key, val, 1, 10000000);
-        } else if (key == "--edit-every") {
-            edit_every = parse_count(key, val, 1, 1000000);
-        } else if (key == "--burst") {
-            burst = parse_count(key, val, 1, 100000);
+        } else if (key == "--chunk-threads") {
+            chunk_threads = parse_count(key, val, 1, 64);
+        } else if (key == "--max-outstanding") {
+            max_outstanding = parse_count(key, val, 1, 1000);
+        } else if (key == "--commit-every") {
+            commit_every = parse_count(key, val, 1, 100000);
+        } else if (key == "--stall-ms") {
+            stall_ms = parse_count(key, val, 0, 600000);
         } else if (key == "--busy") {
             busy = parse_count(key, val, 0, 256);
+        } else if (key == "--sim-contention") {
+            sim_contention = parse_count(key, val, 0, 1);
+        } else if (key == "--sim-unpaced") {
+            sim_unpaced = parse_count(key, val, 0, 1);
         } else if (key == "--drain-s") {
             drain_s = parse_count(key, val, 1, 3600);
-        } else if (key == "--verify") {
-            verify = parse_count(key, val, 0, 1);
         } else if (key == "--view") {
             const auto comma = val.find(',');
             if (comma == std::string_view::npos) {
-                usage_error("--view needs w,h");
+                fail(2, "--view needs w,h");
             }
-            view_w = parse_count("--view w", val.substr(0, comma), 1, 16384);
-            view_h = parse_count("--view h", val.substr(comma + 1), 1, 16384);
+            view_w = parse_count("--view w", val.substr(0, comma), 64, 16384);
+            view_h = parse_count("--view h", val.substr(comma + 1), 64, 16384);
         } else {
-            usage_error("unknown option " + key);
+            fail(2, "unknown option " + key);
         }
+    }
+    if (scenario.empty() || out.empty()) {
+        fail(2, "--scenario and --out are required");
+    }
+    if (!edits_given) {
+        edits = scenario == "idle" ? 0 : (scenario == "one" ? 1 : 50);
+    }
+    if (scenario == "idle") {
+        edits = 0;
+    } else if (scenario == "one") {
+        edits = 1;
+    }
+    std::error_code ec;
+    fs::create_directories(out, ec);
+    if (ec) {
+        fail(2, "--out " + out.string() + ": " + ec.message());
     }
 
-    auto play = app::load_play(dir, map);
-    if (!play.ok()) {
-        usage_error("cannot load " + map.string() + ": " + play.error());
+    // The workload, then the edits through the sim, before anything is timed.
+    const auto build_start = Clock::now();
+    auto built = app::LegalWorkload::build(dir, map, wl);
+    if (!built.ok()) {
+        fail(4, built.error());
     }
-    app::PlayLoad pl = std::move(play).value();
-    std::vector<app::SceneBuilding> base = app::play_buildings(pl.world);
-    std::vector<std::uint32_t> types;
-    for (const app::SceneBuilding& b : base) {
-        types.push_back(b.type);
+    const auto workload = std::move(built).value();
+    const double build_ms = ms_between(build_start, Clock::now());
+    const std::vector<app::SceneBuilding> initial = workload->buildings();
+    const std::string manifest_initial = workload->manifest();
+    const std::size_t cities = workload->cities().size();
+    // The view: city 0's island, centred on the first edit there (or on its Kontor).
+    std::uint32_t view_island = workload->cities()[0].island_slot;
+    std::int32_t view_x = 0, view_y = 0;
+    for (const app::SceneBuilding& b : initial) {
+        if (b.island == view_island) {
+            view_x = b.x;
+            view_y = b.y;
+            break;
+        }
     }
-    if (types.empty()) {
-        types.push_back(1);
+    std::vector<PlannedEdit> plan;
+    std::size_t rejected_edits = 0;
+    for (std::size_t i = 0; i < edits; ++i) {
+        std::size_t city = 0;
+        bool build = true;
+        if (scenario == "offscreen") {
+            city = cities > 1 ? 1 + i % (cities - 1) : 0;
+            build = (i / std::max<std::size_t>(cities - 1, 1)) % 2 == 0;
+        } else if (scenario != "one") {
+            city = i % cities;
+            build = (i / cities) % 2 == 0;
+        }
+        app::LegalEdit e = build ? workload->build_one(city) : workload->demolish_one(city);
+        if (!e.accepted || !e.batch) {
+            ++rejected_edits;
+            continue;
+        }
+        if (!workload->invariants().empty()) {
+            fail(4, "invariants after an edit: " + workload->invariants());
+        }
+        if (plan.empty() && e.island == view_island) {
+            view_x = e.x;
+            view_y = e.y;
+        }
+        PlannedEdit p;
+        p.edit = std::move(e);
+        if (scenario == "burst" || scenario == "one") {
+            p.at_ms = 0;
+        } else if (timing == "paced") {
+            p.at_ms = 1000.0 * static_cast<double>(plan.size()) / rate;
+        } else {
+            p.at_ms = 0; // saturation: one per frame, see the loop
+        }
+        plan.push_back(std::move(p));
     }
-    app::SceneObjects objects;
-    objects.is_building = [&pl](std::uint16_t id) { return app::anlage_is_building(pl.world, id); };
-    objects.buildings = base;
-    auto loaded = app::load_placed_scene(dir, pl.name, pl.placed, &objects);
-    if (!loaded.ok()) {
-        usage_error("scene: " + loaded.error());
-    }
-    app::LoadedScene ls = std::move(loaded).value();
-    ls.scene->river_cfg.enabled = false; // the building check is the legacy look
-    std::shared_ptr<const render::Scene> scene(std::move(ls.scene));
-    if (scene->islands.size() < islands) {
-        usage_error("the map has " + std::to_string(scene->islands.size()) +
-                    " islands, --islands asks for " + std::to_string(islands));
-    }
+    const std::vector<app::SceneBuilding> desired_final = workload->buildings();
 
-    // Coordinates are island-local, as SceneBuilding is (play_buildings) and as the scene's records
-    // are. The workload: `islands` islands (the first ones in the scene order, which is the map
-    // order), each with `per_island` buildings on distinct tiles inside its local box. Every tile
-    // holds at most one building.
-    std::vector<app::SceneBuilding> buildings;
-    std::map<std::uint32_t, std::size_t> per_slot;
-    {
-        Rng rng(seed);
-        const std::size_t count =
-            tier == "baseline" ? 0 : (tier == "five" ? per_island : per_island);
-        for (std::size_t s = 0; s < islands; ++s) {
-            const auto& island = scene->islands[s];
-            std::set<std::pair<std::uint16_t, std::uint16_t>> used;
-            const std::size_t w = std::max<std::size_t>(island.width, 1),
-                              h = std::max<std::size_t>(island.height, 1);
-            if (count > w * h) {
-                usage_error("island " + std::to_string(island.number) + " holds " +
-                            std::to_string(w * h) + " tiles, --per-island asks for " +
-                            std::to_string(count));
-            }
-            for (std::size_t k = 0; k < count && used.size() < w * h; ++k) {
-                std::pair<std::uint16_t, std::uint16_t> at;
-                do {
-                    at = {static_cast<std::uint16_t>(rng.below(w)),
-                          static_cast<std::uint16_t>(rng.below(h))};
-                } while (!used.insert(at).second);
-                app::SceneBuilding b;
-                b.island = island.number;
-                b.type = types[rng.below(types.size())];
-                b.x = at.first;
-                b.y = at.second;
-                b.rotation = static_cast<std::uint8_t>(rng.below(4));
-                b.height = 0;
-                buildings.push_back(b);
-            }
-            per_slot[island.number] = count;
-        }
-    }
-    // Picks go round-robin over the islands: `tracked` keeps the island-major order; the picture
-    // gets it sorted.
-    std::vector<app::SceneBuilding> tracked = buildings;
-    const std::size_t per_pick = per_island;
-    // One building per tile of an island (a legal placement). A move goes to a free tile next to
-    // the building, the turn's direction first, inside the island's local box; when no neighbour is
-    // free the edit is skipped.
-    std::map<std::uint32_t, std::set<std::pair<std::uint16_t, std::uint16_t>>> occupied;
-    for (const app::SceneBuilding& b : tracked) {
-        occupied[b.island].insert({b.x, b.y});
-    }
-    auto propose_move = [&](const app::SceneBuilding& old, std::uint64_t t,
-                            app::SceneBuilding& moved) -> bool {
-        const auto island = std::find_if(scene->islands.begin(), scene->islands.end(),
-                                         [&old](const auto& i) { return i.number == old.island; });
-        if (island == scene->islands.end()) {
-            return false;
-        }
-        auto& taken = occupied[old.island];
-        const int dirs[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        const int start = t % 2 == 0 ? 0 : 1;
-        for (int d = 0; d < 4; ++d) {
-            const int* step = dirs[(start + d) % 4];
-            const int nx = static_cast<int>(old.x) + step[0];
-            const int ny = static_cast<int>(old.y) + step[1];
-            if (nx < 0 || ny < 0 || nx >= static_cast<int>(island->width) ||
-                ny >= static_cast<int>(island->height)) {
-                continue;
-            }
-            const auto target = std::pair<std::uint16_t, std::uint16_t>{
-                static_cast<std::uint16_t>(nx), static_cast<std::uint16_t>(ny)};
-            if (taken.count(target) != 0) {
-                continue;
-            }
-            taken.erase({old.x, old.y});
-            taken.insert(target);
-            moved = old;
-            moved.x = target.first;
-            moved.y = target.second;
-            return true;
-        }
-        return false;
+    // The scene of the initial state (generation 0) and the picture.
+    const auto base = scene_of(dir, workload->load(), initial);
+    const auto view = view_at(*base, view_island, view_x, view_y, static_cast<int>(view_w),
+                              static_cast<int>(view_h), 2);
+    const auto loop_start = Clock::now();
+    Recorder rec(loop_start);
+    app::ScenePicture::Limits limits;
+    limits.max_outstanding = max_outstanding;
+    limits.trace = [&rec](app::PictureEvent e, std::size_t index, std::uint64_t version) {
+        rec.add(kind_of(e), static_cast<std::uint32_t>(index), version);
     };
-    auto pick_index = [&](std::size_t c) {
-        return (c % islands) * per_pick + (c / islands) % per_pick;
+    std::atomic<bool> reclaim_open{true};
+    auto& reclaimer = render::SceneReclaimer::shared();
+    reclaimer.set_test_observer(
+        [&rec](const render::Scene& s) { rec.add(app::TraceKind::Reclaimed, 0, s.generation()); });
+    reclaimer.set_test_gate([&reclaim_open] {
+        while (!reclaim_open.load()) {
+            std::this_thread::yield();
+        }
+    });
+    const app::PlayLoad& play = workload->load();
+    auto is_building = [&play](std::uint16_t id) {
+        return app::anlage_is_building(play.world, id);
     };
-    app::sort_buildings(buildings);
-    // Validation before the run: every building is an island the scene draws, lies inside that
-    // island's local width and height, and no two buildings share a tile of one island.
-    {
-        std::set<std::tuple<std::uint32_t, std::uint16_t, std::uint16_t>> tiles;
-        for (const app::SceneBuilding& b : buildings) {
-            const auto it = std::find_if(scene->islands.begin(), scene->islands.end(),
-                                         [&b](const auto& i) { return i.number == b.island; });
-            if (it == scene->islands.end()) {
-                usage_error("workload building on an island the scene does not draw (" +
-                            std::to_string(b.island) + ")");
-            }
-            if (b.x >= it->width || b.y >= it->height) {
-                usage_error("workload building outside island " + std::to_string(b.island) + " (" +
-                            std::to_string(b.x) + "," + std::to_string(b.y) + ")");
-            }
-            if (!tiles.insert({b.island, b.x, b.y}).second) {
-                usage_error("two workload buildings share a tile on island " +
-                            std::to_string(b.island));
-            }
-        }
-    }
-    // Generation 0 must hold the workload too: the picture starts from the scene's buildings, as
-    // the play loader gives them (the sim's buildings at load). The scene is loaded again with the
-    // workload's list; the island geometry above came from the first load, which is the same map.
-    {
-        app::SceneObjects with_workload;
-        with_workload.is_building = [&pl](std::uint16_t id) {
-            return app::anlage_is_building(pl.world, id);
-        };
-        with_workload.buildings = buildings;
-        auto again = app::load_placed_scene(dir, pl.name, pl.placed, &with_workload);
-        if (!again.ok()) {
-            usage_error("scene with the workload: " + again.error());
-        }
-        app::LoadedScene ls2 = std::move(again).value();
-        ls2.scene->river_cfg.enabled = false;
-        scene = std::shared_ptr<const render::Scene>(std::move(ls2.scene));
-    }
-    const std::uint64_t hash = fnv1a(buildings);
-    std::size_t drawn_objects = 0;
-    for (std::size_t s = 0; s < scene->islands.size(); ++s) {
-        const render::IslandLists& lists = scene->island_lists(s);
-        drawn_objects += lists.below.size() + lists.above.size() + lists.other.size();
-    }
-    if (!manifest_path.empty()) {
-        if (FILE* f = std::fopen(manifest_path.c_str(), "w")) {
-            std::fprintf(
-                f,
-                "bench_picture workload manifest\nmode=%s tier=%s map=%s seed=%zu islands=%zu "
-                "per_island=%zu\n"
-                "buildings=%zu building_hash=%016llx scene_islands=%zu drawn_objects_in_lists=%zu\n"
-                "threads=%zu max_outstanding=%zu frames=%zu edit_every=%zu burst=%zu busy=%zu "
-                "view=%zux%zu\n",
-                mode.c_str(), tier.c_str(), map.string().c_str(), seed, islands, per_island,
-                buildings.size(), static_cast<unsigned long long>(hash), scene->islands.size(),
-                drawn_objects, threads, max_outstanding, frame_count, edit_every, burst, busy,
-                view_w, view_h);
-            std::fclose(f);
-        }
+    auto picture = std::make_unique<app::ScenePicture>(base, initial, is_building, threads, limits);
+    render::FrameRenderer frames(1);
+    auto workers_owned = std::make_unique<render::ChunkWorkers>(*base, chunk_threads);
+    render::ChunkWorkers* chunk_workers = workers_owned.get();
+    frames.set_workers(std::move(workers_owned));
+    // Warm the view (not measured): the loop measures what the edits change.
+    for (int round = 0; round < 200 && !keys_ready(frames, keys_at(*base, view, 2)); ++round) {
+        frames.update_chunks(base, view, 2);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    std::atomic<bool> stop_busy{false};
-    std::vector<std::thread> busy_threads;
+    // Load beside the loop: a second world through the production turn path, and/or a proxy.
+    std::atomic<bool> stop_side{false};
+    std::vector<std::thread> side;
+    std::mutex sim_mutex;
+    std::ostringstream sim_rows;
+    std::size_t sim_turns = 0, sim_accepted = 0, sim_refused = 0;
+    std::uint64_t sim_hash = 0;
+    std::string sim_manifest;
+    std::unique_ptr<app::LegalWorkload> sim_world;
+    if (sim_contention != 0) {
+        auto second = app::LegalWorkload::build(dir, map, wl);
+        if (!second.ok()) {
+            fail(4, "the contention world: " + second.error());
+        }
+        sim_world = std::move(second).value();
+        sim_rows << "t_ms\tkind\taccepted\tturn_ms\n";
+        side.emplace_back([&] {
+            std::size_t i = 0;
+            auto next = Clock::now();
+            while (!stop_side.load()) {
+                const std::size_t c = i % sim_world->cities().size();
+                const auto t0 = Clock::now();
+                const app::LegalEdit e = (i / sim_world->cities().size()) % 2 == 0
+                                             ? sim_world->build_one(c, 400)
+                                             : sim_world->demolish_one(c);
+                const double turn_ms = ms_between(t0, Clock::now());
+                {
+                    const std::lock_guard lock(sim_mutex);
+                    sim_rows << ms_between(loop_start, t0) << "\t" << e.what << "\t"
+                             << (e.accepted ? 1 : 0) << "\t" << turn_ms << "\n";
+                    ++sim_turns;
+                    ++(e.accepted ? sim_accepted : sim_refused);
+                }
+                ++i;
+                if (sim_unpaced == 0) {
+                    // The play runner's cadence: one turn of 100 ms of sim time per 100 ms.
+                    next += std::chrono::milliseconds(100);
+                    std::this_thread::sleep_until(next);
+                }
+            }
+        });
+    }
     for (std::size_t t = 0; t < busy; ++t) {
-        busy_threads.emplace_back([&stop_busy] {
+        side.emplace_back([&stop_side] {
             volatile std::uint64_t x = 1;
-            while (!stop_busy.load(std::memory_order_relaxed)) {
+            while (!stop_side.load(std::memory_order_relaxed)) {
                 x = x * 6364136223846793005ULL + 1442695040888963407ULL;
             }
         });
     }
-    auto join_busy = [&] {
-        stop_busy = true;
-        for (std::thread& t : busy_threads) {
-            t.join();
+
+    // The frame loop.
+    std::ostringstream frame_rows, chunk_rows, memory_rows;
+    frame_rows << "frame\tt_ms\tphase\tpublished\tapply_ms\tapply_list_ms\treindex_ms\tdispatch_ms"
+                  "\tcommit_ms\tcommitted\tupdate_ms\tchunks_built\tpending\toutstanding"
+                  "\toutstanding_bytes\tchunk_build_ms\n";
+    chunk_rows << "t_ms\tgeneration\tlevel\tx\ty\n";
+    memory_rows << "t_ms\trss\tfootprint\tmajflt\tminflt\tpressure\tsys_pageins\tsys_pageouts"
+                   "\tsys_swapins\tsys_swapouts\toutstanding_bytes\tincremental\tbaseline\tbacking"
+                   "\tgeneration_meta\treferenced_by_current\tretired_payload\treclaim_waiting"
+                   "\treclaim_bytes_waiting\treclaim_bytes_in_flight\n";
+    struct Pending {
+        std::uint64_t generation;
+        std::vector<render::ChunkKey> keys;
+        std::set<render::ChunkKey> left;
+    };
+    std::vector<Pending> pending_visible;
+    std::size_t peak_incremental = 0, peak_retired = 0, peak_reclaim_bytes = 0;
+    std::size_t peak_outstanding_bytes = 0;
+    long long peak_rss = 0, peak_footprint = 0;
+    const MemorySample mem_start = sample_memory();
+    auto sample = [&](double t) {
+        const MemorySample m = sample_memory();
+        const auto pc = render::payload_counts();
+        const auto rs = reclaimer.stats();
+        const auto st = picture->stats();
+        const std::size_t referenced = picture->scene()->referenced_payload_bytes();
+        const std::size_t live =
+            pc.of(render::PayloadKind::Incremental) + pc.of(render::PayloadKind::Baseline);
+        const std::size_t retired = live > referenced ? live - referenced : 0;
+        peak_incremental = std::max(peak_incremental, pc.of(render::PayloadKind::Incremental));
+        peak_retired = std::max(peak_retired, retired);
+        peak_reclaim_bytes = std::max(peak_reclaim_bytes, rs.bytes_waiting + rs.bytes_in_flight);
+        peak_outstanding_bytes = std::max(peak_outstanding_bytes, st.outstanding_bytes_peak);
+        peak_rss = std::max(peak_rss, m.rss);
+        peak_footprint = std::max(peak_footprint, m.footprint);
+        memory_rows << t << "\t" << m.rss << "\t" << m.footprint << "\t" << m.majflt << "\t"
+                    << m.minflt << "\t" << m.pressure << "\t" << m.sys_pageins << "\t"
+                    << m.sys_pageouts << "\t" << m.sys_swapins << "\t" << m.sys_swapouts << "\t"
+                    << st.outstanding_bytes << "\t" << pc.of(render::PayloadKind::Incremental)
+                    << "\t" << pc.of(render::PayloadKind::Baseline) << "\t"
+                    << pc.of(render::PayloadKind::Backing) << "\t"
+                    << pc.of(render::PayloadKind::Generation) << "\t" << referenced << "\t"
+                    << retired << "\t" << rs.waiting << "\t" << rs.bytes_waiting << "\t"
+                    << rs.bytes_in_flight << "\n";
+    };
+    std::size_t next_edit = 0, frame = 0;
+    std::uint64_t current_generation = base->generation();
+    bool stalled = false, stall_released = stall_ms == 0;
+    Clock::time_point stall_until{};
+    auto run_frame = [&](const char* phase, render::Rect v, std::size_t level) {
+        const auto t_start = Clock::now();
+        const double t = rec.now_ms();
+        // Publish the edits that are due: paced by wall time, one per frame in saturation, all at
+        // once in a burst.
+        std::size_t published = 0;
+        double apply_ms = 0, list_ms = 0, reindex_ms = 0, dispatch_ms = 0;
+        while (next_edit < plan.size() &&
+               (timing == "saturation" && scenario != "burst" ? published == 0
+                                                              : plan[next_edit].at_ms <= t)) {
+            const auto a0 = Clock::now();
+            picture->apply({plan[next_edit].edit.batch});
+            apply_ms += ms_between(a0, Clock::now());
+            const auto st = picture->stats();
+            list_ms += st.last_apply_list_ms;
+            reindex_ms += st.last_reindex_ms;
+            dispatch_ms += st.last_dispatch_ms;
+            ++next_edit;
+            ++published;
+        }
+        const auto c0 = Clock::now();
+        std::size_t committed = 0;
+        if (frame % commit_every == 0) {
+            committed = picture->commit(frames);
+        }
+        const double commit_ms = ms_between(c0, Clock::now());
+        if (committed > 0) {
+            const std::uint64_t g = picture->scene()->generation();
+            rec.add(app::TraceKind::Generation, 0, g);
+            rec.add(app::TraceKind::Retired, 0, current_generation);
+            current_generation = g;
+            const auto visible = keys_at(*picture->scene(), v, level);
+            const std::set<render::ChunkKey> in_view(visible.begin(), visible.end());
+            Pending p{g, {}, {}};
+            for (const render::ChunkKey& k : picture->last_invalidated()) {
+                if (in_view.count(k) != 0) {
+                    p.keys.push_back(k);
+                    p.left.insert(k);
+                }
+            }
+            if (std::getenv("BENCH_PICTURE_DEBUG_KEYS") != nullptr) {
+                std::fprintf(stderr, "commit g=%llu invalidated=%zu view_keys=%zu visible=%zu\n",
+                             static_cast<unsigned long long>(g), picture->last_invalidated().size(),
+                             visible.size(), p.keys.size());
+                for (const render::ChunkKey& k : picture->last_invalidated()) {
+                    std::fprintf(stderr, "  inv %d %d %d\n", static_cast<int>(std::get<0>(k)),
+                                 static_cast<int>(std::get<1>(k)),
+                                 static_cast<int>(std::get<2>(k)));
+                }
+                for (const render::ChunkKey& k : visible) {
+                    std::fprintf(stderr, "  vis %d %d %d\n", static_cast<int>(std::get<0>(k)),
+                                 static_cast<int>(std::get<1>(k)),
+                                 static_cast<int>(std::get<2>(k)));
+                }
+            }
+            if (p.keys.empty()) {
+                rec.add(app::TraceKind::NoVisibleChange, 0, g);
+            } else {
+                pending_visible.push_back(std::move(p));
+            }
+            if (stall_ms > 0 && !stalled && !stall_released) {
+                // The delayed reclaimer: stall it from the first commit for stall_ms.
+                stalled = true;
+                reclaim_open.store(false);
+                stall_until = Clock::now() + std::chrono::milliseconds(stall_ms);
+            }
+        }
+        if (stalled && Clock::now() >= stall_until) {
+            reclaim_open.store(true);
+            stalled = false;
+            stall_released = true;
+        }
+        const auto u0 = Clock::now();
+        const auto [built_chunks, unused_ms, unused_n] =
+            frames.update_chunks(picture->scene(), v, level);
+        static_cast<void>(unused_ms);
+        static_cast<void>(unused_n);
+        const double update_ms = ms_between(u0, Clock::now());
+        const double t_end = rec.now_ms();
+        for (auto it = pending_visible.begin(); it != pending_visible.end();) {
+            for (auto k = it->left.begin(); k != it->left.end();) {
+                if (frames.chunk(*k) != nullptr && frames.stale_generation(*k) == 0) {
+                    chunk_rows << t_end << "\t" << it->generation << "\t" << std::get<0>(*k) << "\t"
+                               << std::get<1>(*k) << "\t" << std::get<2>(*k) << "\n";
+                    k = it->left.erase(k);
+                } else {
+                    ++k;
+                }
+            }
+            if (it->left.empty()) {
+                rec.add(app::TraceKind::ChunksReady, 0, it->generation);
+                it = pending_visible.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        const auto st = picture->stats();
+        frame_rows << frame << "\t" << t << "\t" << phase << "\t" << published << "\t" << apply_ms
+                   << "\t" << list_ms << "\t" << reindex_ms << "\t" << dispatch_ms << "\t"
+                   << commit_ms << "\t" << committed << "\t" << update_ms << "\t" << built_chunks
+                   << "\t" << picture->pending() << "\t" << st.outstanding << "\t"
+                   << st.outstanding_bytes << "\t" << chunk_workers->build_ms() << "\n";
+        if (frame % 30 == 0) {
+            sample(t_end);
+        }
+        ++frame;
+        if (timing == "paced") {
+            std::this_thread::sleep_until(t_start +
+                                          std::chrono::duration_cast<Clock::duration>(
+                                              std::chrono::duration<double, std::milli>(frame_ms)));
         }
     };
-
-    app::ScenePicture::Limits limits;
-    limits.max_outstanding = max_outstanding;
-    auto is_building = [&pl](std::uint16_t id) { return app::anlage_is_building(pl.world, id); };
-    app::ScenePicture picture(scene, buildings, is_building, threads, limits);
-    render::FrameRenderer frames(1);
-    // The viewport: a bounded window centred on island 0's placement at the group-2 zoom (the draw
-    // layout of the scene), so the view holds the changed content. The view is not the whole scene.
-    render::Rect placed{};
-    for (const render::Placement& p : scene->layouts[2]) {
-        if (p.index == 0) {
-            placed = p.bounds;
+    // The measured loop: until every edit is published and the duration has passed (paced), or
+    // every edit is published (saturation), within frames_max.
+    const double duration_ms = 1000.0 * duration_s;
+    while (frame < frames_max) {
+        const bool all_published = next_edit >= plan.size();
+        if (all_published && (timing == "saturation" || rec.now_ms() >= duration_ms ||
+                              scenario == "burst" || scenario == "one")) {
+            break;
         }
+        run_frame("loop", view, 2);
     }
-    const int cx = placed.x + placed.w / 2, cy = placed.y + placed.h / 2;
-    const render::Rect view{cx - static_cast<int>(view_w) / 2, cy - static_cast<int>(view_h) / 2,
-                            static_cast<int>(view_w), static_cast<int>(view_h)};
-
-    std::printf("bench_picture: mode=%s tier=%s islands=%zu per_island=%zu seed=%zu buildings=%zu "
-                "hash=%016llx "
-                "drawn_objects=%zu threads=%zu max_outstanding=%zu busy=%zu view=%zux%zu\n\n",
-                mode.c_str(), tier.c_str(), islands, per_island, seed, buildings.size(),
-                static_cast<unsigned long long>(hash), drawn_objects, threads, max_outstanding,
-                busy, view_w, view_h);
-
-    if (mode == "micro") {
-        std::printf("MICROBENCHMARK (synchronous: waits for workers each cycle; not a presentation "
-                    "measurement)\n\n");
-        frames.update_chunks(scene, view,
-                             2); // warm the view: the stage measures only what each commit changes
-        Series apply{"apply (window)", {}}, build{"build wait (apply to idle)", {}},
-            commit{"commit (window)", {}},
-            chunks{"chunk update after commit (window, synchronous)", {}};
-        std::uint64_t turn = 1;
-        std::size_t cursor = 0;
-        for (std::size_t cycle = 0; cycle < cycles; ++cycle) {
-            std::vector<app::BuildingDelta> deltas;
-            for (std::size_t k = 0; k < changes && !tracked.empty(); ++k) {
-                const std::size_t pick = pick_index(cursor++);
-                const app::SceneBuilding old = tracked[pick];
-                app::SceneBuilding moved{};
-                if (!propose_move(old, turn, moved)) {
-                    continue; // no free neighbour tile: this edit is skipped
-                }
-                deltas.push_back({app::BuildingDelta::Kind::Removed, old});
-                deltas.push_back({app::BuildingDelta::Kind::Added, moved});
-                tracked[pick] = moved;
-            }
-            const auto t0 = Clock::now();
-            picture.apply({batch_of(turn++, std::move(deltas))});
-            const auto t1 = Clock::now();
-            picture.wait_idle();
-            const auto t2 = Clock::now();
-            apply.ms.push_back(ms_between(t0, t1));
-            build.ms.push_back(ms_between(t1, t2));
-            if ((cycle + 1) % commit_every == 0) {
-                const auto t3 = Clock::now();
-                const std::size_t committed = picture.commit(frames);
-                const auto t4 = Clock::now();
-                commit.ms.push_back(ms_between(t3, t4));
-                if (committed > 0) {
-                    const auto t5 = Clock::now();
-                    frames.update_chunks(picture.scene(), view, 2);
-                    chunks.ms.push_back(ms_between(t5, Clock::now()));
-                }
-            }
-        }
-        const auto drain_end = Clock::now() + std::chrono::seconds(drain_s);
-        while (picture.pending() > 0) {
-            if (Clock::now() > drain_end) {
-                join_busy();
-                usage_error("drain did not converge within --drain-s " + std::to_string(drain_s) +
-                            " (pending " + std::to_string(picture.pending()) + ")");
-            }
-            picture.wait_idle();
-            picture.commit(frames);
-        }
-        join_busy();
-        const auto st = picture.stats();
-        std::printf("| stage | samples | p50 ms | p95 ms | p99 ms | max ms "
-                    "|\n|---|---:|---:|---:|---:|---:|\n");
-        apply.print();
-        build.print();
-        commit.print();
-        chunks.print();
-        std::printf(
-            "\ncommitted=%llu discarded=%llu coalesced=%llu deferred=%llu started_deferred=%llu "
-            "rebased=%llu "
-            "commit_skipped=%llu build_failures=%llu version_requeues=%llu invalidated_keys=%llu "
-            "outstanding_peak=%zu reclaim_backlog_peak=%zu reclaim_queued=%llu "
-            "reclaim_completed=%llu\n",
-            static_cast<unsigned long long>(st.committed),
-            static_cast<unsigned long long>(st.discarded),
-            static_cast<unsigned long long>(st.coalesced),
-            static_cast<unsigned long long>(st.deferred),
-            static_cast<unsigned long long>(st.started_deferred),
-            static_cast<unsigned long long>(st.rebased),
-            static_cast<unsigned long long>(st.commit_skipped),
-            static_cast<unsigned long long>(st.build_failures),
-            static_cast<unsigned long long>(st.version_requeues),
-            static_cast<unsigned long long>(st.invalidated_keys), st.outstanding_peak,
-            st.reclaim_backlog_peak, static_cast<unsigned long long>(st.reclaim_queued),
-            static_cast<unsigned long long>(st.reclaim_completed));
-        return 0;
-    }
-
-    // async: real chunk workers; the frame loop never waits for them.
-    auto owned = std::make_unique<render::ChunkWorkers>(*scene, threads);
-    render::ChunkWorkers* chunk_workers = owned.get();
-    frames.set_workers(std::move(owned));
-    frames.update_chunks(scene, view, 2); // warm the view before the loop (not measured)
-    Series apply{"apply (window)", {}}, commit{"commit (window)", {}},
-        frame{"frame: update_chunks (window)", {}};
-    std::uint64_t turn = 1;
-    std::size_t cursor = 0;
-    std::size_t edits = 0;
-    const auto loop_start = Clock::now();
-    for (std::size_t f = 0; f < frame_count; ++f) {
-        if (f % edit_every == 0) {
-            std::vector<app::BuildingDelta> deltas;
-            for (std::size_t k = 0; k < burst && !tracked.empty(); ++k) {
-                const std::size_t pick = pick_index(cursor++);
-                const app::SceneBuilding old = tracked[pick];
-                app::SceneBuilding moved{};
-                if (!propose_move(old, turn, moved)) {
-                    continue; // no free neighbour tile: this edit is skipped
-                }
-                deltas.push_back({app::BuildingDelta::Kind::Removed, old});
-                deltas.push_back({app::BuildingDelta::Kind::Added, moved});
-                tracked[pick] = moved;
-                ++edits;
-            }
-            const auto t0 = Clock::now();
-            picture.apply({batch_of(turn++, std::move(deltas))});
-            apply.ms.push_back(ms_between(t0, Clock::now()));
-        }
-        const auto t1 = Clock::now();
-        if (f % commit_every == 0) {
-            picture.commit(frames);
-        }
-        commit.ms.push_back(ms_between(t1, Clock::now()));
-        const auto t2 = Clock::now();
-        frames.update_chunks(picture.scene(), view, 2);
-        frame.ms.push_back(ms_between(t2, Clock::now()));
-    }
-    const double loop_ms = ms_between(loop_start, Clock::now());
-    // Drain with a diagnostic: progress is reported; the bound is --drain-s.
-    const auto drain_start = Clock::now();
-    const auto drain_end = drain_start + std::chrono::seconds(drain_s);
-    std::size_t last_pending = picture.pending();
-    auto next_report = drain_start + std::chrono::seconds(5);
-    while (picture.pending() > 0) {
+    // The drain: frames go on until the picture converges and the visible chunks are ready.
+    rec.add(app::TraceKind::DrainStart, 0, 0);
+    const auto drain_end = Clock::now() + std::chrono::seconds(drain_s);
+    while (picture->pending() > 0 || !pending_visible.empty() || stalled) {
         if (Clock::now() > drain_end) {
-            join_busy();
-            usage_error("drain did not converge within --drain-s " + std::to_string(drain_s) +
-                        " (pending " + std::to_string(picture.pending()) + ")");
+            reclaim_open.store(true);
+            break;
         }
-        if (Clock::now() > next_report) {
-            std::fprintf(stderr, "bench_picture: draining, pending %zu (was %zu)\n",
-                         picture.pending(), last_pending);
-            last_pending = picture.pending();
-            next_report += std::chrono::seconds(5);
-        }
-        picture.commit(frames);
-        frames.update_chunks(picture.scene(), view, 2);
-        std::this_thread::yield();
+        run_frame("drain", view, 2);
     }
-    const double drain_ms = ms_between(drain_start, Clock::now());
-    const auto worker_timings = picture.timings();
-    join_busy();
-    const auto st = picture.stats();
-    std::printf("ASYNC bounded-viewport frame loop with %zu chunk workers; not a presented-frame "
-                "measurement\n",
-                threads);
-    std::printf("commit every %zu frame(s) (a delayed consumer when > 1)\n", commit_every);
-    std::printf("frames=%zu edits=%zu (burst %zu every %zu frames) loop_ms=%.1f drain_ms=%.1f\n\n",
-                frame_count, edits, burst, edit_every, loop_ms, drain_ms);
-    std::printf("| stage | samples | p50 ms | p95 ms | p99 ms | max ms "
-                "|\n|---|---:|---:|---:|---:|---:|\n");
-    apply.print();
-    commit.print();
-    frame.print();
-    Series queue{"job queue delay (worker, submit to start)", worker_timings.queue_ms};
-    Series build{"job build time (worker)", worker_timings.build_ms};
-    queue.print();
-    build.print();
-    std::printf(
-        "\ncommitted=%llu discarded=%llu coalesced=%llu deferred=%llu started_deferred=%llu "
-        "rebased=%llu "
-        "commit_skipped=%llu build_failures=%llu version_requeues=%llu outstanding_peak=%zu "
-        "outstanding_bytes_peak=%zu reclaim_backlog_peak=%zu reclaim_queued=%llu "
-        "reclaim_completed=%llu "
-        "failed_islands=%zu dirty_at_end=%zu\n",
-        static_cast<unsigned long long>(st.committed),
-        static_cast<unsigned long long>(st.discarded),
-        static_cast<unsigned long long>(st.coalesced), static_cast<unsigned long long>(st.deferred),
-        static_cast<unsigned long long>(st.started_deferred),
-        static_cast<unsigned long long>(st.rebased),
-        static_cast<unsigned long long>(st.commit_skipped),
-        static_cast<unsigned long long>(st.build_failures),
-        static_cast<unsigned long long>(st.version_requeues), st.outstanding_peak,
-        st.outstanding_bytes_peak, st.reclaim_backlog_peak,
-        static_cast<unsigned long long>(st.reclaim_queued),
-        static_cast<unsigned long long>(st.reclaim_completed), st.failed_islands,
-        picture.pending());
-    // Counts after the run: the objects of every island in the final generation (what is drawn).
-    std::size_t drawn_final = 0;
-    for (std::size_t s = 0; s < picture.scene()->islands.size(); ++s) {
-        const render::IslandLists& lists = picture.scene()->island_lists(s);
-        drawn_final += lists.below.size() + lists.above.size() + lists.other.size();
-    }
-    std::printf(
-        "drawn objects: at load %zu, in the final generation %zu (buildings in the picture %zu)\n",
-        drawn_objects, drawn_final, picture.buildings().size());
-    if (verify != 0) {
-        // The loader's own build of the same placed scene with the final building list: the
-        // picture's drawn objects must equal its objects (an oracle that does not use the picture's
-        // code).
-        {
-            {
-                // Legal placements have one building per tile: duplicates would make the two builds
-                // differ.
-                std::set<std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t>>
-                    seen;
-                std::size_t duplicates = 0;
-                for (const app::SceneBuilding& b : picture.buildings()) {
-                    duplicates += seen.insert({b.island, b.type, b.x, b.y}).second ? 0U : 1U;
-                }
-                std::printf("duplicate tiles in the final building list: %zu\n", duplicates);
-                if (duplicates != 0) {
-                    std::printf("VERIFY FAILED: duplicate tiles\n");
-                    return 1;
-                }
-            }
-            std::vector<app::SceneBuilding> final_list = picture.buildings();
-            app::SceneObjects so;
-            so.is_building = [&pl](std::uint16_t id) {
-                return app::anlage_is_building(pl.world, id);
-            };
-            so.buildings = final_list;
-            auto fresh = app::load_placed_scene(dir, pl.name, pl.placed, &so);
-            if (!fresh.ok()) {
-                usage_error("the loader's own build failed: " + fresh.error());
-            }
-            app::LoadedScene fs = std::move(fresh).value();
-            std::size_t loader_objects = 0, picture_objects = 0;
-            for (std::size_t s = 0; s < fs.scene->islands.size(); ++s) {
-                const render::IslandLists& l = fs.scene->island_lists(s);
-                loader_objects += l.below.size() + l.above.size() + l.other.size();
-            }
-            for (std::size_t s = 0; s < picture.scene()->islands.size(); ++s) {
-                const render::IslandLists& l = picture.scene()->island_lists(s);
-                picture_objects += l.below.size() + l.above.size() + l.other.size();
-            }
-            for (std::size_t s = 0; s < fs.scene->islands.size(); ++s) {
-                const render::IslandLists& l = fs.scene->island_lists(s);
-                const render::IslandLists& p2 = picture.scene()->island_lists(s);
-                const std::size_t a = l.below.size() + l.above.size() + l.other.size();
-                const std::size_t b = p2.below.size() + p2.above.size() + p2.other.size();
-                if (a != b) {
-                    std::printf("  island #%u: loader %zu, picture %zu\n",
-                                fs.scene->islands[s].number, a, b);
-                    const auto want = building_items(fs.scene->islands[s], so);
-                    const auto got = building_items(picture.scene()->islands[s], so);
-                    std::size_t shown = 0;
-                    for (const auto& key : want) {
-                        if (got.count(key) < want.count(key) && shown++ < 4) {
-                            std::printf("    loader-only item: anlage %u at %u,%u\n",
-                                        std::get<0>(key), std::get<1>(key), std::get<2>(key));
-                        }
-                    }
-                    for (const auto& key : got) {
-                        if (want.count(key) < got.count(key) && shown++ < 8) {
-                            std::printf("    picture-only item: anlage %u at %u,%u\n",
-                                        std::get<0>(key), std::get<1>(key), std::get<2>(key));
-                        }
-                    }
-                }
-            }
-            std::printf("loader oracle: objects drawn by the loader's build of the final buildings "
-                        "%zu, by the picture %zu%s\n",
-                        loader_objects, picture_objects,
-                        loader_objects == picture_objects ? " (equal)" : " (DIFFERENT)");
-            // Counts are diagnostics only (a count-preserving error passes them): the verdict is
-            // the chunk check below.
-        }
-        // The chunk workers settle first: the picture's convergence does not wait for them. The
-        // picture's chunks of the view are then compared, layer by layer, with a fresh synchronous
-        // build of an independently loaded scene that holds the final desired building list (round
-        // dx, DX1).
-        auto final_scene = picture.scene();
-        for (int round = 0; round < 3; ++round) {
-            chunk_workers->wait_idle();
-            frames.update_chunks(final_scene, view, 2);
-        }
-        chunk_workers->wait_idle();
-        app::SceneObjects fresh_objects;
-        fresh_objects.is_building = [&pl](std::uint16_t id) {
-            return app::anlage_is_building(pl.world, id);
-        };
-        fresh_objects.buildings = picture.buildings();
-        auto fresh_loaded = app::load_placed_scene(dir, pl.name, pl.placed, &fresh_objects);
-        if (!fresh_loaded.ok()) {
-            usage_error("the reference scene failed: " + fresh_loaded.error());
-        }
-        app::LoadedScene fresh_ls = std::move(fresh_loaded).value();
-        fresh_ls.scene->river_cfg.enabled = false;
-        const std::shared_ptr<const render::Scene> reference_scene(std::move(fresh_ls.scene));
-        render::FrameRenderer reference(1);
-        for (int round = 0; round < 3; ++round) {
-            reference.update_chunks(reference_scene, view, 2);
-        }
-        const std::vector<render::ChunkKey> keys =
-            render::chunk_keys_touching(*reference_scene, view, 2);
-        const app::ChunkDiff diff = app::compare_chunks(
-            keys, [&frames](const render::ChunkKey& k) { return frames.chunk(k); },
-            [&reference](const render::ChunkKey& k) { return reference.chunk(k); });
-        // The committed island items against the fresh scene's items: every PROD2 item with its
-        // block origin, anlage, rotation, height, phase and tile, as a sorted multiset per island.
-        // Record order is a container order and is not compared; the items are the buildings. A
-        // count-preserving substitution fails here.
-        std::size_t record_mismatch_islands = 0;
-        for (std::size_t i = 0;
-             i < final_scene->islands.size() && i < reference_scene->islands.size(); ++i) {
-            const auto a = app::building_items(final_scene->islands[i]);
-            const auto b = app::building_items(reference_scene->islands[i]);
-            if (a != b) {
-                std::size_t first = 0;
-                while (first < a.size() && first < b.size() && a[first] == b[first]) {
-                    ++first;
-                }
-                std::printf("  island #%u: items picture %zu, fresh %zu, first difference at %zu\n",
-                            final_scene->islands[i].number, a.size(), b.size(), first);
-                ++record_mismatch_islands;
+    rec.add(app::TraceKind::DrainEnd, 0, 0);
+    const bool converged = picture->pending() == 0 && pending_visible.empty();
+    reclaim_open.store(true);
+    // The offscreen case: pan to the last edited island at group 2, then zoom out one level.
+    double pan_ready_ms = -1, zoom_ready_ms = -1;
+    render::Rect pan_view = view, zoom_view{};
+    if (scenario == "offscreen" && !plan.empty()) {
+        const app::LegalEdit& last = plan.back().edit;
+        pan_view = view_at(*picture->scene(), last.island, last.x, last.y, static_cast<int>(view_w),
+                           static_cast<int>(view_h), 2);
+        const auto pan_keys = keys_at(*picture->scene(), pan_view, 2);
+        const double p0 = rec.now_ms();
+        while (rec.now_ms() - p0 < 1000.0 * static_cast<double>(drain_s)) {
+            run_frame("pan", pan_view, 2);
+            if (keys_ready(frames, pan_keys)) {
+                pan_ready_ms = rec.now_ms() - p0;
+                break;
             }
         }
-        std::printf("verify: island items against the fresh scene: islands_differing=%zu of %zu\n",
-                    record_mismatch_islands, final_scene->islands.size());
-        std::printf("verify: group-2 chunks of the view compared=%zu with_objects=%zu ground=%zu "
-                    "objects=%zu "
-                    "terrain=%zu field=%zu missing=%zu\n",
-                    diff.compared, diff.with_objects, diff.ground, diff.objects, diff.terrain,
-                    diff.field, diff.missing);
-        if (record_mismatch_islands != 0 || !diff.equal()) {
-            std::printf("VERIFY FAILED\n");
-            return 1;
+        zoom_view = at_level(pan_view, 3);
+        const auto zoom_keys = keys_at(*picture->scene(), zoom_view, 3);
+        const double z0 = rec.now_ms();
+        while (rec.now_ms() - z0 < 1000.0 * static_cast<double>(drain_s)) {
+            run_frame("zoom", zoom_view, 3);
+            if (keys_ready(frames, zoom_keys)) {
+                zoom_ready_ms = rec.now_ms() - z0;
+                break;
+            }
         }
     }
-    return 0;
+    sample(rec.now_ms());
+    const MemorySample mem_end = sample_memory();
+    stop_side.store(true);
+    for (std::thread& t : side) {
+        t.join();
+    }
+    if (sim_world) {
+        sim_hash = sim_world->state_hash();
+        sim_manifest = sim_world->manifest();
+    }
+
+    // The oracle.
+    int verdict = 0;
+    std::ostringstream verify;
+    if (!converged) {
+        verdict = 3;
+        verify << "drain did not converge within " << drain_s << " s: pending "
+               << picture->pending() << ", visible generations waiting " << pending_visible.size()
+               << "\n";
+    }
+    if (picture->buildings() != desired_final) {
+        verdict = 1;
+        verify << "VERIFY FAILED: the picture's desired list is not the sim's final list\n";
+    }
+    const auto fresh = scene_of(dir, play, desired_final);
+    const auto committed_scene = picture->scene();
+    std::size_t differing = 0;
+    for (std::size_t i = 0; i < fresh->islands.size() && i < committed_scene->islands.size(); ++i) {
+        differing += app::building_items(committed_scene->islands[i]) ==
+                             app::building_items(fresh->islands[i])
+                         ? 0U
+                         : 1U;
+    }
+    verify << "verify island items: islands_differing=" << differing << " of "
+           << fresh->islands.size() << "\n";
+    if (differing != 0) {
+        verdict = 1;
+    }
+    auto settle = [&](render::Rect v, std::size_t level) {
+        for (int round = 0; round < 400; ++round) {
+            frames.update_chunks(committed_scene, v, level);
+            if (keys_ready(frames, keys_at(*committed_scene, v, level))) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    };
+    std::vector<std::pair<std::string, std::pair<render::Rect, std::size_t>>> views{
+        {"final view", {view, 2}}};
+    if (scenario == "offscreen" && !plan.empty()) {
+        views.push_back({"panned view", {pan_view, 2}});
+        views.push_back({"panned view, derived level 3", {zoom_view, 3}});
+    }
+    for (const auto& [name, vl] : views) {
+        settle(vl.first, vl.second);
+        const app::ChunkDiff d = check_view(frames, *fresh, vl.first, vl.second);
+        verify << "verify " << name << ": compared=" << d.compared
+               << " with_objects=" << d.with_objects << " ground=" << d.ground
+               << " objects=" << d.objects << " terrain=" << d.terrain << " field=" << d.field
+               << " missing=" << d.missing << "\n";
+        if (!d.equal() || d.compared == 0) {
+            verdict = verdict == 0 ? 1 : verdict;
+        }
+    }
+    verify << (verdict == 0 ? "VERIFY OK\n" : "VERIFY FAILED\n");
+    const auto st = picture->stats();
+    picture.reset();
+    reclaimer.set_test_gate({});
+    // The observer refers to the recorder: it is cleared once the picture's generations are gone.
+    for (int round = 0; round < 2000; ++round) {
+        const auto rs = reclaimer.stats();
+        if (rs.waiting == 0 && rs.in_flight == 0) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    reclaimer.set_test_observer({});
+
+    // The raw files and the summary.
+    const auto events = rec.events();
+    write_file(out / "events.tsv", app::to_tsv(events));
+    write_file(out / "frames.tsv", frame_rows.str());
+    write_file(out / "chunks.tsv", chunk_rows.str());
+    write_file(out / "memory.tsv", memory_rows.str());
+    if (sim_world) {
+        const std::lock_guard lock(sim_mutex);
+        write_file(out / "sim.tsv", sim_rows.str());
+    }
+    std::ostringstream manifest;
+    manifest << "bench_picture case\nscenario=" << scenario << " timing=" << timing
+             << " edits_planned=" << edits << " edits_published=" << plan.size()
+             << " edits_refused_by_sim=" << rejected_edits << " rate_per_s=" << rate
+             << " frame_ms=" << frame_ms << " duration_s=" << duration_s << " threads=" << threads
+             << " chunk_threads=" << chunk_threads << " max_outstanding=" << max_outstanding
+             << " commit_every=" << commit_every << " stall_ms=" << stall_ms << " busy=" << busy
+             << " sim_contention=" << sim_contention << " sim_unpaced=" << sim_unpaced
+             << " view=" << view_w << "x" << view_h << " view_island=" << view_island
+             << " view_tile=" << view_x << "," << view_y << " map=" << map.string()
+             << " workload_build_ms=" << build_ms << "\n";
+    manifest << "--- workload at the start of the loop\n" << manifest_initial;
+    manifest << "--- workload after the edits\n" << workload->manifest();
+    if (sim_world) {
+        manifest << "--- contention world after the run\n" << sim_manifest;
+    }
+    write_file(out / "manifest.txt", manifest.str());
+    std::ostringstream summary;
+    summary << app::format_summary(app::summarize(events));
+    summary << "frames=" << frame << " converged=" << (converged ? 1 : 0)
+            << " pan_ready_ms=" << pan_ready_ms << " zoom_ready_ms=" << zoom_ready_ms << "\n";
+    summary << "stats committed=" << st.committed << " discarded=" << st.discarded
+            << " coalesced=" << st.coalesced << " deferred=" << st.deferred
+            << " budget_deferrals=" << st.budget_deferrals
+            << " commit_skipped=" << st.commit_skipped
+            << " outstanding_peak=" << st.outstanding_peak
+            << " outstanding_bytes_peak=" << st.outstanding_bytes_peak
+            << " result_bytes_peak=" << st.result_bytes_peak
+            << " estimate_shortfalls=" << st.estimate_shortfalls
+            << " estimate_shortfall_max=" << st.estimate_shortfall_max
+            << " copied_buildings=" << st.copied_buildings
+            << " invalidated_keys=" << st.invalidated_keys
+            << " reclaim_backlog_peak=" << st.reclaim_backlog_peak << "\n";
+    summary << "memory peak_incremental_payload=" << peak_incremental
+            << " peak_retired_payload=" << peak_retired
+            << " peak_reclaim_queue_bytes=" << peak_reclaim_bytes
+            << " peak_reservation_bytes=" << peak_outstanding_bytes << " peak_rss=" << peak_rss
+            << " peak_footprint=" << peak_footprint
+            << " majflt_delta=" << (mem_end.majflt - mem_start.majflt)
+            << " sys_pageins_delta=" << (mem_end.sys_pageins - mem_start.sys_pageins)
+            << " sys_pageouts_delta=" << (mem_end.sys_pageouts - mem_start.sys_pageouts)
+            << " sys_swapins_delta=" << (mem_end.sys_swapins - mem_start.sys_swapins)
+            << " sys_swapouts_delta=" << (mem_end.sys_swapouts - mem_start.sys_swapouts)
+            << " pressure_start=" << mem_start.pressure << " pressure_end=" << mem_end.pressure
+            << "\n";
+    if (sim_world) {
+        summary << "sim turns=" << sim_turns << " accepted=" << sim_accepted
+                << " refused=" << sim_refused << " state_hash=" << std::hex << sim_hash << std::dec
+                << "\n";
+    }
+    summary << verify.str();
+    write_file(out / "summary.txt", summary.str());
+    std::cout << summary.str();
+    return verdict;
 }

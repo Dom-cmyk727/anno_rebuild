@@ -7,6 +7,11 @@
 //   O3: a record the host cannot attribute (another OS's namespace, or a namespace-2 record with
 //       the zero stamp that the first macOS build wrote) is kept: fail closed, never a stop.
 //   O4: the CPU tokens share that ownership logic (live kept, exited released).
+//   S1: a budget client that starts its coordinator and exits does not keep the coordinator on
+//       its stdout: the pipe reaches EOF while the coordinator still listens (detached stdio).
+//   S2: a coordinator that a test starts in the foreground keeps its stdout (LISTENING).
+//   S3: one captured command line (a shell pipeline, as ctest runs a test) ends without waiting
+//       for the coordinator's idle shutdown.
 //   O5 (Darwin): records of the earlier Darwin coordinator (namespace 2, microsecond stamp) are
 //       judged by Darwin; this process's own namespace is 3.
 //
@@ -50,6 +55,9 @@ constexpr std::uint16_t kPortUnattributed = 47852;
 constexpr std::uint16_t kPortCpu = 47853;
 constexpr std::uint16_t kPortLegacy = 47854;
 constexpr std::uint16_t kPortSpace = 47855;
+constexpr std::uint16_t kPortStreams = 47856;
+constexpr std::uint16_t kPortForeground = 47857;
+constexpr std::uint16_t kPortPipeline = 47858;
 /// A namespace no coordinator knows.
 constexpr std::uint32_t kForeignNs = 99;
 
@@ -325,4 +333,130 @@ TEST_CASE(
     CHECK(has(got, "ADMITTED 1"));
     waiter.stop();
     h.coord.stop();
+}
+
+namespace {
+
+/// Whether something accepts a connection on 127.0.0.1:`port` (a bare connect, closed at once).
+bool listening(std::uint16_t port) {
+    const wire::Native fd = wire::open_socket();
+    if (fd == wire::kInvalid) {
+        return false;
+    }
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(0x7f000001u);
+#if defined(_WIN32)
+    const bool up = ::connect(static_cast<SOCKET>(fd), reinterpret_cast<sockaddr*>(&address),
+                              sizeof(address)) == 0;
+#else
+    const bool up = ::connect(static_cast<int>(fd), reinterpret_cast<sockaddr*>(&address),
+                              sizeof(address)) == 0;
+#endif
+    wire::close_fd(fd);
+    return up;
+}
+
+/// Asks the idle coordinator on `port` to step aside, the documented handover: a client that
+/// speaks another compatibility version is refused and an idle coordinator then exits. The
+/// coordinator is found by its port, never by name.
+void step_aside(std::uint16_t port, const Vars& vars, const std::string& budget_path) {
+    Vars other = vars;
+    other.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "99");
+    other.emplace_back("ANNO_TEST_BUDGET_SPAWN", "0");
+    {
+        Env env(other);
+        Child refused = probe({"try", budget_path, "1"});
+        refused.line(5000ms);
+    }
+    REQUIRE(eventually([&] { return !listening(port); }, 15000ms));
+}
+
+} // namespace
+
+TEST_CASE("S1: a client that starts the coordinator and exits leaves its stdout at EOF" *
+          doctest::test_suite("budget")) {
+    const auto journal = f5_dir() / "s1.journal";
+    const std::string budget_path = (f5_dir() / "s1.budget").string();
+    remove_file(journal);
+    REQUIRE_FALSE(listening(kPortStreams));
+    Vars vars = client_vars(kPortStreams, "s1", "30", "1"); // the client may start a coordinator
+    vars.emplace_back("ANNO_TEST_BUDGET_JOURNAL", journal.string());
+
+    Child client;
+    {
+        Env env(vars);
+        client = probe({"waiter", budget_path, "10"});
+    }
+    std::string seen;
+    REQUIRE(has(want(client, "ADMITTED", 30000ms, &seen), "ADMITTED 1"));
+    INFO("client: " << seen);
+    // It reserved through the coordinator it started, which keeps running after the client.
+    REQUIRE(listening(kPortStreams));
+    quit_and_wait(client);
+    REQUIRE_FALSE(client.running());
+
+    // The client is gone. Its output pipe must end now, not when the coordinator dies
+    // (30 s idle): the coordinator must not hold the client's stdout.
+    const auto t0 = std::chrono::steady_clock::now();
+    const bool eof = client.wait_eof(5000ms);
+    const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0);
+    CHECK_MESSAGE(eof, "stdout still open " << waited.count()
+                                            << " ms after the client exited: the detached "
+                                               "coordinator inherited it");
+    CHECK_MESSAGE(listening(kPortStreams), "the coordinator was expected to still be alive");
+
+    step_aside(kPortStreams, vars, budget_path);
+}
+
+TEST_CASE("S2: a coordinator a test starts in the foreground keeps its stdout" *
+          doctest::test_suite("budget")) {
+    const auto journal = f5_dir() / "s2.journal";
+    remove_file(journal);
+    std::string line;
+    Child coord = start_coordinator(kPortForeground, journal, std::nullopt, std::nullopt, line);
+    CHECK(line.rfind("LISTENING", 0) == 0);
+    CHECK(has(line, "compat="));
+    coord.stop();
+}
+
+TEST_CASE("S3: a captured pipeline ends without waiting for the coordinator's idle exit" *
+          doctest::test_suite("budget")) {
+#if defined(_WIN32)
+    MESSAGE("skipped: the pipeline uses a POSIX shell");
+#else
+    const auto journal = f5_dir() / "s3.journal";
+    const std::string budget_path = (f5_dir() / "s3.budget").string();
+    remove_file(journal);
+    REQUIRE_FALSE(listening(kPortPipeline));
+    const Vars vars = client_vars(kPortPipeline, "s3", "30", "1");
+    // `cat` reads the client's stdout to EOF, as the capture of a ctest test does. Every writer
+    // of that pipe must close it; the coordinator started by the client must not be one.
+    const std::string command =
+        "ANNO_TEST_BUDGET_COORD=local ANNO_TEST_BUDGET_PORT=" + std::to_string(kPortPipeline) +
+        " ANNO_TEST_BUDGET_ID=s3 ANNO_TEST_BUDGET_RECHECK_MS=100 ANNO_TEST_BUDGET_SPAWN=1"
+        " ANNO_TEST_ADMIT_WAIT_S=30 ANNO_TEST_BUDGET_JOURNAL=" +
+        journal.string() + " sh -c '{ sleep 2; printf \"q\\n\"; } | " +
+        sibling("anno_budget_probe").string() + " waiter " + budget_path + " 10' 2>&1 | cat";
+    const auto t0 = std::chrono::steady_clock::now();
+    std::string out;
+    if (FILE* pipe = popen(command.c_str(), "r")) {
+        char buffer[256];
+        while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+            out += buffer;
+        }
+        pclose(pipe);
+    }
+    const auto waited =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+    INFO("command: " << command);
+    INFO("output: " << out);
+    CHECK(has(out, "ADMITTED 1"));
+    CHECK_MESSAGE(waited.count() < 15,
+                  "the pipeline took " << waited.count() << " s: it waited for the coordinator");
+    CHECK(listening(kPortPipeline)); // and the coordinator it started is still there
+    step_aside(kPortPipeline, vars, budget_path);
+#endif
 }

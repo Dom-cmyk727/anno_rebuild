@@ -160,10 +160,25 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         return false;
     }
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
-    // The coordinator is detached: it keeps stdio and no other descriptor of
-    // the starting client (T10c F3, D2).
+    // The coordinator is detached: it keeps no descriptor of the starting client (T10c F3, D2),
+    // and that includes stdin, stdout and stderr. It outlives the client that starts it (until
+    // it has been idle for 30 s), so an inherited stdout pipe would stay open after the client
+    // exited and whatever reads the client's output (a shell pipeline, a ctest capture) would
+    // wait for end-of-file until the coordinator died (MAP-2 review, measured: 32 s for a
+    // client that took 2 s). The three are /dev/null, which also keeps the file actions below
+    // from leaving 0..2 unopened. Its own lines (LISTENING, BIND-FAILED) reach no reader on this
+    // path; a coordinator that a test starts itself (Child::start) has its own pipes and is not
+    // started here. Every action is checked: a coordinator that could not be detached is not
+    // started with the starter's streams.
     posix_spawn_file_actions_t actions;
     if (posix_spawn_file_actions_init(&actions) != 0) {
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
+    if (posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0) != 0 ||
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0) != 0 ||
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0) != 0) {
+        posix_spawn_file_actions_destroy(&actions);
         posix_spawnattr_destroy(&attr);
         return false;
     }

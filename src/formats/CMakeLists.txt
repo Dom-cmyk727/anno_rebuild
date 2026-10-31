@@ -10,6 +10,9 @@ add_library(anno_formats
   src/inc.cpp
   src/fixed_map.cpp
   src/insel.cpp
+  src/json.cpp
+  src/sha256.cpp
+  src/ship_manifest.cpp
   src/sze.cpp
   src/tagged.cpp
   src/text.cpp
@@ -34,6 +37,8 @@ if(ANNO_BUILD_TESTS)
     tests/figuren_test.cpp
     tests/fixed_map_test.cpp
     tests/insel_corpus_test.cpp
+    tests/json_test.cpp
+    tests/ship_manifest_test.cpp
     tests/sze_test.cpp
     tests/sze_corpus_test.cpp
     tests/text_zei_test.cpp
@@ -41,7 +46,8 @@ if(ANNO_BUILD_TESTS)
   target_link_libraries(anno_formats_tests PRIVATE anno_formats anno_test_support doctest::doctest)
   # Our own synthetic files (fixtures/synthetic, shared with the Python references).
   target_compile_definitions(anno_formats_tests PRIVATE
-    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
+    ANNO_REPO_DIR="${PROJECT_SOURCE_DIR}")
   anno_target_defaults(anno_formats_tests)
   anno_stage_budget_coord(anno_formats_tests)
   anno_add_doctest(anno_formats_tests)

@@ -45,17 +45,26 @@ VertexGrid VertexGrid::of(const Island& island) {
 }
 
 bool VertexGrid::contains(std::int64_t vx, std::int64_t vy) const {
-    const std::int64_t lx = vx - x0_;
-    const std::int64_t ly = vy - y0_;
-    return lx >= 0 && ly >= 0 && lx <= std::int64_t{w_} && ly <= std::int64_t{h_};
+    if (vx < x0_ || vy < y0_) {
+        return false;
+    }
+    // vx >= x0_ and vy >= y0_: the differences are non-negative and fit in u64, so the
+    // unsigned subtraction is exact for every i64 input (no signed overflow).
+    const std::uint64_t lx =
+        static_cast<std::uint64_t>(vx) - static_cast<std::uint64_t>(std::int64_t{x0_});
+    const std::uint64_t ly =
+        static_cast<std::uint64_t>(vy) - static_cast<std::uint64_t>(std::int64_t{y0_});
+    return lx <= w_ && ly <= h_;
 }
 
 std::optional<std::uint8_t> VertexGrid::at(std::int64_t vx, std::int64_t vy) const {
     if (status_ != VertexGridStatus::Ok || !contains(vx, vy)) {
         return std::nullopt;
     }
-    const std::uint64_t lx = static_cast<std::uint64_t>(vx - x0_);
-    const std::uint64_t ly = static_cast<std::uint64_t>(vy - y0_);
+    const std::uint64_t lx =
+        static_cast<std::uint64_t>(vx) - static_cast<std::uint64_t>(std::int64_t{x0_});
+    const std::uint64_t ly =
+        static_cast<std::uint64_t>(vy) - static_cast<std::uint64_t>(std::int64_t{y0_});
     if (lx == w_ || ly == h_) {
         return kBoundaryVertexHeight;
     }
@@ -66,7 +75,9 @@ std::optional<std::uint64_t> VertexGrid::runtime_index(std::int64_t vx, std::int
     if (!contains(vx, vy)) {
         return std::nullopt;
     }
-    return static_cast<std::uint64_t>(vy - y0_) * stride() + static_cast<std::uint64_t>(vx - x0_);
+    return (static_cast<std::uint64_t>(vy) - static_cast<std::uint64_t>(std::int64_t{y0_})) *
+               stride() +
+           (static_cast<std::uint64_t>(vx) - static_cast<std::uint64_t>(std::int64_t{x0_}));
 }
 
 } // namespace anno::sim

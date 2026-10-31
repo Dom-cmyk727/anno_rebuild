@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -107,6 +108,19 @@ TEST_CASE("vertex grid: the original's runtime index") {
     // Negative origins are ordinary coordinates.
     CHECK(*g.at(-4, 20) == 1);
     CHECK(*g.at(-4 + 4, 20 + 2) == static_cast<std::uint8_t>(17 * 2 + 4 + 1));
+    // Extreme coordinates are total (no signed overflow): the unsigned difference is exact.
+    constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t hi = std::numeric_limits<std::int64_t>::max();
+    CHECK_FALSE(g.contains(lo, 20));
+    CHECK_FALSE(g.contains(hi, 20));
+    CHECK_FALSE(g.contains(-4, lo));
+    CHECK_FALSE(g.at(hi, hi).has_value());
+    CHECK_FALSE(g.runtime_index(lo, lo).has_value());
+    const sim::Island pos = island_with(7, 11, W, H, ramp(W, H));
+    const sim::VertexGrid gp = sim::VertexGrid::of(pos);
+    CHECK_FALSE(gp.contains(lo, 11));
+    CHECK_FALSE(gp.contains(7, lo));
+    CHECK_FALSE(gp.contains(hi, hi));
 }
 
 TEST_CASE("vertex grid: a one-tile island and an empty island") {
@@ -185,7 +199,7 @@ TEST_CASE("vertex grid: missing, absent, placeholder and malformed terrain") {
     }
 }
 
-TEST_CASE("vertex grid: the view allocates and changes nothing, and survives save and load") {
+TEST_CASE("vertex grid: the view changes no state and survives save and load") {
     sim::ScenarioSpec spec = sim::synthetic::empty_scenario();
     sim::ScenarioSpec::IslandSpec is = sim::synthetic::plain_island(0, 40, 24, 6, 4);
     is.terrain = sim::make_terrain(ramp(6, 4), std::vector<std::uint16_t>(24, 3),
@@ -259,7 +273,7 @@ TEST_CASE("vertex grid: shipped scenarios through the existing loader agree with
     }
     std::sort(files.begin(), files.end());
     REQUIRE_FALSE(files.empty());
-    std::uint64_t islands = 0, vertices = 0, boundary = 0, nonsquare = 0;
+    std::uint64_t islands = 0, vertices = 0, boundary = 0, nonsquare = 0, unmatched = 0;
     for (const fs::path& f : files) {
         INFO(f.string());
         const auto buf = anno::test::read_file(f);
@@ -278,7 +292,11 @@ TEST_CASE("vertex grid: shipped scenarios through the existing loader agree with
                     break;
                 }
             }
-            if (match == nullptr || !isl.record("HEIGHT")) {
+            if (!isl.record("HEIGHT")) {
+                continue;
+            }
+            if (match == nullptr) {
+                ++unmatched;
                 continue;
             }
             sim::Island is;
@@ -303,7 +321,10 @@ TEST_CASE("vertex grid: shipped scenarios through the existing loader agree with
         }
     }
     MESSAGE("islands compared: " << islands << ", vertices: " << vertices << ", boundary vertices: "
-                                 << boundary << ", non-square islands: " << nonsquare);
+                                 << boundary << ", non-square islands: " << nonsquare
+                                 << ", HEIGHT islands without a loaded match: " << unmatched);
     CHECK(islands > 0);
+    // A loader regression that drops islands must not shrink the coverage silently.
+    CHECK(unmatched == 0);
     CHECK(boundary > 0);
 }

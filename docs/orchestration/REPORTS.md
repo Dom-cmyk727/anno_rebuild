@@ -7065,3 +7065,9 @@ None of the three is a full pass of `map2-proposed-v1`. Structural rules
 pass. Home land fails at 79 permille and paired southern land at 52.
 Pair and centre distance pass ±5%. Rival distance and per-climate reach do
 not. Table in `docs/sim/fixed-map.md` §10.
+
+## MAP.2 progress — previews — 2026-10-31
+
+`tools/map2_preview.py` writes labelled top-down and isometric PNGs. They
+stay in the ignored cache. The six pictures were inspected; notes are in
+§10 and in the final report.

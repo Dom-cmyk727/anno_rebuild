@@ -37,6 +37,7 @@ if(ANNO_BUILD_TESTS)
     tests/river_flow_corpus_test.cpp
     tests/river_lifecycle_test.cpp
     tests/scene_reclaim_test.cpp
+    tests/scene_accounting_test.cpp
     tests/derived_freshness_test.cpp
     tests/river_flow_test.cpp
     tests/river_shade_test.cpp

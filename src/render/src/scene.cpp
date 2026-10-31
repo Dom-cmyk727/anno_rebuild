@@ -293,10 +293,100 @@ struct Scene::SceneCaches {
     }
 };
 
+namespace {
+
+/// The process's accounted bytes (PayloadCounts). Constant-initialised atomics: no allocation and
+/// no lock on any path that adds or subtracts, including a first use from a last owner's release.
+struct PayloadLedger {
+    std::array<std::atomic<std::size_t>, kPayloadKinds> live{}, peak{}, allocations{};
+};
+constinit PayloadLedger g_payload{};
+
+/// An accounted allocation: the token first, so it is destroyed after the value.
+template <class T> struct Held {
+    PayloadToken token;
+    T value;
+};
+
+} // namespace
+
+PayloadCounts payload_counts() {
+    PayloadCounts c;
+    for (std::size_t k = 0; k < kPayloadKinds; ++k) {
+        c.live[k] = g_payload.live[k].load(std::memory_order_relaxed);
+        c.peak[k] = g_payload.peak[k].load(std::memory_order_relaxed);
+        c.allocations[k] = g_payload.allocations[k].load(std::memory_order_relaxed);
+    }
+    return c;
+}
+
+PayloadToken::PayloadToken(PayloadToken&& other) noexcept
+    : kind_(other.kind_), bytes_(other.bytes_), held_(std::exchange(other.held_, false)) {}
+
+PayloadToken& PayloadToken::operator=(PayloadToken&& other) noexcept {
+    if (this != &other) {
+        release();
+        kind_ = other.kind_;
+        bytes_ = other.bytes_;
+        held_ = std::exchange(other.held_, false);
+    }
+    return *this;
+}
+
+void PayloadToken::reset(PayloadKind kind, std::size_t bytes) noexcept {
+    release();
+    kind_ = kind;
+    bytes_ = bytes;
+    held_ = true;
+    const auto k = static_cast<std::size_t>(kind);
+    const std::size_t now = g_payload.live[k].fetch_add(bytes, std::memory_order_relaxed) + bytes;
+    g_payload.allocations[k].fetch_add(1, std::memory_order_relaxed);
+    std::size_t peak = g_payload.peak[k].load(std::memory_order_relaxed);
+    while (now > peak &&
+           !g_payload.peak[k].compare_exchange_weak(peak, now, std::memory_order_relaxed)) {
+    }
+}
+
+void PayloadToken::release() noexcept {
+    if (!held_) {
+        return;
+    }
+    held_ = false;
+    const auto k = static_cast<std::size_t>(kind_);
+    g_payload.live[k].fetch_sub(bytes_, std::memory_order_relaxed);
+    g_payload.allocations[k].fetch_sub(1, std::memory_order_relaxed);
+}
+
+std::size_t lists_bytes(const IslandLists& lists) {
+    std::size_t n = 0;
+    for (const auto* v :
+         {&lists.below, &lists.below_enhanced, &lists.above, &lists.above_enhanced, &lists.other,
+          &lists.falls_below, &lists.falls_above, &lists.river_sprites}) {
+        n += v->capacity() * sizeof(Prepared);
+    }
+    return n + lists.rivers.capacity() * sizeof(sea::RiverPiece);
+}
+
+std::size_t buffers_bytes(const Buffers& buffers) {
+    std::size_t n = buffers.capacity() * sizeof(Buffers::value_type);
+    for (const auto& b : buffers) {
+        n += b.capacity();
+    }
+    return n;
+}
+
+std::shared_ptr<const Buffers> accounted_buffers(Buffers buffers, PayloadKind kind) {
+    auto held = std::make_shared<Held<Buffers>>();
+    held->value = std::move(buffers);
+    held->token.reset(kind, buffers_bytes(held->value));
+    return std::shared_ptr<const Buffers>(held, &held->value);
+}
+
 std::shared_ptr<const IslandLists>
-Scene::build_island_lists(const insel::Island& i, const formats::anlagen::AnlagenFile& anlagen) {
-    auto out = std::make_shared<IslandLists>();
-    IslandLists& d = *out;
+Scene::build_island_lists(const insel::Island& i, const formats::anlagen::AnlagenFile& anlagen,
+                          PayloadKind kind) {
+    auto held = std::make_shared<Held<IslandLists>>();
+    IslandLists& d = held->value;
     auto list = [&](Objects which) { return prepare_objects(i, anlagen, kObjectRecords, which); };
     auto in = [](const auto& ids, const insel::PlacedObject& o) {
         return std::find(ids.begin(), ids.end(), o.anlage) != ids.end();
@@ -326,7 +416,8 @@ Scene::build_island_lists(const insel::Island& i, const formats::anlagen::Anlage
         }
     }
     d.other = list(Objects::NotWater);
-    return out;
+    held->token.reset(kind, lists_bytes(d));
+    return std::shared_ptr<const IslandLists>(held, &d);
 }
 
 std::shared_ptr<Scene> Scene::create(std::string name, std::vector<insel::Island> islands,
@@ -347,9 +438,11 @@ struct SceneReclaimer::Impl {
     std::uint64_t queued = 0, completed = 0;
     std::size_t waiting = 0, peak_waiting = 0;
     std::size_t bytes_waiting = 0, peak_bytes_waiting = 0;
+    std::size_t bytes_in_flight = 0;
     bool busy = false;
     std::thread::id last_thread;
     std::function<void()> gate;
+    std::function<void(const Scene&)> observer;
     std::thread thread;
 };
 
@@ -364,25 +457,35 @@ SceneReclaimer::SceneReclaimer() : impl_(std::make_unique<Impl>()) {
     im->thread = std::thread([im] {
         for (;;) {
             const Scene* dead = nullptr;
+            std::size_t own = 0;
             std::function<void()> gate;
+            std::function<void(const Scene&)> observer;
             {
                 std::unique_lock lock(im->mutex);
                 im->wake.wait(lock, [im] { return im->head != nullptr; });
                 dead = im->head;
                 im->head = dead->reclaim_next_;
                 dead->reclaim_next_ = nullptr;
+                own = dead->own_bytes();
                 --im->waiting;
-                im->bytes_waiting -= dead->reclaim_bytes_;
+                im->bytes_waiting -= own;
+                // Dequeued is not destroyed: the scene stays counted until delete returns.
+                im->bytes_in_flight += own;
                 im->busy = true;
                 gate = im->gate;
+                observer = im->observer;
             }
             if (gate) {
                 gate(); // test seam: a stalled reclaimer
+            }
+            if (observer) {
+                observer(*dead); // test seam: which generation is destroyed, on which thread
             }
             // The destruction runs here, on the reclaimer, with no lock held.
             delete dead;
             const std::lock_guard lock(im->mutex);
             im->busy = false;
+            im->bytes_in_flight -= own;
             ++im->completed;
             im->last_thread = std::this_thread::get_id();
         }
@@ -399,9 +502,9 @@ SceneReclaimer::~SceneReclaimer() {
 }
 
 void SceneReclaimer::reclaim(const Scene* scene) noexcept {
-    // No allocation and no throw on this path: the scene's own link is used, and the byte count is
-    // computed from sizes that already exist (round dx, DX2d).
-    scene->reclaim_bytes_ = scene->approximate_bytes();
+    // No allocation, no throw and no walk of the scene on this path: the scene's own link is used,
+    // and its byte count was fixed when it was constructed (rounds dx DX2d, dy A4).
+    const std::size_t own = scene->own_bytes();
     {
         const std::lock_guard lock(impl_->mutex);
         scene->reclaim_next_ = impl_->head;
@@ -409,7 +512,7 @@ void SceneReclaimer::reclaim(const Scene* scene) noexcept {
         ++impl_->queued;
         ++impl_->waiting;
         impl_->peak_waiting = std::max(impl_->peak_waiting, impl_->waiting);
-        impl_->bytes_waiting += scene->reclaim_bytes_;
+        impl_->bytes_waiting += own;
         impl_->peak_bytes_waiting = std::max(impl_->peak_bytes_waiting, impl_->bytes_waiting);
     }
     impl_->wake.notify_one();
@@ -418,6 +521,11 @@ void SceneReclaimer::reclaim(const Scene* scene) noexcept {
 void SceneReclaimer::set_test_gate(std::function<void()> gate) {
     const std::lock_guard lock(impl_->mutex);
     impl_->gate = std::move(gate);
+}
+
+void SceneReclaimer::set_test_observer(std::function<void(const Scene&)> observer) {
+    const std::lock_guard lock(impl_->mutex);
+    impl_->observer = std::move(observer);
 }
 
 SceneReclaimer::Stats SceneReclaimer::stats() const {
@@ -430,6 +538,7 @@ SceneReclaimer::Stats SceneReclaimer::stats() const {
     s.bytes_waiting = impl_->bytes_waiting;
     s.peak_bytes_waiting = impl_->peak_bytes_waiting;
     s.in_flight = impl_->busy ? 1U : 0U;
+    s.bytes_in_flight = impl_->bytes_in_flight;
     return s;
 }
 
@@ -438,25 +547,55 @@ std::thread::id SceneReclaimer::last_thread() const {
     return impl_->last_thread;
 }
 
-std::size_t Scene::approximate_bytes() const {
-    std::size_t n = 0;
+namespace {
+
+/// The descriptor bytes of a record and its children (the payloads they view are not counted:
+/// they belong to the backing or to an island's storage).
+std::size_t chunk_meta_bytes(const formats::chunk::Chunk& c) {
+    std::size_t n = c.children.capacity() * sizeof(formats::chunk::Chunk);
+    for (const formats::chunk::Chunk& child : c.children) {
+        n += chunk_meta_bytes(child);
+    }
+    return n;
+}
+
+} // namespace
+
+std::size_t Scene::metadata_bytes() const {
+    std::size_t n = sizeof(Scene) + name.capacity();
+    n += islands.capacity() * sizeof(insel::Island);
     for (const insel::Island& island : islands) {
-        n += island.head.size();
+        n += island.records.capacity() * sizeof(formats::chunk::Chunk);
         for (const formats::chunk::Chunk& rec : island.records) {
-            n += rec.payload.size();
+            n += chunk_meta_bytes(rec);
+        }
+    }
+    n += island_storage_.capacity() * sizeof(island_storage_[0]);
+    n += objects_.capacity() * sizeof(IslandData);
+    for (const auto& layout : layouts) {
+        n += layout.capacity() * sizeof(Placement);
+    }
+    return n;
+}
+
+std::size_t Scene::referenced_payload_bytes() const {
+    std::vector<const void*> seen;
+    std::size_t n = 0;
+    auto first = [&seen](const void* p) {
+        if (p == nullptr || std::find(seen.begin(), seen.end(), p) != seen.end()) {
+            return false;
+        }
+        seen.push_back(p);
+        return true;
+    };
+    for (const IslandData& d : objects_) {
+        if (first(d.lists.get())) {
+            n += lists_bytes(*d.lists);
         }
     }
     for (const auto& storage : island_storage_) {
-        if (storage) {
-            for (const auto& buffer : *storage) {
-                n += buffer.capacity();
-            }
-        }
-    }
-    for (const IslandData& d : objects_) {
-        if (d.lists) {
-            n += (d.lists->below.size() + d.lists->above.size() + d.lists->other.size()) *
-                 sizeof(Prepared);
+        if (first(storage.get())) {
+            n += buffers_bytes(*storage);
         }
     }
     return n;
@@ -465,8 +604,8 @@ std::size_t Scene::approximate_bytes() const {
 Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
              assets::island::GroundTextures textures_, formats::anlagen::AnlagenFile anlagen_,
              Lift lift_, Backing backing_)
-    : assets_(std::make_shared<SceneAssets>(
-          SceneAssets{std::move(textures_), std::move(anlagen_), std::move(backing_)})),
+    : assets_(std::make_shared<SceneAssets>(SceneAssets{PayloadToken{}, std::move(textures_),
+                                                        std::move(anlagen_), std::move(backing_)})),
       caches_(std::make_shared<SceneCaches>()), name(std::move(name_)),
       islands(std::move(islands_)), textures(assets_->textures), anlagen(assets_->anlagen),
       sprites(caches_->sprites), frame_table(caches_->frame_table), lift(lift_) {
@@ -482,12 +621,16 @@ Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
     }
     for (const auto& i : islands) {
         IslandData d;
-        d.lists = build_island_lists(i, anlagen);
+        d.lists = build_island_lists(i, anlagen, PayloadKind::Baseline);
         d.grids = ground_grids(i);
         d.water = std::make_shared<WaterSlot>();
         d.flow = std::make_shared<FlowSlot>();
         objects_.push_back(std::move(d));
     }
+    if (assets_->backing) {
+        assets_->token.reset(PayloadKind::Backing, buffers_bytes(*assets_->backing));
+    }
+    own_.reset(PayloadKind::Generation, metadata_bytes());
 }
 
 Scene::Scene(const Scene& base, std::vector<IslandUpdate>&& updates)
@@ -523,6 +666,7 @@ Scene::Scene(const Scene& base, std::vector<IslandUpdate>&& updates)
             d.flow = std::make_shared<FlowSlot>();
         }
     }
+    own_.reset(PayloadKind::Generation, metadata_bytes());
 }
 
 std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,

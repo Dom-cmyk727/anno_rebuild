@@ -227,6 +227,66 @@ struct IslandLists {
 /// the caller's file buffers, which must outlive the scene. Every `group`
 /// argument must be < kGroups (callers validate user input).
 ///
+/// What an accounted allocation holds (docs/app/game-shell.md, "Retained work and reclamation").
+enum class PayloadKind : std::uint8_t {
+    /// The file bytes a scene family's islands and Anlagen.dat view (Scene::Backing), counted
+    /// once per family (by the assets every generation of the family shares).
+    Backing = 0,
+    /// The object lists of a scene built from files (generation 0).
+    Baseline = 1,
+    /// Object lists and record storage built for a change (a picture's worker).
+    Incremental = 2,
+    /// A generation's own metadata: its island and record descriptors, island slots and layouts.
+    Generation = 3,
+};
+inline constexpr std::size_t kPayloadKinds = 4;
+
+/// The process's accounted bytes by kind (round dy, A4). Each accounted allocation is counted once,
+/// by its owner, from the moment it is complete until its destruction has finished: a PayloadToken
+/// is the first member of the allocation's holder, so its bytes leave the count after everything
+/// else in the holder is freed. Bytes are element capacities times element sizes plus the owning
+/// vectors' headers; allocator overhead and the holder's own control block are not counted (an
+/// estimate, stated as such). Peaks are the largest live value seen since the process started.
+struct PayloadCounts {
+    std::array<std::size_t, kPayloadKinds> live{}, peak{}, allocations{};
+    [[nodiscard]] std::size_t of(PayloadKind k) const { return live[static_cast<std::size_t>(k)]; }
+};
+[[nodiscard]] PayloadCounts payload_counts();
+
+/// The count of one accounted allocation. Construction and reset add, destruction and reset
+/// subtract; neither allocates, takes a lock or throws (the counters are process-wide atomics with
+/// constant initialisation), so a token may be released by a last owner on any thread.
+class PayloadToken {
+  public:
+    PayloadToken() = default;
+    PayloadToken(PayloadKind kind, std::size_t bytes) noexcept { reset(kind, bytes); }
+    PayloadToken(PayloadToken&& other) noexcept;
+    PayloadToken& operator=(PayloadToken&& other) noexcept;
+    PayloadToken(const PayloadToken&) = delete;
+    PayloadToken& operator=(const PayloadToken&) = delete;
+    ~PayloadToken() { release(); }
+    /// Releases the current count, then counts `bytes` of `kind`.
+    void reset(PayloadKind kind, std::size_t bytes) noexcept;
+    [[nodiscard]] std::size_t bytes() const { return held_ ? bytes_ : 0; }
+
+  private:
+    void release() noexcept;
+    PayloadKind kind_ = PayloadKind::Incremental;
+    std::size_t bytes_ = 0;
+    bool held_ = false;
+};
+
+/// Record storage: the byte buffers an island's records point into.
+using Buffers = std::vector<std::vector<std::uint8_t>>;
+/// The accounted bytes of `lists`: every vector's capacity times its element size.
+[[nodiscard]] std::size_t lists_bytes(const IslandLists& lists);
+/// The accounted bytes of `buffers`: every buffer's capacity, plus the outer vector's capacity
+/// times the size of a buffer header.
+[[nodiscard]] std::size_t buffers_bytes(const Buffers& buffers);
+/// Moves `buffers` into an accounted allocation. The buffers keep their data addresses (only the
+/// outer vector moves), so spans into them stay valid.
+[[nodiscard]] std::shared_ptr<const Buffers> accounted_buffers(Buffers buffers, PayloadKind kind);
+
 /// A scene is a generation (generation()). with_islands() derives the next one: it
 /// shares the static parts (assets, sprite and frame caches, sea patterns, the
 /// flow builders, each island's grids, and an island's water and flow while its
@@ -243,24 +303,31 @@ class SceneReclaimer {
   public:
     /// The process reclaimer (created on first use).
     static SceneReclaimer& shared();
-    /// Takes over the destruction of `scene` (called by the generation's deleter). Never allocates
-    /// and never throws: the scene carries its own link, so a last release under memory pressure
-    /// cannot fail here (round dx, DX2d).
+    /// Takes over the destruction of `scene` (called by the generation's deleter). Never allocates,
+    /// never throws and does not walk the scene: the scene carries its own link and its own byte
+    /// count (Scene::own_bytes, fixed at construction), so a last release under memory pressure
+    /// cannot fail here and costs the same for any scene (rounds dx DX2d, dy A4).
     void reclaim(const Scene* scene) noexcept;
     struct Stats {
         /// Scenes handed over, and scenes whose destruction finished.
         std::uint64_t queued = 0, completed = 0;
         /// Scenes waiting, and the largest number waiting at once.
         std::size_t waiting = 0, peak_waiting = 0;
-        /// Approximate bytes of the waiting scenes (Scene::approximate_bytes at hand-over), and the
-        /// largest at once.
+        /// The waiting scenes' own metadata bytes (Scene::own_bytes), and the largest at once. The
+        /// payload a scene frees when it is destroyed (lists and storage it was the last owner of)
+        /// leaves payload_counts() when it is freed; it is not part of this queue count.
         std::size_t bytes_waiting = 0, peak_bytes_waiting = 0;
-        /// Scenes being destroyed right now (0 or 1).
-        std::size_t in_flight = 0;
+        /// Scenes being destroyed right now (0 or 1), and their own bytes: a scene leaves the
+        /// waiting count when it is dequeued and stays counted here until its destruction ends.
+        std::size_t in_flight = 0, bytes_in_flight = 0;
     };
     /// A test seam: called on the reclaimer thread before each destruction (a stalled reclaimer).
     /// Null by default.
     void set_test_gate(std::function<void()> gate);
+    /// A test seam: called on the reclaimer thread with each scene just before it is destroyed
+    /// (after the gate), so a test can tie a destruction to a particular generation. Null by
+    /// default.
+    void set_test_observer(std::function<void(const Scene&)> observer);
     [[nodiscard]] Stats stats() const;
     /// The thread that finished the most recent destruction (default-constructed before the first).
     [[nodiscard]] std::thread::id last_thread() const;
@@ -290,9 +357,15 @@ class Scene : public std::enable_shared_from_this<Scene> {
     using Backing = std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>;
 
   private:
+    /// This generation's own metadata bytes (PayloadKind::Generation), set at the end of
+    /// construction. The first member, so it is released after every other member is destroyed.
+    PayloadToken own_;
     /// Owned by the scene: the assets (textures, Anlagen) and the caches shared by all of
     /// its generations. Declared before the public references below, which bind to them.
     struct SceneAssets {
+        /// The backing's bytes (PayloadKind::Backing), counted once for the scene family. First,
+        /// so it is released after the backing is freed.
+        PayloadToken token;
         assets::island::GroundTextures textures;
         formats::anlagen::AnlagenFile anlagen;
         /// The bytes the islands' records and Anlagen.dat view (see Scene::Backing).
@@ -342,10 +415,12 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// This scene's generation: 0 for a scene built from files, one more for each derivation.
     [[nodiscard]] std::uint64_t generation() const { return generation_; }
     /// The object lists of `island` as prepare_objects gives them for the scene (the same
-    /// records and draw order the constructor uses). Pure: safe on any thread.
+    /// records and draw order the constructor uses), in an allocation accounted as `kind`
+    /// (PayloadCounts). Pure: safe on any thread.
     [[nodiscard]] static std::shared_ptr<const IslandLists>
     build_island_lists(const formats::insel::Island& island,
-                       const formats::anlagen::AnlagenFile& anlagen);
+                       const formats::anlagen::AnlagenFile& anlagen,
+                       PayloadKind kind = PayloadKind::Incremental);
     /// The lists of island `index` in this generation.
     [[nodiscard]] const IslandLists& island_lists(std::size_t index) const {
         return *objects_[index].lists;
@@ -440,12 +515,16 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// and the sprite lists answer from the level above (reduced or empty).
     void set_levels(ZoomLevels levels);
     [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
-    /// The bytes this generation holds that it did not share with its parent generation's static
-    /// parts: the island records and heads (plus the copies of rewritten payloads) and the object
-    /// lists, as element counts times their sizes. An approximation of the heap bytes of the
-    /// generation's own data; shared assets and caches are not included (see
-    /// docs/app/game-shell.md, retained-work accounting).
-    [[nodiscard]] std::size_t approximate_bytes() const;
+    /// The bytes this generation owns alone (PayloadKind::Generation): the scene object, its
+    /// island and record descriptors (a derivation copies them for every island), its island
+    /// slots and its layouts, as capacities times element sizes. Fixed at construction, so the
+    /// last owner's release does not walk the scene. The lists and record storage it shares are
+    /// counted by their own allocations (payload_counts), not here.
+    [[nodiscard]] std::size_t own_bytes() const { return own_.bytes(); }
+    /// The accounted payload this generation references, each allocation counted once whether it
+    /// is shared or not: its islands' lists and record storage (the same sizes their tokens count).
+    /// Walks the generation; for measurements and tests, not for a hot path.
+    [[nodiscard]] std::size_t referenced_payload_bytes() const;
 
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
@@ -556,11 +635,11 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// Per island (empty entry: the record bytes are owned by the caller of the first scene).
     std::vector<std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>> island_storage_;
     /// The process reclaimer's intrusive list (round dx, DX2d): while this scene waits for
-    /// destruction, the next waiting scene and this scene's approximate bytes (set at hand-over).
-    /// Written only by SceneReclaimer.
+    /// destruction, the next waiting scene. Written only by SceneReclaimer.
     friend class SceneReclaimer;
     mutable const Scene* reclaim_next_ = nullptr;
-    mutable std::size_t reclaim_bytes_ = 0;
+    /// own_bytes at construction (see own_).
+    [[nodiscard]] std::size_t metadata_bytes() const;
     struct SeaSlot {
         std::once_flag once;
         std::optional<sea::SeaPattern> pattern;

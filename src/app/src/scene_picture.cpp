@@ -743,6 +743,7 @@ void ScenePicture::reindex(const std::set<std::uint32_t>& islands) {
 }
 
 std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const BuildingBatch>>& batches) {
+    const auto start = Clock::now();
     std::set<std::uint32_t> touched;
     for (const auto& batch : batches) {
         if (!batch) {
@@ -765,7 +766,9 @@ std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const Building
             touched.insert(d.building.island);
         }
     }
+    const auto listed = Clock::now();
     reindex(touched);
+    const auto indexed = Clock::now();
     std::vector<std::size_t> wanted;
     {
         const std::lock_guard lock(state_->mutex);
@@ -790,6 +793,14 @@ std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const Building
     }
     Dropped dropped;
     const std::size_t requested = dispatch(wanted, dropped);
+    {
+        const std::lock_guard lock(state_->mutex);
+        state_->stats.last_apply_list_ms =
+            std::chrono::duration<double, std::milli>(listed - start).count();
+        state_->stats.last_reindex_ms =
+            std::chrono::duration<double, std::milli>(indexed - listed).count();
+        state_->stats.last_dispatch_ms = ms_since(indexed);
+    }
     reaper_->retire(std::move(dropped));
     return requested;
 }

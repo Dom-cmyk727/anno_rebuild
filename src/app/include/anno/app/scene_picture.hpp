@@ -188,6 +188,10 @@ class ScenePicture {
         /// Buildings copied into started builds: a start copies its own island's buildings only
         /// (round dx, DX2e).
         std::uint64_t copied_buildings = 0;
+        /// The newest apply call split into its stages (window, milliseconds): applying the batches
+        /// to the building list, rebuilding the per-island index, and the dispatch (admission and
+        /// the copies of the started builds' buildings).
+        double last_apply_list_ms = 0, last_reindex_ms = 0, last_dispatch_ms = 0;
         /// Milliseconds of the newest object build (worker) and of the newest commit (window).
         double last_build_ms = 0, last_commit_ms = 0;
     };

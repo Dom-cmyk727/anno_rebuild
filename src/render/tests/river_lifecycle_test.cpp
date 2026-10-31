@@ -3,6 +3,7 @@
 // the generation that asked for it is retired or destroyed. The interleavings are driven by a
 // gate in the test (flow_build_fault, the test hook of Scene), not by timing: a solve reports that
 // it has started and waits until the test lets it finish. Needs the game files (skips without).
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
@@ -30,7 +31,7 @@ namespace {
 
 /// The river island D_256x256_0045_5B as a new scene (the caller owns it). The scene owns the file
 /// bytes its islands and Anlagen view (render::Scene::Backing, round dv R3).
-render::Scene* new_river_scene(const fs::path& dir) {
+render::Scene* new_river_scene(const fs::path& dir, std::size_t copies = 1) {
     auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
     bytes->push_back(
         anno::test::read_file(dir / "Scenes" / "Islands/Dschungel/D_256x256_0045_5B.scp"));
@@ -43,6 +44,11 @@ render::Scene* new_river_scene(const fs::path& dir) {
         textures.set_water(*c);
     }
     auto islands = anno::formats::insel::islands((*bytes)[0]).value();
+    // Copies of the island are islands of their own (their own flow slots, the same river input).
+    for (std::size_t c = 1; c < copies; ++c) {
+        islands.push_back(islands.front());
+        islands.back().number = static_cast<std::uint32_t>(c);
+    }
     return new render::Scene("river lifecycle", std::move(islands), std::move(textures),
                              std::move(anlagen), render::kHeightLift, bytes);
 }
@@ -56,15 +62,20 @@ std::shared_ptr<render::Scene> river_scene(const fs::path& dir) {
 /// release(), which lets the solve finish. No timing is involved.
 class Gate {
   public:
+    /// Called by the solve: waits until the test releases the gate. Bounded, so a test that failed
+    /// before releasing cannot hang the run.
     void enter() {
         std::unique_lock lock(mutex_);
         entered_ = true;
         cv_.notify_all();
-        cv_.wait(lock, [this] { return open_; });
+        if (!cv_.wait_for(lock, kWait, [this] { return open_; })) {
+            throw std::runtime_error("gate: the solve was never released");
+        }
     }
-    void wait_entered() {
+    /// True once a solve has entered the gate (bounded).
+    bool wait_entered() {
         std::unique_lock lock(mutex_);
-        cv_.wait(lock, [this] { return entered_; });
+        return cv_.wait_for(lock, kWait, [this] { return entered_; });
     }
     void release() {
         {
@@ -75,6 +86,7 @@ class Gate {
     }
 
   private:
+    static constexpr std::chrono::seconds kWait{30};
     std::mutex mutex_;
     std::condition_variable cv_;
     bool entered_ = false, open_ = false;
@@ -199,4 +211,56 @@ TEST_CASE("river lifecycle: a second sharer does not reset or requeue a slot ano
     second->wait_river_flow_builders();
     CHECK(second->river_flow_done(0));
     CHECK(second->river_flow(0, false).flow != nullptr);
+}
+
+// Two workers, two solves of one non-shared scene (round dw, DW2a; rivers.md 3.1). Solve 0 is
+// held in the gate on one worker while solve 1 completes on the other. Destroying the scene must
+// wait for solve 0 (it reads the scene); the test checks that destruction is still blocked before it
+// lets the solve go. Pre-fix: the single solving marker is overwritten by solve 1, so the destructor
+// returns while solve 0 is inside the scene (heap-use-after-free under ASan).
+namespace {
+
+/// Releases a gate when its scope ends, whatever the outcome of the test.
+struct ReleaseOnExit {
+    Gate& gate;
+    ~ReleaseOnExit() { gate.release(); }
+};
+
+} // namespace
+
+TEST_CASE("river lifecycle: destruction waits for a gated solve while another worker finishes "
+          "(game files, two workers)" * doctest::test_suite("river_lifecycle")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::unique_ptr<render::Scene> scene(new_river_scene(*dir, 2));
+    scene->river_cfg.flow_threads = 2;
+    Gate gate;
+    scene->flow_build_fault = [&gate](std::size_t index) {
+        if (index == 0) {
+            gate.enter();
+        }
+    };
+    std::future<void> destroying;
+    ReleaseOnExit release_on_exit{gate};
+    REQUIRE(scene->river_flow(0, false).pending);
+    REQUIRE(gate.wait_entered()); // solve 0 is inside the scene, on one worker
+    REQUIRE(scene->river_flow(1, false).pending);
+    // Solve 1 completes on the other worker while solve 0 stays gated.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (!scene->river_flow_done(1) && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    REQUIRE(scene->river_flow_done(1));
+    REQUIRE(!scene->river_flow_done(0));
+    destroying = std::async(std::launch::async, [&scene] { scene.reset(); });
+    // Destruction must stay blocked while solve 0 is inside the scene. The bound is long: a scene's
+    // teardown under ASan takes hundreds of milliseconds, so a short wait would not tell "blocked"
+    // from "slow" (the pre-fix trace finished the teardown in about 0.3 s after the early return).
+    CHECK(destroying.wait_for(std::chrono::seconds(5)) == std::future_status::timeout);
+    gate.release();
+    destroying.get();
+    CHECK(scene == nullptr);
 }

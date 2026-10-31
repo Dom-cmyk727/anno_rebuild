@@ -521,7 +521,8 @@ Hard structural checks:
   site` when a reached coast is blocked. `REPORT_ABSENT_CLIMATES` emits
   `climate NAME absent everywhere` for an empty bucket. Turning any of those
   off hides the corresponding failure. Defaults are step 8, clearance 8,
-  useful-opening bound 400 tiles, city-space estimate 256, share gap 32.
+  useful-opening bound 400 tiles, city-space estimate 256, share gap 32,
+  and share reports start at island side 128.
 
 Provisional feasibility, configurable, labelled as tool geometry:
 
@@ -538,8 +539,9 @@ Descriptive diagnostics, not gates and not optimised toward equality:
 
 - rectangle area, `HEIGHT >= 16` land, and the city-space estimate;
 - alternative islands and route costs;
-- optional sharing: two separated footholds on one large island, with room
-  for two estimates. Sharing is not added into the five-island witness;
+- optional sharing: two separated footholds on one island whose side is at
+  least 128, with room for two estimates. A smaller island is not reported
+  as shared city space. Sharing is not added into the five-island witness;
 - every configured climate, including a climate absent everywhere;
 - which spawns can reach which climates. Neutral islands are not given to
   the nearest ship.
@@ -570,4 +572,7 @@ tools 50 t, tools 30 t, from the human party of `03_1024_med_256`. That
 baseline is evidence for comparison, not an economy approval.
 
 `src/sim_load` still loads only `anno1503-fixed-map 1`. These manifests are
-not executable ship starts.
+not executable ship starts. The three proposals under
+`data/maps/candidates/ship-start-v1/` are that JSON. The historical
+`lan5-a.txt`, `lan5-b.txt`, and `lan5-c.txt` files stay as Kontor-start
+measurements. `data/maps/lan5.txt` is not one of these proposals.

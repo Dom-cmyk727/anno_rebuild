@@ -19,6 +19,7 @@ TINY = {
     'max_route_tiles': 30,
     'min_city': 16,
     'share_gap': 8,
+    'share_min_side': 16,
     'envelope': False,
 }
 

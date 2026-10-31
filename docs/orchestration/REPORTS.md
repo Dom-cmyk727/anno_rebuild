@@ -7291,3 +7291,25 @@ navigation, and the loader: NOT_RUN_ENGINE. No candidate search in this step.
 lan5.txt remains sha256
 `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes,
 dump digest `c6af83f95104cd4f`.
+
+## MAP.2 progress — three ship-start proposals — 2026-10-31
+
+`tools/map2_ship_layout.py` writes three JSON manifests. Large-island
+origins are authored. Filler is the seeded first fit on the 8-tile lattice,
+kept out of the reserved lanes and the spawn boxes. Sharing is reported for
+an island side of at least 128. A 64-tile island is not called shared city
+space.
+
+Fresh regeneration into `/tmp/map2-ship-cmp` matched the files under
+`data/maps/candidates/ship-start-v1/` byte for byte (`cmp`). `map2_ship.py
+check` on those written files exited 0 for all three. Each report is
+PASS_TOOL_CHECKS, cities 0, NOT_RUN_ENGINE. Content hashes:
+
+- lan5-ship-a `2b291a2e0615688ad767f015250863d98f99047cdfa6ec140c04d3f6e217b010` (28 islands, seed 26031)
+- lan5-ship-b `ea471f5c723043dd44df8662f701c7174c1b360d4b4312fed341af75acc61f85` (38 islands, seed 26032)
+- lan5-ship-c `6156c56bf33c0e139a61732d1df313c49a368af6bb2da5fb4fcb833ea2e39096` (50 islands, seed 26033)
+
+The objects have no `cities` field. The words "player cities" and "island
+reservations" appear only in the `excluded` list. The historical
+`lan5-a.txt`, `lan5-b.txt`, and `lan5-c.txt` files are unchanged. lan5.txt
+is unchanged. The loader does not read the JSON.

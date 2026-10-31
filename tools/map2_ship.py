@@ -45,6 +45,7 @@ DEFAULTS = {
     'max_route_tiles': 400,
     'min_city': 256,
     'share_gap': 32,
+    'share_min_side': 128,
     'envelope': True,
 }
 
@@ -377,6 +378,10 @@ def validate(doc, templates, options=None):
         'diagnostics': diagnostics,
         'sites': {island['id']: len(site_info[island['id']][0]) for island in islands},
         'land': {island['id']: shape.land_count(island['template']['height']) for island in islands},
+        'city': {
+            island['id']: max(site_info[island['id']][2] or [0])
+            for island in islands
+        },
         'evaluated': evaluated,
         'cities': 0,
         'engine': 'NOT_RUN_ENGINE',
@@ -388,7 +393,7 @@ def _shares(islands, site_info, made):
     found = []
     for island in islands:
         sites, _rooms, _sizes = site_info[island['id']]
-        if len(sites) < 2:
+        if len(sites) < 2 or island['w'] < made['share_min_side'] or island['h'] < made['share_min_side']:
             continue
         template = island['template']
         sizes, index_of = components(template)

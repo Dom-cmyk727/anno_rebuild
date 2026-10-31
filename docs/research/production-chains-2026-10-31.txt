@@ -1,0 +1,3882 @@
+Production chains / ProduktionskettenANNO 1503 rebuild · research foundation · 31 October 2026
+Production chains / Produktionsketten
+
+Original-file mechanics, chain crosswalks and a practical path to a faithful, scalable economy.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/asset-design.html] Read the asset-design report · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/source-hashes.json] Source hashes · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/validation.json] Validation record
+Findings39 chainsMechanicsLogisticsProgressionBuildingsGoodsFuture tasksSources
+
+What this establishes
+
+The requested [https://www.annoinfo.de/Anno_1503/produktionsketten.html] Annoinfo production-chain page is a useful visual index. It is not a complete simulation specification. All 39 linked chain pictures were inspected; 78 observed page images were exported through the browser for local comparison. Facts about the local build below come from the game files and RE notes, not from silently treating diagram arrows as executable rules.
+
+P — parsed now: fields, IDs, offsets, hashes and decoded images read from the local original files. D — inherited disassembly evidence: original-module addresses recorded in the repository RE notes; this task did not rerun the original executable or re-disassemble every function. H — original help: shipped HTML/text, which can retain obsolete content. W — website: the requested community diagrams, individually inspected. R — recommendation: proposed project architecture or a future verification task. These categories are not interchangeable.
+39website chain diagrams reviewed921original Anlagen entries scanned61production, quarry, mine and shipyard records detailed47named warehouse goodsDo not implement paper, books or the old spear chain as active original production. Their artwork survives in this distribution, but the inspected goods table and all Anlagen inputs/outputs provide no matching active chain. The leather diagram also adds a butcher-to-hides branch that 1018 does not declare. These are concrete conflicts, not reasons to discard the rest of the page.
+This report is a basis for a future economy milestone, not proof that the current engine implements the complete economy. In particular, worker harvest yields, some services, unit construction and full city progression need additional tracing and runtime fixtures.
+
+The vocabulary the engine must preserve
+
+Keep distinct domains for warehouse goods, growing world resources, services, unit types and player money/research. The original name table shares numeric space across several domains. A shared number range does not make all entries transportable cargo.
+
+ | Example | Original code / ID | Consequence
+
+ | Iron ore / refined iron | EISENERZ 1 / EISEN 15 | Two warehouse stocks and two icons.
+
+ | Cotton and wool | BAUMWOLLE 61 / WOLLE 9 | Cotton crop feeds the same intermediate good as sheep.
+
+ | Raw cattle / food | FLEISCH 12 / NAHRUNG 26 | Butchering is a conversion; fish, game and bread converge on NAHRUNG.
+
+ | Gold ore / money | GOLD 2 / player treasury field | Mining GOLD does not directly increase cash.
+
+ | Marble | MAMORSTEIN 6 / MAMOR 44 | Keep the original misspelling in canonical IDs; localize labels separately.
+
+ | Lance / pikeman | LANZE 51 / SPIESSTRAEGER 96 | Weapon goods and soldier classes are different identities.
+
+ | Ship / land cannon | KANONESHIP 53 / KANONE 110 | Ship cannon is cargo; land cannon is a constructed unit.
+
+ | Knowledge | No WISSEN warehouse entry | Research is player state and service logic, not a recipe output stock.
+
+P: the complete WARE/ROHSTOFF scan resolves every non-UNUSED name against [/Users/dom/Dev/anno1503-worktrees/anno1503/src/sim/src/goods_table.cpp] the documented goods table. D: the original name conversion is recorded at AnnoGame.dll 0x10013be0, tables 0x100251d0–0x10025400; save-name remapping is recorded at AnnoWelt.dll 0x100a18d0. Those numeric IDs inherit the repository’s earlier RE; this report freshly checks the file names against them.
+
+Complete website-to-game chain crosswalk
+
+Search by English/German name, canonical code, or Anlagen ID. Each diagram is a W source; the linked registry rows are P evidence. “Confirmed graph” confirms the named material edges, not a sustained output rate.
+
+Wood / Holz
+Confirmed graph
+BAUM → 801 → HOLZ
+
+Trees are world resources, not warehouse input goods. Forester dispatch, regrowth and hauling constrain sustained output.
+
+801 Forester's hut
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Holz_1024_283.webp] Website diagram: Holz_1024_283.webp
+
+Food: fishing
+Confirmed graph
+FISCH → 810 → NAHRUNG → 1310
+
+Fishermen depend on water access and workers. Food from fish shares NAHRUNG with the other food routes; it is not a separate warehouse commodity.
+
+810 Fisherman's hut
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Fische_1024_334.webp] Website diagram: Nahrung_Fische_1024_334.webp
+
+Food: hunting
+Special runtime
+FLEISCHTIER → 805 → NAHRUNG + TIERHAEUTE
+
+The hunting lodge declares both food and hides. Its JAGDHAUS behaviour must be traced separately; do not apply the generic workshop formula to both outputs.
+
+805 Hunting lodge
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Wild_1024_334.webp] Website diagram: Nahrung_Wild_1024_334.webp
+
+Alcohol: potatoes
+Confirmed graph
+KARTOFFEL → 809 → ALKOHOL → 1335
+
+The small farm also declares GRAS → NAHRUNG. Its worker and animal lines have separate scheduling and shared constraints; the website depicts only the alcohol branch.
+
+809 Small farm
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Alkohol_Kartoffeln_1024_283.webp] Website diagram: Alkohol_Kartoffeln_1024_283.webp
+
+Leather / Leder
+Website discrepancy
+805 → TIERHAEUTE → 1023 → LEDER → 1314
+
+The alternative butcher-to-hides branch in the diagram is not supported by this build: 1018 declares FLEISCH → NAHRUNG only. Do not add a hides by-product to the faithful butcher.
+
+805 Hunting lodge, 1023 Tannery, 820 Cattle farm, 1018 Butcher's shop
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Leder_1024_462.webp] Website diagram: Leder_1024_462.webp
+
+Cloth / Stoffe
+Ratio unverified
+GRAS → 807 or BAUMWOLLE → 819; WOLLE → 1001/1005 → STOFFE → 1314
+
+Sheep and cotton feed the same WOLLE warehouse good. Weaver hut and weaving mill have different costs, gates and integer rates. HEAD gives sheep farm 3×3, not the website prose’s 2×2.
+
+807 Sheep farm, 819 Cotton plantation, 1001 Weaver's hut, 1005 Weaving mill
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Stoffe_1024_441.webp] Website diagram: Stoffe_1024_441.webp
+
+Salt / Salz
+Confirmed graph
+1203 → SALZSTEIN → 1022 → SALZ → 1310
+
+Salt rock and refined salt have distinct IDs. The salt mine is gated at 125 pioneers, unlike the early food buildings.
+
+1203 Salt mine, 1022 Salt works
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Salz_1024_277.webp] Website diagram: Salz_1024_277.webp
+
+Ropes / Seile
+Confirmed graph
+FLACHSBAUM → 808 → FLACHS → 1030 → SEILE
+
+The German help calls the crop hemp (Hanf), while the canonical input code is FLACHS. Keep display names separate from content identity.
+
+808 Hemp plantation, 1030 Ropemaker
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Seile_1024_283.webp] Website diagram: Seile_1024_283.webp
+
+Food: cattle and butcher
+Ratio unverified
+GRAS → 820 → FLEISCH → 1018 → NAHRUNG → 1310
+
+The website shows two cattle farms per butcher. These are supply-layout counts, not a recipe multiplier. Animal/worker throughput and transport must be measured.
+
+820 Cattle farm, 1018 Butcher's shop
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Fleisch_1024_326.webp] Website diagram: Nahrung_Fleisch_1024_326.webp
+
+Knowledge / Wissen
+Service, not goods
+Schools/university → research state; library → capacity
+
+WISSEN is not a warehouse good. Schule 1346, school-class variant 1347 and university 1379 require separate runtime interpretation. Help explains accumulated knowledge and research consumption; exact generation/cap formula remains unverified here.
+
+1346 School, 1347 School, 1378 Library, 1379 University
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Wissen_1024_485.webp] Website diagram: Wissen_1024_485.webp
+
+Bricks / Ziegel
+Special runtime
+1201/1208 → STEINE → 804 → ZIEGEL
+
+Quarry STEINBRUCH and stonemason STEINMETZ are different production classes. Quarry resources and workers are not equivalent to a generic two-step factory recipe.
+
+1201 Quarry, 1208 Quarry, 804 Stonemason
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Ziegel_1024_283.webp] Website diagram: Ziegel_1024_283.webp
+
+Iron / Eisen
+Confirmed graph
+EISENERZ + HOLZ → 1017 → EISEN; EISENERZ + HOLZKOHLE → 1034 → EISEN
+
+Shallow/deep mine variants and smelter variants differ. Charcoal replaces wood only in large smelter 1034. Deposit reserve and edition-dependent depletion affect long games.
+
+1205 Ore mine, 1210 Ore mine, 1216 Large ore mine, 1217 Large ore mine, 1017 Ore smelter, 1034 Large ore smelter
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Eisen_1024_522.webp] Website diagram: Eisen_1024_522.webp
+
+Tools / Werkzeuge
+Confirmed graph
+EISEN + HOLZ → 1019 → WERKZEUG
+
+The canonical good is singular WERKZEUG. At full input the converter makes 9 fixed-point units while consuming 8 iron and 2 wood per step, not whole tons.
+
+1019 Smith
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Werkzeuge_1024_309.webp] Website diagram: Werkzeuge_1024_309.webp
+
+Spices / Gewürze
+Confirmed graph
+GEWUERZBAUM → 812 → GEWUERZE → 1315
+
+Plantation output depends on field suitability, growth, worker travel and collection. The stage threshold is not a proof that every island can support the crop.
+
+812 Spice plantation
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Gewuerze_1024_283.webp] Website diagram: Gewuerze_1024_283.webp
+
+Tobacco products
+Confirmed graph
+TABAKBAUM → 813 → TABAK → 1008 → TABAKWAREN → 1315
+
+Raw tobacco and finished tobacco products are separate stocks; the retail endpoint sells TABAKWAREN.
+
+813 Tobacco plantation, 1008 Tobacco factory
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Tabakwaren_1024_277.webp] Website diagram: Tabakwaren_1024_277.webp
+
+Armor / Rüstungen
+Research-gated
+LEDER + EISEN → 1029 → RUESTUNG
+
+Building availability and the goods’ research requirement are separate data. An 80-settler diagram label alone is insufficient to certify a usable weapon supply.
+
+1029 Armorer
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Ruestungen_1024_309.webp] Website diagram: Ruestungen_1024_309.webp
+
+Alcohol: hops
+Ratio unverified
+HOPFENBAUM → 815 → HOPFEN → 1014 → ALKOHOL → 1335
+
+The diagram’s two farms per brewery is a planning ratio. Hops farm uses INFRA_STUFE_2G (360 settlers), and brewing shares the same finished ALKOHOL good as potatoes and sugar.
+
+815 Hops farm, 1014 Brewery
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Alkohol_Hopfen_1024_277.webp] Website diagram: Alkohol_Hopfen_1024_277.webp
+
+Swords / Schwerter
+Research-gated
+EISEN → 1037 → SCHWERT
+
+The active small weapons smith has only the sword output. Its old spear help/diagram must not silently become a second goods line.
+
+1037 Small weapons smithy
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Schwerter_1024_283.webp] Website diagram: Schwerter_1024_283.webp
+
+Paper / Papier
+Legacy art only
+Website: wood → paper mill → paper
+
+Papier.tex, Papiermuehle.tex and PK_Papier.tex ship with this build, and a paper-mill tooltip survives. No active PAPIER goods entry or production registry mapping was found across all 921 entries.
+
+No active production mapping in this corpus.
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Papier_1024_277.webp] Website diagram: Papier_1024_277.webp
+
+Books / Bücher
+Legacy art only
+Website: paper → printing shop → books
+
+Buecher.tex, Druckerei.tex and PK_Buecher.tex are genuine shipped art; this is not evidence for an active books economy. No matching goods or production output exists in the inspected registry.
+
+No active production mapping in this corpus.
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Buecher_1024_277.webp] Website diagram: Buecher_1024_277.webp
+
+Alcohol: sugar
+Ratio unverified
+ZUCKERROHR → 814 → ZUCKER → 1013 → ALKOHOL → 1335
+
+The canonical intermediate is ZUCKER; its help icon is named R_Zuckerrohr. The diagram’s two plantations per distillery does not replace the runtime rate and harvest model.
+
+814 Sugar plantation, 1013 Distillery
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Alkohol_Zuckerrohr_1024_277.webp] Website diagram: Alkohol_Zuckerrohr_1024_277.webp
+
+Food: bread
+Ratio unverified
+GETREIDE → 811 → KORN → 1002 → MEHL → 1004 → NAHRUNG
+
+The diagram shows 4 grain farms : 2 mills : 1 bakery. Two fully supplied mills produce 26 fixed units per step and the bakery needs 25; the four-farm claim still needs harvest and logistics verification.
+
+811 Grain farm, 1002 Mill, 1004 Bakery
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Brot_1024_535.webp] Website diagram: Nahrung_Brot_1024_535.webp
+
+Silk cloth
+Confirmed graph
+SEIDENRAUPE → 817 → SEIDE; FARBBAUM → 818 → FARBSTOFFE; both → 1009 → SEIDESTOFFE
+
+Dye works has two distinct material inputs. Fertility and separate supply chains matter; the output is not ordinary STOFFE. Retail uses stand 1318.
+
+817 Silk plantation, 818 Indigo plantation, 1009 Dye works
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Seidenstoffe_1024_462.webp] Website diagram: Seidenstoffe_1024_462.webp
+
+Marble / Marmor
+Special runtime
+1218/1220 → MAMORSTEIN → 803 → MAMOR
+
+Preserve the original spellings MAMORSTEIN and MAMOR in identifiers. Marble is a building material, distinct from the raw quarry good.
+
+1218 Marble quarry, 1220 Marble quarry, 803 Marble stonemason
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Marmor_1024_296.webp] Website diagram: Marmor_1024_296.webp
+
+Charcoal / Holzkohle
+Confirmed graph
+HOLZ → 1035 → HOLZKOHLE
+
+Used by the large smelter and cannon foundry. The wood chain competes with construction, tools, ropes-based weapons and shipbuilding for transport/storage capacity.
+
+1035 Charcoal burner
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Holzkohle_1024_283.webp] Website diagram: Holzkohle_1024_283.webp
+
+Lamp oil
+Special runtime
+WALFISCH → 821 → WALSPECK → 1028 → LAMPENOEL → 1317
+
+The website shows one whaler feeding two oil factories. WALFAENGER is a special production class; the diagram does not verify fleet travel, catches or sustained rate.
+
+821 Whaler, 1028 Whale oil factory
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Lampenoel_1024_277.webp] Website diagram: Lampenoel_1024_277.webp
+
+Ship cannon
+Shared workshop
+HOLZ + EISEN → 1012 → KANONESHIP
+
+Ship cannon is warehouse good 53. Gunsmith 1012 shares its inputs and production time with muskets. Land cannon is a different unit code, not another spelling of this good.
+
+1012 Gunsmith
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Schiffskanonen_1024_309.webp] Website diagram: Schiffskanonen_1024_309.webp
+
+Clothing
+Confirmed graph
+PELZTIER → 824 → PELZE; WOLLE → 1001/1005 → STOFFE; both → 1027 → KLEIDUNG
+
+Tailor consumes cloth plus furs. Trapper activity pauses conversion while a trapper is out. Finished clothing and silk cloth share the clothing stand 1318.
+
+824 Trapper, 1001 Weaver's hut, 1005 Weaving mill, 1027 Tailor's shop
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Kleidung_1024_541.webp] Website diagram: Kleidung_1024_541.webp
+
+Bows / Bögen
+Shared workshop
+HOLZ + SEILE → 1006 → BOGEN
+
+Bows and crossbows are two lines in one building. With both enabled and unlocked the output is split; two separate full-speed chains would overestimate capacity.
+
+1006 Bow maker
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Boegen_1024_309.webp] Website diagram: Boegen_1024_309.webp
+
+Crossbows / Armbrüste
+Shared workshop
+HOLZ + SEILE → 1006 → ARMBRUST
+
+Crossbow research differs from bow research. Shared input consumption and output-capacity checks must retain the original integer order.
+
+1006 Bow maker
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Armbrueste_1024_309.webp] Website diagram: Armbrueste_1024_309.webp
+
+Jewelry / Schmuck
+Confirmed graph
+1206/1212 → GOLD; 1214 → EDELSTEINE; both → 1039 → SCHMUCK → 1313
+
+GOLD is mined material, not treasury money. Gold and gems require separate deposits. Retail income is a downstream economy mechanism, not a factory output.
+
+1206 Gold mine, 1212 Gold mine, 1214 Gem mine, 1039 Goldsmith
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Schmuck_1024_462.webp] Website diagram: Schmuck_1024_462.webp
+
+Mortars / Mörser
+Unit construction
+HOLZKOHLE + EISEN → 1038 → MOERSER / KANONE units
+
+KANONENBAU is not HANDWERK. Land cannon 110 and mortar 112 are figure/unit-domain values, not ordinary warehouse goods. Unit research and build queues require their own trace.
+
+1038 Cannon foundry
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Moerser_1024_309.webp] Website diagram: Moerser_1024_309.webp
+
+Wine / Wein
+Separate endpoint gate
+WEINTRAUBEN → 822 → WEIN → 1316
+
+Winery unlock is 750 merchants (4C), but wine stand 1316 is 1900 merchants (4F) in the loaded registry. Production availability and consumer access are distinct.
+
+822 Winery
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Wein_1024_283.webp] Website diagram: Wein_1024_283.webp
+
+Muskets / Musketen
+Shared workshop
+HOLZ + EISEN → 1012 → MUSKETE
+
+Muskets share the gunsmith with ship cannon; their goods research requirement is distinct from the building’s KANONE_SHIP requirement.
+
+1012 Gunsmith
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Musketen_1024_309.webp] Website diagram: Musketen_1024_309.webp
+
+Spears / Speere
+Legacy art only
+Website: iron + wood → small weapons smith → spears
+
+Speere.tex and PK_Speere.tex exist, but no SPEER/SPEERE warehouse good or active output was found. Figure 700 uses class LANZE, unit good SPIESSTRAEGER and BAUWARE HOLZ; that does not establish the depicted spear chain.
+
+No active production mapping in this corpus.
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Speere_1024_309.webp] Website diagram: Speere_1024_309.webp
+
+Axes / Äxte
+Shared workshop
+HOLZ + EISEN → 1036 → AXT
+
+Axes and lances share the large weapons smith. The two goods have different research requirements; the building’s availability is not both outputs’ readiness.
+
+1036 Large weapons smithy
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Aexte_1024_309.webp] Website diagram: Aexte_1024_309.webp
+
+Siege towers
+Unit construction
+HOLZ + SEILE → 1010 → BELAGERTURM units
+
+War-machine construction is KANONENBAU. A siege tower is unit-domain 114, not a stock of ordinary finished goods. Queue costs and unit spawn rules remain separate work.
+
+1010 War machine builder
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Belagerungstuerme_1024_309.webp] Website diagram: Belagerungstuerme_1024_309.webp
+
+Catapults
+Unit construction
+HOLZ + SEILE → 1010 → KATAPULT units
+
+Shares the war-machine builder with siege towers. Do not use the generic workshop’s tons-per-minute interpretation for a completed military figure.
+
+1010 War machine builder
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Katapulte_1024_309.webp] Website diagram: Katapulte_1024_309.webp
+
+Lances / Lanzen
+Shared workshop
+HOLZ + EISEN → 1036 → LANZE
+
+LANZE 51 is an actual warehouse weapon good produced by 1036. It is distinct from the LANZE figure class used by a pikeman and from legacy Speere artwork.
+
+1036 Large weapons smithy
+
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Lanzen_1024_309.webp] Website diagram: Lanzen_1024_309.webp
+
+Additional original chains: 823, the herb plantation, produces HEILKRAEUTER for doctor 1337; 824 produces furs as an intermediate even though the page presents them inside clothing. Shipyards 1020/1021 consume wood and ropes through WERFT construction logic. Neither shipbuilding nor the doctor should be reduced to a normal retail-good recipe.
+
+How production actually advances
+
+D: [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/re/production.md] Original production traces and [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/sim/production.md] their integer simulation specification. The general type loader is AnnoGame.dll 0x10009240; the PROD3 conversion is 0x10009627–0x10009717. Source values are read from IEEE-754 fields once; deterministic simulation then operates on integers.
+
+Stock:       256 fixed-point units = 1 tonne
+World time:  1 tick = 2 game milliseconds; 500 ticks = 1 game second (docs/sim/core.md)
+Step gate:   if uint16(t − last) < 500: return; otherwise last += 500
+
+q0 = 256 / T0                  output0 = trunc(q0 + 0.5)
+q1 = 256 / effective_T1         output1 = trunc(q1 + 0.5)
+need0 = trunc(q0 * I0)          need1 = trunc(float32(q1) * I1)
+effective_T1 uses T0 when T1 is zero (also NaN in the original loader).
+Display rate = trunc(display_float * 256); it is a separate field.
+
+Generic workshop, full step:
+ratio = min(128, (input_stock[i] << 7) / need[i], for each active input)
+ratio < 64 → missing input; output already at capacity → storage full
+made = output0 * ratio >> 7
+consumed[i] = need[i] * ratio >> 7
+
+The gate advances one step per visit, not an arbitrary elapsed-time multiplier. Preserve switch/suspension checks, status order, rounding, reservation ownership and event order. A partial input ratio can still produce; a full output buffer blocks. A file’s display throughput must not be substituted for the integer converter. The world-clock interpretation follows docs/sim/core.md (AnnoWelt.dll 0x100ae040 and world property 7); it describes game time, not a guarantee of wall-clock throughput under load.
+
+Worked example — Webstube 1001: T0 = 43, I0 = 1.84765625. The loaded converter produces 6/256 t and consumes 11/256 t WOLLE per fully supplied step. Its ideal converter ceiling is 1.40625 t/min output and 2.578125 t/min input. The stored display value is 1.3671875. Sheep farm 807 has a 6-unit converter output, so a diagram’s one sheep farm cannot be certified as a full-fed source of an 11-unit demand from those numbers alone; worker travel reduces actual supply further. This is a converter calculation, not a measured gameplay rate.
+
+Worked example — Bogenmacher 1006: both unlocked lines use share 64/128 and make 4 bows plus 4 crossbows fixed units; a single working line makes 9. If any line produces, the full input ratio consumes 8 wood and 4 rope fixed units. Output-0 capacity governs both lines. Independent, full-speed icon recipes would be wrong.
+
+ | Class / examples | Original function | Mechanic to preserve
+
+ | HANDWERK / 1001, 1018, 1019 | AnnoWelt.dll 0x100680b0 | Input ratio before output capacity; switch and suspension; one carrier decision after conversion.
+
+ | HANDWERKWAFFEN / 1006, 1012, 1036 | AnnoWelt.dll 0x10069550 | Shared inputs; researched/enabled lines; half allocation when both work; full-line/status transitions occur in original order.
+
+ | PLANTAGE, SCHAFFARM, FISCHER, STEINMETZ | AnnoWelt.dll 0x1006ea90 | Worker-out state can pause conversion; harvested raw stock feeds the converter; capacity is checked before input. Dispatch count comes from PROD3.
+
+ | PELZJAEGER / 824 | AnnoWelt.dll 0x1006e5d0 | Any trapper out blocks conversion; input check precedes capacity; target search and animal availability are separate.
+
+ | UNIVERSAL / 809 | AnnoWelt.dll 0x1006f660, 0x1006f440 | Worker line plus grazing-animal line; world PRNG draw order matters even when an animal limit blocks dispatch.
+
+ | MINE | AnnoWelt.dll 0x1006def0 | Deposit search, reserve flag, deep/shallow state and edition-specific depletion. Do not infer lifetime from an icon.
+
+ | JAGDHAUS, WALFAENGER, STEINBRUCH, WERFT, KANONENBAU | Separate special behaviours | Registry edges are known; this report does not claim that generic farm/workshop conversion proves worker yields, catches, ships or military construction.
+
+Deposits: the documented deposit object starts at 2,000 t. With its reserve flag set, a shallow iron mine stops when 1,600 t remains; a deep mine can extract without reducing that reserve. Without that flag it takes at most the remaining amount. Depletion is also controlled by the ANNOADDON1 edition flag, not a newly invented owner difficulty option. The mine chooses the greatest remaining deposit in its documented radius-7 search, retaining the first on a tie. These distinctions matter in long matches and need save/load fixtures.
+
+Precision and original defects: existing corpus analysis gives the same load integers at x87 53- and 64-bit precision. At 24-bit precision, entry 1010’s second input differs (6 versus 7); OQ-032 remains open. The small farm’s 75,000-tick status interval exceeds its 16-bit elapsed range, so that message cannot fire in faithful behaviour. Any correction belongs in a named rules option, with a compatibility test.
+
+Land, growth, workers and transport
+
+Natural island differences are part of the game. A crop chain depends on suitability and available land, not just equal island area. The MAP checker’s attached-land estimate is not a fertility map or a proof that a five-city economy works. No fairness rule or candidate choice is made here.
+
+Growth: AnnoWelt.dll 0x1008b5f0 advances growing objects using a sampled phase bit. With S = HEAD[0x10], k = HEAD[0x18] and time0_128 = trunc(T0×128), the period is time0_128×1000 / (2^k×S×128), stored in 16 bits. This applies to growing entries with S ≥ 2, not all buildings. Grain 712→713 needs 20 phase flips of t/7750, nominally 155,000 ticks (310 game seconds). Chunk visits can miss flips; some original periods wrap. Replacing this with a smooth real-time progress bar as the simulation would change outcomes.
+
+Fertility: AnnoWelt.dll 0x10084370, the climate table at 0x100ca008, Data/Wachstum.dat, Data/Felder.dat and HEAD byte 0x19 provide evidence for terrain/crop suitability. The traced rebuild takes the terrain suitability p, blends it toward a nonzero raw-object HEAD value v with (p+3v)/4 when p<v or (v+3p)/4 otherwise, then combines rounded values through a climate-weighted 5×5 neighborhood into a 0–10 nibble. The remaining path from suitability to final harvest yield is not fully resolved by this report. A website “100%” label is not evidence of a universal linear yield multiplier.
+
+Worker model: PROD3 contains three groups of count/limit/start bytes at 0x28, then nine u16 figure IDs at 0x32. FigurenHeader.dat gives worker classes and LOGIC data. Work area, walkability, building entrances, crop tiles and rendered sprite size are separate concepts. HEAD width/height cannot stand in for the entire service or harvest area.
+
+Transport: [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/re/transport.md] the transport traces record workshop-fetch jobs 0x33 and market jobs 0x34, with selection, loading and unloading. The search rectangle is centred on the footprint: x + (w−1)/2 − r; width 2r+1+(w−1)%2. It is not simply the footprint expanded by r on both sides. City ownership, producer output reservations, goods scoring, entrance routing and tie order all affect which resource is fetched. For raw warehouse goods, the market willingness score includes the 75%-capacity threshold. Carriers and carts use different source masks and path layers; carts use road layer 3, carriers open-land layer 0 in the documented paths.
+
+Reservations are not cargo: reserved source output must be unavailable to other jobs, released on abort, and transferred only on actual load. The original warehouse add/remove routines at AnnoWelt.dll 0x1002da50 / 0x1002da90 clamp stocks. HEAD2’s capacity in tonnes (zero means 50) applies to each good, not to a 50-ton shared basket. Arrival at a full warehouse can lose overflow in the original; an improvement must be explicit.
+
+Late-game bottlenecks: full buffers, roads, pickup cadence, worker travel, simultaneous consumer requests and shared intermediate goods can dominate conversion time. A correct late-game test must track the whole chain of ownership and inventory, not only run an isolated factory function repeatedly.
+
+Unlocks, consumption and progression
+
+P: INFRAMIN joins the BAUSTUFEN table in Data/BGruppen.dat. FORSCHTYPE gates a building; BGruppen WAREN/Forsch can independently gate a weapon output. These are population counts, not counts of houses. INFRA_EVER means no stage threshold, not necessarily that a useful retail endpoint is already available.
+
+ | Code | Population group | Required population | BGruppen.dat line
+
+ | INFRA_EVER | pioneers | 0 | 573
+
+ | INFRA_STUFE_1A | pioneers | 30 | 574
+
+ | INFRA_STUFE_1B | pioneers | 80 | 575
+
+ | INFRA_STUFE_1C | pioneers | 125 | 576
+
+ | INFRA_STUFE_2A | settlers | 25 | 577
+
+ | INFRA_STUFE_2B | settlers | 50 | 578
+
+ | INFRA_STUFE_2C | settlers | 80 | 579
+
+ | INFRA_STUFE_2D | settlers | 120 | 580
+
+ | INFRA_STUFE_2E | settlers | 170 | 581
+
+ | INFRA_STUFE_2F | settlers | 240 | 582
+
+ | INFRA_STUFE_2G | settlers | 360 | 583
+
+ | INFRA_STUFE_3A | citizens | 120 | 584
+
+ | INFRA_STUFE_3B | citizens | 200 | 585
+
+ | INFRA_STUFE_3C | citizens | 400 | 586
+
+ | INFRA_STUFE_3D | citizens | 600 | 587
+
+ | INFRA_STUFE_3E | citizens | 800 | 588
+
+ | INFRA_STUFE_3F | citizens | 1100 | 589
+
+ | INFRA_STUFE_4A | merchants | 250 | 590
+
+ | INFRA_STUFE_4B | merchants | 500 | 591
+
+ | INFRA_STUFE_4C | merchants | 750 | 592
+
+ | INFRA_STUFE_4D | merchants | 1100 | 593
+
+ | INFRA_STUFE_4E | merchants | 1500 | 594
+
+ | INFRA_STUFE_4F | merchants | 1900 | 595
+
+ | INFRA_STUFE_5A | aristocrats | 500 | 596
+
+ | INFRA_STUFE_5B | aristocrats | 600 | 597
+
+ | INFRA_STUFE_5C | aristocrats | 1000 | 598
+
+ | INFRA_STUFE_5D | aristocrats | 1500 | 599
+
+ | INFRA_STUFE_5E | aristocrats | 3000 | 600
+
+ | INFRA_STUFE_5F | aristocrats | 5000 | 601
+
+ | INFRA_STUFE_DENKMAL | aristocrats | 65000 | 602
+
+ | INFRA_STUFE_TRIUMPH | aristocrats | 65000 | 603
+
+The 65,000 entries for DENKMAL/TRIUMPH are reported as raw data, not proposed normal progression targets. A special code may have additional runtime gating.
+
+Market stands declare sale categories in WARE, but do not manufacture those goods. Food/salt stand 1310, cloth/leather 1314, tobacco/spice 1315, jewelry 1313, wine 1316, lamp oil 1317 and clothing/silk 1318 are separate retail endpoints. WIRT 1335 consumes ALKOHOL and supplies WIRTSHAUS service; doctor 1337 consumes HEILKRAEUTER and supplies KLINIK. House consumption, sales and public services feed the population/economy logic documented in [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/re/population.md] population RE. Do not attach a generic “coins produced” field to a factory.
+
+Help says schools/universities accumulate knowledge, research consumes it, and a library expands capacity. [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/re/players.md] Player RE identifies research states/progress, but that alone does not establish knowledge generation, capacity or every cost. Surviving paper/book help art must not be used to fill that gap. Aristocrats having no new diagram section does not mean they have no consumption needs.
+
+Production registry and exact parameters
+
+These 61 records include quarry/mine variants and both shipyards. The remaining support/service rows are referenced in the chain text and present in the full 921-entry catalog. All capacities below are raw PROD3 tonne bytes. T and I are conversion parameters, not assumed recipe quantities or measured production times.
+
+ | Anlagen ID / label | PRODTYPE | ROHSTOFF | WARE | Availability
+
+ | 801 Forester's hut | PLANTAGE | BAUM (70) | HOLZ (42) | INFRA_EVERalways
+
+ | 803 Marble stonemason | STEINMETZ | MAMORSTEIN (6) | MAMOR (44) | INFRA_STUFE_3C400 citizens
+
+ | 804 Stonemason | STEINMETZ | STEINE (5) | ZIEGEL (43) | INFRA_STUFE_2B50 settlers
+
+ | 805 Hunting lodge | JAGDHAUS | FLEISCHTIER (137) | NAHRUNG (26), TIERHAEUTE (18) | INFRA_EVERalways
+
+ | 807 Sheep farm | SCHAFFARM | GRAS (69) | WOLLE (9) | INFRA_EVERalways
+
+ | 808 Hemp plantation | PLANTAGE | FLACHSBAUM (59) | FLACHS (16) | INFRA_STUFE_2A25 settlers
+
+ | 809 Small farm | UNIVERSAL | KARTOFFEL (68), GRAS (69) | ALKOHOL (29), NAHRUNG (26) | INFRA_EVERalways
+
+ | 810 Fisherman's hut | FISCHER | FISCH (71) | NAHRUNG (26) | INFRA_EVERalways
+
+ | 811 Grain farm | PLANTAGE | GETREIDE (56) | KORN (13) | INFRA_STUFE_3B200 citizens
+
+ | 812 Spice plantation | PLANTAGE | GEWUERZBAUM (58) | GEWUERZE (31) | INFRA_STUFE_2C80 settlers
+
+ | 813 Tobacco plantation | PLANTAGE | TABAKBAUM (57) | TABAK (11) | INFRA_STUFE_2C80 settlers
+
+ | 814 Sugar plantation | PLANTAGE | ZUCKERROHR (60) | ZUCKER (10) | INFRA_STUFE_3B200 citizens
+
+ | 815 Hops farm | PLANTAGE | HOPFENBAUM (64) | HOPFEN (17) | INFRA_STUFE_2G360 settlers
+
+ | 817 Silk plantation | PLANTAGE | SEIDENRAUPE (65) | SEIDE (20) | INFRA_STUFE_3C400 citizens
+
+ | 818 Indigo plantation | PLANTAGE | FARBBAUM (66) | FARBSTOFFE (21) | INFRA_STUFE_3C400 citizens
+
+ | 819 Cotton plantation | PLANTAGE | BAUMWOLLE (61) | WOLLE (9) | INFRA_STUFE_3A120 citizens
+
+ | 820 Cattle farm | PLANTAGE | GRAS (69) | FLEISCH (12) | INFRA_STUFE_2B50 settlers
+
+ | 821 Whaler | WALFAENGER | WALFISCH (139) | WALSPECK (22) | INFRA_STUFE_3D600 citizens
+
+ | 822 Winery | PLANTAGE | WEINTRAUBEN (62) | WEIN (39) | INFRA_STUFE_4C750 merchants
+
+ | 823 Herb plantation | PLANTAGE | KRÄUTER (67) | HEILKRAEUTER (32) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE MEDICUS
+
+ | 824 Trapper | PELZJAEGER | PELZTIER (138) | PELZE (38) | INFRA_STUFE_3F1100 citizens
+
+ | 1001 Weaver's hut | HANDWERK | WOLLE (9) | STOFFE (33) | INFRA_EVERalways
+
+ | 1002 Mill | HANDWERK | KORN (13) | MEHL (14) | INFRA_STUFE_3B200 citizens
+
+ | 1004 Bakery | HANDWERK | MEHL (14) | NAHRUNG (26) | INFRA_STUFE_3B200 citizens
+
+ | 1005 Weaving mill | HANDWERK | WOLLE (9) | STOFFE (33) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE GR_WEBER
+
+ | 1006 Bow maker | HANDWERKWAFFEN | HOLZ (42), SEILE (19) | BOGEN (47), ARMBRUST (48) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE BOGNER
+
+ | 1008 Tobacco factory | HANDWERK | TABAK (11) | TABAKWAREN (30) | INFRA_STUFE_2C80 settlers
+
+ | 1009 Dye works | HANDWERK | SEIDE (20), FARBSTOFFE (21) | SEIDESTOFFE (34) | INFRA_STUFE_3C400 citizens
+
+ | 1010 War machine builder | KANONENBAU | HOLZ (42), SEILE (19) | KATAPULT (108), BELAGERTURM (114) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE KATAPULT
+
+ | 1012 Gunsmith | HANDWERKWAFFEN | HOLZ (42), EISEN (15) | MUSKETE (49), KANONESHIP (53) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE KANONE_SHIP
+
+ | 1013 Distillery | HANDWERK | ZUCKER (10) | ALKOHOL (29) | INFRA_STUFE_3B200 citizens
+
+ | 1014 Brewery | HANDWERK | HOPFEN (17) | ALKOHOL (29) | INFRA_STUFE_2G360 settlers
+
+ | 1017 Ore smelter | HANDWERK | EISENERZ (1), HOLZ (42) | EISEN (15) | INFRA_STUFE_2C80 settlers
+
+ | 1018 Butcher's shop | HANDWERK | FLEISCH (12) | NAHRUNG (26) | INFRA_STUFE_2B50 settlers
+
+ | 1019 Smith | HANDWERK | EISEN (15), HOLZ (42) | WERKZEUG (41) | INFRA_STUFE_2C80 settlers
+
+ | 1020 Small shipyard | WERFT | HOLZ (42), SEILE (19) | — | INFRA_STUFE_2A25 settlers
+
+ | 1021 Large shipyard | WERFT | HOLZ (42), SEILE (19) | — | INFRA_STUFE_4A250 merchants
+
+ | 1022 Salt works | HANDWERK | SALZSTEIN (3) | SALZ (28) | INFRA_STUFE_1C125 pioneers
+
+ | 1023 Tannery | HANDWERK | TIERHAEUTE (18) | LEDER (27) | INFRA_EVERalways
+
+ | 1027 Tailor's shop | HANDWERK | STOFFE (33), PELZE (38) | KLEIDUNG (36) | INFRA_STUFE_3F1100 citizens
+
+ | 1028 Whale oil factory | HANDWERK | WALSPECK (22) | LAMPENOEL (35) | INFRA_STUFE_3D600 citizens
+
+ | 1029 Armorer | HANDWERK | LEDER (27), EISEN (15) | RUESTUNG (50) | INFRA_STUFE_2C80 settlers
+
+ | 1030 Ropemaker | HANDWERK | FLACHS (16) | SEILE (19) | INFRA_STUFE_2A25 settlers
+
+ | 1034 Large ore smelter | HANDWERK | EISENERZ (1), HOLZKOHLE (23) | EISEN (15) | INFRA_STUFE_3F1100 citizens
+
+ | 1035 Charcoal burner | HANDWERK | HOLZ (42) | HOLZKOHLE (23) | INFRA_STUFE_3D600 citizens
+
+ | 1036 Large weapons smithy | HANDWERKWAFFEN | HOLZ (42), EISEN (15) | AXT (52), LANZE (51) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE WAFFEN_FERTIGUNG_02
+
+ | 1037 Small weapons smithy | HANDWERK | EISEN (15) | SCHWERT (46) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE WAFFEN_FERTIGUNG_01
+
+ | 1038 Cannon foundry | KANONENBAU | HOLZKOHLE (23), EISEN (15) | KANONE (110), MOERSER (112) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE KANONE
+
+ | 1039 Goldsmith | HANDWERK | GOLD (2), EDELSTEINE (4) | SCHMUCK (37) | INFRA_STUFE_4C750 merchants
+
+ | 1201 Quarry | STEINBRUCH | — | STEINE (5) | INFRA_STUFE_2B50 settlers
+
+ | 1203 Salt mine | MINE | — | SALZSTEIN (3) | INFRA_STUFE_1C125 pioneers
+
+ | 1205 Ore mine | MINE | — | EISENERZ (1) | INFRA_STUFE_2C80 settlers
+
+ | 1206 Gold mine | MINE | — | GOLD (2) | INFRA_STUFE_4C750 merchants
+
+ | 1208 Quarry | STEINBRUCH | — | STEINE (5) | INFRA_STUFE_2B50 settlers
+
+ | 1210 Ore mine | MINE | — | EISENERZ (1) | INFRA_STUFE_2C80 settlers
+
+ | 1212 Gold mine | MINE | — | GOLD (2) | INFRA_STUFE_4C750 merchants
+
+ | 1214 Gem mine | MINE | — | EDELSTEINE (4) | INFRA_STUFE_4C750 merchants
+
+ | 1216 Large ore mine | MINE | — | EISENERZ (1) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE TIEFE_ERZMINE
+
+ | 1217 Large ore mine | MINE | — | EISENERZ (1) | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE TIEFE_ERZMINE
+
+ | 1218 Marble quarry | STEINBRUCH | — | MAMORSTEIN (6) | INFRA_STUFE_3C400 citizens
+
+ | 1220 Marble quarry | STEINBRUCH | — | MAMORSTEIN (6) | INFRA_STUFE_3C400 citizens
+
+Per-building field reference
+
+The 61 production-related entries are followed by four knowledge/research support entries referenced above.
+
+801 · Forester's hut
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 5
+
+ | Field | Value
+
+ | Inputs / outputs | BAUM (70) → HOLZ (42)
+
+ | Build cost | 0 bricks, 0 wood, 2 tools, 0 marble; gold 150
+
+ | Upkeep | idle 4; active 12 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [18.0, 18.0]; [2.25, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [2.046875, 0.0]
+
+ | Loaded converter integers | output [14]; input [32]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [102, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=801HEAD @ 0xfffa0, PROD3 @ 0x100001, WARE @ 0x100070, ROHSTOFF @ 0x10008c
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0xfffa0 | 56 | 591658914c9bbc7cac05acb2412d2a44e573ab5bf8327a04d4c8d4ca0f7e4141
+
+ | PRODTYPE | 0xfffe8 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x100001 | 68 | 74a23618fe2870333aecb141abc62232bfa8b4ce7388f0fb364057500be587f1
+
+ | INFRAMIN | 0x100055 | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x100070 | 12 | b5aea9b11b3255dd92d610defd72980d37af9e415e74903082d9ca3a75a21828
+
+ | ROHSTOFF | 0x10008c | 12 | cd9d0afe1638e8e1399b9368eb6d136f18c38994689da950a631b30eb87a217b
+
+ | WALKMASK | 0x1000bf | 36 | f1209d9b3f297a2298585ea1733d356fe9a6d95043290de72d32bafe1a42f2de
+
+ | ENTRANCE | 0x1001d8 | 8 | 2d49dde9d1f86ac5e0d5dc243877d41d7cf2111431c1cb876f7ded1cdffb8a4b
+
+ | HAEUSER | 0x100204 | 3506 | 702a32bf021a2bd5edeb1e2b4f757fc7be8ef6ba08e03bcd7c2c01c6d1e20c59
+
+803 · Marble stonemason
+P: parsed original record
+STEINMETZ · 3 × 3 tiles · radius byte 12
+
+ | Field | Value
+
+ | Inputs / outputs | MAMORSTEIN (6) → MAMOR (44)
+
+ | Build cost | 10 bricks, 4 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 7; active 18 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [12.0, 5.0]; [1.03125, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.796875, 0.0]
+
+ | Loaded converter integers | output [21]; input [22]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [400, 0, 0, 0, 0, 0, 0, 0, 512]
+
+ | Evidence | ANLAGEN/ENTRY id=803HEAD @ 0x101006, PROD3 @ 0x101068, WARE @ 0x1010db, ROHSTOFF @ 0x1010f8
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x101006 | 56 | 7b397a66c3d239f9adab534ebe853aeb64aecbad4daa59af0891d3419b8d196a
+
+ | PRODTYPE | 0x10104e | 10 | 7eb9dd79ad44e856a02cdbc71f3890c4c911fe135ba8923f4d561e25448c893e
+
+ | PROD3 | 0x101068 | 68 | 7732da6f9eacec1d6f66a11c772185ce9a4a13825a54330d4bee3de770ebb545
+
+ | INFRAMIN | 0x1010bc | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x1010db | 13 | a69fa016b71e10517663c6359cb4ab08f39b76af2379c4109a6ef15945ce8652
+
+ | ROHSTOFF | 0x1010f8 | 18 | 8c2c53fd446252c74090e1fee5de3e60fa23a9e48de2ea5baa22831cf2e24d4b
+
+ | WALKMASK | 0x101131 | 36 | 510fde8ce8dd954d05d1e7dacb3603fe84f41008ba50c71e9263d1dd9cf2a8de
+
+ | ENTRANCE | 0x101219 | 8 | 9bc87e56ff205a5e2aaadd54b6f16d026ef2dd3856f467eac55f5a7210feb444
+
+ | HAEUSER | 0x101249 | 1739 | afec47b004c15a9ff06a7ac6aaf572492e314ef050dc76a37cf7afa98df83eb7
+
+804 · Stonemason
+P: parsed original record
+STEINMETZ · 3 × 3 tiles · radius byte 12
+
+ | Field | Value
+
+ | Inputs / outputs | STEINE (5) → ZIEGEL (43)
+
+ | Build cost | 0 bricks, 3 wood, 3 tools, 0 marble; gold 250
+
+ | Upkeep | idle 7; active 18 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2B50 settlers
+
+ | T0 / T1; I0 / I1 | [6.0, 8.0]; [0.4921875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [43]; input [21]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [400, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=804HEAD @ 0x101964, PROD3 @ 0x1019c6, WARE @ 0x101a39, ROHSTOFF @ 0x101a57
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x101964 | 56 | a5044df40fe480c1ea15fb069a0ac2bbd497b35cfb5ab14cfd775c984ab5cc20
+
+ | PRODTYPE | 0x1019ac | 10 | 7eb9dd79ad44e856a02cdbc71f3890c4c911fe135ba8923f4d561e25448c893e
+
+ | PROD3 | 0x1019c6 | 68 | 9d67723652de18de9ae0f90605e0bb6e86e26b7ec274a8ad3e77029918b27353
+
+ | INFRAMIN | 0x101a1a | 15 | dc383ac9365336e75410786595c22ddf8ea0e07d5a1b2374de257db0585231fe
+
+ | WARE | 0x101a39 | 14 | 9fac39a279208046cd0ea246ca15fc93c49f85aca5e6ab77c494b05e83cdd1b1
+
+ | ROHSTOFF | 0x101a57 | 14 | 8e603f237c45f3a4198d768081c4f93ff2e5eab0c3e076e5f431f40994a96117
+
+ | WALKMASK | 0x101a8c | 36 | 042b48b3970dd384f7503ce89c1d5c383fdb31a1ab8997c98d760df1149b6fc1
+
+ | ENTRANCE | 0x101b71 | 8 | 9bc87e56ff205a5e2aaadd54b6f16d026ef2dd3856f467eac55f5a7210feb444
+
+ | HAEUSER | 0x101b9d | 3222 | 12d01104db8843ff109cd624c6ec5ed3180a0f37108777bb871cd7f8ca562c6d
+
+805 · Hunting lodge
+P: parsed original record
+JAGDHAUS · 3 × 3 tiles · radius byte 8
+
+ | Field | Value
+
+ | Inputs / outputs | FLEISCHTIER (137) → NAHRUNG (26), TIERHAEUTE (18)
+
+ | Build cost | 0 bricks, 3 wood, 1 tools, 0 marble; gold 140
+
+ | Upkeep | idle 8; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [6.0, 10.0]; [1.3359375, 0.0]
+
+ | Capacity bytes / display floats | [4, 4] / [0.59375, 0.59375]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [108, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=805HEAD @ 0x102883, PROD3 @ 0x1028e4, WARE @ 0x102953, ROHSTOFF @ 0x102976
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x102883 | 56 | cea917988e31366357509845615f829d71a584265fe13b10df2fb9caeff004a6
+
+ | PRODTYPE | 0x1028cb | 9 | 07986425665e8c45585adbe6b7d8aecafb3336fba350348d601b0911dfcda461
+
+ | PROD3 | 0x1028e4 | 68 | eb745501ff2825faeb1809c963ce03817df1f10c41e88e1bd06bb1753cd1b49d
+
+ | INFRAMIN | 0x102938 | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x102953 | 19 | 8c8f7897e2293c53de05387a008016e57e8901bede6e1ea80616a8489441c6a5
+
+ | ROHSTOFF | 0x102976 | 19 | aa0982deeb20d914de6683a487df91c31abe27a2778420cdac0260ea4f63f162
+
+ | WALKMASK | 0x1029b0 | 36 | 2a1443bc153d392cae055aaf1de4105b10bc145ebaf123093cc97bfedcb692a7
+
+ | ENTRANCE | 0x102a98 | 24 | 39e42288f91edee8f70b644952f72913101320bf7b08e3ec87b5124d57fe4902
+
+ | HAEUSER | 0x102ad4 | 720 | f6839175ccaff3d2e98cb9be16bad3fd662b475eeecc93875dbba39334a3e309
+
+807 · Sheep farm
+P: parsed original record
+SCHAFFARM · 3 × 3 tiles · radius byte 5
+
+ | Field | Value
+
+ | Inputs / outputs | GRAS (69) → WOLLE (9)
+
+ | Build cost | 0 bricks, 4 wood, 2 tools, 0 marble; gold 220
+
+ | Upkeep | idle 5; active 10 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [45.0, 25.0]; [15.29296875, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.09765625, 0.0]
+
+ | Loaded converter integers | output [6]; input [87]
+
+ | Workers | [[1, 5, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [103, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=807HEAD @ 0x102df4, PROD3 @ 0x102e56, WARE @ 0x102ec5, ROHSTOFF @ 0x102ee2
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x102df4 | 56 | 746634bd80ce535e4354e44b8d85dc08893f241026358715a48e29e5bcab5c3f
+
+ | PRODTYPE | 0x102e3c | 10 | c1d696110974a2190e432ce436a9c72f1fdd954997be7bdf89d5868491623fc3
+
+ | PROD3 | 0x102e56 | 68 | deda36c79bc1cbf4ea62e7e9554896486abd8aec0426740c9b2234f91d06efe5
+
+ | INFRAMIN | 0x102eaa | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x102ec5 | 13 | 07bad934f2de4c775061be54a657b5132caa9b30536dba433b9f1b9a142a77d7
+
+ | ROHSTOFF | 0x102ee2 | 12 | e9931bda0f2fa5c68c601318214788864af9395316d443d76345cf47cf899df0
+
+ | WALKMASK | 0x102f15 | 36 | e7f8588184c536eabdaa208e032fe33afb25c7bfba8c47052473b7e079090b86
+
+ | ENTRANCE | 0x102ffa | 24 | 9b802f7349da102bebef3e2520122fdff69d9995c83e1c729ed8ae286f68b8c0
+
+ | HAEUSER | 0x10303a | 724 | d1ee983299c47b3bdeafb50cda465d2e043428738d4f7789b84347adf65d77ef
+
+808 · Hemp plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | FLACHSBAUM (59) → FLACHS (16)
+
+ | Build cost | 0 bricks, 5 wood, 2 tools, 0 marble; gold 200
+
+ | Upkeep | idle 8; active 18 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2A25 settlers
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [3.3984375, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [29]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [105, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=808HEAD @ 0x10335e, PROD3 @ 0x1033bf, WARE @ 0x103432, ROHSTOFF @ 0x103450
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10335e | 56 | e38d4c72014b812956f6647e007564882420165c91272267dc238a12f6ef7909
+
+ | PRODTYPE | 0x1033a6 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x1033bf | 68 | ee177bcd8b859dfb83937072feed35dce045b850fe87cbface37a13edc3add9a
+
+ | INFRAMIN | 0x103413 | 15 | a040e5f43c6941c46ce8cd5ce80aed2ff1bc30957d4e0132e58edd6b0dfbf179
+
+ | WARE | 0x103432 | 14 | 3cf669e7b5ae202e88f7075b1adbda87f71c647a55b7fe622cacb9d0909b42ad
+
+ | ROHSTOFF | 0x103450 | 18 | 99aec008300deed9f9900e5fbf2f7fbbc67e266e20654432578995dcacfd2049
+
+ | WALKMASK | 0x103489 | 36 | 392bb6c855980a4952ec8a2ed5bba34fb87a06044abdd388b43dd30c927190b6
+
+ | ENTRANCE | 0x103571 | 8 | 6500b681a2a80b27b65562e0b4a6ff23e4b64dec4c33c13d08a8cad9677e361c
+
+ | HAEUSER | 0x10359d | 726 | 723e653dd17955be965f6a00fdb454222302da37b66f53426a54edaf119f020f
+
+809 · Small farm
+P: parsed original record
+UNIVERSAL · 3 × 3 tiles · radius byte 3
+
+ | Field | Value
+
+ | Inputs / outputs | KARTOFFEL (68), GRAS (69) → ALKOHOL (29), NAHRUNG (26)
+
+ | Build cost | 0 bricks, 4 wood, 2 tools, 0 marble; gold 250
+
+ | Upkeep | idle 8; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [20.0, 70.0]; [10.0, 13.671875]
+
+ | Capacity bytes / display floats | [4, 4] / [0.55859375, 0.69921875]
+
+ | Loaded converter integers | output [13, 4]; input [128, 50]
+
+ | Workers | [[1, 3, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [106, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=809HEAD @ 0x1038c3, PROD3 @ 0x103925, WARE @ 0x103994, ROHSTOFF @ 0x1039b4
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x1038c3 | 56 | 27304aae1bee651cbeb5173374192daf420793a5294c82df8ccf2a03bba03b00
+
+ | PRODTYPE | 0x10390b | 10 | ec7d0b57e6835cec860193d74d288be35b15b2af50542605a930bd00684676ee
+
+ | PROD3 | 0x103925 | 68 | 2aab2a9280f2a70f94953decd7241170e19481f9957ce4fdd15c8206c149f6d3
+
+ | INFRAMIN | 0x103979 | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x103994 | 16 | 59ec44649a4a507c16a8708f627ca3837418616d2a424b89fe3452c5f3d6255a
+
+ | ROHSTOFF | 0x1039b4 | 15 | 2e40fcf96e815c1dd3918653038ad46310ac40913b2ebb091e673a9f7dbe023a
+
+ | WALKMASK | 0x1039ea | 36 | ee5babf6648826aa8f7f669a5752934c66fe9c32dcc6e102bd55db297daeb273
+
+ | ENTRANCE | 0x103ad2 | 32 | 520867c6c8dd0f702be043ed06c5a6782be5892f29952c5ae3a52450f42e9236
+
+ | HAEUSER | 0x103b16 | 725 | 3ef64856ea493b4904bf298f33801b852698d684bd56439440905bfd71fbe8c4
+
+810 · Fisherman's hut
+P: parsed original record
+FISCHER · 3 × 4 tiles · radius byte 7
+
+ | Field | Value
+
+ | Inputs / outputs | FISCH (71) → NAHRUNG (26)
+
+ | Build cost | 0 bricks, 6 wood, 2 tools, 0 marble; gold 180
+
+ | Upkeep | idle 12; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [15.0, 15.0]; [4.04296875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [0.84375, 0.0]
+
+ | Loaded converter integers | output [17]; input [69]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [142, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=810HEAD @ 0x103e3b, PROD3 @ 0x103e9b, WARE @ 0x103f0a, ROHSTOFF @ 0x103f29
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x103e3b | 56 | 561bcb20ab4ee2f796a6bd27a69bd0dd86f08c8e493451f414a5cf22c4c30896
+
+ | PRODTYPE | 0x103e83 | 8 | e9590e174e37c42b183e1279f64e68c42341973a0eea3f740bf12b1ce4bc445d
+
+ | PROD3 | 0x103e9b | 68 | dd952867968ff6e1ea9c39e96850445599057990e89e40244f5fa9d033cdbaee
+
+ | INFRAMIN | 0x103eef | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x103f0a | 15 | fce8faf654d78e5a0384b9cc38e9e34c1d20e5736b051a0c4b604c1881703126
+
+ | ROHSTOFF | 0x103f29 | 13 | fb140afde6f9beabdf17aa3d2dc80d99d16bd5af150eeedc5bb66025d249ef38
+
+ | WALKMASK | 0x103f5d | 48 | 4c32f9856d94094316e91d64bd430482e7ef758c061074fb46df9a71bda5091a
+
+ | ENTRANCE | 0x104069 | 16 | 10c2e79af9f0524fac2e83e0c7b7d32f577a449db2df40b5a090cc3ce8aa6179
+
+ | HAEUSER | 0x10409d | 722 | a119b2beefe0657071a292e9e068e860f722bb94a5264a828da4ba1f413e2907
+
+811 · Grain farm
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 3
+
+ | Field | Value
+
+ | Inputs / outputs | GETREIDE (56) → KORN (13)
+
+ | Build cost | 3 bricks, 3 wood, 2 tools, 0 marble; gold 200
+
+ | Upkeep | idle 5; active 10 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3B200 citizens
+
+ | T0 / T1; I0 / I1 | [7.0, 40.0]; [2.1875, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.796875, 0.0]
+
+ | Loaded converter integers | output [37]; input [80]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=811HEAD @ 0x1043bf, PROD3 @ 0x104420, WARE @ 0x104493, ROHSTOFF @ 0x1044af
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x1043bf | 56 | 4c2ee35d5532c505c90725bce18d776c41c5d16582b977ae8ae9fd6329c703fe
+
+ | PRODTYPE | 0x104407 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x104420 | 68 | 181bebe72824fd850fef66b132e81f6fa8e3ecd0aa01477ab7860fe3642a9b31
+
+ | INFRAMIN | 0x104474 | 15 | 9c75202131c6290ef6ed79459968485dadc87de10c95f5c68669605fea936691
+
+ | WARE | 0x104493 | 12 | d2c3e1d0951cee4aea36f26c9212b718145482703a8a22293b8c7d21f095eafc
+
+ | ROHSTOFF | 0x1044af | 16 | 48649d31556f7f116b631ae11efe2002ff40adfa649b14ea7ae34d4da41a28db
+
+ | WALKMASK | 0x1044e6 | 36 | 543dbdba4d750995f44d8828c200c4992a657ca279172a12042ed1d7d71529ff
+
+ | ENTRANCE | 0x1045db | 24 | ddb9012592143716824a7cad8417b5ad83fffca872759aa14ad3512880584880
+
+ | HAEUSER | 0x104617 | 728 | b72c8250ffe64c08c350588d20873c6e8f975672dd617e7bc09f9fcd8a0e2c1b
+
+812 · Spice plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | GEWUERZBAUM (58) → GEWUERZE (31)
+
+ | Build cost | 8 bricks, 5 wood, 4 tools, 0 marble; gold 390
+
+ | Upkeep | idle 20; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [40.0, 40.0]; [6.09375, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.3984375, 0.0]
+
+ | Loaded converter integers | output [6]; input [39]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [114, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=812HEAD @ 0x10493f, PROD3 @ 0x1049a0, WARE @ 0x104a13, ROHSTOFF @ 0x104a33
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10493f | 56 | af00579c18f2988bea50b0fd0cb4d1ea442321b905e913cf9956cf14cc90fd1b
+
+ | PRODTYPE | 0x104987 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x1049a0 | 68 | 45ac5db2a3abfefefa252e599cce5088915a7ed4defbf6612b2f21182750166b
+
+ | INFRAMIN | 0x1049f4 | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x104a13 | 16 | 4d5e692d5905b3e41d9d6d6044a03412286c7f8783fb53b196f76a69a7a6d2ed
+
+ | ROHSTOFF | 0x104a33 | 19 | 47514a327d396bc38aa67089eeb941a2d570335f5ed798ebf7af51fa8b2d889e
+
+ | WALKMASK | 0x104a6d | 36 | b10f256d0e98a99a6739e2f0cb9bf943184ee6cb4d9691e3c3030cff028a83d3
+
+ | ENTRANCE | 0x104b55 | 16 | 1aed5288351b82f28edaf3945c9852fc440d9467a758523f409a53ce0bbfaee8
+
+ | HAEUSER | 0x104b89 | 726 | 0907fe4af47abd3b36a660c3fd931b709ebc74d3e3e314ca17cd0a75af6a7479
+
+813 · Tobacco plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | TABAKBAUM (57) → TABAK (11)
+
+ | Build cost | 8 bricks, 5 wood, 4 tools, 0 marble; gold 350
+
+ | Upkeep | idle 15; active 30 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [4.8046875, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.796875, 0.0]
+
+ | Loaded converter integers | output [9]; input [41]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [113, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=813HEAD @ 0x104eaf, PROD3 @ 0x104f10, WARE @ 0x104f83, ROHSTOFF @ 0x104fa0
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x104eaf | 56 | c90954d3dc1b81bd079aeb62225cd4beb83126c669a08cb8344a99fb6d480e7d
+
+ | PRODTYPE | 0x104ef7 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x104f10 | 68 | 91bae162f792316026545ec09be0ec2f30ed44c02e6c1d48ddef2b85736c4a2a
+
+ | INFRAMIN | 0x104f64 | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x104f83 | 13 | 35bed0c2ee5009cf176e1e29c2fd9e7779d4dafb42898500c6d913f9c0580851
+
+ | ROHSTOFF | 0x104fa0 | 17 | 1d738b82cf77b1b26d411ce96e8de207205b75f2a9661aebac5730de19213c55
+
+ | WALKMASK | 0x104fd8 | 36 | 51a9007a470e27178ce9f4c45352a6a0726318848156b9848e5a7e1d18c3ffec
+
+ | ENTRANCE | 0x1050c0 | 32 | 90a5a16cd597f8807d89c793e37c8f2948b5761e4be7757d0601bf59ade41cd9
+
+ | HAEUSER | 0x105104 | 725 | 96b88cc1af3cc8f4bea5deadd655091af8f186bd41bf2a9272fbf08768fbab5e
+
+814 · Sugar plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | ZUCKERROHR (60) → ZUCKER (10)
+
+ | Build cost | 4 bricks, 4 wood, 4 tools, 0 marble; gold 310
+
+ | Upkeep | idle 12; active 18 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3B200 citizens
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [4.8046875, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [41]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [112, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=814HEAD @ 0x105429, PROD3 @ 0x10548a, WARE @ 0x1054fd, ROHSTOFF @ 0x10551b
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x105429 | 56 | 8bf88cc5373bade9f49158b38fcf8d5af65f2a9e3ac903106e1d33cce6c5cf3d
+
+ | PRODTYPE | 0x105471 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x10548a | 68 | a6325eeeb3a4c3a12164e0117b55da76bf37f34662068f0bfccc2753c5f4938d
+
+ | INFRAMIN | 0x1054de | 15 | 9c75202131c6290ef6ed79459968485dadc87de10c95f5c68669605fea936691
+
+ | WARE | 0x1054fd | 14 | 33813bbe44f33efb9f36f932148b74592c76727acf60bb4b1c5ae4390fadad03
+
+ | ROHSTOFF | 0x10551b | 18 | 876c3f163f9da3976713d0fec8f939c91fd85fc0a4e622154c87972e475bfd36
+
+ | WALKMASK | 0x105554 | 36 | 4e2e4c78db085f604acef21649bb3a3b8dd497e7cd6d73c329f576f49f8ca904
+
+ | ENTRANCE | 0x10563c | 32 | 429e552b2dca860e2b329796c284cbef51c18da5403ebaec75632577b6bdfc7c
+
+ | HAEUSER | 0x105680 | 730 | d805b2404bfd2926aee2c48e09ff9941897395efda5d6782d8790ae96b355dc2
+
+815 · Hops farm
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | HOPFENBAUM (64) → HOPFEN (17)
+
+ | Build cost | 4 bricks, 3 wood, 5 tools, 0 marble; gold 250
+
+ | Upkeep | idle 10; active 18 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2G360 settlers
+
+ | T0 / T1; I0 / I1 | [30.0, 40.0]; [4.453125, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [38]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [111, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=815HEAD @ 0x1059aa, PROD3 @ 0x105a0b, WARE @ 0x105a7e, ROHSTOFF @ 0x105a9c
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x1059aa | 56 | d7f08f8530195fa202d0d5f16e5f5442eb8d9c843fd80ba7500983ffca7d0830
+
+ | PRODTYPE | 0x1059f2 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x105a0b | 68 | f3b30ae613de060b9f285ec9a01f498422d32d3d0248c8e6f2c261c532840825
+
+ | INFRAMIN | 0x105a5f | 15 | 83b0b7f50be5808e8763be4b3251d652454bccbf7b594d049c5c0e25f1d1cf9b
+
+ | WARE | 0x105a7e | 14 | 15d16040e609c0651d25863f5a5974283ee1429a21dbd8e4072a0c9a51bbf7ad
+
+ | ROHSTOFF | 0x105a9c | 18 | 34d92515f158a8385276065805fb3fcce38374b8cf0e61122d4cd59d96d29a94
+
+ | WALKMASK | 0x105ad5 | 36 | b7e07846fc5e0e4c0363e4aca77739641ae18d5ffdaee3bf2959bb46228fbc91
+
+ | ENTRANCE | 0x105bbd | 24 | 5e7261b12c67f059dc0aa68c3809cb48c7becc244cb03b947d5e98f0817e0e68
+
+ | HAEUSER | 0x105bf9 | 726 | 6ef0272356f657a571ad5a935e8d270efd1ab1acada623ab00bfaaa4a6ce6b65
+
+817 · Silk plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | SEIDENRAUPE (65) → SEIDE (20)
+
+ | Build cost | 6 bricks, 5 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 17; active 35 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [39.0, 39.0]; [6.85546875, 2639.5078125]
+
+ | Capacity bytes / display floats | [7, 0] / [1.5, 0.0]
+
+ | Loaded converter integers | output [7]; input [45]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [140, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=817HEAD @ 0x105f1f, PROD3 @ 0x105f80, WARE @ 0x105ff3, ROHSTOFF @ 0x106010
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x105f1f | 56 | fc85ba15adad988b4f68bc208bf45d45bdfb737ec21c5b11db39d02f17641a89
+
+ | PRODTYPE | 0x105f67 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x105f80 | 68 | b9f1e653bbe4dd0df10df73a76ee8eff825b53230b8b7e53456c288de0c6e712
+
+ | INFRAMIN | 0x105fd4 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x105ff3 | 13 | 82751f0ad5b153b039c497b7782db54d2cc2b8885737235b95a335dce38f8e9c
+
+ | ROHSTOFF | 0x106010 | 19 | 496063104b4d65898c345a584ba64e19aeaf0a1481e7992b877c9358ccdbd650
+
+ | WALKMASK | 0x10604a | 36 | b13425a044b9fdf1f5b5cfb7956ddb11e838f8f6f03368c153a32d7ffb33d608
+
+ | ENTRANCE | 0x106132 | 16 | b2800de5374b345304fa293a948305805ecc6b5e056b9e5691d8d70748a89ba3
+
+ | HAEUSER | 0x10616a | 727 | 2b7df925248738f090bc23645fcfb71c6f0776b6af12fd03bc2887169593b26b
+
+818 · Indigo plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | FARBBAUM (66) → FARBSTOFFE (21)
+
+ | Build cost | 5 bricks, 2 wood, 3 tools, 0 marble; gold 200
+
+ | Upkeep | idle 20; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [39.0, 40.0]; [6.3984375, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.5, 0.0]
+
+ | Loaded converter integers | output [7]; input [42]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [134, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=818HEAD @ 0x106491, PROD3 @ 0x1064f2, WARE @ 0x106565, ROHSTOFF @ 0x106587
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x106491 | 56 | 084d142e149499084657a3e7042dd872df9917f3e31b916a5f266b522beb9a2f
+
+ | PRODTYPE | 0x1064d9 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x1064f2 | 68 | 7be473ce1a916632e231d0a9cf65b1a5d75a7c622f1b65ca9ed88697096281d5
+
+ | INFRAMIN | 0x106546 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x106565 | 18 | e15967dccd4b219921c27ecccd142c2b5e627786f8e354700e482c2c87eddf46
+
+ | ROHSTOFF | 0x106587 | 16 | 11e64a7ef9458b76f7c5f2ccaf7dccc9bc17529f67060a4536f0fd75f06b8222
+
+ | WALKMASK | 0x1065be | 36 | 30fe45c305da8b05fda58207479220312a99cb3b4f31e0348109a1e770c61a1c
+
+ | ENTRANCE | 0x1066a6 | 16 | a80f76d9e4b2561cd99b2d511d7693a4ba0ae4f59fcf75f7d878c26be237fc47
+
+ | HAEUSER | 0x1066de | 725 | 75525fc497511a795e178b7f96edfb59a586eac381c1563b8919776421611a10
+
+819 · Cotton plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | BAUMWOLLE (61) → WOLLE (9)
+
+ | Build cost | 4 bricks, 2 wood, 5 tools, 0 marble; gold 380
+
+ | Upkeep | idle 10; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3A120 citizens
+
+ | T0 / T1; I0 / I1 | [30.0, 40.0]; [5.859375, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [50]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [133, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=819HEAD @ 0x106a03, PROD3 @ 0x106a64, WARE @ 0x106ad7, ROHSTOFF @ 0x106af4
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x106a03 | 56 | 703955a5aa1f940047acbfe23fe205e09591bbf6b924081062e7c4fefde72616
+
+ | PRODTYPE | 0x106a4b | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x106a64 | 68 | ad2184c7ece946360c24075de5ba4ac83bb66cbf6d35c2b444ff374febf6f26c
+
+ | INFRAMIN | 0x106ab8 | 15 | bbcdb9b3e883b6abd3c57f197118761c5ef80716b6685796c80f02cf694a01b0
+
+ | WARE | 0x106ad7 | 13 | 07bad934f2de4c775061be54a657b5132caa9b30536dba433b9f1b9a142a77d7
+
+ | ROHSTOFF | 0x106af4 | 17 | c74f55f8e767858dea4377c589ca73419d530b3fa17e407db3c18190698f7eb3
+
+ | WALKMASK | 0x106b2c | 36 | e133f5f51e0b9d7b38b5aa72b8b2b4b28e4a8d2736b5f9d499e06547df221425
+
+ | ENTRANCE | 0x106c04 | 32 | 659838c06af523fa2dc17b1a2caf5fe753ef05a4d22b0375419ea4104c61b7ac
+
+ | HAEUSER | 0x106c50 | 875 | 2d6dd82efc910159cd41c3b432b0e5209f5d78b668f40cf9db30897dfecca958
+
+820 · Cattle farm
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | GRAS (69) → FLEISCH (12)
+
+ | Build cost | 4 bricks, 8 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 10; active 15 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2B50 settlers
+
+ | T0 / T1; I0 / I1 | [25.0, 25.0]; [5.859375, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [10]; input [60]
+
+ | Workers | [[2, 3, 0], [0, 0, 2], [0, 0, 2]] group triplets; IDs [138, 139, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=820HEAD @ 0x10700b, PROD3 @ 0x10706c, WARE @ 0x1070df, ROHSTOFF @ 0x1070fe
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10700b | 56 | a3bfa9cdbda77195ef3809e5c21651599b96eaa672670e1fa032516e9f2fc0a8
+
+ | PRODTYPE | 0x107053 | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x10706c | 68 | 192e41421f43c75d09487d5ad1443f9d1475b692591f3e3f8dc97ac3349bde76
+
+ | INFRAMIN | 0x1070c0 | 15 | dc383ac9365336e75410786595c22ddf8ea0e07d5a1b2374de257db0585231fe
+
+ | WARE | 0x1070df | 15 | e4f4b0bbaa2bcc4e7e07b020090032a3619e4418863e517a02941c6ab216e1e7
+
+ | ROHSTOFF | 0x1070fe | 12 | e9931bda0f2fa5c68c601318214788864af9395316d443d76345cf47cf899df0
+
+ | WALKMASK | 0x107131 | 36 | f4c1827d9eb9923d66c2c7e38b69913334097a4b52c02f5c61e7552dd4e47ca4
+
+ | ENTRANCE | 0x10724a | 24 | b91988e0f7665d7a097e794ce08c190575bc63ffa66ee2c3683d04650afae915
+
+ | HAEUSER | 0x10728e | 867 | 65409a4d31f1747026b5bd5bbaaa84820ff16f78d4d75ba898cc24f3c20eddd7
+
+821 · Whaler
+P: parsed original record
+WALFAENGER · 4 × 4 tiles · radius byte 60
+
+ | Field | Value
+
+ | Inputs / outputs | WALFISCH (139) → WALSPECK (22)
+
+ | Build cost | 5 bricks, 5 wood, 5 tools, 0 marble; gold 500
+
+ | Upkeep | idle 10; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3D600 citizens
+
+ | T0 / T1; I0 / I1 | [15.0, 8.0]; [0.9375, 0.0]
+
+ | Capacity bytes / display floats | [10, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [1511, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=821HEAD @ 0x107641, PROD3 @ 0x1076a4, WARE @ 0x107717, ROHSTOFF @ 0x107737
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x107641 | 56 | 1c5e6d2157fddaa958c89741a3383cda007e966835c78e7bf7396167a1d9d663
+
+ | PRODTYPE | 0x107689 | 11 | 258855b9f4d5299a0b25608d6915204381f2bc67d9bb40e98f6012bb77f40e6b
+
+ | PROD3 | 0x1076a4 | 68 | bb5c5bf9ff7d19f1d764b159a3420ac5d191ec095381b9867376894b7e4dab73
+
+ | INFRAMIN | 0x1076f8 | 15 | e5afe07e6fbd9a7c4273d505e8149277fbfa9f866bfa3b972bd3a8ec035a22b0
+
+ | WARE | 0x107717 | 16 | 1b860cf0773ebe70cf1e7ff9978c01667dfb8da52e787f58d854ff9ed005877e
+
+ | ROHSTOFF | 0x107737 | 16 | 52adb38c28eebf98768def348bb2fa6dc31b09ebb4ec6e1c670d1dce1523770f
+
+ | WALKMASK | 0x10776e | 48 | cab10759e49f4207383e4438675468b320a719fb47e814a334315b40c446e0ed
+
+ | ENTRANCE | 0x10787a | 16 | 33e4185cf43f25e474082805c29179845902204359de29af0223e56d3ab050c6
+
+ | HAEUSER | 0x1078b2 | 723 | 581eb5a8d85d51b23c15346207b8d8eb710b1533b87db87c92d4df541a468659
+
+822 · Winery
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | WEINTRAUBEN (62) → WEIN (39)
+
+ | Build cost | 8 bricks, 5 wood, 5 tools, 0 marble; gold 400
+
+ | Upkeep | idle 20; active 45 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_4C750 merchants
+
+ | T0 / T1; I0 / I1 | [39.0, 39.0]; [5.94140625, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.5, 0.0]
+
+ | Loaded converter integers | output [7]; input [39]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [144, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=822HEAD @ 0x107bd5, PROD3 @ 0x107c36, WARE @ 0x107ca9, ROHSTOFF @ 0x107cc5
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x107bd5 | 56 | cef79c33baa171a1019a56bf37dcd143cd3a7c5888366353dd7c648122b9de8d
+
+ | PRODTYPE | 0x107c1d | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x107c36 | 68 | 087818239ffb5b1ffbf16058a6123d8689e36d6e9011e2e60ade43a1272894fb
+
+ | INFRAMIN | 0x107c8a | 15 | 13af7597af5623f0aaf584ca44fcd9d97d4964ad41c42ce44c5e28b0eda290d7
+
+ | WARE | 0x107ca9 | 12 | 0986093f922bf6d26fd2d0ef48a2a8870b46273e252a0e03d67ab07b6beeb5c1
+
+ | ROHSTOFF | 0x107cc5 | 19 | 89756feb3a2e713c7d70511a7a4937f54aa956058ca153233111a419bae2bc38
+
+ | WALKMASK | 0x107cff | 36 | 39f28fef74800be2128bc923d4c2b23a82dfb880e3d987d0c2f7ebaee8ae56a9
+
+ | ENTRANCE | 0x107df4 | 24 | fb06ef18c27a4ade8b81c27537448756e588cef7a92ad73a1cee160639ced037
+
+ | HAEUSER | 0x107e30 | 722 | 8300bf2dd5b339c5f4123f1cb792c6dede47963d38c667fae550697eb7c13022
+
+823 · Herb plantation
+P: parsed original record
+PLANTAGE · 3 × 3 tiles · radius byte 3
+
+ | Field | Value
+
+ | Inputs / outputs | KRÄUTER (67) → HEILKRAEUTER (32)
+
+ | Build cost | 5 bricks, 5 wood, 3 tools, 0 marble; gold 200
+
+ | Upkeep | idle 5; active 15 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE MEDICUS
+
+ | T0 / T1; I0 / I1 | [50.0, 5.0]; [5.859375, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [1.19921875, 0.0]
+
+ | Loaded converter integers | output [5]; input [30]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [143, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=823HEAD @ 0x108152, PROD3 @ 0x1081b3, WARE @ 0x108242, ROHSTOFF @ 0x108266
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x108152 | 56 | 5f4833a61354401ce00a70bf71e5bf18adc7256327d0471ef215c5a252291853
+
+ | PRODTYPE | 0x10819a | 9 | 72c685e6bab1cd0a34d2a9551a95b3bbd78dad6c4cfbf5cda6c73014ba3b1b15
+
+ | PROD3 | 0x1081b3 | 68 | 9ef4387785770bcf054b237c13e9590168fe5492523e850fb4dc322bb1aea49d
+
+ | INFRAMIN | 0x108207 | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x10822a | 8 | eeca92d48364d834bcd1ecb847f2369dff7729f050e68942aac94d93707788a5
+
+ | WARE | 0x108242 | 20 | 6e5b9395c87b7f7003b9ad036afd532f44b3053d89f5b4aef7dda9b0b2d23f49
+
+ | ROHSTOFF | 0x108266 | 15 | a643aff04329596e321b2ee29d9008998142fcacfb243b69dbc4da78486a1ff0
+
+ | WALKMASK | 0x10829c | 36 | c2aab56fa216ccf31b0d839f513b514fe627ced96b6a3b8f980aa65992753037
+
+ | ENTRANCE | 0x1083b5 | 8 | af804889d4da24a03d94f9e6485654e1f0542f15d99431376019cf775a529429
+
+ | HAEUSER | 0x1083e9 | 732 | 97ee6e76f11eeb99bd44c1ecad377ea28bf4a27b4ae2d5157ece5fa413891256
+
+824 · Trapper
+P: parsed original record
+PELZJAEGER · 3 × 3 tiles · radius byte 12
+
+ | Field | Value
+
+ | Inputs / outputs | PELZTIER (138) → PELZE (38)
+
+ | Build cost | 0 bricks, 6 wood, 5 tools, 0 marble; gold 100
+
+ | Upkeep | idle 5; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3F1100 citizens
+
+ | T0 / T1; I0 / I1 | [10.0, 5.0]; [0.9765625, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.0, 0.0]
+
+ | Loaded converter integers | output [26]; input [25]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [108, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=824HEAD @ 0x108715, PROD3 @ 0x108778, WARE @ 0x1087eb, ROHSTOFF @ 0x108808
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x108715 | 56 | 45ff756d11956566ad1b019b76b37658e0a0a8d28ab7f54b09fba785126f91d1
+
+ | PRODTYPE | 0x10875d | 11 | 3dd4f22cf66c2f0f2daf9d78c322bb73a7330ca40ced405de23a29208544f4ff
+
+ | PROD3 | 0x108778 | 68 | 4f8024b19d31a1d4e3dc18de129335953d40bb0193457fdc238f4cfb4e3b8f3b
+
+ | INFRAMIN | 0x1087cc | 15 | 426d29e831d5f0ac28b5c9d9a5971b421448b588473b8a331e3a9848fa5daa3d
+
+ | WARE | 0x1087eb | 13 | 74ebad6014b13fe5ad84e3f2543c688e2b90ce914cffca09c47f460c47117da7
+
+ | ROHSTOFF | 0x108808 | 16 | 660b73f7415dc49d40b7efed09a430274425707893e575d2791998544a902ab7
+
+ | WALKMASK | 0x10883f | 36 | 03f49023abc4d854be59f2e9d6426fb991e3d2e08c6d4be26e0a46e423842eee
+
+ | ENTRANCE | 0x108921 | 8 | 2d49dde9d1f86ac5e0d5dc243877d41d7cf2111431c1cb876f7ded1cdffb8a4b
+
+ | HAEUSER | 0x10894d | 724 | 414c3087cad6d7b4dee008b4a23df50b91911b1af0a4e65d52c40886951c4cbd
+
+1001 · Weaver's hut
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | WOLLE (9) → STOFFE (33)
+
+ | Build cost | 0 bricks, 4 wood, 3 tools, 0 marble; gold 300
+
+ | Upkeep | idle 10; active 15 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [43.0, 35.0]; [1.84765625, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.3671875, 0.0]
+
+ | Loaded converter integers | output [6]; input [11]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1001HEAD @ 0x108c71, PROD3 @ 0x108cd2, WARE @ 0x108d41, ROHSTOFF @ 0x108d5f
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x108c71 | 56 | c7173a4c15c94ef99bb30f68ce42d9a3b9f16896e962c8600b3ee2b514bee2fb
+
+ | PRODTYPE | 0x108cb9 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x108cd2 | 68 | 328c88f6cce22aae80c12348ead168b2c237cda8b068ede529fd1849f3563505
+
+ | INFRAMIN | 0x108d26 | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x108d41 | 14 | fae6a62f63330ca29d27237934f58e6c9fcd3bb08cef6579a4e60be014246aa7
+
+ | ROHSTOFF | 0x108d5f | 13 | 07bad934f2de4c775061be54a657b5132caa9b30536dba433b9f1b9a142a77d7
+
+ | WALKMASK | 0x108d93 | 36 | cc124bb9e48c0a0b28243a500826c84ef24ab8ca261966bfe5c1c54e8e58962c
+
+ | ENTRANCE | 0x108ebf | 16 | 36f605722942bb56acec9a8a2df89f8068c213046309a5a9ca651512d0f83d4f
+
+ | HAEUSER | 0x108ef3 | 720 | 9ca58fda59d0cde9568bb21b92f58c9c6d9649e573d7e122a7d88201d8e9a3a2
+
+1002 · Mill
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | KORN (13) → MEHL (14)
+
+ | Build cost | 3 bricks, 3 wood, 4 tools, 0 marble; gold 300
+
+ | Upkeep | idle 9; active 16 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3B200 citizens
+
+ | T0 / T1; I0 / I1 | [20.0, 40.0]; [1.171875, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [13]; input [15]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1002HEAD @ 0x109213, PROD3 @ 0x109274, WARE @ 0x1092e7, ROHSTOFF @ 0x109303
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x109213 | 56 | 3f189da10825a1dbddfb1a89cce718a8de3b38e2785c4a9aec7a47885b973bf0
+
+ | PRODTYPE | 0x10925b | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x109274 | 68 | dccdef9f14eb77888290f26eae20f75f71cec34e31cd7fae01c259906645d4c8
+
+ | INFRAMIN | 0x1092c8 | 15 | 9c75202131c6290ef6ed79459968485dadc87de10c95f5c68669605fea936691
+
+ | WARE | 0x1092e7 | 12 | d3dac70778d58b73410c9b0886ab087fa8e8b73a36cc5fd05a86a9e10106e7fa
+
+ | ROHSTOFF | 0x109303 | 12 | d2c3e1d0951cee4aea36f26c9212b718145482703a8a22293b8c7d21f095eafc
+
+ | WALKMASK | 0x109336 | 36 | 26693c670aaf45983aee0ff4614acbb4962b7afcd4385f9332a604c392871abc
+
+ | ENTRANCE | 0x109440 | 8 | 4138e6fc8000d07efbdeb9f6ef1271c33f96ff0a0e20713033c79a78d7fe4b0f
+
+ | HAEUSER | 0x10946c | 8258 | 65ddb8e813701e5f7cd26367618d5a2976592bec5ad2d6d6f90d1f9cc7d26192
+
+1004 · Bakery
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | MEHL (14) → NAHRUNG (26)
+
+ | Build cost | 5 bricks, 3 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 10; active 15 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3B200 citizens
+
+ | T0 / T1; I0 / I1 | [10.0, 20.0]; [0.9765625, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [6.0, 0.0]
+
+ | Loaded converter integers | output [26]; input [25]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1004HEAD @ 0x10b698, PROD3 @ 0x10b6f9, WARE @ 0x10b76c, ROHSTOFF @ 0x10b78b
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10b698 | 56 | 3ce233cdd65cd957239a188f02b17c5c8680233e62b19e256a442852cb3ace04
+
+ | PRODTYPE | 0x10b6e0 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x10b6f9 | 68 | 298098196730f3d6fe529641d11cb27419b524c91436c4ab85a4007e4c1e69f3
+
+ | INFRAMIN | 0x10b74d | 15 | 9c75202131c6290ef6ed79459968485dadc87de10c95f5c68669605fea936691
+
+ | WARE | 0x10b76c | 15 | fce8faf654d78e5a0384b9cc38e9e34c1d20e5736b051a0c4b604c1881703126
+
+ | ROHSTOFF | 0x10b78b | 12 | d3dac70778d58b73410c9b0886ab087fa8e8b73a36cc5fd05a86a9e10106e7fa
+
+ | WALKMASK | 0x10b7be | 36 | f6adb0a698d3ed24a5da2c2dac5541c065d094440f65cfdedb6ac9490c696375
+
+ | ENTRANCE | 0x10b8b3 | 8 | 04730aef6247201f7becacf12ff11a534e2579dd8d16b483612cf0795606c1ca
+
+ | HAEUSER | 0x10b8e7 | 4577 | 8703c21a55a3a0eabd2fd085dbccad0a4990e9e8dcc037f08a8ff1ff8b363167
+
+1005 · Weaving mill
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | WOLLE (9) → STOFFE (33)
+
+ | Build cost | 8 bricks, 2 wood, 4 tools, 0 marble; gold 500
+
+ | Upkeep | idle 10; active 30 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE GR_WEBER
+
+ | T0 / T1; I0 / I1 | [20.0, 24.0]; [1.328125, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [13]; input [17]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1005HEAD @ 0x10cb18, PROD3 @ 0x10cb79, WARE @ 0x10cc09, ROHSTOFF @ 0x10cc27
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10cb18 | 56 | b16e1cc3fc3d9cf86def45ab2b8001b5ed2455ff2e6c7e9dbf849e741b1508df
+
+ | PRODTYPE | 0x10cb60 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x10cb79 | 68 | b1b0038b7e00962ec17ab05bb4e405c82eb19ab1a8d601eec0bf61272c1a3cdf
+
+ | INFRAMIN | 0x10cbcd | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x10cbf0 | 9 | f149ba278d4247c4d870b47f1d6ebd8efeb2c1c1ee162124a148108a713d5011
+
+ | WARE | 0x10cc09 | 14 | fae6a62f63330ca29d27237934f58e6c9fcd3bb08cef6579a4e60be014246aa7
+
+ | ROHSTOFF | 0x10cc27 | 13 | 07bad934f2de4c775061be54a657b5132caa9b30536dba433b9f1b9a142a77d7
+
+ | WALKMASK | 0x10cc5b | 36 | 40411de3086f5c1a2ccd64d30fecb32981ff9ec5496038b23bb0fbe97f349a3c
+
+ | ENTRANCE | 0x10cd3d | 16 | b0cb021c585d0c7256028cf01243e8c7b5f3404cd0073b7e271b9b7230585006
+
+ | HAEUSER | 0x10cd75 | 4584 | 1694e9e3b21bbdbaa52a0bce3d6051903cdad7040a132fe23304399eb37e9880
+
+1006 · Bow maker
+P: parsed original record
+HANDWERKWAFFEN · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42), SEILE (19) → BOGEN (47), ARMBRUST (48)
+
+ | Build cost | 4 bricks, 4 wood, 6 tools, 0 marble; gold 500
+
+ | Upkeep | idle 15; active 30 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE BOGNER
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [0.9375, 0.46875]
+
+ | Capacity bytes / display floats | [5, 5] / [1.796875, 1.796875]
+
+ | Loaded converter integers | output [9, 9]; input [8, 4]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1006HEAD @ 0x10dfad, PROD3 @ 0x10e014, WARE @ 0x10e0a2, ROHSTOFF @ 0x10e0c1
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10dfad | 56 | 97f189eff5c0100c549a9a4df0166e70f24b87ea583718f243fef17a94808b08
+
+ | PRODTYPE | 0x10dff5 | 15 | 332ff47112b97d067ca1299bdc4b3471893054ab052d264298879b5049f8fdfd
+
+ | PROD3 | 0x10e014 | 68 | 9c145234545faf1072d7fe9aa685302f2fd336f748840111c9a4699d8a330d1d
+
+ | INFRAMIN | 0x10e068 | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x10e08b | 7 | 6e0da5b1d4082b6f480326bf805028ac83ce7c435c8ad12fa7bd58fa371cd96b
+
+ | WARE | 0x10e0a2 | 15 | f28bcb14adffd32942fb54a2b36733e4a45d5e5b991395240f821037cd3fab5c
+
+ | ROHSTOFF | 0x10e0c1 | 11 | 965791904ceb73ae0f0ff6dc6a2827c0dddb007409876be029b8410f20433d9e
+
+ | WALKMASK | 0x10e0f3 | 36 | fe16fc6887d50b8d8f1b3c452e6deaeaf12223da150d1f57f873ef18ab6192a2
+
+ | ENTRANCE | 0x10e1d8 | 16 | b8d0344bbee03cf79a576fb6a9e1c6cd40dc7681aaba551b52dff20bf817979f
+
+ | HAEUSER | 0x10e214 | 4590 | fa19649050117fa1040e8a2e0573fd5668d4e02778020fc085e3ec3e6d3b8572
+
+1008 · Tobacco factory
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | TABAK (11) → TABAKWAREN (30)
+
+ | Build cost | 6 bricks, 2 wood, 4 tools, 0 marble; gold 300
+
+ | Upkeep | idle 8; active 16 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [1.9921875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [17]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1008HEAD @ 0x10f5ec, PROD3 @ 0x10f64d, WARE @ 0x10f6c0, ROHSTOFF @ 0x10f6e2
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x10f5ec | 56 | 1a6e76ac9d7afece4b4ca72259e221275db3e29dc6346c44806a60241ca6671b
+
+ | PRODTYPE | 0x10f634 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x10f64d | 68 | 3e74fc50d4759ddd0c73235aea63c9b6d7359fe575bce9ffcd629351e33398aa
+
+ | INFRAMIN | 0x10f6a1 | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x10f6c0 | 18 | f09a7f96a9565d96c41bfab89fb38e2fc191fb45ed6184d986665d31bf4de2e5
+
+ | ROHSTOFF | 0x10f6e2 | 13 | 35bed0c2ee5009cf176e1e29c2fd9e7779d4dafb42898500c6d913f9c0580851
+
+ | WALKMASK | 0x10f716 | 36 | 3c42fb5e0f2a73888021a2fe48f3786cdc2ee4860bb3de92abf7ba1ab9f6f8a4
+
+ | ENTRANCE | 0x10f808 | 16 | c4fd5bb7e417a7140935c1e23db72ab63cfeec6db158295a456e2a483af783af
+
+ | HAEUSER | 0x10f844 | 8315 | 2119b13572766877f95b28ac2a191ef3ce5cb5736e2d351b10e27a7b314ae47f
+
+1009 · Dye works
+P: parsed original record
+HANDWERK · 4 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | SEIDE (20), FARBSTOFFE (21) → SEIDESTOFFE (34)
+
+ | Build cost | 8 bricks, 2 wood, 7 tools, 0 marble; gold 500
+
+ | Upkeep | idle 25; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [20.0, 20.0]; [1.09375, 0.46875]
+
+ | Capacity bytes / display floats | [5, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [13]; input [14, 6]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1009HEAD @ 0x11190f, PROD3 @ 0x111970, WARE @ 0x1119e3, ROHSTOFF @ 0x111a06
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x11190f | 56 | 916667f0286bc2201da2352272353cd3115a1357db3c167c650468b12dbf8975
+
+ | PRODTYPE | 0x111957 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x111970 | 68 | d9f104ec80a586428e99d5c137b7845b8bace0fb607941eb87a523bc90ec8423
+
+ | INFRAMIN | 0x1119c4 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x1119e3 | 19 | 16231804e9fa9eb2becc4bd6f742ca65b7175999959dec658f69fd1ea0ebcce1
+
+ | ROHSTOFF | 0x111a06 | 17 | c7a940f34e8666c4a25170f4eb6da02aa49b451d8fe6c12761424bf5f090de9e
+
+ | WALKMASK | 0x111a3e | 36 | 9f59f12ae5b796e294e7c7a853d4bf0b1646cf4e6f7baf7cbb2a7e1fe38efbf8
+
+ | ENTRANCE | 0x111b39 | 8 | 9a6ae5658d4a927c124a59e708feb5a677456170354db103481c94caf2477b86
+
+ | HAEUSER | 0x111b69 | 4585 | f9424440bc5fe494c99d38a80e0b83134ba0c119dab759d5fb803978b4fd4f71
+
+1010 · War machine builder
+P: parsed original record
+KANONENBAU · 4 × 4 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42), SEILE (19) → KATAPULT (108), BELAGERTURM (114)
+
+ | Build cost | 2 bricks, 6 wood, 8 tools, 0 marble; gold 500
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE KATAPULT
+
+ | T0 / T1; I0 / I1 | [50.0, 50.0]; [2.34375, 1.3671875]
+
+ | Capacity bytes / display floats | [5, 5] / [1.0, 1.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 512]
+
+ | Evidence | ANLAGEN/ENTRY id=1010HEAD @ 0x112da2, PROD3 @ 0x112e05, WARE @ 0x112e95, ROHSTOFF @ 0x112eba
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x112da2 | 56 | 462c819d685157760b9f2f54e33cb72bde9392800488629ca27a65fdc24d663b
+
+ | PRODTYPE | 0x112dea | 11 | 01852468aa627ea01b63ba1dd8c5db3e6901d587ce4d59c78f6593bcaa233712
+
+ | PROD3 | 0x112e05 | 68 | 9acf1d1e11510ed9a1947b285bc5b21aef678062927f16711053dee551ab9155
+
+ | INFRAMIN | 0x112e59 | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x112e7c | 9 | b7e691b9703e3b002a57a41f6351b4e2769149cf4c6fb35701b05715cbabdc02
+
+ | WARE | 0x112e95 | 21 | 62e66ce849fd7c65a2d39b54eb936e41a6cc4d872530e401ea2a2e72b1de6edf
+
+ | ROHSTOFF | 0x112eba | 11 | 965791904ceb73ae0f0ff6dc6a2827c0dddb007409876be029b8410f20433d9e
+
+ | WALKMASK | 0x112eec | 48 | 481df775f92b9e601cd6d1e661f26d44ca27ebc6699106762f87a366f71c5b4b
+
+ | ENTRANCE | 0x113043 | 24 | 93f6fba8911b0cc722bb6b9e29cc4773024412db28b53768bd62fd3ec75a8f4b
+
+ | HAEUSER | 0x113083 | 877 | abc1138747ef60edb9eeb1aeff3d6409347020fa8034822827b31248a04c2c11
+
+1012 · Gunsmith
+P: parsed original record
+HANDWERKWAFFEN · 4 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42), EISEN (15) → MUSKETE (49), KANONESHIP (53)
+
+ | Build cost | 8 bricks, 3 wood, 6 tools, 0 marble; gold 500
+
+ | Upkeep | idle 15; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE KANONE_SHIP
+
+ | T0 / T1; I0 / I1 | [20.0, 20.0]; [1.484375, 0.9375]
+
+ | Capacity bytes / display floats | [5, 5] / [2.796875, 2.796875]
+
+ | Loaded converter integers | output [13, 13]; input [19, 12]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1012HEAD @ 0x113440, PROD3 @ 0x1134a7, WARE @ 0x11353a, ROHSTOFF @ 0x11355d
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x113440 | 56 | d00f1624e45e3c20ed5b189ccb87d45ce82c04074e44cacb4615c899b518fa3f
+
+ | PRODTYPE | 0x113488 | 15 | 332ff47112b97d067ca1299bdc4b3471893054ab052d264298879b5049f8fdfd
+
+ | PROD3 | 0x1134a7 | 68 | 31f2cf575788d7fa5f50c693dfc240a0933b176eac84d5a12d722d588d0e3d41
+
+ | INFRAMIN | 0x1134fb | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x11351e | 12 | f5f6320fd4bcda8011140a26550454d7d8f52ef891a83598fe1ae7fc8bbb4e99
+
+ | WARE | 0x11353a | 19 | b2442d27d267c691ba58ad53c7df9828b4e04f892e43cc48bc21e8edcf25fd8c
+
+ | ROHSTOFF | 0x11355d | 11 | 4a23c8ea36edf0d589643d46da6b9316e94ea173d3a91bdd6578e07cb222f41d
+
+ | WALKMASK | 0x11358f | 36 | d6bf4eb24268c222a86fbce0bc31772b4fc1a40c54043a74261350b90c0dec30
+
+ | ENTRANCE | 0x113684 | 24 | 91fb8b2203b1dc84e105689a4e8dcc429203758f9cb6b90f5cc4cdf7cf660c05
+
+ | HAEUSER | 0x1136c4 | 4592 | b86dbd8650ea621495ac3230e41875e9a440907688dcdf64157a0fe7c0e8bbeb
+
+1013 · Distillery
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | ZUCKER (10) → ALKOHOL (29)
+
+ | Build cost | 1 bricks, 6 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 5; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3B200 citizens
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [1.875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [16]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1013HEAD @ 0x114904, PROD3 @ 0x114965, WARE @ 0x1149d8, ROHSTOFF @ 0x1149f7
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x114904 | 56 | ce5a5e1608287f22fb3f63a8e5b611b5a50021d09b968565ec995efa01a81f90
+
+ | PRODTYPE | 0x11494c | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x114965 | 68 | 22df892e8dcb17e92e05bf40f7fdfa769bcadf98dbd7943d46e3e2c8429f6911
+
+ | INFRAMIN | 0x1149b9 | 15 | 9c75202131c6290ef6ed79459968485dadc87de10c95f5c68669605fea936691
+
+ | WARE | 0x1149d8 | 15 | 4e4a1c6e025dd9f0e8e782f41b7e6ba022445c93f5792d2ffd47f99a19bb7d4a
+
+ | ROHSTOFF | 0x1149f7 | 14 | 33813bbe44f33efb9f36f932148b74592c76727acf60bb4b1c5ae4390fadad03
+
+ | WALKMASK | 0x114a2c | 36 | e3b1c7977afa39cb12879eb199208b74ee0165136063a92c121a67dfaafe8790
+
+ | ENTRANCE | 0x114b11 | 8 | d9ed35fad4934887ba3645f17695ca24ca35fa790d151ca8c406feff1bc3b595
+
+ | HAEUSER | 0x114b45 | 8311 | 957944a6d15a2f4ba57180f4c0254b452d9f6d4b32363b6287dd2e64ee664067
+
+1014 · Brewery
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | HOPFEN (17) → ALKOHOL (29)
+
+ | Build cost | 4 bricks, 4 wood, 3 tools, 0 marble; gold 300
+
+ | Upkeep | idle 10; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2G360 settlers
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [1.875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [16]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1014HEAD @ 0x116c0c, PROD3 @ 0x116c6d, WARE @ 0x116ce0, ROHSTOFF @ 0x116cff
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x116c0c | 56 | d2e4b97f1d502aa1fe7ca846f9d71b19e829935c84af8229dde04822de3b78ca
+
+ | PRODTYPE | 0x116c54 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x116c6d | 68 | 87d6c48bd93ab3066815efabf67d7f10b567671c8a761ae0074ceb6d031effba
+
+ | INFRAMIN | 0x116cc1 | 15 | 83b0b7f50be5808e8763be4b3251d652454bccbf7b594d049c5c0e25f1d1cf9b
+
+ | WARE | 0x116ce0 | 15 | 4e4a1c6e025dd9f0e8e782f41b7e6ba022445c93f5792d2ffd47f99a19bb7d4a
+
+ | ROHSTOFF | 0x116cff | 14 | 15d16040e609c0651d25863f5a5974283ee1429a21dbd8e4072a0c9a51bbf7ad
+
+ | WALKMASK | 0x116d34 | 36 | 7f80a573e6f74fecc8c4f1a98d64c9b336e73e378fa8e67be491fd845ba76a35
+
+ | ENTRANCE | 0x116e29 | 16 | 2ae5e945d5a54a2195ae3c52e15abe729d1070fad160c6c707808c9912187648
+
+ | HAEUSER | 0x116e65 | 4579 | 61baaa9a9e019bc7afadea72f4b1d7bab61f25eef85d7df3aa2e3dfaaa469d2d
+
+1017 · Ore smelter
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | EISENERZ (1), HOLZ (42) → EISEN (15)
+
+ | Build cost | 10 bricks, 4 wood, 10 tools, 0 marble; gold 800
+
+ | Upkeep | idle 20; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [15.0, 15.0]; [1.23046875, 0.76171875]
+
+ | Capacity bytes / display floats | [7, 0] / [3.796875, 0.0]
+
+ | Loaded converter integers | output [17]; input [21, 13]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1017HEAD @ 0x118098, PROD3 @ 0x1180f9, WARE @ 0x11816c, ROHSTOFF @ 0x118189
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x118098 | 56 | fc95de53160f187eae9a596913a8442ebc523d005cdcf4e12edb3bb273e39705
+
+ | PRODTYPE | 0x1180e0 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x1180f9 | 68 | c187edac6c71ddbee3661f666b2856a41941ecbe2ebfc942ac3901e6719db71e
+
+ | INFRAMIN | 0x11814d | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x11816c | 13 | 68b2660caa9b9c931fd7d246d13070f16b9ae4d4721b5c5eea4d223e83528ada
+
+ | ROHSTOFF | 0x118189 | 14 | b2833f3f4fd94aae1acea0c981a6469aea4d40eb905e54d3ecaf5ad37c899a05
+
+ | WALKMASK | 0x1181be | 36 | 4dcc3a4e7b19453cdd7b89b76c9319cfe6a01c1684ee6fe3983979264efd8d38
+
+ | ENTRANCE | 0x1182a3 | 8 | 4d290b4efd2a9e3558523ed7fa153aee03bf6180fdb52a9f5d7d38c08132b854
+
+ | HAEUSER | 0x1182d7 | 8516 | f0a86293fd3103d6ceb26a8b743f03ad0ba8e349451e26e08a233286a4b1c4a8
+
+1018 · Butcher's shop
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | FLEISCH (12) → NAHRUNG (26)
+
+ | Build cost | 4 bricks, 5 wood, 4 tools, 0 marble; gold 350
+
+ | Upkeep | idle 12; active 22 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2B50 settlers
+
+ | T0 / T1; I0 / I1 | [20.0, 15.0]; [1.328125, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [13]; input [17]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1018HEAD @ 0x11a46b, PROD3 @ 0x11a4cc, WARE @ 0x11a53f, ROHSTOFF @ 0x11a55e
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x11a46b | 56 | c5f44cc0997d259f0e82aa039c49e36c59688acc0e23256e487fd521868a69ab
+
+ | PRODTYPE | 0x11a4b3 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x11a4cc | 68 | c2a74e9a1b7341ca3c6fd247cad76c23fbdf28afd68b8953aa4673c3ce22d786
+
+ | INFRAMIN | 0x11a520 | 15 | dc383ac9365336e75410786595c22ddf8ea0e07d5a1b2374de257db0585231fe
+
+ | WARE | 0x11a53f | 15 | fce8faf654d78e5a0384b9cc38e9e34c1d20e5736b051a0c4b604c1881703126
+
+ | ROHSTOFF | 0x11a55e | 15 | e4f4b0bbaa2bcc4e7e07b020090032a3619e4418863e517a02941c6ab216e1e7
+
+ | WALKMASK | 0x11a594 | 36 | c8c38c729473f30e0c8d0c2d2c21c0b124183229514dc0ed23276913449400e1
+
+ | ENTRANCE | 0x11a67c | 16 | 2852a860b6e40d2e2251fbbc79e2a7d422ccb9915afd6d532919a05ae20d4e42
+
+ | HAEUSER | 0x11a6b4 | 4588 | 59be6689d958de93df13bbc1b9daa8953c08d763f28b603e2c578852c6322a38
+
+1019 · Smith
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | EISEN (15), HOLZ (42) → WERKZEUG (41)
+
+ | Build cost | 8 bricks, 4 wood, 3 tools, 0 marble; gold 500
+
+ | Upkeep | idle 15; active 25 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [28.0, 28.0]; [0.875, 0.21875]
+
+ | Capacity bytes / display floats | [5, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [8, 2]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1019HEAD @ 0x11b8f0, PROD3 @ 0x11b951, WARE @ 0x11b9c4, ROHSTOFF @ 0x11b9e4
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x11b8f0 | 56 | baa72313d1826b31e6aaf6804ef7fa369d4266e3bf35aa1494059fe052b65890
+
+ | PRODTYPE | 0x11b938 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x11b951 | 68 | 265bdf0f88c84fc630a59eac00faf3287fa84bbb0609f758b8f73a96e15e7c4d
+
+ | INFRAMIN | 0x11b9a5 | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x11b9c4 | 16 | 279faab1b2281a6611d87e29107ee38c1d87f812265a6d043498c563d809797e
+
+ | ROHSTOFF | 0x11b9e4 | 11 | 737fa52b80d8442a31d478c9c0fc1e5280cd9b50cdda646dd7f64f596c27862d
+
+ | WALKMASK | 0x11ba16 | 36 | effdb4b928b76a2ac33ed0847fff2080114445de6d6290917738a06dc34a1840
+
+ | ENTRANCE | 0x11baf8 | 16 | 18d09ed9a13a9f24bc2bd25fe65c1e2b7039f9ca53b4f4733994addb5ef0dff1
+
+ | HAEUSER | 0x11bb34 | 8512 | 285ad673d13e5e4935d2d37a5a9044f614349cb4d216f2a0635074f9fb392212
+
+1020 · Small shipyard
+P: parsed original record
+WERFT · 5 × 5 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42), SEILE (19) → —
+
+ | Build cost | 12 bricks, 18 wood, 15 tools, 0 marble; gold 1200
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2A25 settlers
+
+ | T0 / T1; I0 / I1 | [5.0, 5.0]; [2.5, 2.5]
+
+ | Capacity bytes / display floats | [5, 0] / [1.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 256]
+
+ | Evidence | ANLAGEN/ENTRY id=1020HEAD @ 0x11dcc4, PROD3 @ 0x11dd22, WARE @ 0x11dd95, ROHSTOFF @ 0x11ddb3
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x11dcc4 | 56 | 4ac75f5c86cbabefdaf78f5c7c1134645305c0603f178626487d9aaddd8adcb8
+
+ | PRODTYPE | 0x11dd0c | 6 | 31fc6adf8012616ee73b3c5b9f6bae7f049ce8530e5f965b369e2a11247820e1
+
+ | PROD3 | 0x11dd22 | 68 | ae068497d7902cae5c94b0e8c8abc143af75cc01f2cc84383110a5840d141074
+
+ | INFRAMIN | 0x11dd76 | 15 | a040e5f43c6941c46ce8cd5ce80aed2ff1bc30957d4e0132e58edd6b0dfbf179
+
+ | WARE | 0x11dd95 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | ROHSTOFF | 0x11ddb3 | 11 | 965791904ceb73ae0f0ff6dc6a2827c0dddb007409876be029b8410f20433d9e
+
+ | WALKMASK | 0x11dde5 | 60 | dd1a1df8188d7015f027d70b7e0cf1963cc75e6004d17be70c93667df0d365df
+
+ | ENTRANCE | 0x11df69 | 8 | 3fa7dbcd8bd66b2e227c798b5b3b73d0947b30cf0f488a6ca51232504c7e6b6d
+
+ | HAEUSER | 0x11df99 | 3069 | 1f0d3ea695b2381d3f98e7d8a08f79056523f5a7d566ec24d67f71c5bc0652fc
+
+1021 · Large shipyard
+P: parsed original record
+WERFT · 8 × 8 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42), SEILE (19) → —
+
+ | Build cost | 18 bricks, 20 wood, 20 tools, 0 marble; gold 2000
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_4A250 merchants
+
+ | T0 / T1; I0 / I1 | [5.0, 5.0]; [2.5, 2.5]
+
+ | Capacity bytes / display floats | [5, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 256]
+
+ | Evidence | ANLAGEN/ENTRY id=1021HEAD @ 0x11ebe6, PROD3 @ 0x11ec44, WARE @ 0x11ecb7, ROHSTOFF @ 0x11ecd5
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x11ebe6 | 56 | 5e666e3814aa5516c02d975f985d4990fa3cf8eb719761ec39a03b4b7e2815f0
+
+ | PRODTYPE | 0x11ec2e | 6 | 31fc6adf8012616ee73b3c5b9f6bae7f049ce8530e5f965b369e2a11247820e1
+
+ | PROD3 | 0x11ec44 | 68 | dbbb83071cdac440ef12be4a19db9ccc5dc919c1800d4296504c1e3ef3f76dc4
+
+ | INFRAMIN | 0x11ec98 | 15 | ff50b76fe06057c0f0d0913ab46b9fb7fd32f2aca5b5074a35dfc6f84a3f167e
+
+ | WARE | 0x11ecb7 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | ROHSTOFF | 0x11ecd5 | 11 | 965791904ceb73ae0f0ff6dc6a2827c0dddb007409876be029b8410f20433d9e
+
+ | WALKMASK | 0x11ed07 | 96 | 532e07637808974ffdf4b59cfb16c297eaf67cfa51d871ee0430c56a1d08e990
+
+ | ENTRANCE | 0x11ef12 | 8 | c15e9b931dd8db704d27efa7208b456f6db780765569eba6a6b594e56c4e55bd
+
+ | HAEUSER | 0x11ef42 | 3069 | 055d8b5cba1bd811c1e11687b2c30dfc5962ae577ff567a21b15dd3602e2e108
+
+1022 · Salt works
+P: parsed original record
+HANDWERK · 4 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | SALZSTEIN (3) → SALZ (28)
+
+ | Build cost | 0 bricks, 5 wood, 5 tools, 0 marble; gold 400
+
+ | Upkeep | idle 12; active 30 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_1C125 pioneers
+
+ | T0 / T1; I0 / I1 | [10.0, 8.0]; [1.015625, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [6.0, 0.0]
+
+ | Loaded converter integers | output [26]; input [26]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1022HEAD @ 0x11fb8f, PROD3 @ 0x11fbf0, WARE @ 0x11fc63, ROHSTOFF @ 0x11fc7f
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x11fb8f | 56 | 5616f148f9f599a06da73106ab79ac1268e3992ef91eda85fb3cf850449a3bed
+
+ | PRODTYPE | 0x11fbd7 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x11fbf0 | 68 | 9ebbb6187ebd8f34f774507036394551c7d3e8b68d2b23291a05a59ce5f55219
+
+ | INFRAMIN | 0x11fc44 | 15 | ae1b0d92215c52a4044e3ccf3529d97caf1a2d6fced126a44e4797d6a332e23b
+
+ | WARE | 0x11fc63 | 12 | b91b1dd90e8a08f2b8f1a8f572dba8be0f205fbe9b2e07ba68c480e24c6f01e3
+
+ | ROHSTOFF | 0x11fc7f | 17 | 0d2de132b6c6caf1891aa9c40b8de1e62241dcf83611471907dfcab2013635da
+
+ | WALKMASK | 0x11fcb7 | 36 | 3c888b71ef22b54e319b3e5a19c699543ec72f66e2e40d6b88ef393ac08b1075
+
+ | ENTRANCE | 0x11fdaf | 16 | 11c3a2f5b6879126b8e262bd003eaaf5c86990176dd8ce6576b837b7c88c95f3
+
+ | HAEUSER | 0x11fdeb | 4579 | 0331fbc37cf7fb8abcda7cbe6ec10baffe3870d1bf9af27e6198867985d86443
+
+1023 · Tannery
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | TIERHAEUTE (18) → LEDER (27)
+
+ | Build cost | 0 bricks, 5 wood, 2 tools, 0 marble; gold 300
+
+ | Upkeep | idle 5; active 9 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_EVERalways
+
+ | T0 / T1; I0 / I1 | [36.0, 36.0]; [1.6875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.5, 0.0]
+
+ | Loaded converter integers | output [7]; input [12]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1023HEAD @ 0x12101e, PROD3 @ 0x12107f, WARE @ 0x1210ee, ROHSTOFF @ 0x12110b
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12101e | 56 | 3225ea662bd0759cc395c61eb1f24ae13d78088dd794d6377cca244087777064
+
+ | PRODTYPE | 0x121066 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x12107f | 68 | 27dee72a5cbab9e2c9e7f53cfe88491cad680ee36cc2844e28e13789d1157fc1
+
+ | INFRAMIN | 0x1210d3 | 11 | 5d34aaca2844cf423b5b7c9a19dbbc0265bcc7c67f2ed7114570fa36e8d35a99
+
+ | WARE | 0x1210ee | 13 | 102e9fc18927c948dc12de064cebd9ad2764a5d6a2f128499eadec5801aa41cf
+
+ | ROHSTOFF | 0x12110b | 18 | 91c8577716927e146ab86764acc4020a6602e061fb69cf1cfb119bb6e73a213f
+
+ | WALKMASK | 0x121144 | 36 | 73c90a95bc3e5c96c94a470b678e800f4fe8ce7a1f9cd7d586a54b675bb0fe44
+
+ | ENTRANCE | 0x12122c | 8 | 0cbb754638196fb91c026918e9c3b5ff06a4a3e998b3613f02bf5cc20aca3a91
+
+ | HAEUSER | 0x121260 | 4590 | de18ed436fd1861d9f63c6650e05989b75e2eebd7619bd70f330b824b22b3856
+
+1027 · Tailor's shop
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 20
+
+ | Field | Value
+
+ | Inputs / outputs | STOFFE (33), PELZE (38) → KLEIDUNG (36)
+
+ | Build cost | 5 bricks, 5 wood, 5 tools, 0 marble; gold 500
+
+ | Upkeep | idle 15; active 30 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3F1100 citizens
+
+ | T0 / T1; I0 / I1 | [20.0, 20.0]; [0.9375, 0.234375]
+
+ | Capacity bytes / display floats | [5, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [13]; input [12, 3]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1027HEAD @ 0x12249e, PROD3 @ 0x1224ff, WARE @ 0x122572, ROHSTOFF @ 0x122592
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12249e | 56 | b22112138a042c5dd6f95f0e04d13233afecafe9f7c9354886cb28ec2585f288
+
+ | PRODTYPE | 0x1224e6 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x1224ff | 68 | 41bffe171b6fdeae9db3c60728705444a19fe66ff37cd763aef6e6b9d9c44385
+
+ | INFRAMIN | 0x122553 | 15 | 426d29e831d5f0ac28b5c9d9a5971b421448b588473b8a331e3a9848fa5daa3d
+
+ | WARE | 0x122572 | 16 | 67cc21ac3b1ec0d134e2431d1983254abf3b95c252eca0dc95fe63476110b540
+
+ | ROHSTOFF | 0x122592 | 13 | d1a91d5d7a5f15bd1fe0a2f0e8e98cd1cb7f665e08eab616ad7797b7057b6d8f
+
+ | WALKMASK | 0x1225c6 | 36 | 8c1405af13a5bda00d5f59d3b75e24b7d20e51601ff9d884312e723a21f7b7a9
+
+ | ENTRANCE | 0x1226bb | 16 | 3fedfc92b4a8e4d11ad000c77ee6249d30244c5351509bf1b5cd64fccf9b37ae
+
+ | HAEUSER | 0x1226f3 | 4586 | 5040c34f0b55cd58ad4c5c66d92af99244324c6c7f6fa01c455b783d453453de
+
+1028 · Whale oil factory
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 20
+
+ | Field | Value
+
+ | Inputs / outputs | WALSPECK (22) → LAMPENOEL (35)
+
+ | Build cost | 5 bricks, 5 wood, 5 tools, 0 marble; gold 500
+
+ | Upkeep | idle 10; active 20 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3D600 citizens
+
+ | T0 / T1; I0 / I1 | [20.0, 8.0]; [0.9375, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [3.0, 0.0]
+
+ | Loaded converter integers | output [13]; input [12]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1028HEAD @ 0x12392d, PROD3 @ 0x12398e, WARE @ 0x123a01, ROHSTOFF @ 0x123a22
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12392d | 56 | ea3e2b1cdaf31589260acf9d2033f426d4706333a234bb38090bb67e2f6417d6
+
+ | PRODTYPE | 0x123975 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x12398e | 68 | 3932a6a9178d237d8ec0e05347b6cfe34276b18324e5ea9c26db52ee2af9d4cf
+
+ | INFRAMIN | 0x1239e2 | 15 | e5afe07e6fbd9a7c4273d505e8149277fbfa9f866bfa3b972bd3a8ec035a22b0
+
+ | WARE | 0x123a01 | 17 | 7fe1fd08ef64b7d1e0627bae2f3e034b15b7f052fb506b8f5055f809b1db8388
+
+ | ROHSTOFF | 0x123a22 | 16 | 1b860cf0773ebe70cf1e7ff9978c01667dfb8da52e787f58d854ff9ed005877e
+
+ | WALKMASK | 0x123a59 | 36 | 97b6949bdef11bab2a309da998cfb20d0cfd8840197234e3fbeec5b5e297a7eb
+
+ | ENTRANCE | 0x123b3e | 16 | dbdbec0afda66ddb6f4797f23f1bae7dd4cfaee907792f5050e15b63e03fb0b6
+
+ | HAEUSER | 0x123b76 | 8309 | d9c252b3ea375c15fe6e27506ced9e98413727c5c0da79b7e05f25bd57c4b562
+
+1029 · Armorer
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 20
+
+ | Field | Value
+
+ | Inputs / outputs | LEDER (27), EISEN (15) → RUESTUNG (50)
+
+ | Build cost | 2 bricks, 8 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 15; active 30 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [40.0, 40.0]; [0.9375, 0.9375]
+
+ | Capacity bytes / display floats | [5, 0] / [1.34765625, 0.0]
+
+ | Loaded converter integers | output [6]; input [6, 6]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1029HEAD @ 0x125c3b, PROD3 @ 0x125c9c, WARE @ 0x125d0f, ROHSTOFF @ 0x125d2f
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x125c3b | 56 | 8db9a7ad3d7a937cd76148a7d75b0c0cf56269f258fc8ce071c1d29372982436
+
+ | PRODTYPE | 0x125c83 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x125c9c | 68 | 9e07a948d54251f268a11c3e1bc88c5c7a8ac709266e6d35288074b1ad919c39
+
+ | INFRAMIN | 0x125cf0 | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x125d0f | 16 | 74d89413067edaa87f975b3a4e04d3ff0f1d6715b1edbf3a784c4d15aef714e2
+
+ | ROHSTOFF | 0x125d2f | 12 | 33103fa0331af2edc4d7dbd7cbf533f8b74d0401083e0b1c4396390b05f54957
+
+ | WALKMASK | 0x125d62 | 36 | 78ad1f647c669cf3a6ba8794b68aafeac923791feba166c9898881b90f40484b
+
+ | ENTRANCE | 0x125e4a | 16 | 8718a4a4c1e4ce4b0be56c71e84fbbbf7285e72382c8c30fd7881e2f0a02da5a
+
+ | HAEUSER | 0x125e82 | 4589 | 02c779d60a43cb95089a2ff86ba58a24bbbe5a64fab2d0aa3b72e86fa8b69a4a
+
+1030 · Ropemaker
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 16
+
+ | Field | Value
+
+ | Inputs / outputs | FLACHS (16) → SEILE (19)
+
+ | Build cost | 0 bricks, 5 wood, 3 tools, 0 marble; gold 400
+
+ | Upkeep | idle 6; active 16 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2A25 settlers
+
+ | T0 / T1; I0 / I1 | [50.0, 50.0]; [2.34375, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.13671875, 0.0]
+
+ | Loaded converter integers | output [5]; input [12]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1030HEAD @ 0x1270bf, PROD3 @ 0x127120, WARE @ 0x127193, ROHSTOFF @ 0x1271b0
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x1270bf | 56 | b318569d42232c2eac0c810aa1fa3c752b844925caae72c7cbf0f44b3ab78f98
+
+ | PRODTYPE | 0x127107 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x127120 | 68 | 96a22e19f63bcff79e257c4303c39d84473535a34a8fa6ef64252ffc33497ff3
+
+ | INFRAMIN | 0x127174 | 15 | a040e5f43c6941c46ce8cd5ce80aed2ff1bc30957d4e0132e58edd6b0dfbf179
+
+ | WARE | 0x127193 | 13 | 237ca03995c747fc36b06a6c2280245bf8749c40ecd939ab954767f3a4ea5fbd
+
+ | ROHSTOFF | 0x1271b0 | 14 | 3cf669e7b5ae202e88f7075b1adbda87f71c647a55b7fe622cacb9d0909b42ad
+
+ | WALKMASK | 0x1271e5 | 36 | 2c9d071912f2326d9dcdc2fc1b171f4bbd8d0d97482edcec897f9c0de5008273
+
+ | ENTRANCE | 0x1272dd | 16 | df5b4915db6fbb6a06f3d6806b0cf8500b91398cb6220408d708ea8845b8da46
+
+ | HAEUSER | 0x127315 | 721 | d086dcaea2ca607dacd3fd82c5cc83dc6c3bc041e7de75c5a051414925b15930
+
+1034 · Large ore smelter
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | EISENERZ (1), HOLZKOHLE (23) → EISEN (15)
+
+ | Build cost | 20 bricks, 10 wood, 10 tools, 0 marble; gold 1000
+
+ | Upkeep | idle 32; active 75 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3F1100 citizens
+
+ | T0 / T1; I0 / I1 | [7.5, 7.5]; [1.0546875, 0.5859375]
+
+ | Capacity bytes / display floats | [7, 0] / [7.796875, 0.0]
+
+ | Loaded converter integers | output [34]; input [36, 20]
+
+ | Workers | [[1, 2, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1034HEAD @ 0x127636, PROD3 @ 0x127697, WARE @ 0x12770a, ROHSTOFF @ 0x127727
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x127636 | 56 | a31b17d6d41be69dd2f40b7eda9de7a730a6c0eb5a2c0af2e543608daa32cd3e
+
+ | PRODTYPE | 0x12767e | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x127697 | 68 | 98f0c3358959abc7854dadd14885a2d929646e6283fe5f10e4213c91e610113c
+
+ | INFRAMIN | 0x1276eb | 15 | 426d29e831d5f0ac28b5c9d9a5971b421448b588473b8a331e3a9848fa5daa3d
+
+ | WARE | 0x12770a | 13 | 68b2660caa9b9c931fd7d246d13070f16b9ae4d4721b5c5eea4d223e83528ada
+
+ | ROHSTOFF | 0x127727 | 19 | 43ddec6fb4f0fa15f5968d6a1dcd710dbfa5a3983da27799e56e8212010b8d21
+
+ | WALKMASK | 0x127761 | 36 | 860f284aa4a63e5d037c5e8dbc443135efbb96de3c985ec35fd24ca205bd6853
+
+ | ENTRANCE | 0x127853 | 16 | e7a40ce92d56f007501b32294e2979ab7d571aa243bfce4d109c581a3e87efa9
+
+ | HAEUSER | 0x12788b | 4588 | 5266e14973cb606eece59b5702ad8e5792612d2ea4396a484ea00494801a1790
+
+1035 · Charcoal burner
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42) → HOLZKOHLE (23)
+
+ | Build cost | 0 bricks, 2 wood, 2 tools, 0 marble; gold 100
+
+ | Upkeep | idle 5; active 12 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3D600 citizens
+
+ | T0 / T1; I0 / I1 | [10.0, 5.0]; [0.78125, 0.0]
+
+ | Capacity bytes / display floats | [8, 0] / [6.0, 0.0]
+
+ | Loaded converter integers | output [26]; input [20]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1035HEAD @ 0x128ac7, PROD3 @ 0x128b28, WARE @ 0x128b9b, ROHSTOFF @ 0x128bbc
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x128ac7 | 56 | 2b94d8a0268cfe06836a20bb2b8f1cfbb07ba99c4437b2518b23612cb3b4cc8f
+
+ | PRODTYPE | 0x128b0f | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x128b28 | 68 | 3622b1cedfa16d313055346754a2e823e818d750f120711593aec8b177bca962
+
+ | INFRAMIN | 0x128b7c | 15 | e5afe07e6fbd9a7c4273d505e8149277fbfa9f866bfa3b972bd3a8ec035a22b0
+
+ | WARE | 0x128b9b | 17 | 32ff51019dc9cc120793721d62ad53dd719c167c3fb022db0d5e82623253923f
+
+ | ROHSTOFF | 0x128bbc | 12 | b5aea9b11b3255dd92d610defd72980d37af9e415e74903082d9ca3a75a21828
+
+ | WALKMASK | 0x128bef | 36 | e5e2882c735c166e5cd37864dd159783a7314a4fd31dbefdd5455bac0f5f296d
+
+ | ENTRANCE | 0x128cd7 | 16 | 3bd3149b762e834088d479319e4688921c6fdab7b66e12d66f324120552f7dbe
+
+ | HAEUSER | 0x128d13 | 8304 | c4d33b2953b8adea8d876cdcff27e348c0ee379d9e5b31c496c46bdd0f0d854d
+
+1036 · Large weapons smithy
+P: parsed original record
+HANDWERKWAFFEN · 3 × 3 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZ (42), EISEN (15) → AXT (52), LANZE (51)
+
+ | Build cost | 3 bricks, 5 wood, 5 tools, 0 marble; gold 300
+
+ | Upkeep | idle 17; active 35 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE WAFFEN_FERTIGUNG_02
+
+ | T0 / T1; I0 / I1 | [40.0, 40.0]; [0.9375, 0.9375]
+
+ | Capacity bytes / display floats | [5, 5] / [1.33984375, 1.34765625]
+
+ | Loaded converter integers | output [6, 6]; input [6, 6]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1036HEAD @ 0x12add3, PROD3 @ 0x12ae3a, WARE @ 0x12aed5, ROHSTOFF @ 0x12aeef
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12add3 | 56 | 039d6a847149a95eb1afc6ec5d605c5de3c4c5e7de909e0a102584be822a5412
+
+ | PRODTYPE | 0x12ae1b | 15 | 332ff47112b97d067ca1299bdc4b3471893054ab052d264298879b5049f8fdfd
+
+ | PROD3 | 0x12ae3a | 68 | 953392aba9eb100ae5e29b71cf45145e2104f07909b9e0241426be78c719bdb8
+
+ | INFRAMIN | 0x12ae8e | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x12aeb1 | 20 | 6f170e9e941e36b82b6cba721f73ff7d9a7eb5d3f1642f3d9989b22f91cc2e52
+
+ | WARE | 0x12aed5 | 10 | 6af257c9d46de28aa38c863d34ebb0cb1f0813683bbda2984a87230c93850460
+
+ | ROHSTOFF | 0x12aeef | 11 | 4a23c8ea36edf0d589643d46da6b9316e94ea173d3a91bdd6578e07cb222f41d
+
+ | WALKMASK | 0x12af21 | 36 | 46b3d59e6b4277af5cc591e4200ca78de0e604ca2abbfae16ac57e625bdc512c
+
+ | ENTRANCE | 0x12b010 | 8 | 89d56da8eaa0c4c578611a44f111c642d26e84f4e06bb4cfd76393fda92c19fc
+
+ | HAEUSER | 0x12b044 | 4584 | 1ab2bb8c9668999d942e00b9e1a262678e2ec5b02fe7db4b000d08a1385c9ada
+
+1037 · Small weapons smithy
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 12
+
+ | Field | Value
+
+ | Inputs / outputs | EISEN (15) → SCHWERT (46)
+
+ | Build cost | 2 bricks, 4 wood, 4 tools, 0 marble; gold 200
+
+ | Upkeep | idle 15; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE WAFFEN_FERTIGUNG_01
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [0.5859375, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [1.796875, 0.0]
+
+ | Loaded converter integers | output [9]; input [5]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1037HEAD @ 0x12c27c, PROD3 @ 0x12c2dd, WARE @ 0x12c378, ROHSTOFF @ 0x12c397
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12c27c | 56 | 98e6d99eea2789cff64d65bcefb9a7c070f4904b26561d17566382ae28febd47
+
+ | PRODTYPE | 0x12c2c4 | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x12c2dd | 68 | 6512b9d3c2b8e1fa158071f810a3ca665aae6a715576b8783ac6e3979c551eb7
+
+ | INFRAMIN | 0x12c331 | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x12c354 | 20 | 09038ab7ff6359ec3f963dbbc90ba6a9580a36dea1b7fe3fd7226dad10623d4f
+
+ | WARE | 0x12c378 | 15 | 7ae335c992847171bf6fa1d7a68d8801a560f5699c26b66848251ac926c7e41c
+
+ | ROHSTOFF | 0x12c397 | 13 | 68b2660caa9b9c931fd7d246d13070f16b9ae4d4721b5c5eea4d223e83528ada
+
+ | WALKMASK | 0x12c3cb | 36 | e4c55b2d8b82e8f55aa87ecc686a525b9209b0650a947f5cfaae7be0b02874e8
+
+ | ENTRANCE | 0x12c4b3 | 16 | ba63f4cf07117dc163b24aee08b9766b44079e38d6ba506d31de8ffa18103679
+
+ | HAEUSER | 0x12c4eb | 4592 | f1f7dfb1518cadbeb5694a7dee704c96ff12e4b2df6462906337a70af977c492
+
+1038 · Cannon foundry
+P: parsed original record
+KANONENBAU · 4 × 4 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | HOLZKOHLE (23), EISEN (15) → KANONE (110), MOERSER (112)
+
+ | Build cost | 10 bricks, 10 wood, 10 tools, 0 marble; gold 800
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE KANONE
+
+ | T0 / T1; I0 / I1 | [20.0, 20.0]; [5.625, 2.8125]
+
+ | Capacity bytes / display floats | [5, 5] / [1.0, 1.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 512]
+
+ | Evidence | ANLAGEN/ENTRY id=1038HEAD @ 0x12d72b, PROD3 @ 0x12d78e, WARE @ 0x12d81c, ROHSTOFF @ 0x12d83b
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12d72b | 56 | 98d9b79d3fc05b7fe905c9319b7ae672c997ce455c7c5eff069e642fbc7b5f32
+
+ | PRODTYPE | 0x12d773 | 11 | 01852468aa627ea01b63ba1dd8c5db3e6901d587ce4d59c78f6593bcaa233712
+
+ | PROD3 | 0x12d78e | 68 | 783acaad2c563a65c9de5c605e3337c42a100b554dc40fa467e5c88c262e5ba0
+
+ | INFRAMIN | 0x12d7e2 | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x12d805 | 7 | 57bb5fabf10dc773d9d03b75b5a2f3e7f832d3b02a84081f4b6de851f1ee1f0f
+
+ | WARE | 0x12d81c | 15 | 0e3ab3cc06d34cf8b332f9cbbf934be3364ef31dcd54953ade8055862bab2c2e
+
+ | ROHSTOFF | 0x12d83b | 16 | d454ef546670cb60765cf6b2b9edee1304f46adbe6985c8268503d6a1950e318
+
+ | WALKMASK | 0x12d872 | 48 | f62e8900f711fbcdbf28855fba1266ff9c02583ff36dd81acb28b07bfe0362a0
+
+ | ENTRANCE | 0x12d9b6 | 8 | f090e16a46fb6c6d60693ab4210c31eaa1521ce10c57d59bb6ae5f071fcc49d4
+
+ | HAEUSER | 0x12d9e6 | 8305 | b9f36e36f05e629b2b1bb8a77853f9ec1d68ba8c0389367d40e0d40ad53d2781
+
+1039 · Goldsmith
+P: parsed original record
+HANDWERK · 3 × 3 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | GOLD (2), EDELSTEINE (4) → SCHMUCK (37)
+
+ | Build cost | 11 bricks, 7 wood, 6 tools, 0 marble; gold 300
+
+ | Upkeep | idle 20; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_4C750 merchants
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [0.9375, 0.9375]
+
+ | Capacity bytes / display floats | [5, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input [8, 8]
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [203, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1039HEAD @ 0x12faa7, PROD3 @ 0x12fb08, WARE @ 0x12fb7b, ROHSTOFF @ 0x12fb9a
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x12faa7 | 56 | 268c0c8f1947d93fd0df7ec5e69c3e3063119ba52d456bc4c7c8cfbb9cd82621
+
+ | PRODTYPE | 0x12faef | 9 | 9d6f1cfc39d30eff06d592e6137b6febd7ae9b2b1685260ce66e53ed014f1e27
+
+ | PROD3 | 0x12fb08 | 68 | d001ff7bc194c808fee11a10196b762ab8c4c4c0791f3966f76c709c08efe16e
+
+ | INFRAMIN | 0x12fb5c | 15 | 13af7597af5623f0aaf584ca44fcd9d97d4964ad41c42ce44c5e28b0eda290d7
+
+ | WARE | 0x12fb7b | 15 | 97563c18248576689fe5e9459e48a926b4a52b1f19bd800af6476600bbb4dc0f
+
+ | ROHSTOFF | 0x12fb9a | 16 | 735e44def1c9f01d59b137ccaa389cc4c812182fd62520e6519517cb5ad6c176
+
+ | WALKMASK | 0x12fbd1 | 36 | 3632890d2bf5f75f645ebc91e173b7b71376a4f7333c9c404b906016ccb6188e
+
+ | ENTRANCE | 0x12fcc6 | 16 | 57168243c3c36185b11f66b32a8de31125693b97d51cd60e19718c01809e03da
+
+ | HAEUSER | 0x12fcfa | 726 | dba4c6da15affb0909216ab5723bb6d027fd0a9c2bf77ebbdc2825f1ac174909
+
+1201 · Quarry
+P: parsed original record
+STEINBRUCH · 3 × 4 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | — → STEINE (5)
+
+ | Build cost | 0 bricks, 3 wood, 3 tools, 0 marble; gold 300
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2B50 settlers
+
+ | T0 / T1; I0 / I1 | [20.0, 20.0]; [2.65625, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1201HEAD @ 0x130020, PROD3 @ 0x130083, WARE @ 0x1300f6, ROHSTOFF @ 0x130114
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x130020 | 56 | 09be8a37dbb45841cb003a3ed6630cdf8276a69742c3395c4d3cf3bb95571d2b
+
+ | PRODTYPE | 0x130068 | 11 | 2bdf9fa65cf8679e103016ce820d5906bdcdd19f8fc3fbe4aa55314ff949e197
+
+ | PROD3 | 0x130083 | 68 | 5254b1e929fa9942091e3fb4513fe407efd480a0fa04caa419c729d474c98bbb
+
+ | INFRAMIN | 0x1300d7 | 15 | dc383ac9365336e75410786595c22ddf8ea0e07d5a1b2374de257db0585231fe
+
+ | WARE | 0x1300f6 | 14 | 8e603f237c45f3a4198d768081c4f93ff2e5eab0c3e076e5f431f40994a96117
+
+ | ROHSTOFF | 0x130114 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x130149 | 48 | d5f2f4c5dc0118d2e4a04e5071354b1ae2b7b65427f275814b68b39c8b0c6316
+
+ | ENTRANCE | 0x1302ef | 16 | fe47c301507c5018d812921f371b053fed972676b6acded0775989bf87467193
+
+ | HAEUSER | 0x130327 | 725 | 644cb3d0bf48ca5145102b23c4cb5f78eb09c915d897edccd18edaa0fc4ae286
+
+1203 · Salt mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | — → SALZSTEIN (3)
+
+ | Build cost | 0 bricks, 15 wood, 5 tools, 0 marble; gold 700
+
+ | Upkeep | idle 10; active 25 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_1C125 pioneers
+
+ | T0 / T1; I0 / I1 | [10.0, 30.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [6.0, 0.0]
+
+ | Loaded converter integers | output [26]; input []
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1203HEAD @ 0x13064c, PROD3 @ 0x1306a9, WARE @ 0x13071c, ROHSTOFF @ 0x13073d
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x13064c | 56 | 2d04d057fabe2d896622d08e9f3dc7a4ddcdfc876187a5fdc17424c0c69335cc
+
+ | PRODTYPE | 0x130694 | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x1306a9 | 68 | f37358dddf19eb17c76e6c496a71e8324e6d2d9d872b13296e196deda260aa78
+
+ | INFRAMIN | 0x1306fd | 15 | ae1b0d92215c52a4044e3ccf3529d97caf1a2d6fced126a44e4797d6a332e23b
+
+ | WARE | 0x13071c | 17 | 0d2de132b6c6caf1891aa9c40b8de1e62241dcf83611471907dfcab2013635da
+
+ | ROHSTOFF | 0x13073d | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x130772 | 48 | 6946bcc3016ad83817a46b08426d01001a1cc67309c1842c26c7b38345df5f91
+
+ | ENTRANCE | 0x1308e7 | 8 | 93599d61fd12a7bb8e83a5f56950ba4311ba75982657b6e696eac664bdf150eb
+
+ | HAEUSER | 0x13091b | 723 | 5bd3cc6ae04a9d4f741baad4c9289dde9b74a69dd2027e9715cc7869310c60be
+
+1205 · Ore mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | — → EISENERZ (1)
+
+ | Build cost | 0 bricks, 15 wood, 5 tools, 0 marble; gold 1200
+
+ | Upkeep | idle 15; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [12.0, 12.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [4.796875, 0.0]
+
+ | Loaded converter integers | output [21]; input []
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1205HEAD @ 0x130c3e, PROD3 @ 0x130c9b, WARE @ 0x130d0e, ROHSTOFF @ 0x130d2e
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x130c3e | 56 | 0082cf8961d0edaea2b1459704573b407049ce01426545ae3fe8d7e4ada26f6e
+
+ | PRODTYPE | 0x130c86 | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x130c9b | 68 | 2276aa629cb4fc53a3212573844d80cf00e7892fed02b9289d48a64e8e385e4d
+
+ | INFRAMIN | 0x130cef | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x130d0e | 16 | c104e3ff41ce8b1dd1876f419128651f5547ebdd81882a7ea2c609298670f9f2
+
+ | ROHSTOFF | 0x130d2e | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x130d63 | 48 | 6946bcc3016ad83817a46b08426d01001a1cc67309c1842c26c7b38345df5f91
+
+ | ENTRANCE | 0x130ee8 | 8 | 93599d61fd12a7bb8e83a5f56950ba4311ba75982657b6e696eac664bdf150eb
+
+ | HAEUSER | 0x130f14 | 723 | f28abed40ff2606bd44e05b6728ff0db0da53469c67d29b83db8579f87a92780
+
+1206 · Gold mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | — → GOLD (2)
+
+ | Build cost | 4 bricks, 12 wood, 15 tools, 0 marble; gold 1500
+
+ | Upkeep | idle 20; active 50 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_4C750 merchants
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input []
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1206HEAD @ 0x131237, PROD3 @ 0x131294, WARE @ 0x131307, ROHSTOFF @ 0x131323
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x131237 | 56 | df9681f52bce9ed246ec15b38689297ac2cf2e4a91c265de7165616d26e44812
+
+ | PRODTYPE | 0x13127f | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x131294 | 68 | 911fd71769aab5bf5c2bfa1355b536df42f48cc640d7360b38c77b2b86c881aa
+
+ | INFRAMIN | 0x1312e8 | 15 | 13af7597af5623f0aaf584ca44fcd9d97d4964ad41c42ce44c5e28b0eda290d7
+
+ | WARE | 0x131307 | 12 | 25ad6cb39490d487957dcf2e58a7d7d1987e44aecbdb562092f3675d4cfd7b0e
+
+ | ROHSTOFF | 0x131323 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x131358 | 48 | e9b0fa4aaa65351f93367a1bdf5f6a9f4b0791b360a114943372987adc3f5056
+
+ | ENTRANCE | 0x1314c7 | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x1314f7 | 721 | a1304d5f4b9d2fe8a139e4bcd76ecd474a125d65df46b6a16c77a75cd6e90b3b
+
+1208 · Quarry
+P: parsed original record
+STEINBRUCH · 3 × 4 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | — → STEINE (5)
+
+ | Build cost | 0 bricks, 3 wood, 3 tools, 0 marble; gold 300
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2B50 settlers
+
+ | T0 / T1; I0 / I1 | [20.0, 20.0]; [2.65625, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1208HEAD @ 0x131818, PROD3 @ 0x13187b, WARE @ 0x1318ee, ROHSTOFF @ 0x13190c
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x131818 | 56 | 8f82587ed5085ef8d8ed99288f5d3411e87499550ec22934e51aaaf188d303a7
+
+ | PRODTYPE | 0x131860 | 11 | 2bdf9fa65cf8679e103016ce820d5906bdcdd19f8fc3fbe4aa55314ff949e197
+
+ | PROD3 | 0x13187b | 68 | 5254b1e929fa9942091e3fb4513fe407efd480a0fa04caa419c729d474c98bbb
+
+ | INFRAMIN | 0x1318cf | 15 | dc383ac9365336e75410786595c22ddf8ea0e07d5a1b2374de257db0585231fe
+
+ | WARE | 0x1318ee | 14 | 8e603f237c45f3a4198d768081c4f93ff2e5eab0c3e076e5f431f40994a96117
+
+ | ROHSTOFF | 0x13190c | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x131941 | 48 | 719348673b591e25318507b39ab41b6361f961c3a60362d41700f509fa431910
+
+ | ENTRANCE | 0x131ae4 | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x131b10 | 872 | 86d5175e8020eccab89a6839553a422e4761433fbd1d16464a1ae3ce3bc4045f
+
+1210 · Ore mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 4
+
+ | Field | Value
+
+ | Inputs / outputs | — → EISENERZ (1)
+
+ | Build cost | 0 bricks, 15 wood, 5 tools, 0 marble; gold 1200
+
+ | Upkeep | idle 15; active 40 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2C80 settlers
+
+ | T0 / T1; I0 / I1 | [12.0, 12.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [4.796875, 0.0]
+
+ | Loaded converter integers | output [21]; input []
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1210HEAD @ 0x131ec8, PROD3 @ 0x131f25, WARE @ 0x131f98, ROHSTOFF @ 0x131fb8
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x131ec8 | 56 | ea61f123eefd5926ea93341006f7a9a7de4c19ac2a5231843ec44061dad82404
+
+ | PRODTYPE | 0x131f10 | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x131f25 | 68 | 2276aa629cb4fc53a3212573844d80cf00e7892fed02b9289d48a64e8e385e4d
+
+ | INFRAMIN | 0x131f79 | 15 | 733c2cf79034c99f3fa08b48205912c5dee5cdb9dffc6bd957ab74fa7378e0b5
+
+ | WARE | 0x131f98 | 16 | c104e3ff41ce8b1dd1876f419128651f5547ebdd81882a7ea2c609298670f9f2
+
+ | ROHSTOFF | 0x131fb8 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x131fed | 48 | ee691a0f6a3d3f37ba2a46d016af6f32ea6678e800e1bcab91595d75d8ed3fce
+
+ | ENTRANCE | 0x13216c | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x132198 | 870 | c4da522ed99dada134db8baa9d2b67206b3caa603afd5cdcb51479faf455d0c5
+
+1212 · Gold mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 0
+
+ | Field | Value
+
+ | Inputs / outputs | — → GOLD (2)
+
+ | Build cost | 4 bricks, 12 wood, 15 tools, 0 marble; gold 1500
+
+ | Upkeep | idle 20; active 50 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_4C750 merchants
+
+ | T0 / T1; I0 / I1 | [30.0, 30.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input []
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1212HEAD @ 0x13254e, PROD3 @ 0x1325ab, WARE @ 0x13261e, ROHSTOFF @ 0x13263a
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x13254e | 56 | 4adb3b6d810b8f839cd73f5e78b0575db2de64bf448c428701bf7353148c0738
+
+ | PRODTYPE | 0x132596 | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x1325ab | 68 | 3ae1084a9af8c4748691de5bdda1c30fa3ec0cdca16175c4dabe7c7deb19e812
+
+ | INFRAMIN | 0x1325ff | 15 | 13af7597af5623f0aaf584ca44fcd9d97d4964ad41c42ce44c5e28b0eda290d7
+
+ | WARE | 0x13261e | 12 | 25ad6cb39490d487957dcf2e58a7d7d1987e44aecbdb562092f3675d4cfd7b0e
+
+ | ROHSTOFF | 0x13263a | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x13266f | 48 | ee691a0f6a3d3f37ba2a46d016af6f32ea6678e800e1bcab91595d75d8ed3fce
+
+ | ENTRANCE | 0x1327de | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x13280a | 730 | 55f75444a563f53df9fe624a9a7e30a63fe73e79e9f2fd8616d7d28d405c5d9a
+
+1214 · Gem mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 8
+
+ | Field | Value
+
+ | Inputs / outputs | — → EDELSTEINE (4)
+
+ | Build cost | 10 bricks, 4 wood, 8 tools, 0 marble; gold 1500
+
+ | Upkeep | idle 30; active 80 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_4C750 merchants
+
+ | T0 / T1; I0 / I1 | [30.0, 8.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [2.0, 0.0]
+
+ | Loaded converter integers | output [9]; input []
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1214HEAD @ 0x132b34, PROD3 @ 0x132b91, WARE @ 0x132c04, ROHSTOFF @ 0x132c26
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x132b34 | 56 | 41e24c494abb5938f006efe2dbe0dd16f72ea1171cd92c9119ea7a10df4ddc02
+
+ | PRODTYPE | 0x132b7c | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x132b91 | 68 | 6f23a08abe65c3ba6a7d59b05b7554a1f6668169a7d81b1c9bffe1dcf9953f99
+
+ | INFRAMIN | 0x132be5 | 15 | 13af7597af5623f0aaf584ca44fcd9d97d4964ad41c42ce44c5e28b0eda290d7
+
+ | WARE | 0x132c04 | 18 | a85af80b14019f5081d19e52f3594326356519eb4d9f6c12f85ca5621a19fe80
+
+ | ROHSTOFF | 0x132c26 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x132c5b | 48 | eb9715342e0d613de091e7ee6ccd0510047cc444fbbf784162528ebe7a122c21
+
+ | ENTRANCE | 0x132dca | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x132df6 | 872 | 105dd87782deae7df4e0bf5b30d798e7a6f4d850b07d3ed3e1a41f679e78423c
+
+1216 · Large ore mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 8
+
+ | Field | Value
+
+ | Inputs / outputs | — → EISENERZ (1)
+
+ | Build cost | 10 bricks, 20 wood, 8 tools, 0 marble; gold 1700
+
+ | Upkeep | idle 30; active 65 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE TIEFE_ERZMINE
+
+ | T0 / T1; I0 / I1 | [6.6875, 6.6875]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [8.69921875, 0.0]
+
+ | Loaded converter integers | output [38]; input []
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1216HEAD @ 0x1331ae, PROD3 @ 0x13320b, WARE @ 0x1332a0, ROHSTOFF @ 0x1332c0
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x1331ae | 56 | 413654b4d587b3ddbab0b933af888a9d958a2853f8919f72eb812f944f87f05f
+
+ | PRODTYPE | 0x1331f6 | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x13320b | 68 | c1466295a6416c383215eddd91c131874a7e8177ea1c3404a75e4452e6f8b020
+
+ | INFRAMIN | 0x13325f | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x133282 | 14 | 7d9f75a4e69c547394e1ed594eddc7abd491cc6ecaf2829ca489e385663a11a2
+
+ | WARE | 0x1332a0 | 16 | c104e3ff41ce8b1dd1876f419128651f5547ebdd81882a7ea2c609298670f9f2
+
+ | ROHSTOFF | 0x1332c0 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x1332f5 | 48 | 49c96e2168f28654b1a1359d31f3e72381b2a1f9d34d7109b59fb31c47ca1af1
+
+ | ENTRANCE | 0x133464 | 8 | 5d4d85332bb7ebebdceece039fa245ad5d7eb55af9f6d4d1de4372e6feb19723
+
+ | HAEUSER | 0x133490 | 8266 | 3259411fef27d72dfc75d465770a7f1c982fbf107b2b096c9ebcb8b78ccb8182
+
+1217 · Large ore mine
+P: parsed original record
+MINE · 3 × 4 tiles · radius byte 8
+
+ | Field | Value
+
+ | Inputs / outputs | — → EISENERZ (1)
+
+ | Build cost | 10 bricks, 20 wood, 8 tools, 0 marble; gold 1700
+
+ | Upkeep | idle 30; active 65 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE TIEFE_ERZMINE
+
+ | T0 / T1; I0 / I1 | [6.6875, 6.6875]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [7, 0] / [8.69921875, 0.0]
+
+ | Loaded converter integers | output [38]; input []
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1217HEAD @ 0x13552a, PROD3 @ 0x135587, WARE @ 0x13561c, ROHSTOFF @ 0x13563c
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x13552a | 56 | a06515165b5869b4c6bb9e1e0cf8a1d6cdae902d028926e6e9cbf9c8cfc78770
+
+ | PRODTYPE | 0x135572 | 5 | 4feac0794177a209bdd38063145e6a020f1a689c5558ea21d2e54c8b67929fe9
+
+ | PROD3 | 0x135587 | 68 | c1466295a6416c383215eddd91c131874a7e8177ea1c3404a75e4452e6f8b020
+
+ | INFRAMIN | 0x1355db | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x1355fe | 14 | 7d9f75a4e69c547394e1ed594eddc7abd491cc6ecaf2829ca489e385663a11a2
+
+ | WARE | 0x13561c | 16 | c104e3ff41ce8b1dd1876f419128651f5547ebdd81882a7ea2c609298670f9f2
+
+ | ROHSTOFF | 0x13563c | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x135671 | 48 | 5c1055044cb64aeb6d685effe1d13139bef7699451b86f98d2c3b9a02aad2954
+
+ | ENTRANCE | 0x1357e0 | 8 | 5d4d85332bb7ebebdceece039fa245ad5d7eb55af9f6d4d1de4372e6feb19723
+
+ | HAEUSER | 0x13580c | 8270 | bc0e2560788d9c48639e7741880a45f3e2efaf27d4ce7d247252761acdbc3678
+
+1218 · Marble quarry
+P: parsed original record
+STEINBRUCH · 3 × 4 tiles · radius byte 0
+
+ | Field | Value
+
+ | Inputs / outputs | — → MAMORSTEIN (6)
+
+ | Build cost | 0 bricks, 3 wood, 3 tools, 0 marble; gold 400
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [20.0, 5.0]; [2.65625, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1218HEAD @ 0x1378aa, PROD3 @ 0x13790d, WARE @ 0x137980, ROHSTOFF @ 0x1379a2
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x1378aa | 56 | 445bffac935d665ac95fca80fdc41d1a1ee1c0fbe5d18fbe083df08b24ede746
+
+ | PRODTYPE | 0x1378f2 | 11 | 2bdf9fa65cf8679e103016ce820d5906bdcdd19f8fc3fbe4aa55314ff949e197
+
+ | PROD3 | 0x13790d | 68 | ee26df719b6bf6e0ad8d2044529cff15a02d340054a55a3e282761256b588151
+
+ | INFRAMIN | 0x137961 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x137980 | 18 | 8c2c53fd446252c74090e1fee5de3e60fa23a9e48de2ea5baa22831cf2e24d4b
+
+ | ROHSTOFF | 0x1379a2 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x1379d7 | 48 | 61df7bd5a7d5eb91ca8b22c0063b75aa7eed974ce872d2e535d70f8c24fa51e6
+
+ | ENTRANCE | 0x137b7a | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x137ba6 | 732 | 28943d6647f54350819641c6fe36ae223ae4b776980e04c39e9287022508ba2e
+
+1220 · Marble quarry
+P: parsed original record
+STEINBRUCH · 3 × 4 tiles · radius byte 0
+
+ | Field | Value
+
+ | Inputs / outputs | — → MAMORSTEIN (6)
+
+ | Build cost | 0 bricks, 3 wood, 3 tools, 0 marble; gold 400
+
+ | Upkeep | idle 0; active 0 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [20.0, 5.0]; [2.65625, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[0, 1, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1220HEAD @ 0x137ed2, PROD3 @ 0x137f35, WARE @ 0x137fa8, ROHSTOFF @ 0x137fca
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x137ed2 | 56 | 4b594db6d1211dca60e0187ad1d777890a648f40efaedf3ab4bd494c96642bea
+
+ | PRODTYPE | 0x137f1a | 11 | 2bdf9fa65cf8679e103016ce820d5906bdcdd19f8fc3fbe4aa55314ff949e197
+
+ | PROD3 | 0x137f35 | 68 | ee26df719b6bf6e0ad8d2044529cff15a02d340054a55a3e282761256b588151
+
+ | INFRAMIN | 0x137f89 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x137fa8 | 18 | 8c2c53fd446252c74090e1fee5de3e60fa23a9e48de2ea5baa22831cf2e24d4b
+
+ | ROHSTOFF | 0x137fca | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x137fff | 48 | 027b9a178d2cad618404ad35e1377552e420ba0201794f87a83f578e4c63b7d4
+
+ | ENTRANCE | 0x1381a2 | 8 | 4f8b6a7ee54719e139c318ce7144a16e10b2c5d9b6792af6945049698818347a
+
+ | HAEUSER | 0x1381ce | 736 | cc89d11d89046e5b6be9d25e8ed3b249572b8257572ff275d05fb89af8f6325e
+
+1346 · School
+P: parsed original record
+SCHULE · 4 × 4 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | — → SCHULE (80)
+
+ | Build cost | 6 bricks, 8 wood, 5 tools, 0 marble; gold 400
+
+ | Upkeep | idle 10; active 10 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_2B50 settlers
+
+ | T0 / T1; I0 / I1 | [5.0, 5.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [204, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1346HEAD @ 0x14711d, PROD3 @ 0x14717c, WARE @ 0x1471ef, ROHSTOFF @ 0x14720d
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x14711d | 56 | 5861e0d44284b1b6e6005c2c2f72b744e5c89667fc8f90e8abb5ae74a3a7ff11
+
+ | PRODTYPE | 0x147165 | 7 | 595cde4193ba9aac063980a5b0e7b521ea2beefb3a7989ba25c9cd77fa3af0ee
+
+ | PROD3 | 0x14717c | 68 | 7daf5dda8278df60c9c3f1043006b0d46053fb30ca0ca7cccd88fce664b51ec5
+
+ | INFRAMIN | 0x1471d0 | 15 | dc383ac9365336e75410786595c22ddf8ea0e07d5a1b2374de257db0585231fe
+
+ | WARE | 0x1471ef | 14 | 20682d4d924d79c27c229c6596a792aa79ab56d25a423e147300eeb6b8c2cc7a
+
+ | ROHSTOFF | 0x14720d | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x147242 | 48 | 72bcc7b0da7f02b81c1d1366a57d2374996044132f9e0c424e252b35e293067e
+
+ | ENTRANCE | 0x147358 | 32 | b3a152309e0411a873edac02220dc2725a65f9c428750977cecdb2ecd028db91
+
+ | HAEUSER | 0x1473a0 | 870 | 1ff0c2debb810fa25f749b2c938f9d7913728f72eb5530067c5a5aa5a47dd7d2
+
+1347 · School
+P: parsed original record
+SCHULE · 4 × 4 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | — → HOCHSCHULE (81)
+
+ | Build cost | 6 bricks, 8 wood, 5 tools, 0 marble; gold 400
+
+ | Upkeep | idle 0; active 10 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [5.0, 5.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [5, 5] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [204, 0, 0, 0, 0, 0, 0, 0, 512]
+
+ | Evidence | ANLAGEN/ENTRY id=1347HEAD @ 0x147756, PROD3 @ 0x1477b5, WARE @ 0x147828, ROHSTOFF @ 0x14784a
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x147756 | 56 | 2e683963991e14a8bba63fafb19919b11dde0449a5da8be556a039baf197a700
+
+ | PRODTYPE | 0x14779e | 7 | 595cde4193ba9aac063980a5b0e7b521ea2beefb3a7989ba25c9cd77fa3af0ee
+
+ | PROD3 | 0x1477b5 | 68 | e83bbe5c24392887713d72d7ed514feaeb788860046647193d03735c54b39d9f
+
+ | INFRAMIN | 0x147809 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x147828 | 18 | 3152051971bf363ac111b1b3f1670ff1ddc324e57c68220930b5e26a923678f4
+
+ | ROHSTOFF | 0x14784a | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x14787f | 48 | e9376bc10040632a509835a4668905f781a6855d2d9e5ed7596b5bad28fecb64
+
+ | ENTRANCE | 0x1479e1 | 8 | 04730aef6247201f7becacf12ff11a534e2579dd8d16b483612cf0795606c1ca
+
+ | HAEUSER | 0x147a15 | 734 | 47aa1bc9ed134c313c389c0dbb8ce3eee0b8530d87ac05475bf5b0b20a6718f4
+
+1378 · Library
+P: parsed original record
+BIBLIOTHEK · 5 × 6 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | — → BIBLIOTHEK (86)
+
+ | Build cost | 24 bricks, 12 wood, 20 tools, 12 marble; gold 2000
+
+ | Upkeep | idle 0; active 100 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_FORSCHresearch / specialFORSCHTYPE BIBLIOTHEK
+
+ | T0 / T1; I0 / I1 | [5.0, 5.0]; [1.9921875, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[0, 0, 0], [0, 0, 0], [0, 0, 0]] group triplets; IDs [0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1378HEAD @ 0x14ac71, PROD3 @ 0x14acd4, WARE @ 0x14ad66, ROHSTOFF @ 0x14ad88
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x14ac71 | 56 | 80713a66385f1ebdbe4a43a2397f7555bad93ebfba483589b9fae8786f936995
+
+ | PRODTYPE | 0x14acb9 | 11 | f5f7858aba96ebc50f1bbc61ec89f7ad14e50fd2d49d62d651e2b4553117a2f7
+
+ | PROD3 | 0x14acd4 | 68 | 428cab038c61dc5c101f7aa97ade868988b9c28d0c4550afca68910dc88c757c
+
+ | INFRAMIN | 0x14ad28 | 19 | 7347faefde93d3308ab9334f9f9392943ccba97dd0742edb2704f28a5e9f64b0
+
+ | FORSCHTYPE | 0x14ad4b | 11 | f5f7858aba96ebc50f1bbc61ec89f7ad14e50fd2d49d62d651e2b4553117a2f7
+
+ | WARE | 0x14ad66 | 18 | d419b1c5804457ada7e6c115ff7b076ad5c8771982fbf31a12eb39aee7c400c2
+
+ | ROHSTOFF | 0x14ad88 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x14adbd | 72 | df015f198f7c6b674fcdd7ef869eca475d76b9486f9eddac8e682bdb8fa6f16c
+
+ | ENTRANCE | 0x14af44 | 16 | a5c2702e1364ddb1e785f87f6999c66ac36d25c3cbb6b3613fd3a16c0c3bf98c
+
+ | HAEUSER | 0x14af78 | 725 | fa0dbf3203a5fe00adf68af6e298465d7a38692bb33e6e13f5e0707902915024
+
+1379 · University
+P: parsed original record
+HOCHSCHULE · 8 × 8 tiles · radius byte 24
+
+ | Field | Value
+
+ | Inputs / outputs | — → HOCHSCHULE (81)
+
+ | Build cost | 32 bricks, 30 wood, 25 tools, 0 marble; gold 2500
+
+ | Upkeep | idle 0; active 150 gold per game minute (PROD3; charging cadence: population RE §8)
+
+ | Availability | INFRA_STUFE_3C400 citizens
+
+ | T0 / T1; I0 / I1 | [5.0, 5.0]; [0.0, 0.0]
+
+ | Capacity bytes / display floats | [5, 0] / [0.0, 0.0]
+
+ | Loaded converter integers | Special class: no generic throughput interpretation. Raw parameters retained in JSON.
+
+ | Workers | [[1, 1, 0], [0, 0, 1], [0, 0, 1]] group triplets; IDs [101, 0, 0, 0, 0, 0, 0, 0, 0]
+
+ | Evidence | ANLAGEN/ENTRY id=1379HEAD @ 0x14b29d, PROD3 @ 0x14b300, WARE @ 0x14b373, ROHSTOFF @ 0x14b395
+
+Exact record offsets and payload hashes
+
+ | Record | Absolute payload offset | Bytes | SHA-256
+
+ | HEAD | 0x14b29d | 56 | af9a10b66bf891b1e36d6a6d44b4fc462056e9cdaa34d5515eeb1548be1437c7
+
+ | PRODTYPE | 0x14b2e5 | 11 | 003fd14e9d4df6718e995b91ee74f613ba1811c12b9e37ae0abaaa830dea849f
+
+ | PROD3 | 0x14b300 | 68 | f673cad6b3fd9638814774735c186a63df6238ffa908c8f7925f320b4b92d62d
+
+ | INFRAMIN | 0x14b354 | 15 | 78b547a4e7e809d098db59aa17170ef563834ec5c7adbfa62b37e0e57d5b882a
+
+ | WARE | 0x14b373 | 18 | 3152051971bf363ac111b1b3f1670ff1ddc324e57c68220930b5e26a923678f4
+
+ | ROHSTOFF | 0x14b395 | 14 | 0b17d81257c51910315266599dc588d2d6910014218cfedab477043ab663f0c5
+
+ | WALKMASK | 0x14b3ca | 96 | 46e4711e05289d93b13d0b53587a0ba6d7cd251cd57801a48051801036cfcce7
+
+ | ENTRANCE | 0x14b5d5 | 32 | d12c21a2416b0ca8998e13020a86fa45508e7f6224a4f9faf2ba53fd7ada3565
+
+ | HAEUSER | 0x14b619 | 870 | 1ec746d5790a136fa580ada487a2949d24de1a3e4e678de9d1103e623efd7e96
+
+Warehouse goods and balance fields
+
+The original warehouse has slots 0–55, of which 47 carry named goods in this corpus. The table records BGruppen fields verbatim as data values, with line numbers. Preis is not automatically a market transaction formula; investigate consumers before using these fields in balance code. Unnamed slots are not invented goods.
+
+ | ID | Canonical name | Help icon stem | BGruppen WAREN fields
+
+ | 1 | EISENERZ | R_Eisenerz | Preis: 15 (line 9)
+
+ | 2 | GOLD | R_Gold | Preis: 50 (line 12)
+
+ | 3 | SALZSTEIN | R_Salzstein | Preis: 8 (line 15)
+
+ | 4 | EDELSTEINE | R_Edelsteine | Preis: 52 (line 21)
+
+ | 5 | STEINE | Steine | Preis: 4 (line 18)
+
+ | 6 | MAMORSTEIN | Marmorstein | Preis: 4 (line 24)
+
+ | 9 | WOLLE | R_Wolle | Preis: 21 (line 31)
+
+ | 10 | ZUCKER | R_Zuckerrohr | Preis: 22 (line 34)
+
+ | 11 | TABAK | R_Tabak | Preis: 25 (line 37)
+
+ | 12 | FLEISCH | R_Schlachtvieh | Preis: 15 (line 40)
+
+ | 13 | KORN | R_Getreide | Preis: 12 (line 43)
+
+ | 14 | MEHL | R_Mehl | Preis: 24 (line 46)
+
+ | 15 | EISEN | R_Eisen | Preis: 45 (line 49)
+
+ | 16 | FLACHS | R_Hanf | Preis: 32 (line 52)
+
+ | 17 | HOPFEN | R_Hopfen | Preis: 19 (line 55)
+
+ | 18 | TIERHAEUTE | R_Tierhaeute | Preis: 41 (line 58)
+
+ | 19 | SEILE | R_Seile | Preis: 99 (line 61)
+
+ | 20 | SEIDE | R_Seide | Preis: 33 (line 64)
+
+ | 21 | FARBSTOFFE | R_Farbstoffe | Preis: 36 (line 67)
+
+ | 22 | WALSPECK | R_Walspeck | Preis: 13 (line 70)
+
+ | 23 | HOLZKOHLE | R_Holzkohle | Preis: 9 (line 73)
+
+ | 26 | NAHRUNG | Nahrung | BauFirst: INFRA_EVER (line 96)Preis: 45 (line 97)Bonus: 5, STEPPE|PRAERIE|DSCHUNGEL (line 98)
+
+ | 27 | LEDER | Leder | BauFirst: INFRA_EVER (line 101)BauLast: INFRA_STUFE_2G (line 102)Preis: 70 (line 103)PreisLevel: 0,5,10 (line 104)
+
+ | 28 | SALZ | Salz | BauFirst: INFRA_STUFE_1C (line 120)Preis: 30 (line 121)Bonus: 5, STEPPE|TUNDRA|PRAERIE|DSCHUNGEL (line 122)PreisLevel: 0,5,8 (line 123)
+
+ | 29 | ALKOHOL | Alkohol | BauFirst: INFRA_STUFE_1C (line 114)Preis: 50 (line 115)Bonus: 5, STEPPE|PRAERIE|DSCHUNGEL (line 116)PreisLevel: 0,5,10 (line 117)
+
+ | 30 | TABAKWAREN | Tabakwaren | BauFirst: INFRA_STUFE_2C (line 133)Preis: 75 (line 134)Bonus: 5, NORD|TUNDRA|STEPPE|DSCHUNGEL (line 135)Bonus: 5, STEPPE|DSCHUNGEL (line 136)PreisLevel: 0,5,10 (line 137)
+
+ | 31 | GEWUERZE | Gewuerze | BauFirst: INFRA_STUFE_2C (line 126)Preis: 60 (line 127)Bonus: 5, DSCHUNGEL|NORD|TUNDRA|PRAERIE (line 128)Bonus: 5, NORD|TUNDRA|PRAERIE (line 129)PreisLevel: 0,5,10 (line 130)
+
+ | 32 | HEILKRAEUTER | Heilkraeuter | BauFirst: INFRA_STUFE_4C (line 175)Preis: 30 (line 176)
+
+ | 33 | STOFFE | Stoffe | BauFirst: INFRA_EVER (line 107)BauLast: INFRA_STUFE_3F (line 108)Preis: 65 (line 109)Bonus: 5, NORD|TUNDRA|STEPPE|PRAERIE (line 110)PreisLevel: 0,5,10 (line 111)
+
+ | 34 | SEIDESTOFFE | Seidenstoffe | BauFirst: INFRA_STUFE_3C (line 145)Preis: 85 (line 146)Bonus: 5, NORD|TUNDRA|STEPPE|PRAERIE (line 147)PreisLevel: 0,5,5 (line 148)
+
+ | 35 | LAMPENOEL | Lampenoel | BauFirst: INFRA_STUFE_3D (line 140)Preis: 85 (line 141)PreisLevel: 0,5,5 (line 142)
+
+ | 36 | KLEIDUNG | Kleidung | IdSec: SEIDESTOFFE (line 151)BauFirst: INFRA_STUFE_4C (line 152)Preis: 130 (line 153)Bonus: 5, NORD|STEPPE|PRAERIE (line 154)PreisLevel: 0,5,10 (line 155)
+
+ | 37 | SCHMUCK | Schmuck | BauFirst: INFRA_STUFE_4C (line 158)Preis: 190 (line 159)Bonus: 5, NORD|TUNDRA (line 160)PreisLevel: 0,10,15 (line 161)
+
+ | 38 | PELZE | Pelze | BauFirst: INFRA_STUFE_4C (line 171)Preis: 30 (line 172)
+
+ | 39 | WEIN | Wein | BauFirst: INFRA_STUFE_4C (line 164)Preis: 70 (line 165)PreisLevel: 0,5,5 (line 166)
+
+ | 41 | WERKZEUG | Werkzeuge | Preis: 60 (line 80)
+
+ | 42 | HOLZ | Holz | Preis: 8 (line 83)
+
+ | 43 | ZIEGEL | Ziegel | Preis: 12 (line 86)
+
+ | 44 | MAMOR | Marmor | Preis: 22 (line 89)
+
+ | 46 | SCHWERT | Schwerter | Forsch: WAFFEN_FERTIGUNG_01 (line 183)Preis: 65 (line 184)
+
+ | 47 | BOGEN | Boegen | Forsch: BOGNER (line 187)Preis: 60 (line 188)
+
+ | 48 | ARMBRUST | Armbrueste | Forsch: ARMBRUST (line 191)Preis: 80 (line 192)
+
+ | 49 | MUSKETE | Musketen | Forsch: MUSKETE (line 195)Preis: 90 (line 196)
+
+ | 50 | RUESTUNG | Ruestungen | Forsch: WAFFEN_FERTIGUNG_01 (line 199)Preis: 65 (line 200)
+
+ | 51 | LANZE | Lanzen | Forsch: WAFFEN_FERTIGUNG_02 (line 203)Preis: 60 (line 204)
+
+ | 52 | AXT | Aexte | Forsch: KAVALLERIE (line 207)Preis: 63 (line 208)
+
+ | 53 | KANONESHIP | Schiffskanonen | Forsch: KANONE_SHIP (line 211)Preis: 110 (line 212)
+
+A manageable future implementation sequence
+
+R: the following work packages preserve original outcomes while allowing large multiplayer cities. They are recommendations, not a new authorization to alter either executor’s branch.
+
+Freeze a content contract. Read this report, docs/formats/anlagen.md, docs/re/production.md, docs/sim/production.md, docs/re/transport.md and docs/re/population.md. Load IDs, typed goods domains, rates, costs, thresholds and image references from data. Exclude unsupported legacy chains from the faithful ruleset. Hash the relevant rules and mod overlays for multiplayer.
+
+Close worker and special-class gaps. Trace harvest/catch amounts, fertility effects, JAGDHAUS, WALFAENGER, quarry coupling, WERFT and KANONENBAU. Produce small original-game fixtures for one successful job, one failed job, cancellation and full output storage in each class.
+
+Prove one complete supply loop. Start with tree → forester → warehouse, then wool → weaver → retail. Include walking, ownership, reservations, source depletion, blocked outputs and actual consumption. Track mass balance and original overflow explicitly.
+
+Add shared and competing chains. Bread, two-input silk/clothing, dual weapons, mines/reserves and research gates. Verify exact rounding, original event/PRNG order and save/load at mid-job boundaries. A table-derived recipe test alone is insufficient.
+
+Build legal city workloads. Use real registry placement, roads, warehouses, workers, consumption and a reproducible command stream. Test five and eight players, natural island differences, inter-island shipping, shortages and surpluses. Report legality separately from approximate geometric map suitability.
+
+Measure scaling. Hold one active city constant while growing unrelated cities. Track tick p50/p95/p99/max, active jobs, traversed cells, path requests, queue waits, memory/high-water marks and deterministic checksums. Use stable spatial/ownership indices and dirty sets so cost follows active work, not every object on every tick.
+
+Separate rendering from authority. Publish immutable sim snapshots. Parallelize content decode and independent render preparation; apply authoritative results in deterministic order. Measure end-to-end presented frames, not just a worker’s rebuild time, under active logistics and large cities.
+
+Gate optional improvements. Any revised yields, faster workers, overflow handling, fairness guarantees, restored paper/books or changed original bugs require a named rules option and separate fixtures. Modern scheduling, memory safety and caching must not silently change the faithful economy.
+
+Use the host’s measured safe concurrency and shared memory-admission mechanism. Keep rendering-heavy runs out of early correctness iterations; run cheap contract negatives first, then focused sanitizers, then full and target-host gates once the candidate stabilizes. Store raw samples, seeds, code/content hashes, skip reasons and exit statuses.
+
+Open questions and acceptance boundaries
+
+ | Unresolved item | Evidence needed before implementation is declared faithful
+
+ | Paper, books, Speere history | Exact historical removal/edition evidence; artwork existence alone is insufficient.
+
+ | Fertility → harvested yield | Reader/caller trace and original samples by crop, terrain and climate.
+
+ | Harvest/catch and special classes | Worker return amounts, travel cadence, shared-resource competition, cancellation.
+
+ | Knowledge, library and research | Original generation/cap/consumption functions plus complete unlock fixtures.
+
+ | Unit construction and shipbuilding | Queue progress, costs, launching/spawning and interaction with research.
+
+ | Final retail and population balance | Consumption and sale timing under shortages, public services, tax/price rules and transport contention.
+
+ | x87 load precision OQ-032 | Determine the original precision control when the registry loads.
+
+ | End-to-end performance | Presented frames and deterministic simulation under legal dense-city workloads, including target Windows/Linux hardware.
+
+Source provenance and reproduction
+
+Full file provenance and every selected binary record are retained in the linked machine-readable evidence. Repository extraction began at 67a48eca9da5028091caef700916815e303cf4e1. The working tree already had unrelated research edits; those were not rewritten.
+
+ | Original source | Bytes | SHA-256
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Anlagen.dat] game/app/Anlagen.dat | 205470957 | b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/FigurenHeader.dat] game/app/FigurenHeader.dat | 27904566 | 29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Texte.dat] game/app/Texte.dat | 46050 | 91fd003d708b21d234896ef27a8fde66117874c4b4f8d8d7ef3481ac263a91f4
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Data/BGruppen.dat] game/app/Data/BGruppen.dat | 12502 | 63e876fd3afedca214b3d9cc45f022f2c595f473839690e96f34e12ed7849e3b
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoGame.dll] game/app/AnnoGame.dll | 184320 | ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoWelt.dll] game/app/AnnoWelt.dll | 966656 | f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoDisplay.dll] game/app/AnnoDisplay.dll | 344064 | e298efdb67707e61ec86ccfc105bebbeb9c74ab29d674f69ba89056ffedebe24
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/anlagen-catalog.json] All 921 Anlagen records · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-buildings.json] Selected building records · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/goods.json] Goods and BGruppen fields · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/stages.json] Population gates · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/worker-and-unit-records.json] Worker and unit evidence · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/source-hashes.json] Complete source manifest
+
+Reproduce the parsed evidence with [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/extract_evidence.py] extract_evidence.py and [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/supplement_assets.py] supplement_assets.py. The first extractor rewrites the cache evidence; run the supplemental worker/help-source collection before treating that as a complete regeneration of all supplemental records. The report generator itself uses only saved JSON. No game executable was run for this research.
+GOG A.D. 2.0.0.5 local corpus. Research and extracted previews; no engine change, no candidate installed, no original assets committed. Keep the local image bundle with its HTML reports.

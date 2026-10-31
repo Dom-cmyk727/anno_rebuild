@@ -1,0 +1,2026 @@
+Resource symbols & building assetsANNO 1503 rebuild · research foundation · 31 October 2026
+Resource symbols & building assets
+
+Original artwork, file identities, visual comparisons and requirements for a modern renderer.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html] Read the production-chain report · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/source-hashes.json] Source hashes · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/validation.json] Validation record
+ScopeVisual designFiles & formats47 iconsBuildingsLegacy art39 diagramsModern rendererSources
+
+What the artwork can and cannot prove
+
+The requested [https://www.annoinfo.de/Anno_1503/produktionsketten.html] Annoinfo production-chain page is a useful visual index. It is not a complete simulation specification. All 39 linked chain pictures were inspected; 78 observed page images were exported through the browser for local comparison. Facts about the local build below come from the game files and RE notes, not from silently treating diagram arrows as executable rules.
+
+P — parsed now: fields, IDs, offsets, hashes and decoded images read from the local original files. D — inherited disassembly evidence: original-module addresses recorded in the repository RE notes; this task did not rerun the original executable or re-disassemble every function. H — original help: shipped HTML/text, which can retain obsolete content. W — website: the requested community diagrams, individually inspected. R — recommendation: proposed project architecture or a future verification task. These categories are not interchangeable.
+Separate an icon, a help portrait, a world sprite and a production rule. They may show the same building while having different sizes, palettes, offsets, animation structure and validity. A beautiful shipped image does not establish that its building is active in this edition.47warehouse goods mapped to original help icons61production building records cross-referenced1,211ToolGfx .tex containers inventoried3original world zoom groups; data, not an engine limit
+The galleries below contain local original-file decodes for study. The website diagrams are shown separately with direct source links. These are not newly designed or AI-upscaled assets, and no raw game art is added to tracked documentation.
+
+Visual language and design implications
+
+P, visual observation: inspected native icons and portraits use small rendered objects on framed, textured backplates. Materials remain legible through silhouette and characteristic color: cut timber’s round ends, fibrous wool, ore fragments, cloth folds and recognizable weapon shapes. The icons carry material detail rather than abstract single-color pictograms. Muted stone/metal backgrounds and brighter objects provide separation; tiny labels should live outside the image, not obscure its silhouette.
+
+Buildings combine timber, stone, roof surfaces, work yards and function-specific equipment. Mills advertise moving sails; smiths and furnaces use chimneys and industrial equipment; plantations combine a small central building with separately placed growing fields. The production building’s tile footprint does not include every visible protrusion, and its catchment is not its sprite rectangle.
+
+R: retain recognizable original silhouettes, palettes, proportions and material cues in faithful mode. Modern UI can supply sharp typography, scalable panels, tooltips, status overlays, accessible redundant markers and clear input/output diagrams. Keep a unit’s player color, selection, damage and shortage indicators in explicit channels so they do not become ambiguous resource identities.
+
+Large website pictures are primarily 1024-pixel-wide diagram canvases arranging multiple illustrations. They are not evidence that every source building has a 1024-pixel world sprite. The original ToolGfx resource icons in this crosswalk are 50×50. Many building-help textures are 102 pixels wide with taller canvases; some have only the top portrait populated. A filename ending in “8” and a tall help canvas do not establish a world zoom level or seven useful animation frames.
+
+Original files and the runtime asset path
+
+ | Layer | Original source / key | Correct use
+
+ | Economy identity | Anlagen.dat / ANLAGEN / ENTRY id; WARE, ROHSTOFF, PRODTYPE | Join by stable IDs and canonical names, not by a translated filename.
+
+ | Help resource icon | ToolGfx/*.tex, companion .inc INCACCESS | Decode texture ID and palette. The crosswalk is semantic; a runtime UI-binding table is not newly traced here.
+
+ | Help building portrait | ToolGfx/Forsthaus.tex, Muehle.tex, etc. | Use as encyclopedia/menu art. Do not place the portrait’s frame in the world.
+
+ | World building layers | Anlagen.dat / HAEUSER / ENTRY / GFXDATA, ANIM and frame headers | Select the correct sprite set/frame and zoom; preserve anchors and animation state.
+
+ | Palette | Anlagen entry palette_ids and global color tables | Frame palette is an index into the entry’s palette-ID list, not a global palette number.
+
+ | Pixels and depth | TEXTURES group volumes; RGBZ/AZ family | Decode color, coverage and per-pixel depth; retain special checkerboard/depth-blend semantics for faithful composition.
+
+ | Shadow | Separate SHADOW sets where present | Composite with the original rules; don’t bake an invented drop-shadow into every atlas sprite.
+
+ | Growing fields / workers | Anlagen resource entries; FigurenHeader.dat + Figuren volumes | Animate and position separately; a plantation portrait is not a complete farm scene.
+
+ | Terrain / suitability | Felder.tex, island HEIGHT/GFXID; Data/Wachstum.dat | World terrain and crop suitability are distinct from UI resource art.
+
+P/D: [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/formats/anlagen.md] Anlagen layout · [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/formats/figuren.md] frame formats · [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/formats/tex.md] .tex/.inc layout · [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/render/assets.md] decoded-asset contract · [/Users/dom/Dev/anno1503-worktrees/anno1503/docs/re/annodisplay.md] original display traces.
+
+content identity → building type / world object
+  → active HAEUSER sprite layers + animation/frame selection
+  → zoom group + frame dimensions + signed anchor
+  → entry palette index → global palette ID
+  → RLE pixels + alpha level + depth
+  → faithful scene compositing → presented frame
+
+UI identity → semantic resource/building → ToolGfx texture/INCACCESS mapping
+  → independent help/icon presentation (not world compositing)
+
+Resource-symbol catalog
+
+Every named warehouse good has one explicit original-file reference below. German aliases such as Hanf/FLACHS, Getreide/KORN and Zuckerrohr/ZUCKER are preserved rather than guessed from English labels. This is an evidence crosswalk for asset integration, not a claim that the original runtime opens each help file for its warehouse UI.
+
+EISENERZ · 1
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Eisenerz.tex] game/app/ToolGfx/R_Eisenerz.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+GOLD · 2
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Gold.tex] game/app/ToolGfx/R_Gold.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SALZSTEIN · 3
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Salzstein.tex] game/app/ToolGfx/R_Salzstein.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+EDELSTEINE · 4
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Edelsteine.tex] game/app/ToolGfx/R_Edelsteine.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+STEINE · 5
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Steine.tex] game/app/ToolGfx/Steine.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+MAMORSTEIN · 6
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Marmorstein.tex] game/app/ToolGfx/Marmorstein.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+WOLLE · 9
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Wolle.tex] game/app/ToolGfx/R_Wolle.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+ZUCKER · 10
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Zuckerrohr.tex] game/app/ToolGfx/R_Zuckerrohr.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+TABAK · 11
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Tabak.tex] game/app/ToolGfx/R_Tabak.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+FLEISCH · 12
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Schlachtvieh.tex] game/app/ToolGfx/R_Schlachtvieh.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+KORN · 13
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Getreide.tex] game/app/ToolGfx/R_Getreide.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+MEHL · 14
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Mehl.tex] game/app/ToolGfx/R_Mehl.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+EISEN · 15
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Eisen.tex] game/app/ToolGfx/R_Eisen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+FLACHS · 16
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Hanf.tex] game/app/ToolGfx/R_Hanf.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+HOPFEN · 17
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Hopfen.tex] game/app/ToolGfx/R_Hopfen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+TIERHAEUTE · 18
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Tierhaeute.tex] game/app/ToolGfx/R_Tierhaeute.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SEILE · 19
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Seile.tex] game/app/ToolGfx/R_Seile.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SEIDE · 20
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Seide.tex] game/app/ToolGfx/R_Seide.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+FARBSTOFFE · 21
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Farbstoffe.tex] game/app/ToolGfx/R_Farbstoffe.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+WALSPECK · 22
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Walspeck.tex] game/app/ToolGfx/R_Walspeck.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+HOLZKOHLE · 23
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/R_Holzkohle.tex] game/app/ToolGfx/R_Holzkohle.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+NAHRUNG · 26
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Nahrung.tex] game/app/ToolGfx/Nahrung.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+LEDER · 27
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Leder.tex] game/app/ToolGfx/Leder.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SALZ · 28
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Salz.tex] game/app/ToolGfx/Salz.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+ALKOHOL · 29
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Alkohol.tex] game/app/ToolGfx/Alkohol.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+TABAKWAREN · 30
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Tabakwaren.tex] game/app/ToolGfx/Tabakwaren.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+GEWUERZE · 31
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Gewuerze.tex] game/app/ToolGfx/Gewuerze.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+HEILKRAEUTER · 32
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Heilkraeuter.tex] game/app/ToolGfx/Heilkraeuter.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+STOFFE · 33
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Stoffe.tex] game/app/ToolGfx/Stoffe.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SEIDESTOFFE · 34
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Seidenstoffe.tex] game/app/ToolGfx/Seidenstoffe.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+LAMPENOEL · 35
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Lampenoel.tex] game/app/ToolGfx/Lampenoel.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+KLEIDUNG · 36
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleidung.tex] game/app/ToolGfx/Kleidung.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SCHMUCK · 37
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Schmuck.tex] game/app/ToolGfx/Schmuck.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+PELZE · 38
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Pelze.tex] game/app/ToolGfx/Pelze.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+WEIN · 39
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Wein.tex] game/app/ToolGfx/Wein.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+WERKZEUG · 41
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Werkzeuge.tex] game/app/ToolGfx/Werkzeuge.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+HOLZ · 42
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Holz.tex] game/app/ToolGfx/Holz.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+ZIEGEL · 43
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Ziegel.tex] game/app/ToolGfx/Ziegel.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+MAMOR · 44
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Marmor.tex] game/app/ToolGfx/Marmor.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+SCHWERT · 46
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Schwerter.tex] game/app/ToolGfx/Schwerter.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+BOGEN · 47
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Boegen.tex] game/app/ToolGfx/Boegen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+ARMBRUST · 48
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Armbrueste.tex] game/app/ToolGfx/Armbrueste.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+MUSKETE · 49
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Musketen.tex] game/app/ToolGfx/Musketen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+RUESTUNG · 50
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Ruestungen.tex] game/app/ToolGfx/Ruestungen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+LANZE · 51
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Lanzen.tex] game/app/ToolGfx/Lanzen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+AXT · 52
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Aexte.tex] game/app/ToolGfx/Aexte.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+KANONESHIP · 53
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Schiffskanonen.tex] game/app/ToolGfx/Schiffskanonen.texTexture 1, palette 1; 50×50
+
+INCACCESS: image001.pcx → 1
+
+Building portraits and world-frame crosswalk
+
+Portrait associations below are a curated semantic join using original file names, labels and visual references. They do not establish a binary UI-button binding. Mine/quarry registry variants can legitimately share a help portrait while retaining separate world assets. Original world samples retain transparent backgrounds and overrun pixels. Never assemble a final world building by copying only this sample.
+
+801 · Forester's hut
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Forsthaus.tex] game/app/ToolGfx/Forsthaus.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 5
+
+ | Sprite sets / palette IDs | 2 / [72]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×135; [120, 83]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x119e0cd
+
+ | Economic identity | PLANTAGE; HOLZ (42)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-801] Exact source fields and record hashes
+
+803 · Marble stonemason
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Marmorsteinmetz.tex] game/app/ToolGfx/Marmorsteinmetz.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 12
+
+ | Sprite sets / palette IDs | 2 / [0, 73]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 224×220; [112, 166]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x11f426a
+
+ | Economic identity | STEINMETZ; MAMOR (44)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-803] Exact source fields and record hashes
+
+804 · Stonemason
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Steinmetz.tex] game/app/ToolGfx/Steinmetz.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 12
+
+ | Sprite sets / palette IDs | 2 / [74]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 234×170; [117, 106]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1226f0a
+
+ | Economic identity | STEINMETZ; ZIEGEL (43)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-804] Exact source fields and record hashes
+
+805 · Hunting lodge
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Jagdhuette.tex] game/app/ToolGfx/Jagdhuette.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 8
+
+ | Sprite sets / palette IDs | 1 / [75]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 246×119; [123, 86]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x127e6b4
+
+ | Economic identity | JAGDHAUS; NAHRUNG (26), TIERHAEUTE (18)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-805] Exact source fields and record hashes
+
+807 · Sheep farm
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Schaffarm.tex] game/app/ToolGfx/Schaffarm.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 5
+
+ | Sprite sets / palette IDs | 1 / [0, 76]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×184; [120, 131]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x129848d
+
+ | Economic identity | SCHAFFARM; WOLLE (9)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-807] Exact source fields and record hashes
+
+808 · Hemp plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Hanfplantage.tex] game/app/ToolGfx/Hanfplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [77]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 210×168; [105, 113]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x12c82ae
+
+ | Economic identity | PLANTAGE; FLACHS (16)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-808] Exact source fields and record hashes
+
+809 · Small farm
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleine_Farm.tex] game/app/ToolGfx/Kleine_Farm.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 3
+
+ | Sprite sets / palette IDs | 1 / [78]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 244×168; [122, 107]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x12ebb47
+
+ | Economic identity | UNIVERSAL; ALKOHOL (29), NAHRUNG (26)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-809] Exact source fields and record hashes
+
+810 · Fisherman's hut
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Fischerhuette.tex] game/app/ToolGfx/Fischerhuette.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 7
+
+ | Sprite sets / palette IDs | 1 / [79]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×231; [144, 89]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1315c22
+
+ | Economic identity | FISCHER; NAHRUNG (26)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-810] Exact source fields and record hashes
+
+811 · Grain farm
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Getreidefarm.tex] game/app/ToolGfx/Getreidefarm.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 3
+
+ | Sprite sets / palette IDs | 1 / [80]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 244×183; [122, 122]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1369a29
+
+ | Economic identity | PLANTAGE; KORN (13)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-811] Exact source fields and record hashes
+
+812 · Spice plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Gewuerzplantage.tex] game/app/ToolGfx/Gewuerzplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [81]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×179; [120, 118]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x139d122
+
+ | Economic identity | PLANTAGE; GEWUERZE (31)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-812] Exact source fields and record hashes
+
+813 · Tobacco plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Tabakplantage.tex] game/app/ToolGfx/Tabakplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [82]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 250×201; [125, 139]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x13c65d1
+
+ | Economic identity | PLANTAGE; TABAK (11)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-813] Exact source fields and record hashes
+
+814 · Sugar plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Zuckerrohrplantage.tex] game/app/ToolGfx/Zuckerrohrplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [83]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×181; [120, 120]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x13ff046
+
+ | Economic identity | PLANTAGE; ZUCKER (10)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-814] Exact source fields and record hashes
+
+815 · Hops farm
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Hopfenfarm.tex] game/app/ToolGfx/Hopfenfarm.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [84]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 246×206; [123, 145]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x14289d5
+
+ | Economic identity | PLANTAGE; HOPFEN (17)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-815] Exact source fields and record hashes
+
+817 · Silk plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Seidenplantage.tex] game/app/ToolGfx/Seidenplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 85]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 192×144; [96, 98]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1453da8
+
+ | Economic identity | PLANTAGE; SEIDE (20)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-817] Exact source fields and record hashes
+
+818 · Indigo plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Indigoplantage.tex] game/app/ToolGfx/Indigoplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 86]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 220×158; [110, 103]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x1476535
+
+ | Economic identity | PLANTAGE; FARBSTOFFE (21)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-818] Exact source fields and record hashes
+
+819 · Cotton plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Baumwollplantage.tex] game/app/ToolGfx/Baumwollplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 0, 87]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 236×164; [118, 105]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x149e6c8
+
+ | Economic identity | PLANTAGE; WOLLE (9)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-819] Exact source fields and record hashes
+
+820 · Cattle farm
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Rinderfarm.tex] game/app/ToolGfx/Rinderfarm.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 0, 88]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×188; [120, 140]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x14c7063
+
+ | Economic identity | PLANTAGE; FLEISCH (12)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-820] Exact source fields and record hashes
+
+821 · Whaler
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Walfaenger.tex] game/app/ToolGfx/Walfaenger.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [4, 4] / 60
+
+ | Sprite sets / palette IDs | 1 / [0, 89]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 348×455; [174, 260]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x14fa732
+
+ | Economic identity | WALFAENGER; WALSPECK (22)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-821] Exact source fields and record hashes
+
+822 · Winery
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Weingut.tex] game/app/ToolGfx/Weingut.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 4
+
+ | Sprite sets / palette IDs | 1 / [90]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 242×223; [121, 161]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x158894a
+
+ | Economic identity | PLANTAGE; WEIN (39)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-822] Exact source fields and record hashes
+
+823 · Herb plantation
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Heilkraeuterplantage.tex] game/app/ToolGfx/Heilkraeuterplantage.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 3
+
+ | Sprite sets / palette IDs | 1 / [91, 0, 0]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 232×186; [116, 128]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x15c7ef2
+
+ | Economic identity | PLANTAGE; HEILKRAEUTER (32)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-823] Exact source fields and record hashes
+
+824 · Trapper
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Pelztierjaeger.tex] game/app/ToolGfx/Pelztierjaeger.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 12
+
+ | Sprite sets / palette IDs | 1 / [92]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 236×151; [118, 90]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x15f4fdd
+
+ | Economic identity | PELZJAEGER; PELZE (38)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-824] Exact source fields and record hashes
+
+1001 · Weaver's hut
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Webstube.tex] game/app/ToolGfx/Webstube.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 1 / [93]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 238×157; [119, 98]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1618f4e
+
+ | Economic identity | HANDWERK; STOFFE (33)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1001] Exact source fields and record hashes
+
+1002 · Mill
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Muehle.tex] game/app/ToolGfx/Muehle.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [94]
+
+ | First-set frames per zoom | 0: 64, 1: 64, 2: 64
+
+ | Header dimensions / anchor | 216×179; [108, 164]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x163f5fd
+
+ | Economic identity | HANDWERK; MEHL (14)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1002] Exact source fields and record hashes
+
+1004 · Bakery
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Baeckerei.tex] game/app/ToolGfx/Baeckerei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [95, 96, 0]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 254×199; [127, 140]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x176e849
+
+ | Economic identity | HANDWERK; NAHRUNG (26)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1004] Exact source fields and record hashes
+
+1005 · Weaving mill
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Weberei.tex] game/app/ToolGfx/Weberei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [96, 97]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 242×196; [121, 137]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x17c9b80
+
+ | Economic identity | HANDWERK; STOFFE (33)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1005] Exact source fields and record hashes
+
+1006 · Bow maker
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Bogenmacher.tex] game/app/ToolGfx/Bogenmacher.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [98, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 242×217; [121, 158]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x180f2b0
+
+ | Economic identity | HANDWERKWAFFEN; BOGEN (47), ARMBRUST (48)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1006] Exact source fields and record hashes
+
+1008 · Tobacco factory
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Tabakverarbeitung.tex] game/app/ToolGfx/Tabakverarbeitung.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 3 / [99, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 238×200; [119, 139]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x1850ce5
+
+ | Economic identity | HANDWERK; TABAKWAREN (30)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1008] Exact source fields and record hashes
+
+1009 · Dye works
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Faerberei.tex] game/app/ToolGfx/Faerberei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [4, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [96, 100]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 260×227; [130, 166]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1881ddb
+
+ | Economic identity | HANDWERK; SEIDESTOFFE (34)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1009] Exact source fields and record hashes
+
+1010 · War machine builder
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kriegsmaschinenbauer.tex] game/app/ToolGfx/Kriegsmaschinenbauer.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [4, 4] / 16
+
+ | Sprite sets / palette IDs | 1 / [0, 101]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 306×258; [153, 180]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x18bedc2
+
+ | Economic identity | KANONENBAU; KATAPULT (108), BELAGERTURM (114)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1010] Exact source fields and record hashes
+
+1012 · Gunsmith
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Buechsenmacher.tex] game/app/ToolGfx/Buechsenmacher.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [4, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [96, 102]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 266×190; [133, 124]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x190e915
+
+ | Economic identity | HANDWERKWAFFEN; MUSKETE (49), KANONESHIP (53)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1012] Exact source fields and record hashes
+
+1013 · Distillery
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Rumbrennerei.tex] game/app/ToolGfx/Rumbrennerei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 3 / [103, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 238×176; [119, 118]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x1951170
+
+ | Economic identity | HANDWERK; ALKOHOL (29)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1013] Exact source fields and record hashes
+
+1014 · Brewery
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Brauerei.tex] game/app/ToolGfx/Brauerei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [104, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×192; [120, 133]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x1979dcc
+
+ | Economic identity | HANDWERK; ALKOHOL (29)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1014] Exact source fields and record hashes
+
+1017 · Ore smelter
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleine_Erzschmelze.tex] game/app/ToolGfx/Kleine_Erzschmelze.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 24
+
+ | Sprite sets / palette IDs | 3 / [105, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 241×179; [120, 120]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x19ad0cd
+
+ | Economic identity | HANDWERK; EISEN (15)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1017] Exact source fields and record hashes
+
+1018 · Butcher's shop
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Fleischerei.tex] game/app/ToolGfx/Fleischerei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [96, 106]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×181; [120, 120]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1a4b426
+
+ | Economic identity | HANDWERK; NAHRUNG (26)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1018] Exact source fields and record hashes
+
+1019 · Smith
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Schmied.tex] game/app/ToolGfx/Schmied.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 24
+
+ | Sprite sets / palette IDs | 3 / [107, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 234×173; [117, 123]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x1a7ab76
+
+ | Economic identity | HANDWERK; WERKZEUG (41)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1019] Exact source fields and record hashes
+
+1020 · Small shipyard
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleine_Werft.tex] game/app/ToolGfx/Kleine_Werft.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [5, 5] / 24
+
+ | Sprite sets / palette IDs | 2 / [108, 109]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 418×378; [209, 182]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x1ad6d54
+
+ | Economic identity | WERFT; —
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1020] Exact source fields and record hashes
+
+1021 · Large shipyard
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Werft.tex] game/app/ToolGfx/Werft.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [8, 8] / 24
+
+ | Sprite sets / palette IDs | 2 / [110, 109]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 682×488; [341, 257]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1b80e98
+
+ | Economic identity | WERFT; —
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1021] Exact source fields and record hashes
+
+1022 · Salt works
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Saline.tex] game/app/ToolGfx/Saline.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [4, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [111, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 276×243; [138, 180]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1cda195
+
+ | Economic identity | HANDWERK; SALZ (28)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1022] Exact source fields and record hashes
+
+1023 · Tannery
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Gerberei.tex] game/app/ToolGfx/Gerberei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 2 / [112, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 236×203; [118, 149]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1d2443e
+
+ | Economic identity | HANDWERK; LEDER (27)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1023] Exact source fields and record hashes
+
+1027 · Tailor's shop
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Schneiderei.tex] game/app/ToolGfx/Schneiderei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 20
+
+ | Sprite sets / palette IDs | 2 / [96, 113]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×224; [120, 162]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1d560a7
+
+ | Economic identity | HANDWERK; KLEIDUNG (36)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1027] Exact source fields and record hashes
+
+1028 · Whale oil factory
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Transiederei.tex] game/app/ToolGfx/Transiederei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 20
+
+ | Sprite sets / palette IDs | 3 / [96, 114]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×166; [120, 104]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1da2987
+
+ | Economic identity | HANDWERK; LAMPENOEL (35)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1028] Exact source fields and record hashes
+
+1029 · Armorer
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Ruestungsbauer.tex] game/app/ToolGfx/Ruestungsbauer.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 20
+
+ | Sprite sets / palette IDs | 2 / [96, 115]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×180; [120, 118]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1dca4c5
+
+ | Economic identity | HANDWERK; RUESTUNG (50)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1029] Exact source fields and record hashes
+
+1030 · Ropemaker
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Seilerei.tex] game/app/ToolGfx/Seilerei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 16
+
+ | Sprite sets / palette IDs | 1 / [0, 116]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 242×183; [121, 121]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1df809c
+
+ | Economic identity | HANDWERK; SEILE (19)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1030] Exact source fields and record hashes
+
+1034 · Large ore smelter
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Grosse_Erzschmelze.tex] game/app/ToolGfx/Grosse_Erzschmelze.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 24
+
+ | Sprite sets / palette IDs | 2 / [117, 47]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 234×240; [117, 181]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1e23ba2
+
+ | Economic identity | HANDWERK; EISEN (15)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1034] Exact source fields and record hashes
+
+1035 · Charcoal burner
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Koehlerei.tex] game/app/ToolGfx/Koehlerei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 24
+
+ | Sprite sets / palette IDs | 3 / [118, 0, 96]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 236×142; [118, 81]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1e901e0
+
+ | Economic identity | HANDWERK; HOLZKOHLE (23)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1035] Exact source fields and record hashes
+
+1036 · Large weapons smithy
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Grosse_Waffenschmiede.tex] game/app/ToolGfx/Grosse_Waffenschmiede.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 24
+
+ | Sprite sets / palette IDs | 2 / [96, 119, 0]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 242×215; [121, 154]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1eb6b60
+
+ | Economic identity | HANDWERKWAFFEN; AXT (52), LANZE (51)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1036] Exact source fields and record hashes
+
+1037 · Small weapons smithy
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleine_Waffenschmiede.tex] game/app/ToolGfx/Kleine_Waffenschmiede.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 12
+
+ | Sprite sets / palette IDs | 2 / [96, 120]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 240×216; [120, 154]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1ef4bef
+
+ | Economic identity | HANDWERK; SCHWERT (46)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1037] Exact source fields and record hashes
+
+1038 · Cannon foundry
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kanonengiesserei.tex] game/app/ToolGfx/Kanonengiesserei.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [4, 4] / 24
+
+ | Sprite sets / palette IDs | 3 / [96, 121]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 306×274; [153, 190]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1f268f0
+
+ | Economic identity | KANONENBAU; KANONE (110), MOERSER (112)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1038] Exact source fields and record hashes
+
+1039 · Goldsmith
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Goldschmied.tex] game/app/ToolGfx/Goldschmied.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 3] / 24
+
+ | Sprite sets / palette IDs | 1 / [122]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 248×247; [124, 185]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1f7d2f0
+
+ | Economic identity | HANDWERK; SCHMUCK (37)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1039] Exact source fields and record hashes
+
+1201 · Quarry
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Steinbruch.tex] game/app/ToolGfx/Steinbruch.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 123]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 270×189; [135, 122]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x1fc1ef9
+
+ | Economic identity | STEINBRUCH; STEINE (5)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1201] Exact source fields and record hashes
+
+1203 · Salt mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Salzbergwerk.tex] game/app/ToolGfx/Salzbergwerk.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 0, 124]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 266×176; [133, 112]
+
+ | Pixel format / volume offset | BSH_RGBZM / 0x1ffced8
+
+ | Economic identity | MINE; SALZSTEIN (3)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1203] Exact source fields and record hashes
+
+1205 · Ore mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleine_Erzmine.tex] game/app/ToolGfx/Kleine_Erzmine.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 4
+
+ | Sprite sets / palette IDs | 1 / [125]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×179; [144, 118]
+
+ | Pixel format / volume offset | BSH_RGBZM / 0x202e10b
+
+ | Economic identity | MINE; EISENERZ (1)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1205] Exact source fields and record hashes
+
+1206 · Gold mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Goldmine.tex] game/app/ToolGfx/Goldmine.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 4
+
+ | Sprite sets / palette IDs | 1 / [0, 126]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×189; [144, 126]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x206723f
+
+ | Economic identity | MINE; GOLD (2)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1206] Exact source fields and record hashes
+
+1208 · Quarry
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Steinbruch.tex] game/app/ToolGfx/Steinbruch.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 4
+
+ | Sprite sets / palette IDs | 1 / [127]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 270×189; [135, 122]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x20a262f
+
+ | Economic identity | STEINBRUCH; STEINE (5)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1208] Exact source fields and record hashes
+
+1210 · Ore mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Kleine_Erzmine.tex] game/app/ToolGfx/Kleine_Erzmine.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 4
+
+ | Sprite sets / palette IDs | 1 / [128]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×179; [144, 118]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x20de002
+
+ | Economic identity | MINE; EISENERZ (1)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1210] Exact source fields and record hashes
+
+1212 · Gold mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Goldmine.tex] game/app/ToolGfx/Goldmine.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 0
+
+ | Sprite sets / palette IDs | 1 / [129]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×189; [144, 126]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x2117354
+
+ | Economic identity | MINE; GOLD (2)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1212] Exact source fields and record hashes
+
+1214 · Gem mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Edelsteinmine.tex] game/app/ToolGfx/Edelsteinmine.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 8
+
+ | Sprite sets / palette IDs | 1 / [130]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×189; [144, 126]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x2151ae2
+
+ | Economic identity | MINE; EDELSTEINE (4)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1214] Exact source fields and record hashes
+
+1216 · Large ore mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Tiefe_Erzmine.tex] game/app/ToolGfx/Tiefe_Erzmine.texHelp texture 1: 102×102; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 8
+
+ | Sprite sets / palette IDs | 2 / [131]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×215; [144, 158]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x218dda1
+
+ | Economic identity | MINE; EISENERZ (1)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1216] Exact source fields and record hashes
+
+1217 · Large ore mine
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Tiefe_Erzmine.tex] game/app/ToolGfx/Tiefe_Erzmine.texHelp texture 1: 102×102; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 8
+
+ | Sprite sets / palette IDs | 2 / [132]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 288×215; [144, 158]
+
+ | Pixel format / volume offset | BSH_RGBZ / 0x25eda1f
+
+ | Economic identity | MINE; EISENERZ (1)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1217] Exact source fields and record hashes
+
+1218 · Marble quarry
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Marmorsteinbruch.tex] game/app/ToolGfx/Marmorsteinbruch.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 0
+
+ | Sprite sets / palette IDs | 1 / [133]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 270×223; [135, 162]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x2a74d47
+
+ | Economic identity | STEINBRUCH; MAMORSTEIN (6)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1218] Exact source fields and record hashes
+
+1220 · Marble quarry
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Marmorsteinbruch.tex] game/app/ToolGfx/Marmorsteinbruch.texHelp texture 1: 102×714; top-square preview.
+
+World sample: isolated set 0 / frame 0 / zoom 0. This may be a moving overlay rather than the whole building. No depth composition or shadow was applied.
+
+ | Registry property | Original value
+
+ | Tile footprint / radius | [3, 4] / 0
+
+ | Sprite sets / palette IDs | 1 / [134]
+
+ | First-set frames per zoom | 0: 4, 1: 4, 2: 4
+
+ | Header dimensions / anchor | 270×223; [135, 162]
+
+ | Pixel format / volume offset | BSH_RGBAZ / 0x2ab312c
+
+ | Economic identity | STEINBRUCH; MAMORSTEIN (6)
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#building-1220] Exact source fields and record hashes
+
+Legacy art: retain provenance, avoid invented gameplay
+
+The following originals were decoded and visually compared with the corresponding website pictures. Their presence disproves the idea that the page’s paper/books illustrations must come from a different Anno game; it does not prove these chains are active in the inspected 1503 build.
+
+Papier
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Papier.tex] game/app/ToolGfx/Papier.tex
+
+Shipped resource art; no PAPIER warehouse good in the current table.
+
+Papiermuehle
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Papiermuehle.tex] game/app/ToolGfx/Papiermuehle.tex
+
+Shipped portrait and surviving tooltip; no active producer found.
+
+Buecher
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Buecher.tex] game/app/ToolGfx/Buecher.tex
+
+Shipped resource art; no BUCH/BUECHER warehouse good.
+
+Druckerei
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Druckerei.tex] game/app/ToolGfx/Druckerei.tex
+
+Shipped portrait and surviving tooltip; no active printer production record found.
+
+Speere
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Speere.tex] game/app/ToolGfx/Speere.tex
+
+Shipped icon and chain help; small smith 1037 produces SCHWERT only.
+
+Wissen
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/ToolGfx/Wissen.tex] game/app/ToolGfx/Wissen.tex
+
+Valid conceptual/research artwork, but no warehouse WISSEN commodity.
+
+Archive these as shipped-art / active-rule-unresolved-or-absent. A future restoration belongs in an opt-in content/rules package after explicit design, not as a silent faithful-core requirement. The reason these assets survived is not established by this investigation.
+
+All 39 website diagrams, with limitations
+
+Open a diagram for comparison. The originals remain attributed to the linked website; the local copy preserves the reviewed visual reference.
+
+Wood / Holz — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Holz_1024_283.webp] Holz_1024_283.webp · diagram canvas, not a native world sprite
+Trees are world resources, not warehouse input goods. Forester dispatch, regrowth and hauling constrain sustained output.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Holz] Production evidence and original IDs
+
+Food: fishing — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Fische_1024_334.webp] Nahrung_Fische_1024_334.webp · diagram canvas, not a native world sprite
+Fishermen depend on water access and workers. Food from fish shares NAHRUNG with the other food routes; it is not a separate warehouse commodity.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Nahrung_Fische] Production evidence and original IDs
+
+Food: hunting — Special runtime
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Wild_1024_334.webp] Nahrung_Wild_1024_334.webp · diagram canvas, not a native world sprite
+The hunting lodge declares both food and hides. Its JAGDHAUS behaviour must be traced separately; do not apply the generic workshop formula to both outputs.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Nahrung_Wild] Production evidence and original IDs
+
+Alcohol: potatoes — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Alkohol_Kartoffeln_1024_283.webp] Alkohol_Kartoffeln_1024_283.webp · diagram canvas, not a native world sprite
+The small farm also declares GRAS → NAHRUNG. Its worker and animal lines have separate scheduling and shared constraints; the website depicts only the alcohol branch.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Alkohol_Kartoffeln] Production evidence and original IDs
+
+Leather / Leder — Website discrepancy
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Leder_1024_462.webp] Leder_1024_462.webp · diagram canvas, not a native world sprite
+The alternative butcher-to-hides branch in the diagram is not supported by this build: 1018 declares FLEISCH → NAHRUNG only. Do not add a hides by-product to the faithful butcher.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Leder] Production evidence and original IDs
+
+Cloth / Stoffe — Ratio unverified
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Stoffe_1024_441.webp] Stoffe_1024_441.webp · diagram canvas, not a native world sprite
+Sheep and cotton feed the same WOLLE warehouse good. Weaver hut and weaving mill have different costs, gates and integer rates. HEAD gives sheep farm 3×3, not the website prose’s 2×2.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Stoffe] Production evidence and original IDs
+
+Salt / Salz — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Salz_1024_277.webp] Salz_1024_277.webp · diagram canvas, not a native world sprite
+Salt rock and refined salt have distinct IDs. The salt mine is gated at 125 pioneers, unlike the early food buildings.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Salz] Production evidence and original IDs
+
+Ropes / Seile — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Seile_1024_283.webp] Seile_1024_283.webp · diagram canvas, not a native world sprite
+The German help calls the crop hemp (Hanf), while the canonical input code is FLACHS. Keep display names separate from content identity.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Seile] Production evidence and original IDs
+
+Food: cattle and butcher — Ratio unverified
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Fleisch_1024_326.webp] Nahrung_Fleisch_1024_326.webp · diagram canvas, not a native world sprite
+The website shows two cattle farms per butcher. These are supply-layout counts, not a recipe multiplier. Animal/worker throughput and transport must be measured.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Nahrung_Fleisch] Production evidence and original IDs
+
+Knowledge / Wissen — Service, not goods
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Wissen_1024_485.webp] Wissen_1024_485.webp · diagram canvas, not a native world sprite
+WISSEN is not a warehouse good. Schule 1346, school-class variant 1347 and university 1379 require separate runtime interpretation. Help explains accumulated knowledge and research consumption; exact generation/cap formula remains unverified here.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Wissen] Production evidence and original IDs
+
+Bricks / Ziegel — Special runtime
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Ziegel_1024_283.webp] Ziegel_1024_283.webp · diagram canvas, not a native world sprite
+Quarry STEINBRUCH and stonemason STEINMETZ are different production classes. Quarry resources and workers are not equivalent to a generic two-step factory recipe.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Ziegel] Production evidence and original IDs
+
+Iron / Eisen — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Eisen_1024_522.webp] Eisen_1024_522.webp · diagram canvas, not a native world sprite
+Shallow/deep mine variants and smelter variants differ. Charcoal replaces wood only in large smelter 1034. Deposit reserve and edition-dependent depletion affect long games.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Eisen] Production evidence and original IDs
+
+Tools / Werkzeuge — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Werkzeuge_1024_309.webp] Werkzeuge_1024_309.webp · diagram canvas, not a native world sprite
+The canonical good is singular WERKZEUG. At full input the converter makes 9 fixed-point units while consuming 8 iron and 2 wood per step, not whole tons.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Werkzeuge] Production evidence and original IDs
+
+Spices / Gewürze — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Gewuerze_1024_283.webp] Gewuerze_1024_283.webp · diagram canvas, not a native world sprite
+Plantation output depends on field suitability, growth, worker travel and collection. The stage threshold is not a proof that every island can support the crop.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Gewuerze] Production evidence and original IDs
+
+Tobacco products — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Tabakwaren_1024_277.webp] Tabakwaren_1024_277.webp · diagram canvas, not a native world sprite
+Raw tobacco and finished tobacco products are separate stocks; the retail endpoint sells TABAKWAREN.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Tabakwaren] Production evidence and original IDs
+
+Armor / Rüstungen — Research-gated
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Ruestungen_1024_309.webp] Ruestungen_1024_309.webp · diagram canvas, not a native world sprite
+Building availability and the goods’ research requirement are separate data. An 80-settler diagram label alone is insufficient to certify a usable weapon supply.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Ruestungen] Production evidence and original IDs
+
+Alcohol: hops — Ratio unverified
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Alkohol_Hopfen_1024_277.webp] Alkohol_Hopfen_1024_277.webp · diagram canvas, not a native world sprite
+The diagram’s two farms per brewery is a planning ratio. Hops farm uses INFRA_STUFE_2G (360 settlers), and brewing shares the same finished ALKOHOL good as potatoes and sugar.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Alkohol_Hopfen] Production evidence and original IDs
+
+Swords / Schwerter — Research-gated
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Schwerter_1024_283.webp] Schwerter_1024_283.webp · diagram canvas, not a native world sprite
+The active small weapons smith has only the sword output. Its old spear help/diagram must not silently become a second goods line.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Schwerter] Production evidence and original IDs
+
+Paper / Papier — Legacy art only
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Papier_1024_277.webp] Papier_1024_277.webp · diagram canvas, not a native world sprite
+Papier.tex, Papiermuehle.tex and PK_Papier.tex ship with this build, and a paper-mill tooltip survives. No active PAPIER goods entry or production registry mapping was found across all 921 entries.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Papier] Production evidence and original IDs
+
+Books / Bücher — Legacy art only
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Buecher_1024_277.webp] Buecher_1024_277.webp · diagram canvas, not a native world sprite
+Buecher.tex, Druckerei.tex and PK_Buecher.tex are genuine shipped art; this is not evidence for an active books economy. No matching goods or production output exists in the inspected registry.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Buecher] Production evidence and original IDs
+
+Alcohol: sugar — Ratio unverified
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Alkohol_Zuckerrohr_1024_277.webp] Alkohol_Zuckerrohr_1024_277.webp · diagram canvas, not a native world sprite
+The canonical intermediate is ZUCKER; its help icon is named R_Zuckerrohr. The diagram’s two plantations per distillery does not replace the runtime rate and harvest model.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Alkohol_Zuckerrohr] Production evidence and original IDs
+
+Food: bread — Ratio unverified
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Nahrung_Brot_1024_535.webp] Nahrung_Brot_1024_535.webp · diagram canvas, not a native world sprite
+The diagram shows 4 grain farms : 2 mills : 1 bakery. Two fully supplied mills produce 26 fixed units per step and the bakery needs 25; the four-farm claim still needs harvest and logistics verification.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Nahrung_Brot] Production evidence and original IDs
+
+Silk cloth — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Seidenstoffe_1024_462.webp] Seidenstoffe_1024_462.webp · diagram canvas, not a native world sprite
+Dye works has two distinct material inputs. Fertility and separate supply chains matter; the output is not ordinary STOFFE. Retail uses stand 1318.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Seidenstoffe] Production evidence and original IDs
+
+Marble / Marmor — Special runtime
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Marmor_1024_296.webp] Marmor_1024_296.webp · diagram canvas, not a native world sprite
+Preserve the original spellings MAMORSTEIN and MAMOR in identifiers. Marble is a building material, distinct from the raw quarry good.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Marmor] Production evidence and original IDs
+
+Charcoal / Holzkohle — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Holzkohle_1024_283.webp] Holzkohle_1024_283.webp · diagram canvas, not a native world sprite
+Used by the large smelter and cannon foundry. The wood chain competes with construction, tools, ropes-based weapons and shipbuilding for transport/storage capacity.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Holzkohle] Production evidence and original IDs
+
+Lamp oil — Special runtime
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Lampenoel_1024_277.webp] Lampenoel_1024_277.webp · diagram canvas, not a native world sprite
+The website shows one whaler feeding two oil factories. WALFAENGER is a special production class; the diagram does not verify fleet travel, catches or sustained rate.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Lampenoel] Production evidence and original IDs
+
+Ship cannon — Shared workshop
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Schiffskanonen_1024_309.webp] Schiffskanonen_1024_309.webp · diagram canvas, not a native world sprite
+Ship cannon is warehouse good 53. Gunsmith 1012 shares its inputs and production time with muskets. Land cannon is a different unit code, not another spelling of this good.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Schiffskanonen] Production evidence and original IDs
+
+Clothing — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Kleidung_1024_541.webp] Kleidung_1024_541.webp · diagram canvas, not a native world sprite
+Tailor consumes cloth plus furs. Trapper activity pauses conversion while a trapper is out. Finished clothing and silk cloth share the clothing stand 1318.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Kleidung] Production evidence and original IDs
+
+Bows / Bögen — Shared workshop
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Boegen_1024_309.webp] Boegen_1024_309.webp · diagram canvas, not a native world sprite
+Bows and crossbows are two lines in one building. With both enabled and unlocked the output is split; two separate full-speed chains would overestimate capacity.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Boegen] Production evidence and original IDs
+
+Crossbows / Armbrüste — Shared workshop
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Armbrueste_1024_309.webp] Armbrueste_1024_309.webp · diagram canvas, not a native world sprite
+Crossbow research differs from bow research. Shared input consumption and output-capacity checks must retain the original integer order.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Armbrueste] Production evidence and original IDs
+
+Jewelry / Schmuck — Confirmed graph
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Schmuck_1024_462.webp] Schmuck_1024_462.webp · diagram canvas, not a native world sprite
+GOLD is mined material, not treasury money. Gold and gems require separate deposits. Retail income is a downstream economy mechanism, not a factory output.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Schmuck] Production evidence and original IDs
+
+Mortars / Mörser — Unit construction
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Moerser_1024_309.webp] Moerser_1024_309.webp · diagram canvas, not a native world sprite
+KANONENBAU is not HANDWERK. Land cannon 110 and mortar 112 are figure/unit-domain values, not ordinary warehouse goods. Unit research and build queues require their own trace.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Moerser] Production evidence and original IDs
+
+Wine / Wein — Separate endpoint gate
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Wein_1024_283.webp] Wein_1024_283.webp · diagram canvas, not a native world sprite
+Winery unlock is 750 merchants (4C), but wine stand 1316 is 1900 merchants (4F) in the loaded registry. Production availability and consumer access are distinct.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Wein] Production evidence and original IDs
+
+Muskets / Musketen — Shared workshop
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Musketen_1024_309.webp] Musketen_1024_309.webp · diagram canvas, not a native world sprite
+Muskets share the gunsmith with ship cannon; their goods research requirement is distinct from the building’s KANONE_SHIP requirement.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Musketen] Production evidence and original IDs
+
+Spears / Speere — Legacy art only
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Speere_1024_309.webp] Speere_1024_309.webp · diagram canvas, not a native world sprite
+Speere.tex and PK_Speere.tex exist, but no SPEER/SPEERE warehouse good or active output was found. Figure 700 uses class LANZE, unit good SPIESSTRAEGER and BAUWARE HOLZ; that does not establish the depicted spear chain.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Speere] Production evidence and original IDs
+
+Axes / Äxte — Shared workshop
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Aexte_1024_309.webp] Aexte_1024_309.webp · diagram canvas, not a native world sprite
+Axes and lances share the large weapons smith. The two goods have different research requirements; the building’s availability is not both outputs’ readiness.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Aexte] Production evidence and original IDs
+
+Siege towers — Unit construction
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Belagerungstuerme_1024_309.webp] Belagerungstuerme_1024_309.webp · diagram canvas, not a native world sprite
+War-machine construction is KANONENBAU. A siege tower is unit-domain 114, not a stock of ordinary finished goods. Queue costs and unit spawn rules remain separate work.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Belagerungstuerme] Production evidence and original IDs
+
+Catapults — Unit construction
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Katapulte_1024_309.webp] Katapulte_1024_309.webp · diagram canvas, not a native world sprite
+Shares the war-machine builder with siege towers. Do not use the generic workshop’s tons-per-minute interpretation for a completed military figure.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Katapulte] Production evidence and original IDs
+
+Lances / Lanzen — Shared workshop
+[https://www.annoinfo.de/images/anno_1503/produktionsketten/Lanzen_1024_309.webp] Lanzen_1024_309.webp · diagram canvas, not a native world sprite
+LANZE 51 is an actual warehouse weapon good produced by 1036. It is distinct from the LANZE figure class used by a pikeman and from legacy Speere artwork.
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-chains.html#chain-Lanzen] Production evidence and original IDs
+
+Modern performance without losing original appearance
+
+D: the existing asset corpus specification records 28,899 Anlagen frame decodes with no failures, and a shared CPU/Rust RGBA digest 4d53061488caa2b0. That is prior repository evidence, not a fresh full render run in this task. This task freshly parses all 921 records and decodes selected source frames and UI textures.
+
+Preserve the original alpha levels (64, 128, 191, 255), signed anchors, palette selection, special pixel modes and depth. Some original runs write beyond the frame’s declared width; widening the decoded image preserves those pixels. Atlas packing based only on the header rectangle can clip artwork. A flat RGBA thumbnail intentionally omits depth; it is useful for inspection but cannot serve as the complete faithful compositor reference.
+
+R: decode immutable content on workers, reuse shared sprite/texture/depth data across world instances, and cache by complete source identity and decode configuration. Atlas or texture-array placement must preserve transparent gutters and avoid color bleeding; bound residency and measure reclamation. Batch GPU draws by compatible state while preserving the original compositing order. Cull by actual visible extents, not solely building footprint.
+
+R: animation should select existing frame data rather than rebuild entire island content. Place/demolish updates should invalidate the affected geometry and pixel bounds, including all zooms and neighboring overlap; unrelated cities should not cause whole-scene work. A frame must retain every generation/resource it reads until GPU use completes. Backpressure, stale completion rejection, cancellation and delayed reclamation are part of correctness, not just optimization.
+
+R: assess 1080p and 4K presented-frame time under panning, zooming, mass construction, animations, weather/water and active city logistics. Report CPU preparation, chunk rebuilding, uploads, GPU work, waits and memory separately, plus end-to-end p95/p99/max. A fast object-list stage does not demonstrate a smooth displayed frame. Follow the project’s PLAN §0.3 targets and run Windows/Linux, RTX and Radeon gates when those hosts are available.
+
+Faithful mode should use the original art and documented compositing. Enhanced water, higher-resolution replacement art or modified shading can be separate selectable layers. Upscaling a 50×50 icon may make it larger; it does not recover authoritative original detail.
+
+Asset work broken into reviewable packages
+
+Stable asset manifest. Join canonical content IDs to documented UI references and world sprite sets. Record source hashes, palette dependencies, frame/zoom selection, anchor, depth mode and status (active, legacy, unresolved). Trace actual runtime UI bindings before replacing any semantic association with a proven one.
+
+Faithful decode fixtures. Test an ordinary building, animated multi-set mill, overrun frame, alpha edge, depth-blended object, shadow and player-colored worker. Compare against the existing CPU reference and corpus digests; keep original bytes outside version control.
+
+UI proof page. Display all 47 goods at native size and intended UI scale, with names, counts and status indicators. Verify contrast, localization, color-vision-safe markers and no cropped portrait or accidental transparent strip.
+
+World integration. Use complete animation/layer selection and correct anchors. Test rotation/zoom, foreground overlap, workers, shadows and independent crop fields. A one-frame gallery is not the acceptance oracle for an assembled building.
+
+Stress and residency. Reuse assets across dense cities; record cache hits, upload bytes, atlas residency, retired-generation memory and presentation stalls. Vary unrelated-city size while holding the viewport fixed, then vary visible density.
+
+Document remaining gaps. Resolve runtime icon bindings, field/worker artwork associations, special material modes and legacy assets. Every enhanced-style change needs its own visual decision and faithful-mode regression coverage.
+
+Read order for that executor: docs/PLAN.md; docs/render/assets.md; docs/formats/anlagen.md; docs/formats/figuren.md; docs/formats/tex.md; docs/re/annodisplay.md; the current renderer ownership/handoff specification; these two reports and their JSON catalogs.
+
+Source provenance and downloadable evidence
+
+Full file provenance and every selected binary record are retained in the linked machine-readable evidence. Repository extraction began at 67a48eca9da5028091caef700916815e303cf4e1. The working tree already had unrelated research edits; those were not rewritten.
+
+ | Original source | Bytes | SHA-256
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Anlagen.dat] game/app/Anlagen.dat | 205470957 | b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/FigurenHeader.dat] game/app/FigurenHeader.dat | 27904566 | 29fa1f0528fb337d9a61e8b73169281fd05bb27efa6df65638580a4c36c468a8
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Texte.dat] game/app/Texte.dat | 46050 | 91fd003d708b21d234896ef27a8fde66117874c4b4f8d8d7ef3481ac263a91f4
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/Data/BGruppen.dat] game/app/Data/BGruppen.dat | 12502 | 63e876fd3afedca214b3d9cc45f022f2c595f473839690e96f34e12ed7849e3b
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoGame.dll] game/app/AnnoGame.dll | 184320 | ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoWelt.dll] game/app/AnnoWelt.dll | 966656 | f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2
+
+ | [/Users/dom/Dev/anno1503-worktrees/anno1503/game/app/AnnoDisplay.dll] game/app/AnnoDisplay.dll | 344064 | e298efdb67707e61ec86ccfc105bebbeb9c74ab29d674f69ba89056ffedebe24
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/anlagen-catalog.json] All 921 Anlagen records · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/production-buildings.json] Selected building records · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/goods.json] Goods and BGruppen fields · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/stages.json] Population gates · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/worker-and-unit-records.json] Worker and unit evidence · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/source-hashes.json] Complete source manifest
+
+[/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/toolgfx-catalog.json] All ToolGfx texture metadata · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/toolgfx-images.json] Decoded preview metadata, INCACCESS and RGBA hashes · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/website-assets/manifest.json] Browser image export manifest · [/Users/dom/Dev/anno1503-worktrees/anno1503/cache/orchestrator-production-assets-2026-10-31/website-observations.json] Reviewed website URLs and local-copy hashes
+GOG A.D. 2.0.0.5 local corpus. Research and extracted previews; no engine change, no candidate installed, no original assets committed. Keep the local image bundle with its HTML reports.

@@ -7054,3 +7054,14 @@ in this commit.
 Limits 100 and 50 permille are proposals (OQ-515..OQ-520). `map2_selftest.py`
 passes, including the lan5 digest `c6af83f95104cd4f` and 1476 bytes.
 Negative controls are recorded in the final MAP.2 report.
+
+## MAP.2 progress — candidates — 2026-10-31
+
+`tools/map2_layout.py` wrote `data/maps/candidates/lan5-{a,b,c}.txt`.
+`data/maps/lan5.txt` is still sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes.
+A second run into a scratch directory matched the committed bytes.
+None of the three is a full pass of `map2-proposed-v1`. Structural rules
+pass. Home land fails at 79 permille and paired southern land at 52.
+Pair and centre distance pass ±5%. Rival distance and per-climate reach do
+not. Table in `docs/sim/fixed-map.md` §10.

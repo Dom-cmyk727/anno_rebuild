@@ -386,3 +386,66 @@ not that pattern. The screen is not a fairness score.
 `tools/map2_selftest.py` is synthetic. It does not read original files except
 to dump `lan5.txt` and check the digest `c6af83f95104cd4f`, 21 islands, and
 1476 bytes.
+
+## 10. Three candidates
+
+`tools/map2_layout.py` writes `data/maps/candidates/lan5-a.txt`, `lan5-b.txt`
+and `lan5-c.txt`. It does not write `data/maps/lan5.txt`. The same arguments
+write the same bytes. Large-island origins are authored. Filler is first-fit
+on the 8-tile lattice in an order fixed by the layout seed, larger rectangles
+first, preferring a gap of at least 8 and then allowing a touch. The engine
+still loads the text as an ordinary fixed map. Nothing here replaces lan5.
+
+Each southern island is placed on the opposite ray from its home, so the
+inner coast faces both the map centre and that partner. The routes are long
+because the partner is past the centre. Seeds are 15031, 15032 and 15033.
+Template order rotates by candidate; the set does not. Nord is the only
+within-100 quintuple. South is the closest quintuple.
+
+Filler weights are the non-256 part of 03's climate×size table (23 islands):
+polar 64×1 and 80×2, tundra 80×2 and 128×1, nord 64×1 and 80×2, praerie 80×1
+and 128×3, dschungel 64×2, 80×2 and 128×1, steppe 64×1, 80×1 and 128×3. There
+is no tundra 64 and no nord 128 in that table, so none is placed. Counts are
+largest-remainder. A and B ask for 30 filler islands (the coverage-matched
+reading). C asks for 45 (the denser reading).
+
+| | lan5-a | lan5-b | lan5-c |
+|---|---|---|---|
+| Arc | 152° | 144° | 140° |
+| Islands | 40 | 40 | 55 |
+| Rectangle share | 45.5% | 45.5% | 52.2% |
+| SHA-256 | `0ac467ca4f2f2beaec91362ed61482120c99fd8de952d8f0d28b540766abc846` | `e391dbda37de3993040b8bdea3303dfaa71fb6f33e20cf49d655d57cfe084772` | `bc9f70791cad62da2350e490841ee7bc807265d59d00e7e6c0dca15460086e02` |
+| Bytes | 2442 | 2442 | 3160 |
+| Large-land nord / south | pass 79 / pass 52 | pass 79 / pass 52 | pass 79 / pass 52 |
+| Home land ±5% | fail 79 | fail 79 | fail 79 |
+| Paired south land ±5% | fail 52 | fail 52 | fail 52 |
+| Pair distance ±5% | pass 11 | pass 29 | pass 21 |
+| Pair lengths (milli) | 888005, 905803, 899246, 903285, 886778 | 840535, 804110, 831356, 811876, 850652 | 876816, 872066, 874245, 861278, 893344 |
+| Centre distance ±5% | pass 9 | pass 41 | pass 43 |
+| Rival distance ±5% | fail 177 | fail 210 | fail 215 |
+| Reach | every climate absent for at least one seat | same | same |
+| Assignment | slots 10..14 in seat order | slots 10..14 in seat order | swaps slots 12 and 13; both assignment modes agree |
+
+Pair lengths are milli-tiles, so lan5-a's routes are about 887–906 tiles.
+The spread is within ±5%. The length itself is a crossing of the map.
+`min-spread-lex` selected the same pairing as `min-spread-sum-lex` on all
+three. lan5-c's measured pairing is not the authored opposite ray for seats
+2 and 3: the swap of slots 12 and 13 has the smaller spread. Both modes
+choose that swap.
+
+No candidate is a full pass of `map2-proposed-v1`. Structural rules pass:
+five and five, half-plane, distinct shapes, no people templates, coasts,
+bands, no overlaps, no missed filler. The failed gates are the ones the
+template pools and the coastlines force. Status for owner selection is
+QUESTION, not a pass.
+
+`tools/map2_preview.py` draws land masks, not rectangles, into an ignored
+cache directory. Top-down has north at small y. Isometric has world +x
+down-right and +y down-left, so north is at the top. The pictures inspected
+on 2026-10-31 show five irregular northern islands in an arc, five irregular
+southern islands across the centre, a horizontal middle line, a centre mark,
+seat numbers on the inner coasts, and pairing lines through the centre.
+Filler uses all six climate colours. lan5-c is visibly the denser of the
+three. The lines are geometric reach, not shipping routes. Land area and
+these distances do not show fertility, ores, usable building space, or
+late-game economics.

@@ -23,7 +23,7 @@ def expect(condition, message):
 def sample():
     return {
         'manifest': mf.MANIFEST_NAME,
-        'version': 1,
+        'version': mf.MANIFEST_VERSION,
         'profile': mf.PROFILE_ID,
         'name': 'synthetic-zero-cities',
         'edge': [32, 32],
@@ -51,6 +51,8 @@ def sample():
                 {'goods': 'tools', 'tons': 30},
             ],
         },
+        'excluded': list(mf.EXCLUDED),
+        'policy': mf.default_policy(),
     }
 
 
@@ -82,7 +84,7 @@ def rejects(mutator, needle, message):
 def test_rejections():
     rejects(lambda d: d.update(cities=[{'seat': 0}]), 'cities is not allowed', 'player cities are rejected')
     rejects(lambda d: d.update(reservations=[0]), 'reservations is not allowed', 'island reservations are rejected')
-    rejects(lambda d: d.update(version=2), 'version is unsupported', 'version 2 is rejected')
+    rejects(lambda d: d.update(version=1), 'version is unsupported', 'version 1 is rejected')
     rejects(lambda d: d['spawns'].append(dict(d['spawns'][0])), 'spawns must be five', 'a sixth spawn is rejected')
     rejects(lambda d: d['spawns'].__setitem__(1, dict(d['spawns'][0])), 'duplicate spawn seat', 'a duplicate seat is rejected')
     rejects(lambda d: d['spawns'][0].update(x=1.5), 'not an integer', 'a fractional spawn coordinate is rejected')
@@ -109,9 +111,36 @@ def test_lan5_dump():
     expect(len(data) == 1476, 'lan5.txt stays 1476 bytes')
 
 
+def test_upgrade():
+    old = sample()
+    old['version'] = 1
+    old['profile'] = mf.V1_PROFILE_ID
+    del old['policy']
+    text = json.dumps(old)
+    try:
+        mf.parse(text)
+        expect(False, 'version 1 stays rejected by parse')
+    except mf.ManifestError as err:
+        expect('unsupported' in str(err), 'version 1 stays rejected by parse')
+    doc = mf.upgrade_v1(text)
+    expect(doc['version'] == 2, 'upgrade writes version 2')
+    expect(doc['islands'] == [{'id': 0, 'x': 0, 'y': 0, 'key': 'NORD/N.SCP'}],
+           'upgrade keeps the island placement')
+    expect(doc['policy']['metric'] == 'manhattan-4', 'upgrade records the manhattan-4 policy')
+    again = mf.parse(mf.emit(doc).decode('ascii'))
+    expect(again['content_hash'] == doc['content_hash'], 'upgraded bytes round-trip')
+    old['policy'] = mf.default_policy()
+    try:
+        mf.upgrade_v1(json.dumps(old))
+        expect(False, 'a version 1 policy is refused')
+    except mf.ManifestError as err:
+        expect('policy' in str(err), 'a version 1 policy is refused')
+
+
 def main():
     test_round_trip()
     test_rejections()
+    test_upgrade()
     test_lan5_dump()
     print(f'{len(FAILURES)} failed')
     return 1 if FAILURES else 0

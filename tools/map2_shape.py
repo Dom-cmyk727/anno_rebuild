@@ -76,6 +76,16 @@ def south_top_ok(origin_y, edge):
     return 2 * origin_y >= edge
 
 
+def footprint_size(width, height, rotation):
+    """ANLAGEN HEAD tile size. Odd quarter-turns swap the axes.
+
+    insel.md placed objects. This is the world-tile footprint, not the sprite.
+    """
+    if rotation & 1:
+        return height, width
+    return width, height
+
+
 def rot90(buf, n):
     """Quarter turn clockwise. buf is row-major, length n*n."""
     out = bytearray(n * n)

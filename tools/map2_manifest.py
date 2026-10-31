@@ -21,13 +21,48 @@ import os
 import sys
 
 MANIFEST_NAME = 'map2-ship-manifest'
-MANIFEST_VERSION = 1
-PROFILE_ID = 'map2-ship-start-v1'
+MANIFEST_VERSION = 2
+PROFILE_ID = 'map2-ship-start-v2'
+V1_PROFILE_ID = 'map2-ship-start-v1'
 MILLI = 1000
 GOODS = ('wood', 'food', 'tools', 'bricks', 'spices')
 HOLD_TONS_MAX = 50
 HOLD_COUNT_MAX = 4
 FORBIDDEN = ('cities', 'reservations', 'homes', 'partners', 'starts', 'owner_runs')
+EXCLUDED = (
+    'base-scenario players',
+    'base-scenario units',
+    'player cities',
+    'island reservations',
+)
+# The tool implements this policy. A manifest that names another metric is rejected.
+POLICY_TEXT = {
+    'grid': 'tile',
+    'metric': 'manhattan-4',
+    'clearance_scope': 'spawn',
+    'obstruction': 'anlagen-head-conservative',
+}
+POLICY_INTS = {
+    'clearance': (0, 64),
+    'max_route_tiles': (1, 100000),
+    'min_city': (1, 1000000),
+    'share_gap': (0, 10000),
+    'share_min_side': (1, 4096),
+}
+
+
+def default_policy():
+    return {
+        'grid': 'tile',
+        'metric': 'manhattan-4',
+        'clearance': 8,
+        'clearance_scope': 'spawn',
+        'max_route_tiles': 400,
+        'min_city': 256,
+        'share_gap': 32,
+        'share_min_side': 128,
+        'obstruction': 'anlagen-head-conservative',
+    }
 
 # Proposed comparison baseline from the human party of 03_1024_med_256.
 # Evidence: docs/research/endless-start-conditions.md. Not an economy approval.
@@ -55,13 +90,38 @@ def _reject_constants(value):
     raise ManifestError(f'nonfinite number {value}')
 
 
+def _pairs(pairs):
+    seen = set()
+    out = {}
+    for key, value in pairs:
+        if not isinstance(key, str):
+            raise ManifestError('object key is not a string')
+        if key in seen:
+            raise ManifestError(f'duplicate key {key}')
+        seen.add(key)
+        out[key] = value
+    return out
+
+
 def loads(text):
     try:
-        return json.loads(text, parse_constant=_reject_constants)
+        return json.loads(text, parse_constant=_reject_constants, object_pairs_hook=_pairs)
     except ManifestError:
         raise
     except json.JSONDecodeError as err:
         raise ManifestError(f'malformed json: {err.msg}') from err
+
+
+def _keys(obj, allowed, label):
+    if not isinstance(obj, dict):
+        raise ManifestError(f'{label} is not an object')
+    extra = [key for key in obj if key not in allowed]
+    if extra:
+        raise ManifestError(f'unsupported field {extra[0]}')
+    missing = [key for key in allowed if key not in obj]
+    if missing:
+        raise ManifestError(f'{label} is missing {missing[0]}')
+    return obj
 
 
 def _int(value, label):
@@ -86,9 +146,24 @@ def content_hash(doc):
     return hashlib.sha256(canonical_bytes(doc)).hexdigest()
 
 
+def _policy(raw):
+    allowed = tuple(POLICY_TEXT) + tuple(POLICY_INTS)
+    _keys(raw, allowed, 'policy')
+    out = {}
+    for key, expected in POLICY_TEXT.items():
+        if raw.get(key) != expected:
+            raise ManifestError(f'policy {key} is unsupported')
+        out[key] = expected
+    for key, (low, high) in POLICY_INTS.items():
+        value = _int(raw.get(key), f'policy {key}')
+        if value < low or value > high:
+            raise ManifestError(f'policy {key} is out of range')
+        out[key] = value
+    return out
+
+
 def _loadout(raw):
-    if not isinstance(raw, dict):
-        raise ManifestError('loadout is not an object')
+    _keys(raw, ('status', 'source', 'gold', 'ship_figure', 'scout_figure', 'donkey_figure', 'holds'), 'loadout')
     status = _str(raw.get('status'), 'loadout status')
     source = _str(raw.get('source'), 'loadout source')
     gold = _int(raw.get('gold'), 'gold')
@@ -102,8 +177,7 @@ def _loadout(raw):
         raise ManifestError('holds must be 1..4 entries')
     parsed = []
     for index, hold in enumerate(holds):
-        if not isinstance(hold, dict):
-            raise ManifestError(f'hold {index} is not an object')
+        _keys(hold, ('goods', 'tons'), f'hold {index}')
         goods = _str(hold.get('goods'), f'hold {index} goods')
         if goods not in GOODS:
             raise ManifestError(f'hold {index} goods {goods} are unknown')
@@ -129,6 +203,13 @@ def parse(text):
     for key in FORBIDDEN:
         if key in raw:
             raise ManifestError(f'{key} is not allowed; this manifest has no cities or reservations')
+    allowed = (
+        'manifest', 'version', 'profile', 'name', 'edge', 'base', 'seed',
+        'generator', 'islands', 'spawns', 'loadout', 'excluded', 'policy', 'content_hash',
+    )
+    extra = [key for key in raw if key not in allowed]
+    if extra:
+        raise ManifestError(f'unsupported field {extra[0]}')
     if raw.get('manifest') != MANIFEST_NAME:
         raise ManifestError('manifest name is unsupported')
     if _int(raw.get('version'), 'version') != MANIFEST_VERSION:
@@ -147,8 +228,7 @@ def parse(text):
     if seed < 0 or seed > 0xFFFFFFFF:
         raise ManifestError('seed is out of range')
     generator = raw.get('generator')
-    if not isinstance(generator, dict):
-        raise ManifestError('generator is not an object')
+    _keys(generator, ('tool', 'config'), 'generator')
     tool = _str(generator.get('tool'), 'generator tool')
     config = _str(generator.get('config'), 'generator config')
     islands = raw.get('islands')
@@ -161,8 +241,7 @@ def parse(text):
     seen_ids = set()
     last_id = -1
     for index, island in enumerate(islands):
-        if not isinstance(island, dict):
-            raise ManifestError(f'island {index} is not an object')
+        _keys(island, ('id', 'key', 'x', 'y'), f'island {index}')
         ident = _int(island.get('id'), f'island {index} id')
         if ident in seen_ids:
             raise ManifestError(f'duplicate island id {ident}')
@@ -179,8 +258,7 @@ def parse(text):
     seen_points = set()
     last_seat = -1
     for index, spawn in enumerate(spawns):
-        if not isinstance(spawn, dict):
-            raise ManifestError(f'spawn {index} is not an object')
+        _keys(spawn, ('facing', 'seat', 'x', 'y'), f'spawn {index}')
         seat = _int(spawn.get('seat'), f'spawn {index} seat')
         if seat < 0 or seat > 4:
             raise ManifestError(f'spawn seat {seat} is outside 0..4')
@@ -203,6 +281,9 @@ def parse(text):
         parsed_spawns.append({'seat': seat, 'x': x, 'y': y, 'facing': facing})
     if seen_seats != set(range(5)):
         raise ManifestError('spawn seats must be 0..4')
+    if raw.get('excluded') != list(EXCLUDED):
+        raise ManifestError('excluded does not match the ship-start exclusion list')
+    policy = _policy(raw.get('policy'))
     loadout = _loadout(raw.get('loadout'))
     stated = raw.get('content_hash')
     doc = {
@@ -225,12 +306,8 @@ def parse(text):
             'donkey_figure': loadout['donkey_figure'],
             'holds': [dict(item) for item in loadout['holds']],
         },
-        'excluded': [
-            'base-scenario players',
-            'base-scenario units',
-            'player cities',
-            'island reservations',
-        ],
+        'excluded': list(EXCLUDED),
+        'policy': policy,
     }
     digest = content_hash(doc)
     if stated is not None and stated != digest:
@@ -251,6 +328,28 @@ def baseline_ok(doc):
         'donkey_figure': BASELINE_LOADOUT['donkey_figure'],
         'holds': BASELINE_LOADOUT['holds'],
     }
+
+
+def upgrade_v1(text):
+    """Copy a version-1 manifest onto version 2. Placements stay. The v1 hash does not.
+
+    Version 1 is not accepted by parse. This is the explicit migration.
+    """
+    raw = loads(text)
+    if not isinstance(raw, dict):
+        raise ManifestError('manifest is not an object')
+    if _int(raw.get('version'), 'version') != 1:
+        raise ManifestError('upgrade accepts only manifest version 1')
+    if raw.get('profile') != V1_PROFILE_ID:
+        raise ManifestError('upgrade accepts only profile map2-ship-start-v1')
+    if 'policy' in raw:
+        raise ManifestError('version 1 cannot carry a policy')
+    migrated = dict(raw)
+    migrated['version'] = MANIFEST_VERSION
+    migrated['profile'] = PROFILE_ID
+    migrated['policy'] = default_policy()
+    migrated.pop('content_hash', None)
+    return parse(json.dumps(migrated))
 
 
 def emit(doc):

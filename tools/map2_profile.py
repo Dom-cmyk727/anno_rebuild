@@ -510,7 +510,7 @@ def format_report(report):
     return '\n'.join(lines) + '\n'
 
 
-def load_templates(game, keys):
+def load_templates(game, keys, heads=None):
     import insel
     root = Path(game) / 'Scenes' / 'Islands'
     found = {}
@@ -526,11 +526,32 @@ def load_templates(game, keys):
         isl = insel.islands(path.read_bytes())[0]
         height = bytes(insel.grid(isl, 'HEIGHT', 1))
         occupied = set()
+        placements = []
         for name in ('GELAENDE', 'FLUESSE', 'PROD2'):
             for x, y, _bw, _bh, data in insel.blocks(isl, name):
                 for index in range(len(data) // 6):
                     item = data[index * 6:(index + 1) * 6]
-                    occupied.add((x + item[4], y + item[5]))
+                    if heads is None:
+                        # Historical profile: one origin tile. Ship checks pass heads.
+                        occupied.add((x + item[4], y + item[5]))
+                        continue
+                    word = item[0] | (item[1] << 8)
+                    oid = word & 0xFFF
+                    rotation = (word >> 14) & 3
+                    if oid not in heads:
+                        raise KeyError(f'ANLAGEN id {oid} has no HEAD')
+                    hw, hh = heads[oid]
+                    fw, fh = shape.footprint_size(hw, hh, rotation)
+                    ox, oy = x + item[4], y + item[5]
+                    placements.append((ox, oy, fw, fh))
+                    for dy in range(fh):
+                        ty = oy + dy
+                        if ty < 0 or ty >= isl['height']:
+                            continue
+                        for dx in range(fw):
+                            tx = ox + dx
+                            if 0 <= tx < isl['width']:
+                                occupied.add((tx, ty))
         info = next((payload for rec_name, payload in isl['records'] if rec_name == 'INFO'), b'')
         land_hash = None
         if isl['width'] == isl['height']:
@@ -545,6 +566,8 @@ def load_templates(game, keys):
             'occupied': occupied,
             'land_sha256': land_hash,
         }
+        if heads is not None:
+            catalog[key]['placements'] = tuple(placements)
     return catalog
 
 

@@ -1,8 +1,9 @@
 """Schematic previews of a ship-start manifest. Not an engine view.
 
 Land is HEIGHT >= 16. The pale outline is the island rectangle. Sea spawns
-are ships, not Kontors. Choice lines on the overlay are tool routes to one
-possible island, not ownership and not the original's navigation.
+are ships, not Kontors. A choice line joins a spawn to the water cell of one
+validated site. It is a straight relationship to that cell, not the sailed
+path and not a line to the island centre. The site marker is the 4x4 origin.
 
   python3 -I tools/map2_ship_preview.py <manifest> --game-dir <dir> --out-dir <dir>
 """
@@ -14,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fixed_map  # noqa: E402
 import map2_manifest as mf  # noqa: E402
 import map2_preview as prev  # noqa: E402
-import map2_profile  # noqa: E402
 import map2_shape as shape  # noqa: E402
 import map2_ship as ship  # noqa: E402
 
@@ -85,13 +85,18 @@ def spawns(rgb, width, height, doc, project):
 
 def choices(rgb, width, height, doc, catalog, report, project):
     by_id = {island['id']: island for island in doc['islands']}
-    for seat, island_id in report['witness']:
-        island = by_id[island_id]
-        template = catalog[island['key']]
-        spawn = doc['spawns'][seat]
-        x0, y0 = project(spawn['x'] // mf.MILLI, spawn['y'] // mf.MILLI)
-        x1, y1 = project(island['x'] + template['w'] // 2, island['y'] + template['h'] // 2)
-        prev.line(rgb, width, height, x0, y0, x1, y1, prev.SEAT[seat])
+    for item in report.get('witness_detail') or ():
+        colour = prev.SEAT[item['seat']]
+        sx, sy = item['spawn']
+        wx, wy = item['water']
+        x0, y0 = project(sx, sy)
+        x1, y1 = project(wx, wy)
+        prev.line(rgb, width, height, x0, y0, x1, y1, colour)
+        ox, oy = item['site']
+        for dy in range(4):
+            for dx in range(4):
+                px, py = project(ox + dx, oy + dy)
+                prev.put(rgb, width, height, px, py, colour)
     for island_id in report['shares']:
         if island_id >= 10:
             continue
@@ -126,9 +131,10 @@ def legend(rgb, width, height, x0, overlay):
         prev.put(rgb, width, height, x, y + 71, INK)
     text(rgb, width, height, x0, y + 78, '100', INK, 2)
     if overlay:
-        text(rgb, width, height, x0, y + 110, 'LINE CHOICE', INK, 2)
-        text(rgb, width, height, x0, y + 132, 'S SHARE', INK, 2)
-        text(rgb, width, height, x0, y + 154, 'NO CLAIM', INK, 2)
+        text(rgb, width, height, x0, y + 110, 'LINE TO SEA', INK, 2)
+        text(rgb, width, height, x0, y + 132, 'SITE', INK, 2)
+        text(rgb, width, height, x0, y + 154, 'S SHARE', INK, 2)
+        text(rgb, width, height, x0, y + 176, 'NO CLAIM', INK, 2)
 
 
 def render(doc, catalog, report, out_dir, stem):
@@ -178,11 +184,8 @@ def main(argv):
     if len(argv) != 6 or argv[2] != '--game-dir' or argv[4] != '--out-dir':
         print('usage: map2_ship_preview.py <manifest> --game-dir <dir> --out-dir <dir>', file=sys.stderr)
         return 2
-    doc = mf.parse(mf.PathText(argv[1]))
     game, out_dir = argv[3], argv[5]
-    keys = {island['key'] for island in doc['islands']}
-    catalog = map2_profile.load_templates(game, keys)
-    _doc, report = ship.load_and_check(argv[1], game)
+    doc, report, catalog = ship.load_and_check(argv[1], game)
     for path in render(doc, catalog, report, out_dir, doc['name']):
         print(path)
     sys.stdout.write(ship.format_report(report))

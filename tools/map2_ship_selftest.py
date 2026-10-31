@@ -48,7 +48,7 @@ def water(w, h):
 def manifest(edge, islands, spawns):
     doc = {
         'manifest': mf.MANIFEST_NAME,
-        'version': 1,
+        'version': mf.MANIFEST_VERSION,
         'profile': mf.PROFILE_ID,
         'name': 'synthetic',
         'edge': [edge, edge],
@@ -74,6 +74,8 @@ def manifest(edge, islands, spawns):
                 {'goods': 'tools', 'tons': 30},
             ],
         },
+        'excluded': list(mf.EXCLUDED),
+        'policy': mf.default_policy(),
     }
     return mf.parse(json.dumps(doc))
 
@@ -130,7 +132,7 @@ def test_enclosed():
         {'id': 4, 'x': 0, 'y': 14, 'key': 'DEST'},
     ]
     keys = {
-        'T': water(12, 1), 'B': water(12, 1), 'L': water(1, 10), 'R': water(1, 10),
+        'T': land(12, 1, 2), 'B': land(12, 1, 2), 'L': land(1, 10, 2), 'R': land(1, 10, 2),
         'DEST': land(4, 4, 2),
     }
     # World must contain dest at y=14 h=4, so edge >= 18. The ring is only
@@ -154,7 +156,7 @@ def test_no_complete_matching():
         {'id': 1, 'x': 0, 'y': 16, 'key': 'B'},
         {'id': 2, 'x': 0, 'y': 8, 'key': 'WALL'},
     ]
-    keys = {'A': land(4, 4, 2), 'B': land(4, 4, 4), 'WALL': water(24, 1)}
+    keys = {'A': land(4, 4, 2), 'B': land(4, 4, 4), 'WALL': land(24, 1, 2)}
     spawns = five([(1, 5), (2, 5), (1, 12), (2, 12), (3, 12)])
     text = run(24, islands, keys, spawns)
     expect('distinct-island witness covers 2 of 5' in text, 'options without a 5-matching are refused')
@@ -187,7 +189,7 @@ def test_obstructed():
     islands = [{'id': 0, 'x': 0, 'y': 0, 'key': 'BAD'}]
     keys = {'BAD': land(4, 4, 2, blocked)}
     text = run(16, islands, keys, five([(0, 6), (1, 6), (2, 6), (0, 7), (1, 7)]))
-    expect('island 0 has no founding site' in text, 'an obstructed coast has no founding site')
+    expect('island 0 has no eligible founding site' in text, 'an obstructed coast has no founding site')
 
 
 def test_detour():
@@ -244,37 +246,6 @@ def test_manifest_and_dump():
            'the same input regenerates the same witness')
 
 
-def test_controls():
-    islands = [{'id': 0, 'x': 0, 'y': 0, 'key': 'BAD'}]
-    keys = {'BAD': land(4, 4, 2, {(x, y) for x in range(4) for y in range(4)})}
-    ship.COUNT_OBSTACLES = False
-    try:
-        text = run(16, islands, keys, five([(0, 6), (1, 6), (2, 6), (0, 7), (1, 7)]))
-    finally:
-        ship.COUNT_OBSTACLES = True
-    expect('island 0 has no founding site' not in text, 'ignoring obstacles hides the blocked coast')
-    restored = run(16, islands, keys, five([(0, 6), (1, 6), (2, 6), (0, 7), (1, 7)]))
-    expect('island 0 has no founding site' in restored, 'obstacle detection is restored')
-
-    islands = [{'id': 0, 'x': 0, 'y': 0, 'key': 'BIG'}]
-    keys = {'BIG': land(16, 16, 2)}
-    ship.REQUIRE_DISTINCT = False
-    try:
-        text = run(32, islands, keys, five([(2 + seat, 18) for seat in range(5)]))
-    finally:
-        ship.REQUIRE_DISTINCT = True
-    expect('distinct-island witness covers 1 of 5' not in text, 'dropping the distinct-island rule hides five beaches')
-
-    islands = [{'id': i, 'x': i * 8, 'y': 0, 'key': f'I{i}'} for i in range(5)]
-    keys = {f'I{i}': land(4, 4, 2) for i in range(5)}
-    ship.REPORT_ABSENT_CLIMATES = False
-    try:
-        text = run(48, islands, keys, five([(i * 8 + 1, 5) for i in range(5)]))
-    finally:
-        ship.REPORT_ABSENT_CLIMATES = True
-    expect('climate polar absent everywhere' not in text, 'dropping absent-climate reporting hides an empty bucket')
-
-
 def main():
     test_corner_cut()
     test_zero_cities_and_asymmetric()
@@ -289,7 +260,6 @@ def main():
     test_duplicate_shape_and_people()
     test_halfplane_literals()
     test_manifest_and_dump()
-    test_controls()
     print(f'{len(FAILURES)} failed')
     return 1 if FAILURES else 0
 

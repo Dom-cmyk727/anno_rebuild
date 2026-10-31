@@ -195,6 +195,8 @@ def build(spec, keys_by_group):
             'donkey_figure': mf.BASELINE_LOADOUT['donkey_figure'],
             'holds': [dict(item) for item in mf.BASELINE_LOADOUT['holds']],
         },
+        'excluded': list(mf.EXCLUDED),
+        'policy': mf.default_policy(),
     }
     return doc, problems, missed, tried, len(placed)
 

@@ -125,6 +125,8 @@ struct PictureJob {
     std::shared_ptr<const render::Scene> base;
     std::vector<SceneBuilding> buildings;
     std::size_t bytes = 0;
+    /// When the job was handed to the workers (its queue delay is the time to its start).
+    std::chrono::steady_clock::time_point submitted{};
 };
 
 /// The result of a rebuild: the island with its records after the change, its lists, and the change
@@ -215,6 +217,8 @@ struct ScenePicture::State {
     /// Anlagen ids below 0x1000 that are buildings (the loader's rule, asked once).
     std::shared_ptr<const std::vector<bool>> is_building;
     Stats stats;
+    /// Per build: the milliseconds in the queue and in the build (bounded; see the worker).
+    std::vector<double> queue_ms, build_ms;
 
     /// Closes island `index`'s open build (committed, dropped or failed): its bytes and slot are
     /// freed.
@@ -326,6 +330,8 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                         ++st->running;
                     }
                     const auto start = Clock::now();
+                    const double queue_ms =
+                        std::chrono::duration<double, std::milli>(start - job.submitted).count();
                     PictureResult result;
                     bool built = false;
                     std::string message;
@@ -348,6 +354,13 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                         const std::lock_guard lock(st->mutex);
                         --st->running;
                         st->stats.last_build_ms = ms;
+                        // Bounded sample: the newest samples are kept (the bench runs far fewer
+                        // builds).
+                        constexpr std::size_t kSamples = 200000;
+                        if (st->build_ms.size() < kSamples) {
+                            st->build_ms.push_back(ms);
+                            st->queue_ms.push_back(queue_ms);
+                        }
                         const bool current = st->inflight[job.index] == job.version;
                         if (!current) {
                             // Superseded while it ran (a newer request or a dropped request):
@@ -552,6 +565,7 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             job.base = current_;
             job.buildings = std::move(groups[current_->islands[index].number]);
             job.bytes = bytes;
+            job.submitted = Clock::now();
             state_->jobs.push_back(std::move(job));
             if (is_wanted) {
                 ++requested;
@@ -721,6 +735,11 @@ void ScenePicture::wait_idle() {
 std::size_t ScenePicture::pending() const {
     const std::lock_guard lock(state_->mutex);
     return state_->dirty.size();
+}
+
+ScenePicture::Timings ScenePicture::timings() const {
+    const std::lock_guard lock(state_->mutex);
+    return Timings{state_->queue_ms, state_->build_ms};
 }
 
 std::string ScenePicture::error() const {

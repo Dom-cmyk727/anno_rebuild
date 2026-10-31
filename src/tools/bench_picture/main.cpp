@@ -596,6 +596,7 @@ int main(int argc, char** argv) {
         std::this_thread::yield();
     }
     const double drain_ms = ms_between(drain_start, Clock::now());
+    const auto worker_timings = picture.timings();
     join_busy();
     const auto st = picture.stats();
     std::printf("ASYNC bounded-viewport frame loop with %zu chunk workers; not a presented-frame "
@@ -609,6 +610,10 @@ int main(int argc, char** argv) {
     apply.print();
     commit.print();
     frame.print();
+    Series queue{"job queue delay (worker, submit to start)", worker_timings.queue_ms};
+    Series build{"job build time (worker)", worker_timings.build_ms};
+    queue.print();
+    build.print();
     std::printf(
         "\ncommitted=%llu discarded=%llu coalesced=%llu deferred=%llu started_deferred=%llu "
         "rebased=%llu "

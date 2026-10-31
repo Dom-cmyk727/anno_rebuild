@@ -136,6 +136,14 @@ class ScenePicture {
     };
     [[nodiscard]] Stats stats() const;
 
+    /// The per-build samples in milliseconds (bounded at 200000 builds; the newest are not kept
+    /// past that): the time a build waited in the queue, and the time it took in a worker. Bench
+    /// and tests only.
+    struct Timings {
+        std::vector<double> queue_ms, build_ms;
+    };
+    [[nodiscard]] Timings timings() const;
+
   private:
     struct State;
     struct Reaper;

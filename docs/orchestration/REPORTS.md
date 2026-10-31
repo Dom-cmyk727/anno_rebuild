@@ -8855,3 +8855,107 @@ report commit on top. Release bench `cache/dy-runs/bench_picture.release-9ca5cb0
 dev `anno_app_tests` `a246b55d94636e27…`, `anno_render_tests` `b81371320cdb5e80…`, `anno_app_alloc_tests`
 `bf3b59f298fa1160…`; Release `anno_app_tests` `3e6002f8e279091d…` (sha256, first 16 hex). No owned job is
 running. The autonomous loop is off. GPU integration, developer input, preview, merge and push are not done.
+
+## Round dz: W4.3 CPU review findings closed; forward-progress publication (review candidate)
+
+Worktree `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `06dd6cc` (verified at the start, clean). Code
+under test: `b516528` (the last source change); the commits after it change documentation only. Evidence
+directory (ignored): `cache/dz-runs/` inside the worktree. Host: Apple M5 Max, 18 cores, 48 GiB, macOS (Darwin
+27.0.0); shared, not quiet (load 2.6 to 5.7; another executor's simulation tests at 100 to 400% CPU during the
+measurements, recorded in each `provenance.txt`; no other executor or application was stopped). The display was
+kept awake by one owned `caffeinate -d -i -t 21600` (pid 5855); the other `caffeinate` processes on the host are
+not this executor's. `data/maps/lan5.txt` unchanged (1476 bytes, sha256 `1a471d9f…7019357`), at the start and at
+the end.
+
+Commits: `0c149f9` strict trace reading and run completeness; `6a361ff` guarded host sampling, checked evidence;
+`67ac139` allocation probe pairing; `4fde0ad` matrix runner and its contract test; `4bee64c` per-island commit
+keys; `735f48f` all-keys-fresh readiness per island, convergence; `e807808` bench readiness per committed island,
+drain stages; `45d7cc7` publication contract (written before the default changed); `96cf6e9` Monotonic default,
+credit release before the commit's dispatch, the `scene_picture_publish` suite; `d40bf2e` real-data intermediate
+publications; `b12d7d6` sampled and exact peaks, version progress; `19cb823` the round-dz cases; `3d2fb9d` test
+names with a semicolon; `b516528` the bounds drain; and the documentation and this report.
+
+### Correction of a round-dy statement
+
+The round-dy commit list above calls `7fb4bef` "docs". Correct statement: `7fb4bef` also added
+`tools/bench/picture_d3d4.cases`, although it did not change the compiled C++ source. Its saved case-file hash
+matches the committed file (sha256 `99c94bb0aa3f9278…` in `cache/dy-runs/d3d4-r2/provenance.txt` and for the
+file at `7fb4bef`).
+
+### Findings and dispositions
+
+| Item | Change | Evidence | Status |
+|---|---|---|---|
+| 1a host sampling only where available; unavailable is explicit | `6a361ff`: `getrusage`/`sysctl` behind `__APPLE__`/`__linux__`, Linux RSS from `/proc/self/statm`, every counter `-1` printed as `unavailable`, never 0 | macOS build and runs; the Linux branch is compiled only on Linux | DONE on macOS; Linux compile NOT RUN (no GCC 13 / Clang 18 here) |
+| 1b allocation probe correct under MSVC | `67ac139`: every `new` form (plain, aligned, sized, nothrow, aligned nothrow) pairs with its own release (`_aligned_malloc`/`_aligned_free` on MSVC); refusal meaning kept, nothrow refusal returns null | `anno_app_alloc_tests` 3 of 3 dev and ASan | DONE on macOS; MSVC NOT RUN |
+| 1c strict trace ingestion | `0c149f9`: header, exactly four fields, whole numbers, finite non-negative times, 32/64-bit ranges, unknown kinds, events after `run_end`, unreadable files; `run_end` carries the exit status; an idle complete run is a success, a cut or failed one never | `picture trace:` cases (9) and `picture_matrix_contract` | DONE |
+| 1d every artifact's write checked | `6a361ff`: `save_text` checks open, write, flush and close and names the path; any unsaved file exits 5 | contract test; `p4-one` artifact check | DONE |
+| 1e runner | `4fde0ad`: last line without newline runs, zero selected cases refused, a failing case keeps its status and artifacts and stops the run, an out dir with files is refused | `tools/bench/picture_matrix_test.sh` (14 checks; the round-dy runner fails the first) | DONE |
+| 1f cheap contract tests | the above, as CTest `picture_matrix_contract` | 0.79 s | DONE |
+| 2a-2d readiness boundaries, all keys fresh at once, per island | `4bee64c`, `735f48f`, `e807808` (`ReadinessTracker`, `last_commit()`, `chunks.tsv` per key and version) | A/B reinvalidation regression (a "seen fresh once" mutant fails at poll 4); mixed-island known answers | DONE |
+| 2e raw per-key events, extended known answers | `chunks.tsv` `t_ms island generation level x y state`; coalescing, mixed islands, supersession, unfinished, convergence, intermediate commits | `picture trace:` cases | DONE |
+| 2f drain stages separately labelled | stage rows per phase (loop, drain, pan, zoom) | `p4-matrix-table.md` | DONE |
+| 3a contract before the default | `45d7cc7` (docs/app/game-shell.md, "Publication policy"); LatestOnly kept as the diagnostic policy | — | DONE |
+| 3b deterministic coverage | `96cf6e9`: stream progress against LatestOnly (exact versions 1, 3, 5, 7), late older result after a newer commit, older result finishing first, 1/2/4 workers at a barrier, competing islands under one credit and under a byte budget (1/2/4 workers), reaper stall and recovery, transient and permanent failures, a queued job rebased by an intermediate commit, a frame-held intermediate generation with shutdown. The five strict tests select `LatestOnly` explicitly with their checks unchanged | `scene_picture_publish` 8 of 8; 25 repeats, 0 failures | DONE |
+| 3c intermediate publications on real data | `d40bf2e`: build, build, demolish, build through a held worker; versions 1 and 3 published as intermediates, each equal to a freshly loaded scene of the desired list at its version (PROD2 items; chunk layers alone and through the bridge's invalidated cache) | dev and ASan pass; a previous-state mutant fails 10 assertions | DONE |
+| 3d default | Monotonic is the default | after 3b and 3c passed | DONE |
+| NEW: a waiting island starved under one admission | the commit released the committed results' credits only after its own dispatch, so a deferred island was admitted only by the next `apply`, where the edited islands come first. Fixed in `96cf6e9` (credits released before the dispatch) | before the fix the competing-islands case: island 1 committed 0 of 12 rounds, island 0 12 (`p3-publish-prefix.log`); after: 6 and 6 | FIXED |
+| NEW: requeue cost of Monotonic | a build that runs while its island's previous version is committed is requeued (its change set is against lists that are gone): with one worker every second build commits; the matrix requeued 7, 23 and 60 results with 1, 2 and 4 workers | game-shell.md; `p4-matrix` | DOCUMENTED, not changed (alternative below) |
+| NEW: four test names never ran | a `;` in a doctest name splits its CTest registration; each part runs zero cases and passes. Three were this round's, one (`picture recovery: one over-budget island still makes progress…`) has not run under CTest since round dw (`955b622`): the name guard missed it because the name starts on the line after `TEST_CASE(`. Renamed; the guard checks whole names; `run_selected.sh` fails a child that ran no case (`vacuous_cases`, exit 7) | `3d2fb9d`; the round's earlier synthetic gate `p3-synthetic-3.log` had 4 such children among its 51 "passes" | FIXED; that earlier gate counts as 47 executed passes |
+| NEW: the bounds drain gave up while the reclaimer was behind | under Monotonic `scene picture bounds: sustained edits…` commits 42 generations (LatestOnly 2), a reclaimer that is behind skips commits by design, and the drain's 200 rounds ran out in microseconds | failed once in gate G1 (pending 2); reproduced with the reclaimer slowed to 200 ms a scene (same failure, commit_skipped 231); passes with the drain waiting (bounded) for the reclamation: `b516528` | FIXED in the test; product behaviour unchanged (the window retries every frame) |
+| 4d labels | `b12d7d6`: sampled and exact peaks named apart; `retired_payload` is now `unreferenced_payload` (includes results not committed and builds in flight); version progress (`intermediate_commits`, `version_requeues`, `rebased`) | `p4-one`, `p4-matrix` | DONE |
+
+### Publication policy decision and invariants
+
+Monotonic is the default; LatestOnly stays as an explicit diagnostic policy (`--publish latest` in the bench). The
+seven invariants are in docs/app/game-shell.md, "Publication policy": committed versions only increase; a
+published version never exceeds the desired one; an intermediate publication leaves newer work pending; the picture
+converges once the edits stop; admission credits, byte reservations and reclamation limits keep gating as before;
+stale chunk completions stay rejected; the simulation, commands, costs, placement, economy and lockstep are not
+involved. Alternative not taken: composing a requeued result's change set with the intermediate commit's (the
+union of both key sets is a correct superset) to save the requeued builds; it changes what a commit invalidates
+and was not needed for progress.
+
+### Measurements (Release, `tools/bench/picture_dz.cases`, docs/perf/README.md "Publication policy")
+
+Frozen binary `cache/dz-runs/bench_picture.release-b12d7d6` (sha256 `bb3839daf4bd1204…`), source `b12d7d6`,
+clean tree; 12 cases sequential, all exit 0 with `VERIFY OK`; the one-edit artifact check (`p4-one`: every file
+saved, parsed with matching column counts, `--aggregate` exit 0, the table built). At 400 edits per second,
+object-ready p50 / max with 1, 2, 4 workers: Monotonic 72.8 / 292.6, 49.0 / 208.2, 48.7 / 123.3 ms; LatestOnly
+549.7 / 1058.4, 518.3 / 1024.1, 531.3 / 1042.2 ms. Below the build rate, delayed reclamation and the offscreen
+return the policies agree within the host's spread (five below-rate pairs in three orders: worker build p50 13.5
+to 15.3 ms or 18.9 to 20.5 ms under either policy, so no single-case difference is read as the policy's). Cost:
+exact peak incremental payload 6.5 / 8.9 / 10.5 MB against 4.05 MB; requeues 7 / 23 / 60; reservations within the
+same admission (exact peak 32.4 to 36.0 MB). Window stages stay under 0.13 ms (commit) and 0.16 ms (chunk update).
+Limitations: a shared host; five cities of about 40 buildings, not a late-game economy; no roads; scenery caps the
+density; the original's placement rules are partly resolved; CPU stages only, no presented frame.
+
+### Gates (each run once unless stated; initial failures kept)
+
+| Gate | Command | Revision / identity | Result |
+|---|---|---|---|
+| G1 dev, every bridge user and the real-data cases | `tools/test/run_selected.sh build/dev - '^(anno_app_tests\.(credit\|ownership\|accounting\|progress\|trace\|picture\|publish\|scene picture\|probe\|backing\|legal workload)\|anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)' 1800 … 6` | `3d2fb9d` | FAIL: 77 of 78, `scene picture bounds: sustained edits…` pending 2 (`p5-dev-gate.log`). Fixed in the test at `b516528` (above); this run is not passed by the later one |
+| G2 dev, the same selection | as G1 | `b516528`, `anno_app_tests` `9ef0b51468c621e1` | PASS 78 of 78, vacuous 0, asset skips 0; 2 probe cases skip by design (`ANNO_PROBE` unset) (`p5-dev-gate-2.log`) |
+| G3 ASan/UBSan, the same selection | as G1 on `build/asan` | `b516528`, `anno_app_tests` `1359c93acdd2c03c`, alloc `b28e84c0aab985bb` | PASS 78 of 78, no sanitizer line, vacuous 0; the three real-data legal-workload cases executed (300 s for the intermediate one) (`p5-asan-gate.log`) |
+| G4 dev alloc, contract, names after the full build | `run_selected.sh build/dev - '^(anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)'` | alloc `51126ad211abb2bf` (identical after the relink) | PASS 5 of 5 |
+| G5 dev, the rest of `anno_app_tests` but `play:` | `run_selected.sh build/dev - '^anno_app_tests\.(CRC\|PNG\|game directory\|command\|building delta\|commands file\|derived zoom\|developer\|feedback\|mailbox\|picker\|play loader\|replay\|scene loading\|zoom\|--zoom)'` | `b516528` | PASS 36 of 36 |
+| G6 builds and format | Release `anno_app_tests anno_app_alloc_tests bench_picture`; full dev build; `clang-format 23.1.3 --dry-run --Werror` on the 12 changed C++ files | `b516528` | PASS: 0 warnings, 0 errors; format clean |
+| G7 repeats | `scene_picture_publish` 25 times; the bounds case 12 times, 4 at once | pre-rename binary; `b516528` | 0 failures in each |
+| REUSED heavy label and the render, sim, formats and assets suites | round dy E2/E3 | `9ca5cb0`; `git diff 9ca5cb0 HEAD -- src/render src/sim src/formats src/assets` is empty, and no heavy case constructs a `ScenePicture` | not repeated (unchanged code) |
+| NOT RE-RUN the 16 `play:` cases | — | `play.cpp` includes neither changed file | not repeated (2670 s alone in round dy) |
+| NOT RUN Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -R "anno_app_(alloc_)?tests\." -j 8` | — | NOT RUN (no Windows host here); the alloc probe's MSVC pairing (1b) is the case to watch |
+| NOT RUN Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | NOT RUN (neither compiler here); the `/proc/self/statm` branch (1a) is compiled only there |
+| NOT RUN GPU (RTX 4090, Radeon, Metal) | — | — | outside this assignment; Metal #367 and #370 stay open and unwaived as in round dy |
+
+### Next single GPU integration unit
+
+Row 1 of docs/app/gpu-handoff.md, section 3: the viewer takes one owning generation handle per frame from
+`ScenePicture::scene()` and passes it to `update_chunks`, the CPU `render` and `GpuFrame::render`/`group_ready`
+(the shared-handle signature change), with one test: after one commit the GPU and the CPU path show the same
+chunk pixels, run on the RTX 4090, the Radeon iGPU and Metal. Nothing of it is implemented.
+
+**Final identities.** Code under test `b516528` (clean tree for every gate). Release bench
+`cache/dz-runs/bench_picture.release-b12d7d6` sha256 `bb3839daf4bd1204…`; dev `anno_app_tests`
+`9ef0b51468c621e1…`, `anno_app_alloc_tests` `51126ad211abb2bf…`; ASan `anno_app_tests` `1359c93acdd2c03c…`,
+`anno_app_alloc_tests` `b28e84c0aab985bb…` (sha256, first 16 hex). No merge, push, rebase, prune or map change.
+GPU integration, viewer wiring, developer input and preview are not done. No autonomous loop.

@@ -1512,7 +1512,7 @@ payload counts.
   - single edits, the sustained stream and above the build rate: 0.0 ms at p50, so at the median uploads
     add nothing after CPU readiness;
   - above the build rate the tail is large: p95 92.8 ms and 24.2 ms, max 92.8 ms and 47.3 ms (w2, w4);
-    sustained max 23.7 and 23.2 ms;
+    the four sustained cases have a max of 23.2 to 23.7 ms;
   - under the 50-edit burst the upload limit adds 23.9 to 71.5 ms (n = 10 per case, so p50 and max are the
     same sample).
 
@@ -1554,8 +1554,10 @@ than the percentile needs.
 | burst 1080p, w2 | 50 / 16.6 / 16.7 / – / 16.7 | 50 / 24.5 / 54.7 / – / 54.7 | 50 / 13.6 / 13.7 / – / 13.9 | 50 / 20.3 / 23.1 / – / 23.1 | 10 / 73.1 / – / – / 73.1 | 10 / 43.4 / – / – / 43.4 |
 | above the rate 1080p, w2 | 400 / 20.8 / 65.9 / 87.1 / 111.5 | 400 / 8.8 / 22.8 / 24.4 / 49.1 | 400 / 13.7 / 13.9 / 14.1 / 14.1 | 400 / 7.9 / 22.4 / 22.9 / 22.9 | 74 / 47.3 / 108.5 / – / 108.5 | 74 / 0.0 / 92.8 / – / 92.8 |
 
-Above the build rate an edit waits longer for its admission (20.8 ms at p50, up to 111.5 ms) than for the
-worker build: dispatch defers it while the outstanding builds are at their limit.
+With two workers above the build rate (above-hd-w2), an edit waits longer for its admission (20.8 ms at p50,
+up to 111.5 ms) than for the worker build (13.7 ms at p50): dispatch defers it while the outstanding builds
+are at their limit. With four workers (above-hd-w4, not in the table) admission is 0.1 ms at p50, p95 44.9
+ms and max 73.4 ms, against a worker build of 13.9 ms at p50.
 
 So in the sustained stream an edit's 50 ms to CPU readiness is roughly:
 - 20 ms of worker build;

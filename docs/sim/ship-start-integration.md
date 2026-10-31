@@ -1,16 +1,20 @@
 # Ship-start integration contract
 
-**Status:** proposal for the first implementation units. It does not load a
+**Status:** revised specification for a load-only unit. It does not load a
 manifest into the simulation, and it does not approve the starting economy.
-Version-2 candidate bytes stay as they are. Facing conversion and movement
-are specified in `docs/re/ship-navigation.md`. The founding click is
-specified in `docs/re/ship-founding.md`.
+Version-2 candidate bytes stay as they are. Movement stays in
+`docs/re/ship-navigation.md`. The warehouse click stays in
+`docs/re/ship-founding.md`. Neither is behaviour of the load unit.
+
+The load unit uses the existing player table and the existing figure
+registry (`World::figures()`, `docs/sim/state.md` §4.9). It does not add a
+second world of ships.
 
 ## 1. Field owners
 
 The manifest is `map2-ship-manifest` version 2, profile `map2-ship-start-v2`.
-`src/sim_load` does not read it today. Owners below are the intended split
-when a loader is added.
+`src/sim_load` does not read it today. Owners below are the split when a
+loader is added.
 
 | Field | Owner | Authority |
 |---|---|---|
@@ -21,66 +25,156 @@ when a loader is added.
 | `generator` | Format provenance | Not simulated. |
 | `islands[].key` | Content registry | Which SCP template. |
 | `islands[].id`, `x`, `y` | `sim_load`, then the island table in the simulation | Placement of templates. Not ownership. |
-| `spawns[].seat` | Simulation player identity | Owner of that ship. |
-| `spawns[].x`, `y` | Simulation, integer milli-tiles | Authoritative position (`docs/re/ship-navigation.md` §5). |
-| `spawns[].facing` | Format 0..3, simulation `dir16` after the cardinal table | Not a warehouse door. |
-| `loadout` | Simulation player and ship cargo | Comparison proposal, not approved balance. |
+| `spawns[].seat` | `PlayerId` slot | Owner of that ship. Not a `FigureId`. |
+| `spawns[].x`, `y` | Manifest: integer milli-tiles. Simulation: `FixedPos` | The conversion in §2. The manifest integer is not rewritten. |
+| `spawns[].facing` | Manifest 0..3. Simulation: `dir16` on the ship figure, written at load | The table in `docs/re/ship-navigation.md` §4. Not a warehouse door. |
+| `loadout` | `Player.money` and the ship's ordered holds | Comparison baseline only. See §4. |
 | `excluded` | `sim_load` | What the base scenario must not copy. |
 | `policy` | Offline checker | Not engine rules. The loader may store the block for provenance and must not sail by it. |
 | `content_hash` | Serialization check of the file | Not the world checksum. |
 | Exterior-4, routes, 256-tile component | Offline checker only | Not stored as passability. |
 | Sprite frame for `dir16` | Renderer | Display. A wrong frame does not move the ship. |
 
-A checksum of a running world covers player gold, ship positions, facing,
-holds, nested units, and cities. It does not cover the renderer's camera.
+A checksum of a running world covers `Player.money`, figure positions,
+`dir16`, holds, parent links, and cities, because those fields are in the
+state stream. It does not cover `figures.by_id`. That map is derived.
 
-## 2. Initialization
+## 2. Where the units live
 
-The version-2 file describes five seats, `0..4`. That is a property of this
-manifest version. The world must not use 5 as a maximum player count. A
-later version can carry another count. This contract's first loader accepts
-version 2 as five seats and rejects any other count in that version.
+Ships, embarked scouts and donkeys are `Figure` values in
+`World::figures()`. `FigureId` is the instance. `Figure.kind` is the
+FigurenHeader type: 1502 ship, 717 scout, 718 donkey. A scout is not a
+second ship. A donkey is not a crew slot (`docs/re/annoscene.md`: `CREW/ENTRY`
+is 6 bytes and `ESEL` is a separate 8-byte record).
 
-For each seat, in order `0..4`:
+`Figure.home` stays invalid on all three. In the current registry `home` is
+the building whose counter the figure holds. These units have no building.
+Nesting uses a new parent link, not `home`.
 
-- Player identity is the seat index. The ship’s owner is that player. No
-  other player owns it.
-- Gold is `loadout.gold` (the proposal: 30000).
-- One ship, figure type `loadout.ship_figure` (the proposal: 1502).
-- Nested on that ship, not as further ships:
-  - one crew record for figure `loadout.scout_figure` (the proposal: 717),
-    using the `CREW/ENTRY` shape in `docs/re/annoscene.md` (figure id, crew
-    slot index);
-  - one `ESEL` record for figure `loadout.donkey_figure` (the proposal:
-    718), which is the donkey carried by that unit, not a crew slot.
-- Four cargo holds, in file order. The proposal is wood 50 t, food 10 t,
-  tools 50 t, tools 30 t. Two holds may name the same good. They stay two
-  holds.
-- Position and facing come from that seat's spawn. Facing uses the cardinal
-  table in `docs/re/ship-navigation.md` §4. The stored manifest integer is
-  not rewritten.
-
-Cities: none. Island reservations: none. No tile owner is written because a
-ship exists. `developer_start` must be off for this load. The base scenario
-(`base`) supplies rules and catalogues. Its players and units are not
-copied, because `excluded` lists `base-scenario players` and
-`base-scenario units`. A base player that would have occupied a seat is not
+Gold is `Player.money` on the player in slot `seat`. The constructor's
+initial 10000 is replaced by the baseline's 30000. No second purse is
 created.
 
-Identifiers, in seat order, with no pointer addresses and no RNG:
+### Identity
 
-- player id = seat
-- ship id = a function of seat documented by the loader (the first unit
-  below uses `ship_id = seat`)
-- crew slot index = 0 for the single scout
-- hold index = `0..3` in file order
+`IdCounters.next_figure` starts at 1 (`ids.hpp`). `validate_figures`
+rejects `id.v == 0` and `id.v >= next_figure` (`figure.cpp`). The default
+`FigureId` is `uint64` max, not 0. Seat 0 is a valid `PlayerId` and an
+illegal `FigureId`. `ship_id = seat` is not the allocation.
 
-The map `seed` is stored and not consumed. Ship names that the original
-draws from a shared table are left unset. A later spec that wants those
-names names the RNG call. Load itself performs no draw.
+The loader assigns ids from `next_figure` in this order, and advances the
+counter by one after each figure:
 
-`loadout.status` remains `proposed-baseline`. Loading it does not record an
-owner approval.
+for seat in `0..4`: the ship, then the scout, then the donkey.
+
+Seat 0 receives figure ids 1, 2 and 3. Seat 4 receives 13, 14 and 15.
+After the load, `next_figure` is 16. The same manifest produces the same
+ids. Nothing is drawn from `seed`.
+
+`figures.by_id` is rebuilt with `rebuild_figure_index`. It is not written
+to the stream and it is not part of the hash.
+
+### Positions
+
+A manifest coordinate `m` is an integer milli-tile. `FixedPos` is Q24.8:
+one tile is 256. Those units meet at
+
+```
+q = m * 32 / 125
+```
+
+because `256/1000 = 32/125`, and 32 and 125 are coprime. The loader accepts
+`m` only when `m * 32` is divisible by 125. The quotient is the stored
+`int32`. There is no rounding step. A value that does not divide, or whose
+quotient does not fit in `int32`, is a load error and produces no world.
+
+A tile centre does divide. Milli-tile `1000*t + 500` is `125 * (8*t + 4)`,
+so
+
+```
+q = (8*t + 4) * 32 = 256*t + 128
+```
+
+which is the centre of tile `t` in Q24.8. Examples, both exact:
+
+| Milli-tile | Quotient |
+|---|---|
+| 500 | `500 * 32 / 125 = 128` |
+| 110500 | `110500 * 32 / 125 = 28288` (`256*110 + 128`) |
+| −125 | `−125 * 32 / 125 = −32` |
+
+`kWorldEdgeBound` is at most `2^23` tiles (`figure.hpp`). A centre inside
+that edge fits the `int32`. The original ship's float height
+(`+0x18`) is not a manifest field and is not stored. `FixedPos` has x and y.
+
+The scout and the donkey receive the ship's `FixedPos`. The original
+`ESEL` position is `u16` tile×10, a different scale. The load does not
+keep a second coordinate that can diverge. Moving them apart belongs to a
+later movement unit.
+
+### Facing
+
+Conversion is part of this load, using the table in
+`docs/re/ship-navigation.md` §4: version-2 facing 0, 1, 2, 3 becomes
+`dir16` 12, 8, 4, 0. A version-2 facing outside 0..3 is a load error.
+The manifest integer is not rewritten and is not stored as if it were
+already `dir16`.
+
+`Figure` has no facing field today. The load unit adds a serialized `u8`
+`dir16` (0..15) on `Figure`. The ship stores the converted value. The
+scout and the donkey store the same value, because they are embarked. A
+figure this loader does not create keeps 0.
+
+### Holds, ownership, nesting
+
+The ship's cargo is a new ordered list of holds, `{GoodsId goods, uint32
+tons}`, serialized on the ship figure. The baseline is four entries, in
+file order: wood 50, food 10, tools 50, tools 30. The two tools entries
+stay two entries. The list is not sorted and is not merged.
+
+`Figure.cargo_goods` and `Figure.cargo_88` stay the existing single-cargo
+fields. This loader writes 0 in both for the ship, the scout and the
+donkey. Manifest tons are whole tons. They are not shifted into 8.8 in
+this unit. A later founding payment that needs 8.8 names that shift
+itself.
+
+`Figure` has 14 serialized fields today (`state_fields.hpp`). Adding
+`dir16`, the parent id, the crew-slot index and the hold list requires a
+line in `fields(Figure)`, a new `field_count<Figure>`, and a bump of
+`kStateHashVersion` from 115. `by_id` stays derived. A stream whose
+version is not the new value fails the existing version check. Goldens
+are re-baselined in that same unit. An empty hold list and an invalid
+parent are the values for a figure this loader did not create, so older
+worlds change hash because the stream grew, not because their units moved.
+
+Parent and crew slot:
+
+| Figure | `owner` | parent | crew slot |
+|---|---|---|---|
+| Ship | `PlayerId(seat)` | invalid | none |
+| Scout | same player | the ship's `FigureId` | 0 |
+| Donkey | same player | the ship's `FigureId` | none |
+
+`validate_figures` keeps the rule that every id is in `1 .. next_figure-1`
+and unique. The load unit adds, without relaxing that rule: a parent is
+either invalid or the id of a figure in this registry; the parent is not
+the figure itself; following parents ends. The scout's parent and the
+donkey's parent are the ship. A missing parent is a validation failure.
+
+The original `CREW/ENTRY` also stores a u16 crew-member id. That field was
+not given an instance meaning here. The scout's instance id is its
+`FigureId`, and 717 is its `kind`. The donkey's 718 is its `kind`. The
+original `ESEL` id u16 is not a second `FigureId` space.
+
+Cities: none. Island reservations: none. No tile owner is written because
+a ship exists. `developer_start` must be off for this load. The base
+scenario supplies rules and catalogues. Its players and units are not
+copied, because `excluded` lists `base-scenario players` and
+`base-scenario units`.
+
+Ship names that the original draws from a shared table are left unset. A
+later spec that wants those names names the RNG call. Load itself performs
+no draw.
 
 ## 3. Failure before any live world changes
 
@@ -90,121 +184,79 @@ that is already ticking.
 | Failure | Result |
 |---|---|
 | Missing template, missing figure type, missing good name | Error, no world |
-| Hold count outside 1..4, tons outside 0..50, unknown good | Error, no world (the same bounds the manifest parser already enforces) |
+| Loadout is not the proposed baseline (§4) | Error, no world |
+| Spawn milli-tile is not exact in Q24.8, or the quotient overflows `int32` | Error, no world |
+| Facing outside 0..3 | Error, no world |
 | Spawn owner is not the seat, or two ships share an owner | Error, no world |
+| Seat count is not five, or a seat is missing | Error, no world |
 | Unsupported manifest field or version | Error, no world |
 | `excluded` is not the four-entry ship-start list | Error, no world |
 | Base scenario file unreadable | Error, no world |
+| A parent link fails the check in §2 | Error, no world |
 
-A failure after a world already exists is a rejected command (§4), not a
-half-applied load.
+A failure after a world already exists is a rejected command, not a
+half-applied load. The founding command is not this unit.
 
-## 4. Future founding command
+## 4. What the first loader accepts
 
-Not implemented. The boundary, when it is implemented:
+`tools/map2_ship.py` `load_and_check` calls `baseline_ok` and rejects any
+other loadout. The first loader uses that same gate. It loads a version-2
+manifest whose loadout equals the proposed baseline: status
+`proposed-baseline`, the `03_1024_med_256` human-party source, gold 30000,
+ship 1502, scout 717, donkey 718, and the four holds in §2.
 
-1. **Validate** at execution, using the predicates that are then specified.
-   Known from `docs/re/ship-founding.md` and still unresolved:
+A version-2 file with another gold total, another figure type, another hold
+count, or another good is a valid manifest only in the sense that a later
+loader might accept it. This loader rejects it. Acceptance tests use the
+baseline, including the three candidate files, and one negative manifest
+that differs only in the loadout. They do not claim that every
+schema-valid loadout loads.
 
-   | Predicate | State |
-   |---|---|
-   | Building type 1302, 4×4, coast flag on the type | File evidence |
-   | Rotation 0..3 swaps axes | Static trace. The click's choice of rotation is unread (OQ-520). |
-   | Uniform tile class other than `0x0f` | The compare is traced. The class name is unread. **Block:** island slot `+0xec`. |
-   | Nearest category-matching object in the 7-tile window | Arithmetic is traced. The object class is unread. **Block:** island slot `+0x114`. |
-   | Identity compare | The compare is traced. The operands are unread. Do not treat it as rival territory yet. |
-   | Final accept `+0xa0` | Unread. |
-   | Payer | **Block:** build-tool field at `AnnoFrame.dll` `0x100468ff`. |
-   | Goods split across holds | Unread inside `+0x7c` / `+0xcc`. |
-   | Territory radius | OQ-490. Radius 24 is the market search, not a proven city claim. |
-   | Scenery under the footprint | OQ-063. Removal is unknown. |
+`loadout.status` remains `proposed-baseline`. Loading it does not record an
+owner approval.
 
-2. **Pay** only from the accounts the command names (ship holds and player
-   gold, separately). Do not invent a combined purse.
+## 5. Tests the load unit must pass
 
-3. **Create** the city and the building in the same commit as the payment
-   and the territorial write.
-
-4. **Fail** with the world unchanged when validation fails. This is the
-   rebuild invariant in `docs/re/ship-founding.md` §5. The original still
-   calls the commit with flag `0xA0000000` when the affordability check
-   returns 0; that callee was not opened, so the original is not claimed
-   to roll back.
-
-5. **Order** overlapping claims in one tick by seat, then by command index.
-   The original's simultaneous order was not found.
-
-The offline geometric site is not an input to this command.
-
-## 5. Tests the implementation must pass
-
-Minimum, for the loader first and the command later. Headless. No GPU.
+Headless. No GPU. No movement and no founding.
 
 | Test | Pass |
 |---|---|
-| Load any version-2 manifest | Five ships, nested scout and donkey, four holds, gold 30000, zero cities, zero owner runs. Same bytes in, same ids out. |
-| Save and load that world | Positions, `dir16`, holds, gold and the empty city list match. |
-| Replay the load | World checksum matches across two runs. |
-| Two peers load the same manifest | Checksums match before any command. |
-| Missing template | Error, and a pre-existing world object is byte-identical afterwards. |
-| Founding, once the command exists | Insufficient goods: no city, gold unchanged. Two seats claiming the same tiles in one tick: lower seat commits, the other does not, both peers agree. |
+| Load each baseline candidate | Five players in slots 0..4, `money` 30000. Fifteen figures, ids 1..15, `next_figure` 16. Each ship kind 1502, parent invalid, four holds in file order with the two tools entries unmerged. Scout kind 717 and donkey kind 718, both parented to that seat's ship, scout crew slot 0. `cargo_goods` and `cargo_88` are 0. Zero cities. `developer_start` is off. |
+| Positions | Each spawn centre `1000*t+500` is stored as `256*t+128`. A milli-tile not divisible by 125, such as 1, is rejected and no world is published. |
+| Facing | Manifest 0, 1, 2, 3 is stored as `dir16` 12, 8, 4, 0 on the ship, the scout and the donkey. Facing 4 is rejected. The manifest bytes are unchanged. |
+| Save and load | Positions, `dir16`, holds, parents, gold and the empty city list match. `by_id` after the load equals a rebuild. |
+| Replay and a second peer | World checksum matches. The checksum includes the new fields and excludes `by_id`. |
+| Non-baseline loadout | Error, and a pre-existing world is unchanged. |
+| Missing template | Error, and a pre-existing world is unchanged. |
+| Existing figure invariant | A fixture that inserts figure id 0 still fails `validate_figures`. |
 
-The geometric checker suites are not these tests.
+The geometric checker suites are not these tests. Founding and sailing are
+not these tests.
 
-## 6. Indices and route work
+## 6. What this unit does not build
 
-Ownership index: island id, then city id, then the set of tiles that city
-has claimed. It grows with cities, not with a fixed seat array.
+The ownership index and the spatial index wait until a command queries
+them. `0x10049340` is unread, so no founding window is implemented.
+Route search waits on the navigator in `docs/re/ship-navigation.md`.
+Exterior-4 stays a checker rule.
 
-Spatial index: ships and buildings keyed by tile. Queries for "objects near
-a footprint" are bounded by the footprint plus the search window the
-founding spec eventually names, not by a scan of every unit once that index
-exists. Until the window's object class is known, the index is specified
-and not built.
+Original type defaults (costs, radius, entrance points) come from the
+content files when a later command needs them. This unit does not copy
+them into a placement.
 
-Route search, when a navigator exists, takes a step budget from data. The
-checker’s 400 is not that budget. No timing claim is made here; nothing in
-this packet was timed as a simulation.
+## 7. The next implementation unit
 
-Original type defaults (costs, radius, entrance points, `dir16` table) come
-from the content files, not from constants pasted into the command.
+**Load the proposed baseline into a new headless world.** One unit. It
+includes the Q24.8 conversion and the facing table. It does not include a
+follow-up patch for either.
 
-## 7. Implementation backlog
+Files likely to change: a reader next to `src/sim_load/src/fixed_map.cpp`
+(the fixed-map text parser stays), `Figure` and `fields(Figure)` with the
+hash-version bump, `validate_figures` for the parent rule, and a headless
+test. No movement, no founding, no renderer, no change to
+`data/maps/lan5.txt` or the candidate JSON.
 
-Each unit is reviewable on its own. Later units wait for the named block,
-not for a map to be chosen. Candidate selection, filler density, spawn
-policy and economy approval stay owner decisions and are not steps in this
-list.
-
-1. **Load version-2 ships into a new headless world.** Concrete and ready
-   to review. Files likely to change: a new reader next to
-   `src/sim_load/src/fixed_map.cpp` (the fixed-map text parser stays), a
-   small world-builder in `src/sim` that creates players, one ship, one
-   crew record, one donkey record and four holds, and a test in the sim
-   suite. `developer_start` stays off. No movement, no founding, no
-   renderer, no change to `data/maps/lan5.txt` or the candidate JSON.
-   Acceptance: §5 rows "Load", "Save and load", "Replay", "Two peers",
-   "Missing template". Prerequisite: this readiness packet reviewed. No
-   candidate has to be installed; the test loads a manifest by path.
-
-2. **Facing and position fixtures.** Apply the cardinal table and the
-   milli-tile rule in the loader from unit 1. Reject a version-2 facing
-   outside 0..3. Do not add a `dir16` manifest field (that would be a new
-   manifest version). Acceptance: the four table rows, and a position that
-   round-trips as an integer.
-
-3. **Founding command, validation only.** Implement the predicates that are
-   already named, and return a structured rejection for every predicate
-   still marked blocking in §4. No city is created in this unit.
-   Prerequisite: unit 1. The blocking calls in §4 can land in any order
-   without changing this unit's rejections.
-
-4. **Commit.** City, building, payment, territory. Prerequisite: unit 3,
-   plus a decision on the payer field and on OQ-490. Until those are read,
-   this unit stays unstarted.
-
-5. **Navigator.** Prerequisite: the planner methods named in
-   `docs/re/ship-navigation.md` §2, or an explicit owner decision to sail
-   with a specified approximation. Exterior-4 is not that decision.
-
-Units 3–5 are not started by unit 1.
+Acceptance is §5. Unresolved founding (`0x10049340`, OQ-490, OQ-520) and
+unresolved navigation (the planner after `AnnoWelt.dll` `0x10030100`) stay
+outside this unit's claims. A later founding unit and a later navigator
+are separate, and they are not started by the load.

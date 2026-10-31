@@ -625,11 +625,13 @@ is not one of these proposals.
 
 ### 11.5 Readiness for a later loader
 
-The geometric checks above are unchanged. A separate trace of the original
-warehouse click, the difference from exterior-4, an opening audit, and the
-loader contract are in `docs/re/ship-founding.md`,
+The geometric checks above are unchanged. The ship menu, the separate mine
+and Kontor cursors, the difference from exterior-4, an opening audit, and
+the loader contract are in `docs/re/ship-founding.md`,
 `docs/re/ship-navigation.md`, `tools/map2_opening.py` and
 `docs/sim/ship-start-integration.md`. Those documents do not select a
 candidate and do not make the manifests executable. Version-2 facing stays
-0..3. The cardinal conversion to the original 16-step facing is a proposal
-in the navigation note and is not written back into the files.
+0..3 in the files. The load-only contract converts that cardinal value to
+`dir16` when it creates the figure, and it does not write the conversion
+back into the files. `AnnoFrame.dll` `0x10046300` is the mine cursor, not
+the warehouse placement.

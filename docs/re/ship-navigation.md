@@ -67,10 +67,10 @@ Manifest version 2 stores `facing` in `0..3`: 0 north, 1 east, 2 south,
 half-plane is the high y). Those four values are cardinal authoring. They
 are not property `0x16`, and they are not a warehouse door (OQ-520).
 
-**Proposal, not applied.** Leave every version-2 manifest byte as it is.
-A later manifest version stores `dir16` in `0..15` and drops the overload.
-Until that version exists, the only conversion used when a version-2 spawn
-is loaded is the cardinal table:
+**Proposal, not applied to the files.** Leave every version-2 manifest byte
+as it is. A later manifest version stores `dir16` in `0..15` and drops the
+overload. Until that version exists, loading a version-2 spawn converts
+facing with the cardinal table in the same step that writes the figure:
 
 | Version-2 facing | Map direction | `dir16` |
 |---|---|---|
@@ -90,24 +90,18 @@ x87 (`0x100428d0`). Exact float reproduction is not the lockstep goal
 (§3.5).
 
 Version-2 spawns are integer milli-tiles: tile `(t, u)` centre is
-`(1000t+500, 1000u+500)`. That integer is the proposed authoritative
-position.
+`(1000t+500, 1000u+500)`. The manifest keeps those integers. The simulation
+stores positions as `FixedPos` (Q24.8). The exact conversion, and the rule
+that rejects a value which is not exact, are in
+`docs/sim/ship-start-integration.md`. This note does not keep a second
+position type.
 
-**Conversion contract, proposed.**
-
-- Authoritative state is signed integer milli-tiles for x and y, and a
-  separate integer for height if a later trace needs it. The original's
-  float height is not copied into the checksum.
-- Loading a manifest copies the milli-tile integers. It does not parse them
-  through a float.
-- A display conversion may compute `milli / 1000` in the renderer. That
-  value is not written back.
-- The original's float-to-tile tie (a coordinate exactly halfway between two
-  milli-tiles, or exactly on a tile boundary in the x87 step) is
-  **unverified**. The implementation picks one documented integer rounding
-  for its own stepper and tests that choice. It does not label the choice
-  as the original's tie break.
-- Segment direction uses the `dir16` table in §4 when the source is a
-  version-2 facing. A future 16-step field uses the stored index directly.
+The original's float-to-tile tie (a coordinate exactly halfway between two
+milli-tiles, or exactly on a tile boundary in the x87 step) is
+**unverified**. A future stepper documents its own integer rule and tests
+that rule. It does not label the choice as the original's tie break.
+Segment direction uses the `dir16` table in §4 when the source is a
+version-2 facing. A future 16-step field uses the stored index directly.
+Facing conversion happens when the spawn is loaded, not as a later repair.
 
 No navigator is implemented in this packet.

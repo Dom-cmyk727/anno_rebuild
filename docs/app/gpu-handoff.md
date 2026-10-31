@@ -46,6 +46,12 @@ thread at the start of a frame.
    reclaimer (a process thread that is never joined; `SceneReclaimer::stats().waiting` is zero once it has caught up).
    The allowed phase for the bridge: its `apply` and `commit` calls end on the window thread before its destructor
    starts, and no thread calls into it afterwards.
+   A generation a frame still holds after the bridge is gone is destroyed on the reclaimer once the frame (and
+   any other holder) lets go on its own thread; the case "ownership: a frame-held generation outlives the bridge
+   and is destroyed on the reclaimer" checks the exact generation, the reclaimer's thread, and that the accounted
+   bytes return to their baseline (round dy, A6). The hand-off of a last owner allocates nothing (the
+   allocation test). What a GPU consumer adds (uploads, mirrors) is not in `render::payload_counts()`; it needs
+   its own count when the integration is done.
 7. Cache retirement: the renderer's cache holds `ChunkPtr` (shared chunk pixels), not generations. A replaced
    chunk stays until its key is replaced or evicted; `invalidate(keys, generation)` marks the keys, and a stale
    completion cannot replace a newer chunk (round du/dv rules, `frame.cpp`).

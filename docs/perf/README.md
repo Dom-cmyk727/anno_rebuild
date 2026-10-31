@@ -1010,6 +1010,14 @@ Object-list path, Debug and Release: `docs/app/game-shell.md`, "Immutable per-is
 
 ## Building picture (W4.3, round dw): `bench_picture`
 
+**Superseded for every legal-city claim (round dy).** This section measured a SYNTHETIC workload: random
+anchors on the first islands of the scene order, anywhere in an island's box (water included), with the types
+of the map's own buildings at load (the two Kontors of the two seated players). It is not a city. The "five"
+tier was 40 such anchors on each of five islands (200 in all), of which two were inhabited; the round-dw review
+matrix wrote "the fixed map's two inhabited islands with 40 generated buildings each", which is wrong (see the
+round-dy correction in docs/orchestration/REPORTS.md). The numbers below stay as they were measured, for that
+workload only; the legal-city measurements are the next section.
+
 Benchmark of the window-side and worker costs of the building picture (`ScenePicture`,
 docs/app/game-shell.md, "Retained work and reclamation"). It is CPU only: no presented frame, no GPU upload.
 
@@ -1109,3 +1117,188 @@ these workloads, so a replaced in-flight build was always discarded instead. No 
 **Measurements that were superseded.** Round dv's Debug table and the first round dw matrix are not evidence for
 this unit: the first used the two-building fixture and the synchronous loop; the second matrix used
 illegal (duplicate-tile) placements produced by the bench and failed its own oracle; both were replaced.
+
+## Building picture on a legal city workload (W4.3, round dy): `bench_picture`
+
+CPU stages only: the time until a change's objects are in a committed generation and until the visible chunks
+it invalidated are rebuilt. No presented frame, no GPU upload, no input: PLAN section 0.3's presentation targets
+and K are not measured here and nothing below claims them.
+
+**Workload** (`LegalWorkload`, a test fixture; `src/app/include/anno/app/legal_workload.hpp`). The fixed map
+`data/maps/lan5.txt` with five human seats and the developer start: five cities, one per start island
+(islands 0 to 4 of 21), each owning its island, with a Kontor and the documented test resources (2000 t of
+each goods here, `--goods-tons`, so that the cities of every case have the same means). Every building is
+placed by the sim through a Build command and a turn (`sim::run_turn`), with the registry's types, rotations and
+footprints, and charged as in play. The fixture chooses candidates by the sim's own read-only rules (footprint
+owner, the D17 placement stand-in, overlap, cost), keeps footprints on land (the original's land classifier,
+`render::kLandAverage`), leaves out the types that need a coast or a mountain (the stand-in does not read those
+flags) and the one placeable type without a sprite set (2227: it draws nothing). Baseline: 40 buildings per
+city (205 with the Kontors, 81 house types and 172 producer types to choose from, every city at least four types);
+`c-one-unrelated` adds 200 per unrelated city (1005 in all, city 0 identical). Not in the workload, because the
+current sim does not support them: roads (20 issued, 20 refused as `Unsupported`, O-4), and a running economy
+(30 settle turns change no city's stock). The density is bounded by the stand-in: about 98% of land candidates
+carry a tile object (scenery, growing items), which it refuses, so a city reaches about 240 buildings before
+the bounded search reports its capacity (`capacity_reached`, `free_land_tiles` in the manifest). This is
+neither a late-game city nor the original's placement rules (the coast, mountain and terrain checks are unread,
+O-27/OQ-052).
+
+**Method.** One case per process, sequential (`tools/bench/picture_matrix.sh`, which stops at the first failing
+case with its status). Release, frozen binary `cache/dy-runs/bench_picture.release-9ca5cb0` (sha256
+`fcf2064a22649d4b…`), source `9ca5cb0`, clean tree. Edits are generated through the sim before the loop; the
+loop publishes their batches on a wall-time schedule (paced: a frame every 16.667 ms, the loop sleeps to the
+deadline) or one per frame (saturation, `s-saturation`). Two picture workers, two chunk workers, a 1920 x 1080
+view at group 2 centred on city 0's first edit. Every case ends with the independent oracle (every island's
+PROD2 items and the chunk layers of the final view against a freshly loaded scene of the final desired state;
+offscreen also the panned view and its derived level 3): all cases passed it. The tables are generated from the
+raw files by `tools/bench/picture_table.py` (latencies recomputed from `events.tsv` through
+`bench_picture --aggregate`). Raw files: `cache/dy-runs/d1-r2/` and `cache/dy-runs/d3d4-r2/` (events, frames,
+chunks, memory, sim, manifest, summary per case).
+
+**Host: NOT quiet.** Apple M5 Max, 18 cores, 48 GiB; load average 3.0 to 3.8 during the runs; another agent's
+renderer (about 89% of a core) and Syncthing (about 82%) were busy at the start (`provenance.txt`). These are
+shared-host measurements. Apple Silicon's frequency and core placement matter: a lightly loaded paced loop
+measured a worker build of 22 to 30 ms, the same build under 16 busy threads or an unpaced simulation thread 13
+to 16 ms (`proxy-busy16-below`, `sim-unpaced-below`), so a slowdown under contention cannot be read off here.
+
+**Definitions.** Object-ready: from an edit's Desired event to the first commit of its island at that version or
+later (a coalesced edit's latency runs to that commit, never dropped). Visible CPU chunks ready: until every
+visible chunk key that commit invalidated is cached again and not stale (an edit whose commit invalidates no
+visible key is counted offscreen). Percentiles are nearest-rank with sample counts; p95 needs 20 samples, p99 100.
+
+### The small set (D1)
+
+| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | unfinished | worker build ms p50 / max |
+|---|---:|---:|---|---|---:|---:|---:|---:|---|
+| a-idle | 0 | 0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 0.0 | 0 | 0 | 0 | 0.0 / 0.0 |
+| b-one | 0 | 1 | 1 / 20.3 / insufficient / insufficient / 20.3 | 1 / 58.8 / insufficient / insufficient / 58.8 | 20.3 | 0 | 0 | 0 | 13.7 / 13.7 |
+| c-one-unrelated | 0 | 1 | 1 / 18.0 / insufficient / insufficient / 18.0 | 1 / 37.2 / insufficient / insufficient / 37.2 | 18.0 | 0 | 0 | 0 | 13.9 / 13.9 |
+| d-burst50 | 0 | 50 | 50 / 41.6 / 62.368334 / insufficient / 62.4 | 40 / 100.2 / 100.318625 / insufficient / 100.3 | 62.4 | 45 | 10 | 0 | 13.6 / 14.1 |
+| e-stream-below | 0 | 100 | 100 / 38.1 / 41.712209 / 41.732500 / 52.3 | 15 / 62.5 / insufficient / insufficient / 82.1 | 52.3 | 0 | 85 | 0 | 27.3 / 36.7 |
+| f-stream-above | 0 | 400 | 400 / 543.7 / 981.566000 / 1018.752750 / 1039.6 | 320 / 606.2 / 1064.461042 / 1101.649667 / 1122.5 | 1039.6 | 395 | 80 | 0 | 13.7 / 15.0 |
+| g-delayed | 0 | 60 | 60 / 99.3 / 1063.038333 / insufficient / 1370.9 | 24 / 203.9 / 1291.127708 / insufficient / 1391.7 | 1370.9 | 9 | 36 | 0 | 21.6 / 35.1 |
+| h-offscreen | 0 | 20 | 20 / 20.8 / 20.909375 / insufficient / 20.9 | 0 / 0.0 / insufficient / insufficient / 0.0 | 20.9 | 0 | 20 | 0 | 13.9 / 17.5 |
+| s-saturation | 0 | 400 | 400 / 36.8 / 54.441375 / 56.000125 / 56.4 | 80 / 96.7 / 100.226917 / insufficient / 100.7 | 56.4 | 395 | 320 | 0 | 14.3 / 14.4 |
+
+Window stages per frame of the measured loop, ms: n / p50 / p95 / p99 / max (apply stages over the frames that published, commit over the frames that committed).
+
+| case | frames | apply: list | apply: reindex | apply: dispatch and copies | commit | chunk update |
+|---|---:|---|---|---|---|---|
+| a-idle | 507 | n=0 | n=0 | n=0 | n=0 | 507 / 0.078 / 0.113 / 0.125 / 0.200 |
+| b-one | 1 | 1 / 0.002 / (n=1) / (n=1) / 0.002 | 1 / 0.001 / (n=1) / (n=1) / 0.001 | 1 / 0.005 / (n=1) / (n=1) / 0.005 | n=0 | 1 / 0.038 / (n=1) / (n=1) / 0.038 |
+| c-one-unrelated | 1 | 1 / 0.003 / (n=1) / (n=1) / 0.003 | 1 / 0.002 / (n=1) / (n=1) / 0.002 | 1 / 0.007 / (n=1) / (n=1) / 0.007 | n=0 | 1 / 0.045 / (n=1) / (n=1) / 0.045 |
+| d-burst50 | 1 | 1 / 0.012 / (n=1) / (n=1) / 0.012 | 1 / 0.026 / (n=1) / (n=1) / 0.026 | 1 / 0.071 / (n=1) / (n=1) / 0.071 | n=0 | 1 / 0.054 / (n=1) / (n=1) / 0.054 |
+| e-stream-below | 500 | 100 / 0.003 / 0.005 / 0.006 / 0.007 | 100 / 0.006 / 0.012 / 0.016 / 0.019 | 100 / 0.014 / 0.024 / 0.031 / 0.031 | 99 / 0.045 / 0.076 / (n=99) / 0.089 | 500 / 0.063 / 0.103 / 0.120 / 0.134 |
+| f-stream-above | 253 | 51 / 0.002 / 0.007 / (n=51) / 0.009 | 51 / 0.007 / 0.020 / (n=51) / 0.025 | 51 / 0.012 / 0.058 / (n=51) / 0.063 | 2 / 0.047 / (n=2) / (n=2) / 0.077 | 253 / 0.075 / 0.124 / 0.139 / 0.170 |
+| g-delayed | 296 | 60 / 0.003 / 0.006 / (n=60) / 0.011 | 60 / 0.006 / 0.011 / (n=60) / 0.013 | 60 / 0.012 / 0.020 / (n=60) / 0.042 | 38 / 0.067 / 0.107 / (n=38) / 0.117 | 296 / 0.048 / 0.098 / 0.116 / 0.146 |
+| h-offscreen | 252 | 20 / 0.002 / 0.003 / (n=20) / 0.003 | 20 / 0.003 / 0.008 / (n=20) / 0.009 | 20 / 0.008 / 0.014 / (n=20) / 0.016 | 20 / 0.036 / 0.081 / (n=20) / 0.085 | 252 / 0.069 / 0.109 / 0.119 / 0.131 |
+| s-saturation | 400 | 400 / 0.000 / 0.000 / 0.000 / 0.002 | 400 / 0.000 / 0.000 / 0.001 / 0.002 | 400 / 0.000 / 0.001 / 0.001 / 0.007 | n=0 | 400 / 0.015 / 0.016 / 0.022 / 0.044 |
+
+| case | peak reservation B | largest result B | estimate shortfalls | peak incremental payload B | peak retired payload B | peak reclaim queue B | peak RSS B | peak footprint B | major faults | host page-outs / swap-outs | oracle |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| a-idle | 0 | 0 | 0 | 0 | 0 | 0 | 1060732928 | 1059259544 | 0 | 0 / 0 | VERIFY OK |
+| b-one | 4507638 | 854377 | 0 | 809773 | 396836 | 0 | 743112704 | 741458832 | 0 | 0 / 0 | VERIFY OK |
+| c-one-unrelated | 4507638 | 854377 | 0 | 809773 | 396836 | 0 | 723795968 | 722174912 | 0 | 0 / 0 | VERIFY OK |
+| d-burst50 | 36061712 | 856551 | 0 | 4049633 | 1984180 | 0 | 749502464 | 747865000 | 0 | 0 / 0 | VERIFY OK |
+| e-stream-below | 4507638 | 855411 | 0 | 4049045 | 1984180 | 0 | 1110097920 | 1108640944 | 0 | 0 / 0 | VERIFY OK |
+| f-stream-above | 36062072 | 858533 | 0 | 4050719 | 1984180 | 0 | 1162067968 | 1160643808 | 0 | 0 / 0 | VERIFY OK |
+| g-delayed | 17628563 | 855411 | 0 | 11337182 | 9272335 | 1111572 | 1138311168 | 1136870600 | 0 | 0 / 0 | VERIFY OK |
+| h-offscreen | 4507782 | 855411 | 0 | 3239218 | 1587344 | 0 | 1161379840 | 1159955704 | 0 | 0 / 0 | VERIFY OK |
+| s-saturation | 36061856 | 858533 | 0 | 4050719 | 1984180 | 0 | 724254720 | 722633664 | 0 | 0 / 0 | VERIFY OK |
+
+`h-offscreen` after the drain: panning to the last edited island took 117.6 ms until every visible group-2 key
+was ready, and zooming out to derived level 3 then took 38.9 ms; both views and the derived level passed the
+oracle.
+
+### Workers, simulation contention and the opt-in policy (D3, D4)
+
+| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | unfinished | worker build ms p50 / max |
+|---|---:|---:|---|---|---:|---:|---:|---:|---|
+| w1-burst50 | 0 | 50 | 50 / 61.7 / 103.291042 / insufficient / 103.3 | 20 / 124.1 / 124.199125 / insufficient / 124.2 | 103.3 | 45 | 30 | 0 | 13.7 / 14.0 |
+| w2-burst50 | 0 | 50 | 50 / 60.2 / 60.281417 / insufficient / 60.3 | 20 / 101.9 / 101.947792 / insufficient / 102.0 | 60.3 | 45 | 30 | 0 | 13.7 / 14.0 |
+| w4-burst50 | 0 | 50 | 50 / 41.0 / 60.852542 / insufficient / 60.9 | 40 / 102.5 / 102.539375 / insufficient / 102.6 | 60.9 | 45 | 10 | 0 | 18.2 / 20.5 |
+| w1-above | 0 | 400 | 400 / 539.8 / 995.871042 / 1034.325542 / 1055.1 | 160 / 598.1 / 1054.736500 / 1096.389500 / 1117.2 | 1055.1 | 395 | 240 | 0 | 13.2 / 16.7 |
+| w2-above | 0 | 400 | 400 / 535.9 / 994.596750 / 1036.025750 / 1036.1 | 80 / 615.0 / 1057.037917 / insufficient / 1119.3 | 1036.1 | 395 | 320 | 0 | 13.6 / 14.2 |
+| w4-above | 0 | 400 | 400 / 529.6 / 990.898542 / 1031.280750 / 1032.2 | 160 / 607.4 / 1049.253334 / 1090.599292 / 1110.5 | 1032.2 | 395 | 240 | 0 | 14.0 / 17.5 |
+| quiet-below | 0 | 100 | 100 / 39.5 / 41.732292 / 54.624083 / 57.8 | 15 / 77.0 / insufficient / insufficient / 96.3 | 57.8 | 0 | 85 | 0 | 29.8 / 37.7 |
+| sim-below | 0 | 100 | 100 / 41.0 / 41.731583 / 41.737417 / 56.6 | 15 / 62.6 / insufficient / insufficient / 98.3 | 56.6 | 0 | 85 | 0 | 23.7 / 37.1 |
+| sim-unpaced-below | 0 | 100 | 100 / 20.9 / 20.857583 / 20.865542 / 20.9 | 15 / 41.7 / insufficient / insufficient / 41.7 | 20.9 | 0 | 85 | 0 | 13.0 / 14.9 |
+| sim-above | 0 | 400 | 400 / 539.6 / 977.153583 / 1018.748625 / 1039.5 | 80 / 581.3 / 1039.578666 / insufficient / 1102.0 | 1039.5 | 395 | 320 | 0 | 13.1 / 19.8 |
+| proxy-busy16-below | 0 | 100 | 100 / 20.8 / 21.070583 / 21.347417 / 38.4 | 15 / 55.7 / insufficient / insufficient / 74.6 | 38.4 | 0 | 85 | 0 | 15.7 / 20.1 |
+| progress-above | 0 | 400 | 400 / 41.7 / 83.342125 / 123.998458 / 143.9 | 169 / 82.4 / 143.599291 / 181.539708 / 181.5 | 143.9 | 290 | 231 | 0 | 13.6 / 14.2 |
+| progress-below | 0 | 100 | 100 / 41.7 / 41.725083 / 41.732833 / 41.8 | 15 / 62.5 / insufficient / insufficient / 83.3 | 41.8 | 0 | 85 | 0 | 21.8 / 25.6 |
+
+Window stages per frame of the measured loop, ms: n / p50 / p95 / p99 / max (apply stages over the frames that published, commit over the frames that committed).
+
+| case | frames | apply: list | apply: reindex | apply: dispatch and copies | commit | chunk update |
+|---|---:|---|---|---|---|---|
+| w1-burst50 | 1 | 1 / 0.013 / (n=1) / (n=1) / 0.013 | 1 / 0.029 / (n=1) / (n=1) / 0.029 | 1 / 0.064 / (n=1) / (n=1) / 0.064 | n=0 | 1 / 0.044 / (n=1) / (n=1) / 0.044 |
+| w2-burst50 | 1 | 1 / 0.013 / (n=1) / (n=1) / 0.013 | 1 / 0.030 / (n=1) / (n=1) / 0.030 | 1 / 0.070 / (n=1) / (n=1) / 0.070 | n=0 | 1 / 0.055 / (n=1) / (n=1) / 0.055 |
+| w4-burst50 | 1 | 1 / 0.008 / (n=1) / (n=1) / 0.008 | 1 / 0.022 / (n=1) / (n=1) / 0.022 | 1 / 0.068 / (n=1) / (n=1) / 0.068 | n=0 | 1 / 0.042 / (n=1) / (n=1) / 0.042 |
+| w1-above | 252 | 51 / 0.002 / 0.004 / (n=51) / 0.007 | 51 / 0.006 / 0.013 / (n=51) / 0.015 | 51 / 0.010 / 0.030 / (n=51) / 0.040 | 3 / 0.059 / (n=3) / (n=3) / 0.063 | 252 / 0.067 / 0.114 / 0.125 / 0.145 |
+| w2-above | 253 | 52 / 0.002 / 0.006 / (n=52) / 0.007 | 52 / 0.006 / 0.020 / (n=52) / 0.020 | 52 / 0.011 / 0.038 / (n=52) / 0.041 | 2 / 0.051 / (n=2) / (n=2) / 0.100 | 253 / 0.081 / 0.121 / 0.124 / 0.146 |
+| w4-above | 253 | 51 / 0.002 / 0.007 / (n=51) / 0.008 | 51 / 0.007 / 0.017 / (n=51) / 0.021 | 51 / 0.017 / 0.044 / (n=51) / 0.090 | 2 / 0.075 / (n=2) / (n=2) / 0.100 | 253 / 0.083 / 0.124 / 0.135 / 0.149 |
+| quiet-below | 498 | 100 / 0.003 / 0.005 / 0.006 / 0.007 | 100 / 0.007 / 0.012 / 0.018 / 0.020 | 100 / 0.013 / 0.021 / 0.022 / 0.022 | 99 / 0.056 / 0.091 / (n=99) / 0.126 | 498 / 0.061 / 0.095 / 0.111 / 0.117 |
+| sim-below | 487 | 100 / 0.003 / 0.004 / 0.005 / 0.007 | 100 / 0.005 / 0.009 / 0.016 / 0.040 | 100 / 0.011 / 0.018 / 0.029 / 0.058 | 99 / 0.055 / 0.075 / (n=99) / 0.096 | 487 / 0.043 / 0.085 / 0.098 / 0.581 |
+| sim-unpaced-below | 480 | 100 / 0.001 / 0.001 / 0.002 / 0.019 | 100 / 0.002 / 0.003 / 0.003 / 0.003 | 100 / 0.005 / 0.006 / 0.007 / 0.009 | 99 / 0.022 / 0.028 / (n=99) / 0.053 | 480 / 0.020 / 0.031 / 0.040 / 0.090 |
+| sim-above | 249 | 49 / 0.002 / 0.006 / (n=49) / 0.009 | 49 / 0.006 / 0.021 / (n=49) / 0.023 | 49 / 0.008 / 0.054 / (n=49) / 0.072 | 3 / 0.035 / (n=3) / (n=3) / 0.084 | 249 / 0.061 / 0.097 / 0.108 / 0.134 |
+| proxy-busy16-below | 504 | 100 / 0.002 / 0.003 / 0.004 / 0.005 | 100 / 0.005 / 0.014 / 0.022 / 0.056 | 100 / 0.010 / 0.015 / 0.018 / 0.021 | 99 / 0.044 / 0.066 / (n=99) / 0.071 | 504 / 0.042 / 0.068 / 0.098 / 0.185 |
+| progress-above | 250 | 50 / 0.002 / 0.003 / (n=50) / 0.003 | 50 / 0.006 / 0.007 / (n=50) / 0.007 | 50 / 0.010 / 0.012 / (n=50) / 0.013 | 52 / 0.028 / 0.038 / (n=52) / 0.058 | 250 / 0.062 / 0.098 / 0.110 / 0.120 |
+| progress-below | 480 | 100 / 0.002 / 0.004 / 0.004 / 0.006 | 100 / 0.004 / 0.007 / 0.010 / 0.011 | 100 / 0.009 / 0.018 / 0.022 / 0.028 | 99 / 0.051 / 0.065 / (n=99) / 0.077 | 480 / 0.038 / 0.063 / 0.086 / 0.093 |
+
+| case | peak reservation B | largest result B | estimate shortfalls | peak incremental payload B | peak retired payload B | peak reclaim queue B | peak RSS B | peak footprint B | major faults | host page-outs / swap-outs | oracle |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| w1-burst50 | 36061780 | 856551 | 0 | 4049633 | 1984180 | 0 | 768606208 | 766985152 | 0 | 0 / 0 | VERIFY OK |
+| w2-burst50 | 36061604 | 856551 | 0 | 4049633 | 1984180 | 0 | 751058944 | 749405072 | 0 | 0 / 0 | VERIFY OK |
+| w4-burst50 | 36061712 | 856551 | 0 | 4049633 | 1984180 | 0 | 762527744 | 760906688 | 0 | 0 / 0 | VERIFY OK |
+| w1-above | 36061816 | 858533 | 0 | 4050719 | 1984180 | 0 | 1127448576 | 1126008008 | 0 | 0 / 0 | VERIFY OK |
+| w2-above | 36061888 | 858555 | 0 | 4050719 | 1984180 | 0 | 1109606400 | 1108149424 | 0 | 0 / 0 | VERIFY OK |
+| w4-above | 36061816 | 858555 | 0 | 4050719 | 1984180 | 0 | 878542848 | 820380704 | 0 | 0 / 0 | VERIFY OK |
+| quiet-below | 4507638 | 855411 | 0 | 4049045 | 1984180 | 0 | 1134166016 | 1132725448 | 0 | 0 / 0 | VERIFY OK |
+| sim-below | 4507638 | 855411 | 0 | 4445875 | 2381016 | 0 | 1402552320 | 1401275856 | 0 | 0 / 0 | VERIFY OK |
+| sim-unpaced-below | 4507638 | 855411 | 0 | 4049045 | 1984180 | 0 | 1383022592 | 1381713312 | 0 | 0 / 0 | VERIFY OK |
+| sim-above | 36061852 | 858549 | 0 | 4050719 | 1984180 | 0 | 1328529408 | 1327170904 | 0 | 0 / 0 | VERIFY OK |
+| proxy-busy16-below | 4507638 | 855411 | 0 | 4858860 | 2794007 | 0 | 1118896128 | 1117471968 | 0 | 0 / 0 | VERIFY OK |
+| progress-above | 32408011 | 856773 | 0 | 6478976 | 4413829 | 0 | 1128513536 | 1127056560 | 0 | 0 / 0 | VERIFY OK |
+| progress-below | 4507638 | 855411 | 0 | 4445875 | 2381016 | 0 | 1114423296 | 1112982728 | 0 | 0 / 0 | VERIFY OK |
+
+The contention world (`sim-*`) is a second five-city world turned through the production path on its own
+thread, one Build or Demolish command per turn: at the play cadence (10 turns per second) its `sim::run_turn`
+took p50 0.617 ms, p95 1.47 ms, p99 1.57 ms, max 1.84 ms over 100 turns (`sim-below`), with the play runner's
+building diff p50 0.020 ms; unpaced it ran 92 832 turns (37 929 with a command, 54 903 in which the fixture found
+nothing left to place; no refusal by the sim), `run_turn` p50 0.240 ms, p95 0.264 ms (`sim-unpaced-below`).
+State hashes and invariants are in each `summary.txt` (invariants held in all three).
+
+### Findings
+
+- **Target miss: a fast stream starves an island's picture.** With the accepted contract (only the desired
+  version is published), 400 edits at 400 per second (80 per second per island, faster than a 13 ms build plus
+  the next commit) supersede every finished build: object-ready p50 544 ms, max 1040 ms, two commits during the
+  stream (`f-stream-above`); one, two or four workers do not change it (`w1/w2/w4-above`). With the opt-in
+  `publish_progress` (off by default, a decision for review) the same stream gives object-ready p50 42 ms, p95
+  83 ms, p99 124 ms, max 144 ms (`progress-above`), and below capacity it changes nothing (`progress-below`).
+- **Below capacity** (10 edits per second): object-ready p50 38 to 41 ms, max 52 to 58 ms (100 samples);
+  visible CPU chunks ready p50 62 to 77 ms (15 samples: 85 of the 100 edits are on islands outside the view).
+- **A local edit does not pay for unrelated cities.** One build in city 0 with 205 and with 1005 buildings in the
+  world: object-ready 20.3 and 18.0 ms; the window's apply stages (list, reindex, dispatch with the copies) 0.002,
+  0.001, 0.005 ms and 0.003, 0.002, 0.007 ms. The list update and the reindex are O(buildings) passes, but at the
+  sizes this sim admits they stay in microseconds; no incremental index was added (the review's synthetic probe
+  measured 0.084 ms per apply at 100 000 unrelated buildings, also far inside a frame).
+- **Burst of 50** (object-ready p50 and max): one worker 61.7 and 103.3 ms; two workers 41.6 and 62.4 ms in the
+  D1 run and 60.2 and 60.3 ms in the D3 run of the same case (one run each: the difference is run to run, not
+  workers); four workers 41.0 and 60.9 ms.
+- **Delayed consumer and reclaimer** (`g-delayed`: commits every 6 frames, the process reclaimer stalled for 2 s
+  after the first commit): object-ready max 1371 ms, the reclaimer's queue peaked at 1.11 MB of generation
+  metadata and the retired payload at 9.3 MB, and the picture converged after the release.
+- **Retained bytes** (memory tables): reservation peaks at 4.5 MB for one build and 36 MB with eight builds
+  admitted, against a largest measured result of 0.86 MB: the incoming-size estimate is conservative by about
+  five times and was never short (`estimate_shortfalls` 0). Accounted incremental payload peaked at 4.0 MB
+  (11.3 MB in the delayed case), retired payload at 2.0 MB (9.3 MB). RSS stayed 0.72 to 1.16 GB (the sprite and
+  chunk caches dominate); no major fault, no host page-out or swap-out during any case.
+- **Window stages** stay far inside a 16.7 ms frame: apply under 0.07 ms, commit under 0.12 ms, the window side of
+  the chunk update under 0.2 ms (p99 0.14 ms at 60 Hz). The chunk rebuilds run on the chunk workers; only their
+  readiness is measured (per-key ready times in `chunks.tsv`, the workers' smoothed build time in
+  `frames.tsv`), not per-chunk build durations.
+
+**Not measured.** A quiet host (not available: see the host line); Windows, Linux and the RTX/Radeon machine;
+presented frames; a late-game economy or roads; cities denser than the stand-in admits; per-chunk build
+durations.

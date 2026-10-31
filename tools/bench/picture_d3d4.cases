@@ -1,0 +1,15 @@
+# Workers (round dy, D3) and simulation contention (D4), after the small set passed. The same
+# workload as picture_d1.cases; only the named option changes from case to case.
+w1-burst50        --scenario burst --edits 50 --goods-tons 2000 --threads 1
+w2-burst50        --scenario burst --edits 50 --goods-tons 2000 --threads 2
+w4-burst50        --scenario burst --edits 50 --goods-tons 2000 --threads 4
+w1-above          --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 1
+w2-above          --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 2
+w4-above          --scenario stream --rate 400 --edits 400 --goods-tons 2000 --threads 4
+quiet-below       --scenario stream --rate 10 --edits 100 --goods-tons 2000
+sim-below         --scenario stream --rate 10 --edits 100 --goods-tons 2000 --sim-contention 1
+sim-unpaced-below --scenario stream --rate 10 --edits 100 --goods-tons 2000 --sim-contention 1 --sim-unpaced 1
+sim-above         --scenario stream --rate 400 --edits 400 --goods-tons 2000 --sim-contention 1
+proxy-busy16-below --scenario stream --rate 10 --edits 100 --goods-tons 2000 --busy 16
+progress-above    --scenario stream --rate 400 --edits 400 --goods-tons 2000 --publish-progress 1
+progress-below    --scenario stream --rate 10 --edits 100 --goods-tons 2000 --publish-progress 1

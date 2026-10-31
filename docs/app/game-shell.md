@@ -450,6 +450,23 @@ the current generation references.
 **Reclamation counters.** `reclaim_queued` and `reclaim_completed` count the bridge's own retired items
 (generations as references, jobs, results); a generation's destruction is counted by the reclaimer.
 
+**Staleness under a fast stream (round dy, D1 case f).** Only the desired version of an island is published
+(the accepted contract, `publish_progress` off). A stream of changes to one island that arrives faster than
+one build plus the next commit therefore supersedes every finished build, and the island's picture does not
+move until the stream stops: on the legal five-city workload, 400 edits at 400 per second (80 per second per
+island) held the picture for about a second (object-ready p50 544 ms, maximum 1040 ms; see
+docs/perf/README.md). This is reported as a target miss, not redefined. `PictureLimits::publish_progress`
+(provisional, off, a decision for review) keeps a superseded build that is still newer than the committed
+version and commits it: the picture moves forward and never back, and the island stays pending until its
+desired version is committed (the same stream with it on: object-ready p50 42 ms, maximum 144 ms). A result
+requeued because its island was committed after the build started
+waits in the deferred list and is built again by the next dispatch.
+
+**Trace.** `PictureLimits::trace` reports every step of a build's life (desired, admitted, deferred, started,
+built, failed, superseded, dropped, requeued, committed) with the island and the version, on the thread where
+it happens; the bench records it with the generations, the visible chunk readiness and the reclaimer's
+destructions (`picture_trace.hpp`).
+
 **Change set.** A worker computes the objects that appear and disappear and their chunk keys, against the
 island's lists when its build started. A commit uses that set only if the island's lists are still the same
 object (`Scene::island_lists_handle`); otherwise the result is requeued (`version_requeues`). The window

@@ -7958,3 +7958,102 @@ Load the proposed baseline into a new headless world, as specified in
 conversion are part of that load. No movement, no founding, no renderer.
 `0x10049340` and the ship planner stay outside its claims. Do not start it
 until this repair is reviewed.
+
+## MAP.2 — ship-start load implementation — 2026-10-31 — status: READY FOR REVIEW (load only)
+
+Branch `task/MAP-2-original-like`, from `0ae9a51`. Implementation is on top of the corrected
+hierarchy; no further documentation-only approval was needed. Contract and status table:
+`docs/sim/ship-start-integration.md` §9.
+
+### Implementation versus specification
+
+Implemented: the typed manifest reader and canonical hash (`src/formats`), the figure state
+(`dir16`, `parent`, `crew_slot`, ordered whole-ton `holds`) with its validation and stream 116
+(`src/sim`), and the loader (`src/sim_load/ship_start.*`) that builds a new headless `World`.
+Not built, by design: sailing, founding, combat, rendering, GPU, developer input, a new economy.
+`developer_start` is off; no city, Kontor, island reservation or tile owner is created; nothing is
+drawn from the PRNG. The three candidates are loaded, not selected or installed; `data/maps/lan5.txt`
+is byte-identical (SHA-256 `1a471d9f…9357`) and `game/` is untouched.
+
+### Corrected hierarchy, as built
+
+Ship 1502 (no parent, no crew slot) → scout 717 (parent the ship, crew slot 0) → donkey 718
+(parent the scout). One owner per triple, `home` invalid, `cargo_goods`/`cargo_88` zero. Seat 0 has
+ids 1, 2, 3; seat 4 has 13, 14, 15; `next_figure` 16. A donkey parented to the ship passes the generic
+graph rules and fails `expedition_baseline_problem` (test "the baseline expectation fails a donkey
+parented to the ship").
+
+### Parser compatibility and rejection
+
+84 cross-check cases are written by `tools/map2_manifest_xcheck.py generate` from the Python
+reference and read by both `xcheck.py verify` (reference side) and the C++ test (engine side):
+escaped Unicode and surrogate pairs, reordered keys, duplicate keys at top level, nested, in a hold
+and in a spawn, booleans as integers, floats/exponents/leading zeros/plus/NaN/Infinity, unknown
+and missing fields, version and profile, seat count/order/duplicates, facing, bounds, exclusions,
+policy ranges, hold limits, stale/uppercase/non-string hash, BOM, non-ASCII, truncated input. The
+three unchanged candidates hash exactly as stated (`e001442a…`, `af5df648…`, `cfda244e…`) in both
+languages. Deliberately stricter in C++ (marked `ref=ok engine=reject`): integers beyond int64,
+island id -1, a lone surrogate escape, nesting beyond 64. `content_hash` absent/null is accepted as
+in the reference. Schema validity and loader support are separate: a valid gold-25000 manifest
+parses and is rejected by the loader.
+
+### State version and goldens
+
+`kStateHashVersion` 115 → 116; `Figure` 14 → 18 serialized fields. Re-baselined only after the
+semantic checks: the three event digests are identical to 115; `tools/sim_stream.py` (bumped to
+116, independent transcription) agrees with the C++ on g0, g1, s5, s6 (`--check`: goldens agree);
+`scenario_corpus.txt` differs only in `create_hash`, in all 50 files (every count unchanged);
+`g4.log` +36 bytes (2 figures × 18), the other logs keep their size. The empty-world hash in
+`sim_test.cpp` was taken from the Python oracle, not regenerated from C++.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| formats suite incl. json, sha256, manifest cross-check (macOS, Debug) | all pass |
+| sim suite, replay tests, scenario corpus (3 cases) with the original files | all pass; 843 of 870 registered, the other 27 are below |
+| new: 12 figure/expedition cases, 8 loader cases | pass (hand-derived ids, parents, positions, facing, holds, gold, rejections, unchanged existing world, save/load/save identity, derived `by_id`, stream version and corrupt-reference refusal, hostile hold count, 200 000-deep chain, idle 1000-step advance) |
+| three candidates loaded with the original registry and files | pass; hashes `a e471f6e1ff1164ec`, `b 0ffe696a2a07cc14`, `c 7ec33fd43149094b` identical in two fresh processes and on 1, 2 and 7 executor threads |
+| `tools/lint_sim.py` + self-test | ok, 70 cases |
+| `map2_manifest_selftest`, `xcheck verify` | pass, 0 problems |
+| ASan + UBSan (`build/mac-asan`) | see the line added below when the run finished |
+
+### Failed, skipped and external gates
+
+- **NOT RUN:** Windows MSVC build and tests, Linux GCC/Clang `-Werror` (`tools/check_unix_warnings.sh`
+  needs WSL), Wine/original-binary differential, GPU and rendering suites (excluded by the task).
+- **27 `anno_test_support_tests` coordinator self-tests fail on macOS** (not run elsewhere here):
+  their harness (`tests/child_process.hpp` `sibling()`) reads `/proc/self/exe`. This is the test
+  harness of the coordinator itself, not the production path; porting it is outside this unit.
+- Platform prerequisites added so that memory-admitted tests can run on a Mac (commit `8002ae8`,
+  separate from the feature, admission control unchanged and ON): executable path
+  (`_NSGetExecutablePath`), Darwin `posix_spawn` rejects closing unopened descriptors, and a macOS
+  memory meter (free+speculative+inactive pages, `hw.memsize`, `phys_footprint`). Without the meter
+  the coordinator saw "unknown" memory and never admitted, so the corpus test waited until stopped.
+- Native configuration, not a product build: `build/mac-headless` (Debug, Ninja, Apple Clang 21,
+  `-DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`) and `build/mac-asan` (same plus
+  `-DANNO_SANITIZE=ON`). `build/msvc` was not touched.
+
+### Remaining limitations
+
+Founding (`AnnoFrame.dll 0x10049340`, OQ-490, OQ-520) and the open-water planner are unread, so a
+ship does not move and cannot found. A later unit that removes a parent figure must first release its
+children (validation reports the orphan, it does not repair it). The loader repeats ~60 lines of the
+island placement of `fixed_map.cpp`; unifying them would touch the fixed-map path. Player names and
+colours are not part of the manifest and stay unset.
+
+### Reproduce
+
+```
+export PATH=$PWD/../../anno1503/cache/mac-tools/venv/bin:$PATH   # cmake, ninja, clang-format
+cmake -S . -B build/mac-headless -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF
+ninja -C build/mac-headless anno_formats_tests anno_sim_tests sim_replay anno_budget_coord
+ANNO1503_GAME_DIR=<game/app> ctest --test-dir build/mac-headless -R "anno_sim|anno_formats" -j 8
+python3 -I tools/map2_manifest_xcheck.py verify
+python3 -I tools/sim_stream.py --check
+```
+
+### Next unit
+
+Review. Then, separately: founding from the ship (needs `0x10049340`) and the navigator.

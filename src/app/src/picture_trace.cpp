@@ -80,6 +80,11 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     std::vector<double> reclaim, queue, build;
     std::map<std::pair<std::uint32_t, std::uint64_t>, double> admitted_at, started_at;
     std::map<std::uint32_t, std::uint64_t> desired_of;
+    // For the causal checks (round ec, A1): the islands committed since the last Generation event,
+    // the time each (island, generation) was committed, and the readiness events per pair.
+    std::vector<std::pair<std::uint32_t, double>> committed_pending;
+    std::map<std::pair<std::uint32_t, std::uint64_t>, double> committed_at;
+    std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<double>> cpu_at, gpu_at, none_at;
     auto build_end = [&](const TraceEvent& e) {
         const auto it = started_at.find({e.island, e.version});
         if (it != started_at.end()) {
@@ -98,6 +103,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             s.converged_ms = -1; // a newer edit: convergence is measured again
             break;
         case TraceKind::Committed:
+            committed_pending.emplace_back(e.island, e.t_ms);
             ++s.commits;
             s.intermediate_commits += e.version < desired_of[e.island] ? 1U : 0U;
             s.last_commit_ms = e.t_ms;
@@ -111,6 +117,10 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             }
             break;
         case TraceKind::Generation:
+            for (const auto& [island, t] : committed_pending) {
+                committed_at.emplace(std::pair{island, e.version}, t);
+            }
+            committed_pending.clear();
             ++s.generations;
             for (const std::size_t i : awaiting_generation) {
                 edits[i].generation = e.version;
@@ -118,6 +128,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             awaiting_generation.clear();
             break;
         case TraceKind::ChunksReady:
+            cpu_at[{e.island, e.version}].push_back(e.t_ms);
             // Per island: one island's readiness is never another island's latency (2d).
             for (Edit& d : edits) {
                 if (d.island == e.island && d.generation == e.version && d.t1 >= 0 && d.t2 < 0 &&
@@ -127,6 +138,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             }
             break;
         case TraceKind::GpuReady:
+            gpu_at[{e.island, e.version}].push_back(e.t_ms);
             // The GPU boundary of the same island and generation, not before the commit.
             for (Edit& d : edits) {
                 if (d.island == e.island && d.generation == e.version && d.t1 >= 0 && d.t3 < 0 &&
@@ -139,6 +151,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             s.gpu_mode = true;
             break;
         case TraceKind::NoVisibleChange:
+            none_at[{e.island, e.version}].push_back(e.t_ms);
             for (Edit& d : edits) {
                 if (d.island == e.island && d.generation == e.version && d.t2 < 0) {
                     d.offscreen = true;
@@ -232,6 +245,57 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         }
     }
     s.gpu_ms = distribution(std::move(gpu));
+    // The causal checks over the whole trace.
+    auto pair_name = [](const std::pair<std::uint32_t, std::uint64_t>& p) {
+        return "island " + std::to_string(p.first) + " generation " + std::to_string(p.second);
+    };
+    auto check_committed = [&](const char* kind, const auto& by_pair) {
+        for (const auto& [p, times] : by_pair) {
+            const auto c = committed_at.find(p);
+            if (c == committed_at.end()) {
+                s.contradictions.push_back(std::string(kind) + " of " + pair_name(p) +
+                                           ": the island was not committed in that generation");
+                continue;
+            }
+            for (const double t : times) {
+                if (t < c->second) {
+                    s.contradictions.push_back(std::string(kind) + " of " + pair_name(p) +
+                                               " before its commit");
+                }
+            }
+            if (times.size() > 1) {
+                s.contradictions.push_back(std::string(kind) + " of " + pair_name(p) + " " +
+                                           std::to_string(times.size()) + " times");
+            }
+        }
+    };
+    check_committed("chunks_ready", cpu_at);
+    check_committed("no_visible_change", none_at);
+    check_committed("gpu_ready", gpu_at);
+    for (const auto& [p, times] : none_at) {
+        if (cpu_at.contains(p)) {
+            s.contradictions.push_back("both no_visible_change and chunks_ready for " +
+                                       pair_name(p));
+        }
+    }
+    for (const auto& [p, times] : gpu_at) {
+        if (!s.gpu_mode) {
+            s.contradictions.push_back("gpu_ready of " + pair_name(p) + " without gpu_mode");
+        }
+        const auto cpu = cpu_at.find(p);
+        if (cpu == cpu_at.end()) {
+            s.contradictions.push_back("gpu_ready of " + pair_name(p) +
+                                       " without its chunks_ready (GPU-usable implies CPU-ready)");
+            continue;
+        }
+        const double first_cpu = *std::min_element(cpu->second.begin(), cpu->second.end());
+        for (const double t : times) {
+            if (t < first_cpu) {
+                s.contradictions.push_back("gpu_ready of " + pair_name(p) +
+                                           " before its chunks_ready");
+            }
+        }
+    }
     s.object_ms = distribution(std::move(object));
     s.visible_ms = distribution(std::move(visible));
     s.reclaim_ms = distribution(std::move(reclaim));
@@ -352,6 +416,13 @@ std::string format_summary(const TraceSummary& s) {
           << (s.run_status == 0 ? " (succeeded)" : " (FAILED)") << "\n";
     } else {
         o << "run=INCOMPLETE (no run_end event: the run stopped or the trace was cut)\n";
+    }
+    if (!s.contradictions.empty()) {
+        o << "consistency=CONTRADICTORY (" << s.contradictions.size()
+          << " contradiction(s): not a measurement)\n";
+        for (const std::string& c : s.contradictions) {
+            o << "contradiction: " << c << "\n";
+        }
     }
     o << "edits=" << s.edits << " object_ready=" << s.object_ready
       << " visible_ready=" << s.visible_ready << " offscreen=" << s.offscreen

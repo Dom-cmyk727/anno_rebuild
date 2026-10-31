@@ -133,8 +133,22 @@ struct TraceSummary {
     /// Whether the trace ends with RunEnd, and the status it carries (meaningful when complete).
     bool complete = false;
     std::uint64_t run_status = 0;
-    /// Complete, and the run's status is 0.
-    [[nodiscard]] bool succeeded() const { return complete && run_status == 0; }
+    /// Causal contradictions (round ec, A1): evidence that cannot be a measurement, each with the
+    /// event it concerns. Checked over the whole trace, so the order of equal times in the file
+    /// does not matter:
+    /// - a ChunksReady, NoVisibleChange or GpuReady of island i and generation g needs i committed
+    ///   in g (its Committed events and the Generation event of that commit) and is not earlier
+    ///   than that commit;
+    /// - a GpuReady needs GPU mode, and the ChunksReady of the same i and g at a time not after
+    ///   it (GPU-usable implies CPU-ready; one observation may give both the same time);
+    /// - at most one ChunksReady, NoVisibleChange and GpuReady per i and g, and not both a
+    ///   ChunksReady and a NoVisibleChange.
+    /// A consistent trace may still report unfinished work (an edit never ready, GPU-unfinished);
+    /// that is a measurement, a contradiction is not.
+    std::vector<std::string> contradictions;
+    [[nodiscard]] bool consistent() const { return contradictions.empty(); }
+    /// Complete, consistent, and the run's status is 0.
+    [[nodiscard]] bool succeeded() const { return complete && consistent() && run_status == 0; }
 };
 [[nodiscard]] TraceSummary summarize(std::span<const TraceEvent> events);
 

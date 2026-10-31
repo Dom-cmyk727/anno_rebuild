@@ -2,6 +2,7 @@
 // latencies, coalescing, an offscreen commit, an unfinished edit and a reclamation delay; the
 // summary must give exactly the expected numbers, and must be the same after a round trip
 // through the saved text.
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -479,15 +480,16 @@ TEST_CASE("picture trace: the GPU boundary is measured per island and generation
     // GPU mode (round eb, 5A). Island 0: desired at 0, committed in generation 1 at 4, CPU-ready
     // at 7, GPU-usable at 9 (two frames later). Island 1: desired at 1, committed in generation 1,
     // CPU-ready at 8 and never GPU-usable before the end. Island 2: offscreen (no visible key).
-    // A GpuReady of island 0 for another generation (2) is not island 0's generation-1 latency.
     const std::vector<app::TraceEvent> events{
-        {0, K::GpuMode, 0, 1},   {0, K::Desired, 0, 1},     {1, K::Desired, 1, 1},
-        {2, K::Desired, 2, 1},   {4, K::Committed, 0, 1},   {4, K::Committed, 1, 1},
-        {4, K::Committed, 2, 1}, {4, K::Generation, 0, 1},  {4, K::NoVisibleChange, 2, 1},
-        {6, K::GpuReady, 0, 2},  {7, K::ChunksReady, 0, 1}, {8, K::ChunksReady, 1, 1},
-        {9, K::GpuReady, 0, 1},  {12, K::RunEnd, 0, 0},
+        {0, K::GpuMode, 0, 1},     {0, K::Desired, 0, 1},     {1, K::Desired, 1, 1},
+        {2, K::Desired, 2, 1},     {4, K::Committed, 0, 1},   {4, K::Committed, 1, 1},
+        {4, K::Committed, 2, 1},   {4, K::Generation, 0, 1},  {4, K::NoVisibleChange, 2, 1},
+        {7, K::ChunksReady, 0, 1}, {8, K::ChunksReady, 1, 1}, {9, K::GpuReady, 0, 1},
+        {12, K::RunEnd, 0, 0},
     };
     const app::TraceSummary s = app::summarize(events);
+    CHECK(s.consistent()); // unfinished GPU work is a measurement, not a contradiction
+    CHECK(s.succeeded());
     CHECK(s.gpu_mode);
     CHECK(s.visible_ready == 2);
     CHECK(s.offscreen == 1);
@@ -513,4 +515,97 @@ TEST_CASE("picture trace: the GPU boundary is measured per island and generation
     CHECK(!c.gpu_mode);
     CHECK(c.gpu_unfinished == 0);
     CHECK(app::format_summary(c).find("gpu_mode=0") != std::string::npos);
+}
+
+namespace {
+
+/// The edit of island 0, version 1, committed in generation 1 at 1 ms (GPU mode), with `tail`.
+std::vector<app::TraceEvent> gpu_trace(std::vector<app::TraceEvent> tail) {
+    std::vector<app::TraceEvent> e{{0, K::GpuMode, 0, 1},
+                                   {0, K::Desired, 0, 1},
+                                   {1, K::Committed, 0, 1},
+                                   {1, K::Generation, 0, 1}};
+    e.insert(e.end(), tail.begin(), tail.end());
+    e.push_back({10, K::RunEnd, 0, 0});
+    return e;
+}
+
+bool contradicts(const std::vector<app::TraceEvent>& events, const std::string& what) {
+    const app::TraceSummary s = app::summarize(events);
+    const bool found =
+        std::any_of(s.contradictions.begin(), s.contradictions.end(),
+                    [&](const std::string& c) { return c.find(what) != std::string::npos; });
+    // A contradictory trace is never a successful measurement, and the saved text says so.
+    const auto back = app::parse_tsv(app::to_tsv(events));
+    return found && !s.succeeded() && back.ok() && !app::summarize(back.value()).consistent() &&
+           app::format_summary(s).find("consistency=CONTRADICTORY") != std::string::npos;
+}
+
+} // namespace
+
+TEST_CASE("picture trace: GPU readiness needs the CPU readiness of the same island and generation, "
+          "not later than it" *
+          doctest::test_suite("picture_trace")) {
+    // Round ec, A1. The two traces of the review: GPU-usable before CPU-ready, and GPU-usable with
+    // no CPU readiness at all. Both were accepted with a GPU latency of 2 ms.
+    CHECK(contradicts(gpu_trace({{2, K::GpuReady, 0, 1}, {9, K::ChunksReady, 0, 1}}),
+                      "gpu_ready of island 0 generation 1 before its chunks_ready"));
+    CHECK(contradicts(gpu_trace({{2, K::GpuReady, 0, 1}}),
+                      "gpu_ready of island 0 generation 1 without its chunks_ready"));
+    // One observation: both at the same time, in either order in the file.
+    for (const bool gpu_first : {true, false}) {
+        CAPTURE(gpu_first);
+        const app::TraceEvent cpu{5, K::ChunksReady, 0, 1}, gpu{5, K::GpuReady, 0, 1};
+        const auto events = gpu_trace(gpu_first ? std::vector<app::TraceEvent>{gpu, cpu}
+                                                : std::vector<app::TraceEvent>{cpu, gpu});
+        const app::TraceSummary s = app::summarize(events);
+        CHECK(s.consistent());
+        CHECK(s.succeeded());
+        CHECK(s.gpu_ready == 1);
+        CHECK(s.gpu_ms.p50 == doctest::Approx(5.0));
+    }
+    // GPU-usable later than CPU-ready: consistent, and the latency is the GPU event's.
+    const app::TraceSummary later =
+        app::summarize(gpu_trace({{4, K::ChunksReady, 0, 1}, {7, K::GpuReady, 0, 1}}));
+    CHECK(later.consistent());
+    CHECK(later.gpu_ms.p50 == doctest::Approx(7.0));
+}
+
+TEST_CASE("picture trace: readiness of an island or generation that was not committed, readiness "
+          "before the commit, duplicates and GPU events without GPU mode are contradictions" *
+          doctest::test_suite("picture_trace")) {
+    // Another island's readiness: island 1 was not committed in generation 1.
+    CHECK(contradicts(gpu_trace({{4, K::ChunksReady, 1, 1}}),
+                      "chunks_ready of island 1 generation 1: the island was not committed"));
+    CHECK(contradicts(gpu_trace({{4, K::ChunksReady, 0, 1}, {5, K::GpuReady, 1, 1}}),
+                      "gpu_ready of island 1 generation 1: the island was not committed"));
+    // Another generation of the right island.
+    CHECK(contradicts(gpu_trace({{4, K::ChunksReady, 0, 1}, {5, K::GpuReady, 0, 2}}),
+                      "gpu_ready of island 0 generation 2: the island was not committed"));
+    // Before the commit: the commit is at 1 ms.
+    CHECK(contradicts(std::vector<app::TraceEvent>{{0, K::GpuMode, 0, 1},
+                                                   {0, K::Desired, 0, 1},
+                                                   {0.5, K::ChunksReady, 0, 1},
+                                                   {1, K::Committed, 0, 1},
+                                                   {1, K::Generation, 0, 1},
+                                                   {10, K::RunEnd, 0, 0}},
+                      "chunks_ready of island 0 generation 1 before its commit"));
+    // Twice, and both offscreen and ready.
+    CHECK(contradicts(gpu_trace({{4, K::ChunksReady, 0, 1}, {5, K::ChunksReady, 0, 1}}),
+                      "chunks_ready of island 0 generation 1 2 times"));
+    CHECK(contradicts(gpu_trace({{1, K::NoVisibleChange, 0, 1}, {5, K::ChunksReady, 0, 1}}),
+                      "both no_visible_change and chunks_ready"));
+    // A GPU event in a CPU-only trace.
+    CHECK(contradicts(std::vector<app::TraceEvent>{{0, K::Desired, 0, 1},
+                                                   {1, K::Committed, 0, 1},
+                                                   {1, K::Generation, 0, 1},
+                                                   {4, K::ChunksReady, 0, 1},
+                                                   {5, K::GpuReady, 0, 1},
+                                                   {10, K::RunEnd, 0, 0}},
+                      "gpu_ready of island 0 generation 1 without gpu_mode"));
+    // A consistent trace that reports unfinished work stays a measurement.
+    const app::TraceSummary unfinished = app::summarize(gpu_trace({{4, K::ChunksReady, 0, 1}}));
+    CHECK(unfinished.consistent());
+    CHECK(unfinished.gpu_unfinished == 1);
+    CHECK(unfinished.succeeded());
 }

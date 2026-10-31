@@ -40,7 +40,8 @@
 // named). The trace is saved last and ends with run_end, which carries the verdict when every other
 // file was saved and 5 when one was not; when the trace itself cannot be saved there is none (and
 // no summary.txt). --aggregate exits 0 only for a complete trace of a successful run (6 for an
-// incomplete or failed one, 2 for an unreadable, malformed or missing one).
+// incomplete or failed one, 2 for an unreadable, malformed, missing or causally contradictory one:
+// picture_trace.hpp, TraceSummary::contradictions).
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -343,8 +344,9 @@ app::ChunkDiff check_view(const render::FrameRenderer& frames, const render::Sce
 
 int main(int argc, char** argv) {
     if (argc == 3 && std::string_view(argv[1]) == "--aggregate") {
-        // Exit 0 only for a complete trace of a successful run; an incomplete or failed run is
-        // still summarized (for inspection) but exits 6; an unreadable or malformed trace exits 2.
+        // Exit 0 only for a complete, consistent trace of a successful run; an incomplete or failed
+        // run is still summarized (for inspection) but exits 6; an unreadable, malformed or
+        // causally contradictory trace exits 2.
         const app::TextFile file = app::read_text(argv[2]);
         if (!file.ok) {
             fail(2, file.error);
@@ -355,6 +357,14 @@ int main(int argc, char** argv) {
         }
         const app::TraceSummary summary = app::summarize(events.value());
         std::cout << app::format_summary(summary);
+        if (!summary.consistent()) {
+            // Contradictory evidence (round ec, A1) is malformed, not a measurement: exit 2 as an
+            // unreadable trace does, with every contradiction named.
+            for (const std::string& c : summary.contradictions) {
+                std::cerr << "bench_picture: " << argv[2] << ": contradiction: " << c << "\n";
+            }
+            return 2;
+        }
         return summary.succeeded() ? 0 : 6;
     }
     if (argc < 2) {

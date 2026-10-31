@@ -1,7 +1,9 @@
-# Viewer and GPU handoff of the picture's generations (round dw, DW7; plan only)
+# Viewer and GPU handoff of the picture's generations (round dw, DW7; refreshed in round dz; plan only)
 
-Status: a plan written from reading the code at `847fe9b` (CPU candidate of round dw). Nothing here is implemented
-or enabled. GPU integration, developer input and preview wait for the CPU review and an assignment.
+Status: a plan written from reading the code at `847fe9b` (CPU candidate of round dw) and checked again at the
+round-dz CPU candidate (the line references below still hold). Nothing here is implemented or enabled. GPU
+integration, viewer wiring, developer input and preview wait for an assignment; the GPU tests in section 3 are
+required before the integration is accepted and none of them exists yet.
 
 ## 1. What the code does today (read, not assumed)
 
@@ -22,6 +24,12 @@ group)` (`frame.hpp:271`) and `FrameRenderer::render(const std::shared_ptr<const
 The chunk jobs hold their generation (`ChunkJob::scene`, `frame.hpp:156`) and the renderer holds the one it last
 planned from (`job_scene_`, `frame.hpp:439`). Final destruction of any generation is the reclaimer's
 (`render::SceneReclaimer`, round dw DW3a), whichever of these releases last.
+
+What the round-dz CPU work changes for the consumer (docs/app/game-shell.md, "Publication policy"): the
+picture publishes intermediate generations by default (Monotonic). A frame may therefore show an island at a
+version older than the sim's newest one, never older than what it showed before, and never a mixture of two
+versions of one island; the newest version follows when its build is committed. A consumer needs no extra rule
+for this: it takes one owning handle per frame (below) and draws what that generation holds.
 
 ## 2. Where a generation handle must travel
 
@@ -70,14 +78,20 @@ gates for RTX 4090 and Radeon iGPU run on the Windows PC.
 | 1 | One replacement, CPU and GPU equality (the same chunk pixels after one commit) | the handle path and chunk replacement | `update_chunks(shared)`, `render(shared)`, `GpuFrame::render` | 1 scene load, < 1 min (game files) |
 | 2 | A late stale completion (an old build finishing after a newer invalidation) is not published | stale rule on both paths | `request_chunks`, `fill_cache` (round dv R2) | synthetic, < 10 s |
 | 3 | Derived zoom and an offscreen return: a chunk changed at group 2 is correct at groups 3 and 4 after the view returns | derived freshness through the viewer's zoom | `plan_jobs`, `derived_freshness` cases | 1–3 min (game files) |
-| 4 | Multi-island bursts: 50 edits over 12 islands, every changed pixel equals the CPU reference | picture to chunks to GPU, under load | `bench_picture` async mode with `--verify 1` | 2–5 min per run |
+| 4 | Legal-workload streams (the five-city workload, a stream above the build rate under the Monotonic default, intermediate generations included): every visible chunk the GPU shows equals the CPU reference of the generation it was drawn from | picture to chunks to GPU, under load | `bench_picture` (its oracle runs at the end of every case; a per-frame GPU comparison does not exist yet) | 2–5 min per run |
 | 5 | 1080p and 4K presentation latency of an edit (time from the sim's batch to the presented pixel), with and without the simulation load | the PLAN section 0.3 frame targets | viewer frame loop, presentation timing (not yet built) | depends on the viewer; several hours with the matrix |
-| 6 | Dense and simulation-contention workloads on the target hosts | the same with 800 buildings per island and real simulation load | `bench_picture`, the headless simulation benchmark | hours; the Windows host |
+| 6 | Simulation contention on the target hosts | the same with a second sim world running turns beside the picture (`bench_picture --sim-contention 1`) | `bench_picture`, the headless simulation benchmark | hours; the Windows host |
 
 Existing seams: #1 and #3 can use the existing pixel tests (`river_flow_corpus`, `derived_freshness`,
 `scene_picture`) with the handle path added. Missing: a test that holds a generation handle across a commit on the
-GPU path; a presentation-latency probe in the viewer; a real simulation-load run in the bench (only the arithmetic
-proxy exists). These are listed for the next review, not implemented here.
+GPU path; a presentation-latency probe in the viewer; a per-frame GPU-against-CPU comparison in the bench. These
+are listed for the next review, not implemented here.
+
+Workload limits that apply to every row (docs/perf/README.md): the legal workload is five cities of about 40
+buildings each, not a late-game economy; roads are not supported by it; the island's scenery caps the density a
+city reaches, so a denser island is not a workload the sim admits today; the original's placement rules are only
+partly resolved. Earlier drafts of this table named a density of 800 buildings per island; no such workload
+exists.
 
 ## 4. What this plan does not decide
 

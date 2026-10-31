@@ -8677,3 +8677,56 @@ Mac M5 Max, 18 cores, 48 GiB unified memory, swap at 39.6 of 40 GiB during the h
 jobs; non-heavy CTest 8 jobs with `ANNO_TEST_THREADS=1`; heavy `-j 1`, `ANNO_HEAVY_TEST_PROCESSORS=1`,
 `ANNO_TEST_HEADROOM_MB=8192`, `ANNO_TEST_MEASURE_ITEMS=1`. Benchmark runs were sequential; no other owned job ran
 during a timed run.
+
+## Round dx: review matrix (W4.3 CPU candidate, head `92fd87a`)
+
+Code under test: `92fd87a` (clean tree). Test binaries: dev `anno_app_tests` `d61cce53…`, dev
+`anno_render_tests` `a7439763…`, Release `anno_app_tests` `34e1a1a6…`, Release `anno_render_tests` `ddffbc06…`
+(sha256, first 16 hex in the log). Raw logs: `cache/dx-runs/`. Commits this round: `1e9ec0d`, `b353ec9`
+(verifier), `8c33942` (DX3), `2828fb1`, `fe74d35` (DX2d), `fc4862e` (DX2a–c), `b59ac6e` (DX2e), `92fd87a` (docs).
+
+| Acceptance | Source | Command | Result | Raw artifact | Limitation |
+|---|---|---|---|---|---|
+| DX1a–d verifier detects wrong buildings; controls fail | `src/app/src/picture_check.cpp`, `src/app/tests/picture_check_test.cpp` (C0–C5) | picture_check suite (earlier round) | DONE: 3 cases, 41 assertions pass; erased objects, shifted, moved, rotated, swapped, omitted and stale chunks fail | `cache/dx-runs/` (round dx DX1 logs) | Synthetic controls plus one real-data edited view; the old "33 verified" claim is withdrawn, not restated |
+| DX2a ownership and accounting table | `docs/app/game-shell.md`, "Credits and byte accounting" | doc | DONE | `92fd87a` | Vector capacities and the record estimate only; the table names what each object holds |
+| DX2b credit held while a superseded build runs; 1/2/4 workers at barriers | `scene_picture.cpp` (`Credit`, `Ledger`, worker tail) | `anno_app_tests.picture credits: …`, `…picture recovery: the same convergence with one, two and four workers` | DONE for the transitions tested; PASS (dev 34/34, ASan 17/17, Release 16/16) | `dx2e-app-1.log`, `dx2f-asan-app.log`, `dx5-release-bridge.log` | Multi-generation barrier per island with 4 workers is covered by the convergence case, not by a dedicated barrier case |
+| DX2c stalled actual reclaimer: bounded, converges, bytes return to baseline | `scene_picture.cpp` `reclaim_overloaded()`, commit and dispatch | `anno_app_tests.picture reclaim: a stalled process reclaimer …` | DONE: 40 replacements bounded to `max_reclaim_backlog + 1` waiting; converged; `bytes_waiting` back to baseline | `dx2e-app-1.log` | Process-wide reclaimer; one case per process |
+| DX2d last-owner deleter does not allocate or throw | `render/src/scene.cpp` (`reclaim`, intrusive list), `scene.hpp` | `anno_render_tests.scene reclaim: …` (3 cases) | DONE; ASan 7/7 with the derived cases | `dx2f-asan-render.log`, `dx5-release-bridge.log` | Allocation-failure injection not tested; the path has no allocation by construction |
+| DX2d release from frame/worker/after teardown | `picture recovery: a generation that outlives the bridge…` | recovery suite | PARTIAL: worker and bridge-teardown cases exist; a frame-held release is not tested | `dx2e-app-1.log` | Frame-held case needs the viewer wiring (out of scope) |
+| DX2e cheap admission before list copy; indexed selection | `scene_picture.cpp` `reindex`, `dispatch`; `Stats::copied_buildings` | `anno_app_tests.picture starts: …` | DONE for correctness and the copy count (1 and 51) | `dx2e-app-1.log`, `dx2f-asan-app2.log` | Cost against increasing unrelated-city size NOT measured: OPEN |
+| DX2f barrier regressions and sanitizer runs | recovery/credit/reclaim tests | dev 34/34; ASan app 17/17 + 1/1; ASan render 7/7; Release 16/16 | PARTIAL: every transition named in DX2b–d has a case; late external owner and allocation failure are not covered | `cache/dx-runs/dx2*`, `dx5-release-bridge.log` | ASan on changed paths only; not a full ASan corpus |
+| DX3a–d per island failures, obsolete failures, explicit retry, two failed islands, shutdown | `scene_picture.cpp`, `picture recovery`/`picture failures` tests | `anno_app_tests.picture failures: …` (4 cases) and recovery | DONE; PASS | `dx2e-app-1.log` | Retry admission is the normal dispatch (bounded by slots and backoff), not a separate budget |
+| DX4a legal five-city workload from sim commands, validated | none in this round | none | OPEN: the bench's "five" tier is 40 buildings on five islands of `lan5`, validated for island bounds and tile overlap only; it is not a registry-footprint city workload | — | Needs real-registry placement through sim commands; not started |
+| DX4b cadence, per-island version timestamps, edit-to-ready latency | none new | none | OPEN | — | — |
+| DX4c raw per-frame/per-build events, RSS and paging deltas | none new | none | OPEN | — | — |
+| DX4d discriminating small set | none | none | OPEN | — | — |
+| DX4e Release on a quiet host and beside a real headless sim | none | none | OPEN | — | — |
+| DX4f matrix runner propagates failures | `tools/test/run_selected.sh` already fails on child failure | selection runs above | PARTIAL: the runner propagates failures; no matrix runner | — | — |
+| DX5a focused per-case CTest with positive counts; format; Release | scope above | selections above; `clang-format 23.1.3 --dry-run -Werror` on changed files (clean); Release build (no warnings) | DONE | `dx5-release-build.log`, `dx2e-app-1.log` | — |
+| DX5b non-heavy gate with and without game files | — | `ctest --preset dev -LE heavy -j 8` with and without `ANNO1503_GAME_DIR` | game: 1197/1199 pass, 2 known Metal failures (#364 `gpu_test.cpp:2219`; #367 `:2219` and `:2515`, the same per-pass timestamp family as round dw); no-game: 1197/1199, same 2 | `cache/dx-runs/dx5-nonheavy-game.log`, `dx5-nonheavy-nogame.log` | Metal failures left open and unwaived; the heavy rerun is OPEN (not run; lifecycle and accounting changed) |
+| DX5c Windows MSVC, GCC/Clang -Werror, RTX/Radeon | — | — | PENDING (external) | — | — |
+| DX5d docs: game-shell, gpu-handoff, perf README; island-count correction | `docs/app/game-shell.md`, `docs/app/gpu-handoff.md` (`92fd87a`) | doc | game-shell and gpu-handoff DONE; perf README PARTIAL (not updated); the "two inhabited islands" claim in REPORTS round dw (line 8565) is UNVERIFIED and not repeated here: the "five" tier is five islands by construction | `92fd87a` | Perf numbers from before DX2 are not re-measured |
+| DX5e commits, hashes, decisions, no owned job left | — | `git status`, `ps` | DONE for this report; no owned job running at the time of writing | — | — |
+
+**Peak retained bytes (round dx):** not measured. `Stats::outstanding_bytes_peak` and the reclaimer's
+`peak_bytes_waiting` exist; no workload ran, so no number is reported. OPEN with DX4.
+
+**Decisions and reasoning**
+- A build's admission credit is an RAII object that travels with its job or result and is released when that
+  object is destroyed. Alternative: releasing at hand-over to the reaper (the previous code). Rejected: the
+  memory lives until the reaper destroys it, so the budget under-counted. Evidence: the superseded-running test
+  fails on the old code (a replacement is admitted beside a running build).
+- A superseded running build keeps its slot and bytes until its worker finishes; a replacement beyond the
+  budget is deferred. Alternative: admit it. Rejected: two copies would be live beyond the budget.
+- The worker counts itself done only after it destroys its discarded objects, so `wait_idle` covers the
+  release. Alternative: decrement first. Rejected: a test could observe bytes still held after `wait_idle`.
+- Commits and replacements back off on the process reclaimer's waiting count, not only the reaper's backlog.
+  Evidence: the reaper releases quickly, so a stalled reclaimer never raised the reaper backlog.
+- The byte budget keeps the one-build exception only when nothing is held. Alternative: admit any oversize
+  build. Rejected: that would allow hidden concurrent copies.
+- Per-island buildings are indexed in one pass per changed batch and copied only after admission. Alternative:
+  a global sort. Rejected: it reorders buildings, which the loader's per-island order depends on.
+- Known Metal failures are left open, not waived, and their assertion lines are recorded as they occur.
+
+**Not done in round dx (OPEN/PARTIAL):** DX4 entirely; the heavy rerun; the DX2e cost curve; peak retained
+bytes; the perf README; the frame-held release case; Windows, Linux and RTX/Radeon gates.

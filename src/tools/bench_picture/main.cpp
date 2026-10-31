@@ -619,17 +619,16 @@ int main(int argc, char** argv) {
     frame_rows << "frame\tt_ms\tphase\tpublished\tapply_ms\tapply_list_ms\treindex_ms\tdispatch_ms"
                   "\tcommit_ms\tcommitted\tupdate_ms\tchunks_built\tpending\toutstanding"
                   "\toutstanding_bytes\tchunk_build_ms\n";
-    chunk_rows << "t_ms\tgeneration\tlevel\tx\ty\n";
+    chunk_rows << "t_ms\tisland\tgeneration\tlevel\tx\ty\tstate\n";
     memory_rows << "t_ms\trss\tfootprint\tmajflt\tminflt\tpressure\tsys_pageins\tsys_pageouts"
                    "\tsys_swapins\tsys_swapouts\toutstanding_bytes\tincremental\tbaseline\tbacking"
                    "\tgeneration_meta\treferenced_by_current\tretired_payload\treclaim_waiting"
                    "\treclaim_bytes_waiting\treclaim_bytes_in_flight\n";
-    struct Pending {
-        std::uint64_t generation;
-        std::vector<render::ChunkKey> keys;
-        std::set<render::ChunkKey> left;
-    };
-    std::vector<Pending> pending_visible;
+    // Visible readiness per committed island and generation: every key of the island's change
+    // within the view, fresh at the same poll (ReadinessTracker; round dz, 2b/2d).
+    app::ReadinessTracker readiness;
+    std::vector<app::ReadinessTracker::KeyEvent> key_events;
+    bool converged_seen = false;
     std::size_t peak_incremental = 0, peak_retired = 0, peak_reclaim_bytes = 0;
     std::size_t peak_outstanding_bytes = 0;
     long long peak_rss = -1, peak_footprint = -1;
@@ -697,32 +696,18 @@ int main(int argc, char** argv) {
             current_generation = g;
             const auto visible = keys_at(*picture->scene(), v, level);
             const std::set<render::ChunkKey> in_view(visible.begin(), visible.end());
-            Pending p{g, {}, {}};
-            for (const render::ChunkKey& k : picture->last_invalidated()) {
-                if (in_view.count(k) != 0) {
-                    p.keys.push_back(k);
-                    p.left.insert(k);
+            for (const app::ScenePicture::CommittedIsland& c : picture->last_commit()) {
+                app::ReadinessTracker::Set set{static_cast<std::uint32_t>(c.index), g, {}};
+                for (const render::ChunkKey& k : c.keys) {
+                    if (in_view.count(k) != 0) {
+                        set.keys.push_back(k);
+                    }
                 }
-            }
-            if (std::getenv("BENCH_PICTURE_DEBUG_KEYS") != nullptr) {
-                std::fprintf(stderr, "commit g=%llu invalidated=%zu view_keys=%zu visible=%zu\n",
-                             static_cast<unsigned long long>(g), picture->last_invalidated().size(),
-                             visible.size(), p.keys.size());
-                for (const render::ChunkKey& k : picture->last_invalidated()) {
-                    std::fprintf(stderr, "  inv %d %d %d\n", static_cast<int>(std::get<0>(k)),
-                                 static_cast<int>(std::get<1>(k)),
-                                 static_cast<int>(std::get<2>(k)));
+                if (set.keys.empty()) {
+                    rec.add(app::TraceKind::NoVisibleChange, set.island, g);
+                } else {
+                    readiness.add(std::move(set));
                 }
-                for (const render::ChunkKey& k : visible) {
-                    std::fprintf(stderr, "  vis %d %d %d\n", static_cast<int>(std::get<0>(k)),
-                                 static_cast<int>(std::get<1>(k)),
-                                 static_cast<int>(std::get<2>(k)));
-                }
-            }
-            if (p.keys.empty()) {
-                rec.add(app::TraceKind::NoVisibleChange, 0, g);
-            } else {
-                pending_visible.push_back(std::move(p));
             }
             if (stall_ms > 0 && !stalled && !stall_released) {
                 // The delayed reclaimer: stall it from the first commit for stall_ms.
@@ -743,22 +728,25 @@ int main(int argc, char** argv) {
         static_cast<void>(unused_n);
         const double update_ms = ms_between(u0, Clock::now());
         const double t_end = rec.now_ms();
-        for (auto it = pending_visible.begin(); it != pending_visible.end();) {
-            for (auto k = it->left.begin(); k != it->left.end();) {
-                if (frames.chunk(*k) != nullptr && frames.stale_generation(*k) == 0) {
-                    chunk_rows << t_end << "\t" << it->generation << "\t" << std::get<0>(*k) << "\t"
-                               << std::get<1>(*k) << "\t" << std::get<2>(*k) << "\n";
-                    k = it->left.erase(k);
-                } else {
-                    ++k;
-                }
-            }
-            if (it->left.empty()) {
-                rec.add(app::TraceKind::ChunksReady, 0, it->generation);
-                it = pending_visible.erase(it);
-            } else {
-                ++it;
-            }
+        const std::size_t logged = key_events.size();
+        for (const app::ReadinessTracker::Set& ready : readiness.poll(
+                 [&frames](const render::ChunkKey& k) {
+                     return frames.chunk(k) != nullptr && frames.stale_generation(k) == 0;
+                 },
+                 t_end, key_events)) {
+            rec.add(app::TraceKind::ChunksReady, ready.island, ready.generation);
+        }
+        for (std::size_t e = logged; e < key_events.size(); ++e) {
+            const auto& k = key_events[e];
+            chunk_rows << k.t_ms << "\t" << k.island << "\t" << k.generation << "\t"
+                       << std::get<0>(k.key) << "\t" << std::get<1>(k.key) << "\t"
+                       << std::get<2>(k.key) << "\t" << (k.fresh ? "fresh" : "stale") << "\n";
+        }
+        if (!converged_seen && next_edit >= plan.size() && picture->pending() == 0 &&
+            readiness.waiting() == 0) {
+            // Eventual convergence: every desired version committed, no visible readiness left.
+            rec.add(app::TraceKind::Converged, 0, 0);
+            converged_seen = true;
         }
         const auto st = picture->stats();
         frame_rows << frame << "\t" << t << "\t" << phase << "\t" << published << "\t" << apply_ms
@@ -793,7 +781,7 @@ int main(int argc, char** argv) {
     // The drain: frames go on until the picture converges and the visible chunks are ready.
     rec.add(app::TraceKind::DrainStart, 0, 0);
     const auto drain_end = Clock::now() + std::chrono::seconds(drain_s);
-    while (picture->pending() > 0 || !pending_visible.empty() || stalled) {
+    while (picture->pending() > 0 || readiness.waiting() > 0 || stalled) {
         if (Clock::now() > drain_end) {
             reclaim_open.store(true);
             break;
@@ -801,7 +789,7 @@ int main(int argc, char** argv) {
         run_frame("drain", view, 2);
     }
     rec.add(app::TraceKind::DrainEnd, 0, 0);
-    const bool converged = picture->pending() == 0 && pending_visible.empty();
+    const bool converged = picture->pending() == 0 && readiness.waiting() == 0;
     reclaim_open.store(true);
     // The offscreen case: pan to the last edited island at group 2, then zoom out one level.
     double pan_ready_ms = -1, zoom_ready_ms = -1;
@@ -848,7 +836,7 @@ int main(int argc, char** argv) {
     if (!converged) {
         verdict = 3;
         verify << "drain did not converge within " << drain_s << " s: pending "
-               << picture->pending() << ", visible generations waiting " << pending_visible.size()
+               << picture->pending() << ", visible island changes waiting " << readiness.waiting()
                << "\n";
     }
     if (picture->buildings() != desired_final) {

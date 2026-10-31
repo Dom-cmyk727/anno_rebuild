@@ -94,16 +94,20 @@ def main():
               f"{cells('visible_cpu_chunks_ready')} | {float(age['max_age_ms']):.1f} | "
               f"{first['coalesced']} | {first['offscreen']} | {first['unfinished']} | "
               f"{float(build['p50_ms']):.1f} / {float(build['max_ms']):.1f} |")
-        frames = [f for f in read_frames(case / "frames.tsv") if f["phase"] == "loop"]
-        publishing = [f for f in frames if int(f["published"]) > 0]
-        committing = [f for f in frames if int(f["committed"]) > 0]
-        stage_rows.append(
-            f"| {name} | {len(frames)} | "
-            f"{dist([float(f['apply_list_ms']) for f in publishing])} | "
-            f"{dist([float(f['reindex_ms']) for f in publishing])} | "
-            f"{dist([float(f['dispatch_ms']) for f in publishing])} | "
-            f"{dist([float(f['commit_ms']) for f in committing])} | "
-            f"{dist([float(f['update_ms']) for f in frames])} |")
+        all_frames = read_frames(case / "frames.tsv")
+        # One row per phase, in run order: the measured loop, the drain (a one-edit or burst case
+        # commits there), and the pan and zoom of the offscreen case.
+        for phase in dict.fromkeys(f["phase"] for f in all_frames):
+            frames = [f for f in all_frames if f["phase"] == phase]
+            publishing = [f for f in frames if int(f["published"]) > 0]
+            committing = [f for f in frames if int(f["committed"]) > 0]
+            stage_rows.append(
+                f"| {name} | {phase} | {len(frames)} | "
+                f"{dist([float(f['apply_list_ms']) for f in publishing])} | "
+                f"{dist([float(f['reindex_ms']) for f in publishing])} | "
+                f"{dist([float(f['dispatch_ms']) for f in publishing])} | "
+                f"{dist([float(f['commit_ms']) for f in committing])} | "
+                f"{dist([float(f['update_ms']) for f in frames])} |")
         summary = (case / "summary.txt").read_text().splitlines()
         mem = kv([l for l in summary if l.startswith("memory ")][0])
         stats = kv([l for l in summary if l.startswith("stats ")][0])
@@ -116,12 +120,12 @@ def main():
             f"{mem['sys_pageouts_delta']} / {mem['sys_swapouts_delta']} | "
             f"{verdict[0] if verdict else 'none'} |")
     print()
-    print("Window stages per frame of the measured loop, ms: n / p50 / p95 / p99 / max (apply "
-          "stages over the frames that published, commit over the frames that committed).")
+    print("Window stages per frame, by phase, ms: n / p50 / p95 / p99 / max (apply stages over "
+          "the frames that published, commit over the frames that committed).")
     print()
-    print("| case | frames | apply: list | apply: reindex | apply: dispatch and copies | "
+    print("| case | phase | frames | apply: list | apply: reindex | apply: dispatch and copies | "
           "commit | chunk update |")
-    print("|---|---:|---|---|---|---|---|")
+    print("|---|---|---:|---|---|---|---|---|")
     for r in stage_rows:
         print(r)
     print()

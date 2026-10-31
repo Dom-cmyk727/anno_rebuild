@@ -69,8 +69,18 @@ def main():
     for line in results:
         name, status = line.split("\t")[:2]
         case = matrix / name
-        agg = subprocess.run([binary, "--aggregate", str(case / "events.tsv")],
-                             capture_output=True, text=True, check=True).stdout.splitlines()
+        # --aggregate exits 0 only for a complete trace of a successful run; anything else is shown
+        # as such (and a malformed or missing trace stops the table: it is no evidence).
+        done = subprocess.run([binary, "--aggregate", str(case / "events.tsv")],
+                              capture_output=True, text=True, check=False)
+        if done.returncode == 2:
+            print(f"| {name} | {status} | trace unreadable: {done.stderr.strip()} |")
+            continue
+        agg = done.stdout.splitlines()
+        run = agg[0]
+        if done.returncode != 0:
+            status = f"{status} ({run})"
+        agg = agg[1:]
         first = kv(agg[0])
         lines = {l.split()[0]: l for l in agg if l and " n=" in l}
 

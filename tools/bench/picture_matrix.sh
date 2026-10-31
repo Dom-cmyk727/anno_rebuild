@@ -8,9 +8,11 @@
 # are skipped). Each case runs alone, in <out_dir>/<name> (its raw files, stdout.txt, stderr.txt).
 # The runner stops at the first case that does not exit 0, keeps that case's artifacts, and exits
 # with the case's own status (1 verification failed, 3 the drain did not converge, 4 the workload or
-# scene could not be built, 2 bad options); a failing case is never followed by an echo that ends
-# the run successfully. results.tsv lists every case run with its status and wall seconds;
-# provenance.txt records the source revision, the binary's hash and the host.
+# scene could not be built, 5 evidence not saved, 2 bad options); a failing case is never followed by
+# an echo that ends the run successfully. A cases file that selects no case is refused (exit 2), as
+# is an out_dir that already holds files (an earlier run's evidence is never overwritten). The
+# last line counts even without a final newline. results.tsv lists every case run with its status
+# and wall seconds; provenance.txt records the source revision, the binary's hash and the host.
 set -u
 if [ $# -ne 4 ]; then
     echo "usage: $0 <bench_picture binary> <game_dir> <out_dir> <cases_file>" >&2
@@ -23,6 +25,22 @@ CASES=$4
 HERE=$(cd "$(dirname "$0")/../.." && pwd)
 if [ ! -x "$BIN" ] || [ ! -f "$CASES" ]; then
     echo "picture_matrix: $BIN is not executable or $CASES is missing" >&2
+    exit 2
+fi
+if [ -d "$OUT" ] && [ -n "$(ls -A "$OUT" 2> /dev/null)" ]; then
+    echo "picture_matrix: $OUT already holds files; use a new out_dir" >&2
+    exit 2
+fi
+# The cases the file selects (a final line without a newline included), before anything runs.
+selected=0
+while IFS= read -r line || [ -n "$line" ]; do
+    read -r name _ <<< "$line"
+    if [ -n "$name" ] && [ "${name#\#}" = "$name" ]; then
+        selected=$((selected + 1))
+    fi
+done < "$CASES"
+if [ "$selected" -eq 0 ]; then
+    echo "picture_matrix: $CASES selects no case" >&2
     exit 2
 fi
 mkdir -p "$OUT" || exit 2
@@ -45,10 +63,13 @@ mkdir -p "$OUT" || exit 2
     ps -Ao pcpu,comm | sort -rn | head -6 | sed 's/^/  /'
 } > "$OUT/provenance.txt"
 printf 'case\tstatus\twall_s\tload_after\n' > "$OUT/results.tsv"
-while read -r name args; do
+executed=0
+while IFS= read -r line || [ -n "$line" ]; do
+    read -r name args <<< "$line"
     if [ -z "$name" ] || [ "${name#\#}" != "$name" ]; then
         continue
     fi
+    executed=$((executed + 1))
     dir="$OUT/$name"
     mkdir -p "$dir" || exit 2
     start=$(date +%s)
@@ -62,4 +83,8 @@ while read -r name args; do
         exit "$rc"
     fi
 done < "$CASES"
-echo "finished=$(date '+%Y-%m-%d %H:%M:%S %z')" >> "$OUT/provenance.txt"
+if [ "$executed" -ne "$selected" ]; then
+    echo "picture_matrix: $executed of $selected selected cases ran" >&2
+    exit 2
+fi
+echo "finished=$(date '+%Y-%m-%d %H:%M:%S %z') cases=$executed" >> "$OUT/provenance.txt"

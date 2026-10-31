@@ -1,9 +1,13 @@
 // Raw events of the picture's CPU pipeline and their aggregation (see the header).
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 
@@ -13,10 +17,10 @@ namespace anno::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 17> kNames = {
+constexpr std::array<std::string_view, 18> kNames = {
     "desired",           "admitted", "deferred",  "started",     "built",      "failed",
     "superseded",        "dropped",  "requeued",  "committed",   "generation", "chunks_ready",
-    "no_visible_change", "retired",  "reclaimed", "drain_start", "drain_end"};
+    "no_visible_change", "retired",  "reclaimed", "drain_start", "drain_end",  "run_end"};
 
 struct Edit {
     double t0 = 0;
@@ -170,6 +174,10 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         case TraceKind::DrainStart:
         case TraceKind::DrainEnd:
             break;
+        case TraceKind::RunEnd:
+            s.complete = true;
+            s.run_status = e.version;
+            break;
         }
     }
     std::vector<double> object, visible;
@@ -213,46 +221,104 @@ std::string to_tsv(std::span<const TraceEvent> events) {
 }
 
 formats::Result<std::vector<TraceEvent>, std::string> parse_tsv(std::string_view text) {
+    if (text.empty()) {
+        return std::string("trace: empty (no header line)");
+    }
     std::vector<TraceEvent> out;
     std::size_t line_no = 0;
+    bool ended = false;
     while (!text.empty()) {
         const std::size_t end = text.find('\n');
         const std::string_view row = text.substr(0, end);
         text = end == std::string_view::npos ? std::string_view{} : text.substr(end + 1);
         ++line_no;
-        if (line_no == 1 || row.empty()) {
-            continue; // the header
+        const std::string where = "trace line " + std::to_string(line_no) + ": ";
+        if (line_no == 1) {
+            if (row != kTraceHeader) {
+                return where + "the header is '" + std::string(row) + "', expected '" +
+                       std::string(kTraceHeader) + "'";
+            }
+            continue;
+        }
+        if (row.empty()) {
+            if (!text.empty()) {
+                return where + "a blank line before the end";
+            }
+            break;
+        }
+        if (ended) {
+            return where + "an event after run_end";
         }
         std::array<std::string_view, 4> f{};
+        std::size_t fields = 0;
         std::string_view rest = row;
-        for (std::size_t i = 0; i < f.size(); ++i) {
+        for (;;) {
             const std::size_t tab = rest.find('\t');
-            f[i] = rest.substr(0, tab);
-            rest = tab == std::string_view::npos ? std::string_view{} : rest.substr(tab + 1);
+            if (fields < f.size()) {
+                f[fields] = rest.substr(0, tab);
+            }
+            ++fields;
+            if (tab == std::string_view::npos) {
+                break;
+            }
+            rest = rest.substr(tab + 1);
+        }
+        if (fields != f.size()) {
+            return where + std::to_string(fields) + " fields, expected 4";
         }
         TraceEvent e;
+        // The time: a whole token, finite and not negative (strtod reads the C locale's numbers).
         const std::string t(f[0]);
         char* stop = nullptr;
-        e.t_ms = std::strtod(t.c_str(), &stop);
+        errno = 0;
+        e.t_ms = t.empty() ? 0 : std::strtod(t.c_str(), &stop);
+        if (t.empty() || stop != t.c_str() + t.size() || errno == ERANGE ||
+            !std::isfinite(e.t_ms) || e.t_ms < 0) {
+            return where + "the time '" + t + "' is not a finite non-negative number";
+        }
         const auto kind = std::find(kNames.begin(), kNames.end(), f[1]);
-        unsigned long long version = 0;
-        const auto island_ok =
-            std::from_chars(f[2].data(), f[2].data() + f[2].size(), e.island).ec == std::errc{};
-        const auto version_ok =
-            std::from_chars(f[3].data(), f[3].data() + f[3].size(), version).ec == std::errc{};
-        if (stop == t.c_str() || kind == kNames.end() || !island_ok || !version_ok) {
-            return "trace line " + std::to_string(line_no) + ": cannot parse '" + std::string(row) +
-                   "'";
+        if (kind == kNames.end()) {
+            return where + "unknown kind '" + std::string(f[1]) + "'";
         }
         e.kind = static_cast<TraceKind>(kind - kNames.begin());
+        auto whole = [&where](std::string_view token, auto& value,
+                              const char* name) -> std::string {
+            const auto [ptr, ec] =
+                std::from_chars(token.data(), token.data() + token.size(), value);
+            if (ec == std::errc::result_out_of_range) {
+                return where + "the " + name + " '" + std::string(token) + "' is out of range";
+            }
+            if (token.empty() || ec != std::errc{} || ptr != token.data() + token.size()) {
+                return where + "the " + name + " '" + std::string(token) +
+                       "' is not a whole number";
+            }
+            return {};
+        };
+        unsigned long long version = 0;
+        if (std::string bad = whole(f[2], e.island, "island"); !bad.empty()) {
+            return bad;
+        }
+        if (std::string bad = whole(f[3], version, "version"); !bad.empty()) {
+            return bad;
+        }
         e.version = version;
+        ended = e.kind == TraceKind::RunEnd;
         out.push_back(e);
+    }
+    if (line_no == 0) {
+        return std::string("trace: empty (no header line)");
     }
     return out;
 }
 
 std::string format_summary(const TraceSummary& s) {
     std::ostringstream o;
+    if (s.complete) {
+        o << "run=complete status=" << s.run_status
+          << (s.run_status == 0 ? " (succeeded)" : " (FAILED)") << "\n";
+    } else {
+        o << "run=INCOMPLETE (no run_end event: the run stopped or the trace was cut)\n";
+    }
     o << "edits=" << s.edits << " object_ready=" << s.object_ready
       << " visible_ready=" << s.visible_ready << " offscreen=" << s.offscreen
       << " coalesced=" << s.coalesced << " unfinished=" << s.unfinished << "\n";
@@ -270,6 +336,43 @@ std::string format_summary(const TraceSummary& s) {
                   s.max_age_ms, s.last_commit_ms, s.end_ms);
     o << buf;
     return o.str();
+}
+
+TextFile read_text(const std::filesystem::path& path) {
+    TextFile f;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        f.error = "cannot open " + path.string() + " for reading";
+        return f;
+    }
+    f.text.assign(std::istreambuf_iterator<char>(in), {});
+    if (in.bad()) {
+        f.error = "cannot read " + path.string();
+        f.text.clear();
+        return f;
+    }
+    f.ok = true;
+    return f;
+}
+
+std::string save_text(const std::filesystem::path& path, std::string_view text) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return "cannot open " + path.string() + " for writing";
+    }
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (!out) {
+        return "cannot write " + path.string();
+    }
+    out.flush();
+    if (!out) {
+        return "cannot flush " + path.string();
+    }
+    out.close();
+    if (out.fail()) {
+        return "cannot close " + path.string();
+    }
+    return {};
 }
 
 } // namespace anno::app

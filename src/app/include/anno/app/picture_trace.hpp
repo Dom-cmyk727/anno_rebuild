@@ -17,10 +17,15 @@
 //  - reclamation delay: from a generation's Retired event to its Reclaimed event;
 //  - queue delay and build time: Admitted to Started, and Started to the build's end (Built,
 //    Superseded or Failed), per island and version.
+// A trace is complete only when its last event is RunEnd, which carries the run's exit status (0:
+// the run finished and its oracle passed). A trace without it (the run stopped, or the file was
+// cut) is incomplete: it can still be summarized for inspection, but is never a successful run. An
+// idle run is complete with no edit.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <span>
 #include <string>
 #include <string_view>
@@ -56,6 +61,9 @@ enum class TraceKind : std::uint8_t {
     /// The measured loop ended and the drain began; the drain ended (converged or timed out).
     DrainStart,
     DrainEnd,
+    /// The run ended; `version` is its exit status (0: finished and verified). The last event of a
+    /// complete trace.
+    RunEnd,
 };
 
 [[nodiscard]] std::string_view trace_kind_name(TraceKind k);
@@ -90,14 +98,36 @@ struct TraceSummary {
     double max_age_ms = 0;
     /// The time of the last Committed event (-1 when there is none), and of the last event.
     double last_commit_ms = -1, end_ms = 0;
+    /// Whether the trace ends with RunEnd, and the status it carries (meaningful when complete).
+    bool complete = false;
+    std::uint64_t run_status = 0;
+    /// Complete, and the run's status is 0.
+    [[nodiscard]] bool succeeded() const { return complete && run_status == 0; }
 };
 [[nodiscard]] TraceSummary summarize(std::span<const TraceEvent> events);
 
-/// One event per line: `t_ms<TAB>kind<TAB>island<TAB>version`, with a header line.
+/// The header line of a saved trace (without its newline).
+inline constexpr std::string_view kTraceHeader = "t_ms\tkind\tisland\tversion";
+/// One event per line: `t_ms<TAB>kind<TAB>island<TAB>version`, after the header line.
 [[nodiscard]] std::string to_tsv(std::span<const TraceEvent> events);
+/// Reads a saved trace. Refuses (naming the line): an empty text, a missing or different header,
+/// a line without exactly four fields, a number with trailing characters, a time that is not a
+/// finite non-negative number, an island beyond 32 bits or a version beyond 64 bits, an unknown
+/// kind, an event after RunEnd. A blank line is allowed only as the last line.
 [[nodiscard]] formats::Result<std::vector<TraceEvent>, std::string>
 parse_tsv(std::string_view text);
-/// The summary as `key=value` lines (sample counts beside every percentile).
+/// The summary as `key=value` lines (sample counts beside every percentile), starting with the
+/// run's completeness and status.
 [[nodiscard]] std::string format_summary(const TraceSummary& s);
+
+/// A whole file's text, or why it could not be read (`error` names the path).
+struct TextFile {
+    bool ok = false;
+    std::string text, error;
+};
+[[nodiscard]] TextFile read_text(const std::filesystem::path& path);
+/// Writes `text` to `path` (replacing it), checking the open, the write, the flush and the close;
+/// returns an empty string on success, else a message that names the path and the step.
+[[nodiscard]] std::string save_text(const std::filesystem::path& path, std::string_view text);
 
 } // namespace anno::app

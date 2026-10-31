@@ -2,6 +2,8 @@
 // latencies, coalescing, an offscreen commit, an unfinished edit and a reclamation delay; the
 // summary must give exactly the expected numbers, and must be the same after a round trip
 // through the saved text.
+#include <filesystem>
+#include <string>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -114,4 +116,105 @@ TEST_CASE("picture trace: percentiles report their sample counts and validity" *
     CHECK(d.p95 == doctest::Approx(19));
     CHECK(d.p50 == doctest::Approx(10));
     CHECK(d.max == doctest::Approx(20));
+}
+
+namespace {
+
+std::string trace_of(const std::vector<std::string>& rows) {
+    std::string out(app::kTraceHeader);
+    out += "\n";
+    for (const std::string& r : rows) {
+        out += r + "\n";
+    }
+    return out;
+}
+
+/// The refusal of `text`, which must fail, and must name `reason`.
+void refused(const std::string& text, const std::string& reason) {
+    CAPTURE(text);
+    const auto parsed = app::parse_tsv(text);
+    REQUIRE(!parsed.ok());
+    CAPTURE(parsed.error());
+    CHECK(parsed.error().find(reason) != std::string::npos);
+}
+
+} // namespace
+
+TEST_CASE("picture trace: malformed traces are refused for the reason they are malformed" *
+          doctest::test_suite("picture_trace")) {
+    refused("", "empty");
+    refused("1.0\tdesired\t0\t1\n", "header");
+    refused("t_ms\tkind\tisland\n1.0\tdesired\t0\n", "header");
+    refused(trace_of({"1.0\tdesired\t0"}), "3 fields, expected 4");
+    refused(trace_of({"1.0\tdesired\t0\t1\t9"}), "5 fields, expected 4");
+    refused(trace_of({"1.5x\tdesired\t0\t1"}), "the time '1.5x'");
+    refused(trace_of({"\tdesired\t0\t1"}), "the time ''");
+    refused(trace_of({"nan\tdesired\t0\t1"}), "the time 'nan'");
+    refused(trace_of({"inf\tdesired\t0\t1"}), "the time 'inf'");
+    refused(trace_of({"-3\tdesired\t0\t1"}), "the time '-3'");
+    refused(trace_of({"1e999\tdesired\t0\t1"}), "the time '1e999'");
+    refused(trace_of({"1.0\tbogus\t0\t1"}), "unknown kind 'bogus'");
+    refused(trace_of({"1.0\tdesired\t12abc\t1"}), "the island '12abc' is not a whole number");
+    refused(trace_of({"1.0\tdesired\t-1\t1"}), "the island '-1' is not a whole number");
+    refused(trace_of({"1.0\tdesired\t4294967296\t1"}), "the island '4294967296' is out of range");
+    refused(trace_of({"1.0\tdesired\t0\t18446744073709551616"}), "is out of range");
+    refused(trace_of({"1.0\tdesired\t0\t1.5"}), "the version '1.5' is not a whole number");
+    refused(trace_of({"1.0\tdesired\t0\t1", "", "2.0\tdesired\t0\t2"}), "a blank line");
+    refused(trace_of({"1.0\trun_end\t0\t0", "2.0\tdesired\t0\t2"}), "an event after run_end");
+}
+
+TEST_CASE("picture trace: an idle run, a productive run, a cut trace and a failed run are told "
+          "apart" *
+          doctest::test_suite("picture_trace")) {
+    // A valid idle run: complete, no edit.
+    const auto idle = app::parse_tsv(
+        trace_of({"0.0\tdrain_start\t0\t0", "1.0\tdrain_end\t0\t0", "1.0\trun_end\t0\t0"}));
+    REQUIRE(idle.ok());
+    const auto si = app::summarize(idle.value());
+    CHECK(si.complete);
+    CHECK(si.succeeded());
+    CHECK(si.edits == 0);
+    // A productive run: the hand stream, ended.
+    auto events = hand_stream();
+    events.push_back({40, K::RunEnd, 0, 0}); // with the drain's end: the same end time
+    const auto productive = app::parse_tsv(app::to_tsv(events));
+    REQUIRE(productive.ok());
+    const auto sp = app::summarize(productive.value());
+    CHECK(sp.succeeded());
+    check(sp);
+    // A trace without run_end (the run stopped, or the file was cut): inspectable, not a success.
+    const auto cut = app::summarize(hand_stream());
+    CHECK(!cut.complete);
+    CHECK(!cut.succeeded());
+    CHECK(app::format_summary(cut).find("run=INCOMPLETE") == 0);
+    // A header-only trace is no evidence of a run, not an idle run.
+    const auto empty = app::parse_tsv(trace_of({}));
+    REQUIRE(empty.ok());
+    CHECK(!app::summarize(empty.value()).complete);
+    // A run that ended with a failure: complete, not a success.
+    events.back().version = 1;
+    const auto failed = app::summarize(events);
+    CHECK(failed.complete);
+    CHECK(!failed.succeeded());
+    CHECK(app::format_summary(failed).find("FAILED") != std::string::npos);
+}
+
+TEST_CASE("picture trace: evidence files are read and saved with every step checked" *
+          doctest::test_suite("picture_trace")) {
+    const auto dir = std::filesystem::temp_directory_path() / "anno_picture_trace_test";
+    std::filesystem::create_directories(dir);
+    const auto file = dir / "events.tsv";
+    CHECK(app::save_text(file, "t_ms\tkind\tisland\tversion\n").empty());
+    const auto back = app::read_text(file);
+    REQUIRE(back.ok);
+    CHECK(back.text == "t_ms\tkind\tisland\tversion\n");
+    // A missing file, a directory in place of a file, and a file in a missing directory.
+    const auto missing = app::read_text(dir / "missing.tsv");
+    CHECK(!missing.ok);
+    CHECK(missing.error.find("missing.tsv") != std::string::npos);
+    const std::string to_dir = app::save_text(dir, "x");
+    CHECK(to_dir.find(dir.string()) != std::string::npos);
+    const std::string missing_dir = app::save_text(dir / "no" / "such" / "events.tsv", "x");
+    CHECK(missing_dir.find("cannot open") != std::string::npos);
+    std::filesystem::remove_all(dir);
 }

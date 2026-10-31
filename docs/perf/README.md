@@ -1007,3 +1007,36 @@ finish (no orphan), so the run ends as a test failure, not a hang. Not yet done:
 at 1 worker, then 2 and 4 (staged by round du, only when the measured capacity allows).
 
 Object-list path, Debug and Release: `docs/app/game-shell.md`, "Immutable per-island object lists".
+
+## Building picture (W4.3, round dv): `bench_picture`
+
+`bench_picture <game_dir> [--tier five|stress] [--density n] [--cycles n] [--changes k]
+[--threads t] [--max-outstanding m] [--commit-every c] [--busy n]` runs the window-side and worker
+costs of `ScenePicture` (docs/app/game-shell.md, "Retained work"). Per cycle: one batch of `k` moves
+is applied, the builds are awaited, every `c` cycles a commit runs, and then the chunks of the
+island's view are updated (warmed before the first cycle, so the stage measures what each commit
+changes). Percentiles are nearest-rank over the cycles.
+
+Tiers: `five` is the fixed map `data/maps/lan5.txt` (two islands with buildings, 2 buildings).
+`stress` repeats each building `density` times at tile offsets (synthetic; the picture does not check
+that placements are legal). This is not the dense late-game workload the owner asked for: a real
+five-player late game needs its own fixture, not yet made.
+
+Measured on the Mac host (Apple Silicon, Debug build `build/dev`, threads 2, no busy load):
+
+| Tier | Cycles | Changes | Apply p50 ms | Build wait p50/p95 ms | Commit p50 ms | Chunk update p50/p95 ms | Notes |
+|---|---:|---:|---:|---:|---:|---:|---|
+| five (2 buildings) | 30 | 4 | 0.022 | 82.9 / 83.5 | 0.088 | 453.7 / 456.7 | 60 commits, 0 discarded, reclaimed 90 |
+| stress ×200 (400 buildings) | 10 | 8 | 0.050 | 81.8 / 83.5 | 0.096 | 479.1 / 485.4 | 10 commits, 144 keys invalidated, reclaimed 20 |
+
+What these do and do not show:
+
+- Debug, not Release: the Release/Debug split the owner asked for is not measured yet.
+- The chunk update is synchronous `FrameRenderer::update_chunks` on the window thread. The viewer
+  builds chunks on workers, so this bounds nothing about presented frames.
+- The build wait is the worker's whole job (island rewrite, lists, change set) for the changed
+  islands, measured end to end, not the per-job time. Queue delay and per-stage worker times are not
+  separated yet.
+- Reclamation time is not timed; only the counts (`reclaimed`, `reclaim_backlog_peak`) are reported.
+- Peak live bytes are not reported: the counters bound items, not bytes.
+- No simulation load is applied (`--busy` exists; it was not run for this table).

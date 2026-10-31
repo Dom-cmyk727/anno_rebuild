@@ -368,3 +368,157 @@ TEST_CASE("picture recovery: a generation that outlives the bridge is destroyed 
     REQUIRE(render::SceneReclaimer::shared().stats().completed >= before + 2);
     CHECK(render::SceneReclaimer::shared().last_thread() != std::this_thread::get_id());
 }
+
+// DX3: the failures stay visible per island, and a retry restarts the failed islands from the
+// desired state. The fault is a bitmask of the islands that fail on every build (a test seam); the
+// messages name the island.
+namespace {
+
+app::ScenePicture::Limits failing_islands(std::atomic<unsigned>& mask, std::uint32_t max_attempts) {
+    app::ScenePicture::Limits limits;
+    limits.max_attempts = max_attempts;
+    limits.build_fault = [&mask](std::size_t index) {
+        if ((mask.load() & (1U << index)) != 0) {
+            throw std::runtime_error("boom " + std::to_string(index));
+        }
+    };
+    return limits;
+}
+
+} // namespace
+
+TEST_CASE("picture failures: two failed islands stay reported through an unrelated healthy edit" *
+          doctest::test_suite("scene_picture_recovery")) {
+    auto scene = islands_scene(3);
+    std::vector<app::SceneBuilding> none;
+    std::atomic<unsigned> mask{0b011};
+    app::ScenePicture picture(
+        scene, none, [](std::uint16_t) { return true; }, 2, failing_islands(mask, 1));
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1), added(1, 1, 1)});
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 0);
+    CHECK(picture.stats().failed_islands == 2);
+    const std::string both = picture.error();
+    CHECK(both.find("island 0: boom 0") != std::string::npos);
+    CHECK(both.find("island 1: boom 1") != std::string::npos);
+    // A healthy edit on island 2 commits; the other two failures stay reported (no global clear).
+    picture.apply({added(2, 2, 1)});
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 1);
+    CHECK(picture.stats().failed_islands == 2);
+    CHECK(picture.error() == both);
+}
+
+TEST_CASE(
+    "picture failures: one island recovers by an explicit retry while the other stays failed" *
+    doctest::test_suite("scene_picture_recovery")) {
+    auto scene = islands_scene(2);
+    std::vector<app::SceneBuilding> none;
+    std::atomic<unsigned> mask{0b11};
+    app::ScenePicture picture(
+        scene, none, [](std::uint16_t) { return true; }, 2, failing_islands(mask, 1));
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1), added(1, 1, 1)});
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 0);
+    CHECK(picture.stats().failed_islands == 2);
+    // The fault on island 0 goes away; island 1 still fails. Nothing is replayed: the retry reads
+    // the desired state.
+    mask.store(0b10);
+    CHECK(picture.retry_failed() == 2);
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 1); // island 0 recovers and is committed
+    CHECK(picture.stats().failed_islands == 1);
+    CHECK(picture.error().find("island 1: boom 1") != std::string::npos);
+    CHECK(picture.error().find("island 0") == std::string::npos);
+    CHECK(picture.pending() == 1); // island 1 is still owed
+    // The last good picture of island 1 is still the base's (nothing was committed for it).
+    CHECK(committed_payloads(*picture.scene(), 1).empty());
+}
+
+TEST_CASE("picture failures: an obsolete failure is not evidence about a newer change" *
+          doctest::test_suite("scene_picture_recovery")) {
+    // Reaper overload defers the newer change for island 0 while its older build is still running.
+    // The older build then fails. Its failure belongs to a version that is no longer desired: it is
+    // not counted, and the newer change is built.
+    auto scene = islands_scene(2);
+    std::vector<app::SceneBuilding> none;
+    std::atomic<int> island0_calls{0};
+    std::atomic<bool> entered{false}, release_build{false}, release_reaper{false};
+    app::ScenePicture::Limits limits;
+    limits.max_attempts = 1;
+    limits.max_reclaim_backlog = 0;
+    limits.build_fault = [&](std::size_t index) {
+        if (index != 0) {
+            return;
+        }
+        // The first build of island 0 (the older version) fails once it is released; later builds
+        // succeed.
+        if (island0_calls.fetch_add(1) == 0) {
+            entered.store(true);
+            while (!release_build.load()) {
+                std::this_thread::yield();
+            }
+            throw std::runtime_error("boom for the older version");
+        }
+    };
+    limits.reclaim_gate = [&] {
+        while (!release_reaper.load()) {
+            std::this_thread::yield();
+        }
+    };
+    app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 2, limits);
+    render::FrameRenderer frames(1);
+    // Island 1 commits first: its replaced generation keeps the reaper behind.
+    picture.apply({added(1, 1, 1)});
+    picture.wait_idle();
+    CHECK(picture.commit(frames) == 1);
+    // Island 0's older build starts and blocks; the newer change then arrives while the reaper is
+    // behind.
+    picture.apply({added(2, 0, 1)});
+    while (!entered.load()) {
+        std::this_thread::yield();
+    }
+    picture.apply({added(3, 0, 2)});
+    REQUIRE(picture.stats().deferred >=
+            1); // the newer change waits: it does not replace the running build
+    release_build.store(true);
+    picture.wait_idle();
+    CHECK(picture.stats().failed_islands ==
+          0); // the older failure is not counted against the newer change
+    CHECK(picture.error().empty());
+    release_reaper.store(true);
+    CHECK(drain(picture, frames, 40));
+    CHECK(picture.stats().failed_islands == 0);
+    CHECK(picture.error().empty());
+    CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
+}
+
+TEST_CASE("picture failures: a persistent failure is bounded per retry and stays reported" *
+          doctest::test_suite("scene_picture_recovery")) {
+    auto scene = islands_scene(1);
+    std::vector<app::SceneBuilding> none;
+    std::atomic<unsigned> mask{0b1};
+    app::ScenePicture picture(
+        scene, none, [](std::uint16_t) { return true; }, 1, failing_islands(mask, 2));
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1)});
+    for (int round = 0; round < 20; ++round) {
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    CHECK(picture.stats().build_failures == 2); // max_attempts: the builds stop at the limit
+    CHECK(picture.stats().failed_islands == 1);
+    CHECK(picture.pending() == 1);
+    // An explicit retry restarts the island: two more builds, then the same terminal state.
+    CHECK(picture.retry_failed() == 1);
+    picture.wait_idle();
+    for (int round = 0; round < 20; ++round) {
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    CHECK(picture.stats().build_failures == 4);
+    CHECK(picture.stats().failed_islands == 1);
+    CHECK(picture.error().find("boom 0") != std::string::npos);
+}

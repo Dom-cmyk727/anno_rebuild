@@ -98,10 +98,16 @@ class ScenePicture {
     /// a retry or failed. Zero means converged. Window thread.
     [[nodiscard]] std::size_t pending() const;
 
-    /// The message of the last build that failed for good (its island is reported by
-    /// Stats::failed_islands); empty when no island has failed for good. Cleared when the island is
-    /// changed again.
+    /// The failures for good of the islands that have them: one entry per island ("island N:
+    /// message"), joined by "; "; empty when no island has failed for good. An island's failure is
+    /// cleared by a change to that island or by retry_failed(), and by nothing else. Window thread.
     [[nodiscard]] std::string error() const;
+
+    /// Restarts the builds of the islands that failed for good, from the current desired state. No
+    /// sim command is replayed: the build reads the picture's buildings, and the last good picture
+    /// stays until the new build is committed. The starts pass the same admission as any change.
+    /// Returns the islands restarted. Window thread.
+    std::size_t retry_failed();
 
     struct Stats {
         /// Islands committed; results discarded (superseded, stale or invalid).

@@ -212,7 +212,9 @@ struct ScenePicture::State {
     std::vector<std::uint64_t> retry_at;
     std::set<std::size_t> retrying;
     std::uint64_t commit_calls = 0;
-    std::string last_error;
+    /// The message of each island's failure for good (empty when it has none); per island, so one
+    /// island's edit or recovery does not erase another island's failure (round dx, DX3a).
+    std::vector<std::string> failure;
     bool stop = false;
     /// Anlagen ids below 0x1000 that are buildings (the loader's rule, asked once).
     std::shared_ptr<const std::vector<bool>> is_building;
@@ -312,6 +314,7 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
     state_->is_deferred.assign(n, false);
     state_->failures.assign(n, 0);
     state_->failed_for_good.assign(n, false);
+    state_->failure.assign(n, std::string());
     state_->retry_at.assign(n, 0);
     reaper_->gate = limits_.reclaim_gate;
     for (std::size_t t = 0; t < std::max<std::size_t>(threads, 1); ++t) {
@@ -361,9 +364,13 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                             st->build_ms.push_back(ms);
                             st->queue_ms.push_back(queue_ms);
                         }
-                        const bool current = st->inflight[job.index] == job.version;
+                        // A failure belongs to the version it was built for: it counts only while
+                        // that version is still the desired one and still in flight (round dx,
+                        // DX3b).
+                        const bool current = st->inflight[job.index] == job.version &&
+                                             st->desired[job.index] == job.version;
                         if (!current) {
-                            // Superseded while it ran (a newer request or a dropped request):
+                            // Superseded while it ran (a newer change or a dropped request):
                             // nothing to do.
                             ++st->stats.discarded;
                         } else if (!built) {
@@ -372,7 +379,7 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                             ++st->failures[job.index];
                             if (st->failures[job.index] >= max_attempts) {
                                 st->failed_for_good[job.index] = true;
-                                st->last_error = message;
+                                st->failure[job.index] = message;
                             } else {
                                 // Retried by the window's next commit calls, not by a timer.
                                 const std::uint64_t backoff =
@@ -614,8 +621,8 @@ std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const Building
             state_->dirty.insert(it->second);
             state_->failures[it->second] = 0;
             state_->failed_for_good[it->second] = false;
+            state_->failure[it->second].clear();
             state_->retrying.erase(it->second);
-            state_->last_error.clear();
             wanted.push_back(it->second);
         }
     }
@@ -744,7 +751,40 @@ ScenePicture::Timings ScenePicture::timings() const {
 
 std::string ScenePicture::error() const {
     const std::lock_guard lock(state_->mutex);
-    return state_->last_error;
+    std::string out;
+    for (std::size_t i = 0; i < state_->failed_for_good.size(); ++i) {
+        if (!state_->failed_for_good[i]) {
+            continue;
+        }
+        if (!out.empty()) {
+            out += "; ";
+        }
+        out += "island " + std::to_string(current_->islands[i].number) + ": " + state_->failure[i];
+    }
+    return out;
+}
+
+std::size_t ScenePicture::retry_failed() {
+    std::vector<std::size_t> restart;
+    {
+        const std::lock_guard lock(state_->mutex);
+        for (std::size_t i = 0; i < state_->failed_for_good.size(); ++i) {
+            if (state_->failed_for_good[i]) {
+                state_->failed_for_good[i] = false;
+                state_->failure[i].clear();
+                state_->failures[i] = 0;
+                state_->retrying.erase(i);
+                restart.push_back(i);
+            }
+        }
+    }
+    // The desired state is the current one: the build reads the picture's buildings, never a sim
+    // command. The starts go through the same admission as any change (outstanding, byte budget,
+    // reaper).
+    Dropped dropped;
+    const std::size_t started = dispatch(restart, dropped);
+    reaper_->retire(std::move(dropped));
+    return started;
 }
 
 ScenePicture::Stats ScenePicture::stats() const {

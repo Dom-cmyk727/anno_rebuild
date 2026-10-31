@@ -37,9 +37,15 @@ thread at the start of a frame.
    the generation, so the handle is needed only while the frame plans and records.
 5. Frame end: the handle is released by the frame (not stored in the viewer), so a generation lives only as long
    as the work that reads it.
-6. Shutdown (`viewer.cpp:626`): the chunk workers are stopped first (`set_workers(nullptr)`), then the picture is
-   destroyed. The picture's own queue and results are released by its reaper; the generations are destroyed by the
-   reclaimer. Nothing waits on the window thread.
+6. Shutdown (`viewer.cpp:626`): `set_workers(nullptr)` joins the chunk workers and their reaper, so the window
+   thread waits for the chunk builds in progress. The scene picture bridge (`ScenePicture`) is not yet owned by the
+   viewer: it is used by the bench and the tests only, and its wiring is the next step (outside this round's
+   scope). Its own shutdown contract is tested: its destructor joins its build workers (so the thread that destroys
+   it waits for the builds in progress, at most one per worker), hands its queued jobs and results to its reaper,
+   and joins the reaper. Credits and generations are released there, and the generations are destroyed by the
+   reclaimer (a process thread that is never joined; `SceneReclaimer::stats().waiting` is zero once it has caught up).
+   The allowed phase for the bridge: its `apply` and `commit` calls end on the window thread before its destructor
+   starts, and no thread calls into it afterwards.
 7. Cache retirement: the renderer's cache holds `ChunkPtr` (shared chunk pixels), not generations. A replaced
    chunk stays until its key is replaced or evicted; `invalidate(keys, generation)` marks the keys, and a stale
    completion cannot replace a newer chunk (round du/dv rules, `frame.cpp`).

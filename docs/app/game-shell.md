@@ -382,19 +382,35 @@ wired yet):
 
 | Limit | Default | Reason | At the limit |
 |---|---:|---|---|
-| `max_outstanding` | 8 islands | Each island in flight or finished but uncommitted holds a copy of its records, lists and change set. | A start beyond it is deferred (kept in order) and started by a later commit. |
+| `max_outstanding` | 8 builds | Each live build holds a copy of its island's records, and its result a copy of the lists and the change set. A build counts from its start until its object is destroyed (superseded and reaped builds included). | A start beyond it is deferred (kept in order) and started by a later commit. |
 | `max_outstanding_bytes` | 64 MiB (provisional) | The estimated island-record bytes of the builds in flight or finished. Provisional until DW5 measures the five-player island. | A start beyond it is deferred. A single build over the budget still starts alone, so no island is blocked for good. |
-| `max_reclaim_backlog` | 4 items | A stalled reaper must not let work pile up. | A commit is skipped (returns 0) and retried by the next call. While over the bound, an island in flight is deferred rather than replaced. |
+| `max_reclaim_backlog` | 4 items | A stalled release must not let work pile up. It counts the reaper's queue and the generations the process reclaimer has not destroyed (`SceneReclaimer::stats().waiting`). | A commit is skipped (returns 0) and retried by the next call. While over the bound, an island in flight is deferred rather than replaced. |
 | `max_attempts` | 4 | A transient failure recovers; a persistent one must end. | After the attempts the island is failed for good: `failed_islands`, `error()`, and it stays owed (`pending()` counts it). |
 
 Retries wait 1, 2, 4 ... commit calls (the window's frames), not timers. A change to a failed island
 resets its attempts. Test seams (`build_fault`, `reclaim_gate`) are for the test suite.
 
-**Byte accounting.** `outstanding_bytes` counts the estimated island-record bytes of the builds in flight or
-finished and uncommitted; its peak is `outstanding_bytes_peak`. The estimate is the records' payload bytes at
-the start of the build, not the allocator's footprint, and it excludes the lists and the change set. The
-resident shared catalogue (sprites, textures, Anlagen) is shared by all generations and is counted once,
-outside these bounds. Generation bytes are not yet measured (DW4a leaves them open; see the DW5 report).
+**Credits and byte accounting (round dx, DX2).** Every build holds a credit: one slot and the estimated
+bytes of its island's records. The credit moves with the build's object and is released when that object is
+destroyed, never earlier. `outstanding` and `outstanding_bytes` are the sums over the live credits, so a
+superseded build still counts while it runs, and a dropped job counts until the reaper destroys it. The
+estimate is the records' payload bytes at the start of the build; it excludes the lists and the change set.
+The resident shared catalogue (sprites, textures, Anlagen) is counted once, outside these bounds. Generation
+bytes are reported by the reclaimer (`bytes_waiting`), not by the bridge.
+
+| Object | Alive in | Credit released when |
+|---|---|---|
+| Queued job | the window's `jobs` queue | the job is started (its credit moves to the job the worker runs) |
+| Running job | the worker's local job | the build returns; a failed build's credit goes with its job at the end of the worker call |
+| Finished result | `done` | committed (the credit goes at the end of the commit call), or dropped |
+| Superseded running build | the worker's local | the worker destroys its result and job, then counts itself done (`wait_idle` returns after this) |
+| Dropped job or result | the reaper's queue | the reaper destroys it (the credit is released with it) |
+| Committed result | the new generation's storage | the commit call returns; the scene holds the bytes, which the reclaimer accounts |
+
+A start is admitted by the live credits: a build beyond `max_outstanding`, or beyond `max_outstanding_bytes`
+while another build is live, is deferred. A single build over the byte budget still starts alone. The
+buildings of a start are copied from the island's own entry of the per-island index, after the admission
+(`copied_buildings`); the index is rebuilt for the touched islands when the list changes.
 
 **Reclamation counters.** `reclaim_queued` and `reclaim_completed` count the bridge's own retired items
 (generations as references, jobs, results); a generation's destruction is counted by the reclaimer.

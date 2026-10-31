@@ -8261,3 +8261,33 @@ Current `anno_budget_coord` sha256 `40d6b1eac26c592b12e938768cfdd58066e5d57df869
 Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (new POSIX-only V cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the broad gate above after the hold is lifted; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts); the orchestrator's decisions on the hold and on the downgrade cost.
 
 I stopped here for review.
+
+## MAP.2 — founding prerequisites: coordinates, exact cargo, payment preparation, island lock — 2026-11-01 — status: READY FOR REVIEW
+
+Scope: the four packages of the assignment; no `FoundCmd`, no sailing, no candidate installed, no change to `game/`, the manifests, the active map or another executor's files. Baseline `d5f0acef` (code `2b0c5b9`); final code head `9e059b2`; this report's commit is documentation only.
+
+### Packages (all with an independent read-only reviewer; a package was marked done only after its re-review)
+| Package | Commits | Reviewer record |
+|---|---|---|
+| A. coordinate repair (tiles addressed by local offset; ownership, occupancy, rectangle and disc claims on layers above INT32_MAX) | `c1ef387` | one reviewer, `c1ef387`, no findings; noted the same narrowing pattern in `walk_cells.cpp` (follow-up, out of scope) |
+| B. exact cargo (`ShipHold::amount_88`, u64 raw 1/256 ton), stream 116 -> 117 | `5c2b4df`, `b40544b`, `bc56953`, `91be8c1` | one reviewer, `b40544b`; two P3 documentation findings fixed |
+| C. pure payment preparation (`payment::prepare`) | `befec72` | one reviewer, `befec72`, no findings; material limit: the hold slot's notification call is not modelled |
+| D. island lock (`Island::lock`, LOCKED record), stream 117 -> 118 | `433d6cb`, `3d8a837` | one reviewer, `433d6cb`: CHANGES REQUIRED (docs not committed, a vacuous check, a missing template-refusal test); re-review of `3d8a837`: approved |
+| Canary | `9e059b2` | load, save, load, prepare payment with a locked island and fractional cargo; nothing in the world moves |
+Final integration review: see the section below.
+
+### State representation, versions and goldens
+117: a hold is `u32 goods, u64 amount_88` (12 bytes; was `u32 tons`, 8 bytes). 118: each island gains `u8 lock` after its climate. Old streams and saves are refused by their version, never reinterpreted. Command encoding and the PRNG timeline (2) are unchanged. Goldens: at 117 the nine values of g0/g1/s5/s6 equal `tools/sim_stream.py`; the rest were justified by a control run with the version held at 116 and the new layout (every old golden, the corpus and the logs reproduced; `cache/map2-gates2/b-control-version116-layout117.log`). At 118 the same nine plus the new `s5_islands_locked_create` (locks 2 and 1) equal the Python values; the three event digests are identical to 117; `scenario_corpus.txt` changed only in the version header, the create hashes and the UnknownRecord count (down by one in exactly the eight LOCKED-bearing files, checked by the reviewer).
+
+### Counts (final revision `9e059b2`, macOS arm64 Apple clang, Debug, `-Werror`; each log records the tested source identity and an empty diff)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused new tests | 56 | 56 | 0 | 0 | 0 | `cache/map2-gates2/f1-focused.log` |
+| full sim | 751 | 750 | 0 | 0 | 1 (opt-in) | `f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `f3-formats.log` |
+| ASan+UBSan focused | 56 | 56 | 0 | 0 | 0 | `f4-asan-focused.log` |
+| ASan+UBSan full sim | 751 | 750 | 0 | 0 | 1 (opt-in) | `f5-asan-sim.log` |
+`tools/sim_stream.py --check`: goldens agree; `tools/lint_sim.py`: ok; both fixture generators `--check`: up to date (first attempt exit 2: the system Python lacks `pefile`; rerun with the evidence venv, `f0-fix-*.log`, `f0b-fix-*.log`). First failures kept: the Package D full run (5 hand-transcribed layout tests, `d-sim-all.log`), the 116-control run, `a1-first-failure.log`. NOT RUN: Windows/MSVC, Linux GCC/Clang, `check_unix_warnings.sh`.
+
+### Remaining founding prerequisites
+Evidence: figure-veto inputs (A1, A2), city registration, name draw, Kontor counter/KONTID, discovery/reveal/messages (A4, A5), virtual callees (A3), the hold slot's notification effect. Engine: figure classes/hull/range data, relations, city-ring allocation, registration data, the command with codec and `Reject` values, atomic application of a payment plan, a run-time lock setter, `walk_cells.cpp` narrowing. Owner decisions: C5, C8/C9, malformed LOCKED policy for modded data. Founding is not ready.

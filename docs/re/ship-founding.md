@@ -1,0 +1,291 @@
+# Ship founding: the first warehouse
+
+**Status:** partial. File evidence for Kontor 1302 and the shipped help is
+checked against this build. The click path is a static trace through
+`View.dll` and `AnnoFrame.dll` on the GOG modules in `game/app`. It was not
+run in the original game (`NOT_RUN_ORIGINAL`). Addresses are virtual
+addresses with image base `0x10000000`.
+
+This note separates three layers.
+
+| Layer | What it is |
+|---|---|
+| Original behaviour | What the files and this trace show. Unread callees stay unread. |
+| Current rebuild | `developer_start` places a free Kontor and a whole-island owner run. It does not create a ship, and turning the flag off does not either (`src/sim_load/src/fixed_map.cpp`). |
+| Multiplayer adaptation | The invariant the rebuild needs. It is not an original guarantee. |
+
+The geometric sea check in `map2-ship-start-v2` is none of these. It is a
+tool model (`docs/re/ship-navigation.md`).
+
+## 1. Help rechecked
+
+English help under `game/app/help/`, this build:
+
+| File | What it says |
+|---|---|
+| `IH_Kontorfehlt_wie.htm` | Sail close to a coast. When building along the coast is possible, "Build warehouse" appears. Place it on the coast near the ship. The service area, shown in info mode, marks the city limits. A dirt road is built afterwards, from the warehouse toward those limits. |
+| `Scout.htm` | The scout on the ship discovers deposits and can construct a main market building inland. |
+| `Gesamteinzugsbereich.htm` | City limits are the combined service area of warehouses and main market buildings. Further ones expand it. |
+| `H_Landweg.htm` | Land trade between players requires both to have settled on the same island. |
+| `Kontor_uebernehmen.htm` | Taking over a warehouse gives the buildings in its service area, after the enemy warehouse is nearly destroyed and a new one is built on it. Not the whole island. |
+| `IH_Insel_Falsch.htm` | Some climate has no city. It points the player at northern temperate zones or jungle. |
+| `IH_Insel_Falsch_Polar.htm` | Settlements are not possible. A few workshops (trappers, whalers) can be placed. First settlement: temperate or jungle. |
+| `IH_Insel_Falsch_Praerie.htm`, `_Steppe.htm`, `_Tundra.htm` | Limited agriculture. Settle there after a settlement already exists elsewhere. Each names local goods. First settlement: temperate or jungle. |
+
+There is no `IH_Insel_Falsch_Wueste.htm`, and no page of this name for
+`NORD` or `DSCHUNGEL`. A recommendation of temperate or jungle is not a
+proof that every other climate rejects the warehouse click. Which climate
+byte selects which page was not traced.
+
+`help/Kontor.htm` describes warehouses as the founding and trade hub, with
+later upgrades. It does not give the placement test.
+
+## 2. Kontor 1302, from `Anlagen.dat`
+
+Entry id 1302, `PRODTYPE` `KONTOR`. `HEAD` is 56 bytes. The simulation's
+known layout (`docs/formats/anlagen.md`, `docs/re/production.md` §2.4):
+
+| Field | Value |
+|---|---|
+| Footprint bytes 0–1 | 4 × 4 |
+| Build goods bytes 3–6 | bricks 0, wood 12, tools 5, marble 0 |
+| Gold, u16 at byte 8 | 350 (`0x015E`) |
+| Action radius byte `0x11` | 24 |
+| Type flag word, u16 at `0x1c` | `0x2087`. Bit `0x2000` is the coast flag (`production.md`, AnnoGame `0x100093bd`). Bit `0x1000` (mountain) and bit `0x4000` (road) are clear. The remaining bits of `0x2087` are not given a founding meaning here. |
+| Hit points, u16 at `0x2c` | 6000 |
+| `ENTRANCE` | 16 bytes, two f32 pairs |
+
+The entrance floats are the f32 values `2.5`, `13/6`, `11/6`, `0.5`
+(bytes `00002040 abaa0a40 abaaea3f 0000003f`). Existing transport notes:
+entrance points lie on sub-cell centres `k/6`, and the rotated points are
+what a carrier walks to (AnnoGame `0x100084c0`). Floor of each float is tile
+`(2, 2)` and tile `(1, 0)` inside the unrotated 4×4. That is the type's
+door data. It is not yet the rotation a founding click selects (OQ-520).
+
+The same file, for context, not as the ship action:
+
+| Id | `PRODTYPE` | Footprint | Goods bytes 3–6 | Gold | Flags |
+|---|---|---|---|---|---|
+| 1301 | `MARKT` | 4 × 3 | 0, 7, 3, 0 | 250 | `0x0084` (coast bit clear) |
+| 1302 | `KONTOR` | 4 × 4 | 0, 12, 5, 0 | 350 | `0x2087` |
+| 1303 | `MARKT` | 4 × 3 | 0, 12, 5, 0 | 500 | `0x0084` |
+| 1304 | `KONTOR` | 4 × 4 | 0, 12, 5, 0 | 500 | `0x2087` |
+
+Costs and the coast bit are type data. They are not the whole founding rule.
+
+Goods numbers charged by Place, from the existing registry note
+(`docs/sim/state.md`, AnnoWelt `0x10027a77` / AnnoGame `0x1000a5a0`):
+`0x29` tools = `HEAD[5]`, `0x2a` wood = `HEAD[4]`, `0x2b` bricks = `HEAD[3]`,
+`0x2c` marble = `HEAD[6]`, each stored `<< 8` (8.8 tons). `0x2d` is inside
+the same five-wide check below; 1302's `HEAD` does not put a fifth material
+in bytes 3–6. Gold is the separate u16, not one of those bytes.
+
+The action radius 24 is the market-search radius
+(`docs/re/transport.md` §1.1): a square around the footprint centre. The
+help text says the warehouse service area marks city limits. This trace
+does not show the city-claim walk, so radius 24 is not the answer to
+OQ-490.
+
+## 3. The ship action and the click test
+
+### 3.1 Selecting the warehouse
+
+`Texte.dat` section `TOOLTIP:SCHIFFMAIN` contains the line "Build warehouse".
+The name `MAKEKONTORICON` (`View.dll` `0x100a9170`) is copied into a menu
+slot, and slot index 3 registers the callback `View.dll` `0x10063ba0`
+(`0x10063966`).
+
+`0x10063ba0` does four calls:
+
+1. `[esi+0x62c]` vtable `+0x78` with `[esi+0x648]`.
+2. `[esi+0x638]` vtable `+0x40`, result pushed onward.
+3. `[esi+0x648]` vtable `+0x60` with `(8, that result)`, then `+0x60` with `(0, 0x516)`.
+4. The menu object's vtable `+0x9c` with `(0xC, 1, 0)`.
+
+`0x516` is 1302. This is the ship control that selects the coastal
+warehouse. The parallel scout/pioneer callback `View.dll` `0x10047ae0`
+pushes `0x515` (1301, `MARKT`) instead. That is a different action. The
+help's "main market building" is not identified with 1301 here.
+
+What `+0x60` and `+0x78` do inside the UI object was not opened. The effect
+established at this boundary is: the ship menu selects building id 1302.
+
+### 3.2 The predicate, `AnnoFrame.dll` `0x10046300`
+
+The click function containing `0x100468d7` (`0x100468ac` through
+`ret 0xc` at `0x10046946`) builds a placement record, calls `0x10046b60`,
+and on a non-zero result calls `0x10046300(placement, 0x2000000, cache)`.
+A zero return jumps to `0x10046b50` and does not reach the commit call.
+So the checks inside `0x10046300` run at the click, not only when the menu
+was built. The menu-enable test that makes the item appear was not read.
+
+`0x10046300` (`ret 0xc`, locals `0xc5c`) returns 0, without a commit, when
+any of the following fails. Each item is this function unless noted.
+
+| Condition | Address | What is shown |
+|---|---|---|
+| Island under the tile | `0x1004634d` | World/map slot `+0x8c(x, y)`. Null fails (`0x1004635b`). |
+| Cached island | `0x1004636e` | If the cache pointer's island is non-null and differs, fail. |
+| Type | `0x10046383` | Slot `+0x70(building id)`. |
+| Rotation | `0x1004638d` | Byte at the tool `+0x46`. Values above 3 skip the swap. The jump table at `0x10046760` swaps type slots `+0x50` and `+0x54` (width and height). Odd rotations exchange the axes. A 4×4 stays 4×4. |
+| Nearby object | `0x1004644f`–`0x10046645` | See below. No match fails. |
+| Uniform tile class | `0x100466a1` | Island slot `+0xec(x, y)` on every footprint tile. The first value other than `0x0f` is kept. A later tile with a different value fails. If every tile is `0x0f`, fail (`0x100466d3`). |
+| Class object | `0x100466dd` | Island slot `+0xf8(class)` must be non-null. |
+| Identity | `0x100466ed` | That object's slot `+0x1c` must equal `[pointer+0x5c]`. The pointer is the local `[esp+0x60]`. No direct store to `[esp+0x60]` appears in this function, so what is compared is unread. This is not evidence of a player-territory test. |
+| Final accept | `0x1004673b` | The class object's slot `+0xa0` returns the function result. |
+
+Nearby-object rule, as far as the arithmetic goes:
+
+- The search window starts at `tile + (size−1)//2 − 7` on each axis. The extent byte is `((size−1) & 1) + 15`. For a 4×4 that is a 16×16 window whose origin is 6 tiles before the footprint origin.
+- Island slot `+0x114`, then that object's slot `+0xc`, fills a list of 6-byte records (stride 6: two u16, then a byte, then a bitset at `+5`).
+- Type slot `+0xac(0)` is a bit index. The record is ignored unless that bit is set in byte `+5`.
+- Among the rest, the closest wins. Separation of the two centres is clamped up to 0, then `dx²+dy²` is compared with the best. The initial best is the sentinel `0x3fff0001` (`0x1004645d`), and the comparison is strict (`jge` skips). The sentinel is "no candidate yet", not a measured ship range.
+- The record class is unread. Help says the warehouse is placed near the ship. The code selects the nearest listed object of the type's category inside the window. Calling that object a ship is the help's reading, not a vtable proof. **Blocking:** the vtable of one 6-byte record's owner, and of the object returned by island slot `+0x114`.
+
+`0x0f` is the tile class this function rejects when it covers the whole
+footprint. It is not identified with `HEIGHT` 15 or with water. **Blocking:**
+the return of island slot `+0xec` on open water, on `HEIGHT >= 16` land, and
+on the tile where a successful warehouse stands.
+
+### 3.3 Affordability and the commit flag
+
+Still in the click function, after `0x10046300` returns non-zero:
+
+1. Type lookup, slot `+0x70(id)` (`0x100468fa`).
+2. `AnnoFrame.dll` `0x10043d80` (`0x10046909`).
+3. A flag is built from that return and the commit is `[edx+0x78]` (`0x10046928`).
+4. `0x10043d30` (`0x1004692e`) adds the type's slot `+0xcc` into a five-dword buffer.
+
+`0x10043d80` loops goods `0x29` through `0x2d`. For each, it adds the unit
+argument's slot `+0xcc(0, goods)` to a dword in the cost buffer and requires
+another object's slot `+0x7c(goods)` to be at least that sum. It then does
+the same for gold: slot `+0xcc(1, 0)` added to the buffer's `+0x14`, compared
+with slot `+0x1c` then `+0x60`. If the unit argument is null, the function
+returns 1 without those compares (`0x10043d8f`).
+
+The caller passes the building type and the pointer at `[esi−0x58]`
+(`0x100468ff`). That field was not identified. **Blocking:** name the object
+at the build-tool field read at `0x100468ff`. Until then, who pays — ship
+holds, player treasury, or both — is unread. How a good split across several
+holds is summed is inside the unread `+0x7c` / `+0xcc` callees.
+
+The commit is not skipped when `0x10043d80` returns 0. The return is folded
+into the flag (`0x10046913`):
+
+| `0x10043d80` | Flag pushed to slot `+0x78` |
+|---|---|
+| 1 | `0x80000000` |
+| 0 | `0xA0000000` |
+
+Both values include `0x80000000`. The failure value also includes
+`0x20000000`. The callee of `+0x78` was not opened. Whether a failed
+affordability check still mutates the world is unknown. This trace does
+**not** show an atomic rollback.
+
+`0x10043d30` runs after that call and only adds the type's reported costs
+into the buffer. It is not the subtraction.
+
+### 3.4 What this trace does not show
+
+| Question | Status |
+|---|---|
+| Required ship distance in world units | The window and the nearest-object score are above. The object is not proven to be the ship. No second range constant was read. |
+| Coastal terrain | Coast **flag** `0x2000` is on the type. The tile test is "uniform class, not all `0x0f`". The class name is unread. |
+| Obstruction | Unread inside `+0xa0` and inside the commit. |
+| Ownership / rival territory | The identity compare exists. Its operands are not shown to be player ids. Help supports two settlements on one island and limits takeover to a warehouse service area. |
+| Rotation chosen by the click | The test consumes 0..3 and swaps axes. The writer of tool `+0x46` was not read. |
+| Scenery removal | Not in this function. Existing note D24 (`docs/sim/state.md`): placing a building writes a type id onto footprint tiles, and what happens to the previous tile object is unread (OQ-063). |
+| When the city, building and service area become visible | The commit callee `+0x78` was not opened. Help says the service area is visible in info mode after the warehouse exists. |
+| Cancellation and repeated clicks | Unread. A failed `0x10046300` does not reach `+0x78`. |
+| Simultaneous founding order, idempotency | Not in this trace. |
+
+An AI probe in `CompLogic.dll` (`0x100154bf`) looks up id `0x516`, adjusts a
+rotation in 0..3, and calls slot `+0x6c` with flag `0x2000000`. It counts
+the site when a returned byte equals `0x30`. That is a computer-player scan
+using the same flag the player path passes to the test. It is not the
+player transaction, and `0x30` is not given a further meaning here.
+
+## 4. Current rebuild
+
+`fixed_map.cpp` with `developer_start` true checks that each start island
+is unique, then creates a Kontor and an owner run over the whole island
+(OQ-490). `developer_start` false omits that grant. Neither path reads a
+ship manifest, moves a ship, or runs `0x10046300`. The scenario adapter
+records player subrecords it does not model with `unknown_record`
+(`scenario_formats.cpp`); it does not spawn the endless-start ship.
+
+`map2-ship-start-v2` checks a 4×4 of `HEIGHT >= 16`, clear of ANLAGEN `HEAD`
+rectangles, beside exterior-4 water, with a 4-connected route of at most
+400 tiles and a site component of at least 256. Those are tool predicates.
+They are not `0x10046300`.
+
+## 5. Rebuild invariant (adaptation, not original)
+
+A founding command is one simulation step.
+
+- It rechecks every predicate it is specified to enforce at execution time.
+  Menu state from an earlier tick is not authority.
+- It either commits city, building, payment and territorial write together,
+  or it leaves the world unchanged. This atomicity is required for lockstep.
+  Section 3 does not prove the original does this.
+- Two commands in one tick that claim overlapping footprint tiles are ordered
+  by seat, then by command index. The later one receives the failure result.
+  The original's simultaneous order was not found.
+- Repeating a command after success is a new command. It is not ignored as
+  a duplicate unless a later spec defines an id. No original idempotency
+  bit was found.
+- The payer is an explicit account in the command (ship holds and player
+  gold named separately). The original split remains the blocking field in
+  §3.3.
+
+## 6. Fixture specifications
+
+These are specifications for a later implementation and for an original
+capture. They are not results of an original run.
+
+**Positive, original capture.** Ship carrying at least 12 t wood, 5 t tools
+and 350 gold, standing in the search window of a 4×4 whose tile class is
+uniform and not all `0x0f`, type 1302, rotation 0..3. Expected if the unread
+callees accept: a building 1302, a city for that player, gold and goods
+reduced by the type costs. Rotation, scenery and territory radius are
+recorded, not predicted.
+
+**Negative, from `0x10046300` returning 0** (commit not reached):
+
+| Case | Expected at this boundary |
+|---|---|
+| No island at the tile | Return 0, no `+0x78` |
+| Footprint tiles not one shared class, or all `0x0f` | Return 0, no `+0x78` |
+| No category-matching object in the window | Return 0, no `+0x78` |
+
+**Negative, affordability.** `0x10043d80` returns 0. The commit **is still
+called**, with flag `0xA0000000`. Expected world effect: **unknown** until
+`+0x78` is read or captured. The rebuild invariant is stronger: no city and
+no payment.
+
+**Not specified from this trace.** Occupied footprint, rival territory, and
+a ship that is outside the window but still "close" in some other metric.
+Do not treat a geometric miss as an original failure.
+
+## 7. Original-runtime capture
+
+`NOT_RUN_ORIGINAL`. This host is the Mac map lane. The existing runner
+(`docs/testing/original-wine.md`) is `wsl -d AnnoHarness` on the Windows
+lane. No emulator was installed.
+
+When that runner is available, one session is enough:
+
+1. Load `Scenes/0010SingleEndlos/03_1024_med_256.sze`. Leave the human ship
+   at its stored coordinates with its stored cargo.
+2. Open the ship menu and use the control whose callback is `View.dll`
+   `0x10063ba0` (building 1302). Click a coast tile next to the ship, then
+   a water tile, then a tile more than the 16×16 window away.
+3. Repeat with the hold totals reduced below 5 t tools, and with wood still
+   12 t, to separate the goods check from the window check.
+4. For each click, record player gold, every hold, new objects (id, tile,
+   rotation), city list length, footprint tile owners, and whether
+   `GELAENDE` items under the footprint remain.
+5. Store the log under the harness run directory. Do not copy it into git.
+
+Until that log exists, every runtime expectation in §6 stays
+`NOT_RUN_ORIGINAL`.

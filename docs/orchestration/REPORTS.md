@@ -8208,3 +8208,56 @@ Code head `b0c84ca`. Current binaries: `anno_budget_coord` sha256 `1fffb80baca59
 - Remaining external gates: Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` + ASan/UBSan (the POSIX-only H cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts: keep namespace 3, the legacy-stamp rule, compat 4 and the single journal name); lifting the rollout hold.
 
 I stopped here for review and began no movement, founding or candidate work.
+
+## MAP.2 — fifth repair: the previously published compat-4 build's versioned journal — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `bb7f6b3`** (reviewed code `b0c84ca`, reviewed documentation `2ae2bf8`); the documentation commit that carries this entry follows it and changes no code. Evidence (git-ignored): `cache/map2-repair4-evidence/`. **The shared-host compat-4 rollout stays on hold.** Nothing was merged, pushed or installed; no shared coordinator or journal was touched (the three `-v4` journals of the host were only read, and copies of them were used in a private home); movement, founding, GPU and candidate work were not started. Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**.
+
+### The defect
+The compat-4 build published at `a71b07f` kept its promises in `coord-<port>-v4.journal`; the repaired build never reads that file. Both advertise compat 4. With the real published binaries (coordinator `d91571b0…91a`, probe `1c2746c7…79e7`): the predecessor admitted a live holder of 50 (and, separately, a CPU token), its coordinator was stopped with the holder alive, the current coordinator started on the same home and port, printed `orphans=0`, and then admitted 80 (the second token). Failing output was saved with the production change stashed (`01-red-before-fix.txt`: V1, V2, V3, V3b fail; the control V4 passes); green after: `02-green-after-fix.txt`.
+
+### The repair (`bb7f6b3`)
+One canonical journal and namespace 3 are retained. Startup refuses, read-only, after the bind and before anything is announced, admitted or rewritten, when `coord-<port>-v4.journal` beside the journal in use holds outstanding promises or cannot be proved safe. No merge, migration or automatic release of dead owners.
+
+| Predecessor journal | Startup |
+|---|---|
+| absent / empty / all records released | normal (`LISTENING`, `orphans=0`) |
+| live memory holder, live CPU token | refused (V1, V2 with the real binaries; V3 modeled) |
+| known-dead owner, unknown or unattributable owner | refused |
+| unreadable (directory, mode 000) | refused |
+| malformed line, truncated record, last line without newline | refused |
+| canonical journal also present | canonical untouched when refused; honoured as before when allowed (V3b: `orphans=1`) |
+| repeated starts | same answer, no byte changes (three starts per refusal) |
+| another port's predecessor file | no block (V4) |
+
+A refusal prints `JOURNAL-REFUSED … Recovery: …`, exits 5, closes the socket, leaves every journal byte unchanged (the canonical journal is not created or compacted) and writes `<journal>.refused`. The client that started the process shows it: `ADMITTED 0 … infrastructure blocker: … did not start: startup refused: …`, after 0.06 s observed; bounded by the configured wait in every case (`03-refusal-sample.txt`, V1). `--journal` and the test override check the directory of the journal in use; there is no bypass variable. Clean predecessors do not block: the three real `-v4` journals of this host read as clean and copies of them start the coordinator (`07-…`, `08-…`).
+
+### Supported and unsupported transitions
+| | |
+|---|---|
+| legacy 3 → current | supported |
+| previous compat 4, clean file → current | supported |
+| previous compat 4, open/unreadable/malformed file → current | **refused**, recovery documented (operator confirms owners, moves the file aside; never delete) |
+| current → legacy 3 | live promises kept; **a dead namespace-3 owner stays reserved and the v3 coordinator does not idle out** |
+| current → previous compat 4 | **unsupported** (it ignores the canonical journal) |
+
+### Correction of the previous report
+"v4 releases it when it returns" and "wait for its 30 s idle exit" were incomplete: a coordinator with an outstanding orphan never takes the idle exit. The downgrade recovery needs an operator who owns that coordinator: identify the pid by port, check the namespace-3 owners with `journal_report.py` and `ps`, wait for live holders, stop that one pid, start the current build (it releases the dead owners and keeps the live ones). Prepared in `docs/perf/README.md`, **not applied**.
+
+### Counts (separately)
+| run | selected | executed | failed | empty | skipped |
+|---|---|---|---|---|---|
+| focused coordinator suite, Debug, real predecessor + older binaries set (`09-final-focused.log`) | 95 | 92 | 0 | 0 | 3 platform (F3 (D2), F4 (N3), F4 (N4): WSL); opt-in 0, required-asset 0 |
+| same, ASan/UBSan (`10-final-asan.log`) | 95 | 92 | 0 | 0 | 3 platform; sanitizer lines 0 |
+| earlier runs of the same selection before a comment-only edit (`04-`, `05-`) | 95 | 92 | 0 | 0 | 3 platform |
+
+Admission used a private port and journal (simulated budgets only). No broad gate was run and nothing was started on the shared port 47631. Ports were checked clear before each run (`lsof`, bounded 90 s; they were).
+**Pending, needs the hold lifted** (not run): `ANNO1503_GAME_DIR=$PWD/game/app ANNO_TEST_OLD_COORD=<frozen W4 binary> ANNO_TEST_V4_COORD=<published v4 coordinator> ANNO_TEST_V4_PROBE=<published v4 probe> ANNO_TEST_THREADS=4 tools/test/run_selected.sh build/mac-headless - 'anno_sim|anno_formats|anno_test_support' 900 <log> 8`, then the ASan selection.
+
+### Provenance
+Current `anno_budget_coord` sha256 `40d6b1eac26c592b12e938768cfdd58066e5d57df869299084d71cbc0d8fad21`, `anno_budget_probe` `e2ab7f419e1ce3cd792f79654156e7080aacfaca52380ec77453078c4482893e` (`06-binaries.txt`); predecessor and legacy hashes as above and `92c30840…6262f4` (legacy W4, `c869fb7`). Invariants (`11-invariants.txt`): clang-format clean, `git diff b0c84ca bb7f6b3` empty for `data game fixtures src/sim src/sim_load src/formats`, `git status game` empty, active map sha256 `1a471d9f…9357`; candidates, simulation behaviour, goldens and state version 116 unchanged.
+
+### Remaining
+Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (new POSIX-only V cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the broad gate above after the hold is lifted; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts); the orchestrator's decisions on the hold and on the downgrade cost.
+
+I stopped here for review.

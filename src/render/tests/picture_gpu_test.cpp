@@ -15,6 +15,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -23,6 +24,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -912,9 +914,194 @@ TEST_CASE("picture GPU: the wave simulation's background preparation holds the f
     CHECK(g.frame->errors() == 0);
 }
 
-TEST_CASE("picture GPU: teardown with builds, chunk jobs and GPU work outstanding releases every "
-          "generation through the reclaimer" *
-          doctest::test_suite("picture_gpu")) {
+namespace {
+
+/// Ends the process with a message if a bounded scenario does not finish in time: a teardown that
+/// hangs (a worker left blocked in a gate while its owner joins it) fails this test instead of the
+/// whole run waiting for CTest's timeout. _Exit: the hung threads cannot be joined.
+class Watchdog {
+  public:
+    Watchdog(std::chrono::seconds limit, const char* what)
+        : thread_([this, limit, what] {
+              std::unique_lock lock(m_);
+              if (!cv_.wait_for(lock, limit, [this] { return done_; })) {
+                  std::fprintf(stderr, "watchdog: %s did not finish within %lld s\n", what,
+                               static_cast<long long>(limit.count()));
+                  std::fflush(stderr);
+                  std::_Exit(124);
+              }
+          }) {}
+    Watchdog(const Watchdog&) = delete;
+    Watchdog& operator=(const Watchdog&) = delete;
+    ~Watchdog() {
+        {
+            const std::lock_guard lock(m_);
+            done_ = true;
+        }
+        cv_.notify_all();
+        thread_.join();
+    }
+
+  private:
+    std::mutex m_;
+    std::condition_variable cv_;
+    bool done_ = false;
+    std::thread thread_;
+};
+
+/// A scoped release of a gate: it runs once, explicitly or at scope exit (an assertion or an
+/// exception included), and logs that it ran. Declared after the object whose workers the gate
+/// blocks, so it is destroyed, and releases, before that object joins them.
+struct ScopedRelease {
+    std::function<void()> release;
+    std::vector<std::string>& log;
+    const char* name;
+    bool done = false;
+    ScopedRelease(std::function<void()> r, std::vector<std::string>& l, const char* n)
+        : release(std::move(r)), log(l), name(n) {}
+    ScopedRelease(const ScopedRelease&) = delete;
+    ScopedRelease& operator=(const ScopedRelease&) = delete;
+    void operator()() {
+        if (!done) {
+            done = true;
+            release();
+            log.emplace_back(name);
+        }
+    }
+    ~ScopedRelease() { (*this)(); }
+};
+/// An owner that logs when it has been destroyed (its workers joined).
+template <class T> struct Logged {
+    std::unique_ptr<T> p;
+    std::vector<std::string>& log;
+    const char* name;
+    Logged(std::unique_ptr<T> owned, std::vector<std::string>& l, const char* n)
+        : p(std::move(owned)), log(l), name(n) {}
+    Logged(const Logged&) = delete;
+    Logged& operator=(const Logged&) = delete;
+    void reset() {
+        if (p) {
+            p.reset();
+            log.emplace_back(name);
+        }
+    }
+    ~Logged() { reset(); }
+};
+
+/// The bridge's builder blocked in its second build until opened.
+struct BuildGate {
+    std::atomic<int> builds{0};
+    std::atomic<bool> open{false};
+    void pass() {
+        if (builds.fetch_add(1) >= 1) {
+            while (!open.load()) {
+                std::this_thread::yield();
+            }
+        }
+    }
+};
+
+std::size_t position(const std::vector<std::string>& log, const char* name) {
+    return static_cast<std::size_t>(std::find(log.begin(), log.end(), name) - log.begin());
+}
+
+/// Teardown with a build blocked in the bridge's builder, chunk jobs held by the gate and a GPU
+/// frame submitted and not waited for. `fail_early`: an exception is thrown once both gates hold
+/// their workers, before any explicit release (the scoped releases must do it). Otherwise the
+/// viewer's order is followed explicitly. Returns the generations it made (raw identity and weak).
+struct TeardownResult {
+    std::vector<const render::Scene*> generations;
+    std::vector<std::weak_ptr<const render::Scene>> alive;
+    std::vector<std::string> order;
+};
+void teardown_scenario(const fs::path& dir, const gpu::Context& ctx, const app::LegalWorkload& w,
+                       const std::vector<app::SceneBuilding>& state0, const app::LegalEdit& first,
+                       const app::LegalEdit& second, bool fail_early, TeardownResult& out) {
+    BuildGate builds; // outlives the bridge
+    KeyGate gate;     // outlives the chunk workers
+    app::ScenePicture::Limits limits;
+    limits.build_fault = [&builds](std::size_t) { builds.pass(); };
+    SceneHandle base = scene_with(dir, w.load(), state0);
+    out.generations.push_back(base.get());
+    out.alive.push_back(base);
+    Logged<app::ScenePicture> picture(
+        std::make_unique<app::ScenePicture>(
+            base, state0, [&w](std::uint16_t id) { return app::anlage_is_building(w.world(), id); },
+            1, limits),
+        out.order, "bridge joined");
+    const render::Rect view = view_at(*base, first.island, first.x, first.y);
+    base.reset();
+    Gpu g{make_frame(ctx), {}};
+    auto renderer = std::make_unique<render::FrameRenderer>(2, false);
+    auto owned = std::make_unique<render::ChunkWorkers>(2);
+    owned->set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
+    renderer->set_workers(std::move(owned));
+    Logged<render::FrameRenderer> frames(std::move(renderer), out.order, "chunk workers joined");
+    // The releases, declared last: destroyed (and released) before the owners above join.
+    ScopedRelease release_builder([&builds] { builds.open.store(true); }, out.order,
+                                  "builder released");
+    ScopedRelease release_chunks([&gate] { gate.open_for_good(); }, out.order,
+                                 "chunk gate released");
+    picture.p->apply({first.batch});
+    drain(*picture.p, *frames.p);
+    out.generations.push_back(picture.p->scene().get());
+    out.alive.push_back(picture.p->scene());
+    gate.set([](const ChunkKey&, std::uint64_t) { return true; });
+    g.draw(*frames.p, picture.p->scene(), view, 2);
+    REQUIRE(gate.wait_for([&] { return !gate.waiting.empty(); }));
+    picture.p->apply({second.batch});
+    REQUIRE(eventually([&] { return builds.builds.load() >= 2; }));
+    if (fail_early) {
+        throw std::runtime_error("injected failure after both gates hold their workers");
+    }
+    // The viewer's order: the frames stop (the chunk jobs end and are joined), the GPU finishes
+    // and the compositor goes, then the bridge.
+    release_chunks();
+    frames.reset();
+    g.frame->wait();
+    g.targets.clear();
+    g.frame.reset();
+    release_builder();
+    picture.reset();
+}
+
+/// After a teardown: every generation released and destroyed on the reclaimer thread, and the
+/// accounted bytes back at `before`.
+void check_released(const TeardownResult& r, std::mutex& seen_mutex,
+                    const std::vector<std::pair<const render::Scene*, std::thread::id>>& seen,
+                    const render::PayloadCounts& before) {
+    for (const auto& a : r.alive) {
+        CHECK(a.expired());
+    }
+    REQUIRE(eventually([&] {
+        const std::lock_guard lock(seen_mutex);
+        return std::all_of(r.generations.begin(), r.generations.end(), [&](const render::Scene* s) {
+            return std::any_of(seen.begin(), seen.end(),
+                               [s](const auto& x) { return x.first == s; });
+        });
+    }));
+    {
+        const std::lock_guard lock(seen_mutex);
+        for (const auto& [scene, thread] : seen) {
+            CHECK(thread != std::this_thread::get_id());
+        }
+    }
+    auto& reclaimer = render::SceneReclaimer::shared();
+    REQUIRE(eventually([&] {
+        const auto now = render::payload_counts();
+        const auto st = reclaimer.stats();
+        return now.of(render::PayloadKind::Incremental) ==
+                   before.of(render::PayloadKind::Incremental) &&
+               now.of(render::PayloadKind::Generation) ==
+                   before.of(render::PayloadKind::Generation) &&
+               st.waiting == 0 && st.in_flight == 0;
+    }));
+}
+
+/// The common setup of the two teardown cases: the workload's two builds, the reclaimer observer
+/// and the payload baseline (taken once nothing is waiting for the reclaimer: the workload's setup
+/// may still have a scene in destruction).
+void teardown_case(bool fail_early) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -938,88 +1125,49 @@ TEST_CASE("picture GPU: teardown with builds, chunk jobs and GPU work outstandin
         seen.emplace_back(&s, std::this_thread::get_id());
     });
     const ObserverReset reset;
-    // The baseline once nothing is waiting for the reclaimer (the workload's setup may still have
-    // a scene in destruction).
     REQUIRE(eventually([&] {
         const auto r = reclaimer.stats();
         return r.waiting == 0 && r.in_flight == 0;
     }));
     const auto before = render::payload_counts();
-    std::vector<const render::Scene*> generations;
-    std::vector<std::weak_ptr<const render::Scene>> alive;
-    {
-        // The picture's one builder blocks in its second build (the window's order: the
-        // producer and the bridge outlive the frames that use them).
-        std::atomic<int> builds{0};
-        std::atomic<bool> builds_open{false};
-        app::ScenePicture::Limits limits;
-        limits.build_fault = [&builds, &builds_open](std::size_t) {
-            if (builds.fetch_add(1) >= 1) {
-                while (!builds_open.load()) {
-                    std::this_thread::yield();
-                }
-            }
-        };
-        SceneHandle base = scene_with(*dir, w->load(), state0);
-        generations.push_back(base.get());
-        alive.push_back(base);
-        auto picture = std::make_unique<app::ScenePicture>(
-            base, state0,
-            [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); }, 1, limits);
-        const render::Rect view = view_at(*base, first.island, first.x, first.y);
-        base.reset();
-        Gpu g{make_frame(*ctx), {}};
-        KeyGate gate;
-        auto frames = std::make_unique<render::FrameRenderer>(2, false);
-        auto owned = std::make_unique<render::ChunkWorkers>(2);
-        owned->set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
-        frames->set_workers(std::move(owned));
-        picture->apply({first.batch});
-        drain(*picture, *frames);
-        generations.push_back(picture->scene().get());
-        alive.push_back(picture->scene());
-        // Outstanding at teardown: chunk jobs of generation 1 held by the gate, a GPU frame
-        // submitted and not waited for, and the second build blocked in the builder.
-        gate.set([](const ChunkKey&, std::uint64_t) { return true; });
-        g.draw(*frames, picture->scene(), view, 2);
-        REQUIRE(gate.wait_for([&] { return !gate.waiting.empty(); }));
-        picture->apply({second.batch});
-        REQUIRE(eventually([&] { return builds.load() >= 2; }));
-        // The viewer's order: the frames stop (the chunk jobs end and are joined), the GPU
-        // finishes and the compositor goes, then the bridge.
-        gate.open_for_good();
-        frames.reset();
-        g.frame->wait();
-        g.targets.clear();
-        g.frame.reset();
-        builds_open.store(true);
-        picture.reset();
-    }
-    // Every generation of this case is released and destroyed, each on the reclaimer thread, and
-    // the accounted bytes are back where they were.
-    for (const auto& a : alive) {
-        CHECK(a.expired());
-    }
-    REQUIRE(eventually([&] {
-        const std::lock_guard lock(seen_mutex);
-        return std::all_of(generations.begin(), generations.end(), [&](const render::Scene* s) {
-            return std::any_of(seen.begin(), seen.end(),
-                               [s](const auto& x) { return x.first == s; });
-        });
-    }));
-    {
-        const std::lock_guard lock(seen_mutex);
-        for (const auto& [scene, thread] : seen) {
-            CHECK(thread != std::this_thread::get_id());
+    TeardownResult r;
+    if (fail_early) {
+        // Bounded: a scope exit that left a worker blocked would hang in its owner's join.
+        const Watchdog dog(std::chrono::seconds(600), "the early-failure teardown");
+        std::string what;
+        try {
+            teardown_scenario(*dir, *ctx, *w, state0, first, second, true, r);
+        } catch (const std::runtime_error& e) {
+            what = e.what();
         }
+        CHECK(what == "injected failure after both gates hold their workers");
+    } else {
+        teardown_scenario(*dir, *ctx, *w, state0, first, second, false, r);
     }
-    REQUIRE(eventually([&] {
-        const auto now = render::payload_counts();
-        const auto r = reclaimer.stats();
-        return now.of(render::PayloadKind::Incremental) ==
-                   before.of(render::PayloadKind::Incremental) &&
-               now.of(render::PayloadKind::Generation) ==
-                   before.of(render::PayloadKind::Generation) &&
-               r.waiting == 0 && r.in_flight == 0;
-    }));
+    // Each gate was released before the owner of the workers it blocked joined them.
+    INFO("order: " << [&r] {
+        std::string o;
+        for (const auto& e : r.order) {
+            o += e + "; ";
+        }
+        return o;
+    }());
+    REQUIRE(r.order.size() == 4);
+    CHECK(position(r.order, "chunk gate released") < position(r.order, "chunk workers joined"));
+    CHECK(position(r.order, "builder released") < position(r.order, "bridge joined"));
+    check_released(r, seen_mutex, seen, before);
+}
+
+} // namespace
+
+TEST_CASE("picture GPU: teardown with builds, chunk jobs and GPU work outstanding releases every "
+          "generation through the reclaimer" *
+          doctest::test_suite("picture_gpu")) {
+    teardown_case(false);
+}
+
+TEST_CASE("picture GPU: a failure after the chunk workers and the builder are held releases both "
+          "gates before their owners join, and still releases every generation" *
+          doctest::test_suite("picture_gpu")) {
+    teardown_case(true);
 }

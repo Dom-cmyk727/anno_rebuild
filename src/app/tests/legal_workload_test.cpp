@@ -4,11 +4,14 @@
 // through the bridge and compared with a freshly loaded scene of the desired state (objects, chunk
 // layers and PROD2 items). Needs the game files (skips without them).
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <vector>
 
@@ -132,6 +135,76 @@ void check_against_fresh(const fs::path& dir, const app::LegalWorkload& w,
                     << same.with_objects << " changed_object_keys=" << changed.objects);
 }
 
+/// A gate that lets builds through one at a time: build n (from 0) waits until `released` > n.
+/// Opened for good when the opener declared after the picture goes out of scope.
+struct Turnstile {
+    std::atomic<bool> open{false};
+    std::atomic<int> entered{0}, released{0};
+    void pass() {
+        const int me = entered.fetch_add(1);
+        while (!open.load() && released.load() <= me) {
+            std::this_thread::yield();
+        }
+    }
+};
+struct TurnstileOpener {
+    Turnstile& t;
+    TurnstileOpener(const TurnstileOpener&) = delete;
+    TurnstileOpener& operator=(const TurnstileOpener&) = delete;
+    explicit TurnstileOpener(Turnstile& turnstile) : t(turnstile) {}
+    ~TurnstileOpener() { t.open.store(true); }
+};
+
+template <class F> bool eventually(F done) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+    while (!done()) {
+        if (std::chrono::steady_clock::now() > until) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+/// A committed generation equals a fresh scene of `buildings` (the state it represents): every
+/// island's PROD2 items, and the chunk layers of each view, both rendered from the committed scene
+/// alone and as the bridge's own frame renderer `frames` shows them after its invalidations.
+void check_state(const fs::path& dir, const app::LegalWorkload& w,
+                 const std::shared_ptr<const render::Scene>& committed,
+                 const std::vector<app::SceneBuilding>& buildings,
+                 const std::vector<render::Rect>& views, render::FrameRenderer& frames) {
+    const auto fresh = scene_with(dir, w.load(), buildings);
+    REQUIRE(committed->islands.size() == fresh->islands.size());
+    std::size_t differing = 0;
+    for (std::size_t i = 0; i < fresh->islands.size(); ++i) {
+        differing +=
+            app::building_items(committed->islands[i]) == app::building_items(fresh->islands[i])
+                ? 0U
+                : 1U;
+    }
+    CHECK(differing == 0);
+    for (const render::Rect& view : views) {
+        const auto keys = render::chunk_keys_touching(*fresh, view, 2);
+        REQUIRE(!keys.empty());
+        const render::FrameRenderer ref = rendered(*fresh, view);
+        const render::FrameRenderer got = rendered(*committed, view);
+        const app::ChunkDiff same = app::compare_chunks(keys, lookup_of(got), lookup_of(ref));
+        CAPTURE(same.objects);
+        CAPTURE(same.missing);
+        CHECK(same.equal());
+        CHECK(same.with_objects > 0);
+        // The bridge's renderer: its cached chunks of the replaced generations were invalidated by
+        // the commits; once brought up to date it shows the reference.
+        for (int round = 0; round < 3; ++round) {
+            frames.update_chunks(committed, view, 2);
+        }
+        const app::ChunkDiff shown = app::compare_chunks(keys, lookup_of(frames), lookup_of(ref));
+        CAPTURE(shown.objects);
+        CAPTURE(shown.missing);
+        CHECK(shown.equal());
+    }
+}
+
 } // namespace
 
 TEST_CASE("legal workload: five cities on five islands, built through the sim's commands (game "
@@ -246,4 +319,90 @@ TEST_CASE("legal workload: one accepted build and one accepted demolish reach th
     CHECK(picture.error().empty());
     CHECK(picture.stats().invalidated_keys > keys_before);
     check_against_fresh(*dir, *w, picture, *before_demolish, demolish);
+}
+
+TEST_CASE("legal workload: intermediate publications under a stream of builds and a demolish each "
+          "equal a fresh scene of the state they represent (game files)" *
+          doctest::test_suite("legal_workload")) {
+    // Monotonic publication (the default) on real data. Four accepted edits of city 0 (build,
+    // build, demolish, build) reach the bridge while its one worker is held in a turnstile, so
+    // the desired version is always ahead of the finished build. Version 1 and version 3 are
+    // published as intermediate generations (version 2 ran while version 1 was committed and is
+    // requeued; docs/app/game-shell.md, "Publication policy"), then version 4. Each published
+    // generation is compared with a freshly loaded scene of the desired list as it was at that
+    // version, and the bridge's own chunk cache with the reference rendering of that scene.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    app::LegalWorkloadOptions options;
+    options.buildings_per_city = 12;
+    options.settle_turns = 5;
+    auto built = app::LegalWorkload::build(*dir, fixed_map(), options);
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    const auto w = std::move(built).value();
+    const auto base = scene_with(*dir, w->load(), w->buildings());
+    // The edits and the desired list after each (state k is the desired list at version k).
+    std::vector<app::LegalEdit> edits;
+    std::vector<std::vector<app::SceneBuilding>> states{w->buildings()};
+    for (int k = 0; k < 4; ++k) {
+        edits.push_back(k == 2 ? w->demolish_one(0) : w->build_one(0));
+        REQUIRE_MESSAGE(edits.back().accepted, edits.back().reason);
+        REQUIRE(edits.back().batch != nullptr);
+        CHECK(edits.back().island == edits.front().island);
+        states.push_back(w->buildings());
+    }
+    CHECK(w->invariants().empty());
+    std::vector<render::Rect> views;
+    for (const app::LegalEdit& e : edits) {
+        views.push_back(view_at(*base, e.island, e.x, e.y));
+    }
+    Turnstile turnstile;
+    app::ScenePicture::Limits limits;
+    limits.build_fault = [&turnstile](std::size_t) { turnstile.pass(); };
+    app::ScenePicture picture(
+        base, states.front(),
+        [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); }, 1, limits);
+    const TurnstileOpener opener(turnstile);
+    render::FrameRenderer frames(1);
+    for (const render::Rect& view : views) {
+        for (int round = 0; round < 3; ++round) {
+            frames.update_chunks(base, view, 2); // the base's chunks are cached, then invalidated
+        }
+    }
+    picture.apply({edits[0].batch});
+    REQUIRE(eventually([&] { return turnstile.entered.load() == 1; }));
+    std::vector<std::uint64_t> published;
+    for (std::size_t k = 1; k < edits.size(); ++k) {
+        CAPTURE(k);
+        picture.apply({edits[k].batch});
+        turnstile.released.fetch_add(1);
+        REQUIRE(eventually([&] { return turnstile.entered.load() == static_cast<int>(k + 1); }));
+        // The reaper and the process reclaimer catch up first, so the commit is not skipped for
+        // reclamation this case does not test.
+        REQUIRE(eventually([&] {
+            const auto st = picture.stats();
+            const auto r = render::SceneReclaimer::shared().stats();
+            return st.reclaim_completed == st.reclaim_queued && r.waiting == 0;
+        }));
+        if (picture.commit(frames) == 0) {
+            continue;
+        }
+        REQUIRE(picture.last_commit().size() == 1);
+        const std::uint64_t version = picture.last_commit().front().version;
+        published.push_back(version);
+        CHECK(version < k + 1); // intermediate: newer edits are owed
+        CHECK(picture.pending() == 1);
+        CHECK(!picture.last_commit().front().keys.empty());
+        check_state(*dir, *w, picture.scene(), states[version], views, frames);
+        CHECK(picture.buildings() == states[k + 1]); // the desired state is version k + 1
+    }
+    turnstile.open.store(true);
+    REQUIRE(drain(picture, frames));
+    CHECK(picture.error().empty());
+    CHECK(published == std::vector<std::uint64_t>{1, 3});
+    check_state(*dir, *w, picture.scene(), states.back(), views, frames);
+    MESSAGE("intermediate versions published: " << published.size() << ", requeues "
+                                                << picture.stats().version_requeues);
 }

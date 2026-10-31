@@ -141,7 +141,7 @@ Accepted directions (orchestrator, fifth pass) with their limits, then the decis
 - D7. Cargo: duplicate holds, an exactly emptied hold (goods id cleared), gold exactly once.
 - D8. Read `byte0f` of the new building (expected `0x30`).
 
-## 12. Proposed implementation units (none started)
+## 12. Proposed implementation units (U1–U3 done as isolated helpers, section 15; U4–U6 not started)
 Each unit stops at its acceptance tests; later units depend on earlier ones.
 1. **U1 – height-grid bridge.** Objective: a checked, allocation-free corner-height view derived from the existing `Terrain::height` (stride `W+1`, boundary vertices 0 per `re` §12.3), with explicit missing-terrain and hash-only-placeholder status; no change to stored data. Files: `terrain_view.hpp/.cpp`, tests. Tests: non-square islands with distinct row/column values, non-zero origins, last tile and corner vertices, invalid and truncated data, absent/placeholder terrain, shipped island data through the existing loaders against an independent block-copy model. Dependency: none. Stopping point: the view only.
 2. **U2 – pure predicates (height view, registry data; figure data only for the veto).** Objective: pure functions for centring, rotation trials, bounds, ownership, distance, occupancy compatibility and the coast rule. Tests: the 3,000-case coast oracle (`coast_model.py`, expected table exported as a fixture), centring cases, distance pairs of §13.1. Dependency: U1. Stopping point: functions only, no command.
@@ -151,7 +151,7 @@ Each unit stops at its acceptance tests; later units depend on earlier ones.
 6. **U6 – the command.** Objective: `FoundCmd`, codec, `Reject` values, prepared effects, the commit of §6, replay and fresh-process determinism. Tests: all of §13. Dependency: U1–U5 and decisions C1–C4, C7–C9. Stopping point: command applies in a synthetic world; no sailing or UI.
 The smallest faithful bounded unit that can start now is **U1** (data), followed by U2/U3, which need no economy, military system or diplomacy.
 
-## 13. Fixtures and tests (specifications; not executed)
+## 13. Fixtures and tests (specifications; the coast and territory fixtures of U2/U3 now exist and run, section 15)
 Fixtures are named `founding_synth_*`. Ships are placed directly: this tests founding, not sailing, and says nothing about a ship being able to reach the place. Positions are given as original f32 and as proposed Q24.8 (value × 256) where they matter; only exactly representable values are used. Heights are vertex bytes.
 
 ### 13.1 Isolated predicate expectations (each predicate alone; the others assumed satisfied)
@@ -227,7 +227,7 @@ Island 32×32 at the origin; land `0x40` for vertices `x <= 9`; shoreline vertex
 ## 14. Original-runtime capture recipe
 The smallest set is D1–D8 of §11. Each records, before and after: per-hold goods id and amount, gold, the accepted rotation, the city count and numbers, the owner nibble of the footprint and a 30-tile border, the scout/donkey/ship positions and parents, the world PRNG index, island property `0x11`, the building's `+0x0e`/`+0x0f` bytes and the message log. They confirm the stated uncertainties; they do not replace reading code.
 
-## 14. Implementation status of the isolated helpers (task MAP-2, after the fifth pass)
+## 15. Implementation status of the isolated helpers (task MAP-2, after the fifth pass)
 No founding command, codec alternative, `Reject` value or state field exists. Three isolated, state-free helper units were added; each has its own tests and an independent review.
 | Unit | Files | What it decides | Verified against |
 |---|---|---|---|

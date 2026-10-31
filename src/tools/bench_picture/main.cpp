@@ -746,12 +746,33 @@ int main(int argc, char** argv) {
         const app::ChunkDiff diff = app::compare_chunks(
             keys, [&frames](const render::ChunkKey& k) { return frames.chunk(k); },
             [&reference](const render::ChunkKey& k) { return reference.chunk(k); });
+        // The committed island items against the fresh scene's items: every PROD2 item with its
+        // block origin, anlage, rotation, height, phase and tile, as a sorted multiset per island.
+        // Record order is a container order and is not compared; the items are the buildings. A
+        // count-preserving substitution fails here.
+        std::size_t record_mismatch_islands = 0;
+        for (std::size_t i = 0;
+             i < final_scene->islands.size() && i < reference_scene->islands.size(); ++i) {
+            const auto a = app::building_items(final_scene->islands[i]);
+            const auto b = app::building_items(reference_scene->islands[i]);
+            if (a != b) {
+                std::size_t first = 0;
+                while (first < a.size() && first < b.size() && a[first] == b[first]) {
+                    ++first;
+                }
+                std::printf("  island #%u: items picture %zu, fresh %zu, first difference at %zu\n",
+                            final_scene->islands[i].number, a.size(), b.size(), first);
+                ++record_mismatch_islands;
+            }
+        }
+        std::printf("verify: island items against the fresh scene: islands_differing=%zu of %zu\n",
+                    record_mismatch_islands, final_scene->islands.size());
         std::printf("verify: group-2 chunks of the view compared=%zu with_objects=%zu ground=%zu "
                     "objects=%zu "
                     "terrain=%zu field=%zu missing=%zu\n",
                     diff.compared, diff.with_objects, diff.ground, diff.objects, diff.terrain,
                     diff.field, diff.missing);
-        if (!diff.equal()) {
+        if (record_mismatch_islands != 0 || !diff.equal()) {
             std::printf("VERIFY FAILED\n");
             return 1;
         }

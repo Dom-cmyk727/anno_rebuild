@@ -5,10 +5,13 @@
 // object counts are diagnostics only: they cannot detect a count-preserving substitution.
 #pragma once
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
+#include <anno/formats/insel.hpp>
 #include <anno/render/frame.hpp>
 
 namespace anno::app {
@@ -33,5 +36,13 @@ using ChunkLookup = std::function<const render::Chunk*(const render::ChunkKey&)>
 /// build).
 ChunkDiff compare_chunks(const std::vector<render::ChunkKey>& keys, const ChunkLookup& candidate,
                          const ChunkLookup& reference);
+
+/// One PROD2 item of an island: its block origin, anlage, rotation, height, phase and tile.
+using BuildingItem = std::array<std::uint32_t, 8>;
+
+/// The building items of an island, as a sorted multiset (record order is a container order and is
+/// not part of the comparison; the items are the buildings). Equal items mean the same buildings,
+/// whatever the records look like.
+std::vector<BuildingItem> building_items(const formats::insel::Island& island);
 
 } // namespace anno::app

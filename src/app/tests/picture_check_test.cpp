@@ -242,3 +242,49 @@ TEST_CASE("picture check: negative controls fail (erased objects, a shifted obje
     // The reference itself is unchanged by the controls (they acted on copies).
     CHECK(app::compare_chunks(keys, lookup_of(reference), lookup_of(reference)).equal());
 }
+
+TEST_CASE("picture check: a moved or rotated building is a different island, with the same count "
+          "(game files)" *
+          doctest::test_suite("picture_check")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_play(*dir, fixed_map());
+    REQUIRE(loaded.ok());
+    const app::PlayLoad play = std::move(loaded).value();
+    const std::vector<app::SceneBuilding> base = app::play_buildings(play.world);
+    REQUIRE(!base.empty());
+    const auto scene = scene_with(*dir, play, base);
+    const std::vector<app::BuildingItem> want = app::building_items(scene->islands[0]);
+    REQUIRE(!want.empty());
+    // The same island with one building moved to a free neighbouring tile (the count is unchanged).
+    std::vector<app::SceneBuilding> moved = base;
+    for (app::SceneBuilding& b : moved) {
+        if (b.island == scene->islands[0].number) {
+            b.x = static_cast<std::uint16_t>(b.x + 1);
+            break;
+        }
+    }
+    app::sort_buildings(moved);
+    const auto moved_scene = scene_with(*dir, play, moved);
+    const auto got_moved = app::building_items(moved_scene->islands[0]);
+    CHECK(got_moved.size() == want.size());
+    CHECK(got_moved != want);
+    // The same island with one building rotated (the count is unchanged).
+    std::vector<app::SceneBuilding> rotated = base;
+    for (app::SceneBuilding& b : rotated) {
+        if (b.island == scene->islands[0].number) {
+            b.rotation = static_cast<std::uint8_t>((b.rotation + 1) % 4);
+            break;
+        }
+    }
+    app::sort_buildings(rotated);
+    const auto rotated_scene = scene_with(*dir, play, rotated);
+    const auto got_rotated = app::building_items(rotated_scene->islands[0]);
+    CHECK(got_rotated.size() == want.size());
+    CHECK(got_rotated != want);
+    // The unchanged island compares equal to itself.
+    CHECK(app::building_items(scene->islands[0]) == want);
+}

@@ -48,8 +48,9 @@ bool within_range(std::int64_t click_x, std::int64_t click_y, FixedPos ship,
                   const DistanceRule& rule) {
     // click * 256 - ship must fit i64: |click| <= INT64_MAX / 512 leaves 2^62 for the product
     // and room for the 32-bit ship coordinate (a bound of the arithmetic, not of the rule).
-    const std::int64_t bound = std::numeric_limits<std::int64_t>::max() / 512;
-    if (click_x > bound || click_x < -bound || click_y > bound || click_y < -bound) {
+    const std::int64_t click_limit = std::numeric_limits<std::int64_t>::max() / 512;
+    if (click_x > click_limit || click_x < -click_limit || click_y > click_limit ||
+        click_y < -click_limit) {
         return false;
     }
     // Truncation toward zero of (click - ship) in tiles; C++ integer division truncates.

@@ -52,6 +52,17 @@ sm::Manifest synthetic_manifest() {
         m.spawns.push_back({seat, 1000 * (10 + 20 * seat) + 500, 1000 * 100 + 500, seat % 4});
     }
     m.loadout = sm::baseline_loadout();
+    // The default policy of tools/map2_manifest.py default_policy(): a manifest that the real
+    // parser accepts, so the cases that go through it start from a valid file.
+    m.policy.grid = "tile";
+    m.policy.metric = "manhattan-4";
+    m.policy.clearance_scope = "spawn";
+    m.policy.obstruction = "anlagen-head-conservative";
+    m.policy.clearance = 8;
+    m.policy.max_route_tiles = 400;
+    m.policy.min_city = 256;
+    m.policy.share_gap = 32;
+    m.policy.share_min_side = 128;
     return m;
 }
 
@@ -241,6 +252,133 @@ TEST_CASE("ship start: content the registry lacks is refused") {
     CHECK(r.error().find("loadout.ship_figure") != std::string::npos);
     CHECK_FALSE(sl::manifest_goods(*base.value().registry, "gold").has_value());
     CHECK(sl::manifest_goods(*base.value().registry, "wood").has_value());
+}
+
+// ---- the base path is content-relative (MAP-2 review, finding 3)
+
+namespace {
+
+/// A manifest the way a file delivers it: serialised canonically and parsed again, so a
+/// NUL or a separator travels through the real JSON reader before the loader sees it.
+sm::Manifest through_parse(const sm::Manifest& m) {
+    const std::string text = sm::canonical_bytes(m); // no content_hash: absent is accepted
+    const auto parsed = sm::parse(
+        anno::formats::Bytes(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
+    REQUIRE_MESSAGE(parsed.ok(), (parsed.ok() ? std::string() : parsed.error().message));
+    return parsed.value();
+}
+
+/// A private copy of the synthetic game directory with the symlinks of the policy test.
+struct ContentTree {
+    fs::path root, outside, linked_root;
+    ContentTree() {
+        const fs::path top = fs::temp_directory_path() / "anno1503-f6-content";
+        std::error_code ec;
+        fs::remove_all(top, ec);
+        root = top / "game";
+        outside = top / "outside";
+        linked_root = top / "game-link";
+        fs::create_directories(outside);
+        fs::copy(synthetic_game(), root, fs::copy_options::recursive);
+        // A file outside the content root, and links to it and to the base inside the root.
+        fs::copy_file(root / "Scenes" / "base.sze", outside / "secret.sze");
+        fs::create_symlink(root / "Scenes" / "base.sze", root / "Scenes" / "inside.sze");
+        fs::create_symlink(outside / "secret.sze", root / "Scenes" / "escape.sze");
+        fs::create_directory_symlink(outside, root / "Scenes" / "escape_dir");
+        fs::create_directory_symlink(root, linked_root);
+    }
+    ~ContentTree() {
+        std::error_code ec;
+        fs::remove_all(root.parent_path(), ec);
+    }
+};
+
+} // namespace
+
+TEST_CASE("ship start: a base that is not a content-relative path is refused before it is opened") {
+    const auto types = ship_registry();
+    ContentTree tree;
+    sim::World live = sl::load_ship_start(synthetic_manifest(), tree.root, types).value();
+    const std::uint64_t before = live.state_hash();
+    const std::vector<std::uint8_t> saved = live.save();
+    const fs::path absolute_base = tree.root / "Scenes" / "base.sze";
+
+    const auto refused = [&](const std::string& base, const char* why) {
+        CAPTURE(std::string(why));
+        sm::Manifest m = synthetic_manifest();
+        m.base = base;
+        const sm::Manifest parsed = through_parse(m);
+        const auto direct = sl::load_ship_start(parsed, tree.root, types);
+        CHECK_MESSAGE(!direct.ok(), "this base was ACCEPTED and the world was built");
+        if (direct.ok()) {
+            return; // each row reports on its own; the rest of the row needs a refusal
+        }
+        CHECK_MESSAGE(direct.error().rfind("base:", 0) == 0, direct.error());
+        const auto installed = sl::install_ship_start(live, parsed, tree.root, types);
+        REQUIRE(installed.has_value());
+        CHECK(installed->rfind("base:", 0) == 0);
+        CHECK(live.state_hash() == before);
+        CHECK(live.save() == saved);
+    };
+    // The reviewer's case: the JSON escape for NUL becomes a NUL, where a C string would stop.
+    refused(std::string("Scenes/base.sze\0does-not-exist", 30), "embedded NUL");
+    refused(std::string("\0Scenes/base.sze", 16), "leading NUL");
+    refused("Scenes/base.sze\n", "control character");
+    refused(absolute_base.string(), "absolute path to an existing file");
+    refused("/etc/hosts", "rooted path");
+    refused("../outside/secret.sze", "parent traversal out of the root");
+    refused("Scenes/../../outside/secret.sze", "traversal in the middle");
+    refused("Scenes/../Scenes/base.sze", "parent segment, even when it stays inside");
+    refused("Scenes/./base.sze", "dot segment");
+    refused("Scenes//base.sze", "empty segment");
+    refused("Scenes/base.sze/", "trailing separator");
+    refused("Scenes\\base.sze", "backslash separator");
+    refused("C:/Windows/win.ini", "Windows drive");
+    refused("C:\\Windows\\win.ini", "Windows drive with backslashes");
+    refused("C:Scenes/base.sze", "drive-relative form");
+    refused("\\\\server\\share\\base.sze", "UNC path");
+    refused("//server/share/base.sze", "UNC path with slashes");
+    refused("Scenes/base.sze:stream", "alternate data stream");
+    refused("Scenes", "a directory");
+    refused("Scenes/missing.sze", "missing file");
+    refused("Scenes/escape.sze", "symlink to a file outside the root");
+    refused("Scenes/escape_dir/secret.sze", "symlinked directory leaving the root");
+}
+
+TEST_CASE("ship start: a content-relative base loads, also through links that stay inside") {
+    const auto types = ship_registry();
+    ContentTree tree;
+    const std::uint64_t expected =
+        sl::load_ship_start(synthetic_manifest(), synthetic_game(), types).value().state_hash();
+
+    // The plain relative path: the same world as before.
+    const sm::Manifest plain = through_parse(synthetic_manifest());
+    auto loaded = sl::load_ship_start(plain, tree.root, types);
+    REQUIRE_MESSAGE(loaded.ok(), message_of(loaded));
+    CHECK(loaded.value().state_hash() == expected);
+
+    // The content root may itself be reached through a link: it is resolved normally.
+    loaded = sl::load_ship_start(plain, tree.linked_root, types);
+    REQUIRE_MESSAGE(loaded.ok(), message_of(loaded));
+    CHECK(loaded.value().state_hash() == expected);
+
+    // A link inside the root that stays inside it is allowed.
+    sm::Manifest inside = synthetic_manifest();
+    inside.base = "Scenes/inside.sze";
+    loaded = sl::load_ship_start(through_parse(inside), tree.root, types);
+    REQUIRE_MESSAGE(loaded.ok(), message_of(loaded));
+    CHECK(loaded.value().state_hash() == expected);
+}
+
+TEST_CASE("ship start: the content path rules, as a function") {
+    ContentTree tree;
+    CHECK(sl::resolve_content_path(tree.root, "Scenes/base.sze").ok());
+    CHECK_FALSE(sl::resolve_content_path(tree.root, "").ok());
+    CHECK_FALSE(sl::resolve_content_path(tree.root / "no-such-root", "Scenes/base.sze").ok());
+    // The resolved path is the real file inside the real root, whatever the root's spelling.
+    const auto via_link = sl::resolve_content_path(tree.linked_root, "Scenes/inside.sze");
+    REQUIRE(via_link.ok());
+    CHECK(via_link.value() == fs::canonical(tree.root / "Scenes" / "base.sze"));
 }
 
 // ---- the original game files

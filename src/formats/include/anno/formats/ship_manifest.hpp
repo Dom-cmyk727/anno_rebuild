@@ -14,6 +14,10 @@
 //   - nesting deeper than json::Limits::max_depth (64) is rejected;
 //   - the bytes must be ASCII, as the reference's command line demands
 //     (`PathText`); the reference's `parse(text)` itself takes any str.
+// Schema validity is not loadability. `base` and the island `key`s are any non-empty string here,
+// exactly as in the reference (a NUL, a rooted path or ".." is schema-valid); what may be opened
+// is decided where the file system is touched, by sim_load's resolve_content_path, so this
+// reader and the Python tool keep one contract.
 // Everything else the reference rejects, this reader rejects, and a manifest both
 // accept gets the same content hash.
 #pragma once

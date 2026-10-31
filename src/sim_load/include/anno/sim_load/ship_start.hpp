@@ -41,6 +41,19 @@ namespace anno::sim_load {
 [[nodiscard]] std::optional<sim::GoodsId> manifest_goods(const sim::TypeRegistry& types,
                                                          const std::string& name);
 
+/// The content-relative path contract of a manifest's `base` (and of any file name a manifest
+/// asks the loader to open). `relative` must be a non-empty, '/'-separated path below
+/// `content_root` made of ordinary segments: no NUL or other control character, no leading '/',
+/// no backslash, no ':' (a Windows drive or stream), no empty segment (that also excludes UNC
+/// "//host"), no "." or ".." segment. Nothing is normalised: a path that breaks a rule is
+/// refused, never rewritten into another file name. The file must exist and be a regular file.
+/// Links: `content_root` itself is resolved normally (it may be a link), and a link inside the
+/// root is followed, but the real path it reaches must lie inside the real content root, so a
+/// link cannot lead out of it. The result is that real, resolved path (the loader opens it, not
+/// the spelling it was given). The error starts with the reason, not the field name.
+[[nodiscard]] formats::Result<std::filesystem::path, std::string>
+resolve_content_path(const std::filesystem::path& content_root, const std::string& relative);
+
 /// Builds the world. `game_dir` holds the manifest's `base` scenario and Scenes/Islands.
 /// The manifest must be the supported baseline (ship_manifest::baseline_ok). The world has
 /// developer_start semantics OFF: no Kontor, no city, no owned tile.

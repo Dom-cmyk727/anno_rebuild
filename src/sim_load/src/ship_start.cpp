@@ -107,6 +107,76 @@ std::optional<sim::GoodsId> manifest_goods(const sim::TypeRegistry& types,
     return std::nullopt;
 }
 
+formats::Result<fs::path, std::string> resolve_content_path(const fs::path& content_root,
+                                                            const std::string& relative) {
+    // 1. The spelling, checked on the string before any file system call (a NUL would end a
+    //    C string early: "a.sze\0b" must not open "a.sze").
+    if (relative.empty()) {
+        return std::string("is empty");
+    }
+    for (std::size_t i = 0; i < relative.size(); ++i) {
+        const auto c = static_cast<unsigned char>(relative[i]);
+        const std::string at = " at byte " + std::to_string(i);
+        if (c == 0) {
+            return "contains a NUL character" + at;
+        }
+        if (c < 0x20 || c == 0x7F) {
+            return "contains a control character" + at;
+        }
+        if (c == '\\') {
+            return "contains a backslash" + at + " (a Windows separator; use '/')";
+        }
+        if (c == ':') {
+            return "contains ':'" + at + " (a Windows drive or stream)";
+        }
+    }
+    if (relative.front() == '/') {
+        return std::string("is a rooted path; it must be relative to the content directory");
+    }
+    std::vector<std::string> segments;
+    for (std::size_t start = 0; start <= relative.size();) {
+        const std::size_t end = std::min(relative.find('/', start), relative.size());
+        segments.push_back(relative.substr(start, end - start));
+        start = end + 1;
+    }
+    for (const std::string& segment : segments) {
+        if (segment.empty()) {
+            return std::string("has an empty segment (\"//\" or a trailing '/')");
+        }
+        if (segment == "." || segment == "..") {
+            return "has a '" + segment + "' segment; paths are not normalised";
+        }
+        if (segment.back() == ' ' || segment.back() == '.') {
+            return std::string("has a segment ending in a space or a dot (Windows drops it)");
+        }
+    }
+    // 2. The real file. The root is resolved normally (it may be a link); the file is resolved
+    //    through every link on the way and must still lie inside the real root.
+    std::error_code error;
+    const fs::path real_root = fs::canonical(content_root, error);
+    if (error) {
+        return "cannot be resolved: the content directory " + content_root.string() + " (" +
+               error.message() + ")";
+    }
+    fs::path joined = real_root;
+    for (const std::string& segment : segments) {
+        joined /= segment;
+    }
+    const fs::path real = fs::canonical(joined, error);
+    if (error) {
+        return "does not exist below the content directory (" + error.message() + ")";
+    }
+    const auto [root_end, real_at] =
+        std::mismatch(real_root.begin(), real_root.end(), real.begin(), real.end());
+    if (root_end != real_root.end()) {
+        return "resolves outside the content directory (through a link) to " + real.string();
+    }
+    if (!fs::is_regular_file(real, error)) {
+        return std::string("is not a regular file");
+    }
+    return real;
+}
+
 formats::Result<sim::World, std::string>
 load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
                 std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config,
@@ -155,10 +225,14 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
 
     // 3. The base scenario supplies settings and catalogues; its players, units and cities
     //    are the `excluded` list and are dropped.
-    const fs::path base_path = game_dir / fs::path(manifest.base);
-    const std::optional<std::vector<std::uint8_t>> base_bytes = read_bytes(base_path);
+    // The base is content-relative (resolve_content_path): refused before anything is opened.
+    const auto base_path = resolve_content_path(game_dir, manifest.base);
+    if (!base_path) {
+        return "base: " + base_path.error();
+    }
+    const std::optional<std::vector<std::uint8_t>> base_bytes = read_bytes(base_path.value());
     if (!base_bytes) {
-        return "base: cannot read " + base_path.string();
+        return "base: cannot read " + base_path.value().string();
     }
     auto loaded = sim::load_scenario(*base_bytes, *types, config);
     if (!loaded) {

@@ -3,7 +3,9 @@
 // summary must give exactly the expected numbers, and must be the same after a round trip
 // through the saved text.
 #include <filesystem>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -36,7 +38,7 @@ std::vector<app::TraceEvent> hand_stream() {
         {13, K::Built, 1, 1},
         {20, K::Committed, 1, 1},
         {20, K::Generation, 0, 2},
-        {20, K::NoVisibleChange, 0, 2},
+        {20, K::NoVisibleChange, 1, 2}, // island 1's change in generation 2
         {20, K::Retired, 0, 1},
         {25, K::Reclaimed, 0, 1},
         // Island 2: never committed; the trace ends at 40 ms.
@@ -217,4 +219,93 @@ TEST_CASE("picture trace: evidence files are read and saved with every step chec
     const std::string missing_dir = app::save_text(dir / "no" / "such" / "events.tsv", "x");
     CHECK(missing_dir.find("cannot open") != std::string::npos);
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("picture readiness: a set is ready only when all its keys are fresh at the same poll" *
+          doctest::test_suite("picture_trace")) {
+    // A change invalidates A and B. A is rebuilt; another change invalidates A again; B is rebuilt
+    // while A is stale. The set must stay waiting until A is fresh again: having seen A fresh once
+    // is not enough (the defect of round dy's bench, which erased a key once it was seen fresh).
+    namespace render = anno::render;
+    const render::ChunkKey a{2, 0, 0}, b{2, 1, 0};
+    std::map<render::ChunkKey, bool> fresh{{a, false}, {b, false}};
+    auto is_fresh = [&fresh](const render::ChunkKey& k) { return fresh.at(k); };
+    app::ReadinessTracker tracker;
+    std::vector<app::ReadinessTracker::KeyEvent> log;
+    tracker.add({0, 1, {a, b}});
+    CHECK(tracker.poll(is_fresh, 1, log).empty());
+    fresh[a] = true; // A finishes
+    CHECK(tracker.poll(is_fresh, 2, log).empty());
+    fresh[a] = false; // a later change invalidates A again
+    CHECK(tracker.poll(is_fresh, 3, log).empty());
+    fresh[b] = true; // B finishes while A is stale
+    CHECK(tracker.poll(is_fresh, 4, log).empty());
+    CHECK(tracker.waiting() == 1);
+    fresh[a] = true; // A is rebuilt
+    const auto ready = tracker.poll(is_fresh, 5, log);
+    REQUIRE(ready.size() == 1);
+    CHECK(ready[0].island == 0);
+    CHECK(ready[0].generation == 1);
+    CHECK(tracker.waiting() == 0);
+    // The log keeps every change of a key's state: A stale, fresh, stale, fresh; B stale, fresh.
+    std::vector<std::pair<double, bool>> a_states, b_states;
+    for (const auto& e : log) {
+        (e.key == a ? a_states : b_states).emplace_back(e.t_ms, e.fresh);
+    }
+    CHECK(a_states ==
+          std::vector<std::pair<double, bool>>{{1, false}, {2, true}, {3, false}, {5, true}});
+    CHECK(b_states == std::vector<std::pair<double, bool>>{{1, false}, {4, true}});
+    // A set with no key is never waited for (the caller records NoVisibleChange).
+    tracker.add({1, 2, {}});
+    CHECK(tracker.waiting() == 0);
+}
+
+TEST_CASE("picture trace: a generation of two islands is measured per island; coalescing, "
+          "supersession, unfinished work and convergence" *
+          doctest::test_suite("picture_trace")) {
+    const std::vector<app::TraceEvent> events{
+        // Island 0, v1 then v2 while v1 builds; island 1, v1. Generation 1 commits island 0 at v2
+        // and island 1 at v1 together. Island 0's visible keys are ready at 30, island 1's change
+        // is offscreen: island 1's edit must not take island 0's readiness.
+        {0, K::Desired, 0, 1},
+        {1, K::Admitted, 0, 1},
+        {1, K::Started, 0, 1},
+        {2, K::Desired, 1, 1},
+        {3, K::Desired, 0, 2},
+        {5, K::Superseded, 0, 1},
+        {6, K::Admitted, 0, 2},
+        {6, K::Started, 0, 2},
+        {9, K::Built, 0, 2},
+        {9, K::Admitted, 1, 1},
+        {9, K::Started, 1, 1},
+        {12, K::Built, 1, 1},
+        {20, K::Committed, 0, 2},
+        {20, K::Committed, 1, 1},
+        {20, K::Generation, 0, 1},
+        {20, K::NoVisibleChange, 1, 1},
+        {30, K::ChunksReady, 0, 1},
+        {31, K::Converged, 0, 0},
+        // Island 2: an edit after convergence that is never committed.
+        {40, K::Desired, 2, 1},
+        {50, K::DrainStart, 0, 0},
+        {60, K::DrainEnd, 0, 0},
+        {60, K::RunEnd, 0, 3},
+    };
+    const app::TraceSummary s = app::summarize(events);
+    CHECK(s.edits == 4);
+    CHECK(s.object_ready == 3);
+    CHECK(s.coalesced == 1); // island 0, v1 through v2
+    CHECK(s.superseded == 1);
+    CHECK(s.unfinished == 1);                      // island 2
+    CHECK(s.offscreen == 1);                       // island 1 only
+    CHECK(s.visible_ready == 2);                   // island 0's two edits
+    CHECK(s.object_ms.max == doctest::Approx(20)); // island 0 v1: 0 to 20
+    CHECK(s.visible_ms.n == 2);
+    CHECK(s.visible_ms.max == doctest::Approx(30)); // island 0 v1: 0 to 30
+    CHECK(s.visible_ms.p50 == doctest::Approx(27)); // island 0 v2: 3 to 30
+    // Converged at 31, but the edit at 40 was never committed: no convergence after the last edit.
+    CHECK(s.converged_ms == doctest::Approx(-1));
+    CHECK(s.max_age_ms == doctest::Approx(20)); // 60 - 40 = 20 for the unfinished one, 20 for v1
+    CHECK(s.complete);
+    CHECK(!s.succeeded()); // the run ended with status 3
 }

@@ -17,10 +17,11 @@ namespace anno::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 18> kNames = {
-    "desired",           "admitted", "deferred",  "started",     "built",      "failed",
-    "superseded",        "dropped",  "requeued",  "committed",   "generation", "chunks_ready",
-    "no_visible_change", "retired",  "reclaimed", "drain_start", "drain_end",  "run_end"};
+constexpr std::array<std::string_view, 19> kNames = {
+    "desired",     "admitted",     "deferred",          "started",  "built",
+    "failed",      "superseded",   "dropped",           "requeued", "committed",
+    "generation",  "chunks_ready", "no_visible_change", "retired",  "reclaimed",
+    "drain_start", "drain_end",    "converged",         "run_end"};
 
 struct Edit {
     double t0 = 0;
@@ -73,6 +74,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
                      [](const TraceEvent& a, const TraceEvent& b) { return a.t_ms < b.t_ms; });
     TraceSummary s;
     std::vector<Edit> edits;
+    double last_desired = 0;
     std::vector<std::size_t> awaiting_generation;
     std::map<std::uint64_t, double> retired_at;
     std::vector<double> reclaim, queue, build;
@@ -90,6 +92,8 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         case TraceKind::Desired:
             edits.push_back(Edit{e.t_ms, e.island, e.version});
             ++s.edits;
+            last_desired = e.t_ms;
+            s.converged_ms = -1; // a newer edit: convergence is measured again
             break;
         case TraceKind::Committed:
             ++s.commits;
@@ -111,18 +115,24 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             awaiting_generation.clear();
             break;
         case TraceKind::ChunksReady:
+            // Per island: one island's readiness is never another island's latency (2d).
             for (Edit& d : edits) {
-                if (d.generation == e.version && d.t1 >= 0 && d.t2 < 0 && !d.offscreen &&
-                    e.t_ms >= d.t1) {
+                if (d.island == e.island && d.generation == e.version && d.t1 >= 0 && d.t2 < 0 &&
+                    !d.offscreen && e.t_ms >= d.t1) {
                     d.t2 = e.t_ms;
                 }
             }
             break;
         case TraceKind::NoVisibleChange:
             for (Edit& d : edits) {
-                if (d.generation == e.version && d.t2 < 0) {
+                if (d.island == e.island && d.generation == e.version && d.t2 < 0) {
                     d.offscreen = true;
                 }
+            }
+            break;
+        case TraceKind::Converged:
+            if (s.converged_ms < 0 && e.t_ms >= last_desired) {
+                s.converged_ms = e.t_ms;
             }
             break;
         case TraceKind::Retired:
@@ -332,10 +342,48 @@ std::string format_summary(const TraceSummary& s) {
     line(o, "build_queue_delay", s.queue_ms);
     line(o, "build_time_worker", s.build_ms);
     char buf[160];
-    std::snprintf(buf, sizeof buf, "max_age_ms=%.3f last_commit_ms=%.3f end_ms=%.3f\n",
-                  s.max_age_ms, s.last_commit_ms, s.end_ms);
+    std::snprintf(buf, sizeof buf,
+                  "max_age_ms=%.3f last_commit_ms=%.3f converged_ms=%.3f end_ms=%.3f\n",
+                  s.max_age_ms, s.last_commit_ms, s.converged_ms, s.end_ms);
     o << buf;
     return o.str();
+}
+
+void ReadinessTracker::add(Set set) {
+    if (set.keys.empty()) {
+        return;
+    }
+    Waiting w;
+    w.fresh.assign(set.keys.size(), false);
+    w.set = std::move(set);
+    sets_.push_back(std::move(w));
+}
+
+std::vector<ReadinessTracker::Set>
+ReadinessTracker::poll(const std::function<bool(const render::ChunkKey&)>& fresh, double t_ms,
+                       std::vector<KeyEvent>& log) {
+    std::vector<Set> ready;
+    for (auto it = sets_.begin(); it != sets_.end();) {
+        bool all = true;
+        for (std::size_t k = 0; k < it->set.keys.size(); ++k) {
+            // The state now, for every key of the set: a key fresh at an earlier poll and stale
+            // again (a later change invalidated it) keeps the set waiting.
+            const bool now = fresh(it->set.keys[k]);
+            if (!it->polled || now != it->fresh[k]) {
+                log.push_back({t_ms, it->set.island, it->set.generation, it->set.keys[k], now});
+            }
+            it->fresh[k] = now;
+            all = all && now;
+        }
+        it->polled = true;
+        if (all) {
+            ready.push_back(std::move(it->set));
+            it = sets_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return ready;
 }
 
 TextFile read_text(const std::filesystem::path& path) {

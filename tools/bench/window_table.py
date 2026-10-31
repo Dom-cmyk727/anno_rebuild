@@ -134,6 +134,13 @@ def read_frames(path):
             raise Unusable(f"{where}: t_start_ms goes back")
         if rows and row["epoch"] < rows[-1]["epoch"]:
             raise Unusable(f"{where}: epoch {row['epoch']} after epoch {rows[-1]['epoch']}")
+        # The viewer reconfigures on any change of size: a new drawable is a new epoch.
+        if rows and row["epoch"] == rows[-1]["epoch"] and row["drawable"] != rows[-1]["drawable"]:
+            raise Unusable(f"{where}: drawable {row['drawable']} in epoch {row['epoch']} of "
+                           f"{rows[-1]['drawable']}")
+        if rows and row["generation"] < rows[-1]["generation"]:
+            raise Unusable(f"{where}: generation {row['generation']} after generation "
+                           f"{rows[-1]['generation']}")
         if rows and row["t_start_ms"] < rows[-1]["end"]:
             raise Unusable(f"{where}: the frame starts before the previous one ended")
         if not (row["t_start_ms"] <= row["acquire_start_ms"] <= row["acquire_end_ms"]):
@@ -192,7 +199,8 @@ def read_sim(path):
             raise Unusable(f"{where}: batch {row['batch']} with {deltas} deltas")
         if row["rejected"] > row["applied"]:
             raise Unusable(f"{where}: {row['rejected']} rejections for {row['applied']} commands")
-        if (r["reasons"] == "-") != (row["rejected"] == 0):
+        if (r["reasons"] == "-") != (row["rejected"] == 0) or (
+                row["rejected"] > 0 and len(r["reasons"].split(",")) != row["rejected"]):
             raise Unusable(f"{where}: reasons '{r['reasons']}' for {row['rejected']} rejections")
         if rows and row["turn"] <= rows[-1]["turn"]:
             raise Unusable(f"{where}: turn {row['turn']} does not increase")

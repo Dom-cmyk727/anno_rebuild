@@ -68,7 +68,7 @@ grep -q "^| good | on | 1 / 120.0 / (n=1) / (n=1) / 120.0 | 1 / 0.50 / (n=1) / (
 # and events.tsv disagreeing on a frame, and more commands applied than the file holds.
 for bad in gap mismatch count contradictory incomplete notime sim_outcome present_order overlap \
     failed_submit epoch_back junk_cols wrong_skip junk_present neg_acquire over_reject swapped \
-    too_many; do
+    too_many drawable_no_epoch generation_back reasons_count; do
     new_matrix "$WORK/m_$bad"
     make_case "$WORK/m_$bad" good
     make_case "$WORK/m_$bad" bad
@@ -97,6 +97,9 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     over_reject) sed -i.orig 's/\t1\t0\taccepted\t-\t1\t1$/\t1\t2\tinvalid\tx,y\t1\t1/' "$c/trace/sim.tsv" ;;
     swapped) sed -i.orig 's/^5\tframe_presented\t1\t1$/4.9\tframe_presented\t1\t1/' "$c/trace/events.tsv" ;;
     too_many) sed -i.orig 's/lines=1/lines=0/' "$c/run.txt" ;;
+    drawable_no_epoch) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t16\t16\t/' "$c/trace/frames.tsv" ;;
+    generation_back) sed -i.orig 's/^2\t1\t1\t/2\t1\t0\t/' "$c/trace/frames.tsv" ;;
+    reasons_count) printf 'turn\tt_ms\tapplied\trejected\toutcome\treasons\tbatch\tdeltas\n3\t1.0\t1\t0\taccepted\t-\t1\t1\n4\t1.5\t1\t1\trejected\ta,b,c\t0\t0\n' > "$c/trace/sim.tsv" ;;
     esac
     expected=1
     table "$WORK/m_$bad" "$expected" "a window case with $bad evidence"
@@ -112,7 +115,9 @@ for pair in "overlap:starts before the previous one ended" \
     "epoch_back:epoch 1 after epoch 2" "junk_cols:'abc' is not a whole number" \
     "wrong_skip:outcome acquire_skipped after Outdated" "junk_present:'banana' is not a status" \
     "neg_acquire:the acquire is out of order" "over_reject:2 rejections for 1 commands" \
-    "swapped:frame 1: frames.tsv gives frame_presented" "too_many:1 commands applied for 0"; do
+    "swapped:frame 1: frames.tsv gives frame_presented" "too_many:1 commands applied for 0" \
+    "drawable_no_epoch:drawable 16x16 in epoch 1 of 8x8" "generation_back:generation 0 after generation 1" \
+    "reasons_count:reasons 'a,b,c' for 1 rejections"; do
     python3 "$TABLE" "$WORK/m_${pair%%:*}" 2>&1 | grep -q "${pair#*:}" || fail "${pair%%:*}: reason"
 done
 python3 "$TABLE" "$WORK/m_count" 2>&1 | grep -q "frames_failed=1, the trace 0" || fail "count: reason"

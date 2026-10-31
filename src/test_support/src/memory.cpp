@@ -19,6 +19,10 @@
 // clang-format on
 #elif defined(__linux__)
 #include <cstdio>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
 #endif
 
 namespace anno::test {
@@ -53,6 +57,22 @@ std::optional<std::uint64_t> free_memory_bytes() {
         return std::nullopt; // kernels before 3.14 have no MemAvailable
     }
     return *kib * 1024;
+#elif defined(__APPLE__)
+    // The analogue of MemAvailable: pages that can be taken without paging out anything that
+    // is in use (free, speculative and inactive).
+    vm_statistics64_data_t vm{};
+    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
+    if (host_statistics64(mach_host_self(), HOST_VM_INFO64, reinterpret_cast<host_info64_t>(&vm),
+                          &count) != KERN_SUCCESS) {
+        return std::nullopt;
+    }
+    vm_size_t page = 0;
+    if (host_page_size(mach_host_self(), &page) != KERN_SUCCESS) {
+        return std::nullopt;
+    }
+    const std::uint64_t pages =
+        std::uint64_t{vm.free_count} + vm.speculative_count + vm.inactive_count;
+    return pages * page;
 #else
     return std::nullopt; // unknown: no memory bound
 #endif
@@ -85,6 +105,13 @@ std::optional<std::uint64_t> total_memory_bytes() {
         return std::nullopt;
     }
     return *kib * 1024;
+#elif defined(__APPLE__)
+    std::uint64_t bytes = 0;
+    std::size_t size = sizeof(bytes);
+    if (sysctlbyname("hw.memsize", &bytes, &size, nullptr, 0) != 0) {
+        return std::nullopt;
+    }
+    return bytes;
 #else
     return std::nullopt;
 #endif
@@ -121,6 +148,14 @@ std::optional<std::uint64_t> process_private_bytes() {
         return anon;
     }
     return rss;
+#elif defined(__APPLE__)
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) !=
+        KERN_SUCCESS) {
+        return std::nullopt;
+    }
+    return info.phys_footprint;
 #else
     return std::nullopt;
 #endif

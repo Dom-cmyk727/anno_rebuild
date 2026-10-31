@@ -478,6 +478,13 @@ inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
         limit = 4096;
     }
     for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
+#if defined(__APPLE__)
+        // Darwin's posix_spawn fails with EBADF for a close of a descriptor that is not open
+        // (glibc accepts it, above). Only the open ones are listed.
+        if (::fcntl(fd, F_GETFD) == -1) {
+            continue;
+        }
+#endif
         posix_spawn_file_actions_addclose(actions, fd);
     }
 #endif

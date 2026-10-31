@@ -134,7 +134,7 @@ std::optional<gpu::Context> open_gpu() {
         if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
             FAIL("no GPU device (ANNO_REQUIRE_GPU is set): " << ctx.error());
         }
-        MESSAGE("skipping: " << ctx.error());
+        MESSAGE("skipping: no GPU device: " << ctx.error());
         return std::nullopt;
     }
     MESSAGE("adapter " << ctx.value().name);
@@ -1155,6 +1155,31 @@ TEST_CASE("picture GPU: a failure after the chunk workers and the builder are he
 
 namespace {
 
+/// Holds every build of the bridge in its build seam (PictureLimits::build_fault) until released;
+/// counts the builds that entered (round ec, A2).
+struct HeldBuilds {
+    std::mutex m;
+    std::condition_variable cv;
+    bool open = false;
+    int entered = 0;
+    void pass() {
+        std::unique_lock lock(m);
+        ++entered;
+        cv.notify_all();
+        cv.wait(lock, [this] { return open; });
+    }
+    /// A bounded observation: true once `n` builds are held.
+    bool wait_entered(int n) {
+        std::unique_lock lock(m);
+        return cv.wait_for(lock, std::chrono::seconds(60), [&] { return entered >= n; });
+    }
+    void release() {
+        const std::lock_guard lock(m);
+        open = true;
+        cv.notify_all();
+    }
+};
+
 bool gpu_usable(const gpu::GpuFrame& f, const render::FrameRenderer& frames, const ChunkKey& k) {
     if (!fresh(frames, k)) {
         return false;
@@ -1316,16 +1341,30 @@ TEST_CASE(
     // work keeps the paused window drawing (FrameDemand::gpu_work; without it the window would idle
     // with the edit not on the GPU).
     render::FrameRenderer frames(2, false);
+    // The edit's build is held in the bridge's build seam (round ec, A2): the state "built nothing
+    // yet" is made by the gate, not by the build being slower than the next line. The release is
+    // declared after the picture, whose destruction joins the builder, so every exit releases it.
+    HeldBuilds held;
+    std::vector<std::string> order;
+    app::ScenePicture::Limits limits;
+    limits.build_fault = [&held](std::size_t) { held.pass(); };
     app::ScenePicture picture(
         t.base, t.state0,
-        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
+        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1, limits);
+    ScopedRelease release_build([&held] { held.release(); }, order, "build released");
     const auto visible = visible_keys(t.view, 2);
     paused_frames(g, frames, picture, t.view, 2, [](std::size_t) {});
     for (const ChunkKey& k : visible) {
         REQUIRE(gpu_usable(*g.frame, frames, k));
     }
     picture.apply(batches_of(t));
-    REQUIRE(picture.commit(frames) == 0); // the build is still running: nothing to commit yet
+    REQUIRE(held.wait_entered(1)); // the worker is held inside the build
+    // A slow test thread (the delay orders nothing: the gate keeps the build from finishing).
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK(picture.commit(frames) == 0); // nothing is built yet: nothing to commit
+    CHECK(picture.pending() > 0);
+    CHECK(held.entered == 1);
+    release_build();
     std::vector<ChunkKey> affected;
     std::size_t cpu_ready_gpu_pending = 0, staging_seen = 0;
     const std::size_t drawn = paused_frames(g, frames, picture, t.view, 2, [&](std::size_t) {

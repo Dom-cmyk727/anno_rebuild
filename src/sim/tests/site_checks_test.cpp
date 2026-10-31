@@ -116,8 +116,14 @@ TEST_CASE("site: the footprint must lie inside the island on both axes") {
     CHECK_FALSE(site::footprint_inside(t, {-3, 40}, 1, 10));
     // Huge sizes do not wrap.
     CHECK_FALSE(site::footprint_inside(t, {-3, 40}, 0xffffffffU, 1));
-    CHECK_FALSE(
-        site::footprint_inside(t, {std::numeric_limits<std::int64_t>::max() - 1, 40}, 1, 1));
+    constexpr std::int64_t lo = std::numeric_limits<std::int64_t>::min();
+    constexpr std::int64_t hi = std::numeric_limits<std::int64_t>::max();
+    CHECK_FALSE(site::footprint_inside(t, {hi - 1, 40}, 1, 1));
+    CHECK_FALSE(site::footprint_inside(t, {hi, 40}, 1, 1));
+    CHECK_FALSE(site::footprint_inside(t, {lo, 40}, 1, 1));
+    CHECK_FALSE(site::footprint_inside(t, {-3, lo}, 1, 1));
+    CHECK_FALSE(site::footprint_inside(t, {-3, hi}, 0xffffffffU, 0xffffffffU));
+    CHECK_FALSE(site::footprint_inside(t, {-3, 40}, 11, 6)); // one wider than the island
 }
 
 TEST_CASE("site: the distance rule truncates toward zero and squares exactly") {
@@ -208,6 +214,32 @@ TEST_CASE("site: overlap compatibility decides only what the original's slot dec
           site::Compat::Incompatible);
     CHECK(site::overlap_with_existing(type_of(7, 97 + 32, 0), type_of(3, 70, 0)) ==
           site::Compat::Unsupported);
+    // Group boundaries: 1..32 -> 1, 33..64 -> 0x21, 65..96 -> 0x41 (undecoded), 97..128 -> 0x61,
+    // 129.. -> 0x81 (undecoded). `other` is PRODTYPE 70, which is none of the placed ones.
+    const sim::BuildingType other = type_of(3, 70, 0);
+    for (const std::uint32_t decided : {1U, 32U, 33U, 64U, 97U, 128U}) {
+        INFO("placed prodtype " << decided);
+        CHECK(site::overlap_with_existing(type_of(7, decided, 0), other) ==
+              site::Compat::Incompatible);
+    }
+    for (const std::uint32_t undecided : {65U, 96U, 129U, 160U}) {
+        INFO("placed prodtype " << undecided);
+        CHECK(site::overlap_with_existing(type_of(7, undecided, 0), other) ==
+              site::Compat::Unsupported);
+    }
+    // The existing group 0x141 with a placed flag 0x10 (group 0x61 placed), and its neighbours.
+    CHECK(site::overlap_with_existing(type_of(7, 100, 0x10), type_of(5, 0x141, 0)) ==
+          site::Compat::Compatible);
+    CHECK(site::overlap_with_existing(type_of(7, 100, 0), type_of(5, 0x141, 0)) ==
+          site::Compat::Incompatible);
+    for (const std::uint32_t near : {0x140U, 0x161U, 0x121U}) {
+        INFO("existing prodtype " << near);
+        CHECK(site::overlap_with_existing(type_of(7, 100, 0x10), type_of(5, near, 0)) ==
+              site::Compat::Incompatible);
+    }
+    // The group 0x141 spans PRODTYPE 321..352: 0x160 (352) is inside it.
+    CHECK(site::overlap_with_existing(type_of(7, 100, 0x10), type_of(5, 0x160, 0)) ==
+          site::Compat::Compatible);
     // PRODTYPE 0 (UNUSED) as the placed type is a group the original has no row for here.
     CHECK(site::overlap_with_existing(type_of(8, 0, 0), type_of(3, 70, 0)) ==
           site::Compat::Unsupported);

@@ -143,11 +143,17 @@ TerrainVerdict coast_height_check(const VertexGrid& grid, const BuildingType& ty
     if (!coast_class_supported(type.flags_word)) {
         return {TerrainResult::Unsupported, 0};
     }
-    return coast_height_rule(type.width, type.height, rotation,
-                             [&](std::uint64_t dx, std::uint64_t dy) {
-                                 return grid.at(origin.x + static_cast<std::int64_t>(dx),
-                                                origin.y + static_cast<std::int64_t>(dy));
-                             });
+    return coast_height_rule(
+        type.width, type.height, rotation, [&](std::uint64_t dx, std::uint64_t dy) {
+            // dx, dy <= 2^32: refuse a sum that would overflow.
+            constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
+            const auto sx = static_cast<std::int64_t>(dx);
+            const auto sy = static_cast<std::int64_t>(dy);
+            if (origin.x > kMax - sx || origin.y > kMax - sy) {
+                return std::optional<std::uint8_t>{};
+            }
+            return grid.at(origin.x + sx, origin.y + sy);
+        });
 }
 
 } // namespace anno::sim::site

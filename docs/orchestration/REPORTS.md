@@ -8730,3 +8730,128 @@ Code under test: `92fd87a` (clean tree). Test binaries: dev `anno_app_tests` `d6
 
 **Not done in round dx (OPEN/PARTIAL):** DX4 entirely; the heavy rerun; the DX2e cost curve; peak retained
 bytes; the perf README; the frame-held release case; Windows, Linux and RTX/Radeon gates.
+
+## Round dy: W4.3 CPU completion after round dx (review candidate)
+
+Branch `task/W4-3-live-buildings`, from reviewed head `9dffca2` (clean). Code under test: `9ca5cb0` (the last
+source change); later commits change documentation only. Evidence directory (ignored):
+`cache/dy-runs/` inside the W4.3 worktree. Raw bench files: `cache/dy-runs/d1-r2/`, `cache/dy-runs/d3d4-r2/`;
+gates: `cache/dy-runs/gates/`. Host: Apple M5 Max, 18 cores, 48 GiB, macOS (Darwin 27.0.0); shared, not quiet
+(load 3 to 4; another agent's renderer and Syncthing busy). `data/maps/lan5.txt` unchanged (1476 bytes,
+sha256 `1a471d9f…7019357`).
+
+Commits: `be6dfa8` render accounting; `c73067c` credits outlive payload, incoming reservations; `c6c578a`
+allocation proof; `1fa52fa` ownership table; `f3ee549` legal five-city workload; `6ae6398` trace seam and
+aggregator; `e57537c` apply stage timings; `b746ac8` drawn types only, capacity by rule; `69ed8b6` bench rewrite;
+`cd49068` matrix runner; `2218a1f` queue and build times, host load; `64e87a1` contention turn cost; `8dfd51a`
+opt-in `publish_progress`; `9ca5cb0` bench clock fix; `7fb4bef` docs; and this report.
+
+### Correction of a round-dw claim
+
+The round-dw matrix (row "5c", line 8565 above) states: "five" tier is the fixed map's two inhabited islands with
+40 generated buildings each. That is wrong. The saved manifest `main/cache/dw-measure/single-5x40-r1.manifest`
+records `tier=five islands=5 per_island=40 buildings=200 scene_islands=21`, and the generator at `9dffca2`
+(`src/tools/bench_picture/main.cpp`, lines 270-307) placed 40 random anchors on each of the first five islands
+of the scene order, anywhere in an island's box (water included), with the types of the map's buildings at
+load. The play load seats two players (`load_fixed_play`, `src/app/src/play.cpp`), so those types were the two
+Kontors' and two of the five islands had a city. Correct statement: the "five" tier was 200 synthetic
+Kontor-type anchors on five islands, two of them inhabited; not a city and not a legal placement. The withdrawn
+"33 verified" claim stays withdrawn; nothing below restores it.
+
+### Acceptance matrix
+
+| Requirement | Source | Test or command | Exit / executed | Identity | Raw evidence | Result and limitation |
+|---|---|---|---|---|---|---|
+| A1 the credit is held inside payload destruction; competing admission deferred | `src/app/include/anno/app/credit.hpp`; `scene_picture.cpp` (`DestroyProbe`, `payload_destroy_hook`) | `anno_app_tests.ownership: a dropped result's credit…`, `…a dropped queued job's credit…` | dev 0 / 33 of 33; ASan 0 / 36 of 36 | dev `anno_app_tests` built at `9ca5cb0`; ASan `6775c6c7…` | `cache/dy-runs/a-app-3.log`, `gates/asan-app.log` | DONE. A reverse-order mutant fails 7 cases (both bridge cases in bounded 10 s, no hang): `a-mutant-order.log` |
+| A2 order through destruction, move, assignment, replacement, superseded completion, unwinding, transfer | `credit.hpp` (`Accounted`), worker tail, `std::swap` replacement | `anno_app_tests.credit: …` (7 cases) | 0 / 7 of 7 (in the selections above) | as above | `a-app-3.log`, `a-mutant-assign.log` | DONE. A defaulted move assignment fails 2 cases |
+| A3 ownership and accounting table | `docs/app/game-shell.md`, "Four quantities" and the table | doc | — | `1fa52fa` | — | DONE: owners, dominant allocations, counting budget, release; chunk pixels and caches are named as uncounted (RSS only) |
+| A4 ownership-aware bytes, shared once, in-flight kept, no walk at hand-off | `src/render/src/scene.cpp` (`PayloadToken`, `payload_counts`, `own_bytes`, `bytes_in_flight`) | `anno_render_tests.accounting: …` (3) | dev 0 / 6 of 6; ASan 0 / 10 of 10 | ASan `2abf9e49…` | `a-render-1.log`, `gates/asan-render.log` | DONE. Allocator overhead and control blocks not counted (stated) |
+| A5 hand-counted cases (shared buffer, known replacement, large incoming, stalled destruction, oversize alone, 1/2/4 workers) | `scene_accounting_test.cpp`, `scene_picture_ownership_test.cpp` | `accounting: …` (render 3, app 3) | 0 / all | as above | as above | DONE |
+| A6 frame-held release on the reclaimer, exact generation, back to baseline | `scene_picture_ownership_test.cpp` | `ownership: a frame-held generation outlives the bridge…` | 0 / 1 | as above | as above | DONE |
+| A6 no allocation at the last-owner hand-off | `src/app/tests/alloc_test.cpp` | `anno_app_alloc_tests.*` (3; refusal on) | dev 0 / 3; ASan 0 / 3 | ASan `1c41a8ff…` | `a-alloc-1.log`, `gates/asan-alloc.log` | DONE (1- and 64-island generations, credit, accounted payload) |
+| B1 synthetic generator labelled or removed | `src/tools/bench_picture/main.cpp` | — | — | `69ed8b6` | — | DONE: removed; the round-dw section is labelled synthetic and superseded |
+| B2/B3 five real cities, real types, sim-validated placement | `src/app/src/legal_workload.cpp` | `anno_app_tests.legal workload: five cities…` | 0 / 1 (game files, executed) | dev at `9ca5cb0` | `b-legal-6.log` | DONE with stated limits: roads refused by the sim (`Unsupported`, O-4); no running economy (settle turns change no stock); D17 stand-in, so the land rule and the coast/mountain exclusion are the fixture's |
+| B4 validated states, manifest, capacity | manifest in every case; `check_invariants` after every edit | as above; every bench case | 0 / all | — | `d1-r2/*/manifest.txt` | DONE. Density bound: about 240 buildings per city before `capacity_reached` (98% of land candidates refused for a tile object) |
+| B5 one verified build and one verified demolish | `legal_workload_test.cpp` | `legal workload: one accepted build and one accepted demolish…` | dev 0 / 1; ASan 0 / 1 | as above | `b-legal-6.log`, `gates/asan-app.log` | DONE: every island's items and every key of the view equal a fresh scene; object pixels changed; keys invalidated |
+| C1 paced and saturation modes; productive, no-op, coalesced, deferred, drain | `bench_picture` | `picture_d1.cases`, `picture_d3d4.cases` | 0 / 9 of 9 and 13 of 13 | binary `fcf2064a22649d4b…` (`9ca5cb0`) | `d1-r2/`, `d3d4-r2/` | DONE |
+| C2 versions through the pipeline; superseded versions represented | `picture_trace.hpp`, trace seam | `picture trace: …` (3), `trace: …` (1) | 0 / 4 | dev | `c-app-3.log` | DONE. Per-chunk build durations are not instrumented (only per-key ready times): PARTIAL for per-chunk durations |
+| C3 memory and pressure, tied to identities | `bench_picture` memory sampling | every case | 0 | as above | `*/memory.tsv`, `summary.txt` | DONE on macOS (RSS, footprint, faults, host paging, pressure); other hosts report -1 (unavailable) |
+| C4 method validated on a hand stream; tables from raw data | `picture_trace_test.cpp`; `tools/bench/picture_table.py` | `picture trace: a hand-specified stream…` | 0 | — | `d1-r2-table.md`, `d3d4-r2-table.md` | DONE |
+| D1 small set a-h with the oracle | `tools/bench/picture_d1.cases` | `picture_matrix.sh` | 0 / 9 of 9, all `VERIFY OK` | binary as above | `d1-r2/results.tsv` | DONE. Case f is a TARGET MISS (starvation under a fast stream, see below) |
+| D2 stages measured separately; unrelated-size scaling | `Stats::last_apply_*`, frames.tsv | b and c | 0 | as above | `d1-r2/b-one`, `d1-r2/c-one-unrelated` | DONE: apply list, reindex and dispatch in microseconds at 205 and 1005 buildings; no optimization taken (decision below) |
+| D3 one, two and four workers | `picture_d3d4.cases` | `w1/w2/w4-*` | 0 / 6 | as above | `d3d4-r2/` | DONE (single runs per configuration) |
+| D4 real headless simulation contention | `--sim-contention 1` (second world, production `run_turn`) | `sim-below`, `sim-unpaced-below`, `sim-above`; proxy `proxy-busy16-below` | 0 / 4 | as above | `d3d4-r2/sim-*/sim.tsv`, `summary.txt` | DONE on a shared host; quiet-host baseline OPEN (not available). Turn p50 0.617 ms, p95 1.47 ms at the play cadence |
+| D5 runner keeps failures | `tools/bench/picture_matrix.sh` | a case file with an unknown scenario | runner exits 2, stops | — | `cache/dy-runs/runner-check/` | DONE |
+| E1 focused per-case tests, ASan/UBSan, format, Release | gates script `cache/dy-runs/gates.sh` | ASan/UBSan app 36 (the real-data edit case included), render 10, alloc 3; `clang-format 23.1.3 --dry-run -Werror` on the 19 changed C++ files; full Release and dev builds | 0 / 36, 10, 3; format 0; builds 0 | ASan `6775c6c7…`, `2abf9e49…`, `1c41a8ff…` | `gates/asan-*.log`, `gates/release-build.log` | DONE: no sanitizer line, no asset skip; no compiler warning |
+| E2 heavy evidence after the lifecycle changes | the whole heavy label (every case builds and renders scene generations, so the reclaimer and accounting changes reach all of them) | `ctest --preset dev -L heavy -j 1`, `ANNO_TEST_THREADS=1`, `ANNO_HEAVY_TEST_PROCESSORS=1`, `ANNO_TEST_HEADROOM_MB=8192` | 0 / 10 of 10, 2969 s | dev at `9ca5cb0` | `gates/heavy.stdout`, `gates/heavy-LastTest.log` | DONE. Durations match round dw case by case (868 against 865 s, 1363 against 1365 s, ...) |
+| E3 non-heavy with and without game files | `ctest --preset dev -LE heavy -j 8 --timeout 900` | game files: exit 8, 1217 of 1225; without: exit 8, 1223 of 1225; the six game-file timeouts each alone: exit 0, 6 of 6 | as listed | dev `anno_app_tests` `a246b55d…`, `anno_render_tests` `b8137132…` at `9ca5cb0` | `gates/nonheavy-game.stdout`, `gates/nonheavy-nogame.stdout`, `gates/timeouts-solo.stdout`, `gates/nonheavy-nogame2-LastTest.log` | PASS but for the two known Metal cases. The game-file run also timed out six long cases (two `play:`, `scene picture: after a move…`, two sim `scenario corpus` cases, one GPU derived-chunk case) under oversubscription (load average 8 over 15 minutes; the sim cases do not use any code this round changed and went from 156 to over 1165 s); each passed alone. Without game files the asset-dependent cases returned early: 120 skip messages in the saved log of a second no-game run (1223 of 1225), so those bodies did not execute |
+| E3 Windows MSVC, Linux GCC/Clang -Werror, RTX/Radeon | — | — | — | — | — | PENDING (hosts unavailable here) |
+| E4 docs and historical claims | `docs/perf/README.md`, `docs/app/game-shell.md`, `docs/app/gpu-handoff.md`, this section | — | — | `7fb4bef` | — | DONE |
+
+**Peak retained bytes** (legal baseline, Release, `d1-r2`): reservation 36.1 MB with eight builds admitted
+(largest measured result 0.86 MB; estimate never short); accounted incremental payload 4.05 MB (11.3 MB with the
+reclaimer stalled 2 s); retired payload 1.98 MB (9.27 MB stalled); reclamation queue 0 (1.11 MB stalled); RSS
+0.72 to 1.16 GB; no major fault, no host page-out or swap-out.
+
+**Target misses and limits.** A stream faster than one build plus one commit per island starves that island's
+picture under the accepted contract (`f-stream-above`: object-ready p50 544 ms, max 1040 ms; workers do not help).
+The opt-in `publish_progress` brings it to p50 42 ms, max 144 ms. Visible CPU chunk readiness is not
+presented-frame latency; PLAN section 0.3 is not measured. The workload has no roads and no running economy, and
+its density is bounded by the D17 placement stand-in.
+
+### Decisions and reasoning
+
+- **Credit as the first base of the payload (`Accounted<Payload>`).** Alternatives: the credit as the first
+  member (default move assignment would release the old credit before the old payload), a custom destructor per
+  type. Evidence: the review's probe (credit 0 at the storage deleter's entry), and the mutants (reverse order
+  fails 7 cases, defaulted assignment 2). Why: the language destroys bases after members, and one template keeps
+  move assignment's boundary for every payload.
+- **Payload counted by allocation, not by generation.** Alternative: the per-generation `approximate_bytes`
+  (counts spans and owners, and shared buffers once per generation). Evidence: the review's 64/64/128/128
+  example; the hand-counted cases. Why: a token in the holder is released only after the allocation is freed, is
+  counted once however many generations share it, and costs nothing at the last owner's hand-off.
+- **Reservation = estimated incoming size, then the measured result.** Alternative: the old record bytes
+  (round dx). Evidence: the 500-building case reserves at least 500 items, block headers and building copies (more than
+  100 times the island's 64 old bytes); no shortfall in any run; the
+  estimate is about five times the measured result. Why: admission must cover the build before it runs; the
+  measurement replaces it once known. The over-estimate is safe and stated as provisional.
+- **Legal workload as a test fixture on the developer start.** Alternatives: MAP.2 candidate maps, ship founding,
+  editing `lan5.txt` (all out of scope). Evidence: `load_fixed_map` seats up to the layout's start regions; five
+  seats give five cities on islands 0 to 4. Why: it uses the production command path without a gameplay change;
+  `--play` keeps two seats.
+- **The fixture's land rule and type exclusions.** Alternatives: accept what the stand-in accepts (buildings on
+  water, mines inland). Evidence: 58% of every island's owned tiles are water; the stand-in reads only tile
+  objects (placement.hpp). Why: placements the original would refuse would misrepresent a city; the rule is the
+  original's land classifier, labelled as the fixture's, not the sim's.
+- **No incremental per-island index.** Alternative: maintain the index and the sorted list incrementally.
+  Evidence: apply list 0.002-0.003 ms, reindex 0.001-0.002 ms at 205 and 1005 buildings (`b-one`,
+  `c-one-unrelated`); the review's synthetic 0.084 ms at 100 000. Why: nothing measured approaches the frame
+  budget at the sizes the sim admits; a change would be speculative.
+- **`publish_progress` opt-in, off.** Alternatives: leave the starvation as is; change the default. Evidence:
+  `f-stream-above` against `progress-above`; the regression under both policies. Why: changing the default
+  reverses the accepted round-dw contract ("only the desired version is published"); that is the reviewer's call.
+- **Requeued results restart through the deferred list.** Alternative: rely on a later change. Evidence: with
+  `publish_progress` a requeue became common and an island could wait for ever. Why: a requeued island must be
+  built again by the next dispatch.
+- **Bench clock starts at the measured loop.** Evidence: the first D3/D4 run (`cache/dy-runs/d3d4/`) showed the
+  contention cases faster than the quiet ones because their setup made the schedule overdue; after the fix
+  `sim-above` equals `w2-above`. Why: the schedule must not include the setup. The first D1 run
+  (`cache/dy-runs/d1/`) is superseded by `d1-r2` for the same reason.
+- **The slow `play: islands are the ones the sim placed` is not a regression.** It took 2670 s alone (845 s in
+  round dx's parallel gate). A 20 s `sample` profile of it (`cache/dy-runs/play-profile.sample.txt`) has none of
+  this round's functions; the time is in `load_original_registry` reading the game files byte by byte through
+  `std::istreambuf_iterator` in the Debug build (50 scenarios, the registry reloaded for each), code this round
+  did not change; the heavy cases, which build the same scene generations, kept their round-dw durations. A
+  lightly loaded host running one process slower than a loaded one matches the frequency and core-placement
+  effect the bench recorded.
+- **Shared host labelled, not stopped.** The packet forbids stopping other executors or the owner's
+  applications; the load and busiest processes are recorded per run.
+
+**Not done or open:** a quiet-host baseline; per-chunk build durations; Windows, Linux and RTX/Radeon gates; the
+reviewer's decision on `publish_progress`; Metal #367 and #370 (the former #364 and #367, renumbered by the new tests) stay open and unwaived, with the same assertions as before: `gpu_test.cpp:2219` `CHECK( c.gpu_timestamps == ctx->timestamps )` (four times) and `:2515` `REQUIRE( pass.has_value() )`.
+
+**Final identities.** Code under test `9ca5cb0` (clean tree for every gate but the documentation draft);
+report commit on top. Release bench `cache/dy-runs/bench_picture.release-9ca5cb0` sha256 `fcf2064a22649d4b…`;
+dev `anno_app_tests` `a246b55d94636e27…`, `anno_render_tests` `b81371320cdb5e80…`, `anno_app_alloc_tests`
+`bf3b59f298fa1160…`; Release `anno_app_tests` `3e6002f8e279091d…` (sha256, first 16 hex). No owned job is
+running. The autonomous loop is off. GPU integration, developer input, preview, merge and push are not done.

@@ -694,8 +694,8 @@ struct GpuFrame::Impl {
 
         /// Atlas doublings recorded since the last render() (GpuStats).
         std::size_t grows = 0;
-        /// The current scene's frame table (set each render(); the draw lists'
-        /// FrameIds index it).
+        /// The current scene's frame table (set by render() and cleared when it returns: the
+        /// draw lists' FrameIds index it, and the scene may be released between frames).
         const FrameTable* ft = nullptr;
         /// The open-water colour of the current scene (reduce_quad's ground clear
         /// for a derived GpuList chunk, item 1); set each render().
@@ -708,6 +708,9 @@ struct GpuFrame::Impl {
         std::size_t built = 0, fallbacks = 0;
     };
     ChunkBuild cb;
+    /// The generation the render() in progress draws, when its caller passed an owning handle
+    /// (null otherwise, and between frames): what render() starts that outlives it holds this.
+    std::shared_ptr<const Scene> frame_scene;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -2470,7 +2473,16 @@ struct GpuFrame::Impl {
         const std::pair<float, float> centre{px / tw + py / th, py / th - px / tw};
         const unsigned hw = std::thread::hardware_concurrency();
         const std::size_t threads = hw > 0 ? hw : 4;
-        const fluid::DepthFn depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
+        // The depth function is copied into the background preparation of a new window
+        // (GpuLimits::background_fluid), which can run past this frame: it holds the frame's
+        // owning handle when there is one, so a generation released meanwhile stays alive until
+        // the preparation ends. A borrowed scene is kept alive by the caller (render's contract).
+        fluid::DepthFn depth;
+        if (frame_scene) {
+            depth = [owner = frame_scene](float x, float y) { return owner->fluid_depth(x, y); };
+        } else {
+            depth = [&scene](float x, float y) { return scene.fluid_depth(x, y); };
+        }
         const float span = static_cast<float>(view.w) / tw + static_cast<float>(view.h) / th;
         const auto current = fluid->window();
         const double tile_px = levels->tile_w(group) * scale;
@@ -2981,10 +2993,37 @@ std::uint64_t GpuFrame::errors() const {
     return impl_->ref->errors->load();
 }
 
+GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene,
+                          Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
+                          WGPUTextureView target, const Resample* resample) {
+    impl_->frame_scene = scene;
+    return render(frames, *scene, view, group, time_ms, style, target, resample);
+}
+
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                           const Resample* resample) {
     Impl& m = *impl_;
+    // Nothing of the scene stays referenced once the frame is recorded and submitted: the frame
+    // table pointer and the owning handle (if any) are dropped on every way out. Uploads copy the
+    // chunk pixels (wgpuQueueWriteTexture copies at the call), and the textures, bind groups and
+    // buffers a submission uses are kept alive by the device until it completes.
+    struct EndOfFrame {
+        Impl& m;
+        explicit EndOfFrame(Impl& impl) : m(impl) {}
+        EndOfFrame(const EndOfFrame&) = delete;
+        EndOfFrame& operator=(const EndOfFrame&) = delete;
+        ~EndOfFrame() {
+            m.cb.ft = nullptr;
+            m.frame_scene.reset();
+        }
+    } end_of_frame{m};
+    // The jobs this frame plans hold the owning handle when there is one (FrameRenderer).
+    std::shared_ptr<const Scene> borrowed;
+    if (!m.frame_scene) {
+        borrowed = std::shared_ptr<const Scene>(std::shared_ptr<const Scene>{}, &scene);
+    }
+    const std::shared_ptr<const Scene>& handle = m.frame_scene ? m.frame_scene : borrowed;
     m.levels = &frames.levels();
     // GpuList chunk build (T11 stage 2a): this scene's frame table and this
     // frame's atlas upload budget and counters.
@@ -3021,7 +3060,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     std::tie(stats.chunks_built, stats.chunks_ms, stats.chunks_missing) =
-        frames.update_chunks(scene, view, group);
+        frames.update_chunks(handle, view, group);
     stats.chunks_ms = lap();
     const auto w = static_cast<std::uint32_t>(std::max(view.w, 1));
     const auto h = static_cast<std::uint32_t>(std::max(view.h, 1));

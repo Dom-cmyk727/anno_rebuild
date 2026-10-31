@@ -486,6 +486,15 @@ class GpuFrame {
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
                     const Resample* resample = nullptr);
+    /// render for a scene generation that may be released while work started by the frame is
+    /// still running (the play picture's generations; docs/app/gpu-handoff.md). The chunk jobs
+    /// the frame plans and the wave simulation's background preparation (GpuLimits::
+    /// background_fluid) keep `scene` alive until they finish; the compositor itself keeps no
+    /// reference to it, nor to its frame table, once render returns. The overload above borrows
+    /// the scene: its caller keeps it alive for as long as any of that work runs.
+    GpuStats render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene, Rect view,
+                    std::size_t group, std::uint64_t time_ms, WaterStyle style,
+                    WGPUTextureView target, const Resample* resample = nullptr);
 
     /// Whether `group` can be shown without the window thread waiting for
     /// content: its sea pattern is rendered and fully on the GPU (render()

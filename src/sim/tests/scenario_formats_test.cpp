@@ -1359,6 +1359,107 @@ TEST_CASE("scenario climate bound and a missing INFO") {
     CHECK(warnings_of(load(scene("ANNO", kids)), Kind::UnknownClimate) == 1);
 }
 
+TEST_CASE("scenario island LOCKED record: absent, zero, locked, raw byte, duplicates, malformed") {
+    // docs/re/ship-founding.md section 11.5: the record is one byte, island +0xc4; the loader
+    // stores the byte as it is and a later record overwrites an earlier one.
+    const auto with = [](const Buf& extra) {
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, insel5(40, 60, 8, 8, 7, 2, extra));
+        return scene("ANNO", kids);
+    };
+    const auto lock_of = [&](const Buf& extra) {
+        const sim::LoadedScenario s = load(with(extra));
+        REQUIRE(s.spec.islands.size() == 1);
+        return s.spec.islands[0].lock;
+    };
+    CHECK(lock_of({}) == 0);                      // absent record: reset value 0
+    CHECK(lock_of(chunk("LOCKED", Buf{0})) == 0); // the 21 dummy templates' value
+    CHECK(lock_of(chunk("LOCKED", Buf{1})) == 1); // the 107 scenario islands' value
+    CHECK(lock_of(chunk("LOCKED", Buf{2})) == 2); // kept as the loader stores it
+    CHECK(lock_of(chunk("LOCKED", Buf{255})) == 255);
+    Buf twice = chunk("LOCKED", Buf{1});
+    append(twice, chunk("LOCKED", Buf{0}));
+    CHECK(lock_of(twice) == 0); // the later record wins
+    Buf thrice = chunk("LOCKED", Buf{0});
+    append(thrice, chunk("LOCKED", Buf{7}));
+    CHECK(lock_of(thrice) == 7);
+    // LOCKED is a known record now: no UnknownRecord warning for it.
+    CHECK(warnings_of(load(with(chunk("LOCKED", Buf{1}))), Kind::UnknownRecord) == 0);
+    // Anything but one byte is refused with the record's path (the original would write past
+    // the field).
+    CHECK(refusal(with(chunk("LOCKED", Buf{}))).find(".LOCKED: expected 1 byte, got 0") !=
+          std::string::npos);
+    CHECK(refusal(with(chunk("LOCKED", Buf{1, 0}))).find(".LOCKED: expected 1 byte, got 2") !=
+          std::string::npos);
+    // A LOCKED 0 record and no record are the same state.
+    auto a = sim::World::create(load(with({})).spec, registry(), sim::SimConfig{});
+    auto b =
+        sim::World::create(load(with(chunk("LOCKED", Buf{0}))).spec, registry(), sim::SimConfig{});
+    REQUIRE(a.ok());
+    REQUIRE(b.ok());
+    CHECK(a.value().state_hash() == b.value().state_hash());
+}
+
+TEST_CASE("scenario island lock: world state, hash, save and load, a failed load changes nothing") {
+    const auto make = [&](std::uint8_t lock) {
+        Buf extra = lock == 0 ? Buf{} : chunk("LOCKED", Buf{lock});
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, insel5(40, 60, 8, 8, 7, 2, extra));
+        auto w = sim::World::create(load(scene("ANNO", kids)).spec, registry(), sim::SimConfig{});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        return std::move(w).value();
+    };
+    sim::World open = make(0);
+    sim::World locked = make(1);
+    sim::World raw2 = make(2);
+    REQUIRE(locked.islands().size() == 8);
+    REQUIRE(locked.islands()[7].has_value());
+    CHECK(locked.islands()[7]->lock == 1);
+    CHECK(locked.islands()[7]->locked());
+    CHECK_FALSE(open.islands()[7]->locked());
+    // The lock is state: three worlds that differ only in it have three hashes.
+    CHECK(open.state_hash() != locked.state_hash());
+    CHECK(locked.state_hash() != raw2.state_hash());
+    CHECK(open.state_hash() != raw2.state_hash());
+    // Only the islands scope moves.
+    sim::HashTree t_open, t_locked;
+    static_cast<void>(open.state_hash(t_open, 0));
+    static_cast<void>(locked.state_hash(t_locked, 0));
+    for (std::size_t i = 0; i < t_open.root.children.size(); ++i) {
+        CHECK((t_open.root.children[i].hash != t_locked.root.children[i].hash) ==
+              (t_open.root.children[i].name == "islands"));
+    }
+    // Save and load keep the raw byte; the saved bytes are reproduced.
+    for (sim::World* w : {&locked, &raw2}) {
+        const std::vector<std::uint8_t> bytes = w->save();
+        auto loaded = sim::World::load(bytes, registry());
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        CHECK(loaded.value().islands()[7]->lock == w->islands()[7]->lock);
+        CHECK(loaded.value().state_hash() == w->state_hash());
+        CHECK(loaded.value().save() == bytes);
+    }
+    // A failed load returns no world and leaves an existing one as it was.
+    const std::uint64_t before = locked.state_hash();
+    std::vector<std::uint8_t> bad = locked.save();
+    bad.resize(bad.size() - 3);
+    CHECK_FALSE(sim::World::load(bad, registry()).ok());
+    bad = locked.save();
+    bad[bad.size() / 2] ^= 0x5a;
+    CHECK_FALSE(sim::World::load(bad, registry()).ok());
+    CHECK(locked.state_hash() == before);
+    CHECK(locked.islands()[7]->lock == 1);
+    // The previous stream version (no lock byte) is refused, never reinterpreted.
+    const std::vector<std::uint8_t> good = locked.save();
+    const std::vector<std::uint8_t> marker = {
+        static_cast<std::uint8_t>(sim::kStateHashVersion),    0, 0, 0,
+        static_cast<std::uint8_t>(sim::kPrngTimelineVersion), 0, 0, 0};
+    const auto at = std::search(good.begin(), good.end(), marker.begin(), marker.end());
+    REQUIRE(at != good.end());
+    std::vector<std::uint8_t> old = good;
+    old[static_cast<std::size_t>(at - good.begin())] = 117;
+    CHECK_FALSE(sim::World::load(old, registry()).ok());
+}
+
 namespace {
 
 /// The offset of the first occurrence of `name` in `file` (a record or chunk name).

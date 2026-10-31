@@ -330,7 +330,7 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::BuildGoods>() == 2);
     CHECK(sim::field_count<sim::TradeEntry>() == 3);
     CHECK(sim::field_count<sim::IslandIndexCache>() == 2); // derived, no field list
-    CHECK(sim::field_count<sim::Island>() == 14);          // cache*
+    CHECK(sim::field_count<sim::Island>() == 15);          // cache*
     CHECK(sim::field_count<sim::PlacementRecord>() == 5);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
     CHECK(std::variant_size_v<sim::Payload> == 8);

@@ -339,6 +339,14 @@ struct Island {
     /// D: +0xc0 (property 7): 0 POLAR 1 TUNDRA 2 NORD 3 PRAERIE 4 DSCHUNGEL 5 STEPPE
     /// 6 WUESTE.
     std::uint32_t climate = 0;
+    /// D: +0xc4 (property 0x10), the island's persisted LOCKED record (AnnoWelt.dll serializer
+    /// 0x10089d80 writes it only when non-zero, loader 0x10089c0c reads the record's byte;
+    /// docs/re/ship-founding.md section 11.5). The raw byte is kept as the loader stores it; the
+    /// property getter is `!= 0` (locked()). Default 0 (reset and constructor store 0). Founding
+    /// refuses a locked island (validator 0x10048c32, ship predicate 0x100415f2); nothing else
+    /// here reads it, and no rule of this engine sets it at run time (the setter's callers that
+    /// target islands are unresolved, docs/re section 11.5).
+    std::uint8_t lock = 0;
     /// Append-only (production.hpp): the ore objects of the island.
     std::vector<Deposit> deposits;
     /// The building serial counter (stage S6); serial 0 means "none", so >= 1.
@@ -363,6 +371,8 @@ struct Island {
     [[nodiscard]] Slot tile_index(std::int32_t x, std::int32_t y) const {
         return tiles.index_of(x, y);
     }
+    /// Island property 0x10: the LOCKED byte is non-zero.
+    [[nodiscard]] bool locked() const { return lock != 0; }
     /// The city in slot `no`, or nullptr (no such slot, or the slot is empty).
     [[nodiscard]] const City* city(CityNo no) const {
         return no.v < cities.size() && cities[no.v].has_value() ? &*cities[no.v] : nullptr;

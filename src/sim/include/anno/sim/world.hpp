@@ -94,7 +94,10 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // amount) on the wire. An earlier whole-ton stream is never reinterpreted: the version differs
 // and the state/save is refused. A world without ships changes hash only because its stream
 // version moved. No PRNG site.
-inline constexpr std::uint32_t kStateHashVersion = 117;
+// Stream at 118 (task MAP-2, the island lock): each island gains `u8 lock` after its climate, the
+// persisted LOCKED byte (island +0xc4, property 0x10); 0 for an island that has no LOCKED record.
+// Every island stream is one byte longer; the lock itself is state. No PRNG site.
+inline constexpr std::uint32_t kStateHashVersion = 118;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

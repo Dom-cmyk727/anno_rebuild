@@ -78,7 +78,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 117
+STATE_HASH_VERSION = 118
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -451,7 +451,7 @@ def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
 
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
-                  ring=(0, 0)):
+                  ring=(0, 0), lock=0):
     tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
@@ -476,7 +476,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
             tiles[index][9] = 1
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
-         + u32(climate) + u32(next_serial) + u64(td))
+         + u32(climate) + u8(lock) + u32(next_serial) + u64(td))
     b += u16(sweep[0]) + b''.join(u32(v) for v in sweep[1:])   # sweep: stamp, grow x/y, fauna x/y
     b += u16(e300)                    # event300_stamp
     b += u16(objmgr[0]) + u32(objmgr[1])    # objmgr
@@ -569,9 +569,10 @@ class IslandSim:
             self.tick((ms >> 1) & M32)
 
 
-def two_island_scenario(steps=0, step_ms=10):
+def two_island_scenario(steps=0, step_ms=10, locks=None):
     """synthetic::two_island_scenario() after `steps` advances: (players, island
-    digests by slot)."""
+    digests by slot). `locks` maps a slot to its LOCKED byte (stream 118; default 0)."""
+    locks = locks or {}
     players = {0: new_player(0), 1: new_player(1, kind=12, money=25000, name=b'AI')}
     height = [i % 7 for i in range(600)]
     gfx = [(i * 3) & 0xFFFF for i in range(600)]
@@ -593,12 +594,13 @@ def two_island_scenario(steps=0, step_ms=10):
         0: island_digest(0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
                          [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7)],
                          [(b'EISENERZ', 110, 120, 2000 * 256, True)],
-                         cities={0: city(sim0, 0, 0)}, **state(sim0)),
+                         cities={0: city(sim0, 0, 0)}, lock=locks.get(0, 0), **state(sim0)),
         3: island_digest(3, 300, 200, 30, 20, 6, [(1, 300)],
                          [(0, 2001, 0), (599, 2002, 1)],
                          [(b'GOLD', 301, 202, 123456, False),
                           (b'STEINE', 329, 219, 2000 * 256, True)],
-                         (height, gfx, fertility), cities={1: city(sim3, 1, 1)}, **state(sim3)),
+                         (height, gfx, fertility), cities={1: city(sim3, 1, 1)}, lock=locks.get(3, 0),
+                         **state(sim3)),
     }
     return players, islands
 
@@ -762,6 +764,14 @@ def values():
         out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl,
                               world=(512, 512), steps=steps, step_ms=10, monopoly=monopoly)
+    # S5 with locks (stream 118): the same scenario at creation, island 0 with LOCKED byte 2 (a raw
+    # byte, not a bool) and island 3 with 1; the tick does not read the lock.
+    players, islands = two_island_scenario(0, locks={0: 2, 3: 1})
+    isl = islands_digest(islands)
+    slots, stamp, cursor = table_run(players, 0, 10)
+    out['s5_islands_locked_create'] = state_hash(
+        registry, 1234, 0, 0, players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
+        steps=0, step_ms=10, monopoly=monopoly_entries([(2, [0]), (6, [1])], {0: 1, 1: 1}, 0))
     # S6: the G1 scenario (a city with a weaver and a farm), seed 1234, advance(10) x steps
     for steps in (0, 100):
         players, islands = g1_scenario(steps)

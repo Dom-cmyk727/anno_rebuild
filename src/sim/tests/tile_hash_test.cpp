@@ -681,6 +681,7 @@ TEST_CASE("tiles scope byte layout and raw hash") {
         is.tiles.set_aux(i, 0x33000000U + i);
     }
     is.climate = 4;
+    is.lock = 3;
     is.next_serial = 9;
     is.sweep = {0x1111, 1, 2, 3, 4};
     is.event300_stamp = 0x2222;
@@ -695,6 +696,7 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     want.u32(3);
     want.u32(2);
     want.u32(4);
+    want.u8(3); // lock (stream 118)
     want.u32(9);
     want.u64(0); // no terrain
     want.u16(0x1111);

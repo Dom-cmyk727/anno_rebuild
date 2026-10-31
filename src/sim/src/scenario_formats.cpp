@@ -1076,6 +1076,17 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
         if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
             continue;
         }
+        if (name == "LOCKED") {
+            // D AnnoWelt 0x10089c0c–0x10089c32: the loader copies the record's bytes to island
+            // +0xc4 (a 1-byte field; every shipped record, 128 of them, is one byte, value 0 or
+            // 1). A later record overwrites an earlier one, as there. ADAPTATION: any other
+            // length is refused (the original would write past the field).
+            if (rec.payload.size() != 1) {
+                return path + ".LOCKED: expected 1 byte, got " + std::to_string(rec.payload.size());
+            }
+            is.lock = rec.payload[0];
+            continue;
+        }
         if (name == "BERGWERK2") {
             warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
                      "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");

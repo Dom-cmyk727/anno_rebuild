@@ -183,6 +183,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     out.index = is.slot;
     static_cast<void>(out.tiles.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
     out.climate = is.climate;
+    out.lock = is.lock;
     out.terrain = is.terrain;
     const std::uint64_t tiles = out.tiles.tile_count();
     // Tiles after the last run are neutral.

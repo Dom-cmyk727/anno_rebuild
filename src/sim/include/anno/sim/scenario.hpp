@@ -108,6 +108,8 @@ struct ScenarioSpec {
         IslandId slot;
         std::int32_t x0 = 0, y0 = 0;
         std::uint32_t w = 0, h = 0, climate = 0;
+        /// The island's LOCKED byte (stream 118): 0 when the island has no LOCKED record.
+        std::uint8_t lock = 0;
         std::shared_ptr<const Terrain> terrain;
         /// {owner, length}, row major from the top-left; the tiles after the last
         /// run are neutral (SimConfig::neutral_owner).
@@ -132,7 +134,8 @@ struct ScenarioSpec {
         std::optional<std::uint32_t> parent;
         /// With a parent only; unique among the parent's children.
         std::optional<std::uint32_t> crew_slot;
-        /// Whole tons; each goods must be in the registry's goods table.
+        /// Exact amounts in raw 1/256 ton (stream 117); each goods must be in the registry's goods
+        /// table.
         std::vector<ShipHold> holds;
     };
     std::vector<PlayerSpec> players;

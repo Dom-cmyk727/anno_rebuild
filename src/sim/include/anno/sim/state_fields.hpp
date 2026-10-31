@@ -855,11 +855,11 @@ template <class A, class V> void cities_io(A& a, V& cities) {
 // can count its members: index, tiles, terrain, climate, deposits, next_serial,
 // sweep, event300_stamp, drought, objmgr, ring, cities, reserved_object_count, cache
 // (the derived index cache is not in the stream).
-static_assert(field_count<Island>() == 14,
+static_assert(field_count<Island>() == 15,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
-/// u32 w, u32 h`, `u32 climate, u32 next_serial, u64 terrain_digest` (0 if none),
+/// u32 w, u32 h`, `u32 climate, u8 lock (118), u32 next_serial, u64 terrain_digest` (0 if none),
 /// the sweep, `u16 event300_stamp`, the object manager, the ring, the optional
 /// drought, the deposits, `u64 reserved_object_count`, scope `tiles`, scope `cities`
 /// (stage S6). The terrain itself is not in the stream (its blobs travel in the save frame, §9.5):
@@ -876,6 +876,7 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u32(w);
     a.u32(h);
     a.u32(s.climate);
+    a.u8(s.lock); // stream 118: the LOCKED byte (island +0xc4)
     a.u32(s.next_serial);
     std::uint64_t terrain = s.terrain ? s.terrain->digest : 0;
     a.u64(terrain);

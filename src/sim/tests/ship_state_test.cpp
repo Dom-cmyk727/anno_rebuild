@@ -600,10 +600,13 @@ TEST_CASE("ship holds: a stream of the whole-ton layout or a truncated hold fail
         static_cast<std::uint8_t>(sim::kPrngTimelineVersion), 0, 0, 0};
     const auto at = std::search(good.begin(), good.end(), marker.begin(), marker.end());
     REQUIRE(at != good.end());
-    std::vector<std::uint8_t> old = good;
-    old[static_cast<std::size_t>(at - good.begin())] = 116;
-    CHECK_FALSE(sim::World::load(old, types).ok());
-    CHECK(sim::kStateHashVersion == 117);
+    // 116 had whole-ton holds of 8 bytes, 117 raw amounts without the island lock: both refused.
+    for (const std::uint8_t earlier : {std::uint8_t{116}, std::uint8_t{117}}) {
+        std::vector<std::uint8_t> old = good;
+        old[static_cast<std::size_t>(at - good.begin())] = earlier;
+        CHECK_FALSE(sim::World::load(old, types).ok());
+    }
+    CHECK(sim::kStateHashVersion == 118);
 
     // Truncation of the flat stream inside a hold amount fails and the error names the figure.
     std::vector<std::uint8_t> flat = island_test::flat_stream(w);

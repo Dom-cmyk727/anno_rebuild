@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/app/credit.hpp>
 #include <anno/app/scene_picture.hpp>
 
 namespace anno::app {
@@ -95,8 +96,7 @@ ChangeSet change_set(const render::Scene& scene, std::size_t index,
     return change;
 }
 
-/// The bytes an island's records occupy (its head and every record payload): the estimate a build
-/// is admitted by.
+/// The bytes an island's records occupy (its head and every record payload).
 std::size_t island_bytes(const formats::insel::Island& island) {
     std::size_t n = island.head.size();
     for (const formats::chunk::Chunk& rec : island.records) {
@@ -105,107 +105,134 @@ std::size_t island_bytes(const formats::insel::Island& island) {
     return n;
 }
 
-/// The admission counts of the picture: the builds that hold a credit and their estimated bytes.
-/// Only Credit changes them.
-struct Ledger {
-    std::atomic<std::size_t> count{0};
-    std::atomic<std::size_t> bytes{0};
-};
+/// The descriptor bytes of an island's records (a copy of the island copies them).
+std::size_t record_meta_bytes(const formats::insel::Island& island) {
+    return island.records.capacity() * sizeof(formats::chunk::Chunk);
+}
 
-/// The credit of one build: its slot and its estimated bytes. It is held by the job, then by its
-/// result, and is released when the object that holds it is destroyed: on the worker, when a
-/// superseded build finishes; on the reaper, when a dropped job or result is destroyed; at commit,
-/// when a committed result is. A running build that a newer change supersedes therefore keeps its
-/// credit until it has finished (round dx, DX2b). The release takes no lock, allocates nothing and
-/// does not throw (the reaper and the workers run it).
-class Credit {
-  public:
-    Credit() = default;
-    Credit(std::shared_ptr<Ledger> ledger, std::size_t bytes)
-        : ledger_(std::move(ledger)), bytes_(bytes) {
-        ledger_->count.fetch_add(1, std::memory_order_relaxed);
-        ledger_->bytes.fetch_add(bytes_, std::memory_order_relaxed);
-    }
-    Credit(Credit&& other) noexcept
-        : ledger_(std::move(other.ledger_)), bytes_(std::exchange(other.bytes_, 0)) {}
-    Credit& operator=(Credit&& other) noexcept {
-        if (this != &other) {
-            release();
-            ledger_ = std::move(other.ledger_);
-            bytes_ = std::exchange(other.bytes_, 0);
+/// The objects an island's lists draw (the subsets are copies of some of them).
+std::size_t list_objects(const render::IslandLists& lists) {
+    return lists.below.size() + lists.above.size() + lists.other.size();
+}
+
+/// The bytes a build of island `island` (lists `lists`) with `desired` buildings is reserved for,
+/// before it runs (round dy, A2/R2; a provisional estimate, docs/app/game-shell.md). It covers
+/// what the build holds at its largest: the copy of the desired buildings; the copy of every
+/// record (old payload) plus each rewritten block (old payload again, plus one PROD2 item per
+/// desired building and a block header per building that opens a block); the new lists (the old
+/// lists plus every desired building in a list and in a subset); the change set (every old and new
+/// object, and a chunk key per object and group); and the two sorted object copies the change set
+/// is taken from. The worker replaces the estimate with the measured size of its result
+/// (result_bytes); a result larger than its estimate is counted (Stats::estimate_shortfalls).
+std::size_t build_estimate(const formats::insel::Island& island, const render::IslandLists& lists,
+                           std::size_t desired) {
+    const std::size_t old_payload = island_bytes(island);
+    const std::size_t old_objects = list_objects(lists);
+    const std::size_t new_objects = old_objects + desired;
+    const std::size_t buildings = desired * sizeof(SceneBuilding);
+    const std::size_t storage =
+        2 * old_payload + desired * (formats::insel::kItemLen + formats::insel::kBlockHeaderLen) +
+        (island.records.size() + desired + 1) * sizeof(render::Buffers::value_type);
+    const std::size_t meta = record_meta_bytes(island) + desired * sizeof(formats::chunk::Chunk);
+    const std::size_t new_lists =
+        render::lists_bytes(lists) + 2 * desired * sizeof(render::Prepared);
+    const std::size_t change =
+        (old_objects + new_objects) *
+        (sizeof(render::Prepared) + render::kGroups * sizeof(render::ChunkKey));
+    const std::size_t sorted = (old_objects + new_objects) * sizeof(render::Prepared);
+    return buildings + storage + meta + new_lists + change + sorted;
+}
+
+/// A test seam's probe: calls the hook when the payload that holds it is destroyed. It is the
+/// first member of a payload, so it is destroyed last of the payload, after every other member.
+struct DestroyProbe {
+    std::function<void(const char*, std::size_t)> hook;
+    const char* what = "";
+    std::size_t index = 0;
+    DestroyProbe(const DestroyProbe&) = delete;
+    DestroyProbe& operator=(const DestroyProbe&) = delete;
+    DestroyProbe(std::function<void(const char*, std::size_t)> h, const char* w, std::size_t i)
+        : hook(std::move(h)), what(w), index(i) {}
+    ~DestroyProbe() {
+        if (hook) {
+            hook(what, index);
         }
-        return *this;
     }
-    Credit(const Credit&) = delete;
-    Credit& operator=(const Credit&) = delete;
-    ~Credit() { release(); }
-
-  private:
-    void release() noexcept {
-        if (ledger_) {
-            ledger_->bytes.fetch_sub(bytes_, std::memory_order_relaxed);
-            ledger_->count.fetch_sub(1, std::memory_order_relaxed);
-            ledger_.reset();
-        }
-    }
-
-    std::shared_ptr<Ledger> ledger_;
-    std::size_t bytes_ = 0;
 };
 
 /// One request for an island's rebuild: the version it is made for, the generation it is made from
-/// and the buildings it applies.
-struct PictureJob {
+/// and the buildings it applies. Held as Accounted<JobPayload> (PictureJob): its credit outlives
+/// it.
+struct JobPayload {
+    std::shared_ptr<DestroyProbe> probe;
     std::size_t index = 0;
     std::uint64_t version = 0;
     std::shared_ptr<const render::Scene> base;
     std::vector<SceneBuilding> buildings;
+    /// The estimate the build was admitted by (build_estimate).
     std::size_t bytes = 0;
-    /// The job's admission credit; the worker moves it to the result it builds.
-    Credit credit;
     /// When the job was handed to the workers (its queue delay is the time to its start).
     std::chrono::steady_clock::time_point submitted{};
 };
+using PictureJob = Accounted<JobPayload>;
 
 /// The result of a rebuild: the island with its records after the change, its lists, and the change
-/// set taken against the lists the rebuild started from.
-struct PictureResult {
+/// set taken against the lists the rebuild started from. Held as Accounted<ResultPayload>
+/// (PictureResult): its credit is released after this payload has been destroyed, or when the
+/// commit has handed the payload to the next generation.
+struct ResultPayload {
+    std::shared_ptr<DestroyProbe> probe;
     std::size_t index = 0;
     std::uint64_t version = 0;
     /// The island with its records after the change; every byte it points into is in `storage`
     /// (copied by the worker), so the island needs no other owner.
     formats::insel::Island island;
-    std::shared_ptr<const std::vector<std::vector<std::uint8_t>>> storage;
+    std::shared_ptr<const render::Buffers> storage;
     std::shared_ptr<const render::IslandLists> lists;
-    /// The lists the change set was taken from: the version the commit checks.
+    /// The lists the change set was taken from: the version the commit checks. Shared with the
+    /// generation the build started from (counted by that allocation, not by this result).
     std::shared_ptr<const render::IslandLists> base_lists;
     ChangeSet change;
-    /// The credit of the build that made this result (released with the result).
-    Credit credit;
 };
+using PictureResult = Accounted<ResultPayload>;
+
+/// The measured bytes a result holds of its own: its record descriptors, its record storage, its
+/// lists and its change set (capacities times element sizes; allocator overhead not counted).
+std::size_t result_bytes(const PictureResult& r) {
+    std::size_t n = record_meta_bytes(r.island);
+    n += r.storage ? render::buffers_bytes(*r.storage) : 0;
+    n += r.lists ? render::lists_bytes(*r.lists) : 0;
+    n += (r.change.removed.capacity() + r.change.added.capacity()) * sizeof(render::Prepared);
+    n += r.change.keys.capacity() * sizeof(render::ChunkKey);
+    return n;
+}
 
 /// A worker's build of one request: the island's records rewritten with the island's buildings, its
 /// object lists, and the change set against the lists the build started from. Throws on failure.
 PictureResult build_result(const PictureJob& job, const std::vector<bool>& is_building,
-                           const std::function<void(std::size_t)>& fault) {
+                           const std::function<void(std::size_t)>& fault,
+                           const std::function<void(const char*, std::size_t)>& destroy_hook) {
     if (fault) {
         fault(job.index);
     }
     PictureResult result;
+    if (destroy_hook) {
+        result.probe = std::make_shared<DestroyProbe>(destroy_hook, "result", job.index);
+    }
     result.index = job.index;
     result.version = job.version;
-    auto storage = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    render::Buffers storage;
     formats::insel::Island island = job.base->islands[job.index];
     // Own every byte the island points into before the rewrite, so no generation's buffers are
-    // needed afterwards.
+    // needed afterwards. The buffers keep their addresses when the outer vector grows or moves.
     {
         std::vector<std::uint8_t> head(island.head.begin(), island.head.end());
-        storage->push_back(std::move(head));
-        island.head = formats::Bytes(storage->back().data(), storage->back().size());
+        storage.push_back(std::move(head));
+        island.head = formats::Bytes(storage.back().data(), storage.back().size());
         for (formats::chunk::Chunk& rec : island.records) {
             std::vector<std::uint8_t> payload(rec.payload.begin(), rec.payload.end());
-            storage->push_back(std::move(payload));
-            rec.payload = formats::Bytes(storage->back().data(), storage->back().size());
+            storage.push_back(std::move(payload));
+            rec.payload = formats::Bytes(storage.back().data(), storage.back().size());
         }
     }
     SceneObjects objects;
@@ -214,12 +241,14 @@ PictureResult build_result(const PictureJob& job, const std::vector<bool>& is_bu
     };
     std::vector<std::string> notes;
     std::vector<OmittedObject> omitted;
-    apply_island_buildings(island, job.buildings, objects, *storage, notes, omitted);
-    auto lists = render::Scene::build_island_lists(island, job.base->anlagen);
+    apply_island_buildings(island, job.buildings, objects, storage, notes, omitted);
+    auto lists = render::Scene::build_island_lists(island, job.base->anlagen,
+                                                   render::PayloadKind::Incremental);
     result.base_lists = job.base->island_lists_handle(job.index);
     result.change = change_set(*job.base, job.index, *result.base_lists, *lists);
     result.island = std::move(island);
-    result.storage = std::move(storage);
+    result.storage =
+        render::accounted_buffers(std::move(storage), render::PayloadKind::Incremental);
     result.lists = std::move(lists);
     return result;
 }
@@ -357,107 +386,128 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
     state_->retry_at.assign(n, 0);
     reaper_->gate = limits_.reclaim_gate;
     for (std::size_t t = 0; t < std::max<std::size_t>(threads, 1); ++t) {
-        threads_.emplace_back(
-            [st = state_, fault = limits_.build_fault, max_attempts = limits_.max_attempts] {
-                for (;;) {
-                    PictureJob job;
-                    {
-                        std::unique_lock lock(st->mutex);
-                        st->wake.wait(lock, [&] { return st->stop || !st->jobs.empty(); });
-                        if (st->stop) {
-                            return;
-                        }
-                        job = std::move(st->jobs.front());
-                        st->jobs.pop_front();
-                        ++st->running;
+        threads_.emplace_back([st = state_, fault = limits_.build_fault,
+                               max_attempts = limits_.max_attempts,
+                               destroy_hook = limits_.payload_destroy_hook] {
+            for (;;) {
+                PictureJob job;
+                {
+                    std::unique_lock lock(st->mutex);
+                    st->wake.wait(lock, [&] { return st->stop || !st->jobs.empty(); });
+                    if (st->stop) {
+                        return;
                     }
-                    const auto start = Clock::now();
-                    const double queue_ms =
-                        std::chrono::duration<double, std::milli>(start - job.submitted).count();
-                    PictureResult result;
-                    bool built = false;
-                    std::string message;
-                    // The catch-all of the worker seam: a failed build must not end the thread, and
-                    // must leave the island dirty so that it is built again
-                    // (ScenePicture::error()).
-                    try {
-                        result = build_result(job, *st->is_building, fault);
-                        result.credit = std::move(job.credit);
-                        built = true;
-                    } catch (const std::exception& e) {
-                        message = e.what();
-                    } catch (...) {
-                        message = "unknown failure in an object build";
-                    }
-                    const double ms = ms_since(start);
-                    // The job's generation is released here, on the worker (the reclaimer destroys
-                    // it if this is the last reference).
-                    job.base.reset();
-                    {
-                        const std::lock_guard lock(st->mutex);
-                        st->stats.last_build_ms = ms;
-                        // Bounded sample: the newest samples are kept (the bench runs far fewer
-                        // builds).
-                        constexpr std::size_t kSamples = 200000;
-                        if (st->build_ms.size() < kSamples) {
-                            st->build_ms.push_back(ms);
-                            st->queue_ms.push_back(queue_ms);
+                    job = std::move(st->jobs.front());
+                    st->jobs.pop_front();
+                    ++st->running;
+                }
+                const auto start = Clock::now();
+                const double queue_ms =
+                    std::chrono::duration<double, std::milli>(start - job.submitted).count();
+                PictureResult result;
+                bool built = false;
+                std::string message;
+                // The catch-all of the worker seam: a failed build must not end the thread, and
+                // must leave the island dirty so that it is built again
+                // (ScenePicture::error()).
+                try {
+                    result = build_result(job, *st->is_building, fault, destroy_hook);
+                    built = true;
+                } catch (const std::exception& e) {
+                    message = e.what();
+                } catch (...) {
+                    message = "unknown failure in an object build";
+                }
+                const double ms = ms_since(start);
+                // The job's own payload is released here, on the worker, while the job still
+                // holds the credit: its copy of the buildings, and its generation (the
+                // reclaimer destroys that if this is the last reference). Only then does the
+                // credit move to the result, resized to what the result measures (round dy,
+                // A2). A failed build keeps the credit with its job until the job is gone.
+                job.base.reset();
+                std::vector<SceneBuilding>().swap(job.buildings);
+                std::size_t measured = 0;
+                if (built) {
+                    result.credit = std::move(job.credit);
+                    measured = result_bytes(result);
+                    result.credit.resize(measured);
+                }
+                {
+                    const std::lock_guard lock(st->mutex);
+                    st->stats.last_build_ms = ms;
+                    if (built) {
+                        st->stats.result_bytes_peak =
+                            std::max(st->stats.result_bytes_peak, measured);
+                        if (measured > job.bytes) {
+                            ++st->stats.estimate_shortfalls;
+                            st->stats.estimate_shortfall_max =
+                                std::max(st->stats.estimate_shortfall_max, measured - job.bytes);
                         }
-                        // A failure belongs to the version it was built for: it counts only while
-                        // that version is still the desired one and still in flight (round dx,
-                        // DX3b).
-                        const bool current = st->inflight[job.index] == job.version &&
-                                             st->desired[job.index] == job.version;
-                        if (!current) {
-                            // Superseded while it ran (a newer change or a dropped request): its
-                            // result and credit are destroyed when this call returns. An open
-                            // build of this island that is not desired any more frees the island
-                            // (it stays deferred until it starts again).
-                            ++st->stats.discarded;
-                            if (st->inflight[job.index] == job.version) {
-                                st->close(job.index);
-                            }
-                        } else if (!built) {
-                            ++st->stats.build_failures;
+                    }
+                    // Bounded sample: the newest samples are kept (the bench runs far fewer
+                    // builds).
+                    constexpr std::size_t kSamples = 200000;
+                    if (st->build_ms.size() < kSamples) {
+                        st->build_ms.push_back(ms);
+                        st->queue_ms.push_back(queue_ms);
+                    }
+                    // A failure belongs to the version it was built for: it counts only while
+                    // that version is still the desired one and still in flight (round dx,
+                    // DX3b).
+                    const bool current = st->inflight[job.index] == job.version &&
+                                         st->desired[job.index] == job.version;
+                    if (!current) {
+                        // Superseded while it ran (a newer change or a dropped request): its
+                        // result and credit are destroyed when this call returns. An open
+                        // build of this island that is not desired any more frees the island
+                        // (it stays deferred until it starts again).
+                        ++st->stats.discarded;
+                        if (st->inflight[job.index] == job.version) {
                             st->close(job.index);
-                            ++st->failures[job.index];
-                            if (st->failures[job.index] >= max_attempts) {
-                                st->failed_for_good[job.index] = true;
-                                st->failure[job.index] = message;
-                            } else {
-                                // Retried by the window's next commit calls, not by a timer.
-                                const std::uint64_t backoff =
-                                    std::uint64_t{1}
-                                    << std::min<std::uint32_t>(st->failures[job.index] - 1, 16);
-                                st->retry_at[job.index] = st->commit_calls + backoff;
-                                st->retrying.insert(job.index);
-                            }
-                        } else {
-                            auto same = std::find_if(
-                                st->done.begin(), st->done.end(),
-                                [&job](const PictureResult& r) { return r.index == job.index; });
-                            if (same != st->done.end()) {
-                                ++st->stats.coalesced;
-                                *same = std::move(result);
-                            } else {
-                                st->done.push_back(std::move(result));
-                            }
                         }
-                    }
-                    // What was not kept is destroyed here, off the lock (its credit with it; a
-                    // kept result was moved). The worker counts itself as done only after that, so
-                    // wait_idle returns after every release of this build.
-                    job = PictureJob{};
-                    result = PictureResult{};
-                    {
-                        const std::lock_guard lock(st->mutex);
-                        --st->running;
-                        if (st->jobs.empty() && st->running == 0) {
-                            st->idle.notify_all();
+                    } else if (!built) {
+                        ++st->stats.build_failures;
+                        st->close(job.index);
+                        ++st->failures[job.index];
+                        if (st->failures[job.index] >= max_attempts) {
+                            st->failed_for_good[job.index] = true;
+                            st->failure[job.index] = message;
+                        } else {
+                            // Retried by the window's next commit calls, not by a timer.
+                            const std::uint64_t backoff =
+                                std::uint64_t{1}
+                                << std::min<std::uint32_t>(st->failures[job.index] - 1, 16);
+                            st->retry_at[job.index] = st->commit_calls + backoff;
+                            st->retrying.insert(job.index);
+                        }
+                    } else {
+                        auto same = std::find_if(
+                            st->done.begin(), st->done.end(),
+                            [&job](const PictureResult& r) { return r.index == job.index; });
+                        if (same != st->done.end()) {
+                            // The replaced result leaves in `result`, and is destroyed below,
+                            // off the lock, payload first and credit last.
+                            ++st->stats.coalesced;
+                            std::swap(*same, result);
+                        } else {
+                            st->done.push_back(std::move(result));
                         }
                     }
                 }
-            });
+                // What was not kept is destroyed here, off the lock (its credit with it; a
+                // kept result was moved). The worker counts itself as done only after that, so
+                // wait_idle returns after every release of this build.
+                job = PictureJob{};
+                result = PictureResult{};
+                {
+                    const std::lock_guard lock(st->mutex);
+                    --st->running;
+                    if (st->jobs.empty() && st->running == 0) {
+                        st->idle.notify_all();
+                    }
+                }
+            }
+        });
     }
     reaper_->thread = std::thread([r = reaper_] { r->run(); });
 }
@@ -563,7 +613,12 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             if (state_->inflight[index] == state_->desired[index]) {
                 continue; // a build of the current version is already in flight or finished
             }
-            const std::size_t bytes = island_bytes(current_->islands[index]);
+            // The reservation covers the incoming build (the desired buildings and what they
+            // rewrite), not only the old records (build_estimate).
+            const auto mine = by_island_.find(current_->islands[index].number);
+            const std::size_t desired_count = mine == by_island_.end() ? 0 : mine->second.size();
+            const std::size_t bytes = build_estimate(current_->islands[index],
+                                                     current_->island_lists(index), desired_count);
             const bool replaces = state_->inflight[index] != 0;
             if (replaces && overloaded) {
                 defer(index);
@@ -614,10 +669,12 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             state_->inflight[index] = state_->desired[index];
             PictureJob job;
             job.credit = Credit(state_->ledger, bytes);
+            if (limits_.payload_destroy_hook) {
+                job.probe =
+                    std::make_shared<DestroyProbe>(limits_.payload_destroy_hook, "job", index);
+            }
             state_->stats.outstanding_peak =
                 std::max(state_->stats.outstanding_peak, state_->ledger->count.load());
-            state_->stats.outstanding_bytes_peak =
-                std::max(state_->stats.outstanding_bytes_peak, state_->ledger->bytes.load());
             if (state_->is_deferred[index]) {
                 state_->is_deferred[index] = false;
                 ++state_->stats.started_deferred;
@@ -629,8 +686,7 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             job.version = state_->desired[index];
             job.base = current_;
             // The island's buildings are copied only now, for an admitted build (DX2e).
-            if (const auto mine = by_island_.find(current_->islands[index].number);
-                mine != by_island_.end()) {
+            if (mine != by_island_.end()) {
                 job.buildings = mine->second;
                 state_->stats.copied_buildings += job.buildings.size();
             }
@@ -874,7 +930,9 @@ ScenePicture::Stats ScenePicture::stats() const {
         const std::lock_guard lock(state_->mutex);
         s = state_->stats;
         s.dirty_islands = state_->dirty.size();
+        s.outstanding = state_->ledger->count.load();
         s.outstanding_bytes = state_->ledger->bytes.load();
+        s.outstanding_bytes_peak = state_->ledger->peak_bytes.load();
         s.failed_islands = static_cast<std::size_t>(
             std::count(state_->failed_for_good.begin(), state_->failed_for_good.end(), true));
     }

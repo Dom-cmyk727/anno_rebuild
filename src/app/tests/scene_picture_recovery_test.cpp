@@ -533,15 +533,16 @@ TEST_CASE("picture failures: a persistent failure is bounded per retry and stays
 
 TEST_CASE("picture credits: a superseded running build keeps its credit until its worker finishes" *
           doctest::test_suite("scene_picture_recovery")) {
-    // Island 0 (64 bytes) is blocked in its first build, and a newer change arrives while it runs.
-    // The running build keeps its credit, so the replacement does not fit the byte budget beside it
-    // and is deferred. When the build finishes, the credit goes with it.
+    // Island 0 is blocked in its first build, and a newer change arrives while it runs. Every
+    // build is over the 96-byte budget on its own (its reservation covers the incoming payload,
+    // round dy), so it starts only while no other credit is held. The running build keeps its
+    // credit, so the replacement is deferred. When the build finishes, the credit goes with it.
     auto scene = islands_scene(2);
     std::vector<app::SceneBuilding> none;
     std::atomic<bool> open{false};
     std::atomic<bool> entered{false};
     app::ScenePicture::Limits limits;
-    limits.max_outstanding_bytes = 96; // one 64-byte build fits, two do not
+    limits.max_outstanding_bytes = 96; // below any one build's reservation
     limits.build_fault = [&open, &entered](std::size_t) {
         entered.store(true);
         while (!open.load()) {
@@ -554,9 +555,12 @@ TEST_CASE("picture credits: a superseded running build keeps its credit until it
     while (!entered.load()) {
         std::this_thread::yield();
     }
-    CHECK(picture.stats().outstanding_bytes == 64);
+    const std::size_t reserved = picture.stats().outstanding_bytes;
+    CHECK(reserved > limits.max_outstanding_bytes);
+    CHECK(picture.stats().outstanding == 1);
     picture.apply({added(2, 0, 2)}); // the running build is superseded
-    CHECK(picture.stats().outstanding_bytes == 64);
+    CHECK(picture.stats().outstanding == 1);
+    CHECK(picture.stats().outstanding_bytes == reserved);
     CHECK(picture.stats().budget_deferrals >= 1);
     open.store(true);
     picture.wait_idle(); // the superseded build has finished and released its credit
@@ -602,8 +606,12 @@ TEST_CASE("picture credits: a dropped job keeps its credit until the reaper has 
         std::this_thread::yield();
     }
     picture.apply({added(2, 1, 1)}); // queued behind island 0's build
+    CHECK(picture.stats().outstanding == 2);
+    const std::size_t with_two = picture.stats().outstanding_bytes;
     picture.apply({added(3, 1, 2)}); // drops island 1's queued job to the reaper, starts a new one
-    CHECK(picture.stats().outstanding_bytes == 192);
+    // Island 0's running build, the dropped job (alive in the stalled reaper) and the new job.
+    CHECK(picture.stats().outstanding == 3);
+    CHECK(picture.stats().outstanding_bytes > with_two);
     reaper_open.store(true);
     build_open.store(true);
     picture.wait_idle();
@@ -615,7 +623,9 @@ TEST_CASE("picture credits: a dropped job keeps its credit until the reaper has 
         std::this_thread::yield();
     }
     REQUIRE(picture.stats().reclaim_completed == picture.stats().reclaim_queued);
-    CHECK(picture.stats().outstanding_bytes == 128);
+    CHECK(picture.stats().outstanding == 2); // the two finished results
+    CHECK(picture.stats().outstanding_bytes > 0);
+    CHECK(picture.stats().outstanding_bytes <= 2 * picture.stats().result_bytes_peak);
     CHECK(drain(picture, frames, 20));
     CHECK(picture.error().empty());
     CHECK(committed_payloads(*picture.scene(), 1) == fresh_payloads(*scene, 1, picture));

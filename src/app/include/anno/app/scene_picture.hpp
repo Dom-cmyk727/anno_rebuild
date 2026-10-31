@@ -30,15 +30,17 @@ namespace anno::app {
 /// The bounds of the retained work (round dw, DW4). Each value is a default with its reason; the
 /// viewer may pass others (the play options). Test seams are for the test suite only.
 struct PictureLimits {
-    /// Islands with a build in flight or a finished result not yet committed. A request beyond it
-    /// is deferred (kept in order, not dropped) and started by a later commit. Reason: each such
-    /// island holds a copy of its records, lists and change set until it is committed or dropped.
+    /// Builds that hold a credit: queued, running, superseded and still running, finished and not
+    /// committed, or dropped and not yet destroyed. A request beyond it is deferred (kept in order,
+    /// not dropped) and started by a later commit. Reason: each holds a copy of its island's
+    /// records and, once built, its lists and change set.
     std::size_t max_outstanding = 8;
-    /// Estimated bytes of the island records of the builds in flight or finished and not committed
-    /// (ScenePicture::Stats::outstanding_bytes_peak). A build beyond it is deferred, unless it is
-    /// the only one (a single over-budget island still makes progress). Provisional: the value is
-    /// set from the record sizes of the representative five-player island, to be measured in DW5
-    /// (docs/perf).
+    /// Reserved bytes of those builds (ScenePicture::Stats::outstanding_bytes). A build is reserved
+    /// for its estimated incoming size before it runs and for its measured size once built (see
+    /// docs/app/game-shell.md, "Credits and byte accounting"). A build beyond the budget is
+    /// deferred while any other credit is held; with none held it starts alone, so a single
+    /// over-budget island still makes progress and never runs beside another build. Provisional:
+    /// 64 MiB, to be checked against the measured legal-city builds (docs/perf).
     std::size_t max_outstanding_bytes = std::size_t{64} << 20;
     /// Retired items (generations, jobs, results) that the reaper has not released yet. A commit
     /// that would add to a longer backlog is skipped and retried by the next call; it never blocks.
@@ -55,6 +57,10 @@ struct PictureLimits {
     std::function<void(std::size_t index)> build_fault;
     /// Test seam: called by the reaper before it releases each item (a stalled reaper).
     std::function<void()> reclaim_gate;
+    /// Test seam: called while a job's or a result's payload is being destroyed (`what` is "job" or
+    /// "result"), after every other part of the payload is gone and before its credit is released,
+    /// on the thread that destroys it.
+    std::function<void(const char* what, std::size_t index)> payload_destroy_hook;
 };
 
 class ScenePicture {
@@ -135,10 +141,16 @@ class ScenePicture {
         /// Generations, jobs and results handed to the reaper, and released by it (the scene itself
         /// is destroyed by render::SceneReclaimer; see its own counters).
         std::uint64_t reclaim_queued = 0, reclaim_completed = 0;
-        /// Largest counts seen at once: builds in flight or finished and uncommitted, the reaper
-        /// backlog, and the estimated bytes of those builds.
+        /// Largest counts seen at once: builds holding a credit, and the reaper backlog.
         std::size_t outstanding_peak = 0, reclaim_backlog_peak = 0;
+        /// Builds holding a credit now; their reserved bytes now, and the largest total seen.
+        std::size_t outstanding = 0;
         std::size_t outstanding_bytes = 0, outstanding_bytes_peak = 0;
+        /// The largest measured result (bytes its credit was resized to), and the results that
+        /// measured more than their estimate (how many, and the largest excess in bytes).
+        std::size_t result_bytes_peak = 0;
+        std::uint64_t estimate_shortfalls = 0;
+        std::size_t estimate_shortfall_max = 0;
         /// Buildings copied into started builds: a start copies its own island's buildings only
         /// (round dx, DX2e).
         std::uint64_t copied_buildings = 0;

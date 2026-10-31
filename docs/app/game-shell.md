@@ -322,14 +322,11 @@ the newest request per island; a finished result whose sequence is not the newes
 for its island is dropped. The window thread commits the current results of one
 frame in a single derived generation.
 
-**7. Retained-generation bound.** A generation is alive while it is current or a
-chunk job holds it. `ChunkWorkers::submit` replaces the queue, so queued jobs share
-one generation, and the running jobs (at most one per thread) hold at most `threads`
-others. Alive generations are at most `1 + threads`. The memory they hold beyond the
-current one is the object lists of the islands they replaced: at most `(1 + threads)`
-times the sum of the touched islands' lists. Pending object builds are at most one
-per touched island (step 6). A retired generation is released on a background
-thread: freeing its lists is not free, and the window thread must not do it.
+**7. Retained-generation bound (superseded).** Round du stated `1 + threads` generations and
+`(1 + threads)` times the touched islands' lists. That formula counted generations only; it missed the
+jobs, results, flow requests and reaper items that hold them. The enforced contract is "Retained work and
+reclamation" below (round dw, DW4f). Final destruction of a generation is the reclaimer's, whichever thread
+released it last.
 
 **8. Stale completions.** Each chunk records the generation it was built from. An
 invalidation names the generation `m` that caused it and marks each affected key
@@ -363,41 +360,64 @@ destroyed under the publication lock, which the design accepts and the report
 states. The allocation is outside the lock; the destruction of an unused copy is
 inside it, and bounded by the list size.
 
-### Retained work and reclamation (W4.3, round dv)
+### Retained work and reclamation (W4.3, rounds dv and dw)
 
-**Ownership.** A scene generation owns the bytes its islands' records and Anlagen.dat view
-(`render::Scene::Backing`). The constructor stores them with the shared assets, so every generation
-derived by `with_islands` keeps them alive. Nothing outside the scene has to outlive it. The loader
-moves its staged buffers into the scene when the scene exists (`LoadedScene::buffers` is empty
-afterwards). Tested by `scene_backing_test` (game files; ASan).
+**State.** The bridge keeps three versions per island. `desired[i]` is the version of the newest change
+to island `i`; every `apply` advances it, even when the build is deferred. `committed[i]` is the version
+the committed generation has. `dirty` is the set of islands with `desired != committed`, and
+`pending()` is its size: zero means converged, and a failed or deferred change is never idle. A finished
+result is committed only when its version is still the desired one; an older one is dropped and the island
+is built again from the current desired state. The desired state is the building list (`buildings()`); no
+build command is replayed to repair the picture.
 
-**Limits** (`ScenePicture::Limits`, defaults with their reasons):
+**Ownership.** A scene generation owns the bytes its islands and Anlagen.dat view (`render::Scene::Backing`),
+shared by every generation derived from it. Its final destruction belongs to `render::SceneReclaimer` (one
+process thread): every generation is made by `Scene::create` or derived by `with_islands`, and its deleter
+hands the destruction over when the last owner of any kind releases it (the window, a frame, a chunk worker,
+a flow builder or a reaper). That release only enqueues. The reclaimer counts queued, waiting, in-flight
+and completed destructions and records the thread of the last one.
 
-| Limit | Default | Reason | Behaviour at the limit |
+**Limits** (`PictureLimits`; each default has its reason; the play options are the configuration path, not
+wired yet):
+
+| Limit | Default | Reason | At the limit |
 |---|---:|---|---|
-| `max_outstanding` | 8 | Each outstanding island holds a copy of its records and lists: this bounds what a stalled commit retains. | A request beyond it is deferred (kept in order, not dropped) and started by a later commit or apply. |
-| `max_reclaim_backlog` | 4 | A stalled reaper must not let generations pile up unseen. | A commit is skipped (returns 0) and retried by the next call. While over the bound, an island that is already open is deferred instead of replaced (its queued job and result are not dropped to the reaper). |
+| `max_outstanding` | 8 islands | Each island in flight or finished but uncommitted holds a copy of its records, lists and change set. | A start beyond it is deferred (kept in order) and started by a later commit. |
+| `max_outstanding_bytes` | 64 MiB (provisional) | The estimated island-record bytes of the builds in flight or finished. Provisional until DW5 measures the five-player island. | A start beyond it is deferred. A single build over the budget still starts alone, so no island is blocked for good. |
+| `max_reclaim_backlog` | 4 items | A stalled reaper must not let work pile up. | A commit is skipped (returns 0) and retried by the next call. While over the bound, an island in flight is deferred rather than replaced. |
+| `max_attempts` | 4 | A transient failure recovers; a persistent one must end. | After the attempts the island is failed for good: `failed_islands`, `error()`, and it stays owed (`pending()` counts it). |
 
-Both are constructor arguments; the viewer's play options are the configuration path (not wired yet).
-Test seams (`build_fault`, `reclaim_gate`) exist for the test suite only.
+Retries wait 1, 2, 4 ... commit calls (the window's frames), not timers. A change to a failed island
+resets its attempts. Test seams (`build_fault`, `reclaim_gate`) are for the test suite.
 
-**Reclamation.** The window thread never frees what it holds the last reference to. Superseded
-generations, queued jobs and finished results replaced by a newer request, the bases of rebased jobs,
-the lists a commit replaces and, at destruction, the queue, the results and the generation are handed
-to the reaper thread (`Stats::reclaimed`, `reclaim_backlog_peak`). Workers may release what they hold
-(not the window thread).
+**Byte accounting.** `outstanding_bytes` counts the estimated island-record bytes of the builds in flight or
+finished and uncommitted; its peak is `outstanding_bytes_peak`. The estimate is the records' payload bytes at
+the start of the build, not the allocator's footprint, and it excludes the lists and the change set. The
+resident shared catalogue (sprites, textures, Anlagen) is shared by all generations and is counted once,
+outside these bounds. Generation bytes are not yet measured (DW4a leaves them open; see the DW5 report).
 
-**Change set.** A worker computes the objects that appear and disappear and their chunk keys, against
-the island's lists at the time of its build. A commit uses that set when the island's lists are still
-the same object (`Scene::island_lists_handle`), and recomputes only otherwise (`recomputed_changes`,
-expected 0).
+**Reclamation counters.** `reclaim_queued` and `reclaim_completed` count the bridge's own retired items
+(generations as references, jobs, results); a generation's destruction is counted by the reclaimer.
 
-**Rebase.** A commit moves every queued job to the generation it made. An island not in the commit
-is unchanged, so a stalled job pins no old generation (`rebased`).
+**Change set.** A worker computes the objects that appear and disappear and their chunk keys, against the
+island's lists when its build started. A commit uses that set only if the island's lists are still the same
+object (`Scene::island_lists_handle`); otherwise the result is requeued (`version_requeues`). The window
+thread never computes a change set.
 
-**Failure.** A build that throws is counted (`build_failures`); the island keeps its last committed
-lists and is requested again by the next change that touches it. Nothing else stops.
+**Idle commits.** A commit with nothing to start does not pass over the building list: the cost of an idle
+commit does not grow with the number of buildings.
 
-**Bound on the reaper backlog.** Checked before each commit; a commit adds at most one generation,
-one base per rebased job and one list per result, so the backlog peaks at `max_reclaim_backlog + 1 +
-2 * max_outstanding` (asserted by the stalled-reaper case).
+**Failure.** A build that throws is counted (`build_failures`). The committed generation is kept; the island
+stays dirty and is retried from the desired state. The message of a failure for good is `error()`.
+
+**Bound on the reaper backlog.** A commit adds at most one generation, one base per rebased job and one list
+per result, so the backlog peaks at `max_reclaim_backlog + 1 + 2 * max_outstanding` (asserted by the
+stalled-reaper case).
+
+**Tests.** Synthetic (`scene_picture_recovery`): one-shot failure recovered with no new batch; persistent
+failure stops and is reported; a newer change during a retry; shutdown with a retry waiting; an older
+result never published after a newer change under a stalled reaper; sustained changes over 12 islands
+converge; the byte budget admits one over-budget island; 1, 2 and 4 workers converge. The oracle is a fresh
+build of each island from the desired state, with the loader's per-island function. Reclamation
+(`scene_reclaim`): the destruction runs on the reclaimer for the window's, a chunk worker's and the
+renderer's release, and the counters agree.

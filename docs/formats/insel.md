@@ -43,7 +43,10 @@ Order in templates: `INFO, HEIGHT…, GFXID…, GELAENDE…, FRUCHTBAR, [FLUESSE
 | `GELAENDE`, `PROD2` | block header + `n` × 6-byte items, same 32 × 32 block grid as `HEIGHT`; items place objects, see "Placed objects". `GELAENDE` = scenery (grass, bushes, trees, rocks, cliffs, ice floes), `PROD2` = built objects (roads, houses, walls, production) | P |
 | `FLUESSE` | block header with 8 × 8 blocks at multiples of 8, only non-empty blocks stored, + 6-byte placed-object items | P; what the river objects are ? OQ-024 |
 | `FRUCHTBAR` | `width × height` bytes, row-major, no blocks; values 0–10 | P (size asserted) |
-| `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
+| `BERGWERK2`, `OCCUR`, `ANBAU`, `DISCOVER` (4), `KONTORID` (2), `DUERRE`, `LOCKED` (1, decoded: the island's lock byte, see below), `NAME`, `HIRSCH`, `EVENTINSEL`, `STAEDTE` | ? OQ-024 | P (sizes) |
+
+### LOCKED (decoded, task MAP-2)
+One byte, the island's persisted lock (AnnoWelt.dll island `+0xc4`, property `0x10`; loader `0x10089c0c`, serializer `0x10089d80`, which writes it only when non-zero). Present on 128 of the 1,133 islands: value 1 on 107 (8 scenario files), value 0 on the 21 `*_DUMMY.scp` templates; absent means 0. See `docs/re/ship-founding.md` section 11.5. The rebuild keeps the raw byte (`Island::lock`) and refuses a record that is not exactly one byte.
 
 ### Blocks
 `HEIGHT`, `GFXID`, `GELAENDE`, `PROD2`, `FLUESSE` start with a 6-byte block header:

@@ -487,7 +487,7 @@ TEST_CASE(
     "scenario link template: its LOCKED byte reaches the placed island (INSEL4 root record)") {
     // The dummy templates carry LOCKED 0 (21 of 21 in the installation); a template with another
     // byte keeps it in the placed island, and a template without the record has lock 0.
-    const auto place = [&](const Buf& locked_record) {
+    const auto attempt = [&](const Buf& locked_record) {
         Buf four;
         put16(four, 16);
         put16(four, 16);
@@ -513,10 +513,22 @@ TEST_CASE(
         REQUIRE(r.ok());
         const std::vector<anno::formats::Bytes> views = {file};
         auto e = sim::place_island_links(s, r.value(), views, *registry(), sim::SimConfig{});
-        REQUIRE_MESSAGE(!e.has_value(), (e ? *e : std::string()));
-        REQUIRE(s.spec.islands.size() == 1);
-        return s.spec.islands[0].lock;
+        return std::pair{e, s.spec.islands.empty() ? std::uint8_t{0} : s.spec.islands[0].lock};
     };
+    const auto place = [&](const Buf& locked_record) {
+        const auto [e, lock] = attempt(locked_record);
+        REQUIRE_MESSAGE(!e.has_value(), (e ? *e : std::string()));
+        return lock;
+    };
+    // A template whose LOCKED record is not one byte is refused, with the record's path.
+    for (const Buf& bad : {Buf{}, Buf{1, 0}}) {
+        const auto [e, lock] = attempt(chunk("LOCKED", bad));
+        static_cast<void>(lock);
+        REQUIRE(e.has_value());
+        CHECK_MESSAGE(e->find(".LOCKED: expected 1 byte, got " + std::to_string(bad.size())) !=
+                          std::string::npos,
+                      *e);
+    }
     CHECK(place({}) == 0);
     CHECK(place(chunk("LOCKED", Buf{0})) == 0);
     CHECK(place(chunk("LOCKED", Buf{1})) == 1);

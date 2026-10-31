@@ -1438,16 +1438,13 @@ TEST_CASE("scenario island lock: world state, hash, save and load, a failed load
         CHECK(loaded.value().state_hash() == w->state_hash());
         CHECK(loaded.value().save() == bytes);
     }
-    // A failed load returns no world and leaves an existing one as it was.
-    const std::uint64_t before = locked.state_hash();
+    // A failed load returns no world (World::load is static: it builds a new one or none).
     std::vector<std::uint8_t> bad = locked.save();
     bad.resize(bad.size() - 3);
     CHECK_FALSE(sim::World::load(bad, registry()).ok());
     bad = locked.save();
     bad[bad.size() / 2] ^= 0x5a;
     CHECK_FALSE(sim::World::load(bad, registry()).ok());
-    CHECK(locked.state_hash() == before);
-    CHECK(locked.islands()[7]->lock == 1);
     // The previous stream version (no lock byte) is refused, never reinterpreted.
     const std::vector<std::uint8_t> good = locked.save();
     const std::vector<std::uint8_t> marker = {

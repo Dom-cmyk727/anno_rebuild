@@ -384,3 +384,16 @@ A world without ships changes hash only because the version moved: with the vers
 layout, all 728 other tests, every golden and the scenario corpus reproduced their 116 values
 (cache/map2-gates2/b-control-version116-layout117.log, the one failure being the new test's own version check).
 Independent wire bytes: `tools/sim_stream.py --write-holds` writes `fixtures/synthetic/sim/ship_holds.txt`.
+
+## Island lock (task MAP-2, stream 118)
+The original island byte `+0xc4` (property `0x10`) is the persisted `LOCKED` record (docs/re/ship-founding.md
+section 11.5). `Island::lock` (`u8`) holds it raw; `Island::locked()` is `lock != 0`. It is read by
+`island_from_insel`, which serves scenario INSEL5 islands and the link templates (INSEL4/5), so it reaches
+the ship-start and fixed-map paths that place islands through `place_island_links`: no loader code of those
+paths changed. An island without the record keeps 0 (the 21 dummy templates carry an explicit 0, the 107
+locked islands of 8 scenario files carry 1). A later record overwrites an earlier one, as in the original;
+ADAPTATION: a record that is not exactly one byte is refused with its path (the original would write past the
+one-byte field; no shipped record is longer). `kStateHashVersion` 117 -> 118: `u8 lock` follows `climate`
+in every island's stream; an earlier state or save is refused by its version. Nothing in the engine sets the
+lock at run time and no placement rule reads it yet (founding's `IslandLocked` rejection stays a contract
+item); candidates, the active map and the manifests are unchanged.

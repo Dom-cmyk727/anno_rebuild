@@ -210,6 +210,26 @@ Ships per figure: 1501: 29, 1502: 64, 1503: 38, 1504: 42, 1505: 25, 1506: 61, 15
 
 `x`/`y` are kept as raw IEEE 754 bits in `crates/formats` (byte-identical round trip). They are file data, not sim state; the simulation converts them to its fixed-point positions.
 
+### Unit cargo (`WAREN`)
+
+An array of eight-byte cargo-hold entries, in hold order. D: `AnnoWelt.dll`
+reader `0x10031870`, `WAREN` branch `0x10031902`–`0x100319e1`; writer
+`0x10031ba2`–`0x10031c78`. Details: `docs/re/annoscene.md` §7.1 (2026-10-31).
+
+| Entry offset | Type | Meaning |
+|---|---|---|
+| 0 | u8 | Goods id, remapped through the scenario's goods table; 0 is empty |
+| 1 | u8 | Not used by this load; zero in the endless records checked |
+| 2 | u16 | Whole tons; reader shifts left eight and clamps to type capacity |
+| 4 | 4 bytes | Not used by this load; zero in the endless records checked |
+
+The writer emits one entry per type-defined hold, including empty holds.
+The reader iterates `payload_length / 8`, skipping missing holds and unmapped
+goods. P: 73 records / 263 slots across all twelve endless scenarios agree
+with the figure types' hold counts and capacities. This is not a claim that
+every unit cargo record in all fifty scenarios was checked in this audit.
+The original format's byte-sized goods ids are not a new engine limit.
+
 ## Island links (`INSELLNK`)
 
 | Offset | Size | Type | Name | Meaning | Evidence |

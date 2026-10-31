@@ -5,6 +5,13 @@ The original's endless lane is twelve scenario files, nine in
 page records what those files hold. It copies no sentence from a description
 page and no byte from a scenario.
 
+**Follow-up, 2026-10-31:** the original T36 table below left ship `WAREN`
+unread. The cargo reader/writer is now traced (`sze.md`, Unit cargo;
+`docs/re/annoscene.md` §7.1). The complete ship, scout, money and settlement
+comparison is in
+[`endless-start-conditions.md`](../research/endless-start-conditions.md).
+Its cargo findings supersede the table's historical "WAREN unread" labels.
+
 ## How each value was read
 
 `anno-dump sze` (the worktree build of the same sources, and the main build at
@@ -52,8 +59,9 @@ of the same files, with the layouts already specified:
 - `WARETYPE` is the same 56 entries on all twelve (sha256 prefix
   `c28dc27a28c4`). City stock is `STADT2` / `WARE`: u16 goods number, u16
   tons, four unread bytes. The tons below are that u16, not shifted. Ship and
-  soldier `WAREN` occur (payload sizes 24, 32 or 64) and stay unread
-  (OQ-027). No separate human start-goods record was found.
+  soldier `WAREN` were left unread in this T36 pass (OQ-027); see the follow-up
+  above for the decoded starting ship cargo and embarked crew. No separate
+  human start-goods record was found.
 - A pirate's state-series `COMP` is `TYP=<n>` (`annoscene.md` §6, column 0,
   range 0..7). The number is recorded. It is not the page's three pirate
   words (OQ-222).

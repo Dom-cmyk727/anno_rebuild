@@ -137,6 +137,34 @@ Reader `0x1001dc7a` (`SOLDAT`) / `0x1001df31` (`SCHIFF`), writer around `0x1001f
 - **`attr` = figure property `0x16`**, stored at figure `+0x0E` (`SetProperty` chain `0x10037e10` → `0x10049ad0` → `0x10035ca0`; getter `0x10034930`). **Confirmed.** At least one figure routine (`0x1004b360`, read at `0x1004b42d`) uses `+0x0E` as a facing in 45° steps: it rotates an offset by `sin`/`cos` of `45° · attr` from the table at `0x100c3148` (`0, 0.707, 1, 0.707, 0, −0.707, −1, −0.707`). So for soldiers (0–7) `attr` is the facing, **likely**; for ships (0–14) a 16-step facing is a **guess** (OQ-027 d).
 - Figure property `0xB` is the figure's colour (`+0x90`, `0x10049b18`); a player pushes its colour to all its objects (`0x1001cdf0`). **Confirmed.**
 
+### 7.1 Unit cargo (`WAREN`, verified 2026-10-31)
+
+**Confirmed by disassembly and an endless-scenario corpus check.** Ship vtable
+`0x100c4da4`, slot `+0x6c`, points to the unit reader `0x10031870`. Its
+`WAREN` branch (`0x10031902`, string `0x100dce08`) divides the payload length
+by eight (`0x1003192b`) and reads one eight-byte entry per indexed hold. Unit
+slot `+0x84(index)` supplies the hold; a missing hold is skipped.
+
+Entry byte 0 is the file goods id: `0x10031971`–`0x10031981` mask with `0xff`
+and remap it through the load context. An unmapped goods id is skipped.
+The u16 at entry +2 is whole tons (`0x10031997`–`0x100319a9`), shifted left
+eight and clamped to the type's per-hold capacity (type slot `+0x84`) before
+the hold amount setter is called (`0x100319ac`–`0x100319c9`). Byte +1 and
+bytes +4..7 do not contribute to this load. The writer
+`0x10031ba2`–`0x10031c78` gets the type's hold count, writes eight bytes per
+hold, the goods byte at +0 and the internal quantity divided by 256 as u16
+at +2.
+
+P: across the twelve endless scenarios, all 73 ship/embarked-crew `WAREN`
+records match the figure type's hold count; all 263 slots fit its capacity.
+Unused bytes are zero. The standard human expedition is figure 1502 with
+50 t wood, 10 t food and two tools holds of 50 + 30 t; preset `01` instead
+has 50 + 50 t tools. Figure 717 (scout) and its nested figure 718 (donkey)
+are aboard every human start. Exact preset exceptions, money, city counts,
+source hashes and reproduction are in
+[`endless-start-conditions.md`](../research/endless-start-conditions.md).
+This confirms cargo amounts, not ship movement or the founding transaction.
+
 ## 8. Nested prefixes (`AnnoWelt.dll`)
 
 - **`STADT2`** (6 bytes; writer `0x1001f3fd`–`0x1001f4bc`, reader `0x1001e294`): `u8` city number on its island, `u8` 0, `u16 x`, `u16 y` — a tile of the city (the writer takes the position of one of the city's buildings). The reader finds the island at (x, y) (world slot `+0x8C`; none → record skipped) and gets or creates city number `byte 0` of this player there (island slot `+0xF4`). **Confirmed.** P: all 272 positions lie on an island; numbers are distinct among the cities of one island.

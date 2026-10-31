@@ -236,7 +236,7 @@ struct Loop {
 } // namespace
 
 TEST_CASE("play follow: a turn in flight when the window pauses publishes after the window went "
-          "idle; the batch is shown while paused, the sim stays paused, and the window idles "
+          "idle, and the batch is shown while paused, the sim stays paused and the window idles "
           "again (game files)" *
           doctest::test_suite("play_follow")) {
     auto p = load_play();

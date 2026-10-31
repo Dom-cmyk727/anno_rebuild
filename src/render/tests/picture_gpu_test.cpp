@@ -37,6 +37,7 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/picture_trace.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/play_follow.hpp>
 #include <anno/app/scene_picture.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/gpu.hpp>
@@ -1140,4 +1141,460 @@ TEST_CASE("picture GPU: a failure after the chunk workers and the builder are he
           "gates before their owners join, and still releases every generation" *
           doctest::test_suite("picture_gpu")) {
     teardown_case(true);
+}
+
+// ---- The interactive window's constrained path (round eb, Package 3) ----------------------------
+//
+// The cases above upload every chunk in the frame it is received and never dissolve. The viewer's
+// limits (GpuLimits::interactive) bound uploads per frame and per millisecond (a chunk then takes
+// several frames, a plane at a time), show stand-ins and dissolve chunks in over them. The states
+// of an affected key, kept apart: CPU-ready (cached, not stale), GPU-pending (CPU-ready but the
+// compositor's copy is older, staging or dissolving) and GPU-usable (GpuFrame::chunk_state: the
+// copy's serial is the CPU chunk's, not fading).
+
+namespace {
+
+bool gpu_usable(const gpu::GpuFrame& f, const render::FrameRenderer& frames, const ChunkKey& k) {
+    if (!fresh(frames, k)) {
+        return false;
+    }
+    const auto st = f.chunk_state(k);
+    return st.serial == frames.chunk(k)->serial && !st.fading;
+}
+
+/// A compositor with the given upload limits and dissolve, on a fade clock the case steps by hand.
+std::unique_ptr<gpu::GpuFrame> constrained_frame(const gpu::Context& ctx, std::size_t per_frame,
+                                                 double budget_ms, bool stand_ins,
+                                                 std::uint64_t fade_ms,
+                                                 const std::shared_ptr<std::uint64_t>& clock) {
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = per_frame;
+    limits.upload_budget_ms = budget_ms;
+    limits.stand_ins = stand_ins;
+    limits.chunk_fade_ms = fade_ms;
+    auto made = gpu::GpuFrame::create(ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    auto f = std::move(made).value();
+    f->set_fade_clock([clock] { return *clock; });
+    return f;
+}
+
+/// What a compositor of its own, with no limits, shows for `scene` at `view` (the GPU oracle).
+std::vector<std::uint8_t> gpu_fresh(const gpu::Context& ctx, const SceneHandle& scene,
+                                    render::Rect view, std::size_t group) {
+    Gpu other{make_frame(ctx), {}};
+    render::FrameRenderer own(4, false);
+    for (int round = 0; round < 3; ++round) {
+        other.draw(own, scene, view, group);
+    }
+    return other.pixels(view);
+}
+
+/// The window's paused loop on the GPU path, without a window: a first frame (the viewer marks
+/// itself dirty when the view or the state changes), then a frame while the production FrameDemand
+/// (play_follow.hpp) wants one. Returns the frames drawn; `each` sees every frame.
+template <class Each>
+std::size_t paused_frames(Gpu& g, render::FrameRenderer& frames, app::ScenePicture& picture,
+                          render::Rect view, std::size_t group, Each each) {
+    std::size_t n = 0;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(120);
+    for (;;) {
+        app::FrameDemand d;
+        d.dirty = n == 0; // the first frame after a change of view or state, as the viewer's
+        d.paused = true;
+        d.chunks_busy = frames.busy();
+        d.play_work = picture.pending() > 0;
+        d.gpu_work = g.frame->work_pending();
+        if (!d.draw()) {
+            return n;
+        }
+        REQUIRE(std::chrono::steady_clock::now() < until);
+        picture.commit(frames);
+        g.draw(frames, picture.scene(), view, group);
+        ++n;
+        each(n);
+        std::this_thread::yield();
+    }
+}
+
+/// The pixels of chunk `k`'s part of `view` in a read-back of `view`.
+std::vector<std::uint8_t> region(const std::vector<std::uint8_t>& px, render::Rect view,
+                                 const ChunkKey& k) {
+    const render::Rect c = render::chunk_rect(std::get<1>(k), std::get<2>(k));
+    const int x0 = std::max(view.x, c.x), x1 = std::min(view.x + view.w, c.x + c.w);
+    const int y0 = std::max(view.y, c.y), y1 = std::min(view.y + view.h, c.y + c.h);
+    std::vector<std::uint8_t> out;
+    for (int y = y0; y < y1; ++y) {
+        const auto row = static_cast<std::size_t>(y - view.y) * static_cast<std::size_t>(view.w);
+        const auto from = (row + static_cast<std::size_t>(x0 - view.x)) * 4;
+        const auto to = (row + static_cast<std::size_t>(x1 - view.x)) * 4;
+        out.insert(out.end(), px.begin() + static_cast<std::ptrdiff_t>(from),
+                   px.begin() + static_cast<std::ptrdiff_t>(to));
+    }
+    return out;
+}
+
+/// Two accepted builds of city 0 in one commit and their covering group-2 view (3 affected keys
+/// in the first case above), on a fresh workload.
+struct TwoBuilds {
+    std::unique_ptr<app::LegalWorkload> w;
+    std::vector<app::SceneBuilding> state0, state1;
+    std::vector<app::LegalEdit> edits;
+    SceneHandle base;
+    render::Rect view{};
+};
+TwoBuilds two_builds(const fs::path& dir) {
+    TwoBuilds t;
+    t.w = workload(dir);
+    t.state0 = t.w->buildings();
+    t.edits = {t.w->build_one(0), t.w->build_one(0)};
+    for (const auto& e : t.edits) {
+        REQUIRE_MESSAGE(e.accepted, e.reason);
+        REQUIRE(e.batch != nullptr);
+    }
+    t.state1 = t.w->buildings();
+    t.base = scene_with(dir, t.w->load(), t.state0);
+    REQUIRE(t.base->units.empty());
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    for (std::size_t i = 0; i < t.edits.size(); ++i) {
+        const render::Rect r = view_at(*t.base, t.edits[i].island, t.edits[i].x, t.edits[i].y);
+        const int cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+        x0 = i == 0 ? cx : std::min(x0, cx);
+        y0 = i == 0 ? cy : std::min(y0, cy);
+        x1 = i == 0 ? cx : std::max(x1, cx);
+        y1 = i == 0 ? cy : std::max(y1, cy);
+    }
+    t.view = render::Rect{x0 - 640, y0 - 512, x1 - x0 + 1280, y1 - y0 + 1024};
+    return t;
+}
+
+std::vector<std::shared_ptr<const app::BuildingBatch>> batches_of(const TwoBuilds& t) {
+    std::vector<std::shared_ptr<const app::BuildingBatch>> b;
+    for (const auto& e : t.edits) {
+        b.push_back(e.batch);
+    }
+    return b;
+}
+
+/// The batch that removes again what `t`'s builds added (a demolish of them, as the sim
+/// publishes it).
+std::shared_ptr<const app::BuildingBatch> undo_of(const TwoBuilds& t) {
+    auto undo = std::make_shared<app::BuildingBatch>();
+    undo->turn = t.edits.back().batch->turn + 1;
+    for (const auto& e : t.edits) {
+        for (const app::BuildingDelta& d : e.batch->deltas) {
+            REQUIRE(d.kind == app::BuildingDelta::Kind::Added);
+            undo->deltas.push_back({app::BuildingDelta::Kind::Removed, d.building});
+        }
+    }
+    return undo;
+}
+
+} // namespace
+
+TEST_CASE(
+    "picture GPU, constrained: one upload per frame finishes a multi-chunk edit while paused, "
+    "and the paused window idles only once every affected key is GPU-usable" *
+    doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    TwoBuilds t = two_builds(*dir);
+    const auto clock = std::make_shared<std::uint64_t>(0);
+    // One chunk per frame, and at most 0.05 ms of plane uploads per frame (at least one plane):
+    // a chunk takes several frames.
+    Gpu g{constrained_frame(*ctx, 1, 0.05, false, 0, clock), {}};
+    // Chunks are built in the frame (no workers): the CPU is never busy, so the uploads are the
+    // only work left once a frame has rebuilt the affected keys, and only the compositor's pending
+    // work keeps the paused window drawing (FrameDemand::gpu_work; without it the window would idle
+    // with the edit not on the GPU).
+    render::FrameRenderer frames(2, false);
+    app::ScenePicture picture(
+        t.base, t.state0,
+        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
+    const auto visible = visible_keys(t.view, 2);
+    paused_frames(g, frames, picture, t.view, 2, [](std::size_t) {});
+    for (const ChunkKey& k : visible) {
+        REQUIRE(gpu_usable(*g.frame, frames, k));
+    }
+    picture.apply(batches_of(t));
+    REQUIRE(picture.commit(frames) == 0); // the build is still running: nothing to commit yet
+    std::vector<ChunkKey> affected;
+    std::size_t cpu_ready_gpu_pending = 0, staging_seen = 0;
+    const std::size_t drawn = paused_frames(g, frames, picture, t.view, 2, [&](std::size_t) {
+        if (affected.empty() && picture.scene()->generation() == 1) {
+            affected = affected_visible(picture, t.view, 2);
+        }
+        for (const ChunkKey& k : affected) {
+            if (fresh(frames, k) && frames.chunk(k)->generation == 1 &&
+                !gpu_usable(*g.frame, frames, k)) {
+                ++cpu_ready_gpu_pending; // CPU readiness is not GPU readiness
+                CHECK(g.frame->work_pending());
+            }
+            staging_seen += g.frame->chunk_state(k).staging ? 1U : 0U;
+        }
+    });
+    REQUIRE(affected.size() >= 2);
+    MESSAGE("frames drawn while paused: " << drawn << "; frames with a CPU-ready, GPU-pending key: "
+                                          << cpu_ready_gpu_pending << "; staging observations "
+                                          << staging_seen);
+    CHECK(cpu_ready_gpu_pending > 0);
+    CHECK(staging_seen > 0);
+    // Idle: every affected key is GPU-usable, and the output is the fresh scene's, exactly.
+    for (const ChunkKey& k : affected) {
+        CHECK(gpu_usable(*g.frame, frames, k));
+        CHECK(frames.chunk(k)->generation == 1);
+    }
+    CHECK(!g.frame->work_pending());
+    const SceneHandle oracle = scene_with(*dir, t.w->load(), t.state1);
+    CHECK(g.pixels(t.view) == gpu_fresh(*ctx, oracle, t.view, 2));
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE("picture GPU, constrained: an edit published while uploads are outstanding ends on the "
+          "newest state, every chunk shown meanwhile is one whole state, and nothing replaced is "
+          "retained" *
+          doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    TwoBuilds t = two_builds(*dir);
+    const auto clock = std::make_shared<std::uint64_t>(0);
+    Gpu g{constrained_frame(*ctx, 1, 0.05, false, 0, clock), {}};
+    render::FrameRenderer frames(2, false);
+    frames.set_workers(std::make_unique<render::ChunkWorkers>(2));
+    app::ScenePicture picture(
+        t.base, t.state0,
+        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
+    paused_frames(g, frames, picture, t.view, 2, [](std::size_t) {});
+    // The references: the GPU oracle of the state before (and after: the undo returns to it) and
+    // of the intermediate state.
+    const auto ref0 = gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state0), t.view, 2);
+    const auto ref1 = gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state1), t.view, 2);
+    CHECK(g.pixels(t.view) == ref0);
+    picture.apply(batches_of(t));
+    picture.wait_idle();
+    REQUIRE(picture.commit(frames) == 1);
+    const auto affected = affected_visible(picture, t.view, 2);
+    REQUIRE(affected.size() >= 2);
+    std::weak_ptr<const render::Scene> gen1 = picture.scene();
+    std::vector<std::weak_ptr<const render::Chunk>> gen1_chunks;
+    // Draw until a generation-1 chunk is CPU-ready while its upload is still outstanding.
+    bool outstanding = false;
+    for (int f = 0; f < 2000 && !outstanding; ++f) {
+        g.draw(frames, picture.scene(), t.view, 2);
+        for (const ChunkKey& k : affected) {
+            if (fresh(frames, k) && frames.chunk(k)->generation == 1 &&
+                !gpu_usable(*g.frame, frames, k)) {
+                outstanding = true;
+            }
+        }
+        std::this_thread::yield();
+    }
+    REQUIRE(outstanding);
+    for (const ChunkKey& k : affected) {
+        if (const auto c = frames.chunk_shared(k); c && c->generation == 1) {
+            gen1_chunks.push_back(c);
+        }
+    }
+    // The undo arrives now and commits generation 2 over the same keys.
+    picture.apply({undo_of(t)});
+    picture.wait_idle();
+    REQUIRE(eventually([&] { return picture.commit(frames) == 1 || picture.pending() == 0; }));
+    REQUIRE(picture.scene()->generation() == 2);
+    std::size_t checked = 0;
+    paused_frames(g, frames, picture, t.view, 2, [&](std::size_t) {
+        const auto px = g.pixels(t.view);
+        for (const ChunkKey& k : affected) {
+            const auto r = region(px, t.view, k);
+            // Whole states only: the compositor swaps a chunk when all its planes are made.
+            CHECK((r == region(ref0, t.view, k) || r == region(ref1, t.view, k)));
+            ++checked;
+        }
+    });
+    MESSAGE("chunk regions checked during the transition: " << checked);
+    for (const ChunkKey& k : affected) {
+        CHECK(gpu_usable(*g.frame, frames, k));
+        CHECK(frames.chunk(k)->generation == 2);
+    }
+    CHECK(g.pixels(t.view) == ref0);
+    // Retained: the replaced generation and its CPU chunks are freed (the reaper and the
+    // reclaimer run on their own threads).
+    REQUIRE(eventually([&] {
+        g.draw(frames, picture.scene(), t.view, 2);
+        return gen1.expired() && std::all_of(gen1_chunks.begin(), gen1_chunks.end(),
+                                             [](const auto& c) { return c.expired(); });
+    }));
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE(
+    "picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, "
+    "a chunk that replaces its stand-in dissolves in, and both end on the fresh scene" *
+    doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    TwoBuilds t = two_builds(*dir);
+    const auto clock = std::make_shared<std::uint64_t>(1000);
+    constexpr std::uint64_t kFade = 150;
+    // The viewer's interactive configuration (stand-ins, 150 ms dissolve, 1 ms upload budget),
+    // with one upload per frame so that transitions last several frames.
+    Gpu g{constrained_frame(*ctx, 1, 1.0, true, kFade, clock), {}};
+    render::FrameRenderer frames(2, false);
+    frames.set_workers(std::make_unique<render::ChunkWorkers>(2));
+    app::ScenePicture picture(
+        t.base, t.state0,
+        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
+    // The first frames show stand-ins (nothing is built at group 1 yet): every chunk replaces one
+    // and dissolves in. The clock does not move: a dissolving chunk is not GPU-usable yet.
+    const auto visible = visible_keys(t.view, 2);
+    std::size_t fading_seen = 0;
+    for (int f = 0; f < 4000; ++f) {
+        g.draw(frames, picture.scene(), t.view, 2);
+        std::size_t usable = 0;
+        for (const ChunkKey& k : visible) {
+            const auto st = g.frame->chunk_state(k);
+            fading_seen += st.fading ? 1U : 0U;
+            if (st.fading) {
+                CHECK(!gpu_usable(*g.frame, frames, k));
+            }
+            usable += fresh(frames, k) && st.serial == frames.chunk(k)->serial ? 1U : 0U;
+        }
+        if (usable == visible.size() && !frames.busy()) {
+            break;
+        }
+        std::this_thread::yield();
+    }
+    CHECK(fading_seen > 0);
+    CHECK(g.frame->work_pending()); // the dissolves wait for the clock
+    *clock += kFade;                // the dissolves end
+    paused_frames(g, frames, picture, t.view, 2, [](std::size_t) {});
+    const auto ref0 = gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state0), t.view, 2);
+    const auto ref1 = gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state1), t.view, 2);
+    CHECK(g.pixels(t.view) == ref0);
+    // The edit: rebuilt chunks replace real copies, so they swap whole, without a dissolve.
+    picture.apply(batches_of(t));
+    picture.wait_idle();
+    REQUIRE(picture.commit(frames) == 1);
+    const auto affected = affected_visible(picture, t.view, 2);
+    REQUIRE(affected.size() >= 2);
+    std::size_t mixed_frames = 0;
+    paused_frames(g, frames, picture, t.view, 2, [&](std::size_t) {
+        const auto px = g.pixels(t.view);
+        std::size_t old_n = 0, new_n = 0;
+        for (const ChunkKey& k : affected) {
+            CHECK(!g.frame->chunk_state(k).fading);
+            const auto r = region(px, t.view, k);
+            const bool old_state = r == region(ref0, t.view, k);
+            const bool new_state = r == region(ref1, t.view, k);
+            CHECK((old_state || new_state));
+            old_n += old_state && !new_state ? 1U : 0U;
+            new_n += new_state && !old_state ? 1U : 0U;
+        }
+        // Old and new chunks side by side across keys: allowed during a transition (contract,
+        // boundary 4); within a chunk it is one state.
+        mixed_frames += old_n > 0 && new_n > 0 ? 1U : 0U;
+    });
+    MESSAGE("frames with old and new chunks side by side: " << mixed_frames);
+    CHECK(g.pixels(t.view) == ref1);
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE(
+    "picture GPU, constrained: leaving the view with uploads outstanding and returning ends on "
+    "the fresh scene, and closing with uploads outstanding releases the chunks and the "
+    "generations" *
+    doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    TwoBuilds t = two_builds(*dir);
+    const auto clock = std::make_shared<std::uint64_t>(0);
+    auto g = std::make_unique<Gpu>(Gpu{constrained_frame(*ctx, 1, 0.05, false, 0, clock), {}});
+    auto frames = std::make_unique<render::FrameRenderer>(2, false);
+    frames->set_workers(std::make_unique<render::ChunkWorkers>(2));
+    app::ScenePicture picture(
+        t.base, t.state0,
+        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
+    const render::Rect away = view_at(*t.base, t.w->cities().at(1).island_slot, 20, 20);
+    paused_frames(*g, *frames, picture, t.view, 2, [](std::size_t) {});
+    picture.apply(batches_of(t));
+    picture.wait_idle();
+    REQUIRE(picture.commit(*frames) == 1);
+    const auto affected = affected_visible(picture, t.view, 2);
+    // A few frames: some generation-1 chunks are built and their uploads are outstanding.
+    bool outstanding = false;
+    for (int f = 0; f < 2000 && !outstanding; ++f) {
+        g->draw(*frames, picture.scene(), t.view, 2);
+        for (const ChunkKey& k : affected) {
+            outstanding = outstanding || (fresh(*frames, k) && frames->chunk(k)->generation == 1 &&
+                                          !gpu_usable(*g->frame, *frames, k));
+        }
+        std::this_thread::yield();
+    }
+    REQUIRE(outstanding);
+    // Away: the affected keys are not visible; their uploads in progress are dropped.
+    paused_frames(*g, *frames, picture, away, 2, [](std::size_t) {});
+    for (const ChunkKey& k : affected) {
+        CHECK(!g->frame->chunk_state(k).staging);
+    }
+    // Back: everything is uploaded again and equals the fresh scene.
+    paused_frames(*g, *frames, picture, t.view, 2, [](std::size_t) {});
+    for (const ChunkKey& k : affected) {
+        CHECK(gpu_usable(*g->frame, *frames, k));
+    }
+    const SceneHandle oracle = scene_with(*dir, t.w->load(), t.state1);
+    CHECK(g->pixels(t.view) == gpu_fresh(*ctx, oracle, t.view, 2));
+    // Close with uploads outstanding: an undo commits generation 2 and its first chunk uploads
+    // start; then the compositor and the renderer go (the viewer's order) without draining.
+    picture.apply({undo_of(t)});
+    picture.wait_idle();
+    REQUIRE(eventually([&] { return picture.commit(*frames) == 1 || picture.pending() == 0; }));
+    std::weak_ptr<const render::Scene> gen2 = picture.scene();
+    std::vector<std::weak_ptr<const render::Chunk>> held;
+    bool staging = false;
+    for (int f = 0; f < 2000 && !staging; ++f) {
+        g->draw(*frames, picture.scene(), t.view, 2);
+        for (const ChunkKey& k : affected) {
+            if (g->frame->chunk_state(k).staging) {
+                staging = true;
+                held.push_back(frames->chunk_shared(k));
+            }
+        }
+        std::this_thread::yield();
+    }
+    REQUIRE(staging);
+    CHECK(g->frame->work_pending());
+    frames.reset(); // the chunk workers are joined; the cache lets go
+    g->frame->wait();
+    g.reset(); // the compositor goes with an upload in progress
+    for (const auto& c : held) {
+        CHECK(c.expired()); // the upload's hold went with the compositor
+    }
+    CHECK(!gen2.expired()); // the bridge still holds its current generation
 }

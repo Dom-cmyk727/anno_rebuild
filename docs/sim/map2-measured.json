@@ -1,0 +1,2754 @@
+{
+  "bands_1431": [
+    {
+      "climate": 0,
+      "name": "polar",
+      "y0": 16,
+      "y1_exclusive": 296
+    },
+    {
+      "climate": 1,
+      "name": "tundra",
+      "y0": 120,
+      "y1_exclusive": 488
+    },
+    {
+      "climate": 2,
+      "name": "nord",
+      "y0": 40,
+      "y1_exclusive": 872
+    },
+    {
+      "climate": 3,
+      "name": "praerie",
+      "y0": 160,
+      "y1_exclusive": 1104
+    },
+    {
+      "climate": 4,
+      "name": "dschungel",
+      "y0": 552,
+      "y1_exclusive": 1368
+    },
+    {
+      "climate": 5,
+      "name": "steppe",
+      "y0": 232,
+      "y1_exclusive": 1336
+    }
+  ],
+  "dschungel_256": {
+    "bug": 0,
+    "candidate_pool": 10,
+    "dummy": 1,
+    "eligible_scan": 18,
+    "files": [
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0001_0B.scp",
+        "h": 256,
+        "height_gt_0": 24969,
+        "height_sha256": "5e66879d5064440168183e37ff826677c197b7a22e08252fd68b35c9dde47ea8",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0001_0B.SCP",
+        "land": 22527,
+        "land_sha256": "d37caf095570389478865a3529efec7711ac801c97e37b6312a461a61810ddff",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0002_4B.scp",
+        "h": 256,
+        "height_gt_0": 30752,
+        "height_sha256": "286a4ac2e253fc3dbeb751470ac883ee02d6a96ba442d122ec415136b8573b06",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0002_4B.SCP",
+        "land": 28126,
+        "land_sha256": "5b4e6a8b39b27093b4c69c8bf78367dca48888ecf00a02dff790c0b5f377dc80",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0003_4B.scp",
+        "h": 256,
+        "height_gt_0": 28818,
+        "height_sha256": "37281f1ac634ae606ec39ecc0bc27b0e7336602827047bb980567a40ca138779",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0003_4B.SCP",
+        "land": 26648,
+        "land_sha256": "7e136c0a81d2bf9e0e98ee1285284e05132895ebcab31872cb8f61a23c8b3abc",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0004_4B.scp",
+        "h": 256,
+        "height_gt_0": 25086,
+        "height_sha256": "cc9baf9618a29ab15ddab0e159ecf89c2c108b3f5a3d93489940a534de909883",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0004_4B.SCP",
+        "land": 23124,
+        "land_sha256": "e4253228da776c5fa190ce5d34de00d1345fac9a2eddb4ca6aa8057bdee9da00",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0005_5B.scp",
+        "h": 256,
+        "height_gt_0": 31376,
+        "height_sha256": "bfdfafaf6b9c18cf59b634a7c619a474a875e170c80a2271245fdf4b4fc98725",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0005_5B.SCP",
+        "land": 29033,
+        "land_sha256": "be8ece488635c3586d4d2688477018ad7e1ee4d280719b8d9e95a4a9d291f41d",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0006_3B.scp",
+        "h": 256,
+        "height_gt_0": 31199,
+        "height_sha256": "d7fcc71d25efbf7c2d85e7ba335a8d94092c39c8fc14c85e7221fd108150ae65",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0006_3B.SCP",
+        "land": 29022,
+        "land_sha256": "4a8d8c4a51d2ca970cfc1e029ea3ecdae4eea229ae9066c20e39121abdb35e34",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0010_6B.scp",
+        "h": 256,
+        "height_gt_0": 29956,
+        "height_sha256": "b14354e5e728944c04d41c462b7e136cbfa16c8a76dd17e3c26bfe0638ac7433",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0010_6B.SCP",
+        "land": 27638,
+        "land_sha256": "e104311a05e25a738ec07e5639362d0e31ef228d25de71ba0cdb473e7c769690",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0011_0B_Azteken.scp",
+        "h": 256,
+        "height_gt_0": 24969,
+        "height_sha256": "5e66879d5064440168183e37ff826677c197b7a22e08252fd68b35c9dde47ea8",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0011_0B_AZTEKEN.SCP",
+        "land": 22527,
+        "land_sha256": "d37caf095570389478865a3529efec7711ac801c97e37b6312a461a61810ddff",
+        "parse": "ok",
+        "people": "AZTEKEN",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0012_6B_Afrika.scp",
+        "h": 256,
+        "height_gt_0": 29956,
+        "height_sha256": "b14354e5e728944c04d41c462b7e136cbfa16c8a76dd17e3c26bfe0638ac7433",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0012_6B_AFRIKA.SCP",
+        "land": 27638,
+        "land_sha256": "e104311a05e25a738ec07e5639362d0e31ef228d25de71ba0cdb473e7c769690",
+        "parse": "ok",
+        "people": "AFRIKA",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0013_4B_Azteken.scp",
+        "h": 256,
+        "height_gt_0": 28818,
+        "height_sha256": "37281f1ac634ae606ec39ecc0bc27b0e7336602827047bb980567a40ca138779",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0013_4B_AZTEKEN.SCP",
+        "land": 26648,
+        "land_sha256": "7e136c0a81d2bf9e0e98ee1285284e05132895ebcab31872cb8f61a23c8b3abc",
+        "parse": "ok",
+        "people": "AZTEKEN",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0014_4B_Azteken.scp",
+        "h": 256,
+        "height_gt_0": 25086,
+        "height_sha256": "cc9baf9618a29ab15ddab0e159ecf89c2c108b3f5a3d93489940a534de909883",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0014_4B_AZTEKEN.SCP",
+        "land": 23124,
+        "land_sha256": "e4253228da776c5fa190ce5d34de00d1345fac9a2eddb4ca6aa8057bdee9da00",
+        "parse": "ok",
+        "people": "AZTEKEN",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0015_5B_Afrika.scp",
+        "h": 256,
+        "height_gt_0": 27909,
+        "height_sha256": "24cd512db977875f9b1283189a1fdd490455cef144aa5d62d4a20ea0e534b255",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0015_5B_AFRIKA.SCP",
+        "land": 26396,
+        "land_sha256": "dfdc1dc1168201b4a623fb2335bbdc663061785e2a36a10e470a2324ba37baba",
+        "parse": "ok",
+        "people": "AFRIKA",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0016_3B_Suedsee.scp",
+        "h": 256,
+        "height_gt_0": 31199,
+        "height_sha256": "d7fcc71d25efbf7c2d85e7ba335a8d94092c39c8fc14c85e7221fd108150ae65",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0016_3B_SUEDSEE.SCP",
+        "land": 29022,
+        "land_sha256": "4a8d8c4a51d2ca970cfc1e029ea3ecdae4eea229ae9066c20e39121abdb35e34",
+        "parse": "ok",
+        "people": "SUEDSEE",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0018_6B_Azteken.scp",
+        "h": 256,
+        "height_gt_0": 31199,
+        "height_sha256": "d7fcc71d25efbf7c2d85e7ba335a8d94092c39c8fc14c85e7221fd108150ae65",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0018_6B_AZTEKEN.SCP",
+        "land": 29022,
+        "land_sha256": "4a8d8c4a51d2ca970cfc1e029ea3ecdae4eea229ae9066c20e39121abdb35e34",
+        "parse": "ok",
+        "people": "AZTEKEN",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0026_4B_Azteken.scp",
+        "h": 256,
+        "height_gt_0": 29511,
+        "height_sha256": "513335e7a4a0f5b8de199afee6b8b5048fd2d8821663b49f5b72a2e52f29d1fd",
+        "info0": 4,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0026_4B_AZTEKEN.SCP",
+        "land": 27052,
+        "land_sha256": "dbe4eb49808f1371ff9932d3f8b5b1a35c1983b06a495724610c6fde9eb8469a",
+        "parse": "ok",
+        "people": "AZTEKEN",
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0031_5B.scp",
+        "h": 256,
+        "height_gt_0": 33370,
+        "height_sha256": "ca09e328769702f45035b40a3ea20f9bdf9f289f6500bdf2c043e7e7bfce6be2",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0031_5B.SCP",
+        "land": 31043,
+        "land_sha256": "f7d13b34b9d2dab4f4b94885045e4b6b110ae5e41e67edad16d30c5d0abaa633",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0032_2B.scp",
+        "h": 256,
+        "height_gt_0": 22660,
+        "height_sha256": "83bb2eccd913a8ba77bc235df10f0b4205e03f76fc5321aebf1d27c7c82941b9",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0032_2B.SCP",
+        "land": 22660,
+        "land_sha256": "186e21ae39858766bc05b713088acc1a38018ac58eab59ccfdc981412edeaeee",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "D_256x256_0045_5B.scp",
+        "h": 256,
+        "height_gt_0": 43619,
+        "height_sha256": "9d530047f0fe1381eecdbcaafe5a0141381d6fbe9d28fe7dc229b31eae43cb04",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_0045_5B.SCP",
+        "land": 39912,
+        "land_sha256": "98943cc81af5a23054bdb39bdc62904cdc9a7075e98d8c54c75cac341afffe8d",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": true,
+        "eligible_scan": false,
+        "file": "D_256x256_DUMMY.scp",
+        "h": 256,
+        "height_gt_0": 65536,
+        "height_sha256": "17f2653e55e1f7012fa0c59134966ba25ff117539072b3c95e22bcac4ba8f824",
+        "info0": 4,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "DSCHUNGEL/D_256X256_DUMMY.SCP",
+        "land": 65536,
+        "land_sha256": "916b144867c340614f515c7b0e5415c74832d899c05264ded2a277a6e81d81ff",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 4,
+        "w": 256
+      }
+    ],
+    "groups": {
+      "best": [
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0005_5B.SCP",
+            "DSCHUNGEL/D_256X256_0006_3B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP"
+          ],
+          "lands": [
+            28126,
+            26648,
+            29033,
+            29022,
+            27638
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 52
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0005_5B.SCP",
+            "DSCHUNGEL/D_256X256_0006_3B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "DSCHUNGEL/D_256X256_0031_5B.SCP"
+          ],
+          "lands": [
+            28126,
+            29033,
+            29022,
+            27638,
+            31043
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 72
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0005_5B.SCP",
+            "DSCHUNGEL/D_256X256_0006_3B.SCP",
+            "DSCHUNGEL/D_256X256_0031_5B.SCP"
+          ],
+          "lands": [
+            28126,
+            26648,
+            29033,
+            29022,
+            31043
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 79
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0005_5B.SCP",
+            "DSCHUNGEL/D_256X256_0006_3B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "DSCHUNGEL/D_256X256_0031_5B.SCP"
+          ],
+          "lands": [
+            26648,
+            29033,
+            29022,
+            27638,
+            31043
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 83
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0005_5B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "DSCHUNGEL/D_256X256_0031_5B.SCP"
+          ],
+          "lands": [
+            28126,
+            26648,
+            29033,
+            27638,
+            31043
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 90
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0006_3B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "DSCHUNGEL/D_256X256_0031_5B.SCP"
+          ],
+          "lands": [
+            28126,
+            26648,
+            29022,
+            27638,
+            31043
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 90
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0004_4B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "DSCHUNGEL/D_256X256_0032_2B.SCP"
+          ],
+          "lands": [
+            28126,
+            26648,
+            23124,
+            27638,
+            22660
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 117
+        },
+        {
+          "keys": [
+            "DSCHUNGEL/D_256X256_0001_0B.SCP",
+            "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "DSCHUNGEL/D_256X256_0032_2B.SCP"
+          ],
+          "lands": [
+            22527,
+            28126,
+            26648,
+            27638,
+            22660
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 118
+        }
+      ],
+      "copied_into": [],
+      "distinct_shapes": 10,
+      "quintuples": 252,
+      "within_100": 6,
+      "within_50": 0
+    },
+    "scp": 19,
+    "shapes": [
+      {
+        "count": 2,
+        "height_hashes_agree": true,
+        "land_sha256": "d37caf095570389478865a3529efec7711ac801c97e37b6312a461a61810ddff",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "5e66879d5064440168183e37ff826677c197b7a22e08252fd68b35c9dde47ea8",
+            "key": "DSCHUNGEL/D_256X256_0001_0B.SCP",
+            "land": 22527,
+            "people": null
+          },
+          {
+            "candidate_pool": false,
+            "height_sha256": "5e66879d5064440168183e37ff826677c197b7a22e08252fd68b35c9dde47ea8",
+            "key": "DSCHUNGEL/D_256X256_0011_0B_AZTEKEN.SCP",
+            "land": 22527,
+            "people": "AZTEKEN"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "5b4e6a8b39b27093b4c69c8bf78367dca48888ecf00a02dff790c0b5f377dc80",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "286a4ac2e253fc3dbeb751470ac883ee02d6a96ba442d122ec415136b8573b06",
+            "key": "DSCHUNGEL/D_256X256_0002_4B.SCP",
+            "land": 28126,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 2,
+        "height_hashes_agree": true,
+        "land_sha256": "7e136c0a81d2bf9e0e98ee1285284e05132895ebcab31872cb8f61a23c8b3abc",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "37281f1ac634ae606ec39ecc0bc27b0e7336602827047bb980567a40ca138779",
+            "key": "DSCHUNGEL/D_256X256_0003_4B.SCP",
+            "land": 26648,
+            "people": null
+          },
+          {
+            "candidate_pool": false,
+            "height_sha256": "37281f1ac634ae606ec39ecc0bc27b0e7336602827047bb980567a40ca138779",
+            "key": "DSCHUNGEL/D_256X256_0013_4B_AZTEKEN.SCP",
+            "land": 26648,
+            "people": "AZTEKEN"
+          }
+        ]
+      },
+      {
+        "count": 2,
+        "height_hashes_agree": true,
+        "land_sha256": "e4253228da776c5fa190ce5d34de00d1345fac9a2eddb4ca6aa8057bdee9da00",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "cc9baf9618a29ab15ddab0e159ecf89c2c108b3f5a3d93489940a534de909883",
+            "key": "DSCHUNGEL/D_256X256_0004_4B.SCP",
+            "land": 23124,
+            "people": null
+          },
+          {
+            "candidate_pool": false,
+            "height_sha256": "cc9baf9618a29ab15ddab0e159ecf89c2c108b3f5a3d93489940a534de909883",
+            "key": "DSCHUNGEL/D_256X256_0014_4B_AZTEKEN.SCP",
+            "land": 23124,
+            "people": "AZTEKEN"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "be8ece488635c3586d4d2688477018ad7e1ee4d280719b8d9e95a4a9d291f41d",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "bfdfafaf6b9c18cf59b634a7c619a474a875e170c80a2271245fdf4b4fc98725",
+            "key": "DSCHUNGEL/D_256X256_0005_5B.SCP",
+            "land": 29033,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 3,
+        "height_hashes_agree": true,
+        "land_sha256": "4a8d8c4a51d2ca970cfc1e029ea3ecdae4eea229ae9066c20e39121abdb35e34",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "d7fcc71d25efbf7c2d85e7ba335a8d94092c39c8fc14c85e7221fd108150ae65",
+            "key": "DSCHUNGEL/D_256X256_0006_3B.SCP",
+            "land": 29022,
+            "people": null
+          },
+          {
+            "candidate_pool": false,
+            "height_sha256": "d7fcc71d25efbf7c2d85e7ba335a8d94092c39c8fc14c85e7221fd108150ae65",
+            "key": "DSCHUNGEL/D_256X256_0016_3B_SUEDSEE.SCP",
+            "land": 29022,
+            "people": "SUEDSEE"
+          },
+          {
+            "candidate_pool": false,
+            "height_sha256": "d7fcc71d25efbf7c2d85e7ba335a8d94092c39c8fc14c85e7221fd108150ae65",
+            "key": "DSCHUNGEL/D_256X256_0018_6B_AZTEKEN.SCP",
+            "land": 29022,
+            "people": "AZTEKEN"
+          }
+        ]
+      },
+      {
+        "count": 2,
+        "height_hashes_agree": true,
+        "land_sha256": "e104311a05e25a738ec07e5639362d0e31ef228d25de71ba0cdb473e7c769690",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "b14354e5e728944c04d41c462b7e136cbfa16c8a76dd17e3c26bfe0638ac7433",
+            "key": "DSCHUNGEL/D_256X256_0010_6B.SCP",
+            "land": 27638,
+            "people": null
+          },
+          {
+            "candidate_pool": false,
+            "height_sha256": "b14354e5e728944c04d41c462b7e136cbfa16c8a76dd17e3c26bfe0638ac7433",
+            "key": "DSCHUNGEL/D_256X256_0012_6B_AFRIKA.SCP",
+            "land": 27638,
+            "people": "AFRIKA"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "dfdc1dc1168201b4a623fb2335bbdc663061785e2a36a10e470a2324ba37baba",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "24cd512db977875f9b1283189a1fdd490455cef144aa5d62d4a20ea0e534b255",
+            "key": "DSCHUNGEL/D_256X256_0015_5B_AFRIKA.SCP",
+            "land": 26396,
+            "people": "AFRIKA"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "dbe4eb49808f1371ff9932d3f8b5b1a35c1983b06a495724610c6fde9eb8469a",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "513335e7a4a0f5b8de199afee6b8b5048fd2d8821663b49f5b72a2e52f29d1fd",
+            "key": "DSCHUNGEL/D_256X256_0026_4B_AZTEKEN.SCP",
+            "land": 27052,
+            "people": "AZTEKEN"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "f7d13b34b9d2dab4f4b94885045e4b6b110ae5e41e67edad16d30c5d0abaa633",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "ca09e328769702f45035b40a3ea20f9bdf9f289f6500bdf2c043e7e7bfce6be2",
+            "key": "DSCHUNGEL/D_256X256_0031_5B.SCP",
+            "land": 31043,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "186e21ae39858766bc05b713088acc1a38018ac58eab59ccfdc981412edeaeee",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "83bb2eccd913a8ba77bc235df10f0b4205e03f76fc5321aebf1d27c7c82941b9",
+            "key": "DSCHUNGEL/D_256X256_0032_2B.SCP",
+            "land": 22660,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "98943cc81af5a23054bdb39bdc62904cdc9a7075e98d8c54c75cac341afffe8d",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "9d530047f0fe1381eecdbcaafe5a0141381d6fbe9d28fe7dc229b31eae43cb04",
+            "key": "DSCHUNGEL/D_256X256_0045_5B.SCP",
+            "land": 39912,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "916b144867c340614f515c7b0e5415c74832d899c05264ded2a277a6e81d81ff",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "17f2653e55e1f7012fa0c59134966ba25ff117539072b3c95e22bcac4ba8f824",
+            "key": "DSCHUNGEL/D_256X256_DUMMY.SCP",
+            "land": 65536,
+            "people": null
+          }
+        ]
+      }
+    ]
+  },
+  "edge_1431": 1431,
+  "land_definition": "HEIGHT >= 16, fixed_map.py _land_count and iso kWaterline. Not HEIGHT > 0 and not the classifier at average 19.",
+  "land_height": 16,
+  "nord_256": {
+    "bug": 1,
+    "candidate_pool": 9,
+    "dummy": 1,
+    "eligible_scan": 12,
+    "files": [
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0002_2B.scp",
+        "h": 256,
+        "height_gt_0": 31968,
+        "height_sha256": "4abe4686939134f3872c0bc88c6604ead06b118e3028f635045e84a2aad22997",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0002_2B.SCP",
+        "land": 29461,
+        "land_sha256": "a158e16b6887f00d44f87c25c2c98b5a8f9b97c232b309c4ac2d43b74d09b803",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0003_2B.scp",
+        "h": 256,
+        "height_gt_0": 32046,
+        "height_sha256": "74369e88e932a8f51cbeb487caa24f249d62c12658f1736b1a3c2d412be2ff49",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0003_2B.SCP",
+        "land": 29828,
+        "land_sha256": "52f6676d6ae1d6ac098e34d9d08c814ffa100afeceb751309195a570950744cf",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0006_2B.scp",
+        "h": 256,
+        "height_gt_0": 41321,
+        "height_sha256": "71df9f570d6a4f9cf87a7d7157a0ce55c5fbc5a199eb6e6ea4833d97d25116d9",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0006_2B.SCP",
+        "land": 38945,
+        "land_sha256": "0da2846e689c57531d9faddba3d14b9896a150832b6ad5e2595ee986fb0dcc84",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0007_2B.scp",
+        "h": 256,
+        "height_gt_0": 33771,
+        "height_sha256": "c5197a6e7337eadcd0346704bf3ce4d57b2fd73089e75cb17c5c76d5e08b9f03",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0007_2B.SCP",
+        "land": 30383,
+        "land_sha256": "11efd0e5793fa78a5441eb7535bccfb7d7cc733cfadd6a49aead9439acda6f98",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": true,
+        "dummy": false,
+        "file": "N_256x256_0010_1B_Mongolen.scp.bug",
+        "key": "NORD/N_256X256_0010_1B_MONGOLEN.SCP.BUG",
+        "parse": "Bad",
+        "people": "MONGOLEN",
+        "pirat_name": false
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0011_2B_Mongolen.scp",
+        "h": 256,
+        "height_gt_0": 27309,
+        "height_sha256": "8966f0abd27c6fbd3599bebbeba30d5de030fcca51b7b0417f9924a92c795937",
+        "info0": 2,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0011_2B_MONGOLEN.SCP",
+        "land": 26304,
+        "land_sha256": "d3d7e07684444bdd319d1f24c1e5f19d501c4bc533b2add338819236d8669168",
+        "parse": "ok",
+        "people": "MONGOLEN",
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0012_3B_Mongolen.scp",
+        "h": 256,
+        "height_gt_0": 31702,
+        "height_sha256": "f3c7219ab03c11c3d35189e03104fc388b26d822e30eebb3b50f777c2e766bc7",
+        "info0": 2,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0012_3B_MONGOLEN.SCP",
+        "land": 29491,
+        "land_sha256": "0d24b42ded65a821a840fca34c934ba855ac7b4e0c8e5264d4f4d58b334b064d",
+        "parse": "ok",
+        "people": "MONGOLEN",
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0013_4B_Mongolen.scp",
+        "h": 256,
+        "height_gt_0": 30016,
+        "height_sha256": "9e94633c15df3aa8f453e0493bfcb2db6f37a2ff7b57c45a953442d0e7a97470",
+        "info0": 2,
+        "info2": 1,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0013_4B_MONGOLEN.SCP",
+        "land": 28260,
+        "land_sha256": "0cd878dff1e5c40371cca0219af905a1b5b04b6cb4ecedd8a10c3a13ecac3992",
+        "parse": "ok",
+        "people": "MONGOLEN",
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": false,
+        "eligible_scan": false,
+        "file": "N_256x256_0014_2B_Piraten.scp",
+        "h": 256,
+        "height_gt_0": 41313,
+        "height_sha256": "bd717d3a50d66853eaab976734da0243585f09e5b501ccde13475d661d3916ee",
+        "info0": 2,
+        "info2": 0,
+        "info8": 1,
+        "info9": 0,
+        "key": "NORD/N_256X256_0014_2B_PIRATEN.SCP",
+        "land": 38935,
+        "land_sha256": "0534ea1919744d7e8a1b7df141aeae9b8befa7e60473ab02809beb5fcbe2c468",
+        "parse": "ok",
+        "people": "PIRATEN",
+        "pirat_name": true,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0015_5B.scp",
+        "h": 256,
+        "height_gt_0": 51045,
+        "height_sha256": "68fda1186db5ba6909beb8e4bd20bbe476479ce1a217f5234690560da888fd43",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0015_5B.SCP",
+        "land": 49399,
+        "land_sha256": "a1d8f4ed72d793e546dffb54273acbf10ddbb3a30c7076149917fbe2f4aa02a2",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0016_3B.scp",
+        "h": 256,
+        "height_gt_0": 42551,
+        "height_sha256": "6592af9ad62f0e799dcff2a50bcc9c97842a88736baa5028f84c1590d049b139",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0016_3B.SCP",
+        "land": 39526,
+        "land_sha256": "f8bc69c3de257fc8314aa451e3b8ca3ee79bb5500b45bddd1e162841e9ceca1e",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0017_3B.scp",
+        "h": 256,
+        "height_gt_0": 40945,
+        "height_sha256": "6db2c6f1916c16f64d6ae991e12c34356dcf33d3f0c99fcd145d6ec9a0b514bf",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0017_3B.SCP",
+        "land": 38892,
+        "land_sha256": "22516a8311e48103e5a5e8d329ed86a69d7ac5c03104cbbf891093e3a6f7d66f",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0018_2B.scp",
+        "h": 256,
+        "height_gt_0": 29057,
+        "height_sha256": "1c0d2f580cf7eb1c0e5437861311ef3ba47965542acadd21fa98defc0bc89c5a",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0018_2B.SCP",
+        "land": 26213,
+        "land_sha256": "24d9ab6a8070c07cf42cb4ab6dec4e265af2d66a478d50df08b91e4cc91b430c",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": true,
+        "dummy": false,
+        "eligible_scan": true,
+        "file": "N_256x256_0019_2B.scp",
+        "h": 256,
+        "height_gt_0": 27309,
+        "height_sha256": "be0c7f95c54748f015c43b928ca952af7a8bbe684bdf7f073caf10b002c2caf7",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_0019_2B.SCP",
+        "land": 26304,
+        "land_sha256": "d3d7e07684444bdd319d1f24c1e5f19d501c4bc533b2add338819236d8669168",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      },
+      {
+        "bug": false,
+        "candidate_pool": false,
+        "dummy": true,
+        "eligible_scan": false,
+        "file": "N_256x256_DUMMY.scp",
+        "h": 256,
+        "height_gt_0": 65536,
+        "height_sha256": "17f2653e55e1f7012fa0c59134966ba25ff117539072b3c95e22bcac4ba8f824",
+        "info0": 2,
+        "info2": 0,
+        "info8": 0,
+        "info9": 0,
+        "key": "NORD/N_256X256_DUMMY.SCP",
+        "land": 65536,
+        "land_sha256": "916b144867c340614f515c7b0e5415c74832d899c05264ded2a277a6e81d81ff",
+        "parse": "ok",
+        "people": null,
+        "pirat_name": false,
+        "prefix_climate": 2,
+        "w": 256
+      }
+    ],
+    "groups": {
+      "best": [
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0007_2B.SCP",
+            "NORD/N_256X256_0018_2B.SCP",
+            "NORD/N_256X256_0019_2B.SCP"
+          ],
+          "lands": [
+            29461,
+            29828,
+            30383,
+            26213,
+            26304
+          ],
+          "within_100": true,
+          "within_50": false,
+          "worst_permille": 79
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0006_2B.SCP",
+            "NORD/N_256X256_0007_2B.SCP",
+            "NORD/N_256X256_0016_3B.SCP",
+            "NORD/N_256X256_0017_3B.SCP"
+          ],
+          "lands": [
+            29828,
+            38945,
+            30383,
+            39526,
+            38892
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 161
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0006_2B.SCP",
+            "NORD/N_256X256_0007_2B.SCP",
+            "NORD/N_256X256_0017_3B.SCP"
+          ],
+          "lands": [
+            29461,
+            29828,
+            38945,
+            30383,
+            38892
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 163
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0006_2B.SCP",
+            "NORD/N_256X256_0016_3B.SCP",
+            "NORD/N_256X256_0017_3B.SCP"
+          ],
+          "lands": [
+            29461,
+            29828,
+            38945,
+            39526,
+            38892
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 167
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0006_2B.SCP",
+            "NORD/N_256X256_0007_2B.SCP",
+            "NORD/N_256X256_0016_3B.SCP",
+            "NORD/N_256X256_0017_3B.SCP"
+          ],
+          "lands": [
+            29461,
+            38945,
+            30383,
+            39526,
+            38892
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 169
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0006_2B.SCP",
+            "NORD/N_256X256_0007_2B.SCP",
+            "NORD/N_256X256_0016_3B.SCP"
+          ],
+          "lands": [
+            29461,
+            29828,
+            38945,
+            30383,
+            39526
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 176
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0007_2B.SCP",
+            "NORD/N_256X256_0016_3B.SCP",
+            "NORD/N_256X256_0017_3B.SCP"
+          ],
+          "lands": [
+            29461,
+            29828,
+            30383,
+            39526,
+            38892
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 176
+        },
+        {
+          "keys": [
+            "NORD/N_256X256_0002_2B.SCP",
+            "NORD/N_256X256_0003_2B.SCP",
+            "NORD/N_256X256_0006_2B.SCP",
+            "NORD/N_256X256_0017_3B.SCP",
+            "NORD/N_256X256_0019_2B.SCP"
+          ],
+          "lands": [
+            29461,
+            29828,
+            38945,
+            38892,
+            26304
+          ],
+          "within_100": false,
+          "within_50": false,
+          "worst_permille": 196
+        }
+      ],
+      "copied_into": [],
+      "distinct_shapes": 9,
+      "quintuples": 126,
+      "within_100": 1,
+      "within_50": 0
+    },
+    "scp": 14,
+    "shapes": [
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "a158e16b6887f00d44f87c25c2c98b5a8f9b97c232b309c4ac2d43b74d09b803",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "4abe4686939134f3872c0bc88c6604ead06b118e3028f635045e84a2aad22997",
+            "key": "NORD/N_256X256_0002_2B.SCP",
+            "land": 29461,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "52f6676d6ae1d6ac098e34d9d08c814ffa100afeceb751309195a570950744cf",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "74369e88e932a8f51cbeb487caa24f249d62c12658f1736b1a3c2d412be2ff49",
+            "key": "NORD/N_256X256_0003_2B.SCP",
+            "land": 29828,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "0da2846e689c57531d9faddba3d14b9896a150832b6ad5e2595ee986fb0dcc84",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "71df9f570d6a4f9cf87a7d7157a0ce55c5fbc5a199eb6e6ea4833d97d25116d9",
+            "key": "NORD/N_256X256_0006_2B.SCP",
+            "land": 38945,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "11efd0e5793fa78a5441eb7535bccfb7d7cc733cfadd6a49aead9439acda6f98",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "c5197a6e7337eadcd0346704bf3ce4d57b2fd73089e75cb17c5c76d5e08b9f03",
+            "key": "NORD/N_256X256_0007_2B.SCP",
+            "land": 30383,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 2,
+        "height_hashes_agree": false,
+        "land_sha256": "d3d7e07684444bdd319d1f24c1e5f19d501c4bc533b2add338819236d8669168",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "8966f0abd27c6fbd3599bebbeba30d5de030fcca51b7b0417f9924a92c795937",
+            "key": "NORD/N_256X256_0011_2B_MONGOLEN.SCP",
+            "land": 26304,
+            "people": "MONGOLEN"
+          },
+          {
+            "candidate_pool": true,
+            "height_sha256": "be0c7f95c54748f015c43b928ca952af7a8bbe684bdf7f073caf10b002c2caf7",
+            "key": "NORD/N_256X256_0019_2B.SCP",
+            "land": 26304,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "0d24b42ded65a821a840fca34c934ba855ac7b4e0c8e5264d4f4d58b334b064d",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "f3c7219ab03c11c3d35189e03104fc388b26d822e30eebb3b50f777c2e766bc7",
+            "key": "NORD/N_256X256_0012_3B_MONGOLEN.SCP",
+            "land": 29491,
+            "people": "MONGOLEN"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "0cd878dff1e5c40371cca0219af905a1b5b04b6cb4ecedd8a10c3a13ecac3992",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "9e94633c15df3aa8f453e0493bfcb2db6f37a2ff7b57c45a953442d0e7a97470",
+            "key": "NORD/N_256X256_0013_4B_MONGOLEN.SCP",
+            "land": 28260,
+            "people": "MONGOLEN"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "0534ea1919744d7e8a1b7df141aeae9b8befa7e60473ab02809beb5fcbe2c468",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "bd717d3a50d66853eaab976734da0243585f09e5b501ccde13475d661d3916ee",
+            "key": "NORD/N_256X256_0014_2B_PIRATEN.SCP",
+            "land": 38935,
+            "people": "PIRATEN"
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "a1d8f4ed72d793e546dffb54273acbf10ddbb3a30c7076149917fbe2f4aa02a2",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "68fda1186db5ba6909beb8e4bd20bbe476479ce1a217f5234690560da888fd43",
+            "key": "NORD/N_256X256_0015_5B.SCP",
+            "land": 49399,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "f8bc69c3de257fc8314aa451e3b8ca3ee79bb5500b45bddd1e162841e9ceca1e",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "6592af9ad62f0e799dcff2a50bcc9c97842a88736baa5028f84c1590d049b139",
+            "key": "NORD/N_256X256_0016_3B.SCP",
+            "land": 39526,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "22516a8311e48103e5a5e8d329ed86a69d7ac5c03104cbbf891093e3a6f7d66f",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "6db2c6f1916c16f64d6ae991e12c34356dcf33d3f0c99fcd145d6ec9a0b514bf",
+            "key": "NORD/N_256X256_0017_3B.SCP",
+            "land": 38892,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "24d9ab6a8070c07cf42cb4ab6dec4e265af2d66a478d50df08b91e4cc91b430c",
+        "members": [
+          {
+            "candidate_pool": true,
+            "height_sha256": "1c0d2f580cf7eb1c0e5437861311ef3ba47965542acadd21fa98defc0bc89c5a",
+            "key": "NORD/N_256X256_0018_2B.SCP",
+            "land": 26213,
+            "people": null
+          }
+        ]
+      },
+      {
+        "count": 1,
+        "height_hashes_agree": true,
+        "land_sha256": "916b144867c340614f515c7b0e5415c74832d899c05264ded2a277a6e81d81ff",
+        "members": [
+          {
+            "candidate_pool": false,
+            "height_sha256": "17f2653e55e1f7012fa0c59134966ba25ff117539072b3c95e22bcac4ba8f824",
+            "key": "NORD/N_256X256_DUMMY.SCP",
+            "land": 65536,
+            "people": null
+          }
+        ]
+      }
+    ]
+  },
+  "scale_from_03": {
+    "area_ratio_note": "2047761/1048576",
+    "conflict": "Ten 256-square islands are 10*65536 tiles. The proportional scale of the reference mix does not yield a 256-count of 10. Keeping both the reference rectangle share and the proportional filler counts is not possible.",
+    "owner_10x256_coverage_matched_filler": {
+      "counts": {
+        "128": 10,
+        "256": 10,
+        "64": 7,
+        "80": 13
+      },
+      "filler_budget_tiles": 277531,
+      "islands": 40,
+      "note": "10 large islands, filler counts scaled so rectangle tiles stay near the reference share",
+      "rectangle_tiles": 931072,
+      "share_tenths": 455
+    },
+    "owner_10x256_plus_proportional_filler": {
+      "counts": {
+        "128": 16,
+        "256": 10,
+        "64": 10,
+        "80": 19
+      },
+      "islands": 55,
+      "note": "keeps the scaled 64/80/128 counts and replaces the scaled 256 count with 10",
+      "rectangle_tiles": 1080064,
+      "share_tenths": 527
+    },
+    "proportional_counts": {
+      "128": 16,
+      "256": 8,
+      "64": 10,
+      "80": 19
+    },
+    "proportional_islands": 53,
+    "proportional_rectangle_tiles": 948992,
+    "proportional_share_tenths": 463,
+    "reference_counts": {
+      "128": 8,
+      "256": 4,
+      "64": 5,
+      "80": 10
+    },
+    "reference_rectangle_tiles": 477696,
+    "reference_share_tenths": 456
+  },
+  "worlds": [
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.5574,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 244752,
+        "median": 184173,
+        "min": 114542,
+        "p10": 114542
+      },
+      "climates": {
+        "0": 3,
+        "1": 3,
+        "2": 4,
+        "3": 3,
+        "4": 4,
+        "5": 3
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 3,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 1,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 5,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "00_1024_easyentry_01.sze",
+      "height": 1024,
+      "insel5": 4,
+      "islands": 20,
+      "links": 16,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 64,
+        "median": 32,
+        "min": 24,
+        "p10": 24
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 1907,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 394,
+      "rectangle_sum": 412928,
+      "rectangle_union": 412928,
+      "resolved_height_gt_0": 135519,
+      "resolved_land_height_ge_16": 128252,
+      "resolved_rectangle_tiles": 212992,
+      "sizes": {
+        "128x128": 11,
+        "256x256": 3,
+        "64x64": 1,
+        "80x80": 5
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.3789,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 211811,
+        "median": 124193,
+        "min": 93637,
+        "p10": 97324
+      },
+      "climates": {
+        "0": 3,
+        "1": 3,
+        "2": 6,
+        "3": 4,
+        "4": 7,
+        "5": 5
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 2,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 5,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 5,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "01_1024_easy_256.sze",
+      "height": 1024,
+      "insel5": 1,
+      "islands": 28,
+      "links": 27,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 40,
+        "median": 16,
+        "min": 8,
+        "p10": 8
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 2670,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 462,
+      "rectangle_sum": 484096,
+      "rectangle_union": 484096,
+      "resolved_height_gt_0": 2181,
+      "resolved_land_height_ge_16": 1721,
+      "resolved_rectangle_tiles": 6400,
+      "sizes": {
+        "128x128": 8,
+        "256x256": 4,
+        "64x64": 5,
+        "80x80": 11
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.4817,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 176725,
+        "median": 144222,
+        "min": 96664,
+        "p10": 104307
+      },
+      "climates": {
+        "0": 2,
+        "1": 3,
+        "2": 6,
+        "3": 5,
+        "4": 7,
+        "5": 6
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 4,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 4,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 5,
+          "count": 4,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "02_1024_easy_128.sze",
+      "height": 1024,
+      "insel5": 1,
+      "islands": 29,
+      "links": 28,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 72,
+        "median": 24,
+        "min": 16,
+        "p10": 16
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 2766,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 296,
+      "rectangle_sum": 310784,
+      "rectangle_union": 310784,
+      "resolved_height_gt_0": 2108,
+      "resolved_land_height_ge_16": 2108,
+      "resolved_rectangle_tiles": 6400,
+      "sizes": {
+        "128x128": 13,
+        "64x64": 2,
+        "80x80": 14
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.4634,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 211811,
+        "median": 141534,
+        "min": 93637,
+        "p10": 101192
+      },
+      "climates": {
+        "0": 3,
+        "1": 3,
+        "2": 5,
+        "3": 4,
+        "4": 7,
+        "5": 5
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 5,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 5,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "03_1024_med_256.sze",
+      "height": 1024,
+      "insel5": 0,
+      "islands": 27,
+      "links": 27,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 72,
+        "median": 32,
+        "min": 8,
+        "p10": 8
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 2575,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 456,
+      "rectangle_sum": 477696,
+      "rectangle_union": 477696,
+      "resolved_height_gt_0": 0,
+      "resolved_land_height_ge_16": 0,
+      "resolved_rectangle_tiles": 0,
+      "sizes": {
+        "128x128": 8,
+        "256x256": 4,
+        "64x64": 5,
+        "80x80": 10
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.5793,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 192333,
+        "median": 152839,
+        "min": 106733,
+        "p10": 108811
+      },
+      "climates": {
+        "0": 2,
+        "1": 3,
+        "2": 5,
+        "3": 5,
+        "4": 7,
+        "5": 6
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 4,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 4,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 5,
+          "count": 4,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "04_1024_med_128.sze",
+      "height": 1024,
+      "insel5": 0,
+      "islands": 28,
+      "links": 28,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 88,
+        "median": 32,
+        "min": 16,
+        "p10": 24
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 2670,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 290,
+      "rectangle_sum": 304384,
+      "rectangle_union": 304384,
+      "resolved_height_gt_0": 0,
+      "resolved_land_height_ge_16": 0,
+      "resolved_rectangle_tiles": 0,
+      "sizes": {
+        "128x128": 13,
+        "64x64": 2,
+        "80x80": 13
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 640000,
+      "centre_spacing_milli": {
+        "clark_evans": 1.5014,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 174722,
+        "median": 128996,
+        "min": 88000,
+        "p10": 96332
+      },
+      "climates": {
+        "0": 2,
+        "1": 2,
+        "2": 4,
+        "3": 5,
+        "4": 5,
+        "5": 5
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 5,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "05_800_Med_128.sze",
+      "height": 800,
+      "insel5": 0,
+      "islands": 23,
+      "links": 23,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 72,
+        "median": 16,
+        "min": 0,
+        "p10": 8
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 3594,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 379,
+      "rectangle_sum": 242432,
+      "rectangle_union": 242432,
+      "resolved_height_gt_0": 0,
+      "resolved_land_height_ge_16": 0,
+      "resolved_rectangle_tiles": 0,
+      "sizes": {
+        "128x128": 10,
+        "64x64": 2,
+        "80x80": 11
+      },
+      "width": 800
+    },
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.3961,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 211811,
+        "median": 128996,
+        "min": 97324,
+        "p10": 100239
+      },
+      "climates": {
+        "0": 3,
+        "1": 3,
+        "2": 5,
+        "3": 4,
+        "4": 7,
+        "5": 5
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 256,
+          "w": 256
+        },
+        {
+          "climate": 5,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 5,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 3,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "06_1024_heavy_256.sze",
+      "height": 1024,
+      "insel5": 0,
+      "islands": 27,
+      "links": 27,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 40,
+        "median": 16,
+        "min": 8,
+        "p10": 16
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 2575,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 456,
+      "rectangle_sum": 477696,
+      "rectangle_union": 477696,
+      "resolved_height_gt_0": 0,
+      "resolved_land_height_ge_16": 0,
+      "resolved_rectangle_tiles": 0,
+      "sizes": {
+        "128x128": 8,
+        "256x256": 4,
+        "64x64": 5,
+        "80x80": 10
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 1048576,
+      "centre_spacing_milli": {
+        "clark_evans": 1.6034,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 211206,
+        "median": 161987,
+        "min": 106733,
+        "p10": 108811
+      },
+      "climates": {
+        "0": 2,
+        "1": 3,
+        "2": 5,
+        "3": 5,
+        "4": 7,
+        "5": 6
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 1,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 4,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 3,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 4,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 4,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 5,
+          "count": 4,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 5,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        }
+      ],
+      "file": "07_1024_heavy_128.sze",
+      "height": 1024,
+      "insel5": 0,
+      "islands": 28,
+      "links": 28,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 78,
+        "median": 35,
+        "min": 8,
+        "p10": 16
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 2670,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 290,
+      "rectangle_sum": 304384,
+      "rectangle_union": 304384,
+      "resolved_height_gt_0": 0,
+      "resolved_land_height_ge_16": 0,
+      "resolved_rectangle_tiles": 0,
+      "sizes": {
+        "128x128": 13,
+        "64x64": 2,
+        "80x80": 13
+      },
+      "width": 1024
+    },
+    {
+      "actual_land_complete": false,
+      "area": 640000,
+      "centre_spacing_milli": {
+        "clark_evans": 1.5285,
+        "definition": "nearest neighbour of rectangle centres, floor(euclidean*1000); Clark-Evans has no edge correction; R>1 is more even than Poisson",
+        "max": 172696,
+        "median": 120266,
+        "min": 88362,
+        "p10": 104307
+      },
+      "climates": {
+        "0": 2,
+        "1": 2,
+        "2": 5,
+        "3": 5,
+        "4": 6,
+        "5": 5
+      },
+      "cross": [
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 0,
+          "count": 1,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 1,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 1,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 2,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 3,
+          "count": 2,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 3,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 80,
+          "w": 80
+        },
+        {
+          "climate": 4,
+          "count": 2,
+          "h": 128,
+          "w": 128
+        },
+        {
+          "climate": 5,
+          "count": 2,
+          "h": 64,
+          "w": 64
+        },
+        {
+          "climate": 5,
+          "count": 3,
+          "h": 80,
+          "w": 80
+        }
+      ],
+      "file": "08_800_heavy_128.sze",
+      "height": 800,
+      "insel5": 0,
+      "islands": 25,
+      "links": 25,
+      "nearest_gap": {
+        "definition": "per island, minimum floored Euclidean edge gap to another rectangle; median_low; p10 index is floor(0.10*(n-1))",
+        "max": 72,
+        "median": 32,
+        "min": 16,
+        "p10": 16
+      },
+      "overlap_pairs": 0,
+      "per_million_hundredths": 3906,
+      "rectangle_overlaps": 0,
+      "rectangle_share_tenths": 284,
+      "rectangle_sum": 181504,
+      "rectangle_union": 181504,
+      "resolved_height_gt_0": 0,
+      "resolved_land_height_ge_16": 0,
+      "resolved_rectangle_tiles": 0,
+      "sizes": {
+        "128x128": 4,
+        "64x64": 8,
+        "80x80": 13
+      },
+      "width": 800
+    }
+  ]
+}

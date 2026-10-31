@@ -221,3 +221,98 @@ A mod registry passes another id.
 Raw materials and ores. The fields are in the file, the canonical form and the
 digest, and they change no sim state. Deposits stay empty, as they do for
 every original scenario today.
+
+## 8. Measured originals (MAP.2)
+
+`tools/map2_measure.py` remeasured the nine endless scenarios on 2026-10-31.
+The numbers below are that run. `docs/sim/map2-measured.json` holds the same
+counts and hashes and no island masks. Rectangle share is the union of island
+rectangles, in tenths of a percent, the same unit as `tools/world_measure.py`.
+It is not buildable land. Links have no HEIGHT grid, so actual land is known
+only where the scenario embeds an INSEL5. Those worlds are marked incomplete.
+
+Land, where a grid exists, is `HEIGHT >= 16`. That is `tools/fixed_map.py`'s
+land count and `kWaterline` in `anno/render/iso.hpp`. It is not `HEIGHT > 0`,
+and it is not the original land classifier (average above 19).
+
+| File | Islands (links + INSEL5) | Rectangle share | Gap min / p10 / median / max | Centre median (milli) | Clark-Evans R |
+|---|---|---|---|---|---|
+| 00 easyentry | 20 (16+4) | 39.4% | 24 / 24 / 32 / 64 | 184173 | 1.557 |
+| 01 easy 256 | 28 (27+1) | 46.2% | 8 / 8 / 16 / 40 | 124193 | 1.379 |
+| 02 easy 128 | 29 (28+1) | 29.6% | 16 / 16 / 24 / 72 | 144222 | 1.482 |
+| 03 med 256 | 27 (27+0) | 45.6% | 8 / 8 / 32 / 72 | 141534 | 1.463 |
+| 04 med 128 | 28 (28+0) | 29.0% | 16 / 24 / 32 / 88 | 152839 | 1.579 |
+| 05 800 med | 23 (23+0) | 37.9% | 0 / 8 / 16 / 72 | 128996 | 1.501 |
+| 06 heavy 256 | 27 (27+0) | 45.6% | 8 / 16 / 16 / 40 | 128996 | 1.396 |
+| 07 heavy 128 | 28 (28+0) | 29.0% | 8 / 16 / 35 / 78 | 161987 | 1.603 |
+| 08 800 heavy | 25 (25+0) | 28.4% | 16 / 16 / 32 / 72 | 120266 | 1.529 |
+
+00 is 20 islands and 39.4% rectangle share. The board's "16 islands / 19%"
+does not match this tree: 16 is the link count, and 19% is not the rectangle
+union. 01 has 28 islands, not 27. Gap medians on the 1024² "256" maps are 16
+or 32, and the minima are 8. 05 touches (gap 0). Clark-Evans R is about
+1.38–1.60 with no edge correction, so the centres are more even than a Poisson
+scatter. Centre distance is `floor(euclidean × 1000)` between rectangle
+centres.
+
+03 is the scale reference: 64²×5, 80²×10, 128²×8, 256²×4, climates
+polar 3, tundra 3, nord 5, praerie 4, dschungel 7, steppe 5, rectangle union
+477696 tiles, 45.6%. The 1431 edge is `(isqrt(1280² × 5) + 1) // 2`. World
+area `1431² = 2047761`. Area ratio against 1024² is `2047761/1048576`.
+
+Scaled from 03 by that ratio, the size mix is 64²×10, 80²×19, 128²×16,
+256²×8: 53 islands, 46.3% rectangle share. The owner's ten 256² islands are
+655360 tiles, 32.0% of 1431², against four 256² islands at 25% of 1024².
+Three readings, none of them dropped:
+
+| Reading | Islands | Rectangle tiles | Share |
+|---|---|---|---|
+| Proportional mix, including eight 256² | 53 | 948992 | 46.3% |
+| Ten 256² plus the proportional 64/80/128 counts | 55 | 1080064 | 52.7% |
+| Ten 256² and filler scaled to stay near 45.6% | 40 | 931072 | 45.5% |
+
+Keeping both the reference rectangle share and the proportional filler counts
+is not possible. The world stays 1431. The ten large islands stay. Which
+filler density to ship is OQ-516.
+
+Climate bands are the 03 bands scaled by the same edge rule and snapped down
+to a multiple of 8. At 1431, inclusive start and exclusive end: polar
+`[16, 296)`, tundra `[120, 488)`, nord `[40, 872)`, praerie `[160, 1104)`,
+steppe `[232, 1336)`, dschungel `[552, 1368)`.
+
+### Large-island templates
+
+A shape is the land mask (`1` where `HEIGHT >= 16`) under the dihedral group:
+four rotations and a left-right mirror. The canonical orientation is the
+lexicographically smallest. The height hash uses that same orientation, so two
+files can share a coastline and still differ in relief. Git stores the
+SHA-256 of those bytes, not the mask.
+
+The Nord folder has 13 numbered `.scp` files, plus `N_256x256_DUMMY.scp` and
+`N_256x256_0010_1B_Mongolen.scp.bug`. There is no 0001, 0004, 0005, 0008 or
+0009. The `*.scp` count is 14 only because it includes the dummy. Eligible
+files (no `PIRAT` in the name, no dummy, no `.bug`, INFO[8] = INFO[9] = 0,
+prefix matches INFO[0]) are 12, and three of those are Mongolen. The candidate
+pool, eligible and with no people marker, is 9 distinct land shapes. The
+board's "14 usable" does not match this tree.
+
+Dschungel has 18 numbered `.scp` files plus a dummy. Eligible is 18. The
+candidate pool is 10 distinct shapes. People-marked files that copy a plain
+island, with height hashes agreeing, are 0001=0011 Azteken, 0003=0013
+Azteken, 0004=0014 Azteken, 0006=0016 Suedsee=0018 Azteken, and 0010=0012
+Afrika. Those names are not extra shapes. `N_256X256_0011` (Mongolen) and
+`N_256X256_0019` share a land mask and disagree on the height hash, so the
+relief is not a copy. 0011 is excluded by the people marker. 0019 stays.
+
+No five-shape subset of either pool is within ±5% of its mean land (50
+permille). Nord has one subset within ±10% (100 permille): 0002, 0003, 0007,
+0018, 0019, lands 29461, 29828, 30383, 26213, 26304, worst 79 permille.
+Dschungel has six within ±10%. The closest is 0002, 0003, 0005, 0006, 0010,
+lands 28126, 26648, 29033, 29022, 27638, worst 52 permille. 52 is the ceiling
+of `|5 × 26648 − 140467| × 1000 / 140467`. It fails 50 permille. Widening the
+limit to make that a pass is not a measurement.
+
+The half-plane on an odd edge is integer. A northern 256² island's centre is
+on the north side when `2 × (y + 128) <= 1431`. A southern island's top is on
+the south side when `2 × y >= 1431`. Origins are multiples of 8. `y = 704`
+passes the south test (`2 × 704 = 1408 >= 1431`). `y = 700` does not.

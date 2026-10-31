@@ -7034,3 +7034,15 @@ OQ-490. The developer start gives the whole start island to the city. The origin
   9. **Measurements and pictures:** turn cost over ≥ 3000 turns (now 8). Frame time at 1920×1080 and 3840×2160: resize or maximise the window (the owner's screenshot shows the window is resizable), or add a size option, and give sim running vs paused. Redo the stills of `Single_05`/`Single_08` centred on their own islands (the current ones are open sea because every still used the easy-entry Kontor tile), and look at each.
 - **Re-run by the orchestrator:** `anno_app_tests --test-case=play:*` at `f7ef40a` (MSVC Release): 7 cases, 300 assertions passed with `ANNO1503_GAME_DIR`; without it, the game-file cases print their skip message.
 - **Process:** good. The report was committed before stopping, and the snapshot correction was applied as asked.
+
+## MAP.2 progress — measurements — 2026-10-31
+
+Remeasured the nine endless scenarios and the NORD/DSCHUNGEL 256² templates.
+Evidence is `docs/sim/map2-measured.json` and `docs/sim/fixed-map.md` §8.
+00 is 20 islands at 39.4% rectangle share, not 16 islands at 19%. The Nord
+folder has 13 numbered `.scp` files; 14 is the `*.scp` count including the
+dummy. No candidate-pool quintuple is within ±5% of its mean land. The only
+nord quintuple within ±10% is worst 79 permille. The closest dschungel
+quintuple is worst 52 permille. Ten 256² islands conflict with keeping both
+the 03 rectangle share and the proportional filler counts. Candidates are not
+in this commit.

@@ -1046,7 +1046,14 @@ int main(int argc, char** argv) {
         const auto got =
             gpu_frame->read_back(gpu_target.first.get(), static_cast<std::uint32_t>(view_w),
                                  static_cast<std::uint32_t>(view_h));
-        auto other = render::gpu::GpuFrame::create(*gpu_ctx, WGPUTextureFormat_RGBA8Unorm, {});
+        // The reference compositor uploads every chunk in the frame it is received and shows no
+        // stand-in (the library's default of 6 uploads per frame left a 4K view incomplete after
+        // three frames: round eb, the first matrix's idle-uhd-w2).
+        render::gpu::GpuLimits reference_limits;
+        reference_limits.uploads_per_frame = static_cast<std::size_t>(-1);
+        reference_limits.stand_ins = false;
+        auto other =
+            render::gpu::GpuFrame::create(*gpu_ctx, WGPUTextureFormat_RGBA8Unorm, reference_limits);
         bool equal = false;
         if (other) {
             render::FrameRenderer own(4, false);

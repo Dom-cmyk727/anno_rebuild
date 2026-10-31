@@ -2,8 +2,10 @@
 // Synthetic cases use fixtures/synthetic/fixed_map_game; the candidate cases read the
 // original game files (ANNO1503_GAME_DIR) and skip with a message when it is unset.
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <string>
 #include <thread>
@@ -302,9 +304,20 @@ TEST_CASE("ship start: the three unchanged candidates load against the original 
             CHECK(ship->pos.x == static_cast<std::int32_t>(s.x * 32 / 125));
             CHECK(ship->pos.y == static_cast<std::int32_t>(s.y * 32 / 125));
         }
-        // A second fresh load in this process is bit-identical.
+        // A second fresh load in this process, and loads on other executors, are
+        // bit-identical. The line below is compared between two separate processes by the
+        // task's determinism check (docs/orchestration/REPORTS.md, MAP-2).
         CHECK(sl::load_ship_start(parsed.value(), *dir, types).value().state_hash() ==
               w.state_hash());
+        for (const unsigned threads : {2U, 7U}) {
+            island_test::ThreadExecutor ex(threads);
+            CHECK(
+                sl::load_ship_start(parsed.value(), *dir, types, {}, {}, ex).value().state_hash() ==
+                w.state_hash());
+        }
+        char hex[17];
+        std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(w.state_hash()));
+        std::cout << "ship-start-hash " << name << " " << hex << "\n";
     }
     // The candidate files are not rewritten and not selected: reading them did not touch them
     // (the hash of the active map is checked by the task's gate, not here).

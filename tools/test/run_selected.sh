@@ -46,10 +46,14 @@ SELECTED=$(grep -c '^ *Start *[0-9]*:' "$LOG")
 PASSED=$(grep -c 'Test *#[0-9]*:.*Passed' "$LOG")
 FAILED=$(grep -c 'Test *#[0-9]*:.*\(Failed\|Exception\|Timeout\|Not Run\|Interrupt\)' "$LOG")
 SKIPPED=$(grep -c 'skipping:' "$LOG")
+REQUIRED_SKIPS=$(grep -c 'skipping: ANNO1503_GAME_DIR not set' "$LOG")
 SANITIZER=$(grep -c 'AddressSanitizer\|runtime error:' "$LOG")
 # A sanitizer report is a failure whatever the child's exit status says: a sanitizer may print
 # after the test function returned, and its exit path is not reliable (round dw, DW1).
 if [ "$RC" -eq 0 ] && [ "$SANITIZER" -eq 0 ] && [ "$SELECTED" -gt 0 ]; then VERDICT=PASS; else VERDICT=FAIL; fi
+# A case that needs the game files and was skipped (ANNO1503_GAME_DIR unset) is not an executed pass: the
+# gate fails rather than reporting success for work it did not do (round dw, DW1).
+if [ "$REQUIRED_SKIPS" -gt 0 ]; then VERDICT=FAIL; RC=6; fi
 if [ "$RC" -eq 0 ] && [ "$SANITIZER" -gt 0 ]; then RC=4; fi
-echo "VERDICT: $VERDICT ctest_rc=$RC selected_starts=$SELECTED passed=$PASSED failed_or_timed_out=$FAILED skip_messages=$SKIPPED sanitizer_lines=$SANITIZER ended=$(date '+%H:%M:%S')" >> "$LOG"
+echo "VERDICT: $VERDICT ctest_rc=$RC selected_starts=$SELECTED passed=$PASSED failed_or_timed_out=$FAILED skip_messages=$SKIPPED required_asset_skips=$REQUIRED_SKIPS sanitizer_lines=$SANITIZER ended=$(date '+%H:%M:%S')" >> "$LOG"
 exit "$RC"

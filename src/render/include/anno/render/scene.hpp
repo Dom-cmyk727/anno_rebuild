@@ -26,6 +26,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -231,6 +232,40 @@ struct IslandLists {
 /// flow builders, each island's grids, and an island's water and flow while its
 /// river pieces are unchanged) and carries new object lists for the islands it
 /// names. A generation is immutable once another thread can see it.
+class Scene;
+
+/// Destroys scene generations off the threads that release them (round dw, DW3a). A generation made
+/// by Scene::create (and every generation derived from one) hands its destruction here when its
+/// last owner of any kind lets go: a window thread, a frame, a chunk worker, a flow builder or a
+/// reaper. That release only enqueues. One reclaimer serves the process, so it outlives every
+/// picture, renderer and generation; it is never destroyed (its thread is left to the process).
+class SceneReclaimer {
+  public:
+    /// The process reclaimer (created on first use).
+    static SceneReclaimer& shared();
+    /// Takes over the destruction of `scene` (called by the generation's deleter).
+    void reclaim(const Scene* scene);
+    struct Stats {
+        /// Scenes handed over, and scenes whose destruction finished.
+        std::uint64_t queued = 0, completed = 0;
+        /// Scenes waiting, and the largest number waiting at once.
+        std::size_t waiting = 0, peak_waiting = 0;
+        /// Scenes being destroyed right now (0 or 1).
+        std::size_t in_flight = 0;
+    };
+    [[nodiscard]] Stats stats() const;
+    /// The thread that finished the most recent destruction (default-constructed before the first).
+    [[nodiscard]] std::thread::id last_thread() const;
+    ~SceneReclaimer();
+    SceneReclaimer(const SceneReclaimer&) = delete;
+    SceneReclaimer& operator=(const SceneReclaimer&) = delete;
+
+  private:
+    SceneReclaimer();
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
 class Scene : public std::enable_shared_from_this<Scene> {
   public:
     /// The byte buffers that the islands and `anlagen` view (their Bytes spans). The scene
@@ -263,6 +298,13 @@ class Scene : public std::enable_shared_from_this<Scene> {
     Scene(std::string name, std::vector<formats::insel::Island> islands,
           assets::island::GroundTextures textures, formats::anlagen::AnlagenFile anlagen, Lift lift,
           Backing backing = {});
+    /// The same scene as a generation: its last owner's release hands the destruction to
+    /// SceneReclaimer. Every generation of a play picture is made this way (the base included).
+    static std::shared_ptr<Scene> create(std::string name,
+                                         std::vector<formats::insel::Island> islands,
+                                         assets::island::GroundTextures textures,
+                                         formats::anlagen::AnlagenFile anlagen, Lift lift,
+                                         Backing backing = {});
     ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;

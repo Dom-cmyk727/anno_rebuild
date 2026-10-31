@@ -32,7 +32,9 @@ struct OmittedObject {
 /// it exists, so `buffers` is empty afterwards and the scene keeps the bytes alive.
 struct LoadedScene {
     std::vector<std::vector<std::uint8_t>> buffers;
-    std::unique_ptr<render::Scene> scene;
+    /// Made by render::Scene::create: its last owner's release hands the destruction to the
+    /// reclaimer.
+    std::shared_ptr<render::Scene> scene;
     /// Messages for the user (stand-ins, skipped links or units).
     std::vector<std::string> notes;
     /// How many of scene->islands come from the file itself (the stand-ins

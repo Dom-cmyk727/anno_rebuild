@@ -23,6 +23,11 @@ namespace anno::render {
 
 namespace insel = formats::insel;
 
+/// The deleter of every generation: the last owner lets go, and the destruction is the reclaimer's.
+struct ReclaimDeleter {
+    void operator()(const Scene* scene) const { SceneReclaimer::shared().reclaim(scene); }
+};
+
 namespace {
 
 /// States of a FlowSlot.
@@ -329,6 +334,91 @@ Scene::build_island_lists(const insel::Island& i, const formats::anlagen::Anlage
     return out;
 }
 
+std::shared_ptr<Scene> Scene::create(std::string name, std::vector<insel::Island> islands,
+                                     assets::island::GroundTextures textures,
+                                     formats::anlagen::AnlagenFile anlagen, Lift lift,
+                                     Backing backing) {
+    return std::shared_ptr<Scene>(new Scene(std::move(name), std::move(islands),
+                                            std::move(textures), std::move(anlagen), lift,
+                                            std::move(backing)),
+                                  ReclaimDeleter{});
+}
+
+struct SceneReclaimer::Impl {
+    std::mutex mutex;
+    std::condition_variable wake;
+    /// Scenes waiting for destruction (owned here until the reclaimer destroys them).
+    std::deque<std::unique_ptr<const Scene>> waiting;
+    std::uint64_t queued = 0, completed = 0;
+    std::size_t peak_waiting = 0;
+    bool busy = false;
+    std::thread::id last_thread;
+    std::thread thread;
+};
+
+SceneReclaimer& SceneReclaimer::shared() {
+    // Leaked on purpose: a generation may outlive every static object that could have dropped it.
+    static SceneReclaimer* reclaimer = new SceneReclaimer();
+    return *reclaimer;
+}
+
+SceneReclaimer::SceneReclaimer() : impl_(std::make_unique<Impl>()) {
+    Impl* im = impl_.get();
+    im->thread = std::thread([im] {
+        for (;;) {
+            std::unique_ptr<const Scene> dead;
+            {
+                std::unique_lock lock(im->mutex);
+                im->wake.wait(lock, [im] { return !im->waiting.empty(); });
+                dead = std::move(im->waiting.front());
+                im->waiting.pop_front();
+                im->busy = true;
+            }
+            // The destruction runs here, on the reclaimer, with no lock held.
+            dead.reset();
+            const std::lock_guard lock(im->mutex);
+            im->busy = false;
+            ++im->completed;
+            im->last_thread = std::this_thread::get_id();
+        }
+    });
+}
+
+SceneReclaimer::~SceneReclaimer() {
+    // Only a reclaimer that is not the process one is destroyed; its thread cannot be joined from
+    // inside a destruction it runs itself, so it is left to finish (no scene is lost: none can wait
+    // on a destroyed reclaimer, because only the shared one is ever handed scenes).
+    if (impl_ && impl_->thread.joinable()) {
+        impl_->thread.detach();
+    }
+}
+
+void SceneReclaimer::reclaim(const Scene* scene) {
+    {
+        const std::lock_guard lock(impl_->mutex);
+        impl_->waiting.emplace_back(scene);
+        ++impl_->queued;
+        impl_->peak_waiting = std::max(impl_->peak_waiting, impl_->waiting.size());
+    }
+    impl_->wake.notify_one();
+}
+
+SceneReclaimer::Stats SceneReclaimer::stats() const {
+    const std::lock_guard lock(impl_->mutex);
+    Stats s;
+    s.queued = impl_->queued;
+    s.completed = impl_->completed;
+    s.waiting = impl_->waiting.size();
+    s.peak_waiting = impl_->peak_waiting;
+    s.in_flight = impl_->busy ? 1U : 0U;
+    return s;
+}
+
+std::thread::id SceneReclaimer::last_thread() const {
+    const std::lock_guard lock(impl_->mutex);
+    return impl_->last_thread;
+}
+
 Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
              assets::island::GroundTextures textures_, formats::anlagen::AnlagenFile anlagen_,
              Lift lift_, Backing backing_)
@@ -453,7 +543,7 @@ std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
 }
 
 std::shared_ptr<const Scene> Scene::with_islands(std::vector<IslandUpdate> updates) const {
-    std::shared_ptr<const Scene> next(new Scene(*this, std::move(updates)));
+    std::shared_ptr<const Scene> next(new Scene(*this, std::move(updates)), ReclaimDeleter{});
     // The new generation can solve the flows of the slots it shares with this one, should this
     // generation be retired while its requests are queued. Entries of retired generations go.
     FlowBuild& fb = *caches_->flow_build;
@@ -465,9 +555,9 @@ std::shared_ptr<const Scene> Scene::with_islands(std::vector<IslandUpdate> updat
         }
         std::erase_if(slot.waiters,
                       [](const FlowWaiter& w) { return w.shared && w.owner.expired(); });
-        if (std::find_if(slot.waiters.begin(), slot.waiters.end(),
-                         [&next](const FlowWaiter& w) { return w.owner.lock() == next; }) ==
-            slot.waiters.end()) {
+        if (std::find_if(slot.waiters.begin(), slot.waiters.end(), [&next](const FlowWaiter& w) {
+                return w.owner.lock() == next;
+            }) == slot.waiters.end()) {
             FlowWaiter me;
             me.owner = next;
             me.shared = true;
@@ -511,8 +601,8 @@ Scene::~Scene() {
             slot->state.compare_exchange_strong(queued, kFlowIdle, std::memory_order_acq_rel);
         }
     }
-    // Solves already registered for this scene finish first (they read it). A solve registered later
-    // cannot be for this scene: its requests were removed above, under this lock.
+    // Solves already registered for this scene finish first (they read it). A solve registered
+    // later cannot be for this scene: its requests were removed above, under this lock.
     fb.solved.wait(lock, [this, &fb] {
         return std::find(fb.active.begin(), fb.active.end(), this) == fb.active.end();
     });
@@ -1716,8 +1806,8 @@ void Scene::start_flow_builders() const {
     // is valid for the solve: a non-shared scene removes its queued requests and waiter entries
     // under the same mutex before it is destroyed, and a dequeued solve is registered in
     // FlowBuild::active. (Lambdas, not free functions: the flow types are private to Scene.)
-    const auto choose_solver = [](const FlowRequest& req)
-        -> std::pair<const Scene*, std::shared_ptr<const Scene>> {
+    const auto choose_solver =
+        [](const FlowRequest& req) -> std::pair<const Scene*, std::shared_ptr<const Scene>> {
         if (!req.asker.shared) {
             return {req.asker.raw, nullptr};
         }
@@ -1754,7 +1844,8 @@ void Scene::start_flow_builders() const {
             lower_thread_priority();
             for (;;) {
                 FlowRequest req;
-                // A strong owner of the solver is held only for this solve, and released off the lock.
+                // A strong owner of the solver is held only for this solve, and released off the
+                // lock.
                 std::shared_ptr<const Scene> keep;
                 const Scene* solver = nullptr;
                 {
@@ -1798,8 +1889,8 @@ void Scene::start_flow_builders() const {
                 }
                 fb->solved.notify_all();
                 // The last strong owner may be this one. It is released here, off the lock and
-                // before the in-flight count goes down, so a caller of wait_river_flow_builders sees
-                // the destruction too. The window thread never destroys a scene here.
+                // before the in-flight count goes down, so a caller of wait_river_flow_builders
+                // sees the destruction too. The window thread never destroys a scene here.
                 keep.reset();
                 {
                     const std::lock_guard lock(fb->mutex);

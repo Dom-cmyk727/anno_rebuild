@@ -559,9 +559,9 @@ Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string
     render::Scene::Backing backing =
         std::make_shared<const std::vector<std::vector<std::uint8_t>>>(std::move(out.buffers));
     out.buffers.clear();
-    out.scene = std::make_unique<render::Scene>(
-        std::move(name), std::move(all), std::move(textures).value(), std::move(anlagen).value(),
-        render::kHeightLift, std::move(backing));
+    out.scene =
+        render::Scene::create(std::move(name), std::move(all), std::move(textures).value(),
+                              std::move(anlagen).value(), render::kHeightLift, std::move(backing));
     auto units = load_units(dir, unit_source, *out.scene, out.notes);
     if (!units) {
         return units.error();

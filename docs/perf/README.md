@@ -1419,3 +1419,102 @@ The round-dz matrices were re-aggregated with the new table and the frozen round
 `p4-one`, `p4-below-pairs` and `p4-below-reversed`. Each exited 0 with no diagnostic, and each output is
 byte-identical to the round-dz table (`cache/ea-runs/p3-reagg-*.md`). Every round-dz case had saved all its
 files, so no saved measurement changes and the matrix was not rerun.
+
+### Edit to GPU-usable on the compositor (round eb)
+
+**What is measured.** `bench_picture --gpu 1` (round eb, 5A) draws every frame of the legal five-city workload
+with the GPU compositor into an offscreen target of the view's size, under the interactive window's limits:
+- 6 uploads per frame;
+- a 1 ms upload budget per frame;
+- stand-ins, and a 150 ms dissolve over them;
+- 96 prefetched chunks.
+
+Per edit:
+- the edit's Desired event;
+- the commit of its object generation (object-ready);
+- every visible key of its island's change CPU-ready at one observation;
+- the same keys GPU-usable at one observation (`GpuFrame::chunk_state`: the compositor's copy is that CPU
+  chunk, whole, not dissolving). The time is the submission of the frame that draws them, the return of
+  `GpuFrame::render` after its queue submit.
+
+**What is not measured:**
+- **GPU completion:** the compositor has no non-blocking completion query, and a blocking wait would
+  change the measurement;
+- **presentation:** headless runs present nothing;
+- **the physical display:** a present call returning is not the pixel reaching it.
+
+So no PLAN §0.3 presented-frame target is claimed. The per-frame "frame" column is the window thread's
+work up to submission: apply, commit, and the compositor's render to its submit. GPU execution time is
+not in it. The known-failing Metal timestamp cases are not used for any number.
+
+**Method.**
+- **Binary:** Release, frozen `cache/eb-runs/bench_picture.release-00dab8d` (sha256 `8fb1892cf5b9ee88…`).
+- **Code:** `00dab8d`. The only uncommitted changes were documentation; the cases file was committed after
+  the run unchanged (sha256 `ca86113fe539692c…`).
+- **Cases:** `tools/bench/picture_eb.cases`, one after another (`picture_matrix.sh`). Raw files:
+  `cache/eb-runs/p5-matrix/` (events, frames, chunks, memory, manifest, summary per case); table
+  `p5-matrix-table.md`.
+- **Workload:** the legal five-city baseline: 40 buildings per city plus a Kontor, 2000 t of test goods,
+  the default seed. It is generated through the sim's Build/Demolish commands and the registry's placement
+  rules.
+- **View:** at group 2 on city 0's first edit, paced at 60 Hz.
+- **Workers:** 2 or 4 picture workers, 2 chunk workers.
+- **Viewports:** 1920 × 1080 and 3840 × 2160.
+- **Oracle, every case:**
+  - the CPU chunks and the PROD2 items against a freshly loaded scene of the final state;
+  - the GPU's final view against a compositor of its own drawing that scene, exactly, after the loop.
+  The read-backs wait for the GPU, outside the measurement. All 18 cases passed both.
+- **Canary:** `p5-canary/` (4 cases) ran first.
+- **First matrix (kept):** it failed `idle-uhd-w2` on the GPU oracle only, an oracle defect.
+  `p5-matrix-failed-oracle/`; fixed in `00dab8d`.
+
+**Host:** NOT quiet. Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1, Metal. Load average 2.3 to 3.0; Syncthing
+used about 80% of a core at the start (`provenance.txt`). These are shared-host numbers on an integrated
+GPU. No speed-up or slowdown is read off frequency or scheduling.
+
+**Results** (ms; n / p50 / p95 / p99 / max; p95 needs 20 samples and p99 100, else "insufficient"):
+
+| case | edits | object-ready | visible CPU-ready | visible GPU-usable (unfinished) | build queue delay | frame (window thread to submission) |
+|---|---:|---|---|---|---|---|
+| idle 1080p, w2 / w4 | 0 | — | — | — | — | 225 / 0.96 / 1.98 / 2.38 / 2.73; 223 / 0.93 / 1.78 / 2.52 / 2.65 |
+| idle 2160p, w2 / w4 | 0 | — | — | — | — | 227 / 1.30 / 2.29 / 2.72 / 3.00; 224 / 1.28 / 2.45 / 2.60 / 2.67 |
+| one 1080p, w2 | 1 | 1 / 19.1 | 1 / 63.4 | 1 / 63.4 (0) | 1 / 0.01 | 4 frames, max 0.99 |
+| one 2160p, w2 | 1 | 1 / 24.6 | 1 / 43.6 | 1 / 43.6 (0) | — | 3 frames, max 1.18 |
+| burst of 50, 1080p, w2 | 50 | 50 / 64.2 / 88.7 / – / 88.7 | 10 / 161.7 / – / – / 161.8 | 10 / 205.1 / – / – / 205.1 (0) | 9 / 10.9 / – / – / 24.5 | 10 frames, max 1.72 |
+| burst of 50, 1080p, w4 | 50 | 50 / 49.0 / 73.4 / – / 73.4 | 10 / 117.0 | 10 / 140.9 (0) | 11 / 0.01 / – / – / 14.1 | 7 frames, max 1.72 |
+| burst of 50, 2160p, w2 / w4 | 50 | 73.1 / 43.4 p50 | 143.6 / 136.9 p50 | 215.1 / 177.5 p50 (0) | — | max 2.10 / 1.99 |
+| sustained 10/s, 1080p, w2 | 100 | 100 / 24.8 / 43.7 / 45.3 / 45.7 | 15 / 50.0 / – / – / 71.1 | 15 / 50.5 / – / – / 89.3 (0) | 100 / 0.02 / 0.03 / 0.03 / 0.03 | 421 / 0.40 / 1.10 / 1.24 / 1.42 |
+| sustained 10/s, 1080p, w4 | 100 | 100 / 24.8 / 43.8 / 45.8 / 46.1 | 15 / 50.0 / – / – / 68.5 | 15 / 50.3 / – / – / 72.4 (0) | — | 419 / 0.41 / 1.17 / 1.38 / 1.61 |
+| sustained 10/s, 2160p, w2 | 100 | 100 / 24.7 / 43.7 / 45.6 / 47.0 | 20 / 50.4 / 70.6 / – / 72.5 | 20 / 50.4 / 72.6 / – / 74.3 (0) | — | 416 / 0.54 / 1.24 / 1.50 / 1.76 |
+| sustained 10/s, 2160p, w4 | 100 | 100 / 24.7 / 41.2 / 42.7 / 43.1 | 20 / 50.3 / 67.5 / – / 67.9 | 20 / 50.3 / 67.9 / – / 74.1 (0) | 100 / 0.02 / 0.03 / 0.03 / 0.03 | 421 / 0.56 / 1.23 / 1.48 / 1.64 |
+| above the build rate, 400/s, 1080p, w2 | 400 | 400 / 47.5 / 97.7 / 119.3 / 136.1 | 74 / 98.7 / 182.6 / – / 207.1 | 74 / 99.2 / 207.0 / – / 213.8 (0) | 151 / 11.8 / 23.4 / 24.4 / 27.4 | 222 / 1.16 / 2.14 / 2.36 / 2.46 |
+| above the build rate, 400/s, 1080p, w4 | 400 | 400 / 44.3 / 73.0 / 91.6 / 122.3 | 74 / 85.1 / 139.2 / – / 180.7 | 74 / 91.9 / 163.3 / – / 204.8 (0) | 223 / 3.0 / 14.2 / 15.6 / 16.3 | 224 / 1.13 / 2.11 / 2.22 / 2.32 |
+
+Visible counts below the edit count are the edits that touched no key of the view (offscreen): 85 or 80 of
+100 sustained edits, 40 of the burst's 50, 326 of 400. Every visible edit became GPU-usable before the run
+ended (unfinished 0 everywhere).
+
+**Outstanding work and retained memory** (memory table of `p5-matrix-table.md`):
+- **Reservations:** at most 36.1 MB (inside the 64 MiB budget).
+- **Builds outstanding at once:** at most 5 (burst, w2) and 8 (above rate, w4, the max_outstanding
+  limit).
+- **Exact peak incremental payload:** 4.9 MB sustained, 5.7 / 7.3 MB burst, 8.9 / 11.3 MB above rate.
+- **Sampled peak RSS:** 0.94 to 1.52 GB, with the 2160p views at the top.
+- **Paging:** no major fault, page-out or swap-out.
+
+GPU memory (chunk planes, pools, atlas, offscreen targets) is the compositor's own and is not in these CPU
+payload counts.
+
+**Readings, within these limits.**
+- **Where the latency is:** for single edits and the sustained stream, GPU-usable equals CPU-ready within a
+  frame at p50, so the latency to the GPU boundary is the CPU rebuild of the chunks. Under the 50-edit
+  burst and above the build rate, the upload limit adds 20 to 70 ms at p50 and the max.
+- **Frame time:** the window thread's work per frame stayed under 3.0 ms at every percentile on this host.
+  That is CPU submission only.
+- **Not shown:**
+  - a 4-core x86 host;
+  - presented frames;
+  - an RTX or Radeon adapter;
+  - a late-game economy: the workload is five cities of about 40 buildings, without roads (the sim
+    refuses them) and with density capped by scenery;
+  - multiplayer load.

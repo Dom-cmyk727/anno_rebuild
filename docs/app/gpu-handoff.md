@@ -1,10 +1,20 @@
-# Viewer and GPU handoff of the picture's generations (plan round dw; implemented round ea)
+# Viewer and GPU handoff of the picture's generations (plan round dw; implemented rounds ea and eb)
 
-Status: the first owning-generation integration unit is implemented (round ea). The play window follows the
-`ScenePicture`, every frame draws from one owning handle, and the GPU compositor keeps nothing of a generation
-past the frame. The tests in section 4 pass on the Mac (Apple M5 Max, Metal). The Windows adapters (RTX
-4090, Radeon iGPU), Windows MSVC and the Linux GCC/Clang checks are not run (section 5). This unit does not
-claim the PLAN frame targets, late-game scalability or GPU acceptance.
+Status:
+- **Round ea:** the play window follows the `ScenePicture`, every frame draws from one owning handle, and the
+  GPU compositor keeps nothing of a generation past the frame.
+- **Round eb:**
+  - a paused window finishes what was published after it went idle, without input (section 2, 1A);
+  - the GPU-usable state of a chunk is named and measured (boundary 6, section 6);
+  - the interactive window's constrained upload path is tested (section 4).
+
+The tests in section 4 pass on the Mac (Apple M5 Max, Metal). Not run: the Windows adapters (RTX 4090, Radeon
+iGPU), Windows MSVC and the Linux GCC/Clang checks (section 5). This work does not claim:
+- the PLAN frame targets;
+- presented-frame latency;
+- late-game scalability;
+- GPU acceptance;
+- original-game visual parity (OQ-525).
 
 ## 1. The contract: six separate boundaries
 
@@ -32,9 +42,22 @@ them implies the next.
 5. **All affected visible chunks fresh is a separate readiness boundary.** An island's change is visibly
    ready when every key that change invalidated within the view is cached and not stale at the same moment
    (`ReadinessTracker`, picture_trace.hpp). A key seen fresh once and made stale again keeps the set waiting.
-6. **GPU upload completion and presentation are further boundaries.** A fresh CPU chunk is on the GPU once
-   its upload finishes (all planes made and bound; with the viewer's limits this can take several frames),
-   and on screen once the frame that draws it is presented. Neither is measured yet (section 5).
+6. **GPU upload completion and presentation are further boundaries.** A CPU-ready chunk is GPU-pending until
+   its upload finishes; with the viewer's limits this can take several frames. It is GPU-usable (round eb,
+   `GpuFrame::chunk_state`) once:
+   - the compositor's copy has its serial;
+   - every plane of it is made and bound;
+   - it is not dissolving in over a placeholder.
+
+   Until then the previous copy, the stand-in or the open sea keeps drawing. A rebuilt chunk is swapped whole
+   when its upload ends, never plane by plane; only a chunk that replaces a placeholder dissolves. The bench
+   records the frame whose submission first draws all of an island's change GPU-usable (`gpu_ready`).
+
+   Three boundaries are not measured:
+   - **GPU completion:** the compositor has no non-blocking completion query, and a blocking wait would
+     change what is measured;
+   - **presentation** of the frame;
+   - **the physical display:** a present call returning is not the pixel reaching it.
 
 Comparisons follow the boundaries:
 - During a transition, the GPU is compared with the CPU composition of the same inputs: the same renderer
@@ -111,6 +134,22 @@ is not part of `render::payload_counts()`, which counts CPU payload only.
 7. The generations are destroyed by the reclaimer.
 No per-frame wait was added.
 
+**Paused and hidden windows (round eb, 1A).** The window draws while `app::FrameDemand` (play_follow.hpp)
+wants a frame. Paused, it still draws while any work is pending:
+- chunk builds are queued or running;
+- a zoom is on its way;
+- `PlayFollower::has_work()`: a batch is waiting in the mailbox (`PlayRunner::batches_waiting`, a flag set
+  by the push and cleared by the take, read without copying), or a change is not committed yet;
+- `GpuFrame::work_pending()`: uploads deferred by the limits, or a dissolve.
+
+The runner's batch listener posts an SDL event, so a window waiting for events wakes when a batch arrives.
+The listener is cleared before the window goes. Drawing does not run the paused sim. A hidden window draws
+nothing; the mailbox keeps its bound (a collapsed resync), and the window takes it when shown.
+
+Before round eb, a batch published by a turn in flight after the paused window's last frame waited for an
+input event (review finding, introduced in round ea). Uploads deferred by the limits waited the same way:
+pre-existing since the upload limits; the 3B mutant shows it.
+
 ## 3. Transitional behaviour as measured
 
 The case "picture GPU: accepted builds and an accepted demolish ..." runs two accepted builds of one island in
@@ -133,6 +172,12 @@ open (section 5).
 
 ## 4. Tests (src/render/tests/picture_gpu_test.cpp, suite `picture_gpu`; game files and an adapter)
 
+Round eb added:
+- the constrained cases ("picture GPU, constrained: …", Package 3);
+- the early-failure teardown case (1B);
+- the water reproducer (suite `picture_gpu_water`, OQ-525);
+- in `src/app/tests/play_follow_test.cpp` (suite `play_follow`), the paused and hidden window cases (1A).
+
 | Packet item | Case | Shows |
 |---|---|---|
 | 6a, 6d | accepted builds and an accepted demolish ... | the transitions above; readiness only when all keys are fresh at one poll |
@@ -141,6 +186,13 @@ open (section 5).
 | 6f | an offscreen edit is fresh after the view returns ... | keys invalidated while not visible are rebuilt on return; group 2 and derived level 3 equal a compositor of the fresh scene exactly, and the CPU path within the derived levels' bound (max 3) |
 | fluid | the wave simulation's background preparation holds ... | the finding above (fails with the old capture) |
 | 6g | teardown with builds, chunk jobs and GPU work outstanding ... | every generation is destroyed on the reclaimer; the payload returns to its baseline |
+| 1B | a failure after the chunk workers and the builder are held ... | scoped releases, declared after the owners, release both gates before the joins on every exit; a watchdog bounds the case; the payload returns to its baseline |
+| 1A | play follow: a turn in flight when the window pauses ...; a hidden window ... | the late batch is shown while paused, the sim stays at its turn, the window idles again; a hidden window converges when shown |
+| 3B | constrained: one upload per frame ... | a three-key edit finishes while paused; the window idles only once every key is GPU-usable; exact against a fresh compositor |
+| 3C | constrained: an edit published while uploads are outstanding ... | ends on the newest state; every chunk region shown is one whole state; the replaced generation and its CPU chunks are freed |
+| 3D | constrained: with stand-ins and dissolves ... | a chunk replacing its stand-in is fading (not usable) until the clock ends it; a rebuilt chunk swaps whole; old and new chunks side by side across keys |
+| 3E | constrained: leaving the view ... | uploads in progress are dropped when the keys leave the view and are redone on return; closing with an upload in progress frees its CPU chunk |
+| 4 | water parity: the reproducer ... | the four pixels and their cause (OQ-525); parity not accepted (`WARN`) |
 
 Ordering is made with `ChunkWorkers::set_test_gate` and the bridge's `build_fault` seam, never with sleeps.
 The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and pass.
@@ -152,15 +204,18 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
   - Windows MSVC;
   - the Linux GCC 13 / Clang 18 `-Werror` check.
   The commands are in REPORTS.md (round ea). The play GPU case `play_gpu_test` requires an RTX 4090.
-- **Open: the GPU-vs-CPU parity of the per-frame water-sprite path.** It is 2 at a few pixels on Metal in a
-  view with many water sprites. Earlier views had none of them, so the existing ≤1 bound never covered this
-  content. The new cases bound their comparisons by the unchanged picture's parity and report it
-  (`WARN`).
+- **Open, OQ-525: the GPU-vs-CPU parity of water objects below the waterline.**
+  - The difference is 2 at four pixels of one water object, with the sea shaded over it.
+  - The cause is established: the CPU reference truncates at two blends, `render::over` and
+    `sea::lerp4`; the GPU rounds once.
+  - Which rounding is the reference is an owner decision.
+  - Parity is not accepted, and no tolerance was raised.
 - **Not built:**
   - the presentation-latency probe: the time from the sim's batch to the presented pixel, at 1080p and 4K,
-    with and without simulation load (PLAN §0.3);
-  - a per-frame GPU-against-CPU comparison in the bench;
-  - an upload-completion boundary in the trace (boundary 6).
+    with and without simulation load (PLAN §0.3). The viewer's present call is not instrumented, and
+    headless runs present nothing;
+  - GPU completion of a frame: no non-blocking completion query in the compositor;
+  - a per-frame GPU-against-CPU comparison in the bench (the bench compares the final view, exactly).
 - **Workload limits that apply to every row** (docs/perf/README.md):
   - the legal workload is five cities of about 40 buildings each, not a late-game economy;
   - roads are refused by the current sim;

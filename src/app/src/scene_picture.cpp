@@ -117,6 +117,54 @@ std::size_t island_bytes(const formats::insel::Island& island) {
     return n;
 }
 
+/// The admission counts of the picture: the builds that hold a credit and their estimated bytes.
+/// Only Credit changes them.
+struct Ledger {
+    std::atomic<std::size_t> count{0};
+    std::atomic<std::size_t> bytes{0};
+};
+
+/// The credit of one build: its slot and its estimated bytes. It is held by the job, then by its
+/// result, and is released when the object that holds it is destroyed: on the worker, when a
+/// superseded build finishes; on the reaper, when a dropped job or result is destroyed; at commit,
+/// when a committed result is. A running build that a newer change supersedes therefore keeps its
+/// credit until it has finished (round dx, DX2b). The release takes no lock, allocates nothing and
+/// does not throw (the reaper and the workers run it).
+class Credit {
+  public:
+    Credit() = default;
+    Credit(std::shared_ptr<Ledger> ledger, std::size_t bytes)
+        : ledger_(std::move(ledger)), bytes_(bytes) {
+        ledger_->count.fetch_add(1, std::memory_order_relaxed);
+        ledger_->bytes.fetch_add(bytes_, std::memory_order_relaxed);
+    }
+    Credit(Credit&& other) noexcept
+        : ledger_(std::move(other.ledger_)), bytes_(std::exchange(other.bytes_, 0)) {}
+    Credit& operator=(Credit&& other) noexcept {
+        if (this != &other) {
+            release();
+            ledger_ = std::move(other.ledger_);
+            bytes_ = std::exchange(other.bytes_, 0);
+        }
+        return *this;
+    }
+    Credit(const Credit&) = delete;
+    Credit& operator=(const Credit&) = delete;
+    ~Credit() { release(); }
+
+  private:
+    void release() noexcept {
+        if (ledger_) {
+            ledger_->bytes.fetch_sub(bytes_, std::memory_order_relaxed);
+            ledger_->count.fetch_sub(1, std::memory_order_relaxed);
+            ledger_.reset();
+        }
+    }
+
+    std::shared_ptr<Ledger> ledger_;
+    std::size_t bytes_ = 0;
+};
+
 /// One request for an island's rebuild: the version it is made for, the generation it is made from
 /// and the buildings it applies.
 struct PictureJob {
@@ -125,6 +173,8 @@ struct PictureJob {
     std::shared_ptr<const render::Scene> base;
     std::vector<SceneBuilding> buildings;
     std::size_t bytes = 0;
+    /// The job's admission credit; the worker moves it to the result it builds.
+    Credit credit;
     /// When the job was handed to the workers (its queue delay is the time to its start).
     std::chrono::steady_clock::time_point submitted{};
 };
@@ -142,6 +192,8 @@ struct PictureResult {
     /// The lists the change set was taken from: the version the commit checks.
     std::shared_ptr<const render::IslandLists> base_lists;
     ChangeSet change;
+    /// The credit of the build that made this result (released with the result).
+    Credit credit;
 };
 
 /// A worker's build of one request: the island's records rewritten with the island's buildings, its
@@ -199,9 +251,9 @@ struct ScenePicture::State {
     std::vector<std::uint64_t> desired, committed, inflight;
     /// Islands whose committed state differs from the desired state.
     std::set<std::size_t> dirty;
-    /// Builds in flight or finished and uncommitted, and their estimated bytes per island.
-    std::size_t outstanding = 0, outstanding_bytes = 0;
-    std::vector<std::size_t> job_bytes;
+    /// The builds that hold a credit (in flight, finished, superseded or dropped and not yet
+    /// destroyed), and their bytes: the admission counts (Credit).
+    std::shared_ptr<Ledger> ledger = std::make_shared<Ledger>();
     /// Islands whose start waits for a free slot or for the reaper, in the order they waited.
     std::deque<std::size_t> deferred;
     std::vector<bool> is_deferred;
@@ -222,16 +274,9 @@ struct ScenePicture::State {
     /// Per build: the milliseconds in the queue and in the build (bounded; see the worker).
     std::vector<double> queue_ms, build_ms;
 
-    /// Closes island `index`'s open build (committed, dropped or failed): its bytes and slot are
-    /// freed.
-    void close(std::size_t index) {
-        if (inflight[index] != 0) {
-            inflight[index] = 0;
-            --outstanding;
-            outstanding_bytes -= job_bytes[index];
-            job_bytes[index] = 0;
-        }
-    }
+    /// Closes island `index`'s open build (committed, dropped or failed): the island may start
+    /// another. The build's credit goes with its job or result (Credit).
+    void close(std::size_t index) { inflight[index] = 0; }
 };
 
 /// Releases what the window thread gave up, on its own thread: a generation that is not the last
@@ -310,7 +355,6 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
     state_->desired.assign(n, 0);
     state_->committed.assign(n, 0);
     state_->inflight.assign(n, 0);
-    state_->job_bytes.assign(n, 0);
     state_->is_deferred.assign(n, false);
     state_->failures.assign(n, 0);
     state_->failed_for_good.assign(n, false);
@@ -343,6 +387,7 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                     // (ScenePicture::error()).
                     try {
                         result = build_result(job, *st->is_building, fault);
+                        result.credit = std::move(job.credit);
                         built = true;
                     } catch (const std::exception& e) {
                         message = e.what();
@@ -355,7 +400,6 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                     job.base.reset();
                     {
                         const std::lock_guard lock(st->mutex);
-                        --st->running;
                         st->stats.last_build_ms = ms;
                         // Bounded sample: the newest samples are kept (the bench runs far fewer
                         // builds).
@@ -370,9 +414,14 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                         const bool current = st->inflight[job.index] == job.version &&
                                              st->desired[job.index] == job.version;
                         if (!current) {
-                            // Superseded while it ran (a newer change or a dropped request):
-                            // nothing to do.
+                            // Superseded while it ran (a newer change or a dropped request): its
+                            // result and credit are destroyed when this call returns. An open
+                            // build of this island that is not desired any more frees the island
+                            // (it stays deferred until it starts again).
                             ++st->stats.discarded;
+                            if (st->inflight[job.index] == job.version) {
+                                st->close(job.index);
+                            }
                         } else if (!built) {
                             ++st->stats.build_failures;
                             st->close(job.index);
@@ -399,6 +448,15 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                                 st->done.push_back(std::move(result));
                             }
                         }
+                    }
+                    // What was not kept is destroyed here, off the lock (its credit with it; a
+                    // kept result was moved). The worker counts itself as done only after that, so
+                    // wait_idle returns after every release of this build.
+                    job = PictureJob{};
+                    result = PictureResult{};
+                    {
+                        const std::lock_guard lock(st->mutex);
+                        --st->running;
                         if (st->jobs.empty() && st->running == 0) {
                             st->idle.notify_all();
                         }
@@ -439,6 +497,11 @@ ScenePicture::~ScenePicture() {
     }
     reaper_->wake.notify_all();
     reaper_->thread.join();
+}
+
+bool ScenePicture::reclaim_overloaded() const {
+    return reaper_->backlog() > limits_.max_reclaim_backlog ||
+           render::SceneReclaimer::shared().stats().waiting > limits_.max_reclaim_backlog;
 }
 
 std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
@@ -488,7 +551,7 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
     // While the reaper is behind, an island in flight is not replaced: replacing it would hand its
     // queued job and result to the reaper and grow the backlog. Such an island is deferred. An
     // island that is not in flight starts without any hand-over.
-    const bool overloaded = reaper_->backlog() > limits_.max_reclaim_backlog;
+    const bool overloaded = reclaim_overloaded();
     std::size_t requested = 0;
     {
         const std::lock_guard lock(state_->mutex);
@@ -513,19 +576,24 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                 continue; // a build of the current version is already in flight or finished
             }
             const std::size_t bytes = island_bytes(current_->islands[index]);
-            if (state_->inflight[index] != 0) {
-                if (overloaded) {
-                    defer(index);
-                    continue;
-                }
-                // A newer change replaces this island's queued job and finished result (a running
-                // build is discarded when it completes, by its version).
+            const bool replaces = state_->inflight[index] != 0;
+            if (replaces && overloaded) {
+                defer(index);
+                continue;
+            }
+            if (replaces) {
+                // A newer change hands this island's queued job and finished result to the reaper,
+                // with their credits: those are released when the reaper destroys them. A running
+                // build keeps its credit until its worker releases it (Credit), so it is not
+                // handed over here.
+                bool handed = false;
                 auto queued =
                     std::find_if(state_->jobs.begin(), state_->jobs.end(),
                                  [index](const PictureJob& q) { return q.index == index; });
                 if (queued != state_->jobs.end()) {
                     dropped.push_back(std::make_shared<PictureJob>(std::move(*queued)));
                     state_->jobs.erase(queued);
+                    handed = true;
                 }
                 auto finished =
                     std::find_if(state_->done.begin(), state_->done.end(),
@@ -534,31 +602,34 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                     ++state_->stats.coalesced;
                     dropped.push_back(std::make_shared<PictureResult>(std::move(*finished)));
                     state_->done.erase(finished);
+                    handed = true;
                 }
-                state_->outstanding_bytes -= state_->job_bytes[index];
-                state_->job_bytes[index] = 0;
-            } else {
-                if (state_->outstanding >= limits_.max_outstanding) {
-                    defer(index);
-                    continue;
+                if (handed) {
+                    state_->inflight[index] = 0; // no open build of this island any more
                 }
-                // The byte budget admits a build when others fit beside it. A single build may
-                // exceed the budget alone: otherwise such an island would never be built.
-                if (state_->outstanding > 0 &&
-                    state_->outstanding_bytes + bytes > limits_.max_outstanding_bytes) {
-                    ++state_->stats.budget_deferrals;
-                    defer(index);
-                    continue;
-                }
-                ++state_->outstanding;
+            }
+            // Admission counts every credit still held: a running, finished, superseded or dropped
+            // build counts until it is destroyed. The byte budget admits a build when others fit
+            // beside it. A single build may exceed the budget alone: otherwise such an island would
+            // never be built.
+            const std::size_t held = state_->ledger->count.load(std::memory_order_relaxed);
+            if (held >= limits_.max_outstanding) {
+                defer(index);
+                continue;
+            }
+            if (held > 0 && state_->ledger->bytes.load(std::memory_order_relaxed) + bytes >
+                                limits_.max_outstanding_bytes) {
+                ++state_->stats.budget_deferrals;
+                defer(index);
+                continue;
             }
             state_->inflight[index] = state_->desired[index];
-            state_->job_bytes[index] = bytes;
-            state_->outstanding_bytes += bytes;
+            PictureJob job;
+            job.credit = Credit(state_->ledger, bytes);
             state_->stats.outstanding_peak =
-                std::max(state_->stats.outstanding_peak, state_->outstanding);
+                std::max(state_->stats.outstanding_peak, state_->ledger->count.load());
             state_->stats.outstanding_bytes_peak =
-                std::max(state_->stats.outstanding_bytes_peak, state_->outstanding_bytes);
+                std::max(state_->stats.outstanding_bytes_peak, state_->ledger->bytes.load());
             if (state_->is_deferred[index]) {
                 state_->is_deferred[index] = false;
                 ++state_->stats.started_deferred;
@@ -566,7 +637,6 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             if (state_->retrying.erase(index) != 0) {
                 ++state_->stats.build_retries;
             }
-            PictureJob job;
             job.index = index;
             job.version = state_->desired[index];
             job.base = current_;
@@ -639,7 +709,7 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
     }
     // Overload: a reaper that has not released the last commit's items makes this commit wait for
     // the next call. The window thread never blocks on the reaper.
-    if (reaper_->backlog() > limits_.max_reclaim_backlog) {
+    if (reclaim_overloaded()) {
         const std::lock_guard lock(state_->mutex);
         ++state_->stats.commit_skipped;
         return 0;
@@ -655,7 +725,9 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
                 ready.push_back(std::move(r));
             } else {
                 ++state_->stats.discarded;
-                state_->close(r.index);
+                if (state_->inflight[r.index] == r.version) {
+                    state_->close(r.index);
+                }
                 dropped.push_back(std::make_shared<PictureResult>(std::move(r)));
             }
         }
@@ -793,7 +865,7 @@ ScenePicture::Stats ScenePicture::stats() const {
         const std::lock_guard lock(state_->mutex);
         s = state_->stats;
         s.dirty_islands = state_->dirty.size();
-        s.outstanding_bytes = state_->outstanding_bytes;
+        s.outstanding_bytes = state_->ledger->bytes.load();
         s.failed_islands = static_cast<std::size_t>(
             std::count(state_->failed_for_good.begin(), state_->failed_for_good.end(), true));
     }

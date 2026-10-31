@@ -530,3 +530,159 @@ TEST_CASE("picture failures: a persistent failure is bounded per retry and stays
     CHECK(picture.stats().failed_islands == 1);
     CHECK(picture.error().find("boom 0") != std::string::npos);
 }
+
+TEST_CASE("picture credits: a superseded running build keeps its credit until its worker finishes" *
+          doctest::test_suite("scene_picture_recovery")) {
+    // Island 0 (64 bytes) is blocked in its first build, and a newer change arrives while it runs.
+    // The running build keeps its credit, so the replacement does not fit the byte budget beside it
+    // and is deferred. When the build finishes, the credit goes with it.
+    auto scene = islands_scene(2);
+    std::vector<app::SceneBuilding> none;
+    std::atomic<bool> open{false};
+    std::atomic<bool> entered{false};
+    app::ScenePicture::Limits limits;
+    limits.max_outstanding_bytes = 96; // one 64-byte build fits, two do not
+    limits.build_fault = [&open, &entered](std::size_t) {
+        entered.store(true);
+        while (!open.load()) {
+            std::this_thread::yield();
+        }
+    };
+    app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 1, limits);
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1)});
+    while (!entered.load()) {
+        std::this_thread::yield();
+    }
+    CHECK(picture.stats().outstanding_bytes == 64);
+    picture.apply({added(2, 0, 2)}); // the running build is superseded
+    CHECK(picture.stats().outstanding_bytes == 64);
+    CHECK(picture.stats().budget_deferrals >= 1);
+    open.store(true);
+    picture.wait_idle(); // the superseded build has finished and released its credit
+    CHECK(picture.stats().outstanding_bytes == 0);
+    CHECK(drain(picture, frames, 20));
+    CHECK(picture.error().empty());
+    CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
+    CHECK(desired_on(picture, 0) == 2);
+    CHECK(picture.stats().discarded >= 1);
+    CHECK(picture.stats().outstanding_bytes == 0);
+}
+
+TEST_CASE("picture credits: a dropped job keeps its credit until the reaper has destroyed it" *
+          doctest::test_suite("scene_picture_recovery")) {
+    // One worker, blocked in island 0's build, and island 1's build queued behind it. A newer
+    // change to island 1 drops the queued job to the reaper, which is stalled: the dropped job's
+    // credit is still held, with island 0's running build and the new job of island 1. When the
+    // reaper and the worker are released, the credits of the dropped job and of the finished builds
+    // are released.
+    auto scene = islands_scene(2);
+    std::vector<app::SceneBuilding> none;
+    std::atomic<bool> build_open{false};
+    std::atomic<bool> reaper_open{false};
+    std::atomic<bool> entered{false};
+    app::ScenePicture::Limits limits;
+    limits.build_fault = [&build_open, &entered](std::size_t index) {
+        if (index == 0) {
+            entered.store(true);
+            while (!build_open.load()) {
+                std::this_thread::yield();
+            }
+        }
+    };
+    limits.reclaim_gate = [&reaper_open] {
+        while (!reaper_open.load()) {
+            std::this_thread::yield();
+        }
+    };
+    app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 1, limits);
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1)});
+    while (!entered.load()) {
+        std::this_thread::yield();
+    }
+    picture.apply({added(2, 1, 1)}); // queued behind island 0's build
+    picture.apply({added(3, 1, 2)}); // drops island 1's queued job to the reaper, starts a new one
+    CHECK(picture.stats().outstanding_bytes == 192);
+    reaper_open.store(true);
+    build_open.store(true);
+    picture.wait_idle();
+    // The reaper has destroyed the dropped job (its own counters, bounded); the two builds are held
+    // as results.
+    const auto caught_up = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (picture.stats().reclaim_completed < picture.stats().reclaim_queued &&
+           std::chrono::steady_clock::now() < caught_up) {
+        std::this_thread::yield();
+    }
+    REQUIRE(picture.stats().reclaim_completed == picture.stats().reclaim_queued);
+    CHECK(picture.stats().outstanding_bytes == 128);
+    CHECK(drain(picture, frames, 20));
+    CHECK(picture.error().empty());
+    CHECK(committed_payloads(*picture.scene(), 1) == fresh_payloads(*scene, 1, picture));
+    CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
+    CHECK(picture.stats().outstanding_bytes == 0);
+}
+
+TEST_CASE("picture reclaim: a stalled process reclaimer holds the commits back, and the picture "
+          "converges after the release" *
+          doctest::test_suite("scene_picture_recovery")) {
+    // The process reclaimer is stalled: every replaced generation waits for it. The commits stop
+    // while it is behind, so the waiting generations stay bounded, the picture keeps its last valid
+    // state, and after the release it converges with no bytes left waiting.
+    auto scene = islands_scene(2);
+    std::vector<app::SceneBuilding> none;
+    auto open = std::make_shared<std::atomic<bool>>(false);
+    auto& reclaimer = render::SceneReclaimer::shared();
+    reclaimer.set_test_gate([open] {
+        while (!open->load()) {
+            std::this_thread::yield();
+        }
+    });
+    const auto before = reclaimer.stats();
+    {
+        app::ScenePicture::Limits limits;
+        limits.max_outstanding = 1;
+        limits.max_reclaim_backlog = 1;
+        app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 1, limits);
+        render::FrameRenderer frames(1);
+        std::size_t committed = 0;
+        for (std::uint64_t turn = 1; turn <= 40; ++turn) {
+            picture.apply({added(turn, 0, static_cast<std::uint16_t>(turn))});
+            picture.wait_idle();
+            committed += picture.commit(frames);
+            // The reaper releases the replaced generation to the reclaimer (its own counters).
+            const auto caught_up = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            while (picture.stats().reclaim_completed < picture.stats().reclaim_queued &&
+                   std::chrono::steady_clock::now() < caught_up) {
+                std::this_thread::yield();
+            }
+            // A commit waits while the reclaimer holds more than the backlog limit: at most the
+            // limit plus the generation of the commit before it.
+            CHECK(reclaimer.stats().waiting - before.waiting <= limits.max_reclaim_backlog + 1);
+        }
+        CHECK(picture.stats().commit_skipped >= 1);
+        CHECK(committed < 40);
+        CHECK(picture.pending() >= 1);
+        CHECK(picture.error().empty());
+        open->store(true);
+        const auto released = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (reclaimer.stats().waiting > before.waiting &&
+               std::chrono::steady_clock::now() < released) {
+            std::this_thread::yield();
+        }
+        CHECK(drain(picture, frames, 80));
+        CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
+        CHECK(desired_on(picture, 0) == 40);
+        CHECK(picture.stats().outstanding_bytes == 0);
+    }
+    // The destruction of the picture releases what it still held; the reclaimer returns to its
+    // baseline once it has destroyed them.
+    const auto settled = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (reclaimer.stats().waiting > before.waiting &&
+           std::chrono::steady_clock::now() < settled) {
+        std::this_thread::yield();
+    }
+    CHECK(reclaimer.stats().waiting == before.waiting);
+    CHECK(reclaimer.stats().bytes_waiting == before.bytes_waiting);
+    reclaimer.set_test_gate({});
+}

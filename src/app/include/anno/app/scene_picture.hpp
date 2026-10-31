@@ -167,6 +167,11 @@ class ScenePicture {
     /// islands started.
     std::size_t dispatch(const std::vector<std::size_t>& wanted,
                          std::vector<std::shared_ptr<const void>>& dropped);
+    /// True while the release of what the picture gave up is behind: the reaper holds more than
+    /// `max_reclaim_backlog` items, or the process reclaimer holds more than that many generations
+    /// it has not destroyed (render::SceneReclaimer::stats().waiting, round dx DX2c). The window
+    /// thread then neither commits nor replaces a build.
+    [[nodiscard]] bool reclaim_overloaded() const;
 };
 
 } // namespace anno::app

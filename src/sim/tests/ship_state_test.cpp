@@ -331,15 +331,8 @@ TEST_CASE("expedition tree: a stream of another version or with a corrupt refere
     const sim::World w = make_expedition_world(types);
     const std::vector<std::uint8_t> good = w.save();
 
-    // The version: the state stream starts with u32 kStateHashVersion, u32 PRNG timeline.
-    const std::vector<std::uint8_t> marker = {
-        static_cast<std::uint8_t>(sim::kStateHashVersion),    0, 0, 0,
-        static_cast<std::uint8_t>(sim::kPrngTimelineVersion), 0, 0, 0};
-    const auto at = std::search(good.begin(), good.end(), marker.begin(), marker.end());
-    REQUIRE(at != good.end());
-    std::vector<std::uint8_t> old_version = good;
-    old_version[static_cast<std::size_t>(at - good.begin())] = 115;
-    CHECK_FALSE(sim::World::load(old_version, types).ok());
+    // Unsupported versions (header-only edits with a valid checksum; each reaches its own check).
+    island_test::check_unsupported_versions(good, types, {115});
 
     // A parent that is not in the registry: written through the test access, saved, refused.
     sim::World broken = w;
@@ -596,17 +589,10 @@ TEST_CASE("ship holds: a stream of the whole-ton layout or a truncated hold fail
     // The version: a state/save of the previous layout (116, 8-byte holds) is refused, never
     // reinterpreted as 1/256 ton.
     const std::vector<std::uint8_t> good = w.save();
-    const std::vector<std::uint8_t> marker = {
-        static_cast<std::uint8_t>(sim::kStateHashVersion),    0, 0, 0,
-        static_cast<std::uint8_t>(sim::kPrngTimelineVersion), 0, 0, 0};
-    const auto at = std::search(good.begin(), good.end(), marker.begin(), marker.end());
-    REQUIRE(at != good.end());
-    // 116 had whole-ton holds of 8 bytes, 117 raw amounts without the island lock: both refused.
-    for (const std::uint8_t earlier : {std::uint8_t{116}, std::uint8_t{117}}) {
-        std::vector<std::uint8_t> old = good;
-        old[static_cast<std::size_t>(at - good.begin())] = earlier;
-        CHECK_FALSE(sim::World::load(old, types).ok());
-    }
+    // 116 had whole-ton holds of 8 bytes, 117 raw amounts without the island lock: both numbers are
+    // refused by the version checks (the bytes are this build's layout with only the number
+    // changed).
+    island_test::check_unsupported_versions(good, types, {116, 117});
     CHECK(sim::kStateHashVersion == 118);
 
     // Truncation of the flat stream inside a hold amount fails and the error names the figure.

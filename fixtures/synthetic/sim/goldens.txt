@@ -95,7 +95,7 @@
 # Re-baselined at stream version 117 (task MAP-2, exact cargo). A ship hold's amount is a u64
 # count of 1/256 ton instead of a u32 count of whole tons (12 bytes per hold, 8 before). No world
 # of these goldens has a ship, so every value moves ONLY through the header's version number: with
-# the version held at 116 and the new layout built, all 728 other sim tests, every golden, the
+# the version held at 116 and the new layout built, the 729 other executed sim tests passed (the 731 selected were 729 passes, 1 failure and 1 opt-in skip), every golden, the
 # scenario corpus and g2..g6.log reproduced their 116 values (control run
 # cache/map2-gates2/b-control-version116-layout117.log; its single failure is the new hold test's
 # own version assertion). The nine values of g0, g1, s5 and s6 are those printed by the independent

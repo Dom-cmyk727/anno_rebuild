@@ -8,8 +8,8 @@
 // atomicity of a command and the order against the city ring are future work; this is not a
 // founding command and not a general transaction framework.
 //
-// Rules (ORIGINAL unless marked; AnnoGame 0x10041760 for the loop, AnnoWelt 0x1003b9a0 for the hold
-// slot +0x10, re section 10.7):
+// Rules (ORIGINAL unless marked; AnnoWelt.dll 0x10041760 for the loop, AnnoWelt.dll 0x1003b9a0 for
+// the hold slot +0x10, re section 10.7):
 //  - costs come from the type data (gold, goods amounts in raw 1/256 ton); nothing is special-cased
 //    for warehouse 1302;
 //  - goods are processed in ascending goods id; holds in ascending index; a hold visited with
@@ -23,7 +23,9 @@
 //  - ADAPTATION: several cost entries of one goods are summed (checked) before use; goods id 0 is
 //    "none" (UNUSED, the cleared marker) and never supplies cargo; a sum that does not fit 64 bits
 //    is the explicit refusal Overflow, never a wrap; goods are checked before gold.
-// Cost: O(c log c + c * h + h) for c cost entries and h holds; no allocation beyond the result.
+// Cost: O(c log c + c * h + h) for c cost entries and h holds. Allocation: the result (a copy of
+// the h holds) plus two temporary requirement vectors of at most c entries; nothing else, and no
+// World.
 #pragma once
 
 #include <cstdint>

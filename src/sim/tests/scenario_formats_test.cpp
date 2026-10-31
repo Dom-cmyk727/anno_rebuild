@@ -24,6 +24,7 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
 
+#include "island_helpers.hpp"
 #include "world_access.hpp"
 
 namespace sim = anno::sim;
@@ -1445,16 +1446,8 @@ TEST_CASE("scenario island lock: world state, hash, save and load, a failed load
     bad = locked.save();
     bad[bad.size() / 2] ^= 0x5a;
     CHECK_FALSE(sim::World::load(bad, registry()).ok());
-    // The previous stream version (no lock byte) is refused, never reinterpreted.
-    const std::vector<std::uint8_t> good = locked.save();
-    const std::vector<std::uint8_t> marker = {
-        static_cast<std::uint8_t>(sim::kStateHashVersion),    0, 0, 0,
-        static_cast<std::uint8_t>(sim::kPrngTimelineVersion), 0, 0, 0};
-    const auto at = std::search(good.begin(), good.end(), marker.begin(), marker.end());
-    REQUIRE(at != good.end());
-    std::vector<std::uint8_t> old = good;
-    old[static_cast<std::size_t>(at - good.begin())] = 117;
-    CHECK_FALSE(sim::World::load(old, registry()).ok());
+    // The previous stream version number (117: no lock byte) is refused by the version checks.
+    island_test::check_unsupported_versions(locked.save(), registry(), {117});
 }
 
 namespace {

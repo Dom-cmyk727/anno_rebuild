@@ -381,7 +381,7 @@ Only a boundary converts: `hold_units_from_tons(tons)` (x256, nullopt on 64-bit 
 `kStateHashVersion` 116 -> 117: a hold is 12 bytes on the wire (`u32 goods`, `u64 amount_88`), the hostile-count
 bound is 12 bytes per hold, and an earlier state or save is refused by its version, never reinterpreted.
 A world without ships changes hash only because the version moved: with the version held at 116 and the new
-layout, all 728 other tests, every golden and the scenario corpus reproduced their 116 values
+layout, every other executed test (729 passes of 731 selected, 1 opt-in skip), every golden and the scenario corpus reproduced their 116 values
 (cache/map2-gates2/b-control-version116-layout117.log, the one failure being the new test's own version check).
 Independent wire bytes: `tools/sim_stream.py --write-holds` writes `fixtures/synthetic/sim/ship_holds.txt`.
 

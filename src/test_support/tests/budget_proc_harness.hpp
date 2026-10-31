@@ -183,11 +183,29 @@ std::string token(const std::string& text) {
     return word;
 }
 
-bool wsl_available() {
+/// Whether the WSL (Linux) side of these cases can run: on a Windows host,
+/// when WSL (Ubuntu) runs; on Linux, always (the cases read /proc). Other
+/// hosts (macOS) have no /proc for the descriptor checks.
+[[maybe_unused]] bool wsl_available() {
 #if defined(_WIN32)
     return std::system("wsl.exe -d Ubuntu -- true >nul 2>&1") == 0;
+#elif defined(__linux__)
+    return true;
 #else
-    return std::system("true") == 0;
+    return false;
+#endif
+}
+
+/// Whether a WSL coordinator can start its real PowerShell host meter: on a
+/// Windows host, when WSL (Ubuntu) runs; on a Linux host, when the PowerShell
+/// the meter runs (HostMeter::start in coord_server.cpp, the same fixed path)
+/// is reachable, i.e. inside WSL. A plain Linux host (the hosted CI runners)
+/// has no meter child to observe, so the cases about it skip there.
+[[maybe_unused]] bool wsl_meter_available() {
+#if defined(_WIN32)
+    return wsl_available();
+#else
+    return ::access("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe", X_OK) == 0;
 #endif
 }
 

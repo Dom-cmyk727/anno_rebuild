@@ -226,3 +226,13 @@ Island 32×32 at the origin; land `0x40` for vertices `x <= 9`; shoreline vertex
 
 ## 14. Original-runtime capture recipe
 The smallest set is D1–D8 of §11. Each records, before and after: per-hold goods id and amount, gold, the accepted rotation, the city count and numbers, the owner nibble of the footprint and a 30-tile border, the scout/donkey/ship positions and parents, the world PRNG index, island property `0x11`, the building's `+0x0e`/`+0x0f` bytes and the message log. They confirm the stated uncertainties; they do not replace reading code.
+
+## 14. Implementation status of the isolated helpers (task MAP-2, after the fifth pass)
+No founding command, codec alternative, `Reject` value or state field exists. Three isolated, state-free helper units were added; each has its own tests and an independent review.
+| Unit | Files | What it decides | Verified against |
+|---|---|---|---|
+| U1 corner-height view | `terrain_view.hpp/.cpp` | `VertexGrid` over `Terrain::height`: stride `W+1`, column `W` and row `H` read 0, statuses for missing, placeholder and malformed data; no allocation, no hash/serialization change | `re` §12.3; 668 shipped islands (9,396,540 vertices) compared against an independent rebuild of the original's grid |
+| U2 site predicates | `site_checks.hpp/.cpp` | click centring, rotation order, bounds, distance, footprint ownership, supported overlap rows, coast-class height rule with the unrotated `n`/`m`; **not** "founding allowed" | `fixtures/synthetic/founding/coast_cases.txt` (emulated AnnoGame 0x10008f90, generator `tools/founding_fixtures.py`) |
+| U3 territory ownership | `territory.hpp/.cpp` | integer disc profile and footprint rectangle, neutral tiles only, island-clipped; ownership only | `fixtures/synthetic/founding/territory_cases.txt` (emulated AnnoWelt 0x10085840, generator `tools/territory_fixtures.py`) |
+
+Limits recorded by the reviews: the territory port equals the emulated original for radius ≤ 126 on a 4×4 footprint and differs from 127 on, where the original's byte-wide spans wrap (fixtures record both; wider radii are a deliberate widening, `max_radius` is the caller's bound). Overlap rows other than placed groups 1/0x21/0x61, and same-PRODTYPE replacement (bit 8 of type slot `+0xd0`), are `Unsupported`, not guessed. The distance rule's equivalence to the original's f32 computation is claimed only in the C2 domain; its tests are hand-derived. Everything remains static analysis plus leaf emulation: no run of the original.

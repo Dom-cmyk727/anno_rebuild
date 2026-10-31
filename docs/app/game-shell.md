@@ -450,17 +450,59 @@ the current generation references.
 **Reclamation counters.** `reclaim_queued` and `reclaim_completed` count the bridge's own retired items
 (generations as references, jobs, results); a generation's destruction is counted by the reclaimer.
 
-**Staleness under a fast stream (round dy, D1 case f).** Only the desired version of an island is published
-(the accepted contract, `publish_progress` off). A stream of changes to one island that arrives faster than
-one build plus the next commit therefore supersedes every finished build, and the island's picture does not
-move until the stream stops: on the legal five-city workload, 400 edits at 400 per second (80 per second per
-island) held the picture for about a second (object-ready p50 544 ms, maximum 1040 ms; see
-docs/perf/README.md). This is reported as a target miss, not redefined. `PictureLimits::publish_progress`
-(provisional, off, a decision for review) keeps a superseded build that is still newer than the committed
-version and commits it: the picture moves forward and never back, and the island stays pending until its
-desired version is committed (the same stream with it on: object-ready p50 42 ms, maximum 144 ms). A result
-requeued because its island was committed after the build started
-waits in the deferred list and is built again by the next dispatch.
+**Publication policy (round dz, orchestrator direction).** The picture advances during sustained edits
+instead of waiting for a build of the exact latest version. `PictureLimits::publish` selects the policy:
+
+- `PublishPolicy::Monotonic` (the default): a finished build of island `i` at version `v` is committed when
+  `committed[i] < v <= desired[i]`. A build superseded while it ran, or a finished result a newer change
+  arrived for, is kept while it is newer than the committed version; a newer change does not drop it.
+- `PublishPolicy::LatestOnly` (a diagnostic policy, the round-dw contract): only `v == desired[i]` with the
+  island's open build at `v` is committed; a superseded build is dropped. A stream of changes to one island
+  faster than one build plus the next commit then holds that island's picture until the stream stops (round
+  dy, D1 case f: object-ready p50 544 ms, maximum 1040 ms at 400 edits per second; docs/perf/README.md).
+
+Invariants of both policies (the tests are in `src/app/tests/scene_picture_publish_test.cpp`, suite
+`scene_picture_publish`, for the default; the LatestOnly tests select that policy explicitly):
+
+1. Per island the committed version only increases: a result whose version is not above the committed one is
+   dropped, whenever it finishes (a late older build after a newer commit included).
+2. A published version never exceeds the desired version.
+3. An intermediate publication leaves the island pending: it stays dirty until its desired version is
+   committed, and its newer build stays open (or is started by the next dispatch).
+4. Once the changes stop and the workers can run, the picture converges to the desired state.
+5. Admission is unchanged: every kept build holds its credit and its byte reservation until its object is
+   destroyed or committed, and the reclamation limits gate the commits as before.
+6. Stale chunk completions stay rejected: a commit invalidates its keys with its own generation, and a chunk
+   built from an older generation never clears a newer mark (rule 8 above).
+7. The simulation is not involved: the policy decides which finished CPU build the window publishes. Sim
+   state, command validation, costs, placement, the economy and lockstep are unchanged.
+
+What an intermediate publication shows: the island's buildings as the desired state was at that version
+(the sim's state after the batch that made it), never a mixture of two versions of one island. Islands are
+independent: one commit may hold island `i` at an intermediate version and island `j` at its desired one. The
+real-data case "legal workload: intermediate publications under a stream of builds and a demolish ..."
+compares each intermediate generation with a freshly loaded scene of the desired list at its version (PROD2
+items of every island, and the chunk layers of the edited views, rendered from the generation alone and as
+the bridge's own invalidated chunk cache shows them).
+
+A result built from lists the generation no longer has (a commit of the same island happened during its
+build) is requeued, never published: its change set is against lists that are gone. If it is the island's
+open build, the island waits in the deferred list and the next dispatch builds it again from its current
+desired state; if a newer build is open, that build continues and the requeued result is only dropped. The
+cost under Monotonic: a build that runs while the island's previous version is committed is requeued, so
+with one worker and a sustained stream of changes to one island every second build commits (versions 1, 3,
+5, 7 of 8 in the synthetic stream case; the others are requeued). That is still progress during the stream,
+where LatestOnly commits nothing; the measured cost is in docs/perf/README.md. A newer job that is still
+queued when an intermediate version of its island is committed moves to the new generation with the other
+queued jobs and is built from it, with no requeue.
+
+Credits at a commit (round dz finding). The commit releases the committed results' credits before it starts
+the deferred builds. Before round dz the credits were released only when the commit returned, so the
+commit's own dispatch could not use them. A waiting island was then admitted only by the next `apply`,
+where the islands that the call changes are considered first: under one admission, a continuously edited island kept a
+waiting island out for the whole stream (the case "publish: competing islands under one admission ..."
+failed with island 1 committed 0 times in 12 rounds). Now the waiting island is admitted by the commit, in
+the order it waited.
 
 **Trace.** `PictureLimits::trace` reports every step of a build's life (desired, admitted, deferred, started,
 built, failed, superseded, dropped, requeued, committed) with the island and the version, on the thread where

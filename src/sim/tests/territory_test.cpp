@@ -99,24 +99,29 @@ TEST_CASE("territory: the disc profile of the original") {
     // R = 24 (the warehouse's action radius): the table printed from the original's loop.
     const std::vector<std::uint32_t> want = {24, 24, 24, 24, 24, 23, 23, 23, 23, 22, 22, 21, 21,
                                              20, 19, 19, 18, 17, 16, 15, 13, 12, 10, 8,  4};
-    CHECK(tr::disc_profile(24) == want);
-    CHECK(tr::disc_profile(0).empty());
+    REQUIRE(tr::disc_profile(24, kMaxRadius).has_value());
+    CHECK(*tr::disc_profile(24, kMaxRadius) == want);
+    CHECK(tr::disc_profile(0, 0)->empty());
+    // The profile allocates O(radius): a radius above the caller's bound is refused, not allocated.
+    CHECK_FALSE(tr::disc_profile(25, 24).has_value());
+    CHECK_FALSE(tr::disc_profile(0xffffffffU, kMaxRadius).has_value());
     // Shape properties for every radius up to a few thousand: R + 1 entries, non-increasing for
     // R > 3, the first entry is R, nothing wraps at a byte (values above 255 occur).
     for (std::uint32_t r = 4; r <= 3000; r += (r < 40 ? 1 : 97)) {
-        const std::vector<std::uint32_t> t = tr::disc_profile(r);
+        const std::vector<std::uint32_t> t = *tr::disc_profile(r, 4000);
         REQUIRE(t.size() == std::size_t{r} + 1);
         CHECK(t[0] == r);
         CHECK(std::is_sorted(t.begin(), t.end(), std::greater<>()));
         CHECK(t[r] > 0);
     }
-    CHECK(tr::disc_profile(1000)[0] == 1000);
+    CHECK((*tr::disc_profile(1000, 4000))[0] == 1000);
 }
 
 TEST_CASE("territory: the emulated original's owner grids") {
     const std::vector<std::string> lines = founding_fixture::read_lines("territory_cases.txt");
     std::map<std::string, std::string> grids;
-    std::size_t cases = 0, with_pre = 0, pairs = 0, radius0 = 0, edge_clipped = 0;
+    std::size_t cases = 0, diverging = 0, large = 0, with_pre = 0, pairs = 0, radius0 = 0,
+                edge_clipped = 0;
     std::uint64_t total_claimed = 0;
     for (const std::string& line : lines) {
         if (line.rfind("grid ", 0) == 0) {
@@ -159,9 +164,17 @@ TEST_CASE("territory: the emulated original's owner grids") {
         const tr::Footprint f{rect[0], rect[1], static_cast<std::uint32_t>(rect[2]),
                               static_cast<std::uint32_t>(rect[3])};
         const tr::Result r = apply_case(t, f, city, radius, pair);
-        CHECK(r.claimed == std::stoull(field(line, "claimed")));
         char buf[17];
         std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(fnv_owners(t)));
+        if (field(line, "diverges") == "1") {
+            // Beyond the original's byte-wide row spans: the port is a deliberate widening and
+            // must differ from the original's recorded result (territory.hpp).
+            CHECK(std::string(buf) != field(line, "fnv"));
+            CHECK(r.claimed > std::stoull(field(line, "claimed")));
+            ++diverging;
+            continue;
+        }
+        CHECK(r.claimed == std::stoull(field(line, "claimed")));
         CHECK(std::string(buf) == field(line, "fnv"));
         const auto g = grids.find(name);
         if (g != grids.end()) {
@@ -169,6 +182,7 @@ TEST_CASE("territory: the emulated original's owner grids") {
         }
         CHECK(t.ignored_writes() == 0);
         ++cases;
+        large += radius >= 60 ? 1 : 0;
         pairs += pair ? 1 : 0;
         radius0 += radius == 0 ? 1 : 0;
         const std::int64_t reach = radius;
@@ -181,6 +195,8 @@ TEST_CASE("territory: the emulated original's owner grids") {
     }
     // The set exercises what the contract names.
     CHECK(cases > 150);
+    CHECK(diverging == 3);
+    CHECK(large == 3);
     CHECK(with_pre > 30);
     CHECK(pairs > 20);
     CHECK(radius0 > 15);
@@ -273,7 +289,7 @@ TEST_CASE("territory: the configured neutral owner decides what is claimable") {
     CHECK(d.owner(d.index_of(2, 2)) == 300);
 }
 
-TEST_CASE("territory: odd and even footprints, centre-row visits counted once") {
+TEST_CASE("territory: odd and even footprints, the count equals the tiles that changed") {
     for (std::uint32_t w = 1; w <= 6; ++w) {
         for (std::uint32_t h = 1; h <= 6; ++h) {
             sim::TileLayer t = make_layer(2, 3, 41, 37);
@@ -285,7 +301,7 @@ TEST_CASE("territory: odd and even footprints, centre-row visits counted once") 
                 city += t.owner(i) == 1;
             }
             INFO(w << "x" << h);
-            CHECK(r.claimed == city); // a row visited twice (py == 0, k == 0) is not counted twice
+            CHECK(r.claimed == city); // the count is of changed tiles, not of row visits
             // The footprint itself is always inside the disc.
             for (std::uint32_t dy = 0; dy < h; ++dy) {
                 for (std::uint32_t dx = 0; dx < w; ++dx) {

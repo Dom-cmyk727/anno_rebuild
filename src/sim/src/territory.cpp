@@ -49,13 +49,18 @@ std::uint64_t paint_row(TileLayer& tiles, std::uint32_t neutral, std::uint32_t c
 
 } // namespace
 
-std::vector<std::uint32_t> disc_profile(std::uint32_t radius) {
+std::optional<std::vector<std::uint32_t>> disc_profile(std::uint32_t radius,
+                                                       std::uint32_t max_radius) {
+    if (radius > max_radius) {
+        return std::nullopt;
+    }
     if (radius == 0) {
-        return {};
+        return std::vector<std::uint32_t>{};
     }
     // The loop of AnnoWelt.dll 0x100858c8..: a Bresenham-style walk that fills T[ecx] on the way
-    // up and T[eax] on the way down. u64 here; the original's 32-bit registers agree while
-    // radius^2 < 2^32 (no value wraps: run >= 0 and edx = (radius - j) * (radius - j - 1)).
+    // up and T[eax] on the way down. u64 here (no value wraps: run >= 0 and edx = (radius - j) *
+    // (radius - j - 1)); the original's byte-wide storage limits equality to radius <= 126
+    // (territory.hpp).
     const std::uint64_t r = radius;
     std::vector<std::uint32_t> t(r + 2, 0);
     std::uint64_t edx = (r - 1) * r;
@@ -119,7 +124,7 @@ Result claim_neutral_disc(TileLayer& tiles, std::uint32_t neutral_owner, std::ui
     if (radius == 0) {
         return claim_neutral_rect(tiles, neutral_owner, city_owner, f);
     }
-    const std::vector<std::uint32_t> profile = disc_profile(radius);
+    const std::vector<std::uint32_t> profile = *disc_profile(radius, max_radius);
     const std::int64_t hx = (std::int64_t{f.w} - 1) / 2;
     const std::int64_t hy = (std::int64_t{f.h} - 1) / 2;
     const std::int64_t px = (std::int64_t{f.w} - 1) & 1;

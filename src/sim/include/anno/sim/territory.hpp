@@ -12,13 +12,20 @@
 // TileLayer::set_owner (dirty-chunk accounting and the state hash follow the existing
 // rules); a rejected request leaves the layer untouched.
 //
-// Arithmetic: the profile and the row bounds are computed in 64 bits; nothing wraps at a
-// byte (the original keeps the profile in bytes, which the verified domain, radius <= 30
-// in the fixtures, never exceeds). Equivalence with the original's 32-bit loop holds while
-// radius^2 < 2^32; larger radii are refused by max_radius, which every caller passes.
+// Arithmetic and the verified domain: the profile and the row bounds are computed in 64
+// bits and nothing wraps. The original keeps the profile and the width of each row span in
+// BYTES (AnnoWelt.dll 0x100858f7/0x10085908 store T[k] as a byte; 0x10085a12-0x10085a18 pass
+// the span width as a byte) in a fixed stack buffer. Emulating the original on a 300 x 300
+// island with a 4 x 4 footprint shows the result equal to this port for every tested radius
+// up to 126 and different from radius 127 on (fixtures disc-R*-large, disc-R*-original-wraps;
+// the span 2 * T + px + 1 passes 255). Radii above that are a DELIBERATE WIDENING, not original
+// behaviour; the warehouse (1302) uses 24. `max_radius` is the caller's bound on the O(radius)
+// profile: pass the largest action radius of the type data (BuildingType::action_radius), or a
+// configured value; a future rules/config field can carry it without a change here.
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include <anno/sim/island.hpp>
@@ -52,8 +59,11 @@ struct Result {
 /// The disc profile T[0..R] of the original (0x10085840, the loop at 0x100858c8 and the
 /// small-radius correction): row pair k (rows cy - k and cy + py + k) spans the columns
 /// cx - T[k] .. cx + px + T[k]. R = 0 gives the empty profile (the original takes the
-/// rectangle path for radius 0). Integer only; allocates R + 2 entries.
-[[nodiscard]] std::vector<std::uint32_t> disc_profile(std::uint32_t radius);
+/// rectangle path for radius 0). Integer only; allocates radius + 2 entries, so it refuses
+/// (nullopt) a radius above `max_radius`, the caller's bound (see above). Values are not
+/// byte-wrapped.
+[[nodiscard]] std::optional<std::vector<std::uint32_t>> disc_profile(std::uint32_t radius,
+                                                                     std::uint32_t max_radius);
 
 /// Claims the neutral tiles of the footprint rectangle, clipped to the island: the original's
 /// radius-0 call. Own, rival and any other non-neutral tile is left as is.

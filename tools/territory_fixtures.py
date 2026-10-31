@@ -118,6 +118,12 @@ def make_cases(rng):
     add('pair-R5-rival-under-footprint', (0, 0, 30, 30), (12, 12, 4, 4), 2, 5,
         pre=[(13, 13, 8), (14, 14, 8)], pair=True)
     add('pair-R0-after-own', (0, 0, 20, 20), (5, 5, 3, 3), 2, 0, pre=[(5, 5, 2), (6, 6, 3)], pair=True)
+    # Large radii, 4x4 footprint mid-island on a 300x300 island: R <= 126 equals the port; from R = 127
+    # the original's byte-wide row spans wrap (measured by this emulation): recorded as diverging.
+    for R in (60, 100, 126):
+        add(f'disc-R{R}-4x4-large', (0, 0, 300, 300), (148, 148, 4, 4), 3, R)
+    for R in (127, 128, 200):
+        add(f'disc-R{R}-4x4-original-wraps', (0, 0, 300, 300), (148, 148, 4, 4), 3, R)
     for i in range(RANDOM_CASES):
         R = rng.choice([0, 0, 1, 2, 3, 4, 5, 6, 9, 12, 17, 24, 30])
         rw, rh = rng.randint(1, 7), rng.randint(1, 7)
@@ -157,6 +163,7 @@ def render(dll, paint):
         pre = ';'.join(f'{x}:{y}:{o}' for (x, y, o) in c['pre']) or '-'
         lines.append(f"case {c['name']} isl={x0},{y0},{W},{H} rect={','.join(map(str, c['rect']))} "
                      f"city={c['city']} radius={c['radius']} pair={int(c['pair'])} pre={pre} "
+                     f"diverges={int(c['name'].endswith('original-wraps'))} "
                      f"claimed={changed} fnv={fnv64(out):016x}")
         if W * H <= 20 * 14 or c['name'] in ('disc-R5-4x4',) or c['name'].startswith('disc-R24-smaller'):
             grids.append(f"grid {c['name']} " + '/'.join(''.join('%x' % v for v in r) for r in out))
@@ -175,6 +182,8 @@ def render(dll, paint):
         '# case: isl=x0,y0,W,H rect=x,y,w,h (footprint, tiles) city radius pair (1 = disc call then radius-0 call)',
         '#   pre=x:y:owner;... (world tile coordinates, owner 0..14; - = none) claimed=tiles whose owner changed',
         '#   fnv=FNV-1a 64 over the final owner grid, row-major, one byte per tile.',
+        '#   diverges=1: the ORIGINAL\'s result for a radius beyond its byte-wide row spans (from R = 127 on a 4x4 footprint);',
+        '#   a port with wide arithmetic is expected to DIFFER from it (deliberate widening, documented in territory.hpp).',
         '# grid: final owner grid, rows joined by /, one hex digit per tile.',
     ]
     return '\n'.join(head) + '\n' + body

@@ -232,6 +232,7 @@ TEST_CASE("legal workload: one accepted build and one accepted demolish reach th
     picture.apply({build.batch});
     REQUIRE(drain(picture, frames));
     CHECK(picture.error().empty());
+    CHECK(!picture.last_invalidated().empty()); // the new building draws: its keys were marked
     check_against_fresh(*dir, *w, picture, *base, build);
 
     const auto before_demolish = picture.scene();
@@ -239,8 +240,10 @@ TEST_CASE("legal workload: one accepted build and one accepted demolish reach th
     REQUIRE_MESSAGE(demolish.accepted, demolish.reason);
     REQUIRE(demolish.batch != nullptr);
     CHECK(w->invariants().empty());
+    const auto keys_before = picture.stats().invalidated_keys;
     picture.apply({demolish.batch});
     REQUIRE(drain(picture, frames));
     CHECK(picture.error().empty());
+    CHECK(picture.stats().invalidated_keys > keys_before);
     check_against_fresh(*dir, *w, picture, *before_demolish, demolish);
 }

@@ -97,10 +97,19 @@ LegalWorkload::build(const std::filesystem::path& game_dir, const std::filesyste
     // The islands' terrain, from the scene without buildings: the land classifier of the original
     // (AnnoWelt.dll 0x100900c0, render::kLandAverage) over each island's HEIGHT grid.
     std::map<std::uint32_t, std::vector<bool>> land_by_slot;
+    // The types the original draws: an Anlagen entry with a sprite set (a type without one is
+    // placed by the sim but draws nothing, so it is not a city building).
+    std::set<std::uint32_t> drawn;
     {
         auto scene = load_placed_scene(game_dir, w->load_.name, w->load_.placed, nullptr);
         if (!scene) {
             return "legal workload: the scene: " + scene.error();
+        }
+        for (const sim::BuildingType& t : w->load_.world.types().types()) {
+            const auto* entry = scene.value().scene->anlagen.entry(t.id.v);
+            if (entry != nullptr && !entry->gfx.empty()) {
+                drawn.insert(t.id.v);
+            }
         }
         for (const formats::insel::Island& island : scene.value().scene->islands) {
             const auto heights = island.heights();
@@ -209,6 +218,10 @@ LegalWorkload::build(const std::filesystem::path& game_dir, const std::filesyste
         }
         if (t.id.v == w->kontor_type_ || (t.flags_word & (kCoastFlag | kMountainFlag)) != 0 ||
             t.width == 0 || t.height == 0) {
+            continue;
+        }
+        if (drawn.count(t.id.v) == 0) {
+            ++w->undrawn_types_;
             continue;
         }
         switch (t.cls) {
@@ -557,7 +570,7 @@ std::string LegalWorkload::manifest() const {
       << " state_hash=" << state_hash() << std::dec << "\n";
     o << "kontor_type=" << kontor_type_ << " road_type=" << road_type_
       << " candidate_types houses=" << houses_.size() << " producers=" << producers_.size()
-      << " others=" << others_.size() << "\n";
+      << " others=" << others_.size() << " left_out_without_sprite=" << undrawn_types_ << "\n";
     o << "turns=" << turn_ << "\n";
     std::size_t total = 0, issued = 0, rejected = 0;
     for (const LegalCity& c : cities_) {

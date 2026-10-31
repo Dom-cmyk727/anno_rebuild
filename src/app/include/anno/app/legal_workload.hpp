@@ -9,6 +9,8 @@
 // original are unread, O-27/OQ-052), so types that need a coast or a mountain are left out rather
 // than placed where the original would refuse them, and a candidate whose footprint leaves land
 // (the original's land classifier, render::kLandAverage, AnnoWelt.dll 0x100900c0) is not issued.
+// Types whose Anlagen entry has no sprite set are left out too: the sim places them, but they draw
+// nothing, so they are not city buildings.
 #pragma once
 
 #include <cstddef>
@@ -167,6 +169,8 @@ class LegalWorkload {
     /// (0 when the registry has none).
     std::vector<std::uint32_t> houses_, producers_, others_;
     std::uint32_t road_type_ = 0;
+    /// Placeable types left out because their Anlagen entry has no sprite set (they draw nothing).
+    std::size_t undrawn_types_ = 0;
     std::uint32_t kontor_type_ = 1302;
     std::uint64_t map_digest_ = 0;
     std::uint64_t roads_issued_ = 0;

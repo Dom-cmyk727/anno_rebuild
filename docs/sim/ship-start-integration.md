@@ -1,8 +1,10 @@
 # Ship-start integration contract
 
-**Status:** revised specification for a load-only unit. It does not load a
-manifest into the simulation, and it does not approve the starting economy.
-Version-2 candidate bytes stay as they are. Movement stays in
+**Status:** specification and **implemented (load only)** on branch
+`task/MAP-2-original-like`. The loader builds a new headless `World` from an
+explicitly supplied baseline version-2 manifest; section 9 records what exists,
+what was verified and what is still open. It does not approve the starting
+economy. Version-2 candidate bytes stay as they are. Movement stays in
 `docs/re/ship-navigation.md`. The warehouse click stays in
 `docs/re/ship-founding.md`. Neither is behaviour of the load unit.
 
@@ -273,3 +275,53 @@ Acceptance is §5. Unresolved founding (`0x10049340`, OQ-490, OQ-520) and
 unresolved navigation (the planner after `AnnoWelt.dll` `0x10030100`) stay
 outside this unit's claims. A later founding unit and a later navigator
 are separate, and they are not started by the load.
+
+## 9. Implementation status (task MAP-2)
+
+| Piece | Where | State |
+|---|---|---|
+| JSON reader (RFC 8259, duplicate keys at any depth, integer/real/bool kept apart, UTF-8 checked, depth 64), canonical writer, SHA-256 | `src/formats/{json,sha256}.*` | implemented, tested |
+| Typed manifest reader, mirrors `tools/map2_manifest.py parse` | `src/formats/ship_manifest.*` | implemented; 84 shared cross-check cases (`fixtures/synthetic/map2_manifest/`, generated from the Python reference by `tools/map2_manifest_xcheck.py`, read by the C++ test) |
+| `Figure.dir16`, `parent`, `crew_slot`, `holds`; `validate_figures`; `ScenarioSpec::figures`; stream 116 | `src/sim` | implemented |
+| Loader: `load_ship_start`, `install_ship_start`, `expedition_baseline_problem`, `milli_tile_to_fixed`, `facing_to_dir16`, `manifest_goods` | `src/sim_load/{include,src}/ship_start.*` | implemented |
+
+**Hierarchy as built.** Ship 1502, no parent, no crew slot; scout 717, parent the ship, crew
+slot 0; donkey 718, parent the scout, no crew slot; one owner; `home` invalid; `cargo_goods` and
+`cargo_88` 0. Seat 0 holds figure ids 1, 2, 3; seat 4 holds 13, 14, 15; `next_figure` is 16. A
+donkey parented to the ship is a valid *graph* (the generic rules do not forbid it) and fails
+`expedition_baseline_problem`, which is the baseline expectation.
+
+**Content.** Goods names resolve through the registry: wood `HOLZ`, food `NAHRUNG`, tools
+`WERKZEUG`, bricks `ZIEGEL`, spices `GEWUERZE` (original ids 42, 26, 41, 43, 31, checked against the
+original files). Figure kinds 1502/717/718 must be figure types of the registry. A missing one is
+an error naming the field. Ship names are not drawn.
+
+**Parser compatibility.** The C++ reader accepts and rejects what the Python reference does, with
+the same content hash, except where it is deliberately stricter. Those cases are marked
+`ref=ok engine=reject` in `cases.txt`: integers beyond int64 (Python integers are unbounded), the
+island id -1 (the reference starts its ordering check at -1), a lone surrogate escape, and nesting
+deeper than 64. The bytes must be ASCII as the reference's command line requires. `content_hash`
+follows the reference exactly: absent or `null` is accepted; anything else must equal the lower-case
+SHA-256 hex of the canonical bytes (sorted keys, preserved arrays, compact separators,
+`ensure_ascii`, `content_hash` removed, rebuilt from the parsed fields). The engine adds no
+requirement that the file carry a hash.
+
+**Schema validity is not loader support.** A schema-valid alternative loadout (for example gold
+25000) parses and is rejected by `load_ship_start` with `loadout: not the supported baseline`. Five
+seats and the baseline cargo are constraints of manifest version 2 and of this adapter; `World`,
+`FigureRegistry` and `validate_figures` contain no seat or cargo limit.
+
+**State stream.** `kStateHashVersion` 115 -> 116: the figure record gains `u8 dir16`, `u64 parent`,
+optional `u32 crew_slot` and the hold list (`u64` count, `u32 goods`, `u32 tons` each); 14 -> 18
+serialized fields. A figure without them writes 0, none, none, empty (18 bytes). Every golden moved
+through the header; no rule or tick behaviour changed (the three event digests are identical to
+115; `tools/sim_stream.py`, bumped to 116, agrees with the C++ on g0, g1, s5 and s6). The hold count
+is bounded by the remaining input at 8 bytes per hold, so a hostile count cannot size a collection.
+
+**What the loader does not do** (unchanged from section 6): no sailing, founding, combat,
+rendering, developer input or economy; no Kontor, city, owned tile or island reservation; the
+fixed-map text loader and `developer_start` are untouched; `data/maps/lan5.txt` and the candidate
+files are not rewritten and no candidate is selected or installed. The loader duplicates the island
+placement block of `fixed_map.cpp` (about 60 lines); folding both onto one function is a follow-up
+that would touch the fixed-map path and was left out of this unit.
+

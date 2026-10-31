@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/figure.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/production.hpp>
@@ -115,7 +116,28 @@ struct ScenarioSpec {
         std::vector<DepositSpec> deposits;
         std::vector<CitySpec> cities;
     };
+    /// A figure placed at load (MAP-2: a ship, the scout it carries and the scout's donkey).
+    /// The figures get the ids next_figure, next_figure + 1, ... in this order, with no draw
+    /// from the PRNG, so a spec fixes every id. A figure has no home building.
+    struct FigureSpec {
+        /// The FigurenHeader id; the type registry must have a figure type of it.
+        std::uint32_t kind = 0;
+        /// A player of `players`.
+        PlayerId owner;
+        FixedPos pos;
+        /// 0..15.
+        std::uint8_t dir16 = 0;
+        /// The index in `figures` of the figure carrying this one; it must be smaller than
+        /// this figure's own index (so the links cannot form a cycle) and name the same owner.
+        std::optional<std::uint32_t> parent;
+        /// With a parent only; unique among the parent's children.
+        std::optional<std::uint32_t> crew_slot;
+        /// Whole tons; each goods must be in the registry's goods table.
+        std::vector<ShipHold> holds;
+    };
     std::vector<PlayerSpec> players;
+    /// Figures at tick 0, in id order. Default: none.
+    std::vector<FigureSpec> figures;
     /// The island table is as long as the highest slot + 1; unused slots stay null.
     std::vector<IslandSpec> islands;
 };

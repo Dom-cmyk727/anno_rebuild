@@ -364,6 +364,49 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         return problem;
     }
 
+    // The figures (MAP-2): their kind and goods are in the registry, their owner is a seated
+    // player, their parent is an earlier figure of the same owner, their position is inside
+    // the world. Nothing is built yet.
+    for (std::size_t i = 0; i < spec.figures.size(); ++i) {
+        const Spec::FigureSpec& fs = spec.figures[i];
+        const std::string p = idx_path("figures", i);
+        if (types->find_figure_type(fs.kind) == nullptr) {
+            return p + ".kind: " + std::to_string(fs.kind) + " is not a figure type of the registry";
+        }
+        if (!fs.owner.valid() || fs.owner.v >= config.player_slots ||
+            player_taken[fs.owner.v] == 0) {
+            return p + ".owner: " + std::to_string(fs.owner.v) + " is not a player of the scenario";
+        }
+        if (fs.dir16 > 15) {
+            return p + ".dir16: " + std::to_string(fs.dir16) + " is not in 0 .. 15";
+        }
+        const std::int64_t w_fixed = std::int64_t{spec.settings.world_width} * 256;
+        const std::int64_t h_fixed = std::int64_t{spec.settings.world_height} * 256;
+        if (fs.pos.x < 0 || fs.pos.y < 0 || fs.pos.x >= w_fixed || fs.pos.y >= h_fixed) {
+            return p + ".pos: (" + std::to_string(fs.pos.x) + ", " + std::to_string(fs.pos.y) +
+                   ") is outside the " + std::to_string(spec.settings.world_width) + " x " +
+                   std::to_string(spec.settings.world_height) + " tile world";
+        }
+        if (fs.parent.has_value()) {
+            if (*fs.parent >= i) {
+                return p + ".parent: " + std::to_string(*fs.parent) +
+                       " is not an earlier figure of the scenario";
+            }
+            if (spec.figures[*fs.parent].owner != fs.owner) {
+                return p + ".owner: differs from the owner of its parent figures[" +
+                       std::to_string(*fs.parent) + "]";
+            }
+        } else if (fs.crew_slot.has_value()) {
+            return p + ".crew_slot: the figure has no parent";
+        }
+        for (std::size_t h = 0; h < fs.holds.size(); ++h) {
+            if (types->goods(fs.holds[h].goods) == nullptr) {
+                return p + ".holds[" + std::to_string(h) + "].goods: " +
+                       std::to_string(fs.holds[h].goods) + " is not in the goods table";
+            }
+        }
+    }
+
     // 2. Configuration, rules, settings, seams, the PRNG and the players.
     World w;
     w.config_ = std::move(config);
@@ -394,6 +437,31 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
             p.research.state = ps.research;
         }
         w.players_.slots[ps.id.v] = std::move(p);
+    }
+
+    // The figures, ids from the world counter in spec order. A parent is an earlier figure,
+    // so its id is known here.
+    std::vector<FigureId> figure_ids;
+    figure_ids.reserve(spec.figures.size());
+    for (std::size_t i = 0; i < spec.figures.size(); ++i) {
+        const Spec::FigureSpec& fs = spec.figures[i];
+        Figure f;
+        f.id = FigureId{w.ids_.next_figure};
+        const FigureId id = f.id;
+        f.kind = fs.kind;
+        f.owner = fs.owner;
+        f.pos = fs.pos;
+        f.dir16 = fs.dir16;
+        if (fs.parent.has_value()) {
+            f.parent = figure_ids[*fs.parent];
+        }
+        f.crew_slot = fs.crew_slot;
+        f.holds = fs.holds;
+        if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {
+            return idx_path("figures", i) + ": the figure registry cannot take it";
+        }
+        figure_ids.push_back(id);
+        ++w.ids_.next_figure;
     }
 
     // 3. Islands by slot (the rectangles were checked above). The content of each

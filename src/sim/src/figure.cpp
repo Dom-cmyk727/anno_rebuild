@@ -211,6 +211,80 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
                    " and along " + std::to_string(tr.along);
         }
     }
+    // MAP-2: the facing, the parent links and the crew slots. Every figure of the registry
+    // is in `seen` (ordered), so a parent is looked up, never searched for. The chain check
+    // colours each figure once (0 unvisited, 1 on the walk now, 2 known to end), so the whole
+    // pass is O(n log n) however deep the nesting is.
+    std::map<FigureId, const Figure*> by_figure;
+    for (std::size_t s = 0; s < l.slots.size(); ++s) {
+        if (l.slots[s].has_value()) {
+            by_figure.emplace(l.slots[s]->id, &*l.slots[s]);
+        }
+    }
+    std::set<std::pair<FigureId, std::uint32_t>> crew_taken;
+    for (std::size_t s = 0; s < l.slots.size(); ++s) {
+        if (!l.slots[s].has_value()) {
+            continue;
+        }
+        const Figure& f = *l.slots[s];
+        const std::string where = "figures.list.slots[" + std::to_string(s) + "]";
+        if (f.dir16 > 15) {
+            return where + ".dir16: " + std::to_string(f.dir16) + " is not in 0 .. 15";
+        }
+        if (f.parent.valid()) {
+            if (f.parent == f.id) {
+                return where + ".parent: figure " + std::to_string(f.id.v) + " is its own parent";
+            }
+            const auto up = by_figure.find(f.parent);
+            if (up == by_figure.end()) {
+                return where + ".parent: figure " + std::to_string(f.parent.v) +
+                       " is not in the registry";
+            }
+            if (up->second->owner != f.owner) {
+                return where + ".owner: " + std::to_string(f.owner.v) + " differs from the owner " +
+                       std::to_string(up->second->owner.v) + " of its parent " +
+                       std::to_string(f.parent.v);
+            }
+        }
+        if (f.crew_slot.has_value()) {
+            if (!f.parent.valid()) {
+                return where + ".crew_slot: " + std::to_string(*f.crew_slot) +
+                       ", but the figure has no parent";
+            }
+            if (!crew_taken.emplace(f.parent, *f.crew_slot).second) {
+                return where + ".crew_slot: slot " + std::to_string(*f.crew_slot) +
+                       " of figure " + std::to_string(f.parent.v) + " is used twice";
+            }
+        }
+    }
+    {
+        std::map<FigureId, std::uint8_t> colour;
+        std::vector<FigureId> walk;
+        for (std::size_t s = 0; s < l.slots.size(); ++s) {
+            if (!l.slots[s].has_value()) {
+                continue;
+            }
+            walk.clear();
+            FigureId at = l.slots[s]->id;
+            while (at.valid()) {
+                std::uint8_t& c = colour[at];
+                if (c == 2) {
+                    break;
+                }
+                if (c == 1) {
+                    return "figures.list.slots[" + std::to_string(s) +
+                           "].parent: the parent links of figure " + std::to_string(at.v) +
+                           " form a cycle";
+                }
+                c = 1;
+                walk.push_back(at);
+                at = by_figure.at(at)->parent;
+            }
+            for (const FigureId done : walk) {
+                colour[done] = 2;
+            }
+        }
+    }
     std::map<FigureId, Slot> fresh;
     for (std::size_t s = 0; s < l.slots.size(); ++s) {
         if (l.slots[s].has_value()) {

@@ -27,14 +27,15 @@ if(ANNO_BUILD_TESTS)
                  tests/scenario_test.cpp tests/island_links_test.cpp
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
-                 tests/game_setup_test.cpp tests/house_test.cpp)
+                 tests/game_setup_test.cpp tests/house_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp)
   # anno_sim_load: the scenario corpus case reads the island templates of the game
   # directory for the link resolver (S14 stage 2).
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support
                                                doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE
-    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
+    ANNO_REPO_DIR="${PROJECT_SOURCE_DIR}")
   anno_target_defaults(anno_sim_tests SANITIZE_NO_RECOVER)
   anno_stage_budget_coord(anno_sim_tests)
   # GCC 13 with -fsanitize=address treats a one-element initializer_list

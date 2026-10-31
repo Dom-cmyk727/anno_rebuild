@@ -6,7 +6,7 @@
 // of its function plus a kStateHashVersion bump and re-baselined goldens in
 // the same commit.
 //
-// Stream at kStateHashVersion 114 (task T33.5 stage 3), the scopes of §9.3 so far:
+// Stream at kStateHashVersion 116 (task MAP-2), the scopes of §9.3 so far:
 //   1 header     u32 kStateHashVersion, u32 kPrngTimelineVersion,
 //                SimConfig (declaration order; vectors as count + elements;
 //                small_farm_animals; layout), Rules (declaration order),
@@ -25,8 +25,9 @@
 //                with an optional City, whose building lists are the scopes
 //                `index` / `list` / `building`)
 //   7 figures    the FigureRegistry: i64 hint, u32 cursor, u64 slot count, per slot
-//                (scope `figure`, ordinal = slot) an optional Figure, u16 stamp,
-//                the expiry ids
+//                (scope `figure`, ordinal = slot) an optional Figure (since 116 ending
+//                in u8 dir16, u64 parent, optional u32 crew slot, u64 count + (u32 goods,
+//                u32 tons) per hold), u16 stamp, the expiry ids
 //   8 events     the timed-event queue: u64 count, per event its key (u64 due, u64
 //                seq) and the TimedEvent
 //   9 timers_monopoly  the ScriptTimers (u32 last_tick, u8 flags, u32 counters) and
@@ -955,7 +956,14 @@ template <class A, Same<TransportState> S> void fields(A& a, S& s) {
     a.u32(s.reserved_88);
 }
 
-static_assert(field_count<Figure>() == 14, "a Figure member needs a line in fields(Figure)");
+static_assert(field_count<ShipHold>() == 2, "a ShipHold member needs a line in fields(ShipHold)");
+
+template <class A, Same<ShipHold> S> void fields(A& a, S& s) {
+    a.u32(s.goods);
+    a.u32(s.tons);
+}
+
+static_assert(field_count<Figure>() == 18, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -973,6 +981,12 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u16(s.stamp);
     fields(a, s.transport);
     ar::opt(a, s.expiry_stamp, [&](auto& v) { a.u16(v); });
+    // MAP-2 (stream 116). A hold is 8 bytes on the wire, which bounds the count of a
+    // hostile stream by its remaining input (ar::seq).
+    a.u8(s.dir16);
+    a.u64(s.parent.v);
+    ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
+    ar::seq(a, s.holds, 8, [&](auto& hold) { fields(a, hold); });
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64

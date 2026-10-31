@@ -97,6 +97,20 @@ std::string World::check_invariants() const {
     if (!problem.empty()) {
         return problem;
     }
+    // A hold names goods of the registry (the registry is the content; validate_figures sees
+    // no registry).
+    for (std::size_t s = 0; s < figures_.list.slots.size(); ++s) {
+        if (!figures_.list.slots[s].has_value()) {
+            continue;
+        }
+        const std::vector<ShipHold>& holds = figures_.list.slots[s]->holds;
+        for (std::size_t h = 0; h < holds.size(); ++h) {
+            if (types_->goods(holds[h].goods) == nullptr) {
+                return "figures.list.slots[" + std::to_string(s) + "].holds[" + std::to_string(h) +
+                       "].goods: " + std::to_string(holds[h].goods) + " is not in the goods table";
+            }
+        }
+    }
     for (const auto& entry : events_.q) {
         if (entry.first.second >= ids_.next_event_seq) {
             return "events: the event (" + std::to_string(entry.first.first) + ", " +

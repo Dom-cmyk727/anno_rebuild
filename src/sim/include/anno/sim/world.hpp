@@ -84,7 +84,11 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // House (tag 7: u16 last, i32 residents_64, u32 e, u64 count + u32 stock); the class table's
 // House row is tick House / payload House; the registry digest gains the group table
 // (u64 count, 0 when there is none). No PRNG site is drawn (the timeline stays 2).
-inline constexpr std::uint32_t kStateHashVersion = 115;
+// Stream at 116 (task MAP-2, the ship-start load): the figure record gains u8 dir16, u64
+// parent (invalid = max), an optional u32 crew slot and the ship's holds (u64 count, then u32
+// goods, u32 tons each). A figure that no loader gave these keeps 0, invalid, none and empty,
+// so a world without ships changes hash only because its stream grew. No PRNG site.
+inline constexpr std::uint32_t kStateHashVersion = 116;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

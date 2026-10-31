@@ -79,6 +79,16 @@ struct TransportState {
     std::uint32_t reserved_88 = 0;
 };
 
+/// One hold of a ship: a goods identity and whole tons (MAP-2, docs/sim/ship-start-
+/// integration.md §2). Whole tons, not 8.8: nothing here shifts them. Holds are an
+/// ordered list; two holds of one goods stay two entries (the ship's four holds of the
+/// baseline are wood 50, food 10, tools 50, tools 30).
+struct ShipHold {
+    GoodsId goods = 0;
+    std::uint32_t tons = 0;
+    friend constexpr auto operator<=>(const ShipHold&, const ShipHold&) = default;
+};
+
 struct Figure {
     FigureId id;
     /// FigurenHeader id / world figure kind (small farm animals: base 106 + i).
@@ -114,6 +124,20 @@ struct Figure {
     /// registry"). Not the spawn tick: S12 named it created_stamp. The default spawn
     /// does not set it (O-8).
     std::optional<std::uint16_t> expiry_stamp;
+    /// MAP-2 (stream 116). The facing as one of 16 directions, 0..15 (the table of
+    /// docs/re/ship-navigation.md §4; display and a later mover read it, nothing here turns
+    /// a figure). 0 for every figure that no loader gave a facing: the neutral default.
+    std::uint8_t dir16 = 0;
+    /// The figure this one is carried by or belongs to (an embarked scout's ship, a donkey's
+    /// scout); invalid = none, the default. Not `home` (a building counter). A figure and
+    /// its parent have the same owner; the links never form a cycle (validate_figures).
+    FigureId parent;
+    /// The crew slot this figure fills in its parent (the original CREW/ENTRY index);
+    /// present only with a parent, unique among that parent's children.
+    std::optional<std::uint32_t> crew_slot;
+    /// The ship's holds, in order. Empty for every figure that is not a ship. Not
+    /// `cargo_goods` / `cargo_88`, which keep their one-load meaning (transport).
+    std::vector<ShipHold> holds;
 };
 
 /// D: the unit registry (world +0x114).
@@ -187,7 +211,9 @@ void end_figure(FigureRegistry& registry, Figure& figure, std::uint32_t t, Effec
 /// of validate_figures). `had_stamp` is the flag before the call.
 void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp, Effects& fx);
 
-/// The structural facts of a figure registry (docs/sim/state.md §9.6): the list has
+/// The structural facts of a figure registry (docs/sim/state.md §9.6; MAP-2 added the
+/// dir16, parent and crew-slot facts, validated in one linear pass plus ordered lookups,
+/// no ancestor chain is walked twice): the list has
 /// at least one element with its hint in -1 .. n and its cursor below n, every
 /// figure has a valid id below `ids.next_figure` that no other figure has, the
 /// expiry list names figures of the registry once each, a figure is on the expiry

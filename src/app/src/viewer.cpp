@@ -267,20 +267,31 @@ gpu::ResampleFilter resample_filter(double s) {
 
 class Viewer {
   public:
-    Viewer(const render::Scene& scene, std::size_t group, std::size_t threads, Renderer renderer,
-           render::RiverFlowMode river_flow, render::WaterStyle water, std::size_t lookahead_chunks,
-           ZoomOptions zoom, const ViewerHooks* hooks)
-        : scene_(scene), group_(group), zoom_opt_(zoom), frames_(threads),
-          renderer_choice_(renderer), water_(water), hooks_(hooks) {
+    Viewer(std::shared_ptr<const render::Scene> scene, std::size_t group, std::size_t threads,
+           Renderer renderer, render::RiverFlowMode river_flow, render::WaterStyle water,
+           std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks,
+           const ViewerPicture* play)
+        : play_(play), levels_(scene->levels()), name_(scene->name), group_(group), zoom_opt_(zoom),
+          frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks) {
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
-        const auto b = *scene.bounds(group);
+        const auto b = *scene->bounds(group);
         cam_x_ = b.x + b.w / 2.0;
         cam_y_ = b.y + b.h / 2.0;
         zoom_now_ = zoom_target_ = levels().tile_w(group);
+        if (play_ == nullptr) {
+            fixed_ = std::move(scene);
+        }
     }
 
-    const render::ZoomLevels& levels() const { return scene_.levels(); }
+    /// The zoom levels, the islands' placement and the sea are the same in every generation of
+    /// the scene (a generation changes object lists only): the levels are copied once.
+    const render::ZoomLevels& levels() const { return levels_; }
+    /// The generation shown now: the picture's current one in play, else the scene of --view.
+    /// An owning handle; a frame takes one at its start and draws all of it from that one.
+    [[nodiscard]] std::shared_ptr<const render::Scene> current() const {
+        return play_ != nullptr ? play_->picture->scene() : fixed_;
+    }
 
     /// The smallest tile width the continuous zoom may show: --min-zoom, else the
     /// width at which the whole scene fits the window, but never above group 2's
@@ -289,7 +300,7 @@ class Viewer {
         if (zoom_opt_.min_zoom > 0.0) {
             return zoom_opt_.min_zoom;
         }
-        const auto b = scene_.bounds(levels().built_count() - 1);
+        const auto b = current()->bounds(levels().built_count() - 1);
         if (!b || b->w <= 0 || b->h <= 0) {
             return 0.0;
         }
@@ -304,12 +315,21 @@ class Viewer {
   private:
     void handle(const SDL_Event& e);
     void draw();
-    void draw_cpu(render::Rect view);
+    /// The frame boundary of play (ViewerPicture): takes the sim's batches, applies them and
+    /// commits what is ready, before the frame takes its scene handle. Never waits for a build.
+    void follow_picture();
+    /// Whether the picture has work the frames must keep committing (a change not shown yet).
+    [[nodiscard]] bool picture_pending() const {
+        return play_ != nullptr && play_->picture->pending() > 0;
+    }
+    /// `gen`: the frame's scene handle, the only scene the frame reads.
+    void draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view);
 #ifdef ANNO_VIEWER_GPU
     /// `view`: the scene grid composed (the window's rectangle, or with
     /// `resample` the larger one resampled onto the window); `out_w` x `out_h`:
     /// the window.
-    void draw_gpu(render::Rect view, const gpu::Resample* resample, int out_w, int out_h);
+    void draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view,
+                  const gpu::Resample* resample, int out_w, int out_h);
 #endif
     [[nodiscard]] bool on_gpu() const;
     void update_title();
@@ -342,7 +362,16 @@ class Viewer {
     std::vector<Step> steps_, last_steps_, worst_steps_;
     Clock::time_point steps_end_ = Clock::now();
 
-    const render::Scene& scene_;
+    /// The scene of --view (null in play: the frames draw the picture's generations).
+    std::shared_ptr<const render::Scene> fixed_;
+    const ViewerPicture* play_ = nullptr;
+    render::ZoomLevels levels_;
+    std::string name_;
+    /// The frame boundary's work in the frame being drawn (follow_picture), and its end (the
+    /// draw prologue is measured from there). Islands committed since the last report.
+    double picture_ms_ = 0;
+    Clock::time_point picture_end_ = Clock::now();
+    std::size_t committed_ = 0;
     std::size_t group_;
     /// Scene screen position (at group_) shown in the window centre.
     double cam_x_ = 0, cam_y_ = 0;
@@ -452,10 +481,12 @@ std::string Viewer::run() {
             }
         }
     } join_seas{seas};
-    seas.emplace_back([this] { scene_.sea(group_); });
+    // Each thread holds the generation it builds from (the patterns are shared by every
+    // generation of the scene), so a commit meanwhile cannot free what it reads.
+    seas.emplace_back([s = current(), g = group_] { s->sea(g); });
     for (std::size_t g = 0; g < levels().size(); ++g) {
         if (g != group_) {
-            seas.emplace_back([this, g] { scene_.sea(g); });
+            seas.emplace_back([s = current(), g] { s->sea(g); });
         }
     }
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -571,8 +602,10 @@ std::string Viewer::run() {
     // Chunk builders use half the cores; frames use all of them.
     // Queue the river flows now (low priority threads): chunks that are built
     // before a flow is ready show the legacy river look and are rebuilt.
-    scene_.prefetch_river_flow();
-    frames_.set_workers(std::make_unique<render::ChunkWorkers>(scene_, (hw + 1) / 2));
+    // (The flow builders hold the generation that asked: Scene::river_flow.)
+    current()->prefetch_river_flow();
+    // No default scene: every chunk job holds the generation of the frame that planned it.
+    frames_.set_workers(std::make_unique<render::ChunkWorkers>((hw + 1) / 2));
     while (running_) {
         SDL_Event e;
         if (retry_at_ && Clock::now() >= *retry_at_) {
@@ -580,7 +613,10 @@ std::string Viewer::run() {
         }
         // Nothing is drawn while hidden or backing off; dirty_ stays set.
         const bool can_draw = !hidden_ && !retry_at_;
-        const bool animating = (!paused_at_ || frames_.busy() || zoom_animating()) && can_draw;
+        // A change of the play picture that is not committed yet keeps the frames coming (also
+        // while paused: the commits land without a new turn).
+        const bool animating =
+            (!paused_at_ || frames_.busy() || zoom_animating() || picture_pending()) && can_draw;
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
             if (retry_at_) {
@@ -623,6 +659,11 @@ std::string Viewer::run() {
             }
         }
     }
+    // Teardown (docs/app/gpu-handoff.md): the window stops calling into the picture here (its
+    // owner destroys it after run_viewer returns). The chunk workers are joined (at most one
+    // build per worker in progress); the generations their jobs held are released there, through
+    // the reclaimer. The GPU finishes its submissions before the compositor is destroyed; the
+    // wave simulation's background preparations release the generation they hold as they end.
     frames_.set_workers(nullptr);
     for (auto& t : seas) {
         t.join();
@@ -813,7 +854,7 @@ void Viewer::pan(double dx, double dy) {
 }
 
 void Viewer::clamp() {
-    if (const auto b = scene_.bounds(group_)) {
+    if (const auto b = current()->bounds(group_)) {
         cam_x_ = std::clamp(cam_x_, static_cast<double>(b->x), static_cast<double>(b->x) + b->w);
         cam_y_ = std::clamp(cam_y_, static_cast<double>(b->y), static_cast<double>(b->y) + b->h);
     }
@@ -917,16 +958,19 @@ void Viewer::zoom_tick() {
     }
 }
 bool Viewer::group_ready(std::size_t g) const {
+    // The query reads the sea patterns only (shared by all generations); the handle is held
+    // for the call.
+    const std::shared_ptr<const render::Scene> scene = current();
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
-        return gpu_->frame->group_ready(scene_, g);
+        return gpu_->frame->group_ready(*scene, g);
     }
 #endif
-    return scene_.sea_built(g);
+    return scene->sea_built(g);
 }
 
 void Viewer::update_title() {
-    std::string title = "anno1503 — " + scene_.name + " — zoom group " + std::to_string(group_);
+    std::string title = "anno1503 — " + name_ + " — zoom group " + std::to_string(group_);
     if (water_ == render::WaterStyle::Enhanced) {
         title += " — enhanced water (not original)";
         if (frames_.river_flow == render::RiverFlowMode::Legacy) {
@@ -961,9 +1005,29 @@ bool Viewer::on_gpu() const {
 #endif
 }
 
+void Viewer::follow_picture() {
+    const auto start = Clock::now();
+    if (play_ != nullptr) {
+        ScenePicture& picture = *play_->picture;
+        const auto batches = play_->take_batches();
+        if (!batches.empty()) {
+            picture.apply(batches);
+        }
+        // Commits what is ready (a full reclaim backlog skips it until a later frame) and
+        // invalidates the chunk keys of the change in this renderer: the cached chunks keep
+        // drawing until their rebuilds from the new generation arrive.
+        committed_ += picture.commit(frames_);
+    }
+    picture_end_ = Clock::now();
+    picture_ms_ = std::chrono::duration<double, std::milli>(picture_end_ - start).count();
+}
+
 void Viewer::draw() {
     draw_start_ = Clock::now();
     display_wait_ms_ = 0;
+    // The frame boundary: the picture first, then the one scene handle of this frame.
+    follow_picture();
+    const std::shared_ptr<const render::Scene> gen = current();
     int pw = 0, ph = 0;
     SDL_GetWindowSizeInPixels(window_, &pw, &ph);
     if (pw <= 0 || ph <= 0) {
@@ -986,32 +1050,34 @@ void Viewer::draw() {
             const auto rv =
                 gpu::resampled_view(cam_x_, cam_y_, static_cast<std::uint32_t>(w),
                                     static_cast<std::uint32_t>(h), s, resample_filter(s));
-            draw_gpu(rv.view, &rv.resample, w, h);
+            draw_gpu(gen, rv.view, &rv.resample, w, h);
             // A zoom still on its way draws the next frame at once.
             dirty_ = dirty_ || zoom_animating();
             return;
         }
-        draw_gpu(view, nullptr, w, h);
+        draw_gpu(gen, view, nullptr, w, h);
         return;
     }
 #endif
-    draw_cpu(view);
+    draw_cpu(gen, view);
 }
 
 #ifdef ANNO_VIEWER_GPU
-void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_w, int out_h) {
+void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view,
+                      const gpu::Resample* resample, int out_w, int out_h) {
     GpuBackend& g = *gpu_;
     const auto w = static_cast<std::uint32_t>(out_w), h = static_cast<std::uint32_t>(out_h);
     steps_.clear();
     auto since_ms = [](Clock::time_point a, Clock::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
+    steps_.push_back({"picture", picture_ms_});
     // The prologue: window size queries, the view rectangle and, on a resize, the surface
     // (re)configuration, reported as its own step ("surface configure").
-    auto prologue_from = draw_start_;
+    auto prologue_from = picture_end_;
     if (g.width != w || g.height != h || reconfigure_) {
         const auto configure_start = Clock::now();
-        steps_.push_back({"draw prologue", since_ms(draw_start_, configure_start)});
+        steps_.push_back({"draw prologue", since_ms(picture_end_, configure_start)});
         g.configure(w, h);
         reconfigure_ = false;
         if (g.prewarm_budget_mb > 0 && g.frame) {
@@ -1076,7 +1142,7 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
     const auto render_start = Clock::now();
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
     const auto s =
-        g.frame->render(frames_, scene_, view, group_, time_ms(), water_, target.get(), resample);
+        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample);
     const auto p = Clock::now();
     for (const auto& step : s.steps()) {
         steps_.push_back({step.name, step.ms});
@@ -1097,7 +1163,7 @@ void Viewer::draw_gpu(render::Rect view, const gpu::Resample* resample, int out_
 }
 #endif
 
-void Viewer::draw_cpu(render::Rect view) {
+void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view) {
     const int w = view.w, h = view.h;
     if (texture_ == nullptr || tex_w_ != w || tex_h_ != h) {
         if (texture_ != nullptr) {
@@ -1120,8 +1186,9 @@ void Viewer::draw_cpu(render::Rect view) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
     const auto render_start = Clock::now();
-    steps_.push_back({"draw prologue", since_ms(draw_start_, render_start)});
-    const auto s = frames_.render(scene_, view, group_, time_ms(), water_, buffer_.data());
+    steps_.push_back({"picture", picture_ms_});
+    steps_.push_back({"draw prologue", since_ms(picture_end_, render_start)});
+    const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
     const auto rendered = Clock::now();
     const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
     steps_.push_back({"chunks", s.chunks_ms});
@@ -1223,6 +1290,16 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
         std::fprintf(stderr, "  chunk(s) received in this interval: %zu\n", chunks_received_);
         chunks_received_ = 0;
     }
+    if (play_ != nullptr) {
+        const std::string failed = play_->picture->error();
+        std::fprintf(stderr,
+                     "  picture: generation %llu, %zu island(s) committed in this interval, "
+                     "%zu pending%s%s\n",
+                     static_cast<unsigned long long>(play_->picture->scene()->generation()),
+                     committed_, play_->picture->pending(),
+                     failed.empty() ? "" : "; failed: ", failed.c_str());
+        committed_ = 0;
+    }
     fps_ = std::pair{fps, total_ms_ / n};
     frames_n_ = 0;
     total_ms_ = worst_ms_ = chunks_ms_ = 0;
@@ -1234,15 +1311,20 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 
 } // namespace
 
-std::string run_viewer(const render::Scene& scene, std::size_t group, Renderer renderer,
-                       render::RiverFlowMode river_flow, render::WaterStyle water,
-                       std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks) {
-    if (!scene.bounds(group)) {
+std::string run_viewer(std::shared_ptr<const render::Scene> scene, std::size_t group,
+                       Renderer renderer, render::RiverFlowMode river_flow,
+                       render::WaterStyle water, std::size_t lookahead_chunks, ZoomOptions zoom,
+                       const ViewerHooks* hooks, const ViewerPicture* play) {
+    if (!scene || !scene->bounds(group)) {
         return "no islands";
+    }
+    if (play != nullptr && (play->picture == nullptr || !play->take_batches)) {
+        return "the play picture is not set up";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);
-    Viewer v(scene, group, threads, renderer, river_flow, water, lookahead_chunks, zoom, hooks);
+    Viewer v(std::move(scene), group, threads, renderer, river_flow, water, lookahead_chunks, zoom,
+             hooks, play);
     return v.run();
 }
 

@@ -169,6 +169,10 @@ int run(const std::vector<std::string>& raw) {
     std::optional<anno::app::PlayLoad> play;
     std::vector<anno::app::SceneBuilding> buildings;
     std::vector<anno::app::ScriptedCommand> commands;
+    // The loader's classification of Anlagen ids as a table, taken from the world before it moves
+    // into the runner (the ids below 0x1000, those ScenePicture classifies): nothing on the window
+    // side reads the world afterwards.
+    std::vector<bool> building_classes;
     anno::app::SceneObjects objects;
     const anno::app::SceneObjects* objects_ptr = nullptr;
     std::span<const anno::app::LinkTemplate> links;
@@ -194,8 +198,13 @@ int run(const std::vector<std::string>& raw) {
             commands = std::move(parsed).value();
         }
         buildings = anno::app::play_buildings(play->world);
-        objects.is_building = [&](std::uint16_t id) {
-            return anno::app::anlage_is_building(play->world, id);
+        building_classes.assign(0x1000, false);
+        for (std::size_t id = 0; id < building_classes.size(); ++id) {
+            building_classes[id] =
+                anno::app::anlage_is_building(play->world, static_cast<std::uint16_t>(id));
+        }
+        objects.is_building = [&building_classes](std::uint16_t id) {
+            return id < building_classes.size() && building_classes[id];
         };
         objects.buildings = buildings;
         objects_ptr = &objects;
@@ -262,23 +271,42 @@ int run(const std::vector<std::string>& raw) {
             scene.set_levels(anno::render::ZoomLevels::with_derived(n));
         }
     }
+    // The window's owning handle: the loader made the scene with render::Scene::create, so its
+    // last release hands the destruction to the reclaimer. Nothing changes the scene from here on.
+    std::shared_ptr<const anno::render::Scene> shown = std::move(loaded.value().scene);
+    std::unique_ptr<anno::app::ScenePicture> picture;
     std::unique_ptr<anno::app::PlayRunner> runner;
     anno::app::ViewerHooks hooks;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
+    anno::app::ViewerPicture follow;
+    const anno::app::ViewerPicture* follow_ptr = nullptr;
     if (play) {
+        // The picture that follows the sim's buildings (docs/app/game-shell.md), made from the
+        // scene as loaded and the buildings at tick 0, before the world moves into the runner.
+        // Two builders (PictureLimits holds the other bounds with their reasons).
+        anno::app::sort_buildings(buildings);
+        picture =
+            std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building, 2);
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_script(std::move(commands));
         runner->start();
         hooks.title = [&] { return runner->title_line(); };
         hooks.on_pause = [&](bool paused) { runner->set_paused(paused); };
         hooks_ptr = &hooks;
+        follow.picture = picture.get();
+        follow.take_batches = [&] { return runner->take_building_batches(); };
+        follow_ptr = &follow;
     }
-    const std::string err =
-        anno::app::run_viewer(scene, args->group.value_or(2), args->renderer, args->river_flow,
-                              args->water, args->lookahead_chunks, args->zoom, hooks_ptr);
+    const std::string err = anno::app::run_viewer(
+        std::move(shown), args->group.value_or(2), args->renderer, args->river_flow, args->water,
+        args->lookahead_chunks, args->zoom, hooks_ptr, follow_ptr);
+    // Teardown: the producer stops first (the sim thread is joined), then the bridge, whose
+    // destructor joins its builders and hands what it holds to its reaper; the generations are
+    // destroyed by the reclaimer.
     if (runner) {
         runner->stop();
     }
+    picture.reset();
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;

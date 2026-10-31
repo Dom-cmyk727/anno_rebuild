@@ -434,8 +434,9 @@ TEST_CASE("picture GPU: accepted builds and an accepted demolish keep the old ch
         // already differ by here, before any edit and from the same chunks. The established bound
         // is 1 (blending rounding, "GPU frames match the CPU path"), measured there on views
         // without the per-frame water sprites; a view of this workload with many of them differs
-        // by 2 at a few pixels on Metal (round ea, reported open). The comparisons below may not
-        // exceed what the unchanged picture shows; the transition and fresh-scene checks are exact.
+        // by 2 at a few pixels on Metal (OQ-525: two truncating CPU blends). The comparisons below
+        // may not exceed what the unchanged picture shows; the transition and fresh-scene checks
+        // are exact.
         const Parity baseline = parity(cpu_same_inputs(frames, before, view, group), old_px);
         MESSAGE("step " << n << ": GPU against the CPU path before the edit: max channel delta "
                         << baseline.max << ", " << baseline.over << " pixel(s) above 1, "
@@ -1597,4 +1598,91 @@ TEST_CASE(
         CHECK(c.expired()); // the upload's hold went with the compositor
     }
     CHECK(!gen2.expired()); // the bridge still holds its current generation
+}
+
+// ---- The water-sprite parity difference (round eb, Package 4) ----------------------------------
+
+TEST_CASE(
+    "picture GPU, water parity: the reproducer of the per-frame water sprite difference (game "
+    "files)" *
+    doctest::test_suite("picture_gpu_water")) {
+    // OQ-525 (round eb, Package 4). A fixed camera on the plain fixed map (no workload), zoom group
+    // 2, animation time 0, original water. Four pixels differ by 2 per channel, all under one water
+    // object below the waterline (Anlagen 2708, frame 54) that the sea is shaded over. Cause,
+    // shown by experiment (eb-runs/p4-experiment-*): the CPU reference truncates at each blend
+    // (render::over, then sea::lerp4 towards the filled colour), the GPU rounds once to nearest;
+    // with either CPU step rounding to nearest the view is within 1, with both it is exact. Which
+    // rounding is the reference is the open question; parity is not accepted here (WARN), no
+    // tolerance is raised, and the check below is the cause, not a bound.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    auto loaded = app::load_play(*dir, fixed_map());
+    REQUIRE(loaded.ok());
+    auto buildings = app::play_buildings(loaded.value().world);
+    app::sort_buildings(buildings);
+    const SceneHandle scene = scene_with(*dir, loaded.value(), buildings);
+    REQUIRE(scene->units.empty());
+    // Fixed camera, zoom group 2, animation time 0, original water: the pixels of round ea.
+    const render::Rect view{4171 - 64, 4574 - 48, 128, 96};
+    Gpu g{make_frame(*ctx), {}};
+    render::FrameRenderer own(4, false);
+    for (int round = 0; round < 3; ++round) {
+        g.draw(own, scene, view, 2);
+    }
+    const auto gpu_px = g.pixels(view);
+    const auto cpu_px = cpu_reference(scene, view, 2);
+    const Parity par = parity(cpu_px, gpu_px);
+    MESSAGE("view " << view.x << "," << view.y << " " << view.w << "x" << view.h << ": max "
+                    << par.max << ", " << par.over << " pixel(s) above 1");
+    const auto below = scene->sprites_in(view, 2, 0, render::SpriteLayer::WaterBelow,
+                                         render::WaterStyle::Original);
+    const auto above = scene->sprites_in(view, 2, 0, render::SpriteLayer::WaterAbove,
+                                         render::WaterStyle::Original);
+    std::size_t over_found = 0;
+    for (std::size_t i = 0; i < cpu_px.size(); ++i) {
+        int m = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            const int c = static_cast<int>((cpu_px[i] >> (16 - 8 * k)) & 0xFF);
+            m = std::max(m, std::abs(c - int{gpu_px[4 * i + k]}));
+        }
+        if (m <= 1) {
+            continue;
+        }
+        const int x = view.x + static_cast<int>(i % static_cast<std::size_t>(view.w));
+        const int y = view.y + static_cast<int>(i / static_cast<std::size_t>(view.w));
+        std::string covering;
+        for (const auto* list : {&below, &above}) {
+            for (const auto& d : *list) {
+                const auto r = d.rect();
+                if (x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]) {
+                    covering += std::string(list == &below ? " below" : " above") + "(anlage " +
+                                std::to_string(std::get<0>(d.key)) + " shadow " +
+                                std::to_string(std::get<2>(d.key) ? 1 : 0) + " frame " +
+                                std::to_string(std::get<4>(d.key)) + " at " + std::to_string(r[0]) +
+                                "," + std::to_string(r[1]) + " " + std::to_string(r[2]) + "x" +
+                                std::to_string(r[3]) + ")";
+                }
+            }
+        }
+        // Every pixel above 1 lies under a water object below the waterline (the two truncating
+        // blends); a difference anywhere else would be a new finding.
+        const bool under_below = covering.find(" below(") != std::string::npos;
+        CHECK_MESSAGE(under_below, "pixel " << x << "," << y << " differs by " << m
+                                            << " and is under no water object below the waterline");
+        ++over_found;
+        MESSAGE("pixel " << x << "," << y << " cpu " << ((cpu_px[i] >> 16) & 0xFF) << ","
+                         << ((cpu_px[i] >> 8) & 0xFF) << "," << (cpu_px[i] & 0xFF) << " gpu "
+                         << int{gpu_px[4 * i]} << "," << int{gpu_px[4 * i + 1]} << ","
+                         << int{gpu_px[4 * i + 2]} << " sprites:" << covering);
+    }
+    CHECK(over_found == par.over);
+    WARN(par.max <= 1); // visual parity of this view: not accepted (OQ-525)
+    CHECK(g.frame->errors() == 0);
 }

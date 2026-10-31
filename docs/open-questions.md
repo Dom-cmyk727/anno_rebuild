@@ -2112,3 +2112,17 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Question:** Which options-tab icons open the full-frame statistics (`STATISTIK_UNTERGRUND` is already bound to key **Q**, mean 23.41 on `f15_rating`), the quit `MESSAGEBOX`, and the right-side book/crest on `f15_options_tab`?
 - **What we know:** column x=800 opens load/save/music/speech at y=360/410/460/510. `OPTION_EXIT` id 1492 is (927, 660) 92 x 100 mean 11.23 on `r2_options`; a click there while speech was open did nothing (`f15_options_exit`). `OPTION_BILANZ` id 1486 69 x 61 best mean 66 on `r2_options`.
 - **How to resolve:** click the orange graph, the book, the green crest, and `OPTION_EXIT` from the main options list (`f15_options_tab`) without a leftover submenu.
+
+## OQ-525: CPU reference blends truncate; the GPU rounds (W4.3 round eb)
+- **Status:** open (cause established; the reference decision is open).
+- **Area:** render / fidelity (CPU reference against the GPU compositor).
+- **Question:** Which rounding is the reference for straight-alpha compositing and the sea's blend towards its filled colour: the CPU path's truncation, or round to nearest as the GPU's fixed-function blend and its shaders produce?
+- **What we know:**
+  - **Reproducer:** `src/render/tests/picture_gpu_test.cpp`, "picture GPU, water parity: the reproducer …". It uses `data/maps/lan5.txt` at tick 0, a 128 × 96 view at scene (4107, 4526), zoom group 2, time 0 and original water.
+  - **Pixels:** four pixels differ by 2 on Metal (Apple M5 Max). (4171, 4572) CPU 38,56,72, GPU 38,57,74; (4171, 4574) 29,51,67 against 30,52,69; (4175, 4574) 34,51,62 against 34,52,64; (4171, 4576) 44,56,62 against 46,56,62.
+  - **Sprite and layer:** each pixel lies under one water object below the waterline, Anlagen 2708 frame 54 (frame box at 4124, 4552, 72 × 34), not a shadow, with the sea shaded over it.
+  - **The CPU chain at these pixels:** `render::over` (`iso.cpp`, `num / out_a`) blends the object over the ground, `over` again blends the sea pattern sprite, and `sea::lerp4` (`/ scale`) blends towards the filled colour. Each step truncates.
+  - **The GPU chain:** it blends in float and rounds when it writes (the `under` target, then the sea pass).
+  - **Experiment (not committed):** round to nearest in `over` only gives max 1; in `lerp4` only, max 1; in both, 0 on this view (`cache/eb-runs/p4-experiment-*`).
+  - **Elsewhere:** docs/render/iso.md records the same effect on enhanced rivers ("the CPU path rounds down at each step of the sea", within 2/255). The ≤ 1 bound of "GPU frames match the CPU path" was measured on views without water objects on the per-frame sprite path.
+- **How to resolve:** decide the reference from the original where it applies. The original's 8-bit blends (the shadow `dst/2 + dst/8`, AnnoDisplay.dll 0x10019f80) truncate, but its sea and straight-alpha sprites are this project's model, not traced. Then either make both CPU steps round to nearest and re-baseline the CPU digests and river bounds, or keep truncation and state a per-stage bound for the GPU. Until then, GPU/CPU visual parity is not accepted for views with water objects below the waterline.

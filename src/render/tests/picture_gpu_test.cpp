@@ -43,6 +43,7 @@
 #include <anno/render/scene.hpp>
 #include <anno/render/wgpu.hpp>
 #include <anno/test/game_dir.hpp>
+#include <anno/test/watchdog.hpp>
 
 namespace {
 
@@ -916,38 +917,7 @@ TEST_CASE("picture GPU: the wave simulation's background preparation holds the f
 
 namespace {
 
-/// Ends the process with a message if a bounded scenario does not finish in time: a teardown that
-/// hangs (a worker left blocked in a gate while its owner joins it) fails this test instead of the
-/// whole run waiting for CTest's timeout. _Exit: the hung threads cannot be joined.
-class Watchdog {
-  public:
-    Watchdog(std::chrono::seconds limit, const char* what)
-        : thread_([this, limit, what] {
-              std::unique_lock lock(m_);
-              if (!cv_.wait_for(lock, limit, [this] { return done_; })) {
-                  std::fprintf(stderr, "watchdog: %s did not finish within %lld s\n", what,
-                               static_cast<long long>(limit.count()));
-                  std::fflush(stderr);
-                  std::_Exit(124);
-              }
-          }) {}
-    Watchdog(const Watchdog&) = delete;
-    Watchdog& operator=(const Watchdog&) = delete;
-    ~Watchdog() {
-        {
-            const std::lock_guard lock(m_);
-            done_ = true;
-        }
-        cv_.notify_all();
-        thread_.join();
-    }
-
-  private:
-    std::mutex m_;
-    std::condition_variable cv_;
-    bool done_ = false;
-    std::thread thread_;
-};
+using anno::test::Watchdog;
 
 /// A scoped release of a gate: it runs once, explicitly or at scope exit (an assertion or an
 /// exception included), and logs that it ran. Declared after the object whose workers the gate

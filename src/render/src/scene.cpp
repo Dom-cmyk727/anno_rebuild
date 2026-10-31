@@ -74,10 +74,11 @@ struct Scene::FlowBuild {
     /// Builds popped from the queue and not finished yet. With `queue` empty
     /// and this at 0, nothing is in flight (wait_river_flow_builders).
     unsigned inflight = 0;
-    /// The scene a builder is solving in right now (null when none): the scene's destructor waits
-    /// while it is its own, so the solve never reads a destroyed scene.
-    const Scene* solving = nullptr;
-    std::vector<std::thread> threads;
+    /// The scene of every solve in progress, one entry per solve (several workers may solve
+    /// in one scene). A solve is registered in the same critical section that dequeues it, so no
+    /// destructor can miss it: the scene's destructor waits until no entry is its own (round dw,
+    /// DW2; docs/render/rivers.md 3.1).
+    std::vector<const Scene*> active;
 };
 
 int margin(std::size_t group) {
@@ -263,27 +264,30 @@ struct Scene::WaterSlot {
 struct Scene::SceneCaches {
     std::array<SeaSlot, kGroups> seas;
     std::deque<SeaSlot> derived_seas;
-    std::shared_ptr<FlowBuild> flow_build;
+    /// Created with the caches, so every reader sees the same pointer (no lazy publication).
+    std::shared_ptr<FlowBuild> flow_build = std::make_shared<FlowBuild>();
+    std::vector<std::thread> flow_threads;
     std::once_flag flow_build_once;
     std::once_flag river_cfg_once;
     bool river_cfg_ok = true;
     SpriteCache sprites;
     FrameTable frame_table;
 
-    // Not joined here: the last generation can be released by a flow builder itself (it
-    // holds the scene for a solve), and a thread cannot join itself. The builders hold the
-    // FlowBuild, stop when they see `stop`, and touch no scene without holding one.
+    // The last generation can be released by a flow builder itself (it holds the scene for a
+    // solve): that builder cannot join itself, so it detaches its own thread. The other builders
+    // are idle here: no solve can hold a scene of these caches once the last owner is gone (a
+    // solve holds its scene, and a non-shared scene's destructor waits for its solves).
     ~SceneCaches() {
-        if (flow_build) {
-            {
-                const std::lock_guard lock(flow_build->mutex);
-                flow_build->stop = true;
-            }
-            flow_build->wake.notify_all();
-            for (auto& t : flow_build->threads) {
-                if (t.joinable()) {
-                    t.detach();
-                }
+        {
+            const std::lock_guard lock(flow_build->mutex);
+            flow_build->stop = true;
+        }
+        flow_build->wake.notify_all();
+        for (std::thread& t : flow_threads) {
+            if (t.get_id() == std::this_thread::get_id()) {
+                t.detach();
+            } else if (t.joinable()) {
+                t.join();
             }
         }
     }
@@ -450,26 +454,24 @@ std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
 
 std::shared_ptr<const Scene> Scene::with_islands(std::vector<IslandUpdate> updates) const {
     std::shared_ptr<const Scene> next(new Scene(*this, std::move(updates)));
-    if (caches_->flow_build) {
-        // The new generation can solve the flows of the slots it shares with this one, should this
-        // generation be retired while its requests are queued. Entries of retired generations go.
-        FlowBuild& fb = *caches_->flow_build;
-        const std::lock_guard lock(fb.mutex);
-        for (std::size_t i = 0; i < next->objects_.size(); ++i) {
-            FlowSlot& slot = *next->objects_[i].flow;
-            if (slot.state.load(std::memory_order_acquire) == kFlowFailed) {
-                continue;
-            }
-            std::erase_if(slot.waiters,
-                          [](const FlowWaiter& w) { return w.shared && w.owner.expired(); });
-            if (std::find_if(slot.waiters.begin(), slot.waiters.end(),
-                             [&next](const FlowWaiter& w) { return w.owner.lock() == next; }) ==
-                slot.waiters.end()) {
-                FlowWaiter me;
-                me.owner = next;
-                me.shared = true;
-                slot.waiters.push_back(std::move(me));
-            }
+    // The new generation can solve the flows of the slots it shares with this one, should this
+    // generation be retired while its requests are queued. Entries of retired generations go.
+    FlowBuild& fb = *caches_->flow_build;
+    const std::lock_guard lock(fb.mutex);
+    for (std::size_t i = 0; i < next->objects_.size(); ++i) {
+        FlowSlot& slot = *next->objects_[i].flow;
+        if (slot.state.load(std::memory_order_acquire) == kFlowFailed) {
+            continue;
+        }
+        std::erase_if(slot.waiters,
+                      [](const FlowWaiter& w) { return w.shared && w.owner.expired(); });
+        if (std::find_if(slot.waiters.begin(), slot.waiters.end(),
+                         [&next](const FlowWaiter& w) { return w.owner.lock() == next; }) ==
+            slot.waiters.end()) {
+            FlowWaiter me;
+            me.owner = next;
+            me.shared = true;
+            slot.waiters.push_back(std::move(me));
         }
     }
     return next;
@@ -509,7 +511,11 @@ Scene::~Scene() {
             slot->state.compare_exchange_strong(queued, kFlowIdle, std::memory_order_acq_rel);
         }
     }
-    fb.solved.wait(lock, [this, &fb] { return fb.solving != this; });
+    // Solves already registered for this scene finish first (they read it). A solve registered later
+    // cannot be for this scene: its requests were removed above, under this lock.
+    fb.solved.wait(lock, [this, &fb] {
+        return std::find(fb.active.begin(), fb.active.end(), this) == fb.active.end();
+    });
 }
 
 void Scene::set_levels(ZoomLevels levels) {
@@ -1704,7 +1710,36 @@ void Scene::build_flow(std::size_t index) const {
 }
 
 void Scene::start_flow_builders() const {
-    caches_->flow_build = std::make_shared<FlowBuild>();
+    // Who solves a dequeued request: a live asker, else a surviving waiter of the slot. Called with
+    // FlowBuild::mutex held. A strong owner is returned, never released here (the builder releases
+    // it after the lock is gone: the last owner's destructor takes that mutex). A non-shared solver
+    // is valid for the solve: a non-shared scene removes its queued requests and waiter entries
+    // under the same mutex before it is destroyed, and a dequeued solve is registered in
+    // FlowBuild::active. (Lambdas, not free functions: the flow types are private to Scene.)
+    const auto choose_solver = [](const FlowRequest& req)
+        -> std::pair<const Scene*, std::shared_ptr<const Scene>> {
+        if (!req.asker.shared) {
+            return {req.asker.raw, nullptr};
+        }
+        if (std::shared_ptr<const Scene> owner = req.asker.owner.lock()) {
+            return {owner.get(), owner};
+        }
+        for (const FlowWaiter& w : req.slot->waiters) {
+            if (!w.shared) {
+                return {w.raw, nullptr};
+            }
+            if (std::shared_ptr<const Scene> owner = w.owner.lock()) {
+                return {owner.get(), owner};
+            }
+        }
+        return {nullptr, nullptr};
+    };
+    const auto unregister_solve = [](FlowBuild& fb, const Scene* solver) {
+        const auto it = std::find(fb.active.begin(), fb.active.end(), solver);
+        if (it != fb.active.end()) {
+            fb.active.erase(it);
+        }
+    };
     // Threads: RiverConfig::flow_threads, else a quarter of the hardware
     // threads (1-4): a solve is 10-60 ms, so a few threads clear a scene's
     // islands in the first second without taking cores from the chunk
@@ -1714,11 +1749,14 @@ void Scene::start_flow_builders() const {
         river_cfg.flow_threads != 0 ? river_cfg.flow_threads : std::clamp(hw / 4, 1U, 4U);
     std::shared_ptr<FlowBuild> self = caches_->flow_build;
     for (unsigned i = 0; i < n; ++i) {
-        self->threads.emplace_back([self] {
+        caches_->flow_threads.emplace_back([self, choose_solver, unregister_solve] {
             FlowBuild* fb = self.get();
             lower_thread_priority();
             for (;;) {
                 FlowRequest req;
+                // A strong owner of the solver is held only for this solve, and released off the lock.
+                std::shared_ptr<const Scene> keep;
+                const Scene* solver = nullptr;
                 {
                     std::unique_lock lock(fb->mutex);
                     fb->wake.wait(lock,
@@ -1729,33 +1767,11 @@ void Scene::start_flow_builders() const {
                     req = std::move(fb->queue.front());
                     fb->queue.pop_front();
                     ++fb->inflight;
-                }
-                // The solver: the asker if it is alive, else a surviving waiter of the slot (the
-                // same island in another generation whose river inputs are equal). A non-shared
-                // asker or waiter is valid here: its destructor removes it under this lock and
-                // waits for a solve in progress. `keep` holds a shared solver for the solve.
-                std::shared_ptr<const Scene> keep;
-                const Scene* solver = nullptr;
-                {
-                    const std::lock_guard lock(fb->mutex);
-                    if (!req.asker.shared) {
-                        solver = req.asker.raw;
-                    } else if ((keep = req.asker.owner.lock())) {
-                        solver = keep.get();
-                    } else {
-                        for (const FlowWaiter& w : req.slot->waiters) {
-                            if (!w.shared) {
-                                solver = w.raw;
-                                break;
-                            }
-                            if ((keep = w.owner.lock())) {
-                                solver = keep.get();
-                                break;
-                            }
-                        }
-                    }
+                    // Dequeue, solver choice and registration form one step under the lock (DW2):
+                    // a destructor that takes the lock sees this solve or none of it.
+                    std::tie(solver, keep) = choose_solver(req);
                     if (solver != nullptr) {
-                        fb->solving = solver;
+                        fb->active.push_back(solver);
                     } else {
                         // Nobody can build this flow now: the slot is not Queued any more, so a
                         // later request for it (from a generation created later) starts it.
@@ -1776,14 +1792,14 @@ void Scene::start_flow_builders() const {
                 }
                 {
                     const std::lock_guard lock(fb->mutex);
-                    fb->solving = nullptr;
+                    if (solver != nullptr) {
+                        unregister_solve(*fb, solver);
+                    }
                 }
                 fb->solved.notify_all();
-                // The last reference to a shared solver may be this one: it is released here, on
-                // the builder, after the marker is cleared (so the scene's destructor does not wait
-                // for itself) and before the in-flight count goes down (so that a caller of
-                // wait_river_flow_builders sees the destruction too). The window thread never
-                // destroys a scene here.
+                // The last strong owner may be this one. It is released here, off the lock and
+                // before the in-flight count goes down, so a caller of wait_river_flow_builders sees
+                // the destruction too. The window thread never destroys a scene here.
                 keep.reset();
                 {
                     const std::lock_guard lock(fb->mutex);

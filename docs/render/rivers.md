@@ -187,6 +187,34 @@ Light variance is calibrated in S5 to the legacy shimmer's standard deviation (+
 
 A chunk worker never blocks on phase B. Phase A is bounded (budget 100 ms per island, measured in S3) and built under `std::call_once` by whichever worker first needs it. If phase B is not ready (`try_get()` returns null) the chunk is built with the **legacy river shimmer on the correct mask** and tagged `flow_pending`; it is re-queued when phase B finishes (generation counter), and the lattice replaces the legacy look. Prefetch at scene load keeps this rare; a test forces it (S5).
 
+### 3.1a Flow builder lifecycle (round dw, DW2; `src/render/src/scene.cpp`)
+
+Phase B runs on a pool of builders shared by the generations of one scene. The protocol that keeps a solve safe
+when its requester is gone, when the scene is destroyed, and when several builders solve at once:
+
+- **States of a slot.** Idle, Queued (a request exists or a builder holds it), Ready (`flow` is published; the
+  release store of `state` orders it), Failed (a solve threw; the picture keeps its last good state).
+- **Requests.** A request holds its slot (shared) and its asker: a shared asker by weak owner, a non-shared
+  asker by address. A non-shared scene removes its own queued requests and its waiter entries under the builders'
+  mutex before it is destroyed.
+- **Solver choice and registration are one step** under `FlowBuild::mutex`: the builder dequeues a request,
+  picks the solver (the asker if it is alive, else a surviving waiter of the slot) and registers the solve in
+  `FlowBuild::active` (one entry per solve in progress; several builders may solve one scene).
+- **Destruction.** `~Scene` removes its queued requests and waiter entries, then waits until `active` holds no
+  entry of the scene. A dequeued solve is in `active` before the lock is released, so no destructor misses it.
+- **Strong owners.** A builder that solves for a shared scene holds a strong owner for the solve. The owner is
+  released after the lock is gone and after the solve is unregistered: the last owner's destructor takes the same
+  mutex.
+- **Publication.** `FlowBuild` is created with the scene's caches (never published later); the flow threads belong
+  to the caches and are joined by their destructor, except that a builder which releases the last owner detaches
+  its own thread (it cannot join itself).
+- **Lock order.** `FlowBuild::mutex` is the only mutex of the protocol; no strong scene reference is released while
+  it is held, and no solve runs while it is held.
+- **Tests.** `river_lifecycle_test.cpp`: two workers with a gated solve (destruction stays blocked until the gate
+  opens, checked for 5 s); one, two and four workers with one gated and one throwing solve; queued requests of a
+  retired generation; a non-shared scene destroyed with a request queued; the last owner released by the builder.
+  Pre-fix evidence: the one-marker version returned early and read freed memory (ASan, `cache/dw-runs`).
+
 ### 3.2 Island raster algorithm (R1-R9; pure function of the inputs, deterministic, thread-count independent)
 
 | Step | What |

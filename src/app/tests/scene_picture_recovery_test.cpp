@@ -489,6 +489,14 @@ TEST_CASE("picture failures: an obsolete failure is not evidence about a newer c
           0); // the older failure is not counted against the newer change
     CHECK(picture.error().empty());
     release_reaper.store(true);
+    // The commits wait for the reaper: drain after its catch-up, counted by its own counters
+    // (bounded).
+    const auto caught_up = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (picture.stats().reclaim_completed < picture.stats().reclaim_queued &&
+           std::chrono::steady_clock::now() < caught_up) {
+        std::this_thread::yield();
+    }
+    REQUIRE(picture.stats().reclaim_completed == picture.stats().reclaim_queued);
     CHECK(drain(picture, frames, 40));
     CHECK(picture.stats().failed_islands == 0);
     CHECK(picture.error().empty());

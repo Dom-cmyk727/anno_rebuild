@@ -388,7 +388,8 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
     for (std::size_t t = 0; t < std::max<std::size_t>(threads, 1); ++t) {
         threads_.emplace_back([st = state_, fault = limits_.build_fault,
                                max_attempts = limits_.max_attempts,
-                               destroy_hook = limits_.payload_destroy_hook, trace = limits_.trace] {
+                               destroy_hook = limits_.payload_destroy_hook, trace = limits_.trace,
+                               progress = limits_.publish_progress] {
             for (;;) {
                 PictureJob job;
                 {
@@ -459,7 +460,11 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                     // DX3b).
                     const bool current = st->inflight[job.index] == job.version &&
                                          st->desired[job.index] == job.version;
-                    if (!current) {
+                    // publish_progress: a superseded build that is still ahead of the committed
+                    // version is kept, so the next commit moves the picture forward.
+                    const bool ahead =
+                        progress && built && !current && job.version > st->committed[job.index];
+                    if (!current && !ahead) {
                         // Superseded while it ran (a newer change or a dropped request): its
                         // result and credit are destroyed when this call returns. An open
                         // build of this island that is not desired any more frees the island
@@ -497,10 +502,12 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                             st->done.begin(), st->done.end(),
                             [&job](const PictureResult& r) { return r.index == job.index; });
                         if (same != st->done.end()) {
-                            // The replaced result leaves in `result`, and is destroyed below,
-                            // off the lock, payload first and credit last.
+                            // The older result leaves in `result`, and is destroyed below, off
+                            // the lock, payload first and credit last (the newer one is kept).
                             ++st->stats.coalesced;
-                            std::swap(*same, result);
+                            if (same->version < job.version) {
+                                std::swap(*same, result);
+                            }
                         } else {
                             st->done.push_back(std::move(result));
                         }
@@ -659,7 +666,8 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                 auto finished =
                     std::find_if(state_->done.begin(), state_->done.end(),
                                  [index](const PictureResult& r) { return r.index == index; });
-                if (finished != state_->done.end()) {
+                if (finished != state_->done.end() &&
+                    !(limits_.publish_progress && finished->version > state_->committed[index])) {
                     ++state_->stats.coalesced;
                     if (limits_.trace) {
                         limits_.trace(PictureEvent::Dropped, index, finished->version);
@@ -824,7 +832,14 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
         for (PictureResult& r : state_->done) {
             // Only the desired version may be published: a result of an older version (its island
             // changed after the build started) is dropped, and the island is built again.
-            if (state_->inflight[r.index] == r.version && r.version == state_->desired[r.index]) {
+            // The desired version, or with publish_progress any version ahead of the committed
+            // one (the picture moves forward, never back).
+            const bool publishable = limits_.publish_progress
+                                         ? r.version > state_->committed[r.index] &&
+                                               r.version <= state_->desired[r.index]
+                                         : state_->inflight[r.index] == r.version &&
+                                               r.version == state_->desired[r.index];
+            if (publishable) {
                 ready.push_back(std::move(r));
             } else {
                 ++state_->stats.discarded;
@@ -856,7 +871,15 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
             if (limits_.trace) {
                 limits_.trace(PictureEvent::Requeued, r.index, r.version);
             }
-            state_->close(r.index);
+            if (state_->inflight[r.index] == r.version) {
+                state_->close(r.index);
+                // Nothing else restarts the island: it waits in the deferred list, and the
+                // dispatch of this commit builds it again from the current desired state.
+                if (!state_->is_deferred[r.index]) {
+                    state_->is_deferred[r.index] = true;
+                    state_->deferred.push_back(r.index);
+                }
+            }
             dropped.push_back(r.base_lists);
             dropped.push_back(std::make_shared<PictureResult>(std::move(r)));
             continue;
@@ -893,7 +916,10 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
                 limits_.trace(PictureEvent::Committed, index, version);
             }
             state_->committed[index] = version;
-            state_->close(index);
+            // With publish_progress a newer build of the island may be open: it stays open.
+            if (state_->inflight[index] == version) {
+                state_->close(index);
+            }
             if (state_->desired[index] == state_->committed[index]) {
                 state_->dirty.erase(index);
             }

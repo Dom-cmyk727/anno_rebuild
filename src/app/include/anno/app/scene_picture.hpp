@@ -77,6 +77,14 @@ struct PictureLimits {
     /// failure recovers without another sim batch and a persistent one stops after this many
     /// attempts.
     std::uint32_t max_attempts = 4;
+    /// Provisional policy, OFF by default (round dy, D1 case f; a decision for review). Off, only
+    /// the desired version of an island is published (the accepted contract): a stream of changes
+    /// to one island faster than one build plus one commit supersedes every finished build, and
+    /// the island's picture does not move until the stream stops. On, a finished build that is
+    /// newer than the committed version, though older than the desired one, is kept and
+    /// committed: the picture moves forward under such a stream and never back, and the island
+    /// stays pending until its desired version is committed.
+    bool publish_progress = false;
     /// Test seam: a build that throws for the island index (an injected worker failure).
     std::function<void(std::size_t index)> build_fault;
     /// Test seam: called by the reaper before it releases each item (a stalled reaper).

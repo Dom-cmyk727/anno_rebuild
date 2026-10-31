@@ -17,6 +17,7 @@
 
 #include <anno/app/building_delta.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/picture_check.hpp>
 #include <anno/app/scene_picture.hpp>
 #include <anno/assets/island.hpp>
 #include <anno/formats/anlagen.hpp>
@@ -564,4 +565,60 @@ TEST_CASE("trace: an edit's steps are reported in order, a superseded version in
     CHECK(at(E::Superseded, 1) < n);
     CHECK(at(E::Committed, 2) < n);
     CHECK(at(E::Committed, 1) == n); // version 1 is never committed on its own
+}
+
+TEST_CASE("progress: publish_progress publishes a superseded build that is ahead, and never goes "
+          "back" *
+          doctest::test_suite("scene_picture_ownership")) {
+    // One worker. Version 1's build is held, version 2 arrives and is queued; version 1 finishes
+    // and version 2's build is held. A commit then publishes version 1 with publish_progress (the
+    // picture moves forward), and nothing without it (the accepted contract). Both converge to
+    // version 2, and the committed versions only grow.
+    for (const bool progress : {false, true}) {
+        CAPTURE(progress);
+        auto scene = islands_scene(1);
+        std::vector<app::SceneBuilding> none;
+        Gate first, second;
+        std::atomic<int> builds{0};
+        std::mutex mutex;
+        std::vector<std::uint64_t> committed;
+        app::ScenePicture::Limits limits;
+        limits.publish_progress = progress;
+        limits.build_fault = [&first, &second, &builds](std::size_t) {
+            const int n = builds.fetch_add(1);
+            if (n == 0) {
+                first.pass();
+            } else if (n == 1) {
+                second.pass();
+            }
+        };
+        limits.trace = [&mutex, &committed](app::PictureEvent e, std::size_t, std::uint64_t v) {
+            if (e == app::PictureEvent::Committed) {
+                const std::lock_guard lock(mutex);
+                committed.push_back(v);
+            }
+        };
+        app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 1, limits);
+        Opener open_second(second);
+        Opener open_first(first);
+        render::FrameRenderer frames(1);
+        picture.apply({added(1, 0, 1)});
+        REQUIRE(eventually([&] { return first.entered.load() == 1; }));
+        picture.apply({added(2, 0, 2)});
+        first.open.store(true);
+        REQUIRE(eventually([&] { return second.entered.load() == 1; }));
+        picture.commit(frames);
+        const std::size_t items = app::building_items(picture.scene()->islands[0]).size();
+        CHECK(items == (progress ? 1U : 0U));
+        CHECK(picture.pending() == 1);
+        second.open.store(true);
+        CHECK(drain(picture, frames, 40));
+        CHECK(app::building_items(picture.scene()->islands[0]).size() == 2);
+        CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
+        const std::lock_guard lock(mutex);
+        CHECK(std::is_sorted(committed.begin(), committed.end()));
+        CHECK(std::adjacent_find(committed.begin(), committed.end()) == committed.end());
+        CHECK(committed.front() == (progress ? 1U : 2U));
+        CHECK(committed.back() == 2U);
+    }
 }

@@ -85,6 +85,23 @@ enum class TraceKind : std::uint8_t {
     /// submission (the return of GpuFrame::render, after wgpuQueueSubmit), so the event names the
     /// frame that draws them. Not GPU completion and not presentation (neither is observed).
     GpuReady,
+    // The play window's trace (round ec, docs/app/window-trace.md); `island` and `version` as
+    // named.
+    /// The sim pushed a building batch into the mailbox; `version` = its turn (island 0).
+    BatchPublished,
+    /// The window took the batch of turn `version` (island 0).
+    BatchTaken,
+    /// A GPU frame was submitted: `island` = the surface epoch, `version` = the frame id. Every
+    /// event of that frame carries the same time.
+    FrameSubmitted,
+    /// The present call of frame `version` (epoch `island`) returned success.
+    FramePresented,
+    /// Frame `version` (epoch `island`) produced no presented image (no usable surface texture, or
+    /// the present call failed).
+    FrameFailed,
+    /// The first successful present call of a frame at or after the frame of gpu_ready(island,
+    /// version), at that frame's time: the CPU-side return of the call, not display.
+    Presented,
 };
 
 [[nodiscard]] std::string_view trace_kind_name(TraceKind k);
@@ -120,6 +137,14 @@ struct TraceSummary {
     bool gpu_mode = false;
     std::size_t gpu_ready = 0, gpu_unfinished = 0;
     Distribution gpu_ms;
+    /// Window traces (round ec): edits whose GPU-usable change was in a frame whose present call
+    /// returned success (presented, latency present_ms from the edit), edits GPU-usable but never
+    /// in such a frame (present_unfinished), and the frames by outcome.
+    bool window = false;
+    std::size_t presented = 0, present_unfinished = 0;
+    std::size_t frames_submitted = 0, frames_presented = 0, frames_failed = 0;
+    std::size_t batches_published = 0, batches_taken = 0;
+    Distribution present_ms;
     /// Per build (an island and version with both events): the queue delay (Admitted to Started)
     /// and the build time on a worker (Started to Built, Superseded or Failed).
     Distribution queue_ms, build_ms;
@@ -143,6 +168,12 @@ struct TraceSummary {
     ///   it (GPU-usable implies CPU-ready; one observation may give both the same time);
     /// - at most one ChunksReady, NoVisibleChange and GpuReady per i and g, and not both a
     ///   ChunksReady and a NoVisibleChange;
+    /// - a Presented of i and g needs that pair's GpuReady not after it, and a FramePresented at
+    ///   the same time whose frame is not below the frame submitted at the GpuReady's time; at
+    ///   most once;
+    /// - a FramePresented needs the FrameSubmitted of its frame before it, and a frame is never
+    ///   both presented and failed;
+    /// - a BatchTaken needs the BatchPublished of its turn before it;
     /// - generation numbers only increase, each Generation follows the Committed events of its
     ///   commit, and no Committed event is left without a Generation after it;
     /// - no event is later than RunEnd.
@@ -246,7 +277,9 @@ inline constexpr int kEvidenceContradictory = 7;
 /// before it was saved and kEvidenceNotSaved otherwise. Each file is written whole (save_whole).
 /// When events.tsv itself cannot be saved there is no trace (an aggregate of it fails as missing)
 /// and summary.txt, which describes it, is removed. A successful RunEnd therefore exists only when
-/// every file of the run is in `dir`. A run whose trace is contradictory gets
+/// every file of the run is in `dir`. A negative `verdict` marks a recording known to be incomplete
+/// (round ec: a bounded trace dropped records): no RunEnd is written, and the trace reads as
+/// incomplete; `status` is then kEvidenceNotSaved. A run whose trace is contradictory gets
 /// kEvidenceContradictory in place of a success.
 [[nodiscard]] EvidenceOutcome
 finalize_evidence(const std::filesystem::path& dir, std::span<const EvidenceFile> files,

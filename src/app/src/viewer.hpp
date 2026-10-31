@@ -15,6 +15,7 @@
 #include <anno/app/building_delta.hpp>
 #include <anno/app/cli.hpp>
 #include <anno/app/play_follow.hpp>
+#include <anno/app/window_trace.hpp>
 #include <anno/render/scene.hpp>
 
 namespace anno::app {
@@ -24,6 +25,10 @@ namespace anno::app {
 struct ViewerHooks {
     std::function<std::string()> title;
     std::function<void(bool paused)> on_pause;
+    /// The window trace (docs/app/window-trace.md; opt-in, GPU renderer only): every attempted GPU
+    /// frame, the readiness of each commit's visible keys, and present-call results. Outlives the
+    /// call; the window records nothing after run_viewer returns.
+    WindowTrace* trace = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

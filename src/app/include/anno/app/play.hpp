@@ -106,6 +106,20 @@ struct RejectionNote {
     std::string reason;
 };
 
+/// What one turn did, for the window trace (round ec, B2; docs/app/window-trace.md): the commands
+/// it applied, the refusals the sim reported for them (CommandRejected: the reason, no command
+/// index), and the batch it pushed. `published` is read just before the batch enters the mailbox,
+/// so a window that takes the batch never takes it before that time.
+struct TurnObservation {
+    std::uint64_t turn = 0;
+    std::size_t applied = 0, rejected = 0;
+    /// The refusals' reason names, in the sim's order, joined with ','.
+    std::string reasons;
+    bool batch = false;
+    std::size_t deltas = 0;
+    std::chrono::steady_clock::time_point published{};
+};
+
 /// Clock and sleep for the turn schedule. The app uses `steady_clock`. A test
 /// supplies a clock that wakes late by a fixed amount, so drift is
 /// deterministic. The runner calls these on the sim thread only. `wake`
@@ -170,6 +184,9 @@ class PlayRunner {
     /// Test seam: called on the sim thread inside every turn, after its commands are chosen and
     /// before the turn runs, with the turn index (a turn held in flight). Call before `start`.
     void set_turn_gate(std::function<void(std::uint64_t turn)> gate);
+    /// Called on the sim thread at the end of every turn, after its publication (and after the
+    /// batch listener), with what the turn did. Opt-in (the window trace). Call before `start`.
+    void set_turn_observer(std::function<void(const TurnObservation&)> observer);
     /// Every refused command since the last call, oldest first (the window takes them
     /// once per frame, as the batches). The list is kept to the last 256 refusals
     /// (kRejectionKeep): a window that stops taking them loses the oldest, not the newest.
@@ -195,7 +212,7 @@ class PlayRunner {
   private:
     void loop();
     void one_turn();
-    void publish(std::uint64_t turn_us, std::uint64_t turn,
+    void publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t applied,
                  std::shared_ptr<const BuildingBatch> batch, std::vector<RejectionNote> rejected);
     /// Refusals kept for take_rejections. Reason: a refusal is a turn and a short
     /// name, and 256 is about a minute of refusals at a few per second. Making it a
@@ -235,6 +252,7 @@ class PlayRunner {
     std::mutex listener_mu_;
     std::function<void()> listener_;
     std::function<void(std::uint64_t)> turn_gate_;
+    std::function<void(const TurnObservation&)> turn_observer_;
     // The script and its cursor (sim thread only once started).
     std::vector<ScriptedCommand> script_;
     std::size_t script_next_ = 0;

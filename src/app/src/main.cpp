@@ -43,7 +43,10 @@
 // without a GPU, cpu never uses it.
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
+#include <filesystem>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -51,7 +54,9 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/png.hpp>
+#include <anno/app/scene_picture.hpp>
 #include <anno/app/still.hpp>
+#include <anno/app/window_trace.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
 
@@ -279,14 +284,73 @@ int run(const std::vector<std::string>& raw) {
     anno::app::ViewerHooks hooks;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
     std::unique_ptr<anno::app::PlayFollower> follow;
+    // The window trace (docs/app/window-trace.md): ANNO_VIEW_TRACE=<directory that does not
+    // exist>, with --play and the GPU renderer. Bounded (ANNO_VIEW_TRACE_EVENTS, _FRAMES), written
+    // once after the window, the sim thread and the builders have stopped.
+    std::unique_ptr<anno::app::WindowTrace> trace;
+    fs::path trace_dir;
+    std::ostringstream trace_manifest;
+    if (const char* td = std::getenv("ANNO_VIEW_TRACE"); td != nullptr && *td != 0) {
+        trace_dir = fs::path(td);
+        std::error_code ec;
+        if (!play) {
+            std::fprintf(stderr, "ANNO_VIEW_TRACE needs --play\n");
+            return 2;
+        }
+        if (fs::exists(trace_dir, ec) || !fs::create_directories(trace_dir, ec)) {
+            std::fprintf(stderr, "ANNO_VIEW_TRACE=%s: not a new directory\n", td);
+            return 2;
+        }
+        auto bound = [](const char* name, std::size_t fallback) {
+            const char* v = std::getenv(name);
+            unsigned long long n = 0;
+            return v != nullptr && std::sscanf(v, "%llu", &n) == 1 && n > 0
+                       ? static_cast<std::size_t>(n)
+                       : fallback;
+        };
+        const std::size_t max_events = bound("ANNO_VIEW_TRACE_EVENTS", 2000000);
+        const std::size_t max_frames = bound("ANNO_VIEW_TRACE_FRAMES", 200000);
+        const std::size_t max_turns = bound("ANNO_VIEW_TRACE_TURNS", 200000);
+        trace = std::make_unique<anno::app::WindowTrace>(max_events, max_frames, max_turns);
+        hooks.trace = trace.get();
+        trace_manifest << "window_trace 1\nmap " << name << "\n";
+        for (const std::string& a : raw) {
+            trace_manifest << "arg " << a << "\n";
+        }
+        const std::time_t now = std::time(nullptr);
+        char when[64];
+        std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        trace_manifest << "started " << when << "\n";
+    }
     if (play) {
         // The picture that follows the sim's buildings (docs/app/game-shell.md), made from the
         // scene as loaded and the buildings at tick 0, before the world moves into the runner.
         // Two builders (PictureLimits holds the other bounds with their reasons).
         anno::app::sort_buildings(buildings);
-        picture =
-            std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building, 2);
+        anno::app::PictureLimits limits;
+        if (trace) {
+            // The bridge's steps, from the window thread and the builders (WindowTrace is
+            // thread-safe).
+            limits.trace = [t = trace.get()](anno::app::PictureEvent e, std::size_t index,
+                                             std::uint64_t version) {
+                t->event_now(anno::app::trace_kind_of(e), static_cast<std::uint32_t>(index),
+                             version);
+            };
+        }
+        picture = std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building,
+                                                            2, std::move(limits));
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
+        if (trace) {
+            // The sim thread's record of every turn: its outcome, and the batch's publication.
+            runner->set_turn_observer([t = trace.get()](const anno::app::TurnObservation& o) {
+                const double at = t->ms_at(o.published);
+                if (o.batch) {
+                    t->event(at, anno::app::TraceKind::BatchPublished, 0, o.turn);
+                }
+                t->turn({o.turn, at, o.applied, o.rejected, o.reasons, o.batch, o.deltas});
+            });
+        }
+        trace_manifest << "commands " << commands.size() << "\n";
         runner->set_script(std::move(commands));
         runner->start();
         hooks.title = [&] { return runner->title_line(); };
@@ -305,11 +369,28 @@ int run(const std::vector<std::string>& raw) {
         runner->stop();
     }
     picture.reset();
+    int status = err.empty() ? 0 : 1;
+    if (trace) {
+        // Nothing records from here on: the window returned, the sim thread is joined and the
+        // builders are stopped. The run's own status is the window's.
+        const anno::app::EvidenceOutcome saved =
+            trace->finalize(trace_dir, trace_manifest.str(),
+                            err.empty() ? "" : "window_error " + err + "\n", status);
+        std::fprintf(stderr, "window trace: %s (dropped %llu, run_end status %d)\n",
+                     trace_dir.string().c_str(), static_cast<unsigned long long>(trace->dropped()),
+                     saved.status);
+        for (const std::string& u : saved.unsaved) {
+            std::fprintf(stderr, "window trace: not saved: %s\n", u.c_str());
+        }
+        if (!saved.trace_saved || !saved.unsaved.empty() || trace->dropped() > 0) {
+            status = status == 0 ? 5 : status;
+        }
+    }
     if (!err.empty()) {
         std::fprintf(stderr, "%s: %s\n", name.c_str(), err.c_str());
         return 1;
     }
-    return 0;
+    return status;
 #else
     std::fputs("built without the window (ANNO_BUILD_VIEWER=OFF); use --png\n", stderr);
     return 1;

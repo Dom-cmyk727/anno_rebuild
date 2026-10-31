@@ -15,6 +15,7 @@ add_library(anno_app_core
   src/png.cpp
   src/scene_picture.cpp
   src/still.cpp
+  src/window_trace.cpp
 )
 target_include_directories(anno_app_core PUBLIC include)
 # The play session is window-independent (tests, and --png at tick 0). The
@@ -51,7 +52,7 @@ if(ANNO_BUILD_TESTS)
     tests/scene_picture_publish_test.cpp
     tests/play_follow_test.cpp
     tests/credit_test.cpp tests/picture_check_test.cpp tests/legal_workload_test.cpp
-    tests/picture_trace_test.cpp)
+    tests/picture_trace_test.cpp tests/window_trace_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")

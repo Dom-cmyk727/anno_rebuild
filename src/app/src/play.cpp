@@ -7,6 +7,7 @@
 #include <iterator>
 #include <map>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -517,8 +518,8 @@ void PlayRunner::one_turn() {
                 turn.index, std::string(sim::reject_name(static_cast<sim::Reject>(event.code)))});
         }
     }
-    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, building_batch(turn.index),
-            std::move(rejected));
+    publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, turn.commands.size(),
+            building_batch(turn.index), std::move(rejected));
 }
 
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
@@ -535,7 +536,7 @@ std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t tu
     return batch;
 }
 
-void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
+void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t applied,
                          std::shared_ptr<const BuildingBatch> batch,
                          std::vector<RejectionNote> rejected) {
     const auto now = std::chrono::steady_clock::now();
@@ -591,6 +592,21 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
         full_list = buildings_;
     }
     const bool pushed = batch != nullptr;
+    // The window trace's record of the turn (opt-in), filled before the batch and the refusals
+    // move into the mailbox.
+    std::optional<TurnObservation> observed;
+    if (turn_observer_) {
+        observed.emplace();
+        observed->turn = turn;
+        observed->applied = applied;
+        observed->rejected = rejected.size();
+        for (const RejectionNote& note : rejected) {
+            observed->reasons += (observed->reasons.empty() ? "" : ",") + note.reason;
+        }
+        observed->batch = pushed;
+        observed->deltas = batch ? batch->deltas.size() : 0;
+        observed->published = std::chrono::steady_clock::now();
+    }
     {
         std::lock_guard lock(snap_mu_);
         if (batch) {
@@ -614,6 +630,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
             listener_();
         }
     }
+    if (observed) {
+        turn_observer_(*observed);
+    }
 }
 
 void PlayRunner::set_batch_listener(std::function<void()> listener) {
@@ -623,6 +642,10 @@ void PlayRunner::set_batch_listener(std::function<void()> listener) {
 
 void PlayRunner::set_turn_gate(std::function<void(std::uint64_t)> gate) {
     turn_gate_ = std::move(gate);
+}
+
+void PlayRunner::set_turn_observer(std::function<void(const TurnObservation&)> observer) {
+    turn_observer_ = std::move(observer);
 }
 
 std::vector<std::shared_ptr<const BuildingBatch>> PlayRunner::take_building_batches() {

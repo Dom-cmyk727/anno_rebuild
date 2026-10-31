@@ -24,6 +24,7 @@
 #include <anno/app/play.hpp>
 #include <anno/app/play_follow.hpp>
 #include <anno/app/scene_picture.hpp>
+#include <anno/app/window_trace.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -386,4 +387,80 @@ TEST_CASE("play follow: a hidden window keeps the mailbox bounded and takes the 
     CHECK(diff.missing == 0);
     gate.release();
     runner->stop();
+}
+
+TEST_CASE("play follow: the window trace records each turn's outcome from the sim's rejections, a "
+          "batch's publication before its take, and the generation after the commit (game files)" *
+          doctest::test_suite("play_follow")) {
+    // Round ec, B2 and C: the production runner's observer and the follower's trace events.
+    auto p = load_play();
+    if (!p) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    app::ScenePicture picture(
+        p->scene, p->buildings,
+        [&p](std::uint16_t id) { return id < p->classes.size() && p->classes[id]; }, 1);
+    render::FrameRenderer frames(2);
+    frames.set_workers(std::make_unique<render::ChunkWorkers>(2));
+    app::WindowTrace trace(10000, 100, 100);
+    auto runner = std::make_unique<app::PlayRunner>(std::move(p->load.world));
+    // Turn 1 builds; turn 2 builds on the same tile (the sim refuses it); turn 3 has no command.
+    runner->set_script({{1, p->build_at(4, 4)}, {2, p->build_at(4, 4)}});
+    std::vector<app::TurnObservation> seen;
+    runner->set_turn_observer([&](const app::TurnObservation& o) {
+        seen.push_back(o);
+        const double at = trace.ms_at(o.published);
+        if (o.batch) {
+            trace.event(at, app::TraceKind::BatchPublished, 0, o.turn);
+        }
+        trace.turn({o.turn, at, o.applied, o.rejected, o.reasons, o.batch, o.deltas});
+    });
+    runner->run_n(4);
+    REQUIRE(seen.size() == 4);
+    CHECK(seen[0].applied == 0);
+    CHECK(app::turn_outcome(trace.turns()[0]) == "none");
+    CHECK(seen[1].applied == 1);
+    CHECK(seen[1].rejected == 0);
+    CHECK(seen[1].batch);
+    CHECK(seen[1].deltas == 1);
+    CHECK(app::turn_outcome(trace.turns()[1]) == "accepted");
+    CHECK(seen[2].applied == 1);
+    CHECK(seen[2].rejected == 1);
+    CHECK(!seen[2].reasons.empty());
+    CHECK(!seen[2].batch); // refused: nothing changed, nothing published
+    CHECK(app::turn_outcome(trace.turns()[2]) == "rejected");
+    CHECK(seen[3].applied == 0);
+    // The refusal the window takes names the same reason.
+    const auto refused = runner->take_rejections();
+    REQUIRE(refused.size() == 1);
+    CHECK(seen[2].reasons == refused[0].reason);
+    // The window's side: the take, then the commit of turn 1's build.
+    app::PlayFollower follower(picture, *runner);
+    static_cast<void>(follower.follow(frames, &trace));
+    REQUIRE(eventually([&] {
+        follower.follow(frames, &trace);
+        return picture.pending() == 0;
+    }));
+    const auto events = trace.events();
+    std::size_t published = 0, taken = 0, generations = 0;
+    double t_published = -1, t_taken = -1;
+    for (const auto& e : events) {
+        if (e.kind == app::TraceKind::BatchPublished) {
+            ++published;
+            t_published = e.t_ms;
+            CHECK(e.version == 1);
+        } else if (e.kind == app::TraceKind::BatchTaken) {
+            ++taken;
+            t_taken = e.t_ms;
+            CHECK(e.version == 1);
+        } else if (e.kind == app::TraceKind::Generation) {
+            ++generations;
+            CHECK(e.version == picture.scene()->generation());
+        }
+    }
+    CHECK(published == 1);
+    CHECK(taken == 1);
+    CHECK(generations == 1);
+    CHECK(t_published <= t_taken);
 }

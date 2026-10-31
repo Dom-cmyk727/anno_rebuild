@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -129,6 +130,24 @@ WGPUTextureFormat linear(WGPUTextureFormat f) {
         return f;
     }
 }
+
+// The window trace names the statuses by the values webgpu.h and wgpu.h give them
+// (window_trace.hpp).
+static_assert(kAcquireSuccessOptimal ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal));
+static_assert(kAcquireSuccessSuboptimal ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal));
+static_assert(kAcquireTimeout ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Timeout));
+static_assert(kAcquireOutdated ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Outdated));
+static_assert(kAcquireLost == static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Lost));
+static_assert(kAcquireError ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Error));
+static_assert(kAcquireOccluded ==
+              static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Occluded));
+static_assert(kPresentSuccess == static_cast<std::uint32_t>(WGPUStatus_Success));
+static_assert(kPresentError == static_cast<std::uint32_t>(WGPUStatus_Error));
 
 /// Opens the high-performance GPU for `window`.
 formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window* window, int w,
@@ -272,7 +291,8 @@ class Viewer {
            std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks,
            PlayFollower* play)
         : play_(play), levels_(scene->levels()), name_(scene->name), group_(group), zoom_opt_(zoom),
-          frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks) {
+          frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
+          trace_(hooks != nullptr ? hooks->trace : nullptr) {
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene->bounds(group);
@@ -418,6 +438,14 @@ class Viewer {
     bool reconfigure_ = false;
     bool present_error_shown_ = false;
 #endif
+    /// The window trace (ViewerHooks::trace; null when off) and, on the GPU, its bookkeeping of
+    /// the attempted frames (FrameTracer).
+    WindowTrace* trace_ = nullptr;
+#ifdef ANNO_VIEWER_GPU
+    std::optional<FrameTracer> tracer_;
+#endif
+    /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
+    std::optional<Clock::time_point> quit_at_;
     /// Chunks received since the last periodic report. A console write on the
     /// window thread is synchronous and can cost tens of milliseconds on a busy
     /// machine, so nothing is printed per frame (hitch lines excepted: they are
@@ -513,6 +541,50 @@ std::string Viewer::run() {
         SDL_Quit();
         return err;
     }
+    // Test hook (not documented for players): ANNO_VIEW_SIZE=<w>x<h> asks for a drawable of that
+    // many pixels (the window's size in points is that over the pixel density). The size the
+    // window gets is the one reported: a screen smaller than the request gives a smaller one.
+    if (const char* sz = std::getenv("ANNO_VIEW_SIZE"); sz != nullptr && *sz != 0) {
+        int want_w = 0, want_h = 0;
+        if (std::sscanf(sz, "%dx%d", &want_w, &want_h) == 2 && want_w > 0 && want_h > 0) {
+            float density = SDL_GetWindowPixelDensity(window_);
+            if (!(density > 0.0F)) {
+                density = 1.0F;
+            }
+            SDL_SetWindowSize(window_,
+                              static_cast<int>(std::lround(want_w / static_cast<double>(density))),
+                              static_cast<int>(std::lround(want_h / static_cast<double>(density))));
+            SDL_SyncWindow(window_);
+            const auto [got_w, got_h] = view_size();
+            std::fprintf(stderr, "window: drawable %dx%d px (asked for %dx%d, density %.2f)\n",
+                         got_w, got_h, want_w, want_h, static_cast<double>(density));
+            if (trace_ != nullptr) {
+                trace_->note("drawable_asked " + std::to_string(want_w) + "x" +
+                             std::to_string(want_h));
+            }
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_SIZE=%s not understood (<w>x<h>)\n", sz);
+        }
+    }
+    // Test hook: ANNO_VIEW_AT=<x>,<y> centres the camera on that tile.
+    if (const char* at = std::getenv("ANNO_VIEW_AT"); at != nullptr && *at != 0) {
+        int tx = 0, ty = 0;
+        if (std::sscanf(at, "%d,%d", &tx, &ty) == 2) {
+            const auto [sx, sy] = render::tile_top(tx, ty, levels().ancestor(group_));
+            cam_x_ = sx;
+            cam_y_ = sy;
+            clamp();
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_AT=%s not understood (<x>,<y>)\n", at);
+        }
+    }
+    if (const char* q = std::getenv("ANNO_VIEW_QUIT_S"); q != nullptr && *q != 0) {
+        double seconds = 0;
+        if (std::sscanf(q, "%lf", &seconds) == 1 && seconds > 0) {
+            quit_at_ = Clock::now() + std::chrono::duration_cast<Clock::duration>(
+                                          std::chrono::duration<double>(seconds));
+        }
+    }
 #ifdef ANNO_VIEWER_GPU
     if (renderer_choice_ != Renderer::Cpu) {
         const auto [w, h] = view_size();
@@ -566,6 +638,26 @@ std::string Viewer::run() {
     continuous_ = zoom_opt_.mode == ZoomMode::Continuous && on_gpu();
     if (zoom_opt_.mode == ZoomMode::Continuous && zoom_opt_.mode_explicit && !continuous_) {
         std::fprintf(stderr, "--zoom-mode continuous needs the GPU renderer; zooming in steps\n");
+    }
+    if (trace_ != nullptr) {
+#ifdef ANNO_VIEWER_GPU
+        if (gpu_) {
+            trace_->event_now(TraceKind::GpuMode, 0, 1);
+            tracer_.emplace(*trace_);
+            const auto [dw, dh] = view_size();
+            trace_->note("adapter " + gpu_->ctx.name);
+            trace_->note("drawable " + std::to_string(dw) + "x" + std::to_string(dh) + " density " +
+                         std::to_string(SDL_GetWindowPixelDensity(window_)));
+            trace_->note(
+                std::string("chunk_builder ") +
+                (frames_.chunk_builder == render::ChunkBuilder::GpuList ? "gpu_list" : "cpu"));
+        }
+#endif
+        if (!on_gpu()) {
+            SDL_DestroyWindow(window_);
+            SDL_Quit();
+            return "the window trace (ANNO_VIEW_TRACE) needs the GPU renderer";
+        }
     }
     if (!on_gpu()) {
         renderer_ = SDL_CreateRenderer(window_, nullptr);
@@ -632,6 +724,10 @@ std::string Viewer::run() {
     frames_.set_workers(std::make_unique<render::ChunkWorkers>((hw + 1) / 2));
     while (running_) {
         SDL_Event e;
+        if (quit_at_ && Clock::now() >= *quit_at_) {
+            running_ = false;
+            break;
+        }
         if (retry_at_ && Clock::now() >= *retry_at_) {
             retry_at_.reset();
         }
@@ -1053,7 +1149,16 @@ bool Viewer::on_gpu() const {
 void Viewer::follow_picture() {
     const auto start = Clock::now();
     if (play_ != nullptr) {
-        committed_ += play_->follow(frames_);
+        const std::size_t n = play_->follow(frames_, trace_);
+        committed_ += n;
+#ifdef ANNO_VIEWER_GPU
+        if (tracer_ && n > 0) {
+            const std::uint64_t g = play_->picture().scene()->generation();
+            for (const ScenePicture::CommittedIsland& c : play_->picture().last_commit()) {
+                tracer_->committed(static_cast<std::uint32_t>(c.index), g, c.keys);
+            }
+        }
+#endif
     }
     picture_end_ = Clock::now();
     picture_ms_ = std::chrono::duration<double, std::milli>(picture_end_ - start).count();
@@ -1108,6 +1213,33 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     auto since_ms = [](Clock::time_point a, Clock::time_point b) {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
+    // The window trace's row of this attempt, recorded on every way out (docs/app/window-trace.md).
+    if (tracer_) {
+        FrameRecord rec;
+        rec.generation = gen->generation();
+        rec.view_x = view.x;
+        rec.view_y = view.y;
+        rec.view_w = view.w;
+        rec.view_h = view.h;
+        rec.group = group_;
+        rec.scale = scale();
+        rec.drawable_w = w;
+        rec.drawable_h = h;
+        rec.t_start_ms = trace_->ms_at(draw_start_);
+        rec.picture_ms = picture_ms_;
+        tracer_->begin(std::move(rec), view, group_);
+    }
+    // A failed attempt: frame_failed at the acquire's end, and its row.
+    auto attempt_failed = [this](const char* outcome) {
+        if (tracer_) {
+            tracer_->failed(outcome);
+        }
+    };
+    auto reconfigured = [this] {
+        if (tracer_) {
+            tracer_->reconfigured();
+        }
+    };
     steps_.push_back({"picture", picture_ms_});
     // The prologue: window size queries, the view rectangle and, on a resize, the surface
     // (re)configuration, reported as its own step ("surface configure").
@@ -1116,6 +1248,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         const auto configure_start = Clock::now();
         steps_.push_back({"draw prologue", since_ms(picture_end_, configure_start)});
         g.configure(w, h);
+        reconfigured();
         reconfigure_ = false;
         if (g.prewarm_budget_mb > 0 && g.frame) {
             g.frame->set_prewarm_chunks(
@@ -1132,43 +1265,47 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const auto acquired = Clock::now();
     display_wait_ms_ = since_ms(acquire_start, acquired);
     const gpu::Texture texture(st.texture);
-    // wgpu-native's own status (wgpu.h): the window is not visible (macOS
-    // reports it until the window is first shown). Not in webgpu.h's enum,
-    // so compared before the switch.
-    if (static_cast<std::uint32_t>(st.status) ==
-        static_cast<std::uint32_t>(WGPUSurfaceGetCurrentTextureStatus_Occluded)) {
-        back_off();
-        return;
+    // The status as webgpu.h and wgpu.h define it; wgpu-native's Occluded (the window is not
+    // visible; macOS reports it until the window is first shown) is not in webgpu.h's enum, so
+    // the action is chosen from the number (classify_acquire, window_trace.hpp).
+    const auto status = static_cast<std::uint32_t>(st.status);
+    const AcquireAction action = classify_acquire(status);
+    if (tracer_) {
+        tracer_->acquired(trace_->ms_at(acquire_start), trace_->ms_at(acquired), status);
     }
-    switch (st.status) {
-    case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
+    switch (action) {
+    case AcquireAction::Draw:
         surface_failures_ = 0;
         break;
-    case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
+    case AcquireAction::DrawThenReconfigure:
         surface_failures_ = 0;
         reconfigure_ = true;
         break;
-    case WGPUSurfaceGetCurrentTextureStatus_Outdated:
-    case WGPUSurfaceGetCurrentTextureStatus_Lost:
+    case AcquireAction::Reconfigure:
         // Reconfigure and try again (as the Rust viewer); back off when it
         // keeps happening, give up when it never recovers.
-        if (++surface_failures_ > 50) {
+        if (++surface_failures_ > kAcquireGiveUpAfter) {
+            attempt_failed("fatal");
             error_ = "the window surface stays outdated or lost";
             running_ = false;
             return;
         }
+        attempt_failed("acquire_retry");
         g.configure(w, h);
-        if (surface_failures_ > 2) {
+        reconfigured();
+        if (surface_failures_ > kAcquireBackOffAfter) {
             back_off();
         } else {
             dirty_ = true;
         }
         return;
-    case WGPUSurfaceGetCurrentTextureStatus_Timeout:
+    case AcquireAction::BackOff:
+        attempt_failed("acquire_skipped");
         back_off();
         return;
-    default:
-        error_ = "the window surface failed (status " + std::to_string(st.status) + ")";
+    case AcquireAction::Fatal:
+        attempt_failed("fatal");
+        error_ = "the window surface failed (status " + std::to_string(status) + ")";
         running_ = false;
         return;
     }
@@ -1186,13 +1323,37 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     }
     // Locals of render() destroyed on the way out (command encoder, bind groups).
     steps_.push_back({"render exit", std::max(0.0, since_ms(render_start, p) - s.total_ms)});
-    if (wgpuSurfacePresent(g.surface.get()) != WGPUStatus_Success && !present_error_shown_) {
+    const auto present_start = Clock::now();
+    const WGPUStatus presented = wgpuSurfacePresent(g.surface.get());
+    if (presented != WGPUStatus_Success && !present_error_shown_) {
         std::fprintf(stderr, "presenting the frame failed\n");
         present_error_shown_ = true;
     }
     steps_end_ = Clock::now();
     const double present = since_ms(p, steps_end_);
     steps_.push_back({"present", present});
+    if (tracer_) {
+        // After the present call, so the trace adds nothing between submission and present; the
+        // events of the submission carry its time. CPU-ready: cached and not stale (bench_picture's
+        // boundary); GPU-usable: also the compositor's copy is that chunk's, whole, and not
+        // dissolving. The chunk state changes only inside render, so after the present call it is
+        // the render's.
+        auto fresh = [this](const render::ChunkKey& k) {
+            return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
+        };
+        auto usable = [this, &fresh](const render::ChunkKey& k) {
+            if (!fresh(k)) {
+                return false;
+            }
+            const auto cs = gpu_->frame->chunk_state(k);
+            return cs.serial == frames_.chunk(k)->serial && !cs.fading;
+        };
+        const bool picture_idle = play_ != nullptr && play_->picture().pending() == 0 &&
+                                  !play_->runner().batches_waiting();
+        tracer_->presented(trace_->ms_at(p), trace_->ms_at(present_start),
+                           trace_->ms_at(steps_end_), static_cast<std::uint32_t>(presented), fresh,
+                           usable, picture_idle);
+    }
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame
     tex_w_ = out_w;
     tex_h_ = out_h;

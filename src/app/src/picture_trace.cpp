@@ -10,6 +10,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 
 #include <anno/app/picture_trace.hpp>
@@ -18,17 +19,19 @@ namespace anno::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 21> kNames = {
-    "desired",           "admitted", "deferred",  "started",     "built",      "failed",
-    "superseded",        "dropped",  "requeued",  "committed",   "generation", "chunks_ready",
-    "no_visible_change", "retired",  "reclaimed", "drain_start", "drain_end",  "converged",
-    "run_end",           "gpu_mode", "gpu_ready"};
+constexpr std::array<std::string_view, 27> kNames = {
+    "desired",      "admitted",        "deferred",          "started",         "built",
+    "failed",       "superseded",      "dropped",           "requeued",        "committed",
+    "generation",   "chunks_ready",    "no_visible_change", "retired",         "reclaimed",
+    "drain_start",  "drain_end",       "converged",         "run_end",         "gpu_mode",
+    "gpu_ready",    "batch_published", "batch_taken",       "frame_submitted", "frame_presented",
+    "frame_failed", "presented"};
 
 struct Edit {
     double t0 = 0;
     std::uint32_t island = 0;
     std::uint64_t version = 0;
-    double t1 = -1, t2 = -1, t3 = -1;
+    double t1 = -1, t2 = -1, t3 = -1, t4 = -1;
     std::uint64_t generation = 0;
     bool coalesced = false, offscreen = false;
 };
@@ -88,7 +91,14 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     // the time each (island, generation) was committed, and the readiness events per pair.
     std::vector<std::pair<std::uint32_t, double>> committed_pending;
     std::map<std::pair<std::uint32_t, std::uint64_t>, double> committed_at;
-    std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<double>> cpu_at, gpu_at, none_at;
+    std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<double>> cpu_at, gpu_at, none_at,
+        presented_at;
+    // The window trace: frames submitted, presented and failed by id (with their times), and the
+    // frame of each time (every event of a frame carries that frame's time).
+    std::map<std::uint64_t, double> submitted_frame, presented_frame;
+    std::set<std::uint64_t> failed_frame;
+    std::multimap<double, std::uint64_t> submitted_at_time, presented_at_time;
+    std::map<std::uint64_t, std::vector<double>> published_turn, taken_turn;
     auto build_end = [&](const TraceEvent& e) {
         const auto it = started_at.find({e.island, e.version});
         if (it != started_at.end()) {
@@ -163,6 +173,49 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             break;
         case TraceKind::GpuMode:
             s.gpu_mode = true;
+            break;
+        case TraceKind::BatchPublished:
+            s.window = true;
+            ++s.batches_published;
+            published_turn[e.version].push_back(e.t_ms);
+            break;
+        case TraceKind::BatchTaken:
+            s.window = true;
+            ++s.batches_taken;
+            taken_turn[e.version].push_back(e.t_ms);
+            break;
+        case TraceKind::FrameSubmitted:
+            s.window = true;
+            ++s.frames_submitted;
+            if (!submitted_frame.emplace(e.version, e.t_ms).second) {
+                s.contradictions.push_back("frame_submitted of frame " + std::to_string(e.version) +
+                                           " twice");
+            }
+            submitted_at_time.emplace(e.t_ms, e.version);
+            break;
+        case TraceKind::FramePresented:
+            s.window = true;
+            ++s.frames_presented;
+            if (!presented_frame.emplace(e.version, e.t_ms).second) {
+                s.contradictions.push_back("frame_presented of frame " + std::to_string(e.version) +
+                                           " twice");
+            }
+            presented_at_time.emplace(e.t_ms, e.version);
+            break;
+        case TraceKind::FrameFailed:
+            s.window = true;
+            ++s.frames_failed;
+            failed_frame.insert(e.version);
+            break;
+        case TraceKind::Presented:
+            s.window = true;
+            presented_at[{e.island, e.version}].push_back(e.t_ms);
+            for (Edit& d : edits) {
+                if (d.island == e.island && d.generation == e.version && d.t1 >= 0 && d.t4 < 0 &&
+                    !d.offscreen && e.t_ms >= d.t1) {
+                    d.t4 = e.t_ms;
+                }
+            }
             break;
         case TraceKind::NoVisibleChange:
             none_at[{e.island, e.version}].push_back(e.t_ms);
@@ -243,7 +296,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         s.contradictions.push_back("an event at " + std::to_string(s.end_ms) +
                                    " ms after run_end at " + std::to_string(run_end_ms) + " ms");
     }
-    std::vector<double> object, visible, gpu;
+    std::vector<double> object, visible, gpu, present;
     for (const Edit& d : edits) {
         if (d.t1 < 0) {
             ++s.unfinished;
@@ -268,7 +321,16 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
                 ++s.gpu_unfinished;
             }
         }
+        if (s.window && !d.offscreen) {
+            if (d.t4 >= 0) {
+                ++s.presented;
+                present.push_back(d.t4 - d.t0);
+            } else if (d.t3 >= 0) {
+                ++s.present_unfinished;
+            }
+        }
     }
+    s.present_ms = distribution(std::move(present));
     s.gpu_ms = distribution(std::move(gpu));
     // The causal checks over the whole trace.
     auto pair_name = [](const std::pair<std::uint32_t, std::uint64_t>& p) {
@@ -301,6 +363,70 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         if (cpu_at.contains(p)) {
             s.contradictions.push_back("both no_visible_change and chunks_ready for " +
                                        pair_name(p));
+        }
+    }
+    // The window trace's rules (docs/app/window-trace.md).
+    check_committed("presented", presented_at);
+    auto frame_at = [](const std::multimap<double, std::uint64_t>& by_time, double t) {
+        const auto it = by_time.find(t);
+        return it == by_time.end() ? std::optional<std::uint64_t>{} : std::optional{it->second};
+    };
+    for (const auto& [p, times] : presented_at) {
+        const auto ready = gpu_at.find(p);
+        if (ready == gpu_at.end()) {
+            s.contradictions.push_back("presented of " + pair_name(p) + " without its gpu_ready");
+            continue;
+        }
+        const double t_gpu = *std::min_element(ready->second.begin(), ready->second.end());
+        const auto gpu_frame = frame_at(submitted_at_time, t_gpu);
+        for (const double t : times) {
+            const auto frame = frame_at(presented_at_time, t);
+            if (t < t_gpu) {
+                s.contradictions.push_back("presented of " + pair_name(p) +
+                                           " before its gpu_ready");
+            } else if (!frame) {
+                s.contradictions.push_back("presented of " + pair_name(p) +
+                                           " at a time with no frame_presented");
+            } else if (!gpu_frame || *frame < *gpu_frame) {
+                s.contradictions.push_back(
+                    "presented of " + pair_name(p) + " by frame " + std::to_string(*frame) +
+                    (gpu_frame ? ", before the frame " + std::to_string(*gpu_frame) +
+                                     " that made it GPU-usable"
+                               : ", but its gpu_ready is at no frame_submitted"));
+            } else {
+                // The first successful present call of a frame that draws it: an earlier one is a
+                // present the trace skipped.
+                for (auto it = presented_frame.lower_bound(*gpu_frame); it != presented_frame.end();
+                     ++it) {
+                    if (it->second < t) {
+                        s.contradictions.push_back(
+                            "presented of " + pair_name(p) + " by frame " + std::to_string(*frame) +
+                            ", but frame " + std::to_string(it->first) + " presented it earlier");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    for (const auto& [frame, t] : presented_frame) {
+        const auto sub = submitted_frame.find(frame);
+        if (sub == submitted_frame.end() || sub->second > t) {
+            s.contradictions.push_back("frame_presented of frame " + std::to_string(frame) +
+                                       " without its frame_submitted before it");
+        }
+        if (failed_frame.contains(frame)) {
+            s.contradictions.push_back("frame " + std::to_string(frame) +
+                                       " both presented and failed");
+        }
+    }
+    for (const auto& [turn, times] : taken_turn) {
+        const auto pub = published_turn.find(turn);
+        for (const double t : times) {
+            if (pub == published_turn.end() ||
+                *std::min_element(pub->second.begin(), pub->second.end()) > t) {
+                s.contradictions.push_back("batch_taken of turn " + std::to_string(turn) +
+                                           " without its batch_published before it");
+            }
         }
     }
     for (const auto& [p, times] : gpu_at) {
@@ -464,10 +590,19 @@ std::string format_summary(const TraceSummary& s) {
     line(o, "visible_cpu_chunks_ready", s.visible_ms);
     if (s.gpu_mode) {
         o << "gpu_mode=1 gpu_ready=" << s.gpu_ready << " gpu_unfinished=" << s.gpu_unfinished
-          << " gpu_completion=unobserved presentation=unmeasured\n";
+          << " gpu_completion=unobserved presentation="
+          << (s.window ? "present_call_return" : "unmeasured") << "\n";
         line(o, "visible_gpu_usable", s.gpu_ms);
     } else {
         o << "gpu_mode=0\n";
+    }
+    if (s.window) {
+        o << "window=1 presented=" << s.presented << " present_unfinished=" << s.present_unfinished
+          << " frames_submitted=" << s.frames_submitted
+          << " frames_presented=" << s.frames_presented << " frames_failed=" << s.frames_failed
+          << " batches_published=" << s.batches_published << " batches_taken=" << s.batches_taken
+          << " present=call_return display=unmeasured\n";
+        line(o, "visible_present_call_returned", s.present_ms);
     }
     line(o, "reclamation_delay", s.reclaim_ms);
     line(o, "build_queue_delay", s.queue_ms);
@@ -587,10 +722,14 @@ EvidenceOutcome finalize_evidence(const std::filesystem::path& dir,
     for (const EvidenceFile& f : files) {
         save(dir / f.name, f.text);
     }
-    out.status = out.unsaved.empty() ? verdict : kEvidenceNotSaved;
-    events.push_back({end_ms, TraceKind::RunEnd, 0, static_cast<std::uint64_t>(out.status)});
+    out.status = out.unsaved.empty() && verdict >= 0 ? verdict : kEvidenceNotSaved;
+    // A recording known to be incomplete gets no RunEnd: its trace reads as incomplete.
+    const bool complete_recording = verdict >= 0;
+    if (complete_recording) {
+        events.push_back({end_ms, TraceKind::RunEnd, 0, static_cast<std::uint64_t>(out.status)});
+    }
     TraceSummary summarized = summarize(events);
-    if (out.status == 0 && !summarized.consistent()) {
+    if (complete_recording && out.status == 0 && !summarized.consistent()) {
         // The run's own trace contradicts itself (round ec review): it is not a success.
         out.status = kEvidenceContradictory;
         events.back().version = static_cast<std::uint64_t>(out.status);
@@ -599,7 +738,9 @@ EvidenceOutcome finalize_evidence(const std::filesystem::path& dir,
     const bool summary_saved = save(dir / "summary.txt", summary(summarized));
     if (!summary_saved) {
         out.status = kEvidenceNotSaved;
-        events.back().version = static_cast<std::uint64_t>(out.status);
+        if (complete_recording) {
+            events.back().version = static_cast<std::uint64_t>(out.status);
+        }
     }
     out.trace_saved = save(dir / "events.tsv", to_tsv(events));
     if (!out.trace_saved) {

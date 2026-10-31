@@ -9,6 +9,7 @@
 
 #include <anno/app/play.hpp>
 #include <anno/app/scene_picture.hpp>
+#include <anno/app/window_trace.hpp>
 #include <anno/render/frame.hpp>
 
 namespace anno::app {
@@ -21,7 +22,9 @@ class PlayFollower {
 
     /// The frame boundary: takes the waiting batches, applies them, and commits what is ready
     /// (invalidating the change's keys in `frames`). Returns the islands committed. Never waits.
-    std::size_t follow(render::FrameRenderer& frames);
+    /// With `trace` (the window trace, opt-in): a BatchTaken per batch taken (its turn; a collapsed
+    /// resync carries the newest), at the take, and a Generation after a commit.
+    std::size_t follow(render::FrameRenderer& frames, WindowTrace* trace = nullptr);
     /// Whether the picture needs frames without new input: a batch is waiting in the mailbox
     /// (PlayRunner::batches_waiting, a flag read without copying anything), or a change is not
     /// committed yet (ScenePicture::pending). O(islands) for the pending count, no building scan.

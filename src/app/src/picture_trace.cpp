@@ -71,7 +71,15 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     std::vector<Edit> edits;
     std::vector<std::size_t> awaiting_generation;
     std::map<std::uint64_t, double> retired_at;
-    std::vector<double> reclaim;
+    std::vector<double> reclaim, queue, build;
+    std::map<std::pair<std::uint32_t, std::uint64_t>, double> admitted_at, started_at;
+    auto build_end = [&](const TraceEvent& e) {
+        const auto it = started_at.find({e.island, e.version});
+        if (it != started_at.end()) {
+            build.push_back(e.t_ms - it->second);
+            started_at.erase(it);
+        }
+    };
     for (const TraceEvent& e : events) {
         s.end_ms = std::max(s.end_ms, e.t_ms);
         switch (e.kind) {
@@ -127,18 +135,22 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         }
         case TraceKind::Admitted:
             ++s.admitted;
+            admitted_at[{e.island, e.version}] = e.t_ms;
             break;
         case TraceKind::Deferred:
             ++s.deferred;
             break;
         case TraceKind::Built:
             ++s.built;
+            build_end(e);
             break;
         case TraceKind::Failed:
             ++s.failed;
+            build_end(e);
             break;
         case TraceKind::Superseded:
             ++s.superseded;
+            build_end(e);
             break;
         case TraceKind::Dropped:
             ++s.dropped;
@@ -146,7 +158,15 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         case TraceKind::Requeued:
             ++s.requeued;
             break;
-        case TraceKind::Started:
+        case TraceKind::Started: {
+            started_at[{e.island, e.version}] = e.t_ms;
+            const auto it = admitted_at.find({e.island, e.version});
+            if (it != admitted_at.end()) {
+                queue.push_back(e.t_ms - it->second);
+                admitted_at.erase(it);
+            }
+            break;
+        }
         case TraceKind::DrainStart:
         case TraceKind::DrainEnd:
             break;
@@ -173,6 +193,8 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     s.object_ms = distribution(std::move(object));
     s.visible_ms = distribution(std::move(visible));
     s.reclaim_ms = distribution(std::move(reclaim));
+    s.queue_ms = distribution(std::move(queue));
+    s.build_ms = distribution(std::move(build));
     return s;
 }
 
@@ -241,6 +263,8 @@ std::string format_summary(const TraceSummary& s) {
     line(o, "object_ready", s.object_ms);
     line(o, "visible_cpu_chunks_ready", s.visible_ms);
     line(o, "reclamation_delay", s.reclaim_ms);
+    line(o, "build_queue_delay", s.queue_ms);
+    line(o, "build_time_worker", s.build_ms);
     char buf[160];
     std::snprintf(buf, sizeof buf, "max_age_ms=%.3f last_commit_ms=%.3f end_ms=%.3f\n",
                   s.max_age_ms, s.last_commit_ms, s.end_ms);

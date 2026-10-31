@@ -14,7 +14,9 @@
 //    cached again and not stale. A commit whose invalidated keys miss the view (NoVisibleChange)
 //    makes its edits offscreen, with no visible latency;
 //  - an edit that no commit reaches is unfinished; its age runs to the end of the trace;
-//  - reclamation delay: from a generation's Retired event to its Reclaimed event.
+//  - reclamation delay: from a generation's Retired event to its Reclaimed event;
+//  - queue delay and build time: Admitted to Started, and Started to the build's end (Built,
+//    Superseded or Failed), per island and version.
 #pragma once
 
 #include <cstddef>
@@ -80,6 +82,9 @@ struct TraceSummary {
     std::size_t admitted = 0, deferred = 0, built = 0, failed = 0, superseded = 0, dropped = 0,
                 requeued = 0, commits = 0, generations = 0, reclaimed = 0;
     Distribution object_ms, visible_ms, reclaim_ms;
+    /// Per build (an island and version with both events): the queue delay (Admitted to Started)
+    /// and the build time on a worker (Started to Built, Superseded or Failed).
+    Distribution queue_ms, build_ms;
     /// The largest age of an edit: its object-ready latency, or for an unfinished edit the time
     /// from its Desired event to the last event of the trace.
     double max_age_ms = 0;

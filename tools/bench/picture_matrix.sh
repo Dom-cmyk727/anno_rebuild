@@ -39,8 +39,12 @@ mkdir -p "$OUT" || exit 2
     if command -v memory_pressure > /dev/null; then
         echo "memory_free_percent_at_start=$(memory_pressure 2> /dev/null | sed -n 's/.*free percentage: //p')"
     fi
+    # Whether the host was quiet: the load and the busiest processes at the start (not stopped).
+    echo "load_at_start=$(uptime | sed 's/.*load averages*: //')"
+    echo "busiest_processes_at_start:"
+    ps -Ao pcpu,comm | sort -rn | head -6 | sed 's/^/  /'
 } > "$OUT/provenance.txt"
-printf 'case\tstatus\twall_s\n' > "$OUT/results.tsv"
+printf 'case\tstatus\twall_s\tload_after\n' > "$OUT/results.tsv"
 while read -r name args; do
     if [ -z "$name" ] || [ "${name#\#}" != "$name" ]; then
         continue
@@ -51,7 +55,8 @@ while read -r name args; do
     # shellcheck disable=SC2086 # the case's options are words
     "$BIN" "$GAME" --out "$dir" $args > "$dir/stdout.txt" 2> "$dir/stderr.txt"
     rc=$?
-    printf '%s\t%s\t%s\n' "$name" "$rc" "$(($(date +%s) - start))" >> "$OUT/results.tsv"
+    printf '%s\t%s\t%s\t%s\n' "$name" "$rc" "$(($(date +%s) - start))" \
+        "$(uptime | sed 's/.*load averages*: //')" >> "$OUT/results.tsv"
     if [ "$rc" -ne 0 ]; then
         echo "picture_matrix: case $name exited $rc; artifacts in $dir" >&2
         exit "$rc"

@@ -67,6 +67,12 @@ void check(const app::TraceSummary& s) {
     CHECK(s.visible_ms.p50 == doctest::Approx(11));
     CHECK(s.reclaim_ms.n == 1);
     CHECK(s.reclaim_ms.max == doctest::Approx(5));
+    // Builds: v1 waited 1 ms and ran 3 ms until it was superseded; v2 waited 0 ms and ran 3 ms.
+    // Island 1's build has no Started event, so it gives no sample.
+    CHECK(s.queue_ms.n == 2);
+    CHECK(s.queue_ms.max == doctest::Approx(1));
+    CHECK(s.build_ms.n == 2);
+    CHECK(s.build_ms.max == doctest::Approx(3));
     // The unfinished edit is 10 ms old when the trace ends, as old as the oldest committed one.
     CHECK(s.max_age_ms == doctest::Approx(10));
     CHECK(s.last_commit_ms == doctest::Approx(20));

@@ -123,6 +123,13 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME test_names_are_selectable
            COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
                    -P ${CMAKE_SOURCE_DIR}/cmake/CheckTestNames.cmake)
+  # The contract of the gate's verdict reader (tools/test/ctest_verdict.py): run_selected.sh runs
+  # it with test_names_are_selectable as a mandatory preflight.
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_FOUND)
+    add_test(NAME test_verdict_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
+  endif()
   add_subdirectory(src/test_support)
 endif()
 

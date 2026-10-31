@@ -11,7 +11,8 @@
 # of ANNO1503_GAME_DIR. Platform and opt-in skips are listed apart and do not fail the run.
 #   2 build failed   3 lock held   5 preflight failed   1 a test failed   4 sanitizer
 #   6 required-asset skip   7 empty doctest child   8 nothing selected
-# The preflight is test_names_are_selectable: a test name CTest splits runs no case and passes.
+# The preflight is test_names_are_selectable (a test name CTest splits runs no case and passes) and
+# test_verdict_contract (the verdict reader's own contract); either missing or failing exits 5.
 set -u
 PATH="${ANNO_TOOLS_BIN:+$ANNO_TOOLS_BIN:}$PATH"
 BUILD=$1; TARGET=$2; RE=$3; TMO=$4; LOG=$5; JOBS=${6:-1}
@@ -30,10 +31,12 @@ if [ "$TARGET" != "-" ]; then
         echo "VERDICT: FAIL build failed; no test executed (target $TARGET)" >> "$LOG"; exit 2
     fi
 fi
-echo "== preflight test_names_are_selectable" >> "$LOG"
-if ! ctest --test-dir "$BUILD" -R '^test_names_are_selectable$' --no-tests=error --timeout "$TMO" >> "$LOG" 2>&1; then
-    echo "VERDICT: FAIL preflight test_names_are_selectable failed" >> "$LOG"; exit 5
-fi
+for PRE in test_names_are_selectable test_verdict_contract; do
+    echo "== preflight $PRE" >> "$LOG"
+    if ! ctest --test-dir "$BUILD" -R "^$PRE\$" --no-tests=error --timeout "$TMO" >> "$LOG" 2>&1; then
+        echo "VERDICT: FAIL preflight $PRE failed or is not registered" >> "$LOG"; exit 5
+    fi
+done
 echo "== selection" >> "$LOG"
 ctest --test-dir "$BUILD" -R "$RE" --no-tests=ignore --timeout "$TMO" -j "$JOBS" -V >> "$LOG" 2>&1
 RC=$?

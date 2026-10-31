@@ -14,6 +14,11 @@ CTest counts a doctest child that ran no test case, or that returned early after
                other           anything else
   failed     CTest status other than Passed
 
+A skip is a doctest MESSAGE line that names a missing prerequisite AND says it skipped (the
+phrasings in use: "skipping: ...", "...: skipping X", "...: skipped", "skipped: ..."). Per-item
+outcomes inside an executed test ("overlay-skip ...", "...: skipped as the original does") name no
+prerequisite and are not skips. A zero-assertion test is not a skip by itself.
+
 A doctest "N skipped" is the filter excluding the other cases of the binary: ordinary, never
 counted here. Exit status: 0 only when nothing failed, something was selected, nothing is empty,
 no sanitizer report is in the log and no required-asset skip happened. Platform and opt-in
@@ -30,25 +35,40 @@ DOCTEST = re.compile(r"\[doctest\] test cases:\s*(\d+)\s*\|")
 SKIP = re.compile(r"skipping", re.I)
 
 
-def classify(line):
-    l = line.lower()
-    # An opt-in names its switch ("set ANNO_...=1") and may also mention the game directory, so it
-    # is tested before the required-asset rule.
-    if "set anno_" in l or "opt-in" in l:
-        return "opt-in"
-    if "anno1503_game_dir" in l or "original" in l and "files" in l:
+REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set", re.I)
+OPT_IN = re.compile(r"\bset ANNO_[A-Z0-9_]+=")
+PLATFORM = re.compile(r"WSL \(Ubuntu\) is not available|\bon Windows\b|POSIX shell", re.I)
+SKIP_WORD = re.compile(r"skipp(ing|ed)\b", re.I)
+PRIORITY = ["required-asset", "opt-in", "platform", "other"]
+
+
+def classify(text):
+    """The skip class of one MESSAGE text, or None when it is not a skip."""
+    if not SKIP_WORD.search(text):
+        return None
+    if REQUIRED.search(text):
         return "required-asset"
-    if "wsl" in l or "skipping on windows" in l:
+    if OPT_IN.search(text):
+        return "opt-in"
+    if PLATFORM.search(text):
         return "platform"
-    return "other"
+    # Any other explicit early return: the message starts with the skip word.
+    if re.match(r"\s*skipp(ing|ed)\b", text, re.I):
+        return "other"
+    return None
 
 
-def main(path):
+def message_text(body):
+    """The text after 'MESSAGE:' of a doctest message line, else None."""
+    k = body.find("MESSAGE:")
+    return body[k + len("MESSAGE:"):].strip() if k >= 0 else None
+
+
+def verdict(lines):
+    """Reads the lines of one log; returns (exit code, output lines)."""
+    out = []
     tests = {}  # number -> dict
     sanitizer = 0
-    # Only the selection counts: a runner writes "== selection" after its preflight, whose own
-    # test must not make an empty selection look selected.
-    lines = open(path, errors="replace").read().split("\n")
     if "== selection" in lines:
         lines = lines[lines.index("== selection") + 1:]
     for raw in lines:
@@ -68,44 +88,53 @@ def main(path):
         d = DOCTEST.search(body)
         if d:
             t["cases"] = int(d.group(1))
-        if SKIP.search(body) and "MESSAGE" in body:
-            t["skips"].append(classify(body))
+        text = message_text(body)
+        if text is not None:
+            kind = classify(text)
+            if kind:
+                t["skips"].append(kind)
     selected = [t for t in tests.values() if "status" in t]
     failed = [t for t in selected if t["status"] != "Passed"]
     passed = [t for t in selected if t["status"] == "Passed"]
     empty = [t for t in passed if t["cases"] == 0]
-    skipped = [t for t in passed if t["skips"] and t["cases"] != 0 or (t["skips"] and t["cases"] is None)]
+    skipped = [t for t in passed if t["skips"] and t["cases"] != 0]
     executed = [t for t in passed if t not in empty and t not in skipped]
-    by = {"required-asset": 0, "platform": 0, "opt-in": 0, "other": 0}
+    by = {k: 0 for k in PRIORITY}
     for t in skipped:
-        by[t["skips"][0]] += 1
+        by[min(t["skips"], key=PRIORITY.index)] += 1
     for t in empty:
-        print("EMPTY:", t["name"])
+        out.append("EMPTY: " + t["name"])
     for t in skipped:
-        print("SKIPPED(%s):" % t["skips"][0], t["name"])
+        out.append("SKIPPED(%s): %s" % (min(t["skips"], key=PRIORITY.index), t["name"]))
     for t in failed:
-        print("FAILED:", t["name"], t["status"])
-    print("COUNTS: selected=%d executed=%d failed=%d empty=%d skipped=%d (required-asset=%d platform=%d "
-          "opt-in=%d other=%d) sanitizer_lines=%d" % (len(selected), len(executed), len(failed), len(empty),
-                                                       len(skipped), by["required-asset"], by["platform"],
-                                                       by["opt-in"], by["other"], sanitizer))
+        out.append("FAILED: %s %s" % (t["name"], t["status"]))
+    out.append("COUNTS: selected=%d executed=%d failed=%d empty=%d skipped=%d (required-asset=%d platform=%d "
+               "opt-in=%d other=%d) sanitizer_lines=%d" % (len(selected), len(executed), len(failed), len(empty),
+                                                           len(skipped), by["required-asset"], by["platform"],
+                                                           by["opt-in"], by["other"], sanitizer))
     if not selected:
-        print("VERDICT: FAIL zero selected tests")
-        return 8
+        out.append("VERDICT: FAIL zero selected tests")
+        return 8, out
     if failed:
-        print("VERDICT: FAIL failed tests")
-        return 1
+        out.append("VERDICT: FAIL failed tests")
+        return 1, out
     if sanitizer:
-        print("VERDICT: FAIL sanitizer report in the log")
-        return 4
+        out.append("VERDICT: FAIL sanitizer report in the log")
+        return 4, out
     if by["required-asset"]:
-        print("VERDICT: FAIL required asset tests skipped (a prerequisite was absent)")
-        return 6
+        out.append("VERDICT: FAIL required asset tests skipped (a prerequisite was absent)")
+        return 6, out
     if empty:
-        print("VERDICT: FAIL doctest children executed zero cases")
-        return 7
-    print("VERDICT: PASS")
-    return 0
+        out.append("VERDICT: FAIL doctest children executed zero cases")
+        return 7, out
+    out.append("VERDICT: PASS")
+    return 0, out
+
+
+def main(path):
+    code, out = verdict(open(path, errors="replace").read().split("\n"))
+    print("\n".join(out))
+    return code
 
 
 if __name__ == "__main__":

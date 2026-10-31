@@ -171,6 +171,9 @@ class ChunkWorkers {
     /// `scene` is the default scene of jobs submitted without one. It is not owned: it
     /// must outlive the workers (tests and single-generation callers).
     ChunkWorkers(const Scene& scene, std::size_t threads);
+    /// Workers without a default scene (the viewer): every job reads the owning handle it was
+    /// submitted with, and a submit without one queues nothing.
+    explicit ChunkWorkers(std::size_t threads);
     ~ChunkWorkers();
     ChunkWorkers(const ChunkWorkers&) = delete;
     ChunkWorkers& operator=(const ChunkWorkers&) = delete;
@@ -182,7 +185,7 @@ class ChunkWorkers {
     bool submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<const Scene> scene,
                 bool ships = true, ChunkBuilder builder = ChunkBuilder::Cpu,
                 std::uint32_t bin_px = kDefaultBinPx);
-    /// submit with the default scene.
+    /// submit with the default scene (none: nothing is queued).
     bool submit(const std::vector<ChunkJob>& wanted, bool ships = true,
                 ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
@@ -198,6 +201,10 @@ class ChunkWorkers {
     /// background thread (freeing a chunk's vectors takes about a
     /// millisecond: the window thread must not).
     void discard(std::vector<ChunkPtr> chunks);
+    /// Test seam: called on the worker thread before each build, outside the lock, with the
+    /// job's key and the generation it reads; a test blocks in it to order completions without
+    /// sleeping. It must return (be opened) before the workers are destroyed. Null by default.
+    void set_test_gate(std::function<void(const ChunkKey& key, std::uint64_t generation)> gate);
 
   private:
     void run();
@@ -220,6 +227,7 @@ class ChunkWorkers {
     bool ships_ = true;
     ChunkBuilder builder_ = ChunkBuilder::Cpu;
     std::uint32_t bin_px_ = kDefaultBinPx;
+    std::function<void(const ChunkKey&, std::uint64_t)> gate_;
     std::vector<std::thread> threads_;
 };
 
@@ -435,7 +443,8 @@ class FrameRenderer {
     /// Keys marked stale, with the generation of the invalidation that marked them (step 8).
     std::map<ChunkKey, std::uint64_t> dirty_;
     std::uint64_t stale_discarded_ = 0;
-    /// The scene the jobs of the current update read (set by update_chunks).
+    /// The scene the jobs of the current update read: set by update_chunks and released before
+    /// it returns, so the renderer keeps no generation between frames (the jobs hold their own).
     std::shared_ptr<const Scene> job_scene_;
     /// The jobs for `wanted` (most urgent first) and, for a derived key whose
     /// children are cached, the children; a missing child is a job of its own,

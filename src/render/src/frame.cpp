@@ -373,8 +373,11 @@ std::vector<ChunkKey> chunk_keys_touching(const Scene& scene, Rect box, std::siz
     return keys;
 }
 
-ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads)
-    : default_scene_(non_owning(scene)) {
+ChunkWorkers::ChunkWorkers(const Scene& scene, std::size_t threads) : ChunkWorkers(threads) {
+    default_scene_ = non_owning(scene);
+}
+
+ChunkWorkers::ChunkWorkers(std::size_t threads) {
     for (std::size_t i = 0; i < std::max<std::size_t>(threads, 1); ++i) {
         threads_.emplace_back([this] { run(); });
     }
@@ -426,6 +429,7 @@ void ChunkWorkers::run() {
     for (;;) {
         ChunkJob job;
         ChunkBuildOptions options;
+        std::function<void(const ChunkKey&, std::uint64_t)> gate;
         {
             std::unique_lock lock(mutex_);
             ready_.wait(lock, [this] { return stop_ || !jobs_.empty(); });
@@ -440,12 +444,16 @@ void ChunkWorkers::run() {
             options.wait_for_flow = false;
             options.builder = builder_;
             options.bin_px = bin_px_;
+            gate = gate_;
         }
         const ChunkKey key = job.key;
         const auto [group, cx, cy] = key;
         // The job's own generation (kept alive by the job until it completes).
         const std::shared_ptr<const Scene> scene_ptr = job.scene ? job.scene : default_scene_;
         const Scene& scene = *scene_ptr;
+        if (gate) {
+            gate(key, scene.generation());
+        }
         std::optional<Chunk> chunk;
         const auto built_at = Clock::now();
         try {
@@ -511,6 +519,9 @@ bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<c
         finished.insert(d.first);
     }
     for (const auto& j : wanted) {
+        if (!scene) {
+            break; // no scene to read (workers without a default): nothing is queued
+        }
         if (!busy_.contains(j.key) && !failed_.contains(j.key) && !finished.contains(j.key)) {
             jobs_.push_back(j);
             jobs_.back().scene = scene;
@@ -518,6 +529,11 @@ bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<c
     }
     ready_.notify_all();
     return !jobs_.empty() || !busy_.empty();
+}
+
+void ChunkWorkers::set_test_gate(std::function<void(const ChunkKey&, std::uint64_t)> gate) {
+    const std::lock_guard lock(mutex_);
+    gate_ = std::move(gate);
 }
 
 std::vector<std::pair<ChunkKey, Chunk>> ChunkWorkers::take_done() {
@@ -585,6 +601,8 @@ FrameRenderer::update_chunks(const std::shared_ptr<const Scene>& scene_ptr, Rect
     for (const auto& [cx, cy] : chunks) {
         missing += cache_.contains({group, cx, cy}) ? 0U : 1U;
     }
+    // The submitted jobs hold the scene; the renderer does not keep it to the next frame.
+    job_scene_.reset();
     return {built, ms_since(t), missing};
 }
 

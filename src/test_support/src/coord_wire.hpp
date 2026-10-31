@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <anno/test/parallel.hpp>
 
@@ -37,6 +38,9 @@
 #include <spawn.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <libproc.h>
+#endif
 #endif
 
 namespace anno::test::wire {
@@ -468,25 +472,46 @@ inline bool make_pipe(int fds[2]) {
 ///  - Elsewhere: one close action per descriptor from 3 to the open-file limit,
 ///    capped at 4096. A close of a descriptor that is not open succeeds in glibc
 ///    (checked in cache/f3/exp/fdexp.out), so the loop is safe.
-inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
+///  - Darwin: no closefrom, and a close action on a descriptor that is not open
+///    makes posix_spawn fail with EBADF (probed: rc 9 with 4093 such actions,
+///    which stopped every coordinator start on the Mac). So only the descriptors
+///    this process has open, from PROC_PIDLISTFDS, get a close action.
+/// Returns false when the descriptor list cannot be read; the caller must not
+/// spawn then, because the child would inherit an unknown set.
+inline bool close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
 #if defined(__GLIBC__) && defined(__USE_GNU) &&                                                    \
     (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
     posix_spawn_file_actions_addclosefrom_np(actions, 3);
+    return true;
+#elif defined(__APPLE__)
+    const pid_t self = ::getpid();
+    int bytes = ::proc_pidinfo(self, PROC_PIDLISTFDS, 0, nullptr, 0);
+    if (bytes <= 0) {
+        return false;
+    }
+    // The count can grow between the two calls; the second one is the list.
+    std::vector<proc_fdinfo> fds(static_cast<std::size_t>(bytes) / sizeof(proc_fdinfo) + 16);
+    bytes = ::proc_pidinfo(self, PROC_PIDLISTFDS, 0, fds.data(),
+                           static_cast<int>(fds.size() * sizeof(proc_fdinfo)));
+    if (bytes <= 0) {
+        return false;
+    }
+    const std::size_t count = static_cast<std::size_t>(bytes) / sizeof(proc_fdinfo);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (fds[i].proc_fd >= 3) {
+            posix_spawn_file_actions_addclose(actions, fds[i].proc_fd);
+        }
+    }
+    return true;
 #else
     long limit = ::sysconf(_SC_OPEN_MAX);
     if (limit < 0 || limit > 4096) {
         limit = 4096;
     }
     for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
-#if defined(__APPLE__)
-        // Darwin's posix_spawn fails with EBADF for a close of a descriptor that is not open
-        // (glibc accepts it, above). Only the open ones are listed.
-        if (::fcntl(fd, F_GETFD) == -1) {
-            continue;
-        }
-#endif
         posix_spawn_file_actions_addclose(actions, fd);
     }
+    return true;
 #endif
 }
 #endif
@@ -522,14 +547,37 @@ inline std::uint64_t this_pid() {
 #endif
 }
 
-/// The OS a process id belongs to: 1 Windows, 2 Linux.
+/// The OS a process id belongs to: 1 Windows, 2 Linux, 3 Darwin. Each names its own pid space and
+/// its own start-stamp unit (FILETIME, /proc starttime ticks, proc_pidinfo microseconds), so a
+/// record is only ever judged by the OS that wrote it. A coordinator that meets a namespace it
+/// cannot judge keeps the orphan (fail closed, owner_alive in coord_server.cpp).
+inline constexpr std::uint32_t kNamespaceWindows = 1;
+inline constexpr std::uint32_t kNamespaceLinux = 2;
+inline constexpr std::uint32_t kNamespaceDarwin = 3;
+
 inline std::uint32_t this_namespace() {
 #if defined(_WIN32)
-    return 1;
+    return kNamespaceWindows;
+#elif defined(__APPLE__)
+    return kNamespaceDarwin;
 #else
-    return 2;
+    return kNamespaceLinux;
 #endif
 }
+
+#if defined(__APPLE__)
+/// Records written by the Darwin coordinators that existed before namespace 3 (task/MAC-1-host-
+/// support, 4cc0a3a, and nothing else with a stamp) carry namespace 2 and a start stamp in
+/// microseconds since 1970. A Linux /proc starttime is in clock ticks since boot (about 10^7 a
+/// day), far below this floor (10^15 us is 2001-09-09), so on a Mac such a record is a Darwin
+/// one and is judged by Darwin. Any other namespace-2 record, in particular the zero stamp
+/// that the first macOS build (8002ae8) wrote because it had no start time, is NOT
+/// reinterpreted: it is unknown, kept, and never read as a stopped owner.
+inline constexpr std::uint64_t kLegacyDarwinStampFloor = 1000000000000000ull;
+inline bool is_legacy_darwin_owner(std::uint32_t ns, std::uint64_t started) {
+    return ns == kNamespaceLinux && started >= kLegacyDarwinStampFloor;
+}
+#endif
 
 #if !defined(_WIN32)
 /// starttime (field 22) of /proc/<pid>/stat, 0 when unreadable.
@@ -589,8 +637,41 @@ inline bool linux_zombie(const std::string& stat_path) {
 }
 #endif
 
+#if defined(__APPLE__)
+/// What proc_pidinfo(PROC_PIDTBSDINFO) says about one pid (libproc.h, Xcode SDK).
+/// Gone: no such process (ESRCH). Exited: a zombie that is not reaped yet.
+/// Unknown: the call failed another way; that is never read as a stop.
+enum class DarwinProc : std::uint8_t { Running, Exited, Gone, Unknown };
+
+struct DarwinProcInfo {
+    DarwinProc state = DarwinProc::Unknown;
+    /// Start time in microseconds since the epoch (pbi_start_tvsec and
+    /// pbi_start_tvusec). With the pid it names one process, as /proc starttime
+    /// does on Linux. 0 when unknown.
+    std::uint64_t started = 0;
+};
+
+/// The pbi_status value of a zombie (SZOMB in the xnu sys/proc.h).
+inline constexpr std::uint32_t kDarwinSzomb = 5;
+
+inline DarwinProcInfo darwin_proc_info(int pid) {
+    proc_bsdinfo info{};
+    const int n = ::proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info));
+    DarwinProcInfo out;
+    if (n != static_cast<int>(sizeof(info))) {
+        out.state = (n == 0 && errno == ESRCH) ? DarwinProc::Gone : DarwinProc::Unknown;
+        return out;
+    }
+    out.started = static_cast<std::uint64_t>(info.pbi_start_tvsec) * 1000000u +
+                  static_cast<std::uint64_t>(info.pbi_start_tvusec);
+    out.state = info.pbi_status == kDarwinSzomb ? DarwinProc::Exited : DarwinProc::Running;
+    return out;
+}
+#endif
+
 /// The creation stamp that, with the pid, names one process: Windows
-/// GetProcessTimes creation (FILETIME), Linux /proc starttime.
+/// GetProcessTimes creation (FILETIME), Linux /proc starttime, Darwin
+/// proc_pidinfo start time.
 inline std::uint64_t process_started() {
 #if defined(_WIN32)
     FILETIME created{};
@@ -604,6 +685,8 @@ inline std::uint64_t process_started() {
     stamp.LowPart = created.dwLowDateTime;
     stamp.HighPart = created.dwHighDateTime;
     return stamp.QuadPart;
+#elif defined(__APPLE__)
+    return darwin_proc_info(static_cast<int>(::getpid())).started;
 #else
     return linux_start_time("/proc/self/stat");
 #endif

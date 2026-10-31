@@ -30,9 +30,6 @@
 #include "coord_session.hpp"
 #include "coord_wire.hpp"
 
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
 #if !defined(_WIN32)
 #include <spawn.h>
 extern char** environ;
@@ -108,16 +105,12 @@ std::filesystem::path module_directory() {
     }
     return std::filesystem::path(buffer).parent_path();
 #elif defined(__APPLE__)
-    // macOS has no /proc: the dyld call names the running executable (possibly through a
-    // symlink, so it is made canonical).
-    char buffer[4096];
-    std::uint32_t size = sizeof(buffer);
-    if (_NSGetExecutablePath(buffer, &size) != 0) {
+    // proc_pidpath names the executable of this process (libproc.h); no /proc.
+    char buffer[PROC_PIDPATHINFO_MAXSIZE];
+    if (::proc_pidpath(static_cast<int>(::getpid()), buffer, sizeof(buffer)) <= 0) {
         return {};
     }
-    std::error_code error;
-    const std::filesystem::path real = std::filesystem::weakly_canonical(buffer, error);
-    return (error ? std::filesystem::path(buffer) : real).parent_path();
+    return std::filesystem::path(buffer).parent_path();
 #else
     char buffer[4096];
     const ssize_t n = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
@@ -174,7 +167,11 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         posix_spawnattr_destroy(&attr);
         return false;
     }
-    close_descriptors_from_3(&actions);
+    if (!close_descriptors_from_3(&actions)) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
     std::string path = exe.string();
     std::string port_text = std::to_string(port);
     std::string mode = all_interfaces ? "any" : "local";

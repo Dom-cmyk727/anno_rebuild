@@ -477,8 +477,10 @@ Invariants of both policies (the tests are in `src/app/tests/scene_picture_publi
 7. The simulation is not involved: the policy decides which finished CPU build the window publishes. Sim
    state, command validation, costs, placement, the economy and lockstep are unchanged.
 
-What an intermediate publication shows: the island's buildings as the desired state was at that version
-(the sim's state after the batch that made it), never a mixture of two versions of one island. Islands are
+What an intermediate publication holds: the island's buildings as the desired state was at that version
+(the sim's state after the batch that made it). The generation's object lists of one island are never a
+mixture of two versions. The cached chunk pixels a frame shows are a separate matter: they lag the
+generation and update key by key (see "Consumer boundaries" below). Islands are
 independent: one commit may hold island `i` at an intermediate version and island `j` at its desired one. The
 real-data case "legal workload: intermediate publications under a stream of builds and a demolish ..."
 compares each intermediate generation with a freshly loaded scene of the desired list at its version (PROD2
@@ -503,6 +505,18 @@ where the islands that the call changes are considered first: under one admissio
 waiting island out for the whole stream (the case "publish: competing islands under one admission ..."
 failed with island 1 committed 0 times in 12 rounds). Now the waiting island is admitted by the commit, in
 the order it waited.
+
+**Consumer boundaries (round ea; docs/app/gpu-handoff.md).** The window follows the picture at each frame
+start, on its own thread: take the mailbox's batches, apply them, commit, then take one owning handle of the
+current generation for the whole frame. The guarantees are separate:
+- a committed generation's per-island object lists are coherent;
+- per-island committed versions move forward;
+- the frame's handle keeps what the frame and the work it starts read alive;
+- cached chunk pixels lag and are replaced key by key, so a frame can show an island's newer chunk beside
+  an older one while the rebuilds arrive, and nothing waits for them;
+- "visibly ready" is reached only when every affected visible key is fresh at the same moment;
+- GPU upload completion and presentation are later boundaries.
+A frame holding a newer generation does not make its cached chunks newer.
 
 **Trace.** `PictureLimits::trace` reports every step of a build's life (desired, admitted, deferred, started,
 built, failed, superseded, dropped, requeued, committed) with the island and the version, on the thread where

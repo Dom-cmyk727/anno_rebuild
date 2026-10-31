@@ -1,100 +1,170 @@
-# Viewer and GPU handoff of the picture's generations (round dw, DW7; refreshed in round dz; plan only)
+# Viewer and GPU handoff of the picture's generations (plan round dw; implemented round ea)
 
-Status: a plan written from reading the code at `847fe9b` (CPU candidate of round dw) and checked again at the
-round-dz CPU candidate (the line references below still hold). Nothing here is implemented or enabled. GPU
-integration, viewer wiring, developer input and preview wait for an assignment; the GPU tests in section 3 are
-required before the integration is accepted and none of them exists yet.
+Status: the first owning-generation integration unit is implemented (round ea). The play window follows the
+`ScenePicture`, every frame draws from one owning handle, and the GPU compositor keeps nothing of a generation
+past the frame. The tests in section 4 pass on the Mac (Apple M5 Max, Metal). The Windows adapters (RTX
+4090, Radeon iGPU), Windows MSVC and the Linux GCC/Clang checks are not run (section 5). This unit does not
+claim the PLAN frame targets, late-game scalability or GPU acceptance.
 
-## 1. What the code does today (read, not assumed)
+## 1. The contract: six separate boundaries
 
-- `src/app/src/viewer.cpp:345` the viewer holds the scene as a non-owning `const render::Scene& scene_`.
-- `:360` the viewer owns `render::FrameRenderer frames_`.
-- `:575` the viewer sets its chunk workers with `frames_.set_workers(std::make_unique<render::ChunkWorkers>(scene_, ...))`:
-  the workers take a raw scene reference (`frame.hpp:173`).
-- `:626` the workers are released by `frames_.set_workers(nullptr)`; `:494` the renderer is replaced when the
-  river settings change.
-- `:1079` the GPU path renders with `g.frame->render(frames_, scene_, view, group_, ...)`; `:1124` the CPU path
-  with `frames_.render(scene_, ...)`.
-- `src/render/include/anno/render/gpu.hpp:495` `GpuFrame::group_ready(const Scene& scene, group)` takes a raw scene.
-- The viewer does not use `ScenePicture` yet: the play picture is not connected to the viewer. This is the work
-  that comes after the CPU review.
+The picture's state reaches the screen across several boundaries. Each has its own guarantee, and none of
+them implies the next.
 
-Owning overloads that already exist: `FrameRenderer::update_chunks(const std::shared_ptr<const Scene>&, Rect,
-group)` (`frame.hpp:271`) and `FrameRenderer::render(const std::shared_ptr<const Scene>&, ...)` (`frame.hpp:320`).
-The chunk jobs hold their generation (`ChunkJob::scene`, `frame.hpp:156`) and the renderer holds the one it last
-planned from (`job_scene_`, `frame.hpp:439`). Final destruction of any generation is the reclaimer's
-(`render::SceneReclaimer`, round dw DW3a), whichever of these releases last.
+1. **A committed generation has coherent per-island object lists.** Each island of a generation holds the
+   lists of one version of that island's buildings: the desired state after one batch, never a mix of two
+   versions in its lists (game-shell.md, "Publication policy").
+2. **Per-island committed versions move forward.** A commit never lowers an island's version. Under the
+   Monotonic default an intermediate version may be committed, never one above the desired version.
+3. **One owning handle protects the scene a frame and its jobs read.** The window takes
+   `ScenePicture::scene()` once per frame, after the frame's batches are applied and committed. Chunk planning,
+   the CPU or GPU composition and the readiness queries of that frame read only that handle. The chunk jobs
+   and the background work the frame starts hold it until they finish. A commit during the frame frees
+   nothing they read. This boundary is about memory safety and the inputs of new work, not about what is on
+   screen.
+4. **Cached chunk pixels can lag, and they update independently.** A commit marks the chunk keys of its
+   change stale (`FrameRenderer::invalidate`). The cached chunk of a marked key keeps drawing, unchanged,
+   until its rebuild from a new enough generation arrives. Keys are rebuilt and replaced one at a time. So
+   during a transition one frame can show a newer chunk of an island beside an older one, and an older chunk
+   is not newly rendered just because the frame holds a newer scene. The handle alone does not prevent
+   mixed-version cached pixels within an island. Nothing waits: no island-wide staging, no synchronous
+   rebuild.
+5. **All affected visible chunks fresh is a separate readiness boundary.** An island's change is visibly
+   ready when every key that change invalidated within the view is cached and not stale at the same moment
+   (`ReadinessTracker`, picture_trace.hpp). A key seen fresh once and made stale again keeps the set waiting.
+6. **GPU upload completion and presentation are further boundaries.** A fresh CPU chunk is on the GPU once
+   its upload finishes (all planes made and bound; with the viewer's limits this can take several frames),
+   and on screen once the frame that draws it is presented. Neither is measured yet (section 5).
 
-What the round-dz CPU work changes for the consumer (docs/app/game-shell.md, "Publication policy"): the
-picture publishes intermediate generations by default (Monotonic). A frame may therefore show an island at a
-version older than the sim's newest one, never older than what it showed before, and never a mixture of two
-versions of one island; the newest version follows when its build is committed. A consumer needs no extra rule
-for this: it takes one owning handle per frame (below) and draws what that generation holds.
+Comparisons follow the boundaries:
+- During a transition, the GPU is compared with the CPU composition of the same inputs: the same renderer
+  and the same cached chunks, held unchanged by a gate.
+- After readiness, it is compared with the fresh-scene oracle: a freshly loaded scene of the state the
+  generation represents.
 
-## 2. Where a generation handle must travel
+## 2. The implemented ownership path (round ea)
 
-The unit of handoff is one `std::shared_ptr<const render::Scene>` taken from `ScenePicture::scene()` on the window
-thread at the start of a frame.
+- `src/app/src/main.cpp`
+  - The window takes the loader's `shared_ptr`. The scene is made by `render::Scene::create`, so its last
+    release goes to the reclaimer. There is no borrowed scene and no no-op deleter.
+  - In play, the classification of Anlagen ids is copied into a table before the world moves into the
+    `PlayRunner`, so nothing on the window side reads the World afterwards.
+  - The `ScenePicture` is made from the scene and the tick-0 buildings, sorted, with two builders.
+  - `ViewerPicture` connects the runner's building mailbox (`take_building_batches`: immutable batches)
+    to the window.
+- `src/app/src/viewer.cpp`, frame boundary (`Viewer::follow_picture`, window thread):
+  1. Take the batches and apply them.
+  2. `commit(frames_)`: it invalidates the change's keys in the frame's renderer.
+  3. `current()` gives the frame's handle (`gen`).
+  4. `draw_gpu(gen, ...)` calls `GpuFrame::render(frames, gen, ...)`; `draw_cpu(gen, ...)` calls
+     `FrameRenderer::render(gen, ...)`.
+  The frame step "picture" reports the boundary's time. Pending picture work keeps frames coming, also while
+  paused.
+- Auxiliary paths hold a handle while they read:
+  - the zoom group checks (`group_ready`), bounds and `zoom_min_tile`;
+  - the river-flow prefetch (the flow builders hold the generation that asked);
+  - the sea-pattern threads at start (each captures the generation it builds from).
+  Zoom levels and the scene name are copied once: they are the same in every generation.
+- `src/render/src/frame.cpp`
+  - `ChunkWorkers(threads)` has no default scene: every job carries the handle it was submitted with.
+  - `FrameRenderer::update_chunks` releases its job scene before it returns, so the renderer keeps no
+    generation between frames.
+  - `ChunkWorkers::set_test_gate` is the ordering seam for tests.
+- `src/render/src/gpu.cpp`: the owning `GpuFrame::render` overload.
+  - The frame's handle is held only while the frame records, and dropped on every way out.
+  - The frame-table pointer (`cb.ft`) is cleared on every way out. Before this round it stayed set
+    between frames.
+  - The wave simulation's background preparation holds the owning handle in its depth function.
+- Retained raw references audited:
+  - `cb.ft`: now cleared at the end of every frame.
+  - `levels`: the `FrameRenderer`'s, which outlives the compositor's use.
+  - Sea uploads: copied in the call; no pattern pointer is kept.
+  - Upload holds (`Staged::hold`): `ChunkPtr`s, released to the workers' reaper.
+  - The fluid depth function: the finding below.
+  The bench tools with one static scene keep the borrowed overloads by contract.
 
-1. Frame start (window): `auto gen = picture.scene();` one handle for the whole frame.
-2. Chunk planning: `frames_.update_chunks(gen, view, group)` (the shared overload). Jobs created by the frame keep
-   `gen` alive until they finish, so a commit during the frame cannot free what a job reads.
-3. CPU composition: `frames_.render(gen, view, ...)`.
-4. GPU composition: `GpuFrame::render` and `group_ready` change from `const Scene&` to the shared handle (the
-   same signature change as `frame.hpp:320`). The GPU path reads the chunk pixels through `ChunkPtr`, not through
-   the generation, so the handle is needed only while the frame plans and records.
-5. Frame end: the handle is released by the frame (not stored in the viewer), so a generation lives only as long
-   as the work that reads it.
-6. Shutdown (`viewer.cpp:626`): `set_workers(nullptr)` joins the chunk workers and their reaper, so the window
-   thread waits for the chunk builds in progress. The scene picture bridge (`ScenePicture`) is not yet owned by the
-   viewer: it is used by the bench and the tests only, and its wiring is the next step (outside this round's
-   scope). Its own shutdown contract is tested: its destructor joins its build workers (so the thread that destroys
-   it waits for the builds in progress, at most one per worker), hands its queued jobs and results to its reaper,
-   and joins the reaper. Credits and generations are released there, and the generations are destroyed by the
-   reclaimer (a process thread that is never joined; `SceneReclaimer::stats().waiting` is zero once it has caught up).
-   The allowed phase for the bridge: its `apply` and `commit` calls end on the window thread before its destructor
-   starts, and no thread calls into it afterwards.
-   A generation a frame still holds after the bridge is gone is destroyed on the reclaimer once the frame (and
-   any other holder) lets go on its own thread; the case "ownership: a frame-held generation outlives the bridge
-   and is destroyed on the reclaimer" checks the exact generation, the reclaimer's thread, and that the accounted
-   bytes return to their baseline (round dy, A6). The hand-off of a last owner allocates nothing (the
-   allocation test). What a GPU consumer adds (uploads, mirrors) is not in `render::payload_counts()`; it needs
-   its own count when the integration is done.
-7. Cache retirement: the renderer's cache holds `ChunkPtr` (shared chunk pixels), not generations. A replaced
-   chunk stays until its key is replaced or evicted; `invalidate(keys, generation)` marks the keys, and a stale
-   completion cannot replace a newer chunk (round du/dv rules, `frame.cpp`).
-8. GPU submissions: the GPU reads uploaded textures and bind groups, which copy the chunk pixels. A generation may
-   be released after recording, but a `ChunkPtr` still referenced by a submitted command must stay alive until the
-   submission completes. This is the one point that needs a test on the GPU, not only a reading: the chunk upload
-   sync (`gpu.cpp`, `chunk_sync_ms`) must drop a GPU chunk only when no submitted command uses it.
+**Finding (fixed).** The wave simulation copies its depth function into a background preparation
+(`GpuLimits::background_fluid`, set by the viewer's interactive limits). That function captured the scene by
+reference, and the preparation runs past `render()`. Under play generations, a generation reclaimed meanwhile
+would have been read after its destruction. It now captures the frame's owning handle. The regression case
+fails with the old capture.
 
-## 3. Test matrix for the next stage (ordered, with estimates)
+**CPU chunk buffers and GPU resources are separate lifetimes.**
+- An upload copies the chunk's pixels: `wgpuQueueWriteTexture` copies at the call.
+- The textures, bind groups and buffers a submission uses are kept by the device until it completes.
+  Releasing a texture only drops a reference.
+- Reusing a pooled plane is ordered after earlier submissions on the queue.
+So a CPU chunk is not retained for the GPU. The case below frees the replaced CPU chunks while frames are
+submitted and never waited for, and the GPU still shows the new pixels. GPU-side memory (chunk planes,
+pools, the atlas, offscreen targets) is the compositor's own accounting (`GpuStats`, `offscreen_bytes`). It
+is not part of `render::payload_counts()`, which counts CPU payload only.
 
-Each stage has a narrow regression before the complete workload matrix. Estimates are for the Mac host; the GPU
-gates for RTX 4090 and Radeon iGPU run on the Windows PC.
+**Teardown (window, then main).**
+1. The window stops calling the bridge.
+2. `frames_.set_workers(nullptr)` joins the chunk workers: at most one build per worker is in progress, and
+   the generations their jobs held are released there.
+3. The sea threads are joined.
+4. The GPU finishes (`wait`) and the compositor is destroyed. Fluid preparations release their handle as
+   they end.
+5. `main` stops the runner (the producer).
+6. `main` destroys the bridge: it joins its builders and hands what it holds to its reaper.
+7. The generations are destroyed by the reclaimer.
+No per-frame wait was added.
 
-| # | Test | Shows | Seams | Estimate |
-|---|---|---|---|---|
-| 1 | One replacement, CPU and GPU equality (the same chunk pixels after one commit) | the handle path and chunk replacement | `update_chunks(shared)`, `render(shared)`, `GpuFrame::render` | 1 scene load, < 1 min (game files) |
-| 2 | A late stale completion (an old build finishing after a newer invalidation) is not published | stale rule on both paths | `request_chunks`, `fill_cache` (round dv R2) | synthetic, < 10 s |
-| 3 | Derived zoom and an offscreen return: a chunk changed at group 2 is correct at groups 3 and 4 after the view returns | derived freshness through the viewer's zoom | `plan_jobs`, `derived_freshness` cases | 1–3 min (game files) |
-| 4 | Legal-workload streams (the five-city workload, a stream above the build rate under the Monotonic default, intermediate generations included): every visible chunk the GPU shows equals the CPU reference of the generation it was drawn from | picture to chunks to GPU, under load | `bench_picture` (its oracle runs at the end of every case; a per-frame GPU comparison does not exist yet) | 2–5 min per run |
-| 5 | 1080p and 4K presentation latency of an edit (time from the sim's batch to the presented pixel), with and without the simulation load | the PLAN section 0.3 frame targets | viewer frame loop, presentation timing (not yet built) | depends on the viewer; several hours with the matrix |
-| 6 | Simulation contention on the target hosts | the same with a second sim world running turns beside the picture (`bench_picture --sim-contention 1`) | `bench_picture`, the headless simulation benchmark | hours; the Windows host |
+## 3. Transitional behaviour as measured
 
-Existing seams: #1 and #3 can use the existing pixel tests (`river_flow_corpus`, `derived_freshness`,
-`scene_picture`) with the handle path added. Missing: a test that holds a generation handle across a commit on the
-GPU path; a presentation-latency probe in the viewer; a per-frame GPU-against-CPU comparison in the bench. These
-are listed for the next review, not implemented here.
+The case "picture GPU: accepted builds and an accepted demolish ..." runs two accepted builds of one island in
+one commit, then one accepted demolish, on the five-city workload's map with two cities:
 
-Workload limits that apply to every row (docs/perf/README.md): the legal workload is five cities of about 40
-buildings each, not a late-game economy; roads are not supported by it; the island's scenery caps the density a
-city reaches, so a denser island is not a workload the sim admits today; the original's placement rules are only
-partly resolved. Earlier drafts of this table named a density of 800 buildings per island; no such workload
-exists.
+| | Two accepted builds, one commit | One accepted demolish |
+|---|---|---|
+| Affected visible keys at group 2 | 3 | 1 |
+| Transition frame (all rebuilds held) | byte-equal to the GPU output before the edit; equal to the CPU composition of the same inputs within the unchanged picture's parity | same |
+| Partial readiness (one key fresh, two stale) | not ready; the fresh key shows its change; the stale ones still draw their old chunks | (one key) |
+| Once all keys are fresh | ready; byte-equal to a compositor of its own drawing the freshly loaded scene | same |
 
-## 4. What this plan does not decide
+Parity of the unchanged picture at these views:
+- **Two-build view:** max channel delta 2 at 4 pixels, among 109 per-frame water sprites.
+- **Demolish view:** delta 1.
 
-- The viewer's frame structure, the presentation timing, and the GPU chunk lifetime rule in section 2.8 are for the
-  GPU review; the reading above is the basis, a test is the proof.
-- The play options for the picture's limits are not wired. Their defaults are in `PictureLimits` with their reasons.
+The established GPU bound of 1 ("GPU frames match the CPU path") was measured on views without such sprites.
+The 2 is present before any edit and from identical inputs, so this round did not cause it. It is reported
+open (section 5).
+
+## 4. Tests (src/render/tests/picture_gpu_test.cpp, suite `picture_gpu`; game files and an adapter)
+
+| Packet item | Case | Shows |
+|---|---|---|
+| 6a, 6d | accepted builds and an accepted demolish ... | the transitions above; readiness only when all keys are fresh at one poll |
+| 6c | a late completion of an older generation ... | a generation-1 build that finishes after the generation-2 invalidation: discarded, the old chunk stays, the mark stays, the GPU never shows the stale building; then fresh |
+| 6b, 6e | a frame's generation stays alive across a commit ... | a held chunk job owns generation 0 across the commit (the bridge and the test have let go); destroyed on the reclaimer once the job ends; the replaced CPU chunks are freed while GPU work is outstanding |
+| 6f | an offscreen edit is fresh after the view returns ... | keys invalidated while not visible are rebuilt on return; group 2 and derived level 3 equal a compositor of the fresh scene exactly, and the CPU path within the derived levels' bound (max 3) |
+| fluid | the wave simulation's background preparation holds ... | the finding above (fails with the old capture) |
+| 6g | teardown with builds, chunk jobs and GPU work outstanding ... | every generation is destroyed on the reclaimer; the payload returns to its baseline |
+
+Ordering is made with `ChunkWorkers::set_test_gate` and the bridge's `build_fault` seam, never with sleeps.
+The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and pass.
+
+## 5. Open, and the next units
+
+- **NOT RUN:**
+  - the RTX 4090 and Radeon iGPU adapters;
+  - Windows MSVC;
+  - the Linux GCC 13 / Clang 18 `-Werror` check.
+  The commands are in REPORTS.md (round ea). The play GPU case `play_gpu_test` requires an RTX 4090.
+- **Open: the GPU-vs-CPU parity of the per-frame water-sprite path.** It is 2 at a few pixels on Metal in a
+  view with many water sprites. Earlier views had none of them, so the existing ≤1 bound never covered this
+  content. The new cases bound their comparisons by the unchanged picture's parity and report it
+  (`WARN`).
+- **Not built:**
+  - the presentation-latency probe: the time from the sim's batch to the presented pixel, at 1080p and 4K,
+    with and without simulation load (PLAN §0.3);
+  - a per-frame GPU-against-CPU comparison in the bench;
+  - an upload-completion boundary in the trace (boundary 6).
+- **Workload limits that apply to every row** (docs/perf/README.md):
+  - the legal workload is five cities of about 40 buildings each, not a late-game economy;
+  - roads are refused by the current sim;
+  - the island's scenery caps the density a city reaches;
+  - the original's placement rules are only partly resolved.
+- The play options for the picture's limits are not wired. Their defaults are in `PictureLimits`, with
+  their reasons.

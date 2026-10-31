@@ -12,6 +12,7 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import map2_ship as ship
 import map2_shape as shape
 

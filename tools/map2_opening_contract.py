@@ -2,7 +2,9 @@
 
 These rows are written here. They are not copied from a candidate report.
 """
+import os
 import struct
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -141,8 +143,33 @@ def test_record_reader_hand_counts():
     return 0
 
 
+def test_isolated_interpreter_finds_the_script():
+    """python3 -I does not put the script directory on sys.path.
+
+    The parent test inserts that directory for its own imports. This
+    subprocess does not, and it must still reach the usage check.
+    """
+    script = Path(__file__).resolve().parent / 'map2_opening.py'
+    env = os.environ.copy()
+    env.pop('PYTHONPATH', None)
+    proc = subprocess.run(
+        [sys.executable, '-I', '-u', str(script)],
+        cwd=script.parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 2 or 'ModuleNotFoundError' in proc.stderr:
+        return fail('isolated', (proc.returncode, proc.stderr))
+    if 'usage: map2_opening.py' not in proc.stderr:
+        return fail('isolated usage', proc.stderr)
+    return 0
+
+
 def main():
     tests = [
+        test_isolated_interpreter_finds_the_script,
         test_help_does_not_promote_polar,
         test_large_area_is_not_a_founding,
         test_missing_records_stay_unknown,

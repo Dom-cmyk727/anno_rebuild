@@ -16,6 +16,7 @@
 
 #include <anno/sim/archive.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/founding_payment.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
@@ -630,4 +631,54 @@ TEST_CASE("ship holds: a stream of the whole-ton layout or a truncated hold fail
     std::vector<std::uint8_t> cut2(flat.begin(), p + 8 + 12 + 12 - 1);
     sim::World target3 = world_with_holds(types, {});
     CHECK_FALSE(island_test::read_flat(target3, cut2).empty());
+}
+
+TEST_CASE(
+    "canary: lock and fractional cargo survive save and load, a prepared payment mutates nothing") {
+    const auto types = ship_registry();
+    sim::ScenarioSpec spec = expedition_spec(*types);
+    spec.islands.push_back(syn::plain_island(0, 40, 24, 6, 4));
+    spec.islands.back().lock = 1;
+    const sim::GoodsId wood = goods(*types, "HOLZ");
+    const sim::GoodsId tools = goods(*types, "WERKZEUG");
+    // 50 t and one raw unit of wood, then the two tools holds (50 t + 30 t).
+    spec.figures[0].holds = {{wood, 12801}, {tools, 12800}, {tools, 7680}};
+    auto created = sim::World::create(spec, types);
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    auto loaded_result = sim::World::load(created.value().save(), types);
+    REQUIRE_MESSAGE(loaded_result.ok(),
+                    (loaded_result.ok() ? std::string() : loaded_result.error()));
+    sim::World world = std::move(loaded_result).value();
+    CHECK(world.state_hash() == created.value().state_hash());
+    REQUIRE(world.islands()[0].has_value());
+    CHECK(world.islands()[0]->locked());
+
+    const sim::Figure* ship = sim::find_figure(world.figures(), sim::FigureId{1});
+    REQUIRE(ship != nullptr);
+    const sim::Player* owner = world.players().find(sim::PlayerId{0});
+    REQUIRE(owner != nullptr);
+    sim::BuildingType type;
+    type.cost_gold = 1000;
+    type.cost_goods = {{wood, 12801}, {tools, 20480}}; // hand-derived: all of it
+    const std::uint64_t hash = world.state_hash();
+    const std::vector<std::uint8_t> bytes = world.save();
+    const auto plan = sim::payment::prepare(ship->holds, owner->money, type);
+    REQUIRE(plan.ok());
+    CHECK(plan.value().holds ==
+          std::vector<sim::ShipHold>{{0, 0}, {0, 0}, {0, 0}}); // wood 12801 and both tools holds
+    CHECK(plan.value().money_after == 29000);
+    CHECK(plan.value().gold_charged == 1000);
+    // Nothing of the world moved: not the holds, not the gold, not the hash or the saved bytes.
+    CHECK(ship->holds.size() == 3);
+    CHECK(ship->holds[0] == sim::ShipHold{wood, 12801});
+    CHECK(owner->money == 30000);
+    CHECK(world.state_hash() == hash);
+    CHECK(world.save() == bytes);
+    // One raw unit more wood than the ship carries is a refusal naming it.
+    type.cost_goods = {{wood, 12802}};
+    const auto refused = sim::payment::prepare(ship->holds, owner->money, type);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error() ==
+          sim::payment::Refusal{sim::payment::Status::InsufficientGoods, wood, 12802, 12801});
+    CHECK(world.state_hash() == hash);
 }

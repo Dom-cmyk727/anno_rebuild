@@ -371,7 +371,8 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         const Spec::FigureSpec& fs = spec.figures[i];
         const std::string p = idx_path("figures", i);
         if (types->find_figure_type(fs.kind) == nullptr) {
-            return p + ".kind: " + std::to_string(fs.kind) + " is not a figure type of the registry";
+            return p + ".kind: " + std::to_string(fs.kind) +
+                   " is not a figure type of the registry";
         }
         if (!fs.owner.valid() || fs.owner.v >= config.player_slots ||
             player_taken[fs.owner.v] == 0) {
@@ -401,8 +402,9 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         }
         for (std::size_t h = 0; h < fs.holds.size(); ++h) {
             if (types->goods(fs.holds[h].goods) == nullptr) {
-                return p + ".holds[" + std::to_string(h) + "].goods: " +
-                       std::to_string(fs.holds[h].goods) + " is not in the goods table";
+                return p + ".holds[" + std::to_string(h) +
+                       "].goods: " + std::to_string(fs.holds[h].goods) +
+                       " is not in the goods table";
             }
         }
     }

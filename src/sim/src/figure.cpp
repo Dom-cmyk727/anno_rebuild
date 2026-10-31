@@ -252,8 +252,8 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
                        ", but the figure has no parent";
             }
             if (!crew_taken.emplace(f.parent, *f.crew_slot).second) {
-                return where + ".crew_slot: slot " + std::to_string(*f.crew_slot) +
-                       " of figure " + std::to_string(f.parent.v) + " is used twice";
+                return where + ".crew_slot: slot " + std::to_string(*f.crew_slot) + " of figure " +
+                       std::to_string(f.parent.v) + " is used twice";
             }
         }
     }

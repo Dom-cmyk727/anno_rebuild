@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <random>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -268,32 +270,99 @@ sm::Manifest through_parse(const sm::Manifest& m) {
     return parsed.value();
 }
 
-/// A private copy of the synthetic game directory with the symlinks of the policy test.
-struct ContentTree {
-    fs::path root, outside, linked_root;
-    ContentTree() {
-        const fs::path top = fs::temp_directory_path() / "anno1503-f6-content";
+/// A directory this object created itself, with a name no other process can hold: create_directory
+/// reports false when the name already exists (one atomic step on every platform), so a name is
+/// owned only by the process whose call returned true. The destructor removes that directory and
+/// nothing else, also when a later member of the owner fails to construct.
+struct OwnedDir {
+    fs::path path;
+    OwnedDir() {
+        std::random_device entropy;
+        const fs::path base = fs::temp_directory_path();
         std::error_code ec;
-        fs::remove_all(top, ec);
-        root = top / "game";
-        outside = top / "outside";
-        linked_root = top / "game-link";
+        for (int attempt = 0; attempt < 64; ++attempt) {
+            const fs::path candidate = base / ("anno1503-content-" + std::to_string(entropy()) +
+                                               std::to_string(entropy()));
+            if (fs::create_directory(candidate, ec) && !ec) {
+                path = candidate;
+                return;
+            }
+        }
+        FAIL("could not acquire a unique fixture directory under " << base.string());
+    }
+    OwnedDir(const OwnedDir&) = delete;
+    OwnedDir& operator=(const OwnedDir&) = delete;
+    ~OwnedDir() {
+        if (!path.empty()) {
+            std::error_code ec;
+            fs::remove_all(path, ec);
+        }
+    }
+};
+
+/// A private copy of the synthetic game directory with the symlinks of the policy test. `links` is
+/// false where the platform refuses to create a symlink (Windows without the privilege): the rows
+/// that need one say so and are not run, they are not passed silently.
+struct ContentTree {
+    OwnedDir dir; // first: destroyed last, so a failed construction below still cleans up
+    fs::path root, outside, linked_root;
+    bool links = true;
+    ContentTree() {
+        root = dir.path / "game";
+        outside = dir.path / "outside";
+        linked_root = dir.path / "game-link";
         fs::create_directories(outside);
         fs::copy(synthetic_game(), root, fs::copy_options::recursive);
         // A file outside the content root, and links to it and to the base inside the root.
         fs::copy_file(root / "Scenes" / "base.sze", outside / "secret.sze");
-        fs::create_symlink(root / "Scenes" / "base.sze", root / "Scenes" / "inside.sze");
-        fs::create_symlink(outside / "secret.sze", root / "Scenes" / "escape.sze");
-        fs::create_directory_symlink(outside, root / "Scenes" / "escape_dir");
-        fs::create_directory_symlink(root, linked_root);
-    }
-    ~ContentTree() {
         std::error_code ec;
-        fs::remove_all(root.parent_path(), ec);
+        fs::create_symlink(root / "Scenes" / "base.sze", root / "Scenes" / "inside.sze", ec);
+        if (!ec) {
+            fs::create_symlink(outside / "secret.sze", root / "Scenes" / "escape.sze", ec);
+        }
+        if (!ec) {
+            fs::create_directory_symlink(outside, root / "Scenes" / "escape_dir", ec);
+        }
+        if (!ec) {
+            fs::create_directory_symlink(root, linked_root, ec);
+        }
+        if (ec) {
+            links = false;
+            MESSAGE("skipping the symlink rows: " << ec.message());
+        }
     }
 };
 
 } // namespace
+
+TEST_CASE("ship start: content fixtures own distinct directories and remove only their own") {
+    fs::path first_path;
+    {
+        OwnedDir first;
+        OwnedDir second;
+        first_path = first.path;
+        CHECK(first.path != second.path);
+        CHECK(fs::is_directory(first.path));
+        CHECK(fs::is_directory(second.path));
+        // A fixture that fails half way (an exception in its body) still removes its directory.
+        fs::path failed;
+        try {
+            struct Half {
+                OwnedDir dir;
+                explicit Half(fs::path& seen) {
+                    seen = dir.path;
+                    throw std::runtime_error("construction failed after the directory exists");
+                }
+            };
+            Half half(failed);
+        } catch (const std::runtime_error&) {
+        }
+        CHECK_FALSE(failed.empty());
+        CHECK_FALSE(fs::exists(failed));
+        CHECK(fs::is_directory(first.path)); // the neighbour is untouched
+    }
+    CHECK_FALSE(fs::exists(first_path));
+}
 
 TEST_CASE("ship start: a base that is not a content-relative path is refused before it is opened") {
     const auto types = ship_registry();
@@ -341,8 +410,10 @@ TEST_CASE("ship start: a base that is not a content-relative path is refused bef
     refused("Scenes/base.sze:stream", "alternate data stream");
     refused("Scenes", "a directory");
     refused("Scenes/missing.sze", "missing file");
-    refused("Scenes/escape.sze", "symlink to a file outside the root");
-    refused("Scenes/escape_dir/secret.sze", "symlinked directory leaving the root");
+    if (tree.links) {
+        refused("Scenes/escape.sze", "symlink to a file outside the root");
+        refused("Scenes/escape_dir/secret.sze", "symlinked directory leaving the root");
+    }
 }
 
 TEST_CASE("ship start: a content-relative base loads, also through links that stay inside") {
@@ -357,6 +428,9 @@ TEST_CASE("ship start: a content-relative base loads, also through links that st
     REQUIRE_MESSAGE(loaded.ok(), message_of(loaded));
     CHECK(loaded.value().state_hash() == expected);
 
+    if (!tree.links) {
+        return; // the link rows need a symlink the platform refused (reported by the fixture)
+    }
     // The content root may itself be reached through a link: it is resolved normally.
     loaded = sl::load_ship_start(plain, tree.linked_root, types);
     REQUIRE_MESSAGE(loaded.ok(), message_of(loaded));
@@ -375,6 +449,9 @@ TEST_CASE("ship start: the content path rules, as a function") {
     CHECK(sl::resolve_content_path(tree.root, "Scenes/base.sze").ok());
     CHECK_FALSE(sl::resolve_content_path(tree.root, "").ok());
     CHECK_FALSE(sl::resolve_content_path(tree.root / "no-such-root", "Scenes/base.sze").ok());
+    if (!tree.links) {
+        return;
+    }
     // The resolved path is the real file inside the real root, whatever the root's spelling.
     const auto via_link = sl::resolve_content_path(tree.linked_root, "Scenes/inside.sze");
     REQUIRE(via_link.ok());

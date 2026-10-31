@@ -4,6 +4,35 @@ What only a person with the right machine can check. Claude Code keeps this list
 
 ## Open
 
+- **UI.1.F2.3 — in-game HUD at the other four resolutions (OQ-535), owner desktop harness only (2026-10-30).** The Wine runner's virtual desktop is fixed 1024 x 768 and does not switch modes (`docs/re/ui.md` section 5, `f16_options_graphics`). Do **not** ask an agent to drive this; use the dgVoodoo2 Windows harness (`docs/testing/original-harness.md`) in one sitting.
+
+  **Setup:** GOG 2.0.0.5, 1024 x 768 confirmed in-game first. Main-menu Options (graphics) lists five modes with a tick on 1024 x 768 (`f16_options_graphics`). Change **one** mode per launch (the seven Wine clicks on those planks did not move the tick). After the game is running at that mode, F8 (half speed), no pause.
+
+  **Per mode, capture PNGs (1024 x 768 is already done; skip it):**
+
+  | Mode | HUD idle | Construction (B, public category) | Notes |
+  |---|---|---|---|
+  | 800 x 600 | `hud_idle_800` | `construction_public_800` | candidate `ToolGfx` `8` set |
+  | 1152 x 864 | `hud_idle_1152` | `construction_public_1152` | candidate `STATUSBAR02` 873 x 35 |
+  | 1280 x 960 | `hud_idle_1280x960` | `construction_public_1280x960` | candidate `STATUSBAR03` 1001 x 35 |
+  | 1280 x 1024 | `hud_idle_1280x1024` | `construction_public_1280x1024` | same bar as 1280 x 960; y = H - 35 |
+
+  Also one screenshot of the graphics-options list with the tick on that mode, from the main menu, named `options_<mode>`.
+
+  **Predictions to check** (identities at 1024 x 768, `docs/re/ui.md` section 5; not yet pixel-verified):
+
+  | Mode | ToolGfx set | Status bar | Right chrome | Construction origin |
+  |---|---|---|---|---|
+  | 800 x 600 | `8` suffix (size ratio 800/1024 = 0.78125) | `statusbar8.tex` `STATUSBAR` 583 x 27 at (0, H-27) | width 191 (`fenster8` `WELTKARTE` / `MAINUNTERGRUND`); x = W - 191 | stride ~41 (50 x 0.78), origin x = W - 191 + ~23 |
+  | 1024 x 768 | plain (captured) | `statusbar.tex` 746 x 35 at (0, 733) | width 245; x = 779 | origin (808, 305), stride 52, sprite 50 |
+  | 1152 x 864 | plain | `STATUSBAR02` 873 x 35 at (0, H-35). 1152 - 245 - 34 = 873 (`?` is 34 px) | width 245; x = W - 245 | origin (W - 216, 305) if the 29 px category gap holds |
+  | 1280 x 960 | plain | `STATUSBAR03` 1001 x 35 at (0, H-35). 1280 - 245 - 34 = 1001 | width 245; x = W - 245 | same formula |
+  | 1280 x 1024 | plain | `STATUSBAR03` 1001 x 35 at (0, H-35) | width 245; x = W - 245 | same formula; extra height is map, not chrome |
+
+  **How to check a shot:** measure the first non-water row at x=20 (status-bar y), the right-chrome left edge (first column that is not isometric water/land), and one locked construction cell vs `NO_KLICK` 50 x 50 (or 39 x 39 on the `8` set). Record which `.tex` set is loaded if a file-access probe is available; otherwise the sprite sizes on the shot are enough.
+
+  **Out of this sitting:** other menus at those modes; 16-bit vs 32-bit colour. Put the PNGs under `C:\Users\altin\Pictures\anno-review\UI-1-F2\` (not git). Tick this item with the mode, the measured bar y / chrome x, and whether the `8` set loaded at 800 x 600.
+
 - **River flow, first look (2026-10-19, stage S5; enhanced water `E`, key `R` toggles flow/legacy):** the flow shading is drawn by both paths since stage S6 (2026-10-19): run `anno1503 --view game/app/Scenes/Islands/Dschungel/D_256x256_0045_5B.scp` (the GPU renderer, zoom group 1, press `E`; `R` switches to the old shimmer; stderr says which river tier runs, `ANNO_RIVER_QUALITY=low|medium|high` overrides it) or `--renderer cpu`. At the default strength the motion is as quiet as the old shimmer at group 0 and quieter at groups 1 and 2 (OQ-083); please compare with `R` and say whether the GPU picture also looks right on your monitor, and whether you want rivers on the integrated GPU to fall back to the old shimmer (OQ-085); `anno1503 ... --water enhanced --river-gain 4 --renderer cpu --png out.png --time 250 --at 152,97` (or `river_qa --rect ... --shade DIR`) shows it clearly. Frame sequences, light images and sheets: `C:\Users\altin\Pictures\anno-rivers\S5` (`contact_sheet_all.png`, `compare_before_after.png` with the shading before and after the review, `sheets\`, `gif\`, `before_review\`). Frame sequences, sheets and before/after GPU views of S6: `C:\Users\altin\Pictures\anno-rivers\S6`. Decisions: OQ-083 (strength), OQ-067 (rivers without sea), OQ-065/066 (speeds), OQ-085 to OQ-090 (tiers, adapter, CI, textures). Please judge whether the rivers are *visibly flowing* at the default (the review measured that they hardly are, OQ-083) and compare with the gain 1 / 3 / 4 sheets in `C:\Users\altin\Pictures\anno-rivers\S6\decision`; the three sea-less pieces of this island (OQ-067) are best looked at with `river_qa --rect ... --shade DIR --sea-less-scale 0`.
 - **River gaps (2026-10-19, owner report; enhanced water `E`):** open the jungle island `Islands/Dschungel/D_256x256_0045_5B.scp` (the island of your screenshot `river_gaps.png`; `anno1503 --view <game>/Scenes/Islands/Dschungel/D_256x256_0045_5B.scp --group 1`) with `E` and look at the river network in the middle and the delta in the south-east at zoom groups 0, 1 and 2, then at a Nord or Tundra island with rivers (`Islands/Nord/N_256x256_0006_2B.scp`). Expected: every river stretch carries water from source to mouth, the water fills the painted brown bed up to its soft edge (the screenshot's brown strips along the banks and the necks where two pieces meet are gone), nothing floats outside the bed. Measured by `tools/river_qa.py` (docs/render/iso.md, "River gaps"); what only a person can judge: whether the banks look natural and whether the rivers are now too wide or too uniform (tuning constants `kBedEdge`, `kBedDepth`, `kRiverBankNoise`, listed as decision-needed there). Report anything that still looks wrong with a screenshot and the scene.
 - **M3 stage S1, CI matrix (2026-10-19):** the S1 commits have been built and run on MSVC and, in WSL, on GCC 13.3 (also under ASan/UBSan without recovery); Clang and the CI jobs have not run. After pushing: `linux-gcc-release`, `linux-clang-asan` (the `asan` preset, including the CTest case `anno_sim_tests_ubsan_probe_is_caught_by_the_asan_gate`) and `macos-clang` must be green; if `linux-clang-asan` reports a finding in a suite other than `anno_sim_tests`, that suite was not yet built with `-fno-sanitize-recover=all` and the finding is old. Record the result in `docs/sim/state.md` §15 S1; stage S2 starts after that.

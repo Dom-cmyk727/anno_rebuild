@@ -80,3 +80,6 @@ src/sim/src/scenario_formats.cpp:kDefaultVkSlots = 4, kDefaultEkSlots = 6;  # th
 # at 0x1008262e and 0x1008260c). The edge is the block the writer walks, not a
 # cap on the footprint or the map.
 src/sim/include/anno/sim/walk_cells.hpp:kPlacementBlockEdge = 8;  # the original's 8-tile placement block (D 0x100820e6), not a limit
+
+# --- terrain_view.hpp (MAP-2 U1)
+src/sim/include/anno/sim/terrain_view.hpp:kBoundaryVertexHeight = 0;  # the value 0 of the original's zero-filled corner grid beyond the stored samples (docs/re/ship-founding.md 12.3): a datum of the file layout, not a count or a limit

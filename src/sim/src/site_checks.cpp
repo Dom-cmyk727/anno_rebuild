@@ -6,9 +6,6 @@ namespace anno::sim::site {
 
 namespace {
 
-constexpr std::int64_t kMaxClickMagnitude = std::int64_t{1}
-                                            << 40; // click * 256 stays far inside i64
-
 std::uint32_t group_of(std::uint32_t prodtype) {
     return ((prodtype - 1U) & ~0x1fU) + 1U;
 }
@@ -49,8 +46,10 @@ bool footprint_inside(const TileLayer& tiles, Origin origin, std::uint32_t w, st
 
 bool within_range(std::int64_t click_x, std::int64_t click_y, FixedPos ship,
                   const DistanceRule& rule) {
-    if (click_x > kMaxClickMagnitude || click_x < -kMaxClickMagnitude ||
-        click_y > kMaxClickMagnitude || click_y < -kMaxClickMagnitude) {
+    // click * 256 - ship must fit i64: |click| <= INT64_MAX / 512 leaves 2^62 for the product
+    // and room for the 32-bit ship coordinate (a bound of the arithmetic, not of the rule).
+    const std::int64_t bound = std::numeric_limits<std::int64_t>::max() / 512;
+    if (click_x > bound || click_x < -bound || click_y > bound || click_y < -bound) {
         return false;
     }
     // Truncation toward zero of (click - ship) in tiles; C++ integer division truncates.
@@ -143,17 +142,17 @@ TerrainVerdict coast_height_check(const VertexGrid& grid, const BuildingType& ty
     if (!coast_class_supported(type.flags_word)) {
         return {TerrainResult::Unsupported, 0};
     }
-    return coast_height_rule(
-        type.width, type.height, rotation, [&](std::uint64_t dx, std::uint64_t dy) {
-            // dx, dy <= 2^32: refuse a sum that would overflow.
-            constexpr std::int64_t kMax = std::numeric_limits<std::int64_t>::max();
-            const auto sx = static_cast<std::int64_t>(dx);
-            const auto sy = static_cast<std::int64_t>(dy);
-            if (origin.x > kMax - sx || origin.y > kMax - sy) {
-                return std::optional<std::uint8_t>{};
-            }
-            return grid.at(origin.x + sx, origin.y + sy);
-        });
+    return coast_height_rule(type.width, type.height, rotation,
+                             [&](std::uint64_t dx, std::uint64_t dy) {
+                                 // dx, dy <= 2^32: refuse a sum that would overflow.
+                                 const auto sx = static_cast<std::int64_t>(dx);
+                                 const auto sy = static_cast<std::int64_t>(dy);
+                                 if (origin.x > std::numeric_limits<std::int64_t>::max() - sx ||
+                                     origin.y > std::numeric_limits<std::int64_t>::max() - sy) {
+                                     return std::optional<std::uint8_t>{};
+                                 }
+                                 return grid.at(origin.x + sx, origin.y + sy);
+                             });
 }
 
 } // namespace anno::sim::site

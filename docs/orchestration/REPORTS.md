@@ -8619,8 +8619,7 @@ workload. Round dv's Debug table and the first round-dw matrix are superseded (s
 4. **Stress tier placed buildings outside their islands** (validator refused). Removed; the dense tier covers
    density within legal tiles.
 
-Open: the mismatch semantics for illegal duplicates; the 40-object fixed per-island build cost (a candidate for
-incremental lists, not started); the chunk rebuild on the workers is untimed.
+Open: the mismatch semantics for illegal duplicates; the fixed per-island build cost of about 14 ms (a candidate for incremental lists, not started); the chunk rebuild on the workers is untimed.
 
 ### Decisions and reasoning
 

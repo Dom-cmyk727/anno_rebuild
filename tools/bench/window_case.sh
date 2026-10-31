@@ -24,7 +24,14 @@ mkdir -p "$OUT"
     echo "window_case started=$(date '+%Y-%m-%d %H:%M:%S')"
     echo "host model=$(sysctl -n hw.model 2>/dev/null) cpu=\"$(sysctl -n machdep.cpu.brand_string 2>/dev/null)\" cores=$(sysctl -n hw.ncpu 2>/dev/null) mem_bytes=$(sysctl -n hw.memsize 2>/dev/null) os=\"$(sw_vers -productVersion 2>/dev/null) $(uname -r)\""
     echo "load_before=\"$(uptime | sed 's/.*load averages*: //')\""
-    echo "revision=$(git -C "$HERE" rev-parse HEAD) dirty=$(git -C "$HERE" diff HEAD | shasum | cut -c1-12)"
+    # The tree's state: tracked changes and untracked files (their names and contents) both count;
+    # clean=yes only when there are neither (round ec review: untracked sources were not counted).
+    DIFF=$(git -C "$HERE" diff HEAD)
+    UNTRACKED=$(cd "$HERE" && git ls-files --others --exclude-standard)
+    STATE=$( { printf '%s' "$DIFF"; [ -z "$UNTRACKED" ] || (cd "$HERE" && printf '%s\n' "$UNTRACKED" | tr '\n' '\0' | xargs -0 shasum -a 256); } | shasum | cut -c1-12)
+    CLEAN=no
+    [ -z "$DIFF" ] && [ -z "$UNTRACKED" ] && CLEAN=yes
+    echo "revision=$(git -C "$HERE" rev-parse HEAD) clean=$CLEAN state=$STATE untracked=$(printf '%s' "$UNTRACKED" | grep -c . || true)"
     echo "anno1503=$APP sha256=$(shasum -a 256 "$APP" | cut -c1-64)"
     echo "bench_picture=$BENCH sha256=$(shasum -a 256 "$BENCH" | cut -c1-64)"
     echo "map=$MAP sha256=$(shasum -a 256 "$MAP" | cut -c1-64)"

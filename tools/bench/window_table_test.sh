@@ -32,7 +32,7 @@ make_case() { # matrix, case
     printf '   2147483648  maximum resident set size\n' > "$c/time.txt"
     "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> "$c/aggregate.stderr"
     local agg=$?
-    printf 'drawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=%s\n' "$agg" > "$c/run.txt"
+    printf 'commands=x sha256=0 lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=%s\n' "$agg" > "$c/run.txt"
     printf '%s\t0\t1\t-\n' "$2" >> "$1/results.tsv"
 }
 new_matrix() {
@@ -56,12 +56,19 @@ grep -q "^| good | 8x8 | 8x8 | Test adapter | 2 / 1 / 1 | 0 | run=complete statu
     "$WORK/out" || fail "identity row"
 grep -q "^| good | 1 / 2.50 / (n=1) / (n=1) / 2.50 | 2 / 0.30 / (n=2) / (n=2) / 0.40 | 1 / 0.50 / (n=1) / (n=1) / 0.50 | 1 / 1.70 / (n=1) / (n=1) / 1.70 |" \
     "$WORK/out" || fail "timing row"
-grep -q "| 1 / 1 / 0 / 0 | 1 | 0 | 0 | .* | 1 / 3.0 / (n=1) / (n=1) / 3.0 | 0 / 0 / 0 |" "$WORK/out" ||
+grep -q "| 1 / 1 / 1 / 0 / 0 | 1 / 1.0 / (n=1) / (n=1) / 1.0 | 1 | 0 | 0 | .* | 1 / 3.0 / (n=1) / (n=1) / 3.0 | 0 / 0 / 0 |" "$WORK/out" ||
     fail "edits row"
 grep -q "^| good | on | 1 / 120.0 / (n=1) / (n=1) / 120.0 | 1 / 0.50 / (n=1) / (n=1) / 0.50 | 2.00 GiB |" \
     "$WORK/out" || fail "stderr row"
 # Each fault in its own matrix, beside a good case that keeps its row.
-for bad in gap mismatch count contradictory incomplete notime sim_outcome present_order; do
+# The round-ec review's impossible rows (P2-3), each accepted before: a frame that starts before the
+# previous one ended, an attempt without a texture that has submit times, an epoch going back,
+# columns that are not numbers, an outcome the viewer never gives for the status, a present status
+# that is not one, an acquire that ends before it starts, more rejections than commands, frames.tsv
+# and events.tsv disagreeing on a frame, and more commands applied than the file holds.
+for bad in gap mismatch count contradictory incomplete notime sim_outcome present_order overlap \
+    failed_submit epoch_back junk_cols wrong_skip junk_present neg_acquire over_reject swapped \
+    too_many; do
     new_matrix "$WORK/m_$bad"
     make_case "$WORK/m_$bad" good
     make_case "$WORK/m_$bad" bad
@@ -72,14 +79,24 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     count) sed -i.orig 's/acquire_skipped$/acquire_retry/; s/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" &&
         sed -i.orig '/frame_failed/d' "$c/trace/events.tsv" &&
         "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> /dev/null ;;
-    contradictory) printf 'drawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=2\n' > "$c/run.txt" &&
+    contradictory) printf 'commands=x lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=2\n' > "$c/run.txt" &&
         echo "bench_picture: contradiction: presented before its gpu_ready" > "$c/aggregate.stderr" ;;
-    incomplete) printf 'drawable_asked=8x8 trace=on\nwindow_exit=5\naggregate_exit=6\n' > "$c/run.txt" &&
+    incomplete) printf 'commands=x lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=5\naggregate_exit=6\n' > "$c/run.txt" &&
         sed -i.orig '/run_end/d' "$c/trace/events.tsv" &&
         "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> /dev/null ;;
     notime) rm "$c/time.txt" ;;
     sim_outcome) sed -i.orig 's/\taccepted\t/\trejected\t/' "$c/trace/sim.tsv" ;;
     present_order) sed -i.orig 's/\t4.0\t4.5\t5.0\tSuccess/\t4.0\t5.5\t5.0\tSuccess/' "$c/trace/frames.tsv" ;;
+    overlap) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t5.5\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t4.8\t/' "$c/trace/frames.tsv" ;;
+    failed_submit) sed -i.orig 's/\t0\t-1.000000\t-1.000000/\t0\t5.800000\t-1.000000/' "$c/trace/frames.tsv" ;;
+    epoch_back) sed -i.orig 's/^1\t1\t1\t/1\t2\t1\t/' "$c/trace/frames.tsv" ;;
+    junk_cols) sed -i.orig 's/^1\t1\t1\t0\t0\t/1\t1\tabc\tx\t0\t/' "$c/trace/frames.tsv" ;;
+    wrong_skip) sed -i.orig 's/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" ;;
+    junk_present) sed -i.orig 's/\tSuccess\tpresented$/\tbanana\tpresent_failed/' "$c/trace/frames.tsv" ;;
+    neg_acquire) sed -i.orig 's/\t5.6\t6.0\tTimeout/\t5.6\t5.2\tTimeout/' "$c/trace/frames.tsv" ;;
+    over_reject) sed -i.orig 's/\t1\t0\taccepted\t-\t1\t1$/\t1\t2\tinvalid\tx,y\t1\t1/' "$c/trace/sim.tsv" ;;
+    swapped) sed -i.orig 's/^5\tframe_presented\t1\t1$/4.9\tframe_presented\t1\t1/' "$c/trace/events.tsv" ;;
+    too_many) sed -i.orig 's/lines=1/lines=0/' "$c/run.txt" ;;
     esac
     expected=1
     table "$WORK/m_$bad" "$expected" "a window case with $bad evidence"
@@ -90,6 +107,14 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     fi
 done
 python3 "$TABLE" "$WORK/m_gap" 2>&1 | grep -q "frame 3, expected 2" || fail "gap: reason"
+for pair in "overlap:starts before the previous one ended" \
+    "failed_submit:an attempt without a texture has submit or present times" \
+    "epoch_back:epoch 1 after epoch 2" "junk_cols:'abc' is not a whole number" \
+    "wrong_skip:outcome acquire_skipped after Outdated" "junk_present:'banana' is not a status" \
+    "neg_acquire:the acquire is out of order" "over_reject:2 rejections for 1 commands" \
+    "swapped:frame 1: frames.tsv gives frame_presented" "too_many:1 commands applied for 0"; do
+    python3 "$TABLE" "$WORK/m_${pair%%:*}" 2>&1 | grep -q "${pair#*:}" || fail "${pair%%:*}: reason"
+done
 python3 "$TABLE" "$WORK/m_count" 2>&1 | grep -q "frames_failed=1, the trace 0" || fail "count: reason"
 python3 "$TABLE" "$WORK/m_incomplete" 2>&1 | grep -q "trace incomplete: run=INCOMPLETE" ||
     fail "incomplete: reason"

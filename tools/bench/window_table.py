@@ -10,10 +10,14 @@ For every case of results.tsv (in its order), with the trace on:
     3, ... with no gap, frame starts that never go back, an outcome that matches the acquire and the
     present status, turns that increase), and the files agree with the aggregate (frames submitted,
     presented and failed; batches published);
+  - every frame row is cross-checked against the trace's frame events: the same frame ids, epochs
+    and times (frame_submitted at submit_ms, frame_presented or frame_failed at the present's end,
+    frame_failed at the acquire's end for an attempt without a texture), and an outcome that is the
+    viewer's for its acquire status; the commands applied never exceed the command file's;
   - then: the drawable and adapter, frames attempted / presented / failed, the frame-start interval,
     the acquire and present-call durations, the window thread's busy time per presented frame
-    (draw start to present return, less the acquire), the commands applied / accepted / rejected /
-    ambiguous by turn, the edit boundaries from the aggregate (object-ready, visible CPU-ready,
+    (draw start to present return, less the acquire), the commands in the file, applied, and the turns accepted / rejected /
+    ambiguous, each batch's publication to its take, the edit boundaries from the aggregate (object-ready, visible CPU-ready,
     GPU-usable, present-call returned; n / p50 / p95 / p99 / max), unfinished work, and the peak
     RSS (/usr/bin/time -l).
 With the trace off (the overhead control) only the window's own 2-second stderr lines exist: their
@@ -39,6 +43,13 @@ WHOLE = re.compile(r"-?[0-9]+")
 NUMBER = re.compile(r"-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")
 ACQUIRE = {"SuccessOptimal", "SuccessSuboptimal", "Timeout", "Outdated", "Lost", "Error", "Occluded"}
 OUTCOMES = {"presented", "present_failed", "acquire_skipped", "acquire_retry", "fatal"}
+# What the viewer does with each acquire status (classify_acquire), so the outcomes a row may have.
+ALLOWED = {"SuccessOptimal": {"presented", "present_failed"},
+           "SuccessSuboptimal": {"presented", "present_failed"},
+           "Timeout": {"acquire_skipped"}, "Occluded": {"acquire_skipped"},
+           "Outdated": {"acquire_retry", "fatal"}, "Lost": {"acquire_retry", "fatal"},
+           "Error": {"fatal"}}
+PRESENT_STATUS = re.compile(r"-|Success|Error\([0-9]+\)")
 FPS = re.compile(r"px: ([0-9.]+) fps, frame avg ([0-9.]+) ms / worst ([0-9.]+) ms")
 
 
@@ -109,7 +120,10 @@ def read_frames(path):
         row = {"frame": whole(r["frame"], where), "epoch": whole(r["epoch"], where),
                "drawable": f"{whole(r['drawable_w'], where)}x{whole(r['drawable_h'], where)}",
                "texture": whole(r["texture"], where), "outcome": r["outcome"],
-               "acquire_status": r["acquire_status"], "present_status": r["present_status"]}
+               "acquire_status": r["acquire_status"], "present_status": r["present_status"],
+               "raw": r}
+        for c in ("generation", "view_x", "view_y", "view_w", "view_h", "group"):
+            row[c] = whole(r[c], where)
         for c in ("t_start_ms", "picture_ms", "acquire_start_ms", "acquire_end_ms", "submit_ms",
                   "present_start_ms", "present_end_ms", "scale"):
             row[c] = number(r[c], where)
@@ -118,6 +132,14 @@ def read_frames(path):
                            "gap)")
         if rows and row["t_start_ms"] < rows[-1]["t_start_ms"]:
             raise Unusable(f"{where}: t_start_ms goes back")
+        if rows and row["epoch"] < rows[-1]["epoch"]:
+            raise Unusable(f"{where}: epoch {row['epoch']} after epoch {rows[-1]['epoch']}")
+        if rows and row["t_start_ms"] < rows[-1]["end"]:
+            raise Unusable(f"{where}: the frame starts before the previous one ended")
+        if not (row["t_start_ms"] <= row["acquire_start_ms"] <= row["acquire_end_ms"]):
+            raise Unusable(f"{where}: the acquire is out of order")
+        if not PRESENT_STATUS.fullmatch(row["present_status"]):
+            raise Unusable(f"{where}: present status '{row['present_status']}' is not a status")
         if row["acquire_status"] not in ACQUIRE and not row["acquire_status"].startswith("unknown("):
             raise Unusable(f"{where}: acquire_status '{row['acquire_status']}' is not a status")
         if row["outcome"] not in OUTCOMES:
@@ -136,6 +158,14 @@ def read_frames(path):
         if drawn and not (row["acquire_start_ms"] <= row["acquire_end_ms"] <= row["submit_ms"] <=
                           row["present_start_ms"] <= row["present_end_ms"]):
             raise Unusable(f"{where}: the frame's boundaries are out of order")
+        if not drawn and any(row[c] != -1 for c in ("submit_ms", "present_start_ms",
+                                                    "present_end_ms")):
+            raise Unusable(f"{where}: an attempt without a texture has submit or present times")
+        allowed = ALLOWED.get(row["acquire_status"], {"fatal"})
+        if row["outcome"] not in allowed:
+            raise Unusable(f"{where}: outcome {row['outcome']} after {row['acquire_status']} (the "
+                           f"viewer gives {' or '.join(sorted(allowed))})")
+        row["end"] = row["present_end_ms"] if drawn else row["acquire_end_ms"]
         rows.append(row)
     return rows
 
@@ -157,6 +187,13 @@ def read_sim(path):
                "rejected": whole(r["rejected"], where), "outcome": r["outcome"],
                "batch": whole(r["batch"], where)}
         number(r["t_ms"], where)
+        deltas = whole(r["deltas"], where)
+        if row["batch"] not in (0, 1) or (row["batch"] == 1) != (deltas > 0):
+            raise Unusable(f"{where}: batch {row['batch']} with {deltas} deltas")
+        if row["rejected"] > row["applied"]:
+            raise Unusable(f"{where}: {row['rejected']} rejections for {row['applied']} commands")
+        if (r["reasons"] == "-") != (row["rejected"] == 0):
+            raise Unusable(f"{where}: reasons '{r['reasons']}' for {row['rejected']} rejections")
         if rows and row["turn"] <= rows[-1]["turn"]:
             raise Unusable(f"{where}: turn {row['turn']} does not increase")
         a, j = row["applied"], row["rejected"]
@@ -166,6 +203,45 @@ def read_sim(path):
             raise Unusable(f"{where}: outcome {row['outcome']} for {a} applied, {j} rejected")
         rows.append(row)
     return rows
+
+
+def read_frame_events(path):
+    """The frame events of a trace the aggregate accepted: kind -> {frame: (epoch, time text)}."""
+    lines = read(path).split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not lines or lines[0] != "t_ms\tkind\tisland\tversion":
+        raise Unusable(f"{path.name} line 1: not the trace header")
+    out = {"frame_submitted": {}, "frame_presented": {}, "frame_failed": {}}
+    for n, line in enumerate(lines[1:], start=2):
+        f = line.split("\t")
+        if len(f) != 4:
+            raise Unusable(f"{path.name} line {n}: not a trace event")
+        if f[1] in out:
+            out[f[1]][whole(f[3], f"{path.name} line {n}")] = (
+                whole(f[2], path.name), number(f[0], f"{path.name} line {n}"))
+    return out
+
+
+def cross_check(frames, events):
+    """Every frame row against its events: the same ids, epochs and times (round ec review)."""
+    ids = {f["frame"] for f in frames}
+    for kind, by in events.items():
+        stray = sorted(set(by) - ids)
+        if stray:
+            raise Unusable(f"events.tsv has {kind} of frame {stray[0]} with no frames.tsv row")
+    for f in frames:
+        drawn = f["outcome"] in ("presented", "present_failed")
+        expect = {"frame_submitted": (f["epoch"], f["submit_ms"]) if drawn else None,
+                  "frame_presented": (f["epoch"], f["present_end_ms"])
+                  if f["outcome"] == "presented" else None,
+                  "frame_failed": None if f["outcome"] == "presented" else
+                  (f["epoch"], f["present_end_ms"] if drawn else f["acquire_end_ms"])}
+        for kind, want in expect.items():
+            have = events[kind].get(f["frame"])
+            if have != want:
+                raise Unusable(f"frame {f['frame']}: frames.tsv gives {kind} {want}, events.tsv "
+                               f"{have}")
 
 
 def aggregate_lines(case):
@@ -184,6 +260,18 @@ def boundary(lines, key):
     p95 = f"{float(d['p95_ms']):.1f}" if d["p95_ms"] != "insufficient" else f"(n={d['n']})"
     p99 = f"{float(d['p99_ms']):.1f}" if d["p99_ms"] != "insufficient" else f"(n={d['n']})"
     return f"{d['n']} / {float(d['p50_ms']):.1f} / {p95} / {p99} / {float(d['max_ms']):.1f}"
+
+
+def take_ms(case):
+    """Per batch, its publication (sim thread) to its take (the window's frame boundary)."""
+    published, out = {}, []
+    for line in read(case / "trace" / "events.tsv").split("\n")[1:]:
+        f = line.split("\t")
+        if len(f) == 4 and f[1] == "batch_published":
+            published[f[3]] = float(f[0])
+        elif len(f) == 4 and f[1] == "batch_taken" and f[3] in published:
+            out.append(float(f[0]) - published[f[3]])
+    return out
 
 
 def stderr_intervals(case):
@@ -247,6 +335,7 @@ def main():
                               ("batches_published", sum(f["batch"] for f in sim))):
                 if w.get(key) != str(have):
                     raise Unusable(f"frames.tsv/sim.tsv give {key}={have}, the trace {w.get(key)}")
+            cross_check(frames, read_frame_events(case / "trace" / "events.tsv"))
             if agg_exit != "0" or run.get("window_exit") != "0":
                 failed.append(name)
             manifest = read(case / "trace" / "manifest.txt").splitlines()
@@ -264,12 +353,17 @@ def main():
                 f"{dist([f['present_end_ms'] - f['present_start_ms'] for f in drawn])} | "
                 f"{dist([(f['present_end_ms'] - f['t_start_ms']) - (f['acquire_end_ms'] - f['acquire_start_ms']) for f in drawn if f['outcome'] == 'presented'])} |")
             applied = sum(s["applied"] for s in sim)
+            in_file = int(run.get("lines", "-1")) if WHOLE.fullmatch(run.get("lines", "")) else -1
+            if in_file < 0 or applied > in_file:
+                raise Unusable(f"{applied} commands applied for {run.get('lines', '?')} in the "
+                               "command file")
             by = {k: sum(1 for s in sim if s["outcome"] == k) for k in ("accepted", "rejected",
                                                                         "ambiguous")}
             e = kv(agg.get("edits", ""))
             g = kv(agg.get("gpu_mode", ""))
             edits.append(
-                f"| {name} | {applied} / {by['accepted']} / {by['rejected']} / {by['ambiguous']} | "
+                f"| {name} | {in_file} / {applied} / {by['accepted']} / {by['rejected']} / "
+                f"{by['ambiguous']} | {dist(take_ms(case), 1)} | "
                 f"{e.get('edits', '?')} | {e.get('offscreen', '?')} | {e.get('coalesced', '?')} | "
                 f"{boundary(agg, 'object_ready')} | {boundary(agg, 'visible_cpu_chunks_ready')} | "
                 f"{boundary(agg, 'visible_gpu_usable')} | "
@@ -295,10 +389,10 @@ def main():
     print("Commands by turn (sim.tsv) and edit boundaries (the aggregate), ms from the edit's "
           "desired event, n / p50 / p95 / p99 / max:")
     print()
-    print("| case | commands applied / turns accepted / rejected / ambiguous | edits | offscreen | "
-          "coalesced | object-ready | visible CPU-ready | GPU-usable | present call returned | "
-          "unfinished: object / GPU / present |")
-    print("|---|---|---:|---:|---:|---|---|---|---|---|")
+    print("| case | commands in the file / applied / turns accepted / rejected / ambiguous | batch "
+          "published → taken | edits | offscreen | coalesced | object-ready | visible CPU-ready | "
+          "GPU-usable | present call returned | unfinished: object / GPU / present |")
+    print("|---|---|---|---:|---:|---:|---|---|---|---|---|")
     print("\n".join(edits))
     print()
     print("The window's own 2-second lines (stderr; the first interval left out), n / p50 / p95 / "

@@ -40,6 +40,7 @@
 
 #include <anno/app/building_delta.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/picture_check.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/scene_picture.hpp>
 #include <anno/render/frame.hpp>
@@ -259,7 +260,7 @@ int main(int argc, char** argv) {
         usage_error("scene: " + loaded.error());
     }
     app::LoadedScene ls = std::move(loaded).value();
-    ls.scene->river_cfg.enabled = true;
+    ls.scene->river_cfg.enabled = false; // the building check is the legacy look
     std::shared_ptr<const render::Scene> scene(std::move(ls.scene));
     if (scene->islands.size() < islands) {
         usage_error("the map has " + std::to_string(scene->islands.size()) +
@@ -386,7 +387,7 @@ int main(int argc, char** argv) {
             usage_error("scene with the workload: " + again.error());
         }
         app::LoadedScene ls2 = std::move(again).value();
-        ls2.scene->river_cfg.enabled = true;
+        ls2.scene->river_cfg.enabled = false;
         scene = std::shared_ptr<const render::Scene>(std::move(ls2.scene));
     }
     const std::uint64_t hash = fnv1a(buildings);
@@ -711,40 +712,46 @@ int main(int argc, char** argv) {
                         "%zu, by the picture %zu%s\n",
                         loader_objects, picture_objects,
                         loader_objects == picture_objects ? " (equal)" : " (DIFFERENT)");
-            if (loader_objects != picture_objects) {
-                std::printf("VERIFY FAILED\n");
-                return 1;
-            }
+            // Counts are diagnostics only (a count-preserving error passes them): the verdict is
+            // the chunk check below.
         }
-        // The chunk workers settle first: the picture's convergence does not wait for them. Then
-        // the view's chunks are collected, and the final view equals a fresh synchronous build of
-        // the final state.
+        // The chunk workers settle first: the picture's convergence does not wait for them. The
+        // picture's chunks of the view are then compared, layer by layer, with a fresh synchronous
+        // build of an independently loaded scene that holds the final desired building list (round
+        // dx, DX1).
         auto final_scene = picture.scene();
         for (int round = 0; round < 3; ++round) {
             chunk_workers->wait_idle();
             frames.update_chunks(final_scene, view, 2);
         }
         chunk_workers->wait_idle();
+        app::SceneObjects fresh_objects;
+        fresh_objects.is_building = [&pl](std::uint16_t id) {
+            return app::anlage_is_building(pl.world, id);
+        };
+        fresh_objects.buildings = picture.buildings();
+        auto fresh_loaded = app::load_placed_scene(dir, pl.name, pl.placed, &fresh_objects);
+        if (!fresh_loaded.ok()) {
+            usage_error("the reference scene failed: " + fresh_loaded.error());
+        }
+        app::LoadedScene fresh_ls = std::move(fresh_loaded).value();
+        fresh_ls.scene->river_cfg.enabled = false;
+        const std::shared_ptr<const render::Scene> reference_scene(std::move(fresh_ls.scene));
         render::FrameRenderer reference(1);
-        for (int round = 0; round < 6; ++round) {
-            reference.update_chunks(final_scene, view, 2);
+        for (int round = 0; round < 3; ++round) {
+            reference.update_chunks(reference_scene, view, 2);
         }
-        std::size_t compared = 0, mismatched = 0, nonempty = 0, missing = 0;
-        for (const render::ChunkKey& key : render::chunk_keys_touching(*final_scene, view, 2)) {
-            const render::Chunk* want = reference.chunk(key);
-            const render::Chunk* got = frames.chunk(key);
-            if (want == nullptr || got == nullptr) {
-                ++missing;
-                continue;
-            }
-            ++compared;
-            nonempty += want->ground.empty() ? 0U : 1U;
-            mismatched += want->ground == got->ground ? 0U : 1U;
-        }
-        std::printf("verify: group-2 chunks of the view compared=%zu nonempty=%zu mismatched=%zu "
-                    "missing=%zu\n",
-                    compared, nonempty, mismatched, missing);
-        if (compared == 0 || nonempty == 0 || mismatched != 0) {
+        const std::vector<render::ChunkKey> keys =
+            render::chunk_keys_touching(*reference_scene, view, 2);
+        const app::ChunkDiff diff = app::compare_chunks(
+            keys, [&frames](const render::ChunkKey& k) { return frames.chunk(k); },
+            [&reference](const render::ChunkKey& k) { return reference.chunk(k); });
+        std::printf("verify: group-2 chunks of the view compared=%zu with_objects=%zu ground=%zu "
+                    "objects=%zu "
+                    "terrain=%zu field=%zu missing=%zu\n",
+                    diff.compared, diff.with_objects, diff.ground, diff.objects, diff.terrain,
+                    diff.field, diff.missing);
+        if (!diff.equal()) {
             std::printf("VERIFY FAILED\n");
             return 1;
         }

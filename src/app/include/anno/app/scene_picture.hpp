@@ -27,6 +27,30 @@
 
 namespace anno::app {
 
+/// The steps of a build's life the trace seam reports (PictureLimits::trace; round dy, C2).
+enum class PictureEvent : std::uint8_t {
+    /// apply: the island's desired version advanced to `version`.
+    Desired,
+    /// dispatch: a build of `version` was admitted (a credit was taken, the job queued).
+    Admitted,
+    /// dispatch: the island's start waits (slots, bytes or reclamation behind); `version` desired.
+    Deferred,
+    /// worker: the build of `version` started.
+    Started,
+    /// worker: the build of `version` finished and is the island's current result.
+    Built,
+    /// worker: the build of `version` threw.
+    Failed,
+    /// worker: the build of `version` finished after a newer version was desired; discarded.
+    Superseded,
+    /// dispatch or commit: a queued job or a finished result of `version` was dropped.
+    Dropped,
+    /// commit: a result of `version` was built from lists the generation no longer has; requeued.
+    Requeued,
+    /// commit: `version` is in the new generation.
+    Committed,
+};
+
 /// The bounds of the retained work (round dw, DW4). Each value is a default with its reason; the
 /// viewer may pass others (the play options). Test seams are for the test suite only.
 struct PictureLimits {
@@ -61,6 +85,10 @@ struct PictureLimits {
     /// "result"), after every other part of the payload is gone and before its credit is released,
     /// on the thread that destroys it.
     std::function<void(const char* what, std::size_t index)> payload_destroy_hook;
+    /// Bench and test seam: every step of a build's life (PictureEvent) with the island index and
+    /// the version, on the thread where it happens (the window or a worker), while the picture's
+    /// lock is held: the callback must not call into the picture. Null by default.
+    std::function<void(PictureEvent event, std::size_t index, std::uint64_t version)> trace;
 };
 
 class ScenePicture {
@@ -97,6 +125,12 @@ class ScenePicture {
     /// committed. Returns 0 without committing when the reaper backlog is full (retried by the next
     /// call). Window thread.
     std::size_t commit(render::FrameRenderer& frames);
+
+    /// The chunk keys the last commit that committed something invalidated (every zoom level).
+    /// Window thread.
+    [[nodiscard]] const std::vector<render::ChunkKey>& last_invalidated() const {
+        return last_invalidated_;
+    }
 
     /// Waits until no object build is queued or running (tests, stills; the window never calls it).
     /// Results are committed by commit().
@@ -182,6 +216,7 @@ class ScenePicture {
     /// only its island's entry, so the cost of a start does not grow with the rest of the city
     /// (round dx, DX2e). Rebuilt for the touched islands when the list changes (reindex).
     std::map<std::uint32_t, std::vector<SceneBuilding>> by_island_;
+    std::vector<render::ChunkKey> last_invalidated_;
 
     /// Rebuilds the entries of `islands` from the building list (one pass over the list).
     void reindex(const std::set<std::uint32_t>& islands);

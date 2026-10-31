@@ -388,7 +388,7 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
     for (std::size_t t = 0; t < std::max<std::size_t>(threads, 1); ++t) {
         threads_.emplace_back([st = state_, fault = limits_.build_fault,
                                max_attempts = limits_.max_attempts,
-                               destroy_hook = limits_.payload_destroy_hook] {
+                               destroy_hook = limits_.payload_destroy_hook, trace = limits_.trace] {
             for (;;) {
                 PictureJob job;
                 {
@@ -400,6 +400,9 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                     job = std::move(st->jobs.front());
                     st->jobs.pop_front();
                     ++st->running;
+                    if (trace) {
+                        trace(PictureEvent::Started, job.index, job.version);
+                    }
                 }
                 const auto start = Clock::now();
                 const double queue_ms =
@@ -462,11 +465,17 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                         // build of this island that is not desired any more frees the island
                         // (it stays deferred until it starts again).
                         ++st->stats.discarded;
+                        if (trace) {
+                            trace(PictureEvent::Superseded, job.index, job.version);
+                        }
                         if (st->inflight[job.index] == job.version) {
                             st->close(job.index);
                         }
                     } else if (!built) {
                         ++st->stats.build_failures;
+                        if (trace) {
+                            trace(PictureEvent::Failed, job.index, job.version);
+                        }
                         st->close(job.index);
                         ++st->failures[job.index];
                         if (st->failures[job.index] >= max_attempts) {
@@ -481,6 +490,9 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                             st->retrying.insert(job.index);
                         }
                     } else {
+                        if (trace) {
+                            trace(PictureEvent::Built, job.index, job.version);
+                        }
                         auto same = std::find_if(
                             st->done.begin(), st->done.end(),
                             [&job](const PictureResult& r) { return r.index == job.index; });
@@ -598,6 +610,9 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                 state_->is_deferred[index] = true;
                 state_->deferred.push_back(index);
                 ++state_->stats.deferred;
+                if (limits_.trace) {
+                    limits_.trace(PictureEvent::Deferred, index, state_->desired[index]);
+                }
             }
         };
         for (std::size_t index : candidates) {
@@ -634,6 +649,9 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                     std::find_if(state_->jobs.begin(), state_->jobs.end(),
                                  [index](const PictureJob& q) { return q.index == index; });
                 if (queued != state_->jobs.end()) {
+                    if (limits_.trace) {
+                        limits_.trace(PictureEvent::Dropped, index, queued->version);
+                    }
                     dropped.push_back(std::make_shared<PictureJob>(std::move(*queued)));
                     state_->jobs.erase(queued);
                     handed = true;
@@ -643,6 +661,9 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                                  [index](const PictureResult& r) { return r.index == index; });
                 if (finished != state_->done.end()) {
                     ++state_->stats.coalesced;
+                    if (limits_.trace) {
+                        limits_.trace(PictureEvent::Dropped, index, finished->version);
+                    }
                     dropped.push_back(std::make_shared<PictureResult>(std::move(*finished)));
                     state_->done.erase(finished);
                     handed = true;
@@ -685,6 +706,9 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             job.index = index;
             job.version = state_->desired[index];
             job.base = current_;
+            if (limits_.trace) {
+                limits_.trace(PictureEvent::Admitted, index, job.version);
+            }
             // The island's buildings are copied only now, for an admitted build (DX2e).
             if (mine != by_island_.end()) {
                 job.buildings = mine->second;
@@ -753,6 +777,9 @@ std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const Building
             }
             // The desired version advances now, even if the build below is deferred.
             ++state_->desired[it->second];
+            if (limits_.trace) {
+                limits_.trace(PictureEvent::Desired, it->second, state_->desired[it->second]);
+            }
             state_->dirty.insert(it->second);
             state_->failures[it->second] = 0;
             state_->failed_for_good[it->second] = false;
@@ -790,6 +817,9 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
                 ready.push_back(std::move(r));
             } else {
                 ++state_->stats.discarded;
+                if (limits_.trace) {
+                    limits_.trace(PictureEvent::Dropped, r.index, r.version);
+                }
                 if (state_->inflight[r.index] == r.version) {
                     state_->close(r.index);
                 }
@@ -812,6 +842,9 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
         if (r.base_lists != old->island_lists_handle(r.index)) {
             ++requeued;
             const std::lock_guard lock(state_->mutex);
+            if (limits_.trace) {
+                limits_.trace(PictureEvent::Requeued, r.index, r.version);
+            }
             state_->close(r.index);
             dropped.push_back(r.base_lists);
             dropped.push_back(std::make_shared<PictureResult>(std::move(r)));
@@ -840,10 +873,14 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
     std::shared_ptr<const render::Scene> next = old->with_islands(std::move(updates));
     std::vector<render::ChunkKey> invalid(keys.begin(), keys.end());
     frames.invalidate(invalid, next->generation());
+    last_invalidated_ = invalid;
     current_ = next;
     {
         const std::lock_guard lock(state_->mutex);
         for (const auto& [index, version] : committed_now) {
+            if (limits_.trace) {
+                limits_.trace(PictureEvent::Committed, index, version);
+            }
             state_->committed[index] = version;
             state_->close(index);
             if (state_->desired[index] == state_->committed[index]) {

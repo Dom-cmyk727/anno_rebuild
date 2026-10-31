@@ -507,3 +507,61 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
     }));
     CHECK(reclaimer.stats().bytes_in_flight == 0);
 }
+
+TEST_CASE("trace: an edit's steps are reported in order, a superseded version included" *
+          doctest::test_suite("scene_picture_ownership")) {
+    // Island 0's first build blocks; a newer change arrives; the first finishes superseded and the
+    // second is committed. The seam reports every step with its island and version.
+    auto scene = islands_scene(1);
+    std::vector<app::SceneBuilding> none;
+    Gate gate;
+    std::mutex mutex;
+    std::vector<std::pair<app::PictureEvent, std::uint64_t>> seen;
+    std::atomic<bool> other_island{false};
+    app::ScenePicture::Limits limits;
+    limits.build_fault = [&gate](std::size_t) {
+        if (gate.entered.load() == 0) {
+            gate.pass();
+        }
+    };
+    limits.trace = [&mutex, &seen, &other_island](app::PictureEvent e, std::size_t index,
+                                                  std::uint64_t version) {
+        // No assertion here: the seam runs on the workers too (doctest asserts on the test thread).
+        if (index != 0) {
+            other_island.store(true);
+        }
+        const std::lock_guard lock(mutex);
+        seen.emplace_back(e, version);
+    };
+    app::ScenePicture picture(scene, none, [](std::uint16_t) { return true; }, 2, limits);
+    Opener opener(gate);
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1)});
+    REQUIRE(eventually([&] { return gate.entered.load() == 1; }));
+    picture.apply({added(2, 0, 2)});
+    // The second build runs on the other worker while the first is still held at the gate.
+    REQUIRE(eventually([&] {
+        const std::lock_guard lock(mutex);
+        return std::find(seen.begin(), seen.end(),
+                         std::make_pair(app::PictureEvent::Built, std::uint64_t{2})) != seen.end();
+    }));
+    gate.open.store(true);
+    REQUIRE(drain(picture, frames, 20));
+    // (No chunk key is invalidated here: with no Anlagen the objects draw nothing. The legal
+    // workload's real-data case checks the keys.)
+    CHECK(!other_island.load());
+    using E = app::PictureEvent;
+    const std::lock_guard lock(mutex);
+    auto at = [&seen](E e, std::uint64_t v) {
+        return std::find(seen.begin(), seen.end(), std::make_pair(e, v)) - seen.begin();
+    };
+    const auto n = static_cast<std::ptrdiff_t>(seen.size());
+    CHECK(at(E::Desired, 1) < at(E::Admitted, 1));
+    CHECK(at(E::Admitted, 1) < at(E::Started, 1));
+    CHECK(at(E::Desired, 2) < at(E::Admitted, 2));
+    CHECK(at(E::Started, 2) < at(E::Built, 2));
+    CHECK(at(E::Built, 2) < at(E::Committed, 2));
+    CHECK(at(E::Superseded, 1) < n);
+    CHECK(at(E::Committed, 2) < n);
+    CHECK(at(E::Committed, 1) == n); // version 1 is never committed on its own
+}

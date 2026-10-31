@@ -2008,6 +2008,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** nothing in the sim derives territory from a Kontor (`docs/sim/fixed-map.md`). Tiles get an owner only from `IslandSpec::owner_runs`. A player can build only on tiles their city owns (`footprint_owner_rule`, `placement.hpp`). The load-time building path does not read the coast flag (OQ-052). MAP.1 therefore writes one owner run over every tile of a seated start island so the developer start can build.
 - **How to resolve:** find the game-start claim that walks out from the Kontor (AnnoWelt, the city or island init after a warehouse is placed) and name the radius and the stop condition. Do not copy this into OQ-027 or OQ-052.
 - **Update (2026-10-31 readiness):** Kontor 1302's action radius byte is 24, and that byte is the market-search radius (`docs/re/transport.md` §1.1). The help text says the warehouse service area marks city limits. The founding click's commit callee was not opened (`docs/re/ship-founding.md` §3.3), so 24 is still not the city-claim radius.
+- **Correction (2026-10-31):** the unread callee is the Kontor handler's `0x10049340` (`docs/re/ship-founding.md` §3.5). Section 3.3 is the mine cursor and is not the city-claim walk. Radius 24 remains the market-search radius.
 
 ## OQ-515: Equal land and equal distance as map acceptance (MAP.2, 2026-10-31)
 - **Status:** superseded 2026-10-31. Natural asymmetry is the settled rule. This is not a request to pick a wider tolerance.
@@ -2049,6 +2050,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** the historical candidates stored rotation 0 because the footprint is square. The original door is unread. Ship-start manifests store a ship facing, which is the figure's facing at sea, not a warehouse door.
 - **How to resolve:** read the founding placement (W6.1). Do not invent a door direction in the manifest.
 - **Update (2026-10-31 readiness):** the click test reads a rotation byte in 0..3 and swaps the footprint axes (`AnnoFrame.dll` `0x1004638d`). Kontor 1302's `ENTRANCE` stores two points, `(2.5, 13/6)` and `(11/6, 0.5)`. The writer that chooses the rotation for a click was not found, so the manifest still does not store a door. Ship facing 0..3 remains the figure's cardinal heading (`docs/re/ship-navigation.md` §4).
+- **Correction (2026-10-31):** `0x1004638d` is inside `tCursorAnlageBergwerk`, not the warehouse handler. The Kontor handler is `AnnoFrame.dll` `0x10048e60`, and it was not shown to read a rotation. The two entrance points remain file data for type 1302. The door a founding click writes is still unread (`docs/re/ship-founding.md` §3.5).
 
 ## OQ-521: Clustered or dispersed ship spawns (MAP.2, 2026-10-31)
 - **Status:** open. The ship start itself does not choose this.

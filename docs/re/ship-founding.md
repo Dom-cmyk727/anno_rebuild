@@ -1,10 +1,16 @@
 # Ship founding: the first warehouse
 
 **Status:** partial. File evidence for Kontor 1302 and the shipped help is
-checked against this build. The click path is a static trace through
-`View.dll` and `AnnoFrame.dll` on the GOG modules in `game/app`. It was not
+checked against this build. The menu path and the cursor classes are a
+static trace through `View.dll` and `AnnoFrame.dll` on the GOG modules in
+`game/app`. The warehouse placement callee was not opened. Nothing here was
 run in the original game (`NOT_RUN_ORIGINAL`). Addresses are virtual
 addresses with image base `0x10000000`.
+
+`AnnoFrame.dll` `0x10046300` is the mine cursor `tCursorAnlageBergwerk`.
+An earlier revision of this note called it the warehouse click. That
+attribution is withdrawn. The warehouse handler is `0x10048e60`, and its
+placement callee `0x10049340` is unread.
 
 This note separates three layers.
 
@@ -77,8 +83,9 @@ Goods numbers charged by Place, from the existing registry note
 (`docs/sim/state.md`, AnnoWelt `0x10027a77` / AnnoGame `0x1000a5a0`):
 `0x29` tools = `HEAD[5]`, `0x2a` wood = `HEAD[4]`, `0x2b` bricks = `HEAD[3]`,
 `0x2c` marble = `HEAD[6]`, each stored `<< 8` (8.8 tons). `0x2d` is inside
-the same five-wide check below; 1302's `HEAD` does not put a fifth material
-in bytes 3–6. Gold is the separate u16, not one of those bytes.
+the five-wide goods loop of the mine cursor (§3.4), which is not the
+warehouse handler. 1302's `HEAD` does not put a fifth material in bytes
+3–6. Gold is the separate u16, not one of those bytes.
 
 The action radius 24 is the market-search radius
 (`docs/re/transport.md` §1.1): a square around the footprint centre. The
@@ -86,70 +93,180 @@ help text says the warehouse service area marks city limits. This trace
 does not show the city-claim walk, so radius 24 is not the answer to
 OQ-490.
 
-## 3. The ship action and the click test
+## 3. The ship menu and the two cursors
 
-### 3.1 Selecting the warehouse
+The ship menu and `tCursorAnlageBergwerk` were previously written as one
+warehouse click. They are different classes. Each connection below names
+the call or the vtable slot that shows it. A missing connection stays
+missing.
+
+### 3.1 From the ship menu to `tCursorAnlageKontor`
 
 `Texte.dat` section `TOOLTIP:SCHIFFMAIN` contains the line "Build warehouse".
 The name `MAKEKONTORICON` (`View.dll` `0x100a9170`) is copied into a menu
 slot, and slot index 3 registers the callback `View.dll` `0x10063ba0`
 (`0x10063966`).
 
-`0x10063ba0` does four calls:
+`0x10063ba0` does four calls on the ship view:
 
 1. `[esi+0x62c]` vtable `+0x78` with `[esi+0x648]`.
 2. `[esi+0x638]` vtable `+0x40`, result pushed onward.
 3. `[esi+0x648]` vtable `+0x60` with `(8, that result)`, then `+0x60` with `(0, 0x516)`.
 4. The menu object's vtable `+0x9c` with `(0xC, 1, 0)`.
 
-`0x516` is 1302. This is the ship control that selects the coastal
-warehouse. The parallel scout/pioneer callback `View.dll` `0x10047ae0`
+`0x516` is 1302. The parallel scout/pioneer callback `View.dll` `0x10047ae0`
 pushes `0x515` (1301, `MARKT`) instead. That is a different action. The
 help's "main market building" is not identified with 1301 here.
 
-What `+0x60` and `+0x78` do inside the UI object was not opened. The effect
-established at this boundary is: the ship menu selects building id 1302.
+The pointer at the ship view's `+0x648` is produced earlier, while the menu
+is built (`View.dll` `0x1006330b`):
 
-### 3.2 The predicate, `AnnoFrame.dll` `0x10046300`
+```
+mov ecx, [ebx + 0x62c]
+push 0x13
+call [vtable + 0x74]
+mov [ebx + 0x648], eax
+```
 
-The click function containing `0x100468d7` (`0x100468ac` through
-`ret 0xc` at `0x10046946`) builds a placement record, calls `0x10046b60`,
-and on a non-zero result calls `0x10046300(placement, 0x2000000, cache)`.
-A zero return jumps to `0x10046b50` and does not reach the commit call.
-So the checks inside `0x10046300` run at the click, not only when the menu
-was built. The menu-enable test that makes the item appear was not read.
+A null return fails that setup with `0x80004005` (`0x10063320`).
 
-`0x10046300` (`ret 0xc`, locals `0xc5c`) returns 0, without a commit, when
-any of the following fails. Each item is this function unless noted.
+**Unknown.** The class of the object at ship-view `+0x62c` was not
+identified. Nothing in this trace stores a `tFrameGame` or a
+`tFrameGameFull` into that field. The virtual call is the right shape for
+the slot below and is not proof that the field holds that object.
+
+If the object is one of those two classes, the rest of the chain is direct:
+
+| Step | Evidence | Object |
+|---|---|---|
+| Slot `+0x74` of `tFrameGame` (vtable `0x10086428`, locator `0x1008ed78`) and of `tFrameGameFull` (vtable `0x1008664c`, locator `0x1008ee68`) | Both slots are `AnnoFrame.dll` `0x10007e50` | The frame object, class as named |
+| `0x10007e50` | The argument is the cursor kind. The cached pointer is `this + kind*4 + 0x1834`. A miss calls factory `0x10066330` and stores the result (`0x10007ed4`) | Same frame object |
+| Factory kind `0x13` | `cmp edi, 0x13` at `0x10066647`, then `call 0x10049400` at `0x10066666` | Constructs `tCursorAnlageKontor` |
+| Factory kind `0x0e` | `call 0x10046bf0` at `0x1006640a` | Constructs the mine cursor in §3.2. Not this menu |
+| Published pointer | `lea eax, [edx+esi+4]` at `0x100666f5`, written through the out-pointer. The constructor stores vtable `0x100884bc` at that address (`0x100494bc`). The cache returns it (`0x10007ee5`) | The Kontor subobject, not the complete object |
+
+`0x100884bc` is the vtable at complete-object offset `0x20c`. Type
+descriptor `0x10096928`, name `.?AVtCursorAnlageKontor@@`. Locator
+`0x1008fcd8` points at that descriptor and records offset `0x20c`.
+
+On vtable `0x100884bc`:
+
+- Slot `+0x60` is `0x100495a0`, which jumps to `0x10049140`. Property index
+  0 stores the u16 argument at `this-0x1c8` (`0x10049150`). That address is
+  complete-object `+0x44`. The constructor first writes `0x515` there
+  (`0x1004949b`). A later property-0 write replaces it. The menu's
+  `+0x60(0, 0x516)` is that write when this vtable is the one at
+  view `+0x648`.
+- Slot `+0x70` is `0x100495e0`, which jumps to handler `0x10048e60`.
+
+The handler refuses a zero id word (`cmp word [esi-0x1c8]` at `0x10048e89`).
+On the click path it calls `0x10049340` (`0x10048ed4`) with the placement
+coordinates. Its call list does not include `0x10046300`.
+
+**Unknown.** `0x10049340` was not opened. Coast, tile class, distance,
+rotation and payment for the warehouse are not established. The mine
+arithmetic in §3.3 is not a substitute.
+
+### 3.2 `0x10046300` is `tCursorAnlageBergwerk`
+
+Checked on this build, image base `0x10000000`:
+
+| Fact | Address |
+|---|---|
+| Type descriptor `.?AVtCursorAnlageBergwerk@@` | `0x100968b0` |
+| Locator: signature 0, offset `0x78`, type descriptor `0x100968b0` | `0x1008fa58` |
+| Vtable. The dword at `0x10088160` is the locator | `0x10088164` |
+| Slot `+0x70` | `0x10046dc0`: `sub ecx, [ecx-4]; jmp 0x10046830` |
+| That handler calls `0x10046300` | `0x100468df` |
+| Constructor, reached for factory kind `0x0e` | `0x10046bf0` |
+
+This is static mine-cursor behaviour. It is not the warehouse click.
+
+### 3.3 What the mine handler does
+
+`docs/re/production.md` already names two slots this function uses. Type
+slot `+0xac(i)` is output goods. Island slot `+0x114` (`0x1008bec0`) reads
+island `+0x24`, the deposit field, and the deposit finder then calls slot
+`+0x14` (`0x100787c0`). This function calls `+0x114` and then slot `+0xc`.
+That is not slot `+0x14`. The 6-byte records are not identified as deposits,
+and they are not ships.
+
+`0x10046300` (`ret 0xc`, frame `sub esp, 0xc5c`) returns 0 when any row
+below fails. The click handler `0x10046830` calls it and, on 0, does not
+reach its own commit call. That commit is the mine handler's, not
+`0x10048e60`.
 
 | Condition | Address | What is shown |
 |---|---|---|
-| Island under the tile | `0x1004634d` | World/map slot `+0x8c(x, y)`. Null fails (`0x1004635b`). |
+| Island under the tile | `0x1004634d` | Slot `+0x8c(x, y)` on the object at `[this+8]`. Null fails (`0x1004635b`). |
 | Cached island | `0x1004636e` | If the cache pointer's island is non-null and differs, fail. |
 | Type | `0x10046383` | Slot `+0x70(building id)`. |
-| Rotation | `0x1004638d` | Byte at the tool `+0x46`. Values above 3 skip the swap. The jump table at `0x10046760` swaps type slots `+0x50` and `+0x54` (width and height). Odd rotations exchange the axes. A 4×4 stays 4×4. |
-| Nearby object | `0x1004644f`–`0x10046645` | See below. No match fails. |
-| Uniform tile class | `0x100466a1` | Island slot `+0xec(x, y)` on every footprint tile. The first value other than `0x0f` is kept. A later tile with a different value fails. If every tile is `0x0f`, fail (`0x100466d3`). |
+| Rotation | `0x1004638d` | Byte at the tool `+0x46`. Values above 3 skip the swap. The jump table at `0x10046770` swaps type slots `+0x50` and `+0x54`. |
+| Selected record | `0x100464c6`–`0x10046645` | No record whose mask matches fails. |
+| Uniform class, one non-`0x0f` | `0x100466a1` | Below. |
 | Class object | `0x100466dd` | Island slot `+0xf8(class)` must be non-null. |
-| Identity | `0x100466ed` | That object's slot `+0x1c` must equal `[pointer+0x5c]`. The pointer is the local `[esp+0x60]`. No direct store to `[esp+0x60]` appears in this function, so what is compared is unread. This is not evidence of a player-territory test. |
+| Identity | `0x100466ed` | That object's slot `+0x1c` must equal `[this+0x5c]`. |
 | Final accept | `0x1004673b` | The class object's slot `+0xa0` returns the function result. |
 
-Nearby-object rule, as far as the arithmetic goes:
+**Stack.** `0x10046314` copies entry `ecx` to `ebp`, so `ebp` is `this`.
+`0x1004633f` and `0x10046340` push the two arguments of the `+0x8c` call.
+`mov [esp+0x68], ebp` at `0x10046341` writes `this` eight bytes deeper than
+the depth used once those arguments are gone, which is the local later read
+as `[esp+0x60]`. The call at `0x1004634d` has no following `add esp`. The
+next store, `mov [esp+0x68], ebx` at `0x10046357`, is the island pointer
+read at `0x1004667b`. Those two `[esp+0x68]` stores are different locals
+because of the two pushes. `mov ecx, [esp+0x60]` at `0x100466f0` is the
+first store. The pointer is `this`. It is not uninitialized, and
+`[this+0x5c]` was not given a name. It is not a player id.
 
-- The search window starts at `tile + (size−1)//2 − 7` on each axis. The extent byte is `((size−1) & 1) + 15`. For a 4×4 that is a 16×16 window whose origin is 6 tiles before the footprint origin.
-- Island slot `+0x114`, then that object's slot `+0xc`, fills a list of 6-byte records (stride 6: two u16, then a byte, then a bitset at `+5`).
-- Type slot `+0xac(0)` is a bit index. The record is ignored unless that bit is set in byte `+5`.
-- Among the rest, the closest wins. Separation of the two centres is clamped up to 0, then `dx²+dy²` is compared with the best. The initial best is the sentinel `0x3fff0001` (`0x1004645d`), and the comparison is strict (`jge` skips). The sentinel is "no candidate yet", not a measured ship range.
-- The record class is unread. Help says the warehouse is placed near the ship. The code selects the nearest listed object of the type's category inside the window. Calling that object a ship is the help's reading, not a vtable proof. **Blocking:** the vtable of one 6-byte record's owner, and of the object returned by island slot `+0x114`.
+**Selected record.** Each record is 6 bytes: word `+0`, word `+2`, byte
+`+4` (a rotation, compared with 3 at `0x100464dc`), byte `+5`. A closer
+match is saved at `0x1004660c`–`0x1004661e`: the position words and the size
+bytes from type slots `+0x50`/`+0x54` after that rotation. The class walk
+at `0x10046673` uses that saved rectangle. On success, `0x10046715` writes
+word `+0` to the placement at `+2`, word `+2` to the placement at `+4`, and
+byte `+4` to the placement at `+6`. The checked footprint and the
+coordinates written back come from the selected record.
 
-`0x0f` is the tile class this function rejects when it covers the whole
-footprint. It is not identified with `HEIGHT` 15 or with water. **Blocking:**
-the return of island slot `+0xec` on open water, on `HEIGHT >= 16` land, and
-on the tile where a successful warehouse stands.
+**Class.** `ebp` starts at `0x0f` (`0x10046664`). Island slot `+0xec(x, y)`:
+a return of `0x0f` is skipped (`je 0x100466bd` at `0x100466aa`); the first
+other value is kept (`0x100466b1`); a later other value must equal it
+(`0x100466b5`); if every return was `0x0f`, the function fails
+(`0x100466d3`). These three results follow from those branches and were not
+run:
 
-### 3.3 Affordability and the commit flag
+- Returns `0x0f`, `0x0f`, `3`, `0x0f`, `3`. The `0x0f` values are skipped,
+  `3` is kept, and the later `3` agrees.
+- Returns only `0x0f`. Fails at `0x100466d3`.
+- Returns `2`, then `3`. Fails at `0x100466b7`.
 
-Still in the click function, after `0x10046300` returns non-zero:
+`0x0f` is not identified with `HEIGHT` 15 or with water. The name of the
+value `+0xec` returns is unread.
+
+**Mask.** The value from type slot `+0xac(0)` is in `ecx` at
+`0x100465fd`–`0x10046608`:
+
+```
+dec ecx
+mov edx, 1
+shl edx, cl
+mov cl, [ebx+5]
+test cl, dl
+```
+
+The output is decremented before the shift. `production.md` treats
+`+0xac(0) == 1` as goods `EISENERZ`. After `dec` the shift count is 0 and
+the mask is `1 << 0 = 1`, so record byte `+5` bit 0 is tested. A return of
+4 becomes shift count 3 and mask `1 << 3 = 8`, so bit 3 is tested. Without
+the decrement, a return of 1 would test bit 1 (mask 2). A failed test
+skips the record (`je 0x1004662c` at `0x1004660a`).
+
+The distance score that picks the closest record stays in this function.
+It is a mine-cursor score. It is not a ship range.
+
+### 3.4 Affordability on the mine click
+
+After `0x10046300` returns non-zero, still inside `0x10046830`:
 
 1. Type lookup, slot `+0x70(id)` (`0x100468fa`).
 2. `AnnoFrame.dll` `0x10043d80` (`0x10046909`).
@@ -164,60 +281,59 @@ with slot `+0x1c` then `+0x60`. If the unit argument is null, the function
 returns 1 without those compares (`0x10043d8f`).
 
 The caller passes the building type and the pointer at `[esi−0x58]`
-(`0x100468ff`). That field was not identified. **Blocking:** name the object
-at the build-tool field read at `0x100468ff`. Until then, who pays — ship
-holds, player treasury, or both — is unread. How a good split across several
-holds is summed is inside the unread `+0x7c` / `+0xcc` callees.
+(`0x100468ff`). That field is on the mine cursor. It was not identified.
+The Kontor handler's calls do not include `0x10043d80`, so this field is
+not who pays for a warehouse.
 
-The commit is not skipped when `0x10043d80` returns 0. The return is folded
-into the flag (`0x10046913`):
+The mine commit is not skipped when `0x10043d80` returns 0. The return is
+folded into the flag (`0x10046913`):
 
-| `0x10043d80` | Flag pushed to slot `+0x78` |
+| `0x10043d80` | Flag pushed to the mine handler's slot `+0x78` |
 |---|---|
 | 1 | `0x80000000` |
 | 0 | `0xA0000000` |
 
 Both values include `0x80000000`. The failure value also includes
-`0x20000000`. The callee of `+0x78` was not opened. Whether a failed
-affordability check still mutates the world is unknown. This trace does
-**not** show an atomic rollback.
+`0x20000000`. The callee of that slot was not opened. This is not an
+atomic rollback, and it is not the warehouse handler.
 
 `0x10043d30` runs after that call and only adds the type's reported costs
-into the buffer. It is not the subtraction.
+into the buffer. It is not the subtraction. The Kontor handler also calls
+`0x10043d30` (`0x10048fca`). Sharing that cost reader does not make the
+two handlers the same predicate.
 
-### 3.4 What this trace does not show
+### 3.5 What is still unread for a warehouse
 
 | Question | Status |
 |---|---|
-| Required ship distance in world units | The window and the nearest-object score are above. The object is not proven to be the ship. No second range constant was read. |
-| Coastal terrain | Coast **flag** `0x2000` is on the type. The tile test is "uniform class, not all `0x0f`". The class name is unread. |
-| Obstruction | Unread inside `+0xa0` and inside the commit. |
-| Ownership / rival territory | The identity compare exists. Its operands are not shown to be player ids. Help supports two settlements on one island and limits takeover to a warehouse service area. |
-| Rotation chosen by the click | The test consumes 0..3 and swaps axes. The writer of tool `+0x46` was not read. |
-| Scenery removal | Not in this function. Existing note D24 (`docs/sim/state.md`): placing a building writes a type id onto footprint tiles, and what happens to the previous tile object is unread (OQ-063). |
-| When the city, building and service area become visible | The commit callee `+0x78` was not opened. Help says the service area is visible in info mode after the warehouse exists. |
-| Cancellation and repeated clicks | Unread. A failed `0x10046300` does not reach `+0x78`. |
-| Simultaneous founding order, idempotency | Not in this trace. |
+| Class of ship-view `+0x62c` | Unknown. The call is `+0x74(0x13)`. `tFrameGame` implements that slot. The store into the field was not found. |
+| `0x10049340` | Unknown. This is the Kontor handler's placement callee. |
+| Required ship distance | Not in the Kontor handler's opened calls. The mine window is not that distance. |
+| Coastal terrain | Coast flag `0x2000` is on type 1302. The tile test that uses it was not opened. |
+| Who pays | Unread on `0x10048e60`. The mine field `0x100468ff` is a different object. |
+| Rotation a warehouse click writes | Unread. The mine tool's byte `+0x46` is not the warehouse door (OQ-520). |
+| Scenery removal | Not in the opened Kontor calls. OQ-063. |
+| City and service area | The Kontor commit callee was not opened. Help says the service area is visible in info mode after the warehouse exists. |
+| Simultaneous founding order | Not in this trace. |
 
-An AI probe in `CompLogic.dll` (`0x100154bf`) looks up id `0x516`, adjusts a
-rotation in 0..3, and calls slot `+0x6c` with flag `0x2000000`. It counts
-the site when a returned byte equals `0x30`. That is a computer-player scan
-using the same flag the player path passes to the test. It is not the
-player transaction, and `0x30` is not given a further meaning here.
+An AI probe in `CompLogic.dll` (`0x100154bf`) loads id `0x516` and calls
+slots `+0x70` and `+0x6c` with flag `0x2000000`. It counts a returned byte
+`0x30`. That is a computer-player scan. It is not the player menu, and it
+does not identify `0x10049340`.
 
 ## 4. Current rebuild
 
 `fixed_map.cpp` with `developer_start` true checks that each start island
 is unique, then creates a Kontor and an owner run over the whole island
 (OQ-490). `developer_start` false omits that grant. Neither path reads a
-ship manifest, moves a ship, or runs `0x10046300`. The scenario adapter
+ship manifest, moves a ship, or runs `0x10048e60`. The scenario adapter
 records player subrecords it does not model with `unknown_record`
 (`scenario_formats.cpp`); it does not spawn the endless-start ship.
 
 `map2-ship-start-v2` checks a 4×4 of `HEIGHT >= 16`, clear of ANLAGEN `HEAD`
 rectangles, beside exterior-4 water, with a 4-connected route of at most
 400 tiles and a site component of at least 256. Those are tool predicates.
-They are not `0x10046300`.
+They are not `0x10049340`, and they are not the mine cursor.
 
 ## 5. Rebuild invariant (adaptation, not original)
 
@@ -227,7 +343,8 @@ A founding command is one simulation step.
   Menu state from an earlier tick is not authority.
 - It either commits city, building, payment and territorial write together,
   or it leaves the world unchanged. This atomicity is required for lockstep.
-  Section 3 does not prove the original does this.
+  Section 3 does not prove the original does this. The flag fold in §3.4
+  belongs to the mine handler.
 - Two commands in one tick that claim overlapping footprint tiles are ordered
   by seat, then by command index. The later one receives the failure result.
   The original's simultaneous order was not found.
@@ -235,8 +352,8 @@ A founding command is one simulation step.
   a duplicate unless a later spec defines an id. No original idempotency
   bit was found.
 - The payer is an explicit account in the command (ship holds and player
-  gold named separately). The original split remains the blocking field in
-  §3.3.
+  gold named separately). The original warehouse split is the unread
+  Kontor callee in §3.5, not the mine field `0x100468ff`.
 
 ## 6. Fixture specifications
 
@@ -244,28 +361,30 @@ These are specifications for a later implementation and for an original
 capture. They are not results of an original run.
 
 **Positive, original capture.** Ship carrying at least 12 t wood, 5 t tools
-and 350 gold, standing in the search window of a 4×4 whose tile class is
-uniform and not all `0x0f`, type 1302, rotation 0..3. Expected if the unread
-callees accept: a building 1302, a city for that player, gold and goods
-reduced by the type costs. Rotation, scenery and territory radius are
-recorded, not predicted.
+and 350 gold. Use the control whose callback is `View.dll` `0x10063ba0`.
+Expected if the unread Kontor callee accepts: a building 1302, a city for
+that player, gold and goods reduced by the type costs. Rotation, scenery,
+distance and territory radius are recorded, not predicted. The mine
+cursor's class rule is not this expectation.
 
-**Negative, from `0x10046300` returning 0** (commit not reached):
+**Mine cursor, static only.** These rows are `0x10046300` returning 0.
+They are not warehouse outcomes.
 
-| Case | Expected at this boundary |
+| Case | Expected at the mine boundary |
 |---|---|
-| No island at the tile | Return 0, no `+0x78` |
-| Footprint tiles not one shared class, or all `0x0f` | Return 0, no `+0x78` |
-| No category-matching object in the window | Return 0, no `+0x78` |
+| No island at the tile | Return 0, the mine handler does not reach its `+0x78` |
+| Footprint tiles not one shared class, or all `0x0f` | Return 0, same |
+| No mask-matching record | Return 0, same |
 
-**Negative, affordability.** `0x10043d80` returns 0. The commit **is still
-called**, with flag `0xA0000000`. Expected world effect: **unknown** until
-`+0x78` is read or captured. The rebuild invariant is stronger: no city and
-no payment.
+**Mine affordability, static only.** `0x10043d80` returns 0. The mine
+handler still calls its commit, with flag `0xA0000000`. Expected world
+effect: unknown. This flag was not found on `0x10048e60`. The rebuild
+invariant is stronger, and it applies to the warehouse command: no city
+and no payment.
 
-**Not specified from this trace.** Occupied footprint, rival territory, and
-a ship that is outside the window but still "close" in some other metric.
-Do not treat a geometric miss as an original failure.
+**Not specified.** Occupied footprint, rival territory, and how close the
+ship must be. Do not treat a geometric miss, or a mine-window miss, as an
+original warehouse failure.
 
 ## 7. Original-runtime capture
 
@@ -279,9 +398,12 @@ When that runner is available, one session is enough:
    at its stored coordinates with its stored cargo.
 2. Open the ship menu and use the control whose callback is `View.dll`
    `0x10063ba0` (building 1302). Click a coast tile next to the ship, then
-   a water tile, then a tile more than the 16×16 window away.
+   a water tile, then a tile far from the ship. The distance that matters
+   is whatever `0x10049340` implements. Do not use the mine cursor's window
+   as that distance.
 3. Repeat with the hold totals reduced below 5 t tools, and with wood still
-   12 t, to separate the goods check from the window check.
+   12 t. Record the result. The mine goods check is not assumed to be the
+   warehouse goods check.
 4. For each click, record player gold, every hold, new objects (id, tile,
    rotation), city list length, footprint tile owners, and whether
    `GELAENDE` items under the footprint remain.

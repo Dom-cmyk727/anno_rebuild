@@ -7071,3 +7071,162 @@ not. Table in `docs/sim/fixed-map.md` §10.
 `tools/map2_preview.py` writes labelled top-down and isometric PNGs. They
 stay in the ignored cache. The six pictures were inspected; notes are in
 §10 and in the final report.
+
+## MAP.2 — candidate review — 2026-10-31 — status: QUESTION
+
+Three original-like five-player layouts are ready for selection. None is a
+full pass of profile `map2-proposed-v1`. The failed gates are reported below
+and were not widened. `data/maps/lan5.txt` is unchanged. This lane did not
+merge, push, or start an engine or GPU build.
+
+### Files
+
+| Path | Role |
+|---|---|
+| `tools/map2_shape.py` | Land masks, half-plane, integer tolerances |
+| `tools/map2_measure.py` | Remeasure of the nine endless maps and the 256² pools |
+| `docs/sim/map2-measured.json` | Counts and hashes from that run, no masks |
+| `tools/map2_profile.py` | Profile `map2-proposed-v1` only; generic check is untouched |
+| `tools/map2_selftest.py` | Synthetic checks, plus the lan5 dump |
+| `tools/map2_layout.py` | Offline generator; does not write `lan5.txt` |
+| `tools/map2_preview.py` | Labelled top-down and isometric PNGs |
+| `data/maps/candidates/lan5-a.txt` | 2442 bytes, sha256 `0ac467ca4f2f2beaec91362ed61482120c99fd8de952d8f0d28b540766abc846` |
+| `data/maps/candidates/lan5-b.txt` | 2442 bytes, sha256 `e391dbda37de3993040b8bdea3303dfaa71fb6f33e20cf49d655d57cfe084772` |
+| `data/maps/candidates/lan5-c.txt` | 3160 bytes, sha256 `bc9f70791cad62da2350e490841ee7bc807265d59d00e7e6c0dca15460086e02` |
+| `docs/sim/fixed-map.md` §8–§10 | Measurements, profile, comparison |
+| `docs/open-questions.md` OQ-515..OQ-520 | Open. OQ-521..OQ-524 unused |
+
+`data/maps/lan5.txt` remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476
+bytes. Dump digest `c6af83f95104cd4f`, 21 islands.
+
+### Commands and logs
+
+Worktree `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2`,
+branch `task/MAP-2-original-like`. Game files read from
+`/Users/dom/Dev/anno1503-worktrees/anno1503/game/app`. Logs under
+`cache/map2-parallel-2026-10-31/` (gitignored).
+
+- `python3 -I tools/map2_measure.py --game-dir <game/app> --out docs/sim/map2-measured.json`
+- `python3 -I tools/map2_layout.py --game-dir <game/app> --out-dir data/maps/candidates`
+- The same generator into `cache/map2-parallel-2026-10-31/scratch-maps` matched all three files byte for byte (`layout-repro-final.txt`). Tried lattice cells: A 364, B 483, C 2032. Large-island problems 0. Missed filler 0.
+- `python3 -I tools/map2_profile.py validate data/maps/candidates/lan5-{a,b,c}.txt --game-dir <game/app>` exits 1. Reports also in `preview-lan5-*.txt`.
+- `python3 -I tools/map2_selftest.py`: 47 checks, 0 failed (`selftest-final.txt`).
+- `python3 -I tools/map2_preview.py <candidate> --game-dir <game/app> --out-dir cache/map2-parallel-2026-10-31/previews`
+
+Host: Apple M5 Max, 18 logical CPUs, 48 GiB. Tools ran at `nice` 10, one
+Python process, stdlib only. No C++ build, ctest, renderer, sanitizer, or
+Wine was started by this lane. The runs took a few seconds and are not an
+isolated timing.
+
+### What was measured
+
+§8 is the authority. Short form: 00 is 20 islands at 39.4% rectangle share,
+not the board's 16 islands / 19%. Nord has 13 numbered `.scp` files; "14"
+includes the dummy. The candidate pool is 9 nord shapes and 10 dschungel
+shapes after dropping people markers and true copies. No quintuple is within
+±5% of its mean `HEIGHT >= 16` land. Best nord worst-permille is 79. Best
+dschungel is 52. Ten 256² islands cannot keep both the 03 rectangle share
+and the proportional filler counts (OQ-516).
+
+### The three layouts
+
+All three use the same two template sets, rotated per seat. Homes lie on a
+northern arc. Each southern island lies on the opposite ray, past the map
+centre. Filler follows 03's non-256 climate×size weights. A and B request 30
+filler islands (40 islands, 45.5% rectangle share). C requests 45 (55
+islands, 52.2%).
+
+| Gate (50 permille unless noted) | lan5-a | lan5-b | lan5-c |
+|---|---|---|---|
+| Large land ±10% (100) | pass 79 / 52 | pass 79 / 52 | pass 79 / 52 |
+| Home land | fail 79 | fail 79 | fail 79 |
+| Paired southern land | fail 52 | fail 52 | fail 52 |
+| Pair distance | pass 11 | pass 29 | pass 21 |
+| Centre distance | pass 9 | pass 41 | pass 43 |
+| Rival distance | fail 177 | fail 210 | fail 215 |
+| Reach, each climate | absent for a seat | absent for a seat | absent for a seat |
+
+Pair lengths are about 887–906, 804–851 and 861–893 tiles. The spread passes.
+The routes cross the map; they are not short hops. Both assignment modes
+agreed. On lan5-c they agree on a swap of south slots 12 and 13, which is
+not the authored opposite ray for seats 2 and 3. Structural rules pass on
+all three, including the half-plane, distinct shapes, coasts, bands, and no
+overlap.
+
+### Previews inspected
+
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-a-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-a-iso.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-b-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-b-iso.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-c-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-c-iso.png`
+
+Each top-down picture shows irregular land masks, not rectangles. Five large
+green northern islands sit in an arc above a dashed middle line. Five large
+dark-green southern islands sit below it. Seat marks are on the inner coasts.
+Coloured lines run from those marks through the centre cross to the paired
+southern island. The legend names polar, tundra, nord, praerie, dschungel
+and steppe, and all six colours appear as filler. North is the small-y side,
+labelled N. The isometric pictures keep north at the top, with +x down-right
+and +y down-left, and show the same coasts. lan5-b is a slightly tighter arc
+than lan5-a, with the same filler count and different coastlines because the
+template rotation differs. lan5-c is the crowded one: more small islands,
+especially around the centre, and seat 2's line is the swapped partner
+rather than a perfect opposite ray. Nothing in the pictures shows a shipping
+channel, fertility, or ores.
+
+### Tests and negative controls
+
+Final `map2_selftest.py`: 47 checks, 0 failed. The lan5 dump still exits 0
+with digest `c6af83f95104cd4f`.
+
+Each control was a one-line edit, a run, then an immediate restore. The
+clean run after the last restore is the 47/0 result.
+
+| Edit | Distinct failure |
+|---|---|
+| `CLIMATE_BAND_CHECK = False` | `FAIL polar y=0 on a 1024 edge is outside the band` |
+| `SHAPE_BY_MASK = False` | `FAIL two names with one land mask are refused` |
+| `ASSIGNMENT_MODE = 'seat-order'` | `FAIL chosen assignment must be the short cycle` |
+| `FAIRNESS_PERMILLE = 200` | `FAIL unfair home land must fail` |
+
+Logs: `mutation-band.txt`, `mutation-shape.txt`, `mutation-assign.txt`,
+`mutation-fair.txt`.
+
+### Decisions and reasoning
+
+- The five-player rules live in `map2_profile.py`, not in `fixed_map.py check`. A generic check that required ten large islands would reject lan5 and every ordinary map. The profile is opt-in and named.
+- Land is `HEIGHT >= 16` because that is the fixed-map count and the waterline. `HEIGHT > 0` and the average-19 classifier are different questions (OQ-519). The published permille figures use `>= 16` only.
+- Shape identity is the dihedral land mask. Filename suffixes and people-marked copies are not extra shapes. `N_0011` and `N_0019` share a mask and not a height hash; 0011 stays out because it is Mongolen.
+- The nord set is the only pool quintuple within ±10%. The south set is the closest, at 52 permille. Natives were not added. No search over placements can change those land totals.
+- Tolerances stayed at 100 and 50 permille. 52 is a failure of the ±5% proposal. Turning it into a pass would be a different proposal, which is OQ-515.
+- Assignment is `min-spread-sum-lex`, and every report also prints `min-spread-lex`. The constructed case in the selftest shows the baseline keeping a sum of 500 where the chosen rule takes 150. On these three files the two rules matched, so the printed pairing is not an artefact of the tie-break. The absolute lengths are still ~800–900 tiles (OQ-517, OQ-518).
+- Homes are on an arc and partners are on the opposite ray so that a Kontor facing the map centre also faces its partner. That is why pair distance and centre distance both pass ±5%. A vertical partner made the centre distances unequal once the Kontor sat on the inner coast, and a centre-facing Kontor made vertical pair distances unequal. The crossing length is the cost of holding both.
+- Rival distance still fails. Island centres on the arc are nearly evenly spaced; the coastal 4×4 chosen on each irregular shore is not. The gate stays failed.
+- Reach by nearest Kontor cannot give every seat every climate. Polar and tundra sit in the north, so a wing seat's Kontor is not the nearest to those islands. An absent bucket is not recorded as zero. The gate stays failed. Moving polar next to every seat would break the climate bands.
+- Filler density is a labelled choice, not a silent one. A and B aim at the coverage-matched ~45.5%. C aims at the denser ~52% reading. The split is largest-remainder of 03's weights, so the 64/80 counts are 6/14 rather than the pure size budget 7/13. The rectangle share is still 45.5% and 52.2%. The edge is still 1431.
+- Kontor rotation is 0. The door is unread (OQ-520). The footprint is a coastal 4×4. The tool's "toward the map centre" pick is not `World::create`.
+- The radial screen includes the wrap-around angle, so a northern arc is not reported as a regular ring. A full pentagon would be.
+- Board counts that disagreed with the files (00's island count, Nord's "14 usable") follow the files.
+
+### Not run
+
+These are not passes. No `src/` file changed, so the C++ gates were out of scope.
+
+- Loading a candidate through the fixed-map loader.
+- A 2–5 seat simulation and a five-minute hash.
+- Windows versus Linux hash.
+- A five-city tick.
+- MSVC, GCC, clang-format, and ctest.
+- `tools/agree.py` against `anno-dump`. The Python dump of lan5 is unchanged; no `anno-dump` binary was built.
+
+### Owner decision
+
+Pick a layout (`lan5-a`, `lan5-b`, or `lan5-c`) and the tolerances (OQ-515,
+OQ-516). Usable partials if none is accepted as-is: the three files already
+meet the half-plane, the distinct shapes, the ±10% large-land band, and the
+±5% pair and centre bands. They do not meet ±5% home land (79), ±5% southern
+land (52), ±5% rival distance, or per-climate reach. Start money and input
+bindings are not decided here. Natives and pirates stay out of the pool.

@@ -43,7 +43,9 @@ def load_table():
 
 KINDS = {"desired", "admitted", "deferred", "started", "built", "failed", "superseded", "dropped",
          "requeued", "committed", "generation", "chunks_ready", "no_visible_change", "retired",
-         "reclaimed", "drain_start", "drain_end", "converged", "run_end", "gpu_mode", "gpu_ready"}
+         "reclaimed", "drain_start", "drain_end", "converged", "run_end", "gpu_mode", "gpu_ready",
+         "batch_published", "batch_taken", "frame_submitted", "frame_presented", "frame_failed",
+         "presented"}
 TIME = re.compile(r"[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")
 WHOLE = re.compile(r"[0-9]+")
 

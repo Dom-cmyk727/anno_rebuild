@@ -11,4 +11,7 @@ if(ANNO_BUILD_TESTS AND UNIX)
   # The matrix runner's and the aggregate's contracts (round dz, 1f): no game files, seconds.
   add_test(NAME picture_matrix_contract
     COMMAND bash ${PROJECT_SOURCE_DIR}/tools/bench/picture_matrix_test.sh $<TARGET_FILE:bench_picture>)
+  # The window matrix table's contract (round ec, D): a synthetic window case and its faults.
+  add_test(NAME window_table_contract
+    COMMAND bash ${PROJECT_SOURCE_DIR}/tools/bench/window_table_test.sh $<TARGET_FILE:bench_picture>)
 endif()

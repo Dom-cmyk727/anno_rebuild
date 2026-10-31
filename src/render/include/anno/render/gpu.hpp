@@ -496,6 +496,29 @@ class GpuFrame {
                     std::size_t group, std::uint64_t time_ms, WaterStyle style,
                     WGPUTextureView target, const Resample* resample = nullptr);
 
+    /// The compositor's copy of chunk `key` (round eb; docs/app/gpu-handoff.md, boundary 6). A
+    /// CPU chunk that is cached and fresh is CPU-ready; it is GPU-usable once `serial` equals its
+    /// Chunk::serial and it is not `fading` (then every plane of it is on the GPU and bound, and it
+    /// is drawn whole). Until then the key is GPU-pending: the GPU draws its previous copy (a
+    /// rebuilt chunk is swapped whole when its upload ends, never plane by plane), its stand-in or
+    /// the open sea.
+    struct ChunkGpuState {
+        /// Chunk::serial of the CPU chunk the GPU copy was uploaded from; 0 for none, a
+        /// placeholder or a stand-in.
+        std::uint64_t serial = 0;
+        /// An upload of the key is in progress (GpuLimits::upload_budget_ms spreads one over
+        /// frames, a plane at a time).
+        bool staging = false;
+        /// The copy is dissolving in over its placeholder (GpuLimits::chunk_fade_ms).
+        bool fading = false;
+    };
+    [[nodiscard]] ChunkGpuState chunk_state(const ChunkKey& key) const;
+    /// Work that later frames finish without new input, as of the last render(): a visible key
+    /// whose CPU chunk is cached but not GPU-usable yet (the upload limits deferred it), or a
+    /// dissolve in progress. A window that idles while paused keeps drawing while this is true
+    /// (app::FrameDemand::gpu_work).
+    [[nodiscard]] bool work_pending() const;
+
     /// Whether `group` can be shown without the window thread waiting for
     /// content: its sea pattern is rendered and fully on the GPU (render()
     /// uploads the patterns of the other groups a few steps per frame once

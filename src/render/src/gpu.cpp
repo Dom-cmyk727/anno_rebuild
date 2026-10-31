@@ -711,6 +711,8 @@ struct GpuFrame::Impl {
     /// The generation the render() in progress draws, when its caller passed an owning handle
     /// (null otherwise, and between frames): what render() starts that outlives it holds this.
     std::shared_ptr<const Scene> frame_scene;
+    /// A visible key's CPU chunk was not GPU-usable at the end of the last chunk sync.
+    bool uploads_pending = false;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -2053,6 +2055,17 @@ struct GpuFrame::Impl {
                 chunks.emplace(key, upload_chunk(key, nullptr));
                 ++stats.placeholders;
                 stats.sync_placeholder_ms += ms_since(p0);
+            }
+        }
+        // A visible CPU chunk that is not on the GPU as itself after this frame's uploads.
+        uploads_pending = false;
+        for (const auto& key : keys) {
+            const render::Chunk* c = frames.chunk(key);
+            const auto it = chunks.find(key);
+            if (c != nullptr &&
+                (it == chunks.end() || !it->second.real || it->second.serial != c->serial)) {
+                uploads_pending = true;
+                break;
             }
         }
         // Nothing visible is waiting: upload built chunks ahead, a few per frame,
@@ -3471,6 +3484,20 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         }
     }
     return stats;
+}
+
+GpuFrame::ChunkGpuState GpuFrame::chunk_state(const ChunkKey& key) const {
+    ChunkGpuState s;
+    if (const auto it = impl_->chunks.find(key); it != impl_->chunks.end() && it->second.real) {
+        s.serial = it->second.serial;
+    }
+    s.staging = impl_->staged.contains(key);
+    s.fading = impl_->fading.contains(key);
+    return s;
+}
+
+bool GpuFrame::work_pending() const {
+    return impl_->uploads_pending || !impl_->fading.empty();
 }
 
 bool GpuFrame::group_ready(const Scene& scene, std::size_t group) const {

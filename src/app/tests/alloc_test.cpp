@@ -8,6 +8,9 @@
 #include <cstddef>
 #include <cstdlib>
 #include <new>
+#if defined(_MSC_VER)
+#include <malloc.h>
+#endif
 
 // <cfloat> before doctest: with libc++ 22 doctest's own include order leaves DBL_EPSILON undefined
 // in its implementation.
@@ -16,6 +19,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -34,21 +38,56 @@ thread_local bool t_counting = false;
 thread_local bool t_refusing = false;
 thread_local std::size_t t_allocations = 0;
 
-void* allocate(std::size_t size, std::size_t align) {
+/// Counts an allocation of this thread inside the window, and refuses it when asked.
+void note_allocation() {
     if (t_counting) {
         ++t_allocations;
         if (t_refusing) {
             throw std::bad_alloc();
         }
     }
-    const std::size_t n = size == 0 ? 1 : size;
-    void* p = align <= alignof(std::max_align_t)
-                  ? std::malloc(n)
-                  : std::aligned_alloc(align, (n + align - 1) / align * align);
+}
+
+// Each replaced allocation function is paired with its own release: the plain forms with malloc
+// and free, the aligned forms with the platform's aligned allocator and its own free
+// (_aligned_malloc and _aligned_free on MSVC, where free must not release aligned memory;
+// aligned_alloc and free elsewhere). An aligned form always takes the aligned allocator, whatever
+// the alignment, so its delete always matches.
+void* allocate_plain(std::size_t size) {
+    note_allocation();
+    void* p = std::malloc(size == 0 ? 1 : size);
     if (p == nullptr) {
         throw std::bad_alloc();
     }
     return p;
+}
+
+void* allocate_aligned(std::size_t size, std::align_val_t a) {
+    note_allocation();
+    const auto align = static_cast<std::size_t>(a);
+    const std::size_t n = size == 0 ? 1 : size;
+#if defined(_MSC_VER)
+    void* p = _aligned_malloc(n, align);
+#else
+    // aligned_alloc takes a size that is a multiple of the alignment.
+    void* p = std::aligned_alloc(align, (n + align - 1) / align * align);
+#endif
+    if (p == nullptr) {
+        throw std::bad_alloc();
+    }
+    return p;
+}
+
+void release_plain(void* p) noexcept {
+    std::free(p);
+}
+
+void release_aligned(void* p) noexcept {
+#if defined(_MSC_VER)
+    _aligned_free(p);
+#else
+    std::free(p);
+#endif
 }
 
 /// The window in which this thread's allocations are counted (and refused when `refuse`).
@@ -72,40 +111,80 @@ class Window {
 } // namespace
 
 void* operator new(std::size_t size) {
-    return allocate(size, alignof(std::max_align_t));
+    return allocate_plain(size);
 }
 void* operator new[](std::size_t size) {
-    return allocate(size, alignof(std::max_align_t));
+    return allocate_plain(size);
+}
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_plain(size);
+    } catch (...) {
+        return nullptr;
+    }
+}
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_plain(size);
+    } catch (...) {
+        return nullptr;
+    }
 }
 void* operator new(std::size_t size, std::align_val_t a) {
-    return allocate(size, static_cast<std::size_t>(a));
+    return allocate_aligned(size, a);
 }
 void* operator new[](std::size_t size, std::align_val_t a) {
-    return allocate(size, static_cast<std::size_t>(a));
+    return allocate_aligned(size, a);
+}
+void* operator new(std::size_t size, std::align_val_t a, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_aligned(size, a);
+    } catch (...) {
+        return nullptr;
+    }
+}
+void* operator new[](std::size_t size, std::align_val_t a, const std::nothrow_t&) noexcept {
+    try {
+        return allocate_aligned(size, a);
+    } catch (...) {
+        return nullptr;
+    }
 }
 void operator delete(void* p) noexcept {
-    std::free(p);
+    release_plain(p);
 }
 void operator delete[](void* p) noexcept {
-    std::free(p);
+    release_plain(p);
 }
 void operator delete(void* p, std::size_t) noexcept {
-    std::free(p);
+    release_plain(p);
 }
 void operator delete[](void* p, std::size_t) noexcept {
-    std::free(p);
+    release_plain(p);
+}
+void operator delete(void* p, const std::nothrow_t&) noexcept {
+    release_plain(p);
+}
+void operator delete[](void* p, const std::nothrow_t&) noexcept {
+    release_plain(p);
 }
 void operator delete(void* p, std::align_val_t) noexcept {
-    std::free(p);
+    release_aligned(p);
 }
 void operator delete[](void* p, std::align_val_t) noexcept {
-    std::free(p);
+    release_aligned(p);
 }
 void operator delete(void* p, std::size_t, std::align_val_t) noexcept {
-    std::free(p);
+    release_aligned(p);
 }
 void operator delete[](void* p, std::size_t, std::align_val_t) noexcept {
-    std::free(p);
+    release_aligned(p);
+}
+void operator delete(void* p, std::align_val_t, const std::nothrow_t&) noexcept {
+    release_aligned(p);
+}
+void operator delete[](void* p, std::align_val_t, const std::nothrow_t&) noexcept {
+    release_aligned(p);
 }
 
 namespace render = anno::render;
@@ -155,6 +234,27 @@ TEST_CASE("alloc: the window counts this thread's allocations and refuses them w
     {
         Window w(true);
         CHECK_THROWS_AS((void)std::make_unique<int>(1), std::bad_alloc);
+        CHECK(w.close() == 1);
+    }
+    // The nothrow forms report a refusal as a null pointer; the aligned forms count and refuse too.
+    {
+        Window w(true);
+        int* p = new (std::nothrow) int(1);
+        CHECK(p == nullptr);
+        CHECK(w.close() == 1);
+    }
+    struct alignas(64) Wide {
+        unsigned char bytes[64];
+    };
+    {
+        Window w(true);
+        CHECK_THROWS_AS((void)std::make_unique<Wide>(), std::bad_alloc);
+        CHECK(w.close() == 1);
+    }
+    {
+        Window w(false);
+        auto wide = std::make_unique<Wide>();
+        CHECK(reinterpret_cast<std::uintptr_t>(wide.get()) % 64 == 0);
         CHECK(w.close() == 1);
     }
 }

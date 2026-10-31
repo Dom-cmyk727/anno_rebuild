@@ -9066,3 +9066,147 @@ the perf documentation. Binaries (sha256, first 16 hex):
   `0187337fcaacdba2`.
 No merge, push, rebase, prune or map change; no developer input, movement, founding or preview; no
 autonomous loop.
+
+## Round eb: W4.3 paused progress, failure-safe teardown, reliable lifecycle tests, the constrained upload path, edit to GPU-usable (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `e75231f` (verified at the start,
+  clean; code head `d62a1f3`).
+- **Code under test:** `3f41396`, with a clean tree for every gate. The commit after it is this report.
+- **Evidence:** `cache/eb-runs/` (ignored); the acceptance matrix written before implementation is
+  `cache/eb-runs/acceptance.md`.
+- **Host:**
+  - Apple M5 Max, 18 cores, 48 GiB, 80% memory free, 1.6 TiB disk free, macOS 27.0.1, Apple clang 21,
+    SDK 26.5;
+  - GPU: wgpu-native on Metal ("Apple M5 Max (Metal)");
+  - shared, not quiet: load 1.6 to 3.0; Syncthing and other users' processes were busy; nothing of theirs
+    was stopped.
+- **Jobs:** 16 compile, 8 light-test; memory admission on. The MAP executor's coordinator protocol was not
+  touched.
+- **Display:** one owned `caffeinate -d -i -t 36000` (pid 61991), stopped at the end.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged at the start and at the end.
+
+**Commits:**
+- `1e7e066` the GPU readiness of a chunk and the compositor's pending work (3A);
+- `1358741` paused mailbox progress (1A);
+- `816a524` failure-safe teardown (1B);
+- `51e233b` river lifecycle gates (2);
+- `6cc73e8` the constrained upload path (3B to 3E);
+- `8b9fda2` the water reproducer and OQ-525 (4);
+- `06dfa13` edit to GPU-usable in the bench, trace and table (5A to 5C);
+- `00dab8d` the GPU oracle fix;
+- `3f41396` the matrix notes and the handoff;
+- this report.
+
+### Acceptance matrix
+
+| # | Requirement | Regression or measurement | Evidence | Origin | Status |
+|---|---|---|---|---|---|
+| 1A | A batch a turn in flight publishes after the paused window went idle is consumed and shown while paused; the sim stays paused; the window idles again; a hidden window keeps the bounded mailbox and converges when shown | `play_follow_test.cpp`: the real `PlayRunner` thread (turn 2 held by `set_turn_gate`), `ScenePicture`, chunk workers and the production `PlayFollower`/`FrameDemand` the viewer calls; a fresh-scene chunk comparison | `p1a-*`; with the round-ea predicate (picture pending only) both cases fail (`p1a-mutant.log`) | defect introduced in ea (viewer wiring) | FIXED |
+| 1B | The teardown case releases both gates (chunk workers, blocked builder) on every exit, before the joins; early failure does not hang | `ScopedRelease` declared after each owner; the order logged and asserted; an early-failure case under a watchdog; the reclamation and accounted-byte checks kept | `p1b-1.log`; a mutant without releases hangs and the watchdog ends it, exit 124 in 37 s (`p1b-mutant.log`) | test defect introduced in ea | FIXED |
+| 2 | River lifecycle: the observation bound separate from the release; no self-release by timeout | the gate waits until released; `ReleaseOnExit` in all five gated cases, declared after the scene; the gate shared with the scene's fault function; `anno::test::Watchdog`; a controlled 3 s delayed-cleanup case | the round-ea failure is kept (`ea-runs/g3-asan-cpu.log`). The round-ea gate, bound shortened to 2 s, fails the delayed case with the same message and observation (`p2-mutant.log`). New code: dev 10 of 10 (`p2-dev-1.log`), ASan in G2 | pre-existing test design (round dw) | FIXED |
+| 3A | CPU-ready, GPU-pending and GPU-usable named and queryable | `GpuFrame::chunk_state`, `work_pending` | used by 3B to 3E and the bench | new | DONE |
+| 3B | One upload per frame: a multi-chunk edit finishes; the paused window draws until every key is GPU-usable | GPU case on the constrained limits, chunks built in the frame | 153 frames, 31 with a CPU-ready GPU-pending key; exact against a fresh compositor. Without the GPU term the paused window idles with chunks built but not uploaded (`p3b-mutant-2.log`) | the GPU half of the idle gap predates ea (upload limits); fixed in `1358741` | FIXED |
+| 3C | Second edit while uploads are outstanding: final output, stale handling, ownership, bounded retained work | GPU case | 63 chunk regions each one whole state; ends on the newest state; the replaced generation and its CPU chunks freed | new coverage | PASS |
+| 3D | Stand-ins and dissolves: a chunk is consistent internally; mixed chunks across keys allowed | GPU case on a manual fade clock | fading chunks not GPU-usable; rebuilt chunks swap whole; old and new chunks side by side in 2 frames | new coverage | PASS |
+| 3E | Leaving and re-entering the view; closing with uploads outstanding | GPU case | uploads dropped on leaving, redone on return; the CPU chunk of an upload in progress is freed with the compositor | new coverage | PASS |
+| 4 | Water difference: reproducer, pixel/sprite/layer record, cause | reproducer case (suite `picture_gpu_water`) and experiments | four pixels, Anlagen 2708 frame 54 below the waterline under the sea. Rounding to nearest in either CPU step gives max 1; in both, exact (`p4-experiment-*`) | pre-existing | CAUSE ESTABLISHED; reference decision OPEN (OQ-525); parity NOT ACCEPTED; no tolerance raised |
+| 5A-5C | Edit to GPU-usable correlated per island and generation, at one observation, labelled boundaries, malformed or incomplete evidence rejected | `bench_picture --gpu 1`; trace `gpu_mode`/`gpu_ready`; aggregate; table; known-answer case; contract checks | `picture trace:` 12 of 12; `picture_matrix_contract` | new | DONE; GPU completion UNOBSERVED; presentation UNMEASURED |
+| 5D | Release matrix: idle, one edit, 50-edit burst, sustained five-city stream; 2 and 4 workers; 1080p and 2160p; above the build rate | `tools/bench/picture_eb.cases` | `p5-matrix/` 18 of 18, oracles incl. the exact GPU view; the canary `p5-canary/` first; the first matrix (`p5-matrix-failed-oracle/`) failed on an oracle defect, fixed in `00dab8d` | new | DONE (docs/perf/README.md "Edit to GPU-usable on the compositor") |
+| ext | Windows MSVC, Linux GCC 13 / Clang 18, RTX 4090, Radeon | commands below | — | external | NOT_RUN |
+| ext | Metal timestamp cases | the full GPU suite | `gpu_test.cpp:2219`, `:2515` | pre-existing | OPEN, unwaived |
+
+**Failed attempts kept:**
+- **Vacuous case (G0):** the first focused ASan run (`p2-asan-focused.log`) failed with exit 7, a vacuous
+  case. A new case name with a `;` split its CTest registration; three new names in all. The runner's guard
+  and `test_names_are_selectable` caught them; renamed in `6cc73e8`.
+- **3B mutant passed:** the first version of 3B did not isolate the GPU term, because chunk-worker work
+  masked it. The case was changed to build chunks in the frame.
+- **Matrix oracle:** the first matrix stopped at `idle-uhd-w2` on the GPU oracle (reference compositor
+  limited to 6 uploads per frame).
+
+### Measurements (Release `cache/eb-runs/bench_picture.release-00dab8d`, sha256 `8fb1892cf5b9ee88…`)
+
+The full table and the method are in docs/perf/README.md, "Edit to GPU-usable on the compositor (round eb)".
+Raw files are in `cache/eb-runs/p5-matrix/`. To reproduce:
+
+```
+tools/bench/picture_matrix.sh <bench_picture> <game_dir> <new out_dir> tools/bench/picture_eb.cases
+tools/bench/picture_table.py <bench_picture> <out_dir>
+```
+
+Each case's `manifest.txt` records:
+- the revision, the binary hash, the seed and the map;
+- the adapter, the upload limits and the viewport;
+- the workers;
+- `target=offscreen presentation=unmeasured gpu_completion=unobserved`.
+
+**Results** (shared host, integrated GPU):
+- **Sustained stream (10 edits/s), 1080p and 2160p, 2 and 4 workers:**
+  - object-ready p50 24.7 to 24.8 ms, p99 42.7 to 45.8 (n = 100);
+  - visible CPU-ready p50 50.0 to 50.4 (n = 15 or 20; no p99);
+  - visible GPU-usable p50 50.3 to 50.5, max 72.4 to 89.3, 0 unfinished.
+- **50-edit burst:**
+  - GPU-usable p50 140.9 to 215.1 ms (n = 10);
+  - the upload limit adds 20 to 70 ms over CPU-ready.
+- **Above the build rate (400/s):**
+  - GPU-usable p50 99.2 / 91.9 ms, p95 207.0 / 163.3 (n = 74) with 2 / 4 workers;
+  - build queue delay p99 24.4 / 15.6 ms (n = 151 / 223).
+- **Window thread to submission:** p99 at most 2.72 ms (idle 2160p), max at most 3.0 ms. That is CPU
+  submission only, not GPU execution or presentation.
+- **Retained work:** reservations at most 36.1 MB; at most 8 builds outstanding; exact peak incremental
+  payload 4.9 to 11.3 MB; RSS 0.94 to 1.52 GB; no paging.
+
+**Not claimed:**
+- the PLAN §0.3 presented-frame targets;
+- a 4-core x86 host;
+- RTX or Radeon adapters;
+- late-game scale: the fixture is five cities of about 40 buildings, without roads and with density capped
+  by scenery;
+- multiplayer load.
+
+### Gates (each run once; initial failures kept)
+
+| Gate | Command | Revision / identity | Result |
+|---|---|---|---|
+| G0 focused ASan after packages 1-2 | `run_selected.sh build/asan - '^(anno_render_tests\.river lifecycle\|anno_app_tests\.play follow\|anno_render_gpu_tests\.picture GPU: (teardown\|a failure after))' 3600 … 4` | `51e233b` | FAIL (exit 7): 14 of 14 executed passed, no sanitizer line, 1 vacuous child (the `;` name, above) |
+| G1 dev, bridge, evidence and play-follow selection | `run_selected.sh build/dev - '^(anno_app_tests\.(credit\|ownership\|accounting\|progress\|trace\|picture\|publish\|scene picture\|probe\|backing\|legal workload\|play follow)\|anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)' 1800 … 8` | `3f41396`, `anno_app_tests` `f145990f871e97f0`, alloc `d443f9844eb1919a` | PASS 83 of 83, vacuous 0; 2 probe skips by design |
+| G2 ASan/UBSan, play follow, picture trace and evidence, river lifecycle, every picture GPU case | `run_selected.sh build/asan - '^(anno_app_tests\.(play follow\|picture trace\|picture evidence)\|anno_render_tests\.river lifecycle\|anno_render_gpu_tests\.picture GPU)' 7200 … 4` | `3f41396`, `anno_app_tests` `951b45be8340ea4a`, `anno_render_tests` `753858651b7f9fe4`, `anno_render_gpu_tests` `74f838b64fe51d8e` | PASS 35 of 35, no sanitizer line, vacuous 0 (1668 s) |
+| G3 dev, all of `anno_render_gpu_tests` on Metal (the affected integration gate) | `run_selected.sh build/dev - '^anno_render_gpu_tests\.' 3600 … 1` | `3f41396`, `8c52dffe8a514987` | 100 of 102. The 2 failures are the known Metal timestamp cases (`gpu_test.cpp:2219`, `:2515`; now #368 and #371), open and unwaived. 1 skip: `play_gpu_test` needs an RTX 4090 |
+| Builds and format | full dev build; Release `anno1503 anno_app_tests anno_render_tests anno_render_gpu_tests bench_picture`; `clang-format 23.1.3 --dry-run --Werror` on the 17 changed C++ files | `3f41396` | 0 warnings, 0 errors; format clean |
+| Contract and table | `picture_matrix_contract` (in G1) and manual with `ANNO1503_GAME_DIR` | `3f41396` | PASS |
+| NOT RE-RUN all of `anno_render_tests` and the heavy label | — | `frame.cpp`, `scene.cpp` and the CPU render code are unchanged since round ea's G4 (173 of 173) | not repeated |
+| NOT RUN RTX 4090, Radeon iGPU | `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -L gpu -R "picture GPU\|play: GPU" -j 1` | — | NOT_RUN |
+| NOT RUN Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `ctest --preset msvc -R "anno_app_(alloc_)?tests\.\|anno_render(_gpu)?_tests\." -j 8` | — | NOT_RUN |
+| NOT RUN Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | NOT_RUN |
+
+### Remaining limitations and the next smallest unit
+
+- **Open:**
+  - **OQ-525:** which rounding is the reference. Visual parity of water objects below the waterline is not
+    accepted.
+  - **Metal timestamp cases:** unwaived.
+  - **External gates:** NOT_RUN.
+  - **Boundaries:** GPU completion and presentation are not measured.
+- **Not claimed:**
+  - full GPU acceptance;
+  - original-game visual parity;
+  - the presented-frame targets;
+  - late-game performance.
+- **No measured regression:** this is the first GPU-path measurement of this workload; the CPU-only matrix
+  was not rerun.
+- **Next smallest unit:** the presentation boundary in the viewer. Record each frame's surface acquire and
+  `wgpuSurfacePresent` return, with its status, as trace events. Then run the same `gpu_ready` correlation
+  in a scripted `--play --commands` window session (no input bindings), at 1080p and 2160p. Label the
+  present return as CPU-side presentation feedback, not display time. Run the GPU cases on the RTX 4090 and
+  the Radeon iGPU.
+
+**Final identities.**
+- **Code under test:** `3f41396`.
+- **Release bench:** `bench_picture.release-00dab8d` (sha256 `8fb1892c…`).
+- **Dev binaries** (sha256, first 16 hex): `anno_app_tests` `f145990f871e97f0`, `anno_app_alloc_tests`
+  `d443f9844eb1919a`, `anno_render_tests` `02fd9949a451ce02`, `anno_render_gpu_tests` `8c52dffe8a514987`,
+  `anno1503` `a1eb7b9b19daa03e`.
+- **ASan binaries:** as in G2.
+
+No merge, push, rebase, prune or map change; no developer input, preview, ship movement or founding; no
+autonomous loop.

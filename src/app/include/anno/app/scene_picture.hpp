@@ -1,18 +1,19 @@
-// The picture of a play scene that follows the sim (W4.3, rounds du and dv; docs/app/game-shell.md,
-// "Immutable per-island object lists" and "Retained work"). The window thread applies the
-// building batches to the picture's building list and asks for a rebuild of each touched island.
-// A worker rewrites the island's records, builds its object lists and the change set (the objects
-// that appear and disappear, and their chunk keys) from immutable inputs. The window thread
-// commits the newest result of each island as one new scene generation and invalidates the chunk
-// keys of the change. Nothing the window thread drops is freed on it: superseded generations,
-// jobs and results go to a reaper thread. No World and no sim type appears here: the input is the
-// published batches and the scene.
+// The picture of a play scene that follows the sim (W4.3, rounds du, dv and dw;
+// docs/app/game-shell.md, "Immutable per-island object lists" and "Retained work and reclamation").
+// The window thread applies the sim's building batches to the picture's building list, which is the
+// DESIRED state, and asks for a rebuild of each island it changed. A worker rewrites the island's
+// records and builds its object lists and change set from immutable inputs. The window thread
+// commits the newest valid result of each island as one new scene generation (the COMMITTED state)
+// and invalidates the chunk keys of the change. A failed build keeps the island dirty and is
+// retried from the desired state; nothing waits for another sim batch. Final destruction of
+// generations runs on render::SceneReclaimer, never on the window.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -24,27 +25,38 @@
 
 namespace anno::app {
 
+/// The bounds of the retained work (round dw, DW4). Each value is a default with its reason; the
+/// viewer may pass others (the play options). Test seams are for the test suite only.
 struct PictureLimits {
-    /// Islands with a request not yet committed (queued, running or finished). A request
-    /// beyond it is deferred: the building list keeps the change, and the island is built
-    /// when a commit frees a slot, in the order it was deferred. Reason: an outstanding island
-    /// holds a copy of its records and lists, so this bounds what a stalled commit retains.
+    /// Islands with a build in flight or a finished result not yet committed. A request beyond it
+    /// is deferred (kept in order, not dropped) and started by a later commit. Reason: each such
+    /// island holds a copy of its records, lists and change set until it is committed or dropped.
     std::size_t max_outstanding = 8;
-    /// Retired items (generations, jobs, results) that the reaper has not released yet. A
-    /// commit that would add to a longer backlog is skipped and retried on the next call; it
-    /// never blocks. Reason: a stalled reaper must not let generations pile up unseen.
+    /// Estimated bytes of the island records of the builds in flight or finished and not committed
+    /// (ScenePicture::Stats::outstanding_bytes_peak). A build beyond it is deferred, unless it is
+    /// the only one (a single over-budget island still makes progress). Provisional: the value is
+    /// set from the record sizes of the representative five-player island, to be measured in DW5
+    /// (docs/perf).
+    std::size_t max_outstanding_bytes = std::size_t{64} << 20;
+    /// Retired items (generations, jobs, results) that the reaper has not released yet. A commit
+    /// that would add to a longer backlog is skipped and retried by the next call; it never blocks.
+    /// While the reaper is behind, an island that is already in flight is deferred, not replaced
+    /// (its queued job and result stay until the reaper catches up). Reason: a stalled reaper must
+    /// not let work pile up.
     std::size_t max_reclaim_backlog = 4;
+    /// Failed builds of one island before it is reported as failed (ScenePicture::error()). Between
+    /// attempts the island waits 1, 2, 4, ... commit calls (the window's frames), so a transient
+    /// failure recovers without another sim batch and a persistent one stops after this many
+    /// attempts.
+    std::uint32_t max_attempts = 4;
     /// Test seam: a build that throws for the island index (an injected worker failure).
     std::function<void(std::size_t index)> build_fault;
     /// Test seam: called by the reaper before it releases each item (a stalled reaper).
     std::function<void()> reclaim_gate;
 };
 
-/// The picture of the play scene (see the header comment).
 class ScenePicture {
   public:
-    /// The bounds of the retained work (round dv, R4). Each value is a default with its reason;
-    /// the viewer may pass others (the play options). Test seams are for the test suite only.
     using Limits = PictureLimits;
 
     /// `base` is generation 0 as loaded; its byte buffers are owned by the scene itself
@@ -54,60 +66,72 @@ class ScenePicture {
     ScenePicture(std::shared_ptr<const render::Scene> base, std::vector<SceneBuilding> buildings,
                  const std::function<bool(std::uint16_t)>& is_building, std::size_t threads = 1,
                  Limits limits = {});
-    /// Stops the workers; the jobs, results and generations still held are released on the reaper.
+    /// Stops the workers; the jobs, results and generation still held are released on the
+    /// reclaimer.
     ~ScenePicture();
     ScenePicture(const ScenePicture&) = delete;
     ScenePicture& operator=(const ScenePicture&) = delete;
 
-    /// The current generation. Window thread.
+    /// The current generation (the committed state). Window thread.
     [[nodiscard]] std::shared_ptr<const render::Scene> scene() const { return current_; }
-    /// The picture's buildings, sorted by building_before. Window thread.
+    /// The picture's buildings (the desired state), sorted by building_before. Window thread.
     [[nodiscard]] const std::vector<SceneBuilding>& buildings() const { return picture_; }
 
-    /// Applies the batches in turn order to the building list and requests a rebuild of every
-    /// island they touch. A newer request for an island replaces an older one, queued or
-    /// finished, and the replaced work is reclaimed off the window thread. Islands beyond
-    /// Limits::max_outstanding are deferred, not dropped. Returns the islands requested (not the
-    /// deferred ones). Window thread; never waits for a worker.
+    /// Applies the batches in turn order to the desired state and requests a rebuild of every
+    /// island they touch. Every change advances the island's desired version at once, even when its
+    /// build is deferred. Returns the islands whose build started now (not the deferred ones).
+    /// Window thread; never waits for a worker.
     std::size_t apply(const std::vector<std::shared_ptr<const BuildingBatch>>& batches);
 
-    /// Commits every finished result that is still the newest request of its island, as one new
-    /// generation, and invalidates the chunk keys of the change at every zoom level. Returns the
-    /// islands committed. Returns 0 without committing when the reaper backlog is full (retried by
-    /// the next call). Window thread.
+    /// Commits every finished result that is still the desired version of its island, as one new
+    /// generation, and invalidates the chunk keys of the change at every zoom level. Starts the
+    /// builds that are due (deferred, retrying after a failure, or stale). Returns the islands
+    /// committed. Returns 0 without committing when the reaper backlog is full (retried by the next
+    /// call). Window thread.
     std::size_t commit(render::FrameRenderer& frames);
 
-    /// Waits until no object build is queued or running (tests, stills; the window never calls
-    /// it). Results are committed by commit(), which also starts the deferred builds.
+    /// Waits until no object build is queued or running (tests, stills; the window never calls it).
+    /// Results are committed by commit().
     void wait_idle();
 
-    /// Islands with a request not yet committed, deferred ones included.
+    /// Islands whose committed state differs from the desired state: changed, deferred, waiting for
+    /// a retry or failed. Zero means converged. Window thread.
     [[nodiscard]] std::size_t pending() const;
 
+    /// The message of the last build that failed for good (its island is reported by
+    /// Stats::failed_islands); empty when no island has failed for good. Cleared when the island is
+    /// changed again.
+    [[nodiscard]] std::string error() const;
+
     struct Stats {
-        /// Islands committed, results discarded because a newer request replaced them.
+        /// Islands committed; results discarded (superseded, stale or invalid).
         std::uint64_t committed = 0, discarded = 0;
+        /// Results re-queued at commit because the island's lists had changed since the build.
+        std::uint64_t version_requeues = 0;
         /// Chunk keys invalidated by commits, summed over commits.
         std::uint64_t invalidated_keys = 0;
-        /// Requests deferred by Limits::max_outstanding, and the deferred builds started later.
-        std::uint64_t deferred = 0, started_deferred = 0;
+        /// Requests deferred by the outstanding limit, the byte budget or reaper overload; deferred
+        /// builds started later; and builds deferred by the byte budget.
+        std::uint64_t deferred = 0, started_deferred = 0, budget_deferrals = 0;
         /// Finished results replaced by a newer one of the same island before their commit.
         std::uint64_t coalesced = 0;
         /// Queued jobs moved to the generation a commit made (so no old generation stays pinned).
         std::uint64_t rebased = 0;
-        /// Builds that threw; the island keeps its last committed lists until it is requested
-        /// again.
-        std::uint64_t build_failures = 0;
+        /// Builds that threw, builds retried after a failure, and islands that failed for good.
+        std::uint64_t build_failures = 0, build_retries = 0;
+        std::size_t failed_islands = 0;
+        /// Islands whose committed state differs from the desired state now.
+        std::size_t dirty_islands = 0;
         /// Commits skipped because the reaper backlog was full.
         std::uint64_t commit_skipped = 0;
-        /// Commits whose change set was recomputed on the window thread because the island's lists
-        /// had changed since the build (expected 0; a counter, not a path that should run).
-        std::uint64_t recomputed_changes = 0;
-        /// Items handed to the reaper (generations, jobs, results), and the largest counts seen.
-        std::uint64_t reclaimed = 0;
+        /// Generations, jobs and results handed to the reaper, and released by it (the scene itself
+        /// is destroyed by render::SceneReclaimer; see its own counters).
+        std::uint64_t reclaim_queued = 0, reclaim_completed = 0;
+        /// Largest counts seen at once: builds in flight or finished and uncommitted, the reaper
+        /// backlog, and the estimated bytes of those builds.
         std::size_t outstanding_peak = 0, reclaim_backlog_peak = 0;
-        /// Milliseconds of the newest object-list build and change set (worker), and of the newest
-        /// commit (window).
+        std::size_t outstanding_bytes = 0, outstanding_bytes_peak = 0;
+        /// Milliseconds of the newest object build (worker) and of the newest commit (window).
         double last_build_ms = 0, last_commit_ms = 0;
     };
     [[nodiscard]] Stats stats() const;
@@ -115,11 +139,6 @@ class ScenePicture {
   private:
     struct State;
     struct Reaper;
-    /// Requests the rebuilds of `wanted` islands and of the deferred ones that fit the outstanding
-    /// limit. Hands what it replaces to `dropped` (the caller retires it). Returns the wanted
-    /// islands requested. Window thread.
-    std::size_t dispatch(const std::vector<std::size_t>& wanted,
-                         std::vector<std::shared_ptr<const void>>& dropped);
     std::shared_ptr<const render::Scene> current_;
     std::vector<SceneBuilding> picture_;
     /// The island index of each island slot number (window thread; set at construction).
@@ -128,6 +147,12 @@ class ScenePicture {
     std::shared_ptr<Reaper> reaper_;
     std::vector<std::thread> threads_;
     Limits limits_;
+
+    /// Starts the builds of `wanted` islands and of the due ones (deferred, retrying), within the
+    /// limits. Hands what it replaces to `dropped` (retired by the caller). Returns the wanted
+    /// islands started.
+    std::size_t dispatch(const std::vector<std::size_t>& wanted,
+                         std::vector<std::shared_ptr<const void>>& dropped);
 };
 
 } // namespace anno::app

@@ -698,6 +698,15 @@ std::vector<SceneBuilding> first_of_each_island(const std::vector<SceneBuilding>
     return out;
 }
 
+/// Commits until nothing is pending, bounded (a stuck island fails the case, it does not hang it).
+bool drain(ScenePicture& picture, FrameRenderer& frames, int rounds) {
+    for (int round = 0; round < rounds && picture.pending() > 0; ++round) {
+        picture.wait_idle();
+        picture.commit(frames);
+    }
+    return picture.pending() == 0;
+}
+
 /// A change for a tracked building: it moves one tile, as one batch of the sim would send it. The
 /// tracked building `current` is updated to the moved one, and `list` follows the picture.
 void move_tracked(ScenePicture& picture, std::vector<SceneBuilding>& list, SceneBuilding& current,
@@ -789,13 +798,20 @@ TEST_CASE(
     CHECK(stalled.reclaim_backlog_peak <=
           limits.max_reclaim_backlog + 1 + 2 * limits.max_outstanding);
     gate.release();
+    // The commits wait for the reaper: drain after its catch-up, counted by its own counters.
+    const auto caught_up = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (picture.stats().reclaim_completed < picture.stats().reclaim_queued &&
+           std::chrono::steady_clock::now() < caught_up) {
+        std::this_thread::yield();
+    }
+    REQUIRE(picture.stats().reclaim_completed == picture.stats().reclaim_queued);
     for (int round = 0; round < 40 && picture.pending() > 0; ++round) {
         picture.wait_idle();
         picture.commit(frames);
     }
     CHECK(picture.pending() == 0);
     CHECK(picture.buildings() == list);
-    CHECK(picture.stats().reclaimed >= stalled.reclaimed);
+    CHECK(picture.stats().reclaim_queued >= stalled.reclaim_queued);
 }
 
 TEST_CASE("scene picture bounds: a failed build is counted, and its island can be requested again" *
@@ -823,14 +839,15 @@ TEST_CASE("scene picture bounds: a failed build is counted, and its island can b
     std::vector<SceneBuilding> list = f->buildings;
     move_tracked(picture, list, current.front(), 1);
     picture.wait_idle();
-    CHECK(picture.commit(frames) == 0); // the failed island has nothing to commit
+    CHECK(picture.commit(frames) == 0); // the failed island has nothing to commit yet
     CHECK(picture.stats().build_failures == 1);
-    CHECK(picture.pending() == 0);
-    // The island is requested again by the next change, and the picture follows.
-    move_tracked(picture, list, current.front(), 2);
-    picture.wait_idle();
-    CHECK(picture.commit(frames) == 1);
+    CHECK(picture.pending() == 1); // still owed: the change is not dropped
+    // The retry needs no new batch: the window's commits build the island again from the desired
+    // state.
+    CHECK(drain(picture, frames, 20));
     CHECK(picture.buildings() == list);
+    CHECK(picture.stats().build_retries >= 1);
+    CHECK(picture.error().empty());
 }
 
 TEST_CASE(
@@ -901,7 +918,7 @@ TEST_CASE("scene picture bounds: sustained edits keep the window's change work t
     CHECK(picture.pending() == 0);
     CHECK(st.outstanding_peak <= limits.max_outstanding);
     // The change set of every commit came from the worker: the window took none of it.
-    CHECK(st.recomputed_changes == 0);
-    CHECK(st.reclaimed > 0);
+    CHECK(st.version_requeues == 0);
+    CHECK(st.reclaim_queued > 0);
     CHECK(picture.buildings() == list);
 }

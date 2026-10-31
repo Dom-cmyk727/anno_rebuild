@@ -243,8 +243,8 @@ int main(int argc, char** argv) {
         static_cast<unsigned long long>(st.rebased),
         static_cast<unsigned long long>(st.commit_skipped),
         static_cast<unsigned long long>(st.build_failures),
-        static_cast<unsigned long long>(st.recomputed_changes),
+        static_cast<unsigned long long>(st.version_requeues),
         static_cast<unsigned long long>(st.invalidated_keys), st.outstanding_peak,
-        st.reclaim_backlog_peak, static_cast<unsigned long long>(st.reclaimed));
+        st.reclaim_backlog_peak, static_cast<unsigned long long>(st.reclaim_queued));
     return 0;
 }

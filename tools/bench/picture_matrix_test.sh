@@ -185,8 +185,9 @@ table "$BENCH" "$WORK/m_none" 2 "table without results.tsv"
 if [ -n "${ANNO1503_GAME_DIR:-}" ]; then
     new_matrix "$WORK/m_bench"
     mkdir -p "$WORK/m_bench/case/frames.tsv"
+    # The map from the source tree (CTest runs this script in the build directory).
     "$BENCH" "$ANNO1503_GAME_DIR" --scenario idle --duration-s 0.3 --out "$WORK/m_bench/case" \
-        > "$WORK/bench.stdout" 2> "$WORK/bench.stderr"
+        --map "$HERE/../../data/maps/lan5.txt" > "$WORK/bench.stdout" 2> "$WORK/bench.stderr"
     expect_status 5 "$?" "bench with an unwritable frames.tsv"
     grep -q "evidence not saved: .*frames.tsv" "$WORK/bench.stderr" || fail "bench: file not named"
     grep -q "	run_end	0	5$" "$WORK/m_bench/case/events.tsv" || fail "bench: run_end is not 5"

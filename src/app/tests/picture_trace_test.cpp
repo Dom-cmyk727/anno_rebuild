@@ -221,6 +221,150 @@ TEST_CASE("picture trace: evidence files are read and saved with every step chec
     std::filesystem::remove_all(dir);
 }
 
+namespace {
+
+/// A run's evidence finalized in a fresh directory where `block` (if not empty) is a directory in
+/// place of a file, the way a file that cannot be written is injected (round ea, 3e).
+struct Finalized {
+    std::filesystem::path dir;
+    app::EvidenceOutcome outcome;
+    std::string summary_given;
+};
+Finalized finalize_with(const std::string& name, const std::string& block, int verdict) {
+    Finalized f;
+    f.dir = std::filesystem::temp_directory_path() / ("anno_picture_finalize_" + name);
+    std::filesystem::remove_all(f.dir);
+    std::filesystem::create_directories(f.dir);
+    if (!block.empty()) {
+        std::filesystem::create_directories(f.dir / block / "occupied");
+    }
+    const std::vector<app::EvidenceFile> files{
+        {"frames.tsv", "frame\n0\n"}, {"chunks.tsv", "c\n"}, {"manifest.txt", "case\n"}};
+    const std::vector<app::TraceEvent> events{{0, K::DrainStart, 0, 0}, {1, K::DrainEnd, 0, 0}};
+    f.outcome = app::finalize_evidence(f.dir, files, events, 2.0, verdict,
+                                       [&f](const app::TraceSummary& s) {
+                                           f.summary_given = app::format_summary(s) + "tail\n";
+                                           return f.summary_given;
+                                       });
+    return f;
+}
+/// The saved trace's summary, or why it cannot be read (as bench_picture --aggregate reads it).
+anno::formats::Result<app::TraceSummary, std::string>
+saved_trace(const std::filesystem::path& dir) {
+    if (!std::filesystem::is_regular_file(dir / "events.tsv")) {
+        return std::string("no trace");
+    }
+    const auto text = app::read_text(dir / "events.tsv");
+    if (!text.ok) {
+        return text.error;
+    }
+    auto events = app::parse_tsv(text.text);
+    if (!events.ok()) {
+        return events.error();
+    }
+    return app::summarize(events.value());
+}
+bool no_partial_left(const std::filesystem::path& dir) {
+    for (const auto& e : std::filesystem::directory_iterator(dir)) {
+        if (e.path().extension() == ".partial") {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+TEST_CASE("picture evidence: a run is recorded as successful only after every file is saved" *
+          doctest::test_suite("picture_trace")) {
+    SUBCASE("every file saved: the trace carries the verdict, saved last") {
+        const Finalized f = finalize_with("all", "", 0);
+        CHECK(f.outcome.status == 0);
+        CHECK(f.outcome.trace_saved);
+        CHECK(f.outcome.unsaved.empty());
+        for (const char* name :
+             {"frames.tsv", "chunks.tsv", "manifest.txt", "summary.txt", "events.tsv"}) {
+            CHECK_MESSAGE(std::filesystem::is_regular_file(f.dir / name), name);
+        }
+        const auto s = saved_trace(f.dir);
+        REQUIRE(s.ok());
+        CHECK(s.value().succeeded());
+        CHECK(app::read_text(f.dir / "summary.txt").text == f.summary_given);
+        CHECK(f.summary_given.find("(succeeded)") != std::string::npos);
+        CHECK(no_partial_left(f.dir));
+        std::filesystem::remove_all(f.dir);
+    }
+    SUBCASE("a failed verdict with every file saved is complete and failed") {
+        const Finalized f = finalize_with("verdict1", "", 1);
+        CHECK(f.outcome.status == 1);
+        const auto s = saved_trace(f.dir);
+        REQUIRE(s.ok());
+        CHECK(s.value().complete);
+        CHECK(s.value().run_status == 1);
+        std::filesystem::remove_all(f.dir);
+    }
+    SUBCASE("frames.tsv cannot be saved: the trace records status 5, not the verdict") {
+        // The round-dz reproduction: a directory named frames.tsv; the run's verdict was 0.
+        const Finalized f = finalize_with("frames", "frames.tsv", 0);
+        CHECK(f.outcome.status == app::kEvidenceNotSaved);
+        CHECK(f.outcome.trace_saved);
+        REQUIRE(f.outcome.unsaved.size() == 1);
+        CHECK(f.outcome.unsaved[0].find("frames.tsv") != std::string::npos);
+        const auto s = saved_trace(f.dir);
+        REQUIRE(s.ok());
+        CHECK(s.value().complete);
+        CHECK(!s.value().succeeded());
+        CHECK(s.value().run_status == 5);
+        // The summary describes the trace as saved: failed with status 5.
+        CHECK(f.summary_given.find("status=5 (FAILED)") != std::string::npos);
+        CHECK(std::filesystem::is_directory(f.dir / "frames.tsv" / "occupied"));
+        CHECK(std::filesystem::is_regular_file(f.dir / "chunks.tsv"));
+        CHECK(no_partial_left(f.dir));
+        std::filesystem::remove_all(f.dir);
+    }
+    SUBCASE("summary.txt cannot be saved: the trace records status 5") {
+        const Finalized f = finalize_with("summary", "summary.txt", 0);
+        CHECK(f.outcome.status == app::kEvidenceNotSaved);
+        CHECK(f.outcome.trace_saved);
+        REQUIRE(f.outcome.unsaved.size() == 1);
+        CHECK(f.outcome.unsaved[0].find("summary.txt") != std::string::npos);
+        const auto s = saved_trace(f.dir);
+        REQUIRE(s.ok());
+        CHECK(s.value().run_status == 5);
+        CHECK(no_partial_left(f.dir));
+        std::filesystem::remove_all(f.dir);
+    }
+    SUBCASE("the completion record itself cannot be saved: no trace and no summary remain") {
+        const Finalized f = finalize_with("events", "events.tsv", 0);
+        CHECK(f.outcome.status == app::kEvidenceNotSaved);
+        CHECK(!f.outcome.trace_saved);
+        REQUIRE(f.outcome.unsaved.size() == 2);
+        CHECK(f.outcome.unsaved[0].find("events.tsv") != std::string::npos);
+        CHECK(f.outcome.unsaved[1].find("summary.txt removed") != std::string::npos);
+        CHECK(!saved_trace(f.dir).ok());
+        CHECK(!std::filesystem::exists(f.dir / "summary.txt"));
+        CHECK(no_partial_left(f.dir));
+        std::filesystem::remove_all(f.dir);
+    }
+}
+
+TEST_CASE("picture evidence: a file is replaced whole or left as it was" *
+          doctest::test_suite("picture_trace")) {
+    const auto dir = std::filesystem::temp_directory_path() / "anno_picture_save_whole";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    CHECK(app::save_whole(dir / "a.txt", "first").empty());
+    CHECK(app::read_text(dir / "a.txt").text == "first");
+    CHECK(app::save_whole(dir / "a.txt", "second").empty());
+    CHECK(app::read_text(dir / "a.txt").text == "second");
+    // The partial file cannot be written: the earlier text stays.
+    std::filesystem::create_directories(dir / "a.txt.partial" / "occupied");
+    const std::string error = app::save_whole(dir / "a.txt", "third");
+    CHECK(error.find("a.txt.partial") != std::string::npos);
+    CHECK(app::read_text(dir / "a.txt").text == "second");
+    std::filesystem::remove_all(dir);
+}
+
 TEST_CASE("picture readiness: a set is ready only when all its keys are fresh at the same poll" *
           doctest::test_suite("picture_trace")) {
     // A change invalidates A and B. A is rebuilt; another change invalidates A again; B is rebuilt

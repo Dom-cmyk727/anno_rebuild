@@ -29,8 +29,10 @@
 // memory.tsv, sim.tsv (with --sim-contention), summary.txt. Exit status: 0 the case ran and
 // verified; 1 verification failed; 2 bad options; 3 the drain did not converge; 4 the workload or
 // the scene could not be built; 5 an evidence file could not be saved (each one is named). The
-// trace ends with run_end and the verdict; --aggregate exits 0 only for such a complete trace of a
-// successful run (6 for an incomplete or failed one, 2 for an unreadable or malformed one).
+// trace is saved last and ends with run_end, which carries the verdict when every other file was
+// saved and 5 when one was not; when the trace itself cannot be saved there is none (and no
+// summary.txt). --aggregate exits 0 only for a complete trace of a successful run (6 for an
+// incomplete or failed one, 2 for an unreadable, malformed or missing one).
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -910,23 +912,16 @@ int main(int argc, char** argv) {
     }
     reclaimer.set_test_observer({});
 
-    // The raw files and the summary. The trace ends with run_end and the verdict, so a trace
-    // without it is incomplete evidence. Every file's open, write, flush and close is checked.
-    rec.add(app::TraceKind::RunEnd, 0, static_cast<std::uint64_t>(verdict));
-    const auto events = rec.events();
-    std::vector<std::string> unsaved;
-    auto save = [&unsaved](const fs::path& path, const std::string& text) {
-        if (std::string error = app::save_text(path, text); !error.empty()) {
-            unsaved.push_back(std::move(error));
-        }
-    };
-    save(out / "events.tsv", app::to_tsv(events));
-    save(out / "frames.tsv", frame_rows.str());
-    save(out / "chunks.tsv", chunk_rows.str());
-    save(out / "memory.tsv", memory_rows.str());
+    // The raw files and the summary (app::finalize_evidence): the trace is saved last and ends
+    // with run_end, whose status is the verdict only when every other file was saved (else 5), so
+    // a successful trace exists only beside a complete set of files (round ea, 3c/3d). A trace
+    // without run_end, or no trace, is incomplete evidence.
+    std::vector<app::EvidenceFile> files{{"frames.tsv", frame_rows.str()},
+                                         {"chunks.tsv", chunk_rows.str()},
+                                         {"memory.tsv", memory_rows.str()}};
     if (sim_world) {
         const std::lock_guard lock(sim_mutex);
-        save(out / "sim.tsv", sim_rows.str());
+        files.push_back({"sim.tsv", sim_rows.str()});
     }
     std::ostringstream manifest;
     manifest << "bench_picture case\nscenario=" << scenario << " timing=" << timing
@@ -944,9 +939,8 @@ int main(int argc, char** argv) {
     if (sim_world) {
         manifest << "--- contention world after the run\n" << sim_manifest;
     }
-    save(out / "manifest.txt", manifest.str());
+    files.push_back({"manifest.txt", manifest.str()});
     std::ostringstream summary;
-    summary << app::format_summary(app::summarize(events));
     summary << "frames=" << frame << " converged=" << (converged ? 1 : 0)
             << " pan_ready_ms=" << pan_ready_ms << " zoom_ready_ms=" << zoom_ready_ms << "\n";
     summary << "stats committed=" << st.committed << " discarded=" << st.discarded
@@ -985,15 +979,23 @@ int main(int argc, char** argv) {
                 << " invariants=" << (sim_invariants.empty() ? "ok" : sim_invariants) << "\n";
     }
     summary << verify.str();
-    save(out / "summary.txt", summary.str());
-    std::cout << summary.str();
-    if (!unsaved.empty()) {
+    std::string summary_text;
+    const app::EvidenceOutcome saved =
+        app::finalize_evidence(out, files, rec.events(), rec.now_ms(), verdict,
+                               [&summary_text, &summary](const app::TraceSummary& s) {
+                                   summary_text = app::format_summary(s) + summary.str();
+                                   return summary_text;
+                               });
+    std::cout << summary_text;
+    if (!saved.unsaved.empty()) {
         // The evidence is incomplete: exit 5 whatever the verdict was, naming every file.
-        for (const std::string& e : unsaved) {
+        for (const std::string& e : saved.unsaved) {
             std::cerr << "bench_picture: evidence not saved: " << e << "\n";
         }
-        std::cerr << "bench_picture: the case's verdict was " << verdict << "\n";
-        return 5;
+        std::cerr << "bench_picture: the case's verdict was " << verdict
+                  << (saved.trace_saved ? "; the trace records status 5"
+                                        : "; no trace was saved (incomplete evidence)")
+                  << "\n";
     }
-    return verdict;
+    return saved.status;
 }

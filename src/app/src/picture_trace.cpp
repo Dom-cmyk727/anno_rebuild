@@ -427,4 +427,55 @@ std::string save_text(const std::filesystem::path& path, std::string_view text) 
     return {};
 }
 
+std::string save_whole(const std::filesystem::path& path, std::string_view text) {
+    std::filesystem::path partial = path;
+    partial += ".partial";
+    std::error_code ec;
+    std::string error = save_text(partial, text);
+    if (error.empty()) {
+        std::filesystem::rename(partial, path, ec);
+        if (ec) {
+            error =
+                "cannot rename " + partial.string() + " to " + path.string() + ": " + ec.message();
+        }
+    }
+    if (!error.empty()) {
+        std::filesystem::remove(partial, ec);
+    }
+    return error;
+}
+
+EvidenceOutcome finalize_evidence(const std::filesystem::path& dir,
+                                  std::span<const EvidenceFile> files,
+                                  std::vector<TraceEvent> events, double end_ms, int verdict,
+                                  const std::function<std::string(const TraceSummary&)>& summary) {
+    EvidenceOutcome out;
+    auto save = [&out](const std::filesystem::path& path, std::string_view text) {
+        if (std::string error = save_whole(path, text); !error.empty()) {
+            out.unsaved.push_back(std::move(error));
+            return false;
+        }
+        return true;
+    };
+    for (const EvidenceFile& f : files) {
+        save(dir / f.name, f.text);
+    }
+    out.status = out.unsaved.empty() ? verdict : kEvidenceNotSaved;
+    events.push_back({end_ms, TraceKind::RunEnd, 0, static_cast<std::uint64_t>(out.status)});
+    const bool summary_saved = save(dir / "summary.txt", summary(summarize(events)));
+    if (!summary_saved) {
+        out.status = kEvidenceNotSaved;
+        events.back().version = static_cast<std::uint64_t>(out.status);
+    }
+    out.trace_saved = save(dir / "events.tsv", to_tsv(events));
+    if (!out.trace_saved) {
+        out.status = kEvidenceNotSaved;
+        std::error_code ec;
+        if (summary_saved && std::filesystem::remove(dir / "summary.txt", ec)) {
+            out.unsaved.push_back("summary.txt removed: it describes a trace that was not saved");
+        }
+    }
+    return out;
+}
+
 } // namespace anno::app

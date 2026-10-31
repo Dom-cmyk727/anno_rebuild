@@ -184,5 +184,35 @@ struct TextFile {
 /// Writes `text` to `path` (replacing it), checking the open, the write, the flush and the close;
 /// returns an empty string on success, else a message that names the path and the step.
 [[nodiscard]] std::string save_text(const std::filesystem::path& path, std::string_view text);
+/// Writes `text` to "<path>.partial" (save_text) and renames it to `path`, so `path` is either the
+/// whole text or what it was before; on failure the partial file is removed. Returns as save_text.
+[[nodiscard]] std::string save_whole(const std::filesystem::path& path, std::string_view text);
+
+/// One file of a run's evidence: its name in the run's directory and its text.
+struct EvidenceFile {
+    std::string name, text;
+};
+/// What finalize_evidence saved.
+struct EvidenceOutcome {
+    /// The status the trace's RunEnd carries: the run's verdict when every file was saved, else 5.
+    int status = 0;
+    /// Why each file that is not in the directory was not saved (empty: all were).
+    std::vector<std::string> unsaved;
+    /// events.tsv, the completion record, was saved.
+    bool trace_saved = false;
+};
+/// The exit status of a run whose evidence could not be saved (bench_picture's 5).
+inline constexpr int kEvidenceNotSaved = 5;
+/// Saves a run's evidence in `dir` so that the trace is its completion record (round ea, 3c/3d).
+/// Every file of `files` first, then summary.txt (`summary` of the trace as it will end), then
+/// events.tsv: `events` with RunEnd at `end_ms` appended, carrying `verdict` only when everything
+/// before it was saved and kEvidenceNotSaved otherwise. Each file is written whole (save_whole).
+/// When events.tsv itself cannot be saved there is no trace (an aggregate of it fails as missing)
+/// and summary.txt, which describes it, is removed. A successful RunEnd therefore exists only when
+/// every file of the run is in `dir`.
+[[nodiscard]] EvidenceOutcome
+finalize_evidence(const std::filesystem::path& dir, std::span<const EvidenceFile> files,
+                  std::vector<TraceEvent> events, double end_ms, int verdict,
+                  const std::function<std::string(const TraceSummary&)>& summary);
 
 } // namespace anno::app

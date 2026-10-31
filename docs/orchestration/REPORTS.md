@@ -7863,3 +7863,98 @@ approved economy. Recommendation: keep all three, and do not add desert
 islands to fill the missing climate. The 16-step facing field can wait for
 a later manifest version; the first loader uses the cardinal table without
 rewriting version 2.
+
+## MAP.2 — readiness repair — 2026-10-31 — status: READY FOR REVIEW
+
+Reviewed head `330dc7f0dce1a1181c8bff53c4401c26e59bb940`. The historical
+ledger above still says the warehouse click is `AnnoFrame.dll` `0x10046300`.
+That row is withdrawn by this section. The menu facts, the Kontor 1302 file
+facts, the help pages, and the exterior-4 distinction stay.
+
+No candidate was selected. `data/maps/lan5.txt` and the version-2 manifest
+bytes are unchanged. No ship was loaded into the simulation.
+
+Host: Python 3.14.6. `pefile` 2024.8.26 and `capstone` 5.0.7 were the
+modules imported for the disassembly. A task-scoped `caffeinate -dimsu`
+covered this pass. Persistent power settings were not changed. Original
+game files were read only.
+
+### Audit CLI
+
+`python3 -I` does not put the script directory on `sys.path`. Before the
+fix, the documented audit died at `import map2_ship` with
+`ModuleNotFoundError` and exit 1. The contract suite still passed because
+the test inserts that directory itself. `tools/map2_opening.py` now inserts
+the script directory before the sibling imports, the same way
+`tools/map2_ship.py` does. A subprocess test runs the script with `-I` and
+does not insert the path in the parent. It must reach the usage line and
+exit 2.
+
+After that fix, the four suites and the three audits:
+
+| Suite or audit | Result | Exit |
+|---|---|---|
+| `map2_manifest_selftest.py` | 25 pass | 0 |
+| `map2_ship_selftest.py` | 30 pass | 0 |
+| `map2_ship_contract.py` | 53 pass | 0 |
+| `map2_opening_contract.py` | 8 pass, including the isolated-interpreter test | 0 |
+| Audit A, B, C | geometric, help-first and record-presence each 5; founding click unknown | 0 |
+
+The new JSON is byte-identical to
+`cache/map2-opening-2026-10-31/lan5-ship-{a,b,c}.json`. The import fix did
+not change a count. Logs are in `cache/map2-opening-repair-2026-10-31/`.
+C++ render, GPU and sanitizer gates were not run.
+
+### Warehouse chain
+
+| Hop | Evidence | Class |
+|---|---|---|
+| Ship menu setup `View.dll` `0x1006330b` | `push 0x13; call [vtable+0x74]`; result stored at view `+0x648`. Null fails with `0x80004005` | The object at view `+0x62c` is **unknown** |
+| `tFrameGame` slot `+0x74` and `tFrameGameFull` slot `+0x74` | Both are `AnnoFrame.dll` `0x10007e50` | Those two classes only. Not yet tied to view `+0x62c` |
+| `0x10007e50` | Kind argument; cache at `this+kind*4+0x1834`; miss calls `0x10066330` | The frame object |
+| Factory kind `0x13` | `call 0x10049400` at `0x10066666` | Constructs `tCursorAnlageKontor` |
+| Published pointer | `lea eax, [edx+esi+4]` at `0x100666f5`, where the constructor writes vtable `0x100884bc` | Kontor subobject, locator offset `0x20c`, type descriptor `0x10096928` |
+| Button `View.dll` `0x10063ba0` | `+0x60(0, 0x516)` on view `+0x648` | 1302, when that pointer's vtable is `0x100884bc` |
+| Slot `+0x60` | `0x100495a0` jumps to `0x10049140`; property 0 stores the u16 at complete-object `+0x44` | Same subobject. Constructor first writes `0x515` |
+| Slot `+0x70` | `0x100495e0` jumps to handler `0x10048e60`, which calls `0x10049340` | Kontor handler. Does not call `0x10046300` |
+
+Unresolved: the class of view `+0x62c`, and the body of `0x10049340`.
+Kind `0x0e` constructs `tCursorAnlageBergwerk` (type descriptor
+`0x100968b0`, locator `0x1008fa58`, vtable `0x10088164`, slot `+0x70`
+`0x10046dc0` jumps to `0x10046830`, which calls `0x10046300`). That path
+is the mine cursor. Its corrected transcription is
+`docs/re/ship-founding.md` §3.3. It is not founding evidence.
+
+### Loader contract
+
+Ships, scouts and donkeys are figures in `World::figures()`. Ids come from
+`next_figure`, which starts at 1: ship, scout, donkey for each seat, so
+ids 1..15 and `next_figure` 16. Seat 0 is not a figure id.
+Manifest milli-tiles convert by `q = m * 32 / 125` only when that division
+is exact; otherwise the load fails. Facing 0..3 becomes `dir16` 12, 8, 4, 0
+in that same load. Holds stay an ordered list, including two tools entries.
+The first loader accepts only the proposed baseline, matching
+`baseline_ok`. Details: `docs/sim/ship-start-integration.md`.
+
+### Reproduce
+
+```
+python3 -I -u tools/map2_manifest_selftest.py
+python3 -I -u tools/map2_ship_selftest.py
+python3 -I -u tools/map2_ship_contract.py
+python3 -I -u tools/map2_opening_contract.py
+python3 -I -u tools/map2_opening.py audit \
+  data/maps/candidates/ship-start-v2/lan5-ship-a.json \
+  --game-dir /Users/dom/Dev/anno1503-worktrees/anno1503/game/app
+```
+
+Repeat the audit for `lan5-ship-b.json` and `lan5-ship-c.json`. Diff the
+JSON against `cache/map2-opening-2026-10-31/`.
+
+### Next unit
+
+Load the proposed baseline into a new headless world, as specified in
+`docs/sim/ship-start-integration.md` §5 and §7. Facing and the Q24.8
+conversion are part of that load. No movement, no founding, no renderer.
+`0x10049340` and the ship planner stay outside its claims. Do not start it
+until this repair is reviewed.

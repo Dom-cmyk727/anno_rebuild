@@ -389,7 +389,7 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
         threads_.emplace_back([st = state_, fault = limits_.build_fault,
                                max_attempts = limits_.max_attempts,
                                destroy_hook = limits_.payload_destroy_hook, trace = limits_.trace,
-                               progress = limits_.publish_progress] {
+                               progress = limits_.publish == PublishPolicy::Monotonic] {
             for (;;) {
                 PictureJob job;
                 {
@@ -460,8 +460,8 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
                     // DX3b).
                     const bool current = st->inflight[job.index] == job.version &&
                                          st->desired[job.index] == job.version;
-                    // publish_progress: a superseded build that is still ahead of the committed
-                    // version is kept, so the next commit moves the picture forward.
+                    // Monotonic publication: a superseded build that is still ahead of the
+                    // committed version is kept, so the next commit moves the picture forward.
                     const bool ahead =
                         progress && built && !current && job.version > st->committed[job.index];
                     if (!current && !ahead) {
@@ -667,7 +667,8 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
                     std::find_if(state_->done.begin(), state_->done.end(),
                                  [index](const PictureResult& r) { return r.index == index; });
                 if (finished != state_->done.end() &&
-                    !(limits_.publish_progress && finished->version > state_->committed[index])) {
+                    !(limits_.publish == PublishPolicy::Monotonic &&
+                      finished->version > state_->committed[index])) {
                     ++state_->stats.coalesced;
                     if (limits_.trace) {
                         limits_.trace(PictureEvent::Dropped, index, finished->version);
@@ -832,9 +833,9 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
         for (PictureResult& r : state_->done) {
             // Only the desired version may be published: a result of an older version (its island
             // changed after the build started) is dropped, and the island is built again.
-            // The desired version, or with publish_progress any version ahead of the committed
-            // one (the picture moves forward, never back).
-            const bool publishable = limits_.publish_progress
+            // Monotonic: any version ahead of the committed one and not past the desired one (the
+            // picture moves forward, never back); LatestOnly: the desired version only.
+            const bool publishable = limits_.publish == PublishPolicy::Monotonic
                                          ? r.version > state_->committed[r.index] &&
                                                r.version <= state_->desired[r.index]
                                          : state_->inflight[r.index] == r.version &&
@@ -919,7 +920,8 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
                 limits_.trace(PictureEvent::Committed, index, version);
             }
             state_->committed[index] = version;
-            // With publish_progress a newer build of the island may be open: it stays open.
+            // After an intermediate publication a newer build of the island may be open: it stays
+            // open.
             if (state_->inflight[index] == version) {
                 state_->close(index);
             }
@@ -927,9 +929,12 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
                 state_->dirty.erase(index);
             }
         }
-        // A queued job pins the generation it was requested from. Its island is unchanged by this
-        // commit (a commit of the island would have replaced the job), so it moves to `next`; the
-        // old generation goes to the reaper.
+        // A queued job pins the generation it was requested from; it moves to `next`, and the old
+        // generation goes to the reaper. Its island is usually unchanged by this commit. Under
+        // Monotonic publication it can be a newer job of an island this commit published an
+        // intermediate version of: the move is right for it too, since the build rewrites the
+        // island's records from its desired buildings and takes its change set against the lists
+        // of the generation it starts from, which is then `next`.
         for (PictureJob& q : state_->jobs) {
             if (q.base == old) {
                 dropped.push_back(q.base);
@@ -943,6 +948,12 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
         state_->stats.last_commit_ms = ms_since(start);
     }
     dropped.push_back(old);
+    // The committed results' credits are released before the dispatch, so the builds this commit
+    // admits can use them: an island waiting for the admission starts here, in the order it
+    // waited, and is not passed over by the next apply's newer change of another island (round dz:
+    // with one admission, a continuously edited island otherwise kept a waiting one out for good).
+    // What is left of a committed result (its change set) was always destroyed on this thread.
+    ready.clear();
     dispatch({}, dropped); // the commit freed slots: start the deferred builds and the due retries
     reaper_->retire(std::move(dropped));
     return committed_now.size();

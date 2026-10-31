@@ -174,6 +174,9 @@ TEST_CASE("ownership: a dropped result's credit is held while its payload is des
     Gate gate;
     std::atomic<bool> armed{false};
     app::ScenePicture::Limits limits;
+    // LatestOnly: the newer change drops the finished result (under Monotonic it is kept and
+    // committed; the Monotonic counterpart drops a late older result instead).
+    limits.publish = app::PublishPolicy::LatestOnly;
     limits.max_outstanding_bytes = 1;
     limits.payload_destroy_hook = [&gate, &armed](const char* what, std::size_t index) {
         bool expected = true;
@@ -367,6 +370,9 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
         const ObserverReset reset;
         {
             app::ScenePicture::Limits limits;
+            // LatestOnly: every superseded build is discarded (workers - 1 of them); the Monotonic
+            // counterpart is in scene_picture_publish_test.cpp.
+            limits.publish = app::PublishPolicy::LatestOnly;
             limits.max_outstanding = workers + 1;
             limits.build_fault = [&gate](std::size_t index) {
                 if (index == 0) {
@@ -520,6 +526,8 @@ TEST_CASE("trace: an edit's steps are reported in order, a superseded version in
     std::vector<std::pair<app::PictureEvent, std::uint64_t>> seen;
     std::atomic<bool> other_island{false};
     app::ScenePicture::Limits limits;
+    // LatestOnly: version 1 is superseded and never committed (under Monotonic it would be).
+    limits.publish = app::PublishPolicy::LatestOnly;
     limits.build_fault = [&gate](std::size_t) {
         if (gate.entered.load() == 0) {
             gate.pass();
@@ -567,11 +575,11 @@ TEST_CASE("trace: an edit's steps are reported in order, a superseded version in
     CHECK(at(E::Committed, 1) == n); // version 1 is never committed on its own
 }
 
-TEST_CASE("progress: publish_progress publishes a superseded build that is ahead, and never goes "
-          "back" *
+TEST_CASE("progress: monotonic publication publishes a superseded build that is ahead, and never "
+          "goes back" *
           doctest::test_suite("scene_picture_ownership")) {
     // One worker. Version 1's build is held, version 2 arrives and is queued; version 1 finishes
-    // and version 2's build is held. A commit then publishes version 1 with publish_progress (the
+    // and version 2's build is held. A commit then publishes version 1 under Monotonic (the
     // picture moves forward), and nothing without it (the accepted contract). Both converge to
     // version 2, and the committed versions only grow.
     for (const bool progress : {false, true}) {
@@ -583,7 +591,7 @@ TEST_CASE("progress: publish_progress publishes a superseded build that is ahead
         std::mutex mutex;
         std::vector<std::uint64_t> committed;
         app::ScenePicture::Limits limits;
-        limits.publish_progress = progress;
+        limits.publish = progress ? app::PublishPolicy::Monotonic : app::PublishPolicy::LatestOnly;
         limits.build_fault = [&first, &second, &builds](std::size_t) {
             const int n = builds.fetch_add(1);
             if (n == 0) {

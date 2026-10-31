@@ -3,10 +3,10 @@
 // The window thread applies the sim's building batches to the picture's building list, which is the
 // DESIRED state, and asks for a rebuild of each island it changed. A worker rewrites the island's
 // records and builds its object lists and change set from immutable inputs. The window thread
-// commits the newest valid result of each island as one new scene generation (the COMMITTED state)
-// and invalidates the chunk keys of the change. A failed build keeps the island dirty and is
-// retried from the desired state; nothing waits for another sim batch. Final destruction of
-// generations runs on render::SceneReclaimer, never on the window.
+// commits the newest publishable result of each island (PublishPolicy) as one new scene generation
+// (the COMMITTED state) and invalidates the chunk keys of the change. A failed build keeps the
+// island dirty and is retried from the desired state; nothing waits for another sim batch. Final
+// destruction of generations runs on render::SceneReclaimer, never on the window.
 #pragma once
 
 #include <cstddef>
@@ -51,6 +51,15 @@ enum class PictureEvent : std::uint8_t {
     Committed,
 };
 
+/// The publication policy of the picture (docs/app/game-shell.md, "Publication policy"; round dz).
+enum class PublishPolicy : std::uint8_t {
+    /// Commit a finished build when it is newer than the committed version and not newer than the
+    /// desired one: the picture moves forward under sustained changes, never back.
+    Monotonic,
+    /// Commit only the desired version (the round-dw contract); a diagnostic policy.
+    LatestOnly,
+};
+
 /// The bounds of the retained work (round dw, DW4). Each value is a default with its reason; the
 /// viewer may pass others (the play options). Test seams are for the test suite only.
 struct PictureLimits {
@@ -77,14 +86,11 @@ struct PictureLimits {
     /// failure recovers without another sim batch and a persistent one stops after this many
     /// attempts.
     std::uint32_t max_attempts = 4;
-    /// Provisional policy, OFF by default (round dy, D1 case f; a decision for review). Off, only
-    /// the desired version of an island is published (the accepted contract): a stream of changes
-    /// to one island faster than one build plus one commit supersedes every finished build, and
-    /// the island's picture does not move until the stream stops. On, a finished build that is
-    /// newer than the committed version, though older than the desired one, is kept and
-    /// committed: the picture moves forward under such a stream and never back, and the island
-    /// stays pending until its desired version is committed.
-    bool publish_progress = false;
+    /// Which finished build the commit publishes (docs/app/game-shell.md, "Publication policy").
+    /// Monotonic (the default): any build newer than the committed version and not newer than the
+    /// desired one, so the picture advances under a sustained stream of changes. LatestOnly (a
+    /// diagnostic policy): only the desired version.
+    PublishPolicy publish = PublishPolicy::Monotonic;
     /// Test seam: a build that throws for the island index (an injected worker failure).
     std::function<void(std::size_t index)> build_fault;
     /// Test seam: called by the reaper before it releases each item (a stalled reaper).
@@ -127,11 +133,12 @@ class ScenePicture {
     /// Window thread; never waits for a worker.
     std::size_t apply(const std::vector<std::shared_ptr<const BuildingBatch>>& batches);
 
-    /// Commits every finished result that is still the desired version of its island, as one new
-    /// generation, and invalidates the chunk keys of the change at every zoom level. Starts the
-    /// builds that are due (deferred, retrying after a failure, or stale). Returns the islands
-    /// committed. Returns 0 without committing when the reaper backlog is full (retried by the next
-    /// call). Window thread.
+    /// Commits every finished result the publication policy allows (Limits::publish: by default
+    /// any version newer than the island's committed one and not newer than its desired one), as
+    /// one new generation, and invalidates the chunk keys of the change at every zoom level. Then
+    /// releases the committed results' credits and starts the builds that are due (deferred,
+    /// retrying after a failure, or stale). Returns the islands committed. Returns 0 without
+    /// committing when the reaper backlog is full (retried by the next call). Window thread.
     std::size_t commit(render::FrameRenderer& frames);
 
     /// The chunk keys the last commit that committed something invalidated (every zoom level).

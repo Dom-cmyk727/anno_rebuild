@@ -221,6 +221,10 @@ TEST_CASE("picture recovery: a result of an older version is never published aft
     std::atomic<bool> open{false};
     std::vector<app::SceneBuilding> none;
     app::ScenePicture::Limits limits;
+    // LatestOnly, the policy whose contract this is (a result older than the desired version is
+    // never published); under Monotonic a result older than the committed one never is
+    // (scene_picture_publish_test.cpp).
+    limits.publish = app::PublishPolicy::LatestOnly;
     limits.max_reclaim_backlog = 0;
     limits.reclaim_gate = [&open] {
         while (!open.load()) {
@@ -542,6 +546,9 @@ TEST_CASE("picture credits: a superseded running build keeps its credit until it
     std::atomic<bool> open{false};
     std::atomic<bool> entered{false};
     app::ScenePicture::Limits limits;
+    // LatestOnly: the superseded build is discarded when it finishes (under Monotonic it is kept
+    // and committed; scene_picture_publish_test.cpp checks its credit there).
+    limits.publish = app::PublishPolicy::LatestOnly;
     limits.max_outstanding_bytes = 96; // below any one build's reservation
     limits.build_fault = [&open, &entered](std::size_t) {
         entered.store(true);

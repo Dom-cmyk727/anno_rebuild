@@ -15,6 +15,7 @@
 //              stalled for --stall-ms after the first commit (a delayed consumer and reclaimer)
 //   offscreen  --edits edits on the cities outside the view; after the drain the view pans to the
 //              last edited island at group 2, then zooms out to the first derived level
+// Publication: --publish monotonic (the default) or latest (the diagnostic LatestOnly policy).
 // Timing: --timing paced (a frame every --frame-ms of wall time; the loop sleeps to the deadline)
 // or saturation (frames back to back, no sleep). Edits are generated through the sim before the
 // measured loop (LegalWorkload: one Build or Demolish command and one turn each), so the loop only
@@ -346,12 +347,12 @@ int main(int argc, char** argv) {
                 "header of src/tools/bench_picture/main.cpp)");
     }
     const fs::path dir = argv[1];
-    std::string scenario, timing = "paced";
+    std::string scenario, timing = "paced", publish = "monotonic";
     fs::path out, map = "data/maps/lan5.txt";
     app::LegalWorkloadOptions wl;
     std::size_t edits = 0, threads = 2, chunk_threads = 2, max_outstanding = 8, commit_every = 1,
                 stall_ms = 0, busy = 0, sim_contention = 0, sim_unpaced = 0, drain_s = 120,
-                publish_progress = 0, view_w = 1920, view_h = 1080, frames_max = 100000;
+                view_w = 1920, view_h = 1080, frames_max = 100000;
     double frame_ms = 1000.0 / 60.0, duration_s = 5, rate = 10;
     bool edits_given = false;
     for (int i = 2; i < argc; ++i) {
@@ -413,8 +414,11 @@ int main(int argc, char** argv) {
             busy = parse_count(key, val, 0, 256);
         } else if (key == "--sim-contention") {
             sim_contention = parse_count(key, val, 0, 1);
-        } else if (key == "--publish-progress") {
-            publish_progress = parse_count(key, val, 0, 1);
+        } else if (key == "--publish") {
+            if (val != "monotonic" && val != "latest") {
+                fail(2, "--publish must be monotonic or latest, got " + std::string(val));
+            }
+            publish = std::string(val);
         } else if (key == "--sim-unpaced") {
             sim_unpaced = parse_count(key, val, 0, 1);
         } else if (key == "--drain-s") {
@@ -517,7 +521,8 @@ int main(int argc, char** argv) {
     Recorder rec(loop_start);
     app::ScenePicture::Limits limits;
     limits.max_outstanding = max_outstanding;
-    limits.publish_progress = publish_progress != 0;
+    limits.publish =
+        publish == "latest" ? app::PublishPolicy::LatestOnly : app::PublishPolicy::Monotonic;
     limits.trace = [&rec](app::PictureEvent e, std::size_t index, std::uint64_t version) {
         rec.add(kind_of(e), static_cast<std::uint32_t>(index), version);
     };
@@ -927,7 +932,7 @@ int main(int argc, char** argv) {
              << " chunk_threads=" << chunk_threads << " max_outstanding=" << max_outstanding
              << " commit_every=" << commit_every << " stall_ms=" << stall_ms << " busy=" << busy
              << " sim_contention=" << sim_contention << " sim_unpaced=" << sim_unpaced
-             << " publish_progress=" << publish_progress << " view=" << view_w << "x" << view_h
+             << " publish=" << publish << " view=" << view_w << "x" << view_h
              << " view_island=" << view_island << " view_tile=" << view_x << "," << view_y
              << " map=" << map.string() << " workload_build_ms=" << build_ms << "\n";
     manifest << "--- workload at the start of the loop\n" << manifest_initial;

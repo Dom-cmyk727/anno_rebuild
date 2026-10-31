@@ -846,7 +846,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
 
 ## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
-- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md` (to be written).
+- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md`. The 99% floor is the later generator's rule. It is not the acceptance rule for the fixed-map ship starts (`fixed-map.md` §11, 2026-10-31).
 - **Area:** sim (world setup), net (handshake), UI (game setup)
 - **Evidence:**
   - The original has no world generator: an endless world is a scenario with a fixed size and fixed island links, and only the templates, raw materials, ores and treasures are drawn at start (`docs/re/annoscene.md` §3, §5).
@@ -2008,12 +2008,11 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** nothing in the sim derives territory from a Kontor (`docs/sim/fixed-map.md`). Tiles get an owner only from `IslandSpec::owner_runs`. A player can build only on tiles their city owns (`footprint_owner_rule`, `placement.hpp`). The load-time building path does not read the coast flag (OQ-052). MAP.1 therefore writes one owner run over every tile of a seated start island so the developer start can build.
 - **How to resolve:** find the game-start claim that walks out from the Kontor (AnnoWelt, the city or island init after a warehouse is placed) and name the radius and the stop condition. Do not copy this into OQ-027 or OQ-052.
 
-## OQ-515: Which fairness tolerances the five-player map must pass (MAP.2, 2026-10-31)
-- **Status:** open. The profile `map2-proposed-v1` prints ±10% large-island land (100 permille) and ±5% fairness (50 permille). Neither number is an approval.
+## OQ-515: Equal land and equal distance as map acceptance (MAP.2, 2026-10-31)
+- **Status:** superseded 2026-10-31. Natural asymmetry is the settled rule. This is not a request to pick a wider tolerance.
 - **Area:** simulation / fixed map.
-- **Question:** which of those limits are gates, and does ±5% apply to home land and paired southern land as well as to distances?
-- **What is known:** no five distinct eligible plain NORD 256² shapes are within 50 permille of their mean land. The only set within 100 permille is worst 79 (0002, 0003, 0007, 0018, 0019). The closest DSCHUNGEL set is worst 52 (0002, 0003, 0005, 0006, 0010), which fails 50 and passes 100. Definitions and the arithmetic are in `docs/sim/fixed-map.md` §8–§9. People-marked copies were not added to the pool.
-- **How to resolve:** the owner picks the limits, including whether home land at 79 permille and southern land at 52 permille are acceptable. Do not widen the tool to turn the current templates into a pass.
+- **What was asked:** whether ±10% large-island land and ±5% fairness were gates for `map2-proposed-v1`.
+- **What stands:** that profile's measurements remain historical failures of those gates (nord land worst 79 permille, dschungel 52). They are not passes. The active profile `map2-ship-start-v1` does not use those gates (`docs/sim/fixed-map.md` §11).
 
 ## OQ-516: Filler density against ten large islands (MAP.2, 2026-10-31)
 - **Status:** open. The edge stays 1431 and the ten 256² islands stay.
@@ -2022,19 +2021,17 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** ten 256² islands are 32.0% of 1431². Four 256² islands are 25% of 1024². Scaling 03's mix gives eight 256² islands and 46.3% rectangle share. Adding the owner's two extra large islands on top of the proportional filler is 52.7%. Shrinking the filler to hold the share near 45.6% is 40 islands and 45.5%. `lan5-a` and `lan5-b` are the second of those, measured at 45.5% with a slightly different 64/80 split (6 and 14, not 7 and 13) because the generator splits by the 03 climate×size weights. `lan5-c` is the denser reading, measured at 52.2%. Rectangle share is not buildable land.
 - **How to resolve:** the owner picks a density. Both are generated. Neither enlarges the world.
 
-## OQ-517: What "reachable" means for a seat (MAP.2, 2026-10-31)
-- **Status:** open. The reported distances are straight-line.
+## OQ-517: What a tool route is worth (MAP.2, 2026-10-31)
+- **Status:** open. Equality of those lengths is no longer the question (OQ-515 superseded).
 - **Area:** simulation / fixed map.
-- **Question:** is fairness the geometric lengths in §9, or navigable shipping, fertility, ores, and usable building space?
-- **What is known:** pair distance is the Kontor point to the nearest land tile of the assigned southern island, in milli-tiles. Rival and centre distances use Kontor points. Reach gives a filler island to the nearest Kontor, unless the map centre is strictly closer. A climate band that sits next to one seat is absent for the others; it is not stored as zero land. `raw` and `ore` are still not applied. Navigable water is not computed. On the three candidates the cross-map pair lengths are about 804–906 tiles and pass ±5% on spread, while rival gaps between Kontors fail ±5% (worst 177, 210 and 215 permille) because the coastlines do not sit on an even spacing.
-- **How to resolve:** name the endpoint that matters. Until then the geometric table stands, and a pass on it is not an economic claim.
+- **Question:** which original movement, founding, fertility and deposit rules would replace the tool's geometric sea grid?
+- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. `raw` and `ore` are still not applied. The ship-start tools label routes as geometric feasibility: a coarse grid, no corner cutting, not the original's movement. `HEIGHT >= 16` land and a 4×4 coastal footprint are not a legal warehouse or a viable economy.
+- **How to resolve:** trace founding and ship movement (W6.1) before treating a tool route as engine certification.
 
-## OQ-518: How a seat is paired with its southern island (MAP.2, 2026-10-31)
-- **Status:** open. The candidates use one rule and always print the other.
+## OQ-518: Pairing a seat with a southern island (MAP.2, 2026-10-31)
+- **Status:** superseded 2026-10-31. Ship starts have no compulsory southern partner and no home island.
 - **Area:** simulation / fixed map.
-- **Question:** when several pairings have the same distance spread, is the shorter total preferred?
-- **What is known:** `min-spread-lex` minimises the spread, then takes the lexicographically smallest permutation. It can select five equal long routes (constructed sum 500) over a short cycle (sum 150) with the same spread. `min-spread-sum-lex` breaks that tie by the sum. On `lan5-a`, `lan5-b` and `lan5-c` the two rules selected the same pairing. The absolute lengths are still the long cross-map routes in OQ-517, not a short hop.
-- **How to resolve:** confirm the tie-break, or replace it. Keep both numbers visible either way.
+- **What stands:** `min-spread-lex` can prefer five equal long routes (sum 500) over a short cycle (sum 150). That objective is retired. The historical `lan5-a/b/c` files still record the pairing they used. A diagnostic matching of seats to distinct islands in `map2-ship-start-v1` is a witness that independent settlement is possible. It is not an assignment.
 
 ## OQ-519: Which height counts as land for fairness (MAP.2, 2026-10-31)
 - **Status:** open. The profile uses one threshold and records the others.
@@ -2043,11 +2040,16 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** `HEIGHT >= 16` is the fixed-map land count and `kWaterline`. `HEIGHT > 0` counts tiles that are not buildable. The classifier is documented in `docs/render/iso.md` and is not what this lane counted. The 79 and 52 permille figures are the `>= 16` counts.
 - **How to resolve:** if a different threshold is required, remeasure the pools before judging the quintuples. Do not treat the three definitions as the same number.
 
-## OQ-520: Which way the starting Kontor faces (MAP.2, 2026-10-31)
-- **Status:** open. The file stores rotation 0.
+## OQ-520: Which way a founded Kontor faces (MAP.2, 2026-10-31)
+- **Status:** open, and narrowed. There is no preplaced starting Kontor to orient.
 - **Area:** simulation / fixed map.
-- **Question:** does the start need a door direction, or only a coastal 4×4 footprint?
-- **What is known:** the footprint is square, so rotation does not change which tiles it covers. The original door is unread. The generator picks the coastal site whose centre is furthest along the direction from the island centre toward the map centre. That is a tool choice so the centre-distance endpoint sits on the inner coast. It is not a `World::create` rule, and it is not evidence the door faces the map centre.
-- **How to resolve:** read the Kontor door, if the start requires one. Until then rotation stays 0.
+- **Question:** when a player founds the first warehouse, which way does its door face, and does the square 4×4 footprint depend on that facing?
+- **What is known:** the historical candidates stored rotation 0 because the footprint is square. The original door is unread. Ship-start manifests store a ship facing, which is the figure's facing at sea, not a warehouse door.
+- **How to resolve:** read the founding placement (W6.1). Do not invent a door direction in the manifest.
 
-OQ-521 through OQ-524 were reserved for MAP.2 and are unused.
+## OQ-521: Clustered or dispersed ship spawns (MAP.2, 2026-10-31)
+- **Status:** open. The ship start itself does not choose this.
+- **Area:** simulation / fixed map.
+- **Question:** do the five human ships start in one cluster, or at separated authored positions?
+- **What is known:** original endless presets store party ship coordinates. On `03_1024_med_256` the pairwise straight-line gaps are about 126 to 447 tiles. Other presets differ (`01` about 39, `04` about 236). Those are stored coordinates, not sailing routes. The ship-start proposals use separated authored positions and a fixed seat order. That is a proposal, not this decision.
+- **How to resolve:** the owner chooses the spawn policy before a candidate is installed. OQ-522 through OQ-524 were reserved for MAP.2 and are unused.

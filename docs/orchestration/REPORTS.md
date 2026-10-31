@@ -7230,3 +7230,16 @@ meet the half-plane, the distinct shapes, the ±10% large-land band, and the
 ±5% pair and centre bands. They do not meet ±5% home land (79), ±5% southern
 land (52), ±5% rival distance, or per-climate reach. Start money and input
 bindings are not decided here. Natives and pirates stay out of the pool.
+
+## MAP.2 progress — ship-start specification — 2026-10-31
+
+Owner decisions of 2026-10-31 supersede assigned Kontors, southern pairing,
+nearest-Kontor ownership, and ±5%/±10% equality as acceptance. Geography
+stays. The boundary example in §8 was wrong: on edge 1431, `2 × 704 = 1408`,
+which fails `2 × y >= 1431`. The first 8-grid southern top is 720. Northern
+`y = 584` passes and `y = 592` fails. Active profile name:
+`map2-ship-start-v1` (`fixed-map.md` §11). OQ-515 and OQ-518 superseded.
+OQ-520 narrowed to founding orientation. Evidence copied to
+`docs/research/endless-start-conditions.md` (sha256
+`2d80f5581ce2e2b85a8c558c285594deee48e2af7f1def1ea6bc82707c0f60a5`, same as
+main's working file). Main was not modified.

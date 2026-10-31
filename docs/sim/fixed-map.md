@@ -312,12 +312,24 @@ lands 28126, 26648, 29033, 29022, 27638, worst 52 permille. 52 is the ceiling
 of `|5 × 26648 − 140467| × 1000 / 140467`. It fails 50 permille. Widening the
 limit to make that a pass is not a measurement.
 
-The half-plane on an odd edge is integer. A northern 256² island's centre is
-on the north side when `2 × (y + 128) <= 1431`. A southern island's top is on
-the south side when `2 × y >= 1431`. Origins are multiples of 8. `y = 704`
-passes the south test (`2 × 704 = 1408 >= 1431`). `y = 700` does not.
+The half-plane on edge 1431 is integer, and origins are multiples of 8. A
+southern top passes when `2 × y >= 1431`. `y = 704` gives `1408`, which fails.
+`y = 712` gives `1424`, which fails. The first eligible 8-grid southern top
+is `y = 720` (`1440 >= 1431`). A northern 256² centre passes when
+`2 × (y + 128) <= 1431`. `y = 584` gives centre 712 and `1424 <= 1431`, so it
+passes. `y = 592` gives centre 720 and `1440 > 1431`, so it fails.
 
-## 9. Candidate profile `map2-proposed-v1`
+## 9. Retired profile `map2-proposed-v1` (historical)
+
+Sections 9 and 10 are the retired Kontor-start profile. They are not active
+acceptance. Assigned northern homes, assigned southern partners, nearest-Kontor
+ownership of neutral islands, and equal land or equal distance within ±5% or
+±10% are not gates for the ship-start candidates. The numbers below stay as
+results of that retired profile. A failure there is not a pass of
+`map2-ship-start-v1`, and a pass of one of its distance gates is not a pass
+of the new profile.
+
+## 9.1 What `map2-proposed-v1` checked
 
 `tools/map2_profile.py validate` is a separate check. `tools/fixed_map.py
 check`, `dump` and `fairness` are unchanged. An ordinary map, including
@@ -387,7 +399,7 @@ not that pattern. The screen is not a fairness score.
 to dump `lan5.txt` and check the digest `c6af83f95104cd4f`, 21 islands, and
 1476 bytes.
 
-## 10. Three candidates
+## 10. Historical Kontor-start candidates
 
 `tools/map2_layout.py` writes `data/maps/candidates/lan5-a.txt`, `lan5-b.txt`
 and `lan5-c.txt`. It does not write `data/maps/lan5.txt`. The same arguments
@@ -448,4 +460,92 @@ seat numbers on the inner coasts, and pairing lines through the centre.
 Filler uses all six climate colours. lan5-c is visibly the denser of the
 three. The lines are geometric reach, not shipping routes. Land area and
 these distances do not show fertility, ores, usable building space, or
-late-game economics.
+late-game economics. The files stay in `data/maps/candidates/` as historical
+Kontor-start proposals. The runtime loader still reads that grammar. It does
+not read the ship-start manifests in §11.
+
+## 11. Ship starts, natural differences, optional sharing
+
+Owner decisions of 2026-10-31, recorded in
+`docs/research/endless-start-conditions.md`. That report is the evidence.
+This section is the reconciliation. The geographic envelope stays: world
+1431 × 1431, five seats, five distinct plain NORD 256² islands whose centres
+are on the north side of the middle line, five distinct plain DSCHUNGEL 256²
+islands whose tops are on the south side, and smaller islands in the climate
+bands of §8. Those are project choices. They do not assign an island to a
+seat. A first settlement may be on a suitable temperate or jungle island.
+
+### 11.1 Decision table
+
+| Item | Status |
+|---|---|
+| Players start aboard ships and choose the first settlement. No preassigned Kontor, home island, or paired southern island. | **Settled.** |
+| Island quality, building space, resources and travel may differ. Competition for desirable islands is intentional. ±5% and ±10% equality are not acceptance goals. | **Settled.** |
+| Several players may settle one large island: cooperation, rival footholds, borders, later land warfare. | **Settled.** Sharing is optional. |
+| All five players must have viable chances to settle different islands. Sharing is not how the player count is made to fit. | **Settled.** |
+| The first Kontor is a territorial foothold. It does not reserve the whole island. The whole-island owner run is the developer-start test shortcut (OQ-490). | **Settled.** |
+| Edge 1431, five seats, five plain NORD 256², five plain DSCHUNGEL 256², half-plane, banded filler. | **Retained** as geography, not as ownership. |
+| Original templates, people/pirate/dummy exclusions, `HEIGHT >= 16` as a land count. | **Retained** as measurement. `HEIGHT >= 16` does not prove a legal building or a viable economy (OQ-519). |
+| `map2-proposed-v1` Kontor starts, opposite-ray pairing, nearest-Kontor reach, equality gates. | **Superseded** for acceptance. Historical results stay in §9–§10. |
+| `anno1503-fixed-map 1` grammar, digest, and `start` as a Kontor footprint. | **Retained.** A `start` record is not a ship. |
+| Generator 99% floor (`world-scaling.md` §12, OQ-100). | **Retained** for the later generator. It does not promise equal holdings after a race to settle, and it is not this profile's gate. |
+| Filler density, 45.5% versus ~52% rectangle share (OQ-516). | **Open.** |
+| Navigable shipping, fertility, ores, building legality (OQ-517, OQ-519). | **Open.** Tool routes are geometric feasibility. |
+| Clustered versus dispersed spawn policy (OQ-521). | **Open.** These proposals use authored, separated sea positions. |
+| Founding orientation, fog, simultaneous founding, combat. | **Unknown** until W6.1 / W6.5. Not implemented here. |
+| Starting gold and cargo. | **Proposed** comparison baseline from `03_1024_med_256`, not an economy approval. |
+| Which of the three ship-start candidates to ship. | **Open.** This lane recommends and does not install. |
+
+### 11.2 Profile `map2-ship-start-v1`
+
+Offline tools only. The present engine does not load the manifest, does not
+spawn these ships, and does not found cities from them. Turning off
+`developer_start` omits the whole-island grant. It does not create a ship.
+
+Hard structural checks:
+
+- manifest schema, version, integer coordinates, and one canonical hash of
+  terrain plus starts;
+- the retained geographic envelope, distinct plain shapes, half-plane, bands,
+  8-grid, bounds, and no rectangle overlap;
+- no people, pirate, or dummy template;
+- five sea spawns inside the world, on sea, separated, with the documented
+  clearance;
+- no player city, no island reservation, and no field that assigns a home or
+  an expansion island to a seat;
+- a diagnostic witness that five seats can be matched to five distinct
+  islands that each have a plausible founding site within the provisional
+  route bound. The witness is not ownership and is not a destination.
+
+Provisional feasibility, configurable, labelled as tool geometry:
+
+- a coarse sea grid, 4-connected moves, and a diagonal only when both
+  orthogonal neighbours are open (no corner cut);
+- route cost in grid steps from a spawn to a cell beside a founding site;
+- a useful-opening bound. A route that exists only by crossing most of the
+  map is reported as a detour and does not by itself count as a useful opening;
+- a founding site is a 4×4 of `HEIGHT >= 16` clear of known obstacle
+  footprints, with a side on water. Connected free land around it is a
+  city-space estimate, not a service area.
+
+Descriptive diagnostics, not gates and not optimised toward equality:
+
+- rectangle area, `HEIGHT >= 16` land, and the city-space estimate;
+- alternative islands and route costs;
+- optional sharing: two separated footholds on one large island, with room
+  for two estimates. Sharing is not added into the five-island witness;
+- every configured climate, including a climate absent everywhere;
+- which spawns can reach which climates. Neutral islands are not given to
+  the nearest ship.
+
+Future engine validation, not run here: the loader seam, save and checksum,
+original movement and founding predicates, visibility, simultaneous founding,
+and host tests.
+
+### 11.3 Opportunity, not equal holdings
+
+The scaling formula in `world-scaling.md` §5 stays. Overall land and the
+climate mix stay the supply the world offers. After players sail and settle,
+holdings may differ. The profile checks that a complete matching onto five
+distinct islands exists, and it lists other choices. It does not assign those
+islands, and it does not require each seat to hold every climate.

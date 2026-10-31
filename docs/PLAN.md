@@ -100,6 +100,7 @@ The owner's first target is a LAN multiplayer endless game. The plan, with its w
   - **Colours:** one recolouring system for flags, units and ships over a colour table that is data.
   - **Players:** 6 is this release's default maximum. §0.6's 8 stays the project's target. Nothing hard-codes either (§0.1).
 - **The LAN MVP first (owner decision 2026-10-29):** to shorten the path to the first playable game, the first release has **one fixed map**, larger than the original's and scaled for **five players**, and **no computer players**. The plan is [`docs/plan/lan-mvp.md`](plan/lan-mvp.md). The generator, the original AI and the pirates move after the MVP; the scope above stays the target after it.
+- **Ship starts on that fixed map (owner, 2026-10-31):** the five players start aboard ships and choose where to settle. Natural differences are accepted. Sharing one large island is allowed and must not be required. The 99% floor above remains the later generator's rule. It is not a promise that holdings stay equal after the race to settle. Evidence and the active profile: `docs/research/endless-start-conditions.md`, `docs/sim/fixed-map.md` §11.
 
 ## 1. Milestone M0 — Repository and tooling skeleton
 

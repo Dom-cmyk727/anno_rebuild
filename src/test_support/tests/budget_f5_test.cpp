@@ -465,11 +465,8 @@ TEST_CASE("S3: a captured pipeline ends without waiting for the coordinator's id
 //
 //   T1  (modeled) a coordinator started as compatibility 3 and a compatibility-4 client refuse each
 //       other: idle steps aside, busy is waited for with a diagnostic and its holder is untouched.
-//   T2  the default journal is keyed by the version, so an older coordinator never replays it.
-//   T3  the first start of a version-4 journal adopts the version-3 journal's open promises,
-//       read-only: a live owner keeps its reservation, the owner's exit releases it, a restart
-//       does not adopt twice, and the legacy file is byte-identical afterwards.
-//   T4  adoption keeps CPU tokens, releases a reused pid and keeps what it cannot attribute.
+//   T2  every version uses one default journal per port (a second file loses promises across a
+//       handoff, see the H cases).
 //   T5  (opt-in, ANNO_TEST_OLD_COORD) a real older coordinator binary steps aside for a
 //       compatibility-4 client. The "older coordinator" of T1 to T4 is this build started with
 //       --compat-version 3: it models the handshake and the journal name, not the older recovery
@@ -482,10 +479,6 @@ namespace {
 constexpr std::uint16_t kPortT1Idle = 47860;
 constexpr std::uint16_t kPortT1Busy = 47861;
 constexpr std::uint16_t kPortT2 = 47862;
-constexpr std::uint16_t kPortT3 = 47863;
-constexpr std::uint16_t kPortT4Cpu = 47864;
-constexpr std::uint16_t kPortT4Reused = 47865;
-constexpr std::uint16_t kPortT4Unknown = 47866;
 constexpr std::uint16_t kPortT5 = 47867;
 
 /// A private HOME so the default journals of a coordinator that is started without --journal land
@@ -503,11 +496,6 @@ struct Home {
     }
     Vars vars() const { return {{"HOME", dir.string()}, {"ANNO_TEST_BUDGET_JOURNAL", ""}}; }
 };
-
-std::string file_bytes(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    return {std::istreambuf_iterator<char>(in), {}};
-}
 
 /// Starts this build's coordinator with the default journal under the Home in the environment.
 /// `compat` models an older version.
@@ -582,165 +570,20 @@ TEST_CASE("T1: a compat 3 coordinator and a compat 4 client refuse each other an
     }
 }
 
-TEST_CASE("T2: the default journal carries the version, so an older coordinator never replays it" *
-          doctest::test_suite("budget")) {
+TEST_CASE("T2: every version uses one default journal per port" * doctest::test_suite("budget")) {
     Home home("t2");
     std::string line;
     {
         Child coord = start_default(kPortT2, home, std::nullopt, line);
         CHECK(has(line, " compat=4"));
-        CHECK(std::filesystem::exists(home.journal(kPortT2, "-v4")));
-        CHECK_FALSE(std::filesystem::exists(home.journal(kPortT2)));
+        CHECK(std::filesystem::exists(home.journal(kPortT2)));
+        CHECK_FALSE(std::filesystem::exists(home.journal(kPortT2, "-v4")));
     }
     {
         Child coord = start_default(kPortT2, home, 3, line);
         CHECK(has(line, " compat=3"));
         CHECK(std::filesystem::exists(home.journal(kPortT2)));
-    }
-}
-
-namespace {
-
-enum class LegacyEdit { None, ReusedPid, Unattributable };
-
-/// A holder of the previous version (a compat 3 coordinator and client) leaves its journal under
-/// the unsuffixed default name; a version-4 coordinator adopts it. `mode`/`amount` is the probe
-/// holder (a memory hold of 50, or a CPU token). Returns after the holder is gone.
-struct Adopted {
-    Home home;
-    std::string legacy_before;
-    Child coord, holder;
-    Vars vars;
-    std::string budget_path;
-    std::string listening;
-    explicit Adopted(const char* name) : home(name) {}
-};
-
-void adopt_start(Adopted& a, std::uint16_t port, const char* name, const char* mode,
-                 LegacyEdit edit) {
-    a.budget_path = (f5_dir() / (std::string(name) + ".budget")).string();
-    a.vars = client_vars(port, name, "30");
-    a.vars.emplace_back("HOME", a.home.dir.string());
-    a.vars.emplace_back("ANNO_TEST_BUDGET_JOURNAL", "");
-    std::string old_line;
-    {
-        Child old_coord = start_default(port, a.home, 3, old_line);
-        Vars old_vars = a.vars;
-        old_vars.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
-        {
-            Env env(old_vars);
-            a.holder = probe({mode, a.budget_path, "50"});
-        }
-        std::string seen;
-        REQUIRE(has(want(a.holder, "READY", 15000ms, &seen), "READY 1"));
-        // old_coord stops here (end of scope): the holder lives on.
-        old_coord.stop();
-    }
-    const auto legacy = a.home.journal(port);
-    REQUIRE(std::filesystem::exists(legacy));
-#if defined(__APPLE__)
-    // What the earlier Darwin coordinators wrote: namespace 2 with the microsecond stamp.
-    rewrite_owner(legacy, [](Owner3 o) {
-        o.ns = 2;
-        return o;
-    });
-#endif
-    if (edit == LegacyEdit::ReusedPid) {
-        rewrite_owner(legacy, [](Owner3 o) {
-            o.started += 7777;
-            return o;
-        });
-    } else if (edit == LegacyEdit::Unattributable) {
-        rewrite_owner(legacy, [](Owner3 o) {
-            o.ns = 99;
-            return o;
-        });
-    }
-    a.legacy_before = file_bytes(legacy);
-    a.coord = start_default(port, a.home, std::nullopt, a.listening);
-}
-
-std::string try_with(const Adopted& a, const char* bytes) {
-    Child check;
-    {
-        Env env(a.vars);
-        check = probe({"try", a.budget_path, bytes});
-    }
-    return want(check, "claim=", 15000ms);
-}
-
-} // namespace
-
-TEST_CASE("T3: a version 4 coordinator adopts the open promises of the version 3 journal once" *
-          doctest::test_suite("budget")) {
-    Adopted a("t3");
-    adopt_start(a, kPortT3, "t3", "holder", LegacyEdit::None);
-    CHECK(has(a.listening, "orphans=1"));
-    CHECK(has(a.listening, "adopted=1"));
-    // Capacity 100, the live holder keeps 50: 80 must wait, not be admitted.
-    const std::string blocked = try_with(a, "80");
-    CHECK_MESSAGE(has(blocked, "claim=0"), blocked);
-    CHECK(has(blocked, "pending=50"));
-    // The adopted promise is in this version's own journal now.
-    CHECK(has(file_bytes(a.home.journal(kPortT3, "-v4")), "A "));
-    // The holder exits; the successor notices its stop and releases the promise.
-    a.holder.stop();
-    bool admitted = false;
-    for (int i = 0; i < 40 && !admitted; ++i) {
-        admitted = has(try_with(a, "80"), "claim=1");
-        std::this_thread::sleep_for(250ms);
-    }
-    CHECK(admitted);
-    // A restart does not adopt a second time (the version-4 journal exists), and the legacy file
-    // is byte-identical: this version only ever reads it.
-    std::string again;
-    a.coord.stop();
-    a.coord = start_default(kPortT3, a.home, std::nullopt, again);
-    CHECK(has(again, "adopted=0"));
-    CHECK(file_bytes(a.home.journal(kPortT3)) == a.legacy_before);
-}
-
-TEST_CASE(
-    "T4: adoption keeps a CPU token, releases a reused pid and keeps what it cannot attribute" *
-    doctest::test_suite("budget")) {
-    {
-        Env cpu_env({{"ANNO_TEST_CPU_BUDGET", "1"}});
-        Adopted a("t4cpu");
-        adopt_start(a, kPortT4Cpu, "t4cpu", "cpu-holder", LegacyEdit::None);
-        CHECK(has(a.listening, "adopted=1"));
-        Child waiter;
-        {
-            Env env(a.vars);
-            waiter = probe({"cpu-waiter", a.budget_path, "1"});
-        }
-        // The owner is alive: the token stays taken.
-        CHECK_FALSE(has(waiter.line(2500ms), "ADMITTED"));
-        a.holder.stop();
-        std::string seen;
-        CHECK(has(want(waiter, "ADMITTED", 20000ms, &seen), "ADMITTED 1"));
-    }
-    {
-        Adopted a("t4reused");
-        adopt_start(a, kPortT4Reused, "t4reused", "holder", LegacyEdit::ReusedPid);
-        CHECK(has(a.listening, "adopted=1"));
-        // Another start stamp: the recorded process is not this one, so nothing is kept.
-        bool admitted = false;
-        for (int i = 0; i < 40 && !admitted; ++i) {
-            admitted = has(try_with(a, "80"), "claim=1");
-            std::this_thread::sleep_for(250ms);
-        }
-        CHECK(admitted);
-    }
-    {
-        Adopted a("t4unknown");
-        adopt_start(a, kPortT4Unknown, "t4unknown", "holder", LegacyEdit::Unattributable);
-        CHECK(has(a.listening, "adopted=1"));
-        a.holder.stop();
-        // A record of an OS this host cannot judge is kept even though its holder is gone.
-        for (int i = 0; i < 12; ++i) {
-            CHECK(has(try_with(a, "80"), "claim=0"));
-            std::this_thread::sleep_for(250ms);
-        }
+        CHECK_FALSE(std::filesystem::exists(home.journal(kPortT2, "-v4")));
     }
 }
 
@@ -766,5 +609,267 @@ TEST_CASE(
     Child client = probe({"try", (f5_dir() / "t5.budget").string(), "10"});
     client.line(5000ms);
     CHECK(eventually([&] { return !listening(kPortT5); }, 15000ms));
+}
+#endif
+
+// ---- handoffs between coordinator versions must keep every outstanding promise (MAP-2 repair 4)
+//
+//   H1  memory: v4 starts idle and stops, a v3 coordinator admits a live holder of 50 and stops,
+//       v4 restarts: 80 must still be refused (capacity 100), and is admitted after the holder
+//       exits
+//   H2  the same for a CPU token (budget 1)
+//   H3  control: v4 starts for the first time on the holder's journal
+//   H4  repeated v4, v3, v4, v3, v4 handoffs
+//   H5  downgrade: a v4 holder, the v4 coordinator is lost, v3 starts and must refuse the 80, v4
+//       returns and releases after the holder exits
+//   H6  an owner the host cannot attribute stays protected through the handoffs
+// "v3" is this build started with --compat-version 3 (modeled) or, in the (real) cases, the older
+// binary named by ANNO_TEST_OLD_COORD (opt-in). Ports 47880..47889.
+#if !defined(_WIN32)
+namespace {
+
+constexpr std::uint16_t kPortH1 = 47880;
+constexpr std::uint16_t kPortH2 = 47881;
+constexpr std::uint16_t kPortH3 = 47882;
+constexpr std::uint16_t kPortH4 = 47883;
+constexpr std::uint16_t kPortH5 = 47884;
+constexpr std::uint16_t kPortH6 = 47885;
+
+enum class Kind { Memory, Cpu };
+
+struct Handoff {
+    Home home;
+    Kind kind;
+    std::uint16_t port;
+    const char* old_exe; // nullptr: modeled
+    Vars vars;
+    std::string budget_path;
+    std::string listening;
+    Child coord;
+    Child holder;
+    Handoff(const char* name, std::uint16_t p, Kind k, const char* old)
+        : home(name), kind(k), port(p), old_exe(old) {
+        budget_path = (f5_dir() / (std::string(name) + ".budget")).string();
+        vars = client_vars(port, name, "30");
+        vars.emplace_back("HOME", home.dir.string());
+        vars.emplace_back("ANNO_TEST_BUDGET_JOURNAL", "");
+    }
+    void stop_coordinator() { coord.stop(); }
+    void start_v4() { coord = start_default(port, home, std::nullopt, listening); }
+    void start_v3() {
+        if (old_exe == nullptr) {
+            coord = start_default(port, home, 3, listening);
+            return;
+        }
+        Env env(home.vars());
+        coord = Child::start(old_exe, {std::to_string(port), "local"});
+        REQUIRE(static_cast<bool>(coord));
+        listening = coord.line(15000ms);
+        REQUIRE(listening.rfind("LISTENING", 0) == 0);
+        REQUIRE(has(listening, " compat=3"));
+    }
+    /// A live holder of the version `v3_client ? 3 : 4` (50 bytes, or the CPU token).
+    void hold(bool v3_client) {
+        Vars use = vars;
+        if (v3_client) {
+            use.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
+        }
+        {
+            Env env(use);
+            holder = probe({kind == Kind::Memory ? "holder" : "cpu-holder", budget_path, "50"});
+        }
+        std::string seen;
+        REQUIRE(has(want(holder, "READY", 15000ms, &seen), "READY 1"));
+    }
+    /// One request of 80 bytes (or the second CPU token) from a client of the given version.
+    /// True when it was admitted at once.
+    bool asks(bool v3_client) {
+        Vars use = vars;
+        if (v3_client) {
+            use.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
+        }
+        Env env(use);
+        if (kind == Kind::Memory) {
+            Child check = probe({"try", budget_path, "80"});
+            return has(want(check, "claim=", 15000ms), "claim=1");
+        }
+        Child waiter = probe({"cpu-waiter", budget_path, "1"});
+        return has(waiter.line(2500ms), "ADMITTED 1");
+    }
+    bool admitted_after_exit(bool v3_client) {
+        holder.stop();
+        for (int i = 0; i < 60; ++i) {
+            if (asks(v3_client)) {
+                return true;
+            }
+            std::this_thread::sleep_for(250ms);
+        }
+        return false;
+    }
+    void leave_unattributable() {
+        rewrite_owner(home.journal(port), [](Owner3 o) {
+            o.ns = 99;
+            return o;
+        });
+    }
+};
+
+/// The shared check after any handoff: the promise of the live holder still counts.
+void refused(Handoff& h, bool v3_client, const char* where) {
+    INFO("after " << std::string(where) << ", a request of the " << (v3_client ? "v3" : "v4")
+                  << " client must not be admitted beside the live holder");
+    CHECK_FALSE(h.asks(v3_client));
+}
+
+void run_h1(Kind kind, std::uint16_t port, const char* name, const char* old) {
+    Env cpu_env({{"ANNO_TEST_CPU_BUDGET", "1"}});
+    Handoff h(name, port, kind, old);
+    h.start_v4(); // first start: idle, leaves its journal
+    h.stop_coordinator();
+    h.start_v3();
+    h.hold(true);
+    h.stop_coordinator(); // v3 exits, the holder lives on
+    h.start_v4();
+    refused(h, false, "v4 idle, v3 holder, v3 exit, v4 restart");
+    CHECK(h.admitted_after_exit(false));
+}
+
+} // namespace
+
+TEST_CASE("H1: a holder admitted by v3 between two v4 runs keeps its 50 (modeled v3)" *
+          doctest::test_suite("budget")) {
+    run_h1(Kind::Memory, kPortH1, "h1", nullptr);
+}
+
+TEST_CASE("H2: the same for a CPU token (modeled v3)" * doctest::test_suite("budget")) {
+    run_h1(Kind::Cpu, kPortH2, "h2", nullptr);
+}
+
+TEST_CASE("H3: control, the first v4 start on the journal of a v3 holder refuses too (modeled v3)" *
+          doctest::test_suite("budget")) {
+    Env cpu_env({{"ANNO_TEST_CPU_BUDGET", "1"}});
+    for (const Kind kind : {Kind::Memory, Kind::Cpu}) {
+        Handoff h(kind == Kind::Memory ? "h3m" : "h3c", kPortH3, kind, nullptr);
+        h.start_v3();
+        h.hold(true);
+        h.stop_coordinator();
+        h.start_v4();
+        refused(h, false, "the first v4 start");
+        CHECK(h.admitted_after_exit(false));
+    }
+}
+
+TEST_CASE("H4: repeated v4, v3, v4, v3, v4 handoffs keep the promise (modeled v3)" *
+          doctest::test_suite("budget")) {
+    Handoff h("h4", kPortH4, Kind::Memory, nullptr);
+    h.start_v4();
+    h.stop_coordinator();
+    h.start_v3();
+    h.hold(true);
+    h.stop_coordinator();
+    h.start_v4();
+    refused(h, false, "the first v4 restart");
+    h.stop_coordinator();
+    h.start_v3();
+    refused(h, true, "the second v3 start");
+    h.stop_coordinator();
+    h.start_v4();
+    refused(h, false, "the second v4 restart");
+    CHECK(h.admitted_after_exit(false));
+}
+
+namespace {
+void run_h5(std::uint16_t port, const char* name, const char* old) {
+    Handoff h(name, port, Kind::Memory, old);
+    h.start_v4();
+    h.hold(false);
+    h.stop_coordinator(); // the coordinator is lost, the holder lives on
+    h.start_v3();
+    refused(h, true, "a v3 start over a v4 holder");
+    h.stop_coordinator();
+    h.start_v4();
+    refused(h, false, "the return of v4");
+    CHECK(h.admitted_after_exit(false));
+}
+
+} // namespace
+
+TEST_CASE(
+    "H5: downgrade, a v4 holder survives its coordinator, v3 starts, v4 returns (modeled v3)" *
+    doctest::test_suite("budget")) {
+    run_h5(kPortH5, "h5", nullptr);
+}
+
+TEST_CASE("H6: an owner the host cannot attribute stays protected through the handoffs" *
+          doctest::test_suite("budget")) {
+    Handoff h("h6", kPortH6, Kind::Memory, nullptr);
+    h.start_v3();
+    h.hold(true);
+    h.stop_coordinator();
+    h.leave_unattributable();
+    h.start_v4();
+    refused(h, false, "v4 over an unattributable record");
+    h.holder.stop();
+    for (int i = 0; i < 12; ++i) {
+        CHECK_FALSE(h.asks(false)); // never released: fail closed
+        std::this_thread::sleep_for(250ms);
+    }
+    h.stop_coordinator();
+    h.start_v3();
+    refused(h, true, "v3 over the same record");
+}
+
+TEST_CASE("H8: a pid that was reused while v4 was away is released at the restart" *
+          doctest::test_suite("budget")) {
+    Handoff h("h8", kPortH6 + 2, Kind::Memory, nullptr);
+    h.start_v3();
+    h.hold(true);
+    h.stop_coordinator();
+    rewrite_owner(h.home.journal(h.port), [](Owner3 o) {
+        o.started += 7777; // another start stamp: the recorded process is not this one
+        return o;
+    });
+    h.start_v4();
+    bool admitted = false;
+    for (int i = 0; i < 40 && !admitted; ++i) {
+        admitted = h.asks(false);
+        std::this_thread::sleep_for(250ms);
+    }
+    CHECK(admitted);
+}
+
+#if defined(__APPLE__)
+TEST_CASE("H9: a Darwin owner recorded in the earlier format (namespace 2, microsecond stamp) "
+          "is judged by Darwin through the handoffs" *
+          doctest::test_suite("budget")) {
+    Handoff h("h9", kPortH6 + 3, Kind::Memory, nullptr);
+    h.start_v3();
+    h.hold(true);
+    h.stop_coordinator();
+    rewrite_owner(h.home.journal(h.port), [](Owner3 o) {
+        o.ns = 2; // what the MAC-1 coordinators wrote
+        return o;
+    });
+    h.start_v4();
+    refused(h, false, "v4 over a namespace-2 Darwin record");
+    h.stop_coordinator();
+    h.start_v3();
+    refused(h, true, "v3 over the same record");
+    h.stop_coordinator();
+    h.start_v4();
+    CHECK(h.admitted_after_exit(false));
+}
+#endif
+
+TEST_CASE("H7: the handoffs again with the real older coordinator (opt-in ANNO_TEST_OLD_COORD)" *
+          doctest::test_suite("budget")) {
+    const char* old = std::getenv("ANNO_TEST_OLD_COORD");
+    if (old == nullptr || old[0] == '\0') {
+        MESSAGE("skipping: set ANNO_TEST_OLD_COORD=<an older anno_budget_coord> to run");
+        return;
+    }
+    run_h1(Kind::Memory, kPortH1 + 10, "h7m", old);
+    run_h1(Kind::Cpu, kPortH2 + 10, "h7c", old);
+    run_h5(kPortH5 + 10, "h7d", old);
 }
 #endif

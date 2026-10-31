@@ -8167,3 +8167,44 @@ Required-asset skips 0, sanitizer lines 0, verdict PASS (`12-gate.log`, `12-gate
 Windows MSVC build and test run; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (the Linux and Windows branches of `coord_server.cpp`, `budget_f5_test.cpp` T-cases and `ship_start_load_test.cpp` were not compiled here; T-cases and `Home` are `#if !defined(_WIN32)`); WSL-only cases F3 (D2), F4 (N3), F4 (N4); Wine comparison; a merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` will conflict: keep namespace 3, the legacy-stamp rule, compat 4 and the versioned journal name); a decision by the orchestrator on rolling compat 4 out while W4's compat-3 clients still use port 47631.
 
 I stopped here for review and began no movement, navigation, founding, candidate selection or installation.
+
+## MAP.2 — fourth repair: coordinator handoff safety and truthful gate verdicts — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `b0c84ca`** (reviewed code `a71b07f`, reviewed documentation `aa36bb3`); the documentation commit that carries this entry follows it and changes no code. Evidence (git-ignored): `cache/map2-repair3-evidence/`. **The shared-host compat-4 rollout stays on hold**: nothing was merged, pushed or installed, no other executor's coordinator was stopped and no journal of another executor was altered. Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**.
+
+### Finding 1 — compat-4 handoff lost a live reservation
+| | |
+|---|---|
+| Reproducer | v4 starts idle and exits; v3 starts and admits a live holder of 50; v3 exits, holder lives; v4 restarts; 80 against capacity 100 is **admitted**. Also the CPU token, repeated handoffs, and a v4 holder under a v3 start. Failing output saved **before** the change: `01-handoff-before-fix.txt` (H1, H2, H4, H5 fail; real W4 binary H7 fails; first-start control H3 and the unattributable-owner case H6 pass). |
+| Cause | two journals: v4 read only `coord-<port>-v4.journal` (adopting the unsuffixed one only if the v4 file did not exist), v3 read only the unsuffixed one. |
+| Fix (`d013af3`) | one `coord-<port>.journal` for every version, record format unchanged. Duplicate replay, hold-id collisions, releases naming the wrong record, CPU double counting and resurrection of released records cannot occur because nothing is copied (`02-transition-matrix.md` says what repairing the two-journal design would have required). |
+| After | H1–H6, H8, H9 pass modeled; **H7 passes with the real W4 binary** (`c869fb7`, sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4`): upgrade handoff for memory and CPU token, and the downgrade, `03-handoff-after-fix.txt`. T1/T2/T5 (handshake, single name, real binary steps aside) pass. |
+| Cost, stated | after a downgrade an older coordinator keeps a **dead** namespace-3 owner reserved while it runs (never a live one lost): real binaries, 24 tries `claim=0 pending=50`, `04-downgrade-real-binary.txt`; v4 releases it when it returns. A v4 coordinator does not control an unmodified older executable. |
+| Rollout | safety needs no lockstep; the procedure (journal report pre-flight, wait for idle, never stop a coordinator, how a rollback behaves) is prepared in `docs/perf/README.md`, not applied. `tools/test/journal_report.py` is a read-only helper. The `-v4` journals of the previous revision in `~/.cache/anno1503` hold no open promise (`14-stale-v4-journals.txt`) and were left in place. |
+
+### Finding 2 — the verdict reader missed "skipped"
+| | |
+|---|---|
+| Reproducer | the real Bigbrother corpus cases with `ANNO1503_GAME_DIR` absent print `ANNO1503_GAME_DIR not set: skipped`; through `run_selected.sh` the verdict was `executed=2`, exit 0 (`05-bigbrother-before.txt`). |
+| Fix (`87ead0e`) | a skip is a MESSAGE that names a missing prerequisite and says it skipped, in every phrasing in use (audit `08-skip-audit.txt`, 92 lines); item outcomes (`overlay-skip …`, `…: skipped as the original does`) and zero-assertion tests are not skips; doctest's `N skipped` is never read. |
+| After | end to end through the wrapper (`07-verdict-e2e-after.txt`): absent → **exit 6, executed=0, required-asset=2**; present → exit 0, executed=2, skipped=0. `test_verdict_contract` (14 cases, second mandatory preflight): real execution, each missing-asset form, platform/opt-in skips incl. the transport-statistics message, zero-case children, zero selection after a good preflight, sanitizer output; a mutation that ignores `skipped` fails 2 of them (`06-verifier-mutation.txt`). The previous round's gate log re-read gives the same 894/890/4. |
+
+### Counts (separately)
+| run | registered/selected | executed | failed | empty | skipped |
+|---|---|---|---|---|---|
+| final gate, Debug, `anno_sim\|anno_formats\|anno_test_support` (`13-gate.log`), game dir set, `ANNO_TEST_OLD_COORD` set, 8 jobs, `ANNO_TEST_THREADS=4`, preflights `test_names_are_selectable` and `test_verdict_contract` passed first | 901 / 901 | 897 | 0 | 0 | 4: 3 platform (F3 (D2), F4 (N3), F4 (N4), WSL), 1 opt-in (transport search statistics); required-asset 0; sanitizer lines 0; verdict PASS |
+| focused coordinator + verdict (`10-focused-verdict.txt`) | 91 / 91 | 88 | 0 | 0 | 3 platform |
+| ASan/UBSan selection, first run (`11-asan-first-run-3-failures.log`) | 109 / 109 | 106 | **3** (F3 (D1, handover / crash handover / silent): `BIND-FAILED` 47813/47814 — the Debug run's test-started coordinators still held the ports, they idle out after 30 s) | 0 | 0 |
+| ASan/UBSan selection, rerun after the ports were quiet (`11-asan-verdict.txt`) | 109 / 109 | 109 | 0 | 0 | 0; sanitizer lines 0 |
+
+The three failures passed alone (`11-asan-f3-isolated.txt`) and in the rerun; the log of the failing run is kept. No earlier count is corrected this round: the previous gate's 890 executed ran with the game directory set, so its Bigbrother cases executed.
+
+### Provenance
+Code head `b0c84ca`. Current binaries: `anno_budget_coord` sha256 `1fffb80baca59e2710a91021c31aeb29cd15a49fa27c2e872ba355686e371366`, `anno_budget_probe` `9942d6d774a523fa1f8035262439e6dc686a843d4a22c92fa3b5a06ce547c222` (identical to the downgrade run's, `12-final-binaries.txt`). Older W4 binary as above; the previous revision's (`a71b07f`) coordinator `d91571b0605626c7bc32dc21ee46a87682dfb868bfbff295c0a38a39e10891a9` is kept in `bin/` for the "before" runs. Free memory (≈4.5 GiB free pages plus inactive) and 1.6 TiB disk were checked first; an owned `caffeinate -t 5400` (pid 48929) kept the screen awake and ended with the gate. Invariants (`15-final-checks.txt`): clang-format clean, lan5 sha256 `1a471d9f…9357`, `git diff a71b07f b0c84ca` empty for `data game fixtures src/sim src/sim_load src/formats`, xcheck 84 cases / 0 problems, goldens agree, `lint_sim` ok.
+
+### Caveats and decisions for review
+- Running any gate with admission on starts a compat-4 coordinator on the shared port 47631 for the run's duration (it idles out after 30 s) and compacts the shared journal as any coordinator does; this happened here as in every earlier gate. The hold concerns rolling that out as the standing state; say if gates must instead use a private port and journal until the hold is lifted (the budget would then not be shared).
+- Reverting to one journal re-opens the leak the third round closed for the downgrade direction; I chose it because the alternative (two journals) cannot be made loss-free without the five mechanisms listed in the matrix. If a leak-free downgrade is required, Darwin owners would have to be journaled in the namespace-2 microsecond format a compat-3 coordinator judges correctly; that is a wire/journal semantics decision I did not make.
+- Remaining external gates: Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` + ASan/UBSan (the POSIX-only H cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts: keep namespace 3, the legacy-stamp rule, compat 4 and the single journal name); lifting the rollout hold.
+
+I stopped here for review and began no movement, founding or candidate work.

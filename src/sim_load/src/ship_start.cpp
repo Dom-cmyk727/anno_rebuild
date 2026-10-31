@@ -5,6 +5,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -220,7 +221,17 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
             return "loadout.holds[" + std::to_string(i) + "].goods: '" + loadout.holds[i].goods +
                    "' is not a goods of the registry";
         }
-        holds.push_back(sim::ShipHold{*goods, static_cast<std::uint32_t>(loadout.holds[i].tons)});
+        // The manifest is in whole tons; the hold is in raw 1/256 tons: converted here, once.
+        const auto units =
+            loadout.holds[i].tons < 0
+                ? std::nullopt
+                : sim::hold_units_from_tons(static_cast<std::uint64_t>(loadout.holds[i].tons));
+        if (!units) {
+            return "loadout.holds[" + std::to_string(i) +
+                   "].tons: " + std::to_string(loadout.holds[i].tons) +
+                   " cannot be converted to hold units";
+        }
+        holds.push_back(sim::ShipHold{*goods, *units});
     }
 
     // 3. The base scenario supplies settings and catalogues; its players, units and cities
@@ -488,8 +499,10 @@ std::string expedition_baseline_problem(const sim::World& world) {
         }
         for (std::size_t h = 0; h < baseline.holds.size(); ++h) {
             const auto goods = manifest_goods(types, baseline.holds[h].goods);
-            if (!goods || f[0]->holds[h].goods != *goods ||
-                f[0]->holds[h].tons != baseline.holds[h].tons) {
+            const auto units =
+                sim::hold_units_from_tons(static_cast<std::uint64_t>(baseline.holds[h].tons));
+            if (!goods || !units || f[0]->holds[h].goods != *goods ||
+                f[0]->holds[h].amount_88 != *units) {
                 return who + "hold " + std::to_string(h) + " is not the baseline's";
             }
         }

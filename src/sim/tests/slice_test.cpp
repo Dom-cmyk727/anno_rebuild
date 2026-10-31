@@ -2670,7 +2670,7 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"crew_slot present", [](sim::Figure& f) { f.crew_slot = std::uint32_t{0}; }},
         {"holds one entry", [](sim::Figure& f) { f.holds = {sim::ShipHold{0, 0}}; }},
         {"holds goods", [](sim::Figure& f) { f.holds = {sim::ShipHold{7, 0}}; }},
-        {"holds tons", [](sim::Figure& f) { f.holds = {sim::ShipHold{0, 9}}; }},
+        {"holds amount", [](sim::Figure& f) { f.holds = {sim::ShipHold{0, 9}}; }},
         {"holds two entries",
          [](sim::Figure& f) { f.holds = {sim::ShipHold{1, 2}, sim::ShipHold{3, 4}}; }},
         {"holds swapped",

@@ -70,6 +70,7 @@ SimConfig, Rules, WorldSettings, a seam, the class table) changes both this file
 and the C++ code, and goldens.txt is re-baselined with the values printed here.
 """
 import argparse
+import os
 import re
 import struct
 import sys
@@ -77,7 +78,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 116
+STATE_HASH_VERSION = 117
 PRNG_TIMELINE_VERSION = 2
 
 
@@ -797,10 +798,49 @@ def corpus_versions():
     return None
 
 
+SHIP_HOLD_CASES = [
+    # (name, [(goods id, raw 1/256-ton amount)]) -- hand-chosen; the encoding below is the spec.
+    ('empty', []),
+    ('one-raw-unit', [(3, 1)]),
+    ('whole-ton', [(3, 256)]),
+    ('baseline-order', [(5, 12800), (6, 2560), (9, 12800), (9, 7680)]),
+    ('baseline-swapped-tools', [(5, 12800), (6, 2560), (9, 7680), (9, 12800)]),
+    ('u32-max-tons', [(7, 0xFFFFFFFF * 256)]),
+    ('u64-max', [(1, 0xFFFFFFFFFFFFFFFF)]),
+]
+
+
+def ship_hold_stream(holds):
+    """A figure's hold list on the wire (stream 117, docs/sim/state.md): u64 count, then per
+    hold u32 goods and u64 amount in raw units of 1/256 ton (12 bytes, little endian)."""
+    return u64(len(holds)) + b''.join(u32(g) + u64(a) for g, a in holds)
+
+
+def ship_hold_fixture_text():
+    lines = ['# Ship hold wire encodings, stream version %d (task MAP-2, exact cargo).' % STATE_HASH_VERSION,
+             '# Written by tools/sim_stream.py --write-holds from the spec alone (no C++): u64 count, then',
+             '# u32 goods, u64 raw amount (1/256 ton) per hold. Columns: name hex fnv64.']
+    for name, holds in SHIP_HOLD_CASES:
+        data = ship_hold_stream(holds)
+        lines.append('%s %s %016x' % (name, data.hex(), fnv(data)))
+    return '\n'.join(lines) + '\n'
+
+
+HOLDS_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
+                             'synthetic', 'sim', 'ship_holds.txt')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
+    ap.add_argument('--write-holds', action='store_true',
+                    help='write fixtures/synthetic/sim/ship_holds.txt and exit')
     args = ap.parse_args()
+    if args.write_holds:
+        with open(HOLDS_FIXTURE, 'w') as f:
+            f.write(ship_hold_fixture_text())
+        print('wrote', os.path.normpath(HOLDS_FIXTURE))
+        return 0
     computed = values()
     for name, value in computed.items():
         print('%-16s %016x' % (name, value))
@@ -825,6 +865,9 @@ def main():
         print('scenario_corpus.txt: header %s, this script is for kStateHashVersion=%d '
               'kPrngTimelineVersion=%d (re-baseline it with the game dir)' %
               (versions, STATE_HASH_VERSION, PRNG_TIMELINE_VERSION))
+        bad += 1
+    if not os.path.exists(HOLDS_FIXTURE) or open(HOLDS_FIXTURE).read() != ship_hold_fixture_text():
+        print('ship_holds.txt differs from the transcription (run --write-holds)')
         bad += 1
     print('goldens agree' if bad == 0 else '%d difference(s)' % bad)
     return 1 if bad else 0

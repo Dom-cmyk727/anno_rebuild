@@ -79,13 +79,28 @@ struct TransportState {
     std::uint32_t reserved_88 = 0;
 };
 
-/// One hold of a ship: a goods identity and whole tons (MAP-2, docs/sim/ship-start-
-/// integration.md §2). Whole tons, not 8.8: nothing here shifts them. Holds are an
-/// ordered list; two holds of one goods stay two entries (the ship's four holds of the
-/// baseline are wood 50, food 10, tools 50, tools 30).
+/// Raw units per ton in a ship hold: amounts are exact multiples of 1/256 ton (the original's 8.8
+/// cargo amounts, docs/re/ship-founding.md section 10.7).
+inline constexpr std::uint64_t kHoldUnitsPerTon = 256;
+
+/// Whole tons to raw hold units (x256), exact; nullopt when the product does not fit 64 bits.
+/// The one conversion at a whole-ton boundary (the version-2 map manifests are in whole tons).
+[[nodiscard]] constexpr std::optional<std::uint64_t> hold_units_from_tons(std::uint64_t tons) {
+    if (tons > UINT64_MAX / kHoldUnitsPerTon) {
+        return std::nullopt;
+    }
+    return tons * kHoldUnitsPerTon;
+}
+
+/// One hold of a ship: a goods identity and an exact amount in raw units of 1/256 ton (MAP-2,
+/// docs/sim/ship-start-integration.md §2; stream 117). u64, not the original's u16: every whole-ton
+/// u32 amount the earlier representation could hold (x256 < 2^40) still fits, and the original's
+/// capacity limit is not inherited. Holds are an ordered list; two holds of one goods stay two
+/// entries (the ship's four holds of the baseline are wood 50, food 10, tools 50, tools 30 t, i.e.
+/// 12800, 2560, 12800 and 7680 raw units). A sum of holds is computed with a checked add.
 struct ShipHold {
     GoodsId goods = 0;
-    std::uint32_t tons = 0;
+    std::uint64_t amount_88 = 0;
     friend constexpr auto operator<=>(const ShipHold&, const ShipHold&) = default;
 };
 

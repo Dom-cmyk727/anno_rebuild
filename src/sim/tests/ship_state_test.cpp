@@ -2,16 +2,22 @@
 // docs/sim/ship-start-integration.md §2). Synthetic: no game files.
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include <doctest/doctest.h>
 
+#include <anno/sim/archive.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/scenario.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
@@ -31,12 +37,13 @@ using ship_test::kScout;
 using ship_test::kShip;
 using ship_test::ship_registry;
 
-/// The hand-derived baseline: wood 50, food 10, tools 50, tools 30 (HOLZ, NAHRUNG, WERKZEUG).
+/// The hand-derived baseline: wood 50, food 10, tools 50, tools 30 tons (HOLZ, NAHRUNG, WERKZEUG),
+/// i.e. 50 * 256 = 12800, 10 * 256 = 2560, 12800 and 30 * 256 = 7680 raw units.
 std::vector<sim::ShipHold> baseline_holds(const sim::TypeRegistry& types) {
-    return {{goods(types, "HOLZ"), 50},
-            {goods(types, "NAHRUNG"), 10},
-            {goods(types, "WERKZEUG"), 50},
-            {goods(types, "WERKZEUG"), 30}};
+    return {{goods(types, "HOLZ"), 12800},
+            {goods(types, "NAHRUNG"), 2560},
+            {goods(types, "WERKZEUG"), 12800},
+            {goods(types, "WERKZEUG"), 7680}};
 }
 
 /// Five seats, each a ship (no parent), a scout (parent the ship, crew slot 0) and a donkey
@@ -268,10 +275,10 @@ TEST_CASE("expedition tree: ids, parents, positions, facing and holds from a sce
         }
         // Four holds in file order, the two tools entries unmerged; only the ship has any.
         REQUIRE(ship->holds.size() == 4);
-        CHECK(ship->holds[0] == sim::ShipHold{goods(*types, "HOLZ"), 50});
-        CHECK(ship->holds[1] == sim::ShipHold{goods(*types, "NAHRUNG"), 10});
-        CHECK(ship->holds[2] == sim::ShipHold{goods(*types, "WERKZEUG"), 50});
-        CHECK(ship->holds[3] == sim::ShipHold{goods(*types, "WERKZEUG"), 30});
+        CHECK(ship->holds[0] == sim::ShipHold{goods(*types, "HOLZ"), 12800});
+        CHECK(ship->holds[1] == sim::ShipHold{goods(*types, "NAHRUNG"), 2560});
+        CHECK(ship->holds[2] == sim::ShipHold{goods(*types, "WERKZEUG"), 12800});
+        CHECK(ship->holds[3] == sim::ShipHold{goods(*types, "WERKZEUG"), 7680});
         CHECK(scout->holds.empty());
         CHECK(donkey->holds.empty());
         CHECK(w.players().find(sim::PlayerId{seat})->money == 30000);
@@ -292,7 +299,7 @@ TEST_CASE("expedition tree: the same scenario gives the same world, on any execu
     CHECK(sim::World::create(swapped, types).value().state_hash() != first);
     // Merging them into one hold of 80 t is also a different world.
     sim::ScenarioSpec merged = expedition_spec(*types);
-    merged.figures[0].holds[2].tons = 80;
+    merged.figures[0].holds[2].amount_88 = 80 * 256;
     merged.figures[0].holds.pop_back();
     CHECK(sim::World::create(merged, types).value().state_hash() != first);
 }
@@ -367,13 +374,14 @@ TEST_CASE("expedition tree: a hostile hold count cannot size a collection") {
     const auto types = ship_registry();
     sim::World w = make_expedition_world(types);
     std::vector<std::uint8_t> bytes = island_test::flat_stream(w);
-    // The first ship's holds: u64 count 4, then (goods, tons) of HOLZ, 50.
+    // The first ship's holds: u64 count 4, then (u32 goods, u64 amount) of HOLZ, 50 t = 12800 =
+    // 0x3200 raw units, little endian.
     const std::uint32_t holz = goods(*types, "HOLZ");
     std::vector<std::uint8_t> pattern = {4, 0, 0, 0, 0, 0, 0, 0};
     for (int i = 0; i < 4; ++i) {
         pattern.push_back(static_cast<std::uint8_t>((holz >> (8 * i)) & 0xFF));
     }
-    for (const unsigned b : {50U, 0U, 0U, 0U}) {
+    for (const unsigned b : {0x00U, 0x32U, 0U, 0U, 0U, 0U, 0U, 0U}) {
         pattern.push_back(static_cast<std::uint8_t>(b));
     }
     const auto at = std::search(bytes.begin(), bytes.end(), pattern.begin(), pattern.end());
@@ -450,4 +458,173 @@ TEST_CASE("expedition tree: an idle advance leaves the expedition where it was")
     }
     CHECK(w.ids().next_figure == 16);
     CHECK(w.players().find(sim::PlayerId{2})->money == 30000);
+}
+
+// ---- Exact ship cargo (package B, stream 117) ----
+
+namespace {
+
+std::string hex(const std::vector<std::uint8_t>& v) {
+    static const char* d = "0123456789abcdef";
+    std::string s;
+    for (const std::uint8_t b : v) {
+        s += d[b >> 4];
+        s += d[b & 15];
+    }
+    return s;
+}
+
+/// The hold list as the figure record writes it (u64 count, 12 bytes per hold).
+std::vector<std::uint8_t> encode(std::vector<sim::ShipHold> holds) {
+    sim::WriteArchive w;
+    sim::ar::seq(w, holds, 12, [&](auto& h) { fields(w, h); });
+    return w.take();
+}
+
+std::map<std::string, std::string> fixture() {
+    const std::filesystem::path p =
+        std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "ship_holds.txt";
+    std::ifstream in(p);
+    REQUIRE_MESSAGE(in.good(), "missing fixture " << p.string());
+    std::map<std::string, std::string> out;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::istringstream ss(line);
+        std::string name, bytes;
+        ss >> name >> bytes;
+        out[name] = bytes;
+    }
+    return out;
+}
+
+/// A world whose first ship carries `holds` (the expedition of ship_state_test, five seats).
+sim::World world_with_holds(const std::shared_ptr<const sim::TypeRegistry>& types,
+                            std::vector<sim::ShipHold> holds) {
+    sim::ScenarioSpec spec = expedition_spec(*types);
+    spec.figures[0].holds = std::move(holds);
+    auto w = sim::World::create(spec, types);
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    return std::move(w).value();
+}
+
+} // namespace
+
+TEST_CASE("ship holds: the wire bytes equal the independent transcription") {
+    const std::map<std::string, std::string> want = fixture();
+    // Expected amounts are written here by hand (raw units), not read back from the fixture.
+    const std::map<std::string, std::vector<sim::ShipHold>> cases = {
+        {"empty", {}},
+        {"one-raw-unit", {{3, 1}}},
+        {"whole-ton", {{3, 256}}},
+        {"baseline-order", {{5, 12800}, {6, 2560}, {9, 12800}, {9, 7680}}},
+        {"baseline-swapped-tools", {{5, 12800}, {6, 2560}, {9, 7680}, {9, 12800}}},
+        {"u32-max-tons", {{7, std::uint64_t{0xFFFFFFFFU} * 256}}},
+        {"u64-max", {{1, std::numeric_limits<std::uint64_t>::max()}}},
+    };
+    REQUIRE(want.size() == cases.size());
+    for (const auto& [name, holds] : cases) {
+        INFO(name);
+        REQUIRE(want.count(name) == 1);
+        CHECK(hex(encode(holds)) == want.at(name));
+        // And back: the bytes read as the same holds.
+        const std::vector<std::uint8_t> bytes = encode(holds);
+        sim::ReadArchive r(bytes);
+        std::vector<sim::ShipHold> back;
+        sim::ar::seq(r, back, 12, [&](auto& h) { fields(r, h); });
+        CHECK_FALSE(r.failed());
+        CHECK(r.remaining() == 0);
+        CHECK(back == holds);
+    }
+    // Negative control: swapped duplicate holds are different bytes, and a one-unit change too.
+    CHECK(want.at("baseline-order") != want.at("baseline-swapped-tools"));
+    CHECK(encode({{3, 1}}) != encode({{3, 2}}));
+}
+
+TEST_CASE("ship holds: whole tons convert exactly and overflow is refused") {
+    CHECK(sim::hold_units_from_tons(0) == std::optional<std::uint64_t>(0));
+    CHECK(sim::hold_units_from_tons(50) == std::optional<std::uint64_t>(12800));
+    CHECK(sim::hold_units_from_tons(10) == std::optional<std::uint64_t>(2560));
+    CHECK(sim::hold_units_from_tons(30) == std::optional<std::uint64_t>(7680));
+    CHECK(sim::hold_units_from_tons(0xFFFFFFFFULL) ==
+          std::optional<std::uint64_t>(std::uint64_t{0xFFFFFFFFU} * 256));
+    constexpr std::uint64_t top = std::numeric_limits<std::uint64_t>::max() / 256;
+    CHECK(sim::hold_units_from_tons(top) == std::optional<std::uint64_t>(top * 256));
+    CHECK_FALSE(sim::hold_units_from_tons(top + 1).has_value());
+    CHECK_FALSE(sim::hold_units_from_tons(std::numeric_limits<std::uint64_t>::max()).has_value());
+}
+
+TEST_CASE("ship holds: one raw unit, large amounts and duplicate order survive save and load") {
+    const auto types = ship_registry();
+    const std::vector<sim::ShipHold> holds = {
+        {goods(*types, "HOLZ"), 1},
+        {goods(*types, "WERKZEUG"), 12800},
+        {goods(*types, "WERKZEUG"), 7680},
+        {goods(*types, "NAHRUNG"), std::uint64_t{0xFFFFFFFFU} * 256},
+    };
+    sim::World w = world_with_holds(types, holds);
+    const std::vector<std::uint8_t> bytes = w.save();
+    auto loaded = sim::World::load(bytes, types);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    const sim::Figure* ship = sim::find_figure(loaded.value().figures(), sim::FigureId{1});
+    REQUIRE(ship != nullptr);
+    CHECK(ship->holds == holds);
+    CHECK(loaded.value().state_hash() == w.state_hash());
+    CHECK(loaded.value().save() == bytes);
+    CHECK(loaded.value().check_invariants().empty());
+
+    // The amount is state to the unit: one raw unit more is another world.
+    std::vector<sim::ShipHold> plus = holds;
+    plus[0].amount_88 += 1;
+    CHECK(world_with_holds(types, plus).state_hash() != w.state_hash());
+    // The widest representable amount round-trips as well.
+    const std::vector<sim::ShipHold> widest = {
+        {goods(*types, "HOLZ"), std::numeric_limits<std::uint64_t>::max()}};
+    sim::World ww = world_with_holds(types, widest);
+    auto wl = sim::World::load(ww.save(), types);
+    REQUIRE_MESSAGE(wl.ok(), (wl.ok() ? std::string() : wl.error()));
+    CHECK(sim::find_figure(wl.value().figures(), sim::FigureId{1})->holds == widest);
+}
+
+TEST_CASE("ship holds: a stream of the whole-ton layout or a truncated hold fails") {
+    const auto types = ship_registry();
+    sim::World w =
+        world_with_holds(types, {{goods(*types, "HOLZ"), 12800}, {goods(*types, "NAHRUNG"), 5}});
+    // The version: a state/save of the previous layout (116, 8-byte holds) is refused, never
+    // reinterpreted as 1/256 ton.
+    const std::vector<std::uint8_t> good = w.save();
+    const std::vector<std::uint8_t> marker = {
+        static_cast<std::uint8_t>(sim::kStateHashVersion),    0, 0, 0,
+        static_cast<std::uint8_t>(sim::kPrngTimelineVersion), 0, 0, 0};
+    const auto at = std::search(good.begin(), good.end(), marker.begin(), marker.end());
+    REQUIRE(at != good.end());
+    std::vector<std::uint8_t> old = good;
+    old[static_cast<std::size_t>(at - good.begin())] = 116;
+    CHECK_FALSE(sim::World::load(old, types).ok());
+    CHECK(sim::kStateHashVersion == 117);
+
+    // Truncation of the flat stream inside a hold amount fails and the error names the figure.
+    std::vector<std::uint8_t> flat = island_test::flat_stream(w);
+    std::vector<std::uint8_t> pattern = {2, 0, 0, 0, 0, 0, 0, 0};
+    const std::uint32_t holz = goods(*types, "HOLZ");
+    for (int i = 0; i < 4; ++i) {
+        pattern.push_back(static_cast<std::uint8_t>((holz >> (8 * i)) & 0xFF));
+    }
+    for (const unsigned b : {0x00U, 0x32U, 0U, 0U, 0U, 0U, 0U, 0U}) {
+        pattern.push_back(static_cast<std::uint8_t>(b));
+    }
+    const auto p = std::search(flat.begin(), flat.end(), pattern.begin(), pattern.end());
+    REQUIRE(p != flat.end());
+    sim::World target = world_with_holds(types, {});
+    REQUIRE(island_test::read_flat(target, flat).empty()); // the whole stream reads
+    // Cut the stream in the middle of the first hold's u64 amount (4 bytes of it present).
+    std::vector<std::uint8_t> cut(flat.begin(), p + 8 + 4 + 4);
+    sim::World target2 = world_with_holds(types, {});
+    CHECK_FALSE(island_test::read_flat(target2, cut).empty());
+    // And a stream whose second hold lacks its last byte.
+    std::vector<std::uint8_t> cut2(flat.begin(), p + 8 + 12 + 12 - 1);
+    sim::World target3 = world_with_holds(types, {});
+    CHECK_FALSE(island_test::read_flat(target3, cut2).empty());
 }

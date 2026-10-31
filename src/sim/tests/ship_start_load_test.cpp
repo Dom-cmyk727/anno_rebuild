@@ -154,8 +154,8 @@ TEST_CASE("ship start: a baseline manifest loads the hand-derived world") {
     const sim::Figure* ship = sim::find_figure(w.figures(), sim::FigureId{1});
     REQUIRE(ship != nullptr);
     REQUIRE(ship->holds.size() == 4);
-    CHECK(ship->holds[2] == sim::ShipHold{goods(*types, "WERKZEUG"), 50});
-    CHECK(ship->holds[3] == sim::ShipHold{goods(*types, "WERKZEUG"), 30});
+    CHECK(ship->holds[2] == sim::ShipHold{goods(*types, "WERKZEUG"), 12800});
+    CHECK(ship->holds[3] == sim::ShipHold{goods(*types, "WERKZEUG"), 7680});
     // The generator was not drawn from.
     CHECK(w.rng().cursor() == 42 % w.rng().size());
 }

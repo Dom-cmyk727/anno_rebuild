@@ -960,7 +960,7 @@ static_assert(field_count<ShipHold>() == 2, "a ShipHold member needs a line in f
 
 template <class A, Same<ShipHold> S> void fields(A& a, S& s) {
     a.u32(s.goods);
-    a.u32(s.tons);
+    a.u64(s.amount_88);
 }
 
 static_assert(field_count<Figure>() == 18, "a Figure member needs a line in fields(Figure)");
@@ -981,12 +981,13 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u16(s.stamp);
     fields(a, s.transport);
     ar::opt(a, s.expiry_stamp, [&](auto& v) { a.u16(v); });
-    // MAP-2 (stream 116). A hold is 8 bytes on the wire, which bounds the count of a
-    // hostile stream by its remaining input (ar::seq).
+    // MAP-2 (stream 116; the hold amount is a u64 raw 1/256-ton count since 117). A hold is 12
+    // bytes on the wire, which bounds the count of a hostile stream by its remaining input
+    // (ar::seq).
     a.u8(s.dir16);
     a.u64(s.parent.v);
     ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
-    ar::seq(a, s.holds, 8, [&](auto& hold) { fields(a, hold); });
+    ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64

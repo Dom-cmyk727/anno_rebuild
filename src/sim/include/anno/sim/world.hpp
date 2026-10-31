@@ -88,7 +88,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // parent (invalid = max), an optional u32 crew slot and the ship's holds (u64 count, then u32
 // goods, u32 tons each). A figure that no loader gave these keeps 0, invalid, none and empty,
 // so a world without ships changes hash only because its stream grew. No PRNG site.
-inline constexpr std::uint32_t kStateHashVersion = 116;
+// Stream at 117 (task MAP-2, exact cargo): a ship hold's amount is a u64 count of 1/256 ton
+// (`amount_88`) instead of a u32 count of whole tons, so a hold is 12 bytes (u32 goods, u64
+// amount) on the wire. An earlier whole-ton stream is never reinterpreted: the version differs
+// and the state/save is refused. A world without ships changes hash only because its stream
+// version moved. No PRNG site.
+inline constexpr std::uint32_t kStateHashVersion = 117;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

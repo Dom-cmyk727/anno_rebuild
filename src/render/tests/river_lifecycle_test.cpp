@@ -215,9 +215,9 @@ TEST_CASE("river lifecycle: a second sharer does not reset or requeue a slot ano
 
 // Two workers, two solves of one non-shared scene (round dw, DW2a; rivers.md 3.1). Solve 0 is
 // held in the gate on one worker while solve 1 completes on the other. Destroying the scene must
-// wait for solve 0 (it reads the scene); the test checks that destruction is still blocked before it
-// lets the solve go. Pre-fix: the single solving marker is overwritten by solve 1, so the destructor
-// returns while solve 0 is inside the scene (heap-use-after-free under ASan).
+// wait for solve 0 (it reads the scene); the test checks that destruction is still blocked before
+// it lets the solve go. Pre-fix: the single solving marker is overwritten by solve 1, so the
+// destructor returns while solve 0 is inside the scene (heap-use-after-free under ASan).
 namespace {
 
 /// Releases a gate when its scope ends, whatever the outcome of the test.
@@ -229,7 +229,8 @@ struct ReleaseOnExit {
 } // namespace
 
 TEST_CASE("river lifecycle: destruction waits for a gated solve while another worker finishes "
-          "(game files, two workers)" * doctest::test_suite("river_lifecycle")) {
+          "(game files, two workers)" *
+          doctest::test_suite("river_lifecycle")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -263,4 +264,83 @@ TEST_CASE("river lifecycle: destruction waits for a gated solve while another wo
     gate.release();
     destroying.get();
     CHECK(scene == nullptr);
+}
+
+// DW2d: one gated solve and a solve that throws, with 1, 2 and 4 workers. With one worker the other
+// requests stay queued behind the gated solve; destruction then removes them and waits only for
+// the solve in progress. With more workers the other solves complete (one of them throws, inside
+// build_flow) while the gated one is still inside the scene.
+namespace {
+
+void destruction_waits_for_active_solve(const fs::path& dir, unsigned workers) {
+    constexpr std::size_t kIslands = 4;
+    std::unique_ptr<render::Scene> scene(new_river_scene(dir, kIslands));
+    scene->river_cfg.flow_threads = workers;
+    Gate gate;
+    scene->flow_build_fault = [&gate](std::size_t index) {
+        if (index == 0) {
+            gate.enter();
+        }
+        if (index == 2) {
+            throw std::runtime_error("injected solve failure");
+        }
+    };
+    std::future<void> destroying;
+    ReleaseOnExit release_on_exit{gate};
+    REQUIRE(scene->river_flow(0, false).pending);
+    REQUIRE(gate.wait_entered());
+    for (std::size_t i = 1; i < kIslands; ++i) {
+        static_cast<void>(scene->river_flow(i, false));
+    }
+    if (workers >= 2) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        for (std::size_t i = 1; i < kIslands; ++i) {
+            while (!scene->river_flow_done(i) && std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::yield();
+            }
+            CHECK(scene->river_flow_done(i));
+        }
+    }
+    REQUIRE(!scene->river_flow_done(0));
+    destroying = std::async(std::launch::async, [&scene] { scene.reset(); });
+    CHECK(destroying.wait_for(std::chrono::seconds(5)) == std::future_status::timeout);
+    gate.release();
+    destroying.get();
+    CHECK(scene == nullptr);
+}
+
+} // namespace
+
+TEST_CASE(
+    "river lifecycle: 1 worker, queued requests and a gated solve: destruction removes the queue "
+    "and waits (game files)" *
+    doctest::test_suite("river_lifecycle")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    destruction_waits_for_active_solve(*dir, 1);
+}
+
+TEST_CASE("river lifecycle: 2 workers, one solve throws and one is gated: destruction waits "
+          "(game files)" *
+          doctest::test_suite("river_lifecycle")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    destruction_waits_for_active_solve(*dir, 2);
+}
+
+TEST_CASE("river lifecycle: 4 workers, one solve throws and one is gated: destruction waits "
+          "(game files)" *
+          doctest::test_suite("river_lifecycle")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    destruction_waits_for_active_solve(*dir, 4);
 }

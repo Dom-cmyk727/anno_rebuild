@@ -549,3 +549,19 @@ climate mix stay the supply the world offers. After players sail and settle,
 holdings may differ. The profile checks that a complete matching onto five
 distinct islands exists, and it lists other choices. It does not assign those
 islands, and it does not require each seat to hold every climate.
+
+### 11.4 Manifest boundary
+
+`tools/map2_manifest.py` reads `map2-ship-manifest` version 1. Positions are
+integer milli-tiles (1000 per tile). The content hash is SHA-256 of the
+canonical JSON with `content_hash` removed: object keys sorted, arrays in id
+and seat order, ASCII, separators `,` and `:`. The object rejects `cities`,
+`reservations`, `homes`, `partners`, `starts`, and `owner_runs`. It does not
+copy the base scenario's players or units. The proposed loadout, identical
+for every candidate unless the owner changes the baseline, is 30000 gold,
+ship figure 1502, scout 717, donkey 718, and holds wood 50 t, food 10 t,
+tools 50 t, tools 30 t, from the human party of `03_1024_med_256`. That
+baseline is evidence for comparison, not an economy approval.
+
+`src/sim_load` still loads only `anno1503-fixed-map 1`. These manifests are
+not executable ship starts.

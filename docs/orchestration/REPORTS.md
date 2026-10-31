@@ -7243,3 +7243,12 @@ OQ-520 narrowed to founding orientation. Evidence copied to
 `docs/research/endless-start-conditions.md` (sha256
 `2d80f5581ce2e2b85a8c558c285594deee48e2af7f1def1ea6bc82707c0f60a5`, same as
 main's working file). Main was not modified.
+
+## MAP.2 progress — ship-start manifest — 2026-10-31
+
+`tools/map2_manifest.py` is a JSON proposal the fixed-map loader does not
+read. `map2_manifest_selftest.py`: 0 failed, including a hash round-trip,
+rejection of cities, reservations, a sixth spawn, a duplicate seat, a
+fractional coordinate, 51 t in one hold, unknown cargo, NaN, and a wrong
+hash. lan5 dump digest `c6af83f95104cd4f`, 1476 bytes. Schema notes:
+`fixed-map.md` §11.4.

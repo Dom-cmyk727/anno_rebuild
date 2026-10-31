@@ -1302,3 +1302,101 @@ State hashes and invariants are in each `summary.txt` (invariants held in all th
 **Not measured.** A quiet host (not available: see the host line); Windows, Linux and the RTX/Radeon machine;
 presented frames; a late-game economy or roads; cities denser than the stand-in admits; per-chunk build
 durations.
+
+### Publication policy: Monotonic against LatestOnly (round dz)
+
+The same workload, method and definitions as above; one change per pair, the publication policy
+(`--publish latest` selects LatestOnly; Monotonic is the default since round dz, docs/app/game-shell.md,
+"Publication policy"). Release, frozen binary `cache/dz-runs/bench_picture.release-b12d7d6` (sha256
+`bb3839daf4bd1204…`), source `b12d7d6`, clean tree; the runner recorded `19cb823`, which only adds the cases
+file. Cases `tools/bench/picture_dz.cases` (sha256 `a6e9ce55358f7d1d…`), one after another. Raw files:
+`cache/dz-runs/p4-matrix/`; the one-edit artifact check `cache/dz-runs/p4-one/`. `tools/bench/picture_d3d4.cases`
+still names `--publish-progress`, the round-dy option: it runs only with the round-dy binary it was recorded with.
+The round-dy tables' "peak retired payload" column is what the bench now calls the sampled peak of unreferenced
+payload (below).
+
+**Host: NOT quiet.** The same Apple M5 Max; load average 4.2 to 5.7 during the runs; another executor's simulation
+tests used about 400% CPU at the start (`provenance.txt`). The worker build time of the same below-rate case was
+bimodal over five pairs and three orders, 13.5 to 15.3 ms or 18.9 to 20.5 ms, under either policy
+(`cache/dz-runs/p4-below-reversed/`, `cache/dz-runs/p4-below-pairs/`): a difference of that size between two
+single cases is the host, not the policy, and no speed-up or slowdown is read off frequency or scheduling here.
+
+| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | unfinished | worker build ms p50 / max |
+|---|---:|---:|---|---|---:|---:|---:|---:|---|
+| m-w1-above | 0 | 400 | 400 / 72.8 / 232.066084 / 272.600375 / 292.6 | 80 / 167.2 / 372.456125 / insufficient / 408.5 | 292.6 | 341 | 320 | 0 | 14.5 / 15.2 |
+| l-w1-above | 0 | 400 | 400 / 549.7 / 1008.468834 / 1057.411458 / 1058.4 | 80 / 624.6 / 1058.436500 / insufficient / 1132.3 | 1058.4 | 395 | 320 | 0 | 14.1 / 15.0 |
+| m-w2-above | 0 | 400 | 400 / 49.0 / 100.957459 / 165.858792 / 208.2 | 75 / 99.4 / 275.647041 / insufficient / 292.9 | 208.2 | 294 | 325 | 0 | 14.4 / 18.5 |
+| l-w2-above | 0 | 400 | 400 / 518.3 / 975.223000 / 1019.909042 / 1024.1 | 80 / 603.0 / 1039.090125 / insufficient / 1108.8 | 1024.1 | 395 | 320 | 0 | 13.7 / 14.2 |
+| m-w4-above | 0 | 400 | 400 / 48.7 / 74.873500 / 98.284500 / 123.3 | 72 / 74.9 / 144.554917 / insufficient / 169.5 | 123.3 | 282 | 328 | 0 | 13.8 / 17.8 |
+| l-w4-above | 0 | 400 | 400 / 531.3 / 975.127125 / 1025.040875 / 1042.2 | 80 / 598.3 / 1042.126208 / insufficient / 1109.2 | 1042.2 | 395 | 320 | 0 | 13.8 / 17.5 |
+| m-below | 0 | 100 | 100 / 25.0 / 43.207791 / 45.859500 / 45.9 | 15 / 50.0 / insufficient / insufficient / 67.2 | 45.9 | 0 | 85 | 0 | 20.9 / 23.7 |
+| l-below | 0 | 100 | 100 / 25.0 / 25.014583 / 25.020209 / 25.0 | 15 / 49.5 / insufficient / insufficient / 50.0 | 25.0 | 0 | 85 | 0 | 13.5 / 14.0 |
+| m-delayed | 0 | 60 | 60 / 106.2 / 852.900292 / insufficient / 1167.4 | 10 / 128.5 / insufficient / insufficient / 1192.4 | 1167.4 | 3 | 50 | 0 | 13.8 / 14.8 |
+| l-delayed | 0 | 60 | 60 / 104.2 / 1016.935750 / insufficient / 1319.7 | 10 / 158.3 / insufficient / insufficient / 1339.9 | 1319.7 | 9 | 50 | 0 | 13.8 / 14.7 |
+| m-offscreen | 0 | 20 | 20 / 24.8 / 25.005750 / insufficient / 25.0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 25.0 | 0 | 20 | 0 | 14.1 / 14.7 |
+| l-offscreen | 0 | 20 | 20 / 23.4 / 25.010167 / insufficient / 25.0 | 0 / 0.0 / insufficient / insufficient / 0.0 | 25.0 | 0 | 20 | 0 | 14.1 / 14.8 |
+
+Version progress (islands committed; of them intermediate, a version below the island's desired one when it was
+committed; results requeued; queued jobs moved to a new generation; results discarded, coalesced; requests
+deferred):
+
+| case | committed | intermediate | requeued | rebased | discarded | coalesced | deferred |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| m-w1-above | 59 | 54 | 7 | 135 | 0 | 7 | 195 |
+| l-w1-above | 5 | 0 | 0 | 4 | 47 | 19 | 166 |
+| m-w2-above | 106 | 101 | 23 | 93 | 0 | 14 | 218 |
+| l-w2-above | 5 | 0 | 0 | 1 | 86 | 36 | 177 |
+| m-w4-above | 118 | 113 | 60 | 5 | 0 | 35 | 188 |
+| l-w4-above | 5 | 0 | 0 | 0 | 166 | 39 | 193 |
+| m-below | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| l-below | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| m-delayed | 57 | 6 | 1 | 0 | 0 | 1 | 5 |
+| l-delayed | 51 | 0 | 0 | 0 | 6 | 1 | 5 |
+| m-offscreen | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
+| l-offscreen | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+Memory, bytes. Exact: the counter's own peak (the reservation from the credit ledger; incremental payload from
+the payload counter over the process). Sampled: the largest of the per-frame samples, which can miss a shorter
+maximum. Unreferenced: live list and storage payload the current generation does not reference (replaced
+generations still held, results not committed yet, builds in flight); it is not proven to be retired payload only.
+
+| case | exact peak reservation | largest result | estimate shortfalls | exact peak incremental | sampled peak incremental | sampled peak unreferenced | sampled peak reclaim queue | sampled peak RSS | sampled peak footprint | major faults | host page-outs / swap-outs | oracle |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| m-w1-above | 32408011 | 857027 | 0 | 6479666 | 4859322 | 2794043 | 0 | 1171881984 | 1170408672 | 0 | 0 / 0 | VERIFY OK |
+| l-w1-above | 36061816 | 858549 | 0 | 4050719 | 4050719 | 1984180 | 0 | 1146552320 | 1145062600 | 0 | 0 / 0 | VERIFY OK |
+| m-w2-above | 32408011 | 856543 | 0 | 8908751 | 6479060 | 4413883 | 0 | 996179968 | 994641000 | 0 | 0 / 0 | VERIFY OK |
+| l-w2-above | 36061820 | 858533 | 0 | 4050719 | 4050719 | 1984180 | 0 | 1113260032 | 1111770312 | 0 | 0 / 0 | VERIFY OK |
+| m-w4-above | 36042328 | 856447 | 0 | 10528387 | 6478928 | 4413799 | 0 | 874528768 | 823608328 | 0 | 0 / 0 | VERIFY OK |
+| l-w4-above | 36061744 | 858543 | 0 | 4050719 | 4050719 | 1984180 | 0 | 863125504 | 810533872 | 0 | 0 / 0 | VERIFY OK |
+| m-below | 4507638 | 855411 | 0 | 4858872 | 4445869 | 2381016 | 0 | 1106690048 | 1105167512 | 0 | 0 / 0 | VERIFY OK |
+| l-below | 4507638 | 855411 | 0 | 4858872 | 4049045 | 1984180 | 0 | 1121878016 | 1120371888 | 0 | 0 / 0 | VERIFY OK |
+| m-delayed | 22444134 | 855411 | 0 | 12147003 | 12147003 | 10082186 | 1111572 | 1137147904 | 1135674568 | 0 | 0 / 0 | VERIFY OK |
+| l-delayed | 19619812 | 855411 | 0 | 12147003 | 12147003 | 10082186 | 1111572 | 1102069760 | 1100563632 | 0 | 0 / 0 | VERIFY OK |
+| m-offscreen | 4507782 | 855411 | 0 | 4049063 | 3239218 | 1587344 | 0 | 1178386432 | 1176929528 | 0 | 0 / 0 | VERIFY OK |
+| l-offscreen | 4507782 | 855411 | 0 | 4049063 | 3239218 | 1587344 | 0 | 1163575296 | 1162101984 | 0 | 0 / 0 | VERIFY OK |
+
+Window stages (`cache/dz-runs/p4-matrix-table.md`): under Monotonic above the build rate the window commits in
+nearly every frame that publishes (43 to 47 commits in the loop against 1 to 3 under LatestOnly), commit p50 0.033
+to 0.051 ms, max 0.125 ms; apply under 0.06 ms; chunk update max 0.16 ms. All far inside a 16.7 ms frame.
+
+**Findings (round dz).**
+
+- **The stream no longer starves the picture.** At 400 edits per second, object-ready p50 / max: one worker 72.8 /
+  292.6 ms (LatestOnly 549.7 / 1058.4), two workers 49.0 / 208.2 ms (518.3 / 1024.1), four workers 48.7 / 123.3 ms
+  (531.3 / 1042.2); visible CPU chunks ready p50 167.2, 99.4 and 74.9 ms (624.6, 603.0, 598.3). LatestOnly commits
+  5 islands in the whole case, Monotonic 59, 106 and 118, of which 54, 101 and 113 are intermediate versions.
+- **The price is requeued builds, and it grows with the workers**: 7, 23 and 60 requeued results with one, two and
+  four workers. A build that runs while its island's previous version is committed has a change set against lists
+  that are gone and is built again (game-shell.md); more workers run more builds of one island side by side.
+  Each requeue is one build on a worker, not window time.
+- **Below the build rate the policies agree** (no intermediate commit, 100 commits each, object-ready p50 22.1 to
+  25.0 ms over the five pairs; the p95 spread 25 to 45 ms follows the bimodal host, not the policy). Delayed consumer and
+  reclaimer: maximum age 1167 against 1320 ms, the same 1.11 MB reclaimer queue; offscreen and its return: equal.
+- **Retained bytes.** Monotonic keeps finished builds that are ahead, so it holds more payload at once: exact peak
+  incremental payload 6.5, 8.9 and 10.5 MB with one, two and four workers against 4.05 MB, sampled peak
+  unreferenced payload 2.8 and 4.4 MB against 2.0 MB. Reservations stay within the same admission (exact peak 32.4
+  to 36.0 MB under both, inside the 64 MiB budget; no estimate shortfall). RSS 0.86 to 1.18 GB, sampled, on a
+  shared host; no major fault, page-out or swap-out.
+- **Not measured:** the same as above (quiet host, Windows and Linux, presented frames, late-game economy, roads,
+  denser cities, per-chunk build durations); in addition, a stream over many islands at once with Monotonic (the
+  cases edit five cities in turn).

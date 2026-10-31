@@ -109,4 +109,91 @@ printf '%s\n0.0\tdesired\t0\t1\n1.0\tadmitted\t0\t1\n2.0\tstarted\t0\t1\n5.0\tbu
     "$HEADER" > "$WORK/productive.tsv"
 aggregate "$WORK/productive.tsv" 0 "aggregate of a complete productive run"
 grep -q "object_ready n=1 p50_ms=6.000" "$WORK/agg.stdout" || fail "productive run: object-ready"
+
+# picture_table.py (round ea, 3a/3b): the tables of a matrix whose cases have the evidence named
+# by each case; every case keeps its row, and the exit status says whether the evidence was usable.
+TABLE="$HERE/picture_table.py"
+FRAMES=$'frame\tt_ms\tphase\tpublished\tapply_ms\tapply_list_ms\treindex_ms\tdispatch_ms\tcommit_ms\tcommitted\tupdate_ms\n0\t0.1\tloop\t1\t0.02\t0.01\t0.01\t0.01\t0.00\t0\t0.05\n1\t16.8\tloop\t0\t0\t0\t0\t0\t0.01\t1\t0.04\n'
+SUMMARY='stats committed=1 discarded=0 coalesced=0 deferred=0 result_bytes_peak=10 estimate_shortfalls=0 version_requeues=0 rebased=0
+memory sampled_peak_incremental_payload=1 exact_peak_incremental_payload=2 sampled_peak_unreferenced_payload=0 sampled_peak_reclaim_queue_bytes=0 exact_peak_reservation_bytes=3 sampled_peak_rss=4 sampled_peak_footprint=5 majflt_delta=0 sys_pageouts_delta=0 sys_swapouts_delta=0
+VERIFY OK'
+make_case() { # matrix, case, trace file ("" for none), [frames, summary: "none" leaves them out]
+    mkdir -p "$1/$2"
+    [ -z "$3" ] || cp "$3" "$1/$2/events.tsv"
+    [ "${4:-}" = none ] || printf '%s' "$FRAMES" > "$1/$2/frames.tsv"
+    [ "${5:-}" = none ] || printf '%s\n' "$SUMMARY" > "$1/$2/summary.txt"
+    printf '%s\t0\t1\t-\n' "$2" >> "$1/results.tsv"
+}
+new_matrix() { # dir
+    mkdir -p "$1"
+    printf 'case\tstatus\twall_s\tload_after\n' > "$1/results.tsv"
+}
+table() { # binary, matrix, expected status, what
+    python3 "$TABLE" "$1" "$2" > "$WORK/table.stdout" 2> "$WORK/table.stderr"
+    expect_status "$3" "$?" "$4"
+}
+new_matrix "$WORK/m_good"
+make_case "$WORK/m_good" good "$WORK/productive.tsv"
+make_case "$WORK/m_good" quiet "$WORK/idle.tsv"
+table "$BENCH" "$WORK/m_good" 0 "table of complete, successful cases"
+grep -q "^| good | 0 | 1 | 1 / 6.0 " "$WORK/table.stdout" || fail "table: the good case's row"
+grep -q "^| good | loop | 2 | " "$WORK/table.stdout" || fail "table: the good case's stage row"
+for kind in missing malformed cut; do
+    new_matrix "$WORK/m_$kind"
+    make_case "$WORK/m_$kind" good "$WORK/productive.tsv"
+    case $kind in
+    missing) make_case "$WORK/m_$kind" bad "" ;;
+    malformed) make_case "$WORK/m_$kind" bad "$WORK/bad_number.tsv" ;;
+    cut) make_case "$WORK/m_$kind" bad "$WORK/cut.tsv" ;;
+    esac
+    table "$BENCH" "$WORK/m_$kind" 1 "table with a $kind trace"
+    grep -q "^| good | 0 | 1 | " "$WORK/table.stdout" || fail "$kind trace: the good case lost its row"
+    grep -q "^| bad | 0 | evidence not usable: " "$WORK/table.stdout" ||
+        fail "$kind trace: no diagnostic row"
+    grep -q "case bad: evidence not usable" "$WORK/table.stderr" || fail "$kind trace: no stderr line"
+done
+grep -q "trace incomplete: run=INCOMPLETE" "$WORK/table.stdout" || fail "cut trace: reason not given"
+new_matrix "$WORK/m_nosummary"
+make_case "$WORK/m_nosummary" bad "$WORK/productive.tsv" "" none
+table "$BENCH" "$WORK/m_nosummary" 1 "table with a case without summary.txt"
+grep -q "summary.txt unreadable" "$WORK/table.stdout" || fail "missing summary: reason not given"
+new_matrix "$WORK/m_noframes"
+make_case "$WORK/m_noframes" bad "$WORK/productive.tsv" none
+table "$BENCH" "$WORK/m_noframes" 1 "table with a case without frames.tsv"
+new_matrix "$WORK/m_failed"
+make_case "$WORK/m_failed" bad "$WORK/failed.tsv"
+table "$BENCH" "$WORK/m_failed" 6 "table with a complete, failed run"
+grep -q "^| bad | 0 (run=complete status=1 (FAILED)) | " "$WORK/table.stdout" ||
+    fail "failed run: its row does not say so"
+# An aggregate process that fails in an unexpected way (a crash, no output) is not indexed.
+CRASH="$WORK/crash_bench"
+printf '#!/bin/bash\necho "crashed" >&2\nkill -SEGV $$\n' > "$CRASH"
+chmod +x "$CRASH"
+table "$CRASH" "$WORK/m_good" 1 "table whose aggregate crashes"
+grep -q "aggregate failed (exit -11): crashed" "$WORK/table.stdout" ||
+    fail "crashing aggregate: reason not given"
+EMPTY="$WORK/empty_bench"
+printf '#!/bin/bash\nexit 0\n' > "$EMPTY"
+chmod +x "$EMPTY"
+table "$EMPTY" "$WORK/m_good" 1 "table whose aggregate prints nothing and exits 0"
+mkdir -p "$WORK/m_none"
+table "$BENCH" "$WORK/m_none" 2 "table without results.tsv"
+
+# The bench's own finalization on a real case (round ea, 3c), when a game directory is given: a
+# directory named frames.tsv in a fresh out dir. The bench exits 5, the trace it leaves records 5,
+# and neither the aggregate nor the table counts the case as successful.
+if [ -n "${ANNO1503_GAME_DIR:-}" ]; then
+    new_matrix "$WORK/m_bench"
+    mkdir -p "$WORK/m_bench/case/frames.tsv"
+    "$BENCH" "$ANNO1503_GAME_DIR" --scenario idle --duration-s 0.3 --out "$WORK/m_bench/case" \
+        > "$WORK/bench.stdout" 2> "$WORK/bench.stderr"
+    expect_status 5 "$?" "bench with an unwritable frames.tsv"
+    grep -q "evidence not saved: .*frames.tsv" "$WORK/bench.stderr" || fail "bench: file not named"
+    grep -q "	run_end	0	5$" "$WORK/m_bench/case/events.tsv" || fail "bench: run_end is not 5"
+    aggregate "$WORK/m_bench/case/events.tsv" 6 "aggregate of the bench's incomplete evidence"
+    printf 'case\t5\t1\t-\n' >> "$WORK/m_bench/results.tsv"
+    table "$BENCH" "$WORK/m_bench" 1 "table of the bench's incomplete evidence"
+else
+    echo "skip: the bench finalization check needs ANNO1503_GAME_DIR (not set)"
+fi
 echo "all picture matrix contract checks passed"

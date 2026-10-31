@@ -9,11 +9,22 @@ frames.tsv (frames of the measured loop only), and reads the memory and verifica
 summary.txt. Percentiles are nearest-rank with their sample counts; p95 needs 20 samples and p99
 100, else the cell says how many there were (docs/perf/README.md, "Picture on a legal city
 workload").
+
+Exit status (round ea, 3a/3b): 0 every case's evidence is complete and every run succeeded; 1 some
+case's evidence is invalid or incomplete (a missing, unreadable or malformed trace, a trace without
+run_end, an aggregate that failed in any other way, a missing or malformed frames.tsv or
+summary.txt); 6 all evidence is complete but some run failed; 2 bad arguments or no results.tsv.
+Every case is still listed: a case whose evidence is not usable gets a row that says why (and a
+line on stderr), and the other cases' rows are printed as usual.
 """
 import math
 import subprocess
 import sys
 from pathlib import Path
+
+
+class Unusable(Exception):
+    """A case's evidence cannot be tabulated; the message says why."""
 
 
 def nearest_rank(sorted_values, p):
@@ -34,8 +45,17 @@ def dist(values):
     return f"{n} / {p50:.3f} / {p95} / {p99} / {v[-1]:.3f}"
 
 
+def read_lines(path):
+    try:
+        return path.read_text().splitlines()
+    except OSError as e:
+        raise Unusable(f"{path.name} unreadable: {e.strerror or e}") from None
+
+
 def read_frames(path):
-    rows = path.read_text().splitlines()
+    rows = read_lines(path)
+    if not rows:
+        raise Unusable(f"{path.name} is empty")
     head = rows[0].split("\t")
     out = []
     for r in rows[1:]:
@@ -54,12 +74,43 @@ def kv(line):
     return out
 
 
+def one_line(lines, prefix, where):
+    found = [l for l in lines if l.startswith(prefix)]
+    if not found:
+        raise Unusable(f"{where} has no '{prefix.strip()}' line")
+    return found[0]
+
+
+def aggregate(binary, events):
+    """The aggregate's lines and whether the run succeeded; Unusable for evidence that is not."""
+    try:
+        done = subprocess.run([binary, "--aggregate", str(events)], capture_output=True,
+                              text=True, check=False)
+    except OSError as e:
+        raise Unusable(f"aggregate could not run: {e}") from None
+    why = done.stderr.strip().replace("\n", " ")
+    if done.returncode == 2:
+        raise Unusable(f"trace unreadable: {why}")
+    lines = done.stdout.splitlines()
+    if done.returncode not in (0, 6) or not lines or not lines[0].startswith("run="):
+        raise Unusable(f"aggregate failed (exit {done.returncode}): {why or 'no output'}")
+    if lines[0].startswith("run=INCOMPLETE"):
+        raise Unusable(f"trace incomplete: {lines[0]}")
+    if (done.returncode == 0) != lines[0].endswith("(succeeded)"):
+        raise Unusable(f"aggregate exit {done.returncode} contradicts '{lines[0]}'")
+    return lines, done.returncode == 0
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2
     binary, matrix = sys.argv[1], Path(sys.argv[2])
-    results = (matrix / "results.tsv").read_text().splitlines()[1:]
+    try:
+        results = (matrix / "results.tsv").read_text().splitlines()[1:]
+    except OSError as e:
+        print(f"picture_table: {matrix / 'results.tsv'}: {e.strerror or e}", file=sys.stderr)
+        return 2
     print("| case | status | edits | object-ready ms n / p50 / p95 / p99 / max | visible CPU "
           "chunks ready ms n / p50 / p95 / p99 / max | max age ms | coalesced | offscreen | "
           "unfinished | worker build ms p50 / max |")
@@ -67,65 +118,82 @@ def main():
     stage_rows = []
     memory_rows = []
     progress_rows = []
+    unusable = []
+    failed = []
     for line in results:
-        name, status = line.split("\t")[:2]
+        fields = line.split("\t")
+        name = fields[0]
+        status = fields[1] if len(fields) > 1 else "?"
         case = matrix / name
-        # --aggregate exits 0 only for a complete trace of a successful run; anything else is shown
-        # as such (and a malformed or missing trace stops the table: it is no evidence).
-        done = subprocess.run([binary, "--aggregate", str(case / "events.tsv")],
-                              capture_output=True, text=True, check=False)
-        if done.returncode == 2:
-            print(f"| {name} | {status} | trace unreadable: {done.stderr.strip()} |")
-            continue
-        agg = done.stdout.splitlines()
-        run = agg[0]
-        if done.returncode != 0:
-            status = f"{status} ({run})"
-        agg = agg[1:]
-        first = kv(agg[0])
-        lines = {l.split()[0]: l for l in agg if l and " n=" in l}
+        try:
+            agg, succeeded = aggregate(binary, case / "events.tsv")
+            run = agg[0]
+            if not succeeded or status != "0":
+                failed.append(name)
+                status = f"{status} ({run})"
+            agg = agg[1:]
+            if not agg:
+                raise Unusable("aggregate printed no summary after its run line")
+            first = kv(agg[0])
+            lines = {l.split()[0]: l for l in agg if l and " n=" in l}
 
-        def cells(key):
-            d = kv(lines[key])
-            return (f"{d['n']} / {float(d['p50_ms']):.1f} / {d['p95_ms']} / {d['p99_ms']} / "
-                    f"{float(d['max_ms']):.1f}")
-        age = kv([l for l in agg if l.startswith("max_age_ms")][0])
-        build = kv(lines["build_time_worker"])
-        print(f"| {name} | {status} | {first['edits']} | {cells('object_ready')} | "
-              f"{cells('visible_cpu_chunks_ready')} | {float(age['max_age_ms']):.1f} | "
-              f"{first['coalesced']} | {first['offscreen']} | {first['unfinished']} | "
-              f"{float(build['p50_ms']):.1f} / {float(build['max_ms']):.1f} |")
-        all_frames = read_frames(case / "frames.tsv")
-        # One row per phase, in run order: the measured loop, the drain (a one-edit or burst case
-        # commits there), and the pan and zoom of the offscreen case.
-        for phase in dict.fromkeys(f["phase"] for f in all_frames):
-            frames = [f for f in all_frames if f["phase"] == phase]
-            publishing = [f for f in frames if int(f["published"]) > 0]
-            committing = [f for f in frames if int(f["committed"]) > 0]
-            stage_rows.append(
-                f"| {name} | {phase} | {len(frames)} | "
-                f"{dist([float(f['apply_list_ms']) for f in publishing])} | "
-                f"{dist([float(f['reindex_ms']) for f in publishing])} | "
-                f"{dist([float(f['dispatch_ms']) for f in publishing])} | "
-                f"{dist([float(f['commit_ms']) for f in committing])} | "
-                f"{dist([float(f['update_ms']) for f in frames])} |")
-        summary = (case / "summary.txt").read_text().splitlines()
-        mem = kv([l for l in summary if l.startswith("memory ")][0])
-        stats = kv([l for l in summary if l.startswith("stats ")][0])
-        verdict = [l for l in summary if l.startswith("VERIFY")]
-        memory_rows.append(
-            f"| {name} | {mem['exact_peak_reservation_bytes']} | {stats['result_bytes_peak']} | "
-            f"{stats['estimate_shortfalls']} | {mem['exact_peak_incremental_payload']} | "
-            f"{mem['sampled_peak_incremental_payload']} | "
-            f"{mem['sampled_peak_unreferenced_payload']} | "
-            f"{mem['sampled_peak_reclaim_queue_bytes']} | {mem['sampled_peak_rss']} | "
-            f"{mem['sampled_peak_footprint']} | {mem['majflt_delta']} | "
-            f"{mem['sys_pageouts_delta']} / {mem['sys_swapouts_delta']} | "
-            f"{verdict[0] if verdict else 'none'} |")
-        progress_rows.append(
-            f"| {name} | {stats['committed']} | {first['intermediate_commits']} | "
-            f"{stats['version_requeues']} | {stats['rebased']} | {stats['discarded']} | "
-            f"{stats['coalesced']} | {stats['deferred']} |")
+            def cells(key):
+                d = kv(lines[key])
+                return (f"{d['n']} / {float(d['p50_ms']):.1f} / {d['p95_ms']} / {d['p99_ms']} / "
+                        f"{float(d['max_ms']):.1f}")
+            age = kv(one_line(agg, "max_age_ms", "the aggregate"))
+            build = kv(lines["build_time_worker"])
+            row = (f"| {name} | {status} | {first['edits']} | {cells('object_ready')} | "
+                   f"{cells('visible_cpu_chunks_ready')} | {float(age['max_age_ms']):.1f} | "
+                   f"{first['coalesced']} | {first['offscreen']} | {first['unfinished']} | "
+                   f"{float(build['p50_ms']):.1f} / {float(build['max_ms']):.1f} |")
+            all_frames = read_frames(case / "frames.tsv")
+            # One row per phase, in run order: the measured loop, the drain (a one-edit or burst
+            # case commits there), and the pan and zoom of the offscreen case.
+            stages = []
+            for phase in dict.fromkeys(f["phase"] for f in all_frames):
+                frames = [f for f in all_frames if f["phase"] == phase]
+                publishing = [f for f in frames if int(f["published"]) > 0]
+                committing = [f for f in frames if int(f["committed"]) > 0]
+                stages.append(
+                    f"| {name} | {phase} | {len(frames)} | "
+                    f"{dist([float(f['apply_list_ms']) for f in publishing])} | "
+                    f"{dist([float(f['reindex_ms']) for f in publishing])} | "
+                    f"{dist([float(f['dispatch_ms']) for f in publishing])} | "
+                    f"{dist([float(f['commit_ms']) for f in committing])} | "
+                    f"{dist([float(f['update_ms']) for f in frames])} |")
+            summary = read_lines(case / "summary.txt")
+            mem = kv(one_line(summary, "memory ", "summary.txt"))
+            stats = kv(one_line(summary, "stats ", "summary.txt"))
+            verdict = [l for l in summary if l.startswith("VERIFY")]
+            memory = (
+                f"| {name} | {mem['exact_peak_reservation_bytes']} | {stats['result_bytes_peak']} | "
+                f"{stats['estimate_shortfalls']} | {mem['exact_peak_incremental_payload']} | "
+                f"{mem['sampled_peak_incremental_payload']} | "
+                f"{mem['sampled_peak_unreferenced_payload']} | "
+                f"{mem['sampled_peak_reclaim_queue_bytes']} | {mem['sampled_peak_rss']} | "
+                f"{mem['sampled_peak_footprint']} | {mem['majflt_delta']} | "
+                f"{mem['sys_pageouts_delta']} / {mem['sys_swapouts_delta']} | "
+                f"{verdict[0] if verdict else 'none'} |")
+            progress = (
+                f"| {name} | {stats['committed']} | {first['intermediate_commits']} | "
+                f"{stats['version_requeues']} | {stats['rebased']} | {stats['discarded']} | "
+                f"{stats['coalesced']} | {stats['deferred']} |")
+        except Unusable as e:
+            unusable.append(name)
+            print(f"| {name} | {status} | evidence not usable: {e} |")
+            print(f"picture_table: case {name}: evidence not usable: {e}", file=sys.stderr)
+            continue
+        except (KeyError, IndexError, ValueError) as e:
+            unusable.append(name)
+            print(f"| {name} | {status} | evidence malformed: {type(e).__name__} {e} |")
+            print(f"picture_table: case {name}: evidence malformed: {type(e).__name__} {e}",
+                  file=sys.stderr)
+            continue
+        print(row)
+        stage_rows.extend(stages)
+        memory_rows.append(memory)
+        progress_rows.append(progress)
     print()
     print("Window stages per frame, by phase, ms: n / p50 / p95 / p99 / max (apply stages over "
           "the frames that published, commit over the frames that committed).")
@@ -159,6 +227,17 @@ def main():
     print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
     for r in memory_rows:
         print(r)
+    if not results:
+        print("picture_table: results.tsv lists no case", file=sys.stderr)
+        return 1
+    if unusable:
+        print(f"picture_table: {len(unusable)} of {len(results)} case(s) without usable evidence: "
+              f"{' '.join(unusable)}", file=sys.stderr)
+        return 1
+    if failed:
+        print(f"picture_table: {len(failed)} of {len(results)} case(s) failed: {' '.join(failed)}",
+              file=sys.stderr)
+        return 6
     return 0
 
 

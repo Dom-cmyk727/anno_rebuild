@@ -7313,3 +7313,170 @@ The objects have no `cities` field. The words "player cities" and "island
 reservations" appear only in the `excluded` list. The historical
 `lan5-a.txt`, `lan5-b.txt`, and `lan5-c.txt` files are unchanged. lan5.txt
 is unchanged. The loader does not read the JSON.
+
+## MAP.2 — ship-start candidates for review — 2026-10-31 — status: READY FOR REVIEW
+
+Tool status: PASS_TOOL_CHECKS on profile `map2-ship-start-v1` for all three
+written manifests. Engine load, sailing, founding, visibility, fertility, and
+save checksums: NOT_RUN_ENGINE. Those items stay QUESTION. Nothing is
+installed over `data/maps/lan5.txt`. Nothing is merged or pushed.
+
+Recommendation, not a selection: review `lan5-ship-b` first. Every seat has
+three to seven large islands inside the 400-tile opening bound, including one
+within 160 tiles, and seats 0–3 can all reach island 4 while each still has a
+closer island of its own. `lan5-ship-a` is the more open sea. `lan5-ship-c`
+is the denser archipelago. The owner chooses.
+
+### What was committed
+
+- `f64215e` specification, decision table, boundary correction, copied research note
+- `8f019f7` tool-only manifest parser
+- `dea2885` geometry checker and hand-counted tests
+- `e402190` three manifests and the layout tool
+- the preview tool is committed with this report
+
+`data/maps/lan5.txt` sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`,
+1476 bytes, dump digest `c6af83f95104cd4f`. The old `lan5-a.txt`,
+`lan5-b.txt`, and `lan5-c.txt` files stay as the retired Kontor-start
+measurements. Their ±5% failures were not turned into passes.
+
+### Commands
+
+From the worktree, single process:
+
+```
+python3 -I tools/map2_ship_selftest.py          # 34 pass, 0 failed, exit 0
+python3 -I tools/map2_manifest_selftest.py      # 19 pass, 0 failed, exit 0
+python3 -I tools/map2_ship_layout.py --game-dir <game/app> --out-dir data/maps/candidates/ship-start-v1
+python3 -I tools/map2_ship_layout.py --game-dir <game/app> --out-dir /tmp/map2-ship-cmp
+cmp of the three JSON files                       # identical, exit 0
+python3 -I tools/map2_ship.py check <each json> --game-dir <game/app>   # exit 0
+python3 -I tools/map2_ship_preview.py <each json> --game-dir <game/app> --out-dir cache/map2-ship-starts-2026-10-31/previews
+```
+
+The ship self-test and the manifest self-test together finished in under a
+second. Layout of all three finished in about 2 seconds. Checking the three
+written files finished in about 5 seconds. Each preview set finished in about
+2 seconds. Logs: `cache/map2-ship-starts-2026-10-31/logs/`. Previews are
+gitignored.
+
+Negative controls, flipped in process and restored: `COUNT_OBSTACLES` is the
+check that emits `island 0 has no founding site`; `REQUIRE_DISTINCT` emits
+`distinct-island witness covers 1 of 5` for five beaches on one island;
+`REPORT_ABSENT_CLIMATES` emits `climate polar absent everywhere`. With the
+flag off, that line disappears. A closed ring is `covers 0 of 5`.
+
+### Comparison
+
+World area is 1431² = 2,047,761. Rectangle share is the sum of template
+rectangles, not HEIGHT land. The useful-opening bound is 400 tiles on the
+coarse grid. A route past that bound is a detour and is not in the witness.
+Wueste is absent on every candidate and the report says so. The proposed
+loadout is the same 03 human baseline on all three and is not an economy
+approval. Spawn facings point toward the map centre. They are not warehouse
+doors.
+
+| | lan5-ship-a | lan5-ship-b | lan5-ship-c |
+|---|---|---|---|
+| Theme | open channels, dispersed large islands | linked channels, one island reached by four seats | denser fill, several corridors |
+| Seed / filler placements | 26031 / 18, tried 141, missed 0 | 26032 / 28, tried 13013, missed 0 | 26033 / 40, tried 1447, missed 0 |
+| Islands | 28 | 38 | 50 |
+| Climates present | polar 3, tundra 3, nord 7, praerie 3, dschungel 8, steppe 4 | polar 4, tundra 4, nord 9, praerie 5, dschungel 10, steppe 6 | polar 6, tundra 5, nord 10, praerie 7, dschungel 13, steppe 9 |
+| Wueste | absent everywhere | absent everywhere | absent everywhere |
+| Rectangle tiles (share) | 821,248 (40.1%) | 922,880 (45.1%) | 1,030,400 (50.3%) |
+| HEIGHT>=16 land | 394,249 | 441,671 | 491,331 |
+| Large-island land, nord then jungle | 26,213–49,399 and 22,527–39,912 | 26,304–49,399 and 23,124–29,033 | 26,304–39,526 and 22,527–39,912 |
+| Largest free component on those ten | 1,445–12,121 | 1,445–11,920 | 1,608–12,121 |
+| Large islands inside 400 tiles, by seat | 5, 7, 5, 3, 3 | 3, 4, 7, 7, 3 | 3, 5, 3, 4, 3 |
+| Witness costs | 72, 32, 72, 32, 16 | 32, 32, 64, 32, 32 | 24, 24, 16, 32, 56 |
+| Witness islands | 5, 101, 8, 3, 9 | 0, 1, 4, 117, 127 | 0, 123, 2, 106, 5 |
+| Optional share | all ten 256s, plus six 128s | all ten 256s, plus ten 128s | all ten 256s, plus fourteen 128s |
+| Content hash | `2b291a2e0615688ad767f015250863d98f99047cdfa6ec140c04d3f6e217b010` | `ea471f5c723043dd44df8662f701c7174c1b360d4b4312fed341af75acc61f85` | `6156c56bf33c0e139a61732d1df313c49a368af6bb2da5fb4fcb833ea2e39096` |
+| File sha256 | `4cd2f26864fb27b00aad304b7d33981bf752cf0d84a1adb1dfd7d2906654b89d` | `074505e86d534eeb7458682bfb8d24b4fc57de7b63544b84069e465f89ea4ddf` | `aeff629944d99d5af429060ffeab8f0e2d7dea7d08394067d0d63ca461a623b1` |
+
+Evaluated cells and founding sites: A 99,316, B 91,902, C 85,076. Profile
+`map2-ship-start-v1`. Checker defaults: grid step 8, clearance 8, bound 400,
+city estimate 256, share gap 32, share side 128.
+
+The witness is one possible matching. It is not a destination. On A, seat 1's
+witness is the small island 101 at cost 32, and that seat also has seven large
+islands inside the bound, the nearest at 64. On B, seats 3 and 4 witness a
+small island at cost 32 and still have seven and three large islands. On C,
+seats 1 and 3 do the same. Sharing is not required for the matching: each
+witness uses five different islands.
+
+Climate reach inside the bound is uneven, which is the accepted asymmetry.
+On A, polar is only seat 3, nord misses seat 4, and jungle misses seat 3.
+On B, nord and praerie reach every seat; jungle and steppe reach seats 2–4;
+polar reaches 0, 1, and 4. On C, jungle reaches seats 1, 3, and 4; seats 0
+and 2 stay with northern large islands unless they take a detour.
+
+### Why the numbers are not equal on purpose
+
+Template `NORD/N_256X256_0015_5B.SCP` has 49,399 tiles of HEIGHT>=16 and a
+largest obstacle-cleared component of 1,445. The same mask is island 4 on A
+and on B. The preview shows a full green silhouette because the picture is
+HEIGHT land. The city figure subtracts recorded obstacle origins only.
+Graphic extents beyond that origin are not in the 6-byte record and were not
+invented, so the 1,445 can still be high. Filename suffixes were not read as
+fertility. `raw` and `ore` are not applied.
+
+Island 0 on A (`N_256X256_0018`) shows a separate land patch inside one
+rectangle. The city figure is the largest component, 4,396, not the sum of
+the patches.
+
+### Previews inspected
+
+Opened and looked at:
+
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-a-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-a-iso.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-b-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-b-iso.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-c-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-c-iso.png`
+
+Also the three `*-top-choices.png` overlays. The base pictures show sea,
+HEIGHT land inside a pale rectangle, island ids 0–9, ship seats, a climate
+legend, and a 100-tile bar. They do not draw a Kontor, a partner line, or an
+owner tint. The overlay adds one straight segment per seat to that seat's
+witness island, and an `S` on each large island that can hold two footholds.
+The legend says LINE CHOICE, S SHARE, and NO CLAIM. Those segments are not
+sailing routes.
+
+A is the open map: wide sea between a northern scatter and a southern scatter.
+B packs the large islands into linked gaps, with island 4 in the middle of
+several of those gaps. C fills more of the diamond and still leaves channels;
+the ships sit in those channels. Polar blobs are in the north and jungle
+masses are in the south. Ship 2 is drawn near-white, which matches its legend
+swatch and stays visible on the sea. No layout change followed the inspection.
+
+### Proven, provisional, and still open
+
+Proven here: the manifests parse, hash, and regenerate; the geometric checks
+accept the three files; five distinct islands are reachable inside the bound
+for a matching; a missing climate stays visible; lan5.txt and the fixed-map
+dump are unchanged.
+
+Provisional model: step-8 rectangle-blocked sea, no corner cutting, cost =
+steps × 8, founding = a 4×4 of HEIGHT>=16 clear of obstacle origins with one
+side on water. This is not the original movement rule and not a service area.
+
+Owner choices already settled: ship start, natural differences, optional
+sharing, the 1431 envelope, five plain nord 256s and five plain jungle 256s.
+Still open: OQ-521 clustered versus dispersed spawns (these files use
+separated authored positions), founding orientation (OQ-520), buildability
+versus HEIGHT>=16 (OQ-519), and what a tool route is worth (OQ-517).
+
+### Later engine work, not done here
+
+- A loader seam that spawns ships and does not create the whole-island
+  developer grant. Turning `developer_start` off does not create ships, and
+  `src/sim_load` still reads only `anno1503-fixed-map 1`.
+- A save checksum for this start. The manifest content hash is the proposal
+  hash, not that checksum.
+- The original movement rule, the founding predicate, the warehouse door, and
+  visibility. Until those exist, a tool route is not a certification.
+- A deterministic rule for two players founding on the same coast in one tick.
+- Engine tests and the target-host tests. They were not run.

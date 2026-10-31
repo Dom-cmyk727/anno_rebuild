@@ -539,14 +539,12 @@ class Journal {
     /// issues none at or below this (T10c F4, E1).
     std::uint64_t max_hold_id() const noexcept { return max_hold_id_; }
 
-    bool open(const std::filesystem::path& path, std::vector<Orphan>& orphans) {
-        path_ = path;
-        max_hold_id_ = 0;
-        std::error_code error;
-        std::filesystem::create_directories(path.parent_path(), error);
-        std::map<std::pair<std::uint64_t, std::uint64_t>, Orphan> holds;
-        std::map<std::pair<std::uint64_t, Owner>, std::uint64_t> cpu;
-        if (std::FILE* in = fopen_cloexec(path.string().c_str(), "r")) {
+    /// Reads one journal file into the open-promise maps (A/R/C/D lines; anything else is
+    /// ignored, as every coordinator version does).
+    void replay(const std::filesystem::path& source,
+                std::map<std::pair<std::uint64_t, std::uint64_t>, Orphan>& holds,
+                std::map<std::pair<std::uint64_t, Owner>, std::uint64_t>& cpu) {
+        if (std::FILE* in = fopen_cloexec(source.string().c_str(), "r")) {
             char line[512];
             while (std::fgets(line, sizeof(line), in) != nullptr) {
                 char kind = 0;
@@ -587,6 +585,32 @@ class Journal {
             }
             std::fclose(in);
         }
+    }
+
+    /// Whether open() replayed an older version's journal into this one.
+    bool adopted() const noexcept { return adopted_; }
+
+    /// `adopt`, when not empty and `path` does not exist yet, is a journal of an OLDER
+    /// compatibility version (the unsuffixed name, see default_journal): its open promises are
+    /// replayed first, so a live owner of the previous coordinator stays protected, and are then
+    /// written into `path`. `adopt` is only read, never written: an older coordinator that starts
+    /// on it later sees exactly what it wrote.
+    bool open(const std::filesystem::path& path, std::vector<Orphan>& orphans,
+              const std::filesystem::path& adopt = {}) {
+        path_ = path;
+        max_hold_id_ = 0;
+        std::error_code error;
+        std::filesystem::create_directories(path.parent_path(), error);
+        std::map<std::pair<std::uint64_t, std::uint64_t>, Orphan> holds;
+        std::map<std::pair<std::uint64_t, Owner>, std::uint64_t> cpu;
+        const bool adopting = !adopt.empty() && !std::filesystem::exists(path, error) &&
+                              std::filesystem::exists(adopt, error);
+        for (const std::filesystem::path& source :
+             adopting ? std::vector<std::filesystem::path>{adopt, path}
+                      : std::vector<std::filesystem::path>{path}) {
+            replay(source, holds, cpu);
+        }
+        adopted_ = adopting;
         for (const auto& [key, orphan] : holds) {
             orphans.push_back(orphan);
         }
@@ -679,6 +703,7 @@ class Journal {
     std::FILE* file_ = nullptr;
     std::uint64_t appended_ = 0;
     std::uint64_t max_hold_id_ = 0;
+    bool adopted_ = false;
 };
 
 struct Server {
@@ -1503,7 +1528,35 @@ std::vector<std::string> journal_state(const Server& server) {
     return lines;
 }
 
-std::filesystem::path default_journal(std::uint16_t port) {
+/// The directory of the default journals.
+std::filesystem::path journal_dir() {
+#if defined(_WIN32)
+    if (const char* local = std::getenv("LOCALAPPDATA")) {
+        if (local[0] != '\0') {
+            return std::filesystem::path(local) / "anno1503";
+        }
+    }
+#else
+    if (const char* home = std::getenv("HOME")) {
+        if (home[0] != '\0') {
+            return std::filesystem::path(home) / ".cache" / "anno1503";
+        }
+    }
+#endif
+    return std::filesystem::temp_directory_path() / "anno1503";
+}
+
+/// The journal name of compatibility 3 and below, the one an older coordinator replays.
+std::filesystem::path legacy_journal(std::uint16_t port) {
+    return journal_dir() / ("coord-" + std::to_string(port) + ".journal");
+}
+
+/// The default journal of a coordinator that speaks `compat`. Compatibility 3 and below keep the
+/// name every earlier coordinator uses; later versions add the version, so a coordinator of an
+/// older version never replays (and, since it rewrites what it replays and drops lines it does
+/// not know, never destroys) a journal whose owner semantics it cannot recover (compat 4:
+/// namespace-3 Darwin owners). docs/perf/README.md, "MAP-2 repair 2".
+std::filesystem::path default_journal(std::uint16_t port, std::uint64_t compat) {
     // ANNO_TEST_BUDGET_JOURNAL (tests only): one journal for a coordinator and
     // the successor a client starts with the same environment (T10c F3).
     if (const char* env = std::getenv("ANNO_TEST_BUDGET_JOURNAL")) {
@@ -1511,21 +1564,8 @@ std::filesystem::path default_journal(std::uint16_t port) {
             return env;
         }
     }
-    const std::string name = "coord-" + std::to_string(port) + ".journal";
-#if defined(_WIN32)
-    if (const char* local = std::getenv("LOCALAPPDATA")) {
-        if (local[0] != '\0') {
-            return std::filesystem::path(local) / "anno1503" / name;
-        }
-    }
-#else
-    if (const char* home = std::getenv("HOME")) {
-        if (home[0] != '\0') {
-            return std::filesystem::path(home) / ".cache" / "anno1503" / name;
-        }
-    }
-#endif
-    return std::filesystem::temp_directory_path() / "anno1503" / name;
+    return journal_dir() / ("coord-" + std::to_string(port) +
+                            (compat <= 3 ? "" : "-v" + std::to_string(compat)) + ".journal");
 }
 
 Native listen_on(std::uint16_t port, bool all_interfaces) {
@@ -1598,9 +1638,17 @@ int run_budget_server(const BudgetServerOptions& options) {
         server.incarnation =
             (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^ std::random_device{}();
     }
+    // A default journal of compatibility 4 or later adopts the open promises of the previous
+    // version's journal once (see Journal::open); an explicit --journal or the test override
+    // names the file and adopts nothing.
+    const char* override_env = std::getenv("ANNO_TEST_BUDGET_JOURNAL");
+    const bool defaulted =
+        options.journal.empty() && (override_env == nullptr || override_env[0] == '\0');
     const std::filesystem::path journal =
-        options.journal.empty() ? default_journal(port) : options.journal;
-    if (!server.journal.open(journal, server.orphans)) {
+        options.journal.empty() ? default_journal(port, server.compat) : options.journal;
+    const std::filesystem::path adopt =
+        defaulted && server.compat > 3 ? legacy_journal(port) : std::filesystem::path();
+    if (!server.journal.open(journal, server.orphans, adopt)) {
         std::printf("JOURNAL-FAILED %s\n", journal.string().c_str());
         std::fflush(stdout);
         close_fd(listen_fd);
@@ -1620,10 +1668,12 @@ int run_budget_server(const BudgetServerOptions& options) {
 #endif
     server.meters.start();
     // A test that starts its own coordinator waits for this line.
-    std::printf("LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu\n",
-                static_cast<unsigned>(port), static_cast<unsigned long long>(server.build),
-                static_cast<unsigned long long>(server.compat),
-                static_cast<unsigned long long>(server.incarnation), server.orphans.size());
+    std::printf(
+        "LISTENING %u build=%016llx compat=%llu incarnation=%016llx orphans=%zu adopted=%d\n",
+        static_cast<unsigned>(port), static_cast<unsigned long long>(server.build),
+        static_cast<unsigned long long>(server.compat),
+        static_cast<unsigned long long>(server.incarnation), server.orphans.size(),
+        server.journal.adopted() ? 1 : 0);
     std::fflush(stdout);
     const auto period = detail::recheck_period();
     auto idle_since = std::chrono::steady_clock::now();

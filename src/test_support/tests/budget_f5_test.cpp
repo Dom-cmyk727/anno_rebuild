@@ -460,3 +460,311 @@ TEST_CASE("S3: a captured pipeline ends without waiting for the coordinator's id
     step_aside(kPortPipeline, vars, budget_path);
 #endif
 }
+
+// ---- compatibility 4: the transition from earlier coordinators (MAP-2 repair 2)
+//
+//   T1  (modeled) a coordinator started as compatibility 3 and a compatibility-4 client refuse each
+//       other: idle steps aside, busy is waited for with a diagnostic and its holder is untouched.
+//   T2  the default journal is keyed by the version, so an older coordinator never replays it.
+//   T3  the first start of a version-4 journal adopts the version-3 journal's open promises,
+//       read-only: a live owner keeps its reservation, the owner's exit releases it, a restart
+//       does not adopt twice, and the legacy file is byte-identical afterwards.
+//   T4  adoption keeps CPU tokens, releases a reused pid and keeps what it cannot attribute.
+//   T5  (opt-in, ANNO_TEST_OLD_COORD) a real older coordinator binary steps aside for a
+//       compatibility-4 client. The "older coordinator" of T1 to T4 is this build started with
+//       --compat-version 3: it models the handshake and the journal name, not the older recovery
+//       code. The mixed-binary evidence is tools/test/mixed_coordinator_check.sh.
+//
+// Ports 47860..47869.
+#if !defined(_WIN32)
+namespace {
+
+constexpr std::uint16_t kPortT1Idle = 47860;
+constexpr std::uint16_t kPortT1Busy = 47861;
+constexpr std::uint16_t kPortT2 = 47862;
+constexpr std::uint16_t kPortT3 = 47863;
+constexpr std::uint16_t kPortT4Cpu = 47864;
+constexpr std::uint16_t kPortT4Reused = 47865;
+constexpr std::uint16_t kPortT4Unknown = 47866;
+constexpr std::uint16_t kPortT5 = 47867;
+
+/// A private HOME so the default journals of a coordinator that is started without --journal land
+/// in a directory of this case.
+struct Home {
+    std::filesystem::path dir;
+    explicit Home(const char* name) : dir(f5_dir() / (std::string("home-") + name)) {
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+        std::filesystem::create_directories(dir);
+    }
+    std::filesystem::path journal(std::uint16_t port, const char* suffix = "") const {
+        return dir / ".cache" / "anno1503" /
+               ("coord-" + std::to_string(port) + suffix + ".journal");
+    }
+    Vars vars() const { return {{"HOME", dir.string()}, {"ANNO_TEST_BUDGET_JOURNAL", ""}}; }
+};
+
+std::string file_bytes(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), {}};
+}
+
+/// Starts this build's coordinator with the default journal under the Home in the environment.
+/// `compat` models an older version.
+Child start_default(std::uint16_t port, const Home& home, std::optional<std::uint64_t> compat,
+                    std::string& listening) {
+    const auto exe = sibling("anno_budget_coord");
+    REQUIRE(std::filesystem::exists(exe));
+    std::vector<std::string> args = {std::to_string(port), "local"};
+    if (compat) {
+        args.emplace_back("--compat-version");
+        args.push_back(std::to_string(*compat));
+    }
+    Env env(home.vars());
+    Child coord = Child::start(exe, args);
+    REQUIRE(static_cast<bool>(coord));
+    listening = coord.line(15000ms);
+    INFO("coordinator on port " << port << " first line: '" << listening << "'");
+    REQUIRE(listening.rfind("LISTENING", 0) == 0);
+    return coord;
+}
+
+} // namespace
+
+TEST_CASE("T1: a compat 3 coordinator and a compat 4 client refuse each other and keep the holder" *
+          doctest::test_suite("budget")) {
+    // Idle: it steps aside for the new client (the documented handover).
+    {
+        const auto journal = f5_dir() / "t1-idle.journal";
+        remove_file(journal);
+        std::string line;
+        Child coord = start_coordinator(kPortT1Idle, journal, std::nullopt, 3, line);
+        CHECK(has(line, " compat=3"));
+        Vars vars = client_vars(kPortT1Idle, "t1i", "3");
+        Env env(vars);
+        Child client = probe({"try", (f5_dir() / "t1-idle.budget").string(), "10"});
+        client.line(5000ms);
+        CHECK(eventually([&] { return !listening(kPortT1Idle); }, 15000ms));
+    }
+    // Busy: a holder of the old version is served by it; the new client is refused, waits for a
+    // bounded time and ends with a diagnostic that names both versions. The holder is untouched.
+    {
+        const auto journal = f5_dir() / "t1-busy.journal";
+        const std::string budget = (f5_dir() / "t1-busy.budget").string();
+        remove_file(journal);
+        std::string line;
+        Child coord = start_coordinator(kPortT1Busy, journal, std::nullopt, 3, line);
+        Vars old_vars = client_vars(kPortT1Busy, "t1b", "30");
+        old_vars.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
+        Child holder;
+        {
+            Env env(old_vars);
+            holder = probe({"holder", budget, "50"});
+        }
+        REQUIRE(has(want(holder, "READY", 15000ms), "READY 1"));
+        Vars vars = client_vars(kPortT1Busy, "t1b", "2");
+        Child client;
+        {
+            Env env(vars);
+            client = probe({"waiter", budget, "10"});
+        }
+        std::string seen;
+        const std::string result = want(client, "ADMITTED", 15000ms, &seen);
+        INFO("client: " << seen);
+        CHECK(has(result, "ADMITTED 0"));
+        CHECK(has(result, "compatibility version 3"));
+        CHECK(has(result, "compatibility version 4"));
+        CHECK(has(result, "incompatible compatibility version"));
+        CHECK(has(result, "wait deadline"));
+        CHECK(listening(kPortT1Busy));
+        holder.send("t\n"); // the holder still talks to its coordinator
+        CHECK(has(want(holder, "CLAIM", 5000ms), "CLAIM"));
+    }
+}
+
+TEST_CASE("T2: the default journal carries the version, so an older coordinator never replays it" *
+          doctest::test_suite("budget")) {
+    Home home("t2");
+    std::string line;
+    {
+        Child coord = start_default(kPortT2, home, std::nullopt, line);
+        CHECK(has(line, " compat=4"));
+        CHECK(std::filesystem::exists(home.journal(kPortT2, "-v4")));
+        CHECK_FALSE(std::filesystem::exists(home.journal(kPortT2)));
+    }
+    {
+        Child coord = start_default(kPortT2, home, 3, line);
+        CHECK(has(line, " compat=3"));
+        CHECK(std::filesystem::exists(home.journal(kPortT2)));
+    }
+}
+
+namespace {
+
+enum class LegacyEdit { None, ReusedPid, Unattributable };
+
+/// A holder of the previous version (a compat 3 coordinator and client) leaves its journal under
+/// the unsuffixed default name; a version-4 coordinator adopts it. `mode`/`amount` is the probe
+/// holder (a memory hold of 50, or a CPU token). Returns after the holder is gone.
+struct Adopted {
+    Home home;
+    std::string legacy_before;
+    Child coord, holder;
+    Vars vars;
+    std::string budget_path;
+    std::string listening;
+    explicit Adopted(const char* name) : home(name) {}
+};
+
+void adopt_start(Adopted& a, std::uint16_t port, const char* name, const char* mode,
+                 LegacyEdit edit) {
+    a.budget_path = (f5_dir() / (std::string(name) + ".budget")).string();
+    a.vars = client_vars(port, name, "30");
+    a.vars.emplace_back("HOME", a.home.dir.string());
+    a.vars.emplace_back("ANNO_TEST_BUDGET_JOURNAL", "");
+    std::string old_line;
+    {
+        Child old_coord = start_default(port, a.home, 3, old_line);
+        Vars old_vars = a.vars;
+        old_vars.emplace_back("ANNO_TEST_BUDGET_CLIENT_COMPAT", "3");
+        {
+            Env env(old_vars);
+            a.holder = probe({mode, a.budget_path, "50"});
+        }
+        std::string seen;
+        REQUIRE(has(want(a.holder, "READY", 15000ms, &seen), "READY 1"));
+        // old_coord stops here (end of scope): the holder lives on.
+        old_coord.stop();
+    }
+    const auto legacy = a.home.journal(port);
+    REQUIRE(std::filesystem::exists(legacy));
+#if defined(__APPLE__)
+    // What the earlier Darwin coordinators wrote: namespace 2 with the microsecond stamp.
+    rewrite_owner(legacy, [](Owner3 o) {
+        o.ns = 2;
+        return o;
+    });
+#endif
+    if (edit == LegacyEdit::ReusedPid) {
+        rewrite_owner(legacy, [](Owner3 o) {
+            o.started += 7777;
+            return o;
+        });
+    } else if (edit == LegacyEdit::Unattributable) {
+        rewrite_owner(legacy, [](Owner3 o) {
+            o.ns = 99;
+            return o;
+        });
+    }
+    a.legacy_before = file_bytes(legacy);
+    a.coord = start_default(port, a.home, std::nullopt, a.listening);
+}
+
+std::string try_with(const Adopted& a, const char* bytes) {
+    Child check;
+    {
+        Env env(a.vars);
+        check = probe({"try", a.budget_path, bytes});
+    }
+    return want(check, "claim=", 15000ms);
+}
+
+} // namespace
+
+TEST_CASE("T3: a version 4 coordinator adopts the open promises of the version 3 journal once" *
+          doctest::test_suite("budget")) {
+    Adopted a("t3");
+    adopt_start(a, kPortT3, "t3", "holder", LegacyEdit::None);
+    CHECK(has(a.listening, "orphans=1"));
+    CHECK(has(a.listening, "adopted=1"));
+    // Capacity 100, the live holder keeps 50: 80 must wait, not be admitted.
+    const std::string blocked = try_with(a, "80");
+    CHECK_MESSAGE(has(blocked, "claim=0"), blocked);
+    CHECK(has(blocked, "pending=50"));
+    // The adopted promise is in this version's own journal now.
+    CHECK(has(file_bytes(a.home.journal(kPortT3, "-v4")), "A "));
+    // The holder exits; the successor notices its stop and releases the promise.
+    a.holder.stop();
+    bool admitted = false;
+    for (int i = 0; i < 40 && !admitted; ++i) {
+        admitted = has(try_with(a, "80"), "claim=1");
+        std::this_thread::sleep_for(250ms);
+    }
+    CHECK(admitted);
+    // A restart does not adopt a second time (the version-4 journal exists), and the legacy file
+    // is byte-identical: this version only ever reads it.
+    std::string again;
+    a.coord.stop();
+    a.coord = start_default(kPortT3, a.home, std::nullopt, again);
+    CHECK(has(again, "adopted=0"));
+    CHECK(file_bytes(a.home.journal(kPortT3)) == a.legacy_before);
+}
+
+TEST_CASE(
+    "T4: adoption keeps a CPU token, releases a reused pid and keeps what it cannot attribute" *
+    doctest::test_suite("budget")) {
+    {
+        Env cpu_env({{"ANNO_TEST_CPU_BUDGET", "1"}});
+        Adopted a("t4cpu");
+        adopt_start(a, kPortT4Cpu, "t4cpu", "cpu-holder", LegacyEdit::None);
+        CHECK(has(a.listening, "adopted=1"));
+        Child waiter;
+        {
+            Env env(a.vars);
+            waiter = probe({"cpu-waiter", a.budget_path, "1"});
+        }
+        // The owner is alive: the token stays taken.
+        CHECK_FALSE(has(waiter.line(2500ms), "ADMITTED"));
+        a.holder.stop();
+        std::string seen;
+        CHECK(has(want(waiter, "ADMITTED", 20000ms, &seen), "ADMITTED 1"));
+    }
+    {
+        Adopted a("t4reused");
+        adopt_start(a, kPortT4Reused, "t4reused", "holder", LegacyEdit::ReusedPid);
+        CHECK(has(a.listening, "adopted=1"));
+        // Another start stamp: the recorded process is not this one, so nothing is kept.
+        bool admitted = false;
+        for (int i = 0; i < 40 && !admitted; ++i) {
+            admitted = has(try_with(a, "80"), "claim=1");
+            std::this_thread::sleep_for(250ms);
+        }
+        CHECK(admitted);
+    }
+    {
+        Adopted a("t4unknown");
+        adopt_start(a, kPortT4Unknown, "t4unknown", "holder", LegacyEdit::Unattributable);
+        CHECK(has(a.listening, "adopted=1"));
+        a.holder.stop();
+        // A record of an OS this host cannot judge is kept even though its holder is gone.
+        for (int i = 0; i < 12; ++i) {
+            CHECK(has(try_with(a, "80"), "claim=0"));
+            std::this_thread::sleep_for(250ms);
+        }
+    }
+}
+
+TEST_CASE(
+    "T5: a real older coordinator steps aside for a compat 4 client (opt-in ANNO_TEST_OLD_COORD)" *
+    doctest::test_suite("budget")) {
+    const char* old = std::getenv("ANNO_TEST_OLD_COORD");
+    if (old == nullptr || old[0] == '\0') {
+        MESSAGE("skipping: set ANNO_TEST_OLD_COORD=<an older anno_budget_coord> to run");
+        return;
+    }
+    const auto journal = f5_dir() / "t5.journal";
+    remove_file(journal);
+    Child coord =
+        Child::start(old, {std::to_string(kPortT5), "local", "--journal", journal.string()});
+    REQUIRE(static_cast<bool>(coord));
+    const std::string line = coord.line(15000ms);
+    INFO("older coordinator: " << line);
+    REQUIRE(line.rfind("LISTENING", 0) == 0);
+    CHECK(has(line, " compat=3"));
+    Vars vars = client_vars(kPortT5, "t5", "3");
+    Env env(vars);
+    Child client = probe({"try", (f5_dir() / "t5.budget").string(), "10"});
+    client.line(5000ms);
+    CHECK(eventually([&] { return !listening(kPortT5); }, 15000ms));
+}
+#endif

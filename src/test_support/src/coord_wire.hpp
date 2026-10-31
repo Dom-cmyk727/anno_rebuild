@@ -60,7 +60,15 @@ constexpr std::uint32_t kMagic = 0x32434E41u;
 /// replayed (an A or R line), so a journaled promise survives two restarts. An
 /// older successor numbers a budget's holds from 1 and can reuse an id, losing
 /// the promise. Pinned by the test "F3 (D1, pin)".
-constexpr std::uint32_t kCompatVersion = 3;
+/// It is 4 since MAP-2 repair 2: a journaled owner may be a Darwin process (namespace 3,
+/// microsecond start stamp). A compatibility-3 coordinator keeps such a record as unattributable
+/// forever (a dead owner's reservation is never released), and it accepted the client under
+/// version 3 (evidence: cache/map2-repair2-evidence/06-mixed-old-successor.txt), so a version-3
+/// coordinator and a version-4 client must refuse each other (the idle one steps aside, a busy
+/// one is waited for with a diagnostic), and a version-4 coordinator uses its own journal name
+/// (coord-<port>-v4.journal, see coord_server.cpp default_journal), which no older coordinator
+/// reads or rewrites.
+constexpr std::uint32_t kCompatVersion = 4;
 constexpr std::size_t kFrameBytes = 96;
 constexpr std::uint16_t kSharedPort = 47631;
 constexpr std::uint16_t kLocalPort = 47632;

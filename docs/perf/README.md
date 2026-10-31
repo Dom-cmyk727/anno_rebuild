@@ -1008,35 +1008,104 @@ at 1 worker, then 2 and 4 (staged by round du, only when the measured capacity a
 
 Object-list path, Debug and Release: `docs/app/game-shell.md`, "Immutable per-island object lists".
 
-## Building picture (W4.3, round dv): `bench_picture`
+## Building picture (W4.3, round dw): `bench_picture`
 
-`bench_picture <game_dir> [--tier five|stress] [--density n] [--cycles n] [--changes k]
-[--threads t] [--max-outstanding m] [--commit-every c] [--busy n]` runs the window-side and worker
-costs of `ScenePicture` (docs/app/game-shell.md, "Retained work"). Per cycle: one batch of `k` moves
-is applied, the builds are awaited, every `c` cycles a commit runs, and then the chunks of the
-island's view are updated (warmed before the first cycle, so the stage measures what each commit
-changes). Percentiles are nearest-rank over the cycles.
+Benchmark of the window-side and worker costs of the building picture (`ScenePicture`,
+docs/app/game-shell.md, "Retained work and reclamation"). It is CPU only: no presented frame, no GPU upload.
 
-Tiers: `five` is the fixed map `data/maps/lan5.txt` (two islands with buildings, 2 buildings).
-`stress` repeats each building `density` times at tile offsets (synthetic; the picture does not check
-that placements are legal). This is not the dense late-game workload the owner asked for: a real
-five-player late game needs its own fixture, not yet made.
+**Modes.** `micro` is the SYNCHRONOUS microbenchmark of round dv: it waits for the workers every cycle and
+is not a presentation measurement. `async` is a bounded-viewport frame loop with real `ChunkWorkers`: edits
+arrive on a cadence (a burst of `b` every `e` frames, round-robin over the islands), commits and chunk updates
+run every frame, and nothing waits for a worker inside the loop. The drain after the loop has a bound
+(`--drain-s`). After the drain the view's group-2 chunks are compared with a synchronous CPU build of the final
+state, and the picture's drawn objects are compared with the loader's own build of the final building list.
 
-Measured on the Mac host (Apple Silicon, Debug build `build/dev`, threads 2, no busy load):
+**Workloads** (seeded, island-local, one building per tile; the manifest of each run is saved with its log).
+Five islands and 40 buildings each is the "five" tier on the fixed map `data/maps/lan5.txt` (21 islands in the
+scene). The "dense" tier uses `--per-island` buildings on `--islands` islands: 400 per island on 5 and 12
+islands, and 800 per island on 21 islands (16800 buildings). Validation before each run: every building is an
+island the scene draws, inside the island's local width and height, and on a tile no other building of that
+island holds. The stress tier of round dw was removed: its placements left their islands and were refused.
+The map's own two buildings are replaced by the workload (generation 0 holds the workload).
 
-| Tier | Cycles | Changes | Apply p50 ms | Build wait p50/p95 ms | Commit p50 ms | Chunk update p50/p95 ms | Notes |
-|---|---:|---:|---:|---:|---:|---:|---|
-| five (2 buildings) | 30 | 4 | 0.022 | 82.9 / 83.5 | 0.088 | 453.7 / 456.7 | 60 commits, 0 discarded, reclaimed 90 |
-| stress ×200 (400 buildings) | 10 | 8 | 0.050 | 81.8 / 83.5 | 0.096 | 479.1 / 485.4 | 10 commits, 144 keys invalidated, reclaimed 20 |
+**Method.** Release build of `bench_picture` (`build/release`), frozen as a copy before the runs. Each
+configuration runs 3 times, each run 2000 frames, `--threads 2` unless stated, `--verify 1`. Percentiles are
+nearest-rank over the samples of a run; the table gives the mean of the 3 runs' percentiles and the worst run's
+maximum. Sample counts are in the table: a configuration with one edit has one apply sample, so its apply row
+is not a distribution. The host: Mac (Apple Silicon); other applications running, the harness itself the
+largest process; not an isolated quiet machine.
 
-What these do and do not show:
+**Results (Release, binary sha `067795d733eabcf6`, final matrix, 33 runs, all passed their verification).**
 
-- Debug, not Release: the Release/Debug split the owner asked for is not measured yet.
-- The chunk update is synchronous `FrameRenderer::update_chunks` on the window thread. The viewer
-  builds chunks on workers, so this bounds nothing about presented frames.
-- The build wait is the worker's whole job (island rewrite, lists, change set) for the changed
-  islands, measured end to end, not the per-job time. Queue delay and per-stage worker times are not
-  separated yet.
-- Reclamation time is not timed; only the counts (`reclaimed`, `reclaim_backlog_peak`) are reported.
-- Peak live bytes are not reported: the counters bound items, not bytes.
-- No simulation load is applied (`--busy` exists; it was not run for this table).
+| configuration | stage | samples per run | p50 ms | p95 ms | p99 ms | max ms |
+|---|---|---:|---:|---:|---:|---:|
+| single edit, 5 x 40 | apply (window) | 1 | 0.005 | 0.005 | 0.005 | 0.006 |
+| single edit, 5 x 40 | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.001 |
+| single edit, 5 x 40 | frame: update_chunks (window) | 2000 | 0.003 | 0.004 | 0.004 | 0.011 |
+| single edit, 5 x 40 | job build time (worker) | 1 | 13.643 | 13.643 | 13.643 | 13.686 |
+| single edit, 12 x 400 | apply (window) | 1 | 0.015 | 0.015 | 0.015 | 0.017 |
+| single edit, 12 x 400 | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.001 |
+| single edit, 12 x 400 | frame: update_chunks (window) | 2000 | 0.003 | 0.004 | 0.005 | 0.013 |
+| single edit, 12 x 400 | job build time (worker) | 1 | 14.159 | 14.159 | 14.159 | 14.194 |
+| idle (one edit at frame 0, then none), 5 x 40 | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.031 |
+| idle (one edit at frame 0, then none), 5 x 40 | frame: update_chunks (window) | 2000 | 0.003 | 0.004 | 0.005 | 0.038 |
+| simultaneous edits, one per island, 12 x 400 | apply (window) | 1 | 0.049 | 0.049 | 0.049 | 0.053 |
+| simultaneous edits, one per island, 12 x 400 | commit (window) | 2000 | 0.008 | 0.009 | 0.010 | 0.045 |
+| simultaneous edits, one per island, 12 x 400 | job queue delay (worker) | 12 | 14.683 | 31.863 | 31.863 | 31.968 |
+| simultaneous edits, one per island, 12 x 400 | job build time (worker) | 12 | 2.002 | 14.673 | 14.673 | 14.714 |
+| 50-edit burst, 12 x 400 | apply (window) | 1 | 0.082 | 0.082 | 0.082 | 0.088 |
+| 50-edit burst, 12 x 400 | commit (window) | 2000 | 0.008 | 0.008 | 0.010 | 0.054 |
+| 50-edit burst, 12 x 400 | job queue delay (worker) | 12 | 14.668 | 31.879 | 31.879 | 32.002 |
+| 50-edit burst, 12 x 400 | job build time (worker) | 12 | 2.046 | 14.657 | 14.657 | 14.693 |
+| sustained, 4 edits every frame, 12 x 400 | apply (window) | 2000 | 0.018 | 0.023 | 0.025 | 0.034 |
+| sustained, 4 edits every frame, 12 x 400 | commit (window) | 2000 | 0.009 | 0.009 | 0.010 | 0.028 |
+| sustained, 4 edits every frame, 12 x 400 | frame: update_chunks (window) | 2000 | 0.004 | 0.005 | 0.006 | 0.022 |
+| sustained, 4 edits every frame, 12 x 400 | job queue delay (worker) | 20 | 6.455 | 42.171 | 43.364 | 48.854 |
+| sustained, 4 edits every frame, 12 x 400 | job build time (worker) | 20 | 14.730 | 15.155 | 15.219 | 15.404 |
+| sustained, 4 workers, 12 x 400 | job queue delay (worker) | 29 | 0.088 | 19.264 | 20.364 | 20.612 |
+| sustained, 4 workers, 12 x 400 | job build time (worker) | 29 | 14.965 | 20.106 | 20.681 | 20.897 |
+| sustained, commit every 20 frames (delayed consumer), 12 x 400 | apply (window) | 2000 | 0.018 | 0.024 | 0.026 | 0.038 |
+| sustained, commit every 20 frames (delayed consumer), 12 x 400 | job queue delay (worker) | 18 | 9.022 | 34.642 | 34.642 | 35.700 |
+| sustained + arithmetic busy threads x4 (contention proxy), 12 x 400 | apply (window) | 2000 | 0.020 | 0.025 | 0.030 | 0.087 |
+| sustained + arithmetic busy threads x4 (contention proxy), 12 x 400 | commit (window) | 2000 | 0.009 | 0.010 | 0.013 | 0.041 |
+| sustained + arithmetic busy threads x4 (contention proxy), 12 x 400 | job queue delay (worker) | 22 | 7.752 | 43.781 | 44.989 | 49.558 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | apply (window) | 400 | 0.012 | 0.016 | 0.022 | 0.068 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | commit (window) | 2000 | 0.000 | 0.000 | 0.000 | 0.517 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | job queue delay (worker) | 7 | 1.379 | 31.471 | 31.471 | 31.580 |
+| dense, 5 x 400, edit every 5 frames (burst 8) | job build time (worker) | 7 | 15.019 | 15.180 | 15.180 | 15.219 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | apply (window) | 400 | 0.078 | 0.107 | 0.112 | 0.141 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | commit (window) | 2000 | 0.036 | 0.038 | 0.043 | 0.051 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | job queue delay (worker) | 36 | 5.409 | 38.323 | 39.651 | 40.484 |
+| dense, 21 x 800, edit every 5 frames (burst 8) | job build time (worker) | 36 | 14.932 | 15.261 | 15.346 | 15.470 |
+
+Counters per configuration (last run of the 3; the full table is `cache/dw-measure/SUMMARY.md`): the busiest
+configuration had 8 outstanding islands (the limit), 2.16 MB of estimated island-record bytes in flight or
+finished at peak, a reaper backlog of at most 8 items, and no failed build. Committed islands per run were 12
+for 12 islands, 21 for 21 islands, 5 for 5 islands. Discarded results (superseded while building) occurred in the
+sustained configurations (up to 17 in a run). Coalescing never fired: builds finished before the next change in
+these workloads, so a replaced in-flight build was always discarded instead. No version requeue occurred.
+
+**What these numbers show, and what they do not.**
+
+- The window's cost is small in every configuration: apply, commit and the chunk update are below 0.1 ms at
+  p99 except the dense 21 x 800 commit (0.043 ms p99) and the 50-edit apply (0.082 ms, one sample).
+- A single edit costs one island rebuild of about 14 ms in a worker (5 x 40 and 12 x 400 alike): the build
+  is dominated by a fixed per-island cost (the island's records and lists), not by the number of buildings. That
+  is the first cost to attack (incremental lists per island); it is not yet done.
+- Under a burst, the queue delay dominates: with 2 workers the median wait is about 15 ms and the p95 about 40 ms
+  for 12 islands; 4 workers bring the median to 0.09 ms and the p95 to 19 ms. Two workers cannot keep up with a
+  sustained 4-edits-per-frame stream on 12 islands of 400 buildings (the picture stays behind the sim until the
+  stream stops; the drain takes about 50 ms after the loop).
+- The chunk stage here is the window side of `update_chunks` only. The chunk rebuilds run on the chunk workers
+  and are not timed by this table: that is a gap of the CPU measurement, to be closed with the viewer.
+- The frame targets of PLAN section 0.3 (16.7 ms p99 at 1080p, 60 fps) are presented-frame targets. They are
+  not measured by this CPU unit. Nothing here claims them.
+- Not measured: Release and Debug of the same workload side by side (the Debug table of round dv used the
+  invalid workload and the synchronous loop, and is superseded); the simulation's own load (the arithmetic busy
+  threads are a proxy, labelled as one; a real headless simulation contention run is not done); bytes of the
+  generations and of the chunk caches (only the picture's estimated island-record bytes are counted); the time a
+  reclamation takes (only its counts).
+
+**Measurements that were superseded.** Round dv's Debug table and the first round dw matrix are not evidence for
+this unit: the first used the two-building fixture and the synchronous loop; the second matrix used
+illegal (duplicate-tile) placements produced by the bench and failed its own oracle; both were replaced.

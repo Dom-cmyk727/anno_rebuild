@@ -237,6 +237,59 @@ chmod +x "$EMPTY"
 table "$EMPTY" "$WORK/m_good" 1 "table whose aggregate prints nothing and exits 0"
 mkdir -p "$WORK/m_none"
 table "$BENCH" "$WORK/m_none" 2 "table without results.tsv"
+# Rows out of order and numbers that are not whole tokens (round ec review of A): t_ms going back
+# gave a negative cadence, and "1_0.0", " 26.7 " and "+0" were read as numbers; a frames.tsv with a
+# header and no row was tabulated.
+for bad in backwards repeated underscore spaced plus headeronly; do
+    new_matrix "$WORK/m_order_$bad"
+    make_case "$WORK/m_order_$bad" bad "$WORK/productive.tsv"
+    f="$WORK/m_order_$bad/bad/frames.tsv"
+    case $bad in
+    backwards) printf '2\t10.0\tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\n' >> "$f" ;;
+    repeated) printf '1\t20.0\tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\n' >> "$f" ;;
+    underscore) printf '2\t1_0.0\tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\n' >> "$f" ;;
+    spaced) printf '2\t 26.7 \tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\n' >> "$f" ;;
+    plus) printf '+2\t26.7\tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\n' >> "$f" ;;
+    headeronly) head -1 "$f" > "$f.one" && mv "$f.one" "$f" ;;
+    esac
+    table "$BENCH" "$WORK/m_order_$bad" 1 "table with frames.tsv rows that are $bad"
+    grep -q "frames.tsv" "$WORK/table.stderr" || fail "frames ($bad): file not named"
+done
+python3 "$TABLE" "$BENCH" "$WORK/m_order_backwards" 2>&1 | grep -q "frames.tsv line 4: t_ms 10.0 before" ||
+    fail "backwards rows: reason not given"
+python3 "$TABLE" "$BENCH" "$WORK/m_order_repeated" 2>&1 | grep -q "frame 1 after frame 1" ||
+    fail "repeated frame id: reason not given"
+python3 "$TABLE" "$BENCH" "$WORK/m_order_headeronly" 2>&1 | grep -q "a header and no frame row" ||
+    fail "header-only frames.tsv: reason not given"
+
+# picture_phases.py (round ec review of A): phases only from traces the aggregate accepts. A
+# contradictory trace, a cut one with an unknown kind and a blank line, and a missing trace each
+# get a row that says why and exit 1 (no traceback); a failed run exits 6; bad arguments 2.
+PHASES="$HERE/picture_phases.py"
+phases() { # binary, matrix, expected status, what
+    python3 "$PHASES" "$1" "$2" > "$WORK/phases.stdout" 2> "$WORK/phases.stderr"
+    expect_status "$3" "$?" "$4"
+    ! grep -q Traceback "$WORK/phases.stderr" || fail "$4: a traceback"
+}
+phases "$BENCH" "$WORK/m_good" 0 "phases of complete, successful cases"
+# Derived by hand from productive.tsv: desired 0, admitted 1, started 2, built 5, committed 6,
+# chunks_ready 9.
+grep -q "^| good | 1 / 1.0 / (n=1) / (n=1) / 1.0 | 1 / 1.0 / (n=1) / (n=1) / 1.0 | 1 / 3.0 / (n=1) / (n=1) / 3.0 | 1 / 1.0 / (n=1) / (n=1) / 1.0 | 1 / 3.0 / (n=1) / (n=1) / 3.0 | n=0 |" \
+    "$WORK/phases.stdout" || fail "phases: the good case's row"
+phases "$BENCH" "$WORK/m_contra" 1 "phases of a contradictory GPU trace"
+grep -q "^| bad | evidence not usable: trace unreadable: .*before its chunks_ready" "$WORK/phases.stdout" ||
+    fail "phases: the contradictory trace's reason"
+printf '%s\n0.0\tdesired\t0\t1\n\n1.0\tbogus_kind\t0\t1\n' "$HEADER" > "$WORK/bogus.tsv"
+new_matrix "$WORK/m_bogus"
+make_case "$WORK/m_bogus" bad "$WORK/bogus.tsv"
+phases "$BENCH" "$WORK/m_bogus" 1 "phases of a trace with a blank line, an unknown kind, no run_end"
+phases "$BENCH" "$WORK/m_missing" 1 "phases of a matrix with a missing trace"
+grep -q "^| good | 1 / 1.0 " "$WORK/phases.stdout" || fail "phases: the good case lost its row"
+phases "$BENCH" "$WORK/m_failed" 6 "phases of a complete, failed run"
+grep -q "^| bad (run FAILED) | " "$WORK/phases.stdout" || fail "phases: failed run not marked"
+phases "$BENCH" "$WORK/m_none" 2 "phases without results.tsv"
+python3 "$PHASES" "$WORK/m_good" > /dev/null 2>&1
+expect_status 2 "$?" "phases with one argument"
 
 # The bench's own finalization on a real case (round ea, 3c), when a game directory is given: a
 # directory named frames.tsv in a fresh out dir. The bench exits 5, the trace it leaves records 5,

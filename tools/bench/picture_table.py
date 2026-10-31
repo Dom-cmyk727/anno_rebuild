@@ -18,6 +18,7 @@ Every case is still listed: a case whose evidence is not usable gets a row that 
 line on stderr), and the other cases' rows are printed as usual.
 """
 import math
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -63,12 +64,21 @@ FRAME_OPTIONAL = {"chunks_built": "int", "pending": "int", "outstanding": "int",
                   "gpu_uploads": "int", "gpu_pending": "int"}
 
 
+# Whole tokens only, as the C++ trace parser reads them (round ec review: Python's int() and float()
+# also take "1_0", " 26.7 " and "+0"). -1 is the only negative value a column may hold.
+WHOLE = re.compile(r"-?[0-9]+")
+NUMBER = re.compile(r"-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")
+
+
 def read_frames(path):
     """Every row of frames.tsv as a dict, or Unusable naming the file and line of the first fault.
-    A malformed row is never skipped: it makes the case's evidence unusable."""
+    A malformed row is never skipped: it makes the case's evidence unusable. Frame ids increase
+    and t_ms never goes back, row by row; a file with no row is unusable."""
     rows = read_lines(path)
     if not rows:
         raise Unusable(f"{path.name} is empty")
+    if len(rows) == 1:
+        raise Unusable(f"{path.name} has a header and no frame row")
     head = rows[0].split("\t")
     missing = [c for c in FRAME_REQUIRED if c not in head]
     if missing:
@@ -88,17 +98,24 @@ def read_frames(path):
                 if not v:
                     raise Unusable(f"{path.name} line {n}: {col} is empty")
                 continue
-            try:
-                x = float(v) if kind == "num" else int(v)
-            except ValueError:
+            if not (NUMBER if kind == "num" else WHOLE).fullmatch(v):
                 raise Unusable(f"{path.name} line {n}: {col} '{v}' is not a "
-                               f"{'number' if kind == 'num' else 'whole number'}") from None
+                               f"{'number' if kind == 'num' else 'whole number'}")
+            x = float(v) if kind == "num" else int(v)
             if kind == "num" and not math.isfinite(x):
                 raise Unusable(f"{path.name} line {n}: {col} '{v}' is not finite")
             if col in FRAME_OPTIONAL and x == -1:
                 continue  # unavailable (CPU mode)
             if x < 0:
                 raise Unusable(f"{path.name} line {n}: {col} '{v}' is negative")
+        if out:
+            before = out[-1]
+            if int(row["frame"]) <= int(before["frame"]):
+                raise Unusable(f"{path.name} line {n}: frame {row['frame']} after frame "
+                               f"{before['frame']} (frame ids increase)")
+            if float(row["t_ms"]) < float(before["t_ms"]):
+                raise Unusable(f"{path.name} line {n}: t_ms {row['t_ms']} before the previous row's "
+                               f"{before['t_ms']}")
         out.append(row)
     return out
 

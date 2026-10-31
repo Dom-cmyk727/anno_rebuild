@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """picture_phases.py: where an edit's latency accrues, per case, from a matrix's raw traces.
 
-    tools/bench/picture_phases.py <matrix out_dir>
+    tools/bench/picture_phases.py <bench_picture binary> <matrix out_dir>
 
 For every case (results.tsv order) and every edit (a desired event of an island and version) that a
 commit reached, the phases from its events.tsv (round ec, A3), in milliseconds:
@@ -16,12 +16,58 @@ commit reached, the phases from its events.tsv (round ec, A3), in milliseconds:
 
 An edit reached through a later version (coalesced) is attributed to that version's build. GPU
 completion and presentation are not in any trace: they are not phases here. Percentiles are
-nearest-rank with their sample counts (p95 needs 20 samples, p99 100). A trace the aggregate refuses
-is not read here: run picture_table.py first. Exit 0, or 2 for bad arguments.
+nearest-rank with their sample counts (p95 needs 20 samples, p99 100).
+
+Each case's trace is first read by the aggregate (bench_picture --aggregate, the same check as
+picture_table.py): a trace that is missing, unreadable, malformed, causally contradictory or
+without run_end gets a row that says why, and is never tabulated (round ec review). The trace is
+then read again here, strictly: the header, four fields per line, known kinds, whole numbers, a
+blank line only at the end. Exit status: 0 every case usable and successful; 1 some case's evidence
+is not usable; 6 all usable but some run failed; 2 bad arguments or no results.tsv.
 """
+import importlib.util
 import math
+import re
 import sys
 from pathlib import Path
+
+
+def load_table():
+    """picture_table.py beside this file (its aggregate check; loaded by path, so -I works)."""
+    spec = importlib.util.spec_from_file_location("picture_table",
+                                                  Path(__file__).with_name("picture_table.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+KINDS = {"desired", "admitted", "deferred", "started", "built", "failed", "superseded", "dropped",
+         "requeued", "committed", "generation", "chunks_ready", "no_visible_change", "retired",
+         "reclaimed", "drain_start", "drain_end", "converged", "run_end", "gpu_mode", "gpu_ready"}
+TIME = re.compile(r"[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?")
+WHOLE = re.compile(r"[0-9]+")
+
+
+def read_events(path, unusable):
+    """The events of a trace the aggregate accepted, read strictly; `unusable` on any fault."""
+    try:
+        lines = path.read_text().split("\n")
+    except OSError as e:
+        raise unusable(f"{path.name} unreadable: {e.strerror or e}") from None
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not lines or lines[0] != "t_ms\tkind\tisland\tversion":
+        raise unusable(f"{path.name} line 1: not the trace header")
+    events = []
+    for n, line in enumerate(lines[1:], start=2):
+        f = line.split("\t")
+        if len(f) != 4 or not TIME.fullmatch(f[0]) or f[1] not in KINDS or \
+                not WHOLE.fullmatch(f[2]) or not WHOLE.fullmatch(f[3]):
+            raise unusable(f"{path.name} line {n}: not a trace event: {line!r}")
+        events.append((float(f[0]), f[1], int(f[2]), int(f[3])))
+    if not events or events[-1][1] != "run_end":
+        raise unusable(f"{path.name}: no run_end at its end (incomplete)")
+    return events
 
 
 def nearest_rank(v, p):
@@ -88,28 +134,40 @@ def phases(events):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2
-    matrix = Path(sys.argv[1])
-    rows = (matrix / "results.tsv").read_text().splitlines()[1:]
+    binary, matrix = sys.argv[1], Path(sys.argv[2])
+    table = load_table()
+    try:
+        rows = (matrix / "results.tsv").read_text().splitlines()[1:]
+    except OSError as e:
+        print(f"picture_phases: {matrix / 'results.tsv'}: {e.strerror or e}", file=sys.stderr)
+        return 2
     print("| case | dispatch | queue | worker | observe | chunks | upload |")
     print("|---|---|---|---|---|---|---|")
+    unusable, failed = [], []
     for row in rows:
         name = row.split("\t")[0]
-        lines = (matrix / name / "events.tsv").read_text().splitlines()[1:]
-        events = []
-        for line in lines:
-            if not line:
-                continue
-            t, kind, island, version = line.split("\t")
-            events.append((float(t), kind, int(island), int(version)))
+        trace = matrix / name / "events.tsv"
+        try:
+            _, succeeded = table.aggregate(binary, trace)
+            events = read_events(trace, table.Unusable)
+        except table.Unusable as e:
+            print(f"| {name} | evidence not usable: {e} |")
+            print(f"picture_phases: case {name}: evidence not usable: {e}", file=sys.stderr)
+            unusable.append(name)
+            continue
+        if not succeeded:
+            failed.append(name)
         events.sort(key=lambda e: e[0])
         p = phases(events)
-        print(f"| {name} | " + " | ".join(dist(p[k]) for k in
-                                         ("dispatch", "queue", "worker", "observe", "chunks",
-                                          "upload")) + " |")
-    return 0
+        print(f"| {name}{'' if succeeded else ' (run FAILED)'} | " +
+              " | ".join(dist(p[k]) for k in ("dispatch", "queue", "worker", "observe", "chunks",
+                                              "upload")) + " |")
+    if unusable:
+        return 1
+    return 6 if failed else 0
 
 
 if __name__ == "__main__":

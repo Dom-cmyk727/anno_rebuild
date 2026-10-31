@@ -8464,3 +8464,59 @@ Review and approve the per-island object-list seam (`docs/app/game-shell.md`, "O
 ### Next single reviewable task
 
 Review this CPU unit (the commits above). After approval: the viewer wiring (the window applies `ScenePicture::apply` and `commit` per frame, takes the owning generation into `FrameRenderer::render` and the GPU frame) with the GPU replacement tests (step 10), then the developer input (step 11).
+
+## Round dv — executor report — W4.3 CPU corrections (R1–R5 done, R6 partly done) — STOP FOR CPU REVIEW
+
+Branch `task/W4-3-live-buildings`, worktree `anno1503-W4-3`. Reviewed head `036a192` (production `549ffc4`). Commits of this round, in order: `231bb77` (R1), `d4eda49` (R2), `37b2b02` (R3), `ba8f300` (R4, R5 bridge and bench), `eeac36c` and `a8468a5` (docs). No merge, no push, no rebase, no pruning, `AGENTS.md` untouched. The display-awake assertion is active: `caffeinate -d -s` (PID 58061) holds `PreventUserIdleDisplaySleep` and `PreventSystemSleep` (checked with `pmset -g assertions`). Viewer/GPU integration, developer input and preview were not started.
+
+Host: Mac (Apple Silicon), Debug (`build/dev`) and ASan (`build/asan`) trees. Game files read from the main worktree's `game/app`; `game/` not written. Logs: `cache/orch-dv-work/`.
+
+### What changed, by finding
+
+- **R1 (river ownership and shutdown), `231bb77`.** A request records a weak owner (shared generations) or a raw pointer (non-shared scenes). The builder picks a live solver under the builder mutex; a surviving waiter of the same slot solves a retired requester's flow. A generation registers as a shared waiter on every island slot; `~Scene` removes its own non-shared requests and waiters, resets orphaned Queued slots, and waits until no solve is running inside it. The solving builder releases its keep-alive before it decrements the in-flight count, so the last owner is destroyed on the builder thread.
+- **R2 (derived freshness), `d4eda49`.** `plan_jobs` reuses a cached child only if it is not marked dirty. The synchronous `fill_cache` inserts a chunk only if it is not older than its mark or the cached copy. The asynchronous `request_chunks` discards a finished chunk older than the cached one.
+- **R3 (backing storage), `37b2b02`.** `render::Scene::Backing` holds the byte buffers the islands and Anlagen.dat view. The constructor stores them with the shared assets, so every derived generation keeps them alive. The loader moves its staged buffers into the scene, which makes the outer buffer vector's inner storage stable. The bridge no longer takes an owner (`ba8f300`).
+- **R4 (retained work and reclamation), `ba8f300`.** Limits (namespace scope, defaults with reasons): `max_outstanding = 8` (islands with a request not yet committed) and `max_reclaim_backlog = 4`. Beyond the outstanding limit a request is deferred and started by a later commit, in order. A commit is skipped (returns 0, never blocks) while the reaper backlog is over its bound, and an island that is already open is deferred rather than replaced while the reaper is behind. Every window-thread drop goes to the reaper (superseded generations, coalesced jobs and results, rebased bases, replaced lists, and the destructor's queue, results and generation). Queued jobs are rebased to the commit's generation, so they pin no old generation. A failing build is caught at the worker seam and counted; the island keeps its committed lists until it is requested again. Stats: deferred, started_deferred, coalesced, rebased, commit_skipped, build_failures, recomputed_changes, outstanding_peak, reclaim_backlog_peak, reclaimed.
+- **R5 (window-side scaling), `ba8f300` and the bench.** The change set (objects removed and added, chunk keys) is computed on the worker against the lists the build started from. The commit uses it only when the island's lists are still the same object (`Scene::island_lists_handle`), and recomputes otherwise (`recomputed_changes`, expected 0). Apply groups the building list in one pass per touched set. `src/tools/bench_picture` reports stage percentiles and counters (method and numbers in `docs/perf/README.md`).
+- **R6 (evidence).** The docs were updated (`docs/app/game-shell.md` "Retained work and reclamation"; `docs/perf/README.md` bench section). The heavy-run correction from the review was checked against `cache/orch-du-calib/heavy-1w-run1.log`: the first refusal is at 1800 s (`wait deadline`, estimate 6,843,933,440 bytes, line 78), and CTest test #291 (`anno_render_tests.scene renders match the recorded digests`, heavy) ends with `Timeout 3600.05 sec`. The other counts from the review (16 completed items, reservation and growth figures) were not re-derived in this turn.
+
+### Tests and counts (this round)
+
+| Gate | Host / build | Result | Log |
+|---|---|---|---|
+| river lifecycle (5) + fallback case, game files | dev | pass | `lifecycle-after3.log`, `render-r3-asan.log` |
+| river lifecycle + derived freshness, game files | ASan | 9/9 pass, 0 sanitizer reports | `render-r3-asan.log` |
+| derived freshness (4 incl. game-file chain) | dev / ASan | 4/4 pass / 4/4 pass, 0 reports | `derived-asan1.log` |
+| scene backing (2), game files | dev / ASan | 2/2 / 2/2, 0 reports | `app-backing-asan-r3.log` |
+| picture bounds (5), game files | dev / ASan | 5/5 (177 assertions) / 5/5, 0 reports | `app-bounds-r4c.log`, `r4-small-asan.log` |
+| scene picture, full (14 = original 9 + bounds 5), game files | dev | 14/14, 9205 assertions | `gate-picture-dev.log` |
+| scene picture, full (14), game files | ASan | 14/14, 9205 assertions, 0 reports | `gate-picture-asan.log` |
+| clang-format 23.1.3 (13 changed C++ files) | Mac | 0 violations | `format-check.log` |
+| full dev build, warnings as errors | Mac | builds clean | `build-dev-r3.log` |
+
+Not run this round: the `scene_probe` (probe) suite (a measurement suite, long; the combined run was stopped), the heavy cases, and the full non-heavy CTest run (see below). Windows MSVC, Linux GCC/Clang `-Werror`, RTX and Radeon checks cannot be run from this Mac and are not claimed.
+
+### Measurements (Debug, Mac, `bench_picture`)
+
+Five-player map (2 buildings, 30 cycles, 4 changes): apply p50 0.022 ms, build wait p50 82.9 ms, commit p50 0.088 ms, chunk update p50 453.7 ms (synchronous, warmed). Stress tier (400 buildings, 10 cycles, 8 changes): build wait p50 81.8 ms, commit p50 0.096 ms, chunk update p50 479 ms for 144 invalidated keys. These are Debug, one host, and the chunk stage is the synchronous path. They are not a dense late-game measurement, not Release, and say nothing about presented frames.
+
+### Decisions and reasoning
+
+- The bridge owns no bytes: the scene does. A separate owner argument was the defect itself (R3).
+- Limits are defaults with reasons, not hidden constants. `max_outstanding` bounds retained islands; `max_reclaim_backlog` bounds generations waiting for the reaper. Both are constructor arguments; the play-option path is not wired yet.
+- A stalled reaper makes commits wait, not the window thread. Under overload the window replaces nothing that it would have to drop, so its own work stays bounded.
+- The change set moved to the worker, with a version check, rather than to a background commit thread: the commit still needs the new generation, and the check makes a stale change set visible (`recomputed_changes`) instead of silent.
+
+### Remaining gates and open items (not done, not waived)
+
+1. Full non-heavy CTest with game files on the final head: running in background, `cache/orch-dv-work/ctest-dev-nonheavy.log`; result to be recorded here when it finishes.
+2. No-game run (`ANNO1503_GAME_DIR` unset) to show the skip paths separately: not run yet.
+3. Probe suite (`scene_probe`): not run.
+4. Heavy one-worker calibration (R6): not run. The footprint sampler column that holds process text (review finding) is not fixed. No constants were changed.
+5. R5 measurements still missing: Release (`build/release`) percentiles, dense five-player and stress fixtures as committed fixtures (the five-player map exists; the stress tier is synthetic), simulation-load with and without `--busy`, reclamation time, peak live bytes.
+6. Windows MSVC, Linux GCC/Clang `-Werror`, `tools/check_unix_warnings.sh` (WSL), RTX/Radeon: not run from this host.
+7. The `Stats` counters bound items, not bytes; peak bytes need a measurement.
+
+### Next review task
+
+CPU review of `ba8f300` against R3–R5 with the remaining gates above, and a decision on whether R5's Release and dense measurements are required before viewer/GPU integration.

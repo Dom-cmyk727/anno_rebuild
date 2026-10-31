@@ -18,6 +18,8 @@
 #include <anno/sim/terrain_view.hpp>
 #include <anno/sim/types.hpp>
 
+#include "founding_fixture.hpp"
+
 namespace sim = anno::sim;
 namespace site = anno::sim::site;
 
@@ -60,6 +62,10 @@ TEST_CASE("site: the click centres the footprint and clamps at zero") {
     // A zero size is the click itself; large values do not wrap.
     CHECK(centred_origin(7, 8, 0, 0) == site::Origin{7, 8});
     const std::int64_t big = std::int64_t{1} << 40;
+    CHECK(centred_origin(std::numeric_limits<std::int64_t>::min(),
+                         std::numeric_limits<std::int64_t>::min(), 9, 9) == site::Origin{0, 0});
+    CHECK(centred_origin(std::numeric_limits<std::int64_t>::max(), 5, 9, 1) ==
+          site::Origin{std::numeric_limits<std::int64_t>::max() - 4, 5});
     CHECK(centred_origin(big, big, 0xffffffffU, 3) ==
           site::Origin{big - (std::int64_t{0xffffffffU} - 1) / 2, big - 1});
 }
@@ -249,16 +255,9 @@ struct CoastCase {
 };
 
 std::vector<CoastCase> load_coast_cases() {
-    const std::filesystem::path p =
-        std::filesystem::path(ANNO_FIXTURES_DIR) / "founding" / "coast_cases.txt";
-    std::ifstream in(p);
-    REQUIRE_MESSAGE(in.good(), "missing fixture " << p.string());
+    const std::vector<std::string> lines = founding_fixture::read_lines("coast_cases.txt");
     std::vector<CoastCase> out;
-    std::string line;
-    while (std::getline(in, line)) {
-        if (line.empty() || line[0] == '#') {
-            continue;
-        }
+    for (const std::string& line : lines) {
         std::istringstream ss(line);
         CoastCase c;
         unsigned rot = 0;
@@ -282,6 +281,8 @@ TEST_CASE("site: coast height rule equals the emulated original on the fixtures"
     const std::vector<CoastCase> cases = load_coast_cases();
     REQUIRE(cases.size() > 100);
     std::size_t accepted = 0, rejected = 0, nonsquare_rot_odd = 0;
+    std::array<std::size_t, 4> nonsquare_accepted{},
+        nonsquare_rejected{}; // per rotation, w != h, w,h > 1
     for (const CoastCase& c : cases) {
         INFO(c.name);
         REQUIRE(site::coast_class_supported(c.flags));
@@ -303,10 +304,18 @@ TEST_CASE("site: coast height rule equals the emulated original on the fixtures"
             ++accepted;
         }
         nonsquare_rot_odd += (c.w != c.h && odd) ? 1 : 0;
+        if (c.w != c.h && c.w > 1 && c.h > 1) {
+            (c.expected == -1 ? nonsquare_rejected : nonsquare_accepted)[c.rot] += 1;
+        }
     }
     CHECK(accepted > 50);
     CHECK(rejected > 50);
     CHECK(nonsquare_rot_odd > 10);
+    // Every rotation is exercised on non-square types in both directions, by named cases.
+    for (std::size_t r = 0; r < 4; ++r) {
+        CHECK_MESSAGE(nonsquare_accepted[r] >= 2, "rotation " << r);
+        CHECK_MESSAGE(nonsquare_rejected[r] >= 2, "rotation " << r);
+    }
 }
 
 TEST_CASE(
@@ -375,6 +384,12 @@ TEST_CASE("site: the coast rule over an island's vertex grid") {
           site::TerrainResult::Unreadable);
     CHECK(site::coast_height_check(g, warehouse, 0, {X0 - 1, Y0}).result ==
           site::TerrainResult::Unreadable);
+    // An origin whose window sum would overflow is unreadable, not wrapped.
+    CHECK(site::coast_height_check(g, warehouse, 0,
+                                   {std::numeric_limits<std::int64_t>::max() - 1, Y0})
+              .result == site::TerrainResult::Unreadable);
+    CHECK(site::coast_height_check(g, warehouse, 0, {X0, std::numeric_limits<std::int64_t>::max()})
+              .result == site::TerrainResult::Unreadable);
     // Unsupported class is reported before any read.
     CHECK(site::coast_height_check(g, type_of(1, 33, 0x4087, 4, 4), 0, {X0 + 2, Y0 + 2}).result ==
           site::TerrainResult::Unsupported);

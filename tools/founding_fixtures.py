@@ -25,6 +25,18 @@ CALL_FLAGS = 0x8000000
 MAX_INSTR = 100000
 
 
+def fnv64(data):
+    h = 0xCBF29CE484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return h
+
+
+def _ver(name):
+    from importlib.metadata import version
+    return version(name)
+
+
 def emulator(game_dll):
     import pefile
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_32
@@ -89,6 +101,27 @@ def named_cases():
     out.append(('nonsquare-4x3-rot1-valid', 4, 3, 1, fw, fh, grid(fw, fh, base)))
     out.append(('nonsquare-4x3-rot1-fifth-shore-vertex-wrong', 4, 3, 1, fw, fh,
                 grid(fw, fh, lambda x, y: 0x10 if (x == 0 and y == 4) else base(x, y))))
+    # Non-square 4x3 at rotations 2 and 3 (shore: bottom row / right column, n = 5 vertices).
+    fw, fh = 4, 3
+    base2 = lambda x, y: 0x30 if y == fh else (0x10 if y == 0 else 0x20)
+    out.append(('nonsquare-4x3-rot2-valid', 4, 3, 2, fw, fh, grid(fw, fh, base2)))
+    out.append(('nonsquare-4x3-rot2-last-shore-vertex-wrong', 4, 3, 2, fw, fh,
+                grid(fw, fh, lambda x, y: 0x10 if (x == 4 and y == fh) else base2(x, y))))
+    fw, fh = 3, 4
+    base3 = lambda x, y: 0x30 if x == fw else (0x10 if x == 0 else 0x20)
+    out.append(('nonsquare-4x3-rot3-valid', 4, 3, 3, fw, fh, grid(fw, fh, base3)))
+    out.append(('nonsquare-4x3-rot3-fifth-shore-vertex-wrong', 4, 3, 3, fw, fh,
+                grid(fw, fh, lambda x, y: 0x10 if (x == fw and y == 4) else base3(x, y))))
+    # A second non-square type (5x3), every rotation: valid, and the first shore vertex wrong.
+    for rot in range(4):
+        fw, fh = (5, 3) if rot % 2 == 0 else (3, 5)
+        sh = {0: lambda x, y: y == 0, 1: lambda x, y: x == 0, 2: lambda x, y: y == fh, 3: lambda x, y: x == fw}[rot]
+        op = {0: lambda x, y: y == fh, 1: lambda x, y: x == fw, 2: lambda x, y: y == 0, 3: lambda x, y: x == 0}[rot]
+        v = lambda x, y, sh=sh, op=op: 0x30 if sh(x, y) else (0x10 if op(x, y) else 0x20)
+        first = {0: (0, 0), 1: (0, 0), 2: (0, fh), 3: (fw, 0)}[rot]
+        out.append((f'nonsquare-5x3-rot{rot}-valid', 5, 3, rot, fw, fh, grid(fw, fh, v)))
+        out.append((f'nonsquare-5x3-rot{rot}-first-shore-vertex-wrong', 5, 3, rot, fw, fh,
+                    grid(fw, fh, lambda x, y, v=v, first=first: 0x10 if (x, y) == first else v(x, y))))
     # Same type at rotation 0 (footprint 4x3, window 5x4, shore row y=0, n = 5).
     fw, fh = 4, 3
     base0 = lambda x, y: 0x30 if y == 0 else (0x10 if y == fh else 0x20)
@@ -151,6 +184,8 @@ def render(game_dll, run):
         f'# generator: tools/founding_fixtures.py version {GENERATOR_VERSION}, seed {SEED}, {RANDOM_CASES} random cases + named cases',
         f'# cases: {len(cases)} (accepted {accepted}, rejected {rejected})',
         f'# body sha256: {hashlib.sha256(body.encode()).hexdigest()}',
+        f'# body fnv64: {fnv64(body.encode()):016x} (over the non-comment lines, each with its newline; checked by the unit test)',
+        f'# tools: unicorn {_ver("unicorn")}, pefile {_ver("pefile")}',
         '# columns: name type_w type_h rotation flag_word window_w window_h expected hex_window',
         '# type_w/type_h are the type\'s UNROTATED size; the window is (fw+1) x (fh+1) vertices row-major, fw x fh the rotated footprint.',
         '# expected: -1 = rejected, otherwise the result byte (record byte 8).',

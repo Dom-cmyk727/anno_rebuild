@@ -1,3 +1,5 @@
+#include <limits>
+
 #include <anno/sim/site_checks.hpp>
 
 namespace anno::sim::site {
@@ -14,8 +16,9 @@ std::uint32_t group_of(std::uint32_t prodtype) {
 std::int64_t centre_axis(std::int64_t click, std::uint32_t d) {
     // C truncating division: (d - 1) / 2 with d == 0 gives 0.
     const std::int64_t half = (std::int64_t{d} - 1) / 2;
-    const std::int64_t o = click - half;
-    return o < 0 ? 0 : o;
+    // half >= 0 (d == 0 gives 0): click - half cannot overflow when click >= half, and a
+    // click below half clamps to 0 without subtracting.
+    return click < half ? 0 : click - half;
 }
 
 } // namespace
@@ -32,10 +35,16 @@ std::array<std::uint8_t, 4> rotation_trials(std::uint8_t first) {
 }
 
 bool footprint_inside(const TileLayer& tiles, Origin origin, std::uint32_t w, std::uint32_t h) {
-    const std::int64_t lx = origin.x - tiles.x0();
-    const std::int64_t ly = origin.y - tiles.y0();
-    return lx >= 0 && ly >= 0 && lx + std::int64_t{w} <= std::int64_t{tiles.width()} &&
-           ly + std::int64_t{h} <= std::int64_t{tiles.height()};
+    // Exact for every i64 origin: the offsets are non-negative differences held in u64.
+    if (origin.x < tiles.x0() || origin.y < tiles.y0()) {
+        return false;
+    }
+    const std::uint64_t lx =
+        static_cast<std::uint64_t>(origin.x) - static_cast<std::uint64_t>(std::int64_t{tiles.x0()});
+    const std::uint64_t ly =
+        static_cast<std::uint64_t>(origin.y) - static_cast<std::uint64_t>(std::int64_t{tiles.y0()});
+    return lx <= tiles.width() && w <= tiles.width() - lx && ly <= tiles.height() &&
+           h <= tiles.height() - ly;
 }
 
 bool within_range(std::int64_t click_x, std::int64_t click_y, FixedPos ship,

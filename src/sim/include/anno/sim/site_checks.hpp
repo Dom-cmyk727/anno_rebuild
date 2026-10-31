@@ -137,7 +137,9 @@ struct TerrainVerdict {
 /// not decoded.
 [[nodiscard]] bool coast_class_supported(std::uint32_t flags_word);
 
-/// Vertex-window height rule. type_w and type_h are the type's UNROTATED width and
+/// Vertex-window height rule. The rotation must be 0..3 (contract P2, validated by the caller);
+/// ADAPTATION: a larger value is reduced modulo 4 here, whereas the original compares the
+/// byte for exactly 0..3. type_w and type_h are the type's UNROTATED width and
 /// height; n = type_w + 1 and m = type_h + 1 (ORIGINAL: the edge lengths do not follow
 /// the rotation). The window is (fw + 1) x (fh + 1) vertices from the origin, fw x fh
 /// the rotated footprint. height_at(dx, dy) -> std::optional<std::uint8_t> reads the

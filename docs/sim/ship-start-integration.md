@@ -135,16 +135,17 @@ figure this loader does not create keeps 0.
 
 ### Holds, ownership, nesting
 
-The ship's cargo is a new ordered list of holds, `{GoodsId goods, uint32
-tons}`, serialized on the ship figure. The baseline is four entries, in
-file order: wood 50, food 10, tools 50, tools 30. The two tools entries
-stay two entries. The list is not sorted and is not merged.
+The ship's cargo is a new ordered list of holds, `{GoodsId goods, uint64
+amount_88}` (stream 117; at 116 it was `uint32 tons`), serialized on the ship
+figure. The baseline is four entries, in file order: wood 50, food 10, tools 50,
+tools 30 tons, i.e. 12800, 2560, 12800 and 7680 raw units of 1/256 ton. The two
+tools entries stay two entries. The list is not sorted and is not merged.
 
 `Figure.cargo_goods` and `Figure.cargo_88` stay the existing single-cargo
 fields. This loader writes 0 in both for the ship, the scout and the
-donkey. Manifest tons are whole tons. They are not shifted into 8.8 in
-this unit. A later founding payment that needs 8.8 names that shift
-itself.
+donkey. Manifest tons are whole tons; since stream 117 the loader converts
+them to raw units once (`hold_units_from_tons`, x256, checked), and the
+version-2 manifest itself, its hashes and the candidates are unchanged.
 
 `Figure` has 14 serialized fields today (`state_fields.hpp`). Adding
 `dir16`, the parent id, the crew-slot index and the hold list requires a
@@ -372,3 +373,14 @@ The acceptance boundary is unchanged: the loader, candidates, simulation behavio
 ## 13. Repair unit 5 (task MAP-2, fifth round): predecessor journal
 
 Test infrastructure only (`src/test_support`): the coordinator refuses to start over outstanding promises in the previously published compat-4 build's `coord-<port>-v4.journal`. The load-only acceptance boundary of this document is unchanged: no loader, manifest, candidate, simulation or golden file changed (`git diff b0c84ca bb7f6b3` is empty outside `src/test_support`). Details: `docs/perf/README.md`, "MAP-2 repair 4"; report: `docs/orchestration/REPORTS.md`.
+
+## Exact cargo (task MAP-2, stream 117)
+`ShipHold` is `{GoodsId goods, uint64 amount_88}`: an exact count of 1/256 ton. u64 keeps every whole-ton
+u32 amount the earlier layout could hold (x256 < 2^40) and inherits no capacity limit from the original's u16.
+Only a boundary converts: `hold_units_from_tons(tons)` (x256, nullopt on 64-bit overflow) at the loader.
+`kStateHashVersion` 116 -> 117: a hold is 12 bytes on the wire (`u32 goods`, `u64 amount_88`), the hostile-count
+bound is 12 bytes per hold, and an earlier state or save is refused by its version, never reinterpreted.
+A world without ships changes hash only because the version moved: with the version held at 116 and the new
+layout, all 728 other tests, every golden and the scenario corpus reproduced their 116 values
+(cache/map2-gates2/b-control-version116-layout117.log, the one failure being the new test's own version check).
+Independent wire bytes: `tools/sim_stream.py --write-holds` writes `fixtures/synthetic/sim/ship_holds.txt`.

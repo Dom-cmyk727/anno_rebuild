@@ -37,11 +37,12 @@
 // frames.tsv, chunks.tsv, memory.tsv, sim.tsv (with --sim-contention), summary.txt. Exit status: 0
 // the case ran and verified; 1 verification failed; 2 bad options; 3 the drain did not converge; 4
 // the workload or the scene could not be built; 5 an evidence file could not be saved (each one is
-// named). The trace is saved last and ends with run_end, which carries the verdict when every other
-// file was saved and 5 when one was not; when the trace itself cannot be saved there is none (and
-// no summary.txt). --aggregate exits 0 only for a complete trace of a successful run (6 for an
-// incomplete or failed one, 2 for an unreadable, malformed, missing or causally contradictory one:
-// picture_trace.hpp, TraceSummary::contradictions).
+// named); 7 the case's own trace contradicts itself (its run_end carries 7). The trace is saved
+// last and ends with run_end, which carries the verdict when every other file was saved and 5 when
+// one was not; when the trace itself cannot be saved there is none (and no summary.txt).
+// --aggregate exits 0 only for a complete trace of a successful run (6 for an incomplete or failed
+// one, 2 for an unreadable, malformed, missing or causally contradictory one: picture_trace.hpp,
+// TraceSummary::contradictions).
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -1198,6 +1199,10 @@ int main(int argc, char** argv) {
                   << (saved.trace_saved ? "; the trace records status 5"
                                         : "; no trace was saved (incomplete evidence)")
                   << "\n";
+    }
+    if (saved.status == app::kEvidenceContradictory) {
+        std::cerr << "bench_picture: the case's own trace contradicts itself (summary.txt names "
+                     "each contradiction); exit 7, not a success\n";
     }
     return saved.status;
 }

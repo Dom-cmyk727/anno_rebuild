@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <sstream>
 
 #include <anno/app/picture_trace.hpp>
@@ -77,6 +78,9 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     double last_desired = 0;
     std::vector<std::size_t> awaiting_generation;
     std::map<std::uint64_t, double> retired_at;
+    // A generation number is never reused and never goes back (each commit makes the next one).
+    std::optional<std::uint64_t> last_generation;
+    double run_end_ms = -1;
     std::vector<double> reclaim, queue, build;
     std::map<std::pair<std::uint32_t, std::uint64_t>, double> admitted_at, started_at;
     std::map<std::uint32_t, std::uint64_t> desired_of;
@@ -117,6 +121,16 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             }
             break;
         case TraceKind::Generation:
+            if (last_generation && e.version <= *last_generation) {
+                s.contradictions.push_back("generation " + std::to_string(e.version) +
+                                           " after generation " + std::to_string(*last_generation) +
+                                           " (generations only increase)");
+            }
+            last_generation = e.version;
+            if (committed_pending.empty()) {
+                s.contradictions.push_back("generation " + std::to_string(e.version) +
+                                           " without a committed island");
+            }
             for (const auto& [island, t] : committed_pending) {
                 committed_at.emplace(std::pair{island, e.version}, t);
             }
@@ -215,8 +229,19 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         case TraceKind::RunEnd:
             s.complete = true;
             s.run_status = e.version;
+            run_end_ms = e.t_ms;
             break;
         }
+    }
+    // A commit is made by a generation: committed islands with no Generation after them, and an
+    // event later than the run's end, cannot be a recording.
+    for (const auto& [island, t] : committed_pending) {
+        s.contradictions.push_back("island " + std::to_string(island) + " committed at " +
+                                   std::to_string(t) + " ms without a generation after it");
+    }
+    if (s.complete && s.end_ms > run_end_ms) {
+        s.contradictions.push_back("an event at " + std::to_string(s.end_ms) +
+                                   " ms after run_end at " + std::to_string(run_end_ms) + " ms");
     }
     std::vector<double> object, visible, gpu;
     for (const Edit& d : edits) {
@@ -413,7 +438,10 @@ std::string format_summary(const TraceSummary& s) {
     std::ostringstream o;
     if (s.complete) {
         o << "run=complete status=" << s.run_status
-          << (s.run_status == 0 ? " (succeeded)" : " (FAILED)") << "\n";
+          << (s.run_status != 0 ? " (FAILED)"
+              : s.consistent()  ? " (succeeded)"
+                                : " (status 0, but the trace contradicts itself: not a success)")
+          << "\n";
     } else {
         o << "run=INCOMPLETE (no run_end event: the run stopped or the trace was cut)\n";
     }
@@ -561,7 +589,14 @@ EvidenceOutcome finalize_evidence(const std::filesystem::path& dir,
     }
     out.status = out.unsaved.empty() ? verdict : kEvidenceNotSaved;
     events.push_back({end_ms, TraceKind::RunEnd, 0, static_cast<std::uint64_t>(out.status)});
-    const bool summary_saved = save(dir / "summary.txt", summary(summarize(events)));
+    TraceSummary summarized = summarize(events);
+    if (out.status == 0 && !summarized.consistent()) {
+        // The run's own trace contradicts itself (round ec review): it is not a success.
+        out.status = kEvidenceContradictory;
+        events.back().version = static_cast<std::uint64_t>(out.status);
+        summarized = summarize(events);
+    }
+    const bool summary_saved = save(dir / "summary.txt", summary(summarized));
     if (!summary_saved) {
         out.status = kEvidenceNotSaved;
         events.back().version = static_cast<std::uint64_t>(out.status);

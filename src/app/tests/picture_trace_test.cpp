@@ -609,3 +609,95 @@ TEST_CASE("picture trace: readiness of an island or generation that was not comm
     CHECK(unfinished.gpu_unfinished == 1);
     CHECK(unfinished.succeeded());
 }
+
+TEST_CASE("picture trace: a reused or decreasing generation, a commit without a generation and an "
+          "event after run_end are contradictions" *
+          doctest::test_suite("picture_trace")) {
+    // Round ec review of A (P3): each of these was accepted with exit 0.
+    // Generation 1 used for two commits.
+    CHECK(contradicts(
+        gpu_trace({{2, K::Desired, 1, 1}, {3, K::Committed, 1, 1}, {3, K::Generation, 0, 1}}),
+        "generation 1 after generation 1"));
+    // Generation 5, then generation 2.
+    CHECK(contradicts(std::vector<app::TraceEvent>{{0, K::Desired, 0, 1},
+                                                   {1, K::Committed, 0, 1},
+                                                   {1, K::Generation, 0, 5},
+                                                   {2, K::Desired, 1, 1},
+                                                   {3, K::Committed, 1, 1},
+                                                   {3, K::Generation, 0, 2},
+                                                   {10, K::RunEnd, 0, 0}},
+                      "generation 2 after generation 5"));
+    // desired, committed, run_end: no generation made the commit.
+    CHECK(contradicts(std::vector<app::TraceEvent>{{0, K::Desired, 0, 1},
+                                                   {1, K::Committed, 0, 1},
+                                                   {10, K::RunEnd, 0, 0}},
+                      "island 0 committed at 1.000000 ms without a generation after it"));
+    // A generation event with no committed island before it.
+    CHECK(contradicts(std::vector<app::TraceEvent>{{1, K::Generation, 0, 1}, {10, K::RunEnd, 0, 0}},
+                      "generation 1 without a committed island"));
+    // chunks_ready at 30 ms listed before run_end at 10 ms.
+    {
+        std::vector<app::TraceEvent> e{{0, K::Desired, 0, 1},
+                                       {1, K::Committed, 0, 1},
+                                       {1, K::Generation, 0, 1},
+                                       {30, K::ChunksReady, 0, 1},
+                                       {10, K::RunEnd, 0, 0}};
+        CHECK(contradicts(e, "an event at 30.000000 ms after run_end at 10.000000 ms"));
+    }
+    // Increasing generations, one commit each: consistent.
+    const app::TraceSummary fine =
+        app::summarize(std::vector<app::TraceEvent>{{0, K::Desired, 0, 1},
+                                                    {1, K::Committed, 0, 1},
+                                                    {1, K::Generation, 0, 1},
+                                                    {2, K::Desired, 0, 2},
+                                                    {3, K::Committed, 0, 2},
+                                                    {3, K::Generation, 0, 2},
+                                                    {10, K::RunEnd, 0, 0}});
+    CHECK(fine.consistent());
+    CHECK(fine.succeeded());
+}
+
+TEST_CASE("picture evidence: a run whose own trace contradicts itself is recorded with status 7, "
+          "not as a success" *
+          doctest::test_suite("picture_trace")) {
+    // Round ec review of A (residual): bench_picture exited 0 for its own contradictory trace, and
+    // the summary's first line said "(succeeded)" beside consistency=CONTRADICTORY.
+    const auto dir = std::filesystem::temp_directory_path() / "anno_picture_finalize_contradictory";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::vector<app::EvidenceFile> files{{"frames.tsv", "frame\n0\n"}};
+    const std::vector<app::TraceEvent> events{{0, K::GpuMode, 0, 1},
+                                              {0, K::Desired, 0, 1},
+                                              {1, K::Committed, 0, 1},
+                                              {1, K::Generation, 0, 1},
+                                              {2, K::GpuReady, 0, 1}};
+    std::string given;
+    const app::EvidenceOutcome out =
+        app::finalize_evidence(dir, files, events, 5.0, 0, [&given](const app::TraceSummary& s) {
+            given = app::format_summary(s);
+            return given;
+        });
+    CHECK(out.status == app::kEvidenceContradictory);
+    CHECK(out.trace_saved);
+    const auto s = saved_trace(dir);
+    REQUIRE(s.ok());
+    CHECK(s.value().complete);
+    CHECK(s.value().run_status == 7);
+    CHECK(!s.value().succeeded());
+    CHECK(given.find("(succeeded)") == std::string::npos);
+    CHECK(given.find("consistency=CONTRADICTORY") != std::string::npos);
+    // A failed verdict keeps its own status (it is not a success to begin with).
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const app::EvidenceOutcome failed =
+        app::finalize_evidence(dir, files, events, 5.0, 1,
+                               [](const app::TraceSummary& t) { return app::format_summary(t); });
+    CHECK(failed.status == 1);
+    // A summary of status 0 that is contradictory never reads as a success.
+    std::vector<app::TraceEvent> raw = events;
+    raw.push_back({5, K::RunEnd, 0, 0});
+    const std::string text = app::format_summary(app::summarize(raw));
+    CHECK(text.find("(succeeded)") == std::string::npos);
+    CHECK(text.find("contradicts itself") != std::string::npos);
+    std::filesystem::remove_all(dir);
+}

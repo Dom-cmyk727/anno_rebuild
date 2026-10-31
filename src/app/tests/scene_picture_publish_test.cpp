@@ -240,8 +240,8 @@ struct Recorder {
 
 } // namespace
 
-TEST_CASE("publish: a stream of edits moves the picture forward while it lasts; LatestOnly does "
-          "not" *
+TEST_CASE("publish: a stream of edits moves the picture forward while it lasts, and LatestOnly "
+          "does not" *
           doctest::test_suite("scene_picture_publish")) {
     // One worker; builds pass a turnstile one at a time. Each round: a new edit arrives while the
     // previous version's build is held, then that build is released and the next one is held. The
@@ -590,8 +590,8 @@ TEST_CASE("publish: a stalled reaper holds an intermediate result back, which is
     CHECK(picture.stats().outstanding_bytes == 0);
 }
 
-TEST_CASE("publish: transient and permanent failures under a stream; the healthy island advances "
-          "and the failed one is reported after the edits stop" *
+TEST_CASE("publish: transient and permanent failures under a stream, while the healthy island "
+          "advances, and the failed one is reported after the edits stop" *
           doctest::test_suite("scene_picture_publish")) {
     // Island 0's first three builds throw (transient); every build of island 1 throws until the
     // fault is lifted (permanent). Both are edited in every round, island 0 twice. A failure counts

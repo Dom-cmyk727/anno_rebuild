@@ -298,9 +298,9 @@ TEST_CASE(
     CHECK(st.dirty_islands == 0);
 }
 
-TEST_CASE(
-    "picture recovery: one over-budget island still makes progress; the budget holds otherwise" *
-    doctest::test_suite("scene_picture_recovery")) {
+TEST_CASE("picture recovery: one over-budget island still makes progress, and the budget holds "
+          "otherwise" *
+          doctest::test_suite("scene_picture_recovery")) {
     auto scene = islands_scene(4);
     std::vector<app::SceneBuilding> none;
     app::ScenePicture::Limits limits;

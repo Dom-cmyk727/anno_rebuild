@@ -9,6 +9,7 @@
 # children are nonzero; zero selected cases are an error). Cases that print "skipping:" (game files
 # not set) pass in CTest and are counted separately in the verdict; they are not executed passes.
 # Sanitizer reports are counted in the verdict; a count of zero does not change the exit status.
+# A doctest child that ran no test case is counted (vacuous_cases) and fails the run (exit 7).
 # A second run on the same build directory is refused while the first holds the lock. The launcher
 # should start this script as its own process group (ledger: the PGID), so cancellation can stop the
 # whole owned tree with kill -TERM -PGID.
@@ -48,6 +49,9 @@ FAILED=$(grep -c 'Test *#[0-9]*:.*\(Failed\|Exception\|Timeout\|Not Run\|Interru
 SKIPPED=$(grep -c 'skipping:' "$LOG")
 REQUIRED_SKIPS=$(grep -c 'skipping: ANNO1503_GAME_DIR not set' "$LOG")
 SANITIZER=$(grep -c 'AddressSanitizer\|runtime error:' "$LOG")
+# A doctest child that ran no test case (a name CTest split, or a filter that matches nothing)
+# passes in CTest but executed nothing (round dz).
+VACUOUS=$(grep -c '\[doctest\] test cases: 0 |' "$LOG")
 # A sanitizer report is a failure whatever the child's exit status says: a sanitizer may print
 # after the test function returned, and its exit path is not reliable (round dw, DW1).
 if [ "$RC" -eq 0 ] && [ "$SANITIZER" -eq 0 ] && [ "$SELECTED" -gt 0 ]; then VERDICT=PASS; else VERDICT=FAIL; fi
@@ -55,5 +59,6 @@ if [ "$RC" -eq 0 ] && [ "$SANITIZER" -eq 0 ] && [ "$SELECTED" -gt 0 ]; then VERD
 # gate fails rather than reporting success for work it did not do (round dw, DW1).
 if [ "$REQUIRED_SKIPS" -gt 0 ]; then VERDICT=FAIL; RC=6; fi
 if [ "$RC" -eq 0 ] && [ "$SANITIZER" -gt 0 ]; then RC=4; fi
-echo "VERDICT: $VERDICT ctest_rc=$RC selected_starts=$SELECTED passed=$PASSED failed_or_timed_out=$FAILED skip_messages=$SKIPPED required_asset_skips=$REQUIRED_SKIPS sanitizer_lines=$SANITIZER ended=$(date '+%H:%M:%S')" >> "$LOG"
+if [ "$VACUOUS" -gt 0 ]; then VERDICT=FAIL; [ "$RC" -eq 0 ] && RC=7; fi
+echo "VERDICT: $VERDICT ctest_rc=$RC selected_starts=$SELECTED passed=$PASSED failed_or_timed_out=$FAILED skip_messages=$SKIPPED required_asset_skips=$REQUIRED_SKIPS sanitizer_lines=$SANITIZER vacuous_cases=$VACUOUS ended=$(date '+%H:%M:%S')" >> "$LOG"
 exit "$RC"

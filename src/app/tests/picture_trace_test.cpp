@@ -260,7 +260,7 @@ TEST_CASE("picture readiness: a set is ready only when all its keys are fresh at
     CHECK(tracker.waiting() == 0);
 }
 
-TEST_CASE("picture trace: a generation of two islands is measured per island; coalescing, "
+TEST_CASE("picture trace: a generation of two islands is measured per island, with coalescing, "
           "supersession, unfinished work and convergence" *
           doctest::test_suite("picture_trace")) {
     const std::vector<app::TraceEvent> events{

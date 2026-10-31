@@ -55,6 +55,12 @@ if(ANNO_BUILD_TESTS)
   # Bad arguments print the usage. CTest's output match ignores the exit
   # code; app_test checks that parse_args rejects the input, and main maps a
   # rejection to exit 2 (not tested automatically).
+  # The last-owner release paths allocate nothing (round dy, A6): its own executable, because it
+  # replaces the global allocation functions (they count and refuse only on the thread that asks).
+  add_executable(anno_app_alloc_tests tests/alloc_test.cpp)
+  target_link_libraries(anno_app_alloc_tests PRIVATE anno_app_core doctest::doctest)
+  anno_target_defaults(anno_app_alloc_tests)
+  anno_add_doctest(anno_app_alloc_tests)
   add_test(NAME anno1503_usage COMMAND anno1503 --view x.sze --group 3)
   set_tests_properties(anno1503_usage PROPERTIES PASS_REGULAR_EXPRESSION "usage:")
 endif()

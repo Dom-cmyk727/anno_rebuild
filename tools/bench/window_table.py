@@ -341,7 +341,12 @@ def main():
             manifest = read(case / "trace" / "manifest.txt").splitlines()
             adapter = next((l[len("adapter "):] for l in manifest if l.startswith("adapter ")), "?")
             drawables = sorted({f["drawable"] for f in frames})
+            # Distinct views (position, group, scale): one, unless the session was resized or input
+            # reached the window (a test run must not be moved by the host's pointer).
+            views = len({(f["view_x"], f["view_y"], f["view_w"], f["view_h"], f["group"],
+                          f["scale"]) for f in frames})
             identity.append(f"| {name} | {run.get('drawable_asked', '?')} | {', '.join(drawables)} | "
+                            f"{views} | "
                             f"{adapter} | {len(frames)} / {presented} / {failed_rows} | "
                             f"{kv(next((l for l in manifest if l.startswith('trace ')), '')).get('dropped', '?')} | "
                             f"{agg['run']} |")
@@ -374,9 +379,9 @@ def main():
             print(f"| {name} | evidence not usable: {err} |")
             print(f"window_table: case {name}: evidence not usable: {err}", file=sys.stderr)
             unusable.append(name)
-    print("| case | drawable asked | drawable (px) | adapter | frames attempted / presented / failed "
-          "| dropped | trace |")
-    print("|---|---|---|---|---|---:|---|")
+    print("| case | drawable asked | drawable (px) | views | adapter | frames attempted / presented / "
+          "failed | dropped | trace |")
+    print("|---|---|---|---:|---|---|---:|---|")
     print("\n".join(identity))
     print()
     print("Per attempted frame, ms, n / p50 / p95 / p99 / max:")

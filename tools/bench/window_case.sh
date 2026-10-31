@@ -37,7 +37,7 @@ mkdir -p "$OUT"
     echo "map=$MAP sha256=$(shasum -a 256 "$MAP" | cut -c1-64)"
     echo "commands=$COMMANDS sha256=$(shasum -a 256 "$COMMANDS" | cut -c1-64) lines=$(wc -l < "$COMMANDS" | tr -d ' ')"
     echo "drawable_asked=$SIZE seconds=$SECONDS_ at=$AT trace=$TRACE"
-    echo "env ANNO_VIEW_LIMITS=${ANNO_VIEW_LIMITS:-interactive} ANNO_VIEW_GPU_CHUNKS=${ANNO_VIEW_GPU_CHUNKS:-off} ANNO_GPU_ADAPTER=${ANNO_GPU_ADAPTER:-default}"
+    echo "env ANNO_VIEW_LIMITS=${ANNO_VIEW_LIMITS:-interactive} ANNO_VIEW_GPU_CHUNKS=${ANNO_VIEW_GPU_CHUNKS:-off} ANNO_GPU_ADAPTER=${ANNO_GPU_ADAPTER:-default} ANNO_VIEW_RESIZE=${ANNO_VIEW_RESIZE:-none}"
 } > "$OUT/run.txt"
 TRACE_ENV=()
 [ "$TRACE" = on ] && TRACE_ENV=(ANNO_VIEW_TRACE="$OUT/trace")

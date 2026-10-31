@@ -52,7 +52,7 @@ grep -q "^run=complete status=0 (succeeded)" "$WORK/m_good/good/aggregate.txt" |
     fail "the synthetic case does not aggregate as a success: $(cat "$WORK/m_good/good/aggregate.stderr")"
 table "$WORK/m_good" 0 "a complete, consistent window case"
 # Known numbers: two attempts, one presented; the edit presented 3 ms after its desired event.
-grep -q "^| good | 8x8 | 8x8 | Test adapter | 2 / 1 / 1 | 0 | run=complete status=0 (succeeded) |" \
+grep -q "^| good | 8x8 | 8x8 | 1 | Test adapter | 2 / 1 / 1 | 0 | run=complete status=0 (succeeded) |" \
     "$WORK/out" || fail "identity row"
 grep -q "^| good | 1 / 2.50 / (n=1) / (n=1) / 2.50 | 2 / 0.30 / (n=2) / (n=2) / 0.40 | 1 / 0.50 / (n=1) / (n=1) / 0.50 | 1 / 1.70 / (n=1) / (n=1) / 1.70 |" \
     "$WORK/out" || fail "timing row"

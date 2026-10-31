@@ -7046,3 +7046,11 @@ nord quintuple within ±10% is worst 79 permille. The closest dschungel
 quintuple is worst 52 permille. Ten 256² islands conflict with keeping both
 the 03 rectangle share and the proportional filler counts. Candidates are not
 in this commit.
+
+## MAP.2 progress — profile — 2026-10-31
+
+`tools/map2_profile.py` checks the five-player profile without changing
+`fixed_map.py` dump, check, or fairness. Profile id `map2-proposed-v1`.
+Limits 100 and 50 permille are proposals (OQ-515..OQ-520). `map2_selftest.py`
+passes, including the lan5 digest `c6af83f95104cd4f` and 1476 bytes.
+Negative controls are recorded in the final MAP.2 report.

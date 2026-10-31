@@ -316,3 +316,73 @@ The half-plane on an odd edge is integer. A northern 256² island's centre is
 on the north side when `2 × (y + 128) <= 1431`. A southern island's top is on
 the south side when `2 × y >= 1431`. Origins are multiples of 8. `y = 704`
 passes the south test (`2 × 704 = 1408 >= 1431`). `y = 700` does not.
+
+## 9. Candidate profile `map2-proposed-v1`
+
+`tools/map2_profile.py validate` is a separate check. `tools/fixed_map.py
+check`, `dump` and `fairness` are unchanged. An ordinary map, including
+`data/maps/lan5.txt`, stays valid under the generic check and is not required
+to have five northern and five southern large islands. The profile is the
+named five-player layout.
+
+A full pass prints `PASS profile=map2-proposed-v1` and the permille limits.
+Exit status is 0 only then. The limits are proposals (OQ-515), not an approval.
+±10% large-island land is 100 permille. ±5% fairness is 50 permille. The older
+±10% on distances and ±25% on filler are printed as sensitivity and are not
+gates. A failing measure is not made green by widening the limit.
+
+Comparison is integer. A list `v` is within `permille` of its mean when every
+value satisfies `|n × v − sum| × 1000 <= permille × sum`, inclusive. An empty
+list fails. All zeros pass the ratio and are reported separately if a route
+length is zero. A climate that some seats have and others do not is absent,
+not a zero to divide by.
+
+Structural rules:
+
+- five large NORD 256² islands and five large DSCHUNGEL 256² islands;
+- each northern centre on the north side of the middle line, each southern
+  top on the south side;
+- five different land shapes in each group, by the mask hash in §8, not by
+  filename;
+- no people marker (`MONGOLEN`, `PIRATEN`, `AZTEKEN`, `AFRIKA`, `SUEDSEE`);
+- rectangles on the 8-grid, inside the world, and not overlapping (a shared
+  tile fails; a touch, gap 0, does not);
+- filler islands inside their climate band when the island fits, otherwise on
+  the band's snapped midpoint;
+- five starts, seats 0..4, each Kontor a 4×4 on free coastal land of a
+  different large northern island (`HEIGHT >= 16`, no GELAENDE, FLUESSE or
+  PROD2 origin on the footprint, one side on water).
+
+The Kontor rotation in the file is 0 because the footprint is square. The
+original door direction is unread (OQ-520). The generator places the footprint
+on the coast most aligned with the map centre. That choice is in the layout
+tool. `World::create` does not read it.
+
+Fairness endpoints, all straight-line:
+
+| Measure | Endpoint | Gate |
+|---|---|---|
+| Home land | `HEIGHT >= 16` on the five northern islands | 50 and 100 permille |
+| Paired southern land | the same, on the assigned southern islands | 50 and 100 permille |
+| Pair distance | Kontor centre to the nearest land-tile square of the assigned south island, `floor(euclidean × 1000)` | 50 permille |
+| Rival distance | nearest other Kontor centre, same milli unit | 50 permille |
+| Centre distance | Kontor centre to the map centre `(width // 2, height // 2)` | 50 permille |
+| Reach by climate | filler only; owner is the nearest Kontor, tie to the lower seat; contested when the map centre is strictly closer | 50 permille when every seat has the climate; absent otherwise |
+
+Home land is gated twice: 100 permille as large-island land, and 50 permille
+as fairness. The measured templates fail the second and pass the first.
+Pairing minimises the spread of the five route lengths, then the sum of those
+lengths, then the permutation in lexicographic order (`min-spread-sum-lex`).
+The report also prints `min-spread-lex`, which stops after the spread. Those
+two disagree on a constructed case (a short cycle of length 150 against five
+equal routes of length 100, sum 500). On the three candidates they agreed.
+Navigable water is not computed (OQ-517).
+
+A radial screen flags the five home-island centres when both their radii and
+their consecutive angle gaps, including the wrap around the centre, are within
+50 permille of their means. A northern arc has one large wrap gap, so it is
+not that pattern. The screen is not a fairness score.
+
+`tools/map2_selftest.py` is synthetic. It does not read original files except
+to dump `lan5.txt` and check the digest `c6af83f95104cd4f`, 21 islands, and
+1476 bytes.

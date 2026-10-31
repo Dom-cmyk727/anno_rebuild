@@ -1507,10 +1507,16 @@ GPU memory (chunk planes, pools, atlas, offscreen targets) is the compositor's o
 payload counts.
 
 **Readings, within these limits** (corrected in round ec; see "Round ec corrections" below).
-- **Upload delay:** for single edits and the sustained stream, GPU-usable equals CPU-ready at p50. So uploads
-  add little after CPU readiness in those cases. Under the 50-edit burst and above the build rate, the
-  upload limit adds 20 to 70 ms at p50 and the max. Equal medians alone do not say where the earlier
-  latency arose; the phases below do.
+- **Upload delay** (CPU-ready → GPU-usable per edit, `cache/ec-runs/a3-eb-phases-r2.md`; corrected after the
+  round-ec review):
+  - single edits, the sustained stream and above the build rate: 0.0 ms at p50, so at the median uploads
+    add nothing after CPU readiness;
+  - above the build rate the tail is large: p95 92.8 ms and 24.2 ms, max 92.8 ms and 47.3 ms (w2, w4);
+    sustained max 23.7 and 23.2 ms;
+  - under the 50-edit burst the upload limit adds 23.9 to 71.5 ms (n = 10 per case, so p50 and max are the
+    same sample).
+
+  Equal medians alone do not say where the earlier latency arose; the phases below do.
 - **Frame time:** the window thread's work per frame stayed under 3.0 ms at every percentile on this host.
   That is CPU submission only.
 - **Not shown:**
@@ -1529,7 +1535,7 @@ payload counts.
 - The saved `frames.tsv` frame starts (`picture_table.py`'s cadence table,
   `cache/ec-runs/a3-eb-matrix-table.md`) show a slower observed cadence:
   - idle measured loops: p50 23.1 to 23.5 ms (n = 222 to 226), p99 24.6 to 24.8;
-  - sustained loops: p50 24.6 to 24.7 ms (n = 415 to 420), max 24.9;
+  - sustained loops: p50 24.6 to 24.7 ms (n = 415 to 420), max 24.83 to 24.90;
   - above the build rate: p50 23.8 to 23.9 ms, max 30.6;
   - one-edit and burst cases: their latency accrues in the drain; drain intervals p50 17.8 to 24.3 ms
     (n = 1 to 8).
@@ -1537,14 +1543,19 @@ payload counts.
   So the latencies of round eb were measured at roughly 40 Hz, not 60 Hz.
 
 **Where the latency is.** These are phases per edit from the saved raw events (`tools/bench/picture_phases.py`,
-`cache/ec-runs/a3-eb-phases.md`); ms, n / p50 / p95 / p99 / max.
+which since the round-ec review reads only traces the aggregate accepts; `cache/ec-runs/a3-eb-phases-r2.md`,
+identical to the first reading). The values are ms, as n / p50 / p95 / p99 / max; "–" means fewer samples
+than the percentile needs.
 
-| case | admission → start (queue) | worker build | built → committed (until a frame's commit takes it) | committed → visible CPU-ready (chunk rebuild and the frame that sees it) | CPU-ready → GPU-usable (uploads to the submission) |
-|---|---|---|---|---|---|
-| sustained 1080p, w2 | 100 / 0.0 | 100 / 19.5 / 22.4 / 23.0 / 23.0 | 100 / 4.6 / 22.3 / 24.7 / 24.8 | 15 / 25.4 / – / – / 25.9 | 15 / 0.0 / – / – / 23.7 |
-| sustained 2160p, w4 | 100 / 0.0 | 100 / 19.8 / 22.3 / 22.7 / 23.0 | 100 / 4.4 / 20.8 / 23.0 / 23.1 | 20 / 25.7 / 35.7 / – / 43.2 | 20 / 0.0 / 0.0 / – / 23.2 |
-| burst 1080p, w2 | 50 / 24.5 / 54.7 / – / 54.7 | 50 / 13.6 / 13.7 / – / 13.9 | 50 / 20.3 / 23.1 / – / 23.1 | 10 / 73.1 / – / – / 73.1 | 10 / 43.4 / – / – / 43.4 |
-| above the rate 1080p, w2 | 400 / 8.8 / 22.8 / 24.4 / 49.1 | 400 / 13.7 / 13.9 / 14.1 / 14.1 | 400 / 7.9 / 22.4 / 22.9 / 22.9 | 74 / 47.3 / 108.5 / – / 108.5 | 74 / 0.0 / 92.8 / – / 92.8 |
+| case | desired → admitted (dispatch: deferral and the window's apply) | admission → start (queue) | worker build | built → committed (until a frame's commit takes it) | committed → visible CPU-ready (chunk rebuild and the frame that sees it) | CPU-ready → GPU-usable (uploads to the submission) |
+|---|---|---|---|---|---|---|
+| sustained 1080p, w2 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 19.5 / 22.4 / 23.0 / 23.0 | 100 / 4.6 / 22.3 / 24.7 / 24.8 | 15 / 25.4 / – / – / 25.9 | 15 / 0.0 / – / – / 23.7 |
+| sustained 2160p, w4 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 0.0 / 0.0 / 0.0 / 0.0 | 100 / 19.8 / 22.3 / 22.7 / 23.0 | 100 / 4.4 / 20.8 / 23.0 / 23.1 | 20 / 25.7 / 35.7 / – / 43.2 | 20 / 0.0 / 0.0 / – / 23.2 |
+| burst 1080p, w2 | 50 / 16.6 / 16.7 / – / 16.7 | 50 / 24.5 / 54.7 / – / 54.7 | 50 / 13.6 / 13.7 / – / 13.9 | 50 / 20.3 / 23.1 / – / 23.1 | 10 / 73.1 / – / – / 73.1 | 10 / 43.4 / – / – / 43.4 |
+| above the rate 1080p, w2 | 400 / 20.8 / 65.9 / 87.1 / 111.5 | 400 / 8.8 / 22.8 / 24.4 / 49.1 | 400 / 13.7 / 13.9 / 14.1 / 14.1 | 400 / 7.9 / 22.4 / 22.9 / 22.9 | 74 / 47.3 / 108.5 / – / 108.5 | 74 / 0.0 / 92.8 / – / 92.8 |
+
+Above the build rate an edit waits longer for its admission (20.8 ms at p50, up to 111.5 ms) than for the
+worker build: dispatch defers it while the outstanding builds are at their limit.
 
 So in the sustained stream an edit's 50 ms to CPU readiness is roughly:
 - 20 ms of worker build;
@@ -1570,3 +1581,18 @@ are not executed passes:
 
 The one round-eb dev canary recorded before the GPU poll was moved after the CPU poll
 (`cache/eb-runs/p5-canary-one-gpu`) is now refused as contradictory. It was never a reported measurement.
+
+After the review of package A the validator also refuses:
+- a reused or decreasing generation;
+- a commit with no generation after it;
+- an event later than `run_end`.
+
+A run whose own trace contradicts itself now ends with status 7 (`kEvidenceContradictory`), not 0.
+
+Every trace under `cache/` was re-read with these rules: 105 traces.
+- Rounds dz, ea, eb and ec: every trace accepted, apart from the eb canary above.
+- Round dy: 37 traces refused. They are older than the commit/generation pairing, and the A1 rule ("the
+  island was not committed in that generation") refuses them. They are historical and are not cited as
+  measurements.
+
+None was refused by the three new rules.

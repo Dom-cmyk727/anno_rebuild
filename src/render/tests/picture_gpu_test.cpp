@@ -1,0 +1,1025 @@
+// The play picture's generations on the GPU compositor (round ea, 6a-6g; docs/app/gpu-handoff.md).
+// The window's order: the bridge commits, then one owning handle of the current generation drives
+// a whole frame (chunk planning, CPU and GPU composition, readiness). A commit invalidates the
+// chunk keys of its change: the cached chunks keep drawing, unchanged, until their rebuilds from
+// the new generation arrive, key by key. Two comparisons, kept apart:
+//  - during a transition the GPU output equals the CPU composition of the same inputs (the same
+//    renderer, the same cached chunks), and equals what was shown before (an old chunk is not
+//    relabelled as new because the frame holds a newer scene);
+//  - once every affected visible key is fresh at the same moment (the readiness boundary), the
+//    GPU output equals the CPU picture of a freshly loaded scene of the desired state.
+// Ordering is made with a gate on the chunk workers (ChunkWorkers::set_test_gate), never with
+// sleeps. Needs the game files and a GPU adapter (skips without them, as the other GPU cases).
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include <doctest/doctest.h>
+
+#include <anno/app/legal_workload.hpp>
+#include <anno/app/loader.hpp>
+#include <anno/app/picture_trace.hpp>
+#include <anno/app/play.hpp>
+#include <anno/app/scene_picture.hpp>
+#include <anno/render/frame.hpp>
+#include <anno/render/gpu.hpp>
+#include <anno/render/scene.hpp>
+#include <anno/render/wgpu.hpp>
+#include <anno/test/game_dir.hpp>
+
+namespace {
+
+namespace fs = std::filesystem;
+namespace render = anno::render;
+namespace gpu = anno::render::gpu;
+namespace app = anno::app;
+using render::ChunkKey;
+using SceneHandle = std::shared_ptr<const render::Scene>;
+
+fs::path fixed_map() {
+    return fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
+}
+
+/// A bounded wait on a condition (yields; no fixed sleep).
+template <class F> bool eventually(F done, int seconds = 60) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    while (!done()) {
+        if (std::chrono::steady_clock::now() > until) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+/// Holds the chunk builds `hold` names (a key and the generation the build reads) until the
+/// predicate stops naming them or the gate is opened for good. Declared before the renderer whose
+/// workers it gates, and opened by a GateOpener declared after it, so no worker is left blocked
+/// when the workers are joined.
+struct KeyGate {
+    std::mutex m;
+    std::condition_variable cv;
+    bool open = false;
+    std::function<bool(const ChunkKey&, std::uint64_t)> hold;
+    std::set<std::pair<ChunkKey, std::uint64_t>> waiting;
+    std::uint64_t passed = 0;
+
+    void pass(const ChunkKey& key, std::uint64_t generation) {
+        std::unique_lock lock(m);
+        auto held = [&] { return !open && hold && hold(key, generation); };
+        if (held()) {
+            waiting.insert({key, generation});
+            cv.notify_all();
+            cv.wait(lock, [&] { return !held(); });
+            waiting.erase({key, generation});
+        }
+        ++passed;
+        cv.notify_all();
+    }
+    void set(std::function<bool(const ChunkKey&, std::uint64_t)> h) {
+        const std::lock_guard lock(m);
+        hold = std::move(h);
+        cv.notify_all();
+    }
+    /// Waits (bounded) until `p` holds, evaluated under the gate's lock.
+    template <class P> bool wait_for(P p) {
+        std::unique_lock lock(m);
+        return cv.wait_for(lock, std::chrono::seconds(60), p);
+    }
+    void open_for_good() {
+        const std::lock_guard lock(m);
+        open = true;
+        cv.notify_all();
+    }
+};
+struct GateOpener {
+    KeyGate& gate;
+    explicit GateOpener(KeyGate& g) : gate(g) {}
+    GateOpener(const GateOpener&) = delete;
+    GateOpener& operator=(const GateOpener&) = delete;
+    ~GateOpener() { gate.open_for_good(); }
+};
+
+/// Clears the reclaimer's test observer (declared after what it captures).
+struct ObserverReset {
+    ObserverReset() = default;
+    ObserverReset(const ObserverReset&) = delete;
+    ObserverReset& operator=(const ObserverReset&) = delete;
+    ~ObserverReset() { render::SceneReclaimer::shared().set_test_observer({}); }
+};
+
+/// The GPU device, or why there is none (a skip unless ANNO_REQUIRE_GPU is set).
+std::optional<gpu::Context> open_gpu() {
+    auto ctx = gpu::headless_context();
+    if (!ctx) {
+        if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
+            FAIL("no GPU device (ANNO_REQUIRE_GPU is set): " << ctx.error());
+        }
+        MESSAGE("skipping: " << ctx.error());
+        return std::nullopt;
+    }
+    MESSAGE("adapter " << ctx.value().name);
+    return std::move(ctx).value();
+}
+
+/// The compositor for exact comparisons: every upload in the frame it is received, open sea for a
+/// missing chunk (no stand-in), no dissolve.
+std::unique_ptr<gpu::GpuFrame> make_frame(const gpu::Context& ctx, gpu::GpuLimits limits = {}) {
+    limits.uploads_per_frame = static_cast<std::size_t>(-1);
+    limits.stand_ins = false;
+    limits.chunk_fade_ms = 0;
+    auto made = gpu::GpuFrame::create(ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    return std::move(made).value();
+}
+
+/// The fixed map's scene with `buildings`, loaded on its own (the oracle and the base), rivers
+/// off as in the CPU verifiers (the flow is asynchronous and rebuilds chunks for its own reason).
+SceneHandle scene_with(const fs::path& dir, const app::PlayLoad& play,
+                       const std::vector<app::SceneBuilding>& buildings,
+                       std::optional<render::ZoomLevels> levels = std::nullopt) {
+    app::SceneObjects objects;
+    objects.is_building = [&play](std::uint16_t id) {
+        return app::anlage_is_building(play.world, id);
+    };
+    objects.buildings = buildings;
+    auto loaded = app::load_placed_scene(dir, play.name, play.placed, &objects);
+    REQUIRE(loaded.ok());
+    app::LoadedScene ls = std::move(loaded).value();
+    ls.scene->river_cfg.enabled = false;
+    if (levels) {
+        ls.scene->set_levels(*levels);
+    }
+    return SceneHandle(std::move(ls.scene));
+}
+
+/// A group-2 view of 1024 x 768 scene pixels centred on island-local tile (x, y) of island
+/// `number` (legal_workload_test's anchor).
+render::Rect view_at(const render::Scene& scene, std::uint32_t number, std::int32_t x,
+                     std::int32_t y) {
+    std::size_t index = scene.islands.size();
+    for (std::size_t i = 0; i < scene.islands.size(); ++i) {
+        if (scene.islands[i].number == number) {
+            index = i;
+        }
+    }
+    REQUIRE(index < scene.islands.size());
+    for (const render::Placement& p : scene.layouts[2]) {
+        if (p.index == index) {
+            const auto [tw, th] = render::kTile[2];
+            const int cx2 = 2 * x + 1, cy2 = 2 * y + 1;
+            const int sx = (cx2 - cy2) * tw / 4 + p.offset.first;
+            const int sy = (cx2 + cy2) * th / 4 + p.offset.second;
+            return render::Rect{sx - 512, sy - 384, 1024, 768};
+        }
+    }
+    FAIL("no layout for the island");
+    return render::Rect{};
+}
+
+std::vector<ChunkKey> visible_keys(render::Rect view, std::size_t group) {
+    std::vector<ChunkKey> keys;
+    for (const auto& [cx, cy] : render::visible_chunks(view)) {
+        keys.emplace_back(group, cx, cy);
+    }
+    return keys;
+}
+
+/// Largest per-channel difference between a CPU frame (0RGB words) and a GPU read-back (RGBA
+/// bytes); the GPU cases' bound is 1 (play_gpu_test).
+int channel_delta(const std::vector<std::uint32_t>& cpu, const std::vector<std::uint8_t>& gpu_px) {
+    REQUIRE(gpu_px.size() == cpu.size() * 4);
+    int max = 0;
+    for (std::size_t i = 0; i < cpu.size(); ++i) {
+        for (std::size_t k = 0; k < 3; ++k) {
+            const int c = static_cast<int>((cpu[i] >> (16 - 8 * k)) & 0xFF);
+            max = std::max(max, std::abs(c - int{gpu_px[4 * i + k]}));
+        }
+    }
+    return max;
+}
+
+/// The largest per-channel difference and the pixels whose difference is above 1 and above 2.
+struct Parity {
+    int max = 0;
+    std::size_t over = 0, over2 = 0;
+};
+Parity parity(const std::vector<std::uint32_t>& cpu, const std::vector<std::uint8_t>& gpu_px) {
+    REQUIRE(gpu_px.size() == cpu.size() * 4);
+    Parity p;
+    for (std::size_t i = 0; i < cpu.size(); ++i) {
+        int m = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            const int c = static_cast<int>((cpu[i] >> (16 - 8 * k)) & 0xFF);
+            m = std::max(m, std::abs(c - int{gpu_px[4 * i + k]}));
+        }
+        p.max = std::max(p.max, m);
+        p.over += m > 1 ? 1U : 0U;
+        p.over2 += m > 2 ? 1U : 0U;
+    }
+    return p;
+}
+
+/// A compositor, its renderer (chunks without ships, as the viewer's) with gated workers, and an
+/// offscreen target per view size.
+struct Gpu {
+    std::unique_ptr<gpu::GpuFrame> frame;
+    std::map<std::pair<int, int>, std::pair<gpu::Texture, gpu::TextureView>> targets;
+
+    gpu::GpuStats draw(render::FrameRenderer& frames, const SceneHandle& gen, render::Rect view,
+                       std::size_t group, render::WaterStyle style = render::WaterStyle::Original) {
+        auto it = targets.find({view.w, view.h});
+        if (it == targets.end()) {
+            it = targets
+                     .emplace(std::pair{view.w, view.h},
+                              frame->offscreen_target(static_cast<std::uint32_t>(view.w),
+                                                      static_cast<std::uint32_t>(view.h)))
+                     .first;
+        }
+        return frame->render(frames, gen, view, group, 0, style, it->second.second.get());
+    }
+    std::vector<std::uint8_t> pixels(render::Rect view) {
+        const auto& t = targets.at({view.w, view.h});
+        return frame->read_back(t.first.get(), static_cast<std::uint32_t>(view.w),
+                                static_cast<std::uint32_t>(view.h));
+    }
+};
+
+/// The renderer's CPU composition of the same inputs the GPU just drew from: the same renderer,
+/// whose visible chunks the gate keeps as they are (update_chunks takes nothing new for them).
+std::vector<std::uint32_t> cpu_same_inputs(render::FrameRenderer& frames, const SceneHandle& gen,
+                                           render::Rect view, std::size_t group) {
+    std::vector<std::uint32_t> out(static_cast<std::size_t>(view.w) *
+                                   static_cast<std::size_t>(view.h));
+    frames.render(gen, view, group, 0, render::WaterStyle::Original, out.data());
+    return out;
+}
+
+/// The CPU picture of `scene` alone (its own renderer, chunks built in the frame, no ships in the
+/// chunks: the scene has no units, checked by the callers).
+std::vector<std::uint32_t> cpu_reference(const SceneHandle& scene, render::Rect view,
+                                         std::size_t group) {
+    render::FrameRenderer frames(4, false);
+    std::vector<std::uint32_t> out(static_cast<std::size_t>(view.w) *
+                                   static_cast<std::size_t>(view.h));
+    for (int round = 0; round < 3; ++round) {
+        frames.render(scene, view, group, 0, render::WaterStyle::Original, out.data());
+    }
+    return out;
+}
+
+bool fresh(const render::FrameRenderer& frames, const ChunkKey& k) {
+    return frames.chunk(k) != nullptr && frames.stale_generation(k) == 0;
+}
+
+/// Draws until every visible key is cached and fresh and the workers are idle (the gate holding
+/// nothing), then once more.
+void settle(Gpu& g, render::FrameRenderer& frames, render::ChunkWorkers& workers,
+            const SceneHandle& gen, render::Rect view, std::size_t group) {
+    const auto keys = visible_keys(view, group);
+    for (int round = 0; round < 400; ++round) {
+        const auto s = g.draw(frames, gen, view, group);
+        if (s.chunks_missing == 0 && !frames.busy() &&
+            std::all_of(keys.begin(), keys.end(),
+                        [&](const ChunkKey& k) { return fresh(frames, k); })) {
+            break;
+        }
+        workers.wait_idle();
+    }
+    g.draw(frames, gen, view, group);
+    for (const ChunkKey& k : keys) {
+        REQUIRE(fresh(frames, k));
+    }
+}
+
+/// Commits everything the picture has (the reaper and the reclaimer allowed to catch up first,
+/// so a commit is not skipped for a reason these cases do not test).
+void drain(app::ScenePicture& picture, render::FrameRenderer& frames) {
+    for (int round = 0; round < 40 && picture.pending() > 0; ++round) {
+        picture.wait_idle();
+        REQUIRE(eventually([&] {
+            const auto st = picture.stats();
+            return st.reclaim_completed == st.reclaim_queued &&
+                   render::SceneReclaimer::shared().stats().waiting == 0;
+        }));
+        picture.commit(frames);
+    }
+    REQUIRE(picture.pending() == 0);
+    REQUIRE(picture.error().empty());
+}
+
+/// The workload of these cases: two cities, a dozen buildings each, built through the sim.
+std::unique_ptr<app::LegalWorkload> workload(const fs::path& dir) {
+    app::LegalWorkloadOptions options;
+    options.cities = 2;
+    options.buildings_per_city = 12;
+    options.settle_turns = 2;
+    auto built = app::LegalWorkload::build(dir, fixed_map(), options);
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    return std::move(built).value();
+}
+
+/// The visible keys at `group` of the last commit's islands (their own invalidations).
+std::vector<ChunkKey> affected_visible(const app::ScenePicture& picture, render::Rect view,
+                                       std::size_t group) {
+    const auto visible = visible_keys(view, group);
+    const std::set<ChunkKey> in_view(visible.begin(), visible.end());
+    std::set<ChunkKey> keys;
+    for (const auto& island : picture.last_commit()) {
+        for (const ChunkKey& k : island.keys) {
+            if (in_view.contains(k)) {
+                keys.insert(k);
+            }
+        }
+    }
+    return {keys.begin(), keys.end()};
+}
+} // namespace
+
+TEST_CASE("picture GPU: accepted builds and an accepted demolish keep the old chunks drawing, "
+          "become ready only when every affected key is fresh, and then equal a fresh scene" *
+          doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    const auto w = workload(*dir);
+    const auto state0 = w->buildings();
+    // Step 1: two accepted builds of city 0 in one commit (the island's newest version), in one
+    // view: the readiness of a set of several keys. Step 2: one accepted demolish of city 0.
+    struct Step {
+        std::vector<app::LegalEdit> edits;
+        std::size_t group = 2;
+        std::vector<app::SceneBuilding> state;
+    };
+    std::vector<Step> steps(2);
+    steps[0].edits = {w->build_one(0), w->build_one(0)};
+    steps[0].state = w->buildings();
+    steps[1].edits = {w->demolish_one(0)};
+    steps[1].state = w->buildings();
+    for (const Step& st : steps) {
+        for (const auto& e : st.edits) {
+            REQUIRE_MESSAGE(e.accepted, e.reason);
+            REQUIRE(e.batch != nullptr);
+        }
+    }
+    CHECK(w->invariants().empty());
+    SceneHandle base = scene_with(*dir, w->load(), state0);
+    REQUIRE(base->units.empty()); // no ships: the ship-less CPU composition is comparable
+
+    Gpu g{make_frame(*ctx), {}};
+    std::set<ChunkKey> held;
+    KeyGate gate;
+    render::FrameRenderer frames(2, false);
+    auto owned = std::make_unique<render::ChunkWorkers>(2);
+    render::ChunkWorkers& workers = *owned;
+    workers.set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
+    frames.set_workers(std::move(owned));
+    const GateOpener opener(gate);
+    app::ScenePicture picture(
+        base, state0, [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); },
+        1);
+    base.reset(); // the picture holds generation 0 now
+
+    bool partial_seen = false;
+    for (std::size_t n = 0; n < steps.size(); ++n) {
+        const Step& step = steps[n];
+        CAPTURE(n);
+        const std::size_t group = step.group;
+        const SceneHandle before = picture.scene();
+        // The view: the box of the step's edits at group 2 (their anchors, and 640 x 512 pixels
+        // around them), at the step's group.
+        render::Rect view{};
+        {
+            int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+            for (std::size_t i = 0; i < step.edits.size(); ++i) {
+                const auto& e = step.edits[i];
+                const render::Rect r = view_at(*before, e.island, e.x, e.y);
+                const int cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+                x0 = i == 0 ? cx : std::min(x0, cx);
+                y0 = i == 0 ? cy : std::min(y0, cy);
+                x1 = i == 0 ? cx : std::max(x1, cx);
+                y1 = i == 0 ? cy : std::max(y1, cy);
+            }
+            view = render::Rect{x0 - 640, y0 - 512, x1 - x0 + 1280, y1 - y0 + 1024};
+            view = render::zoomed_view(view, 2, group);
+        }
+        settle(g, frames, workers, before, view, group);
+        const auto old_px = g.pixels(view);
+        // The parity of the unchanged picture at this view: what the GPU and the CPU paths
+        // already differ by here, before any edit and from the same chunks. The established bound
+        // is 1 (blending rounding, "GPU frames match the CPU path"), measured there on views
+        // without the per-frame water sprites; a view of this workload with many of them differs
+        // by 2 at a few pixels on Metal (round ea, reported open). The comparisons below may not
+        // exceed what the unchanged picture shows; the transition and fresh-scene checks are exact.
+        const Parity baseline = parity(cpu_same_inputs(frames, before, view, group), old_px);
+        MESSAGE("step " << n << ": GPU against the CPU path before the edit: max channel delta "
+                        << baseline.max << ", " << baseline.over << " pixel(s) above 1, "
+                        << before->sprites_in(view, group, 0, render::SpriteLayer::WaterBelow,
+                                              render::WaterStyle::Original)
+                                   .size() +
+                               before
+                                   ->sprites_in(view, group, 0, render::SpriteLayer::WaterAbove,
+                                                render::WaterStyle::Original)
+                                   .size()
+                        << " water sprite(s) in view");
+        WARN(baseline.max <= 1);
+        const int bound = std::max(baseline.max, 1);
+
+        std::vector<std::shared_ptr<const app::BuildingBatch>> batches;
+        for (const auto& e : step.edits) {
+            batches.push_back(e.batch);
+        }
+        picture.apply(batches);
+        drain(picture, frames);
+        const SceneHandle gen = picture.scene();
+        REQUIRE(gen->generation() == before->generation() + 1); // one commit
+        const auto affected = affected_visible(picture, view, group);
+        REQUIRE(!affected.empty());
+        {
+            // Under the gate's lock: the workers evaluate the predicate that reads it.
+            const std::lock_guard lock(gate.m);
+            held = std::set<ChunkKey>(affected.begin(), affected.end());
+        }
+        const std::uint64_t g_new = gen->generation();
+        gate.set([&held, g_new](const ChunkKey& k, std::uint64_t at) {
+            return at >= g_new && held.contains(k);
+        });
+
+        // The transition frame: every affected key still draws its old chunk, marked stale; the
+        // frame holds the new generation, but nothing it shows is labelled as rebuilt.
+        g.draw(frames, gen, view, group);
+        REQUIRE(gate.wait_for([&] { return !gate.waiting.empty(); }));
+        g.draw(frames, gen, view, group);
+        for (const ChunkKey& k : affected) {
+            REQUIRE(frames.chunk(k) != nullptr);
+            CHECK(frames.chunk(k)->generation < g_new);
+            CHECK(frames.stale_generation(k) == g_new);
+        }
+        CHECK(g.pixels(view) == old_px);
+        {
+            const Parity t = parity(cpu_same_inputs(frames, gen, view, group), g.pixels(view));
+            CHECK(t.max == baseline.max); // the same inputs as before the edit
+            CHECK(t.over == baseline.over);
+        }
+
+        // Readiness: the island's affected keys, ready only when all are fresh at one poll.
+        app::ReadinessTracker readiness;
+        readiness.add(
+            {static_cast<std::uint32_t>(picture.last_commit().front().index), g_new, affected});
+        std::vector<app::ReadinessTracker::KeyEvent> log;
+        auto poll = [&] {
+            return readiness.poll([&frames](const ChunkKey& k) { return fresh(frames, k); }, 0,
+                                  log);
+        };
+        CHECK(poll().empty());
+
+        // One key at a time, in the order the workers took them.
+        while (!held.empty()) {
+            std::optional<ChunkKey> next;
+            REQUIRE(gate.wait_for([&] {
+                for (const auto& [k, at] : gate.waiting) {
+                    if (at >= g_new && held.contains(k)) {
+                        next = k;
+                        return true;
+                    }
+                }
+                return false;
+            }));
+            {
+                const std::lock_guard lock(gate.m);
+                held.erase(*next);
+                gate.cv.notify_all();
+            }
+            REQUIRE(eventually([&] {
+                g.draw(frames, gen, view, group);
+                return fresh(frames, *next) && frames.chunk(*next)->generation == g_new;
+            }));
+            const auto px = g.pixels(view);
+            CHECK(channel_delta(cpu_same_inputs(frames, gen, view, group), px) <= bound);
+            const bool all = std::all_of(affected.begin(), affected.end(),
+                                         [&](const ChunkKey& k) { return fresh(frames, k); });
+            const auto ready = poll();
+            CHECK(ready.empty() == !all);
+            if (!all) {
+                partial_seen = true; // a key fresh, another still stale: not ready
+                for (const ChunkKey& k : affected) {
+                    if (!fresh(frames, k)) {
+                        CHECK(frames.chunk(k)->generation < g_new);
+                    }
+                }
+                CHECK(px != old_px); // the fresh key shows its change already
+            }
+        }
+        // Ready: the GPU equals the fresh scene of the state this generation represents, drawn by
+        // a compositor of its own (exactly) and by the CPU path (within the bound).
+        g.draw(frames, gen, view, group);
+        const auto new_px = g.pixels(view);
+        const SceneHandle oracle = scene_with(*dir, w->load(), step.state);
+        {
+            Gpu other{make_frame(*ctx), {}};
+            render::FrameRenderer own(4, false);
+            for (int round = 0; round < 3; ++round) {
+                other.draw(own, oracle, view, group);
+            }
+            CHECK(other.pixels(view) == new_px);
+        }
+        CHECK(channel_delta(cpu_reference(oracle, view, group), new_px) <= bound);
+        CHECK(new_px != old_px); // the edit is visible
+        CHECK(g.frame->errors() == 0);
+        MESSAGE("step " << n << " (" << step.edits.size() << " edit(s), group " << group
+                        << "): " << affected.size() << " affected visible keys");
+    }
+    // A set of two or more keys was seen partly fresh, and not ready then.
+    CHECK(partial_seen);
+}
+
+TEST_CASE("picture GPU: a late completion of an older generation after a newer invalidation "
+          "replaces nothing and clears no mark" *
+          doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    const auto w = workload(*dir);
+    const auto state0 = w->buildings();
+    const app::LegalEdit build = w->build_one(0);
+    REQUIRE_MESSAGE(build.accepted, build.reason);
+    REQUIRE(build.batch != nullptr);
+    const auto state1 = w->buildings();
+    // The same building removed again (the batch a demolish of it publishes): generation 2 shows
+    // state 0's buildings, generation 1 the building.
+    auto undo = std::make_shared<app::BuildingBatch>();
+    undo->turn = build.batch->turn + 1;
+    for (const app::BuildingDelta& d : build.batch->deltas) {
+        REQUIRE(d.kind == app::BuildingDelta::Kind::Added);
+        undo->deltas.push_back({app::BuildingDelta::Kind::Removed, d.building});
+    }
+    SceneHandle base = scene_with(*dir, w->load(), state0);
+    REQUIRE(base->units.empty());
+
+    Gpu g{make_frame(*ctx), {}};
+    std::set<std::pair<ChunkKey, std::uint64_t>> held;
+    KeyGate gate;
+    render::FrameRenderer frames(2, false);
+    auto owned = std::make_unique<render::ChunkWorkers>(2);
+    render::ChunkWorkers& workers = *owned;
+    workers.set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
+    frames.set_workers(std::move(owned));
+    const GateOpener opener(gate);
+    app::ScenePicture picture(
+        base, state0, [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); },
+        1);
+    const render::Rect view = view_at(*base, build.island, build.x, build.y);
+    settle(g, frames, workers, base, view, 2);
+    const auto old_px = g.pixels(view);
+    base.reset();
+
+    // Generation 1: its rebuilds start and are held.
+    picture.apply({build.batch});
+    drain(picture, frames);
+    const SceneHandle gen1 = picture.scene();
+    const auto affected = affected_visible(picture, view, 2);
+    REQUIRE(!affected.empty());
+    const std::set<ChunkKey> keys(affected.begin(), affected.end());
+    gate.set([&keys](const ChunkKey& k, std::uint64_t at) { return at >= 1 && keys.contains(k); });
+    g.draw(frames, gen1, view, 2);
+    REQUIRE(gate.wait_for([&] { return !gate.waiting.empty(); }));
+    std::set<ChunkKey> in_flight;
+    {
+        const std::lock_guard lock(gate.m);
+        for (const auto& [k, at] : gate.waiting) {
+            CHECK(at == 1);
+            in_flight.insert(k);
+        }
+    }
+    // Generation 2 invalidates the same keys while the generation-1 builds are in flight.
+    picture.apply({undo});
+    drain(picture, frames);
+    const SceneHandle gen2 = picture.scene();
+    REQUIRE(gen2->generation() == 2);
+    const auto again = affected_visible(picture, view, 2);
+    for (const ChunkKey& k : affected) {
+        CHECK(std::find(again.begin(), again.end(), k) != again.end());
+        CHECK(frames.stale_generation(k) == 2);
+    }
+    // The generation-1 builds finish now, late; generation-2 builds are held.
+    const std::uint64_t discarded_before = frames.stale_discarded();
+    gate.set([&keys](const ChunkKey& k, std::uint64_t at) { return at >= 2 && keys.contains(k); });
+    REQUIRE(eventually([&] {
+        g.draw(frames, gen2, view, 2);
+        return frames.stale_discarded() >= discarded_before + in_flight.size();
+    }));
+    for (const ChunkKey& k : affected) {
+        REQUIRE(frames.chunk(k) != nullptr);
+        CHECK(frames.chunk(k)->generation == 0); // the late generation-1 chunk replaced nothing
+        CHECK(frames.stale_generation(k) == 2);  // and cleared no mark
+    }
+    g.draw(frames, gen2, view, 2);
+    const auto px = g.pixels(view);
+    CHECK(px == old_px); // the GPU never showed the stale building
+    const SceneHandle oracle1 = scene_with(*dir, w->load(), state1);
+    CHECK(channel_delta(cpu_reference(oracle1, view, 2), px) > 1); // it would have been visible
+    // The generation-2 builds complete: fresh, and equal to the fresh scene of state 0.
+    gate.set({});
+    REQUIRE(eventually([&] {
+        g.draw(frames, gen2, view, 2);
+        return std::all_of(affected.begin(), affected.end(),
+                           [&](const ChunkKey& k) { return fresh(frames, k); });
+    }));
+    for (const ChunkKey& k : affected) {
+        CHECK(frames.chunk(k)->generation == 2);
+    }
+    g.draw(frames, gen2, view, 2);
+    const SceneHandle oracle0 = scene_with(*dir, w->load(), state0);
+    CHECK(channel_delta(cpu_reference(oracle0, view, 2), g.pixels(view)) <= 1);
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE("picture GPU: a frame's generation stays alive across a commit while its jobs run, and "
+          "its CPU chunks are freed while GPU work is outstanding" *
+          doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    const auto w = workload(*dir);
+    const auto state0 = w->buildings();
+    const app::LegalEdit build = w->build_one(0);
+    REQUIRE_MESSAGE(build.accepted, build.reason);
+    const auto state1 = w->buildings();
+    struct Seen {
+        const render::Scene* scene;
+        std::thread::id thread;
+    };
+    std::mutex seen_mutex;
+    std::vector<Seen> seen;
+    auto& reclaimer = render::SceneReclaimer::shared();
+    reclaimer.set_test_observer([&seen_mutex, &seen](const render::Scene& s) {
+        const std::lock_guard lock(seen_mutex);
+        seen.push_back({&s, std::this_thread::get_id()});
+    });
+    const ObserverReset reset;
+    auto destroyed = [&](const render::Scene* s) {
+        const std::lock_guard lock(seen_mutex);
+        return std::any_of(seen.begin(), seen.end(), [s](const Seen& x) { return x.scene == s; });
+    };
+
+    Gpu g{make_frame(*ctx), {}};
+    KeyGate gate;
+    render::FrameRenderer frames(2, false);
+    auto owned = std::make_unique<render::ChunkWorkers>(2);
+    render::ChunkWorkers& workers = *owned;
+    workers.set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
+    frames.set_workers(std::move(owned));
+    const GateOpener opener(gate);
+    SceneHandle base = scene_with(*dir, w->load(), state0);
+    const render::Scene* gen0_ptr = base.get();
+    std::weak_ptr<const render::Scene> gen0_weak = base;
+    app::ScenePicture picture(
+        base, state0, [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); },
+        1);
+    const render::Rect view = view_at(*base, build.island, build.x, build.y);
+    settle(g, frames, workers, base, view, 2);
+
+    // CPU chunk lifetime: the cached chunks of the affected keys are replaced after the commit
+    // while the frames submitted meanwhile are never waited for; the old CPU chunks are freed
+    // (on the workers' reaper) without the GPU needing them, and the GPU shows the new pixels.
+    picture.apply({build.batch});
+    {
+        // A pan to the other city's island, not built yet: its jobs read generation 0 and are
+        // held, so generation 0 is owned by them across the commit below.
+        // One job is held (the first of generation 0 to start): the other worker stays free
+        // for the rebuilds of generation 1.
+        const render::Rect far = view_at(*base, w->cities().at(1).island_slot, 20, 20);
+        gate.set([pinned = std::optional<ChunkKey>()](const ChunkKey& k, std::uint64_t at) mutable {
+            if (at != 0) {
+                return false;
+            }
+            if (!pinned) {
+                pinned = k;
+            }
+            return *pinned == k;
+        });
+        g.draw(frames, base, far, 2);
+        REQUIRE(gate.wait_for([&] { return !gate.waiting.empty(); }));
+    }
+    drain(picture, frames); // generation 1 is current; the bridge gave generation 0 up
+    const SceneHandle gen1 = picture.scene();
+    REQUIRE(gen1->generation() == 1);
+    const auto affected = affected_visible(picture, view, 2);
+    REQUIRE(!affected.empty());
+    std::vector<std::weak_ptr<const render::Chunk>> old_chunks;
+    for (const ChunkKey& k : affected) {
+        old_chunks.push_back(frames.chunk_shared(k));
+    }
+    base.reset();
+    REQUIRE(eventually([&] {
+        const auto st = picture.stats();
+        return st.reclaim_completed == st.reclaim_queued && reclaimer.stats().waiting == 0;
+    }));
+    // Generation 0 is still alive: the held jobs own it; the compositor keeps no handle.
+    CHECK(!gen0_weak.expired());
+    CHECK(!destroyed(gen0_ptr));
+    // Frames of generation 1 (the gate holds generation 0 only): no wait between submissions.
+    REQUIRE(eventually([&] {
+        g.draw(frames, gen1, view, 2);
+        return std::all_of(affected.begin(), affected.end(),
+                           [&](const ChunkKey& k) { return fresh(frames, k); });
+    }));
+    g.draw(frames, gen1, view, 2);
+    REQUIRE(eventually([&] {
+        g.draw(frames, gen1, view, 2); // the reaper frees the replaced chunks meanwhile
+        return std::all_of(old_chunks.begin(), old_chunks.end(),
+                           [](const auto& c) { return c.expired(); });
+    }));
+    const SceneHandle oracle1 = scene_with(*dir, w->load(), state1);
+    CHECK(channel_delta(cpu_reference(oracle1, view, 2), g.pixels(view)) <= 1);
+    CHECK(!destroyed(gen0_ptr));
+    // The held jobs finish: generation 0's last owners let go, and it is destroyed on the
+    // reclaimer.
+    gate.set({});
+    REQUIRE(eventually([&] { return destroyed(gen0_ptr); }));
+    {
+        const std::lock_guard lock(seen_mutex);
+        const auto it = std::find_if(seen.begin(), seen.end(),
+                                     [gen0_ptr](const Seen& s) { return s.scene == gen0_ptr; });
+        CHECK(it->thread != std::this_thread::get_id());
+    }
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE("picture GPU: an offscreen edit is fresh after the view returns, at its group and at a "
+          "derived level" *
+          doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    const auto w = workload(*dir);
+    const auto state0 = w->buildings();
+    const app::LegalEdit build = w->build_one(0);
+    REQUIRE_MESSAGE(build.accepted, build.reason);
+    const auto state1 = w->buildings();
+    const render::ZoomLevels levels = render::ZoomLevels::with_derived(1);
+    SceneHandle base = scene_with(*dir, w->load(), state0, levels);
+    REQUIRE(base->units.empty());
+    Gpu g{make_frame(*ctx), {}};
+    KeyGate gate; // never holds: the case orders nothing, it only follows the views
+    render::FrameRenderer frames(2, false);
+    auto owned = std::make_unique<render::ChunkWorkers>(2);
+    render::ChunkWorkers& workers = *owned;
+    frames.set_workers(std::move(owned));
+    app::ScenePicture picture(
+        base, state0, [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); },
+        1);
+    const render::Rect here = view_at(*base, build.island, build.x, build.y);
+    const render::Rect away = view_at(*base, w->cities().at(1).island_slot, 20, 20);
+    const render::Rect derived = render::zoomed_view(here, 2, 3, levels);
+    settle(g, frames, workers, base, here, 2);
+    settle(g, frames, workers, base, derived, 3); // the derived level is cached too
+    settle(g, frames, workers, base, away, 2);
+    base.reset();
+
+    picture.apply({build.batch});
+    drain(picture, frames);
+    const SceneHandle gen1 = picture.scene();
+    // The change's keys are not in the view shown: an offscreen edit.
+    CHECK(affected_visible(picture, away, 2).empty());
+    std::size_t derived_marked = 0;
+    for (const auto& island : picture.last_commit()) {
+        for (const ChunkKey& k : island.keys) {
+            derived_marked += std::get<0>(k) == 3 ? 1U : 0U;
+        }
+    }
+    CHECK(derived_marked > 0); // the commit marked the derived level as well
+    settle(g, frames, workers, gen1, away, 2);
+    // The view returns: the affected keys rebuild from generation 1 and equal the fresh scene.
+    const SceneHandle oracle = scene_with(*dir, w->load(), state1, levels);
+    settle(g, frames, workers, gen1, here, 2);
+    CHECK(channel_delta(cpu_reference(oracle, here, 2), g.pixels(here)) <= 1);
+    // The derived level, reduced from the fresh children: exactly what a compositor of its own
+    // shows for the fresh scene, and within the derived levels' bound of the CPU path (3: the
+    // derived sea pattern is smoothed from a reduced pattern, "GPU frames at derived levels match
+    // the CPU path").
+    settle(g, frames, workers, gen1, derived, 3);
+    for (const ChunkKey& k : visible_keys(derived, 3)) {
+        CHECK(frames.stale_generation(k) == 0);
+    }
+    {
+        Gpu other{make_frame(*ctx), {}};
+        render::FrameRenderer own(4, false);
+        for (int round = 0; round < 3; ++round) {
+            other.draw(own, oracle, derived, 3);
+        }
+        CHECK(other.pixels(derived) == g.pixels(derived));
+        // (Views of one size share a target: each is drawn again before it is read.)
+        other.draw(own, oracle, here, 2);
+        const auto other_here = other.pixels(here);
+        g.draw(frames, gen1, here, 2);
+        CHECK(other_here == g.pixels(here));
+        g.draw(frames, gen1, derived, 3);
+    }
+    const Parity d = parity(cpu_reference(oracle, derived, 3), g.pixels(derived));
+    MESSAGE("derived level 3 against the CPU path: max "
+            << d.max << ", " << d.over << " pixel(s) above 1, " << d.over2 << " above 2");
+    CHECK(d.max <= 3);
+    CHECK(d.over2 <=
+          static_cast<std::size_t>(derived.w) * static_cast<std::size_t>(derived.h) / 10000);
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE("picture GPU: the wave simulation's background preparation holds the frame's "
+          "generation, not a borrowed reference" *
+          doctest::test_suite("picture_gpu")) {
+    // The compositor copies a depth function into the background preparation of the wave
+    // simulation's window (GpuLimits::background_fluid), which can run after render() returns.
+    // It must own the generation it reads (round ea finding: it captured the scene by reference,
+    // so a generation reclaimed meanwhile would have been read after its destruction).
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    auto loaded = app::load_play(*dir, fixed_map());
+    REQUIRE(loaded.ok());
+    const auto buildings = app::play_buildings(loaded.value().world);
+    const SceneHandle base = scene_with(*dir, loaded.value(), buildings);
+    gpu::GpuLimits limits;
+    limits.background_fluid = true;
+    limits.wave_simulation = true;
+    Gpu g{make_frame(*ctx, limits), {}};
+    render::FrameRenderer frames(2, false);
+    // A generation of its own (the same islands), released by this case below.
+    SceneHandle gen = base->with_islands({});
+    REQUIRE(gen->generation() == 1);
+    const std::weak_ptr<const render::Scene> weak = gen;
+    const auto b = base->bounds(1);
+    REQUIRE(b.has_value());
+    const render::Rect view{b->x + b->w / 2 - 320, b->y + b->h / 2 - 180, 640, 360};
+    const auto s = g.draw(frames, gen, view, 1, render::WaterStyle::Enhanced);
+    if (!s.wave_simulation || !s.fluid_setting_up) {
+        MESSAGE("skipping: the wave simulation did not start a background preparation here");
+        return;
+    }
+    gen.reset();
+    // The preparation holds the generation (no other owner is left).
+    CHECK(!weak.expired());
+    // Later frames of another generation apply the finished preparation and let it go.
+    REQUIRE(eventually([&] {
+        g.draw(frames, base, view, 1, render::WaterStyle::Enhanced);
+        return weak.expired();
+    }));
+    CHECK(g.frame->errors() == 0);
+}
+
+TEST_CASE("picture GPU: teardown with builds, chunk jobs and GPU work outstanding releases every "
+          "generation through the reclaimer" *
+          doctest::test_suite("picture_gpu")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    const auto w = workload(*dir);
+    const auto state0 = w->buildings();
+    const app::LegalEdit first = w->build_one(0);
+    const app::LegalEdit second = w->build_one(0);
+    REQUIRE_MESSAGE(first.accepted, first.reason);
+    REQUIRE_MESSAGE(second.accepted, second.reason);
+    std::mutex seen_mutex;
+    std::vector<std::pair<const render::Scene*, std::thread::id>> seen;
+    auto& reclaimer = render::SceneReclaimer::shared();
+    reclaimer.set_test_observer([&seen_mutex, &seen](const render::Scene& s) {
+        const std::lock_guard lock(seen_mutex);
+        seen.emplace_back(&s, std::this_thread::get_id());
+    });
+    const ObserverReset reset;
+    // The baseline once nothing is waiting for the reclaimer (the workload's setup may still have
+    // a scene in destruction).
+    REQUIRE(eventually([&] {
+        const auto r = reclaimer.stats();
+        return r.waiting == 0 && r.in_flight == 0;
+    }));
+    const auto before = render::payload_counts();
+    std::vector<const render::Scene*> generations;
+    std::vector<std::weak_ptr<const render::Scene>> alive;
+    {
+        // The picture's one builder blocks in its second build (the window's order: the
+        // producer and the bridge outlive the frames that use them).
+        std::atomic<int> builds{0};
+        std::atomic<bool> builds_open{false};
+        app::ScenePicture::Limits limits;
+        limits.build_fault = [&builds, &builds_open](std::size_t) {
+            if (builds.fetch_add(1) >= 1) {
+                while (!builds_open.load()) {
+                    std::this_thread::yield();
+                }
+            }
+        };
+        SceneHandle base = scene_with(*dir, w->load(), state0);
+        generations.push_back(base.get());
+        alive.push_back(base);
+        auto picture = std::make_unique<app::ScenePicture>(
+            base, state0,
+            [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); }, 1, limits);
+        const render::Rect view = view_at(*base, first.island, first.x, first.y);
+        base.reset();
+        Gpu g{make_frame(*ctx), {}};
+        KeyGate gate;
+        auto frames = std::make_unique<render::FrameRenderer>(2, false);
+        auto owned = std::make_unique<render::ChunkWorkers>(2);
+        owned->set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
+        frames->set_workers(std::move(owned));
+        picture->apply({first.batch});
+        drain(*picture, *frames);
+        generations.push_back(picture->scene().get());
+        alive.push_back(picture->scene());
+        // Outstanding at teardown: chunk jobs of generation 1 held by the gate, a GPU frame
+        // submitted and not waited for, and the second build blocked in the builder.
+        gate.set([](const ChunkKey&, std::uint64_t) { return true; });
+        g.draw(*frames, picture->scene(), view, 2);
+        REQUIRE(gate.wait_for([&] { return !gate.waiting.empty(); }));
+        picture->apply({second.batch});
+        REQUIRE(eventually([&] { return builds.load() >= 2; }));
+        // The viewer's order: the frames stop (the chunk jobs end and are joined), the GPU
+        // finishes and the compositor goes, then the bridge.
+        gate.open_for_good();
+        frames.reset();
+        g.frame->wait();
+        g.targets.clear();
+        g.frame.reset();
+        builds_open.store(true);
+        picture.reset();
+    }
+    // Every generation of this case is released and destroyed, each on the reclaimer thread, and
+    // the accounted bytes are back where they were.
+    for (const auto& a : alive) {
+        CHECK(a.expired());
+    }
+    REQUIRE(eventually([&] {
+        const std::lock_guard lock(seen_mutex);
+        return std::all_of(generations.begin(), generations.end(), [&](const render::Scene* s) {
+            return std::any_of(seen.begin(), seen.end(),
+                               [s](const auto& x) { return x.first == s; });
+        });
+    }));
+    {
+        const std::lock_guard lock(seen_mutex);
+        for (const auto& [scene, thread] : seen) {
+            CHECK(thread != std::this_thread::get_id());
+        }
+    }
+    REQUIRE(eventually([&] {
+        const auto now = render::payload_counts();
+        const auto r = reclaimer.stats();
+        return now.of(render::PayloadKind::Incremental) ==
+                   before.of(render::PayloadKind::Incremental) &&
+               now.of(render::PayloadKind::Generation) ==
+                   before.of(render::PayloadKind::Generation) &&
+               r.waiting == 0 && r.in_flight == 0;
+    }));
+}

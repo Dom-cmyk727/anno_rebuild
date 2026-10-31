@@ -32,12 +32,14 @@ SKIP = re.compile(r"skipping", re.I)
 
 def classify(line):
     l = line.lower()
+    # An opt-in names its switch ("set ANNO_...=1") and may also mention the game directory, so it
+    # is tested before the required-asset rule.
+    if "set anno_" in l or "opt-in" in l:
+        return "opt-in"
     if "anno1503_game_dir" in l or "original" in l and "files" in l:
         return "required-asset"
     if "wsl" in l or "skipping on windows" in l:
         return "platform"
-    if "set anno_" in l or "opt-in" in l:
-        return "opt-in"
     return "other"
 
 

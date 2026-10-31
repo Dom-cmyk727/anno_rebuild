@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -332,6 +333,8 @@ TEST_CASE("window trace: the frame tracer records skipped and retried acquires, 
     const anno::render::ChunkKey near{2, 0, 0}, far{2, 50, 50};
     const anno::render::Rect view{0, 0, 10, 10};
     trace.event_now(K::GpuMode, 0, 1);
+    trace.event_now(K::BatchPublished, 0, 30);
+    trace.event_now(K::BatchTaken, 0, 30);
     trace.event_now(K::Desired, 0, 1);
     trace.event_now(K::Desired, 1, 1);
     trace.event_now(K::Committed, 0, 1);
@@ -426,6 +429,8 @@ TEST_CASE(
     app::FrameTracer tracer(trace);
     const app::FrameTracer::Ready yes = [](const anno::render::ChunkKey&) { return true; };
     trace.event_now(K::GpuMode, 0, 1);
+    trace.event_now(K::BatchPublished, 0, 30);
+    trace.event_now(K::BatchTaken, 0, 30);
     trace.event_now(K::Desired, 0, 1);
     trace.event_now(K::Committed, 0, 1);
     trace.event_now(K::Generation, 0, 1);
@@ -450,4 +455,142 @@ TEST_CASE(
     CHECK(s.present_unfinished == 1);
     CHECK(s.converged_ms < 0); // never converged: the change was never presented
     std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("window trace: frames carry one epoch that never goes back, a frame fails once and not "
+          "before its submission, and a window edit comes from a batch its frame boundary took" *
+          doctest::test_suite("window_trace")) {
+    // Round ec review of B (P2-1): each of these was accepted with exit 0.
+    // Frame 2 fails at 4.5 ms and is submitted at 5 ms.
+    CHECK(contradicts(window_trace({{4.5, K::FrameFailed, 1, 2}}),
+                      "frame_failed of frame 2 before its frame_submitted"));
+    // Frame 3 fails twice.
+    CHECK(contradicts(window_trace({{6, K::FrameFailed, 1, 3}, {7, K::FrameFailed, 1, 3}}),
+                      "frame_failed of frame 3 2 times"));
+    // Frame 3 submitted in epoch 7 and presented in epoch 3.
+    CHECK(contradicts(window_trace({{6, K::FrameSubmitted, 7, 3}, {7, K::FramePresented, 3, 3}}),
+                      "frame 3 in epochs 7 and 3"));
+    // The epoch goes back: frame 3 in epoch 2, frame 4 in epoch 1.
+    CHECK(contradicts(window_trace({{6, K::FrameSubmitted, 2, 3}, {8, K::FrameSubmitted, 1, 4}}),
+                      "frame 4 in epoch 1 after frame 3 in epoch 2"));
+    // A window edit with no batch taken: the batch events removed from the base trace.
+    {
+        auto e = window_trace({});
+        e.erase(e.begin() + 1, e.begin() + 3);
+        e.push_back({20.5, K::FramePresented, 1, 9}); // still a window trace
+        e.push_back({20.4, K::FrameSubmitted, 1, 9});
+        CHECK(contradicts(e, "desired of island 0 version 1 with no batch_taken before it"));
+    }
+    // A take, then a frame, then the edit: not that boundary's apply.
+    {
+        auto e = window_trace({});
+        e[3].t_ms = 2.2; // desired after frame 1's submission at 2 ms
+        CHECK(contradicts(e, "desired of island 0 version 1 not in the frame boundary"));
+    }
+    // The positive control still holds: the base trace with a present.
+    const app::TraceSummary fine = app::summarize(window_trace({{6, K::FrameSubmitted, 1, 3},
+                                                                {7, K::FramePresented, 1, 3},
+                                                                {7, K::Presented, 0, 1},
+                                                                {8, K::FrameFailed, 2, 4}}));
+    CHECK(fine.consistent());
+}
+
+TEST_CASE("window trace: readiness waits for every key the change invalidated in the view, not for "
+          "unchanged keys or keys out of view, and the row's epoch is the acquire's" *
+          doctest::test_suite("window_trace")) {
+    // Round ec review of C (P2-5): predicates that tell keys apart, a change of two keys in view
+    // and one out of it, an unchanged key in view, and a reconfiguration between the attempt's
+    // start and its acquire (the viewer's prologue on a resize).
+    app::WindowTrace trace(1000, 100, 10);
+    app::FrameTracer tracer(trace);
+    const int c = anno::render::kChunk;
+    const anno::render::ChunkKey a{2, 0, 0}, b{2, 1, 0}, unchanged{2, 2, 0}, out{2, 50, 50};
+    const anno::render::Rect view{0, 0, 3 * c, c}; // a, b and the unchanged key
+    std::set<anno::render::ChunkKey> fresh_keys, usable_keys;
+    const app::FrameTracer::Ready fresh = [&](const anno::render::ChunkKey& k) {
+        return fresh_keys.count(k) != 0;
+    };
+    const app::FrameTracer::Ready usable = [&](const anno::render::ChunkKey& k) {
+        return usable_keys.count(k) != 0;
+    };
+    trace.event_now(K::GpuMode, 0, 1);
+    trace.event_now(K::BatchPublished, 0, 30);
+    trace.event_now(K::BatchTaken, 0, 30);
+    trace.event_now(K::Desired, 0, 1);
+    trace.event_now(K::Committed, 0, 1);
+    trace.event_now(K::Generation, 0, 1);
+    tracer.committed(0, 1, {a, b, out});
+    auto count = [&trace](K kind) {
+        std::size_t n = 0;
+        for (const auto& e : trace.events()) {
+            n += e.kind == kind ? 1U : 0U;
+        }
+        return n;
+    };
+    auto frame = [&](std::uint32_t present, bool reconfigure_in_prologue) {
+        tracer.begin({}, view, 2);
+        if (reconfigure_in_prologue) {
+            tracer.reconfigured();
+        }
+        const double t = trace.now_ms();
+        tracer.acquired(t, trace.now_ms(), app::kAcquireSuccessOptimal);
+        tracer.presented(trace.now_ms(), trace.now_ms(), trace.now_ms(), present, fresh, usable,
+                         false);
+    };
+    CHECK(!fresh(unchanged)); // never fresh: an unchanged key must not hold the change back
+    fresh_keys = {a};         // one of the two changed keys: the island is not CPU-ready
+    frame(app::kPresentSuccess, false);
+    CHECK(count(K::ChunksReady) == 0);
+    fresh_keys = {a, b}; // both: ready, though the unchanged key and the one out of view are not
+    usable_keys = {a};
+    frame(app::kPresentSuccess, false);
+    CHECK(count(K::ChunksReady) == 1);
+    CHECK(count(K::GpuReady) == 0); // one of two keys GPU-usable: not usable as a whole
+    usable_keys = {a, b};
+    frame(app::kPresentError, true); // resized in the prologue; the present fails
+    CHECK(count(K::GpuReady) == 1);
+    CHECK(count(K::Presented) == 0);
+    frame(app::kPresentSuccess, false);
+    CHECK(count(K::Presented) == 1);
+    // A skipped attempt: frame_failed at the acquire's end.
+    tracer.begin({}, view, 2);
+    tracer.acquired(trace.now_ms(), trace.now_ms(), app::kAcquireTimeout);
+    tracer.failed("acquire_skipped");
+    const auto rows = trace.frames();
+    REQUIRE(rows.size() == 5);
+    CHECK(rows[1].epoch == 1);
+    CHECK(rows[2].epoch == 2); // the acquire's epoch, after the prologue's reconfiguration
+    CHECK(rows[3].epoch == 2);
+    for (const auto& e : trace.events()) {
+        if (e.kind == K::FrameFailed && e.version == 3) {
+            CHECK(e.t_ms == rows[2].present_end_ms);
+            CHECK(e.island == 2);
+        }
+        if (e.kind == K::FrameFailed && e.version == 5) {
+            CHECK(e.t_ms == rows[4].acquire_end_ms);
+        }
+        if (e.kind == K::FrameSubmitted && e.version == 3) {
+            CHECK(e.island == 2);
+        }
+    }
+    trace.event_now(K::RunEnd, 0, 0);
+    const app::TraceSummary s = app::summarize(trace.events());
+    CHECK(s.consistent());
+    CHECK(s.presented == 1);
+}
+
+TEST_CASE("window trace: the frame tracer's waiting changes are bounded and a refused commit is a "
+          "drop, and a turn with more rejections than commands is invalid" *
+          doctest::test_suite("window_trace")) {
+    app::WindowTrace trace(1000, 100, 10);
+    app::FrameTracer tracer(trace, 2);
+    tracer.committed(0, 1, {{2, 0, 0}});
+    tracer.committed(1, 1, {{2, 0, 0}});
+    tracer.committed(2, 1, {{2, 0, 0}}); // a hidden window committing without frames
+    CHECK(tracer.outstanding() == 2);
+    CHECK(trace.dropped() == 1);
+    app::TurnRecord t;
+    t.applied = 1;
+    t.rejected = 2;
+    CHECK(app::turn_outcome(t) == "invalid");
 }

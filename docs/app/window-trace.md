@@ -12,6 +12,8 @@ and `bench_picture --aggregate` reads its event file.
    index). A command is never "accepted" because it was submitted.
    - **accepted:** its turn reported no rejection;
    - **rejected:** every command of the turn was rejected;
+   - **invalid:** the sim reported more rejections than the turn applied commands. This cannot be a
+     recording, and `window_table.py` refuses it;
    - **ambiguous:** some, but not all, of the turn's commands were rejected, so which one is unknown.
    Scripted sessions put one command in a turn, so their outcomes are not ambiguous.
 2. **Batch publication (sim thread).** A turn whose building diff is not empty pushes a batch into the
@@ -45,14 +47,23 @@ and `bench_picture --aggregate` reads its event file.
 
 ## Identifiers and clocks
 
-- **Session:** the trace directory, plus `manifest.txt`. The manifest holds: the session start (wall
-  clock, for people); the revision and binary hash; the map and its hash; the command file and its hash;
-  the adapter; the drawable size; the limits and the workers.
+- **Session:** the trace directory and its `manifest.txt`. The manifest holds:
+  - the session start (wall clock, for people);
+  - the command line and the map's name;
+  - the number of scripted commands;
+  - the adapter and the drawable size;
+  - the chunk builder;
+  - the record counts, drops and bounds.
+
+  The revision, the tree's state, and the binary, map and command-file hashes are not in it. The runner
+  records them in `run.txt` (`tools/bench/window_case.sh`).
 - **Times:** `t_ms` in every file is `std::chrono::steady_clock`, in milliseconds since the session
   start, on every thread. Sim turns are identifiers, never times.
 - **Turn:** the index of the runner's turn (`batch_published`, `batch_taken` and `sim.tsv`).
 - **Island and generation:** the picture's island index, and the generation of the commit.
-- **Frame:** the id of each attempted GPU frame, counted from 1, failed attempts included. An attempt is a
+- **Frame:** the id of each attempted GPU frame, counted from 1, failed attempts included. The commits of a
+  frame boundary wait for their keys within the view of the first attempt after them, also when that
+  attempt fails: it is the view the frame was going to draw. An attempt is a
   call of the viewer's GPU draw: it acquires a surface texture. A frame the window skips before that (a
   zero-sized drawable, hidden, backing off) is not an attempt and has no row.
 - **Surface epoch:** the count of surface (re)configurations. It starts at 1 and changes on a resize, a
@@ -85,7 +96,12 @@ and `bench_picture --aggregate` reads its event file.
   causal checks, plus the presentation rules:
   - a `presented(i, g)` needs that pair's `gpu_ready` not after it;
   - it needs a `frame_presented` at the same time, whose frame is not below the frame of the `gpu_ready`;
-  - a `batch_taken` of a turn needs its `batch_published` before it.
+  - a `batch_taken` of a turn needs its `batch_published` before it;
+  - every event of a frame carries one surface epoch, and a later frame never has a lower one;
+  - a frame fails at most once, and never before its own `frame_submitted`;
+  - in a window trace a `desired` needs a `batch_taken` at or before it, with no frame event between the
+    two. The take and the apply are one frame boundary, so an edit is tied to the batch, and through its
+    turn to the command, by that boundary. The island version itself does not name a turn.
 - **Complete recording:** `run_end` is present. If the bounded buffers overflowed, or a file could not be
   written, there is no `run_end`, and the summary says why.
 - **Scenario correctness:** the run's own outcome: commands accepted as scripted, the picture converged,
@@ -96,9 +112,12 @@ and `bench_picture --aggregate` reads its event file.
 
 The trace holds at most `ANNO_VIEW_TRACE_EVENTS` events (default 2 000 000), `ANNO_VIEW_TRACE_FRAMES`
 frame rows (default 200 000) and `ANNO_VIEW_TRACE_TURNS` turn rows (default 200 000), reserved when the
-trace is enabled. A record past either bound is counted as
-dropped and not stored. A trace with drops is incomplete. Nothing is written to disk until the session
-ends. Recording takes one mutex, shared by the sim thread and the window thread, and copies a small record.
+trace is enabled. A record past either bound is counted as dropped and not stored. So is a commit past the bound of the
+changes waiting at once (`FrameTracer`, 100 000: a hidden window commits without drawing). A trace with
+drops is incomplete.
+
+The trace directory is created at the start, so that a directory that exists or cannot be made refuses the
+run before the window opens. Nothing is written into it until the session ends. Recording takes one mutex, shared by the sim thread and the window thread, and copies a small record.
 
 ## Exit status and verdicts
 
@@ -119,6 +138,8 @@ contradictory or malformed one.
   reported on stderr and in the manifest (`drawable`); a screen smaller than the request gives less.
 - `ANNO_VIEW_AT=<x>,<y>`: centres the camera on that tile.
 - `ANNO_VIEW_QUIT_S=<seconds>`: ends the loop after that time, as a close of the window would.
+- `ANNO_VIEW_RESIZE=<seconds>:<w>x<h>`: resizes the window once, that long after the start. The surface is
+  reconfigured, which starts a new epoch.
 
 ## Behaviour kept (round ec, B3)
 

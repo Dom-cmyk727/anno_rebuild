@@ -39,8 +39,9 @@ enum class AcquireAction : std::uint8_t {
     Draw,
     /// A usable texture on a suboptimal surface: draw and present, reconfigure before the next.
     DrawThenReconfigure,
-    /// No texture: reconfigure and try again (outdated or lost); after `kAcquireBackOffAfter`
-    /// consecutive failures back off, after `kAcquireGiveUpAfter` end with an error.
+    /// No texture: reconfigure and try again (outdated or lost); when more than
+    /// `kAcquireBackOffAfter` consecutive attempts failed, back off; when more than
+    /// `kAcquireGiveUpAfter` failed, end with an error.
     Reconfigure,
     /// No texture: look again shortly (timeout, occluded).
     BackOff,
@@ -80,7 +81,8 @@ struct TurnRecord {
     bool batch = false;
     std::size_t deltas = 0;
 };
-/// accepted (no rejection), rejected (every command), ambiguous (some), none (no command).
+/// accepted (no rejection), rejected (every command), ambiguous (some), none (no command), and
+/// invalid when the sim reported more rejections than the turn applied commands (not a recording).
 [[nodiscard]] std::string turn_outcome(const TurnRecord& t);
 
 /// The trace kind of a bridge step (PictureLimits::trace).
@@ -111,6 +113,8 @@ class WindowTrace {
     /// A line for manifest.txt (the adapter, the drawable size): a handful per session.
     void note(std::string line);
     [[nodiscard]] std::uint64_t dropped() const;
+    /// A record that a bound outside the recorder refused (FrameTracer): counted as dropped.
+    void count_drop();
     [[nodiscard]] std::vector<TraceEvent> events() const;
     [[nodiscard]] std::vector<FrameRecord> frames() const;
     [[nodiscard]] std::vector<TurnRecord> turns() const;
@@ -156,7 +160,12 @@ class PresentCorrelator {
 class FrameTracer {
   public:
     using Ready = std::function<bool(const render::ChunkKey&)>;
-    explicit FrameTracer(WindowTrace& trace) : trace_(trace) {}
+    /// `max_outstanding` bounds the changes waiting at once (outstanding()). Reason: a hidden
+    /// window commits without drawing, and a change that never becomes usable waits forever; 100
+    /// 000 is far beyond the islands a session commits between two drawn frames. A commit past it
+    /// is counted as a drop, so the trace is incomplete rather than unbounded.
+    explicit FrameTracer(WindowTrace& trace, std::size_t max_outstanding = 100000)
+        : trace_(trace), max_outstanding_(max_outstanding) {}
 
     /// A commit of the frame boundary: island `island` changed `keys` in `generation`.
     void committed(std::uint32_t island, std::uint64_t generation,
@@ -194,6 +203,7 @@ class FrameTracer {
         std::vector<render::ChunkKey> keys;
     };
     WindowTrace& trace_;
+    std::size_t max_outstanding_;
     std::vector<Watch> unwatched_;
     ReadinessTracker cpu_, gpu_;
     std::vector<ReadinessTracker::KeyEvent> key_log_;

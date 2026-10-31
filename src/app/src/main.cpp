@@ -382,8 +382,13 @@ int run(const std::vector<std::string>& raw) {
         for (const std::string& u : saved.unsaved) {
             std::fprintf(stderr, "window trace: not saved: %s\n", u.c_str());
         }
-        if (!saved.trace_saved || !saved.unsaved.empty() || trace->dropped() > 0) {
-            status = status == 0 ? 5 : status;
+        // The process ends with the evidence's own status when the window did not fail: 5 for
+        // drops or a file not saved, 7 for a trace that contradicts itself (run_end carries it).
+        if (status == 0 && (!saved.trace_saved || !saved.unsaved.empty() || trace->dropped() > 0)) {
+            status = anno::app::kEvidenceNotSaved;
+        }
+        if (status == 0 && saved.status != 0) {
+            status = saved.status;
         }
     }
     if (!err.empty()) {

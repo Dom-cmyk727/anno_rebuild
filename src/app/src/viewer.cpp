@@ -446,6 +446,9 @@ class Viewer {
 #endif
     /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
     std::optional<Clock::time_point> quit_at_;
+    /// Test hook (ANNO_VIEW_RESIZE=<seconds>:<w>x<h>): one resize at this time, to this drawable.
+    std::optional<Clock::time_point> resize_at_;
+    std::pair<int, int> resize_to_{0, 0};
     /// Chunks received since the last periodic report. A console write on the
     /// window thread is synchronous and can cost tens of milliseconds on a busy
     /// machine, so nothing is printed per frame (hitch lines excepted: they are
@@ -576,6 +579,20 @@ std::string Viewer::run() {
             clamp();
         } else {
             std::fprintf(stderr, "ANNO_VIEW_AT=%s not understood (<x>,<y>)\n", at);
+        }
+    }
+    // Test hook: ANNO_VIEW_RESIZE=<seconds>:<w>x<h> resizes the window once, that long after the
+    // start, to a drawable of that many pixels (the surface is reconfigured: a new epoch).
+    if (const char* rz = std::getenv("ANNO_VIEW_RESIZE"); rz != nullptr && *rz != 0) {
+        double seconds = 0;
+        int rw = 0, rh = 0;
+        if (std::sscanf(rz, "%lf:%dx%d", &seconds, &rw, &rh) == 3 && seconds > 0 && rw > 0 &&
+            rh > 0) {
+            resize_at_ = Clock::now() + std::chrono::duration_cast<Clock::duration>(
+                                            std::chrono::duration<double>(seconds));
+            resize_to_ = {rw, rh};
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_RESIZE=%s not understood (<seconds>:<w>x<h>)\n", rz);
         }
     }
     if (const char* q = std::getenv("ANNO_VIEW_QUIT_S"); q != nullptr && *q != 0) {
@@ -727,6 +744,18 @@ std::string Viewer::run() {
         if (quit_at_ && Clock::now() >= *quit_at_) {
             running_ = false;
             break;
+        }
+        if (resize_at_ && Clock::now() >= *resize_at_) {
+            resize_at_.reset();
+            float density = SDL_GetWindowPixelDensity(window_);
+            if (!(density > 0.0F)) {
+                density = 1.0F;
+            }
+            SDL_SetWindowSize(
+                window_,
+                static_cast<int>(std::lround(resize_to_.first / static_cast<double>(density))),
+                static_cast<int>(std::lround(resize_to_.second / static_cast<double>(density))));
+            dirty_ = true;
         }
         if (retry_at_ && Clock::now() >= *retry_at_) {
             retry_at_.reset();

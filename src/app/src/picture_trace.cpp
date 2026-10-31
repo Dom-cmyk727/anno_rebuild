@@ -96,7 +96,20 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     // The window trace: frames submitted, presented and failed by id (with their times), and the
     // frame of each time (every event of a frame carries that frame's time).
     std::map<std::uint64_t, double> submitted_frame, presented_frame;
-    std::set<std::uint64_t> failed_frame;
+    std::map<std::uint64_t, std::vector<double>> failed_frame;
+    // The surface epoch each frame's events carry (all of a frame's events carry one), and the
+    // desired events of a window trace with their times (each follows a batch_taken).
+    std::map<std::uint64_t, std::uint32_t> frame_epoch;
+    std::vector<std::pair<double, std::pair<std::uint32_t, std::uint64_t>>> desired_at;
+    std::vector<double> taken_times, frame_times;
+    auto epoch_of = [&](const TraceEvent& e) {
+        const auto [it, inserted] = frame_epoch.emplace(e.version, e.island);
+        if (!inserted && it->second != e.island) {
+            s.contradictions.push_back("frame " + std::to_string(e.version) + " in epochs " +
+                                       std::to_string(it->second) + " and " +
+                                       std::to_string(e.island));
+        }
+    };
     std::multimap<double, std::uint64_t> submitted_at_time, presented_at_time;
     std::map<std::uint64_t, std::vector<double>> published_turn, taken_turn;
     auto build_end = [&](const TraceEvent& e) {
@@ -110,6 +123,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         s.end_ms = std::max(s.end_ms, e.t_ms);
         switch (e.kind) {
         case TraceKind::Desired:
+            desired_at.push_back({e.t_ms, {e.island, e.version}});
             edits.push_back(Edit{e.t_ms, e.island, e.version});
             desired_of[e.island] = std::max(desired_of[e.island], e.version);
             ++s.edits;
@@ -183,10 +197,13 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             s.window = true;
             ++s.batches_taken;
             taken_turn[e.version].push_back(e.t_ms);
+            taken_times.push_back(e.t_ms);
             break;
         case TraceKind::FrameSubmitted:
             s.window = true;
             ++s.frames_submitted;
+            epoch_of(e);
+            frame_times.push_back(e.t_ms);
             if (!submitted_frame.emplace(e.version, e.t_ms).second) {
                 s.contradictions.push_back("frame_submitted of frame " + std::to_string(e.version) +
                                            " twice");
@@ -196,6 +213,8 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         case TraceKind::FramePresented:
             s.window = true;
             ++s.frames_presented;
+            epoch_of(e);
+            frame_times.push_back(e.t_ms);
             if (!presented_frame.emplace(e.version, e.t_ms).second) {
                 s.contradictions.push_back("frame_presented of frame " + std::to_string(e.version) +
                                            " twice");
@@ -205,7 +224,9 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         case TraceKind::FrameFailed:
             s.window = true;
             ++s.frames_failed;
-            failed_frame.insert(e.version);
+            epoch_of(e);
+            frame_times.push_back(e.t_ms);
+            failed_frame[e.version].push_back(e.t_ms);
             break;
         case TraceKind::Presented:
             s.window = true;
@@ -414,9 +435,54 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             s.contradictions.push_back("frame_presented of frame " + std::to_string(frame) +
                                        " without its frame_submitted before it");
         }
-        if (failed_frame.contains(frame)) {
+        if (failed_frame.contains(frame) && !failed_frame[frame].empty()) {
             s.contradictions.push_back("frame " + std::to_string(frame) +
                                        " both presented and failed");
+        }
+    }
+    for (const auto& [frame, times] : failed_frame) {
+        if (times.size() > 1) {
+            s.contradictions.push_back("frame_failed of frame " + std::to_string(frame) + " " +
+                                       std::to_string(times.size()) + " times");
+        }
+        const auto sub = submitted_frame.find(frame);
+        if (sub != submitted_frame.end() && times.front() < sub->second) {
+            s.contradictions.push_back("frame_failed of frame " + std::to_string(frame) +
+                                       " before its frame_submitted");
+        }
+    }
+    // Epochs: one per frame (above), and never lower for a later frame.
+    std::optional<std::pair<std::uint64_t, std::uint32_t>> last_epoch;
+    for (const auto& [frame, epoch] : frame_epoch) {
+        if (last_epoch && epoch < last_epoch->second) {
+            s.contradictions.push_back("frame " + std::to_string(frame) + " in epoch " +
+                                       std::to_string(epoch) + " after frame " +
+                                       std::to_string(last_epoch->first) + " in epoch " +
+                                       std::to_string(last_epoch->second));
+        }
+        last_epoch = {frame, epoch};
+    }
+    // In a window trace an edit comes from a batch its frame boundary took: a desired event needs
+    // a batch_taken at or before it with no frame event between the two (the take and the apply
+    // are one frame boundary, before that frame's render).
+    if (s.window) {
+        std::sort(taken_times.begin(), taken_times.end());
+        std::sort(frame_times.begin(), frame_times.end());
+        for (const auto& [t, p] : desired_at) {
+            const auto take = std::upper_bound(taken_times.begin(), taken_times.end(), t);
+            const std::string what = "desired of island " + std::to_string(p.first) + " version " +
+                                     std::to_string(p.second);
+            if (take == taken_times.begin()) {
+                s.contradictions.push_back(what + " with no batch_taken before it (window trace)");
+                continue;
+            }
+            const double t_take = *std::prev(take);
+            const auto frame = std::upper_bound(frame_times.begin(), frame_times.end(), t_take);
+            if (frame != frame_times.end() && *frame < t) {
+                s.contradictions.push_back(what +
+                                           " not in the frame boundary of its batch_taken (a "
+                                           "frame event lies between them)");
+            }
         }
     }
     for (const auto& [turn, times] : taken_turn) {

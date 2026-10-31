@@ -52,7 +52,10 @@ std::string turn_outcome(const TurnRecord& t) {
     if (t.rejected == 0) {
         return "accepted";
     }
-    return t.rejected >= t.applied ? "rejected" : "ambiguous";
+    if (t.rejected > t.applied) {
+        return "invalid";
+    }
+    return t.rejected == t.applied ? "rejected" : "ambiguous";
 }
 
 TraceKind trace_kind_of(PictureEvent e) {
@@ -136,6 +139,11 @@ void WindowTrace::turn(TurnRecord record) {
 void WindowTrace::note(std::string line) {
     const std::lock_guard lock(m_);
     notes_.push_back(std::move(line));
+}
+
+void WindowTrace::count_drop() {
+    const std::lock_guard lock(m_);
+    ++dropped_;
 }
 
 std::uint64_t WindowTrace::dropped() const {
@@ -253,6 +261,10 @@ PresentCorrelator::presented(std::uint64_t frame) {
 
 void FrameTracer::committed(std::uint32_t island, std::uint64_t generation,
                             std::vector<render::ChunkKey> keys) {
+    if (outstanding() >= max_outstanding_) {
+        trace_.count_drop();
+        return;
+    }
     unwatched_.push_back({island, generation, std::move(keys)});
 }
 

@@ -686,3 +686,29 @@ TEST_CASE("picture reclaim: a stalled process reclaimer holds the commits back, 
     CHECK(reclaimer.stats().bytes_waiting == before.bytes_waiting);
     reclaimer.set_test_gate({});
 }
+
+TEST_CASE("picture starts: a start copies only its island's buildings, and the result is the "
+          "desired state" *
+          doctest::test_suite("scene_picture_recovery")) {
+    // Island 1 carries 50 buildings in the city; a change to island 0 copies island 0's one
+    // building, not the 50. A change to island 1 copies its 51. The committed state matches the
+    // desired state on both islands.
+    auto scene = islands_scene(2);
+    std::vector<app::SceneBuilding> city;
+    for (std::uint16_t x = 1; x <= 50; ++x) {
+        city.push_back(app::SceneBuilding{1, 1, x, 1, 0, 0});
+    }
+    app::ScenePicture picture(scene, city, [](std::uint16_t) { return true; }, 1, {});
+    render::FrameRenderer frames(1);
+    picture.apply({added(1, 0, 1)});
+    picture.wait_idle();
+    CHECK(picture.stats().copied_buildings == 1);
+    picture.apply({added(2, 1, 60)});
+    picture.wait_idle();
+    CHECK(picture.stats().copied_buildings == 1 + 51);
+    CHECK(drain(picture, frames, 20));
+    CHECK(picture.error().empty());
+    CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
+    CHECK(committed_payloads(*picture.scene(), 1) == fresh_payloads(*scene, 1, picture));
+    CHECK(desired_on(picture, 1) == 51);
+}

@@ -12,7 +12,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -137,6 +139,9 @@ class ScenePicture {
         /// backlog, and the estimated bytes of those builds.
         std::size_t outstanding_peak = 0, reclaim_backlog_peak = 0;
         std::size_t outstanding_bytes = 0, outstanding_bytes_peak = 0;
+        /// Buildings copied into started builds: a start copies its own island's buildings only
+        /// (round dx, DX2e).
+        std::uint64_t copied_buildings = 0;
         /// Milliseconds of the newest object build (worker) and of the newest commit (window).
         double last_build_ms = 0, last_commit_ms = 0;
     };
@@ -161,6 +166,13 @@ class ScenePicture {
     std::shared_ptr<Reaper> reaper_;
     std::vector<std::thread> threads_;
     Limits limits_;
+    /// The picture's buildings per island number, in batch order (window thread). A build copies
+    /// only its island's entry, so the cost of a start does not grow with the rest of the city
+    /// (round dx, DX2e). Rebuilt for the touched islands when the list changes (reindex).
+    std::map<std::uint32_t, std::vector<SceneBuilding>> by_island_;
+
+    /// Rebuilds the entries of `islands` from the building list (one pass over the list).
+    void reindex(const std::set<std::uint32_t>& islands);
 
     /// Starts the builds of `wanted` islands and of the due ones (deferred, retrying), within the
     /// limits. Hands what it replaces to `dropped` (retired by the caller). Returns the wanted

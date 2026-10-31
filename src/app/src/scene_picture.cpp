@@ -95,18 +95,6 @@ ChangeSet change_set(const render::Scene& scene, std::size_t index,
     return change;
 }
 
-/// The buildings of the given island slots, per slot, in the order of `all` (one pass).
-std::map<std::uint32_t, std::vector<SceneBuilding>>
-buildings_by_island(const std::vector<SceneBuilding>& all, const std::set<std::uint32_t>& slots) {
-    std::map<std::uint32_t, std::vector<SceneBuilding>> out;
-    for (const SceneBuilding& b : all) {
-        if (slots.contains(b.island)) {
-            out[b.island].push_back(b);
-        }
-    }
-    return out;
-}
-
 /// The bytes an island's records occupy (its head and every record payload): the estimate a build
 /// is admitted by.
 std::size_t island_bytes(const formats::insel::Island& island) {
@@ -346,6 +334,13 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
         slots_.emplace_back(current_->islands[i].number, i);
     }
     std::sort(slots_.begin(), slots_.end());
+    {
+        std::set<std::uint32_t> islands;
+        for (const SceneBuilding& b : picture_) {
+            islands.insert(b.island);
+        }
+        reindex(islands);
+    }
     auto table = std::make_shared<std::vector<bool>>(0x1000, false);
     for (std::size_t id = 0; id < table->size(); ++id) {
         (*table)[id] = is_building(static_cast<std::uint16_t>(id));
@@ -537,17 +532,10 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             }
         }
     }
-    // Idle: nothing to start, so no pass over the building list (the cost does not grow with the
-    // city).
+    // Idle: nothing to start (the cost does not grow with the city).
     if (candidates.empty()) {
         return 0;
     }
-    std::set<std::uint32_t> slots;
-    for (std::size_t index : candidates) {
-        slots.insert(current_->islands[index].number);
-    }
-    // The window thread owns the building list, so the buildings are grouped here, before the lock.
-    auto groups = buildings_by_island(picture_, slots);
     // While the reaper is behind, an island in flight is not replaced: replacing it would hand its
     // queued job and result to the reaper and grow the backlog. Such an island is deferred. An
     // island that is not in flight starts without any hand-over.
@@ -640,7 +628,12 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
             job.index = index;
             job.version = state_->desired[index];
             job.base = current_;
-            job.buildings = std::move(groups[current_->islands[index].number]);
+            // The island's buildings are copied only now, for an admitted build (DX2e).
+            if (const auto mine = by_island_.find(current_->islands[index].number);
+                mine != by_island_.end()) {
+                job.buildings = mine->second;
+                state_->stats.copied_buildings += job.buildings.size();
+            }
             job.bytes = bytes;
             job.submitted = Clock::now();
             state_->jobs.push_back(std::move(job));
@@ -652,6 +645,21 @@ std::size_t ScenePicture::dispatch(const std::vector<std::size_t>& wanted,
     }
     state_->wake.notify_all();
     return requested;
+}
+
+void ScenePicture::reindex(const std::set<std::uint32_t>& islands) {
+    if (islands.empty()) {
+        return;
+    }
+    for (const std::uint32_t island : islands) {
+        by_island_.erase(island);
+    }
+    // One pass over the list: each island's buildings keep their order in the list.
+    for (const SceneBuilding& b : picture_) {
+        if (islands.contains(b.island)) {
+            by_island_[b.island].push_back(b);
+        }
+    }
 }
 
 std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const BuildingBatch>>& batches) {
@@ -677,6 +685,7 @@ std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const Building
             touched.insert(d.building.island);
         }
     }
+    reindex(touched);
     std::vector<std::size_t> wanted;
     {
         const std::lock_guard lock(state_->mutex);

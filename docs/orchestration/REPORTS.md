@@ -8016,7 +8016,8 @@ semantic checks: the three event digests are identical to 115; `tools/sim_stream
 | three candidates loaded with the original registry and files | pass; hashes `a e471f6e1ff1164ec`, `b 0ffe696a2a07cc14`, `c 7ec33fd43149094b` identical in two fresh processes and on 1, 2 and 7 executor threads |
 | `tools/lint_sim.py` + self-test | ok, 70 cases |
 | `map2_manifest_selftest`, `xcheck verify` | pass, 0 problems |
-| ASan + UBSan (`build/mac-asan`) | see the line added below when the run finished |
+| ASan + UBSan (`build/mac-asan`, focused: formats json/sha256/manifest 12 cases; sim ship, figure, golden, G0-G7, state_hash, world-core, fixed-map 49 cases) | 0 findings; candidate hashes identical to the Debug build |
+| `clang-format` 23.1.3 on every changed C++ file | clean |
 
 ### Failed, skipped and external gates
 

@@ -1457,7 +1457,8 @@ not in it. The known-failing Metal timestamp cases are not used for any number.
 - **Workload:** the legal five-city baseline: 40 buildings per city plus a Kontor, 2000 t of test goods,
   the default seed. It is generated through the sim's Build/Demolish commands and the registry's placement
   rules.
-- **View:** at group 2 on city 0's first edit, paced at 60 Hz.
+- **View:** at group 2 on city 0's first edit. Requested pacing: a frame every 16.667 ms (60 Hz). The
+  observed cadence was slower (round ec correction below): 23 to 25 ms between frame starts.
 - **Workers:** 2 or 4 picture workers, 2 chunk workers.
 - **Viewports:** 1920 × 1080 and 3840 × 2160.
 - **Oracle, every case:**
@@ -1505,10 +1506,11 @@ ended (unfinished 0 everywhere).
 GPU memory (chunk planes, pools, atlas, offscreen targets) is the compositor's own and is not in these CPU
 payload counts.
 
-**Readings, within these limits.**
-- **Where the latency is:** for single edits and the sustained stream, GPU-usable equals CPU-ready within a
-  frame at p50, so the latency to the GPU boundary is the CPU rebuild of the chunks. Under the 50-edit
-  burst and above the build rate, the upload limit adds 20 to 70 ms at p50 and the max.
+**Readings, within these limits** (corrected in round ec; see "Round ec corrections" below).
+- **Upload delay:** for single edits and the sustained stream, GPU-usable equals CPU-ready at p50. So uploads
+  add little after CPU readiness in those cases. Under the 50-edit burst and above the build rate, the
+  upload limit adds 20 to 70 ms at p50 and the max. Equal medians alone do not say where the earlier
+  latency arose; the phases below do.
 - **Frame time:** the window thread's work per frame stayed under 3.0 ms at every percentile on this host.
   That is CPU submission only.
 - **Not shown:**
@@ -1518,3 +1520,53 @@ payload counts.
   - a late-game economy: the workload is five cities of about 40 buildings, without roads (the sim
     refuses them) and with density capped by scenery;
   - multiplayer load.
+
+
+### Round ec corrections to the round-eb notes
+
+**Cadence:** requested is not observed.
+- Every round-eb case requested a paced frame every 16.667 ms.
+- The saved `frames.tsv` frame starts (`picture_table.py`'s cadence table,
+  `cache/ec-runs/a3-eb-matrix-table.md`) show a slower observed cadence:
+  - idle measured loops: p50 23.1 to 23.5 ms (n = 222 to 226), p99 24.6 to 24.8;
+  - sustained loops: p50 24.6 to 24.7 ms (n = 415 to 420), max 24.9;
+  - above the build rate: p50 23.8 to 23.9 ms, max 30.6;
+  - one-edit and burst cases: their latency accrues in the drain; drain intervals p50 17.8 to 24.3 ms
+    (n = 1 to 8).
+- A paced frame sleeps to its next deadline after its work; on this host the wake-up came 6 to 8 ms late.
+  So the latencies of round eb were measured at roughly 40 Hz, not 60 Hz.
+
+**Where the latency is.** These are phases per edit from the saved raw events (`tools/bench/picture_phases.py`,
+`cache/ec-runs/a3-eb-phases.md`); ms, n / p50 / p95 / p99 / max.
+
+| case | admission → start (queue) | worker build | built → committed (until a frame's commit takes it) | committed → visible CPU-ready (chunk rebuild and the frame that sees it) | CPU-ready → GPU-usable (uploads to the submission) |
+|---|---|---|---|---|---|
+| sustained 1080p, w2 | 100 / 0.0 | 100 / 19.5 / 22.4 / 23.0 / 23.0 | 100 / 4.6 / 22.3 / 24.7 / 24.8 | 15 / 25.4 / – / – / 25.9 | 15 / 0.0 / – / – / 23.7 |
+| sustained 2160p, w4 | 100 / 0.0 | 100 / 19.8 / 22.3 / 22.7 / 23.0 | 100 / 4.4 / 20.8 / 23.0 / 23.1 | 20 / 25.7 / 35.7 / – / 43.2 | 20 / 0.0 / 0.0 / – / 23.2 |
+| burst 1080p, w2 | 50 / 24.5 / 54.7 / – / 54.7 | 50 / 13.6 / 13.7 / – / 13.9 | 50 / 20.3 / 23.1 / – / 23.1 | 10 / 73.1 / – / – / 73.1 | 10 / 43.4 / – / – / 43.4 |
+| above the rate 1080p, w2 | 400 / 8.8 / 22.8 / 24.4 / 49.1 | 400 / 13.7 / 13.9 / 14.1 / 14.1 | 400 / 7.9 / 22.4 / 22.9 / 22.9 | 74 / 47.3 / 108.5 / – / 108.5 | 74 / 0.0 / 92.8 / – / 92.8 |
+
+So in the sustained stream an edit's 50 ms to CPU readiness is roughly:
+- 20 ms of worker build;
+- up to one frame interval until a commit takes it (4.5 ms at p50);
+- about 25 ms of chunk rebuild and the frame that observes it.
+
+GPU completion and presentation are not in any of these numbers.
+
+**Gate accounting**, read per test from the saved logs by `tools/test/ctest_verdict.py`. CTest "Passed" totals
+are not executed passes:
+
+| Gate | Selected | Executed | Failed | Skipped |
+|---|---|---|---|---|
+| G1 dev CPU | 83 | 81 | 0 | 2 (the `probe:` cases, opt-in `ANNO_PROBE`) |
+| G2 ASan/UBSan | 35 | 35 | 0 | 0 |
+| G3 dev GPU | 102 | 99 | 2 (the Metal timestamp cases, open) | 1 (`play: GPU matches the CPU path on one scene`, platform: no RTX 4090) |
+
+**Evidence revalidated** with the corrected tools (originals unchanged):
+- all four round-dz matrices and the round-eb canary and matrix;
+- every `gpu_ready` has an earlier-or-equal `chunks_ready` of its island and generation: 125 of 125;
+- every frame row has the header's field count: 3,076 rows;
+- the strict frames reader and the causal validator accept every saved case.
+
+The one round-eb dev canary recorded before the GPU poll was moved after the CPU poll
+(`cache/eb-runs/p5-canary-one-gpu`) is now refused as contradictory. It was never a reported measurement.

@@ -3,8 +3,11 @@
 Expected route lengths and footprint tiles were counted on the grid. They
 are not copied from a previous run of tools/map2_ship.py.
 """
+import hashlib
 import json
+import struct
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -318,8 +321,146 @@ def test_distant_result():
                {'min_city': 64})
 
 
+def test_landlocked_spawns():
+    # The review probe: five 32x32 land islands, each with a 16x16 lake, and
+    # each ship in the middle of its lake. Production clearance, city proxy
+    # and route bound. The layout envelope is off so this is only the sea rule.
+    template = helper.land(32, 32, 2)
+    height = bytearray(template['height'])
+    for y in range(8, 24):
+        for x in range(8, 24):
+            height[y * 32 + x] = 0
+    template['height'] = bytes(height)
+    islands = [{'id': i, 'x': 40 * i, 'y': 8, 'key': str(i)} for i in range(5)]
+    keys = {str(i): template for i in range(5)}
+    spawns = helper.five([(40 * i + 15, 8 + 15) for i in range(5)])
+    result = run(224, islands, keys, spawns,
+                 {'clearance': 8, 'min_city': 256, 'max_route_tiles': 400})
+    expect(not result['witness'], 'ships inside enclosed lakes do not form a witness')
+    expect(bool(result['problems']), 'ships inside enclosed lakes are rejected')
+    expect(all(not result['feasible'][seat] for seat in range(5)),
+           'a landlocked spawn has no eligible route')
+
+
+def _corner_island(open_side):
+    # 20x20. Lake at local (2, 2). Water at (1, 1) and (0, 1) reaches the
+    # west edge, so that water is exterior. The lake's four orthogonal
+    # neighbours stay land unless open_side opens the west neighbour (1, 2).
+    height = bytearray([20]) * (20 * 20)
+    height[1 * 20 + 1] = 0
+    height[1 * 20 + 0] = 0
+    height[2 * 20 + 2] = 0
+    if open_side:
+        height[2 * 20 + 1] = 0
+    return {
+        'w': 20, 'h': 20, 'climate': 2, 'height': bytes(height),
+        'occupied': set(), 'land_sha256': 'corner',
+    }
+
+
+def test_diagonal_contact():
+    island = {'id': 0, 'x': 4, 'y': 4, 'key': 'CORNER'}
+    spawns = helper.five([(6, 6), (1, 1), (1, 2), (1, 3), (30, 1)])
+    closed = run(32, [island], {'CORNER': _corner_island(False)}, spawns,
+                 {'clearance': 1, 'min_city': 16, 'max_route_tiles': 40})
+    expect(not closed['feasible'][0], 'diagonal contact does not let a lake spawn sail')
+    expect(bool(closed['problems']), 'a diagonally touching lake spawn is rejected')
+    expect(0 not in {seat for seat, _island in closed['witness']},
+           'a diagonally touching lake is not a witness seat')
+    opened = run(32, [island], {'CORNER': _corner_island(True)}, spawns,
+                 {'clearance': 1, 'min_city': 16, 'max_route_tiles': 40})
+    expect(bool(opened['feasible'][0]), 'an orthogonal channel makes the same lake reachable')
+
+
+def test_connected_bay():
+    # 12x12 land with a north channel one tile wide. The spawn sits in the bay.
+    template = helper.land(12, 12, 2)
+    height = bytearray(template['height'])
+    for y in range(8):
+        height[y * 12 + 5] = 0
+    template['height'] = bytes(height)
+    islands = [{'id': i, 'x': 4 + i * 16, 'y': 4, 'key': str(i)} for i in range(5)]
+    keys = {str(i): template for i in range(5)}
+    spawns = helper.five([(4 + i * 16 + 5, 8) for i in range(5)])
+    result = run(88, islands, keys, spawns, {'clearance': 1, 'min_city': 16, 'max_route_tiles': 80})
+    expect(len(result['witness']) == 5, 'five bays open to the boundary still match')
+    expect(not result['problems'], 'a boundary-connected bay is exterior sea')
+
+
+def _chunk(name, payload):
+    raw = name.encode('ascii')
+    return raw + b'\0' * (12 - len(raw)) + struct.pack('<I', len(payload)) + payload
+
+
+def _scp(obstacle_xy):
+    width = 8
+    info = bytes([2]) + bytes(11)
+    height = _chunk('HEIGHT', struct.pack('<HHBB', 0, 0, width, width) + bytes([20]) * (width * width))
+    word = 1
+    ox, oy = obstacle_xy
+    item = struct.pack('<HBBBB', word, 0, 0, ox, oy)
+    scenery = _chunk('GELAENDE', struct.pack('<HHBB', 0, 0, width, width) + item)
+    body = struct.pack('<4HI', 0, 0, width, width, 0) + _chunk('INFO', info) + height + scenery
+    return _chunk('ANNO', _chunk('INSEL5', body))
+
+
+def test_source_file_hash():
+    files, shapes = ship.source_fields({'K': {'land_sha256': 'shape-only'}}, ['K'])
+    expect(files['K'] is None, 'a missing source file hash stays missing')
+    expect(shapes['K'] == 'shape-only' and files['K'] != shapes['K'],
+           'a shape digest is not reported as the file hash')
+    import map2_profile
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        left = root / 'Scenes' / 'Islands' / 'NORD'
+        left.mkdir(parents=True)
+        raw_a = _scp((1, 1))
+        raw_b = _scp((2, 2))
+        (left / 'a.scp').write_bytes(raw_a)
+        (left / 'b.scp').write_bytes(raw_b)
+        keys = {'NORD/A.SCP', 'NORD/B.SCP'}
+        catalog = map2_profile.load_templates(root, keys)
+        expect(catalog['NORD/A.SCP']['land_sha256'] == catalog['NORD/B.SCP']['land_sha256'],
+               'the same land mask keeps one shape digest')
+        expect(catalog['NORD/A.SCP']['source_sha256'] == hashlib.sha256(raw_a).hexdigest(),
+               'the file hash is the raw SCP bytes')
+        expect(catalog['NORD/A.SCP']['source_sha256'] != catalog['NORD/B.SCP']['source_sha256'],
+               'a different obstacle record changes the file hash')
+        doc = {
+            'name': 'synthetic', 'content_hash': '0' * 64, 'profile': mf.PROFILE_ID,
+            'version': 2, 'policy': mf.default_policy(), 'excluded': list(mf.EXCLUDED),
+        }
+        report = {
+            'feasible': {seat: [] for seat in range(5)},
+            'witness_detail': (), 'detour_detail': (), 'shares': [], 'diagnostics': [],
+            'site_records': [], 'problems': [],
+            'template_sha256': {key: catalog[key]['source_sha256'] for key in keys},
+            'shape_sha256': {key: catalog[key]['land_sha256'] for key in keys},
+            'checker': {'commit': 'abc', 'dirty_sources': True, 'source_sha256': {}},
+        }
+        payload = json.loads(json.dumps(ship.public_report(doc, report)))
+        expect(payload['template_sha256']['NORD/A.SCP'] != payload['shape_sha256']['NORD/A.SCP'],
+               'the serialized report keeps the file hash apart from the shape hash')
+        expect(payload['checker']['dirty_sources'] is True, 'a dirty checker is visible in the report')
+        expect(payload['policy']['sea'] == 'exterior-4', 'the report states the exterior-sea rule')
+
+
+def test_sea_policy_rejected():
+    doc = helper.manifest(32, [{'id': 0, 'x': 0, 'y': 0, 'key': 'N'}],
+                          helper.five([(1, 1), (2, 1), (3, 1), (4, 1), (5, 1)]))
+    doc['policy'] = dict(doc['policy'], sea='lake')
+    try:
+        mf.parse(json.dumps({key: value for key, value in doc.items() if not key.startswith('_')}))
+        expect(False, 'a contradictory sea policy is refused')
+    except mf.ManifestError as err:
+        expect('sea' in str(err), 'a contradictory sea policy is refused')
+
+
 def main():
     test_enclosed_lake()
+    test_landlocked_spawns()
+    test_diagonal_contact()
+    test_connected_bay()
     test_far_beach()
     test_tiny_city()
     test_distant_component()
@@ -330,6 +471,8 @@ def main():
     test_diagonal_metric()
     test_manifest_strict()
     test_negative_controls()
+    test_source_file_hash()
+    test_sea_policy_rejected()
     print(f'{len(FAILURES)} failed')
     return 1 if FAILURES else 0
 

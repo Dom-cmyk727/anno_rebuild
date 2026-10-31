@@ -1,15 +1,18 @@
 """Geometric checks for map2-ship-start-v2. Not engine certification.
 
-Movement is 4-connected on water tiles. Each step costs 1 tile. Diagonals are
-not moves, so the cost is Manhattan, not a Euclidean length and not an upper
-bound produced by a unit-cost diagonal. Clearance is the Chebyshev gap from
-the spawn tile to the nearest HEIGHT>=16 tile. It is not applied along the
-route.
+Movement is 4-connected on exterior sea. Each step costs 1 tile. Diagonals
+are not moves, so the cost is Manhattan, not a Euclidean length and not an
+upper bound produced by a unit-cost diagonal. Exterior sea is the water a
+4-connected walk can reach from the boundary of this finite world. An
+enclosed lake is not sea, including a lake that touches the sea only at a
+corner. This is the tool's boundary rule, not the original navigator and
+not a ship-hull size. Clearance is the Chebyshev gap from the spawn tile to
+the nearest HEIGHT>=16 tile. It is not applied along the route.
 
 A founding site is a 4x4 of HEIGHT>=16 clear of ANLAGEN HEAD footprints
 (odd rotations swap the axes; sprite pixels are not occupancy). One of its
-sides must touch a water tile in the same ocean component as the spawn.
-The route ends on that water tile. An enclosed lake does not qualify.
+sides must touch exterior sea in the spawn's component. The route ends on
+that water tile. An enclosed lake does not qualify.
 The site's own connected free-land component must hold at least min_city
 tiles. A larger component elsewhere on the island is not credited.
 min_city is provisional tool policy, not an original rule and not an
@@ -26,6 +29,7 @@ import hashlib
 import json
 import os
 import struct
+import subprocess
 import sys
 from array import array
 from collections import deque
@@ -334,6 +338,43 @@ def _exact_gap(tx, ty, island):
     return best if best is not None else INF
 
 
+def _exterior(blocked, edge):
+    """Water reachable from the world boundary. Same 4-connected rule as the route."""
+    sea = bytearray(edge * edge)
+    queue = deque()
+    last = edge - 1
+    for i in range(edge):
+        for at in (i, last * edge + i, i * edge, i * edge + last):
+            if not blocked[at] and not sea[at]:
+                sea[at] = 1
+                queue.append(at)
+    while queue:
+        cur = queue.popleft()
+        x = cur - (cur // edge) * edge
+        y = cur // edge
+        if x > 0:
+            nxt = cur - 1
+            if not blocked[nxt] and not sea[nxt]:
+                sea[nxt] = 1
+                queue.append(nxt)
+        if x + 1 < edge:
+            nxt = cur + 1
+            if not blocked[nxt] and not sea[nxt]:
+                sea[nxt] = 1
+                queue.append(nxt)
+        if y > 0:
+            nxt = cur - edge
+            if not blocked[nxt] and not sea[nxt]:
+                sea[nxt] = 1
+                queue.append(nxt)
+        if y + 1 < edge:
+            nxt = cur + edge
+            if not blocked[nxt] and not sea[nxt]:
+                sea[nxt] = 1
+                queue.append(nxt)
+    return sea
+
+
 def _water_mask(edge, islands):
     blocked = bytearray(edge * edge)
     for island in islands:
@@ -424,6 +465,11 @@ def validate(doc, templates, options=None):
     problems.extend(geometry_problems(doc, islands, made))
     edge = doc['edge'][0]
     blocked = _water_mask(edge, islands)
+    exterior = _exterior(blocked, edge)
+    sail = bytearray(blocked)
+    for index in range(edge * edge):
+        if not exterior[index]:
+            sail[index] = 1
     annotated = {island['id']: _annotate(island) for island in islands}
     evaluated = sum(len(sites) for sites in annotated.values())
     feasible = {seat: [] for seat in range(5)}
@@ -434,10 +480,13 @@ def validate(doc, templates, options=None):
         if not (0 <= tile_x < edge and 0 <= tile_y < edge) or blocked[tile_y * edge + tile_x]:
             problems.append(f"spawn {spawn['seat']} is not clear sea")
             continue
+        if not exterior[tile_y * edge + tile_x]:
+            problems.append(f"spawn {spawn['seat']} is not on exterior sea")
+            continue
         if _clearance(tile_x, tile_y, islands, made['clearance']) < made['clearance']:
             problems.append(f"spawn {spawn['seat']} is not clear sea")
             continue
-        dist = _bfs_tiles(tile_x, tile_y, blocked, edge)
+        dist = _bfs_tiles(tile_x, tile_y, sail, edge)
         evaluated += edge * edge
         for island in islands:
             best = None
@@ -446,6 +495,8 @@ def validate(doc, templates, options=None):
                 if site['city'] < made['min_city']:
                     continue
                 for wx, wy in _ocean_waters(island, site, edge, blocked):
+                    if not exterior[wy * edge + wx]:
+                        continue
                     cost = dist[wy * edge + wx]
                     if cost == INF:
                         continue
@@ -486,7 +537,7 @@ def validate(doc, templates, options=None):
             if site['city'] < made['min_city']:
                 continue
             for wx, wy in _ocean_waters(island, site, edge, blocked):
-                if ocean[wy * edge + wx]:
+                if exterior[wy * edge + wx] and ocean[wy * edge + wx]:
                     ocean_site = True
         if not ocean_site:
             diagnostics.append(f"island {island['id']} has no eligible founding site")
@@ -540,6 +591,7 @@ def validate(doc, templates, options=None):
         'policy': {
             'grid': 'tile',
             'metric': 'manhattan-4',
+            'sea': 'exterior-4',
             'clearance_scope': 'spawn',
             'obstruction': 'anlagen-head-conservative',
         },
@@ -649,6 +701,47 @@ def _records(buf, start, end):
         p = payload + size
 
 
+_CHECKER_FILES = ('map2_ship.py', 'map2_manifest.py', 'map2_profile.py', 'map2_shape.py')
+
+
+def source_fields(templates, keys):
+    """File bytes and land-shape digests. A missing file hash stays missing."""
+    files = {}
+    shapes = {}
+    for key in keys:
+        item = templates.get(key) or {}
+        files[key] = item.get('source_sha256')
+        shapes[key] = item.get('land_sha256')
+    return files, shapes
+
+
+def checker_identity():
+    """Commit plus whether these modules differ from it, and their source digests."""
+    here = Path(__file__).resolve().parent
+    sources = {
+        name: hashlib.sha256((here / name).read_bytes()).hexdigest()
+        for name in _CHECKER_FILES
+    }
+    commit = None
+    dirty = None
+    try:
+        repo = str(here.parent)
+        head = subprocess.run(
+            ['git', '-C', repo, 'rev-parse', 'HEAD'],
+            capture_output=True, text=True, check=False)
+        if head.returncode == 0:
+            commit = head.stdout.strip()
+        paths = [f'tools/{name}' for name in _CHECKER_FILES]
+        status = subprocess.run(
+            ['git', '-C', repo, 'status', '--porcelain', '--', *paths],
+            capture_output=True, text=True, check=False)
+        if status.returncode == 0:
+            dirty = bool(status.stdout.strip())
+    except OSError:
+        pass
+    return {'commit': commit, 'dirty_sources': dirty, 'source_sha256': sources}
+
+
 def public_report(doc, report):
     """Machine-readable check. Integer keys become lists so the JSON is stable."""
     def cells(value):
@@ -666,10 +759,12 @@ def public_report(doc, report):
         'content_hash': doc['content_hash'],
         'profile': doc['profile'],
         'version': doc['version'],
-        'policy': doc['policy'],
+        'policy': dict(doc['policy'], sea='exterior-4'),
         'excluded': list(doc['excluded']),
         'anlagen_sha256': report.get('anlagen_sha256'),
         'template_sha256': report.get('template_sha256') or {},
+        'shape_sha256': report.get('shape_sha256') or {},
+        'checker': report.get('checker') or {},
         'problems': list(report['problems']),
         'witness': cells(report['witness_detail']),
         'alternatives': cells(alternatives),
@@ -690,10 +785,11 @@ def load_and_check(path, game):
     keys = {island['key'] for island in doc['islands']}
     templates = map2_profile.load_templates(game, keys, heads)
     report = validate(doc, templates)
+    files, shapes = source_fields(templates, [island['key'] for island in doc['islands']])
     report['anlagen_sha256'] = anlagen_sha
-    report['template_sha256'] = {
-        island['key']: templates[island['key']].get('land_sha256') for island in doc['islands']
-    }
+    report['template_sha256'] = files
+    report['shape_sha256'] = shapes
+    report['checker'] = checker_identity()
     return doc, report, templates
 
 

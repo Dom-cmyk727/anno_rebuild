@@ -12,6 +12,7 @@ printed as sensitivity and are not gates.
 
 Exit status is 0 only when every structural rule and every gate passes.
 """
+import hashlib
 import itertools
 import math
 import os
@@ -523,7 +524,9 @@ def load_templates(game, keys, heads=None):
         path = found.get(key)
         if path is None:
             continue
-        isl = insel.islands(path.read_bytes())[0]
+        raw = path.read_bytes()
+        source_sha = hashlib.sha256(raw).hexdigest()
+        isl = insel.islands(raw)[0]
         height = bytes(insel.grid(isl, 'HEIGHT', 1))
         occupied = set()
         placements = []
@@ -565,6 +568,7 @@ def load_templates(game, keys, heads=None):
             'height': height,
             'occupied': occupied,
             'land_sha256': land_hash,
+            'source_sha256': source_sha,
         }
         if heads is not None:
             catalog[key]['placements'] = tuple(placements)

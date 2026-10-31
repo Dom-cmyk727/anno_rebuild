@@ -1598,3 +1598,99 @@ Every trace under `cache/` was re-read with these rules: 105 traces.
   measurements.
 
 None was refused by the three new rules.
+
+### The play window, traced: edit to present-call return (round ec, D)
+
+These are the first measurements of the real viewer path. Each run is `anno1503 --play
+data/maps/lan5.txt --commands <file> --renderer gpu`, with the window trace on (`docs/app/window-trace.md`).
+Every row was checked by `tools/bench/window_table.py` before it was tabulated:
+- the aggregate's verdict;
+- a strict reading of frames.tsv and sim.tsv;
+- frame and batch counts that agree between the files and the trace.
+
+The runner is `tools/bench/window_case.sh`. The raw files are in `cache/ec-runs/d-matrix/` and the table
+is `cache/ec-runs/d-matrix-table.md`.
+
+**Identity:**
+- Host: Apple M5 Max (Mac17,6), 18 cores, 48 GiB, macOS 27.0.1; adapter "Apple M5 Max (Metal)".
+- Display: the built-in 3456 × 2234 Retina, ProMotion at 120 Hz.
+- Release build of the round-ec B tree, anno1503 sha256 `e1b0a27d…` (each case's `run.txt` has the full
+  hashes, the revision and the dirty diff).
+- Map: `lan5.txt`, sha256 `1a471d9f…`.
+- Defaults: interactive GPU limits, CPU chunk builder, chunk workers on half the cores (9).
+- The host was shared: another executor's sim tests ran at up to about 1,200 % CPU during the runs
+  (load 3.4 to 9.7, in `results.tsv`).
+
+**Workloads.** All are legal commands for the developer city, found by a trial world
+(`cache/ec-runs/d-workloads/`, generator source beside them). Acceptance is read from each run's own
+`sim.tsv`, never from the trial.
+- **idle:** no command, 12 s.
+- **one:** one build at turn 30, 12 s.
+- **burst:** 20 builds in turn 30. They form one batch and one island version, so they are one edit; 14 s.
+- **sustained:** 60 builds, one every 4 turns (2.5 per second), 32 s.
+
+Every command was accepted: 81 applied, 0 rejected, 0 ambiguous. They are not the headless five-city
+workload of rounds dy–eb and are not comparable with it.
+
+**Drawables:**
+- 1920 × 1080, as asked.
+- A genuine 3840 × 2160 drawable is not possible on this display. Asked for one, the window got 3840 × 1976
+  (`cache/ec-runs/d3-probe-3840x2160`).
+- The largest 16:9 drawable that fits is 3456 × 1944, 81 % of the pixels of 2160p, and it is used here.
+  2160p is NOT RUN.
+
+**Frames.**
+- Every case: 1,432 to 3,836 attempted frames, all presented. No acquire failed, no present failed, no
+  record was dropped.
+- Requested cadence: vsync (Fifo) on the 120 Hz display, 8.33 ms.
+- Observed frame-start interval:
+  - p50 8.32 to 8.33 ms;
+  - p99 8.9 to 10.3 ms;
+  - max 21 to 29 ms, in 7 of 10 traced runs at the start (frame 34 to 36, about 0.42 s in), and three
+    later: idle 3456 × 1944 at 5.0 s, sustained 3456 × 1944 at 5.8 s, sustained 1080p at 28.6 s. The
+    trace does not say why.
+- Acquire, the wait for the next surface texture: p50 7.4 to 8.1 ms.
+- Present call: under 0.1 ms.
+- Window thread busy per presented frame, from draw start to present return less the acquire: p50 0.2 to
+  0.95 ms, p99 at most 3.3 ms, max 8.1 ms.
+
+**Edit boundaries.** ms from the edit's `desired` event, as n / p50 / p95 / max; p99 has too few samples.
+
+| case | object-ready | visible CPU-ready | GPU-usable | present call returned |
+|---|---|---|---|---|
+| one, 1080p | 1 / 33.1 | 1 / 58.4 | 1 / 58.4 | 1 / 58.4 |
+| one, 3456 × 1944 | 1 / 16.8 | 1 / 33.8 | 1 / 33.8 | 1 / 33.8 |
+| burst (one edit of 20), 1080p | 1 / 16.5 | 1 / 42.6 | 1 / 42.6 | 1 / 42.6 |
+| burst, 3456 × 1944 | 1 / 16.7 | 1 / 42.8 | 1 / 42.8 | 1 / 42.8 |
+| sustained, 1080p (6 of 60 offscreen) | 60 / 16.7 / 17.0 / 25.1 | 54 / 34.2 / 42.6 / 50.6 | 54 / 42.0 / 50.1 / 116.3 | 54 / 42.0 / 50.1 / 116.3 |
+| sustained, 3456 × 1944 | 60 / 16.7 / 16.9 / 17.0 | 60 / 42.3 / 42.7 / 43.0 | 60 / 42.3 / 42.7 / 43.0 | 60 / 42.3 / 42.7 / 43.0 |
+
+No edit was unfinished at any boundary.
+
+In the 1080p sustained run, the camera's view did not reach the six last builds (x 1214 to 1229). The trace
+records them as `no_visible_change` and gives them no visible latency.
+
+**Peak RSS:** 1.4 to 2.0 GiB at 1080p and 1.8 to 2.4 GiB at 3456 × 1944 (`/usr/bin/time -l`).
+
+**Overhead control.** The same sustained 1080p session ran four times, alternating trace off, on, off, on.
+On the window's own 2-second lines:
+- fps p50 119.5 to 120.0 with the trace on, 120.0 with it off;
+- average busy time 0.30 ms per frame in all four;
+- peak RSS 1.43 to 1.49 GiB.
+
+The trace's cost is below the resolution of those lines (0.1 ms). The memory it reserves is the bounds:
+- 2,000,000 events × 24 bytes = 48 MB;
+- 200,000 frame rows × 160 bytes = 32 MB;
+- 200,000 turns × 72 bytes = 14 MB.
+
+That memory is only touched as it is used.
+
+**Claim limits:**
+- A present call returning is the CPU side of presentation. It is not GPU completion, not scanout, and not
+  display latency; none of those is observed.
+- The edit's latency is quantized by the 8.3 ms frames, and the commit waits for the frame boundary. Most
+  cells come from a single run; the sustained cells have n = 54 or 60, enough for a p95 but not a p99.
+- One host, one adapter, one display. No RTX 4090, no Radeon iGPU, no Windows or Linux window.
+- No genuine 2160p drawable.
+- No late-game economy. The city is the developer's start city with up to 60 cheap buildings.
+- PLAN §0.3 needs presented frames on target hardware. These rows do not decide it.

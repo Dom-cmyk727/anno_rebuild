@@ -53,11 +53,14 @@ them implies the next.
    when its upload ends, never plane by plane; only a chunk that replaces a placeholder dissolves. The bench
    records the frame whose submission first draws all of an island's change GPU-usable (`gpu_ready`).
 
-   Three boundaries are not measured:
+   Round ec measures one more boundary: the **present call's return**. It is recorded in the play window
+   (`docs/app/window-trace.md`): the first frame whose present call returned `WGPUStatus_Success`, among
+   the frames at or after the one that made the change GPU-usable (`presented`).
+
+   Two boundaries are still not measured:
    - **GPU completion:** the compositor has no non-blocking completion query, and a blocking wait would
      change what is measured;
-   - **presentation** of the frame;
-   - **the physical display:** a present call returning is not the pixel reaching it.
+   - **the physical display:** a present call returning is not the pixel reaching it, nor scanout.
 
 Comparisons follow the boundaries:
 - During a transition, the GPU is compared with the CPU composition of the same inputs: the same renderer
@@ -210,10 +213,16 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
     `sea::lerp4`; the GPU rounds once.
   - Which rounding is the reference is an owner decision.
   - Parity is not accepted, and no tolerance was raised.
-- **Not built:**
-  - the presentation-latency probe: the time from the sim's batch to the presented pixel, at 1080p and 4K,
-    with and without simulation load (PLAN §0.3). The viewer's present call is not instrumented, and
-    headless runs present nothing;
+- **Built in round ec:** the window trace, from command to present-call return. It records:
+  - the sim's acceptance;
+  - the batch's publication and take;
+  - the commit, CPU readiness and GPU usability;
+  - every attempted frame's acquire and present status.
+
+  It is measured at 1080p and 3456 × 1944 on the M5 Max (`docs/perf/README.md`).
+- **Not built, or not run:**
+  - display latency, scanout, a genuine 2160p drawable, target hosts, and the window under a second
+    simulation's load;
   - GPU completion of a frame: no non-blocking completion query in the compositor;
   - a per-frame GPU-against-CPU comparison in the bench (the bench compares the final view, exactly).
 - **Workload limits that apply to every row** (docs/perf/README.md):

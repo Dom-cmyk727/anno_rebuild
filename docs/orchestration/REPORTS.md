@@ -7252,3 +7252,42 @@ rejection of cities, reservations, a sixth spawn, a duplicate seat, a
 fractional coordinate, 51 t in one hold, unknown cargo, NaN, and a wrong
 hash. lan5 dump digest `c6af83f95104cd4f`, 1476 bytes. Schema notes:
 `fixed-map.md` §11.4.
+
+## MAP.2 progress — ship-start geometry checks — 2026-10-31
+
+`tools/map2_ship.py` is the offline checker for profile `map2-ship-start-v1`.
+It does not load a manifest into the engine. Route cost is grid steps times
+the cell size, an upper bound on a rectangle-blocked sea, not a sailing time.
+A founding site is a 4×4 of `HEIGHT >= 16` clear of obstacle origins.
+Obstacle graphics beyond that origin are not invented.
+
+Command, from the worktree, after the checker existed:
+
+```
+python3 -I tools/map2_ship_selftest.py
+python3 -I tools/map2_manifest_selftest.py
+```
+
+Both exited 0. The ship suite printed 34 `pass` lines and `0 failed`. The
+manifest suite printed 19 `pass` lines and `0 failed`. Combined wall time on
+the second run was under a second. Expected route lengths in the ship suite
+were counted on the grid before the assertions: seat 0 costs 1, seat 4 costs
+5, a 16-step route is a detour under a bound of 10, and a diagonal across
+blocked corners is not a step.
+
+The three mutants, flipped in process and restored, hide the check that is
+supposed to catch them:
+
+- `COUNT_OBSTACLES = False` hides `island 0 has no founding site`. Restoring
+  the flag prints it again.
+- `REQUIRE_DISTINCT = False` hides `distinct-island witness covers 1 of 5`
+  for five beaches on one island.
+- `REPORT_ABSENT_CLIMATES = False` hides `climate polar absent everywhere`.
+
+A closed ring is reported as `distinct-island witness covers 0 of 5`. Sharing
+on a second large island is `optional share island 5` and is not a second
+witness seat. Status of this suite: PASS_TOOL_CHECKS. Engine founding,
+navigation, and the loader: NOT_RUN_ENGINE. No candidate search in this step.
+lan5.txt remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes,
+dump digest `c6af83f95104cd4f`.

@@ -516,6 +516,12 @@ Hard structural checks:
 - a diagnostic witness that five seats can be matched to five distinct
   islands that each have a plausible founding site within the provisional
   route bound. The witness is not ownership and is not a destination.
+  `tools/map2_ship.py` emits `distinct-island witness covers N of 5` when
+  that matching is short. `COUNT_OBSTACLES` emits `island ID has no founding
+  site` when a reached coast is blocked. `REPORT_ABSENT_CLIMATES` emits
+  `climate NAME absent everywhere` for an empty bucket. Turning any of those
+  off hides the corresponding failure. Defaults are step 8, clearance 8,
+  useful-opening bound 400 tiles, city-space estimate 256, share gap 32.
 
 Provisional feasibility, configurable, labelled as tool geometry:
 

@@ -6,6 +6,7 @@ device, target hardware, the game-file phrasings of the render suites, and selec
 terminal result. Run: python3 -I tools/test/ctest_verdict_test.py
 """
 import os
+import re
 import sys
 import unittest
 
@@ -27,6 +28,10 @@ def log(*tests, finished=True):
         if finished:
             lines.append("  %d/%d Test #%d: %s ........   %s    0.1 sec" % (
                 n, len(tests), n, name, "Passed" if status == "Passed" else "***" + status))
+    if finished:
+        bad = sum(1 for t in tests if t[3] not in ("Passed", "Skipped"))
+        lines.append("%d%% tests passed, %d tests failed out of %d" % (
+            100 * (len(tests) - bad) // max(1, len(tests)), bad, len(tests)))
     return lines
 
 
@@ -147,6 +152,84 @@ class Contract(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("selected=102 executed=99 failed=2 empty=0 no_result=0 skipped=1", self.counts(out))
         self.assertIn("platform=1", self.counts(out))
+
+
+class ReviewOfA(unittest.TestCase):
+    """Round ec review of package A: a cut log, CTest's own skip, the game-file phrasings."""
+
+    def counts(self, out):
+        return [l for l in out if l.startswith("COUNTS")][0]
+
+    def test_a_log_cut_between_tests_is_not_a_pass(self):
+        # One Start, one result of five, no summary (the reviewer's repro).
+        lines = PRE + ["      Start 1: a.one", "1/5 Test #1: a.one .........   Passed    0.1 sec"]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 9)
+        self.assertIn("selected=5", self.counts(out))
+        self.assertIn("4 test(s) CTest counted (of 5) have no line", "\n".join(out))
+
+    def test_a_summary_counting_more_tests_than_the_log_shows_is_cut(self):
+        lines = PRE + ["      Start 1: a.one", "1/1 Test #1: a.one .........   Passed    0.1 sec",
+                       "100% tests passed, 0 tests failed out of 3"]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 9)
+        self.assertIn("selected=3", self.counts(out))
+
+    def test_a_selection_without_the_summary_line_is_cut(self):
+        code, out = cv.verdict(log(("t.case", 1, [], "Passed"), finished=True)[:-1])
+        self.assertEqual(code, 9)
+        self.assertIn("no CTest summary line", "\n".join(out))
+
+    def test_ctest_skip_of_a_missing_game_directory_is_a_required_prerequisite(self):
+        lines = PRE + ["      Start 4: replay_case",
+                       "4: skipping: ANNO1503_GAME_DIR not set",
+                       "1/1 Test #4: replay_case ......................***Skipped   0.01 sec",
+                       "100% tests passed, 0 tests failed out of 1"]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 6)
+        self.assertIn("required-asset=1", self.counts(out))
+        self.assertIn("executed=0", self.counts(out))
+        self.assertNotIn("NO RESULT", "\n".join(out))
+
+    def test_ctest_skip_without_a_reason_is_listed_and_not_executed(self):
+        lines = PRE + ["      Start 4: some_case",
+                       "1/1 Test #4: some_case ......................***Skipped   0.01 sec",
+                       "100% tests passed, 0 tests failed out of 1"]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 0)
+        self.assertIn("executed=0", self.counts(out))
+        self.assertIn("other=1", self.counts(out))
+
+    def test_the_scenario_phrasings_are_required_assets(self):
+        for text in ["skipping: no scenario files", "skipping: no endless scenario"]:
+            code, out = one([text])
+            self.assertEqual(code, 6, text)
+            self.assertIn("required-asset=1", self.counts(out), text)
+
+    def test_every_skip_phrasing_in_the_sources_has_a_known_class(self):
+        # A new phrasing that the reader would class "other" (a gate pass) must be listed here
+        # with the reason it is not a prerequisite; the game-file and GPU ones fail the gate.
+        allowed_other = {
+            # A timing condition of one case, not an asset or a capability.
+            "skipping: the wave simulation did not start a background preparation here",
+            # A part of an executed case whose data has no road type.
+            "skipping the road part: the registry has no road type",
+        }
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src")
+        literal = re.compile(r'"((?:skipping|skipped)[^"]*)"')
+        found = {}
+        for d, _, files in os.walk(root):
+            for f in files:
+                if f.endswith(".cpp"):
+                    with open(os.path.join(d, f), errors="replace") as h:
+                        for text in literal.findall(h.read()):
+                            found[text] = os.path.join(d, f)
+        self.assertGreater(len(found), 10)
+        for text, where in sorted(found.items()):
+            kind = cv.classify(text)
+            self.assertIsNotNone(kind, "%s: %r is not read as a skip" % (where, text))
+            if kind == "other":
+                self.assertIn(text, allowed_other, "%s: %r is classed 'other'" % (where, text))
 
 
 if __name__ == "__main__":

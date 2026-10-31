@@ -13,6 +13,10 @@
 #   picture_matrix_contract     the evidence pipeline's contracts (runner, aggregate, table)
 # A preflight that is missing or fails stops the run before the selection starts (exit 5). The
 # preflights run whatever the selection is; a selector that also matches them does not replace them.
+# What the preflights execute is built first, whatever <target> is (round ec review of A: the
+# evidence-pipeline preflight ran whatever bench_picture was on disk): the targets in
+# ANNO_RUN_SELECTED_PREFLIGHT_TARGETS (default bench_picture), each logged with its hash. A
+# preflight target that does not build stops the run (exit 5).
 #
 # Exit status 0 only when every step passed and the verdict reader says PASS: something selected,
 # every selected test with a terminal result, nothing failed, nothing empty, no sanitizer report, no
@@ -32,6 +36,8 @@ HERE=$(cd "$(dirname "$0")/../.." && pwd)
 # tools/test/run_selected_test.sh, points them at a fixture project).
 SOURCES="${ANNO_RUN_SELECTED_SOURCES:-$HERE}"
 PREFLIGHTS="${ANNO_RUN_SELECTED_PREFLIGHTS:-test_names_are_selectable test_verdict_contract picture_matrix_contract}"
+# An empty value builds none (the contract test's fixture project has no targets).
+PREFLIGHT_TARGETS="${ANNO_RUN_SELECTED_PREFLIGHT_TARGETS-bench_picture}"
 LOCK="$BUILD.run.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
     echo "refused: another run holds $LOCK" >&2
@@ -43,7 +49,7 @@ trap 'rmdir "$LOCK" 2>/dev/null' EXIT
     echo "== revision $(git -C "$HERE" rev-parse HEAD) dirty=$(git -C "$HERE" diff HEAD | shasum | cut -c1-12) untracked=$(git -C "$HERE" ls-files --others --exclude-standard | wc -l | tr -d ' ')"
     echo "== build dir $BUILD target $TARGET; cache: $(grep '^CMAKE_BUILD_TYPE:' "$BUILD/CMakeCache.txt" 2>/dev/null)"
     echo "== selector '$RE' timeout ${TMO}s jobs $JOBS; ANNO1503_GAME_DIR=${ANNO1503_GAME_DIR:-unset} ANNO_TEST_THREADS=${ANNO_TEST_THREADS:-unset}"
-    echo "== preflights: source names; $PREFLIGHTS"
+    echo "== preflights: source names; $PREFLIGHTS (built first: ${PREFLIGHT_TARGETS:-none})"
 } > "$LOG"
 # The cheap check first: no build is spent on a tree whose test names cannot be selected.
 echo "== preflight source test names ($SOURCES)" >> "$LOG"
@@ -59,8 +65,17 @@ if [ "$TARGET" != "-" ]; then
     fi
     echo "== build ok $(date '+%H:%M:%S')" >> "$LOG"
 fi
-for f in "$BUILD"/src/*/"${TARGET}" "$BUILD"/src/*/*/"${TARGET}" "$BUILD"/src/*/"$TARGET"; do
-    [ -x "$f" ] && echo "== binary $f sha=$(shasum -a 256 "$f" | cut -c1-16) mtime=$(stat -f %Sm "$f")" >> "$LOG"
+for PT in $PREFLIGHT_TARGETS; do
+    echo "== build preflight target $PT started $(date '+%H:%M:%S')" >> "$LOG"
+    if ! cmake --build "$BUILD" --target "$PT" >> "$LOG" 2>&1; then
+        echo "VERDICT: FAIL preflight target $PT did not build; the selection did not start" >> "$LOG"
+        exit 5
+    fi
+done
+for T in "$TARGET" $PREFLIGHT_TARGETS; do
+    for f in "$BUILD"/src/*/"$T" "$BUILD"/src/*/*/"$T"; do
+        [ -f "$f" ] && [ -x "$f" ] && echo "== binary $f sha=$(shasum -a 256 "$f" | cut -c1-16) mtime=$(stat -f %Sm "$f")" >> "$LOG"
+    done
 done
 for PRE in $PREFLIGHTS; do
     echo "== preflight $PRE" >> "$LOG"

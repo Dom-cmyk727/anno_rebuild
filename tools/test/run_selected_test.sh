@@ -9,6 +9,8 @@
 #   - passing preflights: the selection runs (the marker exists), exit 0;
 #   - a failing preflight, or one that is not registered: exit 5, the selection never starts;
 #   - a test name CTest would split in the sources: exit 5 before any build is attempted;
+#   - a preflight's own target (bench_picture by default) is built first; one that does not build:
+#     exit 5;
 #   - a selection without a terminal result is not a pass (the verdict reader's contract).
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -35,9 +37,10 @@ EOF
 echo 'TEST_CASE("a fine name") {}' > "$WORK/project/src/fine_test.cpp"
 echo 'TEST_CASE("a name; CTest splits it") {}' > "$WORK/bad/src/split_test.cpp"
 cmake -S "$WORK/project" -B "$WORK/build" > "$WORK/configure.log" 2>&1 || fail "fixture configure"
-run() { # preflights, sources, target; sets rc
+run() { # preflights, sources, target, [preflight targets]; sets rc
     rm -f "$WORK/marker"
-    ANNO_RUN_SELECTED_PREFLIGHTS="$1" ANNO_RUN_SELECTED_SOURCES="$2" \
+    ANNO_RUN_SELECTED_PREFLIGHT_TARGETS="${4:-}" \
+        ANNO_RUN_SELECTED_PREFLIGHTS="$1" ANNO_RUN_SELECTED_SOURCES="$2" \
         bash "$RUNNER" "$WORK/build" "$3" '^main_case$' 60 "$WORK/run.log" 1 > /dev/null 2>&1
     rc=$?
 }
@@ -58,6 +61,13 @@ expect 5 "$rc" "a test name with a semicolon in the sources"
 [ ! -e "$WORK/marker" ] || fail "a bad name: the selection ran"
 grep -q "source test names failed; nothing built" "$WORK/run.log" || fail "bad name: reason"
 ! grep -q "== build no_such_target" "$WORK/run.log" || fail "bad name: the build was attempted"
+# What a preflight executes is built first: a preflight target that does not build stops the run.
+run "pre_ok" "$WORK/project" - no_such_preflight_target
+expect 5 "$rc" "a preflight target that does not build"
+[ ! -e "$WORK/marker" ] || fail "an unbuilt preflight target: the selection ran"
+grep -q "preflight target no_such_preflight_target did not build" "$WORK/run.log" ||
+    fail "unbuilt preflight target: reason"
+grep -q 'PREFLIGHT_TARGETS-bench_picture' "$RUNNER" || fail "the default preflight target changed"
 # The default preflights are the round's three, by name.
 grep -q 'test_names_are_selectable test_verdict_contract picture_matrix_contract' "$RUNNER" ||
     fail "the default preflights changed"

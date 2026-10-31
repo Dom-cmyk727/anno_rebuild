@@ -19,8 +19,13 @@ CTest counts a doctest child that ran no test case, or that returned early after
                                     4090, WSL, Windows-only)
                opt-in               an environment switch that was not set
                other                any other explicit early return
-  failed     CTest status other than Passed (failures, crashes, timeouts, not run)
-  no-result  started in the selection but without a terminal result line (the run was cut)
+  failed     CTest status other than Passed or Skipped (failures, crashes, timeouts, not run)
+  no-result  started in the selection but without a terminal result line, or counted by CTest
+             (the "k/M" of its result lines, its "out of M" summary) but absent from the log; a
+             selection without CTest's summary line is cut (round ec review of A)
+
+CTest's own skip (a test whose SKIP_REGULAR_EXPRESSION matched, "***Skipped") is a skip, classed by
+the skip message in its output like a doctest one ("other" when none is found).
 
 A skip is a doctest MESSAGE line that says it skipped (the phrasings in use: "skipping: ...",
 "...: skipping X", "...: skipped", "skipped: ..."). Per-item outcomes inside an executed test name no
@@ -37,13 +42,15 @@ import re
 import sys
 
 SANITIZER = re.compile(r"AddressSanitizer|LeakSanitizer|ThreadSanitizer|runtime error:|UndefinedBehaviorSanitizer")
-RESULT = re.compile(r"^\s*\d+/\d+ Test\s+#(\d+): (.*?) \.+\s*(\*\*\*)?\s*(Passed|Failed|Exception|Timeout|Not Run|"
-                    r"SEGFAULT|Interrupted|Child aborted|Bus error|Illegal|Other)[^\n]*$")
+RESULT = re.compile(r"^\s*\d+/(\d+) Test\s+#(\d+): (.*?) \.+\s*(\*\*\*)?\s*(Passed|Skipped|Failed|Exception|"
+                    r"Timeout|Not Run|SEGFAULT|Interrupted|Child aborted|Bus error|Illegal|Other)[^\n]*$")
+SUMMARY = re.compile(r"^\s*\d+% tests passed, \d+ tests? failed out of (\d+)\s*$")
 START = re.compile(r"^\s*Start\s+(\d+): (.*)$")
 PREFIX = re.compile(r"^(\d+): ?(.*)$")
 DOCTEST = re.compile(r"\[doctest\] test cases:\s*(\d+)\s*\|")
 
-REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set|\bno game files\b|is not in this game directory", re.I)
+REQUIRED = re.compile(r"ANNO1503_GAME_DIR (is )?not set|\bno game files\b|is not in this game directory|"
+                      r"\bno scenario files\b|\bno endless scenario\b", re.I)
 CAPABILITY = re.compile(r"\bno GPU device\b", re.I)
 OPT_IN = re.compile(r"\bset ANNO_[A-Z0-9_]+=")
 PLATFORM = re.compile(r"WSL \(Ubuntu\) is not available|\bon Windows\b|POSIX shell|\bno RTX 4090\b", re.I)
@@ -85,16 +92,26 @@ def verdict(lines):
         lines = lines[lines.index("== selection") + 1:]
 
     def test(number):
-        return tests.setdefault(number, {"cases": None, "skips": [], "started": False})
+        return tests.setdefault(number, {"cases": None, "skips": [], "output_skips": [],
+                                         "started": False})
+
+    counted = 0  # the selection's size as CTest states it (k/M, "out of M")
+    summary = False
 
     for raw in lines:
         if SANITIZER.search(raw):
             sanitizer += 1
         m = RESULT.match(raw)
         if m:
-            t = test(int(m.group(1)))
-            t["name"] = m.group(2)
-            t["status"] = m.group(4)
+            counted = max(counted, int(m.group(1)))
+            t = test(int(m.group(2)))
+            t["name"] = m.group(3)
+            t["status"] = m.group(5)
+            continue
+        m = SUMMARY.match(raw)
+        if m:
+            counted = max(counted, int(m.group(1)))
+            summary = True
             continue
         m = START.match(raw)
         if m:
@@ -115,14 +132,24 @@ def verdict(lines):
             kind = classify(text)
             if kind:
                 t["skips"].append(kind)
+        else:
+            kind = classify(body)  # plain output: CTest's own skip names its reason here
+            if kind:
+                t["output_skips"].append(kind)
     selected = [t for t in tests.values() if t["started"] or "status" in t]
     no_result = [t for t in selected if "status" not in t]
     finished = [t for t in selected if "status" in t]
-    failed = [t for t in finished if t["status"] != "Passed"]
+    failed = [t for t in finished if t["status"] not in ("Passed", "Skipped")]
     passed = [t for t in finished if t["status"] == "Passed"]
+    ctest_skipped = [t for t in finished if t["status"] == "Skipped"]
+    for t in ctest_skipped:
+        t["skips"] = t["skips"] + t["output_skips"] or ["other"]
     empty = [t for t in passed if t["cases"] == 0]
-    skipped = [t for t in passed if t["skips"] and t["cases"] != 0]
+    skipped = [t for t in passed if t["skips"] and t["cases"] != 0] + ctest_skipped
     executed = [t for t in passed if t not in empty and t not in skipped]
+    # Tests CTest counted that have no line here, and a selection without CTest's summary: cut.
+    missing = max(0, counted - len(selected))
+    cut = bool(selected) and not summary
     by = {k: 0 for k in PRIORITY}
     for t in skipped:
         by[min(t["skips"], key=PRIORITY.index)] += 1
@@ -134,19 +161,25 @@ def verdict(lines):
         out.append("FAILED: %s %s" % (t["name"], t["status"]))
     for t in no_result:
         out.append("NO RESULT: %s" % t.get("name", "?"))
+    if missing:
+        out.append("NO RESULT: %d test(s) CTest counted (of %d) have no line in the log" %
+                   (missing, counted))
+    if cut:
+        out.append("NO RESULT: the selection has no CTest summary line (the log was cut)")
     out.append("COUNTS: selected=%d executed=%d failed=%d empty=%d no_result=%d skipped=%d "
                "(required-asset=%d required-capability=%d platform=%d opt-in=%d other=%d) "
-               "sanitizer_lines=%d" % (len(selected), len(executed), len(failed), len(empty),
-                                       len(no_result), len(skipped), by["required-asset"],
+               "sanitizer_lines=%d" % (len(selected) + missing, len(executed), len(failed), len(empty),
+                                       len(no_result) + missing, len(skipped),
+                                       by["required-asset"],
                                        by["required-capability"], by["platform"], by["opt-in"],
                                        by["other"], sanitizer))
-    if not selected:
+    if not selected and not counted:
         out.append("VERDICT: FAIL zero selected tests")
         return 8, out
     if failed:
         out.append("VERDICT: FAIL failed tests")
         return 1, out
-    if no_result:
+    if no_result or missing or cut:
         out.append("VERDICT: FAIL selected tests without a terminal result")
         return 9, out
     if sanitizer:

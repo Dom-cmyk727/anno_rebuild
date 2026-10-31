@@ -27,7 +27,9 @@
 // Raw files in --out: manifest.txt, events.tsv (picture_trace.hpp), frames.tsv, chunks.tsv,
 // memory.tsv, sim.tsv (with --sim-contention), summary.txt. Exit status: 0 the case ran and
 // verified; 1 verification failed; 2 bad options; 3 the drain did not converge; 4 the workload or
-// the scene could not be built.
+// the scene could not be built; 5 an evidence file could not be saved (each one is named). The
+// trace ends with run_end and the verdict; --aggregate exits 0 only for such a complete trace of a
+// successful run (6 for an incomplete or failed one, 2 for an unreadable or malformed one).
 #include <algorithm>
 #include <atomic>
 #include <charconv>
@@ -47,9 +49,15 @@
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <sys/resource.h>
 #include <thread>
 #include <vector>
+// Process and host memory counters where the host has them; elsewhere they are reported as
+// unavailable, never as zero.
+#if defined(__APPLE__) || defined(__linux__)
+#include <sys/resource.h>
+#include <unistd.h>
+#define ANNO_BENCH_RUSAGE 1
+#endif
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
@@ -114,11 +122,24 @@ struct MemorySample {
 
 MemorySample sample_memory() {
     MemorySample m;
+#if defined(ANNO_BENCH_RUSAGE)
     rusage ru{};
     if (getrusage(RUSAGE_SELF, &ru) == 0) {
         m.majflt = ru.ru_majflt;
         m.minflt = ru.ru_minflt;
     }
+#endif
+#if defined(__linux__)
+    // Resident pages (the second field of statm) times the page size; no footprint, pressure or
+    // host paging counters are read on Linux here.
+    if (std::FILE* f = std::fopen("/proc/self/statm", "r")) {
+        long long size = 0, resident = 0;
+        if (std::fscanf(f, "%lld %lld", &size, &resident) == 2) {
+            m.rss = resident * static_cast<long long>(sysconf(_SC_PAGESIZE));
+        }
+        std::fclose(f);
+    }
+#endif
 #if defined(__APPLE__)
     task_vm_info_data_t vm{};
     mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
@@ -194,9 +215,14 @@ bool keys_ready(const render::FrameRenderer& frames, const std::vector<render::C
     });
 }
 
-void write_file(const fs::path& path, const std::string& text) {
-    std::ofstream out(path, std::ios::binary);
-    out << text;
+/// A counter as written to the raw files and the summary: "unavailable" when the host does not
+/// report it (-1), never zero.
+std::string counter(long long v) {
+    return v < 0 ? std::string("unavailable") : std::to_string(v);
+}
+/// The difference of two samples of one counter, unavailable when either is.
+std::string delta(long long before, long long after) {
+    return before < 0 || after < 0 ? std::string("unavailable") : std::to_string(after - before);
 }
 
 /// The events of the run: the bridge's seam (workers and window) and the bench's own.
@@ -301,14 +327,19 @@ app::ChunkDiff check_view(const render::FrameRenderer& frames, const render::Sce
 
 int main(int argc, char** argv) {
     if (argc == 3 && std::string_view(argv[1]) == "--aggregate") {
-        std::ifstream in(argv[2], std::ios::binary);
-        const std::string text{std::istreambuf_iterator<char>(in), {}};
-        const auto events = app::parse_tsv(text);
-        if (!events.ok()) {
-            fail(2, events.error());
+        // Exit 0 only for a complete trace of a successful run; an incomplete or failed run is
+        // still summarized (for inspection) but exits 6; an unreadable or malformed trace exits 2.
+        const app::TextFile file = app::read_text(argv[2]);
+        if (!file.ok) {
+            fail(2, file.error);
         }
-        std::cout << app::format_summary(app::summarize(events.value()));
-        return 0;
+        const auto events = app::parse_tsv(file.text);
+        if (!events.ok()) {
+            fail(2, std::string(argv[2]) + ": " + events.error());
+        }
+        const app::TraceSummary summary = app::summarize(events.value());
+        std::cout << app::format_summary(summary);
+        return summary.succeeded() ? 0 : 6;
     }
     if (argc < 2) {
         fail(2, "usage: bench_picture <game_dir> --scenario NAME --out DIR [options] (see the "
@@ -411,6 +442,10 @@ int main(int argc, char** argv) {
         edits = 1;
     }
     std::error_code ec;
+    if (fs::exists(out / "events.tsv", ec) || fs::exists(out / "summary.txt", ec)) {
+        // An earlier run's evidence is never overwritten silently.
+        fail(2, "--out " + out.string() + " already holds a run's evidence; use another directory");
+    }
     fs::create_directories(out, ec);
     if (ec) {
         fail(2, "--out " + out.string() + ": " + ec.message());
@@ -597,7 +632,7 @@ int main(int argc, char** argv) {
     std::vector<Pending> pending_visible;
     std::size_t peak_incremental = 0, peak_retired = 0, peak_reclaim_bytes = 0;
     std::size_t peak_outstanding_bytes = 0;
-    long long peak_rss = 0, peak_footprint = 0;
+    long long peak_rss = -1, peak_footprint = -1;
     const MemorySample mem_start = sample_memory();
     auto sample = [&](double t) {
         const MemorySample m = sample_memory();
@@ -614,9 +649,10 @@ int main(int argc, char** argv) {
         peak_outstanding_bytes = std::max(peak_outstanding_bytes, st.outstanding_bytes_peak);
         peak_rss = std::max(peak_rss, m.rss);
         peak_footprint = std::max(peak_footprint, m.footprint);
-        memory_rows << t << "\t" << m.rss << "\t" << m.footprint << "\t" << m.majflt << "\t"
-                    << m.minflt << "\t" << m.pressure << "\t" << m.sys_pageins << "\t"
-                    << m.sys_pageouts << "\t" << m.sys_swapins << "\t" << m.sys_swapouts << "\t"
+        memory_rows << t << "\t" << counter(m.rss) << "\t" << counter(m.footprint) << "\t"
+                    << counter(m.majflt) << "\t" << counter(m.minflt) << "\t" << counter(m.pressure)
+                    << "\t" << counter(m.sys_pageins) << "\t" << counter(m.sys_pageouts) << "\t"
+                    << counter(m.sys_swapins) << "\t" << counter(m.sys_swapouts) << "\t"
                     << st.outstanding_bytes << "\t" << pc.of(render::PayloadKind::Incremental)
                     << "\t" << pc.of(render::PayloadKind::Baseline) << "\t"
                     << pc.of(render::PayloadKind::Backing) << "\t"
@@ -877,15 +913,23 @@ int main(int argc, char** argv) {
     }
     reclaimer.set_test_observer({});
 
-    // The raw files and the summary.
+    // The raw files and the summary. The trace ends with run_end and the verdict, so a trace
+    // without it is incomplete evidence. Every file's open, write, flush and close is checked.
+    rec.add(app::TraceKind::RunEnd, 0, static_cast<std::uint64_t>(verdict));
     const auto events = rec.events();
-    write_file(out / "events.tsv", app::to_tsv(events));
-    write_file(out / "frames.tsv", frame_rows.str());
-    write_file(out / "chunks.tsv", chunk_rows.str());
-    write_file(out / "memory.tsv", memory_rows.str());
+    std::vector<std::string> unsaved;
+    auto save = [&unsaved](const fs::path& path, const std::string& text) {
+        if (std::string error = app::save_text(path, text); !error.empty()) {
+            unsaved.push_back(std::move(error));
+        }
+    };
+    save(out / "events.tsv", app::to_tsv(events));
+    save(out / "frames.tsv", frame_rows.str());
+    save(out / "chunks.tsv", chunk_rows.str());
+    save(out / "memory.tsv", memory_rows.str());
     if (sim_world) {
         const std::lock_guard lock(sim_mutex);
-        write_file(out / "sim.tsv", sim_rows.str());
+        save(out / "sim.tsv", sim_rows.str());
     }
     std::ostringstream manifest;
     manifest << "bench_picture case\nscenario=" << scenario << " timing=" << timing
@@ -903,7 +947,7 @@ int main(int argc, char** argv) {
     if (sim_world) {
         manifest << "--- contention world after the run\n" << sim_manifest;
     }
-    write_file(out / "manifest.txt", manifest.str());
+    save(out / "manifest.txt", manifest.str());
     std::ostringstream summary;
     summary << app::format_summary(app::summarize(events));
     summary << "frames=" << frame << " converged=" << (converged ? 1 : 0)
@@ -923,15 +967,15 @@ int main(int argc, char** argv) {
     summary << "memory peak_incremental_payload=" << peak_incremental
             << " peak_retired_payload=" << peak_retired
             << " peak_reclaim_queue_bytes=" << peak_reclaim_bytes
-            << " peak_reservation_bytes=" << peak_outstanding_bytes << " peak_rss=" << peak_rss
-            << " peak_footprint=" << peak_footprint
-            << " majflt_delta=" << (mem_end.majflt - mem_start.majflt)
-            << " sys_pageins_delta=" << (mem_end.sys_pageins - mem_start.sys_pageins)
-            << " sys_pageouts_delta=" << (mem_end.sys_pageouts - mem_start.sys_pageouts)
-            << " sys_swapins_delta=" << (mem_end.sys_swapins - mem_start.sys_swapins)
-            << " sys_swapouts_delta=" << (mem_end.sys_swapouts - mem_start.sys_swapouts)
-            << " pressure_start=" << mem_start.pressure << " pressure_end=" << mem_end.pressure
-            << "\n";
+            << " peak_reservation_bytes=" << peak_outstanding_bytes
+            << " peak_rss=" << counter(peak_rss) << " peak_footprint=" << counter(peak_footprint)
+            << " majflt_delta=" << delta(mem_start.majflt, mem_end.majflt)
+            << " sys_pageins_delta=" << delta(mem_start.sys_pageins, mem_end.sys_pageins)
+            << " sys_pageouts_delta=" << delta(mem_start.sys_pageouts, mem_end.sys_pageouts)
+            << " sys_swapins_delta=" << delta(mem_start.sys_swapins, mem_end.sys_swapins)
+            << " sys_swapouts_delta=" << delta(mem_start.sys_swapouts, mem_end.sys_swapouts)
+            << " pressure_start=" << counter(mem_start.pressure)
+            << " pressure_end=" << counter(mem_end.pressure) << "\n";
     if (sim_world) {
         summary << "sim turns=" << sim_turns << " accepted=" << sim_accepted
                 << " refused_by_sim=" << sim_refused << " no_candidate=" << sim_no_candidate
@@ -939,7 +983,15 @@ int main(int argc, char** argv) {
                 << " invariants=" << (sim_invariants.empty() ? "ok" : sim_invariants) << "\n";
     }
     summary << verify.str();
-    write_file(out / "summary.txt", summary.str());
+    save(out / "summary.txt", summary.str());
     std::cout << summary.str();
+    if (!unsaved.empty()) {
+        // The evidence is incomplete: exit 5 whatever the verdict was, naming every file.
+        for (const std::string& e : unsaved) {
+            std::cerr << "bench_picture: evidence not saved: " << e << "\n";
+        }
+        std::cerr << "bench_picture: the case's verdict was " << verdict << "\n";
+        return 5;
+    }
     return verdict;
 }

@@ -204,15 +204,23 @@ class Recorder {
   public:
     explicit Recorder(Clock::time_point t0) : t0_(t0) {}
     void add(app::TraceKind k, std::uint32_t island, std::uint64_t version) {
-        const double t = ms_between(t0_, Clock::now());
         const std::lock_guard lock(mutex_);
-        events_.push_back({t, k, island, version});
+        events_.push_back({ms_between(t0_, Clock::now()), k, island, version});
+    }
+    /// Starts the clock again (the measured loop's start): the edit schedule and every event time
+    /// count from here, not from the setup before it.
+    void restart() {
+        const std::lock_guard lock(mutex_);
+        t0_ = Clock::now();
     }
     [[nodiscard]] std::vector<app::TraceEvent> events() const {
         const std::lock_guard lock(mutex_);
         return events_;
     }
-    [[nodiscard]] double now_ms() const { return ms_between(t0_, Clock::now()); }
+    [[nodiscard]] double now_ms() const {
+        const std::lock_guard lock(mutex_);
+        return ms_between(t0_, Clock::now());
+    }
 
   private:
     Clock::time_point t0_;
@@ -312,7 +320,7 @@ int main(int argc, char** argv) {
     app::LegalWorkloadOptions wl;
     std::size_t edits = 0, threads = 2, chunk_threads = 2, max_outstanding = 8, commit_every = 1,
                 stall_ms = 0, busy = 0, sim_contention = 0, sim_unpaced = 0, drain_s = 120,
-                view_w = 1920, view_h = 1080, frames_max = 100000;
+                publish_progress = 0, view_w = 1920, view_h = 1080, frames_max = 100000;
     double frame_ms = 1000.0 / 60.0, duration_s = 5, rate = 10;
     bool edits_given = false;
     for (int i = 2; i < argc; ++i) {
@@ -374,6 +382,8 @@ int main(int argc, char** argv) {
             busy = parse_count(key, val, 0, 256);
         } else if (key == "--sim-contention") {
             sim_contention = parse_count(key, val, 0, 1);
+        } else if (key == "--publish-progress") {
+            publish_progress = parse_count(key, val, 0, 1);
         } else if (key == "--sim-unpaced") {
             sim_unpaced = parse_count(key, val, 0, 1);
         } else if (key == "--drain-s") {
@@ -472,6 +482,7 @@ int main(int argc, char** argv) {
     Recorder rec(loop_start);
     app::ScenePicture::Limits limits;
     limits.max_outstanding = max_outstanding;
+    limits.publish_progress = publish_progress != 0;
     limits.trace = [&rec](app::PictureEvent e, std::size_t index, std::uint64_t version) {
         rec.add(kind_of(e), static_cast<std::uint32_t>(index), version);
     };
@@ -504,7 +515,9 @@ int main(int argc, char** argv) {
     std::vector<std::thread> side;
     std::mutex sim_mutex;
     std::ostringstream sim_rows;
-    std::size_t sim_turns = 0, sim_accepted = 0, sim_refused = 0;
+    std::size_t sim_turns = 0, sim_accepted = 0, sim_refused = 0, sim_no_candidate = 0;
+    // The side load starts with the measured loop, not during the setup before it.
+    std::atomic<bool> side_go{false};
     std::uint64_t sim_hash = 0;
     std::string sim_manifest, sim_invariants;
     std::unique_ptr<app::LegalWorkload> sim_world;
@@ -515,8 +528,11 @@ int main(int argc, char** argv) {
         }
         sim_world = std::move(second).value();
         sim_world->set_check_invariants(false);
-        sim_rows << "t_ms\tkind\taccepted\tturn_ms\tdiff_ms\tcall_ms\n";
+        sim_rows << "t_ms\tkind\taccepted\treason\tturn_ms\tdiff_ms\tcall_ms\n";
         side.emplace_back([&] {
+            while (!side_go.load() && !stop_side.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
             std::size_t i = 0;
             auto next = Clock::now();
             while (!stop_side.load()) {
@@ -528,11 +544,19 @@ int main(int argc, char** argv) {
                 const double call_ms = ms_between(t0, Clock::now());
                 {
                     const std::lock_guard lock(sim_mutex);
-                    sim_rows << ms_between(loop_start, t0) << "\t" << e.what << "\t"
-                             << (e.accepted ? 1 : 0) << "\t" << e.turn_ms << "\t" << e.diff_ms
-                             << "\t" << call_ms << "\n";
+                    sim_rows << rec.now_ms() - call_ms << "\t" << e.what << "\t"
+                             << (e.accepted ? 1 : 0) << "\t"
+                             << (e.reason.empty() ? std::string("-") : e.reason) << "\t"
+                             << e.turn_ms << "\t" << e.diff_ms << "\t" << call_ms << "\n";
                     ++sim_turns;
-                    ++(e.accepted ? sim_accepted : sim_refused);
+                    if (e.accepted) {
+                        ++sim_accepted;
+                    } else if (e.reason == "no candidate" || e.reason == "no building") {
+                        // The fixture found nothing to place or remove: no command was issued.
+                        ++sim_no_candidate;
+                    } else {
+                        ++sim_refused;
+                    }
                 }
                 ++i;
                 if (sim_unpaced == 0) {
@@ -544,7 +568,10 @@ int main(int argc, char** argv) {
         });
     }
     for (std::size_t t = 0; t < busy; ++t) {
-        side.emplace_back([&stop_side] {
+        side.emplace_back([&stop_side, &side_go] {
+            while (!side_go.load() && !stop_side.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
             volatile std::uint64_t x = 1;
             while (!stop_side.load(std::memory_order_relaxed)) {
                 x = x * 6364136223846793005ULL + 1442695040888963407ULL;
@@ -714,8 +741,11 @@ int main(int argc, char** argv) {
         }
     };
     // The measured loop: until every edit is published and the duration has passed (paced), or
-    // every edit is published (saturation), within frames_max.
+    // every edit is published (saturation), within frames_max. The clock, the edit schedule and the
+    // side load start here, after the setup (the view's warm-up, the contention world).
     const double duration_ms = 1000.0 * duration_s;
+    rec.restart();
+    side_go.store(true);
     while (frame < frames_max) {
         const bool all_published = next_edit >= plan.size();
         if (all_published && (timing == "saturation" || rec.now_ms() >= duration_ms ||
@@ -865,9 +895,9 @@ int main(int argc, char** argv) {
              << " chunk_threads=" << chunk_threads << " max_outstanding=" << max_outstanding
              << " commit_every=" << commit_every << " stall_ms=" << stall_ms << " busy=" << busy
              << " sim_contention=" << sim_contention << " sim_unpaced=" << sim_unpaced
-             << " view=" << view_w << "x" << view_h << " view_island=" << view_island
-             << " view_tile=" << view_x << "," << view_y << " map=" << map.string()
-             << " workload_build_ms=" << build_ms << "\n";
+             << " publish_progress=" << publish_progress << " view=" << view_w << "x" << view_h
+             << " view_island=" << view_island << " view_tile=" << view_x << "," << view_y
+             << " map=" << map.string() << " workload_build_ms=" << build_ms << "\n";
     manifest << "--- workload at the start of the loop\n" << manifest_initial;
     manifest << "--- workload after the edits\n" << workload->manifest();
     if (sim_world) {
@@ -904,7 +934,8 @@ int main(int argc, char** argv) {
             << "\n";
     if (sim_world) {
         summary << "sim turns=" << sim_turns << " accepted=" << sim_accepted
-                << " refused=" << sim_refused << " state_hash=" << std::hex << sim_hash << std::dec
+                << " refused_by_sim=" << sim_refused << " no_candidate=" << sim_no_candidate
+                << " state_hash=" << std::hex << sim_hash << std::dec
                 << " invariants=" << (sim_invariants.empty() ? "ok" : sim_invariants) << "\n";
     }
     summary << verify.str();

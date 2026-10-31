@@ -362,3 +362,42 @@ after the check. The prepared copy is then unused in that interleaving; it is
 destroyed under the publication lock, which the design accepts and the report
 states. The allocation is outside the lock; the destruction of an unused copy is
 inside it, and bounded by the list size.
+
+### Retained work and reclamation (W4.3, round dv)
+
+**Ownership.** A scene generation owns the bytes its islands' records and Anlagen.dat view
+(`render::Scene::Backing`). The constructor stores them with the shared assets, so every generation
+derived by `with_islands` keeps them alive. Nothing outside the scene has to outlive it. The loader
+moves its staged buffers into the scene when the scene exists (`LoadedScene::buffers` is empty
+afterwards). Tested by `scene_backing_test` (game files; ASan).
+
+**Limits** (`ScenePicture::Limits`, defaults with their reasons):
+
+| Limit | Default | Reason | Behaviour at the limit |
+|---|---:|---|---|
+| `max_outstanding` | 8 | Each outstanding island holds a copy of its records and lists: this bounds what a stalled commit retains. | A request beyond it is deferred (kept in order, not dropped) and started by a later commit or apply. |
+| `max_reclaim_backlog` | 4 | A stalled reaper must not let generations pile up unseen. | A commit is skipped (returns 0) and retried by the next call. While over the bound, an island that is already open is deferred instead of replaced (its queued job and result are not dropped to the reaper). |
+
+Both are constructor arguments; the viewer's play options are the configuration path (not wired yet).
+Test seams (`build_fault`, `reclaim_gate`) exist for the test suite only.
+
+**Reclamation.** The window thread never frees what it holds the last reference to. Superseded
+generations, queued jobs and finished results replaced by a newer request, the bases of rebased jobs,
+the lists a commit replaces and, at destruction, the queue, the results and the generation are handed
+to the reaper thread (`Stats::reclaimed`, `reclaim_backlog_peak`). Workers may release what they hold
+(not the window thread).
+
+**Change set.** A worker computes the objects that appear and disappear and their chunk keys, against
+the island's lists at the time of its build. A commit uses that set when the island's lists are still
+the same object (`Scene::island_lists_handle`), and recomputes only otherwise (`recomputed_changes`,
+expected 0).
+
+**Rebase.** A commit moves every queued job to the generation it made. An island not in the commit
+is unchanged, so a stalled job pins no old generation (`rebased`).
+
+**Failure.** A build that throws is counted (`build_failures`); the island keeps its last committed
+lists and is requested again by the next change that touches it. Nothing else stops.
+
+**Bound on the reaper backlog.** Checked before each commit; a commit adds at most one generation,
+one base per rebased job and one list per result, so the backlog peaks at `max_reclaim_backlog + 1 +
+2 * max_outstanding` (asserted by the stalled-reaper case).

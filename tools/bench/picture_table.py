@@ -52,16 +52,54 @@ def read_lines(path):
         raise Unusable(f"{path.name} unreadable: {e.strerror or e}") from None
 
 
+# The frames.tsv schema (round ec, 3b). Required columns, and how each is read: whole numbers, finite
+# numbers or text. Optional columns (later rounds added them; older runs lack them) are checked when
+# present; -1 in them means "unavailable" (CPU mode), any other value must be valid.
+FRAME_REQUIRED = {"frame": "int", "t_ms": "num", "phase": "text", "published": "int",
+                  "apply_ms": "num", "apply_list_ms": "num", "reindex_ms": "num",
+                  "dispatch_ms": "num", "commit_ms": "num", "committed": "int", "update_ms": "num"}
+FRAME_OPTIONAL = {"chunks_built": "int", "pending": "int", "outstanding": "int",
+                  "outstanding_bytes": "int", "chunk_build_ms": "num", "t_submit_ms": "num",
+                  "gpu_uploads": "int", "gpu_pending": "int"}
+
+
 def read_frames(path):
+    """Every row of frames.tsv as a dict, or Unusable naming the file and line of the first fault.
+    A malformed row is never skipped: it makes the case's evidence unusable."""
     rows = read_lines(path)
     if not rows:
         raise Unusable(f"{path.name} is empty")
     head = rows[0].split("\t")
+    missing = [c for c in FRAME_REQUIRED if c not in head]
+    if missing:
+        raise Unusable(f"{path.name} line 1: required column(s) missing: {' '.join(missing)}")
+    schema = {**FRAME_OPTIONAL, **FRAME_REQUIRED}
     out = []
-    for r in rows[1:]:
+    for n, r in enumerate(rows[1:], start=2):
         f = r.split("\t")
-        if len(f) == len(head):
-            out.append(dict(zip(head, f)))
+        if len(f) != len(head):
+            raise Unusable(f"{path.name} line {n}: {len(f)} fields, expected {len(head)}")
+        row = dict(zip(head, f))
+        for col, kind in schema.items():
+            if col not in row:
+                continue
+            v = row[col]
+            if kind == "text":
+                if not v:
+                    raise Unusable(f"{path.name} line {n}: {col} is empty")
+                continue
+            try:
+                x = float(v) if kind == "num" else int(v)
+            except ValueError:
+                raise Unusable(f"{path.name} line {n}: {col} '{v}' is not a "
+                               f"{'number' if kind == 'num' else 'whole number'}") from None
+            if kind == "num" and not math.isfinite(x):
+                raise Unusable(f"{path.name} line {n}: {col} '{v}' is not finite")
+            if col in FRAME_OPTIONAL and x == -1:
+                continue  # unavailable (CPU mode)
+            if x < 0:
+                raise Unusable(f"{path.name} line {n}: {col} '{v}' is negative")
+        out.append(row)
     return out
 
 
@@ -117,6 +155,7 @@ def main():
           "p50 / max |")
     print("|---|---:|---:|---|---|---|---:|---:|---:|---:|---|")
     stage_rows = []
+    cadence_rows = []
     memory_rows = []
     progress_rows = []
     unusable = []
@@ -173,6 +212,17 @@ def main():
                     f"{dist([float(f['commit_ms']) for f in committing])} | "
                     f"{dist([float(f['update_ms']) for f in frames])} | "
                     f"{dist([float(f['apply_ms']) + float(f['commit_ms']) + float(f['update_ms']) for f in frames])} |")
+            # Cadence (round ec, A3): the pacing the case asked for (manifest) against the frame-start
+            # intervals of its measured loop (frames.tsv t_ms), with the sample count.
+            manifest = read_lines(case / "manifest.txt")
+            asked = kv(manifest[1]) if len(manifest) > 1 else {}
+            def gaps_of(phase):
+                t = [float(f["t_ms"]) for f in all_frames if f["phase"] == phase]
+                return [b - a for a, b in zip(t, t[1:])]
+            requested = (f"{float(asked['frame_ms']):.3f} ({asked.get('timing', '?')})"
+                         if "frame_ms" in asked else "unknown")
+            cadence = (f"| {name} | {requested} | {dist(gaps_of('loop'))} | "
+                       f"{dist(gaps_of('drain'))} |")
             summary = read_lines(case / "summary.txt")
             mem = kv(one_line(summary, "memory ", "summary.txt"))
             stats = kv(one_line(summary, "stats ", "summary.txt"))
@@ -203,6 +253,7 @@ def main():
             continue
         print(row)
         stage_rows.extend(stages)
+        cadence_rows.append(cadence)
         memory_rows.append(memory)
         progress_rows.append(progress)
     print()
@@ -216,6 +267,17 @@ def main():
           "commit | chunk update | frame |")
     print("|---|---|---:|---|---|---|---|---|---|")
     for r in stage_rows:
+        print(r)
+    print()
+    print("Frame cadence: the requested frame interval (and timing) and the observed intervals "
+          "between frame starts, ms: n / p50 / p95 / p99 / max, in the measured loop and in the "
+          "drain (where a one-edit or burst case's latency accrues). A paced frame sleeps to its "
+          "next deadline after its work; the observed interval includes the sleep's overshoot on "
+          "this host.")
+    print()
+    print("| case | requested ms | loop: frame-start interval ms | drain: frame-start interval ms |")
+    print("|---|---|---|---|")
+    for r in cadence_rows:
         print(r)
     print()
     print("Version progress: islands committed, of them intermediate (a version below the "

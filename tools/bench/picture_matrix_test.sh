@@ -122,6 +122,8 @@ make_case() { # matrix, case, trace file ("" for none), [frames, summary: "none"
     [ -z "$3" ] || cp "$3" "$1/$2/events.tsv"
     [ "${4:-}" = none ] || printf '%s' "$FRAMES" > "$1/$2/frames.tsv"
     [ "${5:-}" = none ] || printf '%s\n' "$SUMMARY" > "$1/$2/summary.txt"
+    [ "${6:-}" = none ] || printf 'bench_picture case\nscenario=stream timing=paced frame_ms=16.6667\n' \
+        > "$1/$2/manifest.txt"
     printf '%s\t0\t1\t-\n' "$2" >> "$1/results.tsv"
 }
 new_matrix() { # dir
@@ -138,6 +140,9 @@ make_case "$WORK/m_good" quiet "$WORK/idle.tsv"
 table "$BENCH" "$WORK/m_good" 0 "table of complete, successful cases"
 grep -q "^| good | 0 | 1 | 1 / 6.0 " "$WORK/table.stdout" || fail "table: the good case's row"
 grep -q "^| good | loop | 2 | " "$WORK/table.stdout" || fail "table: the good case's stage row"
+# Cadence: the requested interval from the manifest, the observed one from frames.tsv (one gap).
+grep -q "^| good | 16.667 (paced) | 1 / 16.700 / (n=1) / (n=1) / 16.700 | n=0 |" "$WORK/table.stdout" ||
+    fail "table: the cadence row"
 for kind in missing malformed cut; do
     new_matrix "$WORK/m_$kind"
     make_case "$WORK/m_$kind" good "$WORK/productive.tsv"
@@ -161,6 +166,24 @@ printf '%s\n0.0\tgpu_mode\t0\t1\n0.0\tdesired\t0\t1\n0.5\tdesired\t1\t1\n1.0\tad
     "$HEADER" > "$WORK/gpu.tsv"
 aggregate "$WORK/gpu.tsv" 0 "aggregate of a complete GPU-mode run"
 grep -q "gpu_mode=1 gpu_ready=1 gpu_unfinished=1" "$WORK/agg.stdout" || fail "GPU run: counts"
+# Causally contradictory GPU evidence (round ec, A1) is malformed: exit 2, with the reason.
+printf '%s\n0\tgpu_mode\t0\t1\n0\tdesired\t0\t1\n1\tcommitted\t0\t1\n1\tgeneration\t0\t1\n2\tgpu_ready\t0\t1\n9\tchunks_ready\t0\t1\n10\trun_end\t0\t0\n' \
+    "$HEADER" > "$WORK/gpu_early.tsv"
+aggregate "$WORK/gpu_early.tsv" 2 "aggregate of GPU readiness before CPU readiness"
+grep -q "gpu_ready of island 0 generation 1 before its chunks_ready" "$WORK/agg.stderr" ||
+    fail "GPU before CPU: no reason given"
+grep -v chunks_ready "$WORK/gpu_early.tsv" > "$WORK/gpu_alone.tsv"
+aggregate "$WORK/gpu_alone.tsv" 2 "aggregate of GPU readiness without CPU readiness"
+grep -q "without its chunks_ready" "$WORK/agg.stderr" || fail "GPU without CPU: no reason given"
+# The same observation: equal times, GPU listed first, is consistent.
+printf '%s\n0\tgpu_mode\t0\t1\n0\tdesired\t0\t1\n1\tcommitted\t0\t1\n1\tgeneration\t0\t1\n5\tgpu_ready\t0\t1\n5\tchunks_ready\t0\t1\n10\trun_end\t0\t0\n' \
+    "$HEADER" > "$WORK/gpu_same.tsv"
+aggregate "$WORK/gpu_same.tsv" 0 "aggregate of GPU and CPU readiness at one observation"
+new_matrix "$WORK/m_contra"
+make_case "$WORK/m_contra" bad "$WORK/gpu_early.tsv"
+table "$BENCH" "$WORK/m_contra" 1 "table with a contradictory GPU trace"
+grep -q "trace unreadable: .*before its chunks_ready" "$WORK/table.stdout" ||
+    fail "contradictory trace: the table does not say why"
 new_matrix "$WORK/m_gpu"
 make_case "$WORK/m_gpu" gpu "$WORK/gpu.tsv"
 table "$BENCH" "$WORK/m_gpu" 0 "table of a GPU-mode case"
@@ -170,6 +193,29 @@ new_matrix "$WORK/m_nosummary"
 make_case "$WORK/m_nosummary" bad "$WORK/productive.tsv" "" none
 table "$BENCH" "$WORK/m_nosummary" 1 "table with a case without summary.txt"
 grep -q "summary.txt unreadable" "$WORK/table.stdout" || fail "missing summary: reason not given"
+new_matrix "$WORK/m_nomanifest"
+make_case "$WORK/m_nomanifest" bad "$WORK/productive.tsv" "" "" none
+table "$BENCH" "$WORK/m_nomanifest" 1 "table with a case without manifest.txt"
+grep -q "manifest.txt unreadable" "$WORK/table.stdout" || fail "missing manifest: reason not given"
+# A malformed frames.tsv is rejected with its file and line, never read around (round ec, 3b): a
+# row with an extra field, a non-finite number, a missing required column.
+for bad in extra nonfinite nocolumn; do
+    new_matrix "$WORK/m_frames_$bad"
+    make_case "$WORK/m_frames_$bad" bad "$WORK/productive.tsv"
+    f="$WORK/m_frames_$bad/bad/frames.tsv"
+    case $bad in
+    extra) printf '2\t33.4\tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\t7\n' >> "$f" ;;
+    nonfinite) printf '2\t33.4\tloop\t0\t0\t0\t0\t0\t0.01\t0\tnan\n' >> "$f" ;;
+    nocolumn) sed -i.orig 's/\tupdate_ms//' "$f" && sed -i.orig 's/\t0.05$//; s/\t0.04$//' "$f" ;;
+    esac
+    table "$BENCH" "$WORK/m_frames_$bad" 1 "table with a malformed frames.tsv ($bad)"
+    grep -q "frames.tsv" "$WORK/table.stderr" || fail "malformed frames ($bad): file not named"
+done
+new_matrix "$WORK/m_frames_check"
+make_case "$WORK/m_frames_check" bad "$WORK/productive.tsv"
+printf '2\t33.4\tloop\t0\t0\t0\t0\t0\t0.01\t0\t0.04\t7\n' >> "$WORK/m_frames_check/bad/frames.tsv"
+table "$BENCH" "$WORK/m_frames_check" 1 "table names the malformed row"
+grep -q "frames.tsv line 4: 12 fields, expected 11" "$WORK/table.stdout" || fail "malformed row: line not named"
 new_matrix "$WORK/m_noframes"
 make_case "$WORK/m_noframes" bad "$WORK/productive.tsv" none
 table "$BENCH" "$WORK/m_noframes" 1 "table with a case without frames.tsv"

@@ -2,6 +2,8 @@
 
 #include <anno/sim/site_checks.hpp>
 
+#include "local_tiles.hpp"
+
 namespace anno::sim::site {
 
 namespace {
@@ -32,16 +34,7 @@ std::array<std::uint8_t, 4> rotation_trials(std::uint8_t first) {
 }
 
 bool footprint_inside(const TileLayer& tiles, Origin origin, std::uint32_t w, std::uint32_t h) {
-    // Exact for every i64 origin: the offsets are non-negative differences held in u64.
-    if (origin.x < tiles.x0() || origin.y < tiles.y0()) {
-        return false;
-    }
-    const std::uint64_t lx =
-        static_cast<std::uint64_t>(origin.x) - static_cast<std::uint64_t>(std::int64_t{tiles.x0()});
-    const std::uint64_t ly =
-        static_cast<std::uint64_t>(origin.y) - static_cast<std::uint64_t>(std::int64_t{tiles.y0()});
-    return lx <= tiles.width() && w <= tiles.width() - lx && ly <= tiles.height() &&
-           h <= tiles.height() - ly;
+    return detail::local_origin(tiles, origin.x, origin.y, w, h).has_value();
 }
 
 bool within_range(std::int64_t click_x, std::int64_t click_y, FixedPos ship,
@@ -73,13 +66,13 @@ bool within_range(std::int64_t click_x, std::int64_t click_y, FixedPos ship,
 
 Ownership footprint_ownership(const TileLayer& tiles, std::uint32_t neutral_owner, Origin origin,
                               std::uint32_t w, std::uint32_t h) {
-    if (!footprint_inside(tiles, origin, w, h)) {
+    const auto local = detail::local_origin(tiles, origin.x, origin.y, w, h);
+    if (!local) {
         return Ownership::OutsideIsland;
     }
     for (std::uint32_t dy = 0; dy < h; ++dy) {
         for (std::uint32_t dx = 0; dx < w; ++dx) {
-            const Slot idx = tiles.index_of(static_cast<std::int32_t>(origin.x + dx),
-                                            static_cast<std::int32_t>(origin.y + dy));
+            const std::uint64_t idx = detail::local_index(tiles, local->lx + dx, local->ly + dy);
             if (tiles.owner(idx) != neutral_owner) {
                 return Ownership::OwnedTile;
             }
@@ -108,14 +101,14 @@ Compat overlap_with_existing(const BuildingType& placed, const BuildingType& exi
 Compat footprint_occupancy(const TileLayer& tiles, const TypeRegistry& types,
                            const BuildingType& placed, Origin origin, std::uint32_t w,
                            std::uint32_t h) {
-    if (!footprint_inside(tiles, origin, w, h)) {
+    const auto local = detail::local_origin(tiles, origin.x, origin.y, w, h);
+    if (!local) {
         return Compat::Unsupported;
     }
     Compat worst = Compat::Compatible;
     for (std::uint32_t dy = 0; dy < h; ++dy) {
         for (std::uint32_t dx = 0; dx < w; ++dx) {
-            const Slot idx = tiles.index_of(static_cast<std::int32_t>(origin.x + dx),
-                                            static_cast<std::int32_t>(origin.y + dy));
+            const std::uint64_t idx = detail::local_index(tiles, local->lx + dx, local->ly + dy);
             const std::uint32_t id = tiles.object(idx);
             if (id == 0) {
                 continue;

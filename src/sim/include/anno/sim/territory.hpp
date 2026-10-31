@@ -12,6 +12,12 @@
 // TileLayer::set_owner (dirty-chunk accounting and the state hash follow the existing
 // rules); a rejected request leaves the layer untouched.
 //
+// Supported domain: any layer TileLayer::reset accepts (a 32-bit origin; the far edge may lie above
+// INT32_MAX) and any footprint position an i64 can hold. A footprint is checked once against the
+// layer and tiles are then addressed by their LOCAL offset (src/local_tiles.hpp), never by a
+// narrowed 32-bit world coordinate; a footprint not wholly inside the layer is refused
+// (BadFootprint) before any write.
+//
 // Arithmetic and the verified domain: the profile and the row bounds are computed in 64
 // bits and nothing wraps. The original keeps the profile and the width of each row span in
 // BYTES (AnnoWelt.dll 0x100858f7/0x10085908 store T[k] as a byte; 0x10085a12-0x10085a18 pass

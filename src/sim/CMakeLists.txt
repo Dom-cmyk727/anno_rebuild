@@ -28,7 +28,7 @@ if(ANNO_BUILD_TESTS)
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
                  tests/game_setup_test.cpp tests/house_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
-                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp)
+                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp)
   # anno_sim_load: the scenario corpus case reads the island templates of the game
   # directory for the link resolver (S14 stage 2).
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support

@@ -2,49 +2,43 @@
 
 #include <anno/sim/territory.hpp>
 
+#include "local_tiles.hpp"
+
 namespace anno::sim::territory {
 
 namespace {
 
-bool footprint_fits(const TileLayer& tiles, const Footprint& f) {
-    if (f.w == 0 || f.h == 0) {
-        return false;
-    }
-    // Exact for every i64 position: non-negative differences held in u64, no signed overflow.
-    if (f.x < tiles.x0() || f.y < tiles.y0()) {
-        return false;
-    }
-    const std::uint64_t lx =
-        static_cast<std::uint64_t>(f.x) - static_cast<std::uint64_t>(std::int64_t{tiles.x0()});
-    const std::uint64_t ly =
-        static_cast<std::uint64_t>(f.y) - static_cast<std::uint64_t>(std::int64_t{tiles.y0()});
-    return lx <= tiles.width() && f.w <= tiles.width() - lx && ly <= tiles.height() &&
-           f.h <= tiles.height() - ly;
-}
-
-/// Paints the half-open column span [xl, xr) of world row y, neutral tiles only, clipped to
-/// the layer. Returns the number of tiles changed.
-std::uint64_t paint_row(TileLayer& tiles, std::uint32_t neutral, std::uint32_t city, std::int64_t y,
-                        std::int64_t xl, std::int64_t xr) {
-    const std::int64_t x0 = tiles.x0();
-    const std::int64_t y0 = tiles.y0();
-    if (y < y0 || y >= y0 + std::int64_t{tiles.height()}) {
+/// Paints the half-open LOCAL column span [lxl, lxr) of local row ly, neutral tiles only, clipped
+/// to the layer. Local offsets are small non-negative-or-clipped i64 (bounded by the layer size
+/// plus the radius), so no world coordinate is narrowed. Returns the number of tiles changed.
+std::uint64_t paint_row(TileLayer& tiles, std::uint32_t neutral, std::uint32_t city,
+                        std::int64_t ly, std::int64_t lxl, std::int64_t lxr) {
+    if (ly < 0 || ly >= std::int64_t{tiles.height()}) {
         return 0;
     }
-    xl = std::max(xl, x0);
-    xr = std::min(xr, x0 + std::int64_t{tiles.width()});
-    if (xl >= xr) {
+    lxl = std::max<std::int64_t>(lxl, 0);
+    lxr = std::min<std::int64_t>(lxr, tiles.width());
+    if (lxl >= lxr) {
         return 0;
     }
-    std::uint64_t idx = tiles.index_of(static_cast<std::int32_t>(xl), static_cast<std::int32_t>(y));
+    std::uint64_t idx =
+        detail::local_index(tiles, static_cast<std::uint64_t>(lxl), static_cast<std::uint64_t>(ly));
     std::uint64_t changed = 0;
-    for (std::int64_t x = xl; x < xr; ++x, ++idx) {
+    for (std::int64_t x = lxl; x < lxr; ++x, ++idx) {
         if (tiles.owner(idx) == neutral) {
             tiles.set_owner(idx, city);
             ++changed;
         }
     }
     return changed;
+}
+
+/// The footprint's local origin, or nullopt when it is empty or not wholly inside the layer.
+std::optional<detail::LocalOrigin> fit(const TileLayer& tiles, const Footprint& f) {
+    if (f.w == 0 || f.h == 0) {
+        return std::nullopt;
+    }
+    return detail::local_origin(tiles, f.x, f.y, f.w, f.h);
 }
 
 } // namespace
@@ -96,23 +90,27 @@ std::optional<std::vector<std::uint32_t>> disc_profile(std::uint32_t radius,
 
 Result claim_neutral_rect(TileLayer& tiles, std::uint32_t neutral_owner, std::uint32_t city_owner,
                           const Footprint& f) {
-    if (!footprint_fits(tiles, f)) {
+    const auto local = fit(tiles, f);
+    if (!local) {
         return {Status::BadFootprint, 0};
     }
     if (city_owner == neutral_owner) {
         return {Status::InvalidOwner, 0};
     }
     Result res;
+    const auto lx = static_cast<std::int64_t>(local->lx);
+    const auto ly = static_cast<std::int64_t>(local->ly);
     for (std::uint32_t dy = 0; dy < f.h; ++dy) {
         res.claimed +=
-            paint_row(tiles, neutral_owner, city_owner, f.y + dy, f.x, f.x + std::int64_t{f.w});
+            paint_row(tiles, neutral_owner, city_owner, ly + dy, lx, lx + std::int64_t{f.w});
     }
     return res;
 }
 
 Result claim_neutral_disc(TileLayer& tiles, std::uint32_t neutral_owner, std::uint32_t city_owner,
                           const Footprint& f, std::uint32_t radius, std::uint32_t max_radius) {
-    if (!footprint_fits(tiles, f)) {
+    const auto local = fit(tiles, f);
+    if (!local) {
         return {Status::BadFootprint, 0};
     }
     if (city_owner == neutral_owner) {
@@ -129,8 +127,9 @@ Result claim_neutral_disc(TileLayer& tiles, std::uint32_t neutral_owner, std::ui
     const std::int64_t hy = (std::int64_t{f.h} - 1) / 2;
     const std::int64_t px = (std::int64_t{f.w} - 1) & 1;
     const std::int64_t py = (std::int64_t{f.h} - 1) & 1;
-    const std::int64_t cx = f.x + hx;
-    const std::int64_t cy = f.y + hy;
+    // Centre in LOCAL coordinates (the footprint is inside the layer, so these are small).
+    const auto cx = static_cast<std::int64_t>(local->lx) + hx;
+    const auto cy = static_cast<std::int64_t>(local->ly) + hy;
     Result res;
     // Each k visits two rows; with py == 0 the two rows of k == 0 are the same row (a second
     // visit finds no neutral tile left, so nothing is counted twice).

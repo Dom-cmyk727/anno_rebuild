@@ -58,10 +58,12 @@ template <class Accepts>
     return std::nullopt;
 }
 
-/// The footprint (origin, w, h) lies inside the tile layer on both axes: lower bound
-/// (x >= x0, y >= y0) and upper bound (x + w <= x0 + W, y + h <= y0 + H). ORIGINAL
-/// (contract P7). Run it for the first rotation as the initial rejection, and for each
-/// rotation trial with that trial's own dimensions.
+/// Supported domain of the footprint helpers: any layer TileLayer::reset accepts (the far edge may
+/// lie above INT32_MAX) and any i64 origin; tiles are addressed by local offset, never by a
+/// narrowed 32-bit world coordinate (src/local_tiles.hpp). The footprint (origin, w, h) lies inside
+/// the tile layer on both axes: lower bound (x >= x0, y >= y0) and upper bound (x + w <= x0 + W, y
+/// + h <= y0 + H). ORIGINAL (contract P7). Run it for the first rotation as the initial rejection,
+/// and for each rotation trial with that trial's own dimensions.
 [[nodiscard]] bool footprint_inside(const TileLayer& tiles, Origin origin, std::uint32_t w,
                                     std::uint32_t h);
 

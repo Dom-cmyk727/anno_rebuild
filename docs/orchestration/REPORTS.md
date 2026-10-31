@@ -8520,3 +8520,161 @@ Five-player map (2 buildings, 30 cycles, 4 changes): apply p50 0.022 ms, build w
 ### Next review task
 
 CPU review of `ba8f300` against R3–R5 with the remaining gates above, and a decision on whether R5's Release and dense measurements are required before viewer/GPU integration.
+
+## Round dw — executor report — W4.3 CPU completion (DW1–DW7) — STOP FOR CPU REVIEW
+
+**Heads.** Start `3db3df3` (preflight at `67a48ec`: all six rows PASS, worktree clean). Final `0628f08`, twelve
+code/test/tool/doc commits (listed below) plus docs. Binaries: `build/dev` and `build/asan` at `847fe9b` and later
+sources of tests unchanged (the last commits change the runner, the sampler and docs only); `build/release` bench at
+`847fe9b`, frozen as `fc2873295d48ac21` for the matrix. Not merged, pushed, rebased or pruned. `AGENTS.md`
+untouched. The display-awake assertion (`caffeinate -d -s`, PID 58061) was checked with `pmset -g assertions`
+before and after the heavy run and is still active. No owned background job remains (checked; the sampler was
+stopped by PID after its wrapper finished).
+
+**Commits (oldest first).** `d51ef5c` test: two workers, one scene, gated solve (DW2a). `0baa0ba` fix: the flow
+builders track every active solve atomically with dequeue (DW2b). `0aa214c` test: the runner with explicit
+verdicts (DW1). `f17e9b8` test: one, two and four workers (DW2d). `bb6ad81` fix: final scene destruction on a
+process reclaimer (DW3a). `955b622` fix: desired and committed versions, retries, terminal error (DW3c, DW3d,
+DW4c, DW4e). `14572c3` docs: one retained-work contract (DW4f). `924126e` tools: bench_picture async mode, legal
+workloads, loader oracle (DW5a–d). `847fe9b` feat: worker queue and build samples (DW5f). `fa7ceed` docs: the
+picture benchmark (DW5). `d54a043` docs: the owning-generation handoff (DW7). `f9bc958` docs: the flow lifecycle
+protocol (DW2c). `bde0bb4` test: the runner fails a gate with skipped game-file cases (DW1, found in the final
+gates). `0628f08` test: a numeric memory sampler (DW6c).
+
+### Acceptance matrix (DW item → evidence → result → limitation)
+
+| DW item | Evidence (log, cache/ unless stated) | Result | Limitation |
+|---|---|---|---|
+| 1 runner, failed build stops, zero selection fails, timeouts, provenance | tiny CTest project: pass 0, fail 8, zero-match 8, timeout 8, crash 8, failed build 2, concurrent run 3 (`cache/dw-runner-check`); wrapper runs `cache/dw-runs/*.log` | FIXED | per-case START/END come from CTest `-V` |
+| 1 skipped game-file cases do not pass a gate | `asan-app-gamedir.log` (after the fix); earlier `asan-app.log` showed 16 skips as PASS | FIXED (found in the final gates) | none |
+| 1 inventory of the owned non-heavy run | `dw-ledger.tsv`; `orch-dv-work/ctest-dev-nonheavy.stdout`: exit 8, 1169 passed, 2 failed (#357, #360: Metal timestamp, known) | CLOSED: verdict recorded, not replaced | the run was at `ba8f300` binaries; superseded by the final gates |
+| 2 two-solve destruction, gated (ASan UAF in the review probe) | pre-fix: `prefix-final-test-asan.log` (CHECK `0 == 1`, heap-use-after-free, FAIL); trace `prefix-dw2-marker-trace.log`; post-fix: `fixed-dw2-asan-lifecycle.log` 6/6, `asan-dw2d-workers.log` 3/3, `dev-dw2-lifecycle.log` 9/9 | FIXED | "shared expiry" has no dedicated case (covered by the queued-survivor and second-sharer cases) |
+| 2 one, two and four workers, a throwing solve beside a gated one | `dev-dw2-lifecycle.log`, `asan-dw2d-workers.log` | PASS | not the full matrix of concurrent solves across islands of several scenes |
+| 2 fallback regression and failed flow | `dev-fallback.log` 2/2 | PASS | game files |
+| 3a reclamation off the window thread, last owner anywhere | `dev-dw3a-reclaim2.log` 3/3, `asan-dw3-reclaim.log` 3/3; `outlived bridge` case in `dev-dw3d-recovery3.log` | FIXED | the pre-fix release was synchronous; its counterpart is the review probe `reaper.log` (no pre-fix binary built for it) |
+| 3b queued, in flight and completed counted separately | `scene reclaim` case 3 (queued, waiting, in flight, completed) | FIXED | bridge counts `reclaim_queued` and `reclaim_completed` only |
+| 3c, 3d one failure with no new batch; persistent; newer edit during retry; shutdown during retry | `dev-dw3d-recovery3.log` 8/8 (+1 outlived), `dev-dw3-bounds2.log` 13/13 | FIXED | backoff counts commit calls; the viewer's frame rate sets the wall-time retry |
+| 4a inventory of retention | `docs/app/game-shell.md` "Retained work and reclamation"; `SUMMARY.md` (outstanding bytes peak 2.16 MB at 12 islands) | PARTIAL | generation and chunk-cache bytes are not measured |
+| 4b byte budget with a single over-budget island | recovery case `over-budget island`: one build at a time | FIXED | the 64 MiB default is provisional until a measured five-player record size |
+| 4c newer version after an old result; overloaded convergence | `picture recovery: a result of an older version...` (20/20 after the barrier; mutant fails) | FIXED | the causal investigation is recorded below |
+| 4d no idle full-world scan | `dispatch` returns before the building list is read; no candidates, no scan | FIXED | the apply path still updates the sorted list per delta |
+| 4e no window change set on version mismatch | requeue on mismatch; `version_requeues` (0 in every matrix run) | FIXED | the path is not exercised by any test (the counter is zero) |
+| 4f many islands, stalled commit and reaper, changing workers, failure, teardown; reconcile `1 + threads` | `picture recovery` 9 cases, `scene picture bounds` 5 cases (ASan 13/13); spec step 7 superseded | FIXED | not real-data many-island stalls beyond the 12-island synthetic |
+| 5a bench validation, drain diagnostic | `val-*` runs; invalid options exit 2 before loading assets | FIXED | |
+| 5b async bounded-viewport mode | matrix (33 runs) | DONE | not a presented frame |
+| 5c deterministic workloads, manifest, validated placements | manifests `cache/dw-measure/*.manifest`; island-local, one building per tile | DONE | "five" tier is the fixed map's two inhabited islands with 40 generated buildings each; no roads |
+| 5d validation against a CPU reference | `verify:` lines (6/6 non-empty, 0 mismatched, all 33 runs); loader oracle equal | DONE | group-2 chunks only |
+| 5e Release, quiet host | `fc2873295d48ac21`; host not quiet (other apps, swap 39.6 GB used) | DONE with caveat | simulation contention is the arithmetic proxy only |
+| 5f raw samples saved | percentiles, counts, manifests, logs saved | PARTIAL | the bench does not save raw per-frame samples; this is open |
+| 5g failing K/PLAN targets | not an existing failing target here; PLAN 0.3 frame targets are presented-frame targets | OPEN (not measurable by this unit) | the viewer task |
+| 6a focused tests, sanitizers, picture and mailbox | `asan-app-gamedir.log` 32/32; `asan-render-gamedir.log` 16/16; dev picture 14/14 earlier | PASS | `scene_probe` is opt-in (`ANNO_PROBE=1`), not run |
+| 6b formatting, dev/Release builds, non-heavy with and without game files | `format` 11 files, 0 violations; `dev-nonheavy-game.stdout` 1186/1188; `dev-nonheavy-nogame.stdout` 1186/1188 (121 GAME_DIR skips, not executed); Release build 383 steps | PASS except 2 known | Metal timestamp cases #364 and #367 (open, not waived) |
+| 6c numeric footprint sampling; heavy log reconciled | `tools/test/sample_memory.sh`; `cache/dw-heavy/heavy-samples.csv` (577 numeric rows); `cache/dw-plan/parse_heavy_log.py` on the saved log | FIXED | the saved round-dv log has no footprint column values |
+| 6d capacity check and one-worker heavy calibration with 8 GiB headroom | `cache/dw-heavy/heavy-ctest.log`: 10/10 passed, rc 0, 2919 s; 124 admits; 0 refusals; 84 items, all growth below reservation | PASS | 2 and 4 workers not run (no measured need) |
+| 6e Windows MSVC, Linux/WSL GCC/Clang, RTX/Radeon, host support | not run from this host | OPEN | commands and artifacts are in the handoff plan |
+| 7a–7d acceptance matrix, reports, handoff plan, no running job | this section; `docs/app/gpu-handoff.md`; process check above | DONE | |
+
+### Reconciliation of the heavy log (round dv R6, now parsed in full)
+
+`cache/orch-du-calib/heavy-1w-run1.log`, parsed record by record (`cache/dw-plan/parse_heavy_log.py`): one deadline
+at 1800 s on the 6,843,933,440-byte estimate with 1,138,180,096 bytes available (a wait refusal, not an exit); the
+first admission 591 s later; 16 completed items, all with growth below their reservation; the largest reservation
+Single_10 case 0 (6,001,242,496 B, 5.59 GiB, growth 4.04 GiB) and the largest growth Single_01 case 1 (growth
+5,045,358,144 B, 4.70 GiB, reservation 5.47 GiB) are different items; one admitted 6.84 GB estimate has an end
+record but no item record (unexplained, open); CTest test #291 ended with `Timeout 3600.05 sec` and exit 8. Round
+dw's heavy run on the same test (#312 here) passed in 865 s with 8 GiB headroom and one worker.
+
+### Performance (Release, final matrix, 33 runs, every run verified)
+
+Full tables, counters and the manifest of each run: `docs/perf/README.md` and `cache/dw-measure/SUMMARY.md`.
+Headline numbers (p50 / p99, worst maxima in the perf README):
+
+- A single edit: one island rebuild in a worker, about 14 ms, for 40 or 400 buildings alike (a fixed per-island
+  cost). The window side: apply 0.005–0.015 ms, commit under 0.001 ms.
+- Simultaneous edits on 12 islands, 2 workers: the job queue delay p50 14.7 ms, p95 31.9 ms; with 4 workers the
+  queue delay p50 0.09 ms, p95 19 ms (sustained stream).
+- Sustained 4 edits per frame with 2 workers: queue delay p50 6.5 ms, p95 42 ms; the commit p99 0.010 ms.
+- Dense 21 islands × 800 buildings (16,800): commit p50 0.036 ms, apply p50 0.078 ms.
+- Arithmetic busy threads (4) add no measurable window-side cost in these runs (apply p99 0.030 ms vs 0.025 ms).
+
+What these do not establish: presented frames (PLAN 0.3 targets), chunk rebuild time on the workers, reclamation
+time, peak live bytes of generations, real simulation contention, or Release/Debug comparisons of the same
+workload. Round dv's Debug table and the first round-dw matrix are superseded (see the perf README).
+
+### Investigations (open causes resolved; the open ones are listed)
+
+1. **Stale-result test failed 7 of 10 runs on one binary** (after the desired-version change). Hypothesis: the drain
+   counted commit calls while the reaper's release takes wall time, and commits are skipped while the reaper is behind.
+   Discriminator: at the failure the picture showed `commit_skipped=21` (one per call) and the reaper had completed 0
+   or 2 items. Fix: a barrier on the reaper's own counters before the drain. Result: 20 of 20 pass; a mutant that
+   removes the version check fails the case. The cause is established; the barrier is part of the test, not a
+   retry.
+2. **Sustained-edit loader oracle mismatch** (one object per tile). Hypothesis: the bench generated duplicate tiles.
+   Discriminator: the item diagnostic showed one loader-only and one picture-only item per duplicate pair, and the
+   final list held 2 duplicate tiles. Fix: occupancy-checked moves; the run now fails on any duplicate. With legal
+   moves the oracle agrees exactly (`fixed-E1.log`, `fixed-E4.log`). The loader and the picture treat an illegal
+   duplicate differently (one item versus two); this is outside legal input and is not claimed either way.
+3. **Generation 0 mismatch** (40 objects per untouched island). Cause: the bench loaded the scene with the map's two
+   buildings and started the picture with the workload. Fix: reload with the workload; the play loader does this.
+4. **Stress tier placed buildings outside their islands** (validator refused). Removed; the dense tier covers
+   density within legal tiles.
+
+Open: the mismatch semantics for illegal duplicates; the 40-object fixed per-island build cost (a candidate for
+incremental lists, not started); the chunk rebuild on the workers is untimed.
+
+### Decisions and reasoning
+
+- **CTest is the runner; the wrapper adds provenance and verdict rules.** Alternative: a new runner. Evidence: a tiny
+  project showed CTest's statuses are right; the gaps were verdicts and logs. The wrapper now fails on sanitizer
+  reports and on skipped game-file cases.
+- **One process reclaimer, never destroyed.** Alternative: per-picture reclaimers. Reason: loader-built and
+  derived generations, chunk workers and frames outlive any one picture; a leaked singleton has no shutdown order to
+  get wrong. Its thread is left to the process.
+- **Desired and committed versions; retries by commit calls.** Alternative: a timer. Reason: the window's frames are
+  the clock the picture already follows; a timer would add a second clock. Attempts are capped at 4 (1, 2, 4 calls
+  of waiting), after which the island is failed for good and reported; a new change resets it.
+- **Limits and their defaults.** `max_outstanding` 8 and `max_reclaim_backlog` 4 (round dv). The byte budget 64 MiB
+  is provisional: the record size of the representative island is measured here (about 270–400 KB per island),
+  but the default is a stated choice until DW6's workloads set it.
+- **Coalescing is not claimed.** Its counter never fired in the matrix. The discarded results are the observed
+  superseded work.
+- **Workloads are island-local, one building per tile, and checked before a run.** Alternative: the world's
+  coordinates. Reason: `play_buildings` returns island-local coordinates; the loader's own build is the oracle.
+- **Heavy calibration with one worker and 8 GiB headroom; no escalation.** Reason: it passed 10 of 10 at one
+  worker, and the heavy cases did not need more throughput; 2 and 4 workers were not measured for heavy work.
+- **The two Metal timing failures are not waived or changed.** They fail the same assertion on this host
+  (`gpu_test.cpp:2219`, `c.gpu_timestamps == ctx->timestamps`).
+- **The stress tier was removed rather than its validation weakened.**
+
+### Mistakes made and corrected in this round (for the review)
+
+- The first ASan selectors were run without `ANNO1503_GAME_DIR`; the wrapper counted 16 skips as passes. Rerun with
+  the game directory and the fixed verdict: 32/32, 0 skips. The render selectors had the same gap; rerun 16/16.
+- The bench's first matrix used the invalid stress tier and an edit cadence above its own range (both rejected).
+- The picture bench's first workloads were world coordinates and illegal duplicates (see investigations 2 and 3).
+- A verification step compared six chunks of which none was non-empty; the check now fails on an empty comparison.
+- A drain bound in a test counted commit calls rather than reaper progress (investigation 1).
+
+### Remaining gates and open items
+
+1. Windows MSVC, Linux/WSL GCC and Clang with `-Werror` (`tools/check_unix_warnings.sh`), RTX 4090 and Radeon iGPU,
+   and host-support review: not run from this Mac.
+2. Metal timestamp cases #364 and #367 (both binaries and both runs): open, not waived.
+3. The Release build reports one linker warning ("ignoring duplicate libraries: src/sim/libanno_sim.a"); not from
+   this round's sources; to be checked on the Windows and Linux hosts.
+4. `scene_probe` (opt-in), 2- and 4-worker heavy calibration, raw per-frame sample dumps, chunk-rebuild timing,
+   reclamation time, peak live bytes of generations, real simulation-contention runs.
+5. The picture's illegal-duplicate semantics (investigation 2) and the 40-object-per-island build cost.
+6. The unexplained admitted item without an item record in the saved round-dv heavy log.
+
+### Next review task
+
+CPU review of `0628f08` (and its gates above). GPU integration, developer input and preview stay unreleased; the
+handoff plan (`docs/app/gpu-handoff.md`) is the input for the next assignment.
+
+### Resource settings (this round)
+
+Mac M5 Max, 18 cores, 48 GiB unified memory, swap at 39.6 of 40 GiB during the heavy run (host state). Compile 16
+jobs; non-heavy CTest 8 jobs with `ANNO_TEST_THREADS=1`; heavy `-j 1`, `ANNO_HEAVY_TEST_PROCESSORS=1`,
+`ANNO_TEST_HEADROOM_MB=8192`, `ANNO_TEST_MEASURE_ITEMS=1`. Benchmark runs were sequential; no other owned job ran
+during a timed run.

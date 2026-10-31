@@ -506,7 +506,7 @@ int main(int argc, char** argv) {
     std::ostringstream sim_rows;
     std::size_t sim_turns = 0, sim_accepted = 0, sim_refused = 0;
     std::uint64_t sim_hash = 0;
-    std::string sim_manifest;
+    std::string sim_manifest, sim_invariants;
     std::unique_ptr<app::LegalWorkload> sim_world;
     if (sim_contention != 0) {
         auto second = app::LegalWorkload::build(dir, map, wl);
@@ -514,7 +514,8 @@ int main(int argc, char** argv) {
             fail(4, "the contention world: " + second.error());
         }
         sim_world = std::move(second).value();
-        sim_rows << "t_ms\tkind\taccepted\tturn_ms\n";
+        sim_world->set_check_invariants(false);
+        sim_rows << "t_ms\tkind\taccepted\tturn_ms\tdiff_ms\tcall_ms\n";
         side.emplace_back([&] {
             std::size_t i = 0;
             auto next = Clock::now();
@@ -524,11 +525,12 @@ int main(int argc, char** argv) {
                 const app::LegalEdit e = (i / sim_world->cities().size()) % 2 == 0
                                              ? sim_world->build_one(c, 400)
                                              : sim_world->demolish_one(c);
-                const double turn_ms = ms_between(t0, Clock::now());
+                const double call_ms = ms_between(t0, Clock::now());
                 {
                     const std::lock_guard lock(sim_mutex);
                     sim_rows << ms_between(loop_start, t0) << "\t" << e.what << "\t"
-                             << (e.accepted ? 1 : 0) << "\t" << turn_ms << "\n";
+                             << (e.accepted ? 1 : 0) << "\t" << e.turn_ms << "\t" << e.diff_ms
+                             << "\t" << call_ms << "\n";
                     ++sim_turns;
                     ++(e.accepted ? sim_accepted : sim_refused);
                 }
@@ -771,6 +773,7 @@ int main(int argc, char** argv) {
     if (sim_world) {
         sim_hash = sim_world->state_hash();
         sim_manifest = sim_world->manifest();
+        sim_invariants = sim_world->world().check_invariants();
     }
 
     // The oracle.
@@ -825,6 +828,10 @@ int main(int argc, char** argv) {
         if (!d.equal() || d.compared == 0) {
             verdict = verdict == 0 ? 1 : verdict;
         }
+    }
+    if (sim_world && !sim_invariants.empty()) {
+        verdict = verdict == 0 ? 1 : verdict;
+        verify << "the contention world's invariants do not hold: " << sim_invariants << "\n";
     }
     verify << (verdict == 0 ? "VERIFY OK\n" : "VERIFY FAILED\n");
     const auto st = picture->stats();
@@ -898,7 +905,7 @@ int main(int argc, char** argv) {
     if (sim_world) {
         summary << "sim turns=" << sim_turns << " accepted=" << sim_accepted
                 << " refused=" << sim_refused << " state_hash=" << std::hex << sim_hash << std::dec
-                << "\n";
+                << " invariants=" << (sim_invariants.empty() ? "ok" : sim_invariants) << "\n";
     }
     summary << verify.str();
     write_file(out / "summary.txt", summary.str());

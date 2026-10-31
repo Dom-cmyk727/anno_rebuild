@@ -1,5 +1,6 @@
 // The legal city workload (see the header; docs/perf/README.md, "Legal city workload").
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -434,7 +435,10 @@ std::vector<std::string> LegalWorkload::run(std::vector<sim::Command> commands,
     turn.index = turn_++;
     turn.step_ms = kStepMs;
     turn.commands = std::move(commands);
+    const auto t0 = std::chrono::steady_clock::now();
     sim::run_turn(load_.world, nullptr, turn, steps == 0 ? kSteps : steps * kSteps);
+    last_turn_ms_ =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     std::vector<std::string> reasons;
     for (const sim::SimEvent& event : load_.world.drain_events()) {
         if (event.kind == sim::SimEventKind::CommandRejected) {
@@ -498,9 +502,15 @@ LegalEdit LegalWorkload::build_one(std::size_t c, std::size_t attempts) {
                       {p}}}});
     edit.accepted = reasons.empty();
     edit.reason = reasons.empty() ? std::string() : reasons.front();
+    edit.turn_ms = last_turn_ms_;
+    const auto d0 = std::chrono::steady_clock::now();
     edit.batch = take_batch();
-    invariants_ = load_.world.check_invariants();
-    count_city(city);
+    edit.diff_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - d0).count();
+    if (check_each_edit_) {
+        invariants_ = load_.world.check_invariants();
+        count_city(city);
+    }
     return edit;
 }
 
@@ -537,9 +547,15 @@ LegalEdit LegalWorkload::demolish_one(std::size_t c) {
                          {tile}}}});
     edit.accepted = reasons.empty();
     edit.reason = reasons.empty() ? std::string() : reasons.front();
+    edit.turn_ms = last_turn_ms_;
+    const auto d0 = std::chrono::steady_clock::now();
     edit.batch = take_batch();
-    invariants_ = load_.world.check_invariants();
-    count_city(city);
+    edit.diff_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - d0).count();
+    if (check_each_edit_) {
+        invariants_ = load_.world.check_invariants();
+        count_city(city);
+    }
     return edit;
 }
 
@@ -549,9 +565,15 @@ LegalEdit LegalWorkload::advance(std::size_t turns) {
     edit.accepted = true;
     for (std::size_t t = 0; t < turns; ++t) {
         static_cast<void>(run({}));
+        edit.turn_ms += last_turn_ms_;
     }
+    const auto d0 = std::chrono::steady_clock::now();
     edit.batch = take_batch();
-    invariants_ = load_.world.check_invariants();
+    edit.diff_ms =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - d0).count();
+    if (check_each_edit_) {
+        invariants_ = load_.world.check_invariants();
+    }
     return edit;
 }
 

@@ -95,6 +95,10 @@ struct LegalEdit {
     std::int32_t x = 0, y = 0;
     std::uint32_t type = 0;
     std::string what;
+    /// Milliseconds in sim::run_turn (the production turn), and in the building diff that
+    /// publishes its changes (PlayRunner::building_batch's work); the candidate search and the
+    /// invariant check are the fixture's and are not in either.
+    double turn_ms = 0, diff_ms = 0;
 };
 
 /// The workload's world and its record. Not copyable (it owns the world).
@@ -120,6 +124,9 @@ class LegalWorkload {
     [[nodiscard]] std::uint64_t state_hash() const { return load_.world.state_hash(); }
     [[nodiscard]] std::uint64_t registry_digest() const { return load_.world.types().digest(); }
     [[nodiscard]] std::uint64_t turns() const { return turn_; }
+    /// Whether every edit checks the world's invariants afterwards (on by default; a contention
+    /// world turns it off, so its thread does the production turn's work only).
+    void set_check_invariants(bool on) { check_each_edit_ = on; }
 
     /// Places one more building in city `city` (the next legal candidate of the search), through
     /// one Build command and one turn. Not accepted when the search finds no candidate within
@@ -155,6 +162,9 @@ class LegalWorkload {
     std::string invariants_;
     std::uint64_t turn_ = 0;
     std::vector<std::uint64_t> rng_;
+    bool check_each_edit_ = true;
+    /// The duration of the last run(), in milliseconds.
+    double last_turn_ms_ = 0;
     /// Per city: the owned land tiles in search order, and the next position of the search.
     std::vector<std::vector<std::uint64_t>> owned_;
     /// Per city: whether each tile of its island is land (row-major, the island's own size).

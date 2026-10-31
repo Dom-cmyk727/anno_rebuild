@@ -75,7 +75,7 @@ TEST_CASE("play: GPU matches the CPU path on one scene") {
         if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
             FAIL("no GPU device (ANNO_REQUIRE_GPU is set): " << ctx.error());
         }
-        MESSAGE("skipping: " << ctx.error());
+        MESSAGE("skipping: no GPU device: " << ctx.error());
         return;
     }
     MESSAGE("adapter " << ctx.value().name);

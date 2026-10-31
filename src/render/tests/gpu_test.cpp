@@ -47,7 +47,7 @@ namespace fig = anno::formats::figuren;
 TEST_CASE("the shared WGSL shaders compile on the device") {
     auto c = gpu::headless_context();
     if (!c) {
-        MESSAGE("skipping: " << c.error());
+        MESSAGE("skipping: no GPU device: " << c.error());
         return;
     }
     MESSAGE("adapter: " << c.value().name);
@@ -171,7 +171,7 @@ std::optional<gpu::Context> device_or_skip() {
     if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
         FAIL("no GPU device (ANNO_REQUIRE_GPU is set): " << ctx.error());
     }
-    MESSAGE("skipping: " << ctx.error());
+    MESSAGE("skipping: no GPU device: " << ctx.error());
     return std::nullopt;
 }
 

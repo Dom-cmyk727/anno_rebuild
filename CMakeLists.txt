@@ -123,6 +123,18 @@ if(ANNO_BUILD_TESTS)
   add_test(NAME test_names_are_selectable
            COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
                    -P ${CMAKE_SOURCE_DIR}/cmake/CheckTestNames.cmake)
+  # The gate's verdict reader (tools/test/ctest_verdict.py, ported from MAP-2) and the launcher's
+  # preflight order (round ec): tools/test/run_selected.sh runs test_verdict_contract, with
+  # test_names_are_selectable and picture_matrix_contract, as mandatory preflights.
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_FOUND)
+    add_test(NAME test_verdict_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
+  endif()
+  if(UNIX)
+    add_test(NAME run_selected_contract
+             COMMAND bash ${CMAKE_SOURCE_DIR}/tools/test/run_selected_test.sh)
+  endif()
   add_subdirectory(src/test_support)
 endif()
 

@@ -23,11 +23,6 @@ namespace anno::render {
 
 namespace insel = formats::insel;
 
-/// The deleter of every generation: the last owner lets go, and the destruction is the reclaimer's.
-struct ReclaimDeleter {
-    void operator()(const Scene* scene) const { SceneReclaimer::shared().reclaim(scene); }
-};
-
 namespace {
 
 /// States of a FlowSlot.
@@ -341,18 +336,20 @@ std::shared_ptr<Scene> Scene::create(std::string name, std::vector<insel::Island
     return std::shared_ptr<Scene>(new Scene(std::move(name), std::move(islands),
                                             std::move(textures), std::move(anlagen), lift,
                                             std::move(backing)),
-                                  ReclaimDeleter{});
+                                  SceneReclaimDeleter{&SceneReclaimer::shared()});
 }
 
 struct SceneReclaimer::Impl {
     std::mutex mutex;
     std::condition_variable wake;
-    /// Scenes waiting for destruction (owned here until the reclaimer destroys them).
-    std::deque<std::unique_ptr<const Scene>> waiting;
+    /// The waiting scenes, linked through Scene::reclaim_next_ (owned here until destroyed).
+    const Scene* head = nullptr;
     std::uint64_t queued = 0, completed = 0;
-    std::size_t peak_waiting = 0;
+    std::size_t waiting = 0, peak_waiting = 0;
+    std::size_t bytes_waiting = 0, peak_bytes_waiting = 0;
     bool busy = false;
     std::thread::id last_thread;
+    std::function<void()> gate;
     std::thread thread;
 };
 
@@ -366,16 +363,24 @@ SceneReclaimer::SceneReclaimer() : impl_(std::make_unique<Impl>()) {
     Impl* im = impl_.get();
     im->thread = std::thread([im] {
         for (;;) {
-            std::unique_ptr<const Scene> dead;
+            const Scene* dead = nullptr;
+            std::function<void()> gate;
             {
                 std::unique_lock lock(im->mutex);
-                im->wake.wait(lock, [im] { return !im->waiting.empty(); });
-                dead = std::move(im->waiting.front());
-                im->waiting.pop_front();
+                im->wake.wait(lock, [im] { return im->head != nullptr; });
+                dead = im->head;
+                im->head = dead->reclaim_next_;
+                dead->reclaim_next_ = nullptr;
+                --im->waiting;
+                im->bytes_waiting -= dead->reclaim_bytes_;
                 im->busy = true;
+                gate = im->gate;
+            }
+            if (gate) {
+                gate(); // test seam: a stalled reclaimer
             }
             // The destruction runs here, on the reclaimer, with no lock held.
-            dead.reset();
+            delete dead;
             const std::lock_guard lock(im->mutex);
             im->busy = false;
             ++im->completed;
@@ -385,22 +390,34 @@ SceneReclaimer::SceneReclaimer() : impl_(std::make_unique<Impl>()) {
 }
 
 SceneReclaimer::~SceneReclaimer() {
-    // Only a reclaimer that is not the process one is destroyed; its thread cannot be joined from
-    // inside a destruction it runs itself, so it is left to finish (no scene is lost: none can wait
-    // on a destroyed reclaimer, because only the shared one is ever handed scenes).
+    // Only the process reclaimer is created, and it is never destroyed (see shared()). A reclaimer
+    // destroyed some other way cannot be joined from a destruction it runs itself, so its thread is
+    // left to finish.
     if (impl_ && impl_->thread.joinable()) {
         impl_->thread.detach();
     }
 }
 
-void SceneReclaimer::reclaim(const Scene* scene) {
+void SceneReclaimer::reclaim(const Scene* scene) noexcept {
+    // No allocation and no throw on this path: the scene's own link is used, and the byte count is
+    // computed from sizes that already exist (round dx, DX2d).
+    scene->reclaim_bytes_ = scene->approximate_bytes();
     {
         const std::lock_guard lock(impl_->mutex);
-        impl_->waiting.emplace_back(scene);
+        scene->reclaim_next_ = impl_->head;
+        impl_->head = scene;
         ++impl_->queued;
-        impl_->peak_waiting = std::max(impl_->peak_waiting, impl_->waiting.size());
+        ++impl_->waiting;
+        impl_->peak_waiting = std::max(impl_->peak_waiting, impl_->waiting);
+        impl_->bytes_waiting += scene->reclaim_bytes_;
+        impl_->peak_bytes_waiting = std::max(impl_->peak_bytes_waiting, impl_->bytes_waiting);
     }
     impl_->wake.notify_one();
+}
+
+void SceneReclaimer::set_test_gate(std::function<void()> gate) {
+    const std::lock_guard lock(impl_->mutex);
+    impl_->gate = std::move(gate);
 }
 
 SceneReclaimer::Stats SceneReclaimer::stats() const {
@@ -408,8 +425,10 @@ SceneReclaimer::Stats SceneReclaimer::stats() const {
     Stats s;
     s.queued = impl_->queued;
     s.completed = impl_->completed;
-    s.waiting = impl_->waiting.size();
+    s.waiting = impl_->waiting;
     s.peak_waiting = impl_->peak_waiting;
+    s.bytes_waiting = impl_->bytes_waiting;
+    s.peak_bytes_waiting = impl_->peak_bytes_waiting;
     s.in_flight = impl_->busy ? 1U : 0U;
     return s;
 }
@@ -417,6 +436,30 @@ SceneReclaimer::Stats SceneReclaimer::stats() const {
 std::thread::id SceneReclaimer::last_thread() const {
     const std::lock_guard lock(impl_->mutex);
     return impl_->last_thread;
+}
+
+std::size_t Scene::approximate_bytes() const {
+    std::size_t n = 0;
+    for (const insel::Island& island : islands) {
+        n += island.head.size();
+        for (const formats::chunk::Chunk& rec : island.records) {
+            n += rec.payload.size();
+        }
+    }
+    for (const auto& storage : island_storage_) {
+        if (storage) {
+            for (const auto& buffer : *storage) {
+                n += buffer.capacity();
+            }
+        }
+    }
+    for (const IslandData& d : objects_) {
+        if (d.lists) {
+            n += (d.lists->below.size() + d.lists->above.size() + d.lists->other.size()) *
+                 sizeof(Prepared);
+        }
+    }
+    return n;
 }
 
 Scene::Scene(std::string name_, std::vector<insel::Island> islands_,
@@ -543,7 +586,8 @@ std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
 }
 
 std::shared_ptr<const Scene> Scene::with_islands(std::vector<IslandUpdate> updates) const {
-    std::shared_ptr<const Scene> next(new Scene(*this, std::move(updates)), ReclaimDeleter{});
+    std::shared_ptr<const Scene> next(new Scene(*this, std::move(updates)),
+                                      SceneReclaimDeleter{&SceneReclaimer::shared()});
     // The new generation can solve the flows of the slots it shares with this one, should this
     // generation be retired while its requests are queued. Entries of retired generations go.
     FlowBuild& fb = *caches_->flow_build;

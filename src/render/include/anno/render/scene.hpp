@@ -243,16 +243,24 @@ class SceneReclaimer {
   public:
     /// The process reclaimer (created on first use).
     static SceneReclaimer& shared();
-    /// Takes over the destruction of `scene` (called by the generation's deleter).
-    void reclaim(const Scene* scene);
+    /// Takes over the destruction of `scene` (called by the generation's deleter). Never allocates
+    /// and never throws: the scene carries its own link, so a last release under memory pressure
+    /// cannot fail here (round dx, DX2d).
+    void reclaim(const Scene* scene) noexcept;
     struct Stats {
         /// Scenes handed over, and scenes whose destruction finished.
         std::uint64_t queued = 0, completed = 0;
         /// Scenes waiting, and the largest number waiting at once.
         std::size_t waiting = 0, peak_waiting = 0;
+        /// Approximate bytes of the waiting scenes (Scene::approximate_bytes at hand-over), and the
+        /// largest at once.
+        std::size_t bytes_waiting = 0, peak_bytes_waiting = 0;
         /// Scenes being destroyed right now (0 or 1).
         std::size_t in_flight = 0;
     };
+    /// A test seam: called on the reclaimer thread before each destruction (a stalled reclaimer).
+    /// Null by default.
+    void set_test_gate(std::function<void()> gate);
     [[nodiscard]] Stats stats() const;
     /// The thread that finished the most recent destruction (default-constructed before the first).
     [[nodiscard]] std::thread::id last_thread() const;
@@ -264,6 +272,13 @@ class SceneReclaimer {
     SceneReclaimer();
     struct Impl;
     std::unique_ptr<Impl> impl_;
+};
+
+/// The deleter of every generation: the last owner's release hands the scene to the process
+/// reclaimer. Holds only the reclaimer's address (no allocation at release).
+struct SceneReclaimDeleter {
+    SceneReclaimer* reclaimer;
+    void operator()(const Scene* scene) const noexcept { reclaimer->reclaim(scene); }
 };
 
 class Scene : public std::enable_shared_from_this<Scene> {
@@ -425,6 +440,12 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// and the sprite lists answer from the level above (reduced or empty).
     void set_levels(ZoomLevels levels);
     [[nodiscard]] const ZoomLevels& levels() const { return levels_; }
+    /// The bytes this generation holds that it did not share with its parent generation's static
+    /// parts: the island records and heads (plus the copies of rewritten payloads) and the object
+    /// lists, as element counts times their sizes. An approximation of the heap bytes of the
+    /// generation's own data; shared assets and caches are not included (see
+    /// docs/app/game-shell.md, retained-work accounting).
+    [[nodiscard]] std::size_t approximate_bytes() const;
 
     /// The sea pattern of `group`, rendered on first use (thread-safe).
     const sea::SeaPattern* sea(std::size_t group) const;
@@ -534,6 +555,12 @@ class Scene : public std::enable_shared_from_this<Scene> {
     Scene(const Scene& base, std::vector<IslandUpdate>&& updates);
     /// Per island (empty entry: the record bytes are owned by the caller of the first scene).
     std::vector<std::shared_ptr<const std::vector<std::vector<std::uint8_t>>>> island_storage_;
+    /// The process reclaimer's intrusive list (round dx, DX2d): while this scene waits for
+    /// destruction, the next waiting scene and this scene's approximate bytes (set at hand-over).
+    /// Written only by SceneReclaimer.
+    friend class SceneReclaimer;
+    mutable const Scene* reclaim_next_ = nullptr;
+    mutable std::size_t reclaim_bytes_ = 0;
     struct SeaSlot {
         std::once_flag once;
         std::optional<sea::SeaPattern> pattern;

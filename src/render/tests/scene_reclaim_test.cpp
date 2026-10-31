@@ -91,8 +91,14 @@ TEST_CASE("scene reclaim: destructions are counted as queued, waiting, in flight
     scenes.clear();
     REQUIRE(wait_completed(start.completed, 3));
     const auto end = render::SceneReclaimer::shared().stats();
-    CHECK(end.queued == start.queued + 3);
-    CHECK(end.completed == start.completed + 3);
+    CHECK(end.queued >= start.queued + 3); // the reclaimer is process-wide: others may finish too
+    CHECK(end.completed >= start.completed + 3);
     CHECK(end.waiting == 0);
-    CHECK(end.in_flight == 0);
+    // Quiescence (bounded): an earlier case's last generation may still be in flight.
+    const auto settle = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (render::SceneReclaimer::shared().stats().in_flight != 0 &&
+           std::chrono::steady_clock::now() < settle) {
+        std::this_thread::yield();
+    }
+    CHECK(render::SceneReclaimer::shared().stats().in_flight == 0);
 }

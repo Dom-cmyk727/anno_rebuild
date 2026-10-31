@@ -8058,3 +8058,75 @@ python3 -I tools/sim_stream.py --check
 ### Next unit
 
 Review. Then, separately: founding from the ship (needs `0x10049340`) and the navigator.
+
+## MAP.2 — review repair of the load-only unit — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. Reviewed head `5804da0`. **Code head `a08b0d7`**; every
+result below was produced at that code head. Commits after it change documentation only. Evidence
+(commands, logs, exit status, versions): `cache/map2-repair-evidence/` (git-ignored; the numbered
+files are named in the table).
+
+### Correction of the earlier report
+
+The earlier entry said the macOS coordinator problem was a test-harness matter ("27 coordinator
+self-tests ... harness reads /proc/self/exe ... not the production path"). That was wrong. Reproduced
+in review and again here: on macOS the **production** coordinator labelled processes as Linux and
+judged liveness from `/proc`, so a live owner counted as stopped and its reservation was released
+after a restart; and the coordinator a client starts kept the client's stdout pipe open. The
+harness executable lookup was a third, separate, genuinely harness-only problem. Those 27 cases
+were also not "outside this unit": they are the cases that detected the first defect.
+
+### Findings, fixes, regressions, results
+
+| # | Finding | Fix (commit) | Regression | Before | After (code head `a08b0d7`) |
+|---|---|---|---|---|---|
+| 1 | Live Mac owner treated as stopped after a coordinator restart (capacity 100, A holds 50, B's 80 admitted with `pending=0`) | Darwin namespace 3, `proc_pidinfo` identity, fail closed on unknown (`7be9a0b`) | existing C3, F3 crash handover, F4 E1 (x2) plus new O1-O5 in `budget_f5_test.cpp` | 4 recovery cases failed (`01-before-coordinator-suite.log`, C3: `fresh 80 beside the old holder: claim=1 pending=0 reason=admitted`); with the old behaviour restored O1, O4, O5 fail (`02-mutant-old-behaviour.txt`) | 79/79 coordinator cases pass; O1-O5 pass (`02-after-ownership-new.txt`, `05-after-coordinator-suite.log`) |
+| 2 | Detached coordinator keeps the client's stdin/stdout/stderr, so a captured client does not reach EOF until the coordinator idles out | `/dev/null` for 0-2, every spawn action checked (`c5923fc`) | S1 (EOF while the coordinator lives), S2 (foreground output kept), S3 (captured pipeline) | S1 and S3 fail: the client's pipe carried the coordinator's `LISTENING` line; hand pipeline 32.0 s for a 2 s client (`03-before-streams.txt`) | S1-S3 pass; same pipeline 2.0 s; a piped `ctest` of a 19.1 s test took 19.2 s (`03-after-streams.txt`, `04-pipeline-timing-after.txt`) |
+| 3 | A parsed `base` of `Scenes/base.sze\u0000does-not-exist`, absolute, `..` and symlink-escaping paths load | `resolve_content_path`, enforced in sim_load before opening (`a08b0d7`) | 3 cases, 22 refused rows through the real parser (NUL, leading NUL, control, absolute, rooted, `..` x3, `.`, `//`, trailing `/`, backslash, `C:/`, `C:\`, `C:rel`, UNC x2, stream `:`, directory, missing, file symlink out, directory symlink out), a valid relative path, a link that stays inside, a linked content root; `install_ship_start` leaves bytes and hash unchanged for every refusal | 9 of the 22 bases were accepted and built a world (`06-before-paths.txt`) | all 22 refused with `base:`; the three candidates load with unchanged hashes (`06-after-paths.txt`) |
+
+One more defect surfaced and is fixed separately (`6f6bc43`, test readiness only): the case
+`two file clients cannot reserve the same free bytes` failed when run cold because `try_reserve`
+makes a single attempt and the case relied on a coordinator left warm by an earlier run
+(`05-file-clients-cold.txt`, `05-file-clients-cold-after.txt`). It now starts the coordinator
+explicitly; its assertions are unchanged.
+
+### Functional correctness versus test-infrastructure readiness
+
+- **Functional (the unit's behaviour):** finding 3 and the candidate loads. No simulation, state
+  stream (116) or golden changed; `git diff 5804da0 -- fixtures src/sim` touches only
+  `ship_start_load_test.cpp`. Candidate state hashes: A `e471f6e1ff1164ec`, B `0ffe696a2a07cc14`,
+  C `7ec33fd43149094b`, identical in Debug, under ASan/UBSan and across executors.
+- **Test infrastructure (what lets the memory-admitted tests run on a Mac):** findings 1 and 2,
+  the harness lookup, the cold-start precondition. `8002ae8` is superseded by the reviewed MAC-1
+  sources (`4cc0a3a`, `870a527`, `837fb5f`) plus the Darwin namespace; that overlap will merge with
+  the W4.3 line (which carries MAC-1 with Darwin under namespace 2) as a small conflict in
+  `coord_wire.hpp` and `coord_server.cpp`, resolved by keeping namespace 3 and the legacy-stamp rule.
+
+### Decisions the reviewer should look at
+
+- Darwin is namespace 3, not 2. Old records: namespace 2 with a zero stamp (`8002ae8`) are kept
+  forever (unknown); namespace 2 with a microsecond Darwin stamp (MAC-1 coordinators) are judged by
+  Darwin because the journal under `~/.cache/anno1503` is shared by every executor on the host.
+  `kCompatVersion` stays 3 and why: `docs/perf/README.md` "MAP-2 repair".
+- The path contract rejects `.`/`..`, empty segments, backslash and `:` instead of normalising them.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused new regressions, each shown failing on the defect first | O1-O5, S1-S3, 3 path cases |
+| Coordinator suite, native macOS (`-j 1`) | 79/79 |
+| Full gate: sim, replay, formats, coordinator (`ctest -j 8`, admission on, game dir set; 899 tests registered, 889 matched) | **889 executed, 889 passed, 0 failed** (`08-gate-summary.txt`); the asset-dependent cases ran: lan5, scenario corpus x3, the three candidates |
+| ASan + UBSan, affected tests (formats 12, sim 36 with the game dir, coordinator 34) | 0 findings (`09-asan-results.txt`) |
+| `clang-format` 23.1.3 on the 14 C++ files changed since `5804da0` | clean |
+| `map2_manifest_xcheck verify` (84), `sim_stream --check`, `lint_sim`, the three candidates in Python | pass |
+| `data/maps/lan5.txt` SHA-256 | `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357` (unchanged) |
+| Candidates, `data/`, `game/` | identical to the reviewed head |
+
+### Not run, skipped, remaining
+
+- **NOT_RUN:** Windows MSVC build and tests; Linux GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`); the Wine/original-binary comparison. A macOS pass does not substitute for them. In particular the Linux and Windows branches of the files edited in `src/test_support` were not compiled here.
+- **Capability-skipped, counted as not executed although ctest shows them passed:** `F3 (D2)` (real PowerShell meter), `F4 (N3)` and `F4 (N4)` (`/proc` descriptor listings). They need WSL.
+- The stream regressions S1 and S3 use a POSIX shell/pipe; S3 is skipped on Windows. The Windows detach path (`DETACHED_PROCESS`) is unchanged and unmeasured here.
+- Left running by design, not killed: coordinators this session started on ports 47850-47859 and 47632 idle out by themselves after 30 s; none was stopped by name. The caffeinate of this round (pid 21892) was stopped; the caffeinate of the previous round expires by its own timeout.
+- Remaining limits of the load-only unit are unchanged: no sailing, founding or navigation; the island-placement block is still duplicated from `fixed_map.cpp`.

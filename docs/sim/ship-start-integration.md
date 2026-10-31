@@ -325,3 +325,30 @@ files are not rewritten and no candidate is selected or installed. The loader du
 placement block of `fixed_map.cpp` (about 60 lines); folding both onto one function is a follow-up
 that would touch the fixed-map path and was left out of this unit.
 
+## 10. Review repair (task MAP-2, second round)
+
+A review of `5804da0` found three defects. The simulation, the state stream (still 116) and every
+golden are unchanged by the repair; the world a manifest loads into is bit-identical (candidate
+state hashes `e471f6e1ff1164ec`, `0ffe696a2a07cc14`, `7ec33fd43149094b`).
+
+**The base path is content-relative (loader boundary).** `sim_load::resolve_content_path` runs
+before the base scenario is opened. A path is accepted only if it is non-empty and `/`-separated,
+has no NUL or other control character, no backslash, no `:` (a Windows drive or stream), no
+leading `/`, no empty segment (this also rules out UNC `//host` and a trailing `/`), no `.` or `..`
+segment, and no segment that ends in a space or a dot. Nothing is normalised: a path that breaks a
+rule is an error naming `base`, never another file name. The content directory itself is resolved
+normally (it may be a link). The file is resolved through its links and must lie inside the real
+content directory and be a regular file; the loader opens that resolved path. A link that stays
+inside is followed; a link that leaves is refused. The schema reader is unchanged (`base` is any
+non-empty string there, as in the Python reference): what may be opened is the loader's rule, so
+the manifest compatibility contract stays one. Island `key`s are only looked up in the table of
+scanned templates and are never opened by name. A refused load leaves an existing world untouched
+(`install_ship_start`, checked by bytes and hash for every refusal).
+
+**The coordinator that admits the tests.** The coordinator problem found in review was not
+confined to the test harness: on macOS the production coordinator misjudged live owners and kept
+its starter's output pipe. Both are repaired in `src/test_support/src` and described, with the
+namespace, journal and compatibility consequences, in `docs/perf/README.md` ("MAP-2 repair").
+Nothing in the load path depends on them; they decide whether the memory-admitted tests of this
+unit (the scenario corpus, the candidate load) can be run on a Mac at all.
+

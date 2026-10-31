@@ -496,59 +496,78 @@ seat. A first settlement may be on a suitable temperate or jungle island.
 | Starting gold and cargo. | **Proposed** comparison baseline from `03_1024_med_256`, not an economy approval. |
 | Which of the three ship-start candidates to ship. | **Open.** This lane recommends and does not install. |
 
-### 11.2 Profile `map2-ship-start-v1`
+### 11.2 Profile `map2-ship-start-v2`
+
+The version-1 checker committed at `570bb97` is not acceptance. It treated a
+reachable island rectangle plus any coastal 4×4 as one opportunity, blocked
+only the origin tile of an obstacle, and reported the largest free component
+anywhere on the island. Those `PASS_TOOL_CHECKS` lines are withdrawn. The
+version-1 files stay in `data/maps/candidates/ship-start-v1/`. `parse` rejects
+version 1. `upgrade_v1` is the explicit copy onto version 2: same placements,
+a recorded policy, and a new content hash.
 
 Offline tools only. The present engine does not load the manifest, does not
 spawn these ships, and does not found cities from them. Turning off
 `developer_start` omits the whole-island grant. It does not create a ship.
 
-Hard structural checks:
+The evaluated policy is part of the manifest and part of the content hash:
 
-- manifest schema, version, integer coordinates, and one canonical hash of
-  terrain plus starts;
+| Field | Value | Meaning |
+|---|---|---|
+| `grid` | `tile` | One cell is one world tile. |
+| `metric` | `manhattan-4` | Water movement is 4-connected. Each step costs 1 tile. A diagonal is not a move, so the cost is not a Euclidean length and not an upper bound from a unit-cost diagonal. |
+| `clearance_scope` | `spawn` | Chebyshev gap from the spawn tile to the nearest `HEIGHT >= 16` tile. Clearance is not applied along the route. |
+| `obstruction` | `anlagen-head-conservative` | ANLAGEN `HEAD` width and height, with the axes swapped for an odd placement rotation. These are world tiles, not sprite pixels. Removability is unresolved, so the whole footprint blocks. |
+| `clearance` | 8 | Spawn gap, in tiles. |
+| `max_route_tiles` | 400 | Useful-opening bound, in tile steps. A longer connected route is a detour. The number of tiles is the old bound; the unit is no longer a coarse step times 8. |
+| `min_city` | 256 | Provisional attached city-space estimate. Not an original rule and not an equality target. |
+| `share_gap` | 32 | Minimum Chebyshev gap between two 4×4 centres before a share is reported. |
+| `share_min_side` | 128 | Island side below which sharing is not reported. |
+
+An eligible seat-to-island edge is one linked witness: the spawn, a
+4-connected route, the approach water cell beside that site, the 4×4, and
+that site's own connected free-land component of at least `min_city` tiles.
+The route ends on that water cell. Bounding rectangles are only a broad
+phase for spawn clearance. An enclosed lake is not ocean. A larger component
+elsewhere on the island is not credited to the site. The saved witness stores
+the spawn tile, the site origin, the water cell, the tile cost, and that
+component's size.
+
+The distinct-island matching runs on those edges. It is a feasibility
+witness, not ownership. Optional sharing is descriptive and cannot stand in
+for a missing island. An island with no eligible site, including a decorative
+filler island, is a diagnostic. It does not fail the candidate while five
+distinct islands still match. `tools/map2_ship.py` emits
+`distinct-island witness covers N of 5` when the matching is short, and
+`island ID has no eligible founding site` as a diagnostic.
+
+Hard structural checks, always on:
+
+- schema version 2, no duplicate JSON member names, no unsupported fields,
+  and `excluded` equal to the ship-start exclusion list;
 - the retained geographic envelope, distinct plain shapes, half-plane, bands,
   8-grid, bounds, and no rectangle overlap;
 - no people, pirate, or dummy template;
-- five sea spawns inside the world, on sea, separated, with the documented
-  clearance;
+- five sea spawns inside the world, on sea, separated, with the spawn clearance;
 - no player city, no island reservation, and no field that assigns a home or
-  an expansion island to a seat;
-- a diagnostic witness that five seats can be matched to five distinct
-  islands that each have a plausible founding site within the provisional
-  route bound. The witness is not ownership and is not a destination.
-  `tools/map2_ship.py` emits `distinct-island witness covers N of 5` when
-  that matching is short. `COUNT_OBSTACLES` emits `island ID has no founding
-  site` when a reached coast is blocked. `REPORT_ABSENT_CLIMATES` emits
-  `climate NAME absent everywhere` for an empty bucket. Turning any of those
-  off hides the corresponding failure. Defaults are step 8, clearance 8,
-  useful-opening bound 400 tiles, city-space estimate 256, share gap 32,
-  and share reports start at island side 128.
+  an expansion island to a seat.
 
-Provisional feasibility, configurable, labelled as tool geometry:
-
-- a coarse sea grid, 4-connected moves, and a diagonal only when both
-  orthogonal neighbours are open (no corner cut);
-- route cost in grid steps from a spawn to a cell beside a founding site;
-- a useful-opening bound. A route that exists only by crossing most of the
-  map is reported as a detour and does not by itself count as a useful opening;
-- a founding site is a 4×4 of `HEIGHT >= 16` clear of known obstacle
-  footprints, with a side on water. Connected free land around it is a
-  city-space estimate, not a service area.
+`load_templates(game, keys)` without a HEAD table keeps origin-only occupancy
+for the retired profile tools. Ship checks pass the HEAD table. A missing
+ANLAGEN id is an error.
 
 Descriptive diagnostics, not gates and not optimised toward equality:
 
-- rectangle area, `HEIGHT >= 16` land, and the city-space estimate;
-- alternative islands and route costs;
-- optional sharing: two separated footholds on one island whose side is at
-  least 128, with room for two estimates. A smaller island is not reported
-  as shared city space. Sharing is not added into the five-island witness;
-- every configured climate, including a climate absent everywhere;
-- which spawns can reach which climates. Neutral islands are not given to
-  the nearest ship.
+- alternative islands inside the bound, with route cost, site, water cell,
+  and attached component size;
+- optional sharing, not added into the witness;
+- every climate from polar through wueste, including a climate absent
+  everywhere. Reach is among islands inside the bound. Fertility and deposits
+  are not treated as known, and an absent climate is not a zero-distance success.
 
 Future engine validation, not run here: the loader seam, save and checksum,
-original movement and founding predicates, visibility, simultaneous founding,
-and host tests.
+original movement and founding predicates, which objects can be removed, the
+warehouse door, visibility, simultaneous founding, and host tests.
 
 ### 11.3 Opportunity, not equal holdings
 
@@ -560,19 +579,26 @@ islands, and it does not require each seat to hold every climate.
 
 ### 11.4 Manifest boundary
 
-`tools/map2_manifest.py` reads `map2-ship-manifest` version 1. Positions are
-integer milli-tiles (1000 per tile). The content hash is SHA-256 of the
-canonical JSON with `content_hash` removed: object keys sorted, arrays in id
-and seat order, ASCII, separators `,` and `:`. The object rejects `cities`,
-`reservations`, `homes`, `partners`, `starts`, and `owner_runs`. It does not
-copy the base scenario's players or units. The proposed loadout, identical
-for every candidate unless the owner changes the baseline, is 30000 gold,
-ship figure 1502, scout 717, donkey 718, and holds wood 50 t, food 10 t,
-tools 50 t, tools 30 t, from the human party of `03_1024_med_256`. That
-baseline is evidence for comparison, not an economy approval.
+`tools/map2_manifest.py` reads `map2-ship-manifest` version 2, profile
+`map2-ship-start-v2`. Positions are integer milli-tiles (1000 per tile).
+The content hash is SHA-256 of the canonical JSON with `content_hash`
+removed: object keys sorted, arrays in id and seat order, ASCII, separators
+`,` and `:`. Every accepted public field is in that hash, including `policy`
+and `excluded`. Duplicate member names are rejected at every object.
+Unsupported fields are rejected. A supplied `excluded` list that is not
+exactly `base-scenario players`, `base-scenario units`, `player cities`,
+`island reservations` is an error. The parser does not replace it. The
+object rejects `cities`, `reservations`, `homes`, `partners`, `starts`, and
+`owner_runs`. Version 1 is unsupported. It does not copy the base scenario's
+players or units. The proposed loadout, identical for every candidate unless
+the owner changes the baseline, is 30000 gold, ship figure 1502, scout 717,
+donkey 718, and holds wood 50 t, food 10 t, tools 50 t, tools 30 t, from the
+human party of `03_1024_med_256`. That baseline is evidence for comparison,
+not an economy approval.
 
 `src/sim_load` still loads only `anno1503-fixed-map 1`. These manifests are
-not executable ship starts. The three proposals under
-`data/maps/candidates/ship-start-v1/` are that JSON. The historical
-`lan5-a.txt`, `lan5-b.txt`, and `lan5-c.txt` files stay as Kontor-start
-measurements. `data/maps/lan5.txt` is not one of these proposals.
+not executable ship starts. The version-2 proposals are
+`data/maps/candidates/ship-start-v2/`. The version-1 files stay beside them
+as the pre-repair inputs. The historical `lan5-a.txt`, `lan5-b.txt`, and
+`lan5-c.txt` files stay as Kontor-start measurements. `data/maps/lan5.txt`
+is not one of these proposals.

@@ -2012,7 +2012,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** superseded 2026-10-31. Natural asymmetry is the settled rule. This is not a request to pick a wider tolerance.
 - **Area:** simulation / fixed map.
 - **What was asked:** whether ±10% large-island land and ±5% fairness were gates for `map2-proposed-v1`.
-- **What stands:** that profile's measurements remain historical failures of those gates (nord land worst 79 permille, dschungel 52). They are not passes. The active profile `map2-ship-start-v1` does not use those gates (`docs/sim/fixed-map.md` §11).
+- **What stands:** that profile's measurements remain historical failures of those gates (nord land worst 79 permille, dschungel 52). They are not passes. The active profile `map2-ship-start-v2` does not use those gates (`docs/sim/fixed-map.md` §11).
 
 ## OQ-516: Filler density against ten large islands (MAP.2, 2026-10-31)
 - **Status:** open. The edge stays 1431 and the ten 256² islands stay.
@@ -2025,13 +2025,13 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** open. Equality of those lengths is no longer the question (OQ-515 superseded).
 - **Area:** simulation / fixed map.
 - **Question:** which original movement, founding, fertility and deposit rules would replace the tool's geometric sea grid?
-- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. `raw` and `ore` are still not applied. The ship-start tools label routes as geometric feasibility: a coarse grid, no corner cutting, not the original's movement. `HEIGHT >= 16` land and a 4×4 coastal footprint are not a legal warehouse or a viable economy.
+- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. The version-1 ship checker (rectangle route, origin-only obstacles, island-wide maximum component) is also withdrawn. `map2-ship-start-v2` uses a 4-connected tile route that ends on water beside one 4×4, blocks ANLAGEN `HEAD` footprints, and counts that site's own component. `raw` and `ore` are still not applied. None of this is the original's movement or a legal warehouse.
 - **How to resolve:** trace founding and ship movement (W6.1) before treating a tool route as engine certification.
 
 ## OQ-518: Pairing a seat with a southern island (MAP.2, 2026-10-31)
 - **Status:** superseded 2026-10-31. Ship starts have no compulsory southern partner and no home island.
 - **Area:** simulation / fixed map.
-- **What stands:** `min-spread-lex` can prefer five equal long routes (sum 500) over a short cycle (sum 150). That objective is retired. The historical `lan5-a/b/c` files still record the pairing they used. A diagnostic matching of seats to distinct islands in `map2-ship-start-v1` is a witness that independent settlement is possible. It is not an assignment.
+- **What stands:** `min-spread-lex` can prefer five equal long routes (sum 500) over a short cycle (sum 150). That objective is retired. The historical `lan5-a/b/c` files still record the pairing they used. A diagnostic matching of seats to distinct islands in `map2-ship-start-v2` is a witness that independent settlement is possible. It is not an assignment.
 
 ## OQ-519: Which height counts as land for fairness (MAP.2, 2026-10-31)
 - **Status:** open. The profile uses one threshold and records the others.

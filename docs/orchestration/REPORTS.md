@@ -7255,6 +7255,9 @@ hash. lan5 dump digest `c6af83f95104cd4f`, 1476 bytes. Schema notes:
 
 ## MAP.2 progress — ship-start geometry checks — 2026-10-31
 
+Superseded as acceptance by the repair section at the end of this file. The
+PASS_TOOL_CHECKS line below is the version-1 rectangle model.
+
 `tools/map2_ship.py` is the offline checker for profile `map2-ship-start-v1`.
 It does not load a manifest into the engine. Route cost is grid steps times
 the cell size, an upper bound on a rectangle-blocked sea, not a sailing time.
@@ -7315,6 +7318,10 @@ reservations" appear only in the `excluded` list. The historical
 is unchanged. The loader does not read the JSON.
 
 ## MAP.2 — ship-start candidates for review — 2026-10-31 — status: READY FOR REVIEW
+
+Superseded as acceptance by the repair section at the end of this file. The
+PASS_TOOL_CHECKS line below is withdrawn. The placements and the version-1
+hashes stay as history.
 
 Tool status: PASS_TOOL_CHECKS on profile `map2-ship-start-v1` for all three
 written manifests. Engine load, sailing, founding, visibility, fertility, and
@@ -7480,3 +7487,127 @@ versus HEIGHT>=16 (OQ-519), and what a tool route is worth (OQ-517).
   visibility. Until those exist, a tool route is not a certification.
 - A deterministic rule for two players founding on the same coast in one tick.
 - Engine tests and the target-host tests. They were not run.
+
+## MAP.2 — ship-start validation repair — 2026-10-31 — status: READY FOR REVIEW
+
+The version-1 `PASS_TOOL_CHECKS` at `570bb97` is withdrawn. That checker
+joined a reachable island rectangle to any 4×4, blocked only obstacle
+origins, and credited the largest free component anywhere on the island.
+An independent review reproduced those false passes, and a false failure
+when one extra island had no site. This section is the corrected tool
+result. No map is selected or installed. The engine was not run.
+
+Checker `06c440b1b12a70d1bfa8b48a93f5008ea46195e7`. Version-2 manifests
+`e1bc8b2ba215d676cb707220730b12499436da4a`. Profile `map2-ship-start-v2`.
+Anlagen.dat sha256
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+Suites re-run at `e1bc8b2`, which contains that checker unchanged.
+
+### What the corrected model checks
+
+Movement is 4-connected on water tiles. Each step costs 1 tile
+(`manhattan-4`). A diagonal is not a step. Clearance is the Chebyshev gap
+at the spawn only. A founding site is a 4×4 of `HEIGHT >= 16` clear of the
+ANLAGEN `HEAD` footprint, axes swapped for an odd rotation. The route ends
+on a water cell beside that site, and the city figure is that site's own
+component. `min_city` stays 256. The useful-opening bound stays 400 tiles;
+the unit is now a tile step rather than a coarse step times 8. Sharing is
+reported and is not a matching edge. An island with no eligible site is a
+diagnostic. Blocking a whole `HEAD` footprint is conservative: removability
+and the original founding rule stay unresolved (OQ-517, OQ-519, OQ-520).
+
+Placements were not moved. The layout tool, run into `/tmp`, emitted the
+same three version-2 files byte for byte. `parse` then `emit` into
+`/tmp/map2-ship-v2-cmp` matched as well. Version-1 files in
+`data/maps/candidates/ship-start-v1/` are unchanged and `parse` rejects them.
+
+### Candidate results
+
+All three are `PASS_TOOL_CHECKS`, cities 0, `NOT_RUN_ENGINE`. Wueste is
+absent everywhere. The witness is one feasible matching, not a destination
+and not ownership.
+
+| | lan5-ship-a | lan5-ship-b | lan5-ship-c |
+|---|---|---|---|
+| Islands / filler | 28 / 18 | 38 / 28 | 50 / 40 |
+| Founding sites | 1,968 | 2,267 | 3,199 |
+| Islands inside 400, by seat | 4, 5, 4, 7, 3 | 6, 3, 9, 8, 11 | 6, 11, 9, 10, 8 |
+| Large islands inside 400, by seat | 2, 3, 3, 2, 3 | 2, 2, 4, 3, 2 | 2, 3, 3, 2, 3 |
+| Witness islands | 110, 101, 8, 106, 9 | 0, 111, 125, 103, 127 | 0, 123, 114, 3, 5 |
+| Witness costs | 267, 103, 125, 153, 49 | 86, 121, 143, 99, 44 | 61, 52, 130, 72, 101 |
+| Witness city, attached | 602, 1977, 1160, 1575, 1167 | 1991, 1045, 650, 707, 691 | 599, 575, 1575, 432, 1017 |
+| No eligible site | 108, 111, 112 | 113, 119, 120, 121, 126 | 118, 124, 126, 127, 128, 134, 136, 137 |
+| Content hash | `e001442a55b8ee0890ec5cd3d23e5a53f05d66fe3a29fdb1c1b47d19a3363d92` | `af5df648addf5152099db49300425830a39d3ad458d4b6090d5b9c6c3549f544` | `cfda244eed26321de5c10da864a82b11935dd044fd6700234c926e30a900b078` |
+| File sha256 | `20d948c97b1801946d71dfa86762e9b0fea5e6cd093314d83cb5b43658b2fd20` | `fbbf91ead70dde39bd6fbe1279f0c88d8a067f0efd9dde50f03d6c1bec56ce3c` | `79c66b46088715a2593b7821ff48dc00640005bb3b1e2af1655829ffb6e20882` |
+
+Seat 2 on A is the check that the city figure is local. Its site component
+is 1,160 and another component on island 8 is 1,885. The witness uses 1,160.
+The route to water `(1118, 791)` costs 125, four above the Manhattan length,
+so the path goes around land. On A and B, `NORD/N_256X256_0015_5B.SCP` is
+island 4. Its largest site component is 509 tiles, not the origin-only 1,445
+quoted in the withdrawn report. The HEIGHT silhouette is unchanged. Island 1
+on B reaches 287 on its best site, so it can host one foothold under the 256
+policy and is not reported as shared. Those differences stay.
+
+Climate reach inside the bound, unchanged in kind and recomputed on the new
+edges: A polar and tundra only from seat 3, nord misses seat 4, praerie is
+seats 0–1, jungle misses seat 3, steppe is seat 2. B nord reaches every seat,
+jungle only seats 2–3, and seat 1 has three islands inside the bound. C nord
+reaches every seat and jungle misses seats 0 and 2. The earlier suggestion
+to review B first used large-island counts from the rectangle model. Those
+counts do not survive. All three still match. The owner chooses. Nothing is
+installed over `data/maps/lan5.txt`.
+
+### Acceptance
+
+Red log, before the fix, at `570bb97`:
+`cache/map2-ship-repair-2026-10-31/contract-before-corrected.txt` (18 failed,
+including the footprint overlap). The earlier
+`contract-before.txt` let an inland site pass for the wrong reason and is
+kept, not used as the red result. Green log:
+`cache/map2-ship-repair-2026-10-31/final-tests.txt`.
+
+| Requirement | Test | Command | Exit | Evidence | Limitation |
+|---|---|---|---|---|---|
+| Enclosed lake is not ocean | `test_enclosed_lake` | `python3 -I tools/map2_ship_contract.py` | 0 | `final-tests.txt` | Tool water is `HEIGHT < 16`, not the original sea rule |
+| Route ends at the site, past the bound | `test_far_beach`, cost 17 | same | 0 | same | 17 is the east-gutter Manhattan path, counted on the grid |
+| 4×4 without 256 attached tiles fails | `test_tiny_city` | same | 0 | same | 256 is provisional policy |
+| Distant component is not credited | `test_distant_component` | same | 0 | same | |
+| HEAD footprint, odd rotation swaps | `test_footprint` | same | 0 | same | Removable objects are not distinguished |
+| Extra uncolonizable island is diagnostic | `test_extra_island` | same | 0 | same | |
+| Hall matching can still fail | `test_hall` | same | 0 | same | |
+| Sharing is not a second witness seat | `test_sharing` | same | 0 | same | |
+| Diagonal costs 2 | `test_diagonal_metric` | same | 0 | same | |
+| Strict JSON | `test_manifest_strict` | same | 0 | same | |
+| Each broken stub fails, then the restored code passes | `test_negative_controls` | same | 0 | same | Stubs are in-process, not public flags |
+| Legacy dump | manifest selftest and `fixed_map.py dump` | `python3 -I tools/map2_manifest_selftest.py` | 0 | same, digest `c6af83f95104cd4f` | Runtime v1 is unchanged |
+| Historical ship suite | `map2_ship_selftest.py` | that command | 0 | 30 pass | |
+| Version-1 upgrade keeps placements | `test_upgrade` | manifest selftest | 0 | 25 pass | |
+| A, then B and C, one each | `map2_ship.py check` | see below | 0 | `lan5-ship-a-inspect.json`, `lan5-ship-b.json`, `lan5-ship-c.json` | Not an engine sail |
+| Round-trip | `parse`/`emit` and layout rebuild | both matched the saved files | 0 | `/tmp/map2-ship-v2-cmp` | |
+| Previews | six top/iso plus three choice overlays | `map2_ship_preview.py` | 0 | `cache/map2-ship-repair-2026-10-31/previews/` | Straight line to the water cell, labelled `LINE TO SEA`, not a sailed polyline |
+
+`data/maps/lan5.txt` remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`,
+1476 bytes. The Kontor-start `lan5-a/b/c.txt` files were not retouched.
+
+### Previews
+
+Opened the six plain views and the three choice overlays under
+`cache/map2-ship-repair-2026-10-31/previews/`. Land is the filled climate
+colour, the pale box is the template rectangle, and the seats sit on sea.
+The choice overlay draws a straight segment from the spawn to the validated
+water cell and a marker on the 4×4. The legend reads `LINE TO SEA`, `SITE`,
+`S SHARE`, `NO CLAIM`. The segment is not a line to the island centre and
+is not the sailed path. A is the open pair of scatters, with island 0 split
+into two land masses. B packs the large islands closer. C fills more of the
+diamond and leaves the same small filler islands that cannot host a city.
+No placement changed after the inspection.
+
+### Still open
+
+OQ-516 filler density, OQ-517 what a tool route is worth, OQ-519 which height
+is land, OQ-520 the warehouse door, OQ-521 clustered versus dispersed spawns.
+Original movement, founding legality, removability, visibility, simultaneous
+founding, fertility, the save checksum, and the loader seam are
+`NOT_RUN_ENGINE`. The manifest remains tool-only.

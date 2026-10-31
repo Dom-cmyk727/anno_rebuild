@@ -910,8 +910,25 @@ TEST_CASE("scene picture bounds: sustained edits keep the window's change work t
             picture.commit(frames);
         }
     }
+    // The drain lets the reclaimer catch up before each commit (bounded): under the Monotonic
+    // default the stream commits a generation per commit (round dz: 42 here, against 2 under
+    // LatestOnly), so a reclaimer that is behind skips commits by design, and a drain that
+    // retried without waiting could use up its rounds in microseconds and stop with islands
+    // pending (seen under ctest -j 6; reproduced with the reclaimer slowed to 200 ms a scene).
+    auto reclaimer_caught_up = [&picture, &limits] {
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        while (std::chrono::steady_clock::now() < until) {
+            const auto ps = picture.stats();
+            if (ps.reclaim_completed == ps.reclaim_queued &&
+                render::SceneReclaimer::shared().stats().waiting <= limits.max_reclaim_backlog) {
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
     for (int round = 0; round < 200 && picture.pending() > 0; ++round) {
         picture.wait_idle();
+        reclaimer_caught_up();
         picture.commit(frames);
     }
     const auto st = picture.stats();

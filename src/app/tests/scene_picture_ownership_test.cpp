@@ -434,10 +434,11 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
           "reclaimer" *
           doctest::test_suite("scene_picture_ownership")) {
     // A frame plans from a generation (FrameRenderer::update_chunks; the renderer itself releases
-    // it when the update returns, round ea), and the caller keeps a handle to the same one. The bridge commits two more generations and is
-    // destroyed; then the caller releases the frame and its handle. That generation, and no
-    // other generation of this test, is destroyed on the reclaimer thread after that release,
-    // and the accounted bytes return to what they were before the picture existed.
+    // it when the update returns, round ea), and the caller keeps a handle to the same one. The
+    // bridge commits two more generations and is destroyed; then the caller releases the frame and
+    // its handle. That generation, and no other generation of this test, is destroyed on the
+    // reclaimer thread after that release, and the accounted bytes return to what they were before
+    // the picture existed.
     auto scene = islands_scene(2);
     std::vector<app::SceneBuilding> none;
     struct Seen {

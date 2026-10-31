@@ -51,6 +51,22 @@ void* operator new[](std::size_t n) {
     return operator new(n);
 }
 
+// The nothrow forms are replaced too: their pointers reach the replaced
+// operator delete (std::stable_sort frees its get_temporary_buffer storage,
+// taken with new(nothrow), through plain delete), so they must come from the
+// same malloc. Left to the runtime, ASan reports the pair as an
+// alloc-dealloc mismatch (operator new vs free).
+void* operator new(std::size_t n, const std::nothrow_t&) noexcept {
+    if (g_armed.load(std::memory_order_relaxed)) {
+        g_bytes.fetch_add(n, std::memory_order_relaxed);
+    }
+    return std::malloc(n != 0 ? n : 1);
+}
+
+void* operator new[](std::size_t n, const std::nothrow_t& tag) noexcept {
+    return operator new(n, tag);
+}
+
 void operator delete(void* p) noexcept {
     std::free(p);
 }
@@ -64,5 +80,13 @@ void operator delete(void* p, std::size_t) noexcept {
 }
 
 void operator delete[](void* p, std::size_t) noexcept {
+    std::free(p);
+}
+
+void operator delete(void* p, const std::nothrow_t&) noexcept {
+    std::free(p);
+}
+
+void operator delete[](void* p, const std::nothrow_t&) noexcept {
     std::free(p);
 }

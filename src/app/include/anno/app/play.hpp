@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -48,10 +49,24 @@ struct PlayLoad {
     std::string name;
 };
 
+/// What a fixed map's play load does not take from the layout (sim_load::FixedMapOptions).
+/// The defaults are `--play`'s: two human seats and the developer's test resources.
+struct FixedPlayOptions {
+    /// Human seats, start seat 0 first (at most the layout's start regions). A test fixture
+    /// (the legal five-city workload, round dy B2) seats five; `--play` seats two.
+    std::size_t seats = 2;
+    /// The developer's test resources (sim_load::DeveloperResources): documented test
+    /// money and goods, charged and refused by the sim as any other.
+    std::int64_t gold = 10000000;
+    std::uint32_t goods_tons = 190;
+};
+
 /// Registry, `load_scenario_with_links`, `World::create`. The link list names
-/// the template each resolved link was placed from.
+/// the template each resolved link was placed from. A fixed map (`.txt`) is loaded with
+/// `fixed` (ignored for a scenario file).
 [[nodiscard]] formats::Result<PlayLoad, std::string>
-load_play(const std::filesystem::path& game_dir, const std::filesystem::path& file);
+load_play(const std::filesystem::path& game_dir, const std::filesystem::path& file,
+          const FixedPlayOptions& fixed = {});
 
 /// The world's buildings, in island-slot order then city, list, slot.
 [[nodiscard]] std::vector<SceneBuilding> play_buildings(const sim::World& world);

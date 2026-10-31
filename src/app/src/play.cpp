@@ -83,12 +83,19 @@ namespace {
 formats::Result<PlayLoad, std::string>
 load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& map,
                 const std::shared_ptr<const sim::TypeRegistry>& types,
-                const sim_load::IslandTemplates& templates, const fs::path& file) {
-    // Two human seats, as the lan5 test and the developer start use them.
-    const std::vector<sim::Seat> seats{sim::Seat{sim::SeatKind::Human, "P0", 0, 0},
-                                       sim::Seat{sim::SeatKind::Human, "P1", 1, 0}};
+                const sim_load::IslandTemplates& templates, const fs::path& file,
+                const FixedPlayOptions& fixed) {
+    // Human seats P0, P1, ... with colours 0, 1, ... (two by default, as the lan5 test and
+    // the developer start use them).
+    std::vector<sim::Seat> seats;
+    for (std::size_t i = 0; i < fixed.seats; ++i) {
+        seats.push_back(sim::Seat{sim::SeatKind::Human, "P" + std::to_string(i),
+                                  static_cast<std::uint32_t>(i), 0});
+    }
     sim_load::FixedMapOptions options;
     options.resources.enabled = true;
+    options.resources.gold = fixed.gold;
+    options.resources.goods_tons = fixed.goods_tons;
     const sim::SimConfig cfg;
     auto loaded = sim_load::load_fixed_map(map, seats, game_dir, *types, cfg, options);
     if (!loaded) {
@@ -144,7 +151,8 @@ load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& ma
 
 } // namespace
 
-formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const fs::path& file) {
+formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const fs::path& file,
+                                                 const FixedPlayOptions& fixed) {
     std::ifstream in(file, std::ios::binary);
     if (!in) {
         return std::string("cannot read ") + path_text(file);
@@ -161,12 +169,13 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     // text, data/maps) through load_fixed_map; anything else is a scenario file through
     // load_scenario_with_links. A failure names the file and the loader that refused it.
     if (extension_lower(file) == ".txt") {
-        auto fixed = anno::formats::fixed_map::parse(buf);
-        if (!fixed) {
+        auto fixed_map = anno::formats::fixed_map::parse(buf);
+        if (!fixed_map) {
             return path_text(file) +
-                   ": parse_fixed_map: " + anno::formats::fixed_map::error_line(fixed.error());
+                   ": parse_fixed_map: " + anno::formats::fixed_map::error_line(fixed_map.error());
         }
-        auto built = load_fixed_play(game_dir, fixed.value(), registry.types, templates, file);
+        auto built =
+            load_fixed_play(game_dir, fixed_map.value(), registry.types, templates, file, fixed);
         if (!built) {
             return path_text(file) + ": load_fixed_map: " + built.error();
         }

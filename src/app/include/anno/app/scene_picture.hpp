@@ -139,6 +139,16 @@ class ScenePicture {
     [[nodiscard]] const std::vector<render::ChunkKey>& last_invalidated() const {
         return last_invalidated_;
     }
+    /// One island of a commit: its index, the version committed, and the chunk keys its own
+    /// change invalidated (every zoom level). A generation can commit several islands; each
+    /// island's readiness is measured against its own keys (round dz, 2d).
+    struct CommittedIsland {
+        std::size_t index = 0;
+        std::uint64_t version = 0;
+        std::vector<render::ChunkKey> keys;
+    };
+    /// The islands of the last commit that committed something. Window thread.
+    [[nodiscard]] const std::vector<CommittedIsland>& last_commit() const { return last_commit_; }
 
     /// Waits until no object build is queued or running (tests, stills; the window never calls it).
     /// Results are committed by commit().
@@ -229,6 +239,7 @@ class ScenePicture {
     /// (round dx, DX2e). Rebuilt for the touched islands when the list changes (reindex).
     std::map<std::uint32_t, std::vector<SceneBuilding>> by_island_;
     std::vector<render::ChunkKey> last_invalidated_;
+    std::vector<CommittedIsland> last_commit_;
 
     /// Rebuilds the entries of `islands` from the building list (one pass over the list).
     void reindex(const std::set<std::uint32_t>& islands);

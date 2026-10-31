@@ -860,6 +860,7 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
     std::set<render::ChunkKey> keys;
     std::uint64_t requeued = 0;
     std::vector<std::pair<std::size_t, std::uint64_t>> committed_now;
+    std::vector<CommittedIsland> commit_islands;
     updates.reserve(ready.size());
     for (PictureResult& r : ready) {
         // The worker's change set is valid when the island's lists are still the ones it was taken
@@ -893,6 +894,7 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
         u.lists = std::move(r.lists);
         u.storage = std::move(r.storage);
         committed_now.emplace_back(r.index, r.version);
+        commit_islands.push_back(CommittedIsland{r.index, r.version, r.change.keys});
         updates.push_back(std::move(u));
     }
     if (updates.empty()) {
@@ -908,6 +910,7 @@ std::size_t ScenePicture::commit(render::FrameRenderer& frames) {
     std::vector<render::ChunkKey> invalid(keys.begin(), keys.end());
     frames.invalidate(invalid, next->generation());
     last_invalidated_ = invalid;
+    last_commit_ = std::move(commit_islands);
     current_ = next;
     {
         const std::lock_guard lock(state_->mutex);

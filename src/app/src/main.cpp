@@ -278,8 +278,7 @@ int run(const std::vector<std::string>& raw) {
     std::unique_ptr<anno::app::PlayRunner> runner;
     anno::app::ViewerHooks hooks;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
-    anno::app::ViewerPicture follow;
-    const anno::app::ViewerPicture* follow_ptr = nullptr;
+    std::unique_ptr<anno::app::PlayFollower> follow;
     if (play) {
         // The picture that follows the sim's buildings (docs/app/game-shell.md), made from the
         // scene as loaded and the buildings at tick 0, before the world moves into the runner.
@@ -293,16 +292,15 @@ int run(const std::vector<std::string>& raw) {
         hooks.title = [&] { return runner->title_line(); };
         hooks.on_pause = [&](bool paused) { runner->set_paused(paused); };
         hooks_ptr = &hooks;
-        follow.picture = picture.get();
-        follow.take_batches = [&] { return runner->take_building_batches(); };
-        follow_ptr = &follow;
+        follow = std::make_unique<anno::app::PlayFollower>(*picture, *runner);
     }
     const std::string err = anno::app::run_viewer(
         std::move(shown), args->group.value_or(2), args->renderer, args->river_flow, args->water,
-        args->lookahead_chunks, args->zoom, hooks_ptr, follow_ptr);
+        args->lookahead_chunks, args->zoom, hooks_ptr, follow.get());
     // Teardown: the producer stops first (the sim thread is joined), then the bridge, whose
     // destructor joins its builders and hands what it holds to its reaper; the generations are
     // destroyed by the reclaimer.
+    follow.reset();
     if (runner) {
         runner->stop();
     }

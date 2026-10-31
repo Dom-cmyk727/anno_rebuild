@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -157,6 +158,18 @@ class PlayRunner {
     /// The turns whose batches are waiting, oldest first (tests; the window
     /// uses take_building_batches). Taken under the same lock as a snapshot swap.
     [[nodiscard]] std::vector<std::uint64_t> pending_batch_turns() const;
+    /// Whether the mailbox holds a batch the window has not taken: a flag set by the push and
+    /// cleared by the take (both under the lock), read without the lock (round eb, 1A). The
+    /// window's idle check reads it every loop iteration; it copies nothing. A read that races a
+    /// push sees the batch at the next iteration, and the listener below wakes that iteration.
+    [[nodiscard]] bool batches_waiting() const { return batches_waiting_.load(); }
+    /// Called on the sim thread after a turn pushed a batch (outside the snapshot lock), so a
+    /// window that waits for events wakes for it (the viewer posts an SDL event). Thread-safe:
+    /// once a call that clears it returns, the previous listener is not called again.
+    void set_batch_listener(std::function<void()> listener);
+    /// Test seam: called on the sim thread inside every turn, after its commands are chosen and
+    /// before the turn runs, with the turn index (a turn held in flight). Call before `start`.
+    void set_turn_gate(std::function<void(std::uint64_t turn)> gate);
     /// Every refused command since the last call, oldest first (the window takes them
     /// once per frame, as the batches). The list is kept to the last 256 refusals
     /// (kRejectionKeep): a window that stops taking them loses the oldest, not the newest.
@@ -217,6 +230,11 @@ class PlayRunner {
     mutable std::mutex snap_mu_;
     std::shared_ptr<const PlaySnapshot> snap_;
     BuildingMailbox mailbox_{1};
+    /// The mailbox is not empty (written under snap_mu_ by push and take).
+    std::atomic<bool> batches_waiting_{false};
+    std::mutex listener_mu_;
+    std::function<void()> listener_;
+    std::function<void(std::uint64_t)> turn_gate_;
     // The script and its cursor (sim thread only once started).
     std::vector<ScriptedCommand> script_;
     std::size_t script_next_ = 0;

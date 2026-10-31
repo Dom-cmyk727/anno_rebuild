@@ -500,6 +500,9 @@ void PlayRunner::one_turn() {
             applied_.push_back({turn.index, command});
         }
     }
+    if (turn_gate_) {
+        turn_gate_(turn.index); // test seam: the turn is in flight from here
+    }
     const auto started = schedule_->now();
     sim::run_turn(world_, nullptr, turn, steps_);
     const auto us =
@@ -587,23 +590,44 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn,
     if (may_collapse) {
         full_list = buildings_;
     }
-    std::lock_guard lock(snap_mu_);
-    if (batch) {
-        mailbox_.push_prepared(std::move(batch), std::move(full_list));
+    const bool pushed = batch != nullptr;
+    {
+        std::lock_guard lock(snap_mu_);
+        if (batch) {
+            mailbox_.push_prepared(std::move(batch), std::move(full_list));
+            batches_waiting_.store(true);
+        }
+        for (RejectionNote& note : rejected) {
+            rejections_.push_back(std::move(note));
+        }
+        if (rejections_.size() > kRejectionKeep) {
+            rejections_.erase(rejections_.begin(),
+                              rejections_.begin() +
+                                  static_cast<std::ptrdiff_t>(rejections_.size() - kRejectionKeep));
+        }
+        snap_ = std::move(next);
     }
-    for (RejectionNote& note : rejected) {
-        rejections_.push_back(std::move(note));
+    if (pushed) {
+        // The window's wake-up, after the publication (outside the snapshot lock).
+        const std::lock_guard lock(listener_mu_);
+        if (listener_) {
+            listener_();
+        }
     }
-    if (rejections_.size() > kRejectionKeep) {
-        rejections_.erase(rejections_.begin(),
-                          rejections_.begin() +
-                              static_cast<std::ptrdiff_t>(rejections_.size() - kRejectionKeep));
-    }
-    snap_ = std::move(next);
+}
+
+void PlayRunner::set_batch_listener(std::function<void()> listener) {
+    const std::lock_guard lock(listener_mu_);
+    listener_ = std::move(listener);
+}
+
+void PlayRunner::set_turn_gate(std::function<void(std::uint64_t)> gate) {
+    turn_gate_ = std::move(gate);
 }
 
 std::vector<std::shared_ptr<const BuildingBatch>> PlayRunner::take_building_batches() {
     std::lock_guard lock(snap_mu_);
+    batches_waiting_.store(false);
     return mailbox_.take();
 }
 

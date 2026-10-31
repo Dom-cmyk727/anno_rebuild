@@ -11,6 +11,7 @@ add_library(anno_app_core
   src/picture_check.cpp
   src/picture_trace.cpp
   src/play.cpp
+  src/play_follow.cpp
   src/png.cpp
   src/scene_picture.cpp
   src/still.cpp
@@ -48,6 +49,7 @@ if(ANNO_BUILD_TESTS)
     tests/scene_picture_test.cpp tests/scene_backing_test.cpp
     tests/scene_picture_recovery_test.cpp tests/scene_picture_ownership_test.cpp
     tests/scene_picture_publish_test.cpp
+    tests/play_follow_test.cpp
     tests/credit_test.cpp tests/picture_check_test.cpp tests/legal_workload_test.cpp
     tests/picture_trace_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)

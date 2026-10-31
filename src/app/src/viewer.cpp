@@ -270,7 +270,7 @@ class Viewer {
     Viewer(std::shared_ptr<const render::Scene> scene, std::size_t group, std::size_t threads,
            Renderer renderer, render::RiverFlowMode river_flow, render::WaterStyle water,
            std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks,
-           const ViewerPicture* play)
+           PlayFollower* play)
         : play_(play), levels_(scene->levels()), name_(scene->name), group_(group), zoom_opt_(zoom),
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks) {
         frames_.river_flow = river_flow;
@@ -290,7 +290,7 @@ class Viewer {
     /// The generation shown now: the picture's current one in play, else the scene of --view.
     /// An owning handle; a frame takes one at its start and draws all of it from that one.
     [[nodiscard]] std::shared_ptr<const render::Scene> current() const {
-        return play_ != nullptr ? play_->picture->scene() : fixed_;
+        return play_ != nullptr ? play_->picture().scene() : fixed_;
     }
 
     /// The smallest tile width the continuous zoom may show: --min-zoom, else the
@@ -315,13 +315,11 @@ class Viewer {
   private:
     void handle(const SDL_Event& e);
     void draw();
-    /// The frame boundary of play (ViewerPicture): takes the sim's batches, applies them and
+    /// The frame boundary of play (PlayFollower::follow): takes the sim's batches, applies them and
     /// commits what is ready, before the frame takes its scene handle. Never waits for a build.
     void follow_picture();
-    /// Whether the picture has work the frames must keep committing (a change not shown yet).
-    [[nodiscard]] bool picture_pending() const {
-        return play_ != nullptr && play_->picture->pending() > 0;
-    }
+    /// What the loop needs from this iteration (FrameDemand, play_follow.hpp).
+    [[nodiscard]] FrameDemand demand(bool can_draw) const;
     /// `gen`: the frame's scene handle, the only scene the frame reads.
     void draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::Rect view);
 #ifdef ANNO_VIEWER_GPU
@@ -364,7 +362,9 @@ class Viewer {
 
     /// The scene of --view (null in play: the frames draw the picture's generations).
     std::shared_ptr<const render::Scene> fixed_;
-    const ViewerPicture* play_ = nullptr;
+    PlayFollower* play_ = nullptr;
+    /// The SDL event type the runner's batch listener posts (0: none registered).
+    std::uint32_t wake_event_ = 0;
     render::ZoomLevels levels_;
     std::string name_;
     /// The frame boundary's work in the frame being drawn (follow_picture), and its end (the
@@ -602,6 +602,30 @@ std::string Viewer::run() {
     // Chunk builders use half the cores; frames use all of them.
     // Queue the river flows now (low priority threads): chunks that are built
     // before a flow is ready show the legacy river look and are rebuilt.
+    // A batch published while the loop waits for events wakes it (the runner's sim thread posts
+    // an SDL event; SDL_PushEvent is thread-safe). Cleared before the window goes, below, and on
+    // every other way out of run().
+    struct ClearListener {
+        PlayFollower* play;
+        explicit ClearListener(PlayFollower* p) : play(p) {}
+        ClearListener(const ClearListener&) = delete;
+        ClearListener& operator=(const ClearListener&) = delete;
+        ~ClearListener() {
+            if (play != nullptr) {
+                play->runner().set_batch_listener({});
+            }
+        }
+    } clear_listener{play_};
+    if (play_ != nullptr) {
+        wake_event_ = SDL_RegisterEvents(1);
+        if (wake_event_ != 0) {
+            play_->runner().set_batch_listener([type = wake_event_] {
+                SDL_Event e{};
+                e.type = type;
+                SDL_PushEvent(&e);
+            });
+        }
+    }
     // (The flow builders hold the generation that asked: Scene::river_flow.)
     current()->prefetch_river_flow();
     // No default scene: every chunk job holds the generation of the frame that planned it.
@@ -613,10 +637,10 @@ std::string Viewer::run() {
         }
         // Nothing is drawn while hidden or backing off; dirty_ stays set.
         const bool can_draw = !hidden_ && !retry_at_;
-        // A change of the play picture that is not committed yet keeps the frames coming (also
-        // while paused: the commits land without a new turn).
-        const bool animating =
-            (!paused_at_ || frames_.busy() || zoom_animating() || picture_pending()) && can_draw;
+        // A batch waiting in the mailbox, a change not committed yet, chunk builds and the
+        // compositor's uploads and dissolves keep the frames coming, also while paused (round eb,
+        // 1A): they finish without a new turn or an input event.
+        const bool animating = demand(can_draw).animating();
         if (!animating && !(dirty_ && can_draw)) {
             int wait_ms = 100;
             if (retry_at_) {
@@ -664,6 +688,9 @@ std::string Viewer::run() {
     // build per worker in progress); the generations their jobs held are released there, through
     // the reclaimer. The GPU finishes its submissions before the compositor is destroyed; the
     // wave simulation's background preparations release the generation they hold as they end.
+    if (play_ != nullptr) {
+        play_->runner().set_batch_listener({}); // no SDL event after the window is gone
+    }
     frames_.set_workers(nullptr);
     for (auto& t : seas) {
         t.join();
@@ -686,6 +713,10 @@ std::string Viewer::run() {
 }
 
 void Viewer::handle(const SDL_Event& e) {
+    if (wake_event_ != 0 && e.type == wake_event_) {
+        dirty_ = true; // a building batch arrived (the runner's listener): draw it now
+        return;
+    }
     const float density = SDL_GetWindowPixelDensity(window_);
     switch (e.type) {
     case SDL_EVENT_QUIT:
@@ -969,6 +1000,20 @@ bool Viewer::group_ready(std::size_t g) const {
     return scene->sea_built(g);
 }
 
+FrameDemand Viewer::demand(bool can_draw) const {
+    FrameDemand d;
+    d.can_draw = can_draw;
+    d.paused = paused_at_.has_value();
+    d.chunks_busy = frames_.busy();
+    d.zoom_animating = zoom_animating();
+    d.play_work = play_ != nullptr && play_->has_work();
+#ifdef ANNO_VIEWER_GPU
+    d.gpu_work = gpu_ && gpu_->frame->work_pending();
+#endif
+    d.dirty = dirty_;
+    return d;
+}
+
 void Viewer::update_title() {
     std::string title = "anno1503 — " + name_ + " — zoom group " + std::to_string(group_);
     if (water_ == render::WaterStyle::Enhanced) {
@@ -1008,15 +1053,7 @@ bool Viewer::on_gpu() const {
 void Viewer::follow_picture() {
     const auto start = Clock::now();
     if (play_ != nullptr) {
-        ScenePicture& picture = *play_->picture;
-        const auto batches = play_->take_batches();
-        if (!batches.empty()) {
-            picture.apply(batches);
-        }
-        // Commits what is ready (a full reclaim backlog skips it until a later frame) and
-        // invalidates the chunk keys of the change in this renderer: the cached chunks keep
-        // drawing until their rebuilds from the new generation arrive.
-        committed_ += picture.commit(frames_);
+        committed_ += play_->follow(frames_);
     }
     picture_end_ = Clock::now();
     picture_ms_ = std::chrono::duration<double, std::milli>(picture_end_ - start).count();
@@ -1291,12 +1328,12 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
         chunks_received_ = 0;
     }
     if (play_ != nullptr) {
-        const std::string failed = play_->picture->error();
+        const std::string failed = play_->picture().error();
         std::fprintf(stderr,
                      "  picture: generation %llu, %zu island(s) committed in this interval, "
                      "%zu pending%s%s\n",
-                     static_cast<unsigned long long>(play_->picture->scene()->generation()),
-                     committed_, play_->picture->pending(),
+                     static_cast<unsigned long long>(play_->picture().scene()->generation()),
+                     committed_, play_->picture().pending(),
                      failed.empty() ? "" : "; failed: ", failed.c_str());
         committed_ = 0;
     }
@@ -1314,12 +1351,9 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
 std::string run_viewer(std::shared_ptr<const render::Scene> scene, std::size_t group,
                        Renderer renderer, render::RiverFlowMode river_flow,
                        render::WaterStyle water, std::size_t lookahead_chunks, ZoomOptions zoom,
-                       const ViewerHooks* hooks, const ViewerPicture* play) {
+                       const ViewerHooks* hooks, PlayFollower* play) {
     if (!scene || !scene->bounds(group)) {
         return "no islands";
-    }
-    if (play != nullptr && (play->picture == nullptr || !play->take_batches)) {
-        return "the play picture is not set up";
     }
     const std::size_t threads =
         (std::thread::hardware_concurrency() > 0 ? std::thread::hardware_concurrency() : 4U);

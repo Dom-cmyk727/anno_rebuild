@@ -2025,7 +2025,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** open. Equality of those lengths is no longer the question (OQ-515 superseded).
 - **Area:** simulation / fixed map.
 - **Question:** which original movement, founding, fertility and deposit rules would replace the tool's geometric sea grid?
-- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. The version-1 ship checker (rectangle route, origin-only obstacles, island-wide maximum component) is also withdrawn. `map2-ship-start-v2` uses a 4-connected tile route that ends on water beside one 4×4, blocks ANLAGEN `HEAD` footprints, and counts that site's own component. `raw` and `ore` are still not applied. None of this is the original's movement or a legal warehouse.
+- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. The version-1 ship checker (rectangle route, origin-only obstacles, island-wide maximum component) is also withdrawn. `map2-ship-start-v2` uses a 4-connected route on water that reaches the world boundary, ending beside one 4×4, blocks ANLAGEN `HEAD` footprints, and counts that site's own component. The 256-tile figure is a geometric proxy. `raw` and `ore` are still not applied. None of this is the original's movement or a legal warehouse.
 - **How to resolve:** trace founding and ship movement (W6.1) before treating a tool route as engine certification.
 
 ## OQ-518: Pairing a seat with a southern island (MAP.2, 2026-10-31)

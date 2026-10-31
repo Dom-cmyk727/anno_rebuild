@@ -515,23 +515,34 @@ The evaluated policy is part of the manifest and part of the content hash:
 | Field | Value | Meaning |
 |---|---|---|
 | `grid` | `tile` | One cell is one world tile. |
-| `metric` | `manhattan-4` | Water movement is 4-connected. Each step costs 1 tile. A diagonal is not a move, so the cost is not a Euclidean length and not an upper bound from a unit-cost diagonal. |
+| `metric` | `manhattan-4` | Water movement is 4-connected. Each step costs 1 tile. A diagonal is not a move, so the cost is not a Euclidean length and not an upper bound from a unit-cost diagonal. The water is exterior sea, defined below. |
 | `clearance_scope` | `spawn` | Chebyshev gap from the spawn tile to the nearest `HEIGHT >= 16` tile. Clearance is not applied along the route. |
 | `obstruction` | `anlagen-head-conservative` | ANLAGEN `HEAD` width and height, with the axes swapped for an odd placement rotation. These are world tiles, not sprite pixels. Removability is unresolved, so the whole footprint blocks. |
 | `clearance` | 8 | Spawn gap, in tiles. |
 | `max_route_tiles` | 400 | Useful-opening bound, in tile steps. A longer connected route is a detour. The number of tiles is the old bound; the unit is no longer a coarse step times 8. |
-| `min_city` | 256 | Provisional attached city-space estimate. Not an original rule and not an equality target. |
+| `min_city` | 256 | Geometric proxy for attached free land. Not a viable city, and not evidence of warehouse service, fertility, founding, or economic progression. Not an equality target. |
 | `share_gap` | 32 | Minimum Chebyshev gap between two 4×4 centres before a share is reported. |
 | `share_min_side` | 128 | Island side below which sharing is not reported. |
 
-An eligible seat-to-island edge is one linked witness: the spawn, a
-4-connected route, the approach water cell beside that site, the 4×4, and
-that site's own connected free-land component of at least `min_city` tiles.
-The route ends on that water cell. Bounding rectangles are only a broad
-phase for spawn clearance. An enclosed lake is not ocean. A larger component
+Exterior sea is fixed for version 2 and is not a separate hashed policy
+field. It is the water a 4-connected walk can reach from the boundary of the
+finite world, using the same `HEIGHT >= 16` land mask as the route. A spawn
+and a founding approach must both lie in that water. An enclosed lake does
+not qualify, including a lake whose only contact with the sea is a diagonal
+corner. Opening an orthogonal channel does. This is the tool's boundary
+rule. It is not the original movement algorithm and it is not a ship-hull
+clearance. A manifest cannot name another sea rule: `sea` inside `policy`
+is an unsupported field and is rejected, so a contradictory value is not
+stored or hashed. Reports add `sea: exterior-4` beside the hashed policy.
+
+An eligible seat-to-island edge is one linked witness: the spawn on exterior
+sea, a 4-connected route through that sea, the approach water cell beside
+that site, the 4×4, and that site's own connected free-land component of at
+least `min_city` tiles. The route ends on that water cell. Bounding
+rectangles are only a broad phase for spawn clearance. A larger component
 elsewhere on the island is not credited to the site. The saved witness stores
 the spawn tile, the site origin, the water cell, the tile cost, and that
-component's size.
+component's size. The 256-tile figure is the geometric proxy above.
 
 The distinct-island matching runs on those edges. It is a feasibility
 witness, not ownership. Optional sharing is descriptive and cannot stand in
@@ -554,7 +565,16 @@ Hard structural checks, always on:
 
 `load_templates(game, keys)` without a HEAD table keeps origin-only occupancy
 for the retired profile tools. Ship checks pass the HEAD table. A missing
-ANLAGEN id is an error.
+ANLAGEN id is an error. Each loaded template keeps two digests. `land_sha256`
+is the rotation-canonical thresholded land mask and still detects duplicate
+shapes. `source_sha256` is SHA-256 of the complete raw `.scp` bytes.
+`template_sha256` in a ship report is that file digest. `shape_sha256` is the
+mask. A template with no source digest leaves `template_sha256` empty rather
+than copying the shape digest. The report also names the checker commit,
+whether `map2_ship.py`, `map2_manifest.py`, `map2_profile.py`, or
+`map2_shape.py` differ from that commit, and the SHA-256 of each of those
+files. Those fields are not the manifest content hash. The full ANLAGEN file
+digest stays `anlagen_sha256`.
 
 Descriptive diagnostics, not gates and not optimised toward equality:
 

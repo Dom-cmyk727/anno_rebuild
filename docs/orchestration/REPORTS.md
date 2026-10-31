@@ -7490,6 +7490,11 @@ versus HEIGHT>=16 (OQ-519), and what a tool route is worth (OQ-517).
 
 ## MAP.2 — ship-start validation repair — 2026-10-31 — status: READY FOR REVIEW
 
+Exterior sea and full-file template hashes are corrected in the next section.
+The witnesses in this section did not change. In
+`cache/map2-ship-repair-2026-10-31/`, `template_sha256` is the land-shape
+digest, not the SCP file.
+
 The version-1 `PASS_TOOL_CHECKS` at `570bb97` is withdrawn. That checker
 joined a reachable island rectangle to any 4×4, blocked only obstacle
 origins, and credited the largest free component anywhere on the island.
@@ -7611,3 +7616,92 @@ is land, OQ-520 the warehouse door, OQ-521 clustered versus dispersed spawns.
 Original movement, founding legality, removability, visibility, simultaneous
 founding, fertility, the save checksum, and the loader seam are
 `NOT_RUN_ENGINE`. The manifest remains tool-only.
+
+## MAP.2 — exterior sea and source hashes — 2026-10-31 — status: READY FOR REVIEW
+
+Two checker corrections on top of `6a043d4`. Placements, spawns, loadouts,
+and thresholds are unchanged. No candidate is selected or installed. Cities
+0. `NOT_RUN_ENGINE`. The five-island matching remains an existence proof that
+five seats can take five different islands at the start. It does not assign
+those islands and it does not promise the result after someone else settles.
+
+Checker `63ed9fbfaf2c39ca0a95e9b09fa4e277d7a19d8d`, dirty sources false.
+Candidate content hashes are the hashes from `e1bc8b2`. Manifest `parse`/`emit`
+matched the saved files. `data/maps/lan5.txt` is still 1476 bytes, sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, dump
+digest `c6af83f95104cd4f`.
+
+### Exterior sea
+
+At `6a043d4`, five ships sitting in five enclosed lakes still produced a
+witness of cost 7 and city proxy 768, with no problems. Reproducer
+`cache/orch-map-v2-review-2026-10-31/lake_spawn_probe.py`, saved again at
+`cache/map2-ship-sea-2026-10-31/lake-spawn-before.json`. The probe process
+exited 0 because it only prints; the result was a false pass. Production
+clearance 8, `min_city` 256, and route bound 400 were left in place. The
+layout envelope was off.
+
+Version 2 now treats sea as water that is 4-connected to the world boundary.
+A landlocked spawn is rejected and has no eligible route. A lake that touches
+the sea only at a corner stays landlocked. Opening one orthogonal channel
+makes that same lake reachable. Five bays with a real channel still match.
+The earlier ocean-spawn / enclosed-lake-site case still fails. The rule is
+fixed for this version. Putting `sea` in the manifest policy is rejected, so
+the content hashes did not change. Reports state `sea: exterior-4`.
+
+The same witnesses came back. A: islands 110, 101, 8, 106, 9 at costs
+267, 103, 125, 153, 49. B: 0, 111, 125, 103, 127 at 86, 121, 143, 99, 44.
+C: 0, 123, 114, 3, 5 at 61, 52, 130, 72, 101. Each set is five distinct
+islands. An independent audit, which does not call the checker's route or
+component code, reproduced every cost, clear 4×4, and attached component:
+`cache/map2-ship-sea-2026-10-31/witness-audit.json`. All three candidates
+are `PASS_TOOL_CHECKS`.
+
+`min_city` 256 remains a geometric proxy for attached free land. It is not a
+viable city and not proof of founding, warehouse service, fertility, or
+progression. Wueste is still absent everywhere. Sharing stays descriptive.
+
+### Source provenance
+
+`template_sha256` in the previous repair JSON is the thresholded land-shape
+digest. Current reports use `template_sha256` for the raw SCP file and
+`shape_sha256` for that mask. A missing file hash stays null. The contract
+fixture writes two SCP files with the same height mask and a different
+obstacle record: one shape digest, two file digests, and the serialized
+report keeps them apart. Direct SHA-256 of
+`NORD/N_256X256_0018_2B.SCP` is
+`69803774cf7072979735bca140bc3ad80aec039043e9bb569db30df5a43857e9`, matching
+A’s report. B’s `NORD/N_256X256_0019_2B.SCP` is
+`d0e8e847dda969907777bc640198842bb9b80ae20c456bda6f3b787490bec8a1`. C’s
+`NORD/N_256X256_0006_2B.SCP` is
+`cb0f99bcd2e23c7b9e131f5e5ba3c11e3842911003e4c10d83735b06ea024201`.
+Anlagen.dat remains
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+The checker block records commit `63ed9fb`, `dirty_sources` false, and the
+SHA-256 of the four checker modules. That block is not the manifest hash.
+
+### Acceptance
+
+Suites at `63ed9fb`, log `cache/map2-ship-sea-2026-10-31/final-tests.txt`:
+manifest 25 pass exit 0, ship 30 pass exit 0, contract 53 pass exit 0.
+Candidate checks exited 0. The independent audit exited 0. Previews were not
+redrawn: the witnesses and the manifest bytes are the same pictures as the
+previous round.
+
+| Claim | Where it is checked | Exit |
+|---|---|---|
+| Landlocked spawns are rejected and have no witness | `test_landlocked_spawns`; before-log had 5 witnesses, after-log has 0 | 0 |
+| Diagonal contact stays closed; an orthogonal channel opens | `test_diagonal_contact` | 0 |
+| A connected bay matches five seats | `test_connected_bay` | 0 |
+| Ocean spawn still cannot use an enclosed lake site | `test_enclosed_lake` | 0 |
+| A contradictory `sea` policy is refused | `test_sea_policy_rejected` | 0 |
+| Same land mask, different obstacle, different file hash | `test_source_file_hash` | 0 |
+| A’s reported file hash matches the raw SCP | revalidation note above | 0 |
+| Fifteen witnesses, five distinct islands each | `audit_witnesses.py` in the sea cache | 0 |
+| Manifest bytes and content hashes unchanged | `parse`/`emit` into `/tmp/map2-ship-sea-cmp` | 0 |
+| Active map unchanged | manifest selftest | 0 |
+
+Still unresolved: original movement, founding, removability, the warehouse
+door, fertility, visibility, simultaneous founding, the save checksum, and
+the loader. OQ-516 through OQ-521 stay open where they were open. Natural
+differences stay. No ±5% balance rule is in force.

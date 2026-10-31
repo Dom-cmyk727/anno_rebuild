@@ -7705,3 +7705,161 @@ Still unresolved: original movement, founding, removability, the warehouse
 door, fertility, visibility, simultaneous founding, the save checksum, and
 the loader. OQ-516 through OQ-521 stay open where they were open. Natural
 differences stay. No ±5% balance rule is in force.
+
+## MAP.2 — original-rule readiness for ship starts — 2026-10-31 — status: READY FOR REVIEW
+
+Preparation for W6.1. No ship was moved, no city was founded, and no
+candidate was installed. `data/maps/lan5.txt` and the version-2 manifests
+are unchanged. The exterior-sea investigation was not repeated.
+
+Code head: `03767a6669955f69479c80594c46bc4837b16dca` (opening audit).
+Documentation after that code: `6ff3388ed5f4127c94f105217e5334b33be4069b`
+(loader contract) and the commit that adds this section. Mechanics notes:
+`c1f4fdd3058b75bf5ef5394dfebb98a8207a092c`,
+`c8fedeb1ba402819d194cd623aefc608bd9b8548`. Started from reviewed
+documentation `220608fcf96dcda9cbaea124b6b62e1362a2ebf6` and reviewed checker
+`63ed9fbfaf2c39ca0a95e9b09fa4e277d7a19d8d`.
+
+Host: Apple M5 Max, 18 cores, 48 GiB RAM, about 89% free at the start of
+this pass, 1.6 TiB free. Python 3.14.6. `pefile` 2024.8.26 and `capstone`
+5.0.9 were imported for the disassembly. A two-hour `caffeinate -dimsu`
+covered this pass only. Persistent power settings were not changed.
+
+### Acceptance ledger
+
+| Claim | Evidence | Independent check | Status | Next |
+|---|---|---|---|---|
+| Kontor 1302 is 4×4, 350 gold, 12 t wood, 5 t tools, coast bit `0x2000` | `Anlagen.dat` HEAD | Byte read in `docs/re/ship-founding.md` §2 | FILE | Use as type data, not the whole rule |
+| Ship menu selects building 1302 | `View.dll` `0x10063ba0` | Scout callback pushes 1301 instead | STATIC_RE | Open the UI object's `+0x60` only if menu-enable is required |
+| Click test is `AnnoFrame.dll` `0x10046300` | Disassembly in §3.2 | A zero return skips the commit call | STATIC_RE | Name island `+0xec` and `+0x114` |
+| Affordability failure still calls `+0x78` with `0xA0000000` | `0x10046913` | Not an observed world mutation | STATIC_RE | Open `+0x78` or capture |
+| Exterior-4 is not original passage | `docs/re/ship-navigation.md` | Replan `0x1003de40` starts with float math `0x10030100` | STATIC_RE | Planner methods stay unread |
+| Version-2 facing 0..3 is cardinal, not `dir16` | Manifest parser and fire-and-ships §3.3 | Conversion table is not written into the files | FILE | Loader unit applies the table |
+| Five distinct islands remain at geometric, help-first, and record-presence levels on A, B and C | `tools/map2_opening.py` | Contract tests do not copy those counts | TOOL | Founding click stays unknown |
+| Original click outcomes | Capture steps in ship-founding §7 | No AnnoHarness on this Mac | NOT_RUN_ORIGINAL | One Windows harness session |
+| Engine load of a manifest | Contract only | No sim change in this packet | NOT_RUN_ENGINE | Implementation unit 1 |
+
+### Original behaviour established
+
+- Help: sail close, then place the warehouse on the coast near the ship.
+  Temperate or jungle is recommended for a first settlement. Polar help says
+  settlements are not possible there. Prairie, steppe and tundra help say
+  to settle there after another settlement exists. No desert page is in
+  this help set. Two players may share an island. Takeover gives a warehouse
+  service area, not the island.
+- Type 1302: 4×4, gold 350, wood 12, tools 5, bricks 0, marble 0, flags
+  `0x2087` including coast `0x2000`, action radius 24 (market search, not a
+  proven city radius), two entrance points at `(2.5, 13/6)` and `(11/6, 0.5)`.
+- `View.dll` `0x10063ba0` selects id `0x516`. `AnnoFrame.dll` `0x10046300`
+  rejects a click with no island, a non-uniform tile class, an all-`0x0f`
+  footprint, or no category-matching object in the 16×16 window of a 4×4
+  (origin six tiles before the footprint). Rotation 0..3 swaps axes.
+- When the goods check `0x10043d80` returns 0, the commit is still called,
+  with flag `0xA0000000`. Atomic rollback is not shown. The rebuild requires
+  it separately.
+
+### Unresolved predicates
+
+Blocking calls, not a request for a wider trace:
+
+- Island slot `+0xec`: what `0x0f` is on water, land and a real warehouse tile.
+- Island slot `+0x114`: the class of the 6-byte records in the window.
+- Build-tool field read at `AnnoFrame.dll` `0x100468ff`: who pays.
+- Commit slot `+0x78`: whether flag `0xA0000000` mutates the world.
+- Planner methods after `AnnoWelt.dll` `0x10030100`: diagonal passage and
+  hull clearance.
+- OQ-490 city radius, OQ-063 scenery under the footprint, OQ-520 the click's
+  rotation writer.
+
+### Opening comparison
+
+The audit does not change the v2 verdict. Geometric witnesses are the same
+islands as the sea revalidation. Help-first means that geometric island's
+`INFO` climate is nord or dschungel. Record-presence means help-first and
+the file contains `FRUCHTBAR`, `BERGWERK2`, `OCCUR` and `ANBAU`. Those
+records are counted, not decoded. Fertility bytes stay uninterpreted.
+`GELAENDE` removal stays unknown. Founding-click legality is unknown on
+every island and is not matched.
+
+| Level | A | B | C |
+|---|---|---|---|
+| Geometric v2 | 5 | 5 | 5 |
+| Help-first | 5 | 5 | 5 |
+| Records present | 5 | 5 | 5 |
+| Founding click | unknown | unknown | unknown |
+
+Wueste is absent on all three. No first-settlement help page depends on it.
+Desert goods are a later economy question. No desert island was added.
+
+The geometric witness is not five recommended large islands. A uses a small
+nord, a prairie, two jungle 256² and a polar. B uses a nord 256², a polar,
+a 64² jungle, a prairie and a steppe. C uses two nord 256², a small nord,
+a polar and a jungle 256². The help-first and record-presence matchings
+move seats onto other reachable islands; they are existence proofs, not
+assignments. A's and C's record-presence matching uses 256² islands. B's
+includes `NORD/N_080X080_0002_1B.SCP`, which meets the 256-tile geometric
+proxy on a small island. Several 64² and 80² templates have no `BERGWERK2`
+record, so they drop out of the record-presence matching without being
+called illegal. Sharing stays the optional description already in the v2
+reports. No candidate is selected.
+
+### Original runtime
+
+`NOT_RUN_ORIGINAL`. Capture steps are `docs/re/ship-founding.md` §7, using
+the existing `AnnoHarness` WSL runner. No emulator was installed.
+
+### Tests
+
+Log `cache/map2-opening-2026-10-31/final-tests.txt`. A first log,
+`final-tests-wrong-manifest-entry.txt`, called `map2_manifest.py selftest`
+and exited 2 because that entry point only checks a file. The corrected
+entry is `tools/map2_manifest_selftest.py`.
+
+| Suite | Cases | Failed | Exit |
+|---|---|---|---|
+| `map2_manifest_selftest.py` | 25 | 0 | 0 |
+| `map2_ship_selftest.py` | 30 | 0 | 0 |
+| `map2_ship_contract.py` | 53 | 0 | 0 |
+| `map2_opening_contract.py` | 7 | 0 | 0 |
+
+Candidate audits A, B and C exited 0
+(`cache/map2-opening-2026-10-31/lan5-ship-{a,b,c}.json`). C++ render,
+GPU and sanitizer gates were not run: this packet changes Python and
+documentation only. This is not project-wide acceptance.
+
+### Files
+
+- `docs/re/ship-founding.md`
+- `docs/re/ship-navigation.md`
+- `docs/sim/ship-start-integration.md`
+- `docs/sim/fixed-map.md` §11.5
+- `docs/open-questions.md` updates on OQ-490, OQ-517, OQ-520
+- `tools/map2_opening.py`, `tools/map2_opening_contract.py`
+
+Reproduce:
+
+```
+python3 -I -u tools/map2_manifest_selftest.py
+python3 -I -u tools/map2_ship_selftest.py
+python3 -I -u tools/map2_ship_contract.py
+python3 -I -u tools/map2_opening_contract.py
+python3 -I -u tools/map2_opening.py audit data/maps/candidates/ship-start-v2/lan5-ship-a.json --game-dir /Users/dom/Dev/anno1503-worktrees/anno1503/game/app
+```
+
+### Next implementation unit
+
+Load one version-2 manifest into a new headless world: five ships, nested
+scout and donkey, four holds, the proposed gold, zero cities, zero owner
+runs. No movement and no founding. Specified as unit 1 in
+`docs/sim/ship-start-integration.md` §7. Prerequisite: this review. No
+candidate has to be installed. Do not start it until then.
+
+### Owner decisions
+
+No decision is required to review this packet. Still open, and not taken
+here: which of A, B and C to install; filler density (OQ-516); clustered or
+dispersed spawns (OQ-521); whether the 03 comparison loadout is the
+approved economy. Recommendation: keep all three, and do not add desert
+islands to fill the missing climate. The 16-step facing field can wait for
+a later manifest version; the first loader uses the cardinal table without
+rewriting version 2.

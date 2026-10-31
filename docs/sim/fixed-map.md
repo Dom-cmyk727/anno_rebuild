@@ -622,3 +622,14 @@ not executable ship starts. The version-2 proposals are
 as the pre-repair inputs. The historical `lan5-a.txt`, `lan5-b.txt`, and
 `lan5-c.txt` files stay as Kontor-start measurements. `data/maps/lan5.txt`
 is not one of these proposals.
+
+### 11.5 Readiness for a later loader
+
+The geometric checks above are unchanged. A separate trace of the original
+warehouse click, the difference from exterior-4, an opening audit, and the
+loader contract are in `docs/re/ship-founding.md`,
+`docs/re/ship-navigation.md`, `tools/map2_opening.py` and
+`docs/sim/ship-start-integration.md`. Those documents do not select a
+candidate and do not make the manifests executable. Version-2 facing stays
+0..3. The cardinal conversion to the original 16-step facing is a proposal
+in the navigation note and is not written back into the files.

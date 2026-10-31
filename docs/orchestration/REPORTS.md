@@ -8130,3 +8130,40 @@ explicitly; its assertions are unchanged.
 - The stream regressions S1 and S3 use a POSIX shell/pipe; S3 is skipped on Windows. The Windows detach path (`DETACHED_PROCESS`) is unchanged and unmeasured here.
 - Left running by design, not killed: coordinators this session started on ports 47850-47859 and 47632 idle out by themselves after 30 s; none was stopped by name. The caffeinate of this round (pid 21892) was stopped; the caffeinate of the previous round expires by its own timeout.
 - Remaining limits of the load-only unit are unchanged: no sailing, founding or navigation; the island-placement block is still duplicated from `fixed_map.cpp`.
+
+## MAP.2 — third repair: trustworthy gate, isolated path fixtures, coordinator transition — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `a71b07f`** (reviewed code was `a08b0d7`, reviewed documentation head `685c2aa`). The documentation commit that carries this entry follows the code head and changes no code. Evidence (git-ignored): `cache/map2-repair2-evidence/` (frozen binaries and hashes in `bin/SHA256.txt`). Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**; nothing here is substituted by a macOS result. The Mac tools profile (`cache/mac-tools/venv/bin`) was on PATH; the game directory was set explicitly; admission control was on; an owned `caffeinate -t 5400` (pid 40661) kept the screen awake and was stopped by pid afterwards. Free memory (≈6 GiB free pages, large inactive) and 1.6 TiB disk were checked before the expensive runs; the gate ran with 8 jobs and `ANNO_TEST_THREADS=4` (the recorded Mac calibration), no other job used the build directory or test ports.
+
+### Findings, reproducers, fixes
+
+| # | Finding | Reproducer (evidence) | Fix (commit) | Result |
+|---|---|---|---|---|
+| 1 | O1's name contains `;`: CTest registered two tests that each ran zero cases and passed; `test_names_are_selectable` detected it but the gate selector excluded it | `01-o1-names.txt`, `01-o1-zero-case.txt` (0 cases both), `01-o1-real-body.txt` (whole name: 1 case, 25 assertions), `01-checknames-before.txt` | `e85814d`: O1 renamed; `CheckTestNames.cmake` is the W4 version (`3d2fb9d`); `tools/test/run_selected.sh` + `ctest_verdict.py` (preflight, empty/skip/sanitizer/zero-selection accounting) | 79 coordinator cases select as 78 + preflight, 0 empty |
+| 1d | the wrapper itself | `03-negative-checks.txt`: unknown target → 2; zero selected → 8 (first version passed it, because the preflight counted as a selection; fixed); `;` in a name → 5; game dir unset → 6; synthetic empty child and sanitizer line → fail | `e85814d`; classifier fix `a71b07f` (an opt-in skip that also names the game directory was read as a missing asset and failed the real gate once) | gate verdict PASS only when all conditions hold |
+| 2 | content-path fixtures share one fixed directory and delete it on entry | three cases concurrently (`ctest -j3`) failed 15 of 15 repeats: `create_symlink: File exists`, `copy_file: No such file` (`04-path-before.txt`, `04-path-collision-msgs.txt`) | `c337931`: atomic unique `OwnedDir`, removes only its own, safe on partial construction; new case for distinctness/cleanup; symlink-less platforms say so | 4 cases concurrently ×5 Debug and ×3 ASan/UBSan: all pass, no leftover directories (`05-*`) |
+| 3 | an older coordinator keeps a dead namespace-3 owner's reservation | real W4 binary (`c869fb7`, `92c30840…`): accepts the compat-3 MAP client, successor keeps the record, 24 tries `claim=0 pending=50` (`06-mixed-old-successor.txt`); control with the pre-change MAP-2 successor admits (`06-mixed-map2-successor-control.txt`) | `7930598`: compat 4, versioned default journal, one-time read-only adoption; policy and rollout limits in `docs/perf/README.md` | real-binary old→new recovers (`09-mixed-old-to-new.txt`); busy older coordinator refuses a v4 client with a bounded diagnostic and keeps its holder; older coordinator started later leaves the v4 journal byte-identical (`10-mixed-rejected.txt`); T5 real binary steps aside (`10-t5-real-binary.txt`) |
+
+Transition coverage: **modeled** (this build with `--compat-version 3`): T1 idle/busy, T2 names, T3 live holder / exit / no second adoption / legacy file byte-identical, T4 CPU token, reused pid, unattributable record (memory and CPU, live, exited, reused, unknown). **Mixed-binary** (real older binary): the scripted runs above and T5. Mutation checks (`08-mutations.txt`): each of the three mechanisms reverted fails the matching cases (T2–T4; T3–T4; T1–T4 and the F3 pin).
+
+### Correction of the earlier count
+
+The saved gate of the previous round (`cache/map2-repair-evidence/08-gate-LastTest.log`) reports 889 results, and I wrote "889 executed/889 passed". It contained **two empty entries** (the two halves of O1: `test cases: 0`) and **four explicit skips** (F3 (D2), F4 (N3), F4 (N4) — WSL-only — and the opt-in transport-statistics case). At most 883 of those 889 executed a case. The "899 registered" figure of that report cannot be reconciled: the registered list was not saved. The previous gate also excluded `test_names_are_selectable`, which would have caught O1. The historical evidence is unchanged.
+
+### The final gate (code head `a71b07f` minus the classifier fix, which only changes the reader; the saved log was re-read with it)
+
+`tools/test/run_selected.sh build/mac-headless - 'anno_sim|anno_formats|anno_test_support' 900 12-gate.log 8` with `ANNO1503_GAME_DIR`, `ANNO_TEST_OLD_COORD` (frozen older binary) set, `ANNO_SIM_TRANSPORT_STATS` unset; preflight `test_names_are_selectable` passed first.
+
+| registered (selector) | selected | executed | passed (CTest) | failed | empty | skipped |
+|---|---|---|---|---|---|---|
+| 894 | 894 | 890 | 894 | 0 | 0 | 4: 3 platform (F3 (D2), F4 (N3), F4 (N4): WSL), 1 opt-in (`transport search statistics`) |
+
+Required-asset skips 0, sanitizer lines 0, verdict PASS (`12-gate.log`, `12-gate-verdict-after-classifier-fix.txt`; the first verdict line in `12-gate-stdout.txt` is FAIL for the classifier reason above, exit 6, and is kept). Registered tests of the whole build: 1071. ASan/UBSan (`build/mac-asan`, game dir set): 78 selected (ship start, manifest, JSON, SHA-256, figure state, coordinator O/S/T/F3-pin cases), 77 executed, 1 opt-in skip (T5, no older binary in that run), 0 failed, 0 empty, 0 sanitizer lines (`13-asan-verdict.txt`). Focused runs before the gate: coordinator suite 78/78 with 3 platform skips (`07-coord-suite-after-bump.log`).
+
+### Invariants (`14-final-checks.txt`)
+`clang-format` 23.1.3 clean on the 5 changed C++ files; active map sha256 `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357` unchanged; `git diff a08b0d7 HEAD` is empty for `data`, `game`, `fixtures`, `src/sim/src`, `src/sim/include`, `src/sim_load`, `src/formats` (candidates, simulation semantics, state version 116 and goldens unchanged); `map2_manifest_xcheck verify`: 84 cases, 0 problems; `sim_stream --check`: goldens agree; `lint_sim`: ok; `git status game`: empty. The candidate loading case ran in the gate (Debug) and under ASan.
+
+### Remaining external gates
+Windows MSVC build and test run; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (the Linux and Windows branches of `coord_server.cpp`, `budget_f5_test.cpp` T-cases and `ship_start_load_test.cpp` were not compiled here; T-cases and `Home` are `#if !defined(_WIN32)`); WSL-only cases F3 (D2), F4 (N3), F4 (N4); Wine comparison; a merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` will conflict: keep namespace 3, the legacy-stamp rule, compat 4 and the versioned journal name); a decision by the orchestrator on rolling compat 4 out while W4's compat-3 clients still use port 47631.
+
+I stopped here for review and began no movement, navigation, founding, candidate selection or installation.

@@ -352,3 +352,11 @@ namespace, journal and compatibility consequences, in `docs/perf/README.md` ("MA
 Nothing in the load path depends on them; they decide whether the memory-admitted tests of this
 unit (the scenario corpus, the candidate load) can be run on a Mac at all.
 
+
+## 11. Repair unit 3 (task MAP-2, third round): trustworthy gate, isolated fixtures, coordinator transition
+
+Loader semantics, state version, goldens, candidates and the active map are unchanged; only tests, the test-support coordinator and test tooling moved (`git diff a08b0d7 HEAD` touches no file under `src/sim/src`, `src/sim/include`, `src/sim_load`, `src/formats`, `data`, `fixtures`).
+
+- **Fixtures.** The three content-path cases no longer share `anno1503-f6-content`. Each `ContentTree` owns a directory it created atomically (`create_directory` returns false for an existing name) under a random name and removes only that directory, also when its construction fails half way (`OwnedDir` is the first member). A new case checks distinct directories and cleanup. Every hostile-path row, the valid relative path, the internal link, the linked root and the unchanged-world checks are kept. Where a platform refuses to create a symlink (Windows without the privilege) the fixture says `skipping the symlink rows` and the link rows do not run; they are not counted as passed.
+- **Gate.** See `docs/perf/README.md` ("MAP-2 repair 2"). A mandatory preflight (`test_names_are_selectable`) and per-test accounting of executed, empty, skipped (by class) and failed tests.
+- **Coordinator.** Compatibility 4, versioned default journal name, one-time read-only adoption of the version-3 journal; the rollout limits are listed there. The ownership rules of §10 are unchanged.

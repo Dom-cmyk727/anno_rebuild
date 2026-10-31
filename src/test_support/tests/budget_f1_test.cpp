@@ -377,6 +377,13 @@ TEST_CASE("a killed owner lets a memory waiter and a cpu waiter continue" *
 }
 
 TEST_CASE("a live Windows owner is not reclaimed by a WSL client" * doctest::test_suite("budget")) {
+    // The case runs a WSL coordinator and compiles a Linux probe in WSL. A
+    // Windows host without WSL (Ubuntu), like the hosted CI runner, has
+    // neither: the holder would wait for a coordinator that never starts.
+    if (std::system("wsl.exe -d Ubuntu -- true >nul 2>&1") != 0) {
+        MESSAGE("skipping: WSL (Ubuntu) is not available");
+        return;
+    }
     const auto exe = probe_executable();
     REQUIRE(std::filesystem::exists(exe));
     // The worktree this test was built from, as WSL sees it.

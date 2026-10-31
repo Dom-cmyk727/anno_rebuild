@@ -31,6 +31,9 @@
 #include <unistd.h>
 extern char** environ;
 #endif
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 namespace anno::test::child {
 
@@ -55,6 +58,14 @@ inline std::filesystem::path sibling(const char* name) {
         return {};
     }
     return std::filesystem::path(buffer).parent_path() / (std::string(name) + ".exe");
+#elif defined(__APPLE__)
+    // macOS has no /proc/self/exe.
+    char buffer[4096];
+    std::uint32_t size = static_cast<std::uint32_t>(sizeof(buffer));
+    if (::_NSGetExecutablePath(buffer, &size) != 0) {
+        return {};
+    }
+    return std::filesystem::path(buffer).parent_path() / name;
 #else
     char buffer[4096];
     const ssize_t n = ::readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);

@@ -1400,6 +1400,21 @@ std::optional<bool> owner_alive(Server& server, const Owner& owner) {
         stamp.LowPart = created.dwLowDateTime;
         stamp.HighPart = created.dwHighDateTime;
         return stamp.QuadPart == owner.started && code == STILL_ACTIVE;
+#elif defined(__APPLE__)
+        const DarwinProcess process = darwin_process(owner.pid);
+        switch (process.state) {
+        case DarwinProcess::State::Gone:
+        case DarwinProcess::State::Zombie:
+            return false;
+        case DarwinProcess::State::Unknown:
+            return std::nullopt;
+        case DarwinProcess::State::Running:
+            break;
+        }
+        if (process.started == 0) {
+            return std::nullopt;
+        }
+        return process.started == owner.started;
 #else
         const std::string stat = "/proc/" + std::to_string(owner.pid) + "/stat";
         if (::access(stat.c_str(), F_OK) != 0) {

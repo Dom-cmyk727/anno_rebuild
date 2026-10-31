@@ -19,6 +19,10 @@
 // clang-format on
 #elif defined(__linux__)
 #include <cstdio>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <sys/sysctl.h>
+#include <unistd.h>
 #endif
 
 namespace anno::test {
@@ -53,6 +57,28 @@ std::optional<std::uint64_t> free_memory_bytes() {
         return std::nullopt; // kernels before 3.14 have no MemAvailable
     }
     return *kib * 1024;
+#elif defined(__APPLE__)
+    // macOS has no /proc/meminfo. What can be had without paging anything out:
+    // the free pages (free_count leaves out the speculative ones), the
+    // speculative pages and the inactive ones (the "available" of the memory
+    // pressure tools, an estimate like MemAvailable).
+    const long page = ::sysconf(_SC_PAGESIZE);
+    if (page <= 0) {
+        return std::nullopt;
+    }
+    static const mach_port_t host = ::mach_host_self();
+    vm_statistics64_data_t vm{};
+    // HOST_VM_INFO64_COUNT, spelled out: the macro is a C-style cast.
+    mach_msg_type_number_t count =
+        static_cast<mach_msg_type_number_t>(sizeof(vm) / sizeof(integer_t));
+    if (::host_statistics64(host, HOST_VM_INFO64, reinterpret_cast<host_info64_t>(&vm), &count) !=
+        KERN_SUCCESS) {
+        return std::nullopt;
+    }
+    const std::uint64_t pages = static_cast<std::uint64_t>(vm.free_count) +
+                                static_cast<std::uint64_t>(vm.speculative_count) +
+                                static_cast<std::uint64_t>(vm.inactive_count);
+    return pages * static_cast<std::uint64_t>(page);
 #else
     return std::nullopt; // unknown: no memory bound
 #endif
@@ -85,6 +111,13 @@ std::optional<std::uint64_t> total_memory_bytes() {
         return std::nullopt;
     }
     return *kib * 1024;
+#elif defined(__APPLE__)
+    std::uint64_t bytes = 0;
+    std::size_t length = sizeof(bytes);
+    if (::sysctlbyname("hw.memsize", &bytes, &length, nullptr, 0) != 0 || length != sizeof(bytes)) {
+        return std::nullopt;
+    }
+    return bytes;
 #else
     return std::nullopt;
 #endif

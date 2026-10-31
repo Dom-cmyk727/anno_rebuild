@@ -434,8 +434,9 @@ TEST_CASE("F4 (N3): every socket of a running coordinator is close-on-exec" *
 TEST_CASE("F4 (N4): a descriptor the coordinator holds without close-on-exec does not reach its "
           "meter child" *
           doctest::test_suite("budget")) {
-    if (!wsl_available()) {
-        MESSAGE("skipping: WSL (Ubuntu) is not available; the meter path is WSL");
+    if (!wsl_meter_available()) {
+        MESSAGE("skipping: the real PowerShell meter is not available (it runs only from WSL "
+                "with the Windows PowerShell reachable)");
         return;
     }
     const std::string port = std::to_string(kPortMeterLeak);
@@ -486,6 +487,9 @@ TEST_CASE("F4 (N4b): a descriptor the client holds without close-on-exec does no
 #if defined(_WIN32)
     MESSAGE("skipping on Windows: bInheritHandles = FALSE is at coord.cpp:142 "
             "(CreateProcessW(..., FALSE, ...)); POSIX spawn closefrom is the Linux/WSL path");
+    return;
+#elif !defined(__linux__)
+    MESSAGE("skipping: the descriptor check reads /proc/<pid>/fd, which only Linux has");
     return;
 #else
     const auto leak = f4_dir() / "n4b.leak";

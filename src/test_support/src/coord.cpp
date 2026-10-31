@@ -34,6 +34,9 @@
 #include <spawn.h>
 extern char** environ;
 #endif
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 
 namespace anno::test {
 namespace {
@@ -101,6 +104,14 @@ std::filesystem::path module_directory() {
     wchar_t buffer[32768];
     const DWORD n = GetModuleFileNameW(nullptr, buffer, 32768);
     if (n == 0 || n >= 32768) {
+        return {};
+    }
+    return std::filesystem::path(buffer).parent_path();
+#elif defined(__APPLE__)
+    // macOS has no /proc/self/exe.
+    char buffer[4096];
+    std::uint32_t size = static_cast<std::uint32_t>(sizeof(buffer));
+    if (::_NSGetExecutablePath(buffer, &size) != 0) {
         return {};
     }
     return std::filesystem::path(buffer).parent_path();

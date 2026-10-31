@@ -1400,3 +1400,22 @@ to 0.051 ms, max 0.125 ms; apply under 0.06 ms; chunk update max 0.16 ms. All fa
 - **Not measured:** the same as above (quiet host, Windows and Linux, presented frames, late-game economy, roads,
   denser cities, per-chunk build durations); in addition, a stream over many islands at once with Monotonic (the
   cases edit five cities in turn).
+
+### Evidence finalization and the round-dz tables again (round ea)
+
+`bench_picture` saved its trace first, so a case whose `frames.tsv` could not be saved exited 5 while its trace
+said success, and `--aggregate` exited 0. This was reproduced with the round-dz binary by placing a directory
+named `frames.tsv` in a fresh `--out`. The bench now saves every other file first, then `summary.txt`, then the
+trace. Each file is written whole (a `.partial` renamed into place). `run_end` carries the verdict only when
+everything before it was saved, and 5 otherwise. When the trace itself cannot be saved, no trace and no summary
+remain (`app::finalize_evidence`).
+
+`tools/bench/picture_table.py` now exits 1 when a case's evidence is missing, malformed or incomplete, or when
+its aggregate failed in any other way. It exits 6 when the evidence is complete but a run failed, and 2 without
+`results.tsv`. Every case keeps a row that says why. The contract checks are in
+`tools/bench/picture_matrix_test.sh` (CTest `picture_matrix_contract`).
+
+The round-dz matrices were re-aggregated with the new table and the frozen round-dz binary: `p4-matrix`,
+`p4-one`, `p4-below-pairs` and `p4-below-reversed`. Each exited 0 with no diagnostic, and each output is
+byte-identical to the round-dz table (`cache/ea-runs/p3-reagg-*.md`). Every round-dz case had saved all its
+files, so no saved measurement changes and the matrix was not rerun.

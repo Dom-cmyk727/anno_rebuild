@@ -8959,3 +8959,110 @@ chunk pixels, run on the RTX 4090, the Radeon iGPU and Metal. Nothing of it is i
 `9ef0b51468c621e1…`, `anno_app_alloc_tests` `51126ad211abb2bf…`; ASan `anno_app_tests` `1359c93acdd2c03c…`,
 `anno_app_alloc_tests` `b28e84c0aab985bb…` (sha256, first 16 hex). No merge, push, rebase, prune or map change.
 GPU integration, viewer wiring, developer input and preview are not done. No autonomous loop.
+
+## Round ea: W4.3 round-dz review findings closed; first owning-generation viewer/GPU integration (review candidate)
+
+Worktree `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `4e66667` (verified at the start, clean).
+- **Code under test:** `d62a1f3`. Later commits change documentation only.
+- **Evidence:** `cache/ea-runs/` inside the worktree (ignored).
+- **Host:** Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1, Apple clang 21, SDK 26.5; the GPU backend is
+  wgpu-native on Metal ("Apple M5 Max (Metal)").
+- **Load:** shared, not quiet. The load average was 1.6 to 11; another executor's simulation tests (the
+  MAP-2 worktree) ran at about 400% CPU during the gates. Nothing of theirs was stopped.
+- **Display:** kept awake by one owned `caffeinate -d -i -t 36000` (pid 32943), stopped at the end.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged at the start and at the end.
+
+**Commits:**
+- `7748366` evidence finalization;
+- `c869fb7` the table's exit status;
+- `b849cf3` chunk workers without a borrowed scene, no generation kept between frames, and the gate seam;
+- `ad4b2b0` the GPU frame owns the generation its outliving work reads (the fluid finding);
+- `86bc628` the play window follows the picture;
+- `8c425e7` GPU integration tests;
+- `8f75c9b` the handoff contract;
+- `efc7d6b` format;
+- `d62a1f3` the contract test's map path;
+- this report and the perf note.
+
+### Findings and dispositions
+
+| Item | Change | Regression evidence | Status |
+|---|---|---|---|
+| 3c bench finalization recorded success before the evidence was saved | `7748366`: `app::finalize_evidence`. The other files go first, then `summary.txt`, then the trace, each written whole (`.partial` renamed into place). `run_end` carries the verdict only if every earlier file was saved, else 5. If the trace cannot be saved, neither trace nor summary remains | Reproduced with the round-dz binary (directory named `frames.tsv`: bench exit 5, `run_end … 0`, `--aggregate` exit 0; `p3-repro-dz*`). Fixed bench: `run_end … 5`, `--aggregate` exit 6 (`p3-repro-fixed*`). Fault injection on the finalization path (`picture evidence:` cases: frames, summary, the trace itself, a partial file) | FIXED |
+| 3a/3b table exit status and aggregate failures | `c869fb7`: exit 1 for missing, malformed or incomplete evidence or any other aggregate failure; 6 for a complete but failed run; 2 without `results.tsv`. Every case keeps a diagnostic row | `picture_matrix_test.sh`: missing, malformed and cut traces; no summary; no frames; failed run; crashing and silent aggregate stubs; the bench reproduction. The new checks fail against the old table (`p3-old-table-mutant.log`) | FIXED |
+| 3f round-dz matrix re-aggregated | — | `p4-matrix`, `p4-one`, `p4-below-pairs`, `p4-below-reversed`: exit 0, no diagnostic, byte-identical to the round-dz tables (`p3-reagg-*`). Originals untouched | DONE, no measurement changed, matrix not rerun |
+| NEW: the wave simulation's background preparation read a borrowed scene | `ad4b2b0`: its depth function captured the scene by reference and runs past `render()` (`GpuLimits::background_fluid`, the viewer's limits). It now holds the frame's owning handle | "picture GPU: the wave simulation's background preparation holds …" passes; the old capture fails it (`p6-fluid-mutant.log`) | FIXED |
+| NEW: the GPU frame kept its frame-table pointer between frames | `ad4b2b0`: cleared on every way out of `render()`, with the handle | audit; the lifetime cases | FIXED |
+| 4 contract | `8f75c9b`: gpu-handoff.md states the six boundaries separately; the claim that one handle prevents mixed-version cached pixels is removed; game-shell.md's "never a mixture" now refers to object lists | — | DONE |
+| 5 ownership through the viewer and GPU | `86bc628`, `b849cf3`, `ad4b2b0` (gpu-handoff.md section 2) | the 6 GPU cases; the windowed smoke | DONE |
+| NEW, open: GPU vs CPU parity on per-frame water sprites | none (outside this unit) | a view of the workload with 109 water sprites differs by 2 at 4 pixels before any edit and from identical inputs. The established bound of 1 was measured on views without such sprites. The new case reports it (`WARN`) and bounds its comparisons by the unchanged picture | OPEN, not caused by this round |
+| Initial gate failure G1 | the contract test's bench check used the bench's relative default map, which does not resolve in CTest's build directory | G1 FAIL, exit 4 instead of 5. Fixed in `d62a1f3`; G2 is a full rerun | FIXED (G1 stays failed) |
+| Initial gate failure G3 | `river lifecycle: 2 workers, one solve throws and one is gated: destruction waits`. The test's own gate releases itself after 30 s (`kWait`); under ASan on the contended host the solves before the check took longer, so the gated solve ended and the destruction returned early ("the solve was never released") | 5 of 5 alone under ASan pass (`g3-river-repeat.log`). The river and scene code is unchanged since `4e66667` | OPEN test timing bound (round dw, `f17e9b8`); G3 stays failed; not changed here |
+
+### Transitional cache behaviour and readiness (the GPU cases, Metal)
+
+- **Transition:** after a commit, the affected keys keep their old cached chunks, marked stale. The
+  frame (holding the new generation) is byte-equal to the GPU output before the edit, and equal to the CPU
+  composition of the same inputs within the unchanged picture's parity.
+- **Partial readiness:** keys become fresh one at a time. A three-key set with one fresh key is not ready;
+  the fresh key shows its change and the stale keys their old chunks.
+- **Ready:** when all keys are fresh at one poll, the GPU output is byte-equal to a separate compositor
+  drawing the freshly loaded scene of the desired state.
+- **Late completion:** a generation-1 build that finishes after the generation-2 invalidation is
+  discarded. It replaces nothing and clears no mark, and the stale building is never shown.
+- **Offscreen return:** at group 2 and at derived level 3, exact against a fresh compositor. Against the
+  CPU path, level 3 differs by at most 2 per channel (bound 3, 0 pixels above 2).
+- **Lifetimes:**
+  - a held chunk job keeps generation 0 alive across the commit after the bridge and the test let go; it
+    is destroyed on the reclaimer when the job ends;
+  - the replaced CPU chunks are freed while frames are submitted and never waited for;
+  - teardown with builds, chunk jobs and GPU work outstanding destroys every generation on the reclaimer,
+    and the payload returns to its baseline.
+- **Smoke:** `anno1503 --play data/maps/lan5.txt --commands cache/ea-runs/p7-smoke.commands` on the GPU and
+  with `--renderer cpu`. The scripted commands are four accepted builds and a demolish, generated against
+  the sim. The window ran 14 s per renderer (`ANNO_VIEW_ZOOM_SCRIPT=100000,14`), committed generations 1 to
+  5, and ended with 0 pending and exit 0 (`p7-smoke-*.stderr`). No input binding was added.
+
+### Gates (each run once unless stated; initial failures kept)
+
+| Gate | Command | Revision / identity | Result |
+|---|---|---|---|
+| G1 dev, bridge and evidence selection | `tools/test/run_selected.sh build/dev - '^(anno_app_tests\.(credit\|ownership\|accounting\|progress\|trace\|picture\|publish\|scene picture\|probe\|backing\|legal workload)\|anno_app_alloc_tests\.\|picture_matrix_contract\|test_names_are_selectable)' 1800 … 6` | `8c425e7` | FAIL 79 of 80 (`picture_matrix_contract`, above); `g1-dev-cpu.log` |
+| G2 dev, the same selection | as G1 | `d62a1f3`, `anno_app_tests` `654b4c8fa7cbcc65` | PASS 80 of 80, vacuous 0; 2 probe skips by design (`g2-dev-cpu.log`) |
+| G3 ASan/UBSan, the same selection plus `anno_render_tests` derived freshness, scene reclaim, river lifecycle, accounting | `run_selected.sh build/asan … 3600 … 4` | `d62a1f3`, `anno_app_tests` `8c54d9092603efd0`, `anno_render_tests` `5b1f254750b972cc` | FAIL 98 of 99, no sanitizer line (the river lifecycle timing case, above); `g3-asan-cpu.log` |
+| G4 dev, all of `anno_render_tests` (10 heavy included) | `run_selected.sh build/dev - '^anno_render_tests\.' 3600 … 4` | `d62a1f3`, `1a95eb84a83a1dcf` | PASS 173 of 173 (`g4-dev-render.log`) |
+| G5 ASan/UBSan, the 6 GPU picture cases on Metal | `run_selected.sh build/asan - '^anno_render_gpu_tests\.picture GPU' 3600 … 1` | `d62a1f3`, `0187337fcaacdba2` | PASS 6 of 6, no sanitizer line; the parity `WARN` (`g5-asan-gpu-picture.log`) |
+| G6 dev, all of `anno_render_gpu_tests` on Metal | `run_selected.sh build/dev - '^anno_render_gpu_tests\.' 3600 … 1` | `d62a1f3`, `c4ffaba53242a228` | 94 of 96. The 2 failures are the known Metal timestamp cases #367 (`gpu_test.cpp:2219`) and #370 (`:2515`), the same lines as round dz, open and unwaived; no other GPU failure. 1 skip: `play_gpu_test` needs an RTX 4090 (`g6-dev-gpu.log`) |
+| G7 dev, the rest of `anno_app_tests` but `play:`, plus `anno1503_usage` | `run_selected.sh build/dev - '^(anno_app_tests\.(CRC\|PNG\|…\|--zoom)\|anno1503_usage)' 1800 … 6` | `d62a1f3` | PASS 37 of 37 |
+| Builds and format | full dev build; Release `anno1503 anno_app_tests anno_render_tests anno_render_gpu_tests bench_picture`; `clang-format 23.1.3 --dry-run --Werror` on the 13 changed C++ files | `d62a1f3` | 0 warnings, 0 errors; format clean |
+| Contract and table | `picture_matrix_contract` (in G2 and G3); manual run with `ANNO1503_GAME_DIR` | `d62a1f3` | PASS |
+| NOT RE-RUN the 16 `play:` cases | — | `play.cpp` and `play.hpp` unchanged | not repeated |
+| NOT RUN RTX 4090, Radeon iGPU | `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -L gpu -R "picture GPU\|play: GPU" -j 1` on the Windows PC | — | NOT RUN (no such adapter here) |
+| NOT RUN Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `ctest --preset msvc -R "anno_app_(alloc_)?tests\.\|anno_render(_gpu)?_tests\." -j 8` | — | NOT RUN |
+| NOT RUN Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | NOT RUN |
+
+### What is not claimed, and the next unit
+
+- **Not claimed:**
+  - no PLAN §0.3 frame target;
+  - no presented-frame latency;
+  - no late-game scalability;
+  - no GPU acceptance.
+  The smoke's frame rates come from a shared host and are not measurements.
+- **No measured regression:** none was measured; the performance matrix was not rerun (3f).
+- **Remaining defect:** none known in this unit. Open are the water-sprite parity (above), the river
+  lifecycle test's 30 s bound, and the Metal timestamp cases.
+- **Next unit:**
+  - the presentation-latency probe (batch to presented pixel at 1080p and 4K, with and without the
+    simulation), with an upload-completion boundary in the trace;
+  - the GPU cases on the RTX 4090 and the Radeon iGPU.
+
+**Final identities.** Code under test `d62a1f3`. Every gate ran on a clean code tree; the only dirty file was
+the perf documentation. Binaries (sha256, first 16 hex):
+- dev: `anno_app_tests` `654b4c8fa7cbcc65`, `anno_app_alloc_tests` `ede53daadaf77f5f`, `anno_render_tests`
+  `1a95eb84a83a1dcf`, `anno_render_gpu_tests` `c4ffaba53242a228`, `anno1503` `9d633ab55033055b`,
+  `bench_picture` `6587712af18c8efd`;
+- ASan: `anno_app_tests` `8c54d9092603efd0`, `anno_render_tests` `5b1f254750b972cc`, `anno_render_gpu_tests`
+  `0187337fcaacdba2`.
+No merge, push, rebase, prune or map change; no developer input, movement, founding or preview; no
+autonomous loop.

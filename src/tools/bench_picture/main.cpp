@@ -627,15 +627,17 @@ int main(int argc, char** argv) {
     chunk_rows << "t_ms\tisland\tgeneration\tlevel\tx\ty\tstate\n";
     memory_rows << "t_ms\trss\tfootprint\tmajflt\tminflt\tpressure\tsys_pageins\tsys_pageouts"
                    "\tsys_swapins\tsys_swapouts\toutstanding_bytes\tincremental\tbaseline\tbacking"
-                   "\tgeneration_meta\treferenced_by_current\tretired_payload\treclaim_waiting"
+                   "\tgeneration_meta\treferenced_by_current\tunreferenced_payload\treclaim_waiting"
                    "\treclaim_bytes_waiting\treclaim_bytes_in_flight\n";
     // Visible readiness per committed island and generation: every key of the island's change
     // within the view, fresh at the same poll (ReadinessTracker; round dz, 2b/2d).
     app::ReadinessTracker readiness;
     std::vector<app::ReadinessTracker::KeyEvent> key_events;
     bool converged_seen = false;
-    std::size_t peak_incremental = 0, peak_retired = 0, peak_reclaim_bytes = 0;
-    std::size_t peak_outstanding_bytes = 0;
+    // Peaks over the samples (one per frame and after the drain): a sampled peak can miss a
+    // shorter maximum between two samples. The exact peaks are the counters' own (the payload
+    // counter's peak over the process, the ledger's peak reservation), reported beside them.
+    std::size_t peak_incremental = 0, peak_unreferenced = 0, peak_reclaim_bytes = 0;
     long long peak_rss = -1, peak_footprint = -1;
     const MemorySample mem_start = sample_memory();
     auto sample = [&](double t) {
@@ -646,11 +648,13 @@ int main(int argc, char** argv) {
         const std::size_t referenced = picture->scene()->referenced_payload_bytes();
         const std::size_t live =
             pc.of(render::PayloadKind::Incremental) + pc.of(render::PayloadKind::Baseline);
-        const std::size_t retired = live > referenced ? live - referenced : 0;
+        // Live list and storage payload the current generation does not reference: replaced
+        // generations still held (by a frame, the reaper or the reclaimer), and the payload of
+        // finished results not yet committed and of builds in flight. Not proven retired-only.
+        const std::size_t unreferenced = live > referenced ? live - referenced : 0;
         peak_incremental = std::max(peak_incremental, pc.of(render::PayloadKind::Incremental));
-        peak_retired = std::max(peak_retired, retired);
+        peak_unreferenced = std::max(peak_unreferenced, unreferenced);
         peak_reclaim_bytes = std::max(peak_reclaim_bytes, rs.bytes_waiting + rs.bytes_in_flight);
-        peak_outstanding_bytes = std::max(peak_outstanding_bytes, st.outstanding_bytes_peak);
         peak_rss = std::max(peak_rss, m.rss);
         peak_footprint = std::max(peak_footprint, m.footprint);
         memory_rows << t << "\t" << counter(m.rss) << "\t" << counter(m.footprint) << "\t"
@@ -661,7 +665,7 @@ int main(int argc, char** argv) {
                     << "\t" << pc.of(render::PayloadKind::Baseline) << "\t"
                     << pc.of(render::PayloadKind::Backing) << "\t"
                     << pc.of(render::PayloadKind::Generation) << "\t" << referenced << "\t"
-                    << retired << "\t" << rs.waiting << "\t" << rs.bytes_waiting << "\t"
+                    << unreferenced << "\t" << rs.waiting << "\t" << rs.bytes_waiting << "\t"
                     << rs.bytes_in_flight << "\n";
     };
     std::size_t next_edit = 0, frame = 0;
@@ -955,13 +959,18 @@ int main(int argc, char** argv) {
             << " estimate_shortfalls=" << st.estimate_shortfalls
             << " estimate_shortfall_max=" << st.estimate_shortfall_max
             << " copied_buildings=" << st.copied_buildings
+            << " version_requeues=" << st.version_requeues << " rebased=" << st.rebased
             << " invalidated_keys=" << st.invalidated_keys
             << " reclaim_backlog_peak=" << st.reclaim_backlog_peak << "\n";
-    summary << "memory peak_incremental_payload=" << peak_incremental
-            << " peak_retired_payload=" << peak_retired
-            << " peak_reclaim_queue_bytes=" << peak_reclaim_bytes
-            << " peak_reservation_bytes=" << peak_outstanding_bytes
-            << " peak_rss=" << counter(peak_rss) << " peak_footprint=" << counter(peak_footprint)
+    const auto pc_end = render::payload_counts();
+    summary << "memory sampled_peak_incremental_payload=" << peak_incremental
+            << " exact_peak_incremental_payload="
+            << pc_end.peak[static_cast<std::size_t>(render::PayloadKind::Incremental)]
+            << " sampled_peak_unreferenced_payload=" << peak_unreferenced
+            << " sampled_peak_reclaim_queue_bytes=" << peak_reclaim_bytes
+            << " exact_peak_reservation_bytes=" << st.outstanding_bytes_peak
+            << " sampled_peak_rss=" << counter(peak_rss)
+            << " sampled_peak_footprint=" << counter(peak_footprint)
             << " majflt_delta=" << delta(mem_start.majflt, mem_end.majflt)
             << " sys_pageins_delta=" << delta(mem_start.sys_pageins, mem_end.sys_pageins)
             << " sys_pageouts_delta=" << delta(mem_start.sys_pageouts, mem_end.sys_pageouts)

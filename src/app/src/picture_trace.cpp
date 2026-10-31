@@ -79,6 +79,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     std::map<std::uint64_t, double> retired_at;
     std::vector<double> reclaim, queue, build;
     std::map<std::pair<std::uint32_t, std::uint64_t>, double> admitted_at, started_at;
+    std::map<std::uint32_t, std::uint64_t> desired_of;
     auto build_end = [&](const TraceEvent& e) {
         const auto it = started_at.find({e.island, e.version});
         if (it != started_at.end()) {
@@ -91,12 +92,14 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         switch (e.kind) {
         case TraceKind::Desired:
             edits.push_back(Edit{e.t_ms, e.island, e.version});
+            desired_of[e.island] = std::max(desired_of[e.island], e.version);
             ++s.edits;
             last_desired = e.t_ms;
             s.converged_ms = -1; // a newer edit: convergence is measured again
             break;
         case TraceKind::Committed:
             ++s.commits;
+            s.intermediate_commits += e.version < desired_of[e.island] ? 1U : 0U;
             s.last_commit_ms = e.t_ms;
             for (std::size_t i = 0; i < edits.size(); ++i) {
                 Edit& d = edits[i];
@@ -331,7 +334,8 @@ std::string format_summary(const TraceSummary& s) {
     }
     o << "edits=" << s.edits << " object_ready=" << s.object_ready
       << " visible_ready=" << s.visible_ready << " offscreen=" << s.offscreen
-      << " coalesced=" << s.coalesced << " unfinished=" << s.unfinished << "\n";
+      << " coalesced=" << s.coalesced << " unfinished=" << s.unfinished
+      << " intermediate_commits=" << s.intermediate_commits << "\n";
     o << "admitted=" << s.admitted << " deferred=" << s.deferred << " built=" << s.built
       << " failed=" << s.failed << " superseded=" << s.superseded << " dropped=" << s.dropped
       << " requeued=" << s.requeued << " commits=" << s.commits << " generations=" << s.generations

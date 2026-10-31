@@ -309,3 +309,22 @@ TEST_CASE("picture trace: a generation of two islands is measured per island; co
     CHECK(s.complete);
     CHECK(!s.succeeded()); // the run ended with status 3
 }
+
+TEST_CASE("picture trace: intermediate publications are counted against the desired version at "
+          "their commit" *
+          doctest::test_suite("picture_trace")) {
+    const std::vector<app::TraceEvent> events{
+        // Island 0: v1, v2, v3 desired; v1 committed while v3 is desired (intermediate), then v3.
+        // Island 1: v1 desired and committed (not intermediate).
+        {0, K::Desired, 0, 1},    {1, K::Desired, 0, 2},   {2, K::Desired, 0, 3},
+        {3, K::Desired, 1, 1},    {5, K::Committed, 0, 1}, {5, K::Committed, 1, 1},
+        {5, K::Generation, 0, 1}, {9, K::Committed, 0, 3}, {9, K::Generation, 0, 2},
+        {10, K::RunEnd, 0, 0},
+    };
+    const app::TraceSummary s = app::summarize(events);
+    CHECK(s.commits == 3);
+    CHECK(s.intermediate_commits == 1);
+    CHECK(s.object_ready == 4);
+    CHECK(s.coalesced == 1); // v2 reached through v3
+    CHECK(app::format_summary(s).find("intermediate_commits=1") != std::string::npos);
+}

@@ -66,6 +66,7 @@ def main():
     print("|---|---:|---:|---|---|---:|---:|---:|---:|---|")
     stage_rows = []
     memory_rows = []
+    progress_rows = []
     for line in results:
         name, status = line.split("\t")[:2]
         case = matrix / name
@@ -113,12 +114,18 @@ def main():
         stats = kv([l for l in summary if l.startswith("stats ")][0])
         verdict = [l for l in summary if l.startswith("VERIFY")]
         memory_rows.append(
-            f"| {name} | {stats['outstanding_bytes_peak']} | {stats['result_bytes_peak']} | "
-            f"{stats['estimate_shortfalls']} | {mem['peak_incremental_payload']} | "
-            f"{mem['peak_retired_payload']} | {mem['peak_reclaim_queue_bytes']} | "
-            f"{mem['peak_rss']} | {mem['peak_footprint']} | {mem['majflt_delta']} | "
+            f"| {name} | {mem['exact_peak_reservation_bytes']} | {stats['result_bytes_peak']} | "
+            f"{stats['estimate_shortfalls']} | {mem['exact_peak_incremental_payload']} | "
+            f"{mem['sampled_peak_incremental_payload']} | "
+            f"{mem['sampled_peak_unreferenced_payload']} | "
+            f"{mem['sampled_peak_reclaim_queue_bytes']} | {mem['sampled_peak_rss']} | "
+            f"{mem['sampled_peak_footprint']} | {mem['majflt_delta']} | "
             f"{mem['sys_pageouts_delta']} / {mem['sys_swapouts_delta']} | "
             f"{verdict[0] if verdict else 'none'} |")
+        progress_rows.append(
+            f"| {name} | {stats['committed']} | {first['intermediate_commits']} | "
+            f"{stats['version_requeues']} | {stats['rebased']} | {stats['discarded']} | "
+            f"{stats['coalesced']} | {stats['deferred']} |")
     print()
     print("Window stages per frame, by phase, ms: n / p50 / p95 / p99 / max (apply stages over "
           "the frames that published, commit over the frames that committed).")
@@ -129,10 +136,27 @@ def main():
     for r in stage_rows:
         print(r)
     print()
-    print("| case | peak reservation B | largest result B | estimate shortfalls | peak "
-          "incremental payload B | peak retired payload B | peak reclaim queue B | peak RSS B | "
-          "peak footprint B | major faults | host page-outs / swap-outs | oracle |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
+    print("Version progress: islands committed, of them intermediate (a version below the "
+          "island's desired one when it was committed), results requeued, queued jobs moved to a "
+          "new generation, results discarded, coalesced, requests deferred.")
+    print()
+    print("| case | committed | intermediate | requeued | rebased | discarded | coalesced | "
+          "deferred |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|")
+    for r in progress_rows:
+        print(r)
+    print()
+    print("Memory, bytes. Exact: the counter's own peak (reservation: the ledger; incremental: the "
+          "payload counter over the process). Sampled: the largest of the per-frame samples, which "
+          "can miss a shorter maximum. Unreferenced: live payload the current generation does not "
+          "reference (replaced generations still held, results not committed yet, builds in "
+          "flight), not proven retired-only.")
+    print()
+    print("| case | exact peak reservation | largest result | estimate shortfalls | exact peak "
+          "incremental | sampled peak incremental | sampled peak unreferenced | sampled peak "
+          "reclaim queue | sampled peak RSS | sampled peak footprint | major faults | host "
+          "page-outs / swap-outs | oracle |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|")
     for r in memory_rows:
         print(r)
     return 0

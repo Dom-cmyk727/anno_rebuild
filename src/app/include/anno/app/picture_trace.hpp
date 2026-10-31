@@ -100,6 +100,9 @@ struct TraceSummary {
                 unfinished = 0;
     std::size_t admitted = 0, deferred = 0, built = 0, failed = 0, superseded = 0, dropped = 0,
                 requeued = 0, commits = 0, generations = 0, reclaimed = 0;
+    /// Committed events of a version below the island's desired version at that moment: the
+    /// intermediate publications of the Monotonic policy (round dz).
+    std::size_t intermediate_commits = 0;
     Distribution object_ms, visible_ms, reclaim_ms;
     /// Per build (an island and version with both events): the queue delay (Admitted to Started)
     /// and the build time on a worker (Started to Built, Superseded or Failed).

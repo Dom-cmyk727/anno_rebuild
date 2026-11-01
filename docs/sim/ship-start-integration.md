@@ -397,3 +397,6 @@ one-byte field; no shipped record is longer). `kStateHashVersion` 117 -> 118: `u
 in every island's stream; an earlier state or save is refused by its version. Nothing in the engine sets the
 lock at run time and no placement rule reads it yet (founding's `IslandLocked` rejection stays a contract
 item); candidates, the active map and the manifests are unchanged.
+
+## City creation prerequisites (task MAP-2, stream 119)
+The ship-start loader is unchanged. Streams 119 and PRNG timeline 3 add per-island `city_cursor` and `kontor_counter`, per-city `name` and per-building `kontor_id` (all defaults for a ship-start world: -1 or the last scenario city's slot, the loaded `KONTORID` or 1, empty, the loaded market `KONTID` or 0); an earlier stream or save is refused by its version. The internal city and Kontor operations (docs/sim/city-creation.md) are not called by the loader and no command exposes them.

@@ -789,12 +789,12 @@ TEST_CASE("founding: the initial rotation only starts the trials, the accepted o
     // Contract 13.2: rotation 1's shore edge is the left column x = 50 (all 0x30). Rotations 0
     // (top row), 2 (bottom row) and 3 (right column) need a 0x30 edge that the grid lacks, so
     // from every start the first accepted rotation in the order r, r+1, r+2, r+3 is 1.
-    for (const std::uint8_t start : {0, 1, 2, 3}) {
-        INFO("initial rotation " << int{start});
+    for (const int start : {0, 1, 2, 3}) {
+        INFO("initial rotation " << start);
         Setup s = base_setup();
         sim::World w = make(s);
         sim::Command c = control_command();
-        found_of(c).placement.rotation = start;
+        found_of(c).placement.rotation = static_cast<std::uint8_t>(start);
         const sim::ApplyResult r = w.apply(c);
         REQUIRE(r.ok());
         CHECK(isl(w).find_building(r.records[0].building)->rotation == 1);

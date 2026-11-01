@@ -370,3 +370,7 @@ t24_g6_end T24 120 9ab47dec2bc7695a
 # now holds the House payload instead of Inert. tools/sim_stream.py agrees on g0, g1, s5 and
 # s6. g2.log-g6.log are rewritten. p1_g7_create is new: the created population world (synthetic::g7_scenario).
 p1_g7_create P1 120 1f06f3ddd628dcb4
+
+# M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
+# the exact values of the founding are asserted by hand in that test).
+m2_found_session M2 120 68cbd68de7cc4bba

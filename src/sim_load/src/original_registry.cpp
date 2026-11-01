@@ -7,6 +7,7 @@
 #include <anno/formats/anlagen.hpp>
 #include <anno/formats/annowelt.hpp>
 #include <anno/formats/figuren.hpp>
+#include <anno/formats/text.hpp>
 #include <anno/sim/house_groups.hpp>
 #include <anno/sim_load/original_registry.hpp>
 
@@ -72,6 +73,35 @@ OriginalRegistryLoad load_original_registry(const fs::path& game_dir, FigureEntr
     }
     out.types = std::move(built).value();
     return out;
+}
+
+} // namespace anno::sim_load
+
+namespace anno::sim_load {
+
+formats::Result<std::vector<std::string>, std::string>
+load_city_names(const std::filesystem::path& game_dir) {
+    std::ifstream in(game_dir / "Texte.dat", std::ios::binary);
+    if (!in) {
+        return std::string("Texte.dat: cannot be opened in the game directory");
+    }
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                          std::istreambuf_iterator<char>());
+    const formats::text::Texte texte = formats::text::Texte::parse(bytes);
+    const formats::text::TextSection* section = texte.section("STAEDTE");
+    if (section == nullptr) {
+        return std::string("Texte.dat: no [STAEDTE] section");
+    }
+    std::vector<std::string> names;
+    names.reserve(section->lines.size());
+    for (const formats::Bytes& line : section->lines) {
+        std::string name(line.begin(), line.end());
+        if (name.find('\0') != std::string::npos) {
+            return std::string("Texte.dat [STAEDTE]: a name contains a NUL byte");
+        }
+        names.push_back(std::move(name));
+    }
+    return names;
 }
 
 } // namespace anno::sim_load

@@ -12,7 +12,9 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include <anno/formats/result.hpp>
 #include <anno/sim/types.hpp>
 
 namespace anno::sim_load {
@@ -39,5 +41,13 @@ struct OriginalRegistryLoad {
 /// `error` set; it does not throw.
 [[nodiscard]] OriginalRegistryLoad load_original_registry(const std::filesystem::path& game_dir,
                                                           FigureEntries figures);
+
+/// The city-name list of `game_dir`: the lines of the `[STAEDTE]` section of Texte.dat, in file
+/// order (docs/re/ship-founding.md section 14.5: the list the original attaches to the world after
+/// the scene is loaded and draws founding names from). It is language-dependent, so a game start
+/// copies it into sim::Rules::city_names, which the state stream carries. An error (a message)
+/// when the file or the section is missing or a name contains a NUL byte; never throws.
+[[nodiscard]] anno::formats::Result<std::vector<std::string>, std::string>
+load_city_names(const std::filesystem::path& game_dir);
 
 } // namespace anno::sim_load

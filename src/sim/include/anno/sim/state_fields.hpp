@@ -261,7 +261,35 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.links);
 }
 
-static_assert(field_count<Rules>() == 23, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<NavClassCost>() == 4, "a NavClassCost member needs a line in fields");
+template <class A, Same<NavClassCost> S> void fields(A& a, S& s) {
+    a.u16(s.open_orth);
+    a.u16(s.open_diag);
+    a.u16(s.shore_orth);
+    a.u16(s.shore_diag);
+}
+
+static_assert(field_count<NavRules>() == 16, "a NavRules member needs a line in fields(NavRules)");
+template <class A, Same<NavRules> S> void fields(A& a, S& s) {
+    a.u32(s.move_blocked_mask);
+    a.u32(s.plans_per_advance);
+    a.u32(s.run_cap);
+    a.u32(s.retry_cap);
+    a.u32(s.goal_radius_tiles);
+    a.u32(s.unit_cap);
+    a.u32(s.window_radius_tiles);
+    a.u32(s.window_blocks);
+    a.u64(s.coarse_budget);
+    a.u64(s.fine_budget);
+    a.u64(s.memory_bytes);
+    a.u32(s.volk_number);
+    a.u32(s.health_span_percent);
+    a.u32(s.health_floor_percent);
+    a.u32(s.cargo_penalty_percent);
+    ar::seq(a, s.class_costs, 8, [&](auto& k) { fields(a, k); });
+}
+
+static_assert(field_count<Rules>() == 24, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -289,6 +317,7 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     ar::seq(a, s.shared_visibility, 8, [&](auto& group) {        // stream 121
         ar::seq(a, group, 4, [&](auto& x) { a.u32(x); });
     });
+    fields(a, s.nav); // stream 122
 }
 
 // ---- settings scope
@@ -966,12 +995,14 @@ template <class A, class V> void islands_io(A& a, V& islands, const SimConfig& c
 
 // ---- ids, figures and the event queue (stage S7)
 
-static_assert(field_count<IdCounters>() == 2,
+static_assert(field_count<IdCounters>() == 4,
               "an IdCounters member needs a line in fields(IdCounters)");
 
 template <class A, Same<IdCounters> S> void fields(A& a, S& s) {
     a.u64(s.next_figure);
     a.u64(s.next_event_seq);
+    a.u64(s.next_order_id); // stream 122
+    a.u64(s.next_ticket);   // stream 122
 }
 
 template <> struct EnumInfo<TransportStep> : ContiguousEnum<5> {};
@@ -999,7 +1030,52 @@ template <class A, Same<ShipHold> S> void fields(A& a, S& s) {
     a.u64(s.amount_88);
 }
 
-static_assert(field_count<Figure>() == 19, "a Figure member needs a line in fields(Figure)");
+// ---- ship motion (MAP-NAV-2, stream 122; docs/sim/ship-navigation.md 12.5)
+
+template <> struct EnumInfo<NavSegKind> : ContiguousEnum<4> {};
+
+static_assert(field_count<NavNode>() == 5, "a NavNode member needs a line in fields(NavNode)");
+template <class A, Same<NavNode> S> void fields(A& a, S& s) {
+    a.enumv(s.kind);
+    a.u8(s.dir8);
+    a.u8(s.facing);
+    a.u64(s.length_q32);
+    a.u32(s.speed_q32);
+}
+
+static_assert(field_count<NavSegment>() == 5,
+              "a NavSegment member needs a line in fields(NavSegment)");
+template <class A, Same<NavSegment> S> void fields(A& a, S& s) {
+    a.enumv(s.kind);
+    a.u8(s.dir8);
+    a.u32(s.factor_percent);
+    a.u32(s.speed_q32);
+    a.u64(s.remaining_q32);
+}
+
+static_assert(field_count<NavOrder>() == 4, "a NavOrder member needs a line in fields(NavOrder)");
+template <class A, Same<NavOrder> S> void fields(A& a, S& s) {
+    a.u64(s.order_id);
+    a.boolean(s.routed);
+    a.i32(s.target_x_q8);
+    a.i32(s.target_y_q8);
+}
+
+static_assert(field_count<NavMotion>() == 9,
+              "a NavMotion member needs a line in fields(NavMotion)");
+template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
+    ar::opt(a, s.order, [&](auto& o) { fields(a, o); });
+    ar::opt(a, s.ticket, [&](auto& t) { a.u64(t); });
+    fields(a, s.seg);
+    ar::seq(a, s.nodes, 15, [&](auto& n) { fields(a, n); });
+    a.u16(s.last);
+    a.i64(s.pos_u[0]);
+    a.i64(s.pos_u[1]);
+    a.u32(s.res24[0]);
+    a.u32(s.res24[1]);
+}
+
+static_assert(field_count<Figure>() == 20, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -1024,7 +1100,8 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.parent.v);
     ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
     ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
-    a.u32(s.state_word); // stream 120
+    a.u32(s.state_word);                               // stream 120
+    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); }); // stream 122
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64

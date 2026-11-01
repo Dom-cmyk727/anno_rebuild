@@ -1,0 +1,41 @@
+// Ship motion state helpers (task MAP-NAV-2 package B; contract docs/sim/ship-navigation.md 12).
+// This unit owns the construction and the validation of the persisted NavMotion of a navigating
+// ship. The movement rules themselves (stepper, planner, commands) come in later packages.
+#pragma once
+
+#include <cstdint>
+#include <string>
+
+#include <anno/sim/config.hpp>
+#include <anno/sim/figure.hpp>
+#include <anno/sim/ids.hpp>
+#include <anno/sim/types.hpp>
+
+namespace anno::sim {
+
+/// The turn speed and the idle/stop speed of the original, 0.01f, as q32: f32(0.01) * 2^32 is the
+/// integer 42949672 (AnnoWelt 0x3c23d70a at 0x10043383; docs/sim/ship-navigation.md 12.4).
+inline constexpr std::uint32_t kNavIdleSpeedQ32 = 42949672U;
+
+/// One lattice length unit and the diagonal step length in q32 (L_d = 11863283 * 2^9, above 2^32).
+inline constexpr std::uint64_t kNavUnitQ32 = std::uint64_t{1} << 32;
+inline constexpr std::uint64_t kNavDiagStepQ32 = std::uint64_t{11863283} << 9;
+
+/// The most pending nodes a ship may hold. A route of the supported window has far fewer (8 turn
+/// nodes + runs of at most run_cap steps over a window of window_radius_tiles); the bound keeps a
+/// hostile or corrupt save from allocating without limit. Path to make it configurable: derive it
+/// from NavRules (2 * window_radius_tiles / 1 + 8) once routes are produced by package C.
+inline constexpr std::size_t kNavMaxNodes = 1U << 16;
+
+/// The initial motion state of a navigating ship at `pos` (Q24.8): idle (the original's
+/// `remaining = speed = 0.01`, AnnoWelt 0x10040000), factor 100, no order, `last` = `tick_low`.
+[[nodiscard]] NavMotion make_nav_motion(FixedPos pos, std::uint16_t tick_low);
+
+/// Empty when the navigation state of every figure is consistent with its type and the counters:
+/// present exactly for navigating types, nav_class below the Rules table, segment and node ranges,
+/// `Figure::pos` equal to the floor of pos_u, residue rules, orders and tickets below the counters
+/// and unique. Needs the registry (types) and the rules.
+[[nodiscard]] std::string validate_navigation(const FigureRegistry& registry, const IdCounters& ids,
+                                              const TypeRegistry& types, const Rules& rules);
+
+} // namespace anno::sim

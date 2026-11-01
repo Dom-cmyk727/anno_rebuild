@@ -10,6 +10,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/ship.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -97,6 +98,10 @@ std::string World::check_invariants() const {
                " is not in 1 .. 2^64 - 1";
     }
     problem = validate_figures(figures_, ids_);
+    if (!problem.empty()) {
+        return problem;
+    }
+    problem = validate_navigation(figures_, ids_, *types_, rules_);
     if (!problem.empty()) {
         return problem;
     }

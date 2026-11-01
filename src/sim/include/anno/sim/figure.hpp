@@ -104,6 +104,66 @@ struct ShipHold {
     friend constexpr auto operator<=>(const ShipHold&, const ShipHold&) = default;
 };
 
+/// The kind of a ship's current or pending motion segment (docs/sim/ship-navigation.md 12.4, 12.7).
+/// Idle: no order is being sailed (the idle or stop segment); Turn: a planner turn node in progress
+/// (the original's kind 3, state bit 0 clear); TurnPhase: the stepper's own 1/16 turn phase (state
+/// bit 0 set, the facing changed by one at its start); Move: a movement segment (a chunk of at most
+/// 1.0 length along a lattice direction).
+enum class NavSegKind : std::uint8_t { Idle = 0, Turn = 1, TurnPhase = 2, Move = 3 };
+
+/// A pending node of the plan (the original's list node): a movement of `length_q32` along `dir8`
+/// at `speed_q32`, or a planner turn node that sets `facing` and lasts turn_step at the turn speed.
+struct NavNode {
+    NavSegKind kind = NavSegKind::Move; // Move or Turn only
+    std::uint8_t dir8 = 0;              // Move: 0 W, 1 SW, 2 S, 3 SE, 4 E, 5 NE, 6 N, 7 NW
+    std::uint8_t facing = 0;            // Turn: the dir16 facing it sets when it starts
+    std::uint64_t length_q32 = 0;       // 2^-32 tile (a diagonal step is 6074000896)
+    std::uint32_t speed_q32 = 0;        // base speed before the factor, 2^-32 tile per stepper unit
+    friend constexpr bool operator==(const NavNode&, const NavNode&) = default;
+};
+
+/// The current segment (the original's +0x20..+0x34, +0x38): all integers.
+struct NavSegment {
+    NavSegKind kind = NavSegKind::Idle;
+    std::uint8_t dir8 = 0;              // Move only
+    std::uint32_t factor_percent = 100; // V applied to this segment, 1 .. 100
+    std::uint32_t speed_q32 = 0;        // base speed (before the factor)
+    std::uint64_t remaining_q32 = 0;    // length still to sail in this segment
+    friend constexpr bool operator==(const NavSegment&, const NavSegment&) = default;
+};
+
+/// An accepted move order (docs/sim/ship-navigation.md 12.1). `routed` is the original's phase 1.
+struct NavOrder {
+    std::uint64_t order_id = 0; // a world counter, never reused
+    bool routed = false;
+    std::int32_t target_x_q8 = 0, target_y_q8 = 0;
+    friend constexpr bool operator==(const NavOrder&, const NavOrder&) = default;
+};
+
+/// The persisted motion state of a navigating ship (docs/sim/ship-navigation.md 12.5). Present
+/// exactly when the figure's type has navigation facts. `Figure::pos` is derived from `pos_u`
+/// (validated).
+struct NavMotion {
+    std::optional<NavOrder> order;
+    /// The fair admission ticket (12.2); present only with an order.
+    std::optional<std::uint64_t> ticket;
+    NavSegment seg;
+    std::vector<NavNode> nodes; // pending nodes, next first
+    /// The ship's own stepper stamp (the original's +0x42), distinct from Figure::stamp.
+    std::uint16_t last = 0;
+    /// Position per axis (x, y) in tile * 2^32 * 500, and the diagonal residue (< 2^24).
+    std::int64_t pos_u[2] = {0, 0};
+    std::uint32_t res24[2] = {0, 0};
+    friend bool operator==(const NavMotion& a, const NavMotion& b) {
+        return a.order == b.order && a.ticket == b.ticket && a.seg == b.seg && a.nodes == b.nodes &&
+               a.last == b.last && a.pos_u[0] == b.pos_u[0] && a.pos_u[1] == b.pos_u[1] &&
+               a.res24[0] == b.res24[0] && a.res24[1] == b.res24[1];
+    }
+};
+
+/// One Q24.8 unit in pos_u: 2^-8 tile * 2^32 * 500.
+inline constexpr std::int64_t kNavPosUnitsPerQ8 = std::int64_t{500} << 24;
+
 struct Figure {
     FigureId id;
     /// FigurenHeader id / world figure kind (small farm animals: base 106 + i).
@@ -158,6 +218,8 @@ struct Figure {
     /// makes it unusable (figure_veto.hpp). 0 is the state of a scenario ship for every bit that
     /// matters (docs/re/ship-founding.md section 14.1).
     std::uint32_t state_word = 0;
+    /// MAP-NAV-2 (stream 122): the motion state of a navigating ship.
+    std::optional<NavMotion> nav;
 };
 
 /// D: the unit registry (world +0x114).

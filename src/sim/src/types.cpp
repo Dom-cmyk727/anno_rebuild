@@ -28,6 +28,29 @@ namespace anno::sim {
 
 namespace fig = formats::figuren;
 
+std::string nav_facts_problem(const NavFacts& n) {
+    if (n.speed_q32 == 0 || n.speed_q32 >= kMaxNavSpeedQ32) {
+        return "speed_q32 " + std::to_string(n.speed_q32) + " is not in 1 .. " +
+               std::to_string(kMaxNavSpeedQ32 - 1);
+    }
+    if (n.turn_step_q32 == 0) {
+        return "turn_step_q32 is 0";
+    }
+    if (n.max_hp == 0 || n.max_hp > 65535U) {
+        return "max_hp " + std::to_string(n.max_hp) + " is not in 1 .. 65535";
+    }
+    if (n.hold_count_a > 255U || n.hold_count_b > 255U) {
+        return "a hold count is above 255";
+    }
+    if (n.nav_class > 255U) {
+        return "nav_class " + std::to_string(n.nav_class) + " is above 255";
+    }
+    if (n.stamp_radius_88 == 0 || n.stamp_radius_88 > 255U * 32U) {
+        return "stamp_radius_88 " + std::to_string(n.stamp_radius_88) + " is not in 1 .. 8160";
+    }
+    return {};
+}
+
 namespace {
 
 /// A name of a table: the number the original's lookup returns it for.
@@ -229,7 +252,7 @@ static_assert(field_count<BuildingType>() == 23,
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
-static_assert(field_count<FigureType>() == 8, "a FigureType member needs a line in the digest");
+static_assert(field_count<FigureType>() == 9, "a FigureType member needs a line in the digest");
 static_assert(field_count<GoodsInfo>() == 2, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
@@ -305,7 +328,7 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.enumv(c.payload);
         a.u32(c.gate_period);
     });
-    ar::seq(a, figures, 20, [&](const FigureType& f) {
+    ar::seq(a, figures, 20 + 1 + 28, [&](const FigureType& f) {
         a.u32(f.id);
         a.u32(f.speed_q24);
         a.u32(f.capacity_88);
@@ -315,6 +338,17 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(f.range_88);
         a.boolean(f.hull_half_88.has_value());
         a.i64(f.hull_half_88.value_or(0));
+        // MAP-NAV-2 (stream 122): the navigation facts (presence, then seven u32 in declaration
+        // order).
+        a.boolean(f.nav.has_value());
+        const NavFacts nf = f.nav.value_or(NavFacts{});
+        a.u32(nf.speed_q32);
+        a.u32(nf.turn_step_q32);
+        a.u32(nf.max_hp);
+        a.u32(nf.hold_count_a);
+        a.u32(nf.hold_count_b);
+        a.u32(nf.nav_class);
+        a.u32(nf.stamp_radius_88);
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -347,6 +381,51 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
 /// [0x10] the walking layer (+0xff), [0x11] << 8 the capacity (+0xf2), f32 at byte 4
 /// the load wait (+0x30; 1.0 when not above 0). A HEAD shorter than 8 bytes, or a
 /// speed or a wait that is not a finite value of at most 2^16, is a load error.
+/// round-to-nearest-even of an f32's exact binary value times 2^32, in integers (no floating-point
+/// rounding mode involved); nullopt for a negative, NaN, infinite or too large value (docs/sim/
+/// ship-navigation.md 12.4: the conversion is exact up to the single rounding of the last bit).
+std::optional<std::uint32_t> q32_of_f32(float value) {
+    const std::uint32_t bits = std::bit_cast<std::uint32_t>(value);
+    if ((bits >> 31) != 0) {
+        return std::nullopt;
+    }
+    const std::uint32_t exponent = (bits >> 23) & 0xFFU;
+    if (exponent == 0xFFU) {
+        return std::nullopt;
+    }
+    std::uint64_t mantissa = bits & 0x7FFFFFU;
+    int shift = 0; // value = mantissa * 2^shift, times 2^32
+    if (exponent == 0) {
+        shift = -149;
+    } else {
+        mantissa |= 0x800000U;
+        shift = static_cast<int>(exponent) - 150;
+    }
+    shift += 32;
+    std::uint64_t result = 0;
+    if (shift >= 0) {
+        if (shift >= 40 || (mantissa << shift) > 0xFFFFFFFFULL) {
+            return mantissa == 0 ? std::optional<std::uint32_t>(0) : std::nullopt;
+        }
+        result = mantissa << shift;
+    } else {
+        const int drop = -shift;
+        if (drop >= 64) {
+            return 0U;
+        }
+        result = mantissa >> drop;
+        const std::uint64_t rem = mantissa & ((std::uint64_t{1} << drop) - 1);
+        const std::uint64_t half = std::uint64_t{1} << (drop - 1);
+        if (rem > half || (rem == half && (result & 1U) != 0)) {
+            ++result;
+        }
+        if (result > 0xFFFFFFFFULL) {
+            return std::nullopt;
+        }
+    }
+    return static_cast<std::uint32_t>(result);
+}
+
 formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry& e) {
     const std::string who = "figure " + std::to_string(e.id) + ": ";
     const auto head = e.record("HEAD");
@@ -413,6 +492,25 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
         const double hull = static_cast<double>(half) * 256.0;
         if (std::isfinite(hull) && std::fabs(hull) < 2147483648.0 * 256.0) {
             t.hull_half_88 = std::llround(hull);
+        }
+    }
+    // MAP-NAV-2 (stream 122): the navigation facts of a ship type. A type whose data does not lie
+    // in the supported domains (343 and 1510 have no hit points) is simply not a navigating type.
+    if (t.bewohntype == 113 && head->size() >= 8 && logic.size() >= 0x20) {
+        const std::optional<std::uint32_t> speed_q32 = q32_of_f32(f32(*head, 4));
+        const std::optional<std::uint32_t> turn_q32 = q32_of_f32(f32(*head, 0));
+        NavFacts n;
+        n.hold_count_a = logic[0x13];
+        n.hold_count_b = logic[0x14];
+        n.nav_class = logic[0x10];
+        n.max_hp = std::uint32_t{logic[0x1e]} | (std::uint32_t{logic[0x1f]} << 8);
+        n.stamp_radius_88 = logic[0x28] == 0 ? 2U * 256U : std::uint32_t{logic[0x28]} * 32U;
+        if (speed_q32.has_value() && turn_q32.has_value()) {
+            n.speed_q32 = *speed_q32;
+            n.turn_step_q32 = *turn_q32;
+            if (nav_facts_problem(n).empty()) {
+                t.nav = n;
+            }
         }
     }
     return t;
@@ -805,6 +903,13 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     for (std::size_t i = 1; i < figures.size(); ++i) {
         if (figures[i - 1].id == figures[i].id) {
             return "duplicate figure type id " + std::to_string(figures[i].id);
+        }
+    }
+    for (const FigureType& f : figures) {
+        if (f.nav.has_value()) {
+            if (std::string problem = nav_facts_problem(*f.nav); !problem.empty()) {
+                return "figure type " + std::to_string(f.id) + " navigation fact: " + problem;
+            }
         }
     }
     for (const FigureType& f : figures) {

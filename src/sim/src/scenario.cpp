@@ -7,6 +7,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
+#include <anno/sim/ship.hpp>
 #include <anno/sim/state_fields.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
@@ -487,6 +488,9 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         f.crew_slot = fs.crew_slot;
         f.holds = fs.holds;
         f.state_word = fs.state_word;
+        if (const FigureType* ft = w.types_->find_figure_type(fs.kind); ft != nullptr && ft->nav) {
+            f.nav = make_nav_motion(f.pos, static_cast<std::uint16_t>(w.clock_.tick()));
+        }
         if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {
             return idx_path("figures", i) + ": the figure registry cannot take it";
         }

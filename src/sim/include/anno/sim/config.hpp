@@ -440,6 +440,54 @@ struct SimConfig {
     [[nodiscard]] std::uint64_t digest() const;
 };
 
+/// The cost of one route step into a coarse cell, per navigation class (docs/re/ship-navigation.md
+/// 9.3; the original's class tables 0..3 are identical for the open cell and the shore band).
+struct NavClassCost {
+    std::uint16_t open_orth = 10, open_diag = 13;
+    std::uint16_t shore_orth = 50, shore_diag = 69;
+    friend constexpr bool operator==(const NavClassCost&, const NavClassCost&) = default;
+};
+
+/// MAP-NAV-2 (stream 122): the validated rules of ship movement and route planning. Defaults are
+/// the original's values (docs/sim/ship-navigation.md 7, 12.2-12.4). The budgets are limits of this
+/// implementation, not original behaviour (the original has none); package C sets their defaults
+/// from measured queries and a margin, and any change moves the rules digest.
+struct NavRules {
+    /// A move order is refused when `state_word & move_blocked_mask` is non-zero (AnnoWelt
+    /// 0x100a5f70).
+    std::uint32_t move_blocked_mask = 0x200e;
+    /// Fair planning admission: plans that may start per Advance (>= 1).
+    std::uint32_t plans_per_advance = 4;
+    /// Longest run of a route (the engine's Trace maximum), 1 .. 255.
+    std::uint32_t run_cap = 10;
+    /// Learned-mask retries per query, 1 .. 64.
+    std::uint32_t retry_cap = 8;
+    /// The goal acceptance radius in tiles (6.0 in the original; the score constant is 64 * r^2), 1
+    /// .. 32.
+    std::uint32_t goal_radius_tiles = 6;
+    /// Obstacle stamps per query (0x40 in the route engine's own unit query), 1 .. 4096.
+    std::uint32_t unit_cap = 64;
+    /// Half-width of the start-centred search window in tiles ([ship+0x6e] = 0x400), 1 .. 8192.
+    std::uint32_t window_radius_tiles = 1024;
+    /// Blocks of 64 tiles per axis a window may span (SetWindow: 32), 1 .. 256.
+    std::uint32_t window_blocks = 32;
+    /// Per-query work limits (node pops) and working-set bytes; exceeding one is BudgetExceeded.
+    std::uint64_t coarse_budget = std::uint64_t{1} << 22;
+    std::uint64_t fine_budget = std::uint64_t{1} << 24;
+    std::uint64_t memory_bytes = std::uint64_t{1} << 28;
+    /// The player value 3 (Volk number) for which the cargo term of the speed factor applies (1).
+    std::uint32_t volk_number = 1;
+    /// The speed factor V = trunc((trunc(health_span * hp / maxhp) + health_floor) * L / 100), with
+    /// L = 100 - trunc(cargo_penalty * S / ((n0 + n1) * cap)) (35, 65, 17 in the original).
+    std::uint32_t health_span_percent = 35;
+    std::uint32_t health_floor_percent = 65;
+    std::uint32_t cargo_penalty_percent = 17;
+    /// Route cost classes, indexed by FigureType::nav->nav_class. Default: classes 0..3 of the
+    /// original.
+    std::vector<NavClassCost> class_costs = std::vector<NavClassCost>(4);
+    friend bool operator==(const NavRules&, const NavRules&) = default;
+};
+
 /// Opt-in changes. Every default is the original's behaviour; every field
 /// exists only for a decision-needed row of docs/sim/state.md §13 (and two
 /// cheat/QoL switches). Hashed in the header scope.
@@ -524,6 +572,8 @@ struct Rules {
     /// scenario). The ids are validated against the player table (peace between members) by the
     /// world's invariants.
     std::vector<std::vector<std::uint32_t>> shared_visibility;
+    /// MAP-NAV-2 (stream 122): ship movement and route planning rules.
+    NavRules nav;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

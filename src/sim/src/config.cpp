@@ -516,6 +516,51 @@ std::string Rules::validate() const {
             return bad(kOwner, "shared_visibility", "a player is in more than one group");
         }
     }
+    {
+        const NavRules& n = nav;
+        const auto range = [&](const char* field, std::uint64_t v, std::uint64_t lo,
+                               std::uint64_t hi) {
+            return v < lo || v > hi ? bad("NavRules", field,
+                                          std::to_string(v) + " is not in " + std::to_string(lo) +
+                                              " .. " + std::to_string(hi))
+                                    : std::string();
+        };
+        for (const std::string& problem :
+             {range("plans_per_advance", n.plans_per_advance, 1, 65535),
+              range("run_cap", n.run_cap, 1, 255), range("retry_cap", n.retry_cap, 1, 64),
+              range("goal_radius_tiles", n.goal_radius_tiles, 1, 32),
+              range("unit_cap", n.unit_cap, 1, 4096),
+              range("window_radius_tiles", n.window_radius_tiles, 1, 8192),
+              range("window_blocks", n.window_blocks, 1, 256),
+              range("coarse_budget", n.coarse_budget, 1, std::uint64_t{1} << 40),
+              range("fine_budget", n.fine_budget, 1, std::uint64_t{1} << 40),
+              range("memory_bytes", n.memory_bytes, 1, std::uint64_t{1} << 40),
+              range("volk_number", n.volk_number, 0, 65535),
+              range("health_span_percent", n.health_span_percent, 0, 100),
+              range("health_floor_percent", n.health_floor_percent, 1, 100),
+              range("cargo_penalty_percent", n.cargo_penalty_percent, 0, 100)}) {
+            if (!problem.empty()) {
+                return problem;
+            }
+        }
+        // V must stay in 1 .. 100 for every hp: floor + span <= 100.
+        if (n.health_span_percent + n.health_floor_percent > 100) {
+            return bad("NavRules", "health_span_percent",
+                       "health_span_percent + health_floor_percent exceeds 100");
+        }
+        if (n.class_costs.empty() || n.class_costs.size() > 256) {
+            return bad("NavRules", "class_costs", "must hold 1 .. 256 classes");
+        }
+        for (std::size_t i = 0; i < n.class_costs.size(); ++i) {
+            const NavClassCost& k = n.class_costs[i];
+            if (k.open_orth == 0 || k.open_diag < k.open_orth || k.shore_orth == 0 ||
+                k.shore_diag < k.shore_orth) {
+                return bad("NavRules", "class_costs",
+                           "class " + std::to_string(i) +
+                               " needs positive costs with diagonal >= orthogonal");
+            }
+        }
+    }
     for (const std::string& n : city_names) {
         if (n.find('\0') != std::string::npos) {
             return bad(kOwner, "city_names", "a name contains a NUL byte");

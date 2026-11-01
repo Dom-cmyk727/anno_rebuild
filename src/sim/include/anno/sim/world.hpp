@@ -110,7 +110,10 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Stream at 121 (task MAP-FOUND-3, docs/sim/shared-visibility.md): Rules gain `shared_visibility`
 // (groups of player ids: u64 group count, then per group u64 member count and u32 members), after
 // city_names. Every state hash moves through the Rules layout; sharing-off outcomes are unchanged.
-inline constexpr std::uint32_t kStateHashVersion = 121;
+// Stream at 122 (task MAP-NAV-2, docs/sim/ship-navigation.md 12.5): Rules gain `nav` (NavRules,
+// after shared_visibility); IdCounters gain next_order_id and next_ticket; each Figure gains an
+// optional NavMotion at its end; the registry digest's figure types gain the optional NavFacts.
+inline constexpr std::uint32_t kStateHashVersion = 122;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

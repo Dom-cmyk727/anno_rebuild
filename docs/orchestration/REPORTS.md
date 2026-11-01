@@ -9528,3 +9528,216 @@ No merge, push, rebase, prune or reset. The map is unchanged. No gameplay input,
 work was done, and the CPU reference's rounding was not changed. The coordinator protocol, journals and
 admission policy were not touched. The owned `caffeinate` (pid 79354) was stopped before this commit, and no
 job of this round is left running.
+
+## Round ed: W4.3 trace attribution, evidence validation and the two intermittent tests closed; gameplay handoff (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `a1fd6ea` (round ec's report).
+- **Code head:** `c2bdf91` (`src/` and tools final). The commit after it is this report and its doc
+  updates; nothing under `src/` or `tools/` changes after `c2bdf91`.
+- **Evidence:** `cache/ed-runs/` and `cache/gates/ed-*` (ignored).
+- **Host:** Apple M5 Max (Mac17,6), 18 cores, 48 GiB, macOS 27.0.1; "Apple M5 Max (Metal)"; built-in
+  3456 × 2234 display at 120 Hz. Load 2 to 6 during the round; no other executor's heavy job was seen.
+  Only this round's own jobs ran, one expensive phase at a time.
+- **Admission:** memory admission on and unchanged. The coordinator protocol was not touched.
+- **Display:** the owner's existing keep-awake process was left alone; no keep-awake process of this round.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged.
+- **Gate runner:** the canonical `run_selected.py` of the main checkout, with `--source-root` and
+  `--build-dir` of this worktree. It requires only `picture_matrix_contract` on its own, so every gate
+  passes `--require-test window_table_contract` (and the launcher's contract where named).
+
+**Commits** (`a1fd6ea..c2bdf91`):
+- **1:** `8603177` presentation attributed to a frame that draws the change; `84f42c7` review fixes.
+- **2:** `452f369` the table aggregates every raw trace and checks its inventory; `e530335` review fixes.
+- **3:** `cbf5838` destructions told by scene identity; `6eb7e9b` review fix (one owner, after the reaper).
+- **4:** `a09a6ea` the stand-ins case's deadline explained and fixed; `bd4c479`, `c2bdf91` review fixes.
+
+### Package acceptance tables
+
+Every reviewer was an independent, read-only subagent (no edit, stage, commit, process control or
+delegation), briefed with the code, the raw evidence and the original counterexample, not the
+conclusion. Each re-reviewed its fixes.
+
+**Package 1 — presentation attribution** (reviewer 1; reviewed `8603177`, re-reviewed `84f42c7`: CHANGES
+REQUIRED, then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| A failed present then an unrelated successful frame presents nothing | frame 2 keeps frame 1's view: presented once, at frame 2 | frame 2's view elsewhere (the orchestrator's probe) | no `presented` at frame 2; `present_unfinished` 1; presented once at frame 3 when the view returns | window trace test "a failed present followed by a successful frame elsewhere…"; mutant "historical readiness" caught (`p1-mutants-1.log`) | APPROVED |
+| A stale or not-uploaded key blocks presentation | nothing changes between frames: presented at 2 | one key stale, or off the GPU, at frame 2 | nothing at 2; presented at 3 when current; one `chunks_ready`/`gpu_ready` at 1 | "…stale or off the GPU…" | APPROVED |
+| A later commit over the same keys | — | commit (0,2) after frame 1's failed present | both presented at frame 3; `present_after_recommit` 1 | same case | APPROVED |
+| Ordinary first-attempt success unchanged | — | — | ready, drawn and presented in its own frame, at its submit/present times | "…ordinary first-attempt success…" | APPROVED |
+| Islands, pan, resize, zoom | — | pan to one island; resize that loses the key; zoom where the new group's key is not usable | per island; nothing until the frame draws it | "…each island…pan, resize, zoom…" | APPROVED |
+| The reader accepts a deferred completion and refuses an unrelated frame and a lost one | drawn@2 failed, frame 3 elsewhere, drawn+presented@4: consistent | presented at frame 3 without its drawn; frame 4 drew and presented without `presented` | "…which has no drawn of it"; "…drew … and presented, but no presented of it at that frame" | presentation-rules case; reader mutants "no drawn", "first later", "lost completion" caught | APPROVED |
+
+**Package 2 — evidence validation** (reviewer 2; reviewed `452f369`, re-reviewed `e530335`: CHANGES
+REQUIRED, then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| 2A/2C a cut or contradictory trace fails though its saved summary says success | the synthetic case: exit 0, known numbers | only `run_end` removed, `aggregate.txt` and `run.txt` kept; `presented` moved before its `gpu_ready` | "trace incomplete: run=INCOMPLETE (no run_end"; "trace unreadable: … before its gpu_ready" | `window_table_contract`; mutant "trusts saved" caught (`p12-mutants-2.log`) | APPROVED |
+| 2B the raw trace is aggregated at table time by a named, hashed bench_picture | — | a decoy file of that name in the working directory | the file on PATH is run and hashed; another captured binary is named | contract: bare name, other bench | APPROVED |
+| 2D/2E the inventory | full matrix 1 of 1; a requested subset labelled | empty plan; header-only results with a selected case; a stopped campaign; duplicate, lost, unplanned, reordered cases | exit 2 "selects no case"; exit 1 "INCOMPLETE campaign … (begun, not finished: b)", "listed twice", "not listed", "does not select", "another order" | contract; mutants (empty, missing, lost, subset as full) caught | APPROVED |
+| A run.txt cannot switch a traced case to the control path | a trace-off control without a trace dir: exit 0 | `trace=off` in run.txt of a traced, cut case | "run.txt trace=off, plan.tsv trace=on" | contract | APPROVED |
+| 2F idle is valid | 0 commands, no edit: exit 0 | — | edits row 0/0/0/0/0 | contract | APPROVED |
+| 2G the contract is required | `run_selected.sh` preflights; `--require-test window_table_contract` on every canonical gate | — | registered, executed, passed in each gate log | gate logs below | APPROVED |
+| 2H saved round-ec evidence | the 2 idle traces consistent | the 9 traces with edits | refused: no `drawn`; derivation supports 304 of 304 presentation times | `h-revalidate-ec.*`, `h-ec-table.*` (frozen bench) | APPROVED |
+
+**Package 3 — the publish test's identity** (reviewer 3; reviewed `cbf5838`, re-reviewed `6eb7e9b`: CHANGES
+REQUIRED, then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| An unrelated lineage's generation 0 is not the held one | the held scene's own premature release is seen | the earlier lineage's generation 0 destroyed after the next observer, forced with the reclaimer gate | generation-only check: "destroyed"; identity check: not; one owner kept | "publish: a held generation's destruction is told by its lineage…"; mutant "generation only" caught (`p3-mutants-2.log`) | APPROVED |
+| The ownership assertion stays effective | barrier cases pass | a build that gives up its generation before it runs | `use_count() == 1` and `!destroyed.of` fail in both barrier cases | `p3-mutants-3.log` | APPROVED |
+| A reaper still holding the scene cannot mask a lost owner | free reaper: use count 1 | reaper stalled from the last commit (reviewer's probe) | the settle wait fails after 10 s; use count 2 | reviewer 3's probe | APPROVED |
+| Cleanup is safe | — | a callback copied by the reclaimer runs after clearing | the record and the gate are shared by value | code; ASan runs below | APPROVED |
+
+**Package 4 — the GPU deadline** (reviewer 4; reviewed `a09a6ea`, re-reviewed `bd4c479`: CHANGES REQUIRED,
+then APPROVED)
+
+| Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
+|---|---|---|---|---|---|
+| 4A/4B diagnostics and the serial control | the case alone with the diagnostics | — | first loop at its 4000-frame cap (5.7 s), all 24 visible keys fading; dissolve loop 4524 frames; edit 6 | `p4-control-serial-1.log` | APPROVED |
+| 4C/4D the adverse ordering, controlled | the same case with the clock moving | one visible key's chunk job held past the single clock step | held clock: STALLED, fading 1, no CPU work, GPU work pending; moving: idle in 10 frames, fresh pixels | the new case; `p4-repro-and-fixed-1.log` | APPROVED |
+| A uniform slowdown is not the trigger | — | background QoS, round-ec and corrected | both pass (153 s and 173 s), normal counts | `p4-background-qos-1.log` | APPROVED |
+| 4E/4F the fix keeps every assertion | all 5 constrained cases serially | — | pass; pixel, whole-swap, dissolve and idle assertions unchanged; no tolerance moved | `p4-constrained-serial.log` | APPROVED |
+| 4G acceptance wording | — | — | demonstrated defect, deduced attribution, the alternative named, contention run NOT RUN | `docs/app/gpu-handoff.md` §5 | APPROVED |
+
+### Findings and their corrections
+
+- **Package 1, review:** P2: the reader accepted a frame that drew and presented a change without its
+  `presented` (a lost completion read as unfinished work): now a contradiction. P3: the recommit count was
+  renamed `present_after_recommit` (the trace does not name chunks); the tracer bound's reason restated;
+  the test clocks strictly increase; the first-attempt visibility limit after a resize documented.
+- **Package 2, review:** P2: a traced case whose run.txt said `trace=off` skipped validation (a cut,
+  contradictory trace tabulated as success): the plan now records each case's trace mode. P3: the
+  aggregator is resolved once and the file run is the file hashed; an unfinished campaign is reported
+  before lost directories; the plan's selection is checked first; results order; tab-separated cases
+  (paths with spaces); an invalid selector refused; `env -u ANNO_VIEW_TRACE` for trace-off runs.
+- **Package 3, review:** P2: the picture's reaper could still own a held generation at the check, so a
+  build that let go early could pass: both barrier cases now wait for the reaper and the reclaimer and
+  require one owner. P3: the wording now says the defect can produce the failure, and the item stays open
+  until the full ASan gate (below).
+- **Package 4, review:** P2: the doc presented a deduction as an explanation; it now separates the
+  demonstrated defect from the attribution and names the alternative it does not exclude. P3: the first
+  loop's report is filled in, its watchdog message carries it, the watchdog is 400 s per loop (within
+  CTest's 1800 s).
+- **My own errors, kept:**
+  - A package-3 mutant (`p3-identity-by-generation`, first form) locked the record's mutex twice and hung.
+    I sampled it, stopped only that process (mine), and recorded it INVALID; `p3-mutants-1.log` line 36's
+    "CAUGHT (exit -15)" is that killed run, corrected at line 41. The corrected mutant is `p3-mutants-2.log`.
+  - The contract's `swapped` fault first failed for an earlier reason (the aggregate caught it before the
+    cross-check); it was changed to keep the trace consistent so it reaches the cross-check.
+  - The ASan focused log's `build rc=` is empty: the shell was zsh, which has no `PIPESTATUS`. The rebuild
+    is shown by ninja's lines, the objects' times and the new case names in the binary.
+  - The first 2H table and derivation used a bench_picture built before the last reviewed source; they are
+    kept as `*.superseded-76cc92d5.*` and regenerated with the frozen release binary (same result).
+
+### Gates (canonical `run_selected.py`, final source `c2bdf91`; first failures kept)
+
+**Binaries (5B, 5C).** Mutants ran only in an isolated copy with its own build (`cache/ed-mut/`); this
+tree's sources were never mutated. After the freeze, every source the round changed was touched (mtime
+only) and rebuilt, and each object was recompiled (`cache/ed-runs/rebuild-forced-c2bdf91.log`: 12 in dev,
+8 in ASan, 6 in release; 0 warnings). Afterwards the dry run lists only CMake's glob check, with no
+compile or link step left. The ASan `bench_picture` (from 31 Oct) was rebuilt too
+(`rebuild-asan-bench_picture.log`). sha256, first 16 hex:
+- dev: `anno_app_tests` `d4054bbcd7dd1c87`, `anno_app_alloc_tests` `d443f9844eb1919a`,
+  `anno_render_gpu_tests` `4afc0c09c7682a1f`, `anno1503` `3de54d299f34a73e`, `bench_picture`
+  `325d81b23af4fb45`;
+- ASan: `anno_app_tests` `365ef28a6aaa53d3`, `anno_app_alloc_tests` `55adf21c0a85648f`, `bench_picture`
+  `690b9755ebaae883`;
+- release, frozen: `anno1503` `c0eede236a01a02f`, `bench_picture` `b817833d34d3b73d`.
+
+Every gate also ran its preflights (test names, the verdict reader's 24 contracts) and the required
+contracts `picture_matrix_contract` and `window_table_contract`, each registered, executed and passed.
+The gates ran one at a time.
+
+| Gate | Command (all: `python3 -I <main>/tools/test/run_selected.py --source-root <W4> --require-test window_table_contract --timeout 1800`) | Result |
+|---|---|---|
+| Preflight | `--preflight-only` | PASS |
+| G0 focused (dev) | `--build-dir build/dev --require-test run_selected_contract --select '^anno_app_tests\.(window trace\|picture trace\|publish\|accounting)\|^anno_render_gpu_tests\.picture GPU, constrained' --jobs 4` | PASS: selected 44, executed 44, failed 0, empty 0, skipped 0, incomplete 0 (`cache/gates/ed-g0-focused-dev.log`) |
+| G1 app (dev) | `--build-dir build/dev --require-test run_selected_contract --select '^anno_app_tests\.\|^anno_app_alloc_tests\.\|^anno1503_usage' --jobs 8` | PASS: selected 155, executed 153, failed 0, empty 0, skipped 2 (opt-in: the two probe cases), incomplete 0 (`ed-g1-app-dev.log`) |
+| G2 GPU (dev), run 1 | `--build-dir build/dev --select '^anno_render_gpu_tests\.(picture GPU\|play)' --jobs 1` | FAIL (exit 6), kept: selected 14, executed 13, failed 0, skipped 1 GPU (`play: GPU matches the CPU path on one scene`: "no RTX 4090 among: Apple M5 Max"), outside the declared policy (`ed-g2-gpu-dev.log`). A re-read cannot change a recorded status |
+| G2 GPU (dev), run 2 | the same, with `--allow-skip gpu` (the RTX 4090 case is a target-host gate, NOT RUN here) | PASS: selected 14, executed 13, failed 0, empty 0, skipped 1 GPU, incomplete 0 (`ed-g2-gpu-dev-run2.log`). Both changed GPU cases passed |
+| G3 ASan, run 1 and run 2 | `--build-dir build/asan --select '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|scene picture\|credit\|ownership\|publish\|accounting)' --jobs 4` | PASS twice: selected 70, executed 70, failed 0, empty 0, skipped 0, incomplete 0, no sanitizer line (`ed-g3-asan-run1.log`, `-run2.log`). Both barrier cases passed in each run |
+| Focused ASan of package 3 | the two suites, 5 times, by hand | 17 of 17 each time (`cache/ed-runs/p3-asan-focused.log`) |
+| Format | `clang-format 23.1.3 --dry-run --Werror` on the changed C++ files | PASS (applied before each commit) |
+| Contracts | `window_table_test.sh`, `run_selected_test.sh` (in G0–G3 as required contracts and the launcher's contract) | PASS |
+| NOT RE-RUN, with reason | `anno_render_tests`, the heavy label, the Metal timestamp cases | the round changed no source under `src/render/src` or `src/render/include`, and no CPU render test: only `src/render/tests/picture_gpu_test.cpp`, which is in G2 |
+| NOT RUN | Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` (`tools/check_unix_warnings.sh`); RTX 4090 and Radeon iGPU; a genuine 3840 × 2160 window | no such host or display here; commands as in round ec |
+
+### The real window (5F)
+
+The canary at the frozen release binaries, and a trace off/on pair, are in docs/perf/README.md, "Round ed:
+the canary at the final source":
+- every trace is complete and consistent with `drawn`; every frame presented; 121 commands applied, 0
+  rejected; 121 edits presented, none unfinished;
+- the table labels it "a requested subset, 2 of 13 planned cases; not the full matrix";
+- the trace's overhead is again below the window's 0.1 ms resolution;
+- the window's busy time is higher than in round ec. Round ec's own binary shows the same today with the
+  viewer's code unchanged, so this is a host condition, not this round's change.
+
+### Historical measurements
+
+- **Round ec's window matrix:** its traces are refused by the corrected aggregate, which needs `drawn`.
+  Its presentation times are supported by a derivation from the raw files: 304 of 304, each presented by
+  its own `gpu_ready` frame, which presented, with one view from the commit on. Its latencies, cadence,
+  RSS and overhead rows stand for their own conditions. They are not comparable with today's host.
+- **Round eb's corrected accounting and round ec's gate tables:** unchanged by this round.
+- **Round ec's two intermittent failures:** kept as recorded. They are now explained by demonstrated test
+  defects, and each attribution is a deduction (gpu-handoff.md §5).
+
+### Preserved failures and their dispositions
+
+| Failure | Disposition |
+|---|---|
+| Round ec: `picture GPU, constrained: with stand-ins and dissolves …`, 2 of 2 at its 120 s deadline (`cache/ec-runs/e-affected-dev*.log`) | Test clock defect demonstrated; attribution by deduction; fixed; passes serially and in G2. NOT RUN: the corrected case under `-j 6`-like contention |
+| Round ec: `publish: one, two and four workers each hold a version ahead at a barrier …`, once under ASan (`e-asan.log`) | Test identity defect demonstrated; attribution by deduction; fixed; passes in G1, both G3 runs and 5 focused ASan runs. Its acceptance, passing repeatedly in a full ASan gate, is met by G3 run 1 and run 2 |
+| Round ed: G2 run 1, exit 6, the RTX 4090 case's GPU skip outside policy | Kept; superseded by run 2 with `--allow-skip gpu` declared, since that case is a target-host gate |
+| Round ed: my invalid mutant (self-deadlock) | Kept in `p3-mutants-1.log`, marked INVALID; corrected in `p3-mutants-2.log` |
+| Round eb: the two Metal timestamp cases (`river flow on the GPU: …`, `every pass of a frame is timed …`) | Still open, not re-run (no change to that code). Owner: the GPU timing unit. Acceptance: passing on Metal, or a recorded owner decision |
+
+### Local acceptance scope
+
+- **Ready for review on this Mac, at `c2bdf91`:** the presentation attribution, the evidence readers,
+  the two test corrections and the gates above.
+- **Not claimed:** target-platform acceptance, original visual parity (OQ-525 unchanged, no tolerance or
+  rounding touched), late-game or multiplayer performance, display or GPU-completion latency.
+
+### External follow-ups
+
+| Follow-up | Owner | Acceptance condition |
+|---|---|---|
+| Windows MSVC build and the app/render gates | the target-host run | `cmake --preset msvc`; `run_selected.py --config Release --require-test window_table_contract` on `anno_app(_alloc)?_tests` and `anno_render(_gpu)?_tests`, PASS with only declared skips |
+| Linux GCC 13 / Clang 18 `-Werror` | the target-host run | `tools/check_unix_warnings.sh` exits 0, with the viewer and GPU code on and the app without `ANNO_VIEWER_GPU` |
+| RTX 4090 and Radeon iGPU | the target-host run | the G2 selection with no GPU skip; `play: GPU matches the CPU path on one scene` executed and passed |
+| A genuine 3840 × 2160 window and the target hosts' window matrix | the target-host run | `window_matrix.sh … 3840x2160` and `window_table.py <bench> <dir>` report "the full matrix, 13 of 13", exit 0, with the actual drawable 3840 × 2160 |
+| The corrected stand-ins case under contention | the next GPU unit | it passes in a full gate at `-j 6` beside CPU-heavy cases; a failure reports STALLED or WATCHDOG with its demand |
+| By-reference observers matched by pointer: "ownership: a frame-held generation outlives the bridge …", "publish: a frame-held intermediate generation and shutdown with work in flight …", "picture GPU: a frame's generation stays alive across a commit …", "picture GPU: the wave simulation's background preparation holds the frame's generation …" (reviewer 3's residual; a failure-path use after scope and address reuse are possible, not observed) | the bridge's next unit | their records shared by value and matched by lineage and generation (`reclaim_identity.hpp`), as the barrier cases now are |
+| The two Metal timestamp cases; OQ-525 | GPU timing unit; the owner | as above |
+| Representative large-city, complex-economy and multiplayer performance | the performance unit | PLAN §0.3 targets measured on target hardware with a late-game workload |
+
+### Gameplay handoff
+
+Gameplay can use these reviewed interfaces:
+- `PlayRunner::post_command` (and `set_script`): commands enter at the next turn, in queue order.
+- Acceptance: only the sim's `CommandRejected` events (`take_rejections`) say whether a command was
+  refused; a turn with none accepted all of its commands. Never infer acceptance from submission, or from
+  a picture update.
+- The building mailbox: `take_building_batches` at a frame boundary, with a collapsed resync when it
+  overflows.
+- Monotonic publication: a committed island version never goes back, and a later commit supersedes an
+  earlier one.
+
+Gameplay must not wait for any of this, in the sim or in input handling: object builds, chunk rebuilds,
+GPU uploads, dissolves, reclamation, or a presentation. The picture follows asynchronously. The trace's
+`presented` is a measurement of the window, not a signal to act on.
+
+### Next smallest unit
+
+The external follow-ups above, starting with the target hosts' gates and window matrix. No rendering
+optimization, gameplay input or map work is attached to this round.
+
+No merge, push, rebase, prune or reset. The map is unchanged and `game/` was not touched. The coordinator
+protocol, journals, admission policy, simulation rules, state versions, goldens and OQ-525 tolerances were
+not touched. The owner's keep-awake process was left alone. No job of this round is left running.

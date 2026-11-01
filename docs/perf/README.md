@@ -1762,6 +1762,34 @@ re-reading used a copy (`cache/ed-runs/h-ec-matrix-copy/`, with a `plan.tsv` rec
   meet the three conditions, the resize run's included (none of its changes waited across the resize).
   So round ec's latency numbers are supported by this derivation from the raw files, not by the
   validator, which cannot accept a trace without `drawn`.
-- **Remeasured:** only a canary at round ed's final source (in this round's report), because the
-  producer's behaviour changed only for failed presents and view changes during a wait, which no round-ec
-  case had. The round-ec matrix is not re-run.
+- **Remeasured:** only a canary at round ed's final source, because the producer's behaviour changed only
+  for failed presents and view changes during a wait, which no round-ec case had. The round-ec matrix is
+  not re-run.
+
+### Round ed: the canary at the final source
+
+`tools/bench/window_matrix.sh` with the subset `one-1920x1080|resize-sustained-1920x1080`, then the trace
+off/on pair `overhead-(off|on)-1`, with release binaries frozen from `c2bdf91`
+(`cache/ed-runs/anno1503.release-c2bdf91`, sha256 `c0eede236a01a02f…`;
+`cache/ed-runs/bench_picture.release-c2bdf91`, `b817833d34d3b73d…`). Raw files are in
+`cache/ed-runs/f-canary-c2bdf91/` and `f-overhead-c2bdf91/`, and the tables in `f-canary-table.md` and
+`f-overhead-table.md`. The table says "a requested subset, 2 of 13 planned cases; not the full matrix".
+
+- **Validity:** every trace is complete and consistent under the corrected aggregate, `drawn` included.
+  Every attempted frame presented (1,432; 3,821, with the resize's two epochs and views; 3,810), with no
+  failure and no drop. 121 commands were applied and none rejected. 121 edits were presented, none was
+  unfinished, and none was presented after a recommit.
+- **One edit, desired → present-call return:** 50.9 ms at 1920 × 1080; object-ready 32.9 ms.
+- **The resize run's 60-build stream:** p50 58.7 ms, p95 67.2 ms, max 75.0 ms.
+- **Cadence:** frame starts every 8.31 ms at p50 (120 Hz).
+- **The trace's overhead:** the window's own average busy time is 1.00 ms per frame both with the trace
+  off and with it on. That is below the 0.1 ms resolution of its lines, as in round ec.
+- **Not comparable with round ec's numbers:** the window's busy time, trace off, is 1.0 ms now against 0.2
+  to 0.3 ms in round ec. Round ec's own frozen binary, run trace-off on the same case now, also shows
+  1.0 ms (`cache/ed-runs/f-ec-binary-off-now/`). The viewer's code is identical between the two binaries
+  (no change under `src/app/src/viewer.cpp`, `main.cpp`, `play*.cpp` or `src/render/src` from `c025fc2`
+  to `c2bdf91`). So the host's conditions differ between the two days (load 2 to 6 now), and these rows
+  are not a regression measurement. Round ec's latency rows stand for their own conditions (see the
+  saved-evidence section above).
+- **Not measured:** the same limits as round ec: one host, no genuine 2160p drawable, no target hosts,
+  present-call return only.

@@ -77,6 +77,42 @@ def turn_ticks(f0, mut=None):
     return Fraction(f0) / Fraction('0.01') * 5
 
 
+def integrate(speed, lens, visit_ticks, n, mut=None):
+    """Exact-rational integrator along one axis (docs/re/ship-navigation.md 7.2): one visit consumes
+    visit_ticks/5 stepper units; the final partial step of a segment uses exactly remaining/speed time and the
+    leftover time carries into the next segment inside the same visit; after the last segment the ship idles
+    (zero velocity). Returns (position, 1-based visit at which the last segment finished or 0)."""
+    speed = Fraction(speed)
+    segs = [Fraction(x) for x in lens]
+    pos, rem, i, done = Fraction(0), segs[0], 0, 0
+    for v in range(1, n + 1):
+        t = Fraction(visit_ticks, 5)
+        while done == 0 and t != 0:
+            P = t * speed
+            if mut == 'overshoot':
+                step, time = P, t           # never use remaining/speed for the last partial step
+            elif P <= rem:
+                step, time = P, t
+            else:
+                step, time = rem, rem / speed
+            if mut == 'floor_visit':
+                step = Fraction(math.floor(step * 256), 256)
+            pos += step
+            rem -= step
+            t -= time
+            if rem <= 0:
+                if i + 1 < len(segs):
+                    i += 1
+                    rem = segs[i]
+                    if mut == 'drop_leftover':
+                        t = Fraction(0)
+                else:
+                    done = v
+            if mut == 'floor_visit':
+                t = Fraction(0)
+    return pos, done
+
+
 def fmt_frac(f):
     f = Fraction(f)
     return str(f.numerator) if f.denominator == 1 else repr(float(f))
@@ -96,6 +132,9 @@ def run_record(kind, args, mut=None):
     if kind == 'chunks':
         return [fmt_frac(c) if Fraction(c).denominator == 1 else repr(float(c))
                 for c in chunks(args[0], mut)]
+    if kind == 'integrate':
+        pos, done = integrate(args[0], [Fraction(x) for x in args[1].split(',')], int(args[2]), int(args[3]), mut)
+        return [fmt_frac(pos), str(done)]
     if kind == 'turn_ticks':
         t = turn_ticks(args[0], mut)
         return [fmt_frac(t)]
@@ -266,7 +305,7 @@ def main(argv):
     if argv[1] == 'check':
         bad = check(argv[2])
         kinds = {r[1] for r in load(argv[2])}
-        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks'}
+        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate'}
         if kinds != expected:
             print('record kinds present %s, expected %s' % (sorted(kinds), sorted(expected)))
             return 1
@@ -275,7 +314,8 @@ def main(argv):
         print('ship movement vectors', 'agree' if not bad else 'DIFFER')
         return 1 if bad else 0
     # selftest: every deliberate mistake must be caught by at least one vector
-    mutants = ['round_hp', 'thresh2', 'reversal_plus', 'no_half', 'odd', 'limit1']
+    mutants = ['round_hp', 'thresh2', 'reversal_plus', 'no_half', 'odd', 'limit1', 'overshoot', 'floor_visit',
+               'drop_leftover']
     ok = True
     if check(argv[2]):
         print('selftest: the unmutated reference already fails')

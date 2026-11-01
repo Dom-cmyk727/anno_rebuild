@@ -20,9 +20,12 @@ diplomacy commands.
 `MoveCmd` (native wire tag `0xF071`, after `FoundCmd`; **ADAPTATION**: the original's player command is net `0x84`
 (kind 1 = point, flags from the cursor) and its host/script command `0x6c`; neither wire format is reused): `{FigureId ship; i32 target_x_q8, target_y_q8}` where the target is a Q24.8 tile coordinate (the original sends
 raw f32 world `x`, `z`; the click rounding is UNKNOWN, section 11 item 1, so the contract takes an exact fixed-point
-point and the UI layer decides how to produce it). Issuer = the authenticated player.
+point and the UI layer decides how to produce it). Issuer = the authenticated player. `0xF071` joins the codec's tag order and `is_native_wire_type`; a `LegacyRawCmd` of that type
+becomes unrepresentable (as `0xF070` did).
 
-Validation, in order; every refusal leaves bytes, PRNG cursor and every set unchanged (tested like `FoundCmd`):
+Validation, in order. **ADAPTATION (atomic refusal):** in the original single-player path the stop (slot `+0xdc`) runs *before*
+SetOrder, so a refused order still trims the in-flight segment; the sim refuses first and leaves bytes, PRNG cursor, the motion
+state and every set unchanged (tested like `FoundCmd`, the unchanged assertion includes the new motion state):
 
 | # | Check | Source |
 |---|---|---|
@@ -97,13 +100,18 @@ Pure function `plan_route(static_coast, units, start_tile, goal_point, nav_class
 throughout (costs are u16, tile classes integer, scoring `2304 - ftol(64 d^2)` computed in integers on the
 Q24.8 goal point with the tile centre +0.5): coarse map as in 9.2-9.3, fine search as in 9.4, learned masks (<= 8),
 goal acceptance radius 6.0 (config `route_goal_radius`, default 6), run length cap 10 (config), FIFO tie order and
-neighbour order exactly as evidenced. **Static coast data** is built once per island and cached with the island
-(`Island` derived data, rebuilt for a changed rectangle when a building/wall is placed or removed, the original's
-`0x7000 & {0x2000,0x4000}` object-class rule becoming a data flag on the building type, default from the original
-classes). It is derived state: never hashed twice, rebuilt on load. **Local obstacles** enter only as the ship-density
+neighbour order exactly as evidenced. **Static coast data** is a **world-level** sector index, because a route spans open sea and several islands (the original's
+`[world+0x6aa4]`: 64 x 64-tile sectors, each 8 x 8 coarse cells, a null sector = open water `0xfff`): derived state assembled from
+the island rectangles in island-slot order (deterministic), rebuilt for a changed rectangle when a placed or removed object has
+the original's class bits (`& 0x7000` equal to `0x2000` or `0x4000`, which becomes a data flag on the building type with the
+original classes as default), never hashed, rebuilt on load (whether the original builds the whole map at load is a static
+open item, see section 11). **Local obstacles** enter only as the ship-density
 stamps (5 x 5 kernel, cost classes by density) from other ships near the start/goal, queried by tile from the figure
-registry in a fixed order (ascending figure id, at most `route_unit_cap`: 0x40 in the route engine's query `0x100a8c50`, 0x80 in the local planner) — never from wall-clock
-state. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
+registry. **ADAPTATION / UNKNOWN:** the route engine's own query (`0x100a8c50`: registry slot `+0x14`, class mask `0x80` for ships,
+up to 0x40 hits, positions offset by a factor of the other ship's heading) has an unread radius and consumption order, and the
+local planner uses d^2 <= 36 and 0x80 (evidence 10.2); until those are read the contract fixes only the *rule*: stamp every
+other navigating ship within the planning window in ascending figure id, capped at `route_unit_cap`, and never use wall-clock
+state. The cap truncates by that order, so the order is part of the rules identity. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
 **global** engine; the 12-unit local detour replan (section 10 of the evidence) is **deferred**: the slice accepts
 that ships may overlap and that the density stamps are used only at planning time. This is an ADAPTATION noted in the
 acceptance review; it removes the order dependence of the segment-end hook for the first slice and the dependent
@@ -115,13 +123,17 @@ Requirements (design, not measured performance): (a) planning is **per ship visi
 visit order and cadence), at most `route_plans_per_advance` (config, default 4) plans are *started* per Advance; an
 excess ship keeps its pending order and is retried at its next visit, in registry order, so the outcome depends only on
 sim state; (b) a query has a **work budget** in coarse-node pops and fine-node pops per query
-(`route_coarse_budget`, `route_fine_budget`, defaults chosen from the measured worst cases of the fixtures with a
-documented margin; the original has *no* cap and floods the window, so exceeding the budget is an ADAPTATION that yields
-status `-3 BudgetExceeded` = failed plan, never a partial route); (c) the window is at most 32 x 32 blocks of 64 tiles
-(original `SetWindow` limit), centred on the start/goal box; (d) static coast data is shared by all ships of a map and
-read-only during planning, so planning needs no locks and may run on worker threads *only* if its result is committed in
-registry order at the ship's visit; the sim result must not depend on core count, wall clock or completion order
-(tested with 1/2/4/7 executor threads like the existing replay cases); (e) queues are finite and saved: the pending
+(`route_coarse_budget`, `route_fine_budget`; defaults are set in P2 from measured worst cases of the fixture maps with a
+documented margin and a recorded measuring procedure (not set here); the original has *no* cap and floods the window, so exceeding the budget is an ADAPTATION that yields
+status `-3 BudgetExceeded` = failed plan, never a partial route; consequence stated: a route the original would complete makes the
+ship idle, and large budgets are the remedy, not partial routes); (c) the window is at most 32 x 32 blocks of 64 tiles
+(original `SetWindow` limit: a larger window makes the query fail, i.e. a failed plan, which on a very large map idles a ship
+whose voyage the budget-free original could also not start; the box construction `0x10040940` is a static open item), centred
+on the start/goal box (ADAPTATION until read); (d) static coast data is shared by all ships of a map and
+read-only during planning; **planning runs serially at the ship's visit** in registry order (it reads other ships' *current*
+positions for the density stamps, so no result may be computed ahead on stale state). A later optimisation may speculate on
+workers only with a validation that re-runs the query when any input position changed; the sim result must not depend on core
+count, wall clock or completion order (tested with 1/2/4/7 executor threads like the existing replay cases); (e) queues are finite and saved: the pending
 order record is persisted state, planning itself is re-run (it is a pure function), so no half-finished work is saved.
 
 ## 7. Configuration and modding

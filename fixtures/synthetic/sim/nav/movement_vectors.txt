@@ -63,3 +63,16 @@ chunks 1.0005 | 1.0 0.0005
 turn_ticks 0.11 | 55
 turn_ticks 0.125 | 62.5
 turn_ticks 0.10 | 50
+# integrate speed lens visit_ticks n | final_pos finish_visit   (exact rational; speed in tiles per stepper unit, 1 unit = 5 ticks;
+#     one axis; segments of the listed lengths at the same speed; the final partial step uses exactly remaining/speed time and the
+#     leftover time carries into the next segment within the same visit; finish_visit 0 = not finished after n visits)
+#     Hand derivation: speed 0.04 and 50-tick visits = 10 units = 0.4 tile per visit.
+integrate 0.04 3 50 7 | 2.8 0
+integrate 0.04 3 50 8 | 3 8
+integrate 0.04 1,1 50 5 | 2 5
+integrate 0.04 1,1 50 3 | 1.2 0
+integrate 0.04 1 5 24 | 0.96 0
+integrate 0.04 1 5 25 | 1 25
+integrate 0.04 3 25 15 | 3 15
+integrate 0.04 3 7 53 | 2.968 0
+integrate 0.04 3 7 54 | 3 54

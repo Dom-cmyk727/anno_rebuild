@@ -215,7 +215,25 @@ than 2^-16 tile, keeps the arrival within one visit of the original.
 
 ## 8. The move order (ORIGINAL)
 
-Net command `0x6c`, payload kind 1: `u16 figure id | u8 kind = 1 | f32 x | f32 y | f32 z` (y ignored). Single
+**Player path (right-click).** A player's right-click order does **not** use net `0x6c`. WM_RBUTTONUP (AnnoFrame
+`0x10008240`, kind 4) reaches the in-game frame's slot `+0x60` (`0x10006c60`, DERIVED that the live frame is a
+tFrameGame), the per-frame poll `0x100052a0` calls the cursor `slot +0x70(4, mods, pick)` (`0x10005341`); the cursor
+class tCursorInfo (vtable `0x10088b30`, handler `0x100502b0`, kind 3 right press sets a bit that kind 4 requires)
+builds the hit list (`0x10050030`), converts it with `0x1004f7e0` and calls the net client **slot `+0xc0`**
+("player command", SP `0x10059d60`, MP `0x1005f200` = net command **`0x84`**, packet `[u8 0x84][u8 kind][u16 player]
+[u32 flags][data]`, received by `0x10060408 -> 0x100601e4 -> 0x1005f120`) at `0x10050af7`. A terrain hit gives kind 1
+with the buffer `{mean(hit.f32[+4]), 0.0f, mean(hit.f32[+8])}` (y always 0.0; x and z are the raw pick point, not
+snapped here); a unit hit kind 2 with ids; a tile hit kind 4 or 5. Flags are `[cursor+..] | 0x1000000`, `|= 0x10000` when
+modifier `8` is down and `(flags & 0xf0000) == 0`, `|= 2` when modifier `0x1000` is down. The SP path then runs
+`player.slot +0xd0` (AnnoWelt `0x1001b2a0`) -> the selection's slot `+0x1c`: a single selection (`0x1001a5d0`)
+**checks that the unit is owned by the selecting player (`world.slot +0x158`) and in class group 6 or 7**, then stops
+the unit (slot `+0xdc`) and calls SetOrder (`+0xe4`) with the **cursor-built flags** (the `0x6c` path passes 0); a
+multi selection (`0x1001a770`) forwards to a group object (`slot +0x68(mode)`, mode 1 or `0xc` for a single member
+for kind 1; group capped at 30 ships); the group body, and therefore the per-ship order and the order of ships in a
+group, is UNKNOWN. The screen-to-world pick provider (`pick = [tFrameGame +0x50]`, `slot +0x94`/`+0x90`) was not
+identified, so tile-centre versus sub-tile rounding of the click is UNKNOWN. No water/land test is made in the cursor.
+
+**Net `0x6c` path (host/script).** Net command `0x6c`, payload kind 1: `u16 figure id | u8 kind = 1 | f32 x | f32 y | f32 z` (y ignored). Single
 player: AnnoFrame `0x100591f0` calls the ship's slot `+0xdc` (stop) then slot `+0xe4` (SetOrder `0x10040b00`);
 multiplayer packs in AnnoFrame `0x1005d410`, turn dispatcher `0x1005ffd0`, table entry `0x6c` handler `0x1005d380`
 (looks the figure up by id, null check). **There is no owner, sender or type check** and no water, bounds or
@@ -235,8 +253,8 @@ remainder of the segment. A second order runs stop then SetOrder. The arrival le
 `+0x54` = NULL and the reached position; **no arrived flag** is set (the founding path reads position, state bit
 `0x02`, holds and owner, `docs/re/ship-founding.md` 8.3, 8.4, 12.2). Another command, net `0x6e` (client slot `+0x8c`,
 SP `0x10059220`, MP `0x1005d5c0`, packet `[0x6e][u16 id|flags<<12][u8 B][u8 yq][f32 x][f32 z]`, `yq = ftol(y/0.04)`),
-special-cases type groups `0x71` and `0x61` and looks like a placement/creation command; whether a right-click on
-water uses `0x6c`, `0x6e` or both, and the source/rounding of the click coordinates, is UNKNOWN (section 12).
+special-cases type groups `0x71` and `0x61` and looks like a placement/creation command; no UI sender of `0x6c` or
+`0x6e` was found (a scan of every `call [reg+0x80]` / `+0x8c` site), the right-click uses `0x84` above.
 
 ## 9. The route engine (ORIGINAL; coarse expansion executed under unicorn)
 
@@ -377,9 +395,10 @@ pass labels are unchanged here; geometric witnesses remain tool-only until then.
 
 ## 12. Unresolved (with the runtime observation that settles each)
 
-1. UI source of a move order and the click coordinate semantics (tile centre versus raw sub-tile), command `0x6c` versus
-   `0x6e`, group ordering: not located statically in the net-client call sites. Settle: breakpoint AnnoFrame `0x100591f0`
-   and `0x10059220`, right-click water with one ship selected at four sub-tile offsets, read the f32 triple.
+1. The screen-to-world pick (tile centre versus raw sub-tile), the group object's `slot +0x68` body (order of ships in a
+   group order) and whether tCursorInfo is the active cursor in play. Settle: breakpoints AnnoFrame `0x1004feb0` (raw pick
+   vec3 at `[esp+0xc]`), `0x100502b0`, `0x10059d60`, and AnnoWelt `0x10040b00` (SetOrder, log ship ids for the group
+   order); right-click water at four sub-tile offsets.
 2. x87 precision control at runtime: no `_controlfp`/`fldcw` setup located in the exe/DLL init. Settle: `fnstcw` at a
    breakpoint on `0x100428d0` (`0x027f` = 53 bit, `0x037f` = 64 bit, `0x007f` = 24 bit).
 3. Whether coarse-map load performs a full build (`0x100aae00` callers are only the two rectangle updates found);

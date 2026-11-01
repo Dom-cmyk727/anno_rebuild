@@ -17,8 +17,8 @@ diplomacy commands.
 
 ## 2. Command and refusal contract
 
-`MoveCmd` (native wire tag `0xF071`, after `FoundCmd`; **ADAPTATION** that the original's net `0x6c`/`0x6e` are not
-reused): `{FigureId ship; i32 target_x_q8, target_y_q8}` where the target is a Q24.8 tile coordinate (the original sends
+`MoveCmd` (native wire tag `0xF071`, after `FoundCmd`; **ADAPTATION**: the original's player command is net `0x84`
+(kind 1 = point, flags from the cursor) and its host/script command `0x6c`; neither wire format is reused): `{FigureId ship; i32 target_x_q8, target_y_q8}` where the target is a Q24.8 tile coordinate (the original sends
 raw f32 world `x`, `z`; the click rounding is UNKNOWN, section 11 item 1, so the contract takes an exact fixed-point
 point and the UI layer decides how to produce it). Issuer = the authenticated player.
 
@@ -27,8 +27,8 @@ Validation, in order; every refusal leaves bytes, PRNG cursor and every set unch
 | # | Check | Source |
 |---|---|---|
 | 1 | the figure exists | ORIGINAL (`0x1005d380` null check) |
-| 2 | the figure's owner is the issuer | **ADAPTATION**: the original has no owner check (host authentication is outside the executable); the sim must not let a player steer another's ship |
-| 3 | the figure kind has a `navigation` type fact (a validated registry fact, section 4), i.e. is a sailing ship | ADAPTATION (original: no type check, the world slot picks the engine by type group) |
+| 2 | the figure's owner is the issuer | ORIGINAL in the selection layer (AnnoWelt `0x1001a5d0`, `world.slot +0x158`); the net `0x6c` handler itself has none, the sim checks in the command |
+| 3 | the figure kind has a `navigation` type fact (a validated registry fact, section 4), i.e. is a sailing ship | ORIGINAL in spirit (the selection requires class group 6 or 7 and the world picks the engine by type group); expressed as a registry fact (ADAPTATION: data, not group numbers) |
 | 4 | `state_word & rules.move_blocked_mask == 0`, default `0x200e` | ORIGINAL (`0x100a5f70`) |
 | 5 | the target is inside the world (`0 <= x < world_w`, same for y) | ADAPTATION (original: none, the path engine decides later) |
 | 6 | the ship is not a crew child (no parent) | ADAPTATION (embarked units never take orders) |
@@ -167,8 +167,10 @@ and goldens move with the version; the independent Python reference moves with t
 
 ## 11. Open points and decisions for the orchestrator
 
-1. Click coordinates and command identity (`0x6c`/`0x6e`) of the original UI: UNKNOWN; the sim takes exact fixed-point
-   targets (CAP-1).
+1. Click rounding of the original UI pick (raw sub-tile versus tile centre) and the per-ship order inside a group
+   command: UNKNOWN; the sim takes exact fixed-point targets and orders each ship independently (CAP-1). The cursor's
+   flags (`|= 2` for a modifier, `0x10000`) reach SetOrder and enable the extra start-point set of `0x100a9e80`: not
+   part of this slice (flags 0).
 2. Decide the failed-plan behaviour (section 2), the exact-rational arithmetic adaptation (section 4), deferral of the
    local detour/avoid (section 5), the planning budget semantics (section 6) and persistence of motion state (section 8).
 3. x87 precision, coarse-map load build, height-grid padding, registry cursor at load: capture cards CAP-2, CAP-3.

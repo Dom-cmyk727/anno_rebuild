@@ -9210,3 +9210,321 @@ Each case's `manifest.txt` records:
 
 No merge, push, rebase, prune or map change; no developer input, preview, ship movement or founding; no
 autonomous loop.
+
+## Round ec: W4.3 review findings of eb closed; the play window traced from command to present-call return (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `e8af4b6` (round eb's report).
+- **Code under test:** `src/` is identical at `690578f`, `37065d3`, `7292a2a`, `3f70a01` and `9233b1b`. After
+  `690578f` only tools and docs changed. The commit after `9233b1b` is this report.
+- **Evidence:** `cache/ec-runs/` (ignored).
+- **Host:**
+  - Apple M5 Max (Mac17,6), 18 cores, 48 GiB, macOS 27.0.1, Apple clang 21, SDK 26.5;
+  - GPU: wgpu-native on Metal ("Apple M5 Max (Metal)");
+  - display: built-in 3456 × 2234 Retina, 120 Hz.
+- **Load:** the host was shared. Another executor's sim tests ran at up to about 1,200 % CPU; nothing of
+  theirs was stopped. This round's own gates also ran beside each other and beside part of the matrix, as
+  stated at each row below.
+- **Admission:** memory admission on, unchanged. No selection of this round printed an `[anno-test memory]`
+  line: none admits a corpus or scene render. The coordinator protocol was not touched.
+- **Display:** one owned `caffeinate -d -i -t 43200` (pid 79354), stopped before this report was committed.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged at the start and at the end.
+
+**Commits** (`e8af4b6..9233b1b`):
+- **A:**
+  - `3571f74` causal readiness validation;
+  - `5f859dd` strict frame rows, cadence and phases;
+  - `b0081fc` mandatory preflights and the per-test verdict;
+  - `8a96db2` the held build;
+  - `274deaa` doc corrections.
+- **A, after review:**
+  - `a77a501` generations and run_end;
+  - `7bff930` phases and strict rows;
+  - `9448a3a` cut logs, CTest skips, preflight targets;
+  - `7540b0f`, `87ecc18` docs.
+- **B, C, D:**
+  - `6c68e15` the window trace, with its tests;
+  - `124fa38` the window runner and table;
+  - `be40d56` docs.
+- **B, C, D, after review:**
+  - `4f0e9e7` frame and epoch rules, exit status, the tracer bound, the resize hook, tests;
+  - `c025fc2` the strict, cross-checked table;
+  - `382c1d2` views and the resize record;
+  - `690578f` the re-measured docs;
+  - `37065d3` the table's last P3 checks.
+- **E, after the integration review:**
+  - `7292a2a` the launcher hashes every test binary;
+  - `3f70a01` workloads and the matrix driver in git, the runner on Linux;
+  - `9233b1b` docs.
+
+### Package outcomes
+
+Every reviewer was an independent, read-only subagent with no edit, stage, commit or process rights, briefed
+with the code (not the conclusion) and told to be adversarial. Each re-reviewed after the fixes.
+
+| Package | Reviewer and scope | Reviewed revision | Reviewer verdict | Findings | Resolution evidence | Remaining limits |
+|---|---|---|---|---|---|---|
+| A: eb findings (causal validation, the held build, measurement descriptions, gate accounting) | reviewer 1: `e8af4b6..274deaa` from git objects, its own fixtures, the eb matrix re-aggregated, hand derivations | `274deaa`, then `7540b0f`, then `87ecc18` | CHANGES REQUIRED; then APPROVED; the P3 fix APPROVED | 9 (4 P2, 5 P3), then 1 P3 | each finding has a regression (below); `a-review-focused-dev.log` 23 of 23; all 105 saved traces re-read | the round-dy traces are refused by the A1 rule (historical, not cited); bench frames.tsv t_ms has 6 significant digits; the A2 mutant logs carry no mutation provenance |
+| B: the real viewer path traced | reviewer 2: `87ecc18..be40d56`, then `be40d56..690578f`, from git objects; its own builds of the trace sources; the adversarial fixtures; the matrix raw files | `be40d56`, then `690578f` | CHANGES REQUIRED; then APPROVED | P2-1, P2-2 and P3 | `window_trace_test.cpp` (12 cases); the reviewer's fixtures refused (`$TMPDIR/rv-b/ev`); mutants | no acquire or present failure happened in a real run; the resize is the one real reconfigure |
+| C: tests of the production helpers | reviewer 2, the same scope plus its own mutants | `be40d56`, then `690578f` | CHANGES REQUIRED; then APPROVED | P2-5: 4 mutants survived | 16 of 16 mutants caught (`c-mutants-1.log`, `-2-desired.log`); the reviewer's 6 of 6 caught | — |
+| D: scripted window measurements | reviewer 2, the same scope plus every matrix number | `be40d56`, then `690578f`, then the P3 fix `37065d3` | CHANGES REQUIRED; then APPROVED (P3 only) | P2-3, P2-4, then 3 P3 table items (fixed in `37065d3`) | 21 table fault cases (`e-window-table-contract.log`); re-measured on clean `c025fc2` with frozen binaries | one loaded host; no 2160p drawable; no target host |
+| E: gates, integration and handoff | reviewer 3, the integration reviewer: `e8af4b6..37065d3` and this report's draft, every cited log re-read with `ctest_verdict.py`, binaries checked with `shasum` and `strings`; the re-review covered `9233b1b` and the rewritten draft | `37065d3` with the draft, then `9233b1b` with the rewritten draft | CHANGES REQUIRED: 1 P1, 7 P2, P3; then APPROVED FOR CLOSURE with 5 P3, which this commit fixes | below | — | two open intermittent failures; external gates NOT_RUN |
+
+### The review findings and their corrections
+
+**Review of A** (`274deaa`):
+1. The upload reading was wrong above the build rate. Corrected, with the w2/w4 qualifier.
+2. `picture_phases.py` tabulated unvalidated traces. It now goes through the aggregate and a strict reader,
+   with exit 1/6/2.
+3. The verdict reader passed a cut log. It now uses CTest's `k/M` and summary: exit 9.
+4. Two game-file skip phrasings were "other". Now required-asset, and every skip phrasing in the sources has
+   a known class.
+5. CTest's own `***Skipped` read as no result. Now classed by its reason.
+6. The table read numbers loosely and did not check row order. Now whole tokens, ids increasing, time never
+   going back.
+7. The phase table lacked dispatch. Added.
+8. Reused or decreasing generations, commits without a generation, and events after run_end were accepted.
+   Now contradictions; a run whose own trace contradicts itself ends with status 7.
+9. The preflight tested an unbuilt `bench_picture`. The launcher now builds and hashes the preflight
+   targets.
+
+**Review of B, C and D** (`be40d56`):
+- **P2-1:** impossible frame and epoch traces were accepted. Now refused:
+  - one epoch per frame, never lower for a later frame;
+  - a frame fails once, never before its submission;
+  - a window edit needs a batch taken in its frame boundary.
+- **P2-2:** a contradictory trace exited 0. `anno1503` now exits 7, and 5 for drops.
+- **P2-3:** the table accepted impossible rows and did not cross-check per frame. It now reads every column,
+  refuses overlaps, impossible outcomes and statuses, and cross-checks every row against its events.
+- **P2-4:** the measured binary's source identity was unproven. The matrix was re-measured on clean `c025fc2`
+  with frozen binaries, and the runner now counts untracked files. The first matrix is superseded: in three
+  of its runs, external input moved the camera.
+- **P2-5:** coherence and the epoch at the acquire were not covered. New FrameTracer tests; 16 of 16
+  mutants caught.
+
+**Integration review** (`37065d3` with the draft):
+- **P1:** affected run 2 used an `anno_app_tests` built from a test variant my publish-race experiment left
+  behind. The experiment restored the source but did not rebuild. The draft's identity named that binary.
+  - Corrected: the binary was rebuilt from the clean tree (`a54279dd…`, `e-rebuild-app-tests-37065d3.log`),
+    and the app part re-ran as run 3.
+  - Run 2's app results are relabelled invalid, below.
+  - The launcher now logs every test binary's hash, also with target `-` (`7292a2a`).
+- **P2-1:** caffeinate was still running when the draft said it was stopped. It is stopped before this commit.
+- **P2-2:** the round's own concurrent gates were not disclosed. Now stated at each gate row and in the perf
+  README.
+- **P2-3:** the handoff latency started at `desired`, not at the command. Now the full path (below).
+- **P2-4:** the sustained ranges left out the overhead runs. Now all five runs are in the README table.
+- **P2-5:** reviewer identity and scope, owners and acceptance conditions, and the stopped run were missing.
+  Now added.
+- **P2-6:** gpu-handoff still said section 4 passes. Corrected, and the two intermittent cases are listed as
+  open.
+- **P2-7:** the window commands could not run from git or on Linux. The workloads and their generator are now
+  in git with `window_matrix.sh`, and the runner works on Linux (`3f70a01`).
+- **P3:**
+  - counts and names corrected;
+  - the Metal cases are named by stable names;
+  - the window-trace exit statuses are complete;
+  - the no-GPU compile and the dev build now have logs with exit status and revision;
+  - `c-mutants.py` was edited after `c-mutants-1.log`, to add the argument selection and the semantic mutant.
+    Run 1's mutant list is in its log; run 2's arguments were `c-mutants-2-desired.log
+    no-desired-needs-take`.
+
+**Integration re-review** (`9233b1b` with the rewritten draft): APPROVED FOR CLOSURE. The P1 and all seven
+P2 are fixed, each checked against the raw artifacts. Its five P3 are fixed in this commit:
+- the publish → take range is the raw per-batch range;
+- the README names the workloads in git;
+- the table contract has a GNU-time case and a log at this commit;
+- the be40d56 ASan row names the stopped run beside it;
+- this record.
+
+### Corrected round-eb accounting and cadence (A3)
+
+**Gates, read per test** (`ctest_verdict.py`):
+
+| Gate | Selected | Executed | Failed | Skipped |
+|---|---|---|---|---|
+| G1 dev CPU | 83 | 81 | 0 | 2 opt-in skips |
+| G2 ASan | 35 | 35 | 0 | 0 |
+| G3 dev GPU | 102 | 99 | 2 (the Metal timestamp cases) | 1 platform skip |
+
+**Cadence:** round eb requested 16.667 ms frames. The observed cadence was:
+- idle p50 23.1 to 23.5 ms;
+- sustained p50 24.6 to 24.7 ms;
+- above the build rate p50 23.8 to 23.9 ms.
+
+Round eb's latencies were therefore measured at about 40 Hz.
+
+**Phases (sustained):**
+- worker build about 20 ms;
+- 4.5 ms until a commit takes it;
+- about 25 ms of chunk rebuild.
+
+The full table is in docs/perf/README.md, "Round ec corrections".
+
+### The play window (D)
+
+docs/perf/README.md, "The play window, traced", has the method, tables and limits. The raw files are in
+`cache/ec-runs/d-matrix-c025fc2-c025fc2/` and the table is `cache/ec-runs/d-matrix-c025fc2-table.md`. The
+workloads and the driver are in git (`tools/bench/window_workloads/`, `tools/bench/window_matrix.sh`).
+
+**Runs:**
+- 13 runs (11 traced, 2 with the trace off): idle, one edit, a 20-build burst and a 60-build stream at
+  1920 × 1080 and 3456 × 1944; a resize run; two trace off/on pairs.
+- All built from clean `c025fc2`.
+- In the 11 traced runs every attempted frame presented: 1,432 to 3,836 per run, 0 failures, 0 drops.
+- 342 commands applied, 0 rejected.
+
+**Results:**
+- **Cadence:** requested vsync on 120 Hz (8.33 ms); observed p50 8.31 to 8.33 ms.
+- **One edit, desired → present-call return:** 33.8 ms (1080p) and 34.0 ms (3456 × 1944).
+- **60-build stream, five traced runs:** p50 42.1 to 57.8 ms, p95 42.6 to 66.3 ms, max 50.6 to 67.2 ms
+  (n = 60 each).
+- **Window thread busy per frame:** p50 0.23 to 0.60 ms.
+- **Peak RSS:** 1.38 to 1.73 GiB.
+- **Trace overhead:** below the 0.1 ms resolution of the window's own lines, in both pairs.
+
+**Concurrency:** this round's ASan gate at `be40d56` ran beside the matrix's first eight runs (to 23:49:18).
+The resize run and the overhead runs had no other job of this round beside them.
+
+**Boundaries:**
+- The present call's return is the last boundary measured. GPU completion, scanout and display are not
+  observed.
+- No genuine 3840 × 2160 drawable is possible on this display: asked for one, the window got 3840 × 1976.
+  2160p is NOT RUN; 3456 × 1944 (81 %) is the largest 16:9 drawable that fits.
+
+**Screenshot:** not supported here. The window was found (id 1253, 960 × 572 points), but `screencapture -l`
+reported "could not create image from window": the terminal has no Screen Recording permission
+(`cache/ec-runs/d1-shot.txt`). The owner can grant it and run `screencapture -o -l <id> out.png` during a
+run.
+
+### Gates (initial failures kept; concurrency stated)
+
+| Gate | Command | Revision / identity | Concurrent with | Result |
+|---|---|---|---|---|
+| Source names (before every build) | `cmake -DSOURCE_DIR=. -P cmake/CheckTestNames.cmake` (inside `run_selected.sh`) | each gate | — | PASS. It caught one of this round's names with a `;` before a build (`bc-focused-dev-namecheck-fail.log`) |
+| Format | `clang-format 23.1.3 --dry-run --Werror` on the 19 C++ files changed in the round | `690578f` (src unchanged since) | — | PASS 19 of 19 (`e-format.log`) |
+| Builds | full dev build; Release `anno1503 bench_picture`; the viewer compiled without `ANNO_VIEWER_GPU` | `7292a2a` (dev), `c025fc2` (Release) | — | 0 warnings, 0 errors (`e-dev-build-all-final.log` rc 0, `d-release-build-c025fc2.log`, `e-viewer-nogpu-compile.log` rc 0, Apple Clang) |
+| Focused A | `run_selected.sh build/dev anno_app_tests '<picture trace…, contracts, picture GPU constrained>' 600 … 4` | dirty tree = `7540b0f` | — | PASS 23 of 23 (`a-review-focused-dev.log`) |
+| Focused B/C | `run_selected.sh build/dev anno_app_tests '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|play: )\|^anno_app_alloc_tests\.\|<4 contracts>' 900 … 6` | dirty tree with the content of `be40d56` | — | PASS 51 of 51 (`bc-focused-dev.log`) |
+| Affected at `be40d56` (stopped) | as run 1 below | `be40d56`, clean | ASan at `be40d56` | stopped by me when the B/C/D review required changes: 165 selected, 157 executed, 6 without a result, VERDICT FAIL as a cut log (`e-affected-dev-stopped-be40d56.log`). Superseded |
+| Affected, run 1 | `run_selected.sh build/dev - '^anno_app_tests\.\|^anno_app_alloc_tests\.\|^anno_render_gpu_tests\.(picture GPU\|play)\|<contracts>\|anno1503_usage' 1800 … 6` | `690578f`, clean. Binaries from the 23:56 dev build of `690578f`; `anno_app_tests`' hash was not recorded and the binary is since replaced | ASan run 1 | FAIL: 168 selected, 164 executed, 1 failed, 3 skipped (2 opt-in probes, 1 platform: no RTX 4090). Failed: `anno_render_gpu_tests.picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, a chunk that replaces its stand-in dissolves in, and both end on the fresh scene`, at its paused loop's 120 s deadline (`picture_gpu_test.cpp:1237`, 156 s; usually 49 s) |
+| Affected, run 2 | the same | `690578f` sources, but `anno_app_tests` was built from my publish-race experiment's variant of `scene_picture_publish_test.cpp` (sha `863e7981…`). Its app results are INVALID as evidence of `690578f`; the GPU binary (`c5fd143d…`) was the `690578f` build | ASan run 2 | FAIL, the same GPU case again at its deadline (154.6 s). The app results are not counted (`e-affected-dev-run2.log`) |
+| Affected, run 3: the app part | `run_selected.sh build/dev - '^anno_app_tests\.\|^anno_app_alloc_tests\.\|<contracts>\|anno1503_usage' 1800 … 6` | `7292a2a` (src = `690578f`); `anno_app_tests` `a54279dd…` rebuilt from the clean tree, every binary hashed in the log | nothing of this round | PASS: 155 selected, 153 executed, 2 opt-in skips (`e-affected-dev-run3-app.log`) |
+| GPU subset alone, `-j 1` (as round eb's G3) | `run_selected.sh build/dev - '^anno_render_gpu_tests\.(picture GPU\|play)' 1800 … 1` | `690578f` code, `anno_render_gpu_tests` `c5fd143d…`; only this report's draft was dirty | nothing of this round | PASS: 12 of 13 executed, 1 platform skip; the stand-ins case passed in 51.5 s (`e-gpu-j1.log`) |
+| ASan/UBSan at `be40d56` | `run_selected.sh build/asan anno_app_tests '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|scene picture\|credit\|ownership\|publish)\|<4 contracts>' 1800 … 4` | `be40d56` | the stopped affected run at `be40d56`, and the first matrix runs | PASS 64 of 64 (`e-asan-be40d56.log`) |
+| ASan/UBSan, run 1 | the same | `690578f`, clean, `anno_app_tests` `f8b9707d…` | affected run 1 | FAIL: 67 selected, 66 executed, 1 failed, no sanitizer line. Failed: `anno_app_tests.publish: one, two and four workers each hold a version ahead at a barrier, and the newest is published`, at workers = 2 (`scene_picture_publish_test.cpp:452`, a held generation seen destroyed) (`e-asan.log`) |
+| ASan/UBSan, run 2 | the same, with the same binary | `690578f`, clean, `f8b9707d…` | affected run 2 | PASS 67 of 67, no sanitizer line (`e-asan-run2.log`) |
+| Isolated reruns of the two failed cases | the stand-ins case alone, three times; the publish case under ASan, 30 times; a forced-slow reclaimer (`e-publish-race.py`) | as above | nothing of this round | stand-ins 3 of 3 in 49 to 51 s (`e-repro-gpu-standins.log`); publish 0 of 30 failed (`e-repro-asan-publish.log`); the forced experiment did not reproduce it (`e-publish-race.log`) |
+| Contracts after the last tool changes | `window_table_test.sh`; `run_selected_test.sh` | this report's commit (tools as in `3f70a01`, plus the GNU-time case) | — | PASS: 21 fault cases, GNU time's RSS line and the missing results.tsv (`e-window-table-contract.log`); the launcher contract passes. The matrix table regenerates unchanged |
+| Mutation (C) | `python3 -I cache/ec-runs/c-mutants.py` | `c025fc2` code | — | 16 of 16 caught. The clean build passes 28 of 28 before and after, and the tree is unchanged (`c-mutants-1.log`, `-2-desired.log`) |
+| NOT RUN: RTX 4090, Radeon iGPU | `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -L gpu -R "picture GPU\|play: GPU" -j 1` (in WSL or Git Bash, `tools/test/run_selected.sh` with the same selection gives the per-test verdict) | — | — | NOT_RUN: no such host here |
+| NOT RUN: Windows MSVC | `cmake --preset msvc`, `cmake --build --preset msvc`, `$env:ANNO1503_GAME_DIR="$PWD\game\app"; ctest --preset msvc -R "anno_app_(alloc_)?tests\.\|anno_render(_gpu)?_tests\." -j 8` | — | — | NOT_RUN |
+| NOT RUN: Linux GCC 13 / Clang 18 `-Werror` | `bash tools/check_unix_warnings.sh` (on Windows: `wsl -d Ubuntu -- bash tools/check_unix_warnings.sh`) | — | — | NOT_RUN: no `g++-13` or `clang++-18` on this host |
+| NOT RUN: a traced window on Linux, and at a genuine 2160p | `ANNO1503_GAME_DIR=<game> tools/bench/window_matrix.sh <anno1503> <bench_picture> <new dir> 3840x2160`, then `tools/bench/window_table.py <dir>` | — | — | NOT_RUN. The runner is bash, so on Windows only the trace itself (`ANNO_VIEW_TRACE`) and `bench_picture --aggregate` apply |
+| NOT RE-RUN: all of `anno_render_tests`, the heavy label, the full GPU suite | — | the CPU render code is unchanged since round eb; this round changed GPU-test skip phrasings and one constrained case | — | not repeated |
+
+**Open intermittent failures in tests this round did not change** (stable names; neither is waived):
+- `anno_render_gpu_tests.picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, a chunk that replaces its stand-in dissolves in, and both end on the fresh scene`:
+  - fails 2 of 2 at its 120 s paused-loop deadline in the full affected gate at `-j 6`, beside CPU-heavy cases
+    and this round's concurrent ASan gate;
+  - passes alone (3 of 3) and in the GPU gate at `-j 1` (1 of 1), in 49 to 52 s.
+
+  Whether the loop is slow or stalls under contention is not established.
+  - Owner: the next GPU unit.
+  - Acceptance: a deadline in frames, or the GPU gate at `-j 1`, passing in a full gate.
+- `anno_app_tests.publish: one, two and four workers each hold a version ahead at a barrier, and the newest is published`:
+  - failed once under ASan;
+  - passed 30 of 30 isolated runs, the next full ASan run, and a forced-slow reclaimer.
+
+  The cause is not established.
+  - Owner: the bridge's next unit.
+  - Acceptance: the destroyed generation identified by scene identity, and the case passing repeatedly in a
+    full ASan gate.
+- **Round eb's Metal timestamp cases**, still open and not re-run in this round:
+  - `anno_render_gpu_tests.river flow on the GPU: the cost is measured per tier, GPU timestamps when the device has them, and the automatic tier follows the adapter`;
+  - `anno_render_gpu_tests.every pass of a frame is timed, and the timed frame is the untimed picture`.
+
+  Owner: the GPU timing unit. Acceptance: passing on Metal, or a recorded owner decision.
+- **OQ-525** is unchanged: which rounding is the reference is an owner decision. Parity of water objects
+  below the waterline is not accepted, and no tolerance or rounding was changed (`git diff e8af4b6 -- src/render`
+  touches tests only).
+
+### Closure
+
+| Requirement | Revision | Positive proof | Negative control | Executed outcome | Reviewer disposition | Remaining limitation |
+|---|---|---|---|---|---|---|
+| A1 GPU readiness causal validation | `3571f74`, `a77a501` | eb matrix 18 of 18 and 125 of 125 consistent | both review traces exit 2; reused or decreasing generations, a commit without a generation, after run_end | trace tests PASS; aggregate of 105 saved traces | APPROVED | round-dy traces refused (historical) |
+| A2 explicit worker gate | `8a96db2` | the constrained case passes from a fresh object | without the hold the old assertion fails; an early failure ends in 26 s | PASS | APPROVED | no mutation provenance in its logs |
+| A3 measurement descriptions | `274deaa`, `7540b0f`, `87ecc18` | cadence, phases and gate accounting from artifacts | the reviewer's hand derivations match | — | APPROVED | t_ms precision of bench frames.tsv |
+| Mandatory preflights and verdict (addendum 2) | `b0081fc`, `9448a3a`, `7292a2a` | `run_selected_contract`, `test_verdict_contract` | failing, missing or unbuilt preflight → 5; `;` name → 5 before a build; cut log → 9; CTest skip classed | PASS in every gate | APPROVED | a plain-output skip without SKIP_REGULAR_EXPRESSION would count as executed (none exists) |
+| 3b strict frame rows | `5f859dd`, `7bff930` | the eb tables reproduce | the copied-idle malformed row; backwards, repeated and loose numbers | `picture_matrix_contract` PASS | APPROVED | — |
+| B1 event contract | `6c68e15`, `4f0e9e7` | `docs/app/window-trace.md` | — | — | APPROVED | the island version names no turn (tied by the frame boundary) |
+| B2–B4 the viewer instrumented, bounded, opt-in | `6c68e15`, `4f0e9e7` | 11 traced runs, complete; a resize gives epoch 2 | drops → no run_end, exit 5; contradictory → 7; the tracer bound counts drops | PASS | APPROVED | acquire and present failures have no field evidence |
+| C helper tests | `6c68e15`, `4f0e9e7` | 12 window-trace cases, the follower case on the game files | 16 mutants caught; the reviewer's 6 caught | PASS (run 3, ASan run 2) | APPROVED | — |
+| D window measurements | `124fa38`, `c025fc2`, `382c1d2`, `690578f`, `37065d3`, `3f70a01` | `d-matrix-c025fc2-table.md` | 21 table fault cases; the superseded matrix's moved views are visible | 13 of 13 runs exit 0, 11 aggregates 0 | APPROVED | one loaded host; no 2160p; no target host |
+| E gates and handoff | `690578f` to `9233b1b` | run 3 app PASS; GPU `-j 1` PASS; ASan run 2 PASS; contracts PASS | — | the full affected gate FAILED 2 of 2 on the stand-ins case; ASan FAILED 1 of 2 on the publish case; both kept | integration review, re-review at the end | two open intermittent failures; external gates NOT_RUN |
+
+**Statuses, kept apart:**
+- **Unit readiness:** the window trace and its tools are ready for use by the next unit.
+- **Full rendering acceptance:** not claimed. OQ-525, the Metal timestamp cases and the two intermittent
+  cases are open, and the external gates were NOT_RUN.
+- **Original fidelity:** not claimed.
+- **Target hosts:** NOT_RUN.
+- **Late-game performance:** not claimed. The workload is the start city with up to 60 cheap buildings.
+
+### Gameplay handoff
+
+**Reviewed interfaces gameplay can depend on:**
+- `PlayRunner::post_command` (and `set_script`): commands enter at the next turn.
+- Acceptance: a turn's outcome is known only from the sim's `CommandRejected` events (`take_rejections`, or
+  the trace's `sim.tsv`), never from the submission.
+- Batches: a turn's building changes reach the window as batches (`take_building_batches` at each frame
+  boundary, `PlayFollower::follow`).
+- The picture commits per island version; a committed generation never moves an island back.
+- The window shows a change once its visible chunks are CPU-ready, then GPU-usable. The trace's `presented`
+  is the first successful present call of a frame that draws it.
+
+**What stays asynchronous**, so gameplay must not wait on it in the sim or in input handling:
+- object builds;
+- chunk rebuilds;
+- GPU uploads;
+- the reclaimer.
+
+**The measured path of a command:**
+1. It waits for the next turn (100 ms turns at the default speed).
+2. The turn runs.
+3. Its batch is published and taken at a frame boundary: 0.03 to 15.6 ms per batch in this matrix (p50 per
+   run 0.8 to 5.6 ms).
+4. Then `desired` → present-call return: 33.8 to 67.2 ms, which is 4 to 8 frames at 120 Hz.
+
+**Open rendering work:**
+- the two intermittent cases above;
+- OQ-525;
+- the Metal timestamp cases;
+- the target hosts;
+- display and GPU completion, which are not observed.
+
+### Next smallest unit
+
+1. Run `tools/bench/window_matrix.sh` on the RTX 4090 and Radeon hosts (Linux, or the trace alone on
+   Windows) and on a genuine 3840 × 2160 display.
+2. Give the stand-ins case a deadline in frames, or run the GPU gate at `-j 1`.
+3. Instrument the publish case's held generations, by scene identity, to find its intermittent failure.
+
+**Final identities:**
+- **Code:** `src/` as in `690578f`; report revision `9233b1b` plus this commit.
+- **Release, frozen:**
+  - `cache/ec-runs/anno1503.release-c025fc2`, sha256 `e2860d9b54b2bb13…`;
+  - `cache/ec-runs/bench_picture.release-c025fc2`, sha256 `7e3800ff9fa67fc4…`.
+- **Dev binaries** (sha256, first 16 hex, as run 3's log lists them; the `-j 1` gate ran the same
+  `anno_render_gpu_tests` file, mtime 23:56:19, before the launcher logged every binary):
+  - `anno_app_tests` `a54279dd49bd3f91`;
+  - `anno_app_alloc_tests` `d443f9844eb1919a`;
+  - `anno_render_gpu_tests` `c5fd143dc2c76d08`;
+  - `anno1503` `ce702181c3c4fa0e`;
+  - `bench_picture` `68e0110c098b2316`.
+- **ASan:** `anno_app_tests` `f8b9707d7830e476`.
+
+No merge, push, rebase, prune or reset. The map is unchanged. No gameplay input, preview or map-integration
+work was done, and the CPU reference's rounding was not changed. The coordinator protocol, journals and
+admission policy were not touched. The owned `caffeinate` (pid 79354) was stopped before this commit, and no
+job of this round is left running.

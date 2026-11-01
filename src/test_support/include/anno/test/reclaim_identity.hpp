@@ -80,7 +80,7 @@ class Destructions {
         const std::lock_guard lock(seen_->mutex);
         std::size_t n = 0;
         for (std::size_t i = 0; i < seen_->scenes.size(); ++i) {
-            n += seen_->scenes[i].first == lineage && seen_->threads[i] == t ? 1 : 0;
+            n += seen_->scenes[i].first == lineage && seen_->threads[i] == t ? 1U : 0U;
         }
         return n;
     }

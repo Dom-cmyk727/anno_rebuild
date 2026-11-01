@@ -413,8 +413,8 @@ int run(const std::vector<std::string>& raw) {
             std::fprintf(stderr, "ANNO_VIEW_TRACE=%s: not a new directory\n", td);
             return 2;
         }
-        auto bound = [](const char* name, std::size_t fallback) {
-            const char* v = std::getenv(name);
+        auto bound = [](const char* var, std::size_t fallback) {
+            const char* v = std::getenv(var);
             unsigned long long n = 0;
             return v != nullptr && std::sscanf(v, "%llu", &n) == 1 && n > 0
                        ? static_cast<std::size_t>(n)

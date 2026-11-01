@@ -137,9 +137,8 @@ void ChangeVisibility::taken(std::optional<std::uint64_t> followed,
             a.turns.clear();
         }
         for (const auto& [index, version] : b.islands) {
-            const auto it =
-                std::find_if(a.islands.begin(), a.islands.end(),
-                             [index = index](const auto& p) { return p.first == index; });
+            const auto it = std::find_if(a.islands.begin(), a.islands.end(),
+                                         [want = index](const auto& p) { return p.first == want; });
             if (it == a.islands.end()) {
                 a.islands.emplace_back(index, version);
             } else {

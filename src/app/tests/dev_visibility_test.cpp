@@ -128,7 +128,8 @@ TEST_CASE("visibility through the pipeline: held chunk workers keep a committed 
     const auto fresh = [&frames](const render::ChunkKey& k) {
         return frames.chunk(k) != nullptr && frames.stale_generation(k) == 0;
     };
-    std::vector<std::uint32_t> shown(static_cast<std::size_t>(view.w) * view.h, 0);
+    std::vector<std::uint32_t> shown(
+        static_cast<std::size_t>(view.w) * static_cast<std::size_t>(view.h), 0);
     // One frame as the window's CPU path draws it: the boundary, begin_frame, render, frame_done.
     const auto draw = [&](bool present_ok) {
         follower.follow(frames);
@@ -206,7 +207,7 @@ TEST_CASE("visibility through the pipeline: held chunk workers keep a committed 
     // and equals a fresh reference (a new renderer, no cache, the same scene).
     std::size_t changed = 0;
     for (std::size_t i = 0; i < shown.size(); ++i) {
-        changed += shown[i] != before[i] ? 1 : 0;
+        changed += shown[i] != before[i] ? 1U : 0U;
     }
     CHECK(changed > 100); // a 2 x 2 building's sprite
     render::FrameRenderer reference(2);
@@ -266,7 +267,8 @@ TEST_CASE("visibility through the pipeline: a change outside the view is offscre
     const auto fresh = [&frames](const render::ChunkKey& k) {
         return frames.chunk(k) != nullptr && frames.stale_generation(k) == 0;
     };
-    std::vector<std::uint32_t> shown(static_cast<std::size_t>(away.w) * away.h, 0);
+    std::vector<std::uint32_t> shown(
+        static_cast<std::size_t>(away.w) * static_cast<std::size_t>(away.h), 0);
     REQUIRE(within(std::chrono::seconds(30), [&] {
         follower.follow(frames);
         follower.visibility().begin_frame(away, 1);

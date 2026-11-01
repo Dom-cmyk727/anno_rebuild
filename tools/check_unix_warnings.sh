@@ -60,6 +60,8 @@ flags="-O3 -DNDEBUG -std=c++20 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conv
 -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wnull-dereference -ffp-contract=off -Werror"
 inc=""
 for d in "$repo"/src/*/include; do inc="$inc -I$d"; done
+# test_support's private headers (host_test includes coord_wire.hpp from src/)
+inc="$inc -I$repo/src/test_support/src"
 inc="$inc -isystem $deps/wgpu_native-src/include -isystem $deps/sdl3-src/include"
 inc="$inc -isystem $deps/doctest-src"
 common_defs="-DDOCTEST_CONFIG_USE_STD_HEADERS -DANNO_FIXTURES_DIR=\"$repo/fixtures/synthetic\""

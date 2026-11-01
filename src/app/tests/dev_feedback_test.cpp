@@ -196,7 +196,7 @@ TEST_CASE("dev feedback: on an original scenario, the preview sprites of placed 
     for (const auto& [type, rotations] : by_type) {
         for (auto i = rotations.begin(); i != rotations.end(); ++i) {
             for (auto j = std::next(i); j != rotations.end(); ++j) {
-                turned += i->second != j->second ? 1 : 0;
+                turned += i->second != j->second ? 1U : 0U;
             }
         }
     }

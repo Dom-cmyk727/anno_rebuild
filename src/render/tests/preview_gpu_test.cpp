@@ -111,12 +111,12 @@ TEST_CASE("dev preview: the GPU overlay draws the preview as the CPU blend does,
     const auto d_shown = deltas(base, over_px);
     std::size_t changed = 0, off = 0;
     for (std::size_t i = 0; i < d_over.size(); ++i) {
-        changed += d_shown[i] > 1 ? 1 : 0;
-        off += d_over[i] > 1 ? 1 : 0;
+        changed += d_shown[i] > 1 ? 1U : 0U;
+        off += d_over[i] > 1 ? 1U : 0U;
     }
     std::size_t blend_changed = 0;
     for (std::size_t i = 0; i < base.size(); ++i) {
-        blend_changed += base[i] != blended[i] ? 1 : 0;
+        blend_changed += base[i] != blended[i] ? 1U : 0U;
     }
     CHECK(changed > 0);
     CHECK(blend_changed > 0);
@@ -205,7 +205,7 @@ TEST_CASE("dev preview in continuous zoom: the GPU resampled frame equals the CP
                              ref_plain.data());
         std::size_t ref_changed = 0;
         for (std::size_t i = 0; i < ref.size(); ++i) {
-            ref_changed += ref[i] != ref_plain[i] ? 1 : 0;
+            ref_changed += ref[i] != ref_plain[i] ? 1U : 0U;
         }
         CHECK(ref_changed > 0); // the reference itself shows the preview after resampling
 

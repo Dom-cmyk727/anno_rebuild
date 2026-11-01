@@ -834,8 +834,17 @@ TextFile read_text(const std::filesystem::path& path) {
         f.error = "cannot open " + path.string() + " for reading";
         return f;
     }
-    f.text.assign(std::istreambuf_iterator<char>(in), {});
-    if (in.bad()) {
+    // Sized read, not istreambuf_iterator: GCC 13's -Wnull-dereference reports the iterator's
+    // streambuf accessors at -O3 (W4-WIN-5), and the file is a regular one.
+    in.seekg(0, std::ios::end);
+    const std::streamoff size = in.tellg();
+    in.seekg(0, std::ios::beg);
+    if (size > 0) {
+        f.text.resize(static_cast<std::size_t>(size));
+        in.read(f.text.data(), size);
+        f.text.resize(static_cast<std::size_t>(in.gcount()));
+    }
+    if (in.bad() || size < 0) {
         f.error = "cannot read " + path.string();
         f.text.clear();
         return f;

@@ -423,7 +423,7 @@ TEST_CASE(
                     want = sim::TileXY{full->first, full->second};
                 }
                 ++compared;
-                differ += tool.pick(frame, px, py) != want ? 1 : 0;
+                differ += tool.pick(frame, px, py) != want ? 1U : 0U;
             }
         }
     }

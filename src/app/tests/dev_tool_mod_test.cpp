@@ -383,7 +383,7 @@ TEST_CASE("dev tool data: per-move work against growing unrelated content (a mea
             const auto k0 = std::chrono::steady_clock::now();
             for (int i = 0; i < kMoves; ++i) {
                 const auto [px, py] = f.at(kX0 + 2 + i % 25, kY0 + 2 + (i / 25) % 25);
-                sink += tool.pick(f.frame, px, py) ? 1 : 0;
+                sink += tool.pick(f.frame, px, py) ? 1U : 0U;
             }
             const auto k1 = std::chrono::steady_clock::now();
             CHECK(sink > 0);
@@ -391,7 +391,7 @@ TEST_CASE("dev tool data: per-move work against growing unrelated content (a mea
             std::size_t indexed = 0;
             for (std::int32_t y = 0; y < kSize; ++y) {
                 for (std::int32_t x = 0; x < kSize; ++x) {
-                    indexed += knows.occupied({kX0 + x, kY0 + y}) ? 1 : 0;
+                    indexed += knows.occupied({kX0 + x, kY0 + y}) ? 1U : 0U;
                 }
             }
             CHECK(indexed == 16); // the four city houses (2x2) only

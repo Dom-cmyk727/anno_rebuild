@@ -51,7 +51,8 @@ TRACE_ENV=()
 # alarm bounds a hung window.
 TIME_FLAG=-l
 [ "$(uname)" = Darwin ] || TIME_FLAG=-v
-env ${TRACE_ENV[@]+"${TRACE_ENV[@]}"} ANNO_VIEW_SIZE="$SIZE" ANNO_VIEW_AT="$AT" \
+# -u first: a trace-off run never inherits a trace directory from the caller's environment.
+env -u ANNO_VIEW_TRACE ${TRACE_ENV[@]+"${TRACE_ENV[@]}"} ANNO_VIEW_SIZE="$SIZE" ANNO_VIEW_AT="$AT" \
     ANNO_VIEW_QUIT_S="$SECONDS_" /usr/bin/time "$TIME_FLAG" -o "$OUT/time.txt" \
     perl -e 'alarm shift; exec @ARGV' $((SECONDS_ + 120)) \
     "$APP" --play "$MAP" --commands "$COMMANDS" --renderer gpu > "$OUT/stdout.txt" 2> "$OUT/stderr.txt"

@@ -196,15 +196,23 @@ The paired overhead control is in `docs/perf/README.md` (round ec).
 - `tools/bench/window_case.sh` runs one scripted, traced window with its provenance (`run.txt`) and peak
   RSS (`time.txt`), then aggregates the trace.
 - `tools/bench/window_matrix.sh <anno1503> <bench_picture> <new dir> [<large drawable> [<cases>]]` runs
-  the matrix, or a requested subset of it. It writes `plan.tsv` (every case, and whether it was
-  selected) before the first window, and `results.tsv` as the cases end.
+  the matrix, or a requested subset of it (`<cases>` must match a whole case name). It writes `plan.tsv`
+  (every case, whether it was selected, and its trace mode) before the first window, and `results.tsv`
+  as the cases end.
 - `tools/bench/window_table.py <bench_picture> <matrix>` validates every case and tabulates frames,
   cadence, acquire and present calls, edit boundaries and the stderr control lines. Since round ed it
   aggregates every raw trace itself with the given `bench_picture`: the `aggregate.txt` and
   `aggregate_exit` saved at the run are not trusted, and a saved summary that differs is named. It checks
   the inventory (`plan.tsv` against `results.tsv` and the case directories) and says whether the table is
-  the full matrix or a requested subset; an unfinished campaign, an empty one, and a lost, duplicated or
-  unplanned case are refused. Its contract is `tools/bench/window_table_test.sh` (CTest
-  `window_table_contract`, a required preflight of `tools/test/run_selected.sh`; with the canonical
-  `run_selected.py`, `--require-test window_table_contract`).
+  the full matrix or a requested subset; an unfinished campaign, an empty one, a lost, duplicated,
+  reordered or unplanned case, and a `run.txt` trace mode that is not the plan's are refused. The
+  `bench_picture` given is resolved once, and the file run is the file hashed. Its contract is
+  `tools/bench/window_table_test.sh` (CTest `window_table_contract`).
+- The contract is a required preflight of `tools/test/run_selected.sh`. The canonical gate in the main
+  checkout requires only `picture_matrix_contract` by itself, so every W4 gate passes it by name:
+
+  ```sh
+  python3 -I <main>/tools/test/run_selected.py --source-root <W4> --build-dir <W4>/build/dev \
+    --require-test window_table_contract --select '<selection>' --log <new log>
+  ```
 - The round-ec measurements are in `docs/perf/README.md`.

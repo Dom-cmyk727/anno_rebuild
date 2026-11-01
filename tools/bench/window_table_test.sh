@@ -38,12 +38,12 @@ make_case() { # matrix, case
     local agg=$?
     printf 'commands=x sha256=0 lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=%s\n' "$agg" > "$c/run.txt"
     printf '%s\t0\t1\t-\n' "$2" >> "$1/results.tsv"
-    printf '%s\t1\n' "$2" >> "$1/plan.tsv"
+    printf '%s\t1\ton\n' "$2" >> "$1/plan.tsv"
 }
 new_matrix() {
     mkdir -p "$1"
     printf 'case\tstatus\twall_s\tload_after\n' > "$1/results.tsv"
-    printf 'case\tselected\n' > "$1/plan.tsv"
+    printf 'case\tselected\ttrace\n' > "$1/plan.tsv"
 }
 table() { # matrix, expected, what
     python3 "$TABLE" "$BENCH" "$1" > "$WORK/out" 2> "$WORK/err"
@@ -58,7 +58,9 @@ grep -q "^run=complete status=0 (succeeded)" "$WORK/m_good/good/aggregate.txt" |
     fail "the synthetic case does not aggregate as a success: $(cat "$WORK/m_good/good/aggregate.stderr")"
 table "$WORK/m_good" 0 "a complete, consistent window case"
 grep -q "^Campaign: the full matrix, 1 of 1 planned cases" "$WORK/out" || fail "campaign line"
-grep -q "^Aggregate: $BENCH sha256 [0-9a-f]\{64\}" "$WORK/out" || fail "aggregate identity"
+bench_sha=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$BENCH")
+grep -q "^Aggregate: /.*bench_picture sha256 $bench_sha (every trace aggregated now)" "$WORK/out" ||
+    fail "aggregate identity"
 ! grep -q "differs from the current aggregate" "$WORK/out" || fail "a fresh case named as stale"
 # Known numbers: two attempts, one presented; the edit presented 3 ms after its desired event.
 grep -q "^| good | 8x8 | 8x8 | 1 | Test adapter | 2 / 1 / 1 | 0 | run=complete status=0 (succeeded) |" \
@@ -186,19 +188,19 @@ new_matrix "$WORK/m_empty"
 table "$WORK/m_empty" 2 "a header-only results.tsv and a plan that selects nothing"
 grep -q "plan.tsv selects no case" "$WORK/err" || fail "empty: reason"
 new_matrix "$WORK/m_zero_of_one"
-printf 'one\t1\n' >> "$WORK/m_zero_of_one/plan.tsv"
+printf 'one\t1\ton\n' >> "$WORK/m_zero_of_one/plan.tsv"
 table "$WORK/m_zero_of_one" 1 "a selected case that never ran (header-only results.tsv)"
 grep -q "INCOMPLETE campaign: 0 of 1 selected cases ran; no result for one" "$WORK/err" ||
     fail "zero of one: reason"
 new_matrix "$WORK/m_partial"
 make_case "$WORK/m_partial" a
-printf 'b\t1\n' >> "$WORK/m_partial/plan.tsv"
+printf 'b\t1\ton\n' >> "$WORK/m_partial/plan.tsv"
 table "$WORK/m_partial" 1 "a campaign that stopped after its first case"
 grep -q "INCOMPLETE campaign: 1 of 2 selected cases ran; no result for b" "$WORK/err" ||
     fail "partial: reason"
 new_matrix "$WORK/m_subset"
 make_case "$WORK/m_subset" a
-printf 'b\t0\n' >> "$WORK/m_subset/plan.tsv"
+printf 'b\t0\ton\n' >> "$WORK/m_subset/plan.tsv"
 table "$WORK/m_subset" 0 "a requested subset"
 grep -q "^Campaign: a requested subset, 1 of 2 planned cases (a); not the full matrix\.$" \
     "$WORK/out" || fail "subset: campaign line"
@@ -215,9 +217,75 @@ table "$WORK/m_lost" 1 "a case directory results.tsv does not list"
 grep -q "case directory b is not listed in results.tsv" "$WORK/err" || fail "lost: reason"
 new_matrix "$WORK/m_unplanned"
 make_case "$WORK/m_unplanned" a
-sed -i.orig 's/^a\t1$/a\t0/' "$WORK/m_unplanned/plan.tsv"
-printf 'z\t1\n' >> "$WORK/m_unplanned/plan.tsv"
+sed -i.orig 's/^a\t1\ton$/a\t0\ton/' "$WORK/m_unplanned/plan.tsv"
+printf 'z\t1\ton\n' >> "$WORK/m_unplanned/plan.tsv"
 table "$WORK/m_unplanned" 1 "a result for a case the plan does not select"
 grep -q "results.tsv lists case a, which plan.tsv does not select" "$WORK/err" ||
     fail "unplanned: reason"
+# Round ed review of package 2: the trace mode is the plan's, not run.txt's. A traced case whose
+# run.txt claims trace=off (its trace cut and contradictory) is refused, not moved to the controls.
+new_matrix "$WORK/m_claims_off"
+make_case "$WORK/m_claims_off" good
+make_case "$WORK/m_claims_off" bad
+sed -i.orig '/run_end/d' "$WORK/m_claims_off/bad/trace/events.tsv"
+sed -i.orig 's/trace=on/trace=off/' "$WORK/m_claims_off/bad/run.txt"
+table "$WORK/m_claims_off" 1 "a traced case whose run.txt claims trace off"
+grep -q "case bad: evidence not usable: run.txt trace=off, plan.tsv trace=on" "$WORK/err" ||
+    fail "claims off: reason"
+# A trace-off case (planned off) that has a trace directory.
+new_matrix "$WORK/m_off_trace"
+make_case "$WORK/m_off_trace" good
+make_case "$WORK/m_off_trace" off
+sed -i.orig 's/^off\t1\ton$/off\t1\toff/' "$WORK/m_off_trace/plan.tsv"
+sed -i.orig 's/trace=on/trace=off/' "$WORK/m_off_trace/off/run.txt"
+table "$WORK/m_off_trace" 1 "a trace-off case with a trace directory"
+grep -q "case off: evidence not usable: a trace-off case with a trace directory" "$WORK/err" ||
+    fail "off with trace: reason"
+# The control: the same case without its trace directory is a valid trace-off control.
+rm -rf "$WORK/m_off_trace/off/trace"
+table "$WORK/m_off_trace" 0 "a trace-off control"
+grep -q "^| off | off | " "$WORK/out" || fail "trace-off control: control row"
+# A plan trace mode that is neither on nor off.
+new_matrix "$WORK/m_mode"
+make_case "$WORK/m_mode" a
+sed -i.orig 's/^a\t1\ton$/a\t1\tmaybe/' "$WORK/m_mode/plan.tsv"
+table "$WORK/m_mode" 1 "a plan trace mode that is not on or off"
+grep -q "plan.tsv: case a trace 'maybe' (on or off)" "$WORK/err" || fail "mode: reason"
+# Results in another order than the plan's.
+new_matrix "$WORK/m_order"
+make_case "$WORK/m_order" a
+make_case "$WORK/m_order" b
+{ head -1 "$WORK/m_order/results.tsv"; tail -1 "$WORK/m_order/results.tsv";
+  sed -n 2p "$WORK/m_order/results.tsv"; } > "$WORK/m_order/r" && mv "$WORK/m_order/r" "$WORK/m_order/results.tsv"
+table "$WORK/m_order" 1 "results in another order than the plan"
+grep -q "results.tsv lists the cases in another order than plan.tsv" "$WORK/err" || fail "order: reason"
+# A campaign stopped while its second case ran: its directory exists, it has no result.
+new_matrix "$WORK/m_begun"
+make_case "$WORK/m_begun" a
+make_case "$WORK/m_begun" b
+sed -i.orig '/^b\t/d' "$WORK/m_begun/results.tsv"
+table "$WORK/m_begun" 1 "a campaign stopped during a case"
+grep -q "INCOMPLETE campaign: 1 of 2 selected cases ran; no result for b (begun, not finished: b)" \
+    "$WORK/err" || fail "begun: reason"
+# A plan that selects nothing is refused before results.tsv is read (window_matrix.sh writes none).
+mkdir -p "$WORK/m_none_selected"
+printf 'case\tselected\ttrace\na\t0\ton\n' > "$WORK/m_none_selected/plan.tsv"
+table "$WORK/m_none_selected" 2 "a plan that selects nothing and no results.tsv"
+grep -q "plan.tsv selects no case" "$WORK/err" || fail "none selected: reason"
+# The aggregator is resolved once: a bare name runs and hashes the bench_picture on PATH, not a
+# file of that name in the current directory.
+mkdir -p "$WORK/bin" "$WORK/cwd"
+cp "$BENCH" "$WORK/bin/bench_picture"
+printf '#!/bin/sh\nexit 0\n' > "$WORK/cwd/bench_picture"
+chmod +x "$WORK/cwd/bench_picture"
+(cd "$WORK/cwd" && PATH="$WORK/bin:$PATH" python3 "$TABLE" bench_picture "$WORK/m_good") > "$WORK/out" 2> "$WORK/err" ||
+    fail "a bare bench_picture name: exit $?"
+want=$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$WORK/bin/bench_picture")
+grep -q "^Aggregate: .*/bin/bench_picture sha256 $want" "$WORK/out" || fail "bare name: not the file on PATH"
+# A case captured with another bench_picture is named.
+sed -i.orig 's/^commands=x sha256=0 lines=1$/bench_picture=\/old sha256=00ff\ncommands=x sha256=0 lines=1/' \
+    "$WORK/m_good/good/run.txt"
+table "$WORK/m_good" 0 "a case captured with another bench_picture"
+grep -q "^Captured with another bench_picture than the one aggregating now: good\.$" "$WORK/out" ||
+    fail "other bench: not named"
 echo "all window table contract checks passed"

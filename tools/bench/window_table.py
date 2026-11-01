@@ -4,11 +4,15 @@
     tools/bench/window_table.py <bench_picture binary> <matrix out_dir>
 
 The inventory first (round ed): plan.tsv (written by window_matrix.sh before its first window) lists
-every case of the matrix and whether it was selected; results.tsv lists the cases that ran. Refused:
-a missing or malformed plan.tsv or results.tsv, a plan that selects no case (exit 2), a case listed
-twice, a result for a case the plan does not select, a selected case without a result, a case
-directory that results.tsv does not list, a results status that is not run.txt's window_exit (exit
-1). The table then says whether it is the full matrix or a requested subset of it.
+every case of the matrix, whether it was selected and its trace mode; results.tsv lists the cases
+that ran. Refused: a missing or malformed plan.tsv or results.tsv, a plan that selects no case (exit
+2), a case listed twice, a result for a case the plan does not select, results in another order than
+the plan's, a selected case without a result (an unfinished campaign), a case directory that
+results.tsv does not list, a results status that is not run.txt's window_exit, a run.txt trace mode
+that is not the plan's, a trace-off case with a trace directory (exit 1). The table then says whether
+it is the full matrix or a requested subset of it. The bench_picture argument is resolved once (a
+bare name on PATH), and the file run is the file hashed; cases captured with another bench_picture
+(run.txt's hash) are named.
 
 For every case of results.tsv (in its order), with the trace on:
   - the evidence is validated first: the raw trace is aggregated now by the given bench_picture
@@ -42,6 +46,8 @@ arguments, no results.tsv or plan.tsv, or no case selected.
 import hashlib
 import importlib.util
 import math
+import os
+import shutil
 import re
 import sys
 from pathlib import Path
@@ -313,20 +319,24 @@ def read_tsv(path, header):
 
 
 def inventory(matrix):
-    """The cases to tabulate (results.tsv order) and the campaign line; Inventory when unusable."""
-    plan = read_tsv(matrix / "plan.tsv", ["case", "selected"])
-    results = read_tsv(matrix / "results.tsv", ["case", "status", "wall_s", "load_after"])
-    planned, selected = [], []
-    for name, sel in plan:
+    """The cases to tabulate (results.tsv order), their statuses and planned trace modes, and the
+    campaign line; Inventory when unusable."""
+    plan = read_tsv(matrix / "plan.tsv", ["case", "selected", "trace"])
+    planned, selected, trace = [], [], {}
+    for name, sel, mode in plan:
         if name in planned:
             raise Inventory(f"plan.tsv lists case {name} twice", 1)
         if sel not in ("0", "1"):
             raise Inventory(f"plan.tsv: case {name} selected '{sel}' (0 or 1)", 1)
+        if mode not in ("on", "off"):
+            raise Inventory(f"plan.tsv: case {name} trace '{mode}' (on or off)", 1)
         planned.append(name)
+        trace[name] = mode
         if sel == "1":
             selected.append(name)
     if not selected:
         raise Inventory("plan.tsv selects no case: there is no campaign to tabulate", 2)
+    results = read_tsv(matrix / "results.tsv", ["case", "status", "wall_s", "load_after"])
     names = []
     for name, status, _, _ in results:
         if name in names:
@@ -336,21 +346,28 @@ def inventory(matrix):
         if not WHOLE.fullmatch(status):
             raise Inventory(f"results.tsv: case {name} status '{status}' is not a whole number", 1)
         names.append(name)
+    if names != [n for n in selected if n in names]:
+        raise Inventory("results.tsv lists the cases in another order than plan.tsv", 1)
+    # A selected case without a result is an unfinished campaign, whether or not its directory was
+    # begun (it was running when the campaign stopped); any other unlisted directory is lost.
+    missing = [n for n in selected if n not in names]
     on_disk = sorted(p.name for p in matrix.iterdir() if p.is_dir())
+    if missing:
+        begun = [n for n in missing if n in on_disk]
+        raise Inventory(f"INCOMPLETE campaign: {len(names)} of {len(selected)} selected cases ran; "
+                        f"no result for {', '.join(missing)}"
+                        + (f" (begun, not finished: {', '.join(begun)})" if begun else ""), 1)
     lost = [d for d in on_disk if d not in names]
     if lost:
         raise Inventory(f"case directory {lost[0]} is not listed in results.tsv", 1)
-    missing = [n for n in selected if n not in names]
-    if missing:
-        raise Inventory(f"INCOMPLETE campaign: {len(names)} of {len(selected)} selected cases ran; "
-                        f"no result for {', '.join(missing)}", 1)
     statuses = {name: status for name, status, _, _ in results}
+    modes = {name: trace[name] for name in names}
     if len(selected) == len(planned):
         campaign = f"Campaign: the full matrix, {len(planned)} of {len(planned)} planned cases."
     else:
         campaign = (f"Campaign: a requested subset, {len(selected)} of {len(planned)} planned cases "
                     f"({', '.join(selected)}); not the full matrix.")
-    return names, statuses, campaign
+    return names, statuses, modes, campaign
 
 
 def sha256(path):
@@ -406,37 +423,56 @@ def main():
     if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2
-    binary, matrix = sys.argv[1], Path(sys.argv[2])
+    # The aggregator is resolved once, so the file hashed is the file run (a bare name is looked up
+    # on PATH, as subprocess would).
+    found = sys.argv[1] if "/" in sys.argv[1] else shutil.which(sys.argv[1])
+    if found is None or not os.access(found, os.X_OK):
+        print(f"window_table: {sys.argv[1]}: not an executable bench_picture", file=sys.stderr)
+        return 2
+    binary, matrix = str(Path(found).resolve()), Path(sys.argv[2])
+    digest = sha256(binary)
     try:
-        names, statuses, campaign = inventory(matrix)
+        names, statuses, modes, campaign = inventory(matrix)
     except Inventory as e:
         print(f"window_table: {matrix}: {e}", file=sys.stderr)
         return e.code
     print(campaign)
-    print(f"Aggregate: {binary} sha256 {sha256(binary)} (every trace aggregated now).")
+    print(f"Aggregate: {binary} sha256 {digest} (every trace aggregated now).")
     print()
     identity, timing, edits, control = [], [], [], []
-    unusable, failed, stale = [], [], []
+    unusable, failed, stale, other_bench = [], [], [], []
     for name in names:
         case = matrix / name
         try:
-            run = kv(read(case / "run.txt").replace("\n", " "))
+            run_text = read(case / "run.txt")
+            run = kv(run_text.replace("\n", " "))
+            # Several lines carry a sha256: the bench's is on its own line.
+            captured = next((kv(l).get("sha256") for l in run_text.splitlines()
+                             if l.startswith("bench_picture=")), None)
             if run.get("window_exit") != statuses[name]:
                 raise Unusable(f"results.tsv status {statuses[name]}, run.txt window_exit "
                                f"{run.get('window_exit')}")
+            # The trace mode is the plan's: a run.txt that says otherwise, or a trace-off case with a
+            # trace directory, is not believed (round ed review: trace=off skipped the validation).
+            if run.get("trace") != modes[name]:
+                raise Unusable(f"run.txt trace={run.get('trace')}, plan.tsv trace={modes[name]}")
+            if modes[name] == "off" and (case / "trace").exists():
+                raise Unusable("a trace-off case with a trace directory")
             fps, busy_s = stderr_intervals(case)
             control.append(f"| {name} | {run.get('trace', '?')} | {dist(fps, 1)} | {dist(busy_s, 2)} | "
                            f"{peak_rss(case)} |")
-            if run.get("trace") == "off":
+            if modes[name] == "off":
                 if run.get("window_exit") != "0":
                     failed.append(name)
                 continue
+            if captured not in (None, digest):
+                other_bench.append(name)
             agg, agg_text, succeeded = aggregate_lines(binary, case)
             try:
                 saved = (case / "aggregate.txt").read_text().splitlines()
             except OSError:
                 saved = None
-            if saved != agg_text:
+            if saved != agg_text or run.get("aggregate_exit") != ("0" if succeeded else "6"):
                 stale.append(name)
             frames = read_frames(case / "trace" / "frames.tsv")
             sim = read_sim(case / "trace" / "sim.tsv")
@@ -496,6 +532,10 @@ def main():
     if stale:
         print(f"Saved aggregate.txt differs from the current aggregate (the current one is used): "
               f"{', '.join(stale)}.")
+        print()
+    if other_bench:
+        print(f"Captured with another bench_picture than the one aggregating now: "
+              f"{', '.join(other_bench)}.")
         print()
     print("| case | drawable asked | drawable (px) | views | adapter | frames attempted / presented / "
           "failed | dropped | trace |")

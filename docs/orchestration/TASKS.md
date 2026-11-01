@@ -2,19 +2,19 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-01: Windows rendering intake; MAP founding follow-up
+## Current dispatch — 2026-11-01: Windows rendering intake; MAP navigation contract
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package or accept unreviewed changes. MAP's completed founding packet is now
-superseded by the reviewed follow-up below.
+package or accept unreviewed changes. MAP-FOUND-3 is accepted for its local
+headless scope; MAP's next assignment is MAP-NAV-1 below.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090 after the current Mac handoff | **W4-WIN-0 READY now.** Prepare the host and read the packet below. Finish/review the current W4.4 work before releasing W4-WIN-1–6 on a pinned commit. |
-| MAP.2 / founding | Mac, existing MAP executor | **MAP-FOUND-3 READY.** Repair the two reviewed defects, then implement the owner's peace/shared-visibility/no-alliance start policy under the packet below. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-1 READY.** Recover the navigation rules and prepare a reviewed deterministic movement contract and fixtures. MAP-FOUND-3 is accepted locally; movement implementation is not yet released. |
 
 **Reviewed baseline:** `task/W4-3-live-buildings` at
 `3483d665a5b0f6d92a3f88c9ac519d0bd7e1272d` (round ed; code at `c2bdf91`).
@@ -175,7 +175,179 @@ jobs/keep-awake assertions, or merge/rebase/push task code without a release
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-FOUND-3 — bounded corrections and five-player start policy · READY
+### MAP-NAV-1 — ship navigation evidence, contract and fixtures · READY
+
+**Predecessor accepted:** MAP-FOUND-3 at documentation head `4480200`, code
+`92d4e041083835cc08168a257a31cf8a1a1b6453`, on
+`task/MAP-2-original-like`. Read the
+[orchestrator's acceptance review](reviews/2026-11-01-map-found3.md).
+The two previous defects are closed. Do not restart founding, replay-gate or
+coordinator work. Existing platform and original-fidelity limits remain named.
+
+**Purpose:** the next playable step is a ship receiving an order, sailing to a
+legal approach and founding through the existing command. This packet establishes
+the evidence and deterministic contract needed to implement that step. The
+geometric exterior-4 route checker is not an original navigator. Do not copy it
+into the simulation and call passage faithful.
+
+**Host and ownership:** stay on the Mac in the existing MAP branch/worktree.
+Confirm the actual head and preserve any newer work. Windows rendering continues
+independently. Original-runtime observations that require Windows are a queued
+capture request, not authorization to interrupt or expand that executor's current
+assignment. The owner still chooses a candidate; none is selected or installed.
+
+#### Read order
+
+1. Current main `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.4 and §0.7,
+   `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this packet and
+   the linked acceptance review. Read the fetched board without merging main.
+2. MAP branch `docs/re/ship-navigation.md`, `docs/re/fire-and-ships.md` §3,
+   `docs/sim/ship-start-integration.md`, `docs/sim/ship-founding.md`,
+   `docs/sim/shared-visibility.md`, `docs/sim/fixed-map.md`'s current ship profile,
+   and `docs/research/endless-start-conditions.md`.
+3. `docs/formats/figuren.md` and `docs/formats/sze.md` where available; relevant
+   `FigurenHeader.dat`/SCHIFF/PRIVAT/ROUTE fields; `docs/re/transport.md` only for
+   reusable numeric/search evidence, not as proof of sea routing. Later reviewed
+   rules supersede older first-pass statements about float accuracy and timing.
+4. `src/sim/include/anno/sim/{figure,command,replay,scheduler,tick,config}.hpp`,
+   their implementations and the figure behavior seam; current founding and
+   ship-start loader/tests. Inspect existing deterministic numeric helpers before
+   proposing another representation. Read `tools/disasm.py`, `tools/map2_ship.py`
+   and the prior ignored navigation evidence as reusable tools, not authority.
+
+#### N1 — establish a bounded trace and dependency map
+
+1. Inventory existing local disassembly/decompilation tools and the prior private
+   evidence environment. Hash the relevant original modules and record image
+   bases, tool versions and commands. Reuse working tooling; no whole-home search
+   for another disassembler and no package churn without a concrete need.
+2. Follow one normal ship type, initially 1502: move-order submission and dispatch,
+   plan construction, segment activation, ticking, arrival/cancel/replacement,
+   and the handoff back to founding. Identify actual receivers/vtables and record
+   validated function boundaries. Do not read past a return and attribute the
+   next function to its caller, or infer a virtual target from its slot number alone.
+3. Start from the existing leads: `AnnoWelt.dll` `0x1003de40` (local replan), its
+   planner object and slots `+0x50/+0x68/+0x6c/+0x74/+0x7c`, `0x1003e930`
+   (segment start), `0x100428d0` (step) and `0x100427b0` (speed factor).
+   Reconfirm these leads against the actual module; they are not new conclusions.
+4. Produce a compact call/field ledger: read/write, authoritative/presentation,
+   PRNG source and draws, file-derived values, resolved callees, remaining exact
+   blockers. Follow only dependencies that can affect this first sailing slice.
+   Trade automation, combat, AI strategy and decorative wake effects are excluded.
+5. **N1 checkpoint:** one evidence-linked path map, with concrete unresolved
+   targets. Continue available static work without asking whether to keep tracing.
+
+#### N2 — resolve passage, clearance and route behavior
+
+1. Trace the open-water planner far enough to establish its map representation,
+   water/land tests, diagonals and corner contact, hull/shore clearance, endpoint
+   acceptance and segment collision checks. Separate global routing from local
+   avoidance of other ships. Identify where static coast data and moving objects
+   enter; do not conflate the founding hull veto with navigation clearance.
+2. Determine route ordering/ties, failed/unreachable routes, maximum search/work
+   behavior, partial routes, replan triggers, cancellation and replacement. Name
+   any unknown authoritative side effect rather than calling the path complete.
+3. Compare the original semantics with exterior-4 on small authored examples:
+   enclosed lake, diagonal-only gap, one-tile channel, wider channel, concave coast,
+   invalid endpoint and ship-to-ship obstruction. Original, derived and proposed
+   outcomes get separate columns. UNKNOWN is not a passing route classification.
+4. Document the consequences for the three existing candidates without changing
+   their placements or pass labels. Geometric witnesses remain tool-only until
+   actual route clearance can be evaluated. Do not select a candidate here.
+5. **N2 checkpoint:** explicit passage/query contract or a short list of precise
+   missing functions/runtime observations. No sweeping claim that all sea routing
+   is understood from a single replan function.
+
+#### N3 — movement state, timing and deterministic arithmetic
+
+1. Establish movement time units/cadence and segment distance/speed meanings,
+   turn phases and 16-direction facing, arrival/overshoot handling, zero-length
+   segments, stop/reorder behavior, cargo/health modifiers and relevant state flags.
+   Check the role of ship `+0x3c` and its relationship to founding eligibility.
+2. Inventory persisted versus derived state, including parent/crew positions and
+   facing during motion and after load. Scout/donkey attachment must not turn into
+   an independent moving unit or stale position that affects a founding check.
+3. Derive the authoritative PRNG effects, if any, separately from CRT randomness
+   used for wakes/animation. Account for order dependence between ships and commands.
+4. Draft an integer-only deterministic representation using the project's existing
+   position/numeric seams. Explicitly reconcile older fixed-point proposals with
+   any later reviewed emulation requirements. If exact original arithmetic and
+   the present representation disagree at boundaries, show concrete examples and
+   propose a bounded adaptation; do not silently choose a new tolerance or format.
+5. **N3 checkpoint:** state diagram and exact arithmetic/tick rules for the proposed
+   first movement slice, with unknowns and adaptations separately identified.
+
+#### N4 — independent references, fixtures and runtime capture cards
+
+1. Create small redistributable synthetic vectors from the evidenced formulas:
+   turning thresholds, reversal, axis/diagonal facing, short/zero segments,
+   overshoot, cargo/health boundaries and relevant passage examples. No original
+   binary, asset or extracted original level is committed.
+2. Add/reuse a small read-only Python reference only where the contract is known.
+   Expected answers must be hand-derived or independently transcribed; do not
+   generate and verify them with one implementation. A deliberately wrong rounding,
+   turn threshold, corner rule or hull clearance must fail its relevant check.
+   Where the original answer is unknown, provide a capture case instead of a
+   fabricated expected value. Register public-tool contract tests if a new tool
+   will provide acceptance evidence.
+3. Prepare a short Windows original-runtime capture card with exact setup,
+   relevant module/scene/type, observed fields, expected discrimination and output
+   format. Distinguish visual observation from instrumented coordinates/ticks.
+   Prioritize observations that resolve a real contract decision. Do not require
+   the rendering executor to perform it before its current packet ends.
+4. **N4 checkpoint:** reproducible references with negative controls, a compact
+   fixture catalogue, and actionable NOT_RUN capture cases. No broad renderer or
+   heavy C++ gate is needed for docs/reference-only work.
+
+#### N5 — implementation-ready contract and review stop
+
+1. Draft `docs/sim/ship-navigation.md` and update the RE note. Define the first
+   slice and its refusal contract: owner/unit validation, a move order, route/state
+   progress, cancellation/replacement, failed orders leaving state unchanged,
+   arrival then ordinary founding. No always-reject placeholder counts as a slice.
+2. Specify bounded deterministic work for many ships on large multiplayer maps:
+   reusable static coast data, local obstacle queries, per-tick planning budget,
+   stable ties/order, finite queues and saved/reconstructed work semantics. Wall
+   clock, core count and worker completion order must not change sim outcomes.
+   This is a design requirement, not measured performance acceptance.
+3. Keep type facts and relevant rules configurable/validated for future mods;
+   avoid hardcoded player/type IDs or one hull size. Preserve faithful defaults,
+   explicit adaptations and content/rules identity. Ship movement and authoritative
+   information updates must remain headless; render interpolation is a consumer.
+4. Define how movement-generated information will later enter the shared-
+   visibility policy without granting alliance, trade or territorial rights.
+   Do not implement fog rendering or claim contact sets are full visibility.
+5. Break the later implementation into reviewable packages: validated type/state
+   facts; route query; movement/turn stepper; command/scheduler integration;
+   save/load/replay/versioning; then actual spawn → sailed approach → founding
+   canary. Identify dependencies and acceptance cases per package, including the
+   alternate type/player, rejection atomicity and thread-count independence.
+6. Obtain independent read-only review of each substantive research/reference
+   package and a fresh final contract review. Reviewers inspect evidence and
+   challenge the relevant boundary; they do not implement or delegate their own
+   review. Correct findings before reporting completion.
+7. **Stop before engine implementation.** READY FOR CONTRACT REVIEW requires the
+   critical path to be resolved or an explicit adaptation proposed for orchestrator
+   decision; list genuinely blocking runtime questions precisely. An available
+   unread static dependency is unfinished work, not an external blocker. If the
+   trace expands beyond this slice, preserve findings and identify the smallest
+   remaining unit instead of starting a full AI/navigation rewrite.
+
+**Deliverables and isolation:** small commits for RE/spec/reference work on the
+existing branch, an acceptance/evidence matrix and a new `REPORTS.md` entry with
+code/docs heads and review dispositions. Do not change `src/` simulation behavior,
+state/command versions, candidate manifests, the active map, original assets,
+coordinator/test admission, W4 work, or this task board. No merge/rebase/task-code
+push. Preserve keep-awake assertions, inspect Mac resource availability before
+costly analysis, and keep admission enabled for any tests that use it. Do not
+rerun MAP-FOUND-3's completed campaign for a documentation change. The duplicated
+hull bound and the other named fidelity gaps remain follow-ups, not this packet.
+
+### MAP-FOUND-3 — bounded corrections and five-player start policy · ACCEPTED LOCAL SCOPE
+
+**Completed and reviewed at `4480200` (code `92d4e04`); see the acceptance review
+and MAP-NAV-1 above.** The following packet is retained as the acceptance record,
+not an instruction to repeat A–E.
 
 Continue `task/MAP-2-original-like` on the **Mac** from documentation head
 `f0812cde4103cc8884cf749abe6f72294dc60c83`, code

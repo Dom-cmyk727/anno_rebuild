@@ -312,7 +312,13 @@ CoastIndex::CoastIndex(const TileSource& source, std::span<const CellCoord> shor
     }
 }
 
-void CoastIndex::rebuild_rect(TileRect rect, std::span<const CellCoord> shore_cells) {
+void CoastIndex::rebind(const TileSource& source) {
+    if (source_ != nullptr && source.width() == w_ && source.height() == h_) {
+        source_ = &source;
+    }
+}
+
+void CoastIndex::rebuild_rect(CoastRect rect, std::span<const CellCoord> shore_cells) {
     if (source_ == nullptr || rect.x1 <= rect.x0 || rect.z1 <= rect.z0) {
         return;
     }

@@ -100,9 +100,9 @@ enum class CellClass : std::uint8_t {
 };
 
 /// Half-open tile rectangle [x0, x1) x [z0, z1).
-struct TileRect {
+struct CoastRect {
     std::int32_t x0 = 0, z0 = 0, x1 = 0, z1 = 0;
-    friend bool operator==(const TileRect&, const TileRect&) = default;
+    friend bool operator==(const CoastRect&, const CoastRect&) = default;
 };
 
 /// A coarse cell in world cell coordinates (tile / 8).
@@ -184,7 +184,12 @@ class CoastIndex {
     /// inside it (the original's per-rectangle rebuild when a coast or road object is placed or
     /// removed). `shore_cells` is the full band set after the change; only the cells in the
     /// rectangle take their type from it, every other cell keeps its stored word.
-    void rebuild_rect(TileRect rect, std::span<const CellCoord> shore_cells);
+    void rebuild_rect(CoastRect rect, std::span<const CellCoord> shore_cells);
+
+    /// Binds the index to another source of the same world size (a re-created adapter after the
+    /// world changed). The stored words are kept: call rebuild_rect for what changed. Ignored when
+    /// the size differs.
+    void rebind(const TileSource& source);
 
     /// Empty when this index equals a clean rebuild from the bound source and `shore_cells`, else a
     /// description of the first differing cell (debug and test aid; O(world)).

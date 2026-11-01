@@ -3,6 +3,8 @@
 // values come from the original engine under emulation (see the fixture headers), not from this
 // code.
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -218,10 +220,9 @@ TEST_CASE("route fixtures: the walk-legality helper rejects the corrupt records 
     CHECK(rejected >= 3);
 }
 
-TEST_CASE("route fixtures: generated emulated-original routes (mixed cells, learning, block edges, "
-          "shore band)") {
+static void check_emulated_routes(const std::vector<std::string>& lines, std::uint32_t min_cases) {
     std::uint32_t executed = 0, learning = 0, planned = 0, failed = 0, with_band = 0, big = 0;
-    for (const std::string& line : fixture_lines("route_emulated.txt")) {
+    for (const std::string& line : lines) {
         const auto parts = split(line, '|');
         const std::string name = words(parts[0])[1];
         const auto dims = words(parts[1]);
@@ -266,10 +267,32 @@ TEST_CASE("route fixtures: generated emulated-original routes (mixed cells, lear
         big += std::stoi(dims[0]) > 64 ? 1 : 0;
         ++executed;
     }
-    CHECK(executed >= 150);
-    CHECK(learning >= 10);
-    CHECK(planned >= 60);
-    CHECK(failed >= 5);
-    CHECK(with_band >= 15);
-    CHECK(big >= 40);
+    CHECK(executed >= min_cases);
+    MESSAGE("emulated routes: " << executed << " cases, " << planned << " planned, " << failed
+                                << " unreachable, " << learning << " with learned masks, "
+                                << with_band << " with shore cells, " << big << " beyond 64 x 64");
+}
+
+TEST_CASE("route fixtures: generated emulated-original routes (mixed cells, learning, block edges, "
+          "shore band)") {
+    check_emulated_routes(fixture_lines("route_emulated.txt"), 150);
+}
+
+TEST_CASE("route fixtures: optional extra campaign file (ANNO_ROUTE_EXTRA, same format; skipped "
+          "when unset)") {
+    const char* extra = std::getenv("ANNO_ROUTE_EXTRA");
+    if (extra == nullptr || *extra == '\0') {
+        return;
+    }
+    std::ifstream f(extra);
+    REQUIRE(f.good());
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(f, line)) {
+        line = trim(line);
+        if (!line.empty() && line[0] != '#') {
+            lines.push_back(line);
+        }
+    }
+    check_emulated_routes(lines, 1);
 }

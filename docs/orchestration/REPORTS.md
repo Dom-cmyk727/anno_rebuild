@@ -9778,13 +9778,15 @@ not touched. The owner's keep-awake process was left alone. No job of this round
 ## Round ee: W4.4 the developer building tool in the play window, through the sim's command path (review candidate)
 
 - **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `3483d66` (round ed's report).
-- **Code head:** `269f795` (`src/` final; `e4c726b` is the last product change, `269f795` a test fix).
-  The commit after it is this report; nothing under `src/` or `tools/` changes after `269f795`.
+- **Code head:** `093559c` (`src/` final: the integration review's fixes). The commits after it are
+  this report's; nothing under `src/` or `tools/` changes after `093559c`.
 - **Evidence:** `cache/ee-runs/` (ignored): acceptance tables `acceptance-{A..E}.md`, review records
   `reviews/{A..E}.md`, mutant logs `*-mutants-*.log`, the live sessions `e3/`, the gates `g*-*.log`.
 - **Host:** Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1; "Apple M5 Max (Metal)". The MAP-2 executor ran
   `anno_sim_tests` and its own admission coordinator (port 47631) throughout; load 4 to 7. It was left alone.
-- **Admission:** on, unchanged; every gate went through the running coordinator.
+- **Admission:** on, unchanged. The gates ran with the coordinator up; only cases that reserve memory
+  log it (G4's render cases: `coordinator build=0919b5444a8c50cd compat=3`); the app and input
+  cases make no reservation (as before this round).
 - **Keep-awake:** one `caffeinate` of this round (pid 48030), stopped at the end; the owner's (pid 39677)
   was left alone.
 - **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged. `game/` untouched.
@@ -9798,7 +9800,8 @@ not touched. The owner's keep-awake process was left alone. No job of this round
 - **C (preview and feedback):** `5d2093e`; review fixes in `4a2cc5e` and `e4c726b`.
 - **D (robustness, mod data):** `4a2cc5e`; review fixes in `e4c726b`.
 - **E:** E1 `7d5cf21` (+ `e4c726b`); E3/E4 `4a2cc5e` (+ `e4c726b`); `5b77dc0` test names CTest can select;
-  `269f795` an ASan finding in package A's test (assign from its own element).
+  `269f795` an ASan finding in package A's test (assign from its own element); `093559c` the
+  integration review's fixes (a held Esc, another player's city).
   `4a2cc5e` holds four parts in one commit because they edit the same files; its message lists them.
 
 ### What the window does now (developer tool, not UI.2)
@@ -9835,11 +9838,12 @@ not touched. The owner's keep-awake process was left alone. No job of this round
 ### Measurements (debug build, Apple M5 Max; `dev_tool_mod_test.cpp`)
 
 Per pointer move (pick, `DevTool::handle`, `make_preview`, `preview_note`, `check`, `feedback_line`):
-flat in published buildings, 4 to 100 004 (18.0 µs at one island); nearly flat in the scene's islands
-since the pick asks only the islands its ray crosses: 19.5 µs at 64 islands (69 µs before the change;
-13 µs at one island before, 18 µs after). The occupancy index is rebuilt once per published change:
-0.26 ms at 100 004 buildings; 100 000 moves rebuild it once. The window's follow step with every
-picture build held: 0.023 to 0.026 ms. Recording session hashes costs a full `state_hash` (about 0.17 s
+flat in published buildings, 4 to 100 004. The pick's change, one build before and after
+(`d6-pick-before-after.log`, which also keeps an invalid run: not rebuilt): 15.2 to 17.3 µs at one
+island, 212 to 18.8 µs at 64 islands. In G2 (dev, under load): 20.0 µs at one island, 21.6 µs at 64,
+index rebuild 0.28 ms at 100 004 buildings (once per published change; 100 000 moves rebuild it
+once). The window's follow step with every picture build held: slowest 0.25 ms in G2, 0.36 ms in E2
+run 2, 0.56 and 1.22 ms under ASan. Recording session hashes costs a full `state_hash` (about 0.17 s
 on lan5, debug) on the turns it records. Not measured: large-city, complex-economy, multiplayer.
 
 ### The live window (E3, E4)
@@ -9856,7 +9860,11 @@ on lan5, debug) on the turns it records. Not measured: large-city, complex-econo
   takes only its own device's input); session-2 placed on open sea (OQ-052); sessions 3/4 on land.
 - Screenshots (`session-4/crops/`, inspected): the turned 4×3 is drawn on the coast; the 1×1 cannot be
   told from the trees at group 2 (not cited); `placed.png` shows one chunk not yet arrived at the left
-  edge (asynchronous chunks).
+  edge (asynchronous chunks). The capture is the client area only: the title (the refusal, the
+  outcome) is not in it, and the preview is not visible at group 2. The refusal and outcome evidence
+  is the title in `script.log` and the outcomes; the preview's is the GPU/CPU test.
+- The canaries log 0.17 to 0.31 s window-thread stalls at each screenshot: the script's capture runs
+  `screencapture` on the window thread (a test-harness cost, not the play path).
 - E4 (`dev_barrier_test.cpp`): every picture build held at a gate; turns, outcomes and input go on;
   the line says "not drawn yet: 1 island of the picture is not committed"; the open gate commits it.
 
@@ -9875,6 +9883,8 @@ coordinator and sim tests ran throughout). sha256 (first 16 hex) as each gate lo
 | G3b ASan, the corpus case alone | that case and the two contracts; `-j 1`, timeout 7 200 s, beside G4 | `269f795` | PASS: the case passed in 2 612 s (slow under ASan, not stalled), the contracts too; sanitizer lines 0 (`g3b-asan-corpus.log`) |
 | G4 render and sim, dev | `anno_render_tests`, `anno_sim_tests`, contracts; heavy label excluded; `-j 4`, beside G3b | `269f795`; render `8b4b9b50…`, sim `43ba6f18…` | PASS: selected 839, executed 838, failed 0, skipped 1 (opt-in) (`g4-render-sim-dev.log`) |
 | Live canary | `session-land.script` in the real window, then `--replay-hashes` | `269f795`, clean tree; `anno1503` `e5ef1d57…` | PASS: every step; 14 checkpoints and 6 outcomes agree (`e3/session-6-canary`, `replay-6-canary.log`) |
+| G5 input, dev and ASan (after the integration fixes) | `anno_app_input_tests`, contracts; `-j 6` | `093559c` | PASS both: 31/31 executed, 0 failed, 0 sanitizer lines (`g5-input-dev.log`, `g5-input-asan.log`) |
+| Live canary (final) | as above | `093559c`, clean tree; `anno1503` `30762ed3…` | PASS: every step; 13 checkpoints and 6 outcomes agree (`e3/session-7-canary`, `replay-7-canary.log`) |
 
 Not run here: the heavy label of `anno_render_tests`/`anno_sim_tests`, `anno_formats_tests` (no format
 changed), the GPU suite beyond G2's selection, the release build. The dev `anno_app_tests` with the
@@ -9902,6 +9912,22 @@ changed), the GPU suite beyond G2's selection, the release build. The dev `anno_
 - The continuous-zoom (resampled) preview overlay: GPU path not compared with a CPU reference.
 - OQ-052 (the placement rule's terrain check), OQ-550 (a command-built building's height): open.
 - Large-city, complex-economy and multiplayer performance: open.
+
+### Integration review (independent, read-only), of `3483d66..40bbee2`: CHANGES REQUIRED → fixed
+
+| Finding | Severity | Disposition |
+|---|---|---|
+| A held Esc closed the window: repeats fell through to the window's quit | P2 | FIXED `093559c`: repeats of the tool's keys are the tool's; test; mutant `i-held-esc-to-window-2` caught |
+| TASKS.md D's "non-default player/city" had no row or test | P2 | FIXED `093559c`: a test with issuer 3 and city (7, 2) on another island; row added to `acceptance-D.md` |
+| Measured figures not in retained evidence | P3 | FIXED: figures from `d6-pick-before-after.log` and the gate logs |
+| Screenshot stalls unexplained | P3 | FIXED: attributed (above) |
+| A session with an Unencodable window command does not replay as equal | P3 | DOCUMENTED (game-shell.md): a false difference, never a false agreement |
+| Screenshots do not show the title or the preview | P3 | FIXED: the wording above |
+| The admission claim | P3 | FIXED: the wording above |
+
+Confirmed by the reviewer: every gate count, source head and binary hash; three replays it ran
+itself (unchanged: agree; an edited outcome and a moved refusal: differ); the mutant logs;
+clang-format on 52 files; no sim rule change; the title's read order; the follow step's ordering.
 
 ### Review records
 

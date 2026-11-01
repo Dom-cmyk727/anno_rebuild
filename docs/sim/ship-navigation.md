@@ -1,6 +1,7 @@
-# Ship navigation: the first sailing slice (contract, MAP-NAV-1)
+# Ship navigation: the first sailing slice (contract, MAP-NAV-1; amended by MAP-NAV-2 package A)
 
-Status: **contract for review; nothing is implemented.** Evidence: `docs/re/ship-navigation.md` sections 6-12.
+Status: contract. **Section 12 (MAP-NAV-2 A) amends and supersedes the earlier sections where it says so; the superseded sentences below are
+marked.** Evidence: `docs/re/ship-navigation.md` sections 6-12.
 Labels: **ORIGINAL** (evidenced rule, port faithfully), **ADAPTATION** (proposed, needs the orchestrator's decision
 where marked), **UNKNOWN** (open, listed in section 11). The simulation stays headless and integer; render
 interpolation is a consumer.
@@ -74,9 +75,9 @@ displacement; whether it ends within the goal tile centre or offset by that frac
 cost table), `max_hp`, `hold_cap`, `hold_count_a`, `hold_count_b` (the speed-factor inputs), `avoid_radius`
 (the registry-query radius of the hook, type slot `+0x68(4)` = `LOGIC[0x25]/8` with 0 meaning 7.0: 16.0 tiles for a 1502,
 `docs/re/ship-navigation.md` 7.4; unused until the deferred hook is ported). Further type facts from the same slots:
-`stamp_radius` (slot `+0x68(5)` = `LOGIC[0x28]/8`, 0 meaning 2.0; 5.0 tiles for a 1502), used by the route query's obstacle stamps. Conversion of a file f32 to the engine's exact value: the f32's exact binary
-rational, stored as a Q0.32 integer rounded to nearest (even) (**ADAPTATION**, error below 2^-33 relative to a
-speed of 0.036; documented, tested against the f32 value). Type ids, player ids and the 16-direction count are data
+`stamp_radius` (slot `+0x68(5)` = `LOGIC[0x28]/8`, 0 meaning 2.0; 5.0 tiles for a 1502), used by the route query's obstacle stamps. Conversion of a file f32 to the engine's value: the f32's exact binary rational times 2^32, rounded to nearest (even) (**ADAPTATION**,
+**absolute** error at most 2^-33 tile per stepper unit for every speed; the earlier "relative" wording is withdrawn; all numeric scales are
+in section 12.4). Type ids, player ids and the 16-direction count are data
 or config, never constants in `sim`; the alternate-type test uses a different ship type and a non-default player.
 
 **Per-ship motion state** (new persisted state, section 8): `segment {vx, vy (Q0.32 signed), length, speed, kind}`,
@@ -135,10 +136,8 @@ PRNG-free but order-sensitive state.
 ## 6. Bounded deterministic work on large maps
 
 Requirements (design, not measured performance): (a) planning is **per ship visit** (the registry already fixes the
-visit order and cadence), at most `route_plans_per_advance` (config, default 4) plans are *started* per Advance; an
-excess ship keeps its pending order, does **not** install an idle segment (it keeps what it is doing) and is retried at its
-next visit, in registry order, so the outcome depends only on sim state; the per-Advance counter is not persisted (recomputed
-from zero each Advance); (b) a query has a **work budget** in coarse-node pops and fine-node pops per query
+visit order and cadence), admitted by the **fair bounded rule of section 12.2** (the first-come per-Advance quota of the
+MAP-NAV-1 draft is withdrawn: it starves slot 5 of slots 1..5); (b) a query has a **work budget** in coarse-node pops and fine-node pops per query
 (`route_coarse_budget`, `route_fine_budget`; defaults are set in P2 from measured worst cases of the fixture maps with a
 documented margin and a recorded measuring procedure (not set here); the original has *no* cap and floods the window, so exceeding the budget is an ADAPTATION that yields
 status `-3 BudgetExceeded` = failed plan, never a partial route; consequence stated: a route the original would complete makes the
@@ -210,3 +209,97 @@ and goldens move with the version; the independent Python reference moves with t
    coast data is ported), the setters of state bits `0x2000`/`0x4000`, the UI pick provider and group body.
 4. A candidate whose witness relies on a one-tile channel or on shore tiles needs re-evaluation under the original land
    rule before selection (evidence 11); this packet selects none.
+
+
+## 12. MAP-NAV-2 package A: amendments (these supersede the sentences they name)
+
+### 12.1 Commands, status words and identities
+- `MoveCmd` (tag `0xF071`, section 2) and a separate **`StopCmd`** (tag `0xF072`, payload `{FigureId ship}`) are the two public ship commands. They
+  are distinct commands, so a valid `MoveCmd` target `(0, 0)` (the world corner) is never confused with a stop; the original's "x = z = 0 is a stop"
+  is deliberately **not** copied (ADAPTATION). Both join the codec tag order and `is_native_wire_type`.
+- Validation (atomic; bytes, PRNG cursor, motion state, tickets and counters unchanged on refusal): checks 1, 2, 3 and 6 of section 2 for both
+  commands; `MoveCmd` also checks 4 (blocked-state mask) and 5 (target inside the world). `StopCmd` refuses a ship whose `state_word &
+  move_blocked_mask` is non-zero too (nothing to stop; ADAPTATION, consistent with `MoveCmd`) and is otherwise accepted even when the ship is
+  already idle (a no-op that still clears a pending order).
+- **Accepted `MoveCmd`:** performs the stop semantics (below), then records order identity `order_id` (a world counter, u64, assigned at
+  acceptance, never reused), target `(x, y)` in Q24.8, and a **ticket** (12.2): a new ticket if the ship holds none, the **existing ticket if
+  it does** (a replacement keeps its place in the queue). Accepted does not mean routed.
+- **`StopCmd` / stop semantics (ORIGINAL slot `+0xdc`, `0x10043350`, read in full):** removes the ship's pending ticket and clears the order
+  record and the node list; sets the plan end to the current position; for a ship in a moving segment trims `remaining` by the whole lattice
+  steps it contains (`remaining -= trunc(remaining) * 1.0` for an even facing; `remaining -= trunc(remaining / 1.4142135) * 1.4142135` for an odd
+  facing: **the remainder past the whole steps is kept**, which the ship still sails, then it idles); resets the speed-factor multiplier to 1.0;
+  a ship not in a moving segment gets the idle segment (`remaining 0.01`, `speed 0.01`). `StopCmd` additionally emits `Stopped{ship, order_id}`
+  when an order was cancelled. A superseded `MoveCmd` order is simply replaced; no event.
+- **Outcome vocabulary (stable identity):** every routed order ends in exactly one of `RouteFailed{ship, order_id, reason}` with reason
+  `Unreachable` (engine status -2), `BudgetExceeded` (a work or memory limit of 12.3), `OutsideWindow` (the target lies outside the start-centred
+  window; also engine -2 in the original) ; `Arrived{ship, order_id}` (status 2, no runs, or the last segment finished); `Stopped{...}`; or it
+  is `Superseded` by a later `MoveCmd` (not reported). A result is attributed to the `order_id` that was routed, never to a later order.
+  Quota waiting is **not** an outcome and emits nothing.
+- **Lakes and exterior sea.** Navigation only needs reachability between the start tile's water and the goal candidate: a voyage entirely inside an
+  enclosed lake succeeds; an order from the sea into a lake (or the reverse) is routed and ends `RouteFailed{Unreachable}` (it is *not* an atomic
+  command refusal). The v2 candidate **spawn policy** (ships start in exterior-4 sea) is a generator constraint on spawns and does not restrict
+  navigation.
+- **Planning-only density.** The route query uses ship density stamps (12.3, evidence 9.4) to choose among goal candidates. The original's
+  segment-end collision handling (hook `0x10042210`: density-cost local detour `0x1003de40`, hostile avoidance `0x10041bd0`) is **deferred**: moving
+  ships may overlap (approved for the first headless slice, not full peaceful-navigation fidelity).
+- **Land start tile (conservative first-slice rule, original parity UNKNOWN, capture CAP-6c):** a start on a land tile may leave through adjacent
+  reachable water, but the start tile is **not itself offered as a destination candidate**. A water start tile can be the chosen candidate
+  (status 2). `passage_cases.txt` pins exactly this; CAP-6c may later replace it.
+
+### 12.2 Fair bounded planning admission (replaces the quota of section 6(a))
+State (persisted and hashed, 12.5): world `next_ticket` (u64); per navigating ship an optional `ticket` (u64). Rule:
+1. A ticket is issued by an accepted `MoveCmd` only when the ship has none; **replacement keeps it**; a served order, `StopCmd`, ship removal or
+   a refused plan (`RouteFailed`) removes it.
+2. Per Advance `quota` plans may start (`route_plans_per_advance`, default 4). During the registry visit phase, when a ship is visited, its
+   order is pending and its pick-up point is reached (segment ended, node list empty), it is **admitted iff the number of pending tickets
+   older than its own is smaller than the quota left in this Advance**; admitting consumes one unit of quota and the ticket. Otherwise the
+   ship is **deferred**: it stays at the pick-up point, keeps its order and ticket, emits nothing, installs no idle segment, and **its
+   elapsed visit time is discarded** (`last := now`, leftover not carried; ADAPTATION, the ship is stationary), so the u16 stamp cannot wrap
+   while it waits and admission later starts from that visit's own elapsed time.
+3. The pending count older than a ticket is computed from the ordered set of tickets (a derived index over the figures, rebuilt on load).
+4. **Finite service bound (proof to be mechanised in E):** let a ship hold the oldest pending ticket. Every ship visited earlier in the same
+   Advance was admitted only if quota remained for all older tickets, so quota is left when the oldest ticket's ship is visited and it is
+   admitted at its next visit after it reaches its pick-up point. A ticket with `p` older pending tickets is therefore served within
+   `(p + 1) * C + R` Advances where `C = ceil(n / k)` is the registry pass length (`n` slots, `k = clamp(floor(dtick * n / 50), 1, n)` visited per
+   Advance) and `R` is the time to reach the pick-up point (at most one chunk of 1.0 tile, or one idle cycle). `tools/ship_nav_ref.py
+   admission-check` models the real cursor/cadence (100 slots, 5-tick Advances, ships in slots 1..5) with hand-derived counts: the rejected
+   first-come rule serves `100 100 100 100 0` over 1000 Advances, the fair rule `100 100 100 50 50` with no ticket waiting more than 20
+   Advances, a property check over random replacement/cancellation seeds, and a negative control (renewing the ticket on replacement starves
+   the youngest ship).
+5. `BudgetExceeded` is a query outcome after admission and is distinct from waiting for admission.
+
+### 12.3 Route query limits (bounded work and memory)
+Per query limits (`Rules`, validated): `route_coarse_budget` and `route_fine_budget` (node pops), `route_window_cells` (checked window dimensions
+in 64-tile blocks, default 32 per axis = the original's), `route_memory_bytes` (coarse + fine working sets, retries, result runs counted).
+Preparation and retries count toward the budget; exceeding any limit returns `BudgetExceeded` before any state change. Defaults are set in package
+C from measured representative small and real-candidate queries with a margin (not from the 64 x 64 fixtures alone); the original has no cap, so
+a larger default is the remedy, never a partial route. Original window behaviour is the default of a configuration value, not a fixed array.
+
+### 12.4 Numeric scales, residues, rounding and seals (replaces the sketch of section 4)
+- **Lengths and speeds** are exact integers in `q32` = 2^-32 tile: an axis step is `2^32`; a diagonal step length is `0x3FB504F3` = `11863283 * 2^9`
+  (exact); a diagonal axis component is `c = 11863283 / 2^24` (exact rational of the original f32 `0x3F3504F3`); the diagonal displacement per
+  step is therefore `c * L_d = 1.00000012` tile, exactly as the original's constants give (not forced to 1.0).
+- **Type speed** `speed_q32 = round_nearest_even(f32_value * 2^32)`; **seal domain** `0 < speed_q32 < 2^28` (about 0.0625 tile per stepper unit;
+  HEAD values are <= 0.05), `turn_step_q32` (HEAD f0) in `(0, 2^32)`, `V` in `1..100` (percent). Absolute conversion error <= 2^-33 tile per unit.
+- **Time** is the integer tick difference `d = u16(now - last)`. One tick = 1/5 stepper unit; no division by 5 is ever made: the budget of a
+  visit is `B = d * speed_q32 * V` in the scale `q32 / 500` (value < 2^16 * 2^28 * 2^7 = 2^51, u64). Remaining length is held as `rem_q32 * 500`
+  (<= 2^32 * 500 per chunk, u64). A step uses `P = min(B, rem * 500)`; when the segment finishes, the unused budget `B - P` converts to the next
+  segment's scale as `floor((B - P) * (s_new * V_new) / (s_old * V_old))` (one floor; none when the product is unchanged; error < 1/500 q32).
+  Turn segments use speed `0.01f` (q32 `42949673`) with no `V`; a zero-length segment finishes immediately and cannot loop (a progress guard
+  limits consecutive zero-length segments per visit to the node count).
+- **Position:** per axis `pos_u` (i64) = position * 2^32 * 500 and a residue `res24` (u32 < 2^24) carrying the diagonal product: axis step
+  displacement `P`; diagonal axis displacement `floor(P * 11863283 / 2^24)` with the remainder added to `res24` (a carry into `pos_u` when
+  `res24 >= 2^24`). The product `P * 11863283` is < 2^75: a **portable 64 x 64 -> 128 helper** (no `__int128`) is required and its signed and
+  unsigned edge cases are unit-tested. **Seal bound:** `world edge <= 2^20` tiles (checked at world creation when any navigating figure type
+  exists) so `|pos_u| < 2^20 * 2^41 = 2^61` fits i64. **Published** `Figure::pos` (Q24.8) = `floor(pos_u / (500 * 2^24))` (floor toward
+  negative infinity), recomputed after every step; the only rounding that reaches the observable state.
+- **Error statement (a requirement still to be proven in D, not an established fact):** the position error against the mathematical model with the
+  stated `speed_q32` is below `2^-32` tile per segment boundary plus the floor at publication, and the difference to the exact `f32` speed is at
+  most `units * 2^-33` tile for `units` stepper units; D shows these on long voyages and does not call the result original-runtime parity.
+
+### 12.5 Persistence contract (all future-affecting state; stream version >= 122)
+World: `next_order_id`, `next_ticket`. Per navigating ship: the order record (`order_id`, phase, target Q24.8), `ticket` (optional), segment
+(`kind`, direction class axis/diagonal with its dir8, `length_q32`, `rem_q32`, `speed_q32`, `V`), the node list (runs), `facing` (`dir16`), `last`
+(u16), `pos_u` and `res24` for both axes, the "deferred" marker is implied by order-pending + no segment. Derived, never saved: the ticket index,
+coast data, spatial index of figures. Crew children's positions are written from the parent each step (no hidden state). An original-save import
+initialises every ship idle. Version 122 is reserved for this layout; any later incompatible change takes a new number.

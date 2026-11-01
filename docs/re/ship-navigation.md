@@ -446,7 +446,8 @@ hull half-extent. So friendly and own ships are handled only by the density stam
 | Case | exterior-4 (tool model) | Original (section 9; emulation) | Proposed contract |
 |---|---|---|---|
 | open water | reachable | reachable; runs of the fine path, status 0 | same |
-| enclosed lake (no corner/edge to the sea) | not exterior | unreachable (-2) | -2 (refuse order, no state change) |
+| enclosed lake: sea to lake or lake to sea | not exterior | unreachable (-2) | order accepted, later `RouteFailed{Unreachable}` (not an atomic refusal) |
+| voyage entirely inside an enclosed lake | not exterior | reachable (DERIVED) | succeeds |
 | diagonal-only gap between two land corners | closed | unreachable (-2): the diagonal needs both orthogonals, masks do not connect | closed (same) |
 | one-tile channel | open (4-connected) | passable (no hull dilation); shore cost 50/69 at coarse level | passable |
 | wider channel | open | passable | passable |

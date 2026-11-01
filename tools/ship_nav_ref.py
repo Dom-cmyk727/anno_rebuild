@@ -302,53 +302,205 @@ def check_passage(path, mut=None):
 DIRS = {'W': (-1, 0), 'SW': (-1, 1), 'S': (0, 1), 'SE': (1, 1), 'E': (1, 0), 'NE': (1, -1), 'N': (0, -1), 'NW': (-1, -1)}
 
 
+def parse_route(line):
+    parts = [x.strip() for x in line.split('|')]
+    name = parts[0].split()[1]
+    W, H = map(int, parts[1].split())
+    land = set()
+    for rect in parts[2].split()[1:]:
+        x0, z0, x1, z1 = map(int, rect.split(','))
+        land.update((x, z) for z in range(z0, z1 + 1) for x in range(x0, x1 + 1))
+    return dict(name=name, W=W, H=H, land=land, start=tuple(map(float, parts[3].split()[1:])),
+                goal=tuple(map(float, parts[4].split()[1:])), status=int(parts[5]),
+                runs=[] if parts[6] == '-' else parts[6].split(),
+                stamped=len(parts) > 7 and parts[7] != 'stamps -', end=tuple(map(int, parts[8].split()[1:])) if len(parts) > 8 else None,
+                expect=parts[9][len('expect '):] if len(parts) > 9 else None)
+
+
+def path_legality(rec, mut=None):
+    """Expands the runs into single steps and checks, independently of the endpoint: run syntax and cap, the map
+    bounds, that every entered tile is water (the start tile is the only land tile that may be left), and that a
+    diagonal step has BOTH side tiles enterable (no corner cutting). Returns (problems, end tile)."""
+    problems = []
+    W, H, land = rec['W'], rec['H'], rec['land']
+    st = (math.floor(rec['start'][0]), math.floor(rec['start'][1]))
+    x, z = st
+    cap = 9 if mut == 'cap9' else 10
+
+    def enterable(t):
+        return t == st or (0 <= t[0] < W and 0 <= t[1] < H and t not in land)
+
+    for r in rec['runs']:
+        d = r.rstrip('0123456789')
+        length = int(r[len(d):]) if r[len(d):] else 0
+        if d not in DIRS or length > cap or length < 1:
+            problems.append('bad run %s' % r)
+            continue
+        dx, dz = DIRS[d]
+        if mut == 'flip_z':
+            dz = -dz
+        for _ in range(length):
+            nx, nz = x + dx, z + dz
+            if not (0 <= nx < W and 0 <= nz < H):
+                if mut != 'no_bounds_check':
+                    problems.append('step leaves the map at %s' % ((nx, nz),))
+            elif (nx, nz) in land and mut != 'no_land_check':
+                problems.append('step enters land at %s' % ((nx, nz),))
+            elif dx != 0 and dz != 0 and mut != 'allow_corner_cut' and not (enterable((x + dx, z)) and enterable((x, z + dz))):
+                problems.append('diagonal step cuts a corner at %s' % ((x, z),))
+            x, z = nx, nz
+    return problems, (x, z)
+
+
+def route_problems(rec, mut=None):
+    """Three SEPARATE checks (passing one proves nothing about the others): (1) path legality; (2) the independent
+    status / goal-candidate reference (`passage`; for stamped records the recorded end tile is the only reference until
+    the Offer rule is modelled); (3) exact run equality is NOT checked here - the expected runs are emulated-original data
+    that only the C++ port can reproduce."""
+    problems, end = path_legality(rec, mut)
+    st, cx, cz, _ = passage(rec['W'], rec['H'], rec['land'], rec['start'], rec['goal'])
+    if rec['stamped'] and rec['end'] is not None:
+        cx, cz = rec['end']
+    if st != rec['status'] and not rec['stamped']:
+        problems.append('status %s, passage reference %s' % (rec['status'], st))
+    if rec['status'] == 0 and end != (cx, cz):
+        problems.append('runs end on %s, candidate %s' % (end, (cx, cz)))
+    if rec['status'] != 0 and rec['runs']:
+        problems.append('runs on a non-route status')
+    return problems
+
+
 def check_routes(path, mut=None):
-    """Cross-checks emulated-original route-run vectors against the independent passage reference."""
+    """Cross-checks the route-run vectors against the independent passage reference and the legality walk."""
     bad, count = [], 0
     for n, line in enumerate(open(path), 1):
         line = line.strip()
         if not line or line.startswith('#'):
             continue
-        parts = [x.strip() for x in line.split('|')]
-        name = parts[0].split()[1]
-        W, H = map(int, parts[1].split())
-        land = set()
-        for rect in parts[2].split()[1:]:
-            x0, z0, x1, z1 = map(int, rect.split(','))
-            land.update((x, z) for z in range(z0, z1 + 1) for x in range(x0, x1 + 1))
-        start = tuple(map(float, parts[3].split()[1:]))
-        goal = tuple(map(float, parts[4].split()[1:]))
-        status = int(parts[5])
-        runs = [] if parts[6] == '-' else parts[6].split()
-        stamped = len(parts) > 7
+        rec = parse_route(line)
         count += 1
-        st, cx, cz, _ = passage(W, H, land, start, goal)
-        if stamped:  # stamps move the chosen candidate: the recorded end tile is the reference
-            cx, cz = map(int, parts[8].split()[1:])
-        problems = []
-        if st != status:
-            problems.append('status %s, passage reference %s' % (status, st))
-        x, z = math.floor(start[0]), math.floor(start[1])
-        cap = 9 if mut == 'cap9' else 10
-        for r in runs:
-            d = r.rstrip('0123456789')
-            length = int(r[len(d):])
-            if d not in DIRS or length > cap or length < 1:
-                problems.append('bad run %s' % r)
-                continue
-            dx, dz = DIRS[d]
-            if mut == 'flip_z':
-                dz = -dz
-            x, z = x + dx * length, z + dz * length
-        if status == 0 and (x, z) != (cx, cz):
-            problems.append('runs end on %s, candidate %s' % ((x, z), (cx, cz)))
-        if status != 0 and runs:
-            problems.append('runs on a non-route status')
+        problems = route_problems(rec, mut)
         if problems:
-            bad.append((n, name, problems))
+            bad.append((n, rec['name'], problems))
     if count < 30:
         bad.append((0, 'fixture', ['fewer than 30 route vectors']))
     return bad
+
+
+def check_counterexamples(path):
+    """Each record of the counterexample file is a deliberately CORRUPT route (valid endpoint) that must be rejected with
+    the named reason; records marked `expect accept` are valid controls that must pass."""
+    bad, seen_accept, seen_reject = [], 0, 0
+    for n, line in enumerate(open(path), 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        rec = parse_route(line)
+        problems = route_problems(rec)
+        want = rec['expect']
+        if want == 'accept':
+            seen_accept += 1
+            if problems:
+                bad.append((n, rec['name'], ['control rejected: %s' % problems]))
+        else:
+            seen_reject += 1
+            if not any(want in p for p in problems):
+                bad.append((n, rec['name'], ['expected a problem containing %r, got %s' % (want, problems)]))
+    if seen_accept < 1 or seen_reject < 3:
+        bad.append((0, 'fixture', ['need >= 1 accepted control and >= 3 rejected corruptions']))
+    return bad
+
+
+# ---- planning admission (MAP-NAV-2 A2) ------------------------------------------------------------------------
+
+def admission_sim(rule, n, dtick, ships, quota, advances, adversary, seed=0):
+    """Models the registry cursor/cadence (visit k = clamp(floor(dtick*n/50), 1, n) slots per Advance from a circular cursor,
+    slots visited in ascending order) and the planning admission of every ship in `ships` (slot indices) that has a pending
+    order. Rules: `quota_first` = the first `quota` visited pending ships per Advance (the rejected first-come rule);
+    `fifo_reserve` = a visited pending ship is admitted iff the number of OLDER pending tickets is smaller than the quota
+    left in this Advance (a replacement keeps the ship's ticket; a served or cancelled ticket is removed). Adversaries:
+    `replace_served` = a served ship immediately receives a new order (a new, youngest ticket) and, under fifo_reserve,
+    other pending ships are replaced every Advance (their tickets stay). Returns (service counts per ship, max wait in
+    Advances for any ticket from its issue to its service)."""
+    import random
+    rng = random.Random(seed)
+    k = max(1, min(n, (dtick * n) // 50))
+    seq = 0
+    tickets = {}          # slot -> (seq, issued advance)
+    for sl in ships:
+        seq += 1
+        tickets[sl] = (seq, 0)
+    served = {sl: 0 for sl in ships}
+    max_wait = 0
+    cursor = 0
+    for a in range(advances):
+        visited = [(cursor + i) % n for i in range(k)]
+        remaining = quota
+        for sl in sorted(visited):
+            if sl not in tickets:
+                continue
+            mine = tickets[sl][0]
+            older = sum(1 for (q, _) in tickets.values() if q < mine)
+            ok = remaining > 0 if rule == 'quota_first' else older < remaining  # fifo_reserve and the mutant fifo_renew
+            if rule == 'fifo_no_reserve':
+                ok = remaining > 0 and older == 0
+            if ok:
+                remaining -= 1
+                served[sl] += 1
+                max_wait = max(max_wait, a - tickets[sl][1])
+                del tickets[sl]
+                if adversary in ('replace_served', 'random', 'replace_all'):
+                    seq += 1
+                    tickets[sl] = (seq, a)
+        if adversary == 'replace_all':  # every pending ship is re-commanded every Advance; the correct rule KEEPS tickets
+            if rule == 'fifo_renew':    # mutant: a replacement renews the ticket (moves the ship to the back)
+                for sl in sorted(tickets):
+                    seq += 1
+                    tickets[sl] = (seq, tickets[sl][1])
+        if adversary == 'random':
+            for sl in ships:  # random replacement / cancellation / re-command; replacement KEEPS the ticket
+                r = rng.random()
+                if sl in tickets and r < 0.3 and rule != 'quota_first':
+                    pass  # replaced: ticket unchanged
+                elif sl in tickets and r < 0.35:
+                    del tickets[sl]  # cancelled
+                elif sl not in tickets and r < 0.5:
+                    seq += 1
+                    tickets[sl] = (seq, a)
+        cursor = (cursor + k) % n
+    for (_, issued) in tickets.values():  # a ticket still unserved at the end has waited at least this long (starvation)
+        max_wait = max(max_wait, advances - issued)
+    return [served[sl] for sl in ships], max_wait
+
+
+def main_admission(argv):
+    path = argv[2]
+    bad = []
+    for n, line in enumerate(open(path), 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        left, right = [x.strip() for x in line.split('|')]
+        f = left.split()
+        rule, nn, dtick = f[1], int(f[2]), int(f[3])
+        ships = [int(x) for x in f[4].split(',')]
+        quota, adv, adversary = int(f[5]), int(f[6]), f[7]
+        counts, _ = admission_sim(rule, nn, dtick, ships, quota, adv, adversary)
+        if right.startswith('counts'):
+            want = [int(x) for x in right.split()[1:]]
+            if counts != want:
+                bad.append((n, 'counts %s expected %s' % (counts, want)))
+        else:  # bound <max wait advances formula>: every ticket served within (older+1)*C + ready slack
+            C = -(-nn // max(1, min(nn, (dtick * nn) // 50)))
+            _, mw = admission_sim(rule, nn, dtick, ships, quota, adv, adversary, seed=int(right.split()[1]))
+            bound = (len(ships) + 1) * C
+            expect_ok = right.split()[2] == 'within'
+            if (mw <= bound) != expect_ok:
+                bad.append((n, 'max wait %d, bound %d, expected %s' % (mw, bound, right.split()[2])))
+    for b in bad:
+        print('ADMISSION MISMATCH line %d: %s' % b)
+    print('ship admission cases', 'agree' if not bad else 'DIFFER')
+    return 1 if bad else 0
 
 
 def main_passage(argv):
@@ -365,8 +517,21 @@ def main_passage(argv):
         ok = True
         for m in ['cap9', 'flip_z']:
             caught = bool(check_routes(argv[2], m))
-            print('mutant %-8s %s' % (m, 'caught' if caught else 'SURVIVED'))
+            print('mutant %-17s %s' % (m, 'caught' if caught else 'SURVIVED'))
             ok = ok and caught
+        # legality mutants must let a counterexample ESCAPE (i.e. they are detected by the counterexample file)
+        cx = argv[2].replace('route_runs.txt', 'route_counterexamples.txt')
+        for m in ['allow_corner_cut', 'no_land_check', 'no_bounds_check']:
+            escaped = False
+            for line in open(cx):
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                rec = parse_route(line)
+                if rec['expect'] != 'accept' and not route_problems(rec, m):
+                    escaped = True
+            print('legality mutant %-17s %s' % (m, 'caught by a counterexample' if escaped else 'SURVIVED'))
+            ok = ok and escaped
         print('route selftest', 'ok' if ok else 'FAILED')
         return 0 if ok else 1
     if argv[1] == 'passage-check':
@@ -391,6 +556,14 @@ def main_passage(argv):
 
 
 def main(argv):
+    if len(argv) == 3 and argv[1] == 'admission-check':
+        return main_admission(argv)
+    if len(argv) == 3 and argv[1] == 'route-reject':
+        bad = check_counterexamples(argv[2])
+        for b in bad:
+            print('COUNTEREXAMPLE ESCAPED line %d %s: %s' % b)
+        print('ship route counterexamples', 'rejected as required' if not bad else 'NOT REJECTED')
+        return 1 if bad else 0
     if len(argv) == 3 and argv[1] in ('passage-check', 'passage-selftest', 'route-check', 'route-selftest'):
         return main_passage(argv)
     if len(argv) != 3 or argv[1] not in ('check', 'selftest'):

@@ -1,0 +1,20 @@
+# Planning-admission cases (MAP-NAV-2 A2). Registry model: n slots, dtick ticks per Advance, k = clamp(floor(dtick*n/50), 1, n)
+# slots visited per Advance from a circular cursor (cursor 0 at start), visited in ascending slot order; ships in the listed slots each have
+# one pending order at start.   Format: admission <rule> <n> <dtick> <slots> <quota> <advances> <adversary> | counts <served per ship> | bound <seed> within|exceeds
+# HAND DERIVATION (n = 100, dtick = 5: k = 10, so the cursor window 0..9 covers slots 1..5 only every 10th Advance, all five in the SAME Advance, order 1,2,3,4,5):
+#   quota_first (the rejected rule), quota 4: slots 1..4 are served in every one of the 100 cycles, slot 5 never -> 100 100 100 100 0.
+#   fifo_reserve, adversary replace_served (a served ship is re-commanded at once with a new youngest ticket): cycle 0 serves 1..4 and defers 5; cycle 1: ship 1..3 are
+#   admitted (one older ticket, 5, is still pending and quota remains for it), 4 is deferred (1 older < 1 remaining is false) and 5 is admitted; the deferral then alternates
+#   between 4 and 5 every cycle -> 100 100 100 50 50, and no ticket waits more than 2 cycles (20 Advances).
+admission quota_first 100 5 1,2,3,4,5 4 1000 replace_served | counts 100 100 100 100 0
+admission fifo_reserve 100 5 1,2,3,4,5 4 1000 replace_served | counts 100 100 100 50 50
+# Bounded service under random replacement / cancellation / re-command (property): every ticket is served within (ships+1) * ceil(n/k) Advances.
+admission fifo_reserve 100 5 1,2,3,4,5 4 2000 random | bound 7 within
+admission fifo_reserve 100 5 1,2,3,4,5,6,7,8,9 2 2000 random | bound 11 within
+admission fifo_reserve 7 5 0,1,2,3,4,5,6 3 2000 random | bound 3 within
+admission fifo_reserve 100 3 1,2,3,4,5 1 3000 replace_served | bound 1 within
+admission quota_first 100 5 1,2,3,4,5 4 2000 replace_served | bound 1 exceeds
+# A replacement must keep the ship's ticket: re-commanding every pending ship in every Advance. The correct rule stays within the bound;
+# the mutant that renews the ticket on replacement starves the youngest ship (negative control).
+admission fifo_reserve 100 5 1,2,3,4,5 4 2000 replace_all | bound 5 within
+admission fifo_renew 100 5 1,2,3,4,5 4 2000 replace_all | bound 5 exceeds

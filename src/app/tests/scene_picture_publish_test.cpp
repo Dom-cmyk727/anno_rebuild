@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -28,8 +29,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
-
-#include "reclaim_identity.hpp"
+#include <anno/test/reclaim_identity.hpp>
 
 namespace app = anno::app;
 namespace render = anno::render;
@@ -721,24 +721,16 @@ TEST_CASE("publish: a frame-held intermediate generation and shutdown with work 
     // bridge is destroyed with the build running, the job queued and the change owed; then the
     // frame and the handle let go. The intermediate generation is destroyed on the reclaimer after
     // that release, and the accounted bytes return to what they were before the picture existed.
-    auto scene = islands_scene(2);
+    // Round ee (E1): told by lineage and generation (anno/test/reclaim_identity.hpp).
+    auto scene = islands_scene(2, "publish-frame-held");
     std::vector<app::SceneBuilding> none;
-    struct Seen {
-        const render::Scene* scene;
-        std::thread::id thread;
-    };
-    std::mutex seen_mutex;
-    std::vector<Seen> seen;
     auto& reclaimer = render::SceneReclaimer::shared();
-    reclaimer.set_test_observer([&seen_mutex, &seen](const render::Scene& s) {
-        const std::lock_guard lock(seen_mutex);
-        seen.push_back({&s, std::this_thread::get_id()});
-    });
+    const Destructions destroyed;
     const ObserverReset reset;
     const auto before = render::payload_counts();
     Turnstile turnstile;
     std::shared_ptr<const render::Scene> held;
-    const render::Scene* held_ptr = nullptr;
+    std::optional<Held> held_id;
     auto frames = std::make_unique<render::FrameRenderer>(1);
     {
         app::ScenePicture::Limits limits;
@@ -753,7 +745,7 @@ TEST_CASE("publish: a frame-held intermediate generation and shutdown with work 
         REQUIRE(settled(picture));
         REQUIRE(picture.commit(*frames) == 1);
         held = picture.scene();
-        held_ptr = held.get();
+        held_id = hold(held);
         CHECK(shown(picture, 0) == 1); // intermediate: version 1 of 2
         CHECK(picture.pending() == 1);
         const auto view = held->bounds(2);
@@ -762,24 +754,11 @@ TEST_CASE("publish: a frame-held intermediate generation and shutdown with work 
         picture.apply({added(3, 1, 1)}); // queued behind the held build
         CHECK(picture.stats().outstanding == 2);
     } // the opener releases the build first; the destructor joins and hands the rest over
-    {
-        const std::lock_guard lock(seen_mutex);
-        CHECK(std::none_of(seen.begin(), seen.end(),
-                           [held_ptr](const Seen& s) { return s.scene == held_ptr; }));
-    }
+    CHECK_FALSE(destroyed.of(*held_id));
     frames.reset();
     held.reset(); // the last owner
-    REQUIRE(eventually([&] {
-        const std::lock_guard lock(seen_mutex);
-        return std::any_of(seen.begin(), seen.end(),
-                           [held_ptr](const Seen& s) { return s.scene == held_ptr; });
-    }));
-    {
-        const std::lock_guard lock(seen_mutex);
-        const auto it = std::find_if(seen.begin(), seen.end(),
-                                     [held_ptr](const Seen& s) { return s.scene == held_ptr; });
-        CHECK(it->thread != std::this_thread::get_id());
-    }
+    REQUIRE(eventually([&] { return destroyed.of(*held_id); }));
+    CHECK(destroyed.thread_of(*held_id) != std::this_thread::get_id());
     REQUIRE(eventually([&] {
         const auto now = render::payload_counts();
         return now.of(render::PayloadKind::Incremental) ==

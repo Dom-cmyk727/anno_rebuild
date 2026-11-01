@@ -9,6 +9,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -24,8 +25,7 @@
 #include <anno/formats/insel.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
-
-#include "reclaim_identity.hpp"
+#include <anno/test/reclaim_identity.hpp>
 
 namespace app = anno::app;
 namespace render = anno::render;
@@ -446,23 +446,17 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
     // its handle. That generation, and no other generation of this test, is destroyed on the
     // reclaimer thread after that release, and the accounted bytes return to what they were before
     // the picture existed.
-    auto scene = islands_scene(2);
+    // Round ee (E1): destructions are told by lineage and generation, recorded in state the
+    // observer shares by value (anno/test/reclaim_identity.hpp), not by address in the case's
+    // locals.
+    const std::string lineage = "ownership-frame-held";
+    auto scene = islands_scene(2, 8, lineage);
     std::vector<app::SceneBuilding> none;
-    struct Seen {
-        const render::Scene* scene;
-        std::uint64_t generation;
-        std::thread::id thread;
-    };
-    std::mutex seen_mutex;
-    std::vector<Seen> seen;
     auto& reclaimer = render::SceneReclaimer::shared();
-    reclaimer.set_test_observer([&seen_mutex, &seen](const render::Scene& s) {
-        const std::lock_guard lock(seen_mutex);
-        seen.push_back({&s, s.generation(), std::this_thread::get_id()});
-    });
+    const Destructions destroyed;
     const ObserverReset reset;
     const auto before = render::payload_counts();
-    const render::Scene* held_ptr = nullptr;
+    std::optional<Held> held_id;
     std::shared_ptr<const render::Scene> held;
     auto frames = std::make_unique<render::FrameRenderer>(1);
     {
@@ -470,7 +464,7 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
         picture.apply({added(1, 0, 1)});
         REQUIRE(drain(picture, *frames, 10));
         held = picture.scene();
-        held_ptr = held.get();
+        held_id = hold(held);
         REQUIRE(held->generation() == 1);
         const auto view = held->bounds(2);
         REQUIRE(view.has_value());
@@ -482,35 +476,14 @@ TEST_CASE("ownership: a frame-held generation outlives the bridge and is destroy
         REQUIRE(picture.scene()->generation() == 3);
     }
     // The bridge is gone; generations 2 and 3 are released by it. Generation 1 is still held.
-    REQUIRE(eventually([&] {
-        const std::lock_guard lock(seen_mutex);
-        return std::count_if(seen.begin(), seen.end(),
-                             [](const Seen& s) { return s.generation >= 2; }) == 2;
-    }));
-    {
-        const std::lock_guard lock(seen_mutex);
-        CHECK(std::none_of(seen.begin(), seen.end(),
-                           [held_ptr](const Seen& s) { return s.scene == held_ptr; }));
-    }
+    REQUIRE(eventually([&] { return destroyed.count(lineage, 2) == 2; }));
+    CHECK_FALSE(destroyed.of(*held_id));
     frames.reset(); // the frame lets go on this thread; the handle still holds generation 1
-    {
-        const std::lock_guard lock(seen_mutex);
-        CHECK(std::none_of(seen.begin(), seen.end(),
-                           [held_ptr](const Seen& s) { return s.scene == held_ptr; }));
-    }
+    CHECK_FALSE(destroyed.of(*held_id));
     held.reset(); // the last owner, on this thread
-    REQUIRE(eventually([&] {
-        const std::lock_guard lock(seen_mutex);
-        return std::any_of(seen.begin(), seen.end(),
-                           [held_ptr](const Seen& s) { return s.scene == held_ptr; });
-    }));
-    {
-        const std::lock_guard lock(seen_mutex);
-        const auto it = std::find_if(seen.begin(), seen.end(),
-                                     [held_ptr](const Seen& s) { return s.scene == held_ptr; });
-        CHECK(it->generation == 1);
-        CHECK(it->thread != std::this_thread::get_id());
-    }
+    REQUIRE(eventually([&] { return destroyed.of(*held_id); }));
+    CHECK(held_id->generation == 1);
+    CHECK(destroyed.thread_of(*held_id) != std::this_thread::get_id());
     // Destruction finished: the accounted bytes are back where they were.
     REQUIRE(eventually([&] {
         const auto now = render::payload_counts();

@@ -45,6 +45,7 @@
 #include <anno/render/scene.hpp>
 #include <anno/render/wgpu.hpp>
 #include <anno/test/game_dir.hpp>
+#include <anno/test/reclaim_identity.hpp>
 #include <anno/test/watchdog.hpp>
 
 namespace {
@@ -157,7 +158,8 @@ std::unique_ptr<gpu::GpuFrame> make_frame(const gpu::Context& ctx, gpu::GpuLimit
 /// off as in the CPU verifiers (the flow is asynchronous and rebuilds chunks for its own reason).
 SceneHandle scene_with(const fs::path& dir, const app::PlayLoad& play,
                        const std::vector<app::SceneBuilding>& buildings,
-                       std::optional<render::ZoomLevels> levels = std::nullopt) {
+                       std::optional<render::ZoomLevels> levels = std::nullopt,
+                       const std::string& lineage = {}) {
     app::SceneObjects objects;
     objects.is_building = [&play](std::uint16_t id) {
         return app::anlage_is_building(play.world, id);
@@ -169,6 +171,11 @@ SceneHandle scene_with(const fs::path& dir, const app::PlayLoad& play,
     ls.scene->river_cfg.enabled = false;
     if (levels) {
         ls.scene->set_levels(*levels);
+    }
+    if (!lineage.empty()) {
+        // A lineage of its own (Scene::name, which every generation keeps): with the generation
+        // it names a scene to the reclaimer's observer (anno/test/reclaim_identity.hpp).
+        ls.scene->name = lineage;
     }
     return SceneHandle(std::move(ls.scene));
 }
@@ -684,22 +691,12 @@ TEST_CASE("picture GPU: a frame's generation stays alive across a commit while i
     const app::LegalEdit build = w->build_one(0);
     REQUIRE_MESSAGE(build.accepted, build.reason);
     const auto state1 = w->buildings();
-    struct Seen {
-        const render::Scene* scene;
-        std::thread::id thread;
-    };
-    std::mutex seen_mutex;
-    std::vector<Seen> seen;
+    // Round ee (E1): destructions told by lineage and generation, recorded in state the observer
+    // shares by value (anno/test/reclaim_identity.hpp); the oracle scenes below are another
+    // lineage with a generation 0 of their own.
     auto& reclaimer = render::SceneReclaimer::shared();
-    reclaimer.set_test_observer([&seen_mutex, &seen](const render::Scene& s) {
-        const std::lock_guard lock(seen_mutex);
-        seen.push_back({&s, std::this_thread::get_id()});
-    });
+    const anno::test::Destructions destroyed_log;
     const ObserverReset reset;
-    auto destroyed = [&](const render::Scene* s) {
-        const std::lock_guard lock(seen_mutex);
-        return std::any_of(seen.begin(), seen.end(), [s](const Seen& x) { return x.scene == s; });
-    };
 
     Gpu g{make_frame(*ctx), {}};
     KeyGate gate;
@@ -709,8 +706,8 @@ TEST_CASE("picture GPU: a frame's generation stays alive across a commit while i
     workers.set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
     frames.set_workers(std::move(owned));
     const GateOpener opener(gate);
-    SceneHandle base = scene_with(*dir, w->load(), state0);
-    const render::Scene* gen0_ptr = base.get();
+    SceneHandle base = scene_with(*dir, w->load(), state0, std::nullopt, "gpu-frame-generation");
+    const anno::test::Held gen0 = anno::test::hold(base);
     std::weak_ptr<const render::Scene> gen0_weak = base;
     app::ScenePicture picture(
         base, state0, [&w](std::uint16_t id) { return app::anlage_is_building(w->world(), id); },
@@ -756,7 +753,7 @@ TEST_CASE("picture GPU: a frame's generation stays alive across a commit while i
     }));
     // Generation 0 is still alive: the held jobs own it; the compositor keeps no handle.
     CHECK(!gen0_weak.expired());
-    CHECK(!destroyed(gen0_ptr));
+    CHECK(!destroyed_log.of(gen0));
     // Frames of generation 1 (the gate holds generation 0 only): no wait between submissions.
     REQUIRE(eventually([&] {
         g.draw(frames, gen1, view, 2);
@@ -771,17 +768,12 @@ TEST_CASE("picture GPU: a frame's generation stays alive across a commit while i
     }));
     const SceneHandle oracle1 = scene_with(*dir, w->load(), state1);
     CHECK(channel_delta(cpu_reference(oracle1, view, 2), g.pixels(view)) <= 1);
-    CHECK(!destroyed(gen0_ptr));
+    CHECK(!destroyed_log.of(gen0));
     // The held jobs finish: generation 0's last owners let go, and it is destroyed on the
     // reclaimer.
     gate.set({});
-    REQUIRE(eventually([&] { return destroyed(gen0_ptr); }));
-    {
-        const std::lock_guard lock(seen_mutex);
-        const auto it = std::find_if(seen.begin(), seen.end(),
-                                     [gen0_ptr](const Seen& s) { return s.scene == gen0_ptr; });
-        CHECK(it->thread != std::this_thread::get_id());
-    }
+    REQUIRE(eventually([&] { return destroyed_log.of(gen0); }));
+    CHECK(destroyed_log.thread_of(gen0) != std::this_thread::get_id());
     CHECK(g.frame->errors() == 0);
 }
 
@@ -983,7 +975,8 @@ std::size_t position(const std::vector<std::string>& log, const char* name) {
 /// their workers, before any explicit release (the scoped releases must do it). Otherwise the
 /// viewer's order is followed explicitly. Returns the generations it made (raw identity and weak).
 struct TeardownResult {
-    std::vector<const render::Scene*> generations;
+    /// By lineage and generation (round ee, E1: an address is no identity).
+    std::vector<anno::test::Held> generations;
     std::vector<std::weak_ptr<const render::Scene>> alive;
     std::vector<std::string> order;
 };
@@ -994,8 +987,9 @@ void teardown_scenario(const fs::path& dir, const gpu::Context& ctx, const app::
     KeyGate gate;     // outlives the chunk workers
     app::ScenePicture::Limits limits;
     limits.build_fault = [&builds](std::size_t) { builds.pass(); };
-    SceneHandle base = scene_with(dir, w.load(), state0);
-    out.generations.push_back(base.get());
+    SceneHandle base = scene_with(dir, w.load(), state0, std::nullopt,
+                                  fail_early ? "gpu-teardown-early" : "gpu-teardown");
+    out.generations.push_back(anno::test::hold(base));
     out.alive.push_back(base);
     Logged<app::ScenePicture> picture(
         std::make_unique<app::ScenePicture>(
@@ -1017,7 +1011,7 @@ void teardown_scenario(const fs::path& dir, const gpu::Context& ctx, const app::
                                  "chunk gate released");
     picture.p->apply({first.batch});
     drain(*picture.p, *frames.p);
-    out.generations.push_back(picture.p->scene().get());
+    out.generations.push_back(anno::test::hold(picture.p->scene()));
     out.alive.push_back(picture.p->scene());
     gate.set([](const ChunkKey&, std::uint64_t) { return true; });
     g.draw(*frames.p, picture.p->scene(), view, 2);
@@ -1040,24 +1034,18 @@ void teardown_scenario(const fs::path& dir, const gpu::Context& ctx, const app::
 
 /// After a teardown: every generation released and destroyed on the reclaimer thread, and the
 /// accounted bytes back at `before`.
-void check_released(const TeardownResult& r, std::mutex& seen_mutex,
-                    const std::vector<std::pair<const render::Scene*, std::thread::id>>& seen,
+void check_released(const TeardownResult& r, const anno::test::Destructions& destroyed,
                     const render::PayloadCounts& before) {
     for (const auto& a : r.alive) {
         CHECK(a.expired());
     }
     REQUIRE(eventually([&] {
-        const std::lock_guard lock(seen_mutex);
-        return std::all_of(r.generations.begin(), r.generations.end(), [&](const render::Scene* s) {
-            return std::any_of(seen.begin(), seen.end(),
-                               [s](const auto& x) { return x.first == s; });
-        });
+        return std::all_of(r.generations.begin(), r.generations.end(),
+                           [&](const anno::test::Held& h) { return destroyed.of(h); });
     }));
-    {
-        const std::lock_guard lock(seen_mutex);
-        for (const auto& [scene, thread] : seen) {
-            CHECK(thread != std::this_thread::get_id());
-        }
+    for (const anno::test::Held& h : r.generations) {
+        CAPTURE(h.generation);
+        CHECK(destroyed.thread_of(h) != std::this_thread::get_id());
     }
     auto& reclaimer = render::SceneReclaimer::shared();
     REQUIRE(eventually([&] {
@@ -1090,13 +1078,10 @@ void teardown_case(bool fail_early) {
     const app::LegalEdit second = w->build_one(0);
     REQUIRE_MESSAGE(first.accepted, first.reason);
     REQUIRE_MESSAGE(second.accepted, second.reason);
-    std::mutex seen_mutex;
-    std::vector<std::pair<const render::Scene*, std::thread::id>> seen;
+    // Round ee (E1): the observer's record is shared by value and names scenes by lineage and
+    // generation (anno/test/reclaim_identity.hpp).
     auto& reclaimer = render::SceneReclaimer::shared();
-    reclaimer.set_test_observer([&seen_mutex, &seen](const render::Scene& s) {
-        const std::lock_guard lock(seen_mutex);
-        seen.emplace_back(&s, std::this_thread::get_id());
-    });
+    const anno::test::Destructions destroyed;
     const ObserverReset reset;
     REQUIRE(eventually([&] {
         const auto r = reclaimer.stats();
@@ -1128,7 +1113,7 @@ void teardown_case(bool fail_early) {
     REQUIRE(r.order.size() == 4);
     CHECK(position(r.order, "chunk gate released") < position(r.order, "chunk workers joined"));
     CHECK(position(r.order, "builder released") < position(r.order, "bridge joined"));
-    check_released(r, seen_mutex, seen, before);
+    check_released(r, destroyed, before);
 }
 
 } // namespace

@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <anno/sim/command.hpp>
@@ -31,6 +32,11 @@ struct Founding {
     /// Validates and applies one FoundCmd. Total. On success `records[0].building` is the new
     /// warehouse; on a rejection nothing changed.
     static ApplyResult apply(World& w, const Command& command, const FoundCmd& found);
+
+    /// The reveal's centre (AnnoWelt 0x10085f31): the origin plus (w - 1) / 2 and (h - 1) / 2 of
+    /// the ACCEPTED rotation's footprint, truncated; not the parity terms the territory claim uses.
+    [[nodiscard]] static std::pair<std::int64_t, std::int64_t>
+    reveal_centre(std::int64_t origin_x, std::int64_t origin_y, std::uint32_t w, std::uint32_t h);
 
     /// The reveal's visited city (docs/re/ship-founding.md 15.4 points 2-4): the lowest-numbered
     /// city owning a kept sample, i.e. a sample tile whose owner is not `neutral_owner`, is a

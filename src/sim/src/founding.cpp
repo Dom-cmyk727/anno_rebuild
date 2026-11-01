@@ -58,6 +58,12 @@ ApplyResult refuse(Reject r) {
 
 } // namespace
 
+std::pair<std::int64_t, std::int64_t> Founding::reveal_centre(std::int64_t origin_x,
+                                                              std::int64_t origin_y,
+                                                              std::uint32_t w, std::uint32_t h) {
+    return {origin_x + (std::int64_t{w} - 1) / 2, origin_y + (std::int64_t{h} - 1) / 2};
+}
+
 std::optional<std::uint32_t> Founding::reveal_city(const Island& island,
                                                    std::uint32_t neutral_owner, PlayerId player,
                                                    std::int64_t cx, std::int64_t cy,
@@ -364,8 +370,7 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f)
     // city\'s, whose mask already holds the founder, so no sample it keeps depends on the claim.
     std::optional<std::uint32_t> visited;
     {
-        const std::int64_t cx = origin.x + (std::int64_t{fw} - 1) / 2;
-        const std::int64_t cy = origin.y + (std::int64_t{fh} - 1) / 2;
+        const auto [cx, cy] = reveal_centre(origin.x, origin.y, fw, fh);
         const std::uint32_t reveal_radius = type->action_radius + 8;
         const auto profile = territory::disc_profile(reveal_radius, reveal_radius);
         if (!profile.has_value()) {

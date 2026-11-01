@@ -276,7 +276,7 @@ Still open, with the exact dependency (research ledger `docs/re/ship-founding.md
 - **Original facts** (read): the table above, the research note, the corrected rules in `figure_veto.hpp`.
 - **Emulated observations**: coast rule, territory profile (U2/U3 fixtures).
 - **Inference**: tile bit 31 is draw-only (pattern search of 8 modules); a kind-8 human has no AI object; first-warehouse slot counts equal the constructor defaults (INFRAMIN index 0 reading).
-- **Deliberate adaptations**: atomic founding; masks and presence as sets (no 16/32-player limit); reveal arithmetic on unbounded coordinates; Q24.8 positions; the original's out-of-range sample read at the island edge reads "no owner".
+- **Deliberate adaptations**: atomic founding; masks and presence as sets (no 16/32-player limit); reveal arithmetic on unbounded coordinates; Q24.8 positions; the reveal reproduces the original's row-wrapping sample index and reads "no owner" only past the end of the tile array.
 - **Unknown**: mountain object masks and consumers, player property 7 consumers, the type-11 `0x19` PRNG path, x87 precision control, scout disembark, activity `0x13`.
 
 ### 16.3 Owner decisions (proposed, stated precisely)
@@ -293,7 +293,7 @@ Preparation is pure (const world) and runs, in this order, stopping at the first
 1. issuer exists (`UnknownIssuer`); its kind is 8 (`Unsupported`).
 2. ship figure exists (`UnknownFigure`), its type is the ship class (`veto::Rules::ship_kind`, BEWOHNTYPE 113 by default) (`NotAShip`), `owner == issuer` (`NotShipOwner`), state bit `0x02` clear (`ShipDisabled`).
 3. type known, non-zero (`UnknownType`), rotation ≤ 3 (`BadRotation`), type offered by `Rules::founding_types` and PRODTYPE in 33..64 (`NotAFoundingType`), origin equals the derived origin (`BadValue`).
-4. island under the origin (`UnknownIsland`), not locked (`IslandLocked`), initial footprint inside it (`OutOfIsland`), distance (`OutOfRange`), origin tile and footprint neutral (`SiteOwned`), no own city on the island (`OwnCityOnIsland`).
+4. island under the origin (`UnknownIsland`), not locked (`IslandLocked`), initial footprint inside it (`OutOfIsland`), distance (`OutOfRange`), the ORIGIN tile neutral (`SiteOwned`: the takeover path), no own city on the island (`OwnCityOnIsland`). Other footprint tiles owned by a city are checked per rotation in step 5 and make that trial fail (`NoRotationFits` when every trial fails).
 5. rotation trials (`site::first_accepted_rotation`) each with its own bounds, ownership, overlap and coast rule; a trial that fails any of them moves on, all four failing is `NoRotationFits` (the reasons `Occupied` and `TerrainRefused` are therefore not returned by this command); a row the helpers do not decode, or terrain data that is missing, is `Unsupported`, never a pass.
 6. figure veto on the accepted rotation (`FigureInTheWay`, or `FigureFactsMissing` when a fact the verdict needs is absent).
 7. payment (`CannotAfford`), city slot and name (`NoCitySlot`, `UnusableNameData`), Kontor counter (`SerialExhausted`), creation precheck, territory precheck, reveal plan.
@@ -322,3 +322,10 @@ New persisted state: `FigureType::{bewohntype, range_88, hull_half_88}` (registr
 | transaction | `founding.hpp/.cpp` (`Founding::apply`, `reveal_city`), `creation_problem` shared with `create_building` | `founding_test.cpp`: control with hand values, 26 refusal rows (state, hash and PRNG unchanged), valid controls, conflicts in both orders, the reveal, registration, save/load, recorded replay on 1/2/4 executors; 14+4 mutants |
 | real data | `founding_assets_test.cpp` | a legal site found by the engine on the islands of candidate A, applied through `World::apply` |
 Not modelled (named, §16): island objects (treasure, mountains), tile bit 31 and the overview notifier (per-client), island and city colours, the type-11 AI handler (kind != 8 refuses), runtime relation changes, scout disembark, `ship+0x3c` (derived, sailing), city slot `+0xbc` effects beyond the first warehouse, HEAD2 city masks and DISCOVER presence of loaded scenarios (loaded cities start with empty masks), the initial relations of the five-ship start (the loader creates players without `DIPL`: all zero until a start specifies them, owner decision C5).
+
+### 17.1 Review notes applied (packages 6-8)
+- A figure whose `FigureType` is missing from the registry refuses the founding (`FigureFactsMissing`) when it lies in the grown query rectangle, even if its kind or state would have excluded it from the query: the facts are needed to know that. Fail closed.
+- `CityRefusal::UnusableNameData` (an empty list never reaches it; `Rules::validate` forbids NUL) and `InvalidMetadata` are reported as `Reject::BadValue`; `StalePlan` cannot occur inside one apply.
+- The reveal radius is `action_radius + 8` on unbounded integers; the original masks it with `& 0xff` (`0x10080c99`), which differs only for a radius above 247 (no shipped type).
+- Equivalent mutant: removing the reveal's early-out changes nothing observable (a kept sample already requires a city whose mask lacks the founder), so no test can distinguish it; the early-out stays as the faithful form of the original's `+0xaa` test.
+- Island recount and reveal use the cities of the one island only, as `0x134` does.

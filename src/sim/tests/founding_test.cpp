@@ -37,9 +37,10 @@ namespace {
 
 constexpr std::uint32_t kT = 256;
 constexpr sim::TypeId kKontor{1302};
-constexpr sim::TypeId kRoadObj{9100}; // an obstruction (no flag 0x20)
-constexpr sim::TypeId kTree{9101};    // overlappable scenery (flag 0x20)
-constexpr sim::TypeId kWeaver{9201};  // a free workshop for the ordinary Build afterwards
+constexpr sim::TypeId kRoadObj{9100};  // an obstruction (no flag 0x20)
+constexpr sim::TypeId kTree{9101};     // overlappable scenery (flag 0x20)
+constexpr sim::TypeId kKontor43{9301}; // a 6 x 3 Kontor-class type (non-square)
+constexpr sim::TypeId kWeaver{9201};   // a free workshop for the ordinary Build afterwards
 constexpr sim::GoodsId kTools = 0x29, kWood = 0x2a, kFood = 5;
 
 std::shared_ptr<const sim::TypeRegistry> registry() {
@@ -57,6 +58,11 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     k.flags_word = 0x2087;
     sim::TypeRegistry::Builder b;
     b.add(k);
+    sim::BuildingType k43 = k;
+    k43.id = kKontor43;
+    k43.width = 6;
+    k43.height = 3;
+    b.add(k43);
     b.add_plain(kRoadObj, 193);
     b.add_plain(kTree, 193).flags_word(kTree, 0x20);
     b.add_workshop(kWeaver, "STOFFE", "WOLLE", 6, 11, 5, 0);
@@ -366,6 +372,12 @@ TEST_CASE("founding: every refusal from the control, one condition at a time, no
              s.spec.islands[0].terrain =
                  sim::make_terrain(std::vector<std::uint8_t>(120U * 64U, 0x40), {}, {});
          }},
+        {"a footprint tile other than the origin belongs to another city",
+         sim::Reject::NoRotationFits,
+         [](Setup& s, sim::Command&) {
+             s.spec.islands[0].owner_runs = {{15, 33U * 120U + 53U}, {1, 1}};
+             s.spec.islands[0].cities.push_back(syn::plain_city(1, 1));
+         }},
         {"an obstruction object on a footprint tile", sim::Reject::NoRotationFits,
          [](Setup& s, sim::Command&) {
              s.spec.islands[0].objects.push_back({31U * 120U + 51U, kRoadObj.v, 0});
@@ -395,7 +407,7 @@ TEST_CASE("founding: every refusal from the control, one condition at a time, no
              }
          }},
     };
-    CHECK(rows.size() == 26);
+    CHECK(rows.size() == 27);
     for (const Row& row : rows) {
         INFO("row: " << row.name);
         Setup s = base_setup();
@@ -799,4 +811,97 @@ TEST_CASE("founding: the initial rotation only starts the trials, the accepted o
         REQUIRE(r.ok());
         CHECK(isl(w).find_building(r.records[0].building)->rotation == 1);
     }
+}
+
+TEST_CASE("founding: the reveal reaches R + 8 = 32 rows, not R = 24") {
+    // Player 0 founds at (50, 30): its disc owns rows 7..56. Player 1 founds at origin (50, 84),
+    // click (51, 85): the centre is (51, 85) ((4 - 1) / 2 = 1), radius 32, ys = floor8(85 - 32) =
+    // 48, sample rows 50, 58, ... and +4: the row-54 sample (50, 54) is p0's (disc row 54 = 33 +
+    // 21, half-width 11), dy = 31 <= 32, T[31] >= 1 >= dx 1: kept, so the reveal visits city 0.
+    // With radius 24 it would be 31 > 24 and nothing would be visited.
+    {
+        Setup s = tall_setup(84);
+        sim::World w = make(s);
+        REQUIRE(w.apply(control_command(0)).ok());
+        REQUIRE(w.apply(command_p1(84)).ok());
+        CHECK(isl(w).cities[0]->player_mask ==
+              std::vector<sim::PlayerId>{sim::PlayerId{0}, sim::PlayerId{1}});
+    }
+    // Origin (50, 90), centre y 91: the nearest p0 tile any sample reads is row 56, 35 > 32 rows
+    // away (and the sample rows 58, 66, ... are not p0's): not visited.
+    {
+        Setup s = tall_setup(90);
+        sim::World w = make(s);
+        REQUIRE(w.apply(control_command(0)).ok());
+        REQUIRE(w.apply(command_p1(90)).ok());
+        CHECK(isl(w).cities[0]->player_mask == std::vector<sim::PlayerId>{sim::PlayerId{0}});
+        CHECK(w.players().find(sim::PlayerId{1})->discovery ==
+              std::vector<sim::PlayerId>{sim::PlayerId{1}});
+    }
+}
+
+TEST_CASE("founding: a non-square type, the accepted rotation decides the footprint and the scan") {
+    // Type 9301 is 6 wide and 3 tall. Click (52, 31), initial rotation 0: origin
+    // (52 - (6 - 1) / 2, 31 - (3 - 1) / 2) = (50, 30) from the INITIAL footprint 6 x 3. Rotation 0
+    // needs a 0x30 top row (0x30, 0x10, 0x10, ...): refused; rotation 1 (3 wide, 6 tall) has the
+    // shore column x = 50 (7 vertices, all 0x30) and the far column x = 53 sea: accepted. The
+    // building stands on x 50..52, y 30..35 and nowhere else.
+    Setup s = base_setup();
+    s.rules.founding_types = {1302, 9301};
+    sim::World w = make(s);
+    sim::Command c = control_command();
+    found_of(c).placement.type = kKontor43;
+    found_of(c).placement.rotation = 0;
+    found_of(c).click_x = 52;
+    const sim::ApplyResult r = w.apply(c);
+    REQUIRE(r.ok());
+    const sim::Building* b = isl(w).find_building(r.records[0].building);
+    REQUIRE(b != nullptr);
+    CHECK(b->rotation == 1);
+    for (std::uint32_t y = 30; y < 36; ++y) {
+        for (std::uint32_t x = 50; x < 56; ++x) {
+            CHECK(isl(w).tiles.object(y * 120ULL + x) == (x < 53 ? 9301U : 0U));
+        }
+    }
+    // The original scans B x B = 3 x 3 (x 50..52, y 30..32) for an odd rotation (AnnoFrame
+    // 0x100450d5): a neutral soldier on row 35 of the real 3 x 6 footprint is NOT seen, one on row
+    // 32 is.
+    for (const double y : {35.5, 32.5}) {
+        Setup t = base_setup();
+        t.rules.founding_types = {1302, 9301};
+        t.spec.figures.push_back(soldier_at(1, 51.5, y));
+        sim::World v = make(t);
+        const sim::ApplyResult q = v.apply(c);
+        CHECK(q.status == (y > 33.0 ? sim::Reject::None : sim::Reject::FigureInTheWay));
+    }
+}
+
+TEST_CASE("founding: the reveal centre is origin + (w - 1) / 2, (h - 1) / 2, by hand") {
+    using sim::Founding;
+    CHECK(Founding::reveal_centre(50, 30, 4, 4) == std::pair<std::int64_t, std::int64_t>{51, 31});
+    CHECK(Founding::reveal_centre(50, 30, 3, 6) == std::pair<std::int64_t, std::int64_t>{51, 32});
+    CHECK(Founding::reveal_centre(10, 10, 6, 3) == std::pair<std::int64_t, std::int64_t>{12, 11});
+    CHECK(Founding::reveal_centre(0, 0, 1, 1) == std::pair<std::int64_t, std::int64_t>{0, 0});
+    CHECK(Founding::reveal_centre(7, 9, 2, 2) == std::pair<std::int64_t, std::int64_t>{7, 9});
+}
+
+TEST_CASE("founding: the reveal centre follows the ACCEPTED rotation, not the initial footprint") {
+    // Player 1 founds the 6 x 3 type with initial rotation 0, click (52, 86): origin (50, 85).
+    // Rotation 1 is accepted (3 wide, 6 tall), so the centre is (50 + 1, 85 + 2) = (51, 87), not
+    // the initial footprint's (52, 86). Sample (50, 54) of player 0's disc: dy 33 > 32 from the
+    // accepted centre (not visited); from the initial centre it would be dy 32 <= 32 with
+    // T[32] = 5 >= dx 1 (visited).
+    Setup s = tall_setup(85);
+    s.rules.founding_types = {1302, 9301};
+    sim::World w = make(s);
+    REQUIRE(w.apply(control_command(0)).ok());
+    sim::Command c = command_p1(85);
+    found_of(c).placement.type = kKontor43;
+    found_of(c).placement.rotation = 0;
+    found_of(c).click_x = 52;
+    found_of(c).click_y = 86;
+    const sim::ApplyResult r = w.apply(c);
+    REQUIRE(r.ok());
+    CHECK(isl(w).find_building(r.records[0].building)->rotation == 1);
+    CHECK(isl(w).cities[0]->player_mask == std::vector<sim::PlayerId>{sim::PlayerId{0}});
 }

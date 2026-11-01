@@ -459,8 +459,7 @@ hull half-extent. So friendly and own ships are handled only by the density stam
 | land definition | `HEIGHT < 16` per tile | floor(corner average) <= 19 per tile + building footprints | the original rule |
 Original-column results for the coarse and end-to-end rows come from executing the original coarse expansion,
 mask packer and start-nibble functions under unicorn on hand-built maps; the fine stage and goal bookkeeping in those runs
-are a composition of the documented rules (DERIVED), and the fine stage was verified under original code only for interior
-tiles. UNKNOWN is never read as a passing route.
+are a composition of the documented rules (DERIVED), and the fine stage was verified under original code for interior tiles and block edges (second static round). UNKNOWN is never read as a passing route.
 
 Consequence for the three candidates: the candidates' geometric witnesses are exterior-4 tool evidence. The original
 rules agree with exterior-4 on diagonal-only gaps and enclosed water, are more permissive on one-tile channels and

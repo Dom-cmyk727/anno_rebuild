@@ -872,7 +872,18 @@ template <class A, class V> void cities_io(A& a, V& cities) {
 // can count its members: index, tiles, terrain, climate, deposits, next_serial,
 // sweep, event300_stamp, drought, objmgr, ring, cities, reserved_object_count, cache
 // (the derived index cache is not in the stream).
-static_assert(field_count<Island>() == 18,
+static_assert(field_count<OreObject>() == 5,
+              "an OreObject member needs a line in fields(OreObject)");
+
+template <class A, Same<OreObject> S> void fields(A& a, S& s) {
+    a.u32(s.type);
+    a.i32(s.x);
+    a.i32(s.y);
+    a.u32(s.amount);
+    ar::seq(a, s.discovered, 4, [&](auto& p) { a.u32(p.v); });
+}
+
+static_assert(field_count<Island>() == 19,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
@@ -916,6 +927,7 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     ar::opt(a, s.drought, [&](auto& d) { fields(a, d); });
     // Smallest Deposit on the wire: u64 name length + 3 x 4 + 1 bytes.
     ar::seq(a, s.deposits, 21, [&](auto& d) { fields(a, d); });
+    ar::seq(a, s.ore_objects, 24, [&](auto& o) { fields(a, o); }); // stream 120
     a.u64(s.reserved_object_count);
     a.scope("tiles", [&] { tiles_io(a, s.tiles, x0, y0, w, h); });
     a.scope("cities", [&] { cities_io(a, s.cities); });

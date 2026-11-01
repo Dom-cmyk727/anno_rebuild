@@ -580,7 +580,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 18);
+    CHECK(sim::field_count<sim::Island>() == 19);
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -607,7 +607,7 @@ TEST_CASE("island fields are counted") {
     // word, stream 108), deposits count + goods length + goods bytes + x + y + remaining + reserve
     // (7), reserved (1), tiles: 3 dims + 6 x 10 columns, cities: the slot count (no slot in this
     // island).
-    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 60 + 1);
+    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1); // + the ore-object count
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -653,6 +653,7 @@ TEST_CASE("islands scope stream layout") {
             want.u32(d.remaining);
             want.boolean(d.reserve);
         }
+        want.u64(0); // no ore objects (stream 120)
         want.u64(0);
         want.u32(wd);
         want.u32(ht);

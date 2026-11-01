@@ -193,6 +193,10 @@ ScenarioCounts count(const LoadedScenario& s) {
     for (const ScenarioSpec::IslandSpec& is : s.spec.islands) {
         c.tile_objects += is.objects.size();
         c.deposits += is.deposits.size();
+        c.ore_objects += is.ore_objects.size();
+        for (const OreObject& o : is.ore_objects) {
+            c.ore_discovered += o.discovered.empty() ? 0 : 1;
+        }
         c.cities += is.cities.size();
         for (const ScenarioSpec::CitySpec& city : is.cities) {
             c.buildings += city.buildings.size();
@@ -1134,6 +1138,68 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
                            " is not below player_slots";
                 }
                 is.players_present.push_back(PlayerId{bit});
+            }
+            continue;
+        }
+        if (name == "OCCUR") {
+            // D AnnoWelt island object manager (+0x28) loader 0x10095eb0; the entries are `ENTRY2`
+            // records (6-byte name, u16 size, payload): 24 bytes (ore, treasure, volcano) or 42
+            // (whale symbol). Only the ore objects (the figure type's BEWOHNTYPE is ERZSYMBOL,
+            // 145) are kept: they are the objects claim stage 2 can discover (docs/re/
+            // ship-founding.md 16.2). 24-byte payload: dword0 (type id in bits 14..25), f32 X, Z,
+            // height (absolute world tiles), u16 amount, u16 pad, u32 discovery mask (bit i =
+            // player i). An entry whose type the registry has no figure type for is reported
+            // UnknownObject and skipped; an ore entry of another size is refused; a mask bit of a
+            // player at or beyond player_slots is refused. Without any figure type in the registry
+            // (synthetic registries) nothing can be classified and the record is skipped silently.
+            auto entries = tagged::parse_records(rec.payload, at + formats::chunk::kHeaderLen);
+            if (!entries) {
+                return path + ".OCCUR: " + entries.error();
+            }
+            if (types.figure_types().empty()) {
+                continue;
+            }
+            for (const tagged::Record& e : entries.value()) {
+                if (e.name != "ENTRY2" || e.payload.size() < 4) {
+                    warn.unknown_record(std::string(record_scope),
+                                        path + ".OCCUR." + std::string(e.name), e.name, e.offset);
+                    continue;
+                }
+                const std::uint32_t type = (formats::u32_le(e.payload, 0) >> 14) & 0xfffU;
+                const FigureType* ft = types.find_figure_type(type);
+                const std::string where = path + ".OCCUR." + std::string(e.name);
+                if (ft == nullptr) {
+                    warn.add(ScenarioWarningKind::UnknownObject, where, e.name, e.offset,
+                             "object type " + std::to_string(type) +
+                                 " has no figure type in the registry: skipped");
+                    continue;
+                }
+                if (ft->bewohntype != 145) {
+                    continue; // SCHATZ, WALSYMBOL, VULKANSYMBOL...: not ore, not stored
+                }
+                if (e.payload.size() != 24) {
+                    return where + ": an ore object is 24 bytes, got " +
+                           std::to_string(e.payload.size());
+                }
+                OreObject o;
+                o.type = type;
+                o.x = static_cast<std::int32_t>(
+                    std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 4))));
+                o.y = static_cast<std::int32_t>(
+                    std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 8))));
+                o.amount = formats::u16_le(e.payload, 0x10);
+                const std::uint32_t mask = formats::u32_le(e.payload, 0x14);
+                for (std::uint32_t bit = 0; bit < 32; ++bit) {
+                    if ((mask >> bit & 1U) == 0) {
+                        continue;
+                    }
+                    if (bit >= config.player_slots) {
+                        return where + ": discovery mask names player " + std::to_string(bit) +
+                               ", not below player_slots";
+                    }
+                    o.discovered.push_back(PlayerId{bit});
+                }
+                is.ore_objects.push_back(std::move(o));
             }
             continue;
         }

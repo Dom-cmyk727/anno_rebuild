@@ -534,6 +534,12 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
     if (!is_player_set(is.players_present, cfg.player_slots)) {
         return p + ".players_present: not an ascending unique set below SimConfig.player_slots";
     }
+    for (std::size_t o = 0; o < is.ore_objects.size(); ++o) {
+        if (!is_player_set(is.ore_objects[o].discovered, cfg.player_slots)) {
+            return p + ".ore_objects[" + std::to_string(o) +
+                   "].discovered: not an ascending unique set below SimConfig.player_slots";
+        }
+    }
     if (is.kontor_counter < 1) {
         return p + ".kontor_counter: must be at least 1";
     }

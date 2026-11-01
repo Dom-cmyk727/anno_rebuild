@@ -1133,7 +1133,7 @@ TEST_CASE("scenario warning kinds") {
         item(items, kRoad, 0, 0, 0, 3, 5); // the same item again: DuplicateObject
         append(island_extra, block_record("FLUESSE", items, 8, 8));
         append(island_extra, chunk("BERGWERK2", Buf(8, 1))); // UndecodedDeposits
-        append(island_extra, chunk("OCCUR", Buf(4, 0)));     // UnknownRecord
+        append(island_extra, chunk("FUTURE", Buf(4, 0)));    // UnknownRecord
         Buf more;
         item(more, kHouse, 0, 0, 0, 14, 0); // BuildingItemWithoutEntry
         item(more, kInn, 0, 0, 0, 6, 6);    // an Inn: its Load is not mapped
@@ -1188,7 +1188,7 @@ TEST_CASE("scenario warning kinds") {
     Buf scene_kids(file.begin() + 32, file.end());
     append(scene_kids, kids);
     const sim::LoadedScenario s = load(scene("ANNO", scene_kids));
-    CHECK(warnings_of(s, Kind::UnknownRecord) == 3);  // OCCUR, SCHIFF, SKTIMER
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 3);  // FUTURE, SCHIFF, SKTIMER
     CHECK(warnings_of(s, Kind::LinkUnresolved) == 1); // no ERZE: the selection never runs
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
     CHECK(warnings_of(s, Kind::BuildingItemWithoutEntry) == 1); // the house at (14, 0)
@@ -1535,7 +1535,7 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     Buf kids = chunk("HEAD", head_bytes());     // child 0
     append(kids, chunk("SKTIMER", Buf(40, 0))); // child 1
     append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1))))); // 2
-    append(kids, insel5(40, 60, 8, 8, 7, 2, chunk("OCCUR", Buf(4, 0)))); // child 3
+    append(kids, insel5(40, 60, 8, 8, 7, 2, chunk("FUTURE", Buf(4, 0)))); // child 3
     Buf c = {3, 0};
     put16(c, 41);
     put16(c, 61);
@@ -1548,7 +1548,7 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     append(kids, chunk("SKTIMER", Buf(40, 0)));                               // child 6
     const Buf file = scene("ANNO", kids);
     const sim::LoadedScenario s = load(file);
-    // One UnknownRecord per scope and name: SKTIMER, OCCUR, SCHIFF (twice in the file
+    // One UnknownRecord per scope and name: SKTIMER, FUTURE, SCHIFF (twice in the file
     // each). STAT2 is its own kind since T26 (StatisticsNotModelled).
     REQUIRE(warnings_of(s, Kind::UnknownRecord) == 3);
     std::map<std::string, const sim::ScenarioWarning*> by_record;
@@ -1559,8 +1559,8 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     }
     CHECK(by_record.at("SKTIMER")->path == "scene.SKTIMER");
     CHECK(by_record.at("SKTIMER")->offset == offset_of(file, "SKTIMER"));
-    CHECK(by_record.at("OCCUR")->path == "islands[3].OCCUR");
-    CHECK(by_record.at("OCCUR")->offset == offset_of(file, "OCCUR"));
+    CHECK(by_record.at("FUTURE")->path == "islands[3].FUTURE");
+    CHECK(by_record.at("FUTURE")->offset == offset_of(file, "FUTURE"));
     CHECK(by_record.at("SCHIFF")->path == "players[1].SCHIFF");
     CHECK(by_record.at("SCHIFF")->offset == offset_of(file, "SCHIFF"));
     const sim::ScenarioWarning& st2 = the_warning(s, Kind::StatisticsNotModelled);

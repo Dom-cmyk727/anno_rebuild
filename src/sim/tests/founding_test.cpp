@@ -21,15 +21,18 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
 #include <doctest/doctest.h>
 
 #include <anno/sim/command.hpp>
+#include <anno/sim/founding.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/synthetic.hpp>
+#include <anno/sim/territory.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 
@@ -290,8 +293,8 @@ TEST_CASE("founding: every refusal from the control, one condition at a time, no
     const std::vector<Row> rows = {
         {"issuer is not a player", sim::Reject::UnknownIssuer,
          [](Setup&, sim::Command& c) { c.issuer = sim::PlayerId{9}; }},
-        {"a type-11 human has an AI object, outside this unit", sim::Reject::Unsupported,
-         [](Setup& s, sim::Command&) { s.spec.players[0].kind = 11; }},
+        {"a computer player (kind 12) is not a human founder", sim::Reject::Unsupported,
+         [](Setup& s, sim::Command&) { s.spec.players[0].kind = 12; }},
         {"no figure of that id", sim::Reject::UnknownFigure,
          [](Setup&, sim::Command& c) { found_of(c).ship = sim::FigureId{99}; }},
         {"the figure is the scout, not a ship", sim::Reject::NotAShip,
@@ -1501,5 +1504,232 @@ TEST_CASE(
                       << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()
                       << " us\n";
         }
+    }
+}
+
+namespace {
+
+sim::OreObject ore_at(std::int32_t x, std::int32_t y, std::vector<sim::PlayerId> known = {}) {
+    sim::OreObject o;
+    o.type = 1560;
+    o.x = x;
+    o.y = y;
+    o.amount = 400;
+    o.discovered = std::move(known);
+    return o;
+}
+
+} // namespace
+
+TEST_CASE(
+    "founding D3: the object scan uses radius 30 with the row limit 24 and the parity terms") {
+    // Control footprint 4 x 4 at (50, 30): centre (51, 31); w = h = 4 so the parity term
+    // ((w - 1) & 1) is 1 on the south and east side. R = 24, table T of radius 30
+    // (T[0] = 30, T[10] = 28, T[24] = 18). Hand-derived reach: north dy = 31 - oy; south
+    // dy = 1 + (oy - 31); west dx = 51 - ox; east dx = 1 + (ox - 51); accept dy <= 24 and
+    // dx <= T[dy]. Pairs are {inside, just outside}.
+    struct Probe {
+        std::int32_t x, y;
+        bool in;
+        const char* why;
+    };
+    const std::vector<Probe> probes = {
+        {51, 7, true, "dy 24 north, dx 0"},
+        {51, 6, false, "dy 25 north: the row limit is R = 24, not the table length"},
+        {51, 54, true, "dy 1 + 23 = 24 south"},
+        {51, 55, false, "dy 1 + 24 = 25 south"},
+        {21, 31, true, "dy 0, dx 30 west (the stage-1 disc is only 24 wide)"},
+        {20, 31, false, "dx 31 west"},
+        {80, 31, true, "dx 1 + 29 = 30 east"},
+        {81, 31, false, "dx 1 + 30 = 31 east"},
+        {33, 7, true, "dy 24, dx 18 west = T[24]"},
+        {32, 7, false, "dy 24, dx 19 west"},
+        {68, 7, true, "dy 24, dx 1 + 17 = 18 east"},
+        {69, 7, false, "dy 24, dx 19 east"},
+        {23, 21, true, "dy 10, dx 28 west = T[10]"},
+        {22, 21, false, "dy 10, dx 29 west"},
+    };
+    Setup s = base_setup();
+    for (const Probe& p : probes) {
+        s.spec.islands[0].ore_objects.push_back(ore_at(p.x, p.y));
+    }
+    sim::World w = make(s);
+    REQUIRE(w.check_invariants().empty());
+    REQUIRE(w.apply(control_command()).ok());
+    for (std::size_t i = 0; i < probes.size(); ++i) {
+        INFO("probe (" << probes[i].x << ", " << probes[i].y << "): " << probes[i].why);
+        CHECK(isl(w).ore_objects[i].discovered.size() == (probes[i].in ? 1U : 0U));
+        if (probes[i].in) {
+            CHECK(isl(w).ore_objects[i].discovered == std::vector<sim::PlayerId>{sim::PlayerId{0}});
+        }
+    }
+    // Distinct from the territory: tile (21, 31) was discovered but is not claimed (the stage-1
+    // disc has radius 24 and reaches x = 27 at most there), and distinct from the reveal radius
+    // 32: an object 31 away west is NOT discovered although the reveal would sample it.
+    CHECK(isl(w).tiles.owner(31 * 120ULL + 21) == s.cfg.neutral_owner);
+    // The pure selection function on the same numbers (table = radius 30 profile).
+    const auto table = sim::territory::disc_profile(30, 30);
+    REQUIRE(table.has_value());
+    REQUIRE(table->size() > 24);
+    const std::vector<std::uint32_t> expect = {30, 30, 30, 30, 30, 30, 29, 29, 29, 29, 28, 28, 27,
+                                               27, 27, 26, 25, 25, 24, 23, 22, 21, 20, 19, 18};
+    for (std::size_t k = 0; k < expect.size(); ++k) {
+        CHECK((*table)[k] == expect[k]); // the emulated original's table (cache/map2-research5)
+    }
+    for (const Probe& p : probes) {
+        CHECK(sim::Founding::object_in_reach(p.x, p.y, 51, 31, 4, 4, 24, *table) == p.in);
+    }
+    // Odd footprints have no parity term: 5 x 5 at centre (52, 32): south dy = oy - 32.
+    CHECK(sim::Founding::object_in_reach(52, 56, 52, 32, 5, 5, 24, *table));
+    CHECK_FALSE(sim::Founding::object_in_reach(52, 57, 52, 32, 5, 5, 24, *table));
+}
+
+TEST_CASE("founding D2: first, repeated and another player's discovery, persistence and replay") {
+    // Three ore objects in reach of the control site (50, 30): empty mask, already known to player
+    // 0 (as a loaded file has it), and known to player 1 only.
+    Setup s = tall_setup(62);
+    s.spec.islands[0].ore_objects = {ore_at(44, 25), ore_at(46, 26, {sim::PlayerId{0}}),
+                                     ore_at(48, 28, {sim::PlayerId{1}}),
+                                     ore_at(100, 150) /* far from both sites */};
+    sim::World w = make(s);
+    REQUIRE(w.check_invariants().empty());
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    REQUIRE(rec.submit(control_command(0)).ok());
+    const auto known = [&](std::size_t i) { return isl(w).ore_objects[i].discovered; };
+    const auto ids = [](std::initializer_list<std::uint32_t> v) {
+        std::vector<sim::PlayerId> out;
+        for (const std::uint32_t i : v) {
+            out.push_back(sim::PlayerId{i});
+        }
+        return out;
+    };
+    CHECK(known(0) == ids({0}));    // first discovery
+    CHECK(known(1) == ids({0}));    // already known: no duplicate
+    CHECK(known(2) == ids({0, 1})); // another player already knew it: ascending set, both
+    CHECK(known(3).empty());        // out of reach
+    // Player 1 founds at (50, 62): its reach (centre (51, 63), rows 39..87) holds objects 0..2? The
+    // nearest, (48, 28), has dy 35 > 24: none of them. Player 1 learns nothing here.
+    REQUIRE(rec.submit(command_p1(62)).ok());
+    CHECK(known(0) == ids({0}));
+    CHECK(known(2) == ids({0, 1}));
+    // Persistence and replay: the ore sets are state (hash, save/load, replayed log).
+    auto loaded = sim::World::load(w.save(), registry());
+    REQUIRE(loaded.ok());
+    CHECK(loaded.value().state_hash() == w.state_hash());
+    CHECK(isl(loaded.value()).ore_objects[2].discovered == ids({0, 1}));
+    rec.advance(1000);
+    rec.checkpoint();
+    sim::World fresh = make(s);
+    auto outcome = sim::replay(fresh, rec.log());
+    REQUIRE(outcome.ok());
+    CHECK(outcome.value().reproduced());
+    CHECK(isl(fresh).ore_objects[0].discovered == ids({0}));
+    // A mutation of a mask is a different world.
+    sim::World other = w;
+    sim::WorldTestAccess::islands(other)[0]->ore_objects[3].discovered.push_back(sim::PlayerId{2});
+    CHECK(other.state_hash() != w.state_hash());
+}
+
+TEST_CASE("founding D4: loaded cities and masks interact with a new founding") {
+    // City 3 of player 1 owns the single tile (50, 34) and is a LOADED city: its mask and the
+    // island's players present come from the file. Player 0's founding at (50, 30): the reveal
+    // (centre (51, 31), radius 32) samples tile (50, 34) (xl = 50, yl = 34, dy 3, dx 1) and visits
+    // city 3 if its mask lacks player 0.
+    const auto build = [](std::vector<sim::PlayerId> mask, std::vector<sim::PlayerId> present) {
+        Setup s = base_setup();
+        s.spec.islands[0].owner_runs = {{15, 34U * 120U + 50U}, {3, 1}};
+        sim::ScenarioSpec::CitySpec c = syn::plain_city(3, 1);
+        c.player_mask = std::move(mask);
+        s.spec.islands[0].cities.push_back(c);
+        s.spec.islands[0].players_present = std::move(present);
+        return s;
+    };
+    const auto ids = [](std::initializer_list<std::uint32_t> v) {
+        std::vector<sim::PlayerId> out;
+        for (const std::uint32_t i : v) {
+            out.push_back(sim::PlayerId{i});
+        }
+        return out;
+    };
+    {
+        sim::World w = make(build(ids({1}), ids({1})));
+        REQUIRE(w.check_invariants().empty());
+        REQUIRE(w.apply(control_command()).ok());
+        CHECK(isl(w).cities[3]->player_mask == ids({0, 1})); // visited: learned player 0
+        CHECK(w.players().find(sim::PlayerId{0})->discovery == ids({0, 1}));
+        CHECK(isl(w).players_present == ids({0, 1}));
+        CHECK(isl(w).tiles.owner(34 * 120ULL + 50) == 3); // the loaded city tile is never taken
+    }
+    {
+        sim::World w =
+            make(build(ids({0, 1}), ids({0, 1}))); // the file already says city 3 knows 0
+        REQUIRE(w.apply(control_command()).ok());
+        CHECK(isl(w).cities[3]->player_mask == ids({0, 1}));
+        // The reveal early-outs; the recount still lets player 0 learn owner 1 (0 is in city 3
+        // mask).
+        CHECK(w.players().find(sim::PlayerId{0})->discovery == ids({0, 1}));
+    }
+    {
+        // An empty loaded mask (a file without HEAD2 mask) is a state, not "unknown": visited too.
+        sim::World w = make(build({}, {}));
+        REQUIRE(w.apply(control_command()).ok());
+        CHECK(isl(w).cities[3]->player_mask == ids({0}));
+    }
+}
+
+TEST_CASE("founding C: kind-11 humans found with kind 8's effects, a wrapped number is refused") {
+    // Same world, same command, player 0 of kind 8 and of kind 11: identical money, holds, city,
+    // building, territory and PRNG cursor (one draw), nothing else.
+    const auto run = [](std::uint32_t kind) {
+        Setup s = base_setup();
+        s.spec.players[0].kind = kind;
+        sim::World w = make(s);
+        const sim::ApplyResult r = w.apply(control_command());
+        REQUIRE(r.ok());
+        return std::tuple(w.players().find(sim::PlayerId{0})->money,
+                          sim::find_figure(w.figures(), sim::FigureId{1})->holds,
+                          isl(w).cities[0]->name, w.rng().cursor(), owned_by(w, 0),
+                          isl(w).find_building(r.records[0].building)->kontor_id);
+    };
+    CHECK(run(11) == run(8));
+    CHECK(std::get<3>(run(11)) == 1235);
+    // The boundary (17.4/17.6): cities in slots 6..14 and a loaded cursor of 14 make the next
+    // allocation wrap to number 0 <= 14. A kind-11 founding is refused, uncharged, nothing changes;
+    // the identical world founds for kind 8 (number 0) and for kind 11 when no wrap is needed.
+    const auto wrapped = [](std::uint32_t kind) {
+        Setup s = base_setup();
+        s.spec.players[0].kind = kind;
+        for (std::uint32_t n = 6; n < 15; ++n) {
+            s.spec.islands[0].cities.push_back(syn::plain_city(n, 1));
+        }
+        return s;
+    };
+    {
+        sim::World w = make(wrapped(11));
+        REQUIRE(isl(w).city_cursor == 14);
+        rejected(w, control_command(), sim::Reject::Unsupported);
+    }
+    {
+        sim::World w = make(wrapped(8));
+        const sim::ApplyResult r = w.apply(control_command());
+        REQUIRE(r.ok());
+        CHECK(isl(w).cities[0].has_value()); // wrapped to number 0
+    }
+    {
+        Setup s = base_setup();
+        s.spec.players[0].kind = 11;
+        s.spec.islands[0].cities.push_back(syn::plain_city(5, 1)); // cursor 5, next number 6
+        sim::World w = make(s);
+        REQUIRE(w.apply(control_command()).ok());
+        CHECK(isl(w).cities[6].has_value());
+    }
+    // Kinds that are not human founders stay refused: 12 (computer), 14 (natives), 15, 16.
+    for (const std::uint32_t kind : {9U, 10U, 12U, 14U, 15U, 16U}) {
+        Setup s = base_setup();
+        s.spec.players[0].kind = kind;
+        sim::World w = make(s);
+        rejected(w, control_command(), sim::Reject::Unsupported);
     }
 }

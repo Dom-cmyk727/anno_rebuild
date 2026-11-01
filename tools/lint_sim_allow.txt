@@ -89,3 +89,6 @@ src/sim/include/anno/sim/figure.hpp:kHoldUnitsPerTon = 256;  # the unit of the 8
 
 # --- figure_veto.cpp (MAP-2 package 2)
 src/sim/src/figure_veto.cpp:kFar = std::int64_t\{1\} << 40;  # an overflow guard, not a game limit: coordinates are clamped to +-2^40 tiles before arithmetic because a FixedPos is below 2^23 tiles and a footprint or margin is a u32, so no comparison changes; documented at its definition
+
+# --- scenario_formats.cpp (MAP-2 package D)
+src/sim/src/scenario_formats.cpp:std::trunc\(std::bit_cast<float>  # load-time conversion: the f32 world position of an OCCUR ore object to its integer tile (ftol, truncation toward zero, the original\'s object manager); the engine stores only the tile

@@ -503,6 +503,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     for goods, x, y, remaining, reserve in deposits:
         b += string(goods) + struct.pack('<i', x) + struct.pack('<i', y) + u32(remaining)
         b += u8(1 if reserve else 0)
+    b += u64(0)                       # ore_objects (stream 120): none in the transcribed islands
     b += u64(0)                       # reserved_object_count
     b += u64(tiles_digest(w, h, tiles))
     b += u64(cities_digest(cities or {}))

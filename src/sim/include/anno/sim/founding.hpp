@@ -40,6 +40,18 @@ struct Founding {
     [[nodiscard]] static std::pair<std::int64_t, std::int64_t>
     reveal_centre(std::int64_t origin_x, std::int64_t origin_y, std::uint32_t w, std::uint32_t h);
 
+    /// Claim stage 2's selection of one object (AnnoWelt 0x10085b95-0x10085cf7, docs/re/
+    /// ship-founding.md 16.2): whether the object on tile (ox, oy) is within reach of a claim
+    /// centred on (cx, cy) with footprint w x h and the type's action radius `radius`.
+    /// `table` is the half-width table of radius radius + 6 (territory::disc_profile). dy = cy -
+    /// oy, or ((h-1) & 1) + (oy - cy) when oy is south of the centre; accept dy <= radius; likewise
+    /// dx with w; accept dx <= table[dy]. All inclusive. NOT the reveal's geometry (radius + 8, no
+    /// parity terms, a different table).
+    [[nodiscard]] static bool object_in_reach(std::int64_t ox, std::int64_t oy, std::int64_t cx,
+                                              std::int64_t cy, std::uint32_t w, std::uint32_t h,
+                                              std::uint32_t radius,
+                                              const std::vector<std::uint32_t>& table);
+
     /// The reveal's visited city (docs/re/ship-founding.md 15.4 points 2-4): the lowest-numbered
     /// city owning a kept sample, i.e. a sample tile whose owner is not `neutral_owner`, is a
     /// present city of the island whose player mask lacks `player`, and lies within `radius` of the

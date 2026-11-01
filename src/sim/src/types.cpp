@@ -386,14 +386,14 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
     // annogame.md; 53 ESEL, 97..113, 150 FLAGGE). A name outside this list gets 0: the table
     // places the other names below 97 or above 128, where no rule of the veto looks.
     if (const auto name = e.record_str("BEWOHNTYPE")) {
-        static constexpr std::array<std::pair<std::string_view, std::uint32_t>, 19> kBewohn{{
+        static constexpr std::array<std::pair<std::string_view, std::uint32_t>, 21> kBewohn{{
             {"ESEL", 53},      {"ERKUNDER", 97},   {"TRAGTIER", 98},
             {"SCHWERT", 99},   {"BOGEN", 100},     {"ARMBRUST", 101},
             {"LANZE", 102},    {"MUSKETIER", 103}, {"KAVALARIE", 104},
             {"GEWEHR", 105},   {"MEDICUS", 106},   {"BEDIENUNG", 107},
             {"KANONIER", 108}, {"MOERSER", 109},   {"BELAGERTURM", 110},
-            {"KATAPULT", 111}, {"SHIP", 113},      {"FLAGGE", 150},
-            {"", 0},
+            {"KATAPULT", 111}, {"SHIP", 113},      {"ERZSYMBOL", 145},
+            {"SCHATZ", 146},   {"FLAGGE", 150},    {"", 0},
         }};
         for (const auto& [n, number] : kBewohn) {
             if (!n.empty() && *name == n) {

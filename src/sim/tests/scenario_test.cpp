@@ -89,7 +89,8 @@ std::string counts_line(const std::string& name, const sim::ScenarioCounts& c,
     o << name << " islands=" << c.islands << " links=" << c.links
       << " links_resolved=" << c.links_resolved << " links_unresolved=" << c.links_unresolved
       << " players=" << c.players << " cities=" << c.cities << " buildings=" << c.buildings
-      << " tile_objects=" << c.tile_objects << " deposits=" << c.deposits;
+      << " tile_objects=" << c.tile_objects << " deposits=" << c.deposits
+      << " ore_objects=" << c.ore_objects << " ore_discovered=" << c.ore_discovered;
     for (const sim::ScenarioWarningKind k : sim::all_warning_kinds()) {
         const auto it = c.warnings.find(k);
         o << " " << sim::warning_kind_name(k) << "=" << (it == c.warnings.end() ? 0 : it->second);
@@ -412,6 +413,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         anno::test::parallel_options());
 
     std::map<sim::ScenarioWarningKind, std::uint64_t> totals;
+    std::uint64_t ore_total = 0, ore_known = 0, ore_files = 0;
     std::uint64_t islands = 0, links = 0, cities = 0, buildings = 0, objects = 0, a14 = 0,
                   with_island = 0, links_only = 0, resolved = 0, unresolved = 0, link_draws = 0,
                   link_files = 0, link_files_complete = 0;
@@ -450,6 +452,11 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         cities += r.counts.cities;
         buildings += r.counts.buildings;
         objects += r.counts.tile_objects;
+        if (r.counts.links == 0) { // islands placed from templates by links are not in the oracle
+            ore_total += r.counts.ore_objects;
+            ore_known += r.counts.ore_discovered;
+            ++ore_files;
+        }
         a14 += r.a14;
         with_island += r.counts.islands > 0 ? 1U : 0U;
         links_only += r.counts.islands == 0 && r.counts.links > 0 ? 1U : 0U;
@@ -475,6 +482,17 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
               << total_record_residents << ", residents of the created houses "
               << total_created_residents << ", HouseResetNotApplied "
               << totals[sim::ScenarioWarningKind::HouseResetNotApplied] << "\n";
+    // Package D4: the ore objects of the OCCUR records (the figure types of the file with
+    // BEWOHNTYPE ERZSYMBOL) in the scenarios WITHOUT island links (their islands are the file\'s
+    // own; linked islands are placed from templates by a PRNG selection): 41 files, 1727 objects,
+    // 319 with a non-zero discovery mask, counted independently from the files with the Python
+    // parsers (cache/map2-research5/objects/occur.py logic over tools/insel.py and figuren.py).
+    // Treasures, whale and volcano symbols are not stored.
+    std::cout << "scenario corpus: ore objects " << ore_total << " in " << ore_files
+              << " link-free files, with a discovery mask " << ore_known << "\n";
+    CHECK(ore_files == 41);
+    CHECK(ore_total == 1727);
+    CHECK(ore_known == 319);
     CHECK(total_record_residents == total_created_residents);
     CHECK(totals[sim::ScenarioWarningKind::HouseResetNotApplied] == 0);
     // T23: the cities' PROD/ENTRY records place buildings.

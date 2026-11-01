@@ -68,6 +68,17 @@ std::pair<std::int64_t, std::int64_t> Founding::reveal_centre(std::int64_t origi
     return {origin_x + (std::int64_t{w} - 1) / 2, origin_y + (std::int64_t{h} - 1) / 2};
 }
 
+bool Founding::object_in_reach(std::int64_t ox, std::int64_t oy, std::int64_t cx, std::int64_t cy,
+                               std::uint32_t w, std::uint32_t h, std::uint32_t radius,
+                               const std::vector<std::uint32_t>& table) {
+    const std::int64_t dy = oy > cy ? std::int64_t{(h - 1) & 1U} + (oy - cy) : cy - oy;
+    if (dy > radius || static_cast<std::uint64_t>(dy) >= table.size()) {
+        return false;
+    }
+    const std::int64_t dx = ox > cx ? std::int64_t{(w - 1) & 1U} + (ox - cx) : cx - ox;
+    return dx <= static_cast<std::int64_t>(table[static_cast<std::size_t>(dy)]);
+}
+
 std::optional<std::uint32_t> Founding::reveal_city(const Island& island,
                                                    std::uint32_t neutral_owner, PlayerId player,
                                                    std::int64_t cx, std::int64_t cy,
@@ -145,8 +156,9 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
     if (player == nullptr) {
         return refuse(Reject::UnknownIssuer);
     }
-    // Only a kind-8 player (no AI object) founds: docs/sim/ship-founding.md 16.3.
-    if (player->kind != 8) {
+    // Human players only: kind 8 (no AI object) and kind 11 (an AI object whose founding-time
+    // handlers reach no scan or draw for a fresh city, docs/sim/ship-founding.md 17.4).
+    if (player->kind != 8 && player->kind != 11) {
         return refuse(Reject::Unsupported);
     }
 
@@ -343,6 +355,12 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
             return refuse(Reject::BadValue);
         }
     }
+    // Kind 11 over-approximation (17.4/17.6): a number at or below the allocation cursor may meet a
+    // stale AI island record whose scan is not ported.
+    if (player->kind == 11 &&
+        static_cast<std::int64_t>(cplan.value().number.v) <= island->city_cursor) {
+        return refuse(Reject::Unsupported);
+    }
     auto kplan = CityCreation::prepare_kontor(w, island->index);
     if (!kplan.ok()) {
         return refuse(Reject::SerialExhausted);
@@ -374,8 +392,12 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
     // The reveal, planned on the world as it is: the claim only turns neutral tiles into the new
     // city\'s, whose mask already holds the founder, so no sample it keeps depends on the claim.
     std::optional<std::uint32_t> visited;
+    std::vector<std::uint32_t> object_table; // claim stage 2: the radius + 6 table
+    std::int64_t centre_x = 0, centre_y = 0;
     {
         const auto [cx, cy] = reveal_centre(origin.x, origin.y, fw, fh);
+        centre_x = cx;
+        centre_y = cy;
         const std::uint32_t reveal_radius = type->action_radius + 8;
         const auto profile = territory::disc_profile(reveal_radius, reveal_radius);
         if (!profile.has_value()) {
@@ -383,6 +405,11 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
         }
         if (claims_disc(type->prodtype)) {
             visited = reveal_city(*island, cfg.neutral_owner, me, cx, cy, reveal_radius, *profile);
+            auto table = territory::disc_profile(type->action_radius + 6, type->action_radius + 6);
+            if (!table.has_value()) {
+                return refuse(Reject::Unsupported);
+            }
+            object_table = std::move(*table);
         }
     }
 
@@ -432,6 +459,14 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
     }
     static_cast<void>(
         territory::claim_neutral_rect(island->tiles, cfg.neutral_owner, number.v, fp));
+    // Claim stage 2: the founder discovers the ore objects within reach (idempotent per player).
+    if (claims_disc(type->prodtype)) {
+        for (OreObject& o : island->ore_objects) {
+            if (object_in_reach(o.x, o.y, centre_x, centre_y, fw, fh, radius, object_table)) {
+                insert_player(o.discovered, me);
+            }
+        }
+    }
     // The reveal\'s single visit.
     if (visited.has_value()) {
         City* other = island->city(CityNo{*visited});

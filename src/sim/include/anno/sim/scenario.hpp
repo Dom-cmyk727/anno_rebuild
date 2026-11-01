@@ -126,6 +126,8 @@ struct ScenarioSpec {
         std::uint32_t kontor_counter = 1;
         /// Island property 0xe (stream 120): ascending unique players; empty by default.
         std::vector<PlayerId> players_present;
+        /// The ore objects (stream 120; the OCCUR record), copied to Island::ore_objects.
+        std::vector<OreObject> ore_objects;
         std::shared_ptr<const Terrain> terrain;
         /// {owner, length}, row major from the top-left; the tiles after the last
         /// run are neutral (SimConfig::neutral_owner).

@@ -330,6 +330,22 @@ struct IslandIndexCache {
     std::vector<std::vector<std::uint32_t>> grids;
 };
 
+/// One ore object of an island (the figure of an OCCUR `ENTRY2`, 24 bytes: dword0 type id in bits
+/// 14..25, f32 X, Z, height in absolute world tiles, u16 amount, u16 pad, u32 discovery mask).
+/// `discovered` is the original's mask (bit i = player i) as an ascending unique player set. A
+/// founding's claim stage 2 adds the founder to every ore object within its geometry
+/// (docs/re/ship-founding.md 16.2); the only readers of the mask found are presentation gates.
+struct OreObject {
+    /// The FigurenHeader id (a figure type whose BEWOHNTYPE is ERZSYMBOL).
+    std::uint32_t type = 0;
+    /// The tile: trunc(position), the island-independent absolute world tile.
+    std::int32_t x = 0, y = 0;
+    /// The u16 of the record (tons for ore).
+    std::uint32_t amount = 0;
+    std::vector<PlayerId> discovered;
+    friend bool operator==(const OreObject&, const OreObject&) = default;
+};
+
 struct Island {
     /// The slot in the world's island table.
     IslandId index;
@@ -360,6 +376,11 @@ struct Island {
     std::vector<PlayerId> players_present;
     /// Append-only (production.hpp): the ore objects of the island.
     std::vector<Deposit> deposits;
+    /// MAP-2 (stream 120): the island's ore objects (BEWOHNTYPE ERZSYMBOL figures of the OCCUR
+    /// record, AnnoWelt island object manager +0x28), ascending file order. Not `deposits`: those
+    /// are the BERGWERK2 stand-in (empty from files), a different datum
+    /// (docs/sim/ship-founding.md 17.6).
+    std::vector<OreObject> ore_objects;
     /// The building serial counter (stage S6); serial 0 means "none", so >= 1.
     std::uint32_t next_serial = 1;
     SweepState sweep;

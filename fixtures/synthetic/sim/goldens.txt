@@ -127,10 +127,10 @@ g0_step100 S1 120 55693a23426b3f00
 g0_step1000 S1 120 1b05d12a6f678fb2
 g1_players_step100 S4 120 e34e97aa26b4349d
 g1_players_step700 S4 120 37793ca7a20f44b9
-s5_islands_create S5 120 5a2ab60f254a7d97
-s5_islands_step100 S5 120 e35f6ff954396207
-s5_islands_locked_create S5 120 62348fb541016a58
-s5_islands_city_created S5 120 60e5c0231a3f18a6
+s5_islands_create S5 120 e6a5732d43acfe4f
+s5_islands_step100 S5 120 d15dc23a568f8113
+s5_islands_locked_create S5 120 11ae71dd4a9ad967
+s5_islands_city_created S5 120 94467498d68b82eb
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -138,8 +138,8 @@ s5_islands_city_created S5 120 60e5c0231a3f18a6
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 120 46ec790ab91163ff
-s6_g1_step100 S6 120 ca6688b384456c80
+s6_g1_create S6 120 a9cd2756b6836853
+s6_g1_step100 S6 120 dadd0de151da19a1
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
@@ -167,10 +167,10 @@ s6_g1_step100 S6 120 ca6688b384456c80
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 120 e1dc6400e691c65e
-s7_g1_mp_end S7 120 5dd1092605470109
+s7_g1_mp_checkpoints S7 120 79237973a8d7cc47
+s7_g1_mp_end S7 120 2c954e7c3da80fa8
 s7_g1_events S7 120 d705f409820828d2
-s7_g1_sp_end S7 120 e7cfd07558098798
+s7_g1_sp_end S7 120 6c98252ff78718a9
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -182,7 +182,7 @@ s7_g1_sp_end S7 120 e7cfd07558098798
 # with slot 1 freed and the hint kept), the charges (4 x 300 gold, 12 t tools, 16 t wood)
 # and the rejection reasons independently of the hash. The log carries the stream version
 # in its initial save, so a stream bump re-records it.
-s10_g2_end S10 120 f6e3748d127836c5
+s10_g2_end S10 120 ca847cd21ee948c5
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -196,8 +196,8 @@ s10_g2_end S10 120 f6e3748d127836c5
 # every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
 # farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
 # on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
-s11_g3_checkpoints S11 120 28646aec5aa4ecbd
-s11_g3_end S11 120 1c5cf497f24f224e
+s11_g3_checkpoints S11 120 5092bb269fcc03ab
+s11_g3_end S11 120 9100637250583ccb
 s11_g3_events S11 120 3140bd8e1eb7db86
 #
 # S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
@@ -218,8 +218,8 @@ s11_g3_events S11 120 3140bd8e1eb7db86
 # bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
 # draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
 # to values derived by hand.
-s12_g4_checkpoints S12 120 469f66b528fe4fc5
-s12_g4_end S12 120 a122fee1d2bf5b5e
+s12_g4_checkpoints S12 120 97ad1ece228784ad
+s12_g4_end S12 120 d77f0369b2825524
 s12_g4_events S12 120 39c10f583d4b7cc8
 #
 # Re-baselined at stream version 107 (stage S12 fix-up: Rules gained timer0_clamp, owner
@@ -295,8 +295,8 @@ s12_g4_events S12 120 39c10f583d4b7cc8
 # g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
 # out from the PRNG table for seed 514), the drought starts, states and city mask to values
 # derived by hand.
-s13_g5_checkpoints S13 120 dfd9d1700f38f320
-s13_g5_end S13 120 3f2d838786daf548
+s13_g5_checkpoints S13 120 5991b82f705190d6
+s13_g5_end S13 120 4a798645dfa63ce3
 # Re-baselined at stream version 111 (task T24, transport stage 1: the header's registry
 # digest gains the types' entrance points and the figure types, the market class ticks
 # (Market payload, tag 6), the payloads gain the cart reservations and the figure record its
@@ -321,8 +321,8 @@ s13_g5_end S13 120 3f2d838786daf548
 # before the first and after every 300th advance, t24_g6_end the hash at tick 300 000. SELF-BASELINED like the
 # S7 .. S13 goldens (ANNO_UPDATE_GOLDEN also rewrites g6.log); transport_test.cpp holds
 # the cart's and the carrier's trips tick by tick to values derived by hand.
-t24_g6_checkpoints T24 120 36c84aad043cef53
-t24_g6_end T24 120 553c49ac27d01fbe
+t24_g6_checkpoints T24 120 a47a5bb881a99aec
+t24_g6_end T24 120 0a60b0f06546a51f
 
 # Re-baselined at stream version 112 (T33.4 F5, 2026-10-26). The code has hashed
 # version 112, including the walk-table digest in the header, since bd336ce; this
@@ -369,8 +369,8 @@ t24_g6_end T24 120 553c49ac27d01fbe
 # golden moves through the header (the version and the registry digest); a house building
 # now holds the House payload instead of Inert. tools/sim_stream.py agrees on g0, g1, s5 and
 # s6. g2.log-g6.log are rewritten. p1_g7_create is new: the created population world (synthetic::g7_scenario).
-p1_g7_create P1 120 1f06f3ddd628dcb4
+p1_g7_create P1 120 ad3b5a061b716e8b
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
-m2_found_session M2 120 f376b980bc96cceb
+m2_found_session M2 120 742ca9f7b7f76737

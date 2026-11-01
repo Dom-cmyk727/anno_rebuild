@@ -16,6 +16,19 @@ if(ANNO_BUILD_TESTS)
                      -DEXPECT_RC=2 "-DEXPECT=${expect}"
                      -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
   endfunction()
+  # Exit status AND output together (cmake/RunToolExpectError.cmake): CTest's
+  # PASS_REGULAR_EXPRESSION ignores the exit status, so it is not used for replay runs. The
+  # helper's own contract is tested by anno_sim_replay_check_contract below.
+  function(anno_sim_replay_run_test name args rc expect)
+    add_test(NAME ${name}
+             COMMAND ${CMAKE_COMMAND} -DPROG=$<TARGET_FILE:sim_replay> "-DARGS=${args}"
+                     -DEXPECT_RC=${rc} "-DEXPECT=${expect}"
+                     -P ${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake)
+  endfunction()
+  add_test(NAME anno_sim_replay_check_contract
+           COMMAND ${CMAKE_COMMAND} -DHELPER=${PROJECT_SOURCE_DIR}/cmake/RunToolExpectError.cmake
+                   -DFAKE=${PROJECT_SOURCE_DIR}/cmake/FakeToolChild.cmake
+                   -P ${PROJECT_SOURCE_DIR}/cmake/CheckToolCheckContract.cmake)
   anno_sim_replay_arg_test(entry_not_a_number "tree|no.log|--entry|abc" "bad --entry value 'abc'")
   anno_sim_replay_arg_test(entry_negative "tree|no.log|--entry|-1" "bad --entry value '-1'")
   anno_sim_replay_arg_test(entry_trailing "tree|no.log|--entry|12abc" "bad --entry value '12abc'")
@@ -29,46 +42,32 @@ if(ANNO_BUILD_TESTS)
                            "cannot read no-such.log")
   # The golden G2 (docs/sim/state.md §14.3, stage S10): the tool rebuilds the world from
   # the committed log on the registry its digest names and reproduces every checkpoint.
-  add_test(NAME anno_sim_replay_g2_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g2.log)
-  set_tests_properties(anno_sim_replay_g2_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 6/6.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_g2_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g2.log" 0
+                           "checkpoints 6/6.*reproduced: every checkpoint matched")
   # MAP-2: a recorded founding session in a fresh process (success, refusals, a reveal, an ordinary
   # Build, two advances); the world is rebuilt from the log on synthetic::make_founding_types. The
   # wrong log has the first founding command refused (its click moved one tile): detected.
-  add_test(NAME anno_sim_replay_founding_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/m2_found.log)
-  set_tests_properties(anno_sim_replay_founding_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 4/4.*reproduced: every checkpoint matched")
-  add_test(NAME anno_sim_replay_founding_wrong_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/m2_found_wrong.log)
-  set_tests_properties(anno_sim_replay_founding_wrong_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 1/2.*DIVERGED at entry 3" WILL_FAIL FALSE)
+  anno_sim_replay_run_test(anno_sim_replay_founding_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/m2_found.log" 0
+                           "checkpoints 4/4.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_founding_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/m2_found_wrong.log" 1
+                           "checkpoints 1/2.*DIVERGED at entry 3")
   # The golden G3 (stage S11): every production class through advance on the synthetic
   # types, 21 checkpoints.
-  add_test(NAME anno_sim_replay_g3_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g3.log)
-  set_tests_properties(anno_sim_replay_g3_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_g3_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g3.log" 0
+                           "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G4 (stage S12): players with upkeep and bankruptcy, timers, timed events,
   # the figure registry's expiry list, the monopoly table and the 7.5 minute
   # event over 600 000 ticks, 21 checkpoints.
-  add_test(NAME anno_sim_replay_g4_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g4.log)
-  set_tests_properties(anno_sim_replay_g4_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_g4_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g4.log" 0
+                           "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G5 (stage S13): the growth sweep and two droughts of the 300 s event over
   # 1 000 000 ticks on the growth types, 21 checkpoints.
-  add_test(NAME anno_sim_replay_g5_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g5.log)
-  set_tests_properties(anno_sim_replay_g5_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_g5_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g5.log" 0
+                           "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The golden G6 (task T24): a market cart and a workshop carrier over 300 000 ticks on
   # the transport types, 21 checkpoints.
-  add_test(NAME anno_sim_replay_g6_run
-           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g6.log)
-  set_tests_properties(anno_sim_replay_g6_run PROPERTIES
-                       PASS_REGULAR_EXPRESSION "checkpoints 21/21.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_g6_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g6.log" 0
+                           "checkpoints 21/21.*reproduced: every checkpoint matched")
   # The scenario adapter (stage S14): the usage and the refusal of a file that is not a
   # scenario need no game files; one shipped scenario runs when ANNO1503_GAME_DIR is set.
   anno_sim_replay_arg_test(scenario_ticks_not_a_number "scenario|x.sze|--ticks|abc"
@@ -96,11 +95,8 @@ if(ANNO_BUILD_TESTS)
                        SKIP_REGULAR_EXPRESSION "skipping: ANNO1503_GAME_DIR not set")
   # T41: the measure line names every timed field. A synthetic scenario, R = 2,
   # no game files. --ticks 0 still creates the world and hashes it.
-  add_test(NAME anno_sim_replay_measure_synthetic
-           COMMAND sim_replay measure synthetic --ticks 0 --reps 2)
-  set_tests_properties(anno_sim_replay_measure_synthetic PROPERTIES
-                       PASS_REGULAR_EXPRESSION
-                       "hash_clean_us min=.*median=.*p95=.*max=.*hash_incremental_us min=.*median=.*p95=.*max=.*save_bytes=.*tiles=.*chunks=")
+  anno_sim_replay_run_test(anno_sim_replay_measure_synthetic "measure|synthetic|--ticks|0|--reps|2" 0
+                           "hash_clean_us min=.*median=.*p95=.*max=.*hash_incremental_us min=.*median=.*p95=.*max=.*save_bytes=.*tiles=.*chunks=")
   anno_sim_replay_arg_test(measure_reps_not_a_number "measure|x.sze|--reps|abc"
                            "bad --reps value 'abc'")
   anno_sim_replay_arg_test(measure_reps_zero "measure|x.sze|--reps|0" "bad --reps value '0'")
@@ -108,12 +104,8 @@ if(ANNO_BUILD_TESTS)
                            "bad --ticks value '-1'")
   # T45: load and run_turn on the code-built world. The test checks the
   # validation line and the turn mapping, not a wall-time threshold.
-  add_test(NAME anno_sim_replay_join_synthetic
-           COMMAND sim_replay join synthetic --ticks 0 --reps 2 --warmup 1 --catchup 3
-                   --replay-reps 2)
-  set_tests_properties(anno_sim_replay_join_synthetic PROPERTIES
-                       PASS_REGULAR_EXPRESSION
-                       "join_ok validation=ok replay_method=run_turn age_method=advance ticks_per_turn=50 commands_rejected=0 speed_bad=0 burst_over_cap=1 empty_payload_bytes=0 scripted_commands=1")
+  anno_sim_replay_run_test(anno_sim_replay_join_synthetic "join|synthetic|--ticks|0|--reps|2|--warmup|1|--catchup|3|--replay-reps|2" 0
+                           "join_ok validation=ok replay_method=run_turn age_method=advance ticks_per_turn=50 commands_rejected=0 speed_bad=0 burst_over_cap=1 empty_payload_bytes=0 scripted_commands=1")
   anno_sim_replay_arg_test(join_reps_not_a_number "join|synthetic|--reps|abc"
                            "bad --reps value 'abc'")
   anno_sim_replay_arg_test(join_reps_zero "join|synthetic|--reps|0" "bad --reps value '0'")

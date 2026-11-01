@@ -9774,3 +9774,147 @@ optimization, gameplay input or map work is attached to this round.
 No merge, push, rebase, prune or reset. The map is unchanged and `game/` was not touched. The coordinator
 protocol, journals, admission policy, simulation rules, state versions, goldens and OQ-525 tolerances were
 not touched. The owner's keep-awake process was left alone. No job of this round is left running.
+
+## Round ee: W4.4 the developer building tool in the play window, through the sim's command path (review candidate)
+
+- **Worktree:** `anno1503-W4-3`, branch `task/W4-3-live-buildings`, from `3483d66` (round ed's report).
+- **Code head:** `269f795` (`src/` final; `e4c726b` is the last product change, `269f795` a test fix).
+  The commit after it is this report; nothing under `src/` or `tools/` changes after `269f795`.
+- **Evidence:** `cache/ee-runs/` (ignored): acceptance tables `acceptance-{A..E}.md`, review records
+  `reviews/{A..E}.md`, mutant logs `*-mutants-*.log`, the live sessions `e3/`, the gates `g*-*.log`.
+- **Host:** Apple M5 Max, 18 cores, 48 GiB, macOS 27.0.1; "Apple M5 Max (Metal)". The MAP-2 executor ran
+  `anno_sim_tests` and its own admission coordinator (port 47631) throughout; load 4 to 7. It was left alone.
+- **Admission:** on, unchanged; every gate went through the running coordinator.
+- **Keep-awake:** one `caffeinate` of this round (pid 48030), stopped at the end; the owner's (pid 39677)
+  was left alone.
+- **Map:** `data/maps/lan5.txt` sha256 `1a471d9f…7019357`, unchanged. `game/` untouched.
+- **Gate runner:** the canonical `run_selected.py` of the main checkout, `--source-root` and
+  `--build-dir` of this worktree, `--require-test window_table_contract --require-test
+  picture_matrix_contract`.
+
+**Commits** (`3483d66..e4c726b`):
+- **A (outcomes):** `c03754f` receipts and authoritative outcomes, bounded with explicit loss; `b7af0a8` review notes.
+- **B (pointer and picking):** `db11bb9` the pick and the tool in the window; `b16dd5f` independent expected pixels; `db152df` review fixes (placement rounding, whole-pixel pointers).
+- **C (preview and feedback):** `5d2093e`; review fixes in `4a2cc5e` and `e4c726b`.
+- **D (robustness, mod data):** `4a2cc5e`; review fixes in `e4c726b`.
+- **E:** E1 `7d5cf21` (+ `e4c726b`); E3/E4 `4a2cc5e` (+ `e4c726b`); `5b77dc0` test names CTest can select;
+  `269f795` an ASan finding in package A's test (assign from its own element).
+  `4a2cc5e` holds four parts in one commit because they edit the same files; its message lists them.
+
+### What the window does now (developer tool, not UI.2)
+
+- **B** toggles the tool; **N/P** cycle the buildable types (registry data: every list-backed and road
+  type, any id width); **T** rotates; **X** demolish mode; **Esc** cancels; the left button places,
+  a left drag places a road line (one command, never split; over the wire limit it is refused before
+  the path is made); the right button pans; the wheel zooms. Motion never submits.
+- The pick: drawable pixel → the frame that was drawn (its screen map, zoom level, scene generation) →
+  the frontmost ground tile with heights → the city's island only. Island placement rounding, high-DPI,
+  continuous zoom and derived levels are covered.
+- Every command goes through `PlayRunner::post_command` (a receipt); the sim decides; the title shows the
+  receipt's own outcome (Queued / Applied, n of m records / Refused with the sim's reason / Lost), never
+  an earlier command's; the runner's last refusal names its command.
+- The preview is the type's own sprite through the renderer's `place_prepared` (GPU overlay and CPU blend
+  agree). What the window knows comes from published data only (the picture's buildings, the snapshot's
+  money, goods and waiver); a refusal is shown only with that basis, the rest is named unchecked. The
+  sim's placement rule is still the stand-in of OQ-052 (no terrain check): a building on open water inside
+  the island's rectangle is applied and drawn there, and the line says so.
+- When the picture lags, the line says "not drawn yet: …" (E4) until the change is committed.
+
+### Package acceptance and reviews
+
+| Package | Acceptance (written before code) | Review | Mutants (isolated copy) |
+|---|---|---|---|
+| A outcomes | `acceptance-A.md` | APPROVED (`reviews/A.md`) | 4 caught (`a-mutants-1.log`) |
+| B pointer and picking | `acceptance-B.md` | CHANGES REQUIRED (2 P2: odd-origin half pixel, no elevation test through the adapter; P3 fractional pointer) → fixed → APPROVED | 8 distinct, all caught in the end (`b-mutants-1..4.log`, `cd-mutants-1.log`): the resample offset survived twice until the expected pixels were derived without the frame map (`b16dd5f`); the density mutant was invalid once, then caught |
+| C preview and feedback | `acceptance-C.md` | CHANGES REQUIRED (2 P2: earlier refusal in the title, GPU overlay never ran; 5 P3) → fixed → re-review CHANGES REQUIRED (P2: the receipt fix's evidence was false; P3 read order) → fixed (session-5) | 3 (the waiver survived once, until the test used a priced type) + 5 for the review fixes, all caught |
+| D robustness and mod data | `acceptance-D.md` | CHANGES REQUIRED (P2: "every original type" row untested; 5 P3) → fixed or recorded (`reviews/D.md`) | 5 caught |
+| E1 observers | — | APPROVED (2 P3 fixed) | — |
+| E3 session and replay | `acceptance-E.md` | CHANGES REQUIRED (2 P2: the replay compared no outcomes; no tests for the script, the filter, the replay) → fixed (`reviews/E.md`) | 3 caught |
+| E4 picture barrier | `acceptance-E.md` | APPROVED (P3s fixed or recorded) | 2 caught (one invalid at first: an unused parameter under `-Werror`; rewritten, caught) |
+
+### Measurements (debug build, Apple M5 Max; `dev_tool_mod_test.cpp`)
+
+Per pointer move (pick, `DevTool::handle`, `make_preview`, `preview_note`, `check`, `feedback_line`):
+flat in published buildings, 4 to 100 004 (18.0 µs at one island); nearly flat in the scene's islands
+since the pick asks only the islands its ray crosses: 19.5 µs at 64 islands (69 µs before the change;
+13 µs at one island before, 18 µs after). The occupancy index is rebuilt once per published change:
+0.26 ms at 100 004 buildings; 100 000 moves rebuild it once. The window's follow step with every
+picture build held: 0.023 to 0.026 ms. Recording session hashes costs a full `state_hash` (about 0.17 s
+on lan5, debug) on the turns it records. Not measured: large-city, complex-economy, multiplayer.
+
+### The live window (E3, E4)
+
+- Script `cache/ee-runs/e3/session-land.script`; cited run `session-5` (binary sha256 in
+  `session-5.rev`): place 1×1, a click that sends nothing (title: the tool's reason, no receipt), rotate
+  and place 4×3 as 3×4, Occupied, a road drag of 9 tiles (one command, 9 records, Unsupported: roads are
+  tile objects the sim does not build yet), demolish, pan, wheel in and out, place again at another zoom
+  level. Replay `replay-5.log`: 14 checkpoints and 6 outcomes agree.
+- Controls: a command moved by one tile fails at its turn (`replay-2-control.log`; the reviewer
+  repeated it on session-4); `dev_script_test.cpp` covers a moved command (hash) and a refused command
+  of another type (outcome).
+- Earlier runs kept: session-1 failed (the desktop's real pointer reached the window: the script now
+  takes only its own device's input); session-2 placed on open sea (OQ-052); sessions 3/4 on land.
+- Screenshots (`session-4/crops/`, inspected): the turned 4×3 is drawn on the coast; the 1×1 cannot be
+  told from the trees at group 2 (not cited); `placed.png` shows one chunk not yet arrived at the left
+  edge (asynchronous chunks).
+- E4 (`dev_barrier_test.cpp`): every picture build held at a gate; turns, outcomes and input go on;
+  the line says "not drawn yet: 1 island of the picture is not committed"; the open gate commits it.
+
+### Gates (canonical `run_selected.py`; first failures kept)
+
+All: `python3 -I <main>/tools/test/run_selected.py --source-root <W4> --require-test window_table_contract
+--require-test picture_matrix_contract`, `ANNO_TEST_THREADS=4`, admission on (the MAP-2 executor's
+coordinator and sim tests ran throughout). sha256 (first 16 hex) as each gate log records the binaries.
+
+| Gate | Selection, jobs | Source | Result |
+|---|---|---|---|
+| G1 contracts | the five contracts, `-j 2` | `e4c726b` | PASS 5/5 (`g1-contracts.log`) |
+| G2 affected, dev | `anno_app_tests`, `_alloc_`, `_input_`, `anno_render_gpu_tests.(picture GPU\|play\|dev preview)`, contracts; `-j 6`, `--allow-skip gpu` | `e4c726b`; app `431a3bc3…`, alloc `a42914c9…`, input `b7d4150b…`, GPU `71fabc8b…`, `anno1503` `e5ef1d57…` | PASS: selected 205, executed 202, failed 0, skipped 3 (2 opt-in probes, 1 GPU: no RTX 4090), incomplete 0 (`g2-affected-dev.log`). E2: the stand-ins case passed in 58.4 s here, beside the CPU-heavy cases and MAP-2's sim tests |
+| G3 ASan, run 1 | app, alloc, input, contracts; `-j 4` | `e4c726b`; app `ef857614…` | FAIL, kept (`g3-asan.log`): an ASan heap-use-after-free in package A's test `command outcomes: a command with no wire form …` (`assign(4096, placements.front())`, the test's own bug) and `play: islands are the ones the sim placed` timing out at 2 400 s (a corpus over every scenario: 800 to 960 s in dev builds since round ec; not changed this round) |
+| G3 ASan, run 2 | as run 1, the corpus case excluded (declared); `-j 4` | `269f795`; app `eb16946b…`, alloc `9251b57c…`, input `0f0c965b…` | PASS: selected 188, executed 186, failed 0, skipped 2 (opt-in), sanitizer lines 0 (`g3-asan-run2.log`) |
+| G3b ASan, the corpus case alone | that case and the two contracts; `-j 1`, timeout 7 200 s, beside G4 | `269f795` | PASS: the case passed in 2 612 s (slow under ASan, not stalled), the contracts too; sanitizer lines 0 (`g3b-asan-corpus.log`) |
+| G4 render and sim, dev | `anno_render_tests`, `anno_sim_tests`, contracts; heavy label excluded; `-j 4`, beside G3b | `269f795`; render `8b4b9b50…`, sim `43ba6f18…` | PASS: selected 839, executed 838, failed 0, skipped 1 (opt-in) (`g4-render-sim-dev.log`) |
+| Live canary | `session-land.script` in the real window, then `--replay-hashes` | `269f795`, clean tree; `anno1503` `e5ef1d57…` | PASS: every step; 14 checkpoints and 6 outcomes agree (`e3/session-6-canary`, `replay-6-canary.log`) |
+
+Not run here: the heavy label of `anno_render_tests`/`anno_sim_tests`, `anno_formats_tests` (no format
+changed), the GPU suite beyond G2's selection, the release build. The dev `anno_app_tests` with the
+`269f795` test fix ran only under ASan (G3 run 2); G2's dev binary predates it.
+
+### Preserved failures
+
+- E2 gate run 1: preflight FAIL (four test names with semicolons) → `5b77dc0`.
+- E2 gate run 2 (`e2-affected-dev-run2.log`, binaries of `5b77dc0`): 197 executed, 0 failed; verdict
+  FAIL for two workflow errors of mine: the RTX 4090 skip was not declared (`--allow-skip gpu`), and I
+  edited sources while it ran. The stand-ins case passed there in 58.6 s at `-j 6` beside the
+  CPU-heavy cases and MAP-2's sim tests.
+- An app-test subset I started with a broad `play: *` filter ran past its 25-minute alarm without a
+  summary: incomplete, not a result.
+- G3 ASan run 1, as in the table: package A's test read an element `assign` had freed (fixed in
+  `269f795`); the scenario corpus timed out at 2 400 s under ASan and passed alone in 2 612 s.
+- Live sessions 1 to 4 as above.
+
+### Open and distinct
+
+- Windows MSVC and Linux GCC 13 / Clang 18 `-Werror`: NOT_RUN (no such host or compilers here).
+- RTX 4090 and Radeon: NOT_RUN (the play-GPU case is a declared skip here).
+- A genuine 3840 × 2160 window: NOT_RUN.
+- The two Metal timestamp failures; OQ-525: unchanged.
+- The continuous-zoom (resampled) preview overlay: GPU path not compared with a CPU reference.
+- OQ-052 (the placement rule's terrain check), OQ-550 (a command-built building's height): open.
+- Large-city, complex-economy and multiplayer performance: open.
+
+### Review records
+
+`cache/ee-runs/reviews/A.md` … `E.md` hold every finding with its disposition; the acceptance tables
+are `cache/ee-runs/acceptance-A.md` … `-E.md`. Reviewers were independent, read-only subagents of this
+session, briefed with the code and the requirement, not the conclusion. The final integration review
+follows this report (below).
+
+`docs/PLAN.md` is not changed: the plan's status is the orchestrator's (this is a developer gameplay
+milestone; the final original-style UI remains UI.2).
+
+### Next smallest unit
+
+UI.2 builds the original-style interface on these interfaces (`post_command` receipts, `outcome`,
+`PlacementKnowledge`, `make_preview`, `drawn_note`). The placement rule's terrain check (OQ-052) belongs to
+the sim's placement unit. No merge, push, rebase, prune or reset.

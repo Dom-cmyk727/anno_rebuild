@@ -1,4 +1,5 @@
 // The play window's opt-in trace (see the header and docs/app/window-trace.md).
+#include <algorithm>
 #include <cstdio>
 #include <set>
 #include <sstream>
@@ -240,25 +241,6 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
         });
 }
 
-void PresentCorrelator::gpu_ready(std::uint32_t island, std::uint64_t generation,
-                                  std::uint64_t frame) {
-    waiting_.emplace(std::pair{island, generation}, frame);
-}
-
-std::vector<std::pair<std::uint32_t, std::uint64_t>>
-PresentCorrelator::presented(std::uint64_t frame) {
-    std::vector<std::pair<std::uint32_t, std::uint64_t>> done;
-    for (auto it = waiting_.begin(); it != waiting_.end();) {
-        if (it->second <= frame) {
-            done.push_back(it->first);
-            it = waiting_.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    return done;
-}
-
 void FrameTracer::committed(std::uint32_t island, std::uint64_t generation,
                             std::vector<render::ChunkKey> keys) {
     if (outstanding() >= max_outstanding_) {
@@ -272,24 +254,20 @@ void FrameTracer::begin(FrameRecord row, render::Rect view, std::size_t group) {
     row_ = std::move(row);
     row_.frame = ++frame_;
     row_.epoch = epoch_;
-    if (unwatched_.empty()) {
+    in_view_.clear();
+    if (unwatched_.empty() && visible_.empty()) {
         return;
     }
     const std::vector<render::ChunkKey> keys = view_keys(view, group);
-    const std::set<render::ChunkKey> in_view(keys.begin(), keys.end());
+    in_view_.insert(keys.begin(), keys.end());
     const double t = trace_.now_ms();
     for (Watch& c : unwatched_) {
-        ReadinessTracker::Set set{c.island, c.generation, {}};
-        for (const render::ChunkKey& k : c.keys) {
-            if (in_view.count(k) != 0) {
-                set.keys.push_back(k);
-            }
-        }
-        if (set.keys.empty()) {
-            trace_.event(t, TraceKind::NoVisibleChange, c.island, c.generation);
+        const bool seen = std::any_of(c.keys.begin(), c.keys.end(),
+                                      [this](const auto& k) { return in_view_.count(k) != 0; });
+        if (seen) {
+            visible_.push_back(std::move(c));
         } else {
-            gpu_.add(set);
-            cpu_.add(std::move(set));
+            trace_.event(t, TraceKind::NoVisibleChange, c.island, c.generation);
         }
     }
     unwatched_.clear();
@@ -319,19 +297,45 @@ void FrameTracer::presented(double t_submit, double p0, double p1, std::uint32_t
     row_.present_end_ms = p1;
     row_.present_status = status;
     trace_.event(t_submit, TraceKind::FrameSubmitted, epoch, row_.frame);
-    // One observation, at the submission: CPU first, then GPU (GPU-usable implies CPU-ready).
-    for (const ReadinessTracker::Set& r : cpu_.poll(fresh, t_submit, key_log_)) {
-        trace_.event(t_submit, TraceKind::ChunksReady, r.island, r.generation);
-    }
-    for (const ReadinessTracker::Set& r : gpu_.poll(usable, t_submit, key_log_)) {
-        trace_.event(t_submit, TraceKind::GpuReady, r.island, r.generation);
-        correlator_.gpu_ready(r.island, r.generation, row_.frame);
-    }
-    key_log_.clear(); // the per-key log is not kept (bounded memory)
-    if (status == kPresentSuccess) {
+    const bool success = status == kPresentSuccess;
+    std::vector<std::pair<std::uint32_t, std::uint64_t>> shown;
+    // One observation, at the submission, of each waiting change's keys in this frame's view: CPU
+    // first, then GPU (GPU-usable implies CPU-ready). Only this frame's state counts.
+    std::erase_if(visible_, [&](Watch& c) {
+        bool any = false, all_fresh = true, all_usable = true;
+        for (const render::ChunkKey& k : c.keys) {
+            if (in_view_.count(k) == 0) {
+                continue;
+            }
+            any = true;
+            const bool f = fresh(k);
+            all_fresh = all_fresh && f;
+            all_usable = all_usable && f && usable(k);
+        }
+        if (!any) {
+            return false; // out of this frame's view: it draws nothing of the change
+        }
+        if (all_fresh && !c.cpu_ready) {
+            c.cpu_ready = true;
+            trace_.event(t_submit, TraceKind::ChunksReady, c.island, c.generation);
+        }
+        if (!all_usable) {
+            return false;
+        }
+        if (!c.gpu_ready) {
+            c.gpu_ready = true;
+            trace_.event(t_submit, TraceKind::GpuReady, c.island, c.generation);
+        }
+        trace_.event(t_submit, TraceKind::Drawn, c.island, c.generation);
+        if (success) {
+            shown.emplace_back(c.island, c.generation);
+        }
+        return success;
+    });
+    if (success) {
         row_.outcome = "presented";
         trace_.event(p1, TraceKind::FramePresented, epoch, row_.frame);
-        for (const auto& [island, generation] : correlator_.presented(row_.frame)) {
+        for (const auto& [island, generation] : shown) {
             trace_.event(p1, TraceKind::Presented, island, generation);
         }
     } else {

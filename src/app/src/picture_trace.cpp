@@ -19,13 +19,34 @@ namespace anno::app {
 
 namespace {
 
-constexpr std::array<std::string_view, 27> kNames = {
-    "desired",      "admitted",        "deferred",          "started",         "built",
-    "failed",       "superseded",      "dropped",           "requeued",        "committed",
-    "generation",   "chunks_ready",    "no_visible_change", "retired",         "reclaimed",
-    "drain_start",  "drain_end",       "converged",         "run_end",         "gpu_mode",
-    "gpu_ready",    "batch_published", "batch_taken",       "frame_submitted", "frame_presented",
-    "frame_failed", "presented"};
+constexpr std::array<std::string_view, 28> kNames = {"desired",
+                                                     "admitted",
+                                                     "deferred",
+                                                     "started",
+                                                     "built",
+                                                     "failed",
+                                                     "superseded",
+                                                     "dropped",
+                                                     "requeued",
+                                                     "committed",
+                                                     "generation",
+                                                     "chunks_ready",
+                                                     "no_visible_change",
+                                                     "retired",
+                                                     "reclaimed",
+                                                     "drain_start",
+                                                     "drain_end",
+                                                     "converged",
+                                                     "run_end",
+                                                     "gpu_mode",
+                                                     "gpu_ready",
+                                                     "batch_published",
+                                                     "batch_taken",
+                                                     "frame_submitted",
+                                                     "frame_presented",
+                                                     "frame_failed",
+                                                     "presented",
+                                                     "drawn"};
 
 struct Edit {
     double t0 = 0;
@@ -92,7 +113,7 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
     std::vector<std::pair<std::uint32_t, double>> committed_pending;
     std::map<std::pair<std::uint32_t, std::uint64_t>, double> committed_at;
     std::map<std::pair<std::uint32_t, std::uint64_t>, std::vector<double>> cpu_at, gpu_at, none_at,
-        presented_at;
+        presented_at, drawn_at;
     // The window trace: frames submitted, presented and failed by id (with their times), and the
     // frame of each time (every event of a frame carries that frame's time).
     std::map<std::uint64_t, double> submitted_frame, presented_frame;
@@ -238,6 +259,10 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
                 }
             }
             break;
+        case TraceKind::Drawn:
+            s.window = true;
+            drawn_at[{e.island, e.version}].push_back(e.t_ms);
+            break;
         case TraceKind::NoVisibleChange:
             none_at[{e.island, e.version}].push_back(e.t_ms);
             for (Edit& d : edits) {
@@ -346,6 +371,13 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             if (d.t4 >= 0) {
                 ++s.presented;
                 present.push_back(d.t4 - d.t0);
+                // A later commit of the island before the presentation: the frame may show that
+                // newer content for the same chunks (coalesced, kept explicit).
+                const auto later = committed_at.upper_bound({d.island, d.generation});
+                if (later != committed_at.end() && later->first.first == d.island &&
+                    later->second < d.t4) {
+                    ++s.present_coalesced;
+                }
             } else if (d.t3 >= 0) {
                 ++s.present_unfinished;
             }
@@ -415,14 +447,32 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
                                      " that made it GPU-usable"
                                : ", but its gpu_ready is at no frame_submitted"));
             } else {
-                // The first successful present call of a frame that draws it: an earlier one is a
-                // present the trace skipped.
-                for (auto it = presented_frame.lower_bound(*gpu_frame); it != presented_frame.end();
-                     ++it) {
-                    if (it->second < t) {
-                        s.contradictions.push_back(
-                            "presented of " + pair_name(p) + " by frame " + std::to_string(*frame) +
-                            ", but frame " + std::to_string(it->first) + " presented it earlier");
+                // Round ed: the presenting frame draws the change (a Drawn at its submission), and
+                // it is the first presented frame that does: an earlier presented frame that drew
+                // it is a present the trace skipped. A presented frame that did not draw it (the
+                // view elsewhere, the chunks stale) completes nothing.
+                const auto drawn = drawn_at.find(p);
+                const auto sub = submitted_frame.find(*frame);
+                const auto draws = [&](std::uint64_t f) {
+                    const auto fs = submitted_frame.find(f);
+                    return drawn != drawn_at.end() && fs != submitted_frame.end() &&
+                           std::find(drawn->second.begin(), drawn->second.end(), fs->second) !=
+                               drawn->second.end();
+                };
+                if (sub == submitted_frame.end() || !draws(*frame)) {
+                    s.contradictions.push_back("presented of " + pair_name(p) + " by frame " +
+                                               std::to_string(*frame) +
+                                               ", which has no drawn of it (the frame does not "
+                                               "draw the change)");
+                    continue;
+                }
+                for (auto it = presented_frame.lower_bound(*gpu_frame);
+                     it != presented_frame.end() && it->first < *frame; ++it) {
+                    if (draws(it->first)) {
+                        s.contradictions.push_back("presented of " + pair_name(p) + " by frame " +
+                                                   std::to_string(*frame) + ", but frame " +
+                                                   std::to_string(it->first) +
+                                                   " drew and presented it earlier");
                         break;
                     }
                 }
@@ -510,6 +560,46 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             if (t < first_cpu) {
                 s.contradictions.push_back("gpu_ready of " + pair_name(p) +
                                            " before its chunks_ready");
+            }
+        }
+    }
+    // Round ed: each drawn names a submitted frame, follows the pair's gpu_ready, is once per
+    // frame and ends at the pair's presented; a window gpu_ready is the first frame that draws it.
+    for (const auto& [p, times] : drawn_at) {
+        const auto c = committed_at.find(p);
+        const auto ready = gpu_at.find(p);
+        const auto shown = presented_at.find(p);
+        std::set<double> seen;
+        for (const double t : times) {
+            const auto frame = frame_at(submitted_at_time, t);
+            if (!frame) {
+                s.contradictions.push_back("drawn of " + pair_name(p) +
+                                           " at a time with no frame_submitted");
+            }
+            if (c == committed_at.end() || t < c->second) {
+                s.contradictions.push_back("drawn of " + pair_name(p) + " before its commit");
+            }
+            if (ready == gpu_at.end() ||
+                t < *std::min_element(ready->second.begin(), ready->second.end())) {
+                s.contradictions.push_back("drawn of " + pair_name(p) + " before its gpu_ready");
+            }
+            if (!seen.insert(t).second) {
+                s.contradictions.push_back("drawn of " + pair_name(p) + " twice in one frame");
+            }
+            if (shown != presented_at.end() &&
+                t > *std::min_element(shown->second.begin(), shown->second.end())) {
+                s.contradictions.push_back("drawn of " + pair_name(p) + " after its presented");
+            }
+        }
+    }
+    if (s.window) {
+        for (const auto& [p, times] : gpu_at) {
+            const auto drawn = drawn_at.find(p);
+            const double first = *std::min_element(times.begin(), times.end());
+            if (drawn == drawn_at.end() || std::find(drawn->second.begin(), drawn->second.end(),
+                                                     first) == drawn->second.end()) {
+                s.contradictions.push_back("gpu_ready of " + pair_name(p) +
+                                           " with no drawn of its frame (window trace)");
             }
         }
     }
@@ -664,6 +754,7 @@ std::string format_summary(const TraceSummary& s) {
     }
     if (s.window) {
         o << "window=1 presented=" << s.presented << " present_unfinished=" << s.present_unfinished
+          << " present_coalesced=" << s.present_coalesced
           << " frames_submitted=" << s.frames_submitted
           << " frames_presented=" << s.frames_presented << " frames_failed=" << s.frames_failed
           << " batches_published=" << s.batches_published << " batches_taken=" << s.batches_taken

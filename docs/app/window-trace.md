@@ -22,11 +22,16 @@ and `bench_picture --aggregate` reads its event file.
    batch taken). A collapsed resync carries the newest turn.
 4. **Island-version commitment.** The bridge's own steps (`desired` … `committed`, picture_trace.hpp),
    then `generation` g for that commit.
-5. **CPU readiness.** For the islands of a commit: `chunks_ready(i, g)` when every key island i's change
-   invalidated within the frame's view is cached and fresh at one observation. `no_visible_change(i, g)`
-   when no key is in view.
-6. **GPU usability.** `gpu_ready(i, g)` when the same keys are GPU-usable at one observation, after a
-   frame's render (`GpuFrame::chunk_state`). It is timed at that frame's submission.
+5. **CPU readiness.** For the islands of a commit: `no_visible_change(i, g)` when none of the keys island
+   i's change invalidated (in every zoom group) is in the view of the first attempt after the commit; the
+   change is offscreen and never waited for. Otherwise the change is visible, and each rendered frame
+   observes the change's keys within that frame's own view and zoom group: `chunks_ready(i, g)` the first
+   time they are all cached and fresh at one observation.
+6. **GPU usability.** `gpu_ready(i, g)` the first time the same frame's keys are all GPU-usable at one
+   observation, after the frame's render (`GpuFrame::chunk_state`). It is timed at that frame's
+   submission. `drawn(i, g)` at the submission of every frame whose keys of the change are all GPU-usable
+   at its own observation (round ed), until the change is presented; the first is `gpu_ready`'s frame.
+   A frame whose view holds none of the change's keys draws nothing of it.
 7. **Frame submission.** `frame_submitted` (island = the surface epoch, version = the frame id) at the
    return of `GpuFrame::render`, after its queue submit. Every event of that frame carries the same time.
 8. **Surface acquire.** In `frames.tsv`: the acquire's start and end, and its status. The statuses are
@@ -37,10 +42,19 @@ and `bench_picture --aggregate` reads its event file.
    - `frame_presented` (epoch, frame) is recorded when the call returned `WGPUStatus_Success`.
    - `frame_failed` (epoch, frame) is recorded when the acquire gave no usable texture, or the present call
      failed.
-   - `presented(i, g)` is recorded at the first `frame_presented` whose frame id is not below the frame of
-     `gpu_ready(i, g)`, with that frame's time (`PresentCorrelator`). A failed frame completes nothing; a
-     later successful one does. One island's readiness never completes another's, and a later
-     generation of the same island is its own change.
+   - `presented(i, g)` is recorded by the first frame that both draws the change (`drawn(i, g)` of that
+     frame) and returned success from its present call, with that frame's present time
+     (`FrameTracer::presented`, round ed). Readiness seen in an earlier frame does not count: a failed
+     present completes nothing, and neither does a later successful frame whose view is elsewhere, or
+     in which one of the change's keys is stale or not GPU-usable at that frame's observation. The
+     change then keeps waiting for a frame that draws it, and is `present_unfinished` if the session
+     ends first; nothing is presented to empty the waiting set. One island's frame never completes
+     another's, and a later generation of the same island is its own change. When a later commit of
+     the same island made the keys stale first, the frame that presents the earlier change draws the
+     newer content; the aggregate counts that edit as `present_coalesced`.
+   - Round ec (before `drawn`) completed a change at the first successful frame at or after its
+     `gpu_ready` frame, whatever that frame drew. Its traces have no `drawn` and the current aggregate
+     refuses them (docs/perf/README.md, "Round ed: saved window evidence").
 
    This is the CPU-side return of the present call. It is not GPU completion, not scanout, and not
    display latency: none of those is observed.
@@ -74,7 +88,7 @@ and `bench_picture --aggregate` reads its event file.
 - **`events.tsv`:** picture_trace format (`t_ms kind island version`). It holds:
   - the bridge's steps (boundary 4) and `generation`;
   - the readiness events: `chunks_ready`, `no_visible_change`, `gpu_mode` and `gpu_ready`;
-  - `batch_published`, `batch_taken`, `frame_submitted`, `frame_presented`, `frame_failed` and
+  - `batch_published`, `batch_taken`, `frame_submitted`, `drawn`, `frame_presented`, `frame_failed` and
     `presented`;
   - `run_end`, written only when the recording is complete.
 - **`frames.tsv`:** one row per attempted GPU frame. Columns, in order:
@@ -96,6 +110,10 @@ and `bench_picture --aggregate` reads its event file.
   causal checks, plus the presentation rules:
   - a `presented(i, g)` needs that pair's `gpu_ready` not after it;
   - it needs a `frame_presented` at the same time, whose frame is not below the frame of the `gpu_ready`;
+  - that frame has a `drawn(i, g)` at its submission, and no earlier presented frame has one (round ed):
+    a deferred completion is accepted, an unrelated frame is not;
+  - a `drawn(i, g)` is at a `frame_submitted`'s time, not before that pair's `gpu_ready`, once per frame
+    and never after the pair's `presented`; a `gpu_ready` has a `drawn` of its frame;
   - a `batch_taken` of a turn needs its `batch_published` before it;
   - every event of a frame carries one surface epoch, and a later frame never has a lower one;
   - a frame fails at most once, and never before its own `frame_submitted`;

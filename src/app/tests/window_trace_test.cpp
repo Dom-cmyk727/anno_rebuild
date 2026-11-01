@@ -2,6 +2,7 @@
 // calls for every attempted GPU frame, the bounded recorder, its finalization, and the causal rules
 // of the presentation boundary. No window and no game files: the viewer's own use is the traced
 // canary (docs/perf/README.md).
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -30,14 +31,14 @@ bool contradicts(const std::vector<app::TraceEvent>& events, const std::string& 
     return false;
 }
 
-/// A window trace of one edit of island 0 committed in generation 1, GPU-usable in frame 2
-/// (submitted at 5 ms), with `tail` and a RunEnd at 20 ms.
+/// A window trace of one edit of island 0 committed in generation 1, GPU-usable and drawn in frame
+/// 2 (submitted at 5 ms), with `tail` and a RunEnd at 20 ms.
 std::vector<app::TraceEvent> window_trace(std::vector<app::TraceEvent> tail) {
     std::vector<app::TraceEvent> e{
         {0, K::GpuMode, 0, 1},        {0.5, K::BatchPublished, 0, 7}, {0.6, K::BatchTaken, 0, 7},
         {0.7, K::Desired, 0, 1},      {1, K::Committed, 0, 1},        {1, K::Generation, 0, 1},
         {2, K::FrameSubmitted, 1, 1}, {2.5, K::FramePresented, 1, 1}, {5, K::FrameSubmitted, 1, 2},
-        {5, K::ChunksReady, 0, 1},    {5, K::GpuReady, 0, 1}};
+        {5, K::ChunksReady, 0, 1},    {5, K::GpuReady, 0, 1},         {5, K::Drawn, 0, 1}};
     e.insert(e.end(), tail.begin(), tail.end());
     e.push_back({20, K::RunEnd, 0, 0});
     return e;
@@ -87,34 +88,249 @@ TEST_CASE("window trace: a turn's outcome comes from the sim's rejections, never
     CHECK(app::turn_outcome(t) == "rejected");
 }
 
-TEST_CASE("window trace: a change completes at the first successful present of a frame that draws "
-          "it, a failed or earlier frame completes nothing, and one island never completes "
-          "another" *
+namespace {
+
+/// The viewer's per-frame calls on a FrameTracer (round ed, package 1): one commit per island,
+/// then attempts whose view, zoom group, chunk states and present status the test chooses. Times
+/// come from the trace's clock, so the records are in the order they were made.
+struct Session {
+    app::WindowTrace trace{1000, 100, 10};
+    app::FrameTracer tracer{trace};
+    std::set<anno::render::ChunkKey> fresh_keys, usable_keys;
+    std::uint64_t turn = 30;
+
+    Session() { trace.event_now(K::GpuMode, 0, 1); }
+    /// Island `island`'s edit to `version`, committed in `generation` over `keys` (the frame
+    /// boundary's take, desired, commit and generation, as the viewer records them).
+    void commit(std::uint32_t island, std::uint64_t version, std::uint64_t generation,
+                std::vector<anno::render::ChunkKey> keys) {
+        trace.event_now(K::BatchPublished, 0, ++turn);
+        trace.event_now(K::BatchTaken, 0, turn);
+        trace.event_now(K::Desired, island, version);
+        trace.event_now(K::Committed, island, version);
+        trace.event_now(K::Generation, 0, generation);
+        tracer.committed(island, generation, std::move(keys));
+    }
+    void frame(anno::render::Rect view, std::size_t group, std::uint32_t present) {
+        tracer.begin({}, view, group);
+        const double t = trace.now_ms();
+        tracer.acquired(t, trace.now_ms(), app::kAcquireSuccessOptimal);
+        const app::FrameTracer::Ready fresh = [this](const anno::render::ChunkKey& k) {
+            return fresh_keys.count(k) != 0;
+        };
+        const app::FrameTracer::Ready usable = [this](const anno::render::ChunkKey& k) {
+            return usable_keys.count(k) != 0;
+        };
+        const double submit = trace.now_ms();
+        const double p0 = trace.now_ms();
+        tracer.presented(submit, p0, trace.now_ms(), present, fresh, usable, false);
+    }
+    /// The frames whose submission or present time carries an event of `kind` for (island,
+    /// generation): the frame ids, in order.
+    [[nodiscard]] std::vector<std::uint64_t> frames_of(K kind, std::uint32_t island,
+                                                       std::uint64_t generation) const {
+        std::vector<std::uint64_t> out;
+        for (const auto& e : trace.events()) {
+            if (e.kind != kind || e.island != island || e.version != generation) {
+                continue;
+            }
+            for (const auto& f : trace.frames()) {
+                if (f.submit_ms == e.t_ms || f.present_end_ms == e.t_ms) {
+                    out.push_back(f.frame);
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+    [[nodiscard]] app::TraceSummary summary() {
+        auto events = trace.events();
+        events.push_back({trace.now_ms(), K::RunEnd, 0, 0});
+        return app::summarize(events);
+    }
+};
+
+const anno::render::Rect kHome{0, 0, 10, 10}, kElsewhere{10000, 10000, 10, 10};
+const anno::render::ChunkKey kKey{2, 0, 0};
+
+} // namespace
+
+TEST_CASE("window trace: a failed present followed by a successful frame elsewhere presents "
+          "nothing, and the same view's retry presents the change once" *
           doctest::test_suite("window_trace")) {
-    app::PresentCorrelator c;
-    c.gpu_ready(0, 1, 5); // island 0, generation 1: GPU-usable in frame 5
-    c.gpu_ready(1, 1, 7); // island 1, same generation: frame 7
-    CHECK(c.waiting() == 2);
-    // Frame 4 was submitted before the change was usable: it shows the old pixels.
-    CHECK(c.presented(4).empty());
-    // Frame 5's present failed: the viewer never calls presented() for it. Frame 6 succeeds.
-    const auto six = c.presented(6);
-    REQUIRE(six.size() == 1);
-    CHECK(six[0] == std::pair<std::uint32_t, std::uint64_t>{0, 1});
-    CHECK(c.waiting() == 1);
-    // Island 0's present does not complete island 1 (usable only from frame 7).
-    CHECK(c.presented(6).empty());
-    const auto seven = c.presented(7);
-    REQUIRE(seven.size() == 1);
-    CHECK(seven[0] == std::pair<std::uint32_t, std::uint64_t>{1, 1});
-    // Each change completes once.
-    CHECK(c.presented(8).empty());
-    CHECK(c.waiting() == 0);
-    // A generation handle does not imply fresh pixels: a later generation of the same island is
-    // its own change.
-    c.gpu_ready(0, 2, 9);
-    CHECK(c.presented(8).empty());
-    CHECK(c.presented(9).size() == 1);
+    // Round ed, package 1 (the orchestrator's probe): frame 1 draws the change GPU-usable and its
+    // present fails; frame 2's view holds none of its keys. Round ec reported it presented by
+    // frame 2. The control differs in one thing: frame 2 keeps frame 1's view.
+    for (const bool moved : {false, true}) {
+        CAPTURE(moved);
+        Session s;
+        s.commit(0, 1, 1, {kKey});
+        s.fresh_keys = s.usable_keys = {kKey};
+        s.frame(kHome, 2, app::kPresentError);
+        CHECK(s.frames_of(K::GpuReady, 0, 1) == std::vector<std::uint64_t>{1});
+        CHECK(s.frames_of(K::Drawn, 0, 1) == std::vector<std::uint64_t>{1});
+        CHECK(s.frames_of(K::Presented, 0, 1).empty()); // a failed present completes nothing
+        s.frame(moved ? kElsewhere : kHome, 2, app::kPresentSuccess);
+        if (moved) {
+            // Frame 2 draws nothing of the change: nothing is presented, and it keeps waiting.
+            CHECK(s.frames_of(K::Presented, 0, 1).empty());
+            CHECK(s.frames_of(K::Drawn, 0, 1) == std::vector<std::uint64_t>{1});
+            CHECK(s.tracer.outstanding() == 1);
+            const app::TraceSummary sum = s.summary();
+            CHECK(sum.consistent());
+            CHECK(sum.presented == 0);
+            CHECK(sum.present_unfinished == 1);
+            // Back on the change: frame 3 draws it and presents it.
+            s.frame(kHome, 2, app::kPresentSuccess);
+            CHECK(s.frames_of(K::Presented, 0, 1) == std::vector<std::uint64_t>{3});
+        } else {
+            CHECK(s.frames_of(K::Presented, 0, 1) == std::vector<std::uint64_t>{2});
+        }
+        CHECK(s.tracer.outstanding() == 0);
+        s.frame(kHome, 2, app::kPresentSuccess); // a later frame completes nothing more
+        CHECK(s.frames_of(K::Presented, 0, 1).size() == 1);
+        CHECK(s.frames_of(K::GpuReady, 0, 1).size() == 1);
+        const app::TraceSummary sum = s.summary();
+        CHECK(sum.consistent());
+        CHECK(sum.succeeded());
+        CHECK(sum.presented == 1);
+        CHECK(sum.present_unfinished == 0);
+    }
+}
+
+TEST_CASE("window trace: a change whose chunks are stale or off the GPU at a successful present "
+          "is not presented by it, and is presented when a later frame draws them current" *
+          doctest::test_suite("window_trace")) {
+    // Frame 1 draws the change usable and fails; then, in the control, nothing changes; in the
+    // counterexample one of its keys is stale (CPU) or off the GPU before frame 2.
+    for (const int what : {0, 1, 2}) {
+        CAPTURE(what); // 0: control, 1: stale, 2: not GPU-usable
+        Session s;
+        const anno::render::ChunkKey other{2, 0, 1};
+        const anno::render::Rect both{0, 0, 10, 2 * anno::render::kChunk}; // both keys in view
+        s.commit(0, 1, 1, {kKey, other});
+        s.fresh_keys = s.usable_keys = {kKey, other};
+        s.frame(both, 2, app::kPresentError);
+        if (what == 1) {
+            s.fresh_keys.erase(other);
+        } else if (what == 2) {
+            s.usable_keys.erase(other);
+        }
+        s.frame(both, 2, app::kPresentSuccess);
+        CHECK(s.frames_of(K::Presented, 0, 1).size() == (what == 0 ? 1U : 0U));
+        if (what != 0) {
+            s.fresh_keys = s.usable_keys = {kKey, other}; // rebuilt and uploaded again
+            s.frame(both, 2, app::kPresentSuccess);
+            CHECK(s.frames_of(K::Presented, 0, 1) == std::vector<std::uint64_t>{3});
+            CHECK(s.frames_of(K::Drawn, 0, 1) == std::vector<std::uint64_t>{1, 3});
+        }
+        // The first readiness is kept: one ChunksReady and one GpuReady, both at frame 1.
+        CHECK(s.frames_of(K::ChunksReady, 0, 1) == std::vector<std::uint64_t>{1});
+        CHECK(s.frames_of(K::GpuReady, 0, 1) == std::vector<std::uint64_t>{1});
+        const app::TraceSummary sum = s.summary();
+        CHECK(sum.consistent());
+        CHECK(sum.presented == 1);
+    }
+    // A later commit of the same island makes the keys stale after frame 1's failed present: frame
+    // 2 draws the old chunk while it rebuilds and presents neither change; frame 3 draws the newer
+    // content and presents both, the older counted as coalesced.
+    Session s;
+    s.commit(0, 1, 1, {kKey});
+    s.fresh_keys = s.usable_keys = {kKey};
+    s.frame(kHome, 2, app::kPresentError);
+    s.commit(0, 2, 2, {kKey});
+    s.fresh_keys.clear();
+    s.usable_keys.clear();
+    s.frame(kHome, 2, app::kPresentSuccess);
+    CHECK(s.frames_of(K::Presented, 0, 1).empty());
+    CHECK(s.frames_of(K::Presented, 0, 2).empty());
+    s.fresh_keys = s.usable_keys = {kKey};
+    s.frame(kHome, 2, app::kPresentSuccess);
+    CHECK(s.frames_of(K::Presented, 0, 1) == std::vector<std::uint64_t>{3});
+    CHECK(s.frames_of(K::Presented, 0, 2) == std::vector<std::uint64_t>{3});
+    const app::TraceSummary sum = s.summary();
+    CHECK(sum.consistent());
+    CHECK(sum.presented == 2);
+    CHECK(sum.present_coalesced == 1);
+}
+
+TEST_CASE("window trace: an ordinary first-attempt success is ready, drawn and presented in its "
+          "own frame" *
+          doctest::test_suite("window_trace")) {
+    Session s;
+    s.frame(kHome, 2, app::kPresentSuccess); // before the change: nothing to observe
+    s.commit(0, 1, 1, {kKey});
+    s.fresh_keys = s.usable_keys = {kKey};
+    s.frame(kHome, 2, app::kPresentSuccess);
+    for (const K kind : {K::ChunksReady, K::GpuReady, K::Drawn, K::Presented}) {
+        CAPTURE(app::trace_kind_name(kind));
+        CHECK(s.frames_of(kind, 0, 1) == std::vector<std::uint64_t>{2});
+    }
+    const auto rows = s.trace.frames();
+    REQUIRE(rows.size() == 2);
+    for (const auto& e : s.trace.events()) {
+        if (e.kind == K::GpuReady || e.kind == K::Drawn) {
+            CHECK(e.t_ms == rows[1].submit_ms);
+        } else if (e.kind == K::Presented) {
+            CHECK(e.t_ms == rows[1].present_end_ms);
+        }
+    }
+    const app::TraceSummary sum = s.summary();
+    CHECK(sum.succeeded());
+    CHECK(sum.presented == 1);
+    CHECK(sum.present_coalesced == 0);
+}
+
+TEST_CASE("window trace: each island is presented by a frame that draws it, after a pan, a resize "
+          "and a zoom to another group" *
+          doctest::test_suite("window_trace")) {
+    const int c = anno::render::kChunk;
+    const anno::render::ChunkKey a{2, 0, 0}, b{2, 3, 0};
+    SUBCASE("two islands, a pan between them") {
+        Session s;
+        s.commit(0, 1, 1, {a});
+        s.commit(1, 1, 2, {b});
+        s.fresh_keys = s.usable_keys = {a, b};
+        s.frame({0, 0, 4 * c, c}, 2, app::kPresentError);   // draws both, fails
+        s.frame({3 * c, 0, c, c}, 2, app::kPresentSuccess); // only island 1's chunk
+        CHECK(s.frames_of(K::Presented, 1, 2) == std::vector<std::uint64_t>{2});
+        CHECK(s.frames_of(K::Presented, 0, 1).empty());
+        s.frame({0, 0, 4 * c, c}, 2, app::kPresentSuccess);
+        CHECK(s.frames_of(K::Presented, 0, 1) == std::vector<std::uint64_t>{3});
+        CHECK(s.frames_of(K::Presented, 1, 2).size() == 1);
+        CHECK(s.summary().succeeded());
+    }
+    SUBCASE("a resize: the view that keeps the change presents it, one that loses it does not") {
+        for (const bool keeps : {true, false}) {
+            CAPTURE(keeps);
+            Session s;
+            s.commit(0, 1, 1, {b});
+            s.fresh_keys = s.usable_keys = {b};
+            s.frame({0, 0, 4 * c, c}, 2, app::kPresentError);
+            s.tracer.reconfigured(); // the window was resized: a smaller drawable
+            s.frame({0, 0, keeps ? 4 * c : 2 * c, c}, 2, app::kPresentSuccess);
+            CHECK(s.frames_of(K::Presented, 0, 1).size() == (keeps ? 1U : 0U));
+            CHECK(s.summary().consistent());
+        }
+    }
+    SUBCASE("a zoom: the new group's chunk of the change decides") {
+        // The change invalidated its chunks in every zoom group; after the zoom the frame draws
+        // group 1's.
+        const anno::render::ChunkKey g1{1, 0, 0};
+        for (const bool usable : {true, false}) {
+            CAPTURE(usable);
+            Session s;
+            s.commit(0, 1, 1, {a, g1});
+            s.fresh_keys = s.usable_keys = {a, g1};
+            s.frame(kHome, 2, app::kPresentError);
+            if (!usable) {
+                s.usable_keys.erase(g1); // group 1's chunk is not on the GPU yet
+            }
+            s.frame(kHome, 1, app::kPresentSuccess);
+            CHECK(s.frames_of(K::Presented, 0, 1).size() == (usable ? 1U : 0U));
+            CHECK(s.summary().consistent());
+        }
+    }
 }
 
 TEST_CASE("window trace: the visible keys are the frame group's chunks over its view" *
@@ -139,8 +355,10 @@ TEST_CASE("window trace: the presentation rules refuse what a successful present
     // The positive control: presented with frame 3's successful present, after frame 2 made the
     // change GPU-usable.
     {
-        const auto events = window_trace(
-            {{6, K::FrameSubmitted, 1, 3}, {7, K::FramePresented, 1, 3}, {7, K::Presented, 0, 1}});
+        const auto events = window_trace({{6, K::FrameSubmitted, 1, 3},
+                                          {6, K::Drawn, 0, 1},
+                                          {7, K::FramePresented, 1, 3},
+                                          {7, K::Presented, 0, 1}});
         const app::TraceSummary s = app::summarize(events);
         CHECK(s.consistent());
         CHECK(s.succeeded());
@@ -179,13 +397,16 @@ TEST_CASE("window trace: the presentation rules refuse what a successful present
                                     {6, K::Presented, 0, 1},
                                     {0.1, K::FrameSubmitted, 1, 0}}),
                       "before the frame 2 that made it GPU-usable"));
-    // Reported late: frame 3 presented at 7 ms, the change marked presented with frame 4 at 9.
+    // Reported late: frame 3 drew it and presented at 7 ms, the change marked presented with frame
+    // 4 at 9.
     CHECK(contradicts(window_trace({{6, K::FrameSubmitted, 1, 3},
+                                    {6, K::Drawn, 0, 1},
                                     {7, K::FramePresented, 1, 3},
                                     {8, K::FrameSubmitted, 1, 4},
+                                    {8, K::Drawn, 0, 1},
                                     {9, K::FramePresented, 1, 4},
                                     {9, K::Presented, 0, 1}}),
-                      "but frame 3 presented it earlier"));
+                      "but frame 3 drew and presented it earlier"));
     // A present call result for a frame never submitted.
     CHECK(contradicts(window_trace({{7, K::FramePresented, 1, 12}}),
                       "frame_presented of frame 12 without its frame_submitted"));
@@ -194,6 +415,7 @@ TEST_CASE("window trace: the presentation rules refuse what a successful present
                       "batch_taken of turn 8 without its batch_published before it"));
     // Presented twice.
     CHECK(contradicts(window_trace({{6, K::FrameSubmitted, 1, 3},
+                                    {6, K::Drawn, 0, 1},
                                     {7, K::FramePresented, 1, 3},
                                     {7, K::Presented, 0, 1},
                                     {8, K::FrameSubmitted, 1, 4},
@@ -208,6 +430,49 @@ TEST_CASE("window trace: the presentation rules refuse what a successful present
         CHECK(s.consistent());
         CHECK(s.presented == 0);
         CHECK(s.present_unfinished == 1);
+    }
+    // Round ed: a deferred completion. Frame 2 drew the change and failed; frame 3 presented with
+    // the view elsewhere (no drawn); frame 4 drew it and presented it. Accepted, at frame 4.
+    const std::vector<app::TraceEvent> deferred{
+        {5.5, K::FrameFailed, 1, 2},  {6, K::FrameSubmitted, 1, 3}, {7, K::FramePresented, 1, 3},
+        {8, K::FrameSubmitted, 1, 4}, {8, K::Drawn, 0, 1},          {9, K::FramePresented, 1, 4},
+        {9, K::Presented, 0, 1}};
+    {
+        const app::TraceSummary s = app::summarize(window_trace(deferred));
+        CHECK(s.succeeded());
+        CHECK(s.presented == 1);
+        CHECK(s.present_ms.p50 == doctest::Approx(8.3));
+    }
+    // The same trace with the change attributed to frame 3, which did not draw it (round ec
+    // accepted this attribution).
+    {
+        auto e = deferred;
+        e.erase(e.begin() + 4); // frame 4's drawn
+        e.back().t_ms = 7;      // presented with frame 3
+        CHECK(
+            contradicts(window_trace(e),
+                        "presented of island 0 generation 1 by frame 3, which has no drawn of it"));
+    }
+    // A window gpu_ready names the first frame that draws the change: without its drawn the
+    // trace does not say what frame 2 drew.
+    {
+        auto e = window_trace(deferred);
+        e.erase(std::find_if(e.begin(), e.end(), [](const auto& x) { return x.kind == K::Drawn; }));
+        CHECK(contradicts(e, "gpu_ready of island 0 generation 1 with no drawn of its frame"));
+    }
+    // A drawn that names no frame, a drawn before the readiness, twice in a frame, after the
+    // presentation.
+    CHECK(contradicts(window_trace({{6.5, K::Drawn, 0, 1}}),
+                      "drawn of island 0 generation 1 at a time with no frame_submitted"));
+    CHECK(contradicts(window_trace({{2, K::Drawn, 0, 1}}),
+                      "drawn of island 0 generation 1 before its gpu_ready"));
+    CHECK(contradicts(window_trace({{5, K::Drawn, 0, 1}}),
+                      "drawn of island 0 generation 1 twice in one frame"));
+    {
+        auto e = deferred;
+        e.push_back({10, K::FrameSubmitted, 1, 5});
+        e.push_back({10, K::Drawn, 0, 1});
+        CHECK(contradicts(window_trace(e), "drawn of island 0 generation 1 after its presented"));
     }
 }
 
@@ -351,8 +616,11 @@ TEST_CASE("window trace: the frame tracer records skipped and retried acquires, 
         tracer.acquired(t, now(), acquire);
     };
     auto present = [&](std::uint32_t status, bool idle) {
+        // Sequenced: the order of a call's arguments is unspecified (GCC evaluates them last
+        // first).
         const double t = now();
-        tracer.presented(t, now(), now(), status, fresh, usable, idle);
+        const double p0 = now();
+        tracer.presented(t, p0, now(), status, fresh, usable, idle);
     };
     attempt(app::kAcquireTimeout); // 1: skipped (backs off)
     tracer.failed("acquire_skipped");
@@ -438,8 +706,9 @@ TEST_CASE(
     tracer.begin({}, anno::render::Rect{0, 0, 10, 10}, 2);
     const double t = trace.now_ms();
     tracer.acquired(t, t, app::kAcquireSuccessOptimal);
-    tracer.presented(trace.now_ms(), trace.now_ms(), trace.now_ms(), app::kPresentError, yes, yes,
-                     true);
+    const double submit = trace.now_ms();
+    const double p0 = trace.now_ms();
+    tracer.presented(submit, p0, trace.now_ms(), app::kPresentError, yes, yes, true);
     CHECK(tracer.outstanding() == 1);
     // The window closes here: the trace is finalized with the change still waiting.
     const app::EvidenceOutcome out = trace.finalize(dir, "case\n", "", 0);
@@ -489,6 +758,7 @@ TEST_CASE("window trace: frames carry one epoch that never goes back, a frame fa
     }
     // The positive control still holds: the base trace with a present.
     const app::TraceSummary fine = app::summarize(window_trace({{6, K::FrameSubmitted, 1, 3},
+                                                                {6, K::Drawn, 0, 1},
                                                                 {7, K::FramePresented, 1, 3},
                                                                 {7, K::Presented, 0, 1},
                                                                 {8, K::FrameFailed, 2, 4}}));
@@ -534,8 +804,9 @@ TEST_CASE("window trace: readiness waits for every key the change invalidated in
         }
         const double t = trace.now_ms();
         tracer.acquired(t, trace.now_ms(), app::kAcquireSuccessOptimal);
-        tracer.presented(trace.now_ms(), trace.now_ms(), trace.now_ms(), present, fresh, usable,
-                         false);
+        const double submit = trace.now_ms();
+        const double p0 = trace.now_ms();
+        tracer.presented(submit, p0, trace.now_ms(), present, fresh, usable, false);
     };
     CHECK(!fresh(unchanged)); // never fresh: an unchanged key must not hold the change back
     fresh_keys = {a};         // one of the two changed keys: the island is not CPU-ready

@@ -99,9 +99,15 @@ enum class TraceKind : std::uint8_t {
     /// Frame `version` (epoch `island`) produced no presented image (no usable surface texture, or
     /// the present call failed).
     FrameFailed,
-    /// The first successful present call of a frame at or after the frame of gpu_ready(island,
-    /// version), at that frame's time: the CPU-side return of the call, not display.
+    /// The first successful present call of a frame that draws island `island`'s change of
+    /// generation `version` (a Drawn of that frame), at that frame's present-call return: the
+    /// CPU-side return of the call, not display.
     Presented,
+    /// The frame submitted at this time draws island `island`'s change of generation `version`
+    /// (round ed): at least one key the change invalidated is in that frame's view and every such
+    /// key is GPU-usable at that frame's observation. Recorded for each such frame until the
+    /// change is presented, also for a frame whose present then fails.
+    Drawn,
 };
 
 [[nodiscard]] std::string_view trace_kind_name(TraceKind k);
@@ -137,11 +143,13 @@ struct TraceSummary {
     bool gpu_mode = false;
     std::size_t gpu_ready = 0, gpu_unfinished = 0;
     Distribution gpu_ms;
-    /// Window traces (round ec): edits whose GPU-usable change was in a frame whose present call
-    /// returned success (presented, latency present_ms from the edit), edits GPU-usable but never
-    /// in such a frame (present_unfinished), and the frames by outcome.
+    /// Window traces (round ec): edits whose change a frame drew and whose present call returned
+    /// success (presented, latency present_ms from the edit), edits GPU-usable but never in such a
+    /// frame (present_unfinished), and the frames by outcome. present_coalesced (round ed): of the
+    /// presented edits, those whose island committed a later generation before the presentation
+    /// (the frame may show that newer content for the same chunks).
     bool window = false;
-    std::size_t presented = 0, present_unfinished = 0;
+    std::size_t presented = 0, present_unfinished = 0, present_coalesced = 0;
     std::size_t frames_submitted = 0, frames_presented = 0, frames_failed = 0;
     std::size_t batches_published = 0, batches_taken = 0;
     Distribution present_ms;
@@ -171,6 +179,12 @@ struct TraceSummary {
     /// - a Presented of i and g needs that pair's GpuReady not after it, and a FramePresented at
     ///   the same time whose frame is not below the frame submitted at the GpuReady's time; at
     ///   most once;
+    /// - in a window trace (round ed): a Drawn of i and g is at a FrameSubmitted's time (it names
+    ///   that frame), not before that pair's GpuReady, at most once per frame, and never after the
+    ///   pair's Presented; a GpuReady has a Drawn of its frame (the first frame that draws the
+    ///   change usable); a Presented's frame has a Drawn of that pair, and no earlier presented
+    ///   frame has one (the first successful present of a frame that draws it, not of any later
+    ///   frame);
     /// - a FramePresented needs the FrameSubmitted of its frame before it, and a frame is never
     ///   both presented and failed;
     /// - a BatchTaken needs the BatchPublished of its turn before it;

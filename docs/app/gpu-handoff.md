@@ -56,8 +56,11 @@ them implies the next.
    records the frame whose submission first draws all of an island's change GPU-usable (`gpu_ready`).
 
    Round ec measures one more boundary: the **present call's return**. It is recorded in the play window
-   (`docs/app/window-trace.md`): the first frame whose present call returned `WGPUStatus_Success`, among
-   the frames at or after the one that made the change GPU-usable (`presented`).
+   (`docs/app/window-trace.md`, `presented`). Since round ed it is the first frame that draws the change
+   (its keys within that frame's own view all GPU-usable at that frame's observation: `drawn`) and whose
+   present call returned `WGPUStatus_Success`. Round ec took the first successful frame at or after the
+   change's `gpu_ready` frame, whatever it drew; a failed present followed by a frame with the view
+   elsewhere was reported presented. That rule is withdrawn.
 
    Two boundaries are still not measured:
    - **GPU completion:** the compositor has no non-blocking completion query, and a blocking wait would

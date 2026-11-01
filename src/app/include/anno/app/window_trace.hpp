@@ -2,10 +2,10 @@
 // A bounded in-memory recorder shared by the sim thread and the window thread: events in the
 // picture_trace format, one row per attempted GPU frame, one row per turn. Nothing is written until
 // finalize(). A record past a bound is counted as dropped; a trace with drops is written without
-// RunEnd (incomplete evidence). The correlation of a GPU-usable change with the first successful
-// present call is PresentCorrelator; the window's handling of a surface acquire is
-// classify_acquire. No WebGPU type appears here: the statuses are the values of webgpu.h and
-// wgpu.h, which the viewer checks against the header.
+// RunEnd (incomplete evidence). FrameTracer correlates a change with the first successful present
+// call of a frame that draws it; the window's handling of a surface acquire is classify_acquire. No
+// WebGPU type appears here: the statuses are the values of webgpu.h and wgpu.h, which the viewer
+// checks against the header.
 #pragma once
 
 #include <chrono>
@@ -15,6 +15,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -137,26 +138,20 @@ class WindowTrace {
     std::uint64_t dropped_ = 0;
 };
 
-/// Correlates GPU-usable changes with presented frames. gpu_ready(i, g, f): the change of island i
-/// in generation g was GPU-usable in frame f. presented(f'): frame f' returned success from its
-/// present call; returns the changes it completes, those GPU-usable in a frame at or before f'. A
-/// failed frame completes nothing; a later successful frame may. Each change completes once.
-class PresentCorrelator {
-  public:
-    void gpu_ready(std::uint32_t island, std::uint64_t generation, std::uint64_t frame);
-    [[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint64_t>>
-    presented(std::uint64_t frame);
-    [[nodiscard]] std::size_t waiting() const { return waiting_.size(); }
-
-  private:
-    std::map<std::pair<std::uint32_t, std::uint64_t>, std::uint64_t> waiting_;
-};
-
 /// The window trace's bookkeeping of attempted GPU frames (window thread;
 /// docs/app/window-trace.md). The viewer calls it at each boundary of a frame; what the window does
 /// with an acquire stays the viewer's (classify_acquire). Holds the commits not yet given a view,
-/// the CPU and GPU readiness of those that were, the GPU-usable changes waiting for a successful
-/// present call, the frame ids and the surface epoch.
+/// the visible changes not yet presented, the frame ids and the surface epoch.
+///
+/// Presentation (round ed): a change is presented by the first frame whose present call succeeds
+/// and which draws it. A frame draws a change when at least one key the change invalidated is in
+/// that frame's own view (its rectangle and zoom group) and every such key is GPU-usable at that
+/// frame's observation: readiness seen in an earlier frame does not count. A failed present, a
+/// frame whose view holds none of the change's keys, and a frame in which one of them is stale or
+/// not on the GPU complete nothing; the change keeps waiting, and is reported unfinished if the
+/// session ends first. The frame's scene is the one taken after the boundary that committed the
+/// change, so it holds that generation or a later one: a later commit of the same island over the
+/// same keys is drawn instead, which the aggregate counts as coalesced.
 class FrameTracer {
   public:
     using Ready = std::function<bool(const render::ChunkKey&)>;
@@ -171,8 +166,8 @@ class FrameTracer {
     void committed(std::uint32_t island, std::uint64_t generation,
                    std::vector<render::ChunkKey> keys);
     /// The start of an attempt: `row` carries the view and the generation (the frame id is assigned
-    /// here); the commits waiting for a view wait for their keys within `view` of `group`
-    /// (NoVisibleChange when none is in it).
+    /// here). `view` of `group` is this attempt's view. A commit not yet given a view is visible
+    /// when one of its keys is in it, else NoVisibleChange (offscreen, never waited for).
     void begin(FrameRecord row, render::Rect view, std::size_t group);
     /// The surface was (re)configured: the epoch advances.
     void reconfigured() { ++epoch_; }
@@ -182,32 +177,33 @@ class FrameTracer {
     /// fatal): FrameFailed at the acquire's end, and its row.
     void failed(const char* outcome);
     /// The attempt was submitted at `t_submit` and its present call ran from `p0` to `p1` and
-    /// returned `status`. The readiness of the waiting commits is observed once, at `t_submit`
-    /// (`fresh`: a key is CPU-ready, `usable`: GPU-usable); a successful present completes the
-    /// changes GPU-usable in this frame or earlier. `picture_idle`: no batch waiting and nothing
-    /// pending in the picture, for Converged.
+    /// returned `status`. Each waiting change's keys within this attempt's view are observed once,
+    /// at `t_submit` (`fresh`: a key is CPU-ready, `usable`: GPU-usable): ChunksReady and GpuReady
+    /// the first time they are all fresh, and all usable; Drawn in every frame in which they are
+    /// all usable; Presented, and the change ends, when that frame's present succeeded.
+    /// `picture_idle`: no batch waiting and nothing pending in the picture, for Converged.
     void presented(double t_submit, double p0, double p1, std::uint32_t status, const Ready& fresh,
                    const Ready& usable, bool picture_idle);
     [[nodiscard]] std::uint64_t epoch() const { return epoch_; }
     [[nodiscard]] std::uint64_t frames() const { return frame_; }
-    /// Changes not yet presented (not given a view, not CPU-ready, not GPU-usable, or not
-    /// presented).
-    [[nodiscard]] std::size_t outstanding() const {
-        return unwatched_.size() + cpu_.waiting() + gpu_.waiting() + correlator_.waiting();
-    }
+    /// Changes not yet presented (not given a view, or visible and not yet drawn by a successful
+    /// present).
+    [[nodiscard]] std::size_t outstanding() const { return unwatched_.size() + visible_.size(); }
 
   private:
     struct Watch {
         std::uint32_t island = 0;
         std::uint64_t generation = 0;
+        /// Every key the change invalidated, in every zoom group: each frame takes those in its
+        /// own view.
         std::vector<render::ChunkKey> keys;
+        bool cpu_ready = false, gpu_ready = false;
     };
     WindowTrace& trace_;
     std::size_t max_outstanding_;
-    std::vector<Watch> unwatched_;
-    ReadinessTracker cpu_, gpu_;
-    std::vector<ReadinessTracker::KeyEvent> key_log_;
-    PresentCorrelator correlator_;
+    std::vector<Watch> unwatched_, visible_;
+    /// This attempt's view keys (begin), for the observation after its render.
+    std::set<render::ChunkKey> in_view_;
     std::uint64_t frame_ = 0, epoch_ = 1;
     bool converged_ = false;
     FrameRecord row_;

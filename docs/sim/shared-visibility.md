@@ -39,8 +39,9 @@ step, so a refused founding writes nothing; (b) sets are written with `insert_pl
 PRNG draw, no iteration-order dependence; (c) a member that is not in the player table at the time is skipped,
 as MILIT peers are; a defeated or bankrupt member still receives (membership is not state-dependent); (d) the
 visit selection (`reveal_city`, its early-out and the lowest-numbered-city quirk) looks at the founder P alone;
-mirroring is idempotent, and because members' per-city membership stays identical under this policy P lacking a
-city means the group lacks it. Because the single visit is per founding, a member's later founding can visit a
+mirroring is idempotent, and for worlds that start with sharing on and no pre-existing cities (the ship start) the members' per-city
+membership stays identical, so P lacking a city means the group lacks it. A loaded world with asymmetric masks is not
+refused: there the group learns a city only by its own members' later foundings (a reveal lag, not a leak). Because the single visit is per founding, a member's later founding can visit a
 further city of a third player earlier than it would alone: the group reveals faster than one player, which
 is "revealed by P's action" and not a leak; (e) MILIT==3 peers of other members are not added (only the
 founder's own, as in the original); (f) no event or message is produced or mirrored: the original's
@@ -134,6 +135,7 @@ headless **information state**, not fog-of-war.
 - ORIGINAL file data: 373 `DISCO` records in the 50 shipped scenes, all length 4: 216 zero, 46 `0xcdcdcdcd`, the
   rest small masks (e.g. `0e000000` = players 1,2,3 in `0201SingleAddOn/single39.sze` at offset 1814, right after
   `BONUS`; `11020000` = bits 0,4,9 in `single36.sze` at 2032).
+- Duplicate `DISCO` records in one player block: the last wins (the original reads each into the same dword).
 - Loader decision: the record must be 4 bytes (else the load is refused); bits of players that exist in the scenario
   are restored into `Player::discovery`; bits of absent players or at/over `player_slots` are dropped with one
   warning per scenario (`PlayerDiscoveryBitsDropped`). The finalisation (registration + recount) then adds to the
@@ -142,6 +144,11 @@ headless **information state**, not fog-of-war.
   kind 3 = CREDIT u16; every shipped DIPL value is 3. MILIT==3 -> registration mask bit (`0x10086279`); WAR != 0 ->
   hostile (`0x100a4df0`). No relation-routed visibility sharing other than that registration marking was found
   (not exhaustively excluded).
+
+Behaviour change to ORIGINAL loaded scenarios (disclosed): the 46 shipped `0xcdcdcdcd` and the other non-zero `DISCO`
+records now restore contact bits for existing players in `Player::discovery`; before, only the registration/recount
+produced them. This follows the evidenced loader (0x1001d61d); whether the fill survives at runtime is UNKNOWN (section 8).
+The scenario corpus hashes moved accordingly.
 
 ## 10. Contract review
 

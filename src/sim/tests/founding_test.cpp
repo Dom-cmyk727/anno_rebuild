@@ -2014,3 +2014,32 @@ TEST_CASE(
     auto refused = sim::replay(ow, rec.log());
     CHECK((!refused.ok() || !refused.value().reproduced()));
 }
+
+TEST_CASE("shared visibility: a MILIT peer outside the group joins the group, other members' peers "
+          "do not") {
+    // Group {0, 1}. Player 0 has MILIT 3 towards outsider 2 (a registration peer, original rule);
+    // player 1 has MILIT 3 towards outsider 3 (a peer of ANOTHER member: not added). Peace holds
+    // for the member pair. Expected city mask after player 0's founding: {0, 1} + peer {2} =
+    // {0,1,2}.
+    Setup s = base_setup();
+    s.spec.players.push_back(sim::ScenarioSpec::PlayerSpec{});
+    s.spec.players.back().id = sim::PlayerId{3};
+    s.spec.players.back().kind = 8;
+    s.rules.shared_visibility = {{0, 1}};
+    s.spec.players[0].relations = {sim::Relation{sim::PlayerId{2}, 0, 3, 0, 0}};
+    s.spec.players[1].relations = {sim::Relation{sim::PlayerId{3}, 0, 3, 0, 0}};
+    sim::World w = make(s);
+    REQUIRE(w.check_invariants().empty());
+    REQUIRE(w.apply(control_command(0)).ok());
+    CHECK(isl(w).cities[0]->player_mask == pids({0, 1, 2}));
+    CHECK(isl(w).players_present == pids({0, 1})); // peers are not "present"
+    for (const std::uint32_t p : {0U, 1U, 2U}) {
+        CHECK(w.players().find(sim::PlayerId{p})->discovery == pids({0}));
+    }
+    CHECK(w.players().find(sim::PlayerId{3})->discovery.empty());
+    // The same world without the group: the peer rule alone, as in the original.
+    s.rules.shared_visibility.clear();
+    sim::World off = make(s);
+    REQUIRE(off.apply(control_command(0)).ok());
+    CHECK(isl(off).cities[0]->player_mask == pids({0, 2}));
+}

@@ -1460,3 +1460,41 @@ TEST_CASE("founding E2: definitions the command cannot decode refuse, nothing ch
         rejected(w, control_command(), sim::Reject::NotAFoundingType);
     }
 }
+
+#include <chrono>
+
+TEST_CASE(
+    "founding E3: the cost of one founding as unrelated figures and cities grow (opt-in measure)") {
+    // Correctness always (the same result whatever lies far away); with ANNO_FOUNDING_BENCH=1 the
+    // wall time of World::apply is printed per size. The work of one founding is: one pass over
+    // the figure registry (a cheap position test per figure; only figures inside the grown query
+    // rectangle build candidates), one scan of the island's city slots (a configured bound, 16),
+    // the territory (area of the disc), the reveal (area / 64 samples) and the payment (holds).
+    // Nothing is sorted and no pair of figures is compared. The only term that grows with the
+    // world is the linear figure pass.
+    const bool print = std::getenv("ANNO_FOUNDING_BENCH") != nullptr;
+    std::uint64_t reference_hash = 0;
+    for (const std::uint32_t extra : {0U, 1000U, 10000U, 50000U}) {
+        Setup s = tall_setup(150);
+        for (std::uint32_t i = 0; i < extra; ++i) {
+            // Far from both sites: x 100..119 (the sea), rows 0..199, owned by player 2.
+            s.spec.figures.push_back(soldier_at(2, 100 + static_cast<double>(i % 20),
+                                                static_cast<double>((i / 20) % 200)));
+        }
+        sim::World w = make(s);
+        const auto t0 = std::chrono::steady_clock::now();
+        const sim::ApplyResult r = w.apply(control_command(0));
+        const auto t1 = std::chrono::steady_clock::now();
+        REQUIRE(r.ok());
+        CHECK(owned_by(w, 0) == 1976);
+        if (extra == 0) {
+            reference_hash = isl(w).tiles.tile_count();
+        }
+        CHECK(isl(w).tiles.tile_count() == reference_hash);
+        if (print) {
+            std::cout << "figures " << extra + 6 << ": apply "
+                      << std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()
+                      << " us\n";
+        }
+    }
+}

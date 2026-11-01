@@ -1693,7 +1693,7 @@ TEST_CASE("registry digest changes with every field") {
     goods[9].name = "WOLLE2";
     CHECK(sim::TypeRegistry::digest_of({}, goods, class_table) != empty_digest);
     // The figure types (T24) too, field by field.
-    static_assert(sim::field_count<sim::FigureType>() == 8);
+    static_assert(sim::field_count<sim::FigureType>() == 9);
     const sim::FigureType fig{220, 53687, 1280, 3, 500};
     std::map<std::uint64_t, std::string> fseen;
     fseen[sim::TypeRegistry::digest_of({}, goods_table, class_table, {&fig, 1})] = "base";

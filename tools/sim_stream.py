@@ -83,7 +83,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 121
+STATE_HASH_VERSION = 122
 PRNG_TIMELINE_VERSION = 3
 
 
@@ -237,6 +237,17 @@ def link_tables_bytes():
     return b
 
 
+def nav_rules_bytes():
+    """Rules::nav defaults (stream 122, docs/sim/ship-navigation.md 7 and 12): move_blocked_mask 0x200e, plans_per_advance 4, run_cap 10,
+    retry_cap 8, goal_radius_tiles 6, unit_cap 64, window_radius_tiles 1024, window_blocks 32, the three u64 limits (2^22 coarse pops,
+    2^24 fine pops, 2^28 bytes), volk_number 1, health span/floor 35/65, cargo penalty 17, then four cost classes of u16 10 13 50 69."""
+    b = u32(0x200E) + u32(4) + u32(10) + u32(8) + u32(6) + u32(64) + u32(1024) + u32(32)
+    b += u64(1 << 22) + u64(1 << 24) + u64(1 << 28)
+    b += u32(1) + u32(35) + u32(65) + u32(17)
+    b += u64(4) + b''.join(u16(10) + u16(13) + u16(50) + u16(69) for _ in range(4))
+    return b
+
+
 def rules_bytes(full_tick=False):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
@@ -247,7 +258,7 @@ def rules_bytes(full_tick=False):
     # founding_types (stream 120): u64 count 1, the Kontor 1302; shared_visibility (121): u64 0
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
             + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0)
-            + u64(0))  # city_names (120), shared_visibility (121): both empty
+            + u64(0) + nav_rules_bytes())  # city_names (120), shared_visibility (121): both empty; nav (122)
 
 
 def settings_bytes(width=0, height=0):
@@ -757,7 +768,8 @@ def state_hash(registry, cursor, ms, last_tick, players, full_tick=False, island
     assert step_ms < 30000, 'the monopoly refresh would run again (not transcribed)'
     acc750 = ms & M32
     acc_monopoly = step_ms if steps > 0 else 0
-    ids = fnv(u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0))
+    # ids (stream 122): next_figure, next_event_seq, next_order_id, next_ticket, then the accumulators
+    ids = fnv(u64(1) + u64(1) + u64(1) + u64(1) + u32(acc750) + u32(acc_monopoly) + u8(0))
     events = fnv(u64(0))                # no timed events
     t = (ms >> 1) & M32
     figures = figures_digest(t & 0xFFFF if steps > 0 else 0)

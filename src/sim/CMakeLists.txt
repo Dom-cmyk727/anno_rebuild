@@ -3,7 +3,7 @@
 # anno_formats to read type data from the original files.
 add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
             src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
-            src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp
+            src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
             src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/walk_cells.cpp src/walk_search.cpp
@@ -28,7 +28,7 @@ if(ANNO_BUILD_TESTS)
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
                  tests/game_setup_test.cpp tests/house_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
-                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp)
+                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp)
   # anno_sim_load: the scenario corpus case reads the island templates of the game
   # directory for the link resolver (S14 stage 2).
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support

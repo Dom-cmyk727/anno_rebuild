@@ -2318,6 +2318,8 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     island_test::Stream ids;
     ids.u64(3);
     ids.u64(2);
+    ids.u64(1); // next_order_id (stream 122)
+    ids.u64(1); // next_ticket
     ids.u32(100);
     ids.u32(100);
     ids.u8(0);
@@ -2362,6 +2364,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u8(0);                    // crew_slot absent
         figs.u64(0);                   // holds: none
         figs.u32(0);                   // state_word (stream 120)
+        figs.u8(0);                    // nav absent (stream 122)
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
@@ -2377,7 +2380,9 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // bytes of list head, the 115 bytes of slot 0 (93 until stream 116 added dir16, parent,
     // crew_slot and the hold count: 18 bytes; 111 until stream 120 added the 4-byte state word),
     // then 92 bytes into slot 1) is reported with the scope path of that slot.
-    const std::size_t stamp_at = figures_at + 20 + 115 + 92;
+    const std::size_t stamp_at =
+        figures_at + 20 + 116 +
+        92; // slot 0: 115 bytes until stream 122 added the nav presence byte
     REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
     bad[stamp_at] = 2;
@@ -2679,7 +2684,7 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         // MAP-2 (stream 120): the state word.
         {"state_word", [](sim::Figure& f) { f.state_word = 0x02; }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 19);
+    static_assert(sim::field_count<sim::Figure>() == 20);
     static_assert(sim::field_count<sim::TransportState>() == 7);
     static_assert(sim::field_count<sim::ShipHold>() == 2);
     // The 18 members, the position being two scalars, the transport state seven fields and

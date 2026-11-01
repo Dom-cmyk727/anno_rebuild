@@ -2,50 +2,74 @@
 # the C++ serializer). case <name> <fnv64 hex>, then one "fig id speed cap layer load
 # bewohntype range hull" line per figure in ascending id; hull "-" is absent.
 
-case hull_positive 19978e247d060623
+case hull_positive f5eae1434ecf2ae9
 fig 1502 1024 0 2 0 113 4096 397
 
-case hull_absent 3cd5ea9d1cabea32
+case hull_absent 3bf042c08b62e196
 fig 1502 1024 0 2 0 113 4096 -
 
-case hull_zero 8bad2e95898420a5
+case hull_zero 963cf57f9e70d56f
 fig 1502 1024 0 2 0 113 4096 0
 
-case hull_shipped_negative_391 c31acb0b9337d5da
+case hull_shipped_negative_391 7ad48d106632008e
 fig 391 1024 0 2 0 113 4096 -27487789056
 
-case hull_edge_positive 341365c30460618e
+case hull_edge_positive 21f3c7ff7a90a1aa
 fig 1502 1024 0 2 0 113 4096 549755813887
 
-case hull_edge_negative ae8713670bea6b47
+case hull_edge_negative 22125f99b06cc055
 fig 1502 1024 0 2 0 113 4096 -549755813887
 
-case changed_id 9afd8eff3bb5c530
+case changed_id de15229209eb5790
 fig 1503 1024 0 2 0 113 4096 397
 
-case changed_speed 934eb709045a81e4
+case changed_speed 8ce50ffb46140bac
 fig 1502 1025 0 2 0 113 4096 397
 
-case changed_capacity ee46352aee78b214
+case changed_capacity 08ababb37d1d243c
 fig 1502 1024 1 2 0 113 4096 397
 
-case changed_layer a76d307f8e8f3284
+case changed_layer 0a693904a67a8d8c
 fig 1502 1024 0 3 0 113 4096 397
 
-case changed_load_ticks b9e26a202fde4ab4
+case changed_load_ticks 6b1f151845525e1c
 fig 1502 1024 0 2 1 113 4096 397
 
-case changed_bewohntype 89bd2b0d41c0af46
+case changed_bewohntype 63aeeafcc594bed2
 fig 1502 1024 0 2 0 114 4096 397
 
-case changed_range 91f001af520ec454
+case changed_range 8e951cdb7b85bafc
 fig 1502 1024 0 2 0 113 4097 397
 
-case two_ascending bbb951bd0dd2766a
+case nav_present 6724df926abf9894
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 2 0 1280
+
+case nav_changed_speed 57a64e3494144ad1
+fig 1502 1024 0 2 0 113 4096 397 nav 154618823 472446402 6000 4 2 0 1280
+
+case nav_changed_turn 97dccb28375182bd
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446403 6000 4 2 0 1280
+
+case nav_changed_hp 2bbee1a063a9a321
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6001 4 2 0 1280
+
+case nav_changed_hold_a 1c24ea85e65821f1
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 5 2 0 1280
+
+case nav_changed_hold_b 609fd7df7b8a9381
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 3 0 1280
+
+case nav_changed_class f3ce7df990acf411
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 2 1 1280
+
+case nav_changed_stamp 4d89102148f3d3a1
+fig 1502 1024 0 2 0 113 4096 397 nav 154618822 472446402 6000 4 2 0 1281
+
+case two_ascending ed97b7b97d6e2a0c
 fig 391 1024 0 2 0 113 4096 -27487789056
 fig 1502 1024 0 2 0 113 4096 397
 
-case three_ascending 5553e67791e8c213
+case three_ascending e43b524df61ff9e9
 fig 391 1024 0 2 0 113 4096 -27487789056
 fig 717 512 0 1 0 97 1792 -
 fig 1502 1024 0 2 0 113 4096 397

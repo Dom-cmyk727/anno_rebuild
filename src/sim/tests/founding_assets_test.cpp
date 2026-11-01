@@ -18,6 +18,7 @@
 
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/figure.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/scenario_formats.hpp>
@@ -29,6 +30,19 @@
 #include <anno/test/game_dir.hpp>
 
 #include "world_access.hpp"
+
+namespace {
+// Test-setup relocation (not a sailed route): moves the figure and keeps the navigation
+// motion state in step, so the invariant Figure::pos == floor(pos_u) still holds.
+void relocate(anno::sim::Figure& f, anno::sim::FixedPos pos) {
+    f.pos = pos;
+    if (f.nav) {
+        f.nav->pos_u[0] = std::int64_t{pos.x} * anno::sim::kNavPosUnitsPerQ8;
+        f.nav->pos_u[1] = std::int64_t{pos.y} * anno::sim::kNavPosUnitsPerQ8;
+        f.nav->res24[0] = f.nav->res24[1] = 0;
+    }
+}
+} // namespace
 
 namespace sim = anno::sim;
 namespace sl = anno::sim_load;
@@ -165,6 +179,21 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     CHECK(hull(391) == std::optional<std::int64_t>(-27487789056LL));
     CHECK_FALSE(hull(343).has_value());
     CHECK_FALSE(hull(1510).has_value());
+    // The navigation facts of the file (MAP-NAV-2 B): 1502 has HEAD f0 0.11, f1 0.036, LOGIC holds
+    // 4/2, class 0, 6000 hp, stamp byte 40; the same conversions as the synthetic case, now from
+    // the shipped bytes. 343 and 1510 (no hit points) and the scout and donkey do not navigate.
+    REQUIRE(ship->nav.has_value());
+    CHECK(ship->nav->speed_q32 == 154618816U);
+    CHECK(ship->nav->turn_step_q32 == 472446400U);
+    CHECK(ship->nav->max_hp == 6000U);
+    CHECK(ship->nav->hold_count_a == 4U);
+    CHECK(ship->nav->hold_count_b == 2U);
+    CHECK(ship->nav->nav_class == 0U);
+    CHECK(ship->nav->stamp_radius_88 == 1280U);
+    CHECK_FALSE(types->find_figure_type(343)->nav.has_value());
+    CHECK_FALSE(types->find_figure_type(1510)->nav.has_value());
+    CHECK_FALSE(scout->nav.has_value());
+    CHECK_FALSE(donkey->nav.has_value());
 
     const fs::path manifest_path = fs::path(ANNO_REPO_DIR) / "data" / "maps" / "candidates" /
                                    "ship-start-v2" / "lan5-ship-a.json";
@@ -179,7 +208,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     auto loaded = sl::load_ship_start(parsed.value(), *dir, types, {}, rules);
     REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
     sim::World w = std::move(loaded).value();
-    REQUIRE(w.check_invariants().empty());
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     const std::uint64_t pristine_hash = w.state_hash();
 
     const std::optional<Site> found = find_legal_site(w, *k, w.config().neutral_owner);
@@ -216,7 +245,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
         if (trial.apply(command).ok()) {
             sim::Figure* real =
                 sim::find_figure(sim::WorldTestAccess::figures(w), sim::FigureId{1});
-            real->pos = s->pos;
+            relocate(*real, s->pos);
             placed = true;
             break;
         }
@@ -268,7 +297,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     }
     CHECK(owned >= 16);
     CHECK(owned <= 1976); // the disc of radius 24, clipped by the island
-    CHECK(w.check_invariants().empty());
+    CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     CHECK(w.state_hash() != pristine_hash);
     // Claim stage 2 on the real islands (ore objects loaded from OCCUR by the ship-start loader):
     // for each ore object of the island the founder is in its discovery set exactly when the
@@ -312,8 +341,8 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     auto again = sl::load_ship_start(parsed.value(), *dir, types, {}, rules);
     REQUIRE(again.ok());
     sim::World w2 = std::move(again).value();
-    sim::find_figure(sim::WorldTestAccess::figures(w2), sim::FigureId{1})->pos =
-        sim::find_figure(w.figures(), sim::FigureId{1})->pos;
+    relocate(*sim::find_figure(sim::WorldTestAccess::figures(w2), sim::FigureId{1}),
+             sim::find_figure(w.figures(), sim::FigureId{1})->pos);
     REQUIRE(w2.apply(command).ok());
     CHECK(w2.state_hash() == w.state_hash());
 }
@@ -374,7 +403,7 @@ std::optional<sim::Command> place_for_founding(sim::World& w, const Site& site,
         s->pos.x = (site.click_x + d.first) * 256 + 128;
         s->pos.y = (site.click_y + d.second) * 256 + 128;
         if (trial.apply(command).ok()) {
-            sim::find_figure(sim::WorldTestAccess::figures(w), cmd.ship)->pos = s->pos;
+            relocate(*sim::find_figure(sim::WorldTestAccess::figures(w), cmd.ship), s->pos);
             return command;
         }
     }
@@ -405,7 +434,7 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
     auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
     REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
     sim::World w = std::move(loaded).value();
-    REQUIRE(w.check_invariants().empty());
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     CHECK(w.rules().shared_visibility == std::vector<std::vector<std::uint32_t>>{{0, 1, 2, 3, 4}});
     for (std::uint32_t a = 0; a < 5; ++a) {
         const sim::Player* pa = w.players().find(sim::PlayerId{a});
@@ -443,7 +472,7 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
     const sim::World before_founding = w;
     const sim::ApplyResult r = w.apply(*command);
     REQUIRE(r.ok());
-    REQUIRE(w.check_invariants().empty());
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     const sim::Island& is = *w.islands()[site->island];
     REQUIRE(is.cities[0].has_value());
     CHECK(is.cities[0]->player_mask == pid_set({0, 1, 2, 3, 4}));
@@ -487,8 +516,8 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
         auto fresh = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
         REQUIRE(fresh.ok());
         sim::World w3 = std::move(fresh).value();
-        sim::find_figure(sim::WorldTestAccess::figures(w3), sim::FigureId{1})->pos =
-            sim::find_figure(w.figures(), sim::FigureId{1})->pos;
+        relocate(*sim::find_figure(sim::WorldTestAccess::figures(w3), sim::FigureId{1}),
+                 sim::find_figure(w.figures(), sim::FigureId{1})->pos);
         auto started = sim::Recorder::start(w3);
         REQUIRE(started.ok());
         sim::Recorder rec = std::move(started).value();
@@ -498,8 +527,8 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
         auto again = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
         REQUIRE(again.ok());
         sim::World w4 = std::move(again).value();
-        sim::find_figure(sim::WorldTestAccess::figures(w4), sim::FigureId{1})->pos =
-            sim::find_figure(w.figures(), sim::FigureId{1})->pos;
+        relocate(*sim::find_figure(sim::WorldTestAccess::figures(w4), sim::FigureId{1}),
+                 sim::find_figure(w.figures(), sim::FigureId{1})->pos);
         auto outcome = sim::replay(w4, rec.log());
         REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
         CHECK(outcome.value().reproduced());
@@ -633,7 +662,7 @@ TEST_CASE("ship start canary: two participants found, a conflict is refused, rep
         return sim::find_figure(world.figures(), sim::FigureId{id})->pos;
     };
     const auto set_pos = [](sim::World& world, std::uint64_t id, sim::FixedPos pos) {
-        sim::find_figure(sim::WorldTestAccess::figures(world), sim::FigureId{id})->pos = pos;
+        relocate(*sim::find_figure(sim::WorldTestAccess::figures(world), sim::FigureId{id}), pos);
     };
     // Setup on a trial copy: site 1 for seat 0, then the next legal site (on the world after the
     // first founding) for seat 2.
@@ -650,7 +679,7 @@ TEST_CASE("ship start canary: two participants found, a conflict is refused, rep
     const auto c2 = place_for_founding(trial, *second, 2);
     REQUIRE(c2.has_value());
     set_pos(w, 7, ship_pos(trial, 7));
-    REQUIRE(w.check_invariants().empty());
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
 
     auto started = sim::Recorder::start(w);
     REQUIRE(started.ok());
@@ -672,7 +701,7 @@ TEST_CASE("ship start canary: two participants found, a conflict is refused, rep
     const sim::World after_first = w;
 
     REQUIRE(rec.submit(*c2).ok());
-    REQUIRE(w.check_invariants().empty());
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     std::size_t cities = 0;
     for (const auto& island : w.islands()) {
         if (!island) {

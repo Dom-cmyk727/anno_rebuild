@@ -8,6 +8,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -192,6 +193,29 @@ void expected_config(Stream& s) {
     s.u32(1302);      // the ship menu offers the Kontor 1302 only
     s.u64(0);         // city_names: no list
     s.u64(0);         // shared_visibility: no group (stream 121)
+    // nav (stream 122): hand-written defaults (docs/sim/ship-navigation.md 7, 12)
+    s.u32(0x200e);                 // move_blocked_mask
+    s.u32(4);                      // plans_per_advance
+    s.u32(10);                     // run_cap
+    s.u32(8);                      // retry_cap
+    s.u32(6);                      // goal_radius_tiles
+    s.u32(64);                     // unit_cap
+    s.u32(1024);                   // window_radius_tiles
+    s.u32(32);                     // window_blocks
+    s.u64(std::uint64_t{1} << 22); // coarse_budget
+    s.u64(std::uint64_t{1} << 24); // fine_budget
+    s.u64(std::uint64_t{1} << 28); // memory_bytes
+    s.u32(1);                      // volk_number
+    s.u32(35);                     // health_span_percent
+    s.u32(65);                     // health_floor_percent
+    s.u32(17);                     // cargo_penalty_percent
+    s.u64(4);                      // class_costs: four classes
+    for (int i = 0; i < 4; ++i) {
+        s.u16(10); // open_orth
+        s.u16(13); // open_diag
+        s.u16(50); // shore_orth
+        s.u16(69); // shore_diag
+    }
 }
 
 void expected_settings(Stream& s) {
@@ -355,6 +379,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("founding_types", [](sim::Rules& r) { r.founding_types.push_back(1304); });
     m.emplace_back("city_names", [](sim::Rules& r) { r.city_names.push_back("Bremen"); });
     m.emplace_back("shared_visibility", [](sim::Rules& r) { r.shared_visibility = {{0, 1}}; });
+    m.emplace_back("nav", [](sim::Rules& r) { r.nav.plans_per_advance += 1; });
     return m;
 }
 
@@ -564,7 +589,7 @@ TEST_CASE("rules defaults are faithful") {
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
     CHECK(r.shared_visibility.empty());
-    static_assert(sim::field_count<sim::Rules>() == 23);
+    static_assert(sim::field_count<sim::Rules>() == 24);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1441,6 +1466,8 @@ TEST_CASE("state stream header and settings scopes") {
     expected_settings(expected);
     expected.u64(1);  // ids: next_figure
     expected.u64(1);  // ids: next_event_seq
+    expected.u64(1);  // ids: next_order_id (stream 122)
+    expected.u64(1);  // ids: next_ticket
     expected.u32(0);  // ids: event750_acc
     expected.u32(0);  // ids: monopoly.acc
     expected.u8(0);   // ids: faulted
@@ -1473,19 +1500,19 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 121);
+    CHECK(sim::kStateHashVersion == 122);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
     CHECK(scope_offset(w, "settings") == header_size + 36);
     CHECK(scope_offset(w, "ids") == header_size + 36 + 38);
-    CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 25);
-    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 25 + 46);
-    CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 25 + 46 + 8);
+    CHECK(scope_offset(w, "players") == header_size + 36 + 38 + 41);
+    CHECK(scope_offset(w, "islands") == header_size + 36 + 38 + 41 + 46);
+    CHECK(scope_offset(w, "figures") == header_size + 36 + 38 + 41 + 46 + 8);
     // figures: 31 bytes (the empty registry without the deferred list, T22).
-    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 25 + 46 + 8 + 31);
-    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 25 + 46 + 8 + 31 + 8);
-    CHECK(bytes.size() == header_size + 36 + 38 + 25 + 46 + 8 + 31 + 8 + 193);
+    CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 41 + 46 + 8 + 31);
+    CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8);
+    CHECK(bytes.size() == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {
@@ -1813,4 +1840,81 @@ TEST_CASE("state stream header reads back and validates what it read") {
         CHECK(err != "");
         CHECK(starts_with(err, "header"));
     }
+}
+
+TEST_CASE("rules digest changes with every NavRules field and validates its domains") {
+    const sim::Rules base;
+    struct Mut {
+        const char* name;
+        void (*apply)(sim::NavRules&);
+    };
+    const Mut muts[] = {
+        {"move_blocked_mask", [](sim::NavRules& n) { n.move_blocked_mask ^= 1; }},
+        {"plans_per_advance", [](sim::NavRules& n) { n.plans_per_advance += 1; }},
+        {"run_cap", [](sim::NavRules& n) { n.run_cap += 1; }},
+        {"retry_cap", [](sim::NavRules& n) { n.retry_cap += 1; }},
+        {"goal_radius_tiles", [](sim::NavRules& n) { n.goal_radius_tiles += 1; }},
+        {"unit_cap", [](sim::NavRules& n) { n.unit_cap += 1; }},
+        {"window_radius_tiles", [](sim::NavRules& n) { n.window_radius_tiles += 1; }},
+        {"window_blocks", [](sim::NavRules& n) { n.window_blocks += 1; }},
+        {"coarse_budget", [](sim::NavRules& n) { n.coarse_budget += 1; }},
+        {"fine_budget", [](sim::NavRules& n) { n.fine_budget += 1; }},
+        {"memory_bytes", [](sim::NavRules& n) { n.memory_bytes += 1; }},
+        {"volk_number", [](sim::NavRules& n) { n.volk_number += 1; }},
+        {"health_span_percent", [](sim::NavRules& n) { n.health_span_percent -= 1; }},
+        {"health_floor_percent", [](sim::NavRules& n) { n.health_floor_percent -= 1; }},
+        {"cargo_penalty_percent", [](sim::NavRules& n) { n.cargo_penalty_percent += 1; }},
+        {"class_costs", [](sim::NavRules& n) { n.class_costs[1].shore_diag += 1; }},
+    };
+    static_assert(sim::field_count<sim::NavRules>() == 16);
+    CHECK(sizeof(muts) / sizeof(muts[0]) == sim::field_count<sim::NavRules>());
+    std::set<std::uint64_t> seen{base.digest()};
+    for (const Mut& m : muts) {
+        INFO(m.name);
+        sim::Rules r = base;
+        m.apply(r.nav);
+        CHECK(r.validate().empty());
+        CHECK(seen.insert(r.digest()).second);
+    }
+    // Domains: each field just outside is refused with the field named; the valid edge passes.
+    struct Edge {
+        const char* name;
+        void (*ok)(sim::NavRules&);
+        void (*bad)(sim::NavRules&);
+    };
+    const Edge edges[] = {
+        {"plans_per_advance", [](sim::NavRules& n) { n.plans_per_advance = 1; },
+         [](sim::NavRules& n) { n.plans_per_advance = 0; }},
+        {"run_cap", [](sim::NavRules& n) { n.run_cap = 255; },
+         [](sim::NavRules& n) { n.run_cap = 256; }},
+        {"retry_cap", [](sim::NavRules& n) { n.retry_cap = 64; },
+         [](sim::NavRules& n) { n.retry_cap = 65; }},
+        {"goal_radius_tiles", [](sim::NavRules& n) { n.goal_radius_tiles = 32; },
+         [](sim::NavRules& n) { n.goal_radius_tiles = 33; }},
+        {"unit_cap", [](sim::NavRules& n) { n.unit_cap = 4096; },
+         [](sim::NavRules& n) { n.unit_cap = 0; }},
+        {"window_blocks", [](sim::NavRules& n) { n.window_blocks = 256; },
+         [](sim::NavRules& n) { n.window_blocks = 257; }},
+        {"health_span_percent",
+         [](sim::NavRules& n) {
+             n.health_span_percent = 35;
+             n.health_floor_percent = 65;
+         },
+         [](sim::NavRules& n) { n.health_span_percent = 36; }},
+        {"class_costs", [](sim::NavRules& n) { n.class_costs = {sim::NavClassCost{1, 1, 1, 1}}; },
+         [](sim::NavRules& n) { n.class_costs = {sim::NavClassCost{5, 4, 1, 1}}; }},
+    };
+    for (const Edge& e : edges) {
+        INFO(e.name);
+        sim::Rules good = base;
+        e.ok(good.nav);
+        CHECK(good.validate().empty());
+        sim::Rules bad = base;
+        e.bad(bad.nav);
+        const std::string err = bad.validate();
+        CHECK(err.find(e.name) != std::string::npos);
+    }
+    sim::Rules empty = base;
+    empty.nav.class_costs.clear();
+    CHECK(empty.validate().find("class_costs") != std::string::npos);
 }

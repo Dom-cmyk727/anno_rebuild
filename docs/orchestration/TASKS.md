@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-01: round-ee repairs and Windows verification; MAP navigation contract
+## Current dispatch — 2026-11-01: round-ee repairs and Windows verification; MAP sailing implementation
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -10,12 +10,13 @@ assignments through this tracked file on GitHub
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
 package or accept unreviewed changes. Round ee is reviewed: four repairs precede
 rendering acceptance. MAP-FOUND-3 is accepted for its local
-headless scope; MAP's next assignment is MAP-NAV-1 below.
+headless scope. MAP-NAV-1 is reviewed with two bounded findings; MAP's next
+assignment is MAP-NAV-2 below, with implementation conditional on package A.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner after intake | **READY: W4-WIN-0 → 1 → R1–R4 → 2–6.** Repair the four reviewed round-ee defects, then complete target-host verification. Source pin below; no main merge. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-1 READY.** Recover the navigation rules and prepare a reviewed deterministic movement contract and fixtures. MAP-FOUND-3 is accepted locally; movement implementation is not yet released. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-2 A READY; B–F after A's independent approval.** Repair the route oracle and planning fairness contract, close exact implementation dependencies, then implement and verify headless sailing through to founding. |
 
 **Rendering handoff pin:** `task/W4-3-live-buildings` at
 `a29b07949201e3ea5bf30c800e392f337c1ec598` (round ee documentation), code
@@ -262,7 +263,265 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-NAV-1 — ship navigation evidence, contract and fixtures · READY
+### MAP-NAV-2 — reviewed first sailing implementation · A READY, B–F CONDITIONAL
+
+**Start:** existing Mac `task/MAP-2-original-like`, documentation/reference head
+`a01c0539f0b134783dbd7ef9521a8789cfa53a4a`, engine code
+`92d4e041083835cc08168a257a31cf8a1a1b6453`. Read the
+[MAP-NAV-1 review and decisions](reviews/2026-11-01-map-nav1.md).
+Preserve newer owned work and report its relationship to this pin. Fetch/read
+this board from `origin/main` without merging main into the task branch.
+The Windows rendering assignment above is unchanged.
+
+**Outcome:** an unchanged candidate can load with five ship expeditions, receive
+authenticated-issuer move orders, actually sail and then found through the
+existing `FoundCmd`. Two participants must demonstrate this without test-only
+relocation. Keep ship starts, natural island differences, optional sharing,
+peace, shared information and no alliances. No candidate is selected or installed.
+
+**Authorization:** do A first. Once an independent read-only reviewer approves
+its corrected contract and discriminating tests, continue B–F without another
+owner confirmation for the decisions explicitly approved in the review. Engine
+implementation is now authorized on that condition. If a genuinely new gameplay
+policy or unavailable observation blocks one path, stop that dependent path,
+record the exact issue and continue independent authorized work. Do not invent
+an original rule or restart the completed navigation investigation wholesale.
+
+#### Read in this order
+
+1. Fetched main `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.4 and §0.7,
+   `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this packet
+   and the linked review. Use the current canonical workflow without merging
+   or replacing another lane's source. Keep its revision and source revision distinct.
+2. MAP `docs/re/ship-navigation.md`, `docs/sim/ship-navigation.md`,
+   `docs/orchestration/evidence/map-nav1-evidence.md`,
+   `docs/testing/ship-navigation-capture-card.md`, and the MAP-NAV-1 report.
+   Earlier first-pass notes lose precedence where the new evidence corrects them.
+3. `tools/ship_nav_ref.py`, all three files under
+   `fixtures/synthetic/sim/nav/`, their `CMakeLists.txt` registrations, and the
+   relevant private `cache/map2-nav1/` notes/harnesses. Private cache is supporting
+   material, not a prerequisite that another checkout must somehow possess.
+4. `docs/sim/{ship-start-integration,ship-founding,shared-visibility,state}.md`,
+   the current fixed-map ship profile, and relevant figure/terrain format specs.
+5. `src/sim/include/anno/sim/{figure,command,replay,scheduler,state_fields,config}.hpp`,
+   `src/sim/src/{figure,scheduler,codec,replay,types,founding}.cpp`, the existing
+   numeric/registry/rules/effects helpers, figure/command/replay tests,
+   `src/sim_load/src/{original_registry,ship_start}.cpp`,
+   `src/sim/tests/{ship_start_load,ship_state,figure_facts}_test.cpp`,
+   `tools/{sim_stream,figure_digest_ref}.py`. Follow the actual includes/callers;
+   this list does not authorize copying an old interface around a newer invariant.
+
+#### A — close the contract and oracle defects before engine edits
+
+1. Reproduce both review counterexamples first, using temporary fixture/model
+   data. For V7, substituting `E10 E10 E10 E10` must be rejected for the wall
+   crossing. Expand every run into steps and check bounds, water and diagonal
+   side tiles. Add narrow corruptions for corner cutting and leaving/re-entering
+   the map while retaining a valid endpoint. An unchanged valid fixture must
+   still pass. Keep exact-run equality, path legality and independent goal/status
+   checks separate; passing one is not proof of the others. Check stamped
+   endpoints rather than trusting a copied endpoint field as its own oracle.
+2. Replace the unfair first-four quota with a deterministic bounded-service
+   policy. Specify request eligibility, stable ordering, replacement, cancellation,
+   removal, exhaustion and retry. A repeatedly commanded ship must not overtake
+   an older eligible waiter indefinitely. Model the actual registry cursor/cadence,
+   including 100 slots, five-tick Advances and ships in slots 1..5. Demonstrate
+   a finite service bound under sustained requests, then persist/hash whatever
+   fairness state affects outcomes. Quota deferral keeps an order pending and
+   must not emit `RouteFailed` or silently install a long idle delay.
+3. Finish only the exact route dependencies: goal callback/Offer selection and
+   object-height/coarse-map contribution/invalidation. Reconcile `0x100a48c0`
+   with `0x1000f260` and the existing RK note, including whether storing a
+   congested candidate updates the best score. Inspect `0x10090350` and its
+   object-height calls, builder extrema and update flags. Commit independent
+   synthetic cases for equal-score/different-density candidates, object below/
+   above the blocking threshold and shore-cost versus open-water routing.
+   Do not turn every footprint into land without the evidenced predicate.
+4. Pin the actual public stop/cancel representation and codec tag/mode, its
+   atomic refusals, pending-admission removal and segment-trim behavior. A valid
+   `(0,0)` target must remain distinguishable from stop. Resolve land-start
+   candidate semantics statically if possible; otherwise explicitly use and
+   label the conservative first-slice rule: a land start may escape to adjacent
+   reachable water but is not itself offered as a destination candidate. Keep
+   original-runtime parity of this case UNKNOWN; update the capture card.
+5. Reconcile stale matrix/RE statements, accepted-command versus later route
+   failure, navigability within lakes versus exterior-sea spawn policy, and
+   planning-only density versus deferred segment-end collision handling.
+   Define every numeric scale, residue denominator, rounding and seal bound.
+   Include all future-affecting residue in the persistence contract. Correct the
+   Q32 absolute/relative error wording. A proof still to be made stays a requirement.
+6. Run the cheap canonical reference selection, require its exact test names,
+   then obtain independent review of A's contract, fixtures and both counterexamples.
+   **A stop condition:** a source-dependent route rule still unknown or a failing
+   counterexample blocks dependent implementation. UI rounding and Windows-only
+   capture availability do not block exact headless targets or the explicitly
+   approved adaptations. Record A's reviewed revision and disposition before B.
+
+#### B — validated navigation state and portable arithmetic foundation
+
+1. Add optional, validated navigation facts through the existing content registry
+   and original-file loader. Keep non-navigation figures on their existing paths.
+   Speeds, turn timing, health/cargo inputs, navigation classes, query radii and
+   rule limits need explicit representable domains, checked products and useful
+   refusal diagnostics. No type-1502 or player-zero special case in engine logic.
+2. Add authoritative motion and fair-admission state with a clear owner. Keep
+   the ship's stepper stamp distinct from the registry stamp. Specify the relation
+   between the fine accumulator and published Q24.8 coordinates and validate it.
+   Crew and transient/derived spatial data must not introduce hidden state.
+3. Choose the simplest portable integer representation that satisfies A's exact
+   contract. Prove intermediate widths, signed behavior, divisions and carry
+   before optimizing. Do not assume `__int128` exists on MSVC, or add a generic
+   arithmetic framework beyond what this slice needs.
+4. Version as soon as serialized state or registry/rules identity changes: reserve
+   a new distinct version (122 or a higher unused version), update explicit
+   serialization and the independent Python transcription together. Do not leave
+   intermediate authoritative fields outside the hash until package F. Never
+   reuse a version for incompatible committed layouts.
+5. Check valid and invalid original/mod-style facts, alternate type/player,
+   byte/digest vectors, save/read round trips and invalid-state diagnostics.
+   Version-refusal tests start from a valid control, modify only the version,
+   recompute the envelope checksum and assert the version-specific error.
+   Obtain independent review before reporting B complete.
+
+#### C — real terrain and bounded route queries
+
+1. Build a shared world coast index from the existing vertex/terrain views,
+   honoring zero boundary vertices, four-corner averages, object contribution,
+   shore costs and island-slot order. Rebuild the relevant derived region after
+   changes. Tests compare incremental updates against a clean rebuild, including
+   removal and neighbors affected by shore classification. Never mutate assets.
+2. Implement the coarse connectivity masks and search, fine corridor expansion,
+   FIFO/discovery order, learning retries, candidate selection and run output in
+   small pieces with their own fixtures. Consume actual C++ output in the tests;
+   Python expected-output checks alone do not test the engine. Exercise block
+   boundaries, a one-tile channel, closed diagonal gap, unreachable goal, inside-
+   lake route and outside-to-lake failure separately.
+3. Implement deterministic bounded local unit queries/stamps. Avoid scanning and
+   sorting the entire figure registry for each route. Derived spatial data must
+   update with movement, removal and load and reproduce the specified stable
+   order; test more than the query cap and unrelated distant figures. Serial
+   queries use current authoritative state, never a stale worker snapshot.
+4. Enforce per-query work and memory limits with checked map/window dimensions.
+   Account for search preparation, retries and result storage as well as node
+   pops. `BudgetExceeded` is a distinct failed plan, never a partial success.
+   Establish defaults on documented representative small and real-candidate
+   queries with a margin; do not tune only to the existing 64×64 fixtures.
+   Original window behavior is a configurable default, not a fixed engine array
+   or a claim that distant goals on larger maps are supported.
+5. Compare exact runs with the original-derived vectors; independently validate
+   every traversed tile, status and endpoint. Add a deliberately wrong neighbor/
+   tie/cost choice that reaches a legal endpoint but fails the exact-route check.
+   Re-evaluate all 15 saved candidate witness routes under the new real terrain
+   query and report differences without changing manifest bytes, labels or selection.
+   Test query determinism and reentrancy on separate immutable inputs with
+   1/2/4/7 threads; authoritative integration remains serial. Independent review.
+
+#### D — movement, turns, speed changes and stops
+
+1. Implement the evidenced first-heading behavior, subsequent turn phases,
+   per-tile chunking, cargo/health speed factors, idle pickup and replacement/
+   stop trimming. Keep the reference model independent of the C++ implementation.
+2. Extend the exact-rational oracle beyond its existing axis-only integrator cases:
+   diagonal axes, mixed directions, turns, speed changes with fractional leftover
+   time, sub-tile starts, zero-length segments, u16 stamp wrap and boundary inputs.
+   Account for every carry term. Check a long voyage's position error and arrival
+   time against the stated mathematical model; do not call it original-runtime
+   parity. If the proposed bound fails, correct the arithmetic or report the
+   concrete discrepancy before changing the acceptance tolerance.
+3. Prove no overshoot, no lost leftover time, no jump at plan commit, bounded
+   progress through zero-length segments and stop/reorder during a partial segment.
+   Persist/reload midway through a turn, a diagonal and a speed change and compare
+   future states. Check extreme supported mod values and refusal just outside
+   the domain. Run focused Debug/ASan/UBSan and obtain independent review.
+
+#### E — commands, scheduler, fair admission and carried figures
+
+1. Integrate real move and stop commands through `World::apply` and the command
+   codec/replay path. Validate issuer ownership and all other prerequisites before
+   mutation. Test non-default player/type, unknown/removed ship, crew child,
+   blocked state, invalid target and valid controls. Compare full state bytes,
+   PRNG cursor, motion, admission state and relevant output on atomic refusal.
+2. Dispatch navigating figures through the existing registry visit/effects
+   protocol; keep carts/carriers unchanged. Implement A's fair admission rule and
+   test it under sustained replacements with more eligible ships than the quota,
+   sparse registry slots, cancellation/removal, several Advance sizes and reload.
+   Observe actual service, not merely an increasing retry counter.
+3. Distinguish queued order, quota waiting, planned/moving, arrived, stopped and
+   route-failed outcomes. Use stable order identity so a superseded route's result
+   cannot be attributed to a later command. Keep quota wait separate from a query
+   hitting its explicit budget. No wall-clock or worker-order effects.
+4. Publish parent and nested crew positions through the named effects operation
+   in the same step, without invalid references or independent embarked motion.
+   Test ship→scout→donkey and unrelated parent chains. Founding continues to use
+   the authoritative carrying ship. Do not use shared information as ownership,
+   alliance, trade or permission to found.
+5. Test competing same-tick orders and replacement ordering, mid-voyage save/load,
+   malformed codec records and LegacyRaw/native-tag separation. Compare identical
+   replay inputs on 1/2/4/7 executor threads. Obtain independent review.
+
+#### F — sailed founding canary, measured limits and final review
+
+1. Load an unchanged version-2 candidate with original files, five expeditions
+   and no cities. Select legal approach/founding sites without claiming candidate
+   selection. For two participants, issue public moves, advance until they reach
+   the approaches, then issue ordinary `FoundCmd`. Assert actual intervening
+   positions, final legality, payment/cargo order, territory, crew and shared
+   information. No relocation, forced arrival or test-only command bypass.
+2. Record a replay from the initial save. Verify checkpoints, outcomes and final
+   state in fresh processes, after a mid-voyage reload and across thread counts.
+   A changed move target must cause a demonstrated semantic difference and replay
+   mismatch; choose a discriminating target, not a one-tile change that the six-
+   tile acceptance region makes equivalent. Include a real route-failure case.
+3. Measure production query/step/admission costs and peak route/coast/queued bytes
+   for the five ships and a bounded, legal larger synthetic workload. Increase
+   distant inactive figures/islands separately from local density; report local
+   query visits, queue/service delay and per-Advance p50/p95/p99/max. Keep raw
+   samples, seeds, rules, source/binary identity and actual execution counts.
+   Report limitations honestly; this is not late-game economy/renderer acceptance.
+4. After source freezes, use the current canonical runner for focused contracts,
+   affected sim/load/replay/formats gates with game files, and focused ASan/UBSan.
+   Broaden once where changed serialization/scheduler dependencies require it.
+   Keep declared platform/opt-in skips separate from executed passes. Reuse valid
+   unrelated evidence; no GPU or heavy rendering rerun for this headless packet.
+5. Obtain a fresh final integration review of public commands → fair scheduling →
+   real route output → stepper → save/replay → founding, plus test discrimination
+   and evidence provenance. Correct actionable findings and narrowly re-review
+   them. Report actual code/docs heads, acceptance matrix, raw logs, review
+   dispositions and remaining original-runtime/Windows/Linux limits.
+
+#### Working method and final stop
+
+- Each substantive package gets an independent **read-only review subagent**.
+  Give it the exact diff, contract and relevant tests, but require it to inspect
+  production callers and challenge a plausible wrong implementation. It must
+  not author fixes, delegate its review or repeat hours of broad tests. For each
+  critical assertion, record the reached behavior, valid control, distinguishing
+  observation and nearest wrong reason for passing. One useful targeted mutation
+  or counterexample is sufficient where it discriminates; no mutation-count target.
+- Re-review the changed claims and their interactions, not every prior package.
+  Keep failures and invalid runs in the ledger. Do not change source under a gate,
+  accept a stale executable or count a skipped/empty case as executed. Use small
+  commits by concern. Treat code/docs/reference changes as different provenance.
+- Inspect current Mac cores, free disk/memory and concurrent owned work before
+  expensive runs; reuse validated job counts, reduce concurrency under contention,
+  keep admission enabled. Preserve the owner's keep-awake process and other
+  executors' jobs. Do not diagnose a long admitted calculation as a hang without
+  inspecting progress and the actual admission state.
+- Scope excludes rendering/window wiring, UI controls, combat/local collision
+  avoidance, trade routes, discovery/fog rendering, candidate selection/installation,
+  coordinator/test-support repairs and any edit to W4 or original assets. If the
+  existing test infrastructure blocks a gate, record the exact failure and carry
+  on with independent work; do not start another coordinator campaign.
+- No merge, rebase, prune, task-code push or task-board edit. The orchestrator
+  handles publication/integration. **Stop at the reviewed headless candidate
+  after F**, or report the precisely blocked dependent package plus completed
+  independent packages. Do not report the unit complete if ships only teleport,
+  every move is refused, routes are unchecked, or founding bypasses the real sim.
+
+### MAP-NAV-1 — ship navigation evidence, contract and fixtures · REVIEWED, SUPERSEDED BY MAP-NAV-2
+
+Historical packet below; do not repeat it. Its original engine-implementation
+stop is superseded only by MAP-NAV-2's conditional authorization above.
 
 **Predecessor accepted:** MAP-FOUND-3 at documentation head `4480200`, code
 `92d4e041083835cc08168a257a31cf8a1a1b6453`, on
@@ -433,7 +692,7 @@ hull bound and the other named fidelity gaps remain follow-ups, not this packet.
 ### MAP-FOUND-3 — bounded corrections and five-player start policy · ACCEPTED LOCAL SCOPE
 
 **Completed and reviewed at `4480200` (code `92d4e04`); see the acceptance review
-and MAP-NAV-1 above.** The following packet is retained as the acceptance record,
+and MAP-NAV-2 above.** The following packet is retained as the acceptance record,
 not an instruction to repeat A–E.
 
 Continue `task/MAP-2-original-like` on the **Mac** from documentation head

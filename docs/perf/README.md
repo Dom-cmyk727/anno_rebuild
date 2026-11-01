@@ -1624,8 +1624,12 @@ and the table is `cache/ec-runs/d-matrix-c025fc2-table.md`.
 - Display: the built-in 3456 × 2234 Retina, ProMotion at 120 Hz.
 - Map: `lan5.txt`, sha256 `1a471d9f…`.
 - Defaults: interactive GPU limits, CPU chunk builder, chunk workers on half the cores (9).
-- The host was shared and loaded. Another executor's sim tests ran at up to about 1,200 % CPU; load was 5 to
-  11 (`results.tsv`).
+- The host was shared and loaded:
+  - another executor's sim tests ran at up to about 1,200 % CPU; load was 5 to 11 (`results.tsv`);
+  - this round's own ASan gate at `be40d56` ran until 23:49:18. So the matrix's first eight runs, from
+    idle at 1080p (23:47:08) to the start of sustained at 3456 × 1944 (23:49:09), had it beside them. The
+    resize run and the four overhead runs (23:49:43 to 23:52:31) had no other job of this round beside
+    them.
 
 **Workloads.** All are legal commands for the developer city, found by a trial world
 (`cache/ec-runs/d-workloads/`, generator source beside them). Acceptance is read from each run's own
@@ -1682,10 +1686,23 @@ n / p50 / p95 / max; p99 has too few samples.
 | sustained, 1080p | 60 / 16.8 / 17.2 / 17.2 | 60 / 42.1 / 42.7 / 50.8 | 60 / 42.1 / 42.7 / 50.8 | 60 / 42.1 / 42.7 / 50.9 |
 | sustained, 3456 × 1944 | 60 / 16.8 / 25.1 / 25.1 | 60 / 42.3 / 58.8 / 59.0 | 60 / 42.3 / 58.8 / 59.0 | 60 / 42.3 / 58.8 / 59.0 |
 | sustained with a resize, 1080p | 60 / 16.7 / 25.1 / 25.3 | 60 / 42.2 / 50.4 / 67.2 | 60 / 42.2 / 50.4 / 67.2 | 60 / 42.2 / 50.4 / 67.2 |
+| sustained, 1080p, overhead run 1 (trace on) | 60 / 16.8 / 17.1 / 17.3 | 60 / 42.2 / 42.6 / 50.6 | 60 / 42.2 / 42.6 / 50.6 | 60 / 42.2 / 42.6 / 50.6 |
+| sustained, 1080p, overhead run 2 (trace on) | 60 / 32.5 / 33.3 / 34.1 | 60 / 57.7 / 66.3 / 66.7 | 60 / 57.8 / 66.3 / 66.7 | 60 / 57.8 / 66.3 / 66.7 |
 
-No edit was unfinished at any boundary, and none was offscreen. The latencies are whole frame intervals
-(16.7, 25, 33.8, 42 ms at 8.33 ms frames): the commit waits for a frame boundary and readiness is observed
-once per frame. A command's full path adds its batch's publication to take (above) before `desired`.
+Over the five traced runs of the 60-build stream, present-call returned is p50 42.1 to 57.8 ms, p95 42.6 to
+66.3 ms and max 50.6 to 67.2 ms. Overhead run 2 is the slowest: its window thread was also busier (above),
+with or without the trace.
+
+No edit was unfinished at any boundary, and none was offscreen. The latencies are close to whole frame
+intervals (16.7, 25, 33.8, 42 ms at 8.33 ms frames): the commit waits for a frame boundary, and readiness is
+observed once per frame.
+
+These boundaries start at `desired`, the window's apply right after the take. A command's full path starts
+earlier, and adds:
+- the wait for its turn (turns are 100 ms at the default speed; a command posted by the window waits for
+  the next one);
+- the turn itself;
+- its batch's publication to take (above).
 
 **Peak RSS:** 1.38 to 1.50 GiB at 1080p and 1.68 to 1.73 GiB at 3456 × 1944 (`/usr/bin/time -l`).
 

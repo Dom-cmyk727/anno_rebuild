@@ -112,7 +112,8 @@ and `bench_picture --aggregate` reads its event file.
 
 The trace holds at most `ANNO_VIEW_TRACE_EVENTS` events (default 2 000 000), `ANNO_VIEW_TRACE_FRAMES`
 frame rows (default 200 000) and `ANNO_VIEW_TRACE_TURNS` turn rows (default 200 000), reserved when the
-trace is enabled. A record past either bound is counted as dropped and not stored. So is a commit past the bound of the
+trace is enabled. (The comment at `main.cpp`'s trace setup names only the first two variables; all three are
+read.) A record past either bound is counted as dropped and not stored. So is a commit past the bound of the
 changes waiting at once (`FrameTracer`, 100 000: a hidden window commits without drawing). A trace with
 drops is incomplete.
 
@@ -121,8 +122,15 @@ run before the window opens. Nothing is written into it until the session ends. 
 
 ## Exit status and verdicts
 
-`anno1503` exits 0 when the window ended without an error and every trace file was saved complete. It exits
-5 when the trace dropped records or a file could not be saved, and 1 for a window error. In the trace:
+`anno1503` exits with one of these statuses:
+- 0: the window ended without an error, every trace file was saved and the trace is consistent;
+- 5: the trace dropped records, or a file could not be saved;
+- 7: the trace contradicts itself;
+- 1: a window error;
+- 2: refused before the window opened, for bad arguments, `ANNO_VIEW_TRACE` without `--play`, or a trace
+  directory that exists or cannot be made.
+
+In the trace:
 - `run_end` carries 0 for a successful run;
 - it carries 1 for a window error, with `window_error` in `summary.txt`;
 - it carries 5 when a file was not saved;

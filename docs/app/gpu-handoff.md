@@ -8,8 +8,10 @@ Status:
   - the GPU-usable state of a chunk is named and measured (boundary 6, section 6);
   - the interactive window's constrained upload path is tested (section 4).
 
-The tests in section 4 pass on the Mac (Apple M5 Max, Metal). Not run: the Windows adapters (RTX 4090, Radeon
-iGPU), Windows MSVC and the Linux GCC/Clang checks (section 5). This work does not claim:
+The tests in section 4 passed on the Mac (Apple M5 Max, Metal) in rounds ea and eb and alone in round ec.
+In round ec's full gate the stand-ins case (3D) failed 2 of 2 at its 120 s paused-loop deadline, beside other
+test processes. It passed alone and in the GPU gate at `-j 1`; see section 5. Not run: the Windows adapters
+(RTX 4090, Radeon iGPU), Windows MSVC and the Linux GCC/Clang checks (section 5). This work does not claim:
 - the PLAN frame targets;
 - presented-frame latency;
 - late-game scalability;
@@ -202,6 +204,18 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
 
 ## 5. Open, and the next units
 
+- **Open, intermittent:** `picture GPU, constrained: with stand-ins and dissolves …` (3D) reached its 120 s
+  wall-clock deadline in both round-ec full gates. Those ran at `-j 6`, beside CPU-heavy cases and a
+  concurrent ASan gate. It passes alone and at `-j 1` in about 50 s. Whether the paused loop is slow or stalls
+  under contention is not established.
+  - Owner: the next GPU unit.
+  - Acceptance: a deadline in frames, or the GPU gate at `-j 1`, passing in a full gate.
+- **Open, intermittent:** `publish: one, two and four workers each hold a version ahead at a barrier, and the
+  newest is published` (anno_app_tests) failed once under ASan in round ec, with a held generation seen
+  destroyed. It passed 30 of 30 isolated runs and the next full ASan run. The cause is not established.
+  - Owner: the bridge's next unit.
+  - Acceptance: the destroyed generation identified by scene identity, and the case passing repeatedly in
+    a full ASan gate.
 - **NOT RUN:**
   - the RTX 4090 and Radeon iGPU adapters;
   - Windows MSVC;

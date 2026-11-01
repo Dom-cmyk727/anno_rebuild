@@ -349,7 +349,15 @@ removes N, NW, NE), visited tiles block themselves and the diagonals through the
 Goal: the facade sets the acceptance radius 6.0; a candidate water tile of the goal-disc cells (radius 1 cell = 3 x 3
 cells) scores `2304 - ftol(64 d^2)` with tile centre +0.5 and is offered only if the score is higher than the best
 (so `d = 6.0` is rejected, `d = 5.9` scores 77) and only when `d < 6`; `d < 0.125` stops the search; ties go to the lower local ship
-congestion (unit stamps, 5 x 5 kernel at `0x100c4ba0`, density table `0x100c15b0`). A goal on land within 6 tiles of
+congestion (unit stamps, 5 x 5 kernel at `0x100c4ba0`, density table `0x100c15b0`). **The route engine's own unit query**
+(`0x100a8c50`): registry slot `+0x14` (`0x100983a0`, `ret 0x18`) around the ship start with radius `type.slot +0x68(5)` (5.0 for
+ships), class mask `0x80` (class group 7, ids 113..128; other queriers use `0xf14f`) and capacity `0x40`; the registry scans 16 x 16-tile
+cells by z-cell rows ascending (outer), x-cell columns ascending (inner), then the cell's list order, keeps a unit if
+`dx^2 + dz^2 <= r^2` (inclusive), `(state & 0xa) == 0` and its group is in the mask, returns `{unit, d^2}` unsorted and stops at
+64 entries (later units are silently dropped). Consumer, in buffer order: skip a unit whose direction pointer (`slot +0x60` =
+`unit +0x20`) is NULL or whose id equals `word [req1+0x18]`, stamp at `(unit.x + dir.x * 25.0, unit.z + dir.z * 25.0)` (`0x100c2214` = 25.0)
+through `engine.slot +0x6c(X, Z, table 0x100cccf4, mode 2)` (a ship querier stamps unconditionally; other queriers only when the unit's
+state lacks `0x400`, table `0x100ccce0`, mode 1). A goal on land within 6 tiles of
 reachable water routes to the nearest candidate; farther returns -2. **Retry loop:** if the fine search cannot pass a coarse
 cell, `0x10013fb0` clears the connectivity bit "entry edge of the previous cell to the exit edge towards the failing
 cell" (the start cell clears nibble bits), up to **8** learned masks per query (list reset every query); a `-1`
@@ -442,10 +450,12 @@ pass labels are unchanged here; geometric witnesses remain tool-only until then.
    order); right-click water at four sub-tile offsets.
 2. x87 precision control at runtime: no `_controlfp`/`fldcw` setup located in the exe/DLL init. Settle: `fnstcw` at a
    breakpoint on `0x100428d0` (`0x027f` = 53 bit, `0x037f` = 64 bit, `0x007f` = 24 bit).
-3. Whether coarse-map load performs a full build (`0x100aae00` callers are only the two rectangle updates found);
-   island height-grid padding (the file `HEIGHT` is w x h, the engine reads (w+1) x (h+1) vertex bytes); the object-top
-   contribution to block extrema and to tile type 9; behaviour of the fine stage at block edges under original code.
-   Settle: dump `[world+0x6aa4]` sector words after loading a known map.
+3. Whether the world Reset (`0x100af240`, which attaches every island and thereby builds the coarse map) runs after island
+   creation and before the first order (DERIVED); the object-top contribution to block extrema and to tile type 9; whether any
+   start ship has a non-default `[ship+0x6e]` search radius; the setter of state bits `0x2000`/`0x4000`. Settle: break at
+   `0x100aae00` during load, log the rectangle and the return address, and dump `[world+0x6aa4]` sector words. (The fine
+   stage at block edges was run on the original bytes: 4400 randomised corridor cases and 600 lazy-block cases against a Python
+   transcription, 0 deviations from the interior rule; the vertex-grid padding is settled in 9.2.)
 4. Registry cursor and last-tick at load (read `[reg+0x20]`, `[reg+0x22]` before and after a load).
 5. Contents of the goal disc table for radius 1 cell beyond the 3 x 3 result, bodies `0x10012310`, `0x10015a30`.
 6. The meaning of relation codes 2/3 in the avoid routine, state bits `0x4/0x8/0x100/0x200/0x800/0x2000/0x8000`, and the

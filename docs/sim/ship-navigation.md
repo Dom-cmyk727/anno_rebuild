@@ -72,8 +72,9 @@ displacement; whether it ends within the goal tile centre or offset by that frac
 **Type facts** (validated at registry seal like the hull domain; all optional, absence = not a navigating type):
 `speed` (HEAD f1, tiles per stepper unit), `turn_step` (HEAD f0), `nav_class` (LOGIC byte 0x10, 0..4, selects the
 cost table), `max_hp`, `hold_cap`, `hold_count_a`, `hold_count_b` (the speed-factor inputs), `avoid_radius`
-(the registry-query radius of the hook, type slot `+0x68(4)`; its source and the 1502 value are UNKNOWN, `docs/re/ship-navigation.md`
-7.4, so no value is asserted; unused until the deferred hook is ported). Conversion of a file f32 to the engine's exact value: the f32's exact binary
+(the registry-query radius of the hook, type slot `+0x68(4)` = `LOGIC[0x25]/8` with 0 meaning 7.0: 16.0 tiles for a 1502,
+`docs/re/ship-navigation.md` 7.4; unused until the deferred hook is ported). Further type facts from the same slots:
+`stamp_radius` (slot `+0x68(5)` = `LOGIC[0x28]/8`, 0 meaning 2.0; 5.0 tiles for a 1502), used by the route query's obstacle stamps. Conversion of a file f32 to the engine's exact value: the f32's exact binary
 rational, stored as a Q0.32 integer rounded to nearest (even) (**ADAPTATION**, error below 2^-33 relative to a
 speed of 0.036; documented, tested against the f32 value). Type ids, player ids and the 16-direction count are data
 or config, never constants in `sim`; the alternate-type test uses a different ship type and a non-default player.
@@ -120,11 +121,12 @@ the original's class bits (`& 0x7000` equal to `0x2000` or `0x4000`, which becom
 original classes as default), never hashed, rebuilt on load (whether the original builds the whole map at load is a static
 open item, see section 11). **Local obstacles** enter only as the ship-density
 stamps (5 x 5 kernel, cost classes by density) from other ships near the start/goal, queried by tile from the figure
-registry. **ADAPTATION / UNKNOWN:** the route engine's own query (`0x100a8c50`: registry slot `+0x14`, class mask `0x80` for ships,
-up to 0x40 hits, positions offset by a factor of the other ship's heading) has an unread radius and consumption order, and the
-local planner uses d^2 <= 36 and 0x80 (evidence 10.2); until those are read the contract fixes only the *rule*: stamp every
-other navigating ship within the planning window in ascending figure id, capped at `route_unit_cap`, and never use wall-clock
-state. The cap truncates by that order, so the order is part of the rules identity. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
+registry. The route engine's own query is evidenced (evidence 9.4): radius `stamp_radius` around the start, inclusive `d^2 <= r^2`, units with
+state `0xa` clear and ship group, scan order = 16 x 16-tile cells by z then x, cap `route_unit_cap` = 0x40, each stamped at
+`pos + heading * 25.0` with the 5 x 5 kernel (the stamp body `0x10010870`, its edge clamping and the in-cell list order are still
+being read: static open item). **ADAPTATION:** the sim has no 16 x 16-tile cell lists, so it reproduces the scan order as (z-cell,
+x-cell, ascending figure id) computed from positions; the order only matters when more than 64 ships are in range and is part of
+the rules identity. Never use wall-clock state. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
 **global** engine; the 12-unit local detour replan (section 10 of the evidence) is **deferred**: the slice accepts
 that ships may overlap and that the density stamps are used only at planning time. This is an ADAPTATION noted in the
 acceptance review; it removes the order dependence of the segment-end hook for the first slice and the dependent
@@ -140,10 +142,9 @@ from zero each Advance); (b) a query has a **work budget** in coarse-node pops a
 (`route_coarse_budget`, `route_fine_budget`; defaults are set in P2 from measured worst cases of the fixture maps with a
 documented margin and a recorded measuring procedure (not set here); the original has *no* cap and floods the window, so exceeding the budget is an ADAPTATION that yields
 status `-3 BudgetExceeded` = failed plan, never a partial route; consequence stated: a route the original would complete makes the
-ship idle, and large budgets are the remedy, not partial routes); (c) the window is at most 32 x 32 blocks of 64 tiles
-(original `SetWindow` limit: a larger window makes the query fail, i.e. a failed plan, which on a very large map idles a ship
-whose voyage the budget-free original could also not start; the box construction `0x10040940` is a static open item), centred
-on the start/goal box (ADAPTATION until read); (d) static coast data is shared by all ships of a map and
+ship idle, and large budgets are the remedy, not partial routes); (c) the window is the ORIGINAL box: centred on the **start tile only** with half-width `route_window_radius` (default 1024 = `[ship+0x6e]`
+of `0x400`), clipped to the map, at most 32 x 32 blocks of 64 tiles measured from the 8-aligned origin (a larger window and a
+target outside the box are failed plans in the original too; for maps up to 1024 tiles the window is the whole map); (d) static coast data is shared by all ships of a map and
 read-only during planning; **planning runs serially at the ship's visit** in registry order (it reads other ships' *current*
 positions for the density stamps, so no result may be computed ahead on stale state). A later optimisation may speculate on
 workers only with a validation that re-runs the query when any input position changed; the sim result must not depend on core

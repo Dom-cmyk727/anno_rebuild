@@ -57,7 +57,9 @@ length `[reg+0x14..0x18]`. Rows: `when cursor last_tick n`. Falsifies: the contr
 Order a 1502 along an axis over open water for about 60 tiles. Hook AnnoWelt `0x100428d0` entry and exit: log at every
 call `now` (world tick), the float position `+0x14, +0x1c`, `remaining +0x2c`, `speed +0x30`, `last +0x42`. Rows:
 `now x z remaining speed last`. Repeat in single player at the default frame rate and, if possible, with an artificially
-fixed frame time. Discrimination: end offset and arrival tick against the contract's exact rational result (static
+fixed frame time. Also log the ship position (`+0x14`, `+0x1c`) at the call to `0x100a9ff0` and after the first segment of the new plan: the
+commit writes no position, so this shows whether the ship ends offset by its sub-tile fraction from the goal tile centre
+(falsifies/settles contract section 3's UNKNOWN). Discrimination: end offset and arrival tick against the contract's exact rational result (static
 emulation: +0.0178 tile at one-tick visits, below 0.0003 at 5-100). Tolerance asked of the contract: the sim arrival tick equals
 the original's within one visit interval and the end position within 0.02 tile of the original's float result at the same
 cadence; a larger gap falsifies contract section 4. The visit cadence per call is the key output. To fix the frame time use

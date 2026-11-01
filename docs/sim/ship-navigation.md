@@ -57,17 +57,20 @@ Pick-up latency (ORIGINAL): the order is picked up only when a segment ends and 
 behaviour and is kept (faithful default). A rules switch `ship_pickup_immediate` (default off, QoL, outside the faithful
 core) may plan at command time later; it is not part of this slice.
 
-On the planner's success, the original snaps the ship position to the planner's start point (`0x1003fb9a`, local
-replan path) only for the local replan; the route engine builds the first segment from the **start tile centre**
-(`ftol(x) + 0.5`): the ship therefore jumps to the tile centre at the first segment (DERIVED from `0x100a8c50` output
-origin), at most 0.5 tile in each axis. The contract keeps that rule and tests it.
+The route is computed from the **start tile centre** (`ftol(x) + 0.5`), but the plan commit writes **no position**: the nodes
+are velocity and length (relative), the first segment is installed with `remaining 0` and the facing set directly to the
+first node's direction (no turn phase for the first heading). So the ship keeps its sub-tile offset and moves by the lattice
+displacement; whether it ends within the goal tile centre or offset by that fraction is **UNKNOWN** and not asserted
+(capture CAP-4 reads the position at plan time and after the first segment). The snap at `0x1003fb9a` is the local replan only
+(deferred). The first heading bypasses the turn rule (ORIGINAL, `0x1003f910`) and is tested.
 
 ## 4. Type facts, state and numeric representation (integer only)
 
 **Type facts** (validated at registry seal like the hull domain; all optional, absence = not a navigating type):
 `speed` (HEAD f1, tiles per stepper unit), `turn_step` (HEAD f0), `nav_class` (LOGIC byte 0x10, 0..4, selects the
 cost table), `max_hp`, `hold_cap`, `hold_count_a`, `hold_count_b` (the speed-factor inputs), `avoid_radius`
-(LOGIC 0x24/8, 16 tiles for a 1502). Conversion of a file f32 to the engine's exact value: the f32's exact binary
+(the registry-query radius of the hook, type slot `+0x68(4)`; its source and the 1502 value are UNKNOWN, `docs/re/ship-navigation.md`
+7.4, so no value is asserted; unused until the deferred hook is ported). Conversion of a file f32 to the engine's exact value: the f32's exact binary
 rational, stored as a Q0.32 integer rounded to nearest (even) (**ADAPTATION**, error below 2^-33 relative to a
 speed of 0.036; documented, tested against the f32 value). Type ids, player ids and the 16-direction count are data
 or config, never constants in `sim`; the alternate-type test uses a different ship type and a non-default player.
@@ -99,7 +102,7 @@ neighbour order exactly as evidenced. **Static coast data** is built once per is
 `0x7000 & {0x2000,0x4000}` object-class rule becoming a data flag on the building type, default from the original
 classes). It is derived state: never hashed twice, rebuilt on load. **Local obstacles** enter only as the ship-density
 stamps (5 x 5 kernel, cost classes by density) from other ships near the start/goal, queried by tile from the figure
-registry in a fixed order (ascending figure id, at most `route_unit_cap` = 0x40 in the original) — never from wall-clock
+registry in a fixed order (ascending figure id, at most `route_unit_cap`: 0x40 in the route engine's query `0x100a8c50`, 0x80 in the local planner) — never from wall-clock
 state. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
 **global** engine; the 12-unit local detour replan (section 10 of the evidence) is **deferred**: the slice accepts
 that ships may overlap and that the density stamps are used only at planning time. This is an ADAPTATION noted in the

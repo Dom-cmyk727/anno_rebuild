@@ -161,17 +161,21 @@ cleared), kind 2 = flags `|= 0x204`. Emulated on the real bytes (1502, `f0 = 0.1
 (reversal): facing 7, 6, 5, 4, 3, 2 then snap to 0, six turn phases (330 ticks visit-rounded).
 
 ### 7.4 Segment-end hook `0x10042210` (slot `+0x17c`)
-Called at the end of every non-final segment. Stamps `[+0x72]`; if `(state & 7) == 1` asks the world for units near
-the position (registry slot `+0x14`, mask `0xf9cf`, radius `type.slot+0x68(4)` = 16.0 for a 1502, up to 0x100
-entries); with two or more units (self counts) and the avoid option set (`[+0x148] ? [+0x14a] : [+0x166]`) and
+Called at the end of every non-final segment. Stamps `[+0x72]`; if `(state & 7) == 1` it calls world slot `+0xcc`
+(`0x1009d9b0`, arguments `ftol(x), ftol(z), 14, 5, owner`; only this call is guarded by that test). Unconditionally it queries
+the unit registry (slot `+0x14`, mask `0xf9cf`, radius `type.slot+0x68(4)`, up to 0x100 entries; the radius value for a 1502
+(16.0 in `docs/re/fire-and-ships.md` 3.1) is not re-derived: `LOGIC` byte `0x24` of a 1502 is 0, so the slot's source is
+UNKNOWN). With two or more units (self counts), the avoid option set (`[+0x148] ? [+0x14a] : [+0x166]`) and
 `state & 0x2106 == 0` it runs the avoid routine `0x10041bd0` (section 10.3), then, if `(state & 0x2007) == 1`, the
-local replan `0x1003de40`. A non-zero result makes the integrator skip the next-segment start.
+local replan `0x1003de40`. A third path (`0x1004235f`): if `state & 0x6806 == 0x800` (replan pending) it calls the wrapper
+`0x1003dc20`, i.e. `0x1003de40(0, 0)`, even with fewer than two units. A non-zero result makes the integrator skip the
+next-segment start. The integrator also frees consumed nodes when `[+0x44] + 0x32 < now` (`0x10042a13`).
 
 ### 7.5 Speed factor `0x100427b0` (slot `+0xa0`)
 `L = 100`; if the owner's player property 3 (the Volk number, `+0x7a`, default 1; `0x1001bea0`) equals 1:
 `L = 100 - trunc(17*S / ((n0+n1) * cap))`, `S` = sum of the first `n0` holds' amounts, `cap` = type slot `+0x84`,
 `n0, n1` = type slot `+0x88(0), (1)`. `V = trunc((trunc(35*hp / maxhp) + 65) * L / 100)` with `hp` = signed 16-bit
-`+0x6c`, `maxhp` = type slot `+0x90` (no zero guard); `+0x3c = f32(V * f32(0.01))` (36 distinct values, 65..100). It
+`+0x6c`, `maxhp` = type slot `+0x90` (no zero guard); `+0x3c = f32(V * f32(0.01))` (36 distinct values 65..100 when `L = 100`; the set changes with the cargo term). It
 reaches movement only at segment start. It is recomputed on hold add/sub/clear, hit-point set, repair, figure
 load end, and on the founding payment's hold notification (`docs/re/ship-founding.md` 14.4). Founding reads the
 ship state bit `0x02`, **not** `+0x3c`.
@@ -187,24 +191,32 @@ where exact mathematics gives 8. Vectors built by the route engine are multiples
 `+0x40` (u16): `0x0001` moving; `0x0002` final (set by kind 1 and by hit points reaching 0; no instruction in
 `0x10030000-0x10044800` clears it); `0x0004` final reached / kind 2; `0x0020`, `0x0100` from the HEAD record;
 `0x0200` segment-active marker; `0x0800` replan pending; `0x8000` units aboard (non-`0x61` crew). A move order is
-refused by `0x100a5f70` iff `state & 0x200e` is non-zero.
+refused by `0x100a5f70` iff `state & 0x200e` is non-zero (for type groups `0x6c..0x70`, not ships, it additionally needs a
+non-empty hold). SetOrder also has an order-id `0x13` branch (flags `& 0xf0000 == 0x30000`, non-zero target) and a plain
+stop when `x = z = 0`; order id 1 is not unconditional.
 
 ### 7.8 Persistence and crew
-Saved: the 16-byte `SCHIFF` prefix (facing `attr`, `f32` position) and a 16-byte HEAD record (hit points as
-`hp*128/maxhp`, flags, tile cell `+0x7c/+0x7e`; saver `0x10042bd0`, loader `0x10042a40`). **Not saved:** the current
+Saved: the 16-byte `SCHIFF` prefix (facing `attr`, `f32` position) and a 16-byte HEAD record (byte 0 the avoid stance `+0x166`, dword `+4` = `+0x160`, byte 8 = `+0x7a`, hit points as `max(1, hp*128/maxhp)`
+(so hp 0 reloads as 1), flags, tile cell `+0x7c/+0x7e`; saver `0x10042bd0`, loader `0x10042a40`). **Not saved:** the current
 segment, the segment list, `+0x38`, `+0x3c`, `last`, the registry cursor. A ship that was sailing at save time
 stands idle after load. Crew slots are 12 pointers at `+0x110..+0x13c`; attach (`0x10041900`) sets the unit state
 `|= 0x80`, stops the unit (`slot +0x88(4,1)`, zeroing velocity/speed/remaining and the order nibble) and calls its slot
-`+0x00` (a hold counter increment: `0x10040480` or `0x10049bb0`). The movement functions contain no access to the crew
-array: the ship's position and facing are **not** copied to the crew each tick; the scout (`0x10035f50`) and walker
+`+0x00` (a hold counter increment: `0x10040480` or `0x10049bb0`). The stepper, segment start, hook, idle, order handlers, planner and
+stop contain no direct access to the crew array: the ship's position and facing are **not** copied to the crew each tick (a kind-1
+terminal segment calls ship slot `+0x110` = `0x100432c0` at `0x1003eb17`, which frees the node list and the object at `+0x68`,
+notifies `[+0x144]` and walks the crew through slots `+0xb8`/`+0xb4` and crew slot `+0x110`: the release path of a destroyed
+ship, not per-tick movement); the scout (`0x10035f50`) and walker
 (`0x10049200`) ticks return at once while their speed is 0, so an embarked unit neither moves nor idles. Any consumer
 that needs a crew position must read the carrying ship.
 
 ### 7.9 PRNG
-No world-random-table draw (`0x100a1740`) and no CRT `rand` (`0x100b68a9`) appears in the stepper, segment start, hook,
-speed factor, order path, route facade, coarse or fine search, or the local planner. Damage draws the world table in
+The world random table is reached only through the world vtable slot `+0xb4` (`0x100ccdd8 + 0xb4` = `0x100a1740`; there is
+no direct call), so the evidence is an **indirect** `[reg+0xb4]` scan over the transitive callees of the stepper, segment
+start, hook, speed factor, order path, route facade mode 1 (point goal, ends `0x100aa8f1`), coarse and fine search, Trace,
+commit and converter, and the local planner: no CRT `rand` (`0x100b68a9`) and no world draw except the hit-point setter. The
+facade's other mode draws in `0x100a9950` (via `0x100a9b20`, `0x100a99ef`: `div (n+2)`), which is not on the mode-1 path. Damage draws the world table in
 the hit-point setter (`0x1003da10`, up to twice); wake foam uses CRT `rand` in the draw routine (presentation only).
-UNKNOWN: the bodies of `0x100a99ef`'s `[reg+0xb4]` call and `0x1003d616` (argument-count mismatch).
+UNKNOWN: `0x1003d616` (argument-count mismatch with `0x100a1740`).
 
 ### 7.10 Float versus fixed point (emulated on the real bytes)
 Positions and velocities are f32, `time`, `P` and sums are x87 extended; precisions 24/53/64 differ by at most one f32
@@ -245,8 +257,10 @@ order up when a segment ends and the node list is empty: slot `+0x178` (`0x10042
 `0x100423a0`) calls `0x10030b90(order, 6.0f)`, which builds two request structs (world slots `+0x118`/`+0x11c`),
 a search window (ship slot `+0x164`, `0x10040940`) and calls the route facade (section 9). Return `3` or `-2` is a
 failed plan; anything else is success, including `2` (no points). A failed plan clears the order bytes and the ship
-idles. Commit: `0x100a92a0` then world slot `+0x120` (`0x100a8bb0`) copies the list into the ship and sets the first
-facing. **Stop** (slot `+0x168(1)`, `0x10042630`) zeroes `+0x148/+0x149/+0x14a`, sets `+0x54 = 0`, clears state `0x800`
+idles. Commit: `0x100a92a0` then world slot `+0x120` (`0x100a8bb0`) fills the ship's list (ship slot `+0x134`, `0x100a8c20`) and calls
+ship slot `+0xd8` = `0x1003f910`, which installs the first node as the current segment with `remaining = 0`, sets the facing
+directly to `dir16(first node)` (**bypassing** the `d >= 3` turn rule) and `state |= 1`. **No position field is written** (the
+nodes are velocity and length, relative); the position snap at `0x1003fb9a` belongs to the local replan. **Stop** (slot `+0x168(1)`, `0x10042630`) zeroes `+0x148/+0x149/+0x14a`, sets `+0x54 = 0`, clears state `0x800`
 and sets the plan end to the current position; list nodes are not freed. An in-flight segment is **not** aborted: its
 remaining length is cut to the remainder past whole lattice steps (modulo 1.0, modulo 1.4142 for an odd facing) and
 the new order is picked up at that arrival. Latency therefore includes the idle cycle (up to 500 ticks) and the
@@ -266,11 +280,11 @@ vtable `0x100c197c`, size `0x27e0`; sub-objects: coarse search S at `+4` (vtable
 `+8`, fine map R at `+0x23a4`. The facade is world slot `+0x124` = `0x100a9ff0(req1, mode = 1, &{x, 0, z}, 2, req2)`
 (mode 1 = point goal, `0x100aa84e`). Type 1502 (`BEWOHNTYPE` SHIP, group `0x71`) and all 12 SHIP types (343, 391,
 1501-1510) have `LOGIC` byte `0x10` = 0, so they use **cost class 0** (class table at `0x100d1140 + class*7168`;
-class 4 only for animals, 1511 is class 2). The SHIP -> 113 -> group link is taken from `fire-and-ships.md` 3.1.
+class 4 only for animals, 1511 is class 2). The SHIP -> `BEWOHNTYPE` 113 -> group `0x71` link is taken from `fire-and-ships.md` 3.1 (113 is a type-group number, not a figure id: figure 113 is a MAEHER); the `0x71` branch of `0x100a86c0` is consistent with it.
 
 ### 9.2 Static map: terrain
 One scale: a vertex byte times 0.04 world units. A tile is **water iff `floor(sum of its four corner vertex bytes / 4)
-<= 19`**, land (type 9) otherwise (threshold `ftol(0.78/0.04) = 19`, static initialisers `0x100a3b40..`); a tile also
+<= 19`**, land (type 9) otherwise (threshold `ftol((1.28f - 0.5f)/0.04f) = ftol(19.5) = 19`, tile rule at `0x10090350` reading `[0x100e34d0]`, initialisers `0x1008fea0`, `0x1008ff00`, `0x1008ff40..0x1008ff62`; the coarse builder family `0x100a3b40..` holds the same numbers); a tile also
 becomes blocked (9) where an island tile object's footprint reaches it (`0x10090350`, exact object semantics
 UNKNOWN). The repo's `HEIGHT < 16` (sea level, 0.64) is stricter than this tile-average rule. The coarse map has
 **8 x 8-tile cells** in 64 x 64-tile sectors (`[world+0x6aa4]` = array of 8-byte sector headers `{u16 x_origin, u16 z_origin,
@@ -338,8 +352,8 @@ query, the unit-stamp kernel and thresholds 6/25/64, and never reads property 5,
 
 ### 10.1 What it is
 `0x1003de40` (`ret 8`, args: unit list, count; 695 instructions to `0x1003e784`) is a ship method with two call
-sites: wrapper `0x1003dc20` and the hook `0x10042210` (section 7.4). It runs only at a segment end with two or more
-units near, there is no timer, distance trigger or cancellation. It is **not** a global router: the ship's float
+sites: wrapper `0x1003dc20` and the hook `0x10042210` (section 7.4). It runs at a segment end with two or more units
+near, or when the replan-pending bit `0x800` is set (7.4); there is no timer or distance trigger. It is **not** a global router: the ship's float
 segment list is the route; `0x10030660` walks at most 12.0 world units of it and builds a window (box padded by 3.0).
 Planner object: `ship+0x10` is the world (stored by `0x10040240` for class id `0xf00`); world slot `+0x20(0xc00, 3)`
 (`0x100aee00` in vtable `0x100ccdd8`, DERIVED that this is the running world's vtable) returns `world + 0x6ab4`, final

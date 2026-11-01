@@ -213,12 +213,35 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
   under contention is not established.
   - Owner: the next GPU unit.
   - Acceptance: a deadline in frames, or the GPU gate at `-j 1`, passing in a full gate.
-- **Open, intermittent:** `publish: one, two and four workers each hold a version ahead at a barrier, and the
-  newest is published` (anno_app_tests) failed once under ASan in round ec, with a held generation seen
-  destroyed. It passed 30 of 30 isolated runs and the next full ASan run. The cause is not established.
-  - Owner: the bridge's next unit.
-  - Acceptance: the destroyed generation identified by scene identity, and the case passing repeatedly in
-    a full ASan gate.
+- **Round ec's intermittent `publish: one, two and four workers each hold a version ahead at a barrier, and
+  the newest is published`** (anno_app_tests; failed once under ASan at workers = 2, "a held generation seen
+  destroyed"). Round ed found a test defect that produces exactly that failure, and fixed it:
+  - The case's observer recorded only `generation()`. Every scene lineage starts at generation 0, and
+    each iteration released its base scene (generation 0) after clearing its observer and after its last
+    reclaimer wait, so the shared reclaimer could destroy it after the next iteration had installed its
+    own observer.
+  - At workers = 2 the only generation checked was 0, and that iteration's generation 0 was the test's own
+    `scene`, which it owned throughout. A "generation 0 destroyed" there could not be that scene: it can
+    only be another lineage's, and the previous iteration's base is the only other one in the process.
+    No identity was logged in round ec, so this is a deduction from ownership, not an observation of
+    the historical run.
+  - The ownership check itself was vacuous at workers = 2 for the same reason (the test owned the
+    generation it checked).
+  - Now: destructions are recorded by lineage (`Scene::name`) and generation (`src/app/tests/
+    reclaim_identity.hpp`); each held generation is also checked through a `weak_ptr` (still owned, without
+    owning it); the test owns none of the picture's generations (it compares against a reference scene of
+    its own); the observer's record is shared by value, because the reclaimer calls a copy of the observer
+    outside its lock, so a call can still run after the observer is cleared. The sibling case
+    `accounting: one, two and four workers each hold a superseded generation at a barrier` had the same
+    structure and is changed the same way.
+  - The adverse ordering is a deterministic case ("publish: a held generation's destruction is told by
+    its lineage …"): the reclaimer is held on a first scene, the earlier lineage's generation 0 queues
+    behind it, the next observer is installed, then the reclaimer is released. The generation-only check
+    reports the held generation destroyed; the identity check does not; releasing the held generation's
+    owner too early is caught.
+  - Mutants (`cache/ed-runs/p3-mutants-*.log`): a build that gives up its generation before it runs is
+    caught by both barrier cases (expired and destroyed); a generation-only identity is caught by the
+    ordering case.
 - **NOT RUN:**
   - the RTX 4090 and Radeon iGPU adapters;
   - Windows MSVC;

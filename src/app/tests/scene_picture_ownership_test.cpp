@@ -25,14 +25,20 @@
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
 
+#include "reclaim_identity.hpp"
+
 namespace app = anno::app;
 namespace render = anno::render;
+using anno::test::Destructions;
+using anno::test::Held;
+using anno::test::hold;
 
 namespace {
 
 /// `count` synthetic islands numbered 0..count-1 of `size` x `size` tiles, each with a 64-byte
 /// head and no records.
-std::shared_ptr<render::Scene> islands_scene(std::size_t count, std::uint16_t size = 8) {
+std::shared_ptr<render::Scene> islands_scene(std::size_t count, std::uint16_t size = 8,
+                                             const std::string& lineage = "ownership") {
     auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
     for (std::size_t i = 0; i < count; ++i) {
         bytes->push_back(std::vector<std::uint8_t>(64, 0));
@@ -46,7 +52,7 @@ std::shared_ptr<render::Scene> islands_scene(std::size_t count, std::uint16_t si
         island.height = size;
         islands.push_back(island);
     }
-    return render::Scene::create("ownership", std::move(islands),
+    return render::Scene::create(lineage, std::move(islands),
                                  anno::assets::island::GroundTextures{},
                                  anno::formats::anlagen::AnlagenFile{}, render::kHeightLift, bytes);
 }
@@ -357,16 +363,12 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
         // built and committed, so each blocked build holds a different generation: the newest is
         // current, the others are superseded and retired, alive only through their jobs. Each
         // keeps its credit and its generation until it finishes.
-        auto scene = islands_scene(2);
+        // Round ed (package 3): destructions are told by lineage and generation, and the test owns
+        // none of the picture's generations (it compares against a reference scene of its own).
+        const auto reference = islands_scene(2, 8, "ownership-reference");
         std::vector<app::SceneBuilding> none;
         Gate gate;
-        std::mutex seen_mutex;
-        std::vector<std::uint64_t> destroyed;
-        auto& reclaimer = render::SceneReclaimer::shared();
-        reclaimer.set_test_observer([&seen_mutex, &destroyed](const render::Scene& s) {
-            const std::lock_guard lock(seen_mutex);
-            destroyed.push_back(s.generation());
-        });
+        const Destructions destroyed;
         const ObserverReset reset;
         {
             app::ScenePicture::Limits limits;
@@ -380,13 +382,14 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
                 }
             };
             app::ScenePicture picture(
-                scene, none, [](std::uint16_t) { return true; }, workers, limits);
+                islands_scene(2, 8, "ownership-barrier-" + std::to_string(workers)), none,
+                [](std::uint16_t) { return true; }, workers, limits);
             Opener opener(gate);
             render::FrameRenderer frames(1);
             std::uint64_t turn = 1;
-            std::vector<std::uint64_t> held;
+            std::vector<Held> held;
             for (std::size_t i = 0; i < workers; ++i) {
-                held.push_back(picture.scene()->generation());
+                held.push_back(hold(picture.scene()));
                 picture.apply({added(turn++, 0, static_cast<std::uint16_t>(i + 1))});
                 REQUIRE(eventually([&] { return gate.entered.load() == static_cast<int>(i + 1); }));
                 if (i + 1 < workers) {
@@ -399,31 +402,28 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
             }
             CHECK(picture.stats().outstanding == workers);
             CHECK(picture.stats().discarded == 0);
-            // The superseded generations are alive only through their jobs: none is destroyed yet.
-            {
-                const std::lock_guard lock(seen_mutex);
-                for (std::size_t i = 0; i + 1 < held.size(); ++i) {
-                    CHECK(std::find(destroyed.begin(), destroyed.end(), held[i]) ==
-                          destroyed.end());
-                }
+            // The superseded generations are alive only through their jobs: each is still owned
+            // and none is destroyed yet.
+            for (std::size_t i = 0; i + 1 < held.size(); ++i) {
+                CAPTURE(held[i].generation);
+                CHECK(!held[i].scene.expired());
+                CHECK(!destroyed.of(held[i]));
             }
             gate.open.store(true);
             CHECK(drain(picture, frames, 40));
             CHECK(picture.error().empty());
             CHECK(picture.stats().outstanding == 0);
             CHECK(picture.stats().discarded == workers - 1);
-            CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
-            CHECK(committed_payloads(*picture.scene(), 1) == fresh_payloads(*scene, 1, picture));
-            // Each superseded build released its generation when it finished: the generations
-            // between the first (the test's own scene) and the last (retired by later commits).
-            if (held.size() > 2) {
-                REQUIRE(eventually([&] {
-                    const std::lock_guard lock(seen_mutex);
-                    return std::all_of(held.begin() + 1, held.end() - 1, [&](std::uint64_t g) {
-                        return std::find(destroyed.begin(), destroyed.end(), g) != destroyed.end();
-                    });
-                }));
-            }
+            CHECK(committed_payloads(*picture.scene(), 0) ==
+                  fresh_payloads(*reference, 0, picture));
+            CHECK(committed_payloads(*picture.scene(), 1) ==
+                  fresh_payloads(*reference, 1, picture));
+            // Each superseded build released its generation when it finished, and it was
+            // destroyed on the reclaimer (the first included: the test does not own it).
+            REQUIRE(eventually([&] {
+                return std::all_of(held.begin(), held.end() - 1,
+                                   [&](const Held& h) { return destroyed.of(h); });
+            }));
         }
         // This iteration's generations are all destroyed before the next one starts counting.
         CHECK(reclaimer_settled());

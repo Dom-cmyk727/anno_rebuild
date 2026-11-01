@@ -29,14 +29,22 @@
 #include <anno/render/frame.hpp>
 #include <anno/render/scene.hpp>
 
+#include "reclaim_identity.hpp"
+
 namespace app = anno::app;
 namespace render = anno::render;
+using anno::test::Destructions;
+using anno::test::Held;
+using anno::test::hold;
 
 namespace {
 
 /// `count` synthetic islands numbered 0..count-1 of 8 x 8 tiles, each with a 64-byte head and no
-/// records.
-std::shared_ptr<render::Scene> islands_scene(std::size_t count) {
+/// records. `lineage` is the scene's name, which every generation derived from it keeps: with the
+/// generation number it identifies a scene within the process (generation numbers restart at 0 in
+/// every lineage).
+std::shared_ptr<render::Scene> islands_scene(std::size_t count,
+                                             const std::string& lineage = "publish") {
     auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
     for (std::size_t i = 0; i < count; ++i) {
         bytes->push_back(std::vector<std::uint8_t>(64, 0));
@@ -50,7 +58,7 @@ std::shared_ptr<render::Scene> islands_scene(std::size_t count) {
         island.height = 8;
         islands.push_back(island);
     }
-    return render::Scene::create("publish", std::move(islands),
+    return render::Scene::create(lineage, std::move(islands),
                                  anno::assets::island::GroundTextures{},
                                  anno::formats::anlagen::AnlagenFile{}, render::kHeightLift, bytes);
 }
@@ -404,19 +412,17 @@ TEST_CASE("publish: one, two and four workers each hold a version ahead at a bar
     // is discarded: when they finish, the newest finished result replaces the older ones
     // (coalesced) and is the one published. Each build keeps its credit and its generation until
     // it finishes.
+    // Round ed (package 3): a destruction is tied to the scene, not to its generation number. Each
+    // iteration is its own lineage, and the test owns none of the picture's generations: the
+    // reference it compares against is a scene of its own. A held generation is checked to be
+    // still owned (its weak handle has not expired) and not destroyed.
     for (const std::size_t workers : {std::size_t{1}, std::size_t{2}, std::size_t{4}}) {
         CAPTURE(workers);
-        auto scene = islands_scene(2);
+        const auto reference = islands_scene(2, "publish-reference");
         std::vector<app::SceneBuilding> none;
         Gate gate;
         Recorder rec;
-        std::mutex seen_mutex;
-        std::vector<std::uint64_t> destroyed;
-        auto& reclaimer = render::SceneReclaimer::shared();
-        reclaimer.set_test_observer([&seen_mutex, &destroyed](const render::Scene& s) {
-            const std::lock_guard lock(seen_mutex);
-            destroyed.push_back(s.generation());
-        });
+        const Destructions destroyed;
         const ObserverReset reset;
         {
             app::ScenePicture::Limits limits;
@@ -428,13 +434,14 @@ TEST_CASE("publish: one, two and four workers each hold a version ahead at a bar
             };
             limits.trace = rec.seam();
             app::ScenePicture picture(
-                scene, none, [](std::uint16_t) { return true; }, workers, limits);
+                islands_scene(2, "publish-barrier-" + std::to_string(workers)), none,
+                [](std::uint16_t) { return true; }, workers, limits);
             const Opener opener(gate);
             render::FrameRenderer frames(1);
             std::uint64_t turn = 1;
-            std::vector<std::uint64_t> held;
+            std::vector<Held> held;
             for (std::size_t i = 0; i < workers; ++i) {
-                held.push_back(picture.scene()->generation());
+                held.push_back(hold(picture.scene()));
                 picture.apply({added(turn++, 0, static_cast<std::uint16_t>(i + 1))});
                 REQUIRE(eventually([&] { return gate.entered.load() == static_cast<int>(i + 1); }));
                 if (i + 1 < workers) {
@@ -445,12 +452,12 @@ TEST_CASE("publish: one, two and four workers each hold a version ahead at a bar
                 }
             }
             CHECK(picture.stats().outstanding == workers);
-            {
-                const std::lock_guard lock(seen_mutex);
-                for (std::size_t i = 0; i + 1 < held.size(); ++i) {
-                    CHECK(std::find(destroyed.begin(), destroyed.end(), held[i]) ==
-                          destroyed.end());
-                }
+            // Every held generation but the current one is retired by the picture: only its
+            // blocked build owns it, and it must keep it.
+            for (std::size_t i = 0; i + 1 < held.size(); ++i) {
+                CAPTURE(held[i].generation);
+                CHECK(!held[i].scene.expired());
+                CHECK(!destroyed.of(held[i]));
             }
             gate.open.store(true);
             picture.wait_idle();
@@ -461,22 +468,80 @@ TEST_CASE("publish: one, two and four workers each hold a version ahead at a bar
             CHECK(picture.stats().outstanding == 0);
             CHECK(rec.committed(0) == std::vector<std::uint64_t>{workers});
             CHECK(rec.violation().empty());
-            CHECK(committed_payloads(*picture.scene(), 0) == fresh_payloads(*scene, 0, picture));
-            CHECK(committed_payloads(*picture.scene(), 1) == fresh_payloads(*scene, 1, picture));
-            if (held.size() > 2) {
-                REQUIRE(eventually([&] {
-                    const std::lock_guard lock(seen_mutex);
-                    return std::all_of(held.begin() + 1, held.end() - 1, [&](std::uint64_t g) {
-                        return std::find(destroyed.begin(), destroyed.end(), g) != destroyed.end();
-                    });
-                }));
-            }
+            CHECK(committed_payloads(*picture.scene(), 0) ==
+                  fresh_payloads(*reference, 0, picture));
+            CHECK(committed_payloads(*picture.scene(), 1) ==
+                  fresh_payloads(*reference, 1, picture));
+            // Once their builds ended, the retired generations are destroyed on the reclaimer.
+            REQUIRE(eventually([&] {
+                return std::all_of(held.begin(), held.end() - 1,
+                                   [&](const Held& h) { return destroyed.of(h); });
+            }));
         }
+        // The picture is gone: every scene of this iteration reaches the reclaimer, which is idle
+        // before the observer is cleared and the next iteration starts.
         CHECK(eventually([] {
             const auto r = render::SceneReclaimer::shared().stats();
             return r.waiting == 0 && r.in_flight == 0;
         }));
     }
+}
+
+TEST_CASE("publish: a held generation's destruction is told by its lineage, so another lineage's "
+          "generation 0 destroyed later is not it, while its own premature destruction is "
+          "caught" *
+          doctest::test_suite("scene_picture_publish")) {
+    // Round ed, package 3: the ordering behind round ec's intermittent failure of the barrier case,
+    // made deterministic. The previous iteration's generation 0 reaches the reclaimer after that
+    // iteration cleared its observer, and is destroyed after the next one installed its own. The
+    // reclaimer is held by its test gate on a first scene, so the earlier scene waits behind it.
+    auto& reclaimer = render::SceneReclaimer::shared();
+    REQUIRE(eventually([&] {
+        const auto r = reclaimer.stats();
+        return r.waiting == 0 && r.in_flight == 0;
+    }));
+    // Shared with the gate by value: the reclaimer copies its gate before it calls it, so a call
+    // can still run after the gate is cleared (on a failed assertion's way out).
+    const auto gate = std::make_shared<Gate>();
+    reclaimer.set_test_gate([gate] { gate->pass(); });
+    struct GateReset {
+        std::shared_ptr<Gate> gate;
+        ~GateReset() {
+            gate->open.store(true);
+            render::SceneReclaimer::shared().set_test_gate({});
+        }
+    } gate_reset{gate};
+    {
+        auto blocker = islands_scene(1, "publish-identity-blocker");
+        blocker.reset();
+    }
+    REQUIRE(eventually([&] { return gate->entered.load() == 1; }));
+    {
+        auto previous = islands_scene(2, "publish-identity-previous");
+        CHECK(previous->generation() == 0);
+        previous.reset(); // queued behind the blocker, with no observer installed yet
+    }
+    // The next iteration: its observer, and its generation 0 owned by something (here the case).
+    const Destructions destroyed;
+    const ObserverReset reset;
+    std::shared_ptr<const render::Scene> owner = islands_scene(2, "publish-identity-current");
+    const Held held = hold(owner);
+    CHECK(held.generation == 0);
+    gate->open.store(true);
+    REQUIRE(eventually([&] {
+        const auto r = reclaimer.stats();
+        return r.waiting == 0 && r.in_flight == 0;
+    }));
+    // The previous lineage's generation 0 was destroyed under this observer: a check by generation
+    // number reports the held generation destroyed; the check by identity does not.
+    CHECK(destroyed.of({"publish-identity-previous", 0, {}}));
+    CHECK(destroyed.of_generation(held.generation));
+    CHECK(!destroyed.of(held));
+    CHECK(!held.scene.expired());
+    // The control: the held generation's owner lets go too early. The identity check sees it.
+    owner.reset();
+    CHECK(held.scene.expired());
+    REQUIRE(eventually([&] { return destroyed.of(held); }));
 }
 
 TEST_CASE("publish: competing islands under one admission both advance during the stream" *

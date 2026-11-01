@@ -911,7 +911,8 @@ TEST_CASE("route limits: the defaults carry a margin of at least 8x over the lar
     CHECK(small.work.coarse_pops * 1000 < defaults.coarse_budget);
 }
 
-TEST_CASE("route limits: work of the representative small queries (the fixtures V1, V7, V21, V22)") {
+TEST_CASE(
+    "route limits: work of the representative small queries (the fixtures V1, V7, V21, V22)") {
     const sim::RouteLimits defaults;
     std::uint64_t max_coarse = 0, max_fine = 0, max_bytes = 0;
     for (const std::string& line : fixture_lines("route_runs.txt")) {
@@ -933,12 +934,13 @@ TEST_CASE("route limits: work of the representative small queries (the fixtures 
         max_fine = std::max(max_fine, r.work.fine_pops);
         max_bytes = std::max(max_bytes, r.work.bytes_high);
         if (name == "V1" || name == "V7" || name == "V21" || name == "V22") {
-            MESSAGE(name << ": " << r.work.coarse_pops << " coarse pops, " << r.work.fine_pops << " fine pops, "
-                         << r.work.learned << " learned, " << r.work.bytes_high << " bytes");
+            MESSAGE(name << ": " << r.work.coarse_pops << " coarse pops, " << r.work.fine_pops
+                         << " fine pops, " << r.work.learned << " learned, " << r.work.bytes_high
+                         << " bytes");
         }
     }
-    MESSAGE("largest of the 24 route-run vectors: " << max_coarse << " coarse, " << max_fine << " fine, " << max_bytes
-                                                    << " bytes");
+    MESSAGE("largest of the 24 route-run vectors: " << max_coarse << " coarse, " << max_fine
+                                                    << " fine, " << max_bytes << " bytes");
     CHECK(defaults.coarse_budget >= 8 * max_coarse);
     CHECK(defaults.fine_budget >= 8 * max_fine);
     CHECK(defaults.memory_bytes >= 8 * max_bytes);

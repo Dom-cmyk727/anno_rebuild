@@ -670,7 +670,7 @@ TEST_CASE(
     CHECK(world.state_hash() == hash);
 }
 
-TEST_CASE("canary: payment, city and Kontor preparation are non-mutating; the city operation holds "
+TEST_CASE("canary: payment, city and Kontor preparation are non-mutating, the city operation holds "
           "its invariants") {
     // Connects the ship cargo and payment preparation (founding_payment.hpp) with the city
     // prerequisites (city_creation.hpp). It founds NO warehouse: nothing here applies a payment,

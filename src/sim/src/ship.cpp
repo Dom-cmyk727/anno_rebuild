@@ -11,7 +11,7 @@ NavMotion make_nav_motion(FixedPos pos, std::uint16_t tick_low) {
     NavMotion m;
     m.seg.kind = NavSegKind::Idle;
     m.seg.speed_q32 = kNavIdleSpeedQ32;
-    m.seg.remaining_q32 = kNavIdleSpeedQ32; // remaining = speed = 0.01 after a load
+    m.seg.remaining_x500 = kNavIdleSpeedQ32 * kNavScale; // remaining = speed = 0.01 after a load
     m.seg.factor_percent = 100;
     m.last = tick_low;
     m.pos_u[0] = std::int64_t{pos.x} * kNavPosUnitsPerQ8;
@@ -67,8 +67,8 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             if (g.speed_q32 == 0 || g.speed_q32 >= kMaxNavSpeedQ32) {
                 return where + ".nav.seg.speed_q32: outside the supported domain";
             }
-            if (g.remaining_q32 > kNavUnitQ32) {
-                return where + ".nav.seg.remaining_q32: a movement chunk is at most 1.0 length";
+            if (g.remaining_x500 > kNavUnitQ32 * kNavScale) {
+                return where + ".nav.seg.remaining_x500: a movement chunk is at most 1.0 length";
             }
             if (f.dir16 != 2 * g.dir8) {
                 return where + ".nav: a movement segment needs the facing 2 * dir8 (an odd or "
@@ -80,13 +80,13 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             if (g.speed_q32 != kNavIdleSpeedQ32) {
                 return where + ".nav.seg.speed_q32: a turn segment runs at 0.01";
             }
-            if (g.remaining_q32 > facts.turn_step_q32) {
-                return where + ".nav.seg.remaining_q32: above the type's turn step";
+            if (g.remaining_x500 > std::uint64_t{facts.turn_step_q32} * kNavScale) {
+                return where + ".nav.seg.remaining_x500: above the type's turn step";
             }
             break;
         case NavSegKind::Idle:
-            if (g.speed_q32 != kNavIdleSpeedQ32 || g.remaining_q32 > kNavIdleSpeedQ32) {
-                return where + ".nav.seg: the idle segment runs at 0.01 with at most 0.01 left";
+            if (g.speed_q32 != kNavIdleSpeedQ32 || g.remaining_x500 > kNavUnitQ32 * kNavScale) {
+                return where + ".nav.seg: the idle segment runs at 0.01 with at most 1.0 left";
             }
             break;
         }
@@ -150,7 +150,7 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
                 return where + ".nav.res24: not below 2^24";
             }
             const bool diagonal_moving =
-                g.kind == NavSegKind::Move && (g.dir8 & 1U) != 0 && g.remaining_q32 > 0;
+                g.kind == NavSegKind::Move && (g.dir8 & 1U) != 0 && g.remaining_x500 > 0;
             if (m.res24[axis] != 0 && !diagonal_moving) {
                 return where + ".nav.res24: non-zero outside a diagonal movement segment";
             }

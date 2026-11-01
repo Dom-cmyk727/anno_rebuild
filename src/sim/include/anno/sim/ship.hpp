@@ -19,6 +19,10 @@ inline constexpr std::uint32_t kNavIdleSpeedQ32 = 42949672U;
 
 /// One lattice length unit and the diagonal step length in q32 (L_d = 11863283 * 2^9, above 2^32).
 inline constexpr std::uint64_t kNavUnitQ32 = std::uint64_t{1} << 32;
+/// The scale of lengths and positions inside the integrator: q32 * 500 (one tick is 1/5 stepper
+/// unit and V is a percent, so no division is ever needed; 12.4).
+inline constexpr std::uint64_t kNavScale = 500;
+
 inline constexpr std::uint64_t kNavDiagStepQ32 = std::uint64_t{11863283} << 9;
 
 /// The most pending nodes a ship may hold. A route of the supported window has far fewer (8 turn

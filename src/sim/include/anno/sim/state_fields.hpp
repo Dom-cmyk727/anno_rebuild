@@ -1050,7 +1050,7 @@ template <class A, Same<NavSegment> S> void fields(A& a, S& s) {
     a.u8(s.dir8);
     a.u32(s.factor_percent);
     a.u32(s.speed_q32);
-    a.u64(s.remaining_q32);
+    a.u64(s.remaining_x500);
 }
 
 static_assert(field_count<NavOrder>() == 4, "a NavOrder member needs a line in fields(NavOrder)");

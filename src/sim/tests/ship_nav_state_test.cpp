@@ -324,7 +324,7 @@ TEST_CASE("nav motion: a scenario gives idle motion to navigating ships only") {
         REQUIRE(f.nav.has_value());
         CHECK(f.nav->seg.kind == sim::NavSegKind::Idle);
         CHECK(f.nav->seg.speed_q32 == 42949672U);
-        CHECK(f.nav->seg.remaining_q32 == 42949672U);
+        CHECK(f.nav->seg.remaining_x500 == 42949672ULL * 500);
         CHECK(f.nav->seg.factor_percent == 100U);
         CHECK_FALSE(f.nav->order.has_value());
         CHECK_FALSE(f.nav->ticket.has_value());
@@ -353,7 +353,7 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         sim::NavSegment& g = figure(w, 2).nav->seg;
         g.kind = sim::NavSegKind::Turn;
         g.speed_q32 = sim::kNavIdleSpeedQ32;
-        g.remaining_q32 = kFacts.turn_step_q32;
+        g.remaining_x500 = kFacts.turn_step_q32 * 500ULL;
     };
     (void)turn_ship2;
     const Case cases[] = {
@@ -369,7 +369,7 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         {"needs the facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 7; }},
         {"needs the facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 4; }},
         {"a movement chunk is at most 1.0",
-         [](sim::World& w) { figure(w, 1).nav->seg.remaining_q32 = (1ULL << 32) + 1; }},
+         [](sim::World& w) { figure(w, 1).nav->seg.remaining_x500 = (1ULL << 32) * 500 + 1; }},
         {"nav.seg.speed_q32: outside", [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 0; }},
         {"nav.seg.speed_q32: outside",
          [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 1U << 28; }},
@@ -377,9 +377,9 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
          [](sim::World& w) { figure(w, 2).nav->seg.factor_percent = 99; }},
         {"turn or idle segment has factor 100",
          [](sim::World& w) { figure(w, 2).nav->seg.dir8 = 1; }},
-        {"idle segment runs at 0.01 with at most 0.01 left",
-         [](sim::World& w) { figure(w, 2).nav->seg.remaining_q32 = 42949673ULL; }},
-        {"idle segment runs at 0.01 with at most 0.01 left",
+        {"idle segment runs at 0.01 with at most 1.0 left",
+         [](sim::World& w) { figure(w, 2).nav->seg.remaining_x500 = (1ULL << 32) * 500 + 1; }},
+        {"idle segment runs at 0.01 with at most 1.0 left",
          [](sim::World& w) { figure(w, 2).nav->seg.speed_q32 = 42949673U; }},
         {"a turn segment runs at 0.01",
          [](sim::World& w) {
@@ -387,8 +387,8 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
          }},
         {"above the type's turn step",
          [](sim::World& w) {
-             figure(w, 2).nav->seg =
-                 sim::NavSegment{sim::NavSegKind::TurnPhase, 0, 100, 42949672U, 472446401ULL};
+             figure(w, 2).nav->seg = sim::NavSegment{sim::NavSegKind::TurnPhase, 0, 100, 42949672U,
+                                                     472446400ULL * 500 + 1};
          }},
         {"slots[1].dir16: 16 is not in 0 .. 15", [](sim::World& w) { figure(w, 2).dir16 = 16; }},
         {"order_id: not below ids.next_order_id",
@@ -430,7 +430,7 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
              figure(w, 1).dir16 = 8;
          }},
         {"res24: non-zero outside a diagonal movement segment",
-         [](sim::World& w) { figure(w, 1).nav->seg.remaining_q32 = 0; }},
+         [](sim::World& w) { figure(w, 1).nav->seg.remaining_x500 = 0; }},
         {"Figure::pos does not equal floor(pos_u) on axis 0",
          [](sim::World& w) { figure(w, 1).nav->pos_u[0] += sim::kNavPosUnitsPerQ8; }},
         {"Figure::pos does not equal floor(pos_u) on axis 1",
@@ -493,7 +493,7 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
     for (const std::uint32_t factor : {1U, 100U}) {
         sim::World w = busy;
         figure(w, 1).nav->seg.factor_percent = factor;
-        figure(w, 1).nav->seg.remaining_q32 = 1ULL << 32;
+        figure(w, 1).nav->seg.remaining_x500 = (1ULL << 32) * 500;
         CHECK(w.check_invariants().empty());
     }
     {
@@ -503,10 +503,10 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
             sim::NavNode{sim::NavSegKind::Move, 3, 0, 10 * sim::kNavDiagStepQ32, 1});
         figure(w, 1).nav->nodes.push_back(sim::NavNode{
             sim::NavSegKind::Turn, 0, 15, kFacts.turn_step_q32, sim::kNavIdleSpeedQ32});
-        figure(w, 2).nav->seg.remaining_q32 = 42949672ULL;
+        figure(w, 2).nav->seg.remaining_x500 = (1ULL << 32) * 500;
         CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
-        figure(w, 2).nav->seg =
-            sim::NavSegment{sim::NavSegKind::TurnPhase, 0, 100, 42949672U, kFacts.turn_step_q32};
+        figure(w, 2).nav->seg = sim::NavSegment{sim::NavSegKind::TurnPhase, 0, 100, 42949672U,
+                                                kFacts.turn_step_q32 * 500ULL};
         CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
         figure(w, 1).pos.x = 1 << 22; // exactly the world bound
         figure(w, 1).nav->pos_u[0] = (std::int64_t{1} << 22) * sim::kNavPosUnitsPerQ8;
@@ -555,16 +555,17 @@ TEST_CASE("nav motion: another ship type and other players carry the same state"
 TEST_CASE("nav motion: the wire bytes equal the hand transcription") {
     // Idle segment with one movement node (E, one diagonal step length, speed 154618816):
     // order none 00 | ticket none 00 | seg: kind 00, dir8 00, factor u32 100, speed u32 42949672 =
-    // 0x028F5C28, remaining u64 42949672 | node count u64 1 | node: kind 03, dir8 04, facing 00,
-    // length u64 11863283<<9 = 0x16A09E600, speed u32 0x09374BC0 | last u16 0x0102 | pos_u i64 1,
-    // i64 -1 | res24 two u32 0. (Python: tools/wide_ref.py style big-int transcription.)
+    // 0x028F5C28, remaining u64 42949672*500 = 0x4FFFFFE20 | node count u64 1 | node: kind 03, dir8
+    // 04, facing 00, length u64 11863283<<9 = 0x16A09E600, speed u32 0x09374BC0 | last u16 0x0102 |
+    // pos_u i64 1, i64 -1 | res24 two u32 0. (Python: tools/wide_ref.py style big-int
+    // transcription.)
     sim::NavMotion m = sim::make_nav_motion(sim::FixedPos{0, 0}, 0x0102);
     m.nodes = {sim::NavNode{sim::NavSegKind::Move, 4, 0, sim::kNavDiagStepQ32, 154618816U}};
     m.pos_u[0] = 1;
     m.pos_u[1] = -1;
     const std::vector<std::uint8_t> want1 = {
-        0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x28, 0x5C, 0x8F, 0x02, 0x28, 0x5C,
-        0x8F, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x28, 0x5C, 0x8F, 0x02, 0x20, 0xFE,
+        0xFF, 0xFF, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x03, 0x04, 0x00, 0x00, 0xE6, 0x09, 0x6A, 0x01, 0x00, 0x00, 0x00, 0xC0, 0x4B, 0x37,
         0x09, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -653,13 +654,13 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
          }},
         {"turn node facing", [](sim::World& x) { figure(x, 1).nav->nodes[0].facing = 5; }},
         {"seg factor", [](sim::World& x) { figure(x, 1).nav->seg.factor_percent = 88; }},
-        {"seg remaining", [](sim::World& x) { figure(x, 1).nav->seg.remaining_q32 -= 1; }},
+        {"seg remaining", [](sim::World& x) { figure(x, 1).nav->seg.remaining_x500 -= 1; }},
         {"seg speed", [](sim::World& x) { figure(x, 1).nav->seg.speed_q32 -= 1; }},
         {"seg kind",
          [](sim::World& x) {
              figure(x, 1).nav->seg.kind = sim::NavSegKind::Idle;
              figure(x, 1).nav->seg.speed_q32 = sim::kNavIdleSpeedQ32;
-             figure(x, 1).nav->seg.remaining_q32 = sim::kNavIdleSpeedQ32;
+             figure(x, 1).nav->seg.remaining_x500 = sim::kNavIdleSpeedQ32 * 500ULL;
              figure(x, 1).nav->seg.factor_percent = 100;
              figure(x, 1).nav->seg.dir8 = 0;
              figure(x, 1).nav->res24[0] = figure(x, 1).nav->res24[1] = 0;
@@ -675,7 +676,7 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
         {"res24 x", [](sim::World& x) { figure(x, 1).nav->res24[0] += 1; }},
         {"res24 y", [](sim::World& x) { figure(x, 1).nav->res24[1] -= 1; }},
         {"order counter", [](sim::World& x) { sim::WorldTestAccess::ids(x).next_order_id += 1; }},
-        {"idle remaining", [](sim::World& x) { figure(x, 2).nav->seg.remaining_q32 -= 1; }},
+        {"idle remaining", [](sim::World& x) { figure(x, 2).nav->seg.remaining_x500 -= 1; }},
         {"ticket counter", [](sim::World& x) { sim::WorldTestAccess::ids(x).next_ticket += 1; }},
     };
     std::vector<std::uint64_t> seen{base};
@@ -700,7 +701,7 @@ TEST_CASE("nav motion: make_nav_motion is the documented idle state at any posit
         const sim::NavMotion m = sim::make_nav_motion(p, 65535);
         CHECK(m.seg.kind == sim::NavSegKind::Idle);
         CHECK(m.seg.speed_q32 == 42949672U);
-        CHECK(m.seg.remaining_q32 == 42949672U);
+        CHECK(m.seg.remaining_x500 == 42949672ULL * 500);
         CHECK(m.seg.factor_percent == 100U);
         CHECK(m.last == 65535);
         CHECK(m.pos_u[0] == std::int64_t{p.x} * 8388608000LL); // 500 << 24
@@ -760,4 +761,29 @@ TEST_CASE("nav motion: a navigation class the Rules table lacks is refused when 
     // create may refuse or yield a world whose invariants name the class; either names it.
     const std::string problem = created.ok() ? created.value().check_invariants() : created.error();
     CHECK(has(problem, "has nav_class 4, Rules.nav.class_costs holds 4"));
+}
+
+TEST_CASE("nav motion: real data - type 391 navigates with no holds, the factor rule on Rules") {
+    // (the real-file assertion for 391 is in founding_assets_test; here the Rules side)
+    struct Pair {
+        std::uint32_t floor_pct, penalty;
+        bool valid;
+    };
+    // floor * (100 - penalty) >= 100 keeps V = trunc(floor * L / 100) >= 1 for L >= 100 - penalty.
+    for (const Pair p :
+         {Pair{65, 17, true}, Pair{65, 98, true}, Pair{65, 99, false}, Pair{1, 0, true},
+          Pair{1, 1, false}, Pair{1, 99, false}, Pair{50, 98, true}, Pair{50, 99, false},
+          Pair{100, 99, true}, Pair{100, 100, false}, Pair{99, 100, false}}) {
+        sim::Rules r;
+        r.nav.health_floor_percent = p.floor_pct;
+        r.nav.health_span_percent = 0;
+        r.nav.cargo_penalty_percent = p.penalty;
+        const std::string err = r.validate();
+        INFO(p.floor_pct << " " << p.penalty);
+        if (p.valid) {
+            CHECK(err.empty());
+        } else {
+            CHECK(has(err, "cargo_penalty_percent"));
+        }
+    }
 }

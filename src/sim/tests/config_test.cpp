@@ -1901,6 +1901,25 @@ TEST_CASE("rules digest changes with every NavRules field and validates its doma
              n.health_floor_percent = 65;
          },
          [](sim::NavRules& n) { n.health_span_percent = 36; }},
+        {"window_radius_tiles", [](sim::NavRules& n) { n.window_radius_tiles = 8192; },
+         [](sim::NavRules& n) { n.window_radius_tiles = 8193; }},
+        {"coarse_budget", [](sim::NavRules& n) { n.coarse_budget = std::uint64_t{1} << 40; },
+         [](sim::NavRules& n) { n.coarse_budget = (std::uint64_t{1} << 40) + 1; }},
+        {"fine_budget", [](sim::NavRules& n) { n.fine_budget = std::uint64_t{1} << 40; },
+         [](sim::NavRules& n) { n.fine_budget = 0; }},
+        {"memory_bytes", [](sim::NavRules& n) { n.memory_bytes = std::uint64_t{1} << 40; },
+         [](sim::NavRules& n) { n.memory_bytes = (std::uint64_t{1} << 40) + 1; }},
+        {"volk_number", [](sim::NavRules& n) { n.volk_number = 65535; },
+         [](sim::NavRules& n) { n.volk_number = 65536; }},
+        {"health_floor_percent",
+         [](sim::NavRules& n) {
+             n.health_floor_percent = 1;
+             n.health_span_percent = 0;
+             n.cargo_penalty_percent = 0;
+         },
+         [](sim::NavRules& n) { n.health_floor_percent = 0; }},
+        {"cargo_penalty_percent", [](sim::NavRules& n) { n.cargo_penalty_percent = 98; },
+         [](sim::NavRules& n) { n.cargo_penalty_percent = 99; }},
         {"class_costs", [](sim::NavRules& n) { n.class_costs = {sim::NavClassCost{1, 1, 1, 1}}; },
          [](sim::NavRules& n) { n.class_costs = {sim::NavClassCost{5, 4, 1, 1}}; }},
     };

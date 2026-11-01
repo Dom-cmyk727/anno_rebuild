@@ -190,6 +190,11 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     CHECK(ship->nav->hold_count_b == 2U);
     CHECK(ship->nav->nav_class == 0U);
     CHECK(ship->nav->stamp_radius_88 == 1280U);
+    // Type 391 has 200 hp and no holds at all: it navigates, its cargo term is 0 (12.8).
+    REQUIRE(types->find_figure_type(391)->nav.has_value());
+    CHECK(types->find_figure_type(391)->nav->hold_count_a == 0U);
+    CHECK(types->find_figure_type(391)->nav->hold_count_b == 0U);
+    CHECK(types->find_figure_type(391)->nav->max_hp == 200U);
     CHECK_FALSE(types->find_figure_type(343)->nav.has_value());
     CHECK_FALSE(types->find_figure_type(1510)->nav.has_value());
     CHECK_FALSE(scout->nav.has_value());

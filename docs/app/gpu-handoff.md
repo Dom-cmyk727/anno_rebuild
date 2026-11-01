@@ -224,7 +224,7 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
     it idles in 10 frames on the fresh scene.
   - **The attribution, deduced.** The round-ec failures made about 171,000 and 177,000 assertions, against
     81,500 in a passing run. The first loop's fading checks are at most 96,000 (4000 frames × 24 keys), and
-    each paused frame adds one deadline check. So roughly 75,000 to 90,000 paused frames were drawn, and only
+    each paused frame adds one deadline check. So roughly 75,000 to 97,000 paused frames were drawn, and only
     the dissolve loop can draw that many in 120 s: it has no per-frame checks and takes about 1 ms a frame,
     while the edit loop's frames take about 140 ms. The counts locate the loop. They do not tell this defect
     from the alternative, that the margin's chunk jobs legitimately kept `chunks_busy` true for over 120 s:

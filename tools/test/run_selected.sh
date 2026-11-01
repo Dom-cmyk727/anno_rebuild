@@ -72,10 +72,14 @@ for PT in $PREFLIGHT_TARGETS; do
         exit 5
     fi
 done
-for T in "$TARGET" $PREFLIGHT_TARGETS; do
-    for f in "$BUILD"/src/*/"$T" "$BUILD"/src/*/*/"$T"; do
+# Every test executable and the viewer, whatever was built (round ec integration review: with target
+# "-" a binary left by an experiment was run without its identity in the log).
+for f in "$BUILD"/src/*/* "$BUILD"/src/*/*/*; do
+    case "$(basename "$f")" in
+    *_tests | anno1503 | "$TARGET" | bench_picture)
         [ -f "$f" ] && [ -x "$f" ] && echo "== binary $f sha=$(shasum -a 256 "$f" | cut -c1-16) mtime=$(stat -f %Sm "$f")" >> "$LOG"
-    done
+        ;;
+    esac
 done
 for PRE in $PREFLIGHTS; do
     echo "== preflight $PRE" >> "$LOG"

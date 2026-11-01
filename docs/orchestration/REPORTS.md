@@ -9553,9 +9553,11 @@ job of this round is left running.
 
 ### Package acceptance tables
 
-Every reviewer was an independent, read-only subagent (no edit, stage, commit, process control or
-delegation), briefed with the code, the raw evidence and the original counterexample, not the
-conclusion. Each re-reviewed its fixes.
+Every reviewer was an independent, read-only general-purpose subagent of this session
+(`session_016dGiaa1oCgM5Nv7Xn3R1o6`), one per package and a fresh one for the integration review, with no
+edit, stage, commit, process control or delegation rights. Each was briefed with the code, the raw
+evidence and the original counterexample, not the conclusion, and each re-reviewed its fixes.
+Reviewers 1 to 4 below are those package reviewers. Reviewer 5 is the integration reviewer (below).
 
 **Package 1 — presentation attribution** (reviewer 1; reviewed `8603177`, re-reviewed `84f42c7`: CHANGES
 REQUIRED, then APPROVED)
@@ -9593,7 +9595,8 @@ REQUIRED, then APPROVED)
 | Cleanup is safe | — | a callback copied by the reclaimer runs after clearing | the record and the gate are shared by value | code; ASan runs below | APPROVED |
 
 **Package 4 — the GPU deadline** (reviewer 4; reviewed `a09a6ea`, re-reviewed `bd4c479`: CHANGES REQUIRED,
-then APPROVED)
+then APPROVED. `c2bdf91`, the reviewer's own range correction 90,000 → 97,000 in gpu-handoff.md, was
+read by reviewer 5)
 
 | Requirement | Valid control | Single counterexample | Expected specific result | Evidence | Reviewer |
 |---|---|---|---|---|---|
@@ -9638,8 +9641,10 @@ then APPROVED)
 **Binaries (5B, 5C).** Mutants ran only in an isolated copy with its own build (`cache/ed-mut/`); this
 tree's sources were never mutated. After the freeze, every source the round changed was touched (mtime
 only) and rebuilt, and each object was recompiled (`cache/ed-runs/rebuild-forced-c2bdf91.log`: 12 in dev,
-8 in ASan, 6 in release; 0 warnings). Afterwards the dry run lists only CMake's glob check, with no
-compile or link step left. The ASan `bench_picture` (from 31 Oct) was rebuilt too
+8 in ASan, 6 in release; 0 warnings), each named by ninja's explain lines as older than its touched
+input. Every binary's hash below equals the one each gate log records as tested (its `binaries`). (A
+`ninja -n` dry run proves nothing here: it stops after CMake's regeneration step.) The ASan
+`bench_picture` (from 31 Oct) was rebuilt too
 (`rebuild-asan-bench_picture.log`). sha256, first 16 hex:
 - dev: `anno_app_tests` `d4054bbcd7dd1c87`, `anno_app_alloc_tests` `d443f9844eb1919a`,
   `anno_render_gpu_tests` `4afc0c09c7682a1f`, `anno1503` `3de54d299f34a73e`, `bench_picture`
@@ -9660,11 +9665,31 @@ The gates ran one at a time.
 | G2 GPU (dev), run 1 | `--build-dir build/dev --select '^anno_render_gpu_tests\.(picture GPU\|play)' --jobs 1` | FAIL (exit 6), kept: selected 14, executed 13, failed 0, skipped 1 GPU (`play: GPU matches the CPU path on one scene`: "no RTX 4090 among: Apple M5 Max"), outside the declared policy (`ed-g2-gpu-dev.log`). A re-read cannot change a recorded status |
 | G2 GPU (dev), run 2 | the same, with `--allow-skip gpu` (the RTX 4090 case is a target-host gate, NOT RUN here) | PASS: selected 14, executed 13, failed 0, empty 0, skipped 1 GPU, incomplete 0 (`ed-g2-gpu-dev-run2.log`). Both changed GPU cases passed |
 | G3 ASan, run 1 and run 2 | `--build-dir build/asan --select '^anno_app_tests\.(window trace\|picture trace\|picture evidence\|picture readiness\|play follow\|scene picture\|credit\|ownership\|publish\|accounting)' --jobs 4` | PASS twice: selected 70, executed 70, failed 0, empty 0, skipped 0, incomplete 0, no sanitizer line (`ed-g3-asan-run1.log`, `-run2.log`). Both barrier cases passed in each run |
+| Not run under ASan | `anno_app_alloc_tests` (rebuilt and hashed, not selected) | G3 is the round-ec ASan selection plus `accounting`, not every ASan test |
 | Focused ASan of package 3 | the two suites, 5 times, by hand | 17 of 17 each time (`cache/ed-runs/p3-asan-focused.log`) |
 | Format | `clang-format 23.1.3 --dry-run --Werror` on the changed C++ files | PASS (applied before each commit) |
 | Contracts | `window_table_test.sh`, `run_selected_test.sh` (in G0–G3 as required contracts and the launcher's contract) | PASS |
 | NOT RE-RUN, with reason | `anno_render_tests`, the heavy label, the Metal timestamp cases | the round changed no source under `src/render/src` or `src/render/include`, and no CPU render test: only `src/render/tests/picture_gpu_test.cpp`, which is in G2 |
 | NOT RUN | Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` (`tools/check_unix_warnings.sh`); RTX 4090 and Radeon iGPU; a genuine 3840 × 2160 window | no such host or display here; commands as in round ec |
+
+### Integration review
+
+Reviewer 5 reviewed `a1fd6ea..2671d15` (the code at `c2bdf91` and this report). It re-read every gate log
+with `ctest_verdict.py --inventory`, matched the binaries' hashes and the source identities, and
+re-aggregated the canary traces with the frozen bench_picture: the tables came out byte-identical. It
+checked the G2 disposition against docs/testing/README.md and the hard rules. Verdict: CHANGES REQUIRED,
+one P2: the gameplay handoff said a turn without a refusal note accepted its commands, which ignores the
+256-note bound and the missing command index. Fixed in this commit, together with its P3s:
+- the dry-run claim replaced by the explain lines and the hash match;
+- the host-condition sentence made a deduction;
+- "full" no longer used for the G2 and G3 selections;
+- `c2bdf91`'s review coverage stated;
+- the reviewers' identity;
+- the contract note below.
+
+`window_table_test.sh` checks the aggregator's basename (`bench_picture`), so it runs on the build trees'
+binaries, not on the renamed frozen copy. A copy of the frozen binary under that name passes all its
+checks (reviewer 5).
 
 ### The real window (5F)
 
@@ -9674,8 +9699,9 @@ the canary at the final source":
   rejected; 121 edits presented, none unfinished;
 - the table labels it "a requested subset, 2 of 13 planned cases; not the full matrix";
 - the trace's overhead is again below the window's 0.1 ms resolution;
-- the window's busy time is higher than in round ec. Round ec's own binary shows the same today with the
-  viewer's code unchanged, so this is a host condition, not this round's change.
+- the window's busy time is higher than in round ec. Round ec's own binary shows the same today, and the
+  trace-off viewer path is unchanged. That is consistent with a host condition and not with this round's
+  change (one run of each; a deduction).
 
 ### Historical measurements
 
@@ -9692,7 +9718,7 @@ the canary at the final source":
 | Failure | Disposition |
 |---|---|
 | Round ec: `picture GPU, constrained: with stand-ins and dissolves …`, 2 of 2 at its 120 s deadline (`cache/ec-runs/e-affected-dev*.log`) | Test clock defect demonstrated; attribution by deduction; fixed; passes serially and in G2. NOT RUN: the corrected case under `-j 6`-like contention |
-| Round ec: `publish: one, two and four workers each hold a version ahead at a barrier …`, once under ASan (`e-asan.log`) | Test identity defect demonstrated; attribution by deduction; fixed; passes in G1, both G3 runs and 5 focused ASan runs. Its acceptance, passing repeatedly in a full ASan gate, is met by G3 run 1 and run 2 |
+| Round ec: `publish: one, two and four workers each hold a version ahead at a barrier …`, once under ASan (`e-asan.log`) | Test identity defect demonstrated; attribution by deduction; fixed; passes in G1, both G3 runs and 5 focused ASan runs. Its acceptance, passing repeatedly in an ASan gate, is met by G3 run 1 and run 2 (the same selection as round ec's failing ASan gate, plus `accounting`) |
 | Round ed: G2 run 1, exit 6, the RTX 4090 case's GPU skip outside policy | Kept; superseded by run 2 with `--allow-skip gpu` declared, since that case is a target-host gate |
 | Round ed: my invalid mutant (self-deadlock) | Kept in `p3-mutants-1.log`, marked INVALID; corrected in `p3-mutants-2.log` |
 | Round eb: the two Metal timestamp cases (`river flow on the GPU: …`, `every pass of a frame is timed …`) | Still open, not re-run (no change to that code). Owner: the GPU timing unit. Acceptance: passing on Metal, or a recorded owner decision |
@@ -9715,6 +9741,7 @@ the canary at the final source":
 | The corrected stand-ins case under contention | the next GPU unit | it passes in a full gate at `-j 6` beside CPU-heavy cases; a failure reports STALLED or WATCHDOG with its demand |
 | By-reference observers matched by pointer: "ownership: a frame-held generation outlives the bridge …", "publish: a frame-held intermediate generation and shutdown with work in flight …", "picture GPU: a frame's generation stays alive across a commit …", "picture GPU: the wave simulation's background preparation holds the frame's generation …" (reviewer 3's residual; a failure-path use after scope and address reuse are possible, not observed) | the bridge's next unit | their records shared by value and matched by lineage and generation (`reclaim_identity.hpp`), as the barrier cases now are |
 | The two Metal timestamp cases; OQ-525 | GPU timing unit; the owner | as above |
+| The refusal interface: a loss counter (or no silent drop) and the refused command's index in `RejectionNote` | gameplay input (W4.4) | a caller that falls behind is told; each refusal names its command; tests for both |
 | Representative large-city, complex-economy and multiplayer performance | the performance unit | PLAN §0.3 targets measured on target hardware with a late-game workload |
 
 ### Gameplay handoff
@@ -9722,8 +9749,14 @@ the canary at the final source":
 Gameplay can use these reviewed interfaces:
 - `PlayRunner::post_command` (and `set_script`): commands enter at the next turn, in queue order.
 - Acceptance: only the sim's `CommandRejected` events (`take_rejections`) say whether a command was
-  refused; a turn with none accepted all of its commands. Never infer acceptance from submission, or from
-  a picture update.
+  refused. Never infer acceptance from submission, or from a picture update. Two limits of the current
+  interface (`play.hpp`), which gameplay must respect:
+  - the runner keeps only the newest 256 refusal notes (`kRejectionKeep`) and drops older ones without a
+    counter, so "no refusal for this turn" means "accepted" only for a caller that takes the notes at
+    least every 256 refusals;
+  - a note names its turn and reason, not the command, so in a turn of several commands it does not say
+    which one was refused (the trace records such a turn as `ambiguous`).
+  Both are listed below as a follow-up for the interface's owner.
 - The building mailbox: `take_building_batches` at a frame boundary, with a collapsed resync when it
   overflows.
 - Monotonic publication: a committed island version never goes back, and a later commit supersedes an

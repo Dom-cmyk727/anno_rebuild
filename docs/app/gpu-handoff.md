@@ -247,7 +247,7 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
     have been one. Neither would a longer deadline, which the watchdog's 400 s would amount to if the
     alternative were the cause.
   - **NOT RUN:** the corrected case under contention like round ec's `-j 6` gates. The full GPU gate in this
-    round's report runs at `-j 1`, since the GPU tests share one device. That is a resource policy, not
+    round's report (the `picture GPU|play` selection) runs at `-j 1`, since the GPU tests share one device. That is a resource policy, not
     the fix.
 - **Round ec's intermittent `publish: one, two and four workers each hold a version ahead at a barrier, and
   the newest is published`** (anno_app_tests; failed once under ASan at workers = 2, "a held generation seen

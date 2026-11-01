@@ -1785,11 +1785,11 @@ off/on pair `overhead-(off|on)-1`, with release binaries frozen from `c2bdf91`
 - **The trace's overhead:** the window's own average busy time is 1.00 ms per frame both with the trace
   off and with it on. That is below the 0.1 ms resolution of its lines, as in round ec.
 - **Not comparable with round ec's numbers:** the window's busy time, trace off, is 1.0 ms now against 0.2
-  to 0.3 ms in round ec. Round ec's own frozen binary, run trace-off on the same case now, also shows
+  to 0.6 ms in round ec. Round ec's own frozen binary, run trace-off on the same case now, also shows
   1.0 ms (`cache/ed-runs/f-ec-binary-off-now/`). The viewer's code is identical between the two binaries
   (no change under `src/app/src/viewer.cpp`, `main.cpp`, `play*.cpp` or `src/render/src` from `c025fc2`
-  to `c2bdf91`). So the host's conditions differ between the two days (load 2 to 6 now), and these rows
-  are not a regression measurement. Round ec's latency rows stand for their own conditions (see the
+  to `c2bdf91`). That is consistent with the host's conditions differing between the two days (load 2 to
+  6 now; one run of each, so a deduction), and these rows are not a regression measurement. Round ec's latency rows stand for their own conditions (see the
   saved-evidence section above).
 - **Not measured:** the same limits as round ec: one host, no genuine 2160p drawable, no target hosts,
   present-call return only.

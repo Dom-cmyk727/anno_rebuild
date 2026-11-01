@@ -103,6 +103,9 @@ struct PlaySnapshot {
     /// per goods number) of its city. Empty when the player has no city.
     std::int64_t money = 0;
     std::vector<std::uint32_t> goods;
+    /// Build costs are waived for the developer player (its free-build flag, or the session's
+    /// free-build rule): a cost the window compares with `money` and `goods` is then no refusal.
+    bool costs_waived = false;
     /// The reason of the last refused command, kept for a few seconds of turns
     /// (empty when none), for the title. Each command's own outcome is outcome() /
     /// outcomes_since().

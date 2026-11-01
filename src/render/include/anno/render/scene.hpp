@@ -437,6 +437,17 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// object draws nothing (no sprite set, or no placement for the island at `group`).
     [[nodiscard]] std::optional<Rect> object_bounds(std::size_t index, const Prepared& o,
                                                     std::size_t group) const;
+    /// The sprites of one object that is not in the scene (a placement preview, round ee C1):
+    /// ANLAGEN entry `anlage` at island `index`'s local tile (`x`, `y`) with `rotation` quarter
+    /// turns and `height` (HEIGHT units), as place_prepared draws an object of the island's lists
+    /// at `group` and `time_ms` (its footprint from the entry, odd rotations swapped), anchors in
+    /// scene coordinates. Empty at a derived level, for an island without a placement, and for an
+    /// entry with no sprite set.
+    [[nodiscard]] std::vector<SpriteDraw> preview_sprites(std::size_t index, std::uint16_t anlage,
+                                                          std::uint8_t rotation, std::uint16_t x,
+                                                          std::uint16_t y, std::uint8_t height,
+                                                          std::size_t group,
+                                                          std::uint64_t time_ms) const;
 
     std::string name;
     std::vector<formats::insel::Island> islands;

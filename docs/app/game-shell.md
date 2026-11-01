@@ -342,6 +342,44 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   path is made. `sim::has_wire_form` decides the rest (4 095 placements, 8 190 tiles), and a drag
   is never split: one drag is one command.
 
+### The tool's preview and feedback (W4.4, round ee)
+
+- **The preview** (`dev_feedback.hpp`, `Scene::preview_sprites`):
+  - It is the selected type's own sprites: its ANLAGEN entry, the selected rotation, the
+    hovered tile, and the ground height under the origin tile's corner (the sim's own height for
+    the building can differ). They come from the renderer's own `place_prepared` on the frame's
+    scene.
+  - The GPU compositor draws them after everything else of the frame (an `overlay` span of
+    `GpuFrame::render`); the CPU renderer blends them after its frame (`blend_preview`). So they
+    lie on top of the picture: a preview, not part of the painter's order.
+  - No preview at a derived zoom level (sprites exist at the built groups), in the demolish mode,
+    or without a hovered tile on the city's island.
+  - Moving the pointer changes no object list and starts no chunk rebuild: only the overlay
+    changes.
+- **What it knows** (`PlacementKnowledge`), from published data only:
+  - the city's island tiles;
+  - the tiles the picture's published buildings cover (`ScenePicture::buildings`, re-indexed
+    only when `buildings_version` changes, never per pointer move);
+  - the latest snapshot's money, goods and `costs_waived` (the free-build flag or rule) against
+    the type's gold and goods costs.
+
+  A refusal is shown only with one of those as its basis ("would be refused: occupied in the
+  published picture", "… gold N needed, M held (published turn T)"). Everything else is
+  "unchecked: terrain and the placement rule are the sim's". The sim revalidates every command
+  when it runs it; the published picture can be behind it.
+- **The feedback line** (the window title, `feedback_line`), from left to right:
+  - the tool's state: the type, its footprint and gold cost, the rotation, the hovered tile and
+    the last local hint;
+  - the money and the type's cost goods from the snapshot;
+  - the preview's knowledge;
+  - the outcome of the tool's latest command, looked up by its receipt: Queued, Applied (with how
+    many of its records did something), Refused with the sim's reason, or Lost.
+
+  An earlier command's outcome is never shown as the latest's.
+- **Resources:** the developer start's test money and goods (`FixedPlayOptions`, fixed maps such
+  as `lan5.txt` only) are the sim's own state, charged and refused as any other. An original
+  scenario keeps its own resources.
+
 ### Immutable per-island object lists (W4.3, round du)
 
 Status: implemented in the Mac continuation of round du (`render::Scene::with_islands`,

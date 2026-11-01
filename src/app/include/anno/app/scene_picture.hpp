@@ -126,6 +126,9 @@ class ScenePicture {
     [[nodiscard]] std::shared_ptr<const render::Scene> scene() const { return current_; }
     /// The picture's buildings (the desired state), sorted by building_before. Window thread.
     [[nodiscard]] const std::vector<SceneBuilding>& buildings() const { return picture_; }
+    /// Advances whenever apply() changes buildings() (round ee: a reader that indexes the list
+    /// rebuilds its index only then). Window thread.
+    [[nodiscard]] std::uint64_t buildings_version() const { return buildings_version_; }
 
     /// Applies the batches in turn order to the desired state and requests a rebuild of every
     /// island they touch. Every change advances the island's desired version at once, even when its
@@ -235,6 +238,7 @@ class ScenePicture {
     struct Reaper;
     std::shared_ptr<const render::Scene> current_;
     std::vector<SceneBuilding> picture_;
+    std::uint64_t buildings_version_ = 0;
     /// The island index of each island slot number (window thread; set at construction).
     std::vector<std::pair<std::uint32_t, std::size_t>> slots_;
     std::shared_ptr<State> state_;

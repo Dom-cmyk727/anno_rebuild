@@ -3008,14 +3008,15 @@ std::uint64_t GpuFrame::errors() const {
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene,
                           Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
-                          WGPUTextureView target, const Resample* resample) {
+                          WGPUTextureView target, const Resample* resample,
+                          std::span<const SpriteDraw> overlay) {
     impl_->frame_scene = scene;
-    return render(frames, *scene, view, group, time_ms, style, target, resample);
+    return render(frames, *scene, view, group, time_ms, style, target, resample, overlay);
 }
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
-                          const Resample* resample) {
+                          const Resample* resample, std::span<const SpriteDraw> overlay) {
     Impl& m = *impl_;
     // Nothing of the scene stays referenced once the frame is recorded and submitted: the frame
     // table pointer and the owning handle (if any) are dropped on every way out. Uploads copy the
@@ -3122,6 +3123,12 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     // already hold them (a FrameRenderer with ships in its chunks).
     const std::uint32_t n_ships =
         frames.ships_in_chunks() ? 0 : m.pack_ships(scene, view, group, bytes);
+    // The overlay last (a placement preview): no depth test, on top of everything.
+    const std::uint32_t n_overlay =
+        overlay.empty()
+            ? 0
+            : m.pack_sprites(scene, std::vector<SpriteDraw>(overlay.begin(), overlay.end()), false,
+                             bytes);
     m.write_instances(bytes.b);
     stats.upload_create_ms = m.up_create_ms;
     stats.upload_write_ms = m.up_write_ms;
@@ -3423,6 +3430,15 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
                                                  std::uint64_t{n_below + n_above} * kInstanceBytes,
                                                  WGPU_WHOLE_SIZE);
             wgpuRenderPassEncoderDraw(p, 6, n_ships, 0, 0);
+        }
+        if (m.instances && atlas != nullptr && n_overlay > 0) {
+            wgpuRenderPassEncoderSetPipeline(p, m.sprite_pipe.get());
+            wgpuRenderPassEncoderSetBindGroup(p, 1, m.empty_bind.get(), 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(p, 2, atlas, 0, nullptr);
+            wgpuRenderPassEncoderSetVertexBuffer(
+                p, 0, m.instances.get(),
+                std::uint64_t{n_below + n_above + n_ships} * kInstanceBytes, WGPU_WHOLE_SIZE);
+            wgpuRenderPassEncoderDraw(p, 6, n_overlay, 0, 0);
         }
         wgpuRenderPassEncoderEnd(p);
         wgpuRenderPassEncoderRelease(p);

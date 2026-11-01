@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/dev_feedback.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
@@ -295,6 +296,9 @@ class Viewer {
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
           trace_(hooks != nullptr ? hooks->trace : nullptr),
           dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr) {
+        if (dev_ != nullptr) {
+            knowledge_.emplace(dev_->setup());
+        }
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene->bounds(group);
@@ -447,11 +451,12 @@ class Viewer {
     std::optional<FrameTracer> tracer_;
 #endif
     /// The developer tool (ViewerHooks::dev), the pointer frame of the last frame drawn (what the
-    /// pointer is over: its screen map, zoom geometry and scene), and the receipts of the
-    /// commands the tool posted, oldest first (round ee).
+    /// pointer is over: its screen map, zoom geometry and scene), what the preview knows from the
+    /// published picture and snapshot, and the receipt of the tool's latest command (round ee).
     DevTool* dev_ = nullptr;
     std::optional<PointerFrame> pointer_frame_;
-    std::vector<CommandId> dev_receipts_;
+    std::optional<PlacementKnowledge> knowledge_;
+    std::optional<CommandId> latest_receipt_;
     /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
     std::optional<Clock::time_point> quit_at_;
     /// Test hook (ANNO_VIEW_RESIZE=<seconds>:<w>x<h>): one resize at this time, to this drawable.
@@ -861,7 +866,7 @@ void Viewer::handle(const SDL_Event& e) {
         ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
                                       pointer_frame_ ? &*pointer_frame_ : nullptr);
         for (sim::Command& command : step.commands) {
-            dev_receipts_.push_back(play_->runner().post_command(std::move(command)));
+            latest_receipt_ = play_->runner().post_command(std::move(command));
         }
         if (step.taken) {
             if (dev_->enabled() != was_on) {
@@ -1205,8 +1210,16 @@ void Viewer::update_title() {
             title += extra;
         }
     }
-    if (dev_ != nullptr && dev_->enabled()) {
-        title += " — " + dev_tool_status(*dev_);
+    if (dev_ != nullptr && dev_->enabled() && knowledge_) {
+        // The feedback from published data only (dev_feedback.hpp): the snapshot, the picture's
+        // buildings, and the outcome of the tool's latest command by its receipt.
+        const auto snap = play_->runner().snapshot();
+        std::optional<CommandOutcome> latest;
+        if (latest_receipt_) {
+            latest = play_->runner().outcome(*latest_receipt_);
+        }
+        title +=
+            " — " + feedback_line(*dev_, knowledge_->check(*dev_, snap.get()), snap.get(), latest);
     }
     if (fps_) {
         char buf[64];
@@ -1248,6 +1261,11 @@ void Viewer::draw() {
     // The frame boundary: the picture first, then the one scene handle of this frame.
     follow_picture();
     const std::shared_ptr<const render::Scene> gen = current();
+    if (knowledge_ && play_ != nullptr &&
+        knowledge_->update(play_->picture().buildings(), play_->picture().buildings_version(),
+                           *gen)) {
+        update_title(); // the occupancy the preview knows changed
+    }
     int pw = 0, ph = 0;
     SDL_GetWindowSizeInPixels(window_, &pw, &ph);
     if (pw <= 0 || ph <= 0) {
@@ -1393,8 +1411,15 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const gpu::TextureView target(wgpuTextureCreateView(texture.get(), &vd));
     const auto render_start = Clock::now();
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
-    const auto s =
-        g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample);
+    // The developer tool's preview: its sprites, drawn last (dev_feedback.hpp).
+    std::vector<render::SpriteDraw> overlay;
+    if (dev_ != nullptr) {
+        if (auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+            overlay = std::move(p->sprites);
+        }
+    }
+    const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
+                                   resample, overlay);
     // What the pointer is over from now on: this frame's map, zoom level and scene.
     pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, out_w, out_h);
@@ -1468,6 +1493,11 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"picture", picture_ms_});
     steps_.push_back({"draw prologue", since_ms(picture_end_, render_start)});
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
+    if (dev_ != nullptr) {
+        if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
+            blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+        }
+    }
     pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, w, h);
     const auto rendered = Clock::now();

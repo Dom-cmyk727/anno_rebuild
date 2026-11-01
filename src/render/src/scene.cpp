@@ -856,6 +856,40 @@ std::pair<bool, bool> Scene::has_water_objects(std::size_t index) const {
     return {!o.lists->below.empty(), !o.lists->above.empty()};
 }
 
+std::vector<SpriteDraw> Scene::preview_sprites(std::size_t index, std::uint16_t anlage,
+                                               std::uint8_t rotation, std::uint16_t x,
+                                               std::uint16_t y, std::uint8_t height,
+                                               std::size_t group, std::uint64_t time_ms) const {
+    std::vector<SpriteDraw> out;
+    if (group >= kGroups) {
+        return out;
+    }
+    const Placement* placed = nullptr;
+    for (const Placement& p : layouts[group]) {
+        if (p.index == index) {
+            placed = &p;
+        }
+    }
+    if (placed == nullptr) {
+        return out;
+    }
+    formats::insel::PlacedObject o;
+    o.anlage = anlage;
+    o.rotation = static_cast<std::uint8_t>(rotation & 3U);
+    o.state = static_cast<std::uint16_t>(std::uint16_t{height} << 8);
+    o.x = x;
+    o.y = y;
+    // The footprint as prepare_objects gives it (the entry's, odd rotations swapped).
+    const auto fp = anlagen.footprint(anlage).value_or(std::pair{std::uint8_t{1}, std::uint8_t{1}});
+    const std::vector<Prepared> list{Prepared{o, o.footprint(fp.first, fp.second)}};
+    place_prepared(
+        list, anlagen, group, lift, time_ms, [](int, int, int, int) { return true; }, out);
+    for (SpriteDraw& d : out) {
+        d.anchor = {d.anchor.first + placed->offset.first, d.anchor.second + placed->offset.second};
+    }
+    return out;
+}
+
 std::vector<SpriteDraw> Scene::sprites_in(Rect rect, std::size_t group, std::uint64_t time_ms,
                                           SpriteLayer layer, WaterStyle style) const {
     std::vector<SpriteDraw> out;

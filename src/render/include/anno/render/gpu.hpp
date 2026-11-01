@@ -25,6 +25,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -482,10 +483,12 @@ class GpuFrame {
     /// view.h, in the frame's format) and submits the commands. With
     /// `resample` (not the identity) `view` is the scene grid the picture is
     /// composed on and `target` has the output's size: the grid is resampled
-    /// onto it by one extra pass (see Resample).
+    /// onto it by one extra pass (see Resample). `overlay` (round ee, C1: a placement preview,
+    /// Scene::preview_sprites) is drawn after everything else of the frame, ships included, with
+    /// no depth test: on top of the picture, not in its painter's order.
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
-                    const Resample* resample = nullptr);
+                    const Resample* resample = nullptr, std::span<const SpriteDraw> overlay = {});
     /// render for a scene generation that may be released while work started by the frame is
     /// still running (the play picture's generations; docs/app/gpu-handoff.md). The chunk jobs
     /// the frame plans and the wave simulation's background preparation (GpuLimits::
@@ -494,7 +497,8 @@ class GpuFrame {
     /// the scene: its caller keeps it alive for as long as any of that work runs.
     GpuStats render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene, Rect view,
                     std::size_t group, std::uint64_t time_ms, WaterStyle style,
-                    WGPUTextureView target, const Resample* resample = nullptr);
+                    WGPUTextureView target, const Resample* resample = nullptr,
+                    std::span<const SpriteDraw> overlay = {});
 
     /// The compositor's copy of chunk `key` (round eb; docs/app/gpu-handoff.md, boundary 6). A
     /// CPU chunk that is cached and fresh is CPU-ready; it is GPU-usable once `serial` equals its

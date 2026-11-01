@@ -776,6 +776,9 @@ std::size_t ScenePicture::apply(const std::vector<std::shared_ptr<const Building
         }
     }
     const auto listed = Clock::now();
+    if (!touched.empty()) {
+        ++buildings_version_;
+    }
     reindex(touched);
     const auto indexed = Clock::now();
     std::vector<std::size_t> wanted;

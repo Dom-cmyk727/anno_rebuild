@@ -5,6 +5,7 @@ add_library(anno_app_core
   src/building_delta.cpp
   src/command_outcome.cpp
   src/commands_file.cpp
+  src/dev_feedback.cpp
   src/dev_input.cpp
   src/dev_tool.cpp
   src/legal_workload.cpp
@@ -77,7 +78,8 @@ if(ANNO_BUILD_TESTS)
   anno_add_doctest(anno_app_alloc_tests)
   if(ANNO_BUILD_VIEWER)
     # The developer tool through the window's own SDL mapping (synthetic SDL events; no window).
-    add_executable(anno_app_input_tests tests/main.cpp tests/dev_tool_test.cpp)
+    add_executable(anno_app_input_tests tests/main.cpp tests/dev_tool_test.cpp
+      tests/dev_feedback_test.cpp)
     target_link_libraries(anno_app_input_tests PRIVATE anno_app_sdl anno_test_support
       doctest::doctest)
     target_compile_definitions(anno_app_input_tests PRIVATE

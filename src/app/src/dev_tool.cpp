@@ -66,15 +66,18 @@ std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, d
     const render::Scene& scene = *frame.scene;
     // The city's island is drawn at its integer placement: undo that rounding first, so the pick
     // solves the rule the island's pixels were drawn with.
-    std::pair<double, double> rounding{0.0, 0.0};
+    std::optional<std::pair<double, double>> rounding;
     for (std::size_t k = 0; k < scene.islands.size(); ++k) {
         if (scene.islands[k].x == setup_.island.x0 && scene.islands[k].y == setup_.island.y0) {
             rounding = placement_rounding(scene, k, frame.group, frame.geometry.tile_w);
             break;
         }
     }
+    if (!rounding) {
+        return fail("the city's island is not in the scene"); // never a pick without its offset
+    }
     const auto tile = render::pick_tile(
-        point->first - rounding.first, point->second - rounding.second, frame.geometry,
+        point->first - rounding->first, point->second - rounding->second, frame.geometry,
         [&scene](float u, float v) { return scene.ground_height(u, v); });
     if (!tile) {
         return fail("no tile here");

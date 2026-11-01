@@ -605,6 +605,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(developer_player())) {
             next->money = player->money;
+            next->costs_waived = player->free_build || world_.rules().free_build_cheat;
         }
         const auto& island = world_.islands()[developer_city_->island.v];
         if (island && developer_city_->city.v < island->cities.size() &&

@@ -71,8 +71,8 @@ inline std::vector<std::string> fixture_lines(const std::string& name) {
     return lines;
 }
 
-/// Decimal "40.5" / "-2.5" to Q24.8, rounding half away from zero (a goal that is exact in Q24.8 - tile
-/// centres, k/256 - converts exactly; only those reproduce the f32 emulation bit for bit).
+/// Decimal "40.5" / "-2.5" to Q24.8, rounding half away from zero (a goal that is exact in Q24.8 -
+/// tile centres, k/256 - converts exactly; only those reproduce the f32 emulation bit for bit).
 inline std::int32_t decimal_to_q8(const std::string& s) {
     const bool neg = !s.empty() && s[0] == '-';
     const std::string t = neg ? s.substr(1) : s;

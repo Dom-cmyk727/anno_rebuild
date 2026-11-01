@@ -128,8 +128,9 @@ struct NavSegment {
     std::uint8_t dir8 = 0;              // Move only
     std::uint32_t factor_percent = 100; // V applied to this segment, 1 .. 100
     std::uint32_t speed_q32 = 0;        // base speed (before the factor)
-    /// Length still to sail in this segment, in q32/500 (= q32 * 500): the integrator's budget scale, so
-    /// a partial step leaves no sub-unit fraction behind (docs/sim/ship-navigation.md 12.4).
+    /// Length still to sail in this segment, in q32/500 (= q32 * 500): the integrator's budget
+    /// scale, so a partial step leaves no sub-unit fraction behind
+    /// (docs/sim/ship-navigation.md 12.4).
     std::uint64_t remaining_x500 = 0;
     friend constexpr bool operator==(const NavSegment&, const NavSegment&) = default;
 };

@@ -354,7 +354,9 @@ TEST_CASE("command outcomes: a command with no wire form is refused as Unencodab
     // 4 096 placements: one more than a Build record holds.
     sim::Command huge = build(w, 4, 4);
     auto& placements = std::get<sim::BuildCmd>(huge.body).placements;
-    placements.assign(4096, placements.front()); // has_wire_form: at most 4 095
+    // A copy: assign() may free the buffer its argument points into (ASan: heap-use-after-free).
+    const sim::PlacementWire one = placements.front();
+    placements.assign(4096, one); // has_wire_form: at most 4 095
     REQUIRE_FALSE(sim::has_wire_form(huge.body));
     const app::CommandId too_long = runner.post_command(huge);
     runner.run_n(1);

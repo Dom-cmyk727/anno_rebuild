@@ -1632,7 +1632,8 @@ and the table is `cache/ec-runs/d-matrix-c025fc2-table.md`.
     them.
 
 **Workloads.** All are legal commands for the developer city, found by a trial world
-(`cache/ec-runs/d-workloads/`, generator source beside them). Acceptance is read from each run's own
+(`tools/bench/window_workloads/` in git, the same files as `cache/ec-runs/d-workloads/` by sha256, with
+the generator source). Acceptance is read from each run's own
 `sim.tsv`, never from the trial.
 - **idle:** no command, 12 s.
 - **one:** one build at turn 30, 12 s.

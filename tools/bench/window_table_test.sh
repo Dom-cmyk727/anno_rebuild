@@ -60,6 +60,12 @@ grep -q "| 1 / 1 / 1 / 0 / 0 | 1 / 1.0 / (n=1) / (n=1) / 1.0 | 1 | 0 | 0 | .* | 
     fail "edits row"
 grep -q "^| good | on | 1 / 120.0 / (n=1) / (n=1) / 120.0 | 1 / 0.50 / (n=1) / (n=1) / 0.50 | 2.00 GiB |" \
     "$WORK/out" || fail "stderr row"
+# GNU time -v's peak RSS line (Linux) is read as well as macOS's.
+new_matrix "$WORK/m_gnu"
+make_case "$WORK/m_gnu" good
+printf '\tMaximum resident set size (kbytes): 1572864\n' > "$WORK/m_gnu/good/time.txt"
+table "$WORK/m_gnu" 0 "a case with GNU time's peak RSS"
+grep -q "| 1.50 GiB |" "$WORK/out" || fail "GNU time: peak RSS not read"
 # Each fault in its own matrix, beside a good case that keeps its row.
 # The round-ec review's impossible rows (P2-3), each accepted before: a frame that starts before the
 # previous one ended, an attempt without a texture that has submit times, an epoch going back,

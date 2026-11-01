@@ -2,18 +2,19 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-01: rendering moves to Windows; MAP stays on Mac
+## Current dispatch — 2026-11-01: Windows rendering intake; MAP founding follow-up
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package, accept unreviewed changes, or change MAP's assignment.
+package or accept unreviewed changes. MAP's completed founding packet is now
+superseded by the reviewed follow-up below.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090 after the current Mac handoff | **W4-WIN-0 READY now.** Prepare the host and read the packet below. Finish/review the current W4.4 work before releasing W4-WIN-1–6 on a pinned commit. |
-| MAP.2 / founding | Mac, existing MAP executor | Continue the existing founding correction/dependency packet. No migration, reassignment or interruption. |
+| MAP.2 / founding | Mac, existing MAP executor | **MAP-FOUND-3 READY.** Repair the two reviewed defects, then implement the owner's peace/shared-visibility/no-alliance start policy under the packet below. |
 
 **Reviewed baseline:** `task/W4-3-live-buildings` at
 `3483d665a5b0f6d92a3f88c9ac519d0bd7e1272d` (round ed; code at `c2bdf91`).
@@ -30,7 +31,7 @@ copy its build tree, or have a second executor implement the same packages. The
 last observed GitHub rendering head was `c869fb7`; pulling the task board alone
 does not deliver the current rendering code. Re-check remote refs at intake.
 
-### Read order and delivery
+### Rendering read order and common delivery
 
 1. Repository `AGENTS.md` if present, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.4,
    `docs/testing/evidence-contract.md`, and `docs/testing/README.md`.
@@ -173,6 +174,183 @@ founding work, change active map/candidates or original game files, stop others'
 jobs/keep-awake assertions, or merge/rebase/push task code without a release
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
+
+### MAP-FOUND-3 — bounded corrections and five-player start policy · READY
+
+Continue `task/MAP-2-original-like` on the **Mac** from documentation head
+`f0812cde4103cc8884cf749abe6f72294dc60c83`, code
+`4f22cf6495266647e8f2ac4b702eaf3d7243bd88`. Confirm the actual checkout first;
+do not reset newer work. Read the orchestrator's
+[critical review](reviews/2026-11-01-map2-founding.md). The existing gameplay work
+is retained; two concrete findings require correction. Saved local gate counts
+reconcile. This is not full fidelity or target-platform acceptance.
+
+**Owner decision C5 is resolved:** five ship-start players begin **at peace,
+with shared visibility, and without alliances**. They still race to claim their
+first island; natural island differences and optional sharing remain. Do not
+select/install a candidate, equalize islands, grant starting territory, move
+spawns, or require multiple players to share an island. Original scenarios keep
+their own setup. The new start policy is an explicit adaptation, not an original
+Anno 1503 multiplayer behavior claim.
+
+#### Read in this order
+
+1. Current main's `AGENTS.md`, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.4,
+   `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this packet and
+   its linked review. Use the fetched board and canonical gate from main without
+   merging another lane's code into this branch.
+2. On the MAP branch: `docs/orchestration/evidence/map2-founding-reviews.md`, the
+   latest MAP report, `docs/sim/ship-founding.md` §§16–17, and
+   `docs/re/ship-founding.md` §§15–16. Later corrections supersede historical
+   assertions; do not revive the treasure-at-founding claim.
+3. `docs/sim/ship-start-integration.md`, `docs/sim/fixed-map.md`,
+   `docs/re/players.md`, `docs/sim/state.md`; the relation/discovery/registration
+   code in `player.*`, `scenario.*`, `scenario_formats.cpp`, `founding.cpp` and
+   `city_creation.cpp`; `src/sim_load/{include/anno/sim_load,src}/ship_start.*`.
+4. `types.*`, `figure_veto.*`, `state_fields.hpp`, `config.hpp`,
+   `src/tools/sim_replay/{main.cpp,CMakeLists.txt}` and the existing argument-check
+   helper; `tools/sim_stream.py`; figure-fact, founding, original-asset founding,
+   ship-start, scenario-format, state-layout and replay tests. Inspect callers
+   before changing shared data contracts.
+
+#### A — fix hull-domain safety, preserving original facts
+
+1. Reproduce the reviewer's small counterexample: a builder-produced ship type
+   with signed hull `INT64_MAX` is accepted and overflows in the nearby-figure
+   veto. Exercise `INT64_MIN` too. Use a tiny focused sanitizer probe, not a corpus
+   campaign; retain the first failure.
+2. Define one safe hull domain for every registry construction path. Validate
+   builder-supplied facts as well as decoded original data, with a useful refusal
+   rather than a crash or silent wrap. Make the pure veto safe for its documented
+   public inputs; a clamp performed after overflowing is not a fix.
+3. Preserve absent, present zero, ordinary positive values, and the real negative
+   type-391 value. Cover both sides of the chosen bounds, missing-fact refusal,
+   and unchanged world bytes/PRNG on a refused founding. Include one accepted
+   control through the same registry → founding path.
+4. **Stop A when:** focused Debug and sanitizer cases pass and the independent
+   reviewer confirms the arithmetic bound and both public entry paths.
+
+#### B — make the replay CLI contract test the real result
+
+1. Demonstrate that the current CTest properties accept the expected divergence
+   text with exit 0. The CLI currently returns the right statuses; preserve that
+   behavior. Do not call its working replay algorithm broken.
+2. Add/reuse one small portable command-check helper that requires both the exact
+   exit status and the expected checkpoint/diagnostic content. Founding success
+   expects 0, deliberate divergence expects 1. Remove the regex-only loophole in
+   the analogous registered replay-success cases using the same helper.
+3. Cheap helper contracts must reject right text/wrong exit in both directions,
+   right exit/wrong text, missing output, and a failed child launch. Then exercise
+   the real `m2_found.log` and `m2_found_wrong.log` public commands. A helper that
+   itself exits 0 unconditionally is not proof. Register and explicitly require
+   its contract in the canonical acceptance gate.
+4. **Stop B when:** the public positive and negative runs and the helper's
+   counterexamples pass review. Do not redesign the coordinator or gate runner.
+
+#### C — independent content/state proof before new policy state
+
+1. Add a small independent byte/digest reference for figure facts: absent hull,
+   zero, positive and shipped negative, plus at least two types to establish
+   ordering. Derive signed encoding and presence from the written contract, not
+   the production serializer or a copied result hash. Check a changed field
+   changes the identity and a reordered input respects the documented order.
+2. Include a non-empty ore discovery-set wire example with hand-derived expected
+   bytes. The current Python empty-list entry does not prove non-empty encoding.
+   Reuse existing field walkers/oracles where appropriate; no second full engine.
+3. Any incompatible serialized-state or digest-layout change in this packet
+   needs a distinct declared version, updated readers/writers and explained
+   goldens. Do not silently reuse 120 again. Freeze the new layout before final
+   fixture generation. Test the version guard with an otherwise valid input
+   differing only at the relevant version field, plus a valid control, and check
+   the specific error; a registry mismatch/truncation must not satisfy that test.
+4. **Stop C when:** the independent checks discriminate the intended mistakes,
+   the supported/unsupported version contract is explicit, and review passes.
+   Do not add an old-save migration project.
+
+#### D — implement peace and shared visibility without alliance side effects
+
+1. First write a short contract and acceptance table. Distinguish player contact
+   (`Player::discovery`), city/island/ore discovery, actual visibility/fog, and
+   TRADE/MILIT/WAR relations. Shared visibility means mutual sharing of information
+   actually revealed by the five participants, not revealing the whole map at
+   start. Identify what the current headless model can represent; do not label
+   a contact set as live rendered fog-of-war.
+2. Trace the smallest unresolved dependencies: confirm original relation-byte
+   meanings and the loader's player `DISCO` → property-7 link, with exact original
+   module/address/file-field evidence. If that link is established, implement its
+   loader/validation and focused byte-level tests. Otherwise retain a specific
+   open dependency; do not guess or block independent corrections on it.
+3. Obtain an independent contract review before implementation. The owner policy
+   itself is already authorized; no additional orchestrator round is needed for
+   a reviewed, bounded implementation. If original MILIT=3 couples sharing to an
+   alliance, represent sharing separately. Never set an alliance merely to get
+   visibility. Keep the faithful original path and this scenario policy distinct.
+4. Implement the smallest deterministic scenario/rules representation and the
+   supported headless discovery propagation. Apply it specifically to the five-
+   ship start. Make participating players explicit data, not five hardcoded peer
+   checks. Validate participant IDs and persistence; include effective policy in
+   world/replay/content identity as appropriate. State separately which identities
+   describe unchanged candidate geometry and which describe gameplay setup.
+5. Test the real loader: all ordered pairs are at peace; no military/trade
+   alliance or territorial rights arise; a reveal by one participant reaches the
+   supported shared-visibility state of the others; unrelated/absent players do
+   not acquire it; unexplored information stays unknown. Include an ordinary
+   original scenario with sharing off, a different participant set/non-default
+   player IDs, and save/load plus replay. Failed loads/commands remain atomic.
+6. **Stop D when:** the policy and supported behavior are reviewed and tested, or
+   a precise prerequisite prevents a particular behavior. In the latter case
+   finish independent work and report that row incomplete. Do not claim rendered
+   shared fog, sailing, diplomacy commands or full-map visibility if not built.
+   Do not implement campaign scripts, mines or CompLogic AI to close this packet.
+
+#### E — prove the usable gameplay path and close the packet
+
+1. Run one small end-to-end headless canary before broad gates: load an unchanged
+   candidate, verify five ships/crews and no cities, then use legal founding
+   commands for more than one participant and verify payments, ownership,
+   visibility-policy effects and replay checkpoints. Sailing is not implemented:
+   if setup relocates ships to independently validated sites, disclose that as
+   fixture setup, never as a demonstrated sailed route.
+2. Preserve both distinct-island settlement and optional unowned-land sharing;
+   test conflicting commands and a refused command without charging or leaking
+   discovery. Retain the alternate non-square warehouse definition and non-default
+   owner/city test. Do not alter the candidate manifests or install a winner.
+3. Run cheap contracts → focused regressions/sanitizers → the real-asset canary
+   → relevant sim/replay/formats gates on the final frozen code. Reuse unaffected
+   evidence with an explicit dependency explanation. No heavy render campaign or
+   repeated broad run without a changed input, failed check or unresolved cause.
+4. Record exact selected/executed/failed/empty/skipped/incomplete counts, source,
+   workflow, binary and fixture identities. Preserve first failures. Windows,
+   Linux/WSL and original-runtime checks stay NOT_RUN on this Mac; do not claim
+   the rendering executor has tested this independent branch.
+5. Obtain final independent integration review, fix actionable findings, append
+   `REPORTS.md` and the review ledger, and stop. State code/docs heads, acceptance
+   per package, effective start policy, and remaining fidelity/platform limits.
+   No merge, rebase, task-code push, candidate selection or next feature expansion.
+
+#### Independent review, efficiency and boundaries
+
+- Deploy an independent read-only review subagent for each substantive package;
+  freeze its diff and give it callers, acceptance table and raw evidence. It must
+  inspect the implementation and actively challenge one relevant counterexample,
+  not approve the author's summary. It must not implement, commit or delegate its
+  own review. Re-review corrections and retain dispositions before completion.
+- Use a fresh final integration reviewer for A–E interactions. Review original
+  rules, explicit adaptations and unknowns separately. A missing independent
+  reviewer is REVIEW PENDING, not self-approval. Avoid duplicate long test runs.
+- Preserve modern/mod-ready boundaries: validated registry facts, scenario-owned
+  policy, deterministic ordering, explicit state and content identity, and no
+  rendering dependency in `sim`. A changed warehouse or participant set must not
+  require another hardcoded branch. No speculative plugin framework is requested.
+- Inspect current Mac memory/disk/contention and use the existing calibrated
+  concurrency with admission enabled. Own only your jobs and awake assertion.
+  Do not touch `test_support`, coordinator journals/processes, W4's worktree,
+  original assets or shared task assignments. Keep the screen awake while your
+  work runs; preserve other assertions. Report limitations instead of changing
+  another lane to make a gate pass.
+- Kind-11 reuse/loaded COMP records, ore-event consumers, deposits/mining and
+  sailing remain explicit follow-ups. The conservative kind-11 refusal is not
+  original parity. Do not attach a full AI or campaign investigation to this unit.
 
 ---
 

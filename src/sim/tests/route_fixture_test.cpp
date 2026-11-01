@@ -217,3 +217,59 @@ TEST_CASE("route fixtures: the walk-legality helper rejects the corrupt records 
     CHECK(accepted >= 1);
     CHECK(rejected >= 3);
 }
+
+TEST_CASE("route fixtures: generated emulated-original routes (mixed cells, learning, block edges, "
+          "shore band)") {
+    std::uint32_t executed = 0, learning = 0, planned = 0, failed = 0, with_band = 0, big = 0;
+    for (const std::string& line : fixture_lines("route_emulated.txt")) {
+        const auto parts = split(line, '|');
+        const std::string name = words(parts[0])[1];
+        const auto dims = words(parts[1]);
+        sim::TileMapSource map(std::stoi(dims[0]), std::stoi(dims[1]));
+        add_land(map, words(parts[2]));
+        std::vector<sim::CellCoord> band;
+        const auto bw = words(parts[3]);
+        for (std::size_t i = 1; i < bw.size(); ++i) {
+            if (bw[i] == "-") {
+                continue;
+            }
+            const auto c = split(bw[i], ',');
+            band.push_back({std::stoi(c[0]), std::stoi(c[1])});
+        }
+        const auto st = words(parts[4]);
+        const auto go = words(parts[5]);
+        const auto res = plan(map, decimal_floor(st[1]), decimal_floor(st[2]), decimal_to_q8(go[1]),
+                              decimal_to_q8(go[2]), {}, band);
+        CAPTURE(name);
+        CHECK(status_code(res) == std::stoi(parts[6]));
+        CHECK(runs_to_string(res.runs) == parts[7]);
+        // The original resets its learned-mask count to 0 when the cap is hit (the -1 path of
+        // 0x10013fb0); the port reports the masks it applied.
+        const std::uint32_t want_learned =
+            static_cast<std::uint32_t>(std::stoi(words(parts[8])[1]));
+        if (res.work.retry_cap_hit) {
+            CHECK(want_learned == 0);
+        } else {
+            CHECK(res.work.learned == want_learned);
+        }
+        if (res.status == sim::RouteStatus::Planned) {
+            const Walk w = walk_runs(map, decimal_floor(st[1]), decimal_floor(st[2]), res.runs, 10);
+            CHECK(w.problem.empty());
+            CHECK(w.end_x == res.end_x);
+            CHECK(w.end_z == res.end_z);
+            ++planned;
+        } else if (res.status == sim::RouteStatus::Unreachable) {
+            ++failed;
+        }
+        learning += res.work.learned > 0 ? 1 : 0;
+        with_band += band.empty() ? 0 : 1;
+        big += std::stoi(dims[0]) > 64 ? 1 : 0;
+        ++executed;
+    }
+    CHECK(executed >= 150);
+    CHECK(learning >= 10);
+    CHECK(planned >= 60);
+    CHECK(failed >= 5);
+    CHECK(with_band >= 15);
+    CHECK(big >= 40);
+}

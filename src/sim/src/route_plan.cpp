@@ -329,51 +329,14 @@ void Planner::setup_goal() {
 std::uint16_t Planner::start_nibble() const {
     const std::int32_t cx0 = static_cast<std::int32_t>(ox_) + 8 * (start_cell_ % ncx_);
     const std::int32_t cz0 = static_cast<std::int32_t>(oz_) + 8 * (start_cell_ / ncx_);
-    std::array<bool, 64> seen{};
-    std::array<std::uint8_t, 64> stack{};
-    std::uint32_t top = 0;
-    const std::uint32_t s = static_cast<std::uint32_t>((start_tx_ - cx0) + 8 * (start_tz_ - cz0));
-    seen[s] = true;
-    stack[top++] = static_cast<std::uint8_t>(s);
-    std::uint32_t nib = 0;
-    while (top > 0) {
-        const std::uint32_t i = stack[--top];
-        const std::uint32_t x = i & 7u;
-        const std::uint32_t z = i >> 3;
-        if (x == 0) {
-            nib |= 0x1000;
-        }
-        if (z == 7) {
-            nib |= 0x2000;
-        }
-        if (x == 7) {
-            nib |= 0x4000;
-        }
-        if (z == 0) {
-            nib |= 0x8000;
-        }
-        const auto visit = [&](std::uint32_t nx, std::uint32_t nz) {
-            const std::uint32_t j = nx + 8u * nz;
-            if (!seen[j] && tile_water(cx0 + static_cast<std::int32_t>(nx),
-                                       cz0 + static_cast<std::int32_t>(nz))) {
-                seen[j] = true;
-                stack[top++] = static_cast<std::uint8_t>(j);
-            }
-        };
-        if (x > 0) {
-            visit(x - 1, z);
-        }
-        if (x < 7) {
-            visit(x + 1, z);
-        }
-        if (z > 0) {
-            visit(x, z - 1);
-        }
-        if (z < 7) {
-            visit(x, z + 1);
+    std::array<std::uint8_t, 64> water{};
+    for (std::int32_t dz = 0; dz < 8; ++dz) {
+        for (std::int32_t dx = 0; dx < 8; ++dx) {
+            water[static_cast<std::uint64_t>(dx + 8 * dz)] = tile_water(cx0 + dx, cz0 + dz) ? 1 : 0;
         }
     }
-    return static_cast<std::uint16_t>(nib);
+    return route_detail::start_nibble(std::span<const std::uint8_t, 64>(water), start_tx_ - cx0,
+                                      start_tz_ - cz0);
 }
 
 std::uint32_t Planner::eff_word(std::int32_t cell) const {
@@ -797,8 +760,13 @@ RouteResult Planner::run() {
                 break;
             }
         }
-        if (f == 0 || learned_.size() >= lim_.retry_cap) {
+        if (f == 0) {
             res_.status = RouteStatus::Unreachable;
+            break;
+        }
+        if (learned_.size() >= lim_.retry_cap) {
+            res_.status = RouteStatus::Unreachable;
+            res_.work.retry_cap_hit = true;
             break;
         }
         const std::int32_t p_cell = path_[n - f];
@@ -840,6 +808,57 @@ std::uint32_t route_density(std::span<const RouteStamp> stamps, std::int32_t til
 }
 
 namespace route_detail {
+
+std::uint16_t start_nibble(std::span<const std::uint8_t, 64> water, std::int32_t lx,
+                           std::int32_t lz) {
+    if (lx < 0 || lz < 0 || lx > 7 || lz > 7) {
+        return 0;
+    }
+    std::array<bool, 64> seen{};
+    std::array<std::uint8_t, 64> stack{};
+    std::uint32_t top = 0;
+    const std::uint32_t s = static_cast<std::uint32_t>(lx + 8 * lz);
+    seen[s] = true;
+    stack[top++] = static_cast<std::uint8_t>(s);
+    std::uint32_t nib = 0;
+    while (top > 0) {
+        const std::uint32_t i = stack[--top];
+        const std::uint32_t x = i & 7u;
+        const std::uint32_t z = i >> 3;
+        if (x == 0) {
+            nib |= 0x1000;
+        }
+        if (z == 7) {
+            nib |= 0x2000;
+        }
+        if (x == 7) {
+            nib |= 0x4000;
+        }
+        if (z == 0) {
+            nib |= 0x8000;
+        }
+        const auto visit = [&](std::uint32_t nx, std::uint32_t nz) {
+            const std::uint32_t j = nx + 8u * nz;
+            if (!seen[j] && water[j] != 0) {
+                seen[j] = true;
+                stack[top++] = static_cast<std::uint8_t>(j);
+            }
+        };
+        if (x > 0) {
+            visit(x - 1, z);
+        }
+        if (x < 7) {
+            visit(x + 1, z);
+        }
+        if (z > 0) {
+            visit(x, z - 1);
+        }
+        if (z < 7) {
+            visit(x, z + 1);
+        }
+    }
+    return static_cast<std::uint16_t>(nib);
+}
 
 std::uint16_t learn_mask(std::uint32_t p_label, std::uint32_t f_label) {
     if (f_label < 0x80 || f_label > 0x86 || (f_label & 1u) != 0) {

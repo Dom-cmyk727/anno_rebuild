@@ -275,6 +275,9 @@ struct RouteWork {
     std::uint64_t fine_pops = 0;
     /// Learned masks applied (= retries) when the query finished.
     std::uint32_t learned = 0;
+    /// True when a retry was refused because `retry_cap` masks were already learned (the original
+    /// resets its own count to 0 on that path and answers -2).
+    bool retry_cap_hit = false;
     /// High-water mark of the accounted bytes.
     std::uint64_t bytes_high = 0;
     friend bool operator==(const RouteWork&, const RouteWork&) = default;
@@ -328,6 +331,12 @@ struct Perturbation {
                                                const RouteLimits& limits,
                                                const RouteCostTable& costs,
                                                const Perturbation& perturbation);
+
+/// The start-cell nibble (0x1000fa50): the start tile (cell-local lx, lz, marked even when it is
+/// land) and its 4-connected water flood inside the 8 x 8 cell set one bit per touched cell edge:
+/// 0x1000 W (x == 0), 0x2000 S (z == 7), 0x4000 E (x == 7), 0x8000 N (z == 0).
+[[nodiscard]] std::uint16_t start_nibble(std::span<const std::uint8_t, 64> water, std::int32_t lx,
+                                         std::int32_t lz);
 
 /// The learn table 0x10013fb0 as a function: the AND mask that clears the connectivity bit of cell
 /// P (arrival label `p_label`: 0x80 + dir, any other value = start cell) towards the next path cell

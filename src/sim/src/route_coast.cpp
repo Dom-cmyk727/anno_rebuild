@@ -48,8 +48,8 @@ std::string validate(const RouteLimits& l) {
     if (l.fine_budget < 1) {
         return fail("route limits: fine_budget must be at least 1");
     }
-    if (l.memory_bytes < 4096) {
-        return fail("route limits: memory_bytes must be at least 4096");
+    if (l.memory_bytes < 1) {
+        return fail("route limits: memory_bytes must be at least 1");
     }
     return {};
 }

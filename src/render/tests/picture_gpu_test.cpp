@@ -1275,7 +1275,9 @@ struct PausedLoop {
     /// it.
     std::size_t stall_frames = 3000;
     /// The wall-clock watchdog: it bounds a broken case; it never decides that the work finished.
-    std::chrono::seconds watchdog{600};
+    /// 400 s, so the three bounded loops of a case stay within CTest's 1800 s timeout and their
+    /// report is printed.
+    std::chrono::seconds watchdog{400};
 };
 
 /// The window's paused loop on the GPU path, without a window: a first frame (the viewer marks
@@ -1704,20 +1706,25 @@ TEST_CASE(
             }
             on_gpu += fresh(frames, k) && st.serial == frames.chunk(k)->serial ? 1U : 0U;
         }
+        // The demand and the key states of this frame, for the message below and the watchdog's.
+        observe(first, *g.frame, frames, visible);
+        first.chunks_busy = frames.busy();
+        first.play_work = picture.pending() > 0;
+        first.gpu_work = g.frame->work_pending();
+        first.clock = *clock;
+        first.seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - first_start).count();
         if (on_gpu == visible.size()) {
             break;
         }
         // The chunk jobs and the uploads progress on their own; only the watchdog bounds this.
-        REQUIRE_MESSAGE(std::chrono::steady_clock::now() - first_start < std::chrono::seconds(600),
-                        "the visible chunks never all reached the GPU after " << first.frames
-                                                                              << " frames");
+        first.watchdog = first.seconds > 400;
+        REQUIRE_MESSAGE(!first.watchdog,
+                        "the visible chunks never all reached the GPU: " << first.text());
         std::this_thread::yield();
     }
-    observe(first, *g.frame, frames, visible);
-    MESSAGE("stand-ins: every visible chunk on the GPU after "
-            << first.frames << " frames, "
-            << std::chrono::duration<double>(std::chrono::steady_clock::now() - first_start).count()
-            << " s; " << first.text());
+    MESSAGE(
+        "stand-ins: every visible chunk on the GPU (dissolving, the clock held): " << first.text());
     CHECK(fading_seen > 0);
     CHECK(g.frame->work_pending()); // the dissolves wait for the clock
     *clock += kFade;                // the dissolves end

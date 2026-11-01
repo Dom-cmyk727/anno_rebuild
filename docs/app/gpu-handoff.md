@@ -209,35 +209,46 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
 ## 5. Open, and the next units
 
 - **Round ec's deadline failure of `picture GPU, constrained: with stand-ins and dissolves …` (3D)**, which
-  reached its 120 s wall-clock deadline in both round-ec full gates at `-j 6`. Round ed explained it as a
-  test clock defect (`cache/ed-runs/p4-*`):
-  - The case's first loop always ended at its 4000-frame cap: its condition also waited for the margin's
-    chunk jobs, which outlast the visible ones (serial control: 4000 frames, 5.7 s, all 24 visible keys on
-    the GPU by then). Nothing required the visible condition to hold.
-  - The case then stepped its hand-held fade clock once. A visible chunk that reached the GPU after that
-    step dissolved in over its stand-in on a clock that never moved again: `work_pending()` stayed true, and
-    the paused loop drew until the deadline with nothing left to wait for.
-  - The deterministic case "picture GPU, constrained: a visible chunk that reaches the GPU after the fade
-    clock was stepped …" holds one visible key's chunk job past the step: with the clock held, the loop
-    stalls (one key fading, no CPU work, GPU work pending, no change for 2000 frames); with the clock
-    moving it idles in 10 frames on the fresh scene.
-  - The round-ec failures fit this: about 171,000 and 177,000 assertions, against 81,500 in a passing run,
-    where the first loop's fading checks are about 80,000 and the paused loop adds one per frame. That is
-    about 90,000 paused frames, and only the dissolve loop (no per-frame checks, about 1 ms a frame) can
-    draw that many in 120 s. This is a deduction from counts. No state was logged in round ec.
-  - A uniform slowdown does not trigger it: the round-ec case under background QoS took 153 s and passed
-    with the normal assertion count. It needs a visible chunk job to fall behind the frame loop, as under
-    CPU contention at `-j 6`.
-  - The correction: the first loop ends when every visible chunk is on the GPU and must get there; after
+  reached its 120 s wall-clock deadline in both round-ec full gates at `-j 6`. Round ed demonstrated a test
+  clock defect that produces this failure, and attributes the round-ec failures to it by deduction
+  (`cache/ed-runs/p4-*`). No state was logged in round ec.
+  - **The defect, shown.** The case's first loop always ended at its 4000-frame cap: its condition also
+    waited for the margin's chunk jobs, which outlast the visible ones (serial control: 4000 frames, 5.7 s,
+    all 24 visible keys on the GPU by then). Nothing required the visible condition to hold. The case then
+    stepped its hand-held fade clock once. A visible chunk that reached the GPU after that step dissolved in
+    over its stand-in on a clock that never moved again: `work_pending()` stayed true, and the paused loop
+    drew with nothing left to wait for.
+  - **The deterministic case** "picture GPU, constrained: a visible chunk that reaches the GPU after the
+    fade clock was stepped …" holds one visible key's chunk job past the step. With the clock held, the loop
+    stalls: one key fading, no CPU work, GPU work pending, no change for 2000 frames. With the clock moving,
+    it idles in 10 frames on the fresh scene.
+  - **The attribution, deduced.** The round-ec failures made about 171,000 and 177,000 assertions, against
+    81,500 in a passing run. The first loop's fading checks are at most 96,000 (4000 frames × 24 keys), and
+    each paused frame adds one deadline check. So roughly 75,000 to 90,000 paused frames were drawn, and only
+    the dissolve loop can draw that many in 120 s: it has no per-frame checks and takes about 1 ms a frame,
+    while the edit loop's frames take about 140 ms. The counts locate the loop. They do not tell this defect
+    from the alternative, that the margin's chunk jobs legitimately kept `chunks_busy` true for over 120 s:
+    margin jobs take 10 s of that loop serially and 23 s under background QoS. The defect is the likelier
+    explanation, but this is not proof. It needs one visible job about 2.8 times behind the frame loop
+    (1,400 frames needed against a 4,000-frame cap). The alternative needs about a 13-fold sustained
+    slowdown, while setup and the first loop took about 36 s in the failed runs (156 s − 120 s), no slower
+    than serially.
+  - **A uniform slowdown does not trigger the defect:** under background QoS the round-ec case took 153 s
+    and passed with the normal assertion count. It needs a visible chunk job to fall behind the frame loop.
+  - **The correction.** The first loop ends when every visible chunk is on the GPU and must get there. After
     the step, the paused loops move the clock 16 ms a frame, as the viewer's steady clock does. The pixel,
     whole-chunk, dissolve and idle assertions are unchanged, and no tolerance moved.
-  - The paused loop's bound is now work-based. 3000 frames in a row with no CPU work and no change in
-    the visible keys' GPU states is a stall, and it fails with a report: the demand, and the usable,
-    fading, staging and waiting counts. A 600 s wall-clock watchdog stays, and it only bounds a broken
-    case.
-  - Acceptance: a deterministic reproduction and its correction, as above. A serial pass, or a longer
-    deadline, would not have been one. The full GPU gate in this round's report runs at `-j 1`, since the
-    GPU tests share one device. That is a resource policy, not the fix.
+  - **The bound is now work-based.** 3000 frames in a row with no CPU work and no change in the visible
+    keys' GPU states is a stall. It fails with a report: the demand, and the usable, fading, staging and
+    waiting counts. A 400 s wall-clock watchdog per loop stays (three loops stay within CTest's 1800 s), and
+    it only bounds a broken case. A recurrence now says which it is: STALLED with GPU work pending and no
+    CPU work is this defect; WATCHDOG with `chunks_busy=1` is the alternative, slow progress.
+  - **Acceptance:** the deterministic reproduction and its correction, as above. A serial pass would not
+    have been one. Neither would a longer deadline, which the watchdog's 400 s would amount to if the
+    alternative were the cause.
+  - **NOT RUN:** the corrected case under contention like round ec's `-j 6` gates. The full GPU gate in this
+    round's report runs at `-j 1`, since the GPU tests share one device. That is a resource policy, not
+    the fix.
 - **Round ec's intermittent `publish: one, two and four workers each hold a version ahead at a barrier, and
   the newest is published`** (anno_app_tests; failed once under ASan at workers = 2, "a held generation seen
   destroyed"). Round ed found a test defect that can produce exactly that failure, and fixed it. Its

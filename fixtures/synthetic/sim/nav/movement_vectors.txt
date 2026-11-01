@@ -108,3 +108,13 @@ plannodes 0 N4 | T0 T15 T14 T13 M6,4
 plannodes 3 W2 | T3 T2 T1 M0,2
 plannodes 14 SW3 | T14 T15 T0 T1 M1,3
 plannodes 8 NE5 | M5,5
+# stoptrim remaining | remaining after the stop of a MOVING ship (0x10043350): remaining -= trunc(remaining) * 1.0 (the remainder past the whole 1.0 chunks is kept); the
+#   selector is bit 0 of dir16, always even in a moving segment, so diagonal segments trim by 1.0 too (not by the diagonal step length). Hand-derived.
+stoptrim 2.5 | 0.5
+stoptrim 0.25 | 0.25
+stoptrim 1.0 | 0
+stoptrim 3.0 | 0
+stoptrim 14.1421356 | 0.1421356
+stoptrim 0 | 0
+# NOTE (plannodes above): the closed form is also what plan_nodes implements; the independent discriminator is the emulation of 0x100a8c50/0x100a8ad0 in the private notes
+# (evidence 12.7), not this repository.

@@ -44,7 +44,7 @@ callers can observe it. This keeps the command a pure state write.
 
 Accepted command: stop semantics first (ORIGINAL slot `+0xdc` then `+0xe4`): clear the order and the node list, set the
 plan end to the current position, trim the in-flight segment to the remainder past whole lattice steps (modulo one tile,
-modulo the diagonal step length for an odd facing), then record the order (12.1: a world `order_id`, phase 0, target `(x, y)`).
+modulo 1.0 also for diagonal segments, see 12.1), then record the order (12.1: a world `order_id`, phase 0, target `(x, y)`).
 
 ## 3. Pick-up, planning and state machine
 
@@ -72,6 +72,9 @@ displacement; whether it ends within the goal tile centre or offset by that frac
 
 ## 4. Type facts, state and numeric representation (integer only)
 
+**Superseded by 12.4 and 12.5 wherever they differ:** the per-ship state list, `pos_fine`, `chunk_factor`, the Q24.8 publication formula, the width paragraph and
+the rounding list below are the MAP-NAV-1 sketch; the authoritative numeric scales, rounding points and persisted fields are 12.4 and 12.5.
+
 **Type facts** (validated at registry seal like the hull domain; all optional, absence = not a navigating type):
 `speed` (HEAD f1, tiles per stepper unit), `turn_step` (HEAD f0), `nav_class` (LOGIC byte 0x10, 0..4, selects the
 cost table), `max_hp`, `hold_cap`, `hold_count_a`, `hold_count_b` (the speed-factor inputs), `avoid_radius`
@@ -96,7 +99,7 @@ visit consumes `ticks <= 65535`; `distance_x5 = ticks * speed_q32 < 2^44` fits i
 `11863283` (< 2^24) and would reach 2^68, so it is formed with a portable 64 x 64 -> 128 helper (two u64 words, no compiler
 intrinsic assumed) and the position accumulator keeps the sub-2^-32 part as an exact residue (a `u32` over 2^24) so no rounding
 occurs inside a segment; the only roundings are (i) the Q32 conversion of each type fact, (ii) one floor division when leftover
-time crosses a speed change (error below 2^-32 tile per boundary) and (iii) the floor to Q24.8 at publication. The original's
+time crosses a speed change (error below 2^-32 tile per boundary) (iii) the dropped diagonal residue fraction (< 2^-32 tile) at every segment start and (iv) the floor to Q24.8 at publication. The original's
 `0.2f` is not exactly 1/5; the contract uses exactly 1/5 (part of the exact-rational adaptation). `tools/ship_nav_ref.py`
 `integrate` vectors pin the exact-rational integrator (hand-derived: 50-tick visits at speed 0.04 move 0.4 tile; leftover carry
 between segments; no overshoot); P3 adds the C++ check and a numeric drift bound against the 2^-32 implementation (bound to be
@@ -165,6 +168,9 @@ the rules digest; an unchanged candidate manifest hash is unaffected.
 
 ## 8. Persistence, save/load, replay and versioning
 
+**The persisted fields are those of 12.5** (`pos_u`, `res24`, `ticket`, order record, segment, nodes, `last`, world counters); `pos_fine` and "factor state" below
+are the earlier names.
+
 New persisted state needs a **new distinct stream version** (122 or later; never reuse 121) with cause-specific
 old-version rejection tests. Persisted: the order record, segment, node list, remaining, `pos_fine`, `last`, factor
 state and `dir16`, for every navigating ship. This is an ADAPTATION: the original saves none of the motion state and a
@@ -203,8 +209,10 @@ and goldens move with the version; the independent Python reference moves with t
    command: UNKNOWN; the sim takes exact fixed-point targets and orders each ship independently (CAP-1). The cursor's
    flags (`|= 2` for a modifier, `0x10000`) reach SetOrder and enable the extra start-point set of `0x100a9e80`: not
    part of this slice (flags 0).
-2. Decide the failed-plan behaviour (section 2), the exact-rational arithmetic adaptation (section 4), deferral of the
-   local detour/avoid (section 5), the planning budget semantics (section 6) and persistence of motion state (section 8).
+2. The orchestrator approved (review of MAP-NAV-1): atomic command refusal versus later `RouteFailed`, the exact-rational integer integrator (conditional on the
+   package D arithmetic checks), the authenticated-issuer ownership check, motion/pending-admission/carry persistence under a new stream version, the
+   first-slice deferral of local detours and hostile avoidance, and bounded serial deterministic planning with the fair admission of 12.2 (sections 12.1-12.5
+   replace the earlier sections 2, 4, 6 and 8 where they differ).
 3. x87 precision (CAP-2) and the registry cursor at load (CAP-3) are runtime-only. The coarse-map build (per island at placement, before the
    first tick) and the vertex-grid padding (zero beyond `W x H`, identical to the repo's `VertexGrid`/`kBoundaryVertexHeight = 0`, so the
    existing terrain view is reused for the land rule) are settled statically. Remaining static items that do not block this contract: the
@@ -228,12 +236,18 @@ and goldens move with the version; the independent Python reference moves with t
 - **Accepted `MoveCmd`:** performs the stop semantics (below), then records order identity `order_id` (a world counter, u64, assigned at
   acceptance, never reused), target `(x, y)` in Q24.8, and a **ticket** (12.2): a new ticket if the ship holds none, the **existing ticket if
   it does** (a replacement keeps its place in the queue). Accepted does not mean routed.
-- **`StopCmd` / stop semantics (ORIGINAL slot `+0xdc`, `0x10043350`, read in full):** removes the ship's pending ticket and clears the order
-  record and the node list; sets the plan end to the current position; for a ship in a moving segment trims `remaining` by the whole lattice
-  steps it contains (`remaining -= trunc(remaining) * 1.0` for an even facing; `remaining -= trunc(remaining / 1.4142135) * 1.4142135` for an odd
-  facing: **the remainder past the whole steps is kept**, which the ship still sails, then it idles); resets the speed-factor multiplier to 1.0;
-  a ship not in a moving segment gets the idle segment (`remaining 0.01`, `speed 0.01`, q32 `42949672` for both), **except** a non-moving ship whose state bit `0x200` is set (a turn segment in progress): it gets only the multiplier reset and finishes its turn segment first (`0x1004341e`). The odd-facing trim uses `n = trunc(rem * c)` and `rem -= n * (1/c)` in the original (x87, `1/c = 1.41421357`); the sim uses `rem -= n * L_d` with the f32 length constant `L_d` (3.6e-8 tile per step apart: ADAPTATION). `StopCmd` additionally emits `Stopped{ship, order_id}`
-  when an order was cancelled. A superseded `MoveCmd` order is simply replaced; no event.
+- **Stop = a motion part and an order part (ORIGINAL slot `+0xdc`, `0x10043350`, read in full).** *Motion part* (used by both `MoveCmd` acceptance and
+  `StopCmd`): clears the node list; sets the plan end to the current position; resets the speed-factor multiplier to 1.0; for a ship in a **moving** segment
+  trims `remaining` to the remainder past its whole 1.0-length chunks (`remaining -= trunc(remaining) * 1.0`: the remainder is kept and still sailed, then the ship
+  idles). The odd/even selector of the original code is **bit 0 of the ship's `dir16` facing**, which is always even in a moving segment (every lattice heading is
+  `2 * dir8`), so **diagonal segments trim by 1.0 as well**; the `1/c` branch is unreachable for a lattice heading and is not ported (a moving segment with an odd
+  facing is an invalid state, refused by the invariants). A ship not in a moving segment gets the idle segment (`remaining = speed = 0.01f` = q32 `42949672`) —
+  **except** a ship whose state bit `0x200` is set (a turn segment in progress), which only gets the multiplier reset and finishes its turn segment first
+  (`0x1004341e`); and the original returns without any change when a non-moving ship has state bit `0x2000` (unreachable with the default blocked mask; ported
+  as "refused" for any mask that contains it). **ADAPTATION:** a ship whose current segment is already the idle segment with `remaining <= 0.01f` is **not
+  re-armed** by a further stop or replacement (the original re-arms it), so repeated replacements cannot keep an older ticket permanently unready.
+  *Order part* (only `StopCmd`; `MoveCmd` does not do this): removes the pending ticket and clears the order record; emits `Stopped{ship, order_id}` when an order
+  was cancelled. `MoveCmd` acceptance performs the motion part, then records the new order and **keeps an existing ticket**. A superseded order is simply replaced; no event.
 - **Outcome vocabulary (stable identity):** every routed order ends in exactly one of `RouteFailed{ship, order_id, reason}` with reason
   `Unreachable` (engine status -2), `BudgetExceeded` (a work or memory limit of 12.3), `OutsideWindow` (the target lies outside the start-centred
   window; also engine -2 in the original) ; `Arrived{ship, order_id}` (status 2, no runs, or the last segment finished); `Stopped{...}`; or it
@@ -265,11 +279,14 @@ State (persisted and hashed, 12.5): world `next_ticket` (u64); per navigating sh
 4. **Finite service bound (proof to be mechanised in E):** let a ship hold the oldest pending ticket. Every ship visited earlier in the same
    Advance was admitted only if quota remained for all older tickets, so quota is left when the oldest ticket's ship is visited and it is
    admitted at its next visit after it reaches its pick-up point. A ticket with `p` older pending tickets is therefore served within
-   `(p + 1) * C + p * R` Advances where `C = ceil(n / k)` is the registry pass length (`n` slots, `k = clamp(floor(dtick * n / 50), 1, n)` visited per
+   `(p + 1) * C + R` Advances where `C = ceil(n / k)` is the registry pass length (`n` slots, `k = clamp(floor(dtick * n / 50), 1, n)` visited per
    Advance, slots visited in **cursor order with wrap-around**) and `R` is the per-ship time to reach the pick-up point after acceptance: a trimmed
    remainder shorter than one lattice step (`L_d / speed`, e.g. 39 stepper units = 196 ticks for a 1502 diagonal) or the 1-unit stop segment (5 ticks),
-   i.e. at most `ceil(L_d / (speed * 5))` Advances per ship; it is a **per-type finite number**, not a constant, and older not-yet-ready tickets keep
-   reserving quota for the whole of their `R`. `tools/ship_nav_ref.py
+   i.e. at most `max(ceil(1.0 / (speed * 5)), ceil(turn_step / (0.01 * 5)))` Advance-visits per ship (a moving ship sails a remainder below one 1.0-length chunk;
+   a ship in a turn segment finishes it: `f0 / 0.01` units, 55 ticks for a 1502); it is a **per-type finite number**, not a constant. The derivation is
+   `wait_i <= max(wait_{i-1}, R) + C`, so the bound holds for `p = 0` too (the oldest ticket must also become ready). Preconditions, all validated: `route_plans_per_advance >= 1`;
+   `C` is evaluated at the current registry size `n` and the smallest Advance `dtick` (`k = clamp(floor(dtick * n / 50), 1, n)`); a visit's budget is at least the 5 ticks of
+   the 1-unit stop segment (the no-re-arm rule above removes the need for it to hold with tiny registries). `tools/ship_nav_ref.py
    admission-check` models the real cursor/cadence (100 slots, 5-tick Advances, ships in slots 1..5) with hand-derived counts and a readiness model (a ticket becomes servable `ready_delay` Advances after acceptance; a blocked ship drops its ticket; the
    mutant that keeps a blocked ship's ticket starves everybody behind it): the rejected
    first-come rule serves `100 100 100 100 0` over 1000 Advances, the fair rule `100 100 100 50 50` with no ticket waiting more than 20
@@ -296,7 +313,7 @@ a larger default is the remedy, never a partial route. Original window behaviour
   segment's scale as `floor((B - P) * (s_new * V_new) / (s_old * V_old))` (one floor; none when the product is unchanged; error < 1/500 q32). The product reaches `2^51 * 2^35 = 2^86`: it needs the same portable 128-bit helper and a **128 / 64 division** (specified and unit-tested alongside it).
   Turn segments (and the stop's idle segment) use speed `0.01f` = q32 **`42949672`** (exactly; `f32(0.01) * 2^32` is an integer, not `42949673`) and `V = 100` in the budget formula; a turn segment's length is `turn_step_q32`, the idle segment's remaining is the **same `42949672`** (so a 5-tick visit at V = 100 finishes it: budget `5 * 42949672 * 100`, remaining `42949672 * 500`); a zero-length segment finishes immediately and cannot loop (a progress guard
   limits consecutive zero-length segments per visit to the node count).
-- **Residue sign rule:** a diagonal axis displacement is the signed quantity `s * floor((P * 11863283 + res24_in) / 2^24)` where the magnitude is accumulated per axis with its own non-negative `res24` and **the sign is applied to the whole-unit part after the floor**: for a west or north segment the residue accumulates the same non-negative fraction (a half-unit of magnitude per step), the displacement subtracts the floored magnitude, so the residue never goes negative and is reset to 0 when a segment of the opposite sign starts on that axis (the dropped fraction is < 2^-32 tile: one more rounding, ADAPTATION, listed with the others).
+- **Residue rule (replaces the earlier sign rule):** `res24` is a non-negative fraction accumulated only inside a **diagonal movement segment**; it is **reset to 0 at every segment start** and is 0 whenever the current segment is not a diagonal movement (validated). The signed whole-unit displacement of an axis step is `sign * floor((P * 11863283 + res24) / 2^24)` with the magnitude's remainder written back to `res24`, so the residue is never negative and no sign has to be persisted. The fraction dropped at a segment start is below 2^-32 tile (one more rounding, listed in the error statement below).
 - **Position:** per axis `pos_u` (i64) = position * 2^32 * 500 and a residue `res24` (u32 < 2^24) carrying the diagonal product: axis step
   displacement `P`; diagonal axis displacement `floor(P * 11863283 / 2^24)` with the remainder added to `res24` (a carry into `pos_u` when
   `res24 >= 2^24`). The product `P * 11863283` is < 2^75: a **portable 64 x 64 -> 128 helper** (no `__int128`) is required and its signed and
@@ -334,3 +351,10 @@ segment with `remaining 0`, sets the facing directly to `dir16` of the first **m
 Between runs a 90 degree change costs 2 stepper phases (110 ticks, 1502), 135 degrees 4 phases, 180 degrees 6 phases (the `d >= 3` rule of 7.3). The node
 builder is `plan_nodes` in `tools/ship_nav_ref.py` with `plannodes` vectors (closed form, hand-derived, equal to the emulation). The order record's state machine
 (`phase` 0 -> 1 at pick-up; success keeps `1/1`, arrival clears; status 2 clears next callback without moving; failure clears at once) is the persisted `Order` of 12.5.
+
+Persisted-state notes (12.5 addendum): `res24` is persisted but is non-zero only inside a diagonal movement segment and is reset at every segment start; a moving
+segment's `dir16` facing is even (an odd value there is an invalid state). **12.5 supersedes** the field lists of sections 4 and 8.
+Reference limits (stated so a green test is not over-read): the route oracle checks path legality, status and endpoint and **accepts legal non-canonical or
+non-optimal run lists** (for example `E5 E5`); exact run equality, discovery order, ties and costs are asserted only by comparing the C++ router's output with the
+emulated-original run lists; the closed forms of 12.6 (`objtile`) and 12.7 (`plannodes`) are the same formulas as the reference, and their independent evidence is the
+emulation recorded in the private evidence notes, not this repository.

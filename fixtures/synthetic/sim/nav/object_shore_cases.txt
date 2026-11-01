@@ -20,13 +20,14 @@ objfoot 19 0 3 3 | 0
 objfoot 20 0 3 3 | 9
 objfoot 3 16 2 2 | 0
 objfoot 4 16 2 4 | 8
+# objtile/objfoot are the predicate written as data: the discriminating evidence for the exporter (0x10090350 executed with the real AnnoGame height function under emulation) is in the private notes, not in this repository; the tool's selftest only proves the predicate is applied (threshold, 8-bit wrap, no footprint=land).
 # shore <name> | land <rects> | band <cx,cz> ... | start x z | goal x z | cost class | no_band: status runs | band: status runs
 #   Band cells (type 3: cost 50/69 instead of 10/13 at the COARSE level) injected into the coarse export of the emulated engine; the builder rule that creates type 3
 #   (cells with a neighbour whose height range straddles level 32) was not re-executed. Consumed by the C++ route port; ship_nav_ref.py shore-check only walks the runs (legality, endpoint).
-shore S1 | land 0,40,63,63 | band 0,4 1,4 2,4 3,4 4,4 5,4 6,4 7,4 | start 4.5 36.5 | goal 60.5 36.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 NE5 E10 E10 E10 E9 SE5 E7 | end 60 36
-shore S2 | land 0,40,63,63 | band 0,4 1,4 2,4 3,4 4,4 5,4 6,4 7,4 | start 4.5 28.5 | goal 60.5 28.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 E10 E10 E10 E10 E10 E6 | end 60 28
-shore S3 | land 24,24,39,39 | band 2,2 2,3 2,4 2,5 3,2 3,5 4,2 4,5 5,2 5,3 5,4 5,5 | start 4.5 31.5 | goal 60.5 31.5 | cls 0 | no_band 0 SE9 E10 E10 E7 NE9 E10 E1 | band 0 NE10 NE6 E10 E10 SE10 SE6 E4 | end 60 31
-shore S4 | land - | band 3,0 3,1 3,2 3,3 3,4 3,5 3,6 3,7 | start 4.5 20.5 | goal 60.5 20.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 SE10 SE2 E10 E6 NE10 NE2 E10 E6 | end 60 20
-shore S5 | land - | band 3,0 3,1 3,2 3,3 3,4 3,5 | start 4.5 20.5 | goal 60.5 20.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 SE10 SE2 E10 E6 NE10 NE2 E10 E6 | end 60 20
-shore S6 | land - | band 3,0 3,1 3,2 3,3 | start 4.5 20.5 | goal 60.5 12.5 | cls 0 | no_band 0 NE8 E10 E10 E10 E10 E8 | band 0 SE4 E10 E10 E4 NE10 NE2 E10 E6 | end 60 12
-shore S7 | land 0,40,63,63 | band 0,4 1,4 2,4 3,4 4,4 5,4 6,4 7,4 | start 4.5 36.5 | goal 60.5 36.5 | cls 1 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 NE5 E10 E10 E10 E9 SE5 E7 | end 60 36
+shore S1 | land 0,40,63,63 | band 0,4 1,4 2,4 3,4 4,4 5,4 6,4 7,4 | start 4.5 36.5 | goal 60.5 36.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 NE5 E10 E10 E10 E9 SE5 E7 | end 60 36 | expect avoid
+shore S2 | land 0,40,63,63 | band 0,4 1,4 2,4 3,4 4,4 5,4 6,4 7,4 | start 4.5 28.5 | goal 60.5 28.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 E10 E10 E10 E10 E10 E6 | end 60 28 | expect same
+shore S3 | land 24,24,39,39 | band 2,2 2,3 2,4 2,5 3,2 3,5 4,2 4,5 5,2 5,3 5,4 5,5 | start 4.5 31.5 | goal 60.5 31.5 | cls 0 | no_band 0 SE9 E10 E10 E7 NE9 E10 E1 | band 0 NE10 NE6 E10 E10 SE10 SE6 E4 | end 60 31 | expect avoid noopt
+shore S4 | land - | band 3,0 3,1 3,2 3,3 3,4 3,5 3,6 3,7 | start 4.5 20.5 | goal 60.5 20.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 SE10 SE2 E10 E6 NE10 NE2 E10 E6 | end 60 20 | expect tie
+shore S5 | land - | band 3,0 3,1 3,2 3,3 3,4 3,5 | start 4.5 20.5 | goal 60.5 20.5 | cls 0 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 SE10 SE2 E10 E6 NE10 NE2 E10 E6 | end 60 20 | expect tie
+shore S6 | land - | band 3,0 3,1 3,2 3,3 | start 4.5 20.5 | goal 60.5 12.5 | cls 0 | no_band 0 NE8 E10 E10 E10 E10 E8 | band 0 SE4 E10 E10 E4 NE10 NE2 E10 E6 | end 60 12 | expect tie
+shore S7 | land 0,40,63,63 | band 0,4 1,4 2,4 3,4 4,4 5,4 6,4 7,4 | start 4.5 36.5 | goal 60.5 36.5 | cls 1 | no_band 0 E10 E10 E10 E10 E10 E6 | band 0 NE5 E10 E10 E10 E9 SE5 E7 | end 60 36 | expect avoid

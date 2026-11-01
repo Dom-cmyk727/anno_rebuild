@@ -10,6 +10,7 @@ The vectors are hand-derived (see their header); this file implements the writte
 docs/re/ship-navigation.md section 7 / cache evidence RC-movement.md 3.2, 3.5, 7. Read-only, no
 original data. Passage (route) checks are added by the same tool in N2 (see `passage` records).
 """
+import heapq
 import math
 import sys
 from fractions import Fraction
@@ -133,6 +134,20 @@ def density(stamps, tile, mut=None):
     return state
 
 
+def stop_trim(rem, mut=None):
+    """The stop (0x10043350) of a MOVING ship: remaining -= trunc(remaining) * 1.0, i.e. the remainder past the whole 1.0-length chunks is kept.
+    The selector is bit 0 of the ship's dir16 facing, which is always even in a moving segment (every lattice heading is 2 * dir8), so
+    diagonal segments trim by 1.0 as well (docs/sim/ship-navigation.md 12.1)."""
+    if mut == 'ceil_trim':
+        import math as _m
+        return rem - _m.ceil(rem) if rem != int(rem) else rem - int(rem)
+    if mut == 'diag_trim':  # the wrong 'odd facing means a diagonal heading' reading
+        c = Fraction(11863283, 2 ** 24)
+        n = int(rem * c)
+        return rem - n / c
+    return rem - int(rem)
+
+
 def plan_nodes(facing, runs, mut=None):
     """Node list the route-engine conversion (0x100a8c50) gives the ship (docs/re/ship-navigation.md 8.1): turn nodes ONLY before the
     first run, then one movement node per run. want = 2*dir8 of the first run, diff = (want - facing) & 15 mapped to -7..+8
@@ -187,6 +202,9 @@ def run_record(kind, args, mut=None):
         facing = int(args[0])
         runs = [(DIRNAMES.index(r.rstrip('0123456789')), int(r.lstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ'))) for r in args[1:]]
         return [('T%d' % n[1]) if n[0] == 'T' else ('M%d,%d' % (n[1], n[2])) for n in plan_nodes(facing, runs, mut)]
+    if kind == 'stoptrim':
+        rem = Fraction(args[0])
+        return [fmt_frac(stop_trim(rem, mut))]
     if kind == 'turn_ticks':
         t = turn_ticks(args[0], mut)
         return [fmt_frac(t)]
@@ -539,6 +557,31 @@ def tile_cell_cost(path_tiles, band, plain):
     return c
 
 
+def optimal_plain_cost(W, H, land, start, end):
+    """Dijkstra over water tiles (8 neighbours, no corner cutting, 10/14) from the start tile to the end tile."""
+    st = (math.floor(start[0]), math.floor(start[1]))
+    dist, heap = {st: 0}, [(0, st)]
+    def ok(t):
+        return 0 <= t[0] < W and 0 <= t[1] < H and t not in land
+    while heap:
+        d, t = heapq.heappop(heap)
+        if d > dist.get(t, 1 << 60):
+            continue
+        if t == tuple(end):
+            return d
+        for dx, dz in DIRS.values():
+            n = (t[0] + dx, t[1] + dz)
+            if not ok(n):
+                continue
+            if dx and dz and not (ok((t[0] + dx, t[1])) and ok((t[0], t[1] + dz))):
+                continue
+            nd = d + (14 if dx and dz else 10)
+            if nd < dist.get(n, 1 << 60):
+                dist[n] = nd
+                heapq.heappush(heap, (nd, n))
+    return None
+
+
 def run_tiles(start, runs):
     x, z = math.floor(start[0]), math.floor(start[1])
     out = [(x, z)]
@@ -588,6 +631,7 @@ def check_objects(path, mut=None):
             start = tuple(map(float, parts[3].split()[1:]))
             end = tuple(map(int, parts[8].split()[1:]))
             band = {tuple(map(int, b.split(','))) for b in parts[2].split()[1:]}
+            expect_shore = parts[9].split()[1] if len(parts) > 9 else None
             paths = {}
             for field in (parts[6], parts[7]):
                 toks = field.split()
@@ -608,6 +652,14 @@ def check_objects(path, mut=None):
                         cnt += 1
                     prev = c
                 return cnt
+            if expect_shore == 'avoid' and not entered(bd) < entered(nb):
+                bad.append((n, 'shore %s: expected the band run to avoid band cells the no-band run enters (%d vs %d)' % (parts[0], entered(bd), entered(nb))))
+            if expect_shore == 'same' and paths['band'] != paths['no_band']:
+                bad.append((n, 'shore %s: expected identical runs' % parts[0]))
+            if expect_shore == 'tie' and entered(bd) != entered(nb):
+                bad.append((n, 'shore %s: expected equal band-cell entries (%d vs %d)' % (parts[0], entered(bd), entered(nb))))
+            if 'noopt' not in parts[9] and tile_cell_cost(nb, band, True) != optimal_plain_cost(W, H, land, start, end):
+                bad.append((n, 'shore %s: the no-band run is not a minimum plain-cost path (tag the case noopt if the two-level engine is allowed to be longer)' % parts[0]))
             if entered(bd) > entered(nb):
                 bad.append((n, 'shore %s: the band run enters more band cells (%d) than the no-band run (%d)' % (parts[0], entered(bd), entered(nb))))
             if tile_cell_cost(nb, band, True) > tile_cell_cost(bd, band, True):
@@ -836,7 +888,7 @@ def main(argv):
     if argv[1] == 'check':
         bad = check(argv[2])
         kinds = {r[1] for r in load(argv[2])}
-        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate', 'density', 'plannodes'}
+        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate', 'density', 'plannodes', 'stoptrim'}
         if kinds != expected:
             print('record kinds present %s, expected %s' % (sorted(kinds), sorted(expected)))
             return 1
@@ -846,7 +898,7 @@ def main(argv):
         return 1 if bad else 0
     # selftest: every deliberate mistake must be caught by at least one vector
     mutants = ['round_hp', 'thresh2', 'reversal_plus', 'no_half', 'odd', 'limit1', 'overshoot', 'floor_visit',
-               'drop_leftover', 'round_tile', 'max_combine', 'dead_zone3', 'reversal_minus']
+               'drop_leftover', 'round_tile', 'max_combine', 'dead_zone3', 'reversal_minus', 'ceil_trim', 'diag_trim']
     ok = True
     if check(argv[2]):
         print('selftest: the unmutated reference already fails')

@@ -279,7 +279,7 @@ ship slot `+0xd8` = `0x1003f910`, which installs the first node as the current s
 directly to `dir16(first node)` (**bypassing** the `d >= 3` turn rule) and `state |= 1`. **No position field is written** (the
 nodes are velocity and length, relative); the position snap at `0x1003fb9a` belongs to the local replan. **Stop** (slot `+0x168(1)`, `0x10042630`) zeroes `+0x148/+0x149/+0x14a`, sets `+0x54 = 0`, clears state `0x800`
 and sets the plan end to the current position; list nodes are not freed. An in-flight segment is **not** aborted: its
-remaining length is cut to the remainder past whole lattice steps (modulo 1.0, modulo 1.4142 for an odd facing) and
+remaining length is cut to the remainder past whole lattice steps (modulo 1.0 for every lattice heading: the selector `test byte [esi+0x74], 1` is bit 0 of the dir16 facing, which is even in a moving segment; the `1/0.7071` branch is for an odd facing and is not reachable by a moving ship) and
 the new order is picked up at that arrival. Latency therefore includes the idle cycle (up to 500 ticks) and the
 remainder of the segment. A second order runs stop then SetOrder. The arrival leaves `+0x148/+0x149/+0x14a` = 0,
 `+0x54` = NULL and the reached position; **no arrived flag** is set (the founding path reads position, state bit

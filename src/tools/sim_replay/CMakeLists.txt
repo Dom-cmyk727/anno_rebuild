@@ -33,6 +33,17 @@ if(ANNO_BUILD_TESTS)
            COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g2.log)
   set_tests_properties(anno_sim_replay_g2_run PROPERTIES
                        PASS_REGULAR_EXPRESSION "checkpoints 6/6.*reproduced: every checkpoint matched")
+  # MAP-2: a recorded founding session in a fresh process (success, refusals, a reveal, an ordinary
+  # Build, two advances); the world is rebuilt from the log on synthetic::make_founding_types. The
+  # wrong log has the first founding command refused (its click moved one tile): detected.
+  add_test(NAME anno_sim_replay_founding_run
+           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/m2_found.log)
+  set_tests_properties(anno_sim_replay_founding_run PROPERTIES
+                       PASS_REGULAR_EXPRESSION "checkpoints 4/4.*reproduced: every checkpoint matched")
+  add_test(NAME anno_sim_replay_founding_wrong_run
+           COMMAND sim_replay run ${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/m2_found_wrong.log)
+  set_tests_properties(anno_sim_replay_founding_wrong_run PROPERTIES
+                       PASS_REGULAR_EXPRESSION "checkpoints 1/2.*DIVERGED at entry 3" WILL_FAIL FALSE)
   # The golden G3 (stage S11): every production class through advance on the synthetic
   # types, 21 checkpoints.
   add_test(NAME anno_sim_replay_g3_run

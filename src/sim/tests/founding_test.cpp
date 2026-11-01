@@ -719,7 +719,8 @@ TEST_CASE("founding replay: byte round trip and in-process replay of a recorded 
     // Claims, each with its own evidence: (1) the statuses of the submitted commands; (2) the log
     // survives write_log / read_log unchanged; (3) replay() of the read log into a FRESH world
     // reproduces all 3 checkpoints and the final hash. In-process, serial: not a fresh process and
-    // not parallel simulation (see the next case and the CLI fixture for those).
+    // not parallel simulation (the next case covers executor creation and hashing; the CLI fixture
+    // a fresh process).
     Setup s = tall_setup(62);
     const Session ref = run_session(s, sim::serial_executor());
     const std::vector<sim::Reject> want = {sim::Reject::None, sim::Reject::OutOfRange,
@@ -762,6 +763,10 @@ TEST_CASE("founding replay: world creation and hashing on 1, 2, 4 and 7 executor
         INFO("threads " << threads);
         island_test::ThreadExecutor ex(threads);
         const Session got = run_session(s, ex);
+        // The executor really was used: create() ran its island jobs on it and every hash was
+        // prepared on it (8 hashes, 1 creation, plus the chunk jobs each of them runs).
+        CHECK(ex.calls() >= 9);
+        CHECK(ex.jobs() >= ex.calls());
         CHECK(got.statuses == ref.statuses);
         CHECK(got.hashes == ref.hashes);
         CHECK(got.log == ref.log);

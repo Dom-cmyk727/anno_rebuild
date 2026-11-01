@@ -1,6 +1,6 @@
 # Five-ship start policy: peace, shared visibility, no alliances (MAP-FOUND-3 package D)
 
-Status: contract, revised after the independent contract review (section 10). Labels: ORIGINAL = evidenced in the original binaries/files; ADAPTATION = this policy; UNKNOWN = open. Owner decision C5 (2026-11-01): the five-player ship
+Status: implemented (see section 11); contract, revised after the independent contract review (section 10). Labels: ORIGINAL = evidenced in the original binaries/files; ADAPTATION = this policy; UNKNOWN = open. Owner decision C5 (2026-11-01): the five-player ship
 start begins **at peace, with shared visibility, without alliances**. This is an **explicit adaptation of
 the game, not an original-Anno behaviour**. Original loaded scenarios keep their own rules (sharing off,
 the relation rows they carry).
@@ -148,3 +148,17 @@ headless **information state**, not fog-of-war.
 Independent review of the first draft: CHANGES REQUIRED (no design flaw; a false claim that the recount is a derived
 cache, an unlabelled adaptation of "peace", gaps in rows and in the load-time check, the stream-hash consequence).
 All items are applied above; the contract is re-reviewed together with the implementation.
+
+## 11. Implementation record
+
+Code: `Rules::shared_visibility` (config.hpp/cpp, state_fields.hpp, stream 121 in world.hpp), `shared_visibility_problem`
+(player.cpp, called from `World::check_invariants`, so creation and load both enforce it), the mirror in
+`Founding::apply` (founding.cpp, `audience`), the player `DISCO` loader (scenario_formats.cpp, warning
+`PlayerDiscoveryBitsDropped`), `ShipStartPolicy` (sim_load/ship_start). Tests: `founding_test.cpp` (`shared visibility:`
+cases), `founding_assets_test.cpp` (`ship start policy:`, `scenario player DISCO on the shipped scenes`),
+`scenario_formats_test.cpp` (`scenario player DISCO`), version guards `{..., 120}` in ship_state/scenario_formats tests.
+Mutation run (`cache/map2-found3/mutate_d.py`, scratch): 8 of 9 killed; the survivor ("audience leaks to everyone") removes
+the filter that skips a group member absent from the player table, which `check_invariants` already makes unreachable
+(an equivalent mutant under the invariant; the filter is defence in depth).
+Goldens: re-baselined for stream 121; `tools/sim_stream.py --check` (independent transcription, Rules gain `u64 0`) agrees
+for every golden it models, including the empty-world hash `cfba1445ed065e55`.

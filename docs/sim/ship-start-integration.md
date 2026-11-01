@@ -400,3 +400,8 @@ item); candidates, the active map and the manifests are unchanged.
 
 ## City creation prerequisites (task MAP-2, stream 119)
 The ship-start loader is unchanged. Streams 119 and PRNG timeline 3 add per-island `city_cursor` and `kontor_counter`, per-city `name` and per-building `kontor_id` (all defaults for a ship-start world: -1 or the last scenario city's slot, the loaded `KONTORID` or 1, empty, the loaded market `KONTID` or 0); an earlier stream or save is refused by its version. The internal city and Kontor operations (docs/sim/city-creation.md) are not called by the loader and no command exposes them.
+
+
+## Start policy: peace and shared visibility (MAP-FOUND-3 D)
+
+`load_ship_start` takes a `ShipStartPolicy` (last parameter). Default = the owner decision C5: the five seats form one shared-visibility group, no `DIPL` rows exist (all relations zero = peace, no alliance). `ShipStartPolicy{std::vector<uint32_t>{...}}` names other participants (seats of the start, ascending, at least two); an empty list switches sharing off. The group is written to `Rules::shared_visibility`, so it is part of the world's rules digest, state hash (stream 121) and replay header; the manifest `content_hash` still describes the candidate geometry only. See `docs/sim/shared-visibility.md`.

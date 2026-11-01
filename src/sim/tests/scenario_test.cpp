@@ -413,7 +413,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         anno::test::parallel_options());
 
     std::map<sim::ScenarioWarningKind, std::uint64_t> totals;
-    std::uint64_t ore_total = 0, ore_known = 0, ore_files = 0;
+    std::uint64_t ore_total = 0, ore_known = 0, ore_files = 0, ore_outside = 0;
     std::uint64_t islands = 0, links = 0, cities = 0, buildings = 0, objects = 0, a14 = 0,
                   with_island = 0, links_only = 0, resolved = 0, unresolved = 0, link_draws = 0,
                   link_files = 0, link_files_complete = 0;
@@ -452,6 +452,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
         cities += r.counts.cities;
         buildings += r.counts.buildings;
         objects += r.counts.tile_objects;
+        ore_outside += r.counts.ore_outside;
         if (r.counts.links == 0) { // islands placed from templates by links are not in the oracle
             ore_total += r.counts.ore_objects;
             ore_known += r.counts.ore_discovered;
@@ -491,6 +492,7 @@ TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     std::cout << "scenario corpus: ore objects " << ore_total << " in " << ore_files
               << " link-free files, with a discovery mask " << ore_known << "\n";
     CHECK(ore_files == 41);
+    CHECK(ore_outside == 0); // every ore object, template islands included, lies inside its island
     CHECK(ore_total == 1727);
     CHECK(ore_known == 319);
     CHECK(total_record_residents == total_created_residents);

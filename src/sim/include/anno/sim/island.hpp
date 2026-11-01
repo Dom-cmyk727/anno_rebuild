@@ -331,14 +331,15 @@ struct IslandIndexCache {
 };
 
 /// One ore object of an island (the figure of an OCCUR `ENTRY2`, 24 bytes: dword0 type id in bits
-/// 14..25, f32 X, Z, height in absolute world tiles, u16 amount, u16 pad, u32 discovery mask).
-/// `discovered` is the original's mask (bit i = player i) as an ascending unique player set. A
-/// founding's claim stage 2 adds the founder to every ore object within its geometry
-/// (docs/re/ship-founding.md 16.2); the only readers of the mask found are presentation gates.
+/// 14..25, f32 X, Z, height ISLAND-LOCAL tiles (the loader adds the island origin), u16 amount, u16
+/// pad, u32 discovery mask). `discovered` is the original's mask (bit i = player i) as an ascending
+/// unique player set. A founding's claim stage 2 adds the founder to every ore object within its
+/// geometry (docs/re/ship-founding.md 16.2); the only readers of the mask found are presentation
+/// gates.
 struct OreObject {
     /// The FigurenHeader id (a figure type whose BEWOHNTYPE is ERZSYMBOL).
     std::uint32_t type = 0;
-    /// The tile: trunc(position), the island-independent absolute world tile.
+    /// The ABSOLUTE world tile: the island origin plus trunc(local position).
     std::int32_t x = 0, y = 0;
     /// The u16 of the record (tons for ore).
     std::uint32_t amount = 0;

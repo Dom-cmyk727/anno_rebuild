@@ -232,7 +232,7 @@ struct LoadedScenario {
 struct ScenarioCounts {
     std::uint64_t islands = 0, links = 0, links_resolved = 0, links_unresolved = 0, cities = 0,
                   buildings = 0, tile_objects = 0, deposits = 0, players = 0, ore_objects = 0,
-                  ore_discovered = 0;
+                  ore_discovered = 0, ore_outside = 0;
     std::map<ScenarioWarningKind, std::uint64_t> warnings;
 };
 [[nodiscard]] ScenarioCounts count(const LoadedScenario& s);

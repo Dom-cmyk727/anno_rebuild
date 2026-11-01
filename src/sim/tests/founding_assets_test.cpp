@@ -4,6 +4,8 @@
 // own site predicates, then the command is applied through World::apply; the candidate files are
 // only read (compared before and after). Skips with a message without ANNO1503_GAME_DIR; the
 // canonical gate sets it and treats a skip as a skip.
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -60,6 +62,7 @@ struct Site {
 std::optional<Site> find_legal_site(const sim::World& w, const sim::BuildingType& type,
                                     std::uint32_t neutral) {
     const auto& islands = w.islands();
+    std::optional<Site> first_legal;
     for (std::size_t i = 0; i < islands.size(); ++i) {
         if (!islands[i].has_value() || islands[i]->locked()) {
             continue;
@@ -85,13 +88,33 @@ std::optional<Site> find_legal_site(const sim::World& w, const sim::BuildingType
                                site::TerrainResult::Accepted;
                 });
                 if (accepted.has_value()) {
-                    return Site{i, static_cast<std::int32_t>(ox + 1),
-                                static_cast<std::int32_t>(oy + 1)};
+                    // Prefer a site with an ore object in claim-stage-2 reach (documented geometry,
+                    // written out here: 4 x 4 centre origin + (1, 1), R = 24, radius-30 table), so
+                    // the discovery check below is not vacuous; remember the first legal site.
+                    static constexpr std::array<int, 25> kT30 = {30, 30, 30, 30, 30, 30, 29, 29, 29,
+                                                                 29, 28, 28, 27, 27, 27, 26, 25, 25,
+                                                                 24, 23, 22, 21, 20, 19, 18};
+                    const std::int64_t cx = ox + 1, cy = oy + 1;
+                    bool ore_in_reach = false;
+                    for (const sim::OreObject& obj : is.ore_objects) {
+                        const std::int64_t dy = obj.y > cy ? 1 + (obj.y - cy) : cy - obj.y;
+                        const std::int64_t dx = obj.x > cx ? 1 + (obj.x - cx) : cx - obj.x;
+                        ore_in_reach =
+                            ore_in_reach || (dy <= 24 && dx <= kT30[static_cast<std::size_t>(dy)]);
+                    }
+                    const Site here{i, static_cast<std::int32_t>(ox + 1),
+                                    static_cast<std::int32_t>(oy + 1)};
+                    if (ore_in_reach) {
+                        return here;
+                    }
+                    if (!first_legal.has_value()) {
+                        first_legal = here;
+                    }
                 }
             }
         }
     }
-    return std::nullopt;
+    return first_legal;
 }
 
 } // namespace
@@ -244,6 +267,34 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     CHECK(owned <= 1976); // the disc of radius 24, clipped by the island
     CHECK(w.check_invariants().empty());
     CHECK(w.state_hash() != pristine_hash);
+    // Claim stage 2 on the real islands (ore objects loaded from OCCUR by the ship-start loader):
+    // for each ore object of the island the founder is in its discovery set exactly when the
+    // documented geometry says so, computed here independently (4 x 4 footprint: centre = origin +
+    // (1, 1), parity term 1 on the south and east side, R = 24, the radius-30 table).
+    {
+        const std::array<int, 25> t30 = {30, 30, 30, 30, 30, 30, 29, 29, 29, 29, 28, 28, 27,
+                                         27, 27, 26, 25, 25, 24, 23, 22, 21, 20, 19, 18};
+        std::size_t total_ore = 0;
+        for (const auto& island_slot : w.islands()) {
+            total_ore += island_slot.has_value() ? island_slot->ore_objects.size() : 0;
+        }
+        CHECK(total_ore > 0); // the loader did bring ore objects into the world
+        const int cx = b->x + 1, cy = b->y + 1;
+        std::size_t in_reach = 0;
+        for (const sim::OreObject& o : after.ore_objects) {
+            const int dy = o.y > cy ? 1 + (o.y - cy) : cy - o.y;
+            const int dx = o.x > cx ? 1 + (o.x - cx) : cx - o.x;
+            const bool want = dy <= 24 && dx <= t30[static_cast<std::size_t>(dy)];
+            in_reach += want ? 1 : 0;
+            const bool has =
+                std::binary_search(o.discovered.begin(), o.discovered.end(), sim::PlayerId{0});
+            CHECK(has == want);
+        }
+        CHECK(in_reach > 0); // the chosen site has ore in reach: the equality above is not vacuous
+        MESSAGE("founding on the original files: " << after.ore_objects.size()
+                                                   << " ore objects on the island, " << in_reach
+                                                   << " in reach");
+    }
     // The candidate file is unchanged by all of this.
     CHECK(read_all(manifest_path) == manifest_bytes);
 

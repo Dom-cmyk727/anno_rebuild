@@ -195,6 +195,12 @@ ScenarioCounts count(const LoadedScenario& s) {
         c.deposits += is.deposits.size();
         c.ore_objects += is.ore_objects.size();
         for (const OreObject& o : is.ore_objects) {
+            const bool inside = o.x >= is.x0 && o.y >= is.y0 &&
+                                o.x < is.x0 + static_cast<std::int64_t>(is.w) &&
+                                o.y < is.y0 + static_cast<std::int64_t>(is.h);
+            c.ore_outside += inside ? 0 : 1;
+        }
+        for (const OreObject& o : is.ore_objects) {
             c.ore_discovered += o.discovered.empty() ? 0 : 1;
         }
         c.cities += is.cities.size();
@@ -1183,10 +1189,13 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
                 }
                 OreObject o;
                 o.type = type;
-                o.x = static_cast<std::int32_t>(
-                    std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 4))));
-                o.y = static_cast<std::int32_t>(
-                    std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 8))));
+                // The floats are ISLAND-LOCAL (all 1764 ore objects of the scenario islands lie
+                // inside [0, w) x [0, h) and only 60 inside the absolute rectangle, by chance):
+                // the island's origin is added, the tile is the truncation (ftol) of X, Z.
+                o.x = is.x0 + static_cast<std::int32_t>(
+                                  std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 4))));
+                o.y = is.y0 + static_cast<std::int32_t>(
+                                  std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 8))));
                 o.amount = formats::u16_le(e.payload, 0x10);
                 const std::uint32_t mask = formats::u32_le(e.payload, 0x14);
                 for (std::uint32_t bit = 0; bit < 32; ++bit) {

@@ -154,7 +154,7 @@ void ChangeVisibility::taken(std::optional<std::uint64_t> followed,
 void ChangeVisibility::record_settle(IslandState& s, std::uint64_t version, Settle kind) {
     s.settled = std::max(s.settled, version);
     s.settles.emplace_back(version, kind);
-    while (s.settles.size() > 256) {
+    while (s.settles.size() > kMaxSettles) {
         s.settles.pop_front();
     }
 }
@@ -230,7 +230,12 @@ void ChangeVisibility::committed(const std::vector<ScenePicture::CommittedIsland
                 std::unique(first.keys.begin(), first.keys.end(),
                             [](const auto& a, const auto& b) { return !(a < b) && !(b < a); }),
                 first.keys.end());
-            first.state = first.keys.empty() ? Part::State::Empty : Part::State::Unjudged;
+            // The oldest part is never terminal here (advance() settles those): a part that was
+            // already watched stays watched (the union is observed again), one not yet judged is
+            // judged for the union at the next attempt.
+            first.state = first.keys.empty()                   ? Part::State::Empty
+                          : first.state == Part::State::Viewed ? Part::State::Viewed
+                                                               : Part::State::Unjudged;
             first.cpu_ready = first.gpu_ready = false;
             first.in_view = true;
             s.parts.erase(s.parts.begin() + 1);
@@ -324,10 +329,16 @@ Visibility ChangeVisibility::take_stage(const Take& t) const {
 }
 
 void ChangeVisibility::retire_takes() {
+    for (Take& t : takes_) {
+        if (!t.result && take_done(t)) {
+            t.result = take_result(t);
+        }
+    }
     while (!takes_.empty() && take_done(takes_.front())) {
         const Take& t = takes_.front();
         // How the change ended: shown if any island's presented, else offscreen, else nothing.
-        history_.push_back({t.from, t.through, t.turns, t.coarse, take_result(t)});
+        history_.push_back(
+            {t.from, t.through, t.turns, t.coarse, t.result.value_or(take_result(t))});
         while (history_.size() > kMaxHistory) {
             floor_ = std::max(floor_.value_or(0), history_.front().through);
             history_.pop_front();
@@ -350,8 +361,8 @@ Visibility ChangeVisibility::classify(std::uint64_t turn) const {
         if (!take_done(*it)) {
             return take_stage(*it);
         }
-        // Done, behind an older take that is not: its end is the same rule as in retire_takes.
-        return take_result(*it);
+        // Done, behind an older take that is not: the result fixed when it became done.
+        return it->result.value_or(take_result(*it));
     }
     for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
         if (turn < it->from || turn > it->through) {

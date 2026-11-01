@@ -1311,8 +1311,6 @@ void Viewer::follow_picture() {
         committed_ += n;
         if ((n > 0 || play_->followed_turn() != followed) && dev_ != nullptr && dev_->enabled()) {
             update_title(); // a commit or a newer followed turn can move "not drawn yet" on
-            title_visibility_ =
-                command_visibility(play_->runner().feedback(latest_receipt_).latest);
         }
 #ifdef ANNO_VIEWER_GPU
         if (tracer_ && n > 0) {
@@ -1602,9 +1600,10 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         present_error_shown_ = true;
     }
     if (presented != WGPUStatus_Success && play_ != nullptr && play_->visibility().busy()) {
-        // A change waits for a presented frame (ChangeVisibility): draw again, so an idle window
-        // does not stay NotPresented until some input arrives.
-        dirty_ = true;
+        // A change waits for a presented frame (ChangeVisibility): draw again shortly, so an idle
+        // window does not stay NotPresented until some input arrives, and a surface that keeps
+        // failing is retried at the usual back-off, not at the loop's rate.
+        back_off();
     }
     steps_end_ = Clock::now();
     const double present = since_ms(p, steps_end_);

@@ -71,12 +71,13 @@ enum class Visibility : std::uint8_t {
 class ChangeVisibility {
   public:
     /// Bounds, with their reasons. kMaxTakes: takes of building changes that are not yet shown
-    /// (a hidden window takes without drawing); beyond it the two oldest merge (a stricter wait,
+    /// (changes wait here while their chunks are stale, the view is elsewhere or a stuck older
+    /// change holds the front); beyond it the two oldest merge (a stricter wait,
     /// never a lost one). kMaxHistory: settled takes kept to answer for recent commands; a command
     /// older than that reads Unknown. kMaxTurns: turns one take names; beyond it the take answers
     /// for its whole range.
     static constexpr std::size_t kMaxTakes = 1024, kMaxHistory = 1024, kMaxTurns = 1024,
-                                 kMaxParts = 64;
+                                 kMaxParts = 64, kMaxSettles = 256;
 
     /// The frame boundary took `batches` (possibly none) and the picture's desired versions went
     /// from `before` to `after` (ScenePicture::desired_versions); `followed` is the newest turn
@@ -131,6 +132,9 @@ class ChangeVisibility {
         std::vector<std::uint64_t> turns; // the turns with a batch, ascending
         bool coarse = false; // a resync, or too many turns: the whole range belongs to it
         std::vector<std::pair<std::size_t, std::uint64_t>> islands; // (index, desired version)
+        /// How it ended, fixed the moment every island of it settled (finalize_takes): a take
+        /// behind a stuck older one is classified live, and must not read a later settle.
+        std::optional<Visibility> result;
     };
     struct Settled {
         std::uint64_t from = 0, through = 0;
@@ -144,6 +148,8 @@ class ChangeVisibility {
     void record_settle(IslandState& s, std::uint64_t version, Settle kind);
     /// How `t` ended, from the settles that completed its islands (Visible if any was presented).
     [[nodiscard]] Visibility take_result(const Take& t) const;
+    /// Fixes the result of every take that has just become done (O(takes)), then retires the done
+    /// takes from the front.
     void retire_takes();
     [[nodiscard]] bool take_done(const Take& t) const;
     [[nodiscard]] Visibility take_stage(const Take& t) const;

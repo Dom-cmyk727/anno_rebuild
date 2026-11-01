@@ -295,3 +295,63 @@ TEST_CASE("visibility: turn 0, a batch newer than the snapshot, an older stuck c
         CHECK(v.waiting() == 0);
     }
 }
+
+TEST_CASE(
+    "visibility: a take behind a stuck one keeps its own result past the settle record's cap, "
+    "a merge keeps a watched oldest part, and a part that left the view holds later parts" *
+    doctest::test_suite("visibility")) {
+    {
+        // Island 1's take is stuck at the front of the queue. Island 0's turn 2 ends Offscreen;
+        // then far more commits of island 0 than the settle record keeps are presented.
+        app::ChangeVisibility v;
+        v.taken(1, batch_at(1), {0, 0}, {0, 1});
+        v.taken(2, batch_at(2), {0, 1}, {1, 1});
+        v.committed(commit_of(0, 1, {kThere}));
+        frame(v, kViewHere, true, kYes, kYes);
+        REQUIRE(v.classify(2) == V::Offscreen);
+        const std::size_t n = app::ChangeVisibility::kMaxSettles + 40;
+        for (std::size_t i = 0; i < n; ++i) {
+            v.taken(3 + i, batch_at(3 + i), {1 + i, 1}, {2 + i, 1});
+            v.committed(commit_of(0, 2 + i, {kHere}));
+            frame(v, kViewHere, true, kYes, kYes);
+        }
+        CHECK(v.classify(3 + n - 1) == V::Visible);
+        CHECK(v.classify(2) == V::Offscreen); // fixed when it became done
+        CHECK(v.classify(1) == V::Committing);
+    }
+    {
+        // The oldest part was watched (in view, chunk stale) when more commits than parts are kept
+        // arrive: the merge keeps it watched, and everything is shown by one fresh frame.
+        app::ChangeVisibility v;
+        v.taken(0, batch_at(0), {0}, {1});
+        v.committed(commit_of(0, 1, {kHere}));
+        frame(v, kViewHere, true, kNo, kNo);
+        const std::size_t n = app::ChangeVisibility::kMaxParts + 5;
+        for (std::size_t i = 1; i <= n; ++i) {
+            v.taken(i, batch_at(i), {i}, {i + 1});
+            v.committed(commit_of(0, i + 1, {kHere}));
+        }
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(0) == V::Visible);
+        CHECK(v.classify(n) == V::Visible);
+        CHECK(v.waiting() == 0);
+    }
+    {
+        // A part that was in view and left it is OutOfView; a later commit of the same island
+        // whose chunks are not in view is judged Offscreen but settles after the earlier one, so
+        // it reports the stage that holds it (OutOfView), then Offscreen once the earlier is shown.
+        app::ChangeVisibility v;
+        v.taken(1, batch_at(1), {0}, {1});
+        v.committed(commit_of(0, 1, {kHere}));
+        frame(v, kViewHere, true, kNo, kNo);
+        frame(v, kViewAway, true, kYes, kYes);
+        REQUIRE(v.classify(1) == V::OutOfView);
+        v.taken(2, batch_at(2), {1}, {2});
+        v.committed(commit_of(0, 2, {kThere}));
+        frame(v, kViewAway, true, kYes, kYes);
+        CHECK(v.classify(2) == V::OutOfView);
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(1) == V::Visible);
+        CHECK(v.classify(2) == V::Offscreen);
+    }
+}

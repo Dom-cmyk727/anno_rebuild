@@ -86,3 +86,6 @@ src/sim/include/anno/sim/terrain_view.hpp:kBoundaryVertexHeight = 0;  # the valu
 
 # --- figure.hpp (MAP-2 package B)
 src/sim/include/anno/sim/figure.hpp:kHoldUnitsPerTon = 256;  # the unit of the 8.8 cargo format (1/256 ton per raw unit, docs/re/ship-founding.md 10.7), a conversion factor like kTon in production.hpp, not a count or a limit
+
+# --- figure_veto.cpp (MAP-2 package 2)
+src/sim/src/figure_veto.cpp:kFar = std::int64_t\{1\} << 40;  # an overflow guard, not a game limit: coordinates are clamped to +-2^40 tiles before arithmetic because a FixedPos is below 2^23 tiles and a footprint or margin is a u32, so no comparison changes; documented at its definition

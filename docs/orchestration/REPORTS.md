@@ -9913,7 +9913,7 @@ changed), the GPU suite beyond G2's selection, the release build. The dev `anno_
 - OQ-052 (the placement rule's terrain check), OQ-550 (a command-built building's height): open.
 - Large-city, complex-economy and multiplayer performance: open.
 
-### Integration review (independent, read-only), of `3483d66..40bbee2`: CHANGES REQUIRED → fixed
+### Integration review (independent, read-only), of `3483d66..40bbee2`: CHANGES REQUIRED → fixed → re-review of `093559c`/`a2c77f1` APPROVED
 
 | Finding | Severity | Disposition |
 |---|---|---|
@@ -9925,7 +9925,8 @@ changed), the GPU suite beyond G2's selection, the release build. The dev `anno_
 | Screenshots do not show the title or the preview | P3 | FIXED: the wording above |
 | The admission claim | P3 | FIXED: the wording above |
 
-Confirmed by the reviewer: every gate count, source head and binary hash; three replays it ran
+The re-review verified each disposition, re-ran the final canary's replay itself (13 checkpoints and 6
+outcomes agree) and found nothing new. Confirmed by the reviewer: every gate count, source head and binary hash; three replays it ran
 itself (unchanged: agree; an edited outcome and a moved refusal: differ); the mutant logs;
 clang-format on 52 files; no sim rule change; the title's read order; the follow step's ordering.
 

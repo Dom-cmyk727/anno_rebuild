@@ -12,6 +12,8 @@ speedfactor 6000 0 0 4 2 50 0 | 65
 speedfactor 6000 6000 1 4 2 50 200 | 89
 speedfactor 6000 3000 1 4 2 50 200 | 72
 speedfactor 6000 6000 1 4 2 50 0 | 100
+speedfactor 6000 6000 1 4 2 50 100 | 95
+speedfactor 6000 -100 0 4 2 50 0 | 65
 speedfactor 12000 12000 1 8 3 50 400 | 88
 speedfactor 14000 14000 1 4 12 50 200 | 96
 # turn facing want | d_signed d turn_steps direction sequence...   (0x1003e930, kind >= 8)
@@ -27,6 +29,7 @@ turn 8 11 | 3 3 1 1 9
 turn 8 5 | 13 3 1 -1 7
 turn 0 8 | 8 8 6 -1 15 14 13 12 11 10
 turn 3 3 | 0 0 0 0
+turn 14 2 | 4 4 2 1 15 0
 # dir8 code -> dir16 facing of a planner-built segment (diagonals 2*code): 0=W..7=NW, facing 0=-x 4=+z 8=+x 12=-z
 dir8 0 | 0
 dir8 1 | 2
@@ -36,7 +39,7 @@ dir8 4 | 8
 dir8 5 | 10
 dir8 6 | 12
 dir8 7 | 14
-# dir16vec dx dz | facing   exact rule dir16=(floor(8*theta/pi+0.5)+4)&15, theta from +z toward +x in [0,2pi)
+# dir16vec dx dz | facing   valid away from the 11.25-degree boundaries (the original is not exact there, docs/re 7.6); rule dir16=(floor(8*theta/pi+0.5)+4)&15, theta from +z toward +x in [0,2pi)
 dir16vec 1 0 | 8
 dir16vec 0 1 | 4
 dir16vec -1 0 | 0
@@ -54,7 +57,9 @@ chunks 2.5 | 1.0 1.0 0.5
 chunks 3.0 | 1.0 1.0 1.0
 chunks 0.25 | 0.25
 chunks 1.00005 | 1.00005
-# turn_ticks f0 | ideal ticks per 22.5 degree step  = f0/0.01 stepper units x 5 ticks (1 unit = 0.2^-1 ticks)
+chunks 1.0005 | 1.0 0.0005
+# turn_ticks f0 | ideal ticks per 22.5 degree step = f0/0.01 stepper units x 5 ticks (1 unit = 5 ticks); the visit-rounded
+#     original durations (e.g. 60 for 55) are cadence dependent and deliberately NOT asserted here
 turn_ticks 0.11 | 55
 turn_ticks 0.125 | 62.5
 turn_ticks 0.10 | 50

@@ -140,7 +140,8 @@ while speed[+0x30] != 0 and t != 0:
             else:              slot+0x174(now)                                   // idle 0x1003ef30
     last = u16(now)                                                              // end of every iteration
 ```
-`last` is written only when the loop body runs. Leftover time at a segment end carries into the next segment
+The segment fields are `direction +0x20/+0x24/+0x28`, `remaining +0x2c`, `speed +0x30`, `kind +0x34` (low nibble: 0 wait, 1 terminal,
+2, 3 turn, >= 8 movement), `+0x38` (reset to 1.0 per segment). `last` is written only when the loop body runs. Leftover time at a segment end carries into the next segment
 inside the same call; there is no snap to the segment end; arrival is `remaining <= 0`, so the arrival tick is the
 first visit at or after the exact time. Zero-length segments finish at once. Idle (no path): `0x1003ef30` installs
 `dir 0, remaining 1.0, speed 0.01` (500 ticks per cycle, re-armed); after load the segment is `remaining 0.01,
@@ -272,7 +273,9 @@ One scale: a vertex byte times 0.04 world units. A tile is **water iff `floor(su
 <= 19`**, land (type 9) otherwise (threshold `ftol(0.78/0.04) = 19`, static initialisers `0x100a3b40..`); a tile also
 becomes blocked (9) where an island tile object's footprint reaches it (`0x10090350`, exact object semantics
 UNKNOWN). The repo's `HEIGHT < 16` (sea level, 0.64) is stricter than this tile-average rule. The coarse map has
-**8 x 8-tile cells** in 64 x 64-tile sectors (`[world+0x6aa4]`, null sector = open water `0xfff`). The builder is world
+**8 x 8-tile cells** in 64 x 64-tile sectors (`[world+0x6aa4]` = array of 8-byte sector headers `{u16 x_origin, u16 z_origin,
+pointer to 64 cell dwords}`, `[world+0x6a9c]` = sectors per row, `[world+0x6aa0]` = rows; a null pointer = open water `0xfff`; cell
+dword = `u16 mask | u16 type`). The builder is world
 slot `+0xf8` = `0x100aae00` (rectangle argument): per cell the island block records give `min`/`max` (halved vertex
 extremes): `19 >= 2*max` -> `0xfff` (all water), `19 < 2*min` -> `0` (all land), else mixed: the 8 x 8 tile map is
 packed by `0x100a4130` into a **12-bit edge-connectivity mask**. A second pass sets cost type 3 (**shore band**) for any

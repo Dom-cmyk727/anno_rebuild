@@ -194,6 +194,8 @@ def passage(W, H, land, start, goal, mut=None):
         if not ok:
             continue
         score = 2304 - int(64 * d2)
+        # Tie break: lowest tile only so the tool is deterministic. NOT evidence: the original breaks equal scores by
+        # local ship congestion (docs/re 9.4); no fixture may assert a tie.
         if best is None or score > best[0] or (score == best[0] and t < best[1]):
             best = (score, t)
     if best is None:
@@ -235,6 +237,9 @@ def check_passage(path, mut=None):
 
 def main_passage(argv):
     if argv[1] == 'passage-check':
+        if len(parse_passage(argv[2])) < 16:
+            print('fewer than 16 passage cases: the fixture is truncated or misnamed')
+            return 1
         bad = check_passage(argv[2])
         for b in bad:
             print('MISMATCH line %d %s: exterior4 %s expected %s, got exterior4 %s result %s' % b)
@@ -260,6 +265,11 @@ def main(argv):
         return 2
     if argv[1] == 'check':
         bad = check(argv[2])
+        kinds = {r[1] for r in load(argv[2])}
+        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks'}
+        if kinds != expected:
+            print('record kinds present %s, expected %s' % (sorted(kinds), sorted(expected)))
+            return 1
         for b in bad:
             print('MISMATCH line %d %s %s: expected %s got %s' % b)
         print('ship movement vectors', 'agree' if not bad else 'DIFFER')

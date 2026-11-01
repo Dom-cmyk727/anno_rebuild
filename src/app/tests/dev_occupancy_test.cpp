@@ -210,19 +210,35 @@ TEST_CASE("occupancy knowledge: an unrelated island's edit, a local build and de
     CHECK(agrees_with_scan(knows, picture, setup));
 
     // A resync batch (the mailbox could not hold the turns the window did not take) reseeds from
-    // its list and still agrees with the picture afterwards.
+    // its list. The net local change is not zero: the building at `free` is demolished and stays
+    // demolished, so an index that ignored the resync (or applied nothing) still shows it.
+    // The observer here is the window's wiring plus a spy that records the batches it was given.
+    REQUIRE(knows.occupied(*free));
+    std::size_t resyncs = 0, normals = 0;
+    follower.set_batch_observer(
+        [&](const std::vector<std::shared_ptr<const app::BuildingBatch>>& batches) {
+            for (const auto& b : batches) {
+                ++(b->resync ? resyncs : normals);
+            }
+            knows.on_batches(batches, *picture.scene(), tool.enabled());
+        });
     runner.set_batch_bound(1);
     static_cast<void>(runner.post_command(demolish_cmd(*setup.city, dev, *free)));
     runner.run_n(1);
-    static_cast<void>(runner.post_command(build_cmd(*setup.city, dev, *plain, *free)));
+    static_cast<void>(runner.post_command(build_cmd(other->city, other->owner, other->type,
+                                                    {other->free_at.x + 2, other->free_at.y})));
     runner.run_n(1);
-    static_cast<void>(
-        runner.post_command(build_cmd(other->city, other->owner, other->type, other->free_at)));
-    runner.run_n(1);
-    const std::size_t reseeds = knows.rebuilds();
+    const std::size_t reseeds = knows.rebuilds(), deltas = knows.deltas_applied();
     follower.follow(frames);
-    CHECK(knows.rebuilds() >= reseeds); // a resync reseeds; a surviving normal batch does not
+    CHECK(resyncs == 1); // the second push collapsed the first into one resync batch
+    CHECK(normals == 0);
+    CHECK(knows.rebuilds() == reseeds + 1);
+    CHECK(knows.deltas_applied() == deltas); // reseeded, not applied as deltas
+    CHECK_FALSE(knows.occupied(*free));      // the net change reached the index
     CHECK(agrees_with_scan(knows, picture, setup));
+    // The same take without the resync branch would leave `free` occupied: a valid control is the
+    // lines above (they fail if on_batches ignores a resync batch).
+    follower.set_batch_observer({});
 
     // A type missing from the registry indexes as one tile (the sim's registry is the source;
     // the window keeps going on an unknown id).
@@ -373,5 +389,87 @@ TEST_CASE("occupancy knowledge: an unrelated edit costs the same at any city siz
                          << " ms, scan+rebuild per unrelated edit (before) " << r.old_unrelated_ms
                          << " ms, unrelated edit now " << r.unrelated_us << " us, local delta "
                          << r.local_add_us << " us");
+    }
+}
+
+TEST_CASE("occupancy knowledge: overlapping buildings are counted, a removal of an uncounted "
+          "tile changes nothing, an unknown type indexes as one tile, and a resync reseeds "
+          "(synthetic)" *
+          doctest::test_suite("dev_occupancy")) {
+    const auto scene = two_islands();
+    const app::DevToolSetup setup = synthetic_setup();
+    app::PlacementKnowledge knows(setup);
+    knows.update({}, 1, *scene);
+    const auto tile = [](std::int32_t lx, std::int32_t ly) {
+        return sim::TileXY{kSynX0 + lx, kSynY0 + ly};
+    };
+    const app::SceneBuilding a{0, kBlock.v, 10, 10, 0, 0}; // 2 x 2 at local (10..11, 10..11)
+    const app::SceneBuilding b{0, kBlock.v, 11, 11, 0, 0}; // overlaps `a` on local (11, 11)
+    using Kind = app::BuildingDelta::Kind;
+    knows.on_batches({delta_batch(1, a, Kind::Added), delta_batch(2, b, Kind::Added)}, *scene,
+                     true);
+    CHECK(knows.occupied(tile(11, 11)));
+    CHECK(knows.occupied(tile(12, 12)));
+    // Removing `a` leaves the shared tile occupied by `b`, and frees `a`'s own tiles.
+    knows.on_batches({delta_batch(3, a, Kind::Removed)}, *scene, true);
+    CHECK(knows.occupied(tile(11, 11)));
+    CHECK_FALSE(knows.occupied(tile(10, 10)));
+    // A removal of something never counted (a drift the picture would also drop) changes no tile
+    // that another building holds, and never goes below zero.
+    const std::size_t before = knows.deltas_applied();
+    knows.on_batches({delta_batch(4, app::SceneBuilding{0, kBlock.v, 50, 50, 0, 0}, Kind::Removed)},
+                     *scene, true);
+    CHECK(knows.deltas_applied() == before + 1);
+    CHECK_FALSE(knows.occupied(tile(50, 50)));
+    CHECK(knows.occupied(tile(11, 11)));
+    // An id the registry does not have indexes as one tile, through the delta path too.
+    knows.on_batches({delta_batch(5, app::SceneBuilding{0, 0xABCDE, 20, 20, 0, 0}, Kind::Added)},
+                     *scene, true);
+    CHECK(knows.occupied(tile(20, 20)));
+    CHECK_FALSE(knows.occupied(tile(21, 20)));
+    // A resync batch replaces everything with its list (island 0's buildings only count).
+    auto resync = std::make_shared<app::BuildingBatch>();
+    resync->turn = 9;
+    resync->resync = true;
+    resync->full = {app::SceneBuilding{0, kBlock.v, 100, 100, 0, 0},
+                    app::SceneBuilding{1, kBlock.v, 5, 5, 0, 0}};
+    knows.on_batches({resync}, *scene, true);
+    CHECK(knows.occupied(tile(100, 100)));
+    CHECK_FALSE(knows.occupied(tile(11, 11)));
+    CHECK_FALSE(knows.occupied(tile(5, 5))); // island 1's building is not the city's
+    CHECK(knows.rebuilds() == 2);
+    // While disabled the takes are not followed, and the index is stale until ensure() reseeds it.
+    CHECK_FALSE(knows.on_batches({delta_batch(10, a, Kind::Added)}, *scene, false));
+    CHECK_FALSE(knows.occupied(tile(10, 10)));
+    CHECK_FALSE(knows.on_batches({delta_batch(11, a, Kind::Added)}, *scene, true)); // stale
+}
+
+TEST_CASE("occupancy knowledge: ScenePicture::apply of one unrelated delta, for reference "
+          "(a measurement, synthetic)" *
+          doctest::test_suite("dev_occupancy")) {
+    // What the window thread still pays for an edit on another island is the picture's own apply
+    // (a sorted insert into the building list and the per-island index), which is not occupancy
+    // work and is outside this repair; it is timed here so the gap is visible, not claimed away.
+    using clock = std::chrono::steady_clock;
+    for (const std::size_t others : {std::size_t{0}, std::size_t{50000}}) {
+        const auto scene = two_islands();
+        std::vector<app::SceneBuilding> world = grid(0, 1000);
+        const std::vector<app::SceneBuilding> rest = grid(1, others);
+        world.insert(world.end(), rest.begin(), rest.end());
+        app::sort_buildings(world);
+        app::ScenePicture picture(scene, world, [](std::uint16_t) { return true; }, 1);
+        render::FrameRenderer frames(1);
+        picture.wait_idle();
+        const auto edit = delta_batch(1, app::SceneBuilding{1, kBlock.v, 399, 399, 0, 0},
+                                      app::BuildingDelta::Kind::Added);
+        const auto t0 = clock::now();
+        picture.apply({edit});
+        const auto t1 = clock::now();
+        picture.wait_idle();
+        picture.commit(frames);
+        MESSAGE("picture.apply of one delta on another island, "
+                << others << " buildings there: "
+                << std::chrono::duration<double, std::milli>(t1 - t0).count()
+                << " ms (not occupancy work)");
     }
 }

@@ -1579,6 +1579,12 @@ TEST_CASE(
     for (const Probe& p : probes) {
         CHECK(sim::Founding::object_in_reach(p.x, p.y, 51, 31, 4, 4, 24, *table) == p.in);
     }
+    // Mixed parity: w = 4 (term 1 east), h = 5 (term 0 south). Centre (51, 32): south dy = oy - 32,
+    // east dx = 1 + (ox - 51). A swap of the two terms flips both boundaries below.
+    CHECK(sim::Founding::object_in_reach(51, 56, 51, 32, 4, 5, 24, *table));       // dy 24 south
+    CHECK_FALSE(sim::Founding::object_in_reach(51, 57, 51, 32, 4, 5, 24, *table)); // dy 25
+    CHECK(sim::Founding::object_in_reach(80, 32, 51, 32, 4, 5, 24, *table));       // dx 1 + 29 = 30
+    CHECK_FALSE(sim::Founding::object_in_reach(81, 32, 51, 32, 4, 5, 24, *table)); // dx 31
     // Odd footprints have no parity term: 5 x 5 at centre (52, 32): south dy = oy - 32.
     CHECK(sim::Founding::object_in_reach(52, 56, 52, 32, 5, 5, 24, *table));
     CHECK_FALSE(sim::Founding::object_in_reach(52, 57, 52, 32, 5, 5, 24, *table));

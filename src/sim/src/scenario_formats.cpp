@@ -3,6 +3,7 @@
 // address), P = the corpus (the spec section that states it).
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -1191,11 +1192,17 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
                 o.type = type;
                 // The floats are ISLAND-LOCAL (all 1764 ore objects of the scenario islands lie
                 // inside [0, w) x [0, h) and only 60 inside the absolute rectangle, by chance):
-                // the island's origin is added, the tile is the truncation (ftol) of X, Z.
-                o.x = is.x0 + static_cast<std::int32_t>(
-                                  std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 4))));
-                o.y = is.y0 + static_cast<std::int32_t>(
-                                  std::trunc(std::bit_cast<float>(formats::u32_le(e.payload, 8))));
+                // the island\'s origin is added, the tile is the truncation (ftol) of X, Z. A value
+                // that is not a finite number below 2^30 tiles in magnitude is refused (the cast
+                // would be undefined); no shipped entry is anywhere near.
+                const float local_x = std::bit_cast<float>(formats::u32_le(e.payload, 4));
+                const float local_z = std::bit_cast<float>(formats::u32_le(e.payload, 8));
+                if (!std::isfinite(local_x) || !std::isfinite(local_z) ||
+                    std::fabs(local_x) >= 1073741824.0F || std::fabs(local_z) >= 1073741824.0F) {
+                    return where + ": the position is not a tile coordinate";
+                }
+                o.x = is.x0 + static_cast<std::int32_t>(std::trunc(local_x));
+                o.y = is.y0 + static_cast<std::int32_t>(std::trunc(local_z));
                 o.amount = formats::u16_le(e.payload, 0x10);
                 const std::uint32_t mask = formats::u32_le(e.payload, 0x14);
                 for (std::uint32_t bit = 0; bit < 32; ++bit) {

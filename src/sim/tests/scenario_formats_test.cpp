@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -2087,6 +2088,16 @@ TEST_CASE("scenario OCCUR ore objects: island-local positions, masks, kinds, mal
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
     CHECK(w.value().islands()[7]->ore_objects.size() == 2);
     CHECK(w.value().check_invariants().empty());
+    // A position that is NaN, infinite or beyond 2^30 tiles is refused (no undefined cast).
+    for (const float bad_pos : {std::numeric_limits<float>::quiet_NaN(),
+                                std::numeric_limits<float>::infinity(), 2.0e9F}) {
+        Buf badp;
+        append(badp, entry(1560, bad_pos, 2.5F, 1, 0));
+        Buf bk = chunk("HEAD", head_bytes());
+        append(bk, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", badp)));
+        CHECK(refusal(scene("ANNO", bk)).find("the position is not a tile coordinate") !=
+              std::string::npos);
+    }
     // An ore entry that is not 24 bytes is refused with its path.
     Buf bad;
     append(bad, entry(1560, 3.5F, 2.5F, 1, 0, 26));

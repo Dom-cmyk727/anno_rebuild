@@ -80,9 +80,22 @@ or config, never constants in `sim`; the alternate-type test uses a different sh
 
 **Per-ship motion state** (new persisted state, section 8): `segment {vx, vy (Q0.32 signed), length, speed, kind}`,
 `remaining`, node list, order record `{id, phase, flag, flags, target}`, `factor_percent` (V), `chunk_factor`, `last`
-(u16), position accumulator **`pos_fine` in 2^-32 tile (i64 per axis)**, facing `dir16`. `Figure::pos` (Q24.8) is
+(u16), position accumulator **`pos_fine` in 2^-32 tile (i64 per axis)**, facing `dir16`. **Seam fit (checked against `scheduler.cpp`):** the existing figure-tick seam dispatches the whole registry visit and writes only
+its own figure and its `Effects`; the ship mover must therefore be installed as a **dispatch by figure kind** (navigating kinds go
+to the mover, all others to the existing body, so carts and carriers are unaffected), and crew slaving and the density read need
+a named `Effects` operation and a read-only registry view. `last` is the ship's own stepper stamp (`+0x42`) and is **separate**
+from `Figure::stamp` (the unit's `+8`, which the registry visit uses): P1 adds it as motion state. `Figure::pos` (Q24.8) is
 the published position = `pos_fine >> 24`, recomputed after every step (derived, so it cannot drift from the
-accumulator). Time is carried as integer *ticks scaled by 5* (the original converts `u16(now-last) * 0.2` stepper
+accumulator). **Widths (MSVC has no `__int128`):** speed is a u32 Q0.32 below 2^28 for any real speed (HEAD f1 <= 0.05 tile per unit); one
+visit consumes `ticks <= 65535`; `distance_x5 = ticks * speed_q32 < 2^44` fits i64. A diagonal axis component multiplies by
+`11863283` (< 2^24) and would reach 2^68, so it is formed with a portable 64 x 64 -> 128 helper (two u64 words, no compiler
+intrinsic assumed) and the position accumulator keeps the sub-2^-32 part as an exact residue (a `u32` over 2^24) so no rounding
+occurs inside a segment; the only roundings are (i) the Q32 conversion of each type fact, (ii) one floor division when leftover
+time crosses a speed change (error below 2^-32 tile per boundary) and (iii) the floor to Q24.8 at publication. The original's
+`0.2f` is not exactly 1/5; the contract uses exactly 1/5 (part of the exact-rational adaptation). `tools/ship_nav_ref.py`
+`integrate` vectors pin the exact-rational integrator (hand-derived: 50-tick visits at speed 0.04 move 0.4 tile; leftover carry
+between segments; no overshoot); P3 adds the C++ check and a numeric drift bound against the 2^-32 implementation (bound to be
+shown, not assumed: below 1e-6 tile over a 1000-tile voyage). Time is carried as integer *ticks scaled by 5* (the original converts `u16(now-last) * 0.2` stepper
 units): `distance_x5 = ticks * speed_q32`, compared with `remaining_x5`, so no division is needed in the common
 case. The final partial step of a segment uses `time = remaining / speed` (extended in the original); the leftover
 time is carried as an exact integer Q32 fraction of a tick, floored at 2^-32 tick (**ADAPTATION**, bounded: below
@@ -121,8 +134,9 @@ PRNG-free but order-sensitive state.
 
 Requirements (design, not measured performance): (a) planning is **per ship visit** (the registry already fixes the
 visit order and cadence), at most `route_plans_per_advance` (config, default 4) plans are *started* per Advance; an
-excess ship keeps its pending order and is retried at its next visit, in registry order, so the outcome depends only on
-sim state; (b) a query has a **work budget** in coarse-node pops and fine-node pops per query
+excess ship keeps its pending order, does **not** install an idle segment (it keeps what it is doing) and is retried at its
+next visit, in registry order, so the outcome depends only on sim state; the per-Advance counter is not persisted (recomputed
+from zero each Advance); (b) a query has a **work budget** in coarse-node pops and fine-node pops per query
 (`route_coarse_budget`, `route_fine_budget`; defaults are set in P2 from measured worst cases of the fixture maps with a
 documented margin and a recorded measuring procedure (not set here); the original has *no* cap and floods the window, so exceeding the budget is an ADAPTATION that yields
 status `-3 BudgetExceeded` = failed plan, never a partial route; consequence stated: a route the original would complete makes the
@@ -160,10 +174,10 @@ and goldens move with the version; the independent Python reference moves with t
 
 - The avoid routine acts only on hostile owners (relation 2/3) and is deferred with the local detour (section 5). The
   five-ship start is at peace; the slice is correct for it.
-- Crew (scout, donkey): they are **not** independent movers and carry **no** stored position: the sim keeps their
-  `Figure::pos` slaved to the parent for any consumer (set whenever the parent's published position changes, same step), so
-  no stale position can reach a founding check; their registry tick does nothing (speed 0, matching the original).
-  `FoundCmd` reads the carrying ship's position as it does now.
+- Crew (scout, donkey): not independent movers; their registry tick does nothing (speed 0, ORIGINAL: nothing copies the ship's
+  position to them). **ADAPTATION:** the sim keeps their `Figure::pos` equal to the carrying parent's published position (written
+  by the mover whenever the parent's position is published, same step, through a named Effects operation, section 4) so a
+  consumer that reads a crew figure sees no stale position; `FoundCmd` reads the carrying ship's position as it does now.
 - Information: movement-generated information (a ship at tile T observing terrain, other cities, ore) will use the same
   `audience` mirror as founding (`docs/sim/shared-visibility.md`): information only, never alliance, trade, or territorial
   rights. The original's sailing-driven discovery (if any; property-7 readers are UNKNOWN) is **not** part of this slice;
@@ -174,7 +188,7 @@ and goldens move with the version; the independent Python reference moves with t
 | Pkg | Content | Depends | Acceptance |
 |---|---|---|---|
 | P1 | validated type/state facts: type facts + seal checks, `Figure` motion state, exact f32 constants, registry digest vectors (Python reference) | - | refusals at seal for out-of-domain facts; digest vectors; alternate type |
-| P2 | route query: coast data, coarse map + masks, coarse/fine search, learning, goal scoring, run output; budgets | P1 | the passage fixture catalogue (`fixtures/synthetic/sim/nav/`), negative controls (corner rule, order, cost, radius), 1/2/4/7 threads identical |
+| P2 | route query: coast data, coarse map + masks, coarse/fine search, learning, goal scoring, run output; budgets | P1 | the passage catalogue (`fixtures/synthetic/sim/nav/passage_cases.txt`: reachability, goal tile and score, status; negative controls corner rule, radius, start rule), 1/2/4/7 threads identical. **Prerequisite:** route-run vectors (direction order, 10/14 costs, run cap, tie order) obtained from the original code under emulation are committed as fixtures before P2 starts; the passage catalogue does not cover them |
 | P3 | stepper: segment start/turn/chunk, integrator, speed factor, stop trim, idle | P1 | `movement_vectors.txt` through C++ and the Python reference; boundary cases; drift bound vs exact |
 | P4 | command/scheduler: `MoveCmd` validation, pick-up, figure-registry integration, planning budget, crew slaving | P2, P3 | rejection atomicity (bytes + PRNG), conflicting commands, replacement, non-default player/type |
 | P5 | save/load/replay/version 122, `MoveCmd` codec, goldens | P4 | version guard with valid control, replay across thread counts |

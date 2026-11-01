@@ -329,6 +329,7 @@ class World {
     friend struct Scheduler;
     friend struct Commands;
     friend struct CityCreation;
+    friend struct Founding;
 
     WorldClock clock_;
     WorldRng rng_;

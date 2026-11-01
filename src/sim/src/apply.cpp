@@ -17,6 +17,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/founding.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
@@ -706,6 +707,8 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
         result = set_trade_flag(env, command, *f);
     } else if (const auto* s = std::get_if<SetTradeSlotCmd>(&command.body)) {
         result = set_trade_slot(env, command, *s);
+    } else if (const auto* fd = std::get_if<FoundCmd>(&command.body)) {
+        result = Founding::apply(w, command, *fd);
     } else {
         // A legacy record is never executed (fail closed, §8.3).
         result.status = Reject::Unsupported;

@@ -53,6 +53,15 @@ namespace anno::sim {
 /// original relies on the placement rule (0x1007c790) and creates blindly.
 /// Preconditions: `cfg`, `rules` valid (SimConfig::validate, Rules::validate),
 /// `city` is one of `island.cities`, `island.cache` is current.
+/// The checks create_building makes before it touches anything, for a building of `rec` on `island`
+/// whose city has `city_lists` building lists: a known non-zero type, rotation <= 3, a list of the
+/// layout that exists, a usable serial, the footprint inside the layer and no building on any grid
+/// of it. create_building calls this very function, so a record that passes here is not refused
+/// for these reasons at creation (the founding transaction relies on it). Pure.
+[[nodiscard]] Reject creation_problem(const SimConfig& cfg, const TypeRegistry& types,
+                                      const Island& island, std::size_t city_lists,
+                                      const PlacementRecord& rec);
+
 [[nodiscard]] formats::Result<BuildingKey, Reject>
 create_building(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types, Island& island,
                 City& city, const PlacementRecord& rec, std::uint32_t now,

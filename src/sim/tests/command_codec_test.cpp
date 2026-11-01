@@ -98,7 +98,8 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     static_assert(std::is_same_v<std::variant_alternative_t<4, sim::Body>, sim::SetTradeSlotCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<5, sim::Body>, sim::SetSpeedCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<6, sim::Body>, sim::LegacyRawCmd>);
-    static_assert(std::variant_size_v<sim::Body> == 7);
+    static_assert(std::is_same_v<std::variant_alternative_t<7, sim::Body>, sim::FoundCmd>);
+    static_assert(std::variant_size_v<sim::Body> == 8);
     CHECK(sim::kCommandWireVersion == 1);
     CHECK(sim::kWireBuild == 0x64);
     CHECK(sim::kWireDemolish == 0x68);
@@ -110,7 +111,10 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     for (std::uint32_t t = 0; t <= 0xFFFF; ++t) {
         natives += sim::is_native_wire_type(static_cast<std::uint16_t>(t)) ? 1 : 0;
     }
-    CHECK(natives == 6);
+    CHECK(natives == 7);
+    CHECK(sim::kWireFound == 0xF070);
+    CHECK(sim::is_native_wire_type(0xF070));
+    CHECK_FALSE(sim::is_native_wire_type(0x70)); // a legacy type, as before
     const auto all = samples();
     CHECK(sim::wire_type(all[0]) == 0x64);
     CHECK(sim::wire_type(all[2]) == 0x68);
@@ -433,4 +437,79 @@ TEST_CASE("command wire: fuzz over prefixes, suffixes and single-byte mutations"
         }
     }
     CHECK(valid > 1000);
+}
+
+TEST_CASE("command wire: FoundCmd bytes, round trip, hostile payloads and the other encodings") {
+    // Record 0x70, length 32: u64 ship, the 16-byte placement (u32 type, i32 x, i32 y, rotation,
+    // byte7, byte8, 0), i32 click x, i32 click y; all little-endian. Derived by hand: ship
+    // 0x1122334455667788; type 1302 = 0x0516; x 50 = 0x32; y -2 = 0xfffffffe; rotation 1, byte7 7,
+    // byte8 8; click (51 = 0x33, -1).
+    sim::FoundCmd f;
+    f.ship = sim::FigureId{0x1122334455667788ULL};
+    f.placement.type = sim::TypeId{1302};
+    f.placement.x = 50;
+    f.placement.y = -2;
+    f.placement.rotation = 1;
+    f.placement.byte7 = 7;
+    f.placement.byte8 = 8;
+    f.click_x = 51;
+    f.click_y = -1;
+    const Bytes want{0x70, 0xF0, 32, 0, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
+                     0x16, 0x05, 0,  0, 0x32, 0,    0,    0,    0xfe, 0xff, 0xff, 0xff,
+                     1,    7,    8,  0, 0x33, 0,    0,    0,    0xff, 0xff, 0xff, 0xff};
+    CHECK(encoded(f) == want);
+    CHECK(want.size() == 4 + 32);
+    // Round trip, bit for bit, including the two ignored bytes.
+    auto back = sim::decode_record(want);
+    REQUIRE(back.ok());
+    REQUIRE(std::holds_alternative<sim::FoundCmd>(back.value()));
+    CHECK(std::get<sim::FoundCmd>(back.value()) == f);
+    auto again = sim::encode_record(back.value());
+    REQUIRE(again.ok());
+    CHECK(again.value() == want);
+    CHECK(sim::wire_type(sim::Body{f}) == 0xF070);
+    CHECK(sim::has_wire_form(sim::Body{f}));
+    // A turn entry: {u32 issuer, u32 seq, record}.
+    sim::TurnEntry te{sim::Command{sim::PlayerId{3}, f}, 9};
+    auto turn = sim::encode_turn_entry(te);
+    REQUIRE(turn.ok());
+    CHECK(turn.value().size() == 8 + want.size());
+    CHECK(turn.value()[0] == 3);
+    CHECK(turn.value()[4] == 9);
+    auto turn_back = sim::decode_turn_entry(turn.value());
+    REQUIRE(turn_back.ok());
+    CHECK(turn_back.value() == te);
+    // Hostile payloads: every shorter or longer length, a non-zero reserved byte, a header lie,
+    // trailing bytes. Each is an error and none decodes to a legacy record (0x70 is native).
+    for (const std::size_t len : {0U, 1U, 8U, 24U, 31U, 33U, 40U}) {
+        Bytes b{0x70, 0xF0, static_cast<std::uint8_t>(len), 0};
+        b.resize(4 + len, 0);
+        CHECK_FALSE(sim::decode_record(b).ok());
+    }
+    Bytes reserved = want;
+    reserved[4 + 8 + 15] = 1;
+    CHECK_FALSE(sim::decode_record(reserved).ok());
+    Bytes trailing = want;
+    trailing.push_back(0);
+    CHECK_FALSE(sim::decode_record(trailing).ok());
+    Bytes cut = want;
+    cut.pop_back();
+    CHECK_FALSE(sim::decode_record(cut).ok());
+    CHECK_FALSE(sim::decode_record(Bytes{0x70, 0xF0, 32}).ok());
+    // A LegacyRawCmd cannot carry the now-native type, and the encoder says so.
+    sim::LegacyRawCmd legacy;
+    legacy.type = 0xF070;
+    CHECK_FALSE(sim::has_wire_form(sim::Body{legacy}));
+    CHECK_FALSE(sim::encode_record(sim::Body{legacy}).ok());
+    // The other native encodings are unchanged by the new alternative (the exact bytes of the
+    // existing test above are the proof; two are restated here).
+    CHECK(encoded(sim::SetSpeedCmd{200}) == Bytes{0x7a, 0, 4, 0, 200, 0, 0, 0});
+    // Neighbouring types that stay legacy: 0x70 (the old candidate), 0xF06F and 0xF071.
+    for (const std::uint16_t t :
+         {std::uint16_t{0x70}, std::uint16_t{0xF06F}, std::uint16_t{0xF071}}) {
+        auto r = sim::decode_record(
+            Bytes{static_cast<std::uint8_t>(t & 0xff), static_cast<std::uint8_t>(t >> 8), 0, 0});
+        REQUIRE(r.ok());
+        CHECK(std::holds_alternative<sim::LegacyRawCmd>(r.value()));
+    }
 }

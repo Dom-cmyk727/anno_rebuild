@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include <anno/app/sdl_input.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
 #ifdef ANNO_VIEWER_GPU
@@ -292,7 +293,8 @@ class Viewer {
            PlayFollower* play)
         : play_(play), levels_(scene->levels()), name_(scene->name), group_(group), zoom_opt_(zoom),
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
-          trace_(hooks != nullptr ? hooks->trace : nullptr) {
+          trace_(hooks != nullptr ? hooks->trace : nullptr),
+          dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr) {
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
         const auto b = *scene->bounds(group);
@@ -444,6 +446,12 @@ class Viewer {
 #ifdef ANNO_VIEWER_GPU
     std::optional<FrameTracer> tracer_;
 #endif
+    /// The developer tool (ViewerHooks::dev), the pointer frame of the last frame drawn (what the
+    /// pointer is over: its screen map, zoom geometry and scene), and the receipts of the
+    /// commands the tool posted, oldest first (round ee).
+    DevTool* dev_ = nullptr;
+    std::optional<PointerFrame> pointer_frame_;
+    std::vector<CommandId> dev_receipts_;
     /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
     std::optional<Clock::time_point> quit_at_;
     /// Test hook (ANNO_VIEW_RESIZE=<seconds>:<w>x<h>): one resize at this time, to this drawable.
@@ -840,7 +848,39 @@ std::string Viewer::run() {
 void Viewer::handle(const SDL_Event& e) {
     if (wake_event_ != 0 && e.type == wake_event_) {
         dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
+        update_title();
         return;
+    }
+    if (dev_ != nullptr) {
+        // The developer tool first (sdl_input.hpp: B toggles it; with it on, the left button,
+        // N, P, T, X and Esc with something to cancel are its). The frame is the one drawn, so
+        // the pointer picks what is on screen. Its commands go to the runner's queue; the
+        // receipts are kept for the feedback.
+        const bool was_on = dev_->enabled();
+        ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
+                                      pointer_frame_ ? &*pointer_frame_ : nullptr);
+        for (sim::Command& command : step.commands) {
+            dev_receipts_.push_back(play_->runner().post_command(std::move(command)));
+        }
+        if (step.taken) {
+            if (dev_->enabled() != was_on) {
+                drag_ = false; // a left drag that began as a pan ends with it
+            }
+            update_title();
+            dirty_ = true;
+            // The window keeps its own handling of motion (the cursor, a right-button pan) and
+            // of focus and visibility; the rest was the tool's.
+            switch (e.type) {
+            case SDL_EVENT_MOUSE_MOTION:
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+            case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+            case SDL_EVENT_WINDOW_HIDDEN:
+            case SDL_EVENT_WINDOW_MINIMIZED:
+                break;
+            default:
+                return;
+            }
+        }
     }
     const float density = SDL_GetWindowPixelDensity(window_);
     switch (e.type) {
@@ -936,7 +976,9 @@ void Viewer::handle(const SDL_Event& e) {
     }
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
-        if (e.button.button == SDL_BUTTON_LEFT) {
+        // The left button pans (with the tool on it is the tool's and never reaches this); the
+        // right button pans too (round ee: the tool's pan).
+        if (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT) {
             drag_ = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
         }
         break;
@@ -1159,6 +1201,9 @@ void Viewer::update_title() {
             title += extra;
         }
     }
+    if (dev_ != nullptr && dev_->enabled()) {
+        title += " — " + dev_tool_status(*dev_);
+    }
     if (fps_) {
         char buf[64];
         std::snprintf(buf, sizeof buf, " — %.0f fps (%.1f ms/frame)", fps_->first, fps_->second);
@@ -1346,6 +1391,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"surface view", since_ms(acquired, render_start)});
     const auto s =
         g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample);
+    // What the pointer is over from now on: this frame's map, zoom level and scene.
+    pointer_frame_ = pointer_frame(view, resample, levels().tile_w(group_), levels().tile_h(group_),
+                                   gen, out_w, out_h);
     const auto p = Clock::now();
     for (const auto& step : s.steps()) {
         steps_.push_back({step.name, step.ms});
@@ -1416,6 +1464,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"picture", picture_ms_});
     steps_.push_back({"draw prologue", since_ms(picture_end_, render_start)});
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
+    pointer_frame_ =
+        pointer_frame(view, nullptr, levels().tile_w(group_), levels().tile_h(group_), gen, w, h);
     const auto rendered = Clock::now();
     const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
     steps_.push_back({"chunks", s.chunks_ms});

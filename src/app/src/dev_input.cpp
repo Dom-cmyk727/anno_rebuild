@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdlib>
 #include <utility>
 
@@ -44,6 +45,12 @@ std::vector<sim::TileXY> DevInput::footprint_at(sim::TileXY origin) const {
         }
     }
     return out;
+}
+
+std::uint64_t DevInput::line_length(sim::TileXY from, sim::TileXY to) {
+    const std::int64_t dx = static_cast<std::int64_t>(to.x) - from.x;
+    const std::int64_t dy = static_cast<std::int64_t>(to.y) - from.y;
+    return static_cast<std::uint64_t>(std::max(std::llabs(dx), std::llabs(dy))) + 1;
 }
 
 std::vector<sim::TileXY> DevInput::line(sim::TileXY from, sim::TileXY to) {
@@ -116,6 +123,9 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
         demolish_ = false;
         press_.reset();
         break;
+    case DevEvent::Kind::Abort:
+        press_.reset();
+        break;
     case DevEvent::Kind::Press:
         press_ = event.tile;
         hover_ = event.tile;
@@ -130,6 +140,12 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
         const sim::TileXY from = *press_;
         press_.reset();
         hover_ = event.tile;
+        const std::uint64_t length = line_length(from, event.tile);
+        if (length > sim::kMaxRecordPayload) {
+            message_ = "a drag of " + std::to_string(length) +
+                       " tiles is over the wire limit of one command";
+            break;
+        }
         const std::vector<sim::TileXY> tiles = line(from, event.tile);
         if (demolish_) {
             out.push_back(demolish_command(tiles));

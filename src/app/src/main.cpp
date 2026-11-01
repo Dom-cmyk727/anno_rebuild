@@ -284,6 +284,9 @@ int run(const std::vector<std::string>& raw) {
     anno::app::ViewerHooks hooks;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
     std::unique_ptr<anno::app::PlayFollower> follow;
+    // The developer building tool (round ee; B in the window): its setup is read from the world
+    // before the runner takes it.
+    std::optional<anno::app::DevTool> dev;
     // The window trace (docs/app/window-trace.md): ANNO_VIEW_TRACE=<directory that does not
     // exist>, with --play and the GPU renderer. Bounded (ANNO_VIEW_TRACE_EVENTS, _FRAMES), written
     // once after the window, the sim thread and the builders have stopped.
@@ -339,6 +342,8 @@ int run(const std::vector<std::string>& raw) {
         }
         picture = std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building,
                                                             2, std::move(limits));
+        dev.emplace(anno::app::dev_tool_setup(*play));
+        hooks.dev = &*dev;
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         if (trace) {
             // The sim thread's record of every turn: its outcome, and the batch's publication.

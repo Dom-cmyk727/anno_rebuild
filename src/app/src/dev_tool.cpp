@@ -1,0 +1,174 @@
+// The developer building tool (see the header).
+#include <string>
+#include <utility>
+
+#include <anno/app/dev_tool.hpp>
+#include <anno/sim/building.hpp>
+
+namespace anno::app {
+
+PointerFrame pointer_frame(render::Rect view, const render::Resample* resample, double tile_w,
+                           double tile_h, std::shared_ptr<const render::Scene> scene,
+                           int drawable_w, int drawable_h) {
+    PointerFrame f;
+    f.map.x0 = view.x + (resample != nullptr ? resample->offset_x : 0.0);
+    f.map.y0 = view.y + (resample != nullptr ? resample->offset_y : 0.0);
+    f.map.scale = resample != nullptr ? resample->scale : 1.0;
+    f.geometry = render::pick_geometry_of(tile_w, tile_h);
+    f.scene = std::move(scene);
+    f.drawable_w = drawable_w;
+    f.drawable_h = drawable_h;
+    return f;
+}
+
+DevTool::DevTool(DevToolSetup setup)
+    : setup_(std::move(setup)),
+      input_(setup_.registry, setup_.types, setup_.city.value_or(sim::CityRef{}), setup_.issuer) {}
+
+std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, double py,
+                                         std::string* why) const {
+    auto fail = [why](const char* reason) {
+        if (why != nullptr) {
+            *why = reason;
+        }
+        return std::optional<sim::TileXY>{};
+    };
+    if (!(px >= 0.0) || !(py >= 0.0) || !(px < frame.drawable_w) || !(py < frame.drawable_h)) {
+        return fail("outside the window");
+    }
+    const auto point = render::scene_point(frame.map, px, py);
+    if (!point || !frame.scene) {
+        return fail("no tile here");
+    }
+    const render::Scene& scene = *frame.scene;
+    const auto tile =
+        render::pick_tile(point->first, point->second, frame.geometry,
+                          [&scene](float u, float v) { return scene.ground_height(u, v); });
+    if (!tile) {
+        return fail("no tile here");
+    }
+    const sim::TileXY t{tile->first, tile->second};
+    if (!setup_.island.contains(t)) {
+        return fail("not the city's island");
+    }
+    return t;
+}
+
+void DevTool::forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Command>& out) {
+    for (sim::Command& c : input_.handle(DevEvent{kind, tile})) {
+        out.push_back(std::move(c));
+    }
+    if (!input_.message().empty()) {
+        message_ = input_.message();
+    }
+}
+
+std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFrame* frame) {
+    std::vector<sim::Command> out;
+    using K = ToolInput::Kind;
+    if (in.kind == K::Toggle) {
+        if (enabled_) {
+            forward(DevEvent::Kind::Cancel, {}, out);
+            press_.reset();
+            enabled_ = false;
+            message_.clear();
+        } else if (!setup_.city) {
+            message_ = "no city of the developer player: the tool is off";
+        } else {
+            enabled_ = true;
+            message_.clear();
+        }
+        return out;
+    }
+    if (!enabled_) {
+        return out;
+    }
+    message_.clear();
+    switch (in.kind) {
+    case K::NextType:
+        forward(DevEvent::Kind::NextType, {}, out);
+        break;
+    case K::PrevType:
+        forward(DevEvent::Kind::PrevType, {}, out);
+        break;
+    case K::Rotate:
+        forward(DevEvent::Kind::Rotate, {}, out);
+        break;
+    case K::ToggleDemolish:
+        forward(DevEvent::Kind::ToggleDemolish, {}, out);
+        press_.reset();
+        break;
+    case K::Cancel:
+        forward(DevEvent::Kind::Cancel, {}, out);
+        press_.reset();
+        break;
+    case K::Abort:
+        forward(DevEvent::Kind::Abort, {}, out);
+        press_.reset();
+        hover_.reset();
+        break;
+    case K::Press:
+    case K::Move:
+    case K::Release: {
+        std::string why;
+        const auto tile = frame != nullptr ? pick(*frame, in.px, in.py, &why) : std::nullopt;
+        if (frame == nullptr) {
+            why = "no frame drawn yet";
+        }
+        hover_ = tile;
+        if (in.kind == K::Move) {
+            if (tile && input_.pressed()) {
+                forward(DevEvent::Kind::Move, *tile, out); // motion never makes a command
+            }
+            break;
+        }
+        if (!tile) {
+            // A press off the island starts nothing; a release there drops the press, so it
+            // cannot place anything later.
+            if (in.kind == K::Release && input_.pressed()) {
+                forward(DevEvent::Kind::Abort, {}, out);
+                message_ = why + ": nothing sent";
+            } else {
+                message_ = why;
+            }
+            press_.reset();
+            break;
+        }
+        if (in.kind == K::Press) {
+            press_ = tile;
+            forward(DevEvent::Kind::Press, *tile, out);
+        } else {
+            press_.reset();
+            forward(DevEvent::Kind::Release, *tile, out);
+        }
+        break;
+    }
+    case K::Toggle:
+        break;
+    }
+    return out;
+}
+
+std::string dev_tool_status(const DevTool& tool) {
+    const DevInput& in = tool.input();
+    std::string s = "tool: ";
+    if (in.demolish_mode()) {
+        s += "demolish";
+    } else if (const sim::BuildingType* type = in.selected_type()) {
+        const auto [w, h] = sim::footprint(*type, in.rotation());
+        s += "build " + std::to_string(type->id.v) + " (" + std::to_string(w) + "x" +
+             std::to_string(h) + ", " + std::to_string(type->cost_gold) + " gold) rotation " +
+             std::to_string(in.rotation());
+    } else {
+        s += "no buildable type";
+    }
+    if (const auto t = tool.hover()) {
+        s += " at " + std::to_string(t->x) + "," + std::to_string(t->y);
+    }
+    if (!tool.message().empty()) {
+        s += " — " + tool.message();
+    }
+    return s;
+}
+
+} // namespace anno::app

@@ -4,11 +4,9 @@
 // was given; it never reads the World. The viewer maps SDL events to DevEvent; the
 // tests drive DevInput with synthetic events. The sim decides every command.
 //
-// No key or mouse binding is wired in this change: the viewer's SDL mapping (keys,
-// the pointer, the pick through render::pick_tile) is not in it, so nothing in the
-// window produces these events yet. The events are the contract that mapping feeds.
-// The owner's round-dr decision keeps this a test tool; the original's controls are
-// for UI.1/UI.2 (docs/app/game-shell.md).
+// The window feeds it through DevTool (dev_tool.hpp: the pointer picked to a tile), which the
+// viewer's SDL mapping (sdl_input.hpp) drives (round ee, B3). The owner's round-dr decision keeps
+// this a test tool; the original's controls are for UI.1/UI.2 (docs/app/game-shell.md).
 #pragma once
 
 #include <cstdint>
@@ -32,6 +30,9 @@ struct DevEvent {
         Rotate,
         ToggleDemolish,
         Cancel,
+        /// Drops a press in progress only (focus lost, a release off the island): unlike Cancel
+        /// it keeps the demolish mode.
+        Abort,
         Press,
         Move,
         Release,
@@ -63,6 +64,14 @@ class DevInput {
     /// The tiles a drag from `from` to `to` covers: a straight line along the longer
     /// axis (ties go to x), from `from` to `to` inclusive, in stream order.
     [[nodiscard]] static std::vector<sim::TileXY> line(sim::TileXY from, sim::TileXY to);
+    /// The number of tiles line(from, to) covers, computed without making it (64-bit: the tiles
+    /// of a pick are within +-2^30). A drag is refused before its path is made when it covers
+    /// more tiles than one record's payload has bytes (sim::kMaxRecordPayload, at least one byte
+    /// a tile); sim::has_wire_form decides the rest (4 095 placements, 8 190 tiles today). It is
+    /// never split: one drag is one command.
+    [[nodiscard]] static std::uint64_t line_length(sim::TileXY from, sim::TileXY to);
+    /// Whether a press is in progress (a release would send a command).
+    [[nodiscard]] bool pressed() const { return press_.has_value(); }
 
   private:
     [[nodiscard]] bool road_like() const;

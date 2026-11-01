@@ -6,6 +6,7 @@ add_library(anno_app_core
   src/command_outcome.cpp
   src/commands_file.cpp
   src/dev_input.cpp
+  src/dev_tool.cpp
   src/legal_workload.cpp
   src/cli.cpp
   src/loader.cpp
@@ -34,9 +35,14 @@ if(MINGW)
 endif()
 anno_target_defaults(anno1503)
 if(ANNO_BUILD_VIEWER)
+  # The play window's SDL mapping for the developer tool (round ee, B3): the window and its tests
+  # link the same code.
+  add_library(anno_app_sdl src/sdl_input.cpp)
+  target_link_libraries(anno_app_sdl PUBLIC anno_app_core SDL3::SDL3)
+  anno_target_defaults(anno_app_sdl)
   target_sources(anno1503 PRIVATE src/viewer.cpp)
   target_compile_definitions(anno1503 PRIVATE ANNO_WITH_VIEWER)
-  target_link_libraries(anno1503 PRIVATE SDL3::SDL3)
+  target_link_libraries(anno1503 PRIVATE anno_app_sdl)
   if(ANNO_HAVE_WGPU)
     target_sources(anno1503 PRIVATE src/gpu_surface.cpp)
     target_compile_definitions(anno1503 PRIVATE ANNO_VIEWER_GPU)
@@ -69,6 +75,17 @@ if(ANNO_BUILD_TESTS)
   target_link_libraries(anno_app_alloc_tests PRIVATE anno_app_core doctest::doctest)
   anno_target_defaults(anno_app_alloc_tests)
   anno_add_doctest(anno_app_alloc_tests)
+  if(ANNO_BUILD_VIEWER)
+    # The developer tool through the window's own SDL mapping (synthetic SDL events; no window).
+    add_executable(anno_app_input_tests tests/main.cpp tests/dev_tool_test.cpp)
+    target_link_libraries(anno_app_input_tests PRIVATE anno_app_sdl anno_test_support
+      doctest::doctest)
+    target_compile_definitions(anno_app_input_tests PRIVATE
+      ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+    anno_target_defaults(anno_app_input_tests)
+    anno_stage_budget_coord(anno_app_input_tests)
+    anno_add_doctest(anno_app_input_tests)
+  endif()
   add_test(NAME anno1503_usage COMMAND anno1503 --view x.sze --group 3)
   set_tests_properties(anno1503_usage PROPERTIES PASS_REGULAR_EXPRESSION "usage:")
 endif()

@@ -14,6 +14,7 @@
 
 #include <anno/app/building_delta.hpp>
 #include <anno/app/cli.hpp>
+#include <anno/app/dev_tool.hpp>
 #include <anno/app/play_follow.hpp>
 #include <anno/app/window_trace.hpp>
 #include <anno/render/scene.hpp>
@@ -29,6 +30,10 @@ struct ViewerHooks {
     /// frame, the readiness of each commit's visible keys, and present-call results. Outlives the
     /// call; the window records nothing after run_viewer returns.
     WindowTrace* trace = nullptr;
+    /// The developer building tool (dev_tool.hpp; --play only): the window feeds it its SDL
+    /// events (sdl_input.hpp) with the last drawn frame and posts its commands to the runner. The
+    /// caller owns it; null leaves the tool out.
+    DevTool* dev = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

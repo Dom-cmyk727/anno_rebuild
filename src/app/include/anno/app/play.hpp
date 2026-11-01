@@ -21,6 +21,7 @@
 #include <anno/app/command_outcome.hpp>
 #include <anno/app/command_queue.hpp>
 #include <anno/app/commands_file.hpp>
+#include <anno/app/dev_tool.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/world.hpp>
@@ -49,6 +50,8 @@ struct PlayLoad {
     std::vector<PlacedIsland> placed;
     /// The scene name (the file's stem).
     std::string name;
+    /// The world's type registry (shared: the developer tool reads it after the world moves).
+    std::shared_ptr<const sim::TypeRegistry> registry;
 };
 
 /// What a fixed map's play load does not take from the layout (sim_load::FixedMapOptions).
@@ -75,6 +78,11 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 
 /// The scenario loader's split: an Anlagen id whose type has a list in the layout.
 [[nodiscard]] bool anlage_is_building(const sim::World& world, std::uint16_t anlage);
+
+/// The developer tool's setup (dev_tool.hpp), read from `load` before the runner takes its world:
+/// the registry, the types the loader places as buildings (TypeId order), and the developer
+/// player's first city with its island's tiles (none: the tool stays off).
+[[nodiscard]] DevToolSetup dev_tool_setup(const PlayLoad& load);
 
 /// What the window reads. Not a World.
 struct PlaySnapshot {

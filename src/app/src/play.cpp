@@ -180,7 +180,9 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
         if (!built) {
             return path_text(file) + ": load_fixed_map: " + built.error();
         }
-        return std::move(built).value();
+        PlayLoad out = std::move(built).value();
+        out.registry = registry.types;
+        return out;
     }
     const sim::SimConfig cfg;
     auto resolved =
@@ -230,7 +232,39 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     out.world = std::move(created).value();
     out.islands = std::move(islands);
     out.links = std::move(links);
+    out.registry = registry.types;
     return out;
+}
+
+DevToolSetup dev_tool_setup(const PlayLoad& load) {
+    DevToolSetup s;
+    s.registry = load.registry;
+    s.issuer = developer_player();
+    const sim::World& world = load.world;
+    for (const auto& island : world.islands()) {
+        if (!island || s.city) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (city && city->owner == developer_player() && !s.city) {
+                s.city = sim::CityRef{island->index, city->number};
+                s.island = TileRect{island->tiles.x0(), island->tiles.y0(), island->tiles.width(),
+                                    island->tiles.height()};
+            }
+        }
+    }
+    if (s.registry) {
+        // The types the loader places as buildings (anlage_is_building): data, in TypeId order.
+        for (const sim::BuildingType& type : s.registry->types()) {
+            if (type.id.v <= 0xFFFFu &&
+                anlage_is_building(world, static_cast<std::uint16_t>(type.id.v))) {
+                s.types.push_back(type.id);
+            }
+        }
+        std::sort(s.types.begin(), s.types.end(),
+                  [](sim::TypeId a, sim::TypeId b) { return a.v < b.v; });
+    }
+    return s;
 }
 
 std::vector<SceneBuilding> play_buildings(const sim::World& world) {

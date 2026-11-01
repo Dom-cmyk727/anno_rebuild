@@ -304,6 +304,44 @@ A command is identified from its submission to its outcome (`command_outcome.hpp
 Tests: `src/app/tests/command_outcome_test.cpp` (suite `command_outcome`), and
 `run_turn reports one result per command…` in `src/sim/tests/replay_test.cpp`.
 
+### The developer building tool (W4.4, round ee)
+
+A test tool in the play window (the owner's round-dr decision), not UI.2. Off by default.
+
+- **Keys:**
+  - B turns it on and off.
+  - With it on: N and P cycle the buildable types, T rotates, X toggles demolish.
+  - Esc cancels a press or the demolish mode; with nothing to cancel, Esc quits as before.
+  - The left button presses and releases: a click places, a drag lays a road (a straight line
+    along the longer axis) or demolishes a line of tiles.
+  - The right button pans (the left button still pans with the tool off); the keys and the
+    wheel are unchanged.
+  - Losing focus, leaving the window or being hidden drops a press. Motion only moves the hover,
+    never a command. Key repeats are ignored.
+- **The pick** (`dev_tool.hpp`, `render/picking.hpp`). The tool picks on the frame the window last
+  drew, never on the camera's target:
+  - SDL's window points are multiplied by the pixel density to get drawable pixels.
+  - A drawable pixel maps to that frame's scene pixels: x0 + (px + 0.5) / scale, from the view's
+    origin and, under continuous zoom, the Resample's offset and its scale (`PointerFrame`).
+  - `render::pick_tile` then finds the world tile on the frame's own scene, with heights:
+    the frontmost point where the view ray meets the ground. An earlier iteration from height 0
+    picked the ground behind a raised tile.
+  - Only the developer city's island is accepted. Outside the window, open sea, another island,
+    a non-finite point and a point beyond ±2^30 tiles give no command and a message.
+  - Commands are in world tiles, as the command file's are.
+- **Data, not constants.** `dev_tool_setup` reads, at load, before the runner takes the world:
+  - the registry;
+  - the types the loader places as buildings, in TypeId order;
+  - the developer player's first city and its island's tile rectangle.
+
+  The window never reads the World.
+- **One adapter.** The window calls `dev_tool_step` (`sdl_input.hpp`) for every event. The tests
+  feed synthetic SDL events through the same function (`src/app/tests/dev_tool_test.cpp`,
+  `anno_app_input_tests`).
+- **Long drags.** A drag over one record's payload bytes (65 535 tiles) is refused before its
+  path is made. `sim::has_wire_form` decides the rest (4 095 placements, 8 190 tiles), and a drag
+  is never split: one drag is one command.
+
 ### Immutable per-island object lists (W4.3, round du)
 
 Status: implemented in the Mac continuation of round du (`render::Scene::with_islands`,

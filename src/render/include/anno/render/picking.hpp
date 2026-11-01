@@ -24,17 +24,45 @@ struct PickGeometry {
     double lift = kHeightLift.num / static_cast<double>(kHeightLift.den);
 };
 
+/// The geometry of a zoom level whose diamond is `tile_w` x `tile_h` scene pixels (a built
+/// group or a derived level, ZoomLevels::tile_w / tile_h): the lift scales with the tile width,
+/// as Lift::scaled does.
+[[nodiscard]] inline PickGeometry pick_geometry_of(double tile_w, double tile_h) {
+    PickGeometry g;
+    g.tile_w = tile_w;
+    g.tile_h = tile_h;
+    g.lift = kHeightLift.num / static_cast<double>(kHeightLift.den) * g.tile_w /
+             static_cast<double>(kTile[0].w);
+    return g;
+}
+
 /// The geometry of a built zoom group (`group` 0..2) at a continuous scale of that
 /// group (1.0 = the group as built). Scale multiplies the tile size and the lift
 /// alike, so a continuous zoom picks with the same rule.
 [[nodiscard]] inline PickGeometry pick_geometry(std::size_t group, double scale = 1.0) {
     const TileSize size = kTile[group];
-    PickGeometry g;
-    g.tile_w = static_cast<double>(size.w) * scale;
-    g.tile_h = static_cast<double>(size.h) * scale;
-    g.lift = kHeightLift.num / static_cast<double>(kHeightLift.den) * g.tile_w /
-             static_cast<double>(kTile[0].w);
-    return g;
+    return pick_geometry_of(static_cast<double>(size.w) * scale,
+                            static_cast<double>(size.h) * scale);
+}
+
+/// How a frame's drawable pixels map to the scene pixels it shows (round ee, B1): the scene
+/// point under the centre of drawable pixel (px, py) is (x0 + (px + 0.5) / scale, y0 + (py + 0.5)
+/// / scale). A stepped zoom draws scene pixel view.x + px at px: x0 = view.x, scale 1. A
+/// continuous zoom resamples (resample.hpp): x0 = view.x + Resample::offset_x, scale =
+/// Resample::scale (the scale resampled_view settled on, not the one asked for).
+struct ScreenMap {
+    double x0 = 0.0, y0 = 0.0;
+    double scale = 1.0;
+};
+
+/// The scene point under drawable pixel (px, py), or nullopt for a non-finite input or scale.
+[[nodiscard]] inline std::optional<std::pair<double, double>> scene_point(const ScreenMap& m,
+                                                                          double px, double py) {
+    if (!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(m.x0) || !std::isfinite(m.y0) ||
+        !std::isfinite(m.scale) || !(m.scale > 0.0)) {
+        return std::nullopt;
+    }
+    return std::pair{m.x0 + (px + 0.5) / m.scale, m.y0 + (py + 0.5) / m.scale};
 }
 
 /// Scene pixel of corner (u, v) at height `h` (HEIGHT units): the forward rule,
@@ -47,33 +75,72 @@ struct PickGeometry {
     return {x, y};
 }
 
-/// The world tile under scene pixel (sx, sy), or nullopt. `height(u, v)` is the
-/// ground height in HEIGHT units at the world point (u, v), nullopt over open sea
-/// (height 0). The ground height moves the point on screen, so the point is found
-/// by a fixed-point iteration on the height: at most `kIterations` steps, stopping
-/// when the height no longer changes by more than `kTolerance`.
+/// The highest ground in HEIGHT units: the files store a corner height as one byte.
+inline constexpr double kMaxGroundHeight = 255.0;
+
+/// The world tile under scene pixel (sx, sy), or nullopt. `height(u, v)` is the ground height in
+/// HEIGHT units at the world point (u, v), nullopt over open sea (height 0).
+///
+/// The screen point is a ray through the heights: the world point drawn there at height h is
+/// at u + v = (sy + lift h) / (tile_h / 2), u - v = sx / (tile_w / 2), so a higher h is further
+/// forward in the painter's order (x + y). The visible ground is the ray's frontmost meeting with
+/// it (round ee, B2: an earlier fixed-point iteration from height 0 settled on the ground behind a
+/// raised tile): the ray is marched from kMaxGroundHeight down in steps of one HEIGHT unit (a
+/// step moves the point 2.059 * tile_w / 84 px, about a tenth of a tile, and the ground is linear
+/// within a tile triangle), and the first step that reaches the ground is refined by bisection.
+/// Height 0 always meets it (no ground is below 0), so the march ends.
 /// The tile is (floor(u), floor(v)): tile (x, y) spans the corners [x, x+1] x [y, y+1].
+/// nullopt: a non-finite input or geometry, and a corner beyond +-2^30 tiles (checked before the
+/// conversion, which is then exact).
 [[nodiscard]] inline std::optional<std::pair<std::int32_t, std::int32_t>>
 pick_tile(double sx, double sy, const PickGeometry& g,
-          const std::function<std::optional<float>(float, float)>& height) {
-    constexpr int kIterations = 16;
-    constexpr double kTolerance = 1e-4;
-    double h = 0.0;
-    double u = 0.0, v = 0.0;
-    for (int i = 0; i < kIterations; ++i) {
-        // Undo the lift of the height assumed at the current point: the screen y of a
-        // flat point (u, v) at height 0.
-        const double yflat = sy + g.lift * h;
-        u = (yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0;
-        v = (yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0;
-        const double next = height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F);
-        if (std::fabs(next - h) <= kTolerance) {
-            h = next;
-            break;
-        }
-        h = next;
+          const std::function<std::optional<float>(float, float)>& height,
+          double max_height = kMaxGroundHeight) {
+    constexpr double kLimit = 1073741824.0; // 2^30 tiles: far beyond any map, exact in int32
+    constexpr int kRefine = 24;
+    if (!std::isfinite(sx) || !std::isfinite(sy) || !std::isfinite(g.tile_w) ||
+        !std::isfinite(g.tile_h) || !std::isfinite(g.lift) || !(g.tile_w > 0.0) ||
+        !(g.tile_h > 0.0) || !std::isfinite(max_height) || max_height < 0.0) {
+        return std::nullopt;
     }
-    if (!std::isfinite(u) || !std::isfinite(v)) {
+    // The world point on the ray at height h.
+    auto at = [&](double h) {
+        const double yflat = sy + g.lift * h;
+        return std::pair{(yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0,
+                         (yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0};
+    };
+    // Whether the ray at height h is at or below the ground there.
+    auto meets = [&](double h) {
+        const auto [u, v] = at(h);
+        if (!std::isfinite(u) || !std::isfinite(v) || std::fabs(u) >= kLimit ||
+            std::fabs(v) >= kLimit) {
+            return false;
+        }
+        return height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F) >= h;
+    };
+    double hit = 0.0;
+    if (meets(max_height)) {
+        hit = max_height;
+    } else {
+        for (double h = std::floor(max_height); h >= 0.0; h -= 1.0) {
+            if (h == max_height) {
+                continue;
+            }
+            if (meets(h)) {
+                // The ray is above the ground at `above` and at or below it at h: refine.
+                double lo = h, above = std::min(h + 1.0, max_height);
+                for (int i = 0; i < kRefine; ++i) {
+                    const double mid = (lo + above) / 2.0;
+                    (meets(mid) ? lo : above) = mid;
+                }
+                hit = lo;
+                break;
+            }
+        }
+    }
+    const auto [u, v] = at(hit);
+    if (!std::isfinite(u) || !std::isfinite(v) || std::fabs(u) >= kLimit ||
+        std::fabs(v) >= kLimit) {
         return std::nullopt;
     }
     return std::pair{static_cast<std::int32_t>(std::floor(u)),

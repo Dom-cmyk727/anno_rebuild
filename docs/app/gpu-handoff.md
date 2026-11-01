@@ -199,6 +199,7 @@ Round eb added:
 | 3B | constrained: one upload per frame ... | a three-key edit finishes while paused; the window idles only once every key is GPU-usable; exact against a fresh compositor |
 | 3C | constrained: an edit published while uploads are outstanding ... | ends on the newest state; every chunk region shown is one whole state; the replaced generation and its CPU chunks are freed |
 | 3D | constrained: with stand-ins and dissolves ... | a chunk replacing its stand-in is fading (not usable) until the clock ends it; a rebuilt chunk swaps whole; old and new chunks side by side across keys |
+| round ed, 4 | constrained: a visible chunk that reaches the GPU after the fade clock was stepped ... | a dissolve on a held clock never ends (the paused loop stalls, by the work-based bound); on a moving clock it ends on the fresh scene |
 | 3E | constrained: leaving the view ... | uploads in progress are dropped when the keys leave the view and are redone on return; closing with an upload in progress frees its CPU chunk |
 | 4 | water parity: the reproducer ... | the four pixels and their cause (OQ-525); parity not accepted (`WARN`) |
 
@@ -207,16 +208,40 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
 
 ## 5. Open, and the next units
 
-- **Open, intermittent:** `picture GPU, constrained: with stand-ins and dissolves …` (3D) reached its 120 s
-  wall-clock deadline in both round-ec full gates. Those ran at `-j 6`, beside CPU-heavy cases and a
-  concurrent ASan gate. It passes alone and at `-j 1` in about 50 s. Whether the paused loop is slow or stalls
-  under contention is not established.
-  - Owner: the next GPU unit.
-  - Acceptance: a deadline in frames, or the GPU gate at `-j 1`, passing in a full gate.
+- **Round ec's deadline failure of `picture GPU, constrained: with stand-ins and dissolves …` (3D)**, which
+  reached its 120 s wall-clock deadline in both round-ec full gates at `-j 6`. Round ed explained it as a
+  test clock defect (`cache/ed-runs/p4-*`):
+  - The case's first loop always ended at its 4000-frame cap: its condition also waited for the margin's
+    chunk jobs, which outlast the visible ones (serial control: 4000 frames, 5.7 s, all 24 visible keys on
+    the GPU by then). Nothing required the visible condition to hold.
+  - The case then stepped its hand-held fade clock once. A visible chunk that reached the GPU after that
+    step dissolved in over its stand-in on a clock that never moved again: `work_pending()` stayed true, and
+    the paused loop drew until the deadline with nothing left to wait for.
+  - The deterministic case "picture GPU, constrained: a visible chunk that reaches the GPU after the fade
+    clock was stepped …" holds one visible key's chunk job past the step: with the clock held, the loop
+    stalls (one key fading, no CPU work, GPU work pending, no change for 2000 frames); with the clock
+    moving it idles in 10 frames on the fresh scene.
+  - The round-ec failures fit this: about 171,000 and 177,000 assertions, against 81,500 in a passing run,
+    where the first loop's fading checks are about 80,000 and the paused loop adds one per frame. That is
+    about 90,000 paused frames, and only the dissolve loop (no per-frame checks, about 1 ms a frame) can
+    draw that many in 120 s. This is a deduction from counts. No state was logged in round ec.
+  - A uniform slowdown does not trigger it: the round-ec case under background QoS took 153 s and passed
+    with the normal assertion count. It needs a visible chunk job to fall behind the frame loop, as under
+    CPU contention at `-j 6`.
+  - The correction: the first loop ends when every visible chunk is on the GPU and must get there; after
+    the step, the paused loops move the clock 16 ms a frame, as the viewer's steady clock does. The pixel,
+    whole-chunk, dissolve and idle assertions are unchanged, and no tolerance moved.
+  - The paused loop's bound is now work-based. 3000 frames in a row with no CPU work and no change in
+    the visible keys' GPU states is a stall, and it fails with a report: the demand, and the usable,
+    fading, staging and waiting counts. A 600 s wall-clock watchdog stays, and it only bounds a broken
+    case.
+  - Acceptance: a deterministic reproduction and its correction, as above. A serial pass, or a longer
+    deadline, would not have been one. The full GPU gate in this round's report runs at `-j 1`, since the
+    GPU tests share one device. That is a resource policy, not the fix.
 - **Round ec's intermittent `publish: one, two and four workers each hold a version ahead at a barrier, and
   the newest is published`** (anno_app_tests; failed once under ASan at workers = 2, "a held generation seen
   destroyed"). Round ed found a test defect that can produce exactly that failure, and fixed it. Its
-  acceptance (passing repeatedly in a full ASan gate) is recorded in this round's report; until then
+  acceptance (passing repeatedly in a full ASan gate) will be recorded in this round's report; until then
   the item stays open:
   - The case's observer recorded only `generation()`. Every scene lineage starts at generation 0, and
     each iteration released its base scene (generation 0) after clearing its observer and after its last

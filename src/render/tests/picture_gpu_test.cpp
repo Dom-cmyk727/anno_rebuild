@@ -24,6 +24,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -1216,31 +1217,133 @@ std::vector<std::uint8_t> gpu_fresh(const gpu::Context& ctx, const SceneHandle& 
     return other.pixels(view);
 }
 
+/// What a paused loop did, for its failure message and the case's record (round ed, package 4):
+/// the frames drawn, the wall time, the last frame's demand (why the loop had not idled), the
+/// visible keys' GPU states, the fade clock, and the frames since the visible state last changed
+/// while no CPU work was outstanding.
+struct LoopReport {
+    std::size_t frames = 0, visible = 0, usable = 0, fading = 0, staging = 0, uploads = 0;
+    std::size_t idle_cpu_frames_unchanged = 0, max_idle_cpu_frames_unchanged = 0;
+    double seconds = 0;
+    bool chunks_busy = false, play_work = false, gpu_work = false;
+    std::uint64_t clock = 0;
+    /// How the loop ended: idle (the demand let it stop), stalled (PausedLoop::stall_frames), or
+    /// the wall-clock watchdog.
+    bool idle = false, stalled = false, watchdog = false;
+    [[nodiscard]] std::string text() const {
+        std::ostringstream o;
+        o << (idle       ? "idle"
+              : stalled  ? "STALLED"
+              : watchdog ? "WATCHDOG"
+                         : "running")
+          << " frames=" << frames << " seconds=" << seconds
+          << " demand: chunks_busy=" << chunks_busy << " play_work=" << play_work
+          << " gpu_work=" << gpu_work << "; visible keys " << visible << ": usable=" << usable
+          << " fading=" << fading << " staging=" << staging << " uploads_waiting=" << uploads
+          << "; fade clock=" << clock
+          << "; frames with no CPU work and no change: " << idle_cpu_frames_unchanged << " (max "
+          << max_idle_cpu_frames_unchanged << ")";
+        return o.str();
+    }
+};
+
+/// The visible keys' GPU states after a frame (LoopReport).
+void observe(LoopReport& r, const gpu::GpuFrame& f, const render::FrameRenderer& frames,
+             const std::vector<ChunkKey>& keys) {
+    r.visible = keys.size();
+    r.usable = r.fading = r.staging = r.uploads = 0;
+    for (const ChunkKey& k : keys) {
+        const auto st = f.chunk_state(k);
+        r.fading += st.fading ? 1U : 0U;
+        r.staging += st.staging ? 1U : 0U;
+        const bool cpu = fresh(frames, k);
+        r.usable += cpu && st.serial == frames.chunk(k)->serial && !st.fading ? 1U : 0U;
+        r.uploads += cpu && st.serial != frames.chunk(k)->serial ? 1U : 0U;
+    }
+}
+
+/// How a paused loop is bounded and clocked (round ed, package 4).
+struct PausedLoop {
+    /// The compositor's fade clock and how far it moves per frame drawn: the viewer's clock is
+    /// steady time, so it moves while the window draws (0: held where the case put it).
+    std::shared_ptr<std::uint64_t> clock;
+    std::uint64_t clock_ms_per_frame = 0;
+    /// The work-based bound: this many frames in a row with no CPU work outstanding (no chunk
+    /// job, nothing pending in the bridge) and no change in the visible keys' GPU states (usable,
+    /// fading, staging, waiting for an upload) is a stall. Each frame uploads at least one plane
+    /// and a dissolve ends on a moving clock, so steady progress changes the states well within
+    /// it.
+    std::size_t stall_frames = 3000;
+    /// The wall-clock watchdog: it bounds a broken case; it never decides that the work finished.
+    std::chrono::seconds watchdog{600};
+};
+
 /// The window's paused loop on the GPU path, without a window: a first frame (the viewer marks
 /// itself dirty when the view or the state changes), then a frame while the production FrameDemand
-/// (play_follow.hpp) wants one. Returns the frames drawn; `each` sees every frame.
+/// (play_follow.hpp) wants one, until the demand lets it idle, it stalls, or the watchdog ends it.
+/// `each` sees every frame.
 template <class Each>
-std::size_t paused_frames(Gpu& g, render::FrameRenderer& frames, app::ScenePicture& picture,
-                          render::Rect view, std::size_t group, Each each) {
-    std::size_t n = 0;
-    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(120);
+LoopReport paused_loop(Gpu& g, render::FrameRenderer& frames, app::ScenePicture& picture,
+                       render::Rect view, std::size_t group, Each each, const PausedLoop& opt) {
+    LoopReport r;
+    const auto keys = visible_keys(view, group);
+    const auto start = std::chrono::steady_clock::now();
+    std::tuple<std::size_t, std::size_t, std::size_t, std::size_t> last{};
     for (;;) {
         app::FrameDemand d;
-        d.dirty = n == 0; // the first frame after a change of view or state, as the viewer's
+        d.dirty = r.frames == 0; // the first frame after a change of view or state, as the viewer's
         d.paused = true;
         d.chunks_busy = frames.busy();
         d.play_work = picture.pending() > 0;
         d.gpu_work = g.frame->work_pending();
+        r.chunks_busy = d.chunks_busy;
+        r.play_work = d.play_work;
+        r.gpu_work = d.gpu_work;
+        r.clock = opt.clock ? *opt.clock : 0;
+        r.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         if (!d.draw()) {
-            return n;
+            r.idle = true;
+            return r;
         }
-        REQUIRE(std::chrono::steady_clock::now() < until);
+        if (r.idle_cpu_frames_unchanged >= opt.stall_frames) {
+            r.stalled = true;
+            return r;
+        }
+        if (std::chrono::steady_clock::now() - start > opt.watchdog) {
+            r.watchdog = true;
+            return r;
+        }
+        if (opt.clock && opt.clock_ms_per_frame > 0) {
+            *opt.clock += opt.clock_ms_per_frame;
+        }
         picture.commit(frames);
         g.draw(frames, picture.scene(), view, group);
-        ++n;
-        each(n);
+        ++r.frames;
+        observe(r, *g.frame, frames, keys);
+        const auto now = std::tuple{r.usable, r.fading, r.staging, r.uploads};
+        if (!d.chunks_busy && !d.play_work && now == last) {
+            r.max_idle_cpu_frames_unchanged =
+                std::max(r.max_idle_cpu_frames_unchanged, ++r.idle_cpu_frames_unchanged);
+        } else {
+            r.idle_cpu_frames_unchanged = 0;
+        }
+        last = now;
+        each(r.frames);
         std::this_thread::yield();
     }
+}
+
+/// paused_loop, required to idle: a stall or the watchdog fails the case with the report.
+template <class Each>
+std::size_t paused_frames(Gpu& g, render::FrameRenderer& frames, app::ScenePicture& picture,
+                          render::Rect view, std::size_t group, Each each,
+                          LoopReport* report = nullptr, const PausedLoop& opt = {}) {
+    const LoopReport r = paused_loop(g, frames, picture, view, group, each, opt);
+    if (report != nullptr) {
+        *report = r;
+    }
+    REQUIRE_MESSAGE(r.idle, "the paused loop did not idle: " << r.text());
+    return r.frames;
 }
 
 /// The pixels of chunk `k`'s part of `view` in a read-back of `view`.
@@ -1480,6 +1583,79 @@ TEST_CASE("picture GPU, constrained: an edit published while uploads are outstan
     CHECK(g.frame->errors() == 0);
 }
 
+TEST_CASE("picture GPU, constrained: a visible chunk that reaches the GPU after the fade clock was "
+          "stepped dissolves on a held clock forever, and ends on a clock that moves" *
+          doctest::test_suite("picture_gpu")) {
+    // Round ed, package 4: round ec's deadline failure of the stand-ins case, made deterministic.
+    // One visible key's chunk job is held until the clock has been stepped once (as that case did
+    // after its frame cap); the chunk then reaches the GPU over its stand-in and dissolves. With
+    // the clock held, the paused loop never idles though nothing is left to wait for: a stall, by
+    // the work-based bound. With the clock moving, as the viewer's does, it ends on the fresh
+    // scene.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto ctx = open_gpu();
+    if (!ctx) {
+        return;
+    }
+    TwoBuilds t = two_builds(*dir);
+    const auto clock = std::make_shared<std::uint64_t>(1000);
+    constexpr std::uint64_t kFade = 150;
+    Gpu g{constrained_frame(*ctx, 1, 1.0, true, kFade, clock), {}};
+    const auto visible = visible_keys(t.view, 2);
+    REQUIRE(visible.size() >= 2);
+    const ChunkKey late = visible.front();
+    KeyGate gate;
+    gate.set([late](const ChunkKey& k, std::uint64_t) { return k == late; });
+    render::FrameRenderer frames(2, false);
+    auto workers = std::make_unique<render::ChunkWorkers>(2);
+    workers->set_test_gate([&gate](const ChunkKey& k, std::uint64_t gen) { gate.pass(k, gen); });
+    frames.set_workers(std::move(workers));
+    const GateOpener opener(gate); // declared after the owners: released before they join
+    app::ScenePicture picture(
+        t.base, t.state0,
+        [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
+    // Every other visible chunk reaches the GPU; the held one shows its stand-in.
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(600);
+    for (std::size_t on_gpu = 0; on_gpu + 1 < visible.size();) {
+        REQUIRE(std::chrono::steady_clock::now() < until);
+        g.draw(frames, picture.scene(), t.view, 2);
+        on_gpu = 0;
+        for (const ChunkKey& k : visible) {
+            const auto st = g.frame->chunk_state(k);
+            on_gpu += fresh(frames, k) && st.serial == frames.chunk(k)->serial ? 1U : 0U;
+        }
+        std::this_thread::yield();
+    }
+    REQUIRE(gate.wait_for([&gate] { return !gate.waiting.empty(); }));
+    CHECK(g.frame->chunk_state(late).serial == 0); // its stand-in
+    // The single clock step, then the held job goes: its chunk dissolves in after the step.
+    *clock += kFade;
+    gate.open_for_good();
+    PausedLoop bounded;
+    bounded.clock = clock;
+    bounded.stall_frames = 2000;
+    const LoopReport held = paused_loop(g, frames, picture, t.view, 2, [](std::size_t) {}, bounded);
+    MESSAGE("clock held: " << held.text());
+    CHECK(held.stalled);
+    CHECK(!held.chunks_busy);
+    CHECK(!held.play_work);
+    CHECK(held.gpu_work);
+    CHECK(held.fading == 1);
+    CHECK(g.frame->chunk_state(late).fading);
+    // The clock moves: the dissolve ends and the loop idles, on the fresh scene.
+    LoopReport moving;
+    paused_frames(
+        g, frames, picture, t.view, 2, [](std::size_t) {}, &moving, PausedLoop{clock, 16});
+    MESSAGE("clock moving: " << moving.text());
+    CHECK(gpu_usable(*g.frame, frames, late));
+    CHECK(g.pixels(t.view) == gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state0), t.view, 2));
+    CHECK(g.frame->errors() == 0);
+}
+
 TEST_CASE(
     "picture GPU, constrained: with stand-ins and dissolves a rebuilt chunk is swapped whole, "
     "a chunk that replaces its stand-in dissolves in, and both end on the fresh scene" *
@@ -1506,28 +1682,51 @@ TEST_CASE(
         [&t](std::uint16_t id) { return app::anlage_is_building(t.w->world(), id); }, 1);
     // The first frames show stand-ins (nothing is built at group 1 yet): every chunk replaces one
     // and dissolves in. The clock does not move: a dissolving chunk is not GPU-usable yet.
+    // Round ed (package 4): the loop ends when every visible key's CPU chunk is on the GPU
+    // (dissolving or not), and must get there. Round ec ended it after 4000 frames whether or not
+    // that held (its condition also waited for the margin's chunk jobs, which outlast the visible
+    // ones, so it always ran to the cap): a visible chunk that reached the GPU after the single
+    // clock step below then dissolved on a clock that never moved again, and the paused loop drew
+    // until its 120 s deadline.
     const auto visible = visible_keys(t.view, 2);
     std::size_t fading_seen = 0;
-    for (int f = 0; f < 4000; ++f) {
+    LoopReport first;
+    const auto first_start = std::chrono::steady_clock::now();
+    for (;;) {
         g.draw(frames, picture.scene(), t.view, 2);
-        std::size_t usable = 0;
+        ++first.frames;
+        std::size_t on_gpu = 0;
         for (const ChunkKey& k : visible) {
             const auto st = g.frame->chunk_state(k);
             fading_seen += st.fading ? 1U : 0U;
             if (st.fading) {
                 CHECK(!gpu_usable(*g.frame, frames, k));
             }
-            usable += fresh(frames, k) && st.serial == frames.chunk(k)->serial ? 1U : 0U;
+            on_gpu += fresh(frames, k) && st.serial == frames.chunk(k)->serial ? 1U : 0U;
         }
-        if (usable == visible.size() && !frames.busy()) {
+        if (on_gpu == visible.size()) {
             break;
         }
+        // The chunk jobs and the uploads progress on their own; only the watchdog bounds this.
+        REQUIRE_MESSAGE(std::chrono::steady_clock::now() - first_start < std::chrono::seconds(600),
+                        "the visible chunks never all reached the GPU after " << first.frames
+                                                                              << " frames");
         std::this_thread::yield();
     }
+    observe(first, *g.frame, frames, visible);
+    MESSAGE("stand-ins: every visible chunk on the GPU after "
+            << first.frames << " frames, "
+            << std::chrono::duration<double>(std::chrono::steady_clock::now() - first_start).count()
+            << " s; " << first.text());
     CHECK(fading_seen > 0);
     CHECK(g.frame->work_pending()); // the dissolves wait for the clock
     *clock += kFade;                // the dissolves end
-    paused_frames(g, frames, picture, t.view, 2, [](std::size_t) {});
+    // From here the clock moves as the viewer's does while it draws (16 ms a frame), so a chunk
+    // that starts to dissolve later ends too.
+    const PausedLoop steady{clock, 16};
+    LoopReport loop;
+    paused_frames(g, frames, picture, t.view, 2, [](std::size_t) {}, &loop, steady);
+    MESSAGE("stand-ins: dissolves ended in " << loop.text());
     const auto ref0 = gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state0), t.view, 2);
     const auto ref1 = gpu_fresh(*ctx, scene_with(*dir, t.w->load(), t.state1), t.view, 2);
     CHECK(g.pixels(t.view) == ref0);
@@ -1538,22 +1737,27 @@ TEST_CASE(
     const auto affected = affected_visible(picture, t.view, 2);
     REQUIRE(affected.size() >= 2);
     std::size_t mixed_frames = 0;
-    paused_frames(g, frames, picture, t.view, 2, [&](std::size_t) {
-        const auto px = g.pixels(t.view);
-        std::size_t old_n = 0, new_n = 0;
-        for (const ChunkKey& k : affected) {
-            CHECK(!g.frame->chunk_state(k).fading);
-            const auto r = region(px, t.view, k);
-            const bool old_state = r == region(ref0, t.view, k);
-            const bool new_state = r == region(ref1, t.view, k);
-            CHECK((old_state || new_state));
-            old_n += old_state && !new_state ? 1U : 0U;
-            new_n += new_state && !old_state ? 1U : 0U;
-        }
-        // Old and new chunks side by side across keys: allowed during a transition (contract,
-        // boundary 4); within a chunk it is one state.
-        mixed_frames += old_n > 0 && new_n > 0 ? 1U : 0U;
-    });
+    LoopReport edit;
+    paused_frames(
+        g, frames, picture, t.view, 2,
+        [&](std::size_t) {
+            const auto px = g.pixels(t.view);
+            std::size_t old_n = 0, new_n = 0;
+            for (const ChunkKey& k : affected) {
+                CHECK(!g.frame->chunk_state(k).fading);
+                const auto r = region(px, t.view, k);
+                const bool old_state = r == region(ref0, t.view, k);
+                const bool new_state = r == region(ref1, t.view, k);
+                CHECK((old_state || new_state));
+                old_n += old_state && !new_state ? 1U : 0U;
+                new_n += new_state && !old_state ? 1U : 0U;
+            }
+            // Old and new chunks side by side across keys: allowed during a transition (contract,
+            // boundary 4); within a chunk it is one state.
+            mixed_frames += old_n > 0 && new_n > 0 ? 1U : 0U;
+        },
+        &edit, steady);
+    MESSAGE("stand-ins: the edit converged in " << edit.text());
     MESSAGE("frames with old and new chunks side by side: " << mixed_frames);
     CHECK(g.pixels(t.view) == ref1);
     CHECK(g.frame->errors() == 0);

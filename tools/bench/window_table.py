@@ -426,7 +426,7 @@ def main():
     # The aggregator is resolved once, so the file hashed is the file run (a bare name is looked up
     # on PATH, as subprocess would).
     found = sys.argv[1] if "/" in sys.argv[1] else shutil.which(sys.argv[1])
-    if found is None or not os.access(found, os.X_OK):
+    if found is None or not os.path.isfile(found) or not os.access(found, os.X_OK):
         print(f"window_table: {sys.argv[1]}: not an executable bench_picture", file=sys.stderr)
         return 2
     binary, matrix = str(Path(found).resolve()), Path(sys.argv[2])

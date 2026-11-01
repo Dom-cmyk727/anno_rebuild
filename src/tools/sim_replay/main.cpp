@@ -103,7 +103,8 @@ std::optional<sim::ReplayLog> load_log(const std::string& path) {
 std::shared_ptr<const sim::TypeRegistry> registry_for(const sim::ReplayLog& log) {
     std::vector<std::shared_ptr<const sim::TypeRegistry>> known{sim::TypeRegistry::empty()};
     for (auto make : {&sim::synthetic::make_synthetic_types, &sim::synthetic::make_build_types,
-                      &sim::synthetic::make_growth_types, &sim::synthetic::make_transport_types}) {
+                      &sim::synthetic::make_growth_types, &sim::synthetic::make_transport_types,
+                      &sim::synthetic::make_founding_types}) {
         auto t = make();
         if (t.ok()) {
             known.push_back(t.value().registry);

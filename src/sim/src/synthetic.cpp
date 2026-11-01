@@ -543,4 +543,61 @@ ScenarioSpec g7_scenario(const SyntheticTypes& types, std::uint32_t seed) {
     return spec;
 }
 
+formats::Result<SyntheticTypes, std::string> make_founding_types() {
+    constexpr TypeId kKontor{1302}, kKontor63{9301}, kObstruction{9100}, kScenery{9101},
+        kWorkshop{9201};
+    const GoodsId kTools = 0x29, kWood = 0x2a;
+    const std::uint32_t kOne = 256; // one tile / one ton in the 8.8 units
+    // A market type, then patched into the Kontor: a second builder takes it fully specified.
+    TypeRegistry::Builder seed;
+    seed.add_market(kKontor, 1, 1, 24, 4, 4);
+    auto base = seed.build();
+    if (!base) {
+        return base.error();
+    }
+    BuildingType k = *base.value()->find(kKontor);
+    k.prodtype = 35;
+    k.width = k.height = 4;
+    k.action_radius = 24;
+    k.cost_gold = 350;
+    k.cost_goods = {CostEntry{kTools, 5 * kOne}, CostEntry{kWood, 12 * kOne}};
+    k.flags_word = 0x2087;
+    TypeRegistry::Builder b;
+    b.add(k);
+    BuildingType k63 = k;
+    k63.id = kKontor63;
+    k63.width = 6;
+    k63.height = 3;
+    b.add(k63);
+    b.add_plain(kObstruction, 193);
+    b.add_plain(kScenery, 193).flags_word(kScenery, 0x20);
+    b.add_workshop(kWorkshop, "STOFFE", "WOLLE", 6, 11, 5, 0);
+    const auto fig = [](std::uint32_t id, std::uint32_t kind, std::uint32_t range,
+                        std::optional<std::int64_t> hull) {
+        FigureType t;
+        t.id = id;
+        t.bewohntype = kind;
+        t.range_88 = range;
+        t.hull_half_88 = hull;
+        return t;
+    };
+    b.figure_type(fig(1502, 113, 16 * kOne, 397)); // the ship: range 16, hull 1.55 rounded
+    b.figure_type(fig(717, 97, 7 * kOne, std::nullopt));
+    b.figure_type(fig(718, 53, 7 * kOne, std::nullopt));
+    b.figure_type(fig(9501, 99, 7 * kOne, std::nullopt));
+    b.figure_type(fig(9502, 108, 7 * kOne, std::nullopt));
+    b.figure_type(fig(9503, 113, 16 * kOne, 397));
+    b.figure_type(fig(9504, 113, 16 * kOne, std::nullopt)); // a ship type without a hull field
+    b.figure_type(fig(9505, 113, 16 * kOne, -7 * 256));     // an inverted box, like type 391
+    b.figure_type(fig(9506, 113, 16 * kOne, 0));            // a present zero hull
+    auto built = b.build();
+    if (!built) {
+        return built.error();
+    }
+    SyntheticTypes s;
+    s.registry = std::move(built.value());
+    s.kontor = kKontor;
+    return s;
+}
+
 } // namespace anno::sim::synthetic

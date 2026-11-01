@@ -13,7 +13,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <sstream>
@@ -48,53 +51,9 @@ constexpr sim::TypeId kWeaver{9201};   // a free workshop for the ordinary Build
 constexpr sim::GoodsId kTools = 0x29, kWood = 0x2a, kFood = 5;
 
 std::shared_ptr<const sim::TypeRegistry> registry() {
-    // A market type, then patched into the Kontor: a second builder takes it fully specified.
-    sim::TypeRegistry::Builder seed;
-    seed.add_market(kKontor, 1, 1, 24, 4, 4);
-    auto base = seed.build();
-    REQUIRE_MESSAGE(base.ok(), (base.ok() ? std::string() : base.error()));
-    sim::BuildingType k = *base.value()->find(kKontor);
-    k.prodtype = 35;
-    k.width = k.height = 4;
-    k.action_radius = 24;
-    k.cost_gold = 350;
-    k.cost_goods = {sim::CostEntry{kTools, 5 * kT}, sim::CostEntry{kWood, 12 * kT}};
-    k.flags_word = 0x2087;
-    sim::TypeRegistry::Builder b;
-    b.add(k);
-    sim::BuildingType k43 = k;
-    k43.id = kKontor43;
-    k43.width = 6;
-    k43.height = 3;
-    b.add(k43);
-    b.add_plain(kRoadObj, 193);
-    b.add_plain(kTree, 193).flags_word(kTree, 0x20);
-    b.add_workshop(kWeaver, "STOFFE", "WOLLE", 6, 11, 5, 0);
-    const auto fig = [](std::uint32_t id, std::uint32_t kind, std::uint32_t range,
-                        std::uint32_t hull) {
-        sim::FigureType t;
-        t.id = id;
-        t.bewohntype = kind;
-        t.range_88 = range;
-        t.hull_half_88 = hull;
-        return t;
-    };
-    b.figure_type(fig(1502, 113, 16 * kT, 397)); // the ship: range 16, hull 1.55 rounded
-    b.figure_type(fig(717, 97, 7 * kT, 0));      // the scout
-    b.figure_type(fig(718, 53, 7 * kT, 0));      // the donkey
-    b.figure_type(fig(9501, 99, 7 * kT, 0));     // a soldier
-    b.figure_type(fig(9502, 108, 7 * kT, 0));    // a war machine
-    b.figure_type(fig(9503, 113, 16 * kT, 397)); // a rival ship
-    sim::FigureType no_hull = fig(9504, 113, 16 * kT, 0);
-    no_hull.hull_half_88 = std::nullopt; // a ship type whose HEAD has no hull field (absent)
-    b.figure_type(no_hull);
-    sim::FigureType neg = fig(9505, 113, 16 * kT, 0);
-    neg.hull_half_88 = -7 * 256; // an inverted box, like the shipped type 391
-    b.figure_type(neg);
-    b.figure_type(fig(9506, 113, 16 * kT, 0)); // a ship with a present zero hull
-    auto r = b.build();
+    auto r = syn::make_founding_types();
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
-    return r.value();
+    return r.value().registry;
 }
 
 struct Setup {
@@ -518,17 +477,17 @@ namespace {
 /// A taller island (120 x 200) with the same coast column x = 50 and two expeditions: player 0's at
 /// the control site (rows 30..33) and player 1's ships (figures 4, 5, 6) at (57.5, y + 2.5) of
 /// the site `y1` it will target. Player 1 has 30000 gold and the same four holds.
-Setup tall_setup(std::uint32_t site1_y) {
+Setup tall_setup(std::uint32_t site1_y, std::uint32_t height = 200) {
     Setup s = base_setup();
     sim::ScenarioSpec::IslandSpec& is = s.spec.islands[0];
-    is.h = 200;
-    std::vector<std::uint8_t> height(120U * 200U);
-    for (std::uint32_t y = 0; y < 200; ++y) {
+    is.h = height;
+    std::vector<std::uint8_t> heights(120U * height);
+    for (std::uint32_t y = 0; y < height; ++y) {
         for (std::uint32_t x = 0; x < 120; ++x) {
-            height[y * 120 + x] = x <= 49 ? 0x40 : (x == 50 ? 0x30 : 0x10);
+            heights[y * 120 + x] = x <= 49 ? 0x40 : (x == 50 ? 0x30 : 0x10);
         }
     }
-    is.terrain = sim::make_terrain(std::move(height), {}, {});
+    is.terrain = sim::make_terrain(std::move(heights), {}, {});
     s.spec.players[1].money = 30000;
     sim::ScenarioSpec::FigureSpec ship = s.spec.figures[0];
     ship.owner = sim::PlayerId{1};
@@ -704,57 +663,110 @@ TEST_CASE("founding: save and load right after founding, ordinary play continues
     rejected(w, control_command(), sim::Reject::SiteOwned);
 }
 
-TEST_CASE("founding replay: a recorded session with successes, refusals and play reproduces") {
-    Setup s = tall_setup(62);
-    sim::World w = make(s);
+namespace {
+
+/// Everything one pass of the recorded session produced, for comparison between passes.
+struct Session {
+    std::vector<sim::Reject> statuses; // the status of every submitted command, in order
+    std::vector<std::uint64_t> hashes; // the state hash after every step, prepared on `ex`
+    sim::ReplayLog log;
+    std::uint64_t final_hash = 0;
+};
+
+/// The session of the recorded-replay tests, run on a world CREATED on `ex` (island content is
+/// built in parallel jobs there) with every hash prepared on `ex` (chunk digests in parallel
+/// jobs). The simulation itself (apply, advance) is serial; only world creation and hashing take
+/// an executor, and those are what this exercises.
+Session run_session(const Setup& s, const sim::Executor& ex) {
+    auto created = sim::World::create(s.spec, registry(), s.cfg, s.rules, {}, ex);
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    sim::World w = std::move(created).value();
     auto started = sim::Recorder::start(w);
     REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
     sim::Recorder rec = std::move(started).value();
+    Session out;
+    const auto hash = [&] {
+        w.prepare_hash(ex);
+        out.hashes.push_back(w.state_hash());
+    };
+    const auto submit = [&](const sim::Command& c) {
+        out.statuses.push_back(rec.submit(c).status);
+        hash();
+    };
     rec.checkpoint();
-    CHECK(rec.submit(control_command(0)).ok());
-    // Player 1's ship is 31 tiles from that click: refused, recorded, uncharged.
-    CHECK(rec.submit(command_p1(30)).status == sim::Reject::OutOfRange);
-    CHECK(rec.submit(command_p1(62)).ok()); // a nearby site: the reveal visits city 0
+    hash();
+    submit(control_command(0));
+    submit(command_p1(30)); // player 1's ship is 31 tiles away: OutOfRange
+    submit(command_p1(62)); // a nearby site: the reveal visits city 0
     rec.advance(5000);
+    hash();
     rec.checkpoint();
     sim::Command bad = control_command(0);
-    found_of(bad).placement.rotation = 9; // refused with BadRotation, recorded anyway
-    CHECK(rec.submit(bad).status == sim::Reject::BadRotation);
-    CHECK(rec.submit(control_command(0)).status == sim::Reject::SiteOwned);
+    found_of(bad).placement.rotation = 9;
+    submit(bad);                // BadRotation
+    submit(control_command(0)); // SiteOwned
     rec.advance(5000);
+    hash();
     rec.checkpoint();
-    const sim::ReplayLog log = rec.log();
-    const std::uint64_t final_hash = w.state_hash();
+    out.log = rec.log();
+    out.final_hash = w.state_hash();
+    return out;
+}
 
-    // Through bytes and back, then replayed into a fresh world: every checkpoint matches.
-    auto bytes = sim::write_log(log);
+} // namespace
+
+TEST_CASE("founding replay: byte round trip and in-process replay of a recorded session") {
+    // Claims, each with its own evidence: (1) the statuses of the submitted commands; (2) the log
+    // survives write_log / read_log unchanged; (3) replay() of the read log into a FRESH world
+    // reproduces all 3 checkpoints and the final hash. In-process, serial: not a fresh process and
+    // not parallel simulation (see the next case and the CLI fixture for those).
+    Setup s = tall_setup(62);
+    const Session ref = run_session(s, sim::serial_executor());
+    const std::vector<sim::Reject> want = {sim::Reject::None, sim::Reject::OutOfRange,
+                                           sim::Reject::None, sim::Reject::BadRotation,
+                                           sim::Reject::SiteOwned};
+    CHECK(ref.statuses == want);
+    auto bytes = sim::write_log(ref.log);
     REQUIRE_MESSAGE(bytes.ok(), (bytes.ok() ? std::string() : bytes.error()));
     auto read = sim::read_log(bytes.value());
     REQUIRE_MESSAGE(read.ok(), (read.ok() ? std::string() : read.error()));
-    CHECK(read.value() == log);
+    CHECK(read.value() == ref.log);
     sim::World fresh = make(s);
     auto outcome = sim::replay(fresh, read.value());
     REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
     CHECK(outcome.value().reproduced());
     CHECK(outcome.value().checkpoints_total == 3);
     CHECK(outcome.value().checkpoints_matched == 3);
-    CHECK(fresh.state_hash() == final_hash);
-    // The executor count does not change the result.
-    for (const unsigned threads : {1U, 2U, 4U}) {
-        sim::World copy = fresh;
-        island_test::ThreadExecutor ex(threads);
-        copy.prepare_hash(ex);
-        CHECK(copy.state_hash() == final_hash);
-    }
+    CHECK(fresh.state_hash() == ref.final_hash);
     // A determinism pin across processes and platforms (not an oracle: the exact values are
-    // asserted above by hand).
+    // asserted by hand in the cases above).
     std::string update_line;
     const std::string problem =
-        anno::test::check_golden("m2_found_session", "M2", final_hash, update_line);
+        anno::test::check_golden("m2_found_session", "M2", ref.final_hash, update_line);
     if (anno::test::update_mode()) {
         MESSAGE("golden line: " << update_line);
     }
     CHECK(problem == "");
+}
+
+TEST_CASE("founding replay: world creation and hashing on 1, 2, 4 and 7 executor threads agree") {
+    // The executor-taking operations are World::create (island content in parallel jobs) and
+    // prepare_hash (chunk digests in parallel jobs). For each thread count a FRESH world is
+    // created on that executor and the whole session is run on it: command results, the hash after
+    // every step, the recorded log and the final hash equal the serial reference's. apply() and
+    // advance() are serial by design; this is not a claim about parallel simulation.
+    Setup s = tall_setup(62);
+    const Session ref = run_session(s, sim::serial_executor());
+    REQUIRE(ref.hashes.size() == 8); // checkpoint, 3 commands, advance, 2 commands, advance
+    for (const unsigned threads : {1U, 2U, 4U, 7U}) {
+        INFO("threads " << threads);
+        island_test::ThreadExecutor ex(threads);
+        const Session got = run_session(s, ex);
+        CHECK(got.statuses == ref.statuses);
+        CHECK(got.hashes == ref.hashes);
+        CHECK(got.log == ref.log);
+        CHECK(got.final_hash == ref.final_hash);
+    }
 }
 
 #include <anno/sim/founding.hpp>
@@ -1171,5 +1183,162 @@ TEST_CASE("founding A2: a rival ship's hull fact decides the hull test, absent h
     {
         sim::World w = run(9506, 53.5); // present zero hull inside the rectangle
         rejected(w, control_command(), sim::Reject::FigureInTheWay);
+    }
+}
+
+namespace {
+
+std::filesystem::path fixture_log_path(const char* name) {
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / name;
+}
+
+std::vector<std::uint8_t> read_file(const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+/// The recorded session of the committed fixture m2_found.log: tall island, two players; a
+/// founding that succeeds, an OutOfRange refusal, a nearby second founding (the reveal), an
+/// ordinary Build of a free workshop in the new city, a BadRotation and a SiteOwned refusal, two
+/// advances, checkpoints in between and at the end.
+sim::ReplayLog fixture_session(std::vector<sim::Reject>& statuses) {
+    Setup s = tall_setup(62, 100);
+    sim::World w = make(s);
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    const auto submit = [&](const sim::Command& c) { statuses.push_back(rec.submit(c).status); };
+    rec.checkpoint();
+    submit(control_command(0));
+    submit(command_p1(30));
+    rec.checkpoint();
+    submit(command_p1(62));
+    sim::BuildCmd b;
+    b.city = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
+    b.placements = {sim::PlacementWire{kWeaver, 46, 30, 0, 0, 0}};
+    submit(sim::Command{sim::PlayerId{0}, b});
+    rec.advance(5000);
+    rec.checkpoint();
+    sim::Command bad = control_command(0);
+    found_of(bad).placement.rotation = 9;
+    submit(bad);
+    submit(control_command(0));
+    rec.advance(5000);
+    rec.checkpoint();
+    return rec.log();
+}
+
+} // namespace
+
+TEST_CASE("founding fixture: the committed log is the session, reaches founding, and a wrong "
+          "outcome diverges") {
+    std::vector<sim::Reject> statuses;
+    const sim::ReplayLog log = fixture_session(statuses);
+    const std::vector<sim::Reject> want = {sim::Reject::None,        sim::Reject::OutOfRange,
+                                           sim::Reject::None,        sim::Reject::None,
+                                           sim::Reject::BadRotation, sim::Reject::SiteOwned};
+    CHECK(statuses == want);
+    auto bytes = sim::write_log(log);
+    REQUIRE(bytes.ok());
+    // The wrong log: the same session with the first founding command's click moved by one tile,
+    // so its origin no longer matches and it is refused (BadValue): the founding never happens.
+    sim::ReplayLog wrong = log;
+    bool changed = false;
+    for (sim::ReplayEntry& e : wrong.entries) {
+        for (sim::Command& c : e.commands) {
+            if (!changed && std::holds_alternative<sim::FoundCmd>(c.body)) {
+                std::get<sim::FoundCmd>(c.body).click_x += 1;
+                changed = true;
+            }
+        }
+    }
+    REQUIRE(changed);
+    auto wrong_bytes = sim::write_log(wrong);
+    REQUIRE(wrong_bytes.ok());
+    if (anno::test::update_mode()) {
+        std::ofstream(fixture_log_path("m2_found.log"), std::ios::binary)
+            .write(reinterpret_cast<const char*>(bytes.value().data()),
+                   static_cast<std::streamsize>(bytes.value().size()));
+        std::ofstream(fixture_log_path("m2_found_wrong.log"), std::ios::binary)
+            .write(reinterpret_cast<const char*>(wrong_bytes.value().data()),
+                   static_cast<std::streamsize>(wrong_bytes.value().size()));
+        MESSAGE("fixtures m2_found.log and m2_found_wrong.log rewritten");
+    }
+    // The committed bytes are what the code records today.
+    CHECK(read_file(fixture_log_path("m2_found.log")) == bytes.value());
+    CHECK(read_file(fixture_log_path("m2_found_wrong.log")) == wrong_bytes.value());
+
+    // Replaying the COMMITTED file the way the CLI does: the world is rebuilt from the log's
+    // initial save on the code-built registry whose digest the log names.
+    const auto replay_file = [&](const char* name, sim::World& world_out) {
+        const auto file = read_file(fixture_log_path(name));
+        auto read = sim::read_log(file);
+        REQUIRE_MESSAGE(read.ok(), (read.ok() ? std::string() : read.error()));
+        CHECK(read.value().registry_digest == registry()->digest());
+        auto loaded = sim::World::load(read.value().initial_save, registry(), {});
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        world_out = std::move(loaded).value();
+        auto outcome = sim::replay(world_out, read.value());
+        REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+        return outcome.value();
+    };
+    sim::World good(1);
+    const auto ok = replay_file("m2_found.log", good);
+    CHECK(ok.reproduced());
+    CHECK(ok.checkpoints_total == 4);
+    CHECK(ok.checkpoints_matched == 4);
+    // It genuinely reached founding: both cities, the warehouses, the ordinary building.
+    REQUIRE(isl(good).cities[0].has_value());
+    REQUIRE(isl(good).cities[1].has_value());
+    CHECK(isl(good).cities[0]->owner == sim::PlayerId{0});
+    CHECK(isl(good).cities[1]->owner == sim::PlayerId{1});
+    CHECK(isl(good).tiles.object(30U * 120U + 50U) == 1302);
+    CHECK(isl(good).tiles.object(62U * 120U + 50U) == 1302);
+    CHECK(isl(good).tiles.object(30U * 120U + 46U) == kWeaver.v);
+    CHECK(owned_by(good, 0) == 1976);
+    // The wrong log is detected at its first checkpoint after the missing founding.
+    sim::World bad(1);
+    const auto no = replay_file("m2_found_wrong.log", bad);
+    CHECK_FALSE(no.reproduced());
+    REQUIRE(no.diverged_entry.has_value());
+    CHECK(no.checkpoints_matched < no.checkpoints_total);
+    CHECK_FALSE(isl(bad).cities[0].has_value()); // the refused founding left no city 0
+}
+
+TEST_CASE("founding B4: serial and counter exhaustion refuse, a MILIT peer absent from the world "
+          "is not marked") {
+    // Valid control first: the same world with ordinary counters founds.
+    {
+        sim::World w = make(base_setup());
+        CHECK(w.apply(control_command()).ok());
+    }
+    // The Kontor counter at its last value: the increment would overflow u32 (the original wraps at
+    // 16 bits; this build refuses, ADAPT). Nothing changes, the PRNG does not move.
+    {
+        Setup s = base_setup();
+        s.spec.islands[0].kontor_counter = 0xffffffffU;
+        sim::World w = make(s);
+        rejected(w, control_command(), sim::Reject::SerialExhausted);
+    }
+    // The building serial counter at 0xffffffff (creation would hand out an unusable serial).
+    {
+        sim::World w = make(base_setup());
+        sim::WorldTestAccess::islands(w)[0]->next_serial = 0xffffffffU;
+        rejected(w, control_command(), sim::Reject::SerialExhausted);
+    }
+    // A MILIT = 3 row for player 5, a legal slot with no player in the world, is not a peer: the
+    // mask holds the founder only, nobody is discovered, invariants hold. With player 1 (present)
+    // the same row marks him.
+    {
+        Setup s = base_setup();
+        s.spec.players[0].relations = {sim::Relation{sim::PlayerId{1}, 0, 3, 0, 0},
+                                       sim::Relation{sim::PlayerId{5}, 0, 3, 0, 0}};
+        sim::World w = make(s);
+        REQUIRE(w.check_invariants().empty());
+        REQUIRE(w.apply(control_command()).ok());
+        CHECK(isl(w).cities[0]->player_mask ==
+              std::vector<sim::PlayerId>{sim::PlayerId{0}, sim::PlayerId{1}});
+        CHECK(w.players().find(sim::PlayerId{5}) == nullptr);
+        CHECK(w.check_invariants().empty());
     }
 }

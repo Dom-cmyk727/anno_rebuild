@@ -373,4 +373,4 @@ p1_g7_create P1 120 1f06f3ddd628dcb4
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
-m2_found_session M2 120 2bc3c42a6131850f
+m2_found_session M2 120 0fc469c4d356d0bb

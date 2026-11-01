@@ -54,6 +54,14 @@ struct SyntheticTypes {
     TypeId market, carrier_weaver;
 };
 
+/// The registry of the ship-founding fixtures (task MAP-2): the Kontor 1302 (PRODTYPE 35, 4 x 4,
+/// flag word 0x2087, radius 24, gold 350, tools 5 t and wood 12 t, the original's values), a 6 x 3
+/// Kontor-class type 9301, an obstruction 9100 and overlappable scenery 9101 (tile objects), a free
+/// workshop 9201, and the figure types of the expedition and of the veto fixtures (ship 1502, scout
+/// 717, donkey 718, soldier 9501, war machine 9502, ships 9503..9506 with a present, absent,
+/// negative and zero hull). `kontor` is 1302; the other ids are fixed (see founding_test.cpp).
+formats::Result<SyntheticTypes, std::string> make_founding_types();
+
 /// The registry of the types above on the original goods and class tables.
 formats::Result<SyntheticTypes, std::string> make_synthetic_types();
 

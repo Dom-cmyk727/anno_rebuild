@@ -130,6 +130,12 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME figure_digest_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/figure_digest_ref.py --check
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/figure_digest_vectors.txt)
+    add_test(NAME ship_nav_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/movement_vectors.txt)
+    add_test(NAME ship_nav_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/movement_vectors.txt)
     add_test(NAME test_verdict_contract
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
   endif()

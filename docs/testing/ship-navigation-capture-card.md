@@ -48,8 +48,9 @@ result is not one of the three values.
 (a) After loading a known scenario, dump `[world+0x6aa4]` (sector headers, 8 bytes each, rows `[world+0x6a9c]`,
 columns `[world+0x6aa0]`) and, for sectors with a non-null pointer, the 64 dwords. Compare with a second dump after placing
 a harbour-class building (or removing one) near the coast. Rows: `sector_x sector_z cell_index word` (`word` = `u16 mask | u16 type`). Falsifies: contract section 5, which
-assumes static coast data is built once per island and rebuilt only for changed rectangles. Discrimination: whether
-a full build happens at load and whether placement rebuilds exactly the placed rectangle (re 9.2). (b) Read `[reg+0x20]` and
+assumes static coast data is built once per island and rebuilt only for changed rectangles. Discrimination: confirmation of the static result (the map is built per island
+at placement before the first tick, one `0x100aae00` call per island, none from Reset) and whether placement of a flagged object rebuilds
+exactly the placed rectangle (re 9.2). (b) Read `[reg+0x20]` and
 `[reg+0x22]` of the unit registry (`world+0x114`) immediately before and after a load into a fresh process, and the vector
 length `[reg+0x14..0x18]`. Rows: `when cursor last_tick n`. Falsifies: the contract's cadence rule for a loaded world if the cursor is not 0 after load.
 

@@ -163,7 +163,7 @@ cleared), kind 2 = flags `|= 0x204`. Emulated on the real bytes (1502, `f0 = 0.1
 ### 7.4 Segment-end hook `0x10042210` (slot `+0x17c`)
 Called at the end of every non-final segment. Stamps `[+0x72]`; if `(state & 7) == 1` it calls world slot `+0xcc`
 (`0x1009d9b0`, arguments `ftol(x), ftol(z), 14, 5, owner`; only this call is guarded by that test). Unconditionally it queries
-the unit registry (slot `+0x14`, mask `0xf9cf`, radius `type.slot+0x68(4)`, up to 0x100 entries). Type slot `+0x68(i)` (`0x1000fd00`) returns `float [type+0x14+4*i]`, filled at
+the unit registry (slot `+0x14`, mask `0xf9cf`, radius `type.slot+0x68(4)`, up to 0x100 entries). Type slot `+0x68(i)` (AnnoGame `0x1000fd00`, not AnnoWelt) returns `float [type+0x14+4*i]`, filled at
 AnnoGame `0x10010262..0x10010352`: (0) `LOGIC[0x12]/8`, (1) `max(LOGIC[0x27]/8, slot 0)`, (2) `LOGIC[0x24]/8`, (4) `LOGIC[0x25]/8`
 (0 means 7.0), (5) `LOGIC[0x28]/8` (0 means 2.0). A 1502 (`LOGIC[0x12] = 0x40`, `[0x24] = 0`, `[0x25] = 0x80`, `[0x27] = 0x40`,
 `[0x28] = 0x28`, identical for 1501..1506) therefore has slot values 8.0, 8.0, 0.0, 16.0 (index 4) and 5.0 (index 5): the hook
@@ -199,7 +199,7 @@ is clear, while set it skips the avoid branch; `0x0200` active-segment marker (s
 `0x0800` replan pending: set at exactly one place, `0x1003e740` (`or word [ebp+0x40], 0x801`) after `0x1003de40` installs a
 detour segment, cleared at `0x1003de9b`, `0x1003fbb2`, `0x1003ff1b`, `0x10040190`, `0x100426a1`, so it is clear in a fresh
 order; `0x2000` and `0x4000`: no immediate writer in the ship range (setter UNKNOWN), they appear only in masks; `0x8000` is set
-when the ship has **no** crew (derived at `0x10042a8f..0x10042b5f` from crew byte `+0x7a` and a type-`0x61` crew test; the earlier
+when the ship has **no** crew (derived at `0x10042a8f..0x10042b5f`, and again at `0x10041023`, `0x10041a0e`, `0x10041acd` (crew attach/detach), from crew byte `+0x7a` and a type-`0x61` crew test; the earlier
 gloss "units aboard" was inverted). A move order is refused by `0x100a5f70` iff `state & 0x200e` is non-zero (for type groups
 `0x6c..0x70`, not ships, it additionally needs a non-empty hold). SetOrder also has an order-id `0x13` branch (flags
 `& 0xf0000 == 0x30000`, non-zero target) and a plain stop when `x = z = 0`; order id 1 is not unconditional.
@@ -316,7 +316,8 @@ no builder. The builder is reached through world slot `+0x1d0` (thunk `0x100aba7
 methods): the island-attach method `0x100a2b50` (rect = the island's bounding box; its only caller is `0x100af240`, world slot
 `+0x1c0` Reset, which loops over all islands) and `0x100a26b0`, `0x100a2840`, `0x100a2e60`, `0x100a1da0` (two sites). The island
 place/remove methods (`0x10082040`, `0x10082b10`) rebuild only the changed rectangle, and only when their flag argument has
-`& 0x7000` equal to `0x2000` or `0x4000` (call sites `0x10082afd`, `0x10083802`); the island loader passes `0x4000000`, so
+`& 0x7000` equal to `0x2000` or `0x4000` (call site `0x10082afd`), or, at the second site (`0x10083802`), also when the object's group
+`(((type slot +0x5c) - 1) & ~0x1f) + 1 == 0x141` (`0x100837e5..0x100837f1`); the exact object rule is read when the coast data is ported; the island loader passes `0x4000000`, so
 load-time placement never rebuilds. The Reset itself is **not** on the load path: its only world caller is the multiplayer resync handler (AnnoFrame `0x100584a8`
 in `0x100582e0`, net `0xd6`). At load the map is built **per island at placement, before the first tick**: scenario path world slot
 `+0x88` (`0x100a24d0`) -> `+0x1cc` (`0x100a1da0`) -> `+0x1d4` (rect) and `+0x1d0` (builder) at `0x100a1fac` and `0x100a20c7`; savegame
@@ -375,8 +376,11 @@ of the records): the stamp point is **truncated** (`ftol`, no 0.5 offset: 40.7 -
 `(tx - (sx - R), tz - (sz - R))` and is used only inside `0..2R`, values combine in record order through
 `state' = [[0,1,2,3],[1,1,2,3],[2,2,3,3],[3,3,3,3]][state][kernel value]` (table `0x100c15b0`; a Python reference matched the real function on
 about 7400 tiles). **Stamps change neither the coarse nor the fine costs**: both callers of `0x1000f120` are inside `Offer` (`0x1000f260`),
-so congestion only changes which goal-disc candidate becomes the end node (a congested candidate is stored but does not raise the best
-score). Worked examples on 64 x 64 open sea (start (4.5, 20.5), goal (40.5, 20.5), radius 6): no stamp E10 E10 E10 E6; a ship exactly at
+so congestion only changes which goal-disc candidate becomes the end node. `Offer` (`0x1000f260`, bytes read by the reviewer): if its
+argument `arg1 >= 4` it stores unconditionally and sets the has-result flag; otherwise it stores when `arg1 > density(candidate)`; failing
+that it replaces the stored best only when the candidate is strictly less dense than the stored one; `arg1` is `1` for the goal callback
+(so only an uncongested candidate is stored first) - the callers' value of `arg1` beyond that, and therefore the exact tie rule between
+equal-score candidates of different density, is not fully traced: the stamped route vectors are single-source (emulation) evidence. Worked examples on 64 x 64 open sea (start (4.5, 20.5), goal (40.5, 20.5), radius 6): no stamp E10 E10 E10 E6; a ship exactly at
 the goal NE1 E10 E10 E10 E3 (end tile (38, 19)); a ship at (38.5, 20.5) NE1 E10 E10 E10 E5; the committed fixture `route_runs.txt` holds all
 of them. The registry cells are lists with the newest unit appended: within a cell the scan is oldest first, and a unit that stays
 in its cell keeps its place (the update re-appends only when the cell changes, registry slot `+0x2c` = `0x10098200`). A goal on land within 6 tiles of

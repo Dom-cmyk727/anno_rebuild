@@ -104,6 +104,10 @@ CellClass TileSource::classify_cell(std::int32_t cx, std::int32_t cz) const {
     return classify_cell_by_tiles(*this, cx, cz);
 }
 
+bool TileSource::block_range(std::int32_t, std::int32_t, std::uint8_t&, std::uint8_t&) const {
+    return false;
+}
+
 TileMapSource::TileMapSource(std::int32_t width, std::int32_t height)
     : w_(std::max(width, 0)), h_(std::max(height, 0)) {
     water_.assign(static_cast<std::uint64_t>(w_) * static_cast<std::uint64_t>(h_), 1);
@@ -291,20 +295,85 @@ void CoastIndex::store_word(std::int32_t cx, std::int32_t cz, std::uint32_t w) {
     }
 }
 
+CoastIndex::Range CoastIndex::range_at(std::int32_t cx, std::int32_t cz) const {
+    if (cx < 0 || cz < 0 || cx >= cells_x() || cz >= cells_z()) {
+        return {};
+    }
+    if (!range_cache_.empty()) {
+        return range_cache_[static_cast<std::uint64_t>(cz) * static_cast<std::uint64_t>(cells_x()) +
+                            static_cast<std::uint64_t>(cx)];
+    }
+    Range r;
+    r.valid = source_->block_range(cx, cz, r.mn, r.mx);
+    return r;
+}
+
+bool CoastIndex::sector_has_island(std::int32_t sx, std::int32_t sz) const {
+    for (std::int32_t z = sz * 8; z < sz * 8 + 8; ++z) {
+        for (std::int32_t x = sx * 8; x < sx * 8 + 8; ++x) {
+            if (range_at(x, z).valid) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool CoastIndex::derived_shore(std::int32_t cx, std::int32_t cz) const {
+    // Pass 2 of 0x100aae00: the cell's sector must hold an island block (the sector exists); then
+    // the cell and its 8 neighbours (those inside the world) are tested: record valid and 32 < 2
+    // max and 32 > 2 min (T2 = ftol(1.28 / 0.04) = 32 on the doubled halved heights).
+    if (cx < 0 || cz < 0 || cx >= cells_x() || cz >= cells_z()) {
+        return false;
+    }
+    bool straddles = false;
+    for (std::int32_t dz = -1; dz <= 1 && !straddles; ++dz) {
+        for (std::int32_t dx = -1; dx <= 1; ++dx) {
+            const Range r = range_at(cx + dx, cz + dz);
+            if (r.valid && 32 < 2 * r.mx && 32 > 2 * r.mn) {
+                straddles = true;
+                break;
+            }
+        }
+    }
+    return straddles && sector_has_island(cx / 8, cz / 8);
+}
+
 CoastIndex::CoastIndex(const TileSource& source, std::span<const CellCoord> shore_cells)
     : source_(&source), w_(std::max(source.width(), 0)), h_(std::max(source.height(), 0)) {
     sectors_x_ = (cells_x() + 7) / 8;
     sectors_z_ = (cells_z() + 7) / 8;
     sectors_.assign(static_cast<std::uint64_t>(sectors_x_) * static_cast<std::uint64_t>(sectors_z_),
                     {});
+    range_cache_.assign(
+        static_cast<std::uint64_t>(cells_x()) * static_cast<std::uint64_t>(cells_z()), {});
+    bool any_record = false;
     for (std::int32_t cz = 0; cz < cells_z(); ++cz) {
         for (std::int32_t cx = 0; cx < cells_x(); ++cx) {
-            const std::uint32_t w = build_cell(cx, cz);
+            Range r;
+            r.valid = source.block_range(cx, cz, r.mn, r.mx);
+            any_record = any_record || r.valid;
+            range_cache_[static_cast<std::uint64_t>(cz) * static_cast<std::uint64_t>(cells_x()) +
+                         static_cast<std::uint64_t>(cx)] = r;
+        }
+    }
+    if (!any_record) {
+        range_cache_.clear(); // nothing to derive: range_at would only repeat the empty answers
+        range_cache_.shrink_to_fit();
+    }
+    for (std::int32_t cz = 0; cz < cells_z(); ++cz) {
+        for (std::int32_t cx = 0; cx < cells_x(); ++cx) {
+            std::uint32_t w = build_cell(cx, cz);
+            if (any_record && derived_shore(cx, cz)) {
+                w |= 3u << 16;
+            }
             if (w != kOpenWord) {
                 store_word(cx, cz, w);
             }
         }
     }
+    range_cache_.clear();
+    range_cache_.shrink_to_fit();
     for (const CellCoord& c : shore_cells) {
         if (c.cx >= 0 && c.cz >= 0 && c.cx < cells_x() && c.cz < cells_z()) {
             store_word(c.cx, c.cz, cell_word(c.cx, c.cz) | (3u << 16));
@@ -328,10 +397,13 @@ void CoastIndex::rebuild_rect(CoastRect rect, std::span<const CellCoord> shore_c
     const std::int32_t cz0 = std::max(rect.z0, 0) / 8;
     const std::int32_t cx1 = std::min((rect.x1 - 1) / 8, cells_x() - 1);
     const std::int32_t cz1 = std::min((rect.z1 - 1) / 8, cells_z() - 1);
-    for (std::int32_t cz = cz0; cz <= cz1; ++cz) {
-        for (std::int32_t cx = cx0; cx <= cx1; ++cx) {
-            std::uint32_t w = build_cell(cx, cz);
-            if (std::binary_search(shore.begin(), shore.end(), CellCoord{cx, cz})) {
+    // Masks: the cells of the rectangle. Types: those cells plus a one-cell halo.
+    for (std::int32_t cz = std::max(cz0 - 1, 0); cz <= std::min(cz1 + 1, cells_z() - 1); ++cz) {
+        for (std::int32_t cx = std::max(cx0 - 1, 0); cx <= std::min(cx1 + 1, cells_x() - 1); ++cx) {
+            const bool inside = cx >= cx0 && cx <= cx1 && cz >= cz0 && cz <= cz1;
+            std::uint32_t w = inside ? build_cell(cx, cz) : (cell_word(cx, cz) & 0xffffu);
+            if (derived_shore(cx, cz) ||
+                std::binary_search(shore.begin(), shore.end(), CellCoord{cx, cz})) {
                 w |= 3u << 16;
             }
             store_word(cx, cz, w);

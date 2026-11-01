@@ -15,8 +15,8 @@
 //    (trunc(f32 / 0.04f) + base) & 0xff, both halved) for cells that are exactly one block of an
 //    island whose origin is 8-aligned and whose width and height are multiples of 8. Any other cell
 //    (open sea, island borders that do not tile into blocks, several islands) is classified by its
-//    tiles. The shore band (type 3) is NOT derived here: pass 2 of the builder was not re-executed
-//    (docs/sim/ship-navigation.md section 11 item 3); callers pass band cells to CoastIndex.
+//    tiles. The same records (block_range) give the shore band (type 3) that CoastIndex derives,
+//    pass 2 of the builder; islands that are not aligned blocks have no records and derive no band.
 //
 // Documented limits of this adapter (nothing is guessed): the 11 object types that carry a height
 // map in the original (1020, 1021, 2701-2708, 2740) use their scalar here, and the sim does not
@@ -75,6 +75,10 @@ class WorldTileSource final : public TileSource {
     [[nodiscard]] bool tile_is_water(std::int32_t x, std::int32_t z) const override;
     [[nodiscard]] CellClass classify_cell(std::int32_t cx, std::int32_t cz) const override;
 
+    /// The block record of an aligned island block (min and max halved, the max raised by the
+    /// anchor object tops): the record classify_cell tests and the shore band is derived from.
+    [[nodiscard]] bool block_range(std::int32_t cx, std::int32_t cz, std::uint8_t& min_half,
+                                   std::uint8_t& max_half) const override;
     /// Whether classify_cell answers this cell from the block shortcut (else from its tiles).
     [[nodiscard]] bool cell_uses_shortcut(std::int32_t cx, std::int32_t cz) const;
 

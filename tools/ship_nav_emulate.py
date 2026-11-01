@@ -22,6 +22,8 @@ import os
 import random
 import struct
 import sys
+from unicorn.x86_const import UC_X86_REG_ECX, UC_X86_REG_EAX, UC_X86_REG_EIP, UC_X86_REG_ESP
+from unicorn import UC_HOOK_CODE
 
 HARNESS = os.environ.get('ANNO_NAV_HARNESS')
 if not HARNESS:
@@ -241,6 +243,131 @@ def cmd_routes(count, seed, profile):
     return out
 
 
+def tile_rule(x, z):
+    """Shared tile truth of the builder fixtures for MIXED covered cells (the C++ test uses the same formula)."""
+    return ((x + 2 * z + (x >> 3) * 5 + (z >> 3) * 3) % 7) < 5
+
+
+def cmd_builder(count, seed):
+    """The REAL coarse builder 0x100aae00 (pass 1 block shortcut + mask packer, pass 2 shore band) under unicorn on
+    a faked world: sector table, cell->island table, island origin slots +0x50/+0x54, block records (+0x94, columns
+    +0x8c). Prints the island block records and every cell word of the allocated sectors."""
+    from eng import Eng, WORLD, VT, STUBS
+    rng = random.Random(seed)
+    out = []
+    ISL_VT = 0x303000
+    while len(out) < count:
+        W = rng.choice([128, 192, 128, 256])
+        H = rng.choice([128, 192, 128])
+        cw, ch = W // 8, H // 8
+        # non-overlapping aligned island rectangles in cell units
+        occ = [[None] * cw for _ in range(ch)]
+        islands = []
+        for _ in range(rng.randrange(1, 5)):
+            bw, bh = rng.randrange(2, 9), rng.randrange(2, 9)
+            for _try in range(30):
+                cx0, cz0 = rng.randrange(0, cw - bw + 1), rng.randrange(0, ch - bh + 1)
+                if all(occ[z][x] is None for z in range(cz0, cz0 + bh) for x in range(cx0, cx0 + bw)):
+                    idx = len(islands)
+                    for z in range(cz0, cz0 + bh):
+                        for x in range(cx0, cx0 + bw):
+                            occ[z][x] = idx
+                    recs = []
+                    for _b in range(bw * bh):
+                        r = rng.random()
+                        k = 's' if r < 0.03 else 'l2' if r < 0.05 else rng.choice(['w', 'w', 'l', 'l', 'm'])
+                        if k == 'w':      # all water: 19 >= 2 max
+                            mn = rng.randrange(0, 10); mx = rng.randrange(mn, 10)
+                        elif k == 'l':    # all land, no straddle: min >= 16
+                            mn = rng.randrange(16, 40); mx = rng.randrange(mn, 60)
+                        elif k == 'l2':   # all land that straddles 32 (10 <= min < 16, max >= 17)
+                            mn = rng.randrange(10, 16); mx = rng.randrange(17, 60)
+                        elif k == 's':    # mixed, straddles
+                            mn = rng.randrange(0, 16); mx = rng.randrange(max(mn, 17), 60)
+                        else:             # mixed, no straddle: max <= 16
+                            mn = rng.randrange(0, 10); mx = rng.randrange(10, 17)
+                        recs.append((mn, mx))
+                    islands.append((cx0 * 8, cz0 * 8, bw, bh, recs))
+                    break
+        if not islands:
+            continue
+        rows = [''.join('.' if tile_rule(x, z) else '#' for x in range(W)) for z in range(H)]
+        e = Eng(rows).setup()
+        mu = e.mu
+        import struct as st
+        e.Wd, e.H = W, H
+        # runtime statics of the builder, normally written by the initialisers 0x100a3b40..: 0.04 * 16, 2 * that,
+        # 1.28 - 0.5, 1.28 - 0.35 (f32 arithmetic)
+        def f32(v):
+            return st.unpack('<f', st.pack('<f', v))[0]
+        sea = f32(f32(0.04) * 16.0)
+        shore = f32(sea * 2.0)
+        mu.mem_write(0x100e3a2c, st.pack('<f', sea))
+        mu.mem_write(0x100e3a3c, st.pack('<f', shore))
+        mu.mem_write(0x100e3a34, st.pack('<f', f32(shore - 0.5)))
+        mu.mem_write(0x100e3a38, st.pack('<f', f32(shore - 0.35)))
+        mu.mem_write(WORLD + 0xec, st.pack('<II', W, H))
+        spr, spc = (W + 0x7f) >> 6, (H + 0x7f) >> 6
+        mu.mem_write(WORLD + 0x6a9c, st.pack('<II', spr, spc))
+        arr = e.alloc(8 * spr * spc)
+        for r in range(spc):
+            for c in range(spr):
+                mu.mem_write(arr + 8 * (r * spr + c), st.pack('<HHI', c * 64, r * 64, 0))
+        mu.mem_write(WORLD + 0x6aa4, st.pack('<I', arr))
+        table = bytearray([0xff]) * (cw * ch)
+        ISL50, ISL54 = STUBS + 0x8050, STUBS + 0x8054
+        mu.mem_write(ISL_VT + 0x50, st.pack('<I', ISL50))
+        mu.mem_write(ISL_VT + 0x54, st.pack('<I', ISL54))
+        ptrs = []
+        for i, (x0, z0, bw, bh, recs) in enumerate(islands):
+            o = e.alloc(0x100)
+            rec = e.alloc(16 * bw * bh)
+            for b, (mn, mx) in enumerate(recs):
+                mu.mem_write(rec + 16 * b, bytes([0, 0, mn, mx]) + b'\0' * 12)
+            mu.mem_write(o, st.pack('<I', ISL_VT))
+            mu.mem_write(o + 0x8c, st.pack('<I', bw))
+            mu.mem_write(o + 0x94, st.pack('<I', rec))
+            mu.mem_write(WORLD + 0x6530 + 4 * i, st.pack('<I', o))
+            ptrs.append(o)
+            for z in range(bh):
+                for x in range(bw):
+                    table[(z0 // 8 + z) * cw + x0 // 8 + x] = i
+        mu.mem_write(WORLD + 0x130, bytes(table))
+
+        def hook(uc, addr, size, ud):
+            if addr in (ISL50, ISL54):
+                ecx = uc.reg_read(UC_X86_REG_ECX)
+                i = ptrs.index(ecx)
+                v = islands[i][0] if addr == ISL50 else islands[i][1]
+                esp = uc.reg_read(UC_X86_REG_ESP)
+                r = st.unpack('<I', uc.mem_read(esp, 4))[0]
+                uc.reg_write(UC_X86_REG_EAX, v)
+                uc.reg_write(UC_X86_REG_EIP, r)
+                uc.reg_write(UC_X86_REG_ESP, esp + 4)
+        mu.mem_write(ISL50, b'\xcc'); mu.mem_write(ISL54, b'\xcc')
+        mu.hook_add(UC_HOOK_CODE, hook)
+        rect = e.alloc(16)
+        mu.mem_write(rect, st.pack('<4i', 0, 0, W, H))
+        e.call(0x100aae00, (rect,), ecx=WORLD)
+        cells = {}
+        for r in range(spc):
+            for c in range(spr):
+                ptr = st.unpack('<I', mu.mem_read(arr + 8 * (r * spr + c) + 4, 4))[0]
+                if ptr == 0:
+                    continue
+                words = st.unpack('<64I', mu.mem_read(ptr, 256))
+                for k, w in enumerate(words):
+                    cx, cz = c * 8 + k % 8, r * 8 + k // 8
+                    if cx < cw and cz < ch and w != 0xfff:
+                        cells[(cx, cz)] = w
+        n = len(out)
+        isl = ' ; '.join('island %d %d %d %d %s' % (x0, z0, bw, bh, ' '.join('%02x%02x' % (mn, mx) for mn, mx in recs))
+                         for (x0, z0, bw, bh, recs) in islands)
+        cw_txt = ' '.join('%d,%d,%x' % (cx, cz, w) for (cx, cz), w in sorted(cells.items(), key=lambda kv: (kv[0][1], kv[0][0])))
+        out.append('builder b%d | %d %d | %s | words %s' % (n, W, H, isl, cw_txt or '-'))
+    return out
+
+
 def main():
     cmd = sys.argv[1]
     count, seed = int(sys.argv[2]), int(sys.argv[3])
@@ -248,6 +375,8 @@ def main():
         lines = cmd_packer(count, seed)
     elif cmd == 'nibble':
         lines = cmd_nibble(count, seed)
+    elif cmd == 'builder':
+        lines = cmd_builder(count, seed)
     elif cmd == 'routes':
         lines = cmd_routes(count, seed, sys.argv[4])
     else:

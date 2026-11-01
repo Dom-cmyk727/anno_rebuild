@@ -212,9 +212,10 @@ bool WorldTileSource::cell_uses_shortcut(std::int32_t cx, std::int32_t cz) const
            entries_[static_cast<std::uint64_t>(hit)].grid.ok();
 }
 
-CellClass WorldTileSource::classify_cell(std::int32_t cx, std::int32_t cz) const {
+bool WorldTileSource::block_range(std::int32_t cx, std::int32_t cz, std::uint8_t& min_half,
+                                  std::uint8_t& max_half) const {
     if (!cell_uses_shortcut(cx, cz)) {
-        return classify_cell_by_tiles(*this, cx, cz);
+        return false;
     }
     const Entry& e = entries_[static_cast<std::uint64_t>(
         cell_entry_[static_cast<std::uint64_t>(cz) * static_cast<std::uint64_t>(cells_x_) +
@@ -244,11 +245,21 @@ CellClass WorldTileSource::classify_cell(std::int32_t cx, std::int32_t cz) const
             }
         }
     }
-    // The block records store min >> 1 and max >> 1; the builder tests 19 >= 2 max and 19 < 2 min.
-    if (19 >= 2 * (mx >> 1)) {
+    min_half = static_cast<std::uint8_t>(mn >> 1);
+    max_half = static_cast<std::uint8_t>(std::min<std::uint32_t>(mx, 255) >> 1);
+    return true;
+}
+
+CellClass WorldTileSource::classify_cell(std::int32_t cx, std::int32_t cz) const {
+    std::uint8_t mn = 0, mx = 0;
+    if (!block_range(cx, cz, mn, mx)) {
+        return classify_cell_by_tiles(*this, cx, cz);
+    }
+    // The builder tests 19 >= 2 max (all water), then 19 < 2 min (all land) on the halved records.
+    if (19 >= 2 * static_cast<std::uint32_t>(mx)) {
         return CellClass::AllWater;
     }
-    if (19 < 2 * (mn >> 1)) {
+    if (19 < 2 * static_cast<std::uint32_t>(mn)) {
         return CellClass::AllLand;
     }
     return CellClass::Mixed;

@@ -5,6 +5,7 @@
 // determinism across worker threads.
 #include <array>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
@@ -944,4 +945,196 @@ TEST_CASE(
     CHECK(defaults.coarse_budget >= 8 * max_coarse);
     CHECK(defaults.fine_budget >= 8 * max_fine);
     CHECK(defaults.memory_bytes >= 8 * max_bytes);
+}
+
+// ---------------------------------------------------------------------------------------------
+// the coarse builder: pass 1 shortcut + pass 2 shore band against the original under emulation
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// A world of island block records (the builder's inputs), as a TileSource.
+class RecordSource final : public sim::TileSource {
+  public:
+    struct Rec {
+        bool valid = false;
+        std::uint8_t mn = 0, mx = 0;
+    };
+    RecordSource(std::int32_t w, std::int32_t h)
+        : w_(w), h_(h), recs_(static_cast<std::size_t>((w / 8) * (h / 8))) {}
+    std::int32_t width() const override { return w_; }
+    std::int32_t height() const override { return h_; }
+    Rec& rec(std::int32_t cx, std::int32_t cz) {
+        return recs_[static_cast<std::size_t>(cz * (w_ / 8) + cx)];
+    }
+    const Rec& rec(std::int32_t cx, std::int32_t cz) const {
+        return recs_[static_cast<std::size_t>(cz * (w_ / 8) + cx)];
+    }
+    bool tile_is_water(std::int32_t x, std::int32_t z) const override {
+        if (x < 0 || z < 0 || x >= w_ || z >= h_) {
+            return false;
+        }
+        switch (classify_cell(x / 8, z / 8)) {
+        case sim::CellClass::AllWater:
+            return true;
+        case sim::CellClass::AllLand:
+            return false;
+        case sim::CellClass::Mixed:
+            break;
+        }
+        return ((x + 2 * z + 5 * (x >> 3) + 3 * (z >> 3)) % 7) < 5;
+    }
+    sim::CellClass classify_cell(std::int32_t cx, std::int32_t cz) const override {
+        const Rec& r = rec(cx, cz);
+        if (!r.valid || 19 >= 2 * r.mx) {
+            return sim::CellClass::AllWater;
+        }
+        return 19 < 2 * r.mn ? sim::CellClass::AllLand : sim::CellClass::Mixed;
+    }
+    bool block_range(std::int32_t cx, std::int32_t cz, std::uint8_t& mn,
+                     std::uint8_t& mx) const override {
+        if (cx < 0 || cz < 0 || cx >= w_ / 8 || cz >= h_ / 8) {
+            return false;
+        }
+        const Rec& r = rec(cx, cz);
+        mn = r.mn;
+        mx = r.mx;
+        return r.valid;
+    }
+
+  private:
+    std::int32_t w_, h_;
+    std::vector<Rec> recs_;
+};
+
+RecordSource parse_builder_world(const std::vector<std::string>& parts) {
+    const auto dims = words(parts[1]);
+    RecordSource src(std::stoi(dims[0]), std::stoi(dims[1]));
+    for (const std::string& isl : split(parts[2], ';')) {
+        const auto t = words(isl);
+        const std::int32_t x0 = std::stoi(t[1]) / 8, z0 = std::stoi(t[2]) / 8;
+        const std::int32_t bw = std::stoi(t[3]), bh = std::stoi(t[4]);
+        for (std::int32_t b = 0; b < bw * bh; ++b) {
+            const std::string& rec = t[5 + static_cast<std::size_t>(b)];
+            auto& r = src.rec(x0 + b % bw, z0 + b / bw);
+            r.valid = true;
+            r.mn = static_cast<std::uint8_t>(std::stoi(rec.substr(0, 2), nullptr, 16));
+            r.mx = static_cast<std::uint8_t>(std::stoi(rec.substr(2, 2), nullptr, 16));
+        }
+    }
+    return src;
+}
+
+} // namespace
+
+TEST_CASE("route builder: pass 1 shortcut and pass 2 shore band equal the original builder under "
+          "emulation") {
+    std::uint32_t n = 0, typed = 0, untyped_nonopen = 0;
+    for (const std::string& line : fixture_lines("builder_vectors.txt")) {
+        const auto parts = split(line, '|');
+        const RecordSource src = parse_builder_world(parts);
+        const sim::CoastIndex index(src, {});
+        std::map<std::pair<int, int>, std::uint32_t> want;
+        for (const std::string& tok : words(parts[3])) {
+            if (tok == "words" || tok == "-") {
+                continue;
+            }
+            const auto f = split(tok, ',');
+            want[{std::stoi(f[0]), std::stoi(f[1])}] =
+                static_cast<std::uint32_t>(std::stoul(f[2], nullptr, 16));
+        }
+        CAPTURE(parts[0]);
+        for (std::int32_t cz = 0; cz < index.cells_z(); ++cz) {
+            for (std::int32_t cx = 0; cx < index.cells_x(); ++cx) {
+                const auto it = want.find({cx, cz});
+                const std::uint32_t expect = it == want.end() ? 0xfffu : it->second;
+                const std::uint32_t got = index.cell_word(cx, cz);
+                if (got != expect) {
+                    CAPTURE(cx);
+                    CAPTURE(cz);
+                    CHECK(got == expect);
+                }
+                typed += (expect >> 16) == 3 ? 1 : 0;
+                untyped_nonopen += (expect >> 16) == 0 && expect != 0xfff ? 1 : 0;
+            }
+        }
+        CHECK(index.verify_against_clean_rebuild({}).empty());
+        ++n;
+    }
+    CHECK(n >= 50);
+    CHECK(typed >= 500);           // the band is exercised
+    CHECK(untyped_nonopen >= 500); // and so is its absence next to island cells
+}
+
+TEST_CASE("route builder: removal and neighbour effects of the tile-derived band, incremental "
+          "equals clean") {
+    RecordSource src(192, 128);
+    Lcg rng{4242};
+    const auto randomise = [&](std::int32_t cx, std::int32_t cz) {
+        auto& r = src.rec(cx, cz);
+        const std::int32_t k = rng.below(5);
+        r.valid = true;
+        if (k == 0) {
+            r.mn = 0;
+            r.mx = 5; // water
+        } else if (k == 1) {
+            r.mn = 20;
+            r.mx = 40; // land
+        } else if (k == 2) {
+            r.mn = 5;
+            r.mx = 25; // straddles 32
+        } else if (k == 3) {
+            r.mn = 3;
+            r.mx = 14; // mixed, no straddle
+        } else {
+            r.valid = false;
+        }
+    };
+    for (std::int32_t cz = 0; cz < 16; ++cz) {
+        for (std::int32_t cx = 0; cx < 24; ++cx) {
+            randomise(cx, cz);
+        }
+    }
+    sim::CoastIndex index(src, {});
+    std::uint32_t band_removed = 0, band_added_by_neighbour = 0;
+    for (int round = 0; round < 80; ++round) {
+        // Change the record of one cell (covered before and after, so island coverage is
+        // unchanged); its 8 neighbours' types may change although their records and tiles did not.
+        const std::int32_t cx = rng.below(24), cz = rng.below(16);
+        if (!src.rec(cx, cz).valid) {
+            continue;
+        }
+        const sim::CoastIndex before = index;
+        auto& r = src.rec(cx, cz);
+        const bool was = r.mn == 5 && r.mx == 25;
+        if (was) {
+            r.mn = 0;
+            r.mx = 5; // a shore record removed
+        } else {
+            r.mn = 5;
+            r.mx = 25; // a shore record added
+        }
+        index.rebuild_rect({cx * 8, cz * 8, cx * 8 + 8, cz * 8 + 8}, {});
+        CAPTURE(round);
+        REQUIRE(index.verify_against_clean_rebuild({}).empty());
+        REQUIRE(index.same_words(sim::CoastIndex(src, {})));
+        for (std::int32_t dz = -1; dz <= 1; ++dz) {
+            for (std::int32_t dx = -1; dx <= 1; ++dx) {
+                if ((dx != 0 || dz != 0) &&
+                    before.type(cx + dx, cz + dz) != index.type(cx + dx, cz + dz)) {
+                    (was ? band_removed : band_added_by_neighbour) += 1;
+                }
+            }
+        }
+    }
+    CHECK(band_removed > 0);
+    CHECK(band_added_by_neighbour > 0);
+    // Negative control: without the halo (rebuilding only the cell's own rectangle shrunk to its
+    // interior is not possible), a stale neighbour is detected by the verifier once a record
+    // changes under it.
+    auto& r = src.rec(5, 5);
+    r.valid = true;
+    r.mn = 5;
+    r.mx = 25;
+    CHECK_FALSE(index.verify_against_clean_rebuild({}).empty());
 }

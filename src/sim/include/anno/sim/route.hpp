@@ -131,6 +131,15 @@ class TileSource {
     /// that reproduces the original's block min/max records overrides it (the shortcut can differ
     /// from the tiles: an object whose footprint reaches into a neighbouring block).
     [[nodiscard]] virtual CellClass classify_cell(std::int32_t cx, std::int32_t cz) const;
+    /// The island block record under the world cell (cx, cz): the minimum and maximum vertex height
+    /// of its 9 x 9 vertices (the maximum raised by object tops), both halved (`>> 1`), as the
+    /// original's block records at island +0x94 hold them. Returns false when no island covers the
+    /// cell (open sea). The coast index derives the shore band (cost type 3) from these records,
+    /// pass 2 of the builder 0x100aae00: a cell is typed 3 when its sector holds an island block
+    /// and the record of the cell or of one of its 8 neighbours straddles the shore level (32 < 2
+    /// max and 32 > 2 min). The default has no records (no band is derived).
+    [[nodiscard]] virtual bool block_range(std::int32_t cx, std::int32_t cz, std::uint8_t& min_half,
+                                           std::uint8_t& max_half) const;
 };
 
 /// A plain tile bitmap (1 byte per tile) for tests and tools. Starts as all water.
@@ -170,10 +179,10 @@ class TileMapSource final : public TileSource {
 /// also how the original represents untouched water. Class-independent: the per-class costs live in
 /// RouteCostTable. A cell word is `mask | type << 16`; the type is 0 (open) or 3 (shore band).
 ///
-/// The shore band (type 3) is an explicit input: the builder rule that creates it (pass 2 of
-/// 0x100aae00, cells with a neighbour whose block range straddles level 32) was not re-executed
-/// (docs/sim/ship-navigation.md section 11 item 3: a named dependency of package C). Callers pass
-/// the set of band cells; the index stores nothing else about them.
+/// The shore band (type 3) is DERIVED from the source's block records exactly as pass 2 of the
+/// builder 0x100aae00 does (see TileSource::block_range; validated against the builder under
+/// emulation, fixtures/synthetic/sim/nav/builder_vectors.txt), and `shore_cells` adds explicit band
+/// cells on top (tests, mods). A source without records derives nothing.
 ///
 /// The index is bound to a TileSource that must outlive it and must not change except through
 /// rebuild_rect (the fine search reads live tiles from it, as the original rebuilds its fine blocks
@@ -223,7 +232,16 @@ class CoastIndex {
     void store_word(std::int32_t cx, std::int32_t cz, std::uint32_t w);
     [[nodiscard]] std::uint32_t build_cell(std::int32_t cx, std::int32_t cz) const;
 
+    struct Range {
+        bool valid = false;
+        std::uint8_t mn = 0, mx = 0;
+    };
+    [[nodiscard]] Range range_at(std::int32_t cx, std::int32_t cz) const;
+    [[nodiscard]] bool sector_has_island(std::int32_t sx, std::int32_t sz) const;
+    [[nodiscard]] bool derived_shore(std::int32_t cx, std::int32_t cz) const;
+
     const TileSource* source_ = nullptr;
+    std::vector<Range> range_cache_; ///< only during construction
     std::int32_t w_ = 0, h_ = 0;
     std::int32_t sectors_x_ = 0, sectors_z_ = 0;
     /// One entry per sector, row-major; empty = null sector (all cells open); else 64 words.

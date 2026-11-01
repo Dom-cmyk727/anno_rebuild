@@ -303,3 +303,12 @@ World: `next_order_id`, `next_ticket`. Per navigating ship: the order record (`o
 (u16), `pos_u` and `res24` for both axes, the "deferred" marker is implied by order-pending + no segment. Derived, never saved: the ticket index,
 coast data, spatial index of figures. Crew children's positions are written from the parent each step (no hidden state). An original-save import
 initialises every ship idle. Version 122 is reserved for this layout; any later incompatible change takes a new number.
+
+### 12.6 Goal selection, object heights and shore (A3, pinned)
+The route query's candidate selection is exactly the callback/Offer/table rule of evidence 9.4 (including that a congested store never raises the
+best score and that free beats congested); the coarse pop order of the goal cells is produced by the port's own coarse search and is checked
+against `offer_cases.txt` (its `pops` are the emulation's, an input to the independent reference). Tile blocking from objects uses the predicate
+`((h + base) & 0xff) > 19` per object tile with `h` = `floor(f32_height * 25)` computed exactly (the 53/64-bit result; the live precision is
+UNKNOWN, CAP-2, so the 29 types that differ at 24-bit precision are recorded) and no class test: **not every footprint is land, and a footprint is
+not exempt from blocking**. The coast-data rebuild trigger is a data flag on building types (`coast_rebuild`), default from the original type
+flag bits `0x2000`/`0x4000` and the removal group `0x141..0x160`; shore cost type 3 uses the validated class cost table (class 0: 50/69).

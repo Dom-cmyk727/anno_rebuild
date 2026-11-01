@@ -411,6 +411,154 @@ def check_counterexamples(path):
     return bad
 
 
+# ---- goal-candidate selection with stamps (MAP-NAV-2 A3) ----------------------------------------------------
+
+_LINE = [3, 4, 2, 5, 1, 6, 0, 7]
+CAND_ORDER = [
+    [(c, r) for c in range(7, -1, -1) for r in _LINE],   # arrival labels 0x80/0x81 (from the west side): columns 7..0
+    [(c, r) for r in range(8) for c in _LINE],           # 0x82/0x83: rows 0..7
+    [(c, r) for c in range(8) for r in _LINE],           # 0x84/0x85: columns 0..7
+    [(c, r) for r in range(7, -1, -1) for c in _LINE],   # 0x86/0x87: rows 7..0
+    [(3, 3), (4, 3), (3, 4), (4, 4), (2, 3), (2, 4), (5, 3), (5, 4), (3, 2), (4, 2), (3, 5), (4, 5), (2, 2), (5, 2), (2, 5),
+     (5, 5), (3, 1), (4, 1), (2, 1), (5, 1), (3, 6), (4, 6), (2, 6), (5, 6), (1, 3), (1, 4), (1, 2), (1, 5), (6, 3), (6, 4),
+     (6, 2), (6, 5), (1, 1), (6, 1), (1, 6), (6, 6), (3, 0), (4, 0), (3, 7), (4, 7), (0, 3), (0, 4), (7, 3), (7, 4), (2, 0),
+     (5, 0), (2, 7), (5, 7), (0, 2), (0, 5), (7, 2), (7, 5), (1, 0), (6, 0), (1, 7), (6, 7), (0, 1), (0, 6), (7, 1), (7, 6),
+     (0, 0), (7, 0), (0, 7), (7, 7)]]
+
+
+def cand_group(label, mut=None):
+    if mut == 'one_group':
+        return 4
+    return ((label + 0x80) & 0xFF) >> 1 if 0x80 <= label <= 0x87 else 4
+
+
+def select_candidate(water, goal, stamps, pops, mut=None):
+    """Python transcription of docs/re/ship-navigation.md 9.4 (callback + Offer + goal-test order). `pops` = the coarse pop
+    order of the goal-flag cells (cx, cz, label). Returns (tile or None, best score)."""
+    best, has, stored = 0, False, None
+    for cx, cz, label in pops:
+        for col, row in CAND_ORDER[cand_group(label, mut)]:
+            t = (cx * 8 + col, cz * 8 + row)
+            if not water(t):
+                continue
+            d2 = (t[0] + 0.5 - goal[0]) ** 2 + (t[1] + 0.5 - goal[1]) ** 2
+            sc = 2304 - int(64 * d2)
+            if sc <= 0:
+                continue
+            if not (sc > best or (mut == 'offer_equal' and sc >= best)):
+                continue
+            dens = density(stamps, t, 'max_combine' if mut == 'max_combine' else None)
+            if dens == 0:
+                stored, has, best = (t, 0), True, sc
+                if sc >= 2304:
+                    return t, best
+            elif has and (dens > stored[1] if mut == 'last_wins_tie' else dens >= stored[1]):
+                pass
+            else:
+                stored, has = (t, dens), True
+                if mut == 'best_on_congested':
+                    best = sc
+    return (stored[0] if stored else None), best
+
+
+def check_offers(path, mut=None):
+    bad, count = [], 0
+    for n, line in enumerate(open(path), 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [x.strip() for x in line.split('|')]
+        name = parts[0].split()[1]
+        start = tuple(map(float, parts[1].split()[1:]))
+        goal = tuple(map(float, parts[2].split()[1:]))
+        stamps = []
+        if parts[3] != 'stamps -':
+            for tok in parts[3].split()[1:]:
+                x, z, k = tok.split(',')
+                stamps.append((float(x), float(z), k, 2 if k == 'K5' else 1))
+        pops = [tuple(int(v) for v in tok.split(',')) for tok in parts[4].split()[1:]]
+        end = tuple(map(int, parts[5].split()[1:]))
+        best = int(parts[6].split()[1])
+        runs = parts[7].split()
+        count += 1
+        tile, sc = select_candidate(lambda t: 0 <= t[0] < 64 and 0 <= t[1] < 64, goal, stamps, pops, mut)
+        problems = []
+        if tile != end:
+            problems.append('end tile %s, reference %s' % (end, tile))
+        if sc != best:
+            problems.append('best score %s, reference %s' % (best, sc))
+        rec = dict(W=64, H=64, land=set(), start=start, runs=runs)
+        leg, walked = path_legality(rec)
+        problems += leg
+        if walked != end:
+            problems.append('runs end on %s, recorded end %s' % (walked, end))
+        if problems:
+            bad.append((n, name, problems))
+    if count < 16:
+        bad.append((0, 'fixture', ['fewer than 16 offer cases']))
+    return bad
+
+
+def check_objects(path):
+    bad, ntile, nshore = [], 0, 0
+    for n, line in enumerate(open(path), 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('objtile'):
+            left, right = [x.strip() for x in line.split('|')]
+            h, base = map(int, left.split()[1:])
+            ntile += 1
+            got = 'blocked' if ((h + base) & 0xFF) > 19 else 'free'
+            if got != right:
+                bad.append((n, 'objtile %d %d: expected %s got %s' % (h, base, right, got)))
+        elif line.startswith('shore'):
+            nshore += 1
+            parts = [x.strip() for x in line.split('|')]
+            W = H = 64
+            land = set()
+            if parts[1] != 'land -':
+                for rect in parts[1].split()[1:]:
+                    x0, z0, x1, z1 = map(int, rect.split(','))
+                    land.update((x, z) for z in range(z0, z1 + 1) for x in range(x0, x1 + 1))
+            start = tuple(map(float, parts[3].split()[1:]))
+            end = tuple(map(int, parts[8].split()[1:]))
+            for field in (parts[6], parts[7]):
+                toks = field.split()
+                runs = toks[2:] if toks[0] == 'no_band' or toks[0] == 'band' else toks
+                prob, walked = path_legality(dict(W=W, H=H, land=land, start=start, runs=runs))
+                if prob or walked != end:
+                    bad.append((n, 'shore walk %s: %s end %s' % (parts[0], prob, walked)))
+    if ntile < 12 or nshore < 7:
+        bad.append((0, 'fixture truncated'))
+    return bad
+
+
+def main_goal(argv):
+    if argv[1] == 'offer-check':
+        bad = check_offers(argv[2])
+        for b in bad:
+            print('OFFER MISMATCH line %d %s: %s' % b)
+        print('ship offer cases', 'agree' if not bad else 'DIFFER')
+        return 1 if bad else 0
+    if argv[1] == 'offer-selftest':
+        if check_offers(argv[2]):
+            print('selftest: the unmutated offer reference already fails')
+            return 1
+        ok = True
+        for m in ['best_on_congested', 'offer_equal', 'last_wins_tie', 'one_group']:
+            caught = bool(check_offers(argv[2], m))
+            print('mutant %-18s %s' % (m, 'caught' if caught else 'SURVIVED'))
+            ok = ok and caught
+        print('offer selftest', 'ok' if ok else 'FAILED')
+        return 0 if ok else 1
+    bad = check_objects(argv[2])
+    for b in bad:
+        print('OBJECT/SHORE MISMATCH line %d: %s' % b)
+    print('ship object and shore cases', 'agree' if not bad else 'DIFFER')
+    return 1 if bad else 0
+
+
 # ---- planning admission (MAP-NAV-2 A2) ------------------------------------------------------------------------
 
 def admission_sim(rule, n, dtick, ships, quota, advances, adversary, seed=0):
@@ -556,6 +704,8 @@ def main_passage(argv):
 
 
 def main(argv):
+    if len(argv) == 3 and argv[1] in ('offer-check', 'offer-selftest', 'object-check'):
+        return main_goal(argv)
     if len(argv) == 3 and argv[1] == 'admission-check':
         return main_admission(argv)
     if len(argv) == 3 and argv[1] == 'route-reject':

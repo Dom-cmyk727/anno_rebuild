@@ -148,6 +148,15 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME ship_route_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-selftest
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_runs.txt)
+    add_test(NAME ship_offer_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py offer-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/offer_cases.txt)
+    add_test(NAME ship_offer_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py offer-selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/offer_cases.txt)
+    add_test(NAME ship_object_shore_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py object-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/object_shore_cases.txt)
     add_test(NAME ship_route_counterexamples_rejected
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-reject
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_counterexamples.txt)

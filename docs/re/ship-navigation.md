@@ -376,11 +376,35 @@ of the records): the stamp point is **truncated** (`ftol`, no 0.5 offset: 40.7 -
 `(tx - (sx - R), tz - (sz - R))` and is used only inside `0..2R`, values combine in record order through
 `state' = [[0,1,2,3],[1,1,2,3],[2,2,3,3],[3,3,3,3]][state][kernel value]` (table `0x100c15b0`; a Python reference matched the real function on
 about 7400 tiles). **Stamps change neither the coarse nor the fine costs**: both callers of `0x1000f120` are inside `Offer` (`0x1000f260`),
-so congestion only changes which goal-disc candidate becomes the end node. `Offer` (`0x1000f260`, bytes read by the reviewer): if its
-argument `arg1 >= 4` it stores unconditionally and sets the has-result flag; otherwise it stores when `arg1 > density(candidate)`; failing
-that it replaces the stored best only when the candidate is strictly less dense than the stored one; `arg1` is `1` for the goal callback
-(so only an uncongested candidate is stored first) - the callers' value of `arg1` beyond that, and therefore the exact tie rule between
-equal-score candidates of different density, is not fully traced: the stamped route vectors are single-source (emulation) evidence. Worked examples on 64 x 64 open sea (start (4.5, 20.5), goal (40.5, 20.5), radius 6): no stamp E10 E10 E10 E6; a ship exactly at
+so congestion only changes which goal-disc candidate becomes the end node. **Goal callback and Offer, pinned (MAP-NAV-2 A3; reproduced by an independent Python transcription against the real functions
+under emulation: about 1200 randomised cases, 0 mismatches in the winner tile and in the best score):** the callback computes
+`score = 2304 - ftol(64 * d^2)` (dx stored as f32) and offers a candidate only if `score > best` (strict; `best` starts at 0, so
+d >= 6.0 and equal scores are never offered). `Offer(rec, 1)` (`0x1000f260`, `ret 8`; the `arg >= 4` branch is dead for ships) returns 1
+only for an uncongested candidate (density 0), stores it and the callback then **raises `best`**, stopping the search when
+`score >= 2304` (d < 0.125). A congested candidate returns 0: it is stored if nothing is stored yet or its density is strictly lower than the
+stored node's (density of the stored node recomputed), and **never raises `best`**. Consequences: free beats congested at equal score in
+either offer order; free versus free at equal score: the first offered wins; congested versus congested: the lowest density wins even when
+offered later, equal density keeps the earlier; with no free tile in the disc score and distance play no role (the first density-1 tile in
+table order wins even at d = 5.1); a low-score free tile beats congested tiles of any score. The offer order is the coarse pop order of the
+goal-flag cells times the candidate table `0x100c15d0` (5 groups of 64 (column, row) pairs; group `((label + 0x80) & 0xff) >> 1` for arrival
+labels `0x80..0x87`, else 4): groups 0..3 sweep columns 7..0, rows 0..7, columns 0..7, rows 7..0, each line ordered 3,4,2,5,1,6,0,7; group 4
+is the centre spiral (listed in `tools/ship_nav_ref.py`). The loop does not stop early: every reachable cell of the 3 x 3 goal disc is tested
+unless an exact uncongested hit stops it. 16 explicit cases are in `fixtures/synthetic/sim/nav/offer_cases.txt` (the pop order is an input).
+**Object heights and blocked tiles (`0x10090350`, executed with the real AnnoGame height function `0x10007f40`):** every island tile object can block;
+there is no class or flag test. A tile becomes land (9) iff `((h + rec[4]) & 0xff) > 19` (an 8-bit unsigned add: a negative `h` wraps and
+blocks), `h` = the object type's height from AnnoGame slot `+0x90` (`floor(HEAD f32@0x14 * 25)` without a height map; with a map
+`2 * signed byte` of the rotated map, in 0.04 units; only 11 types have a map: 1020, 1021, 2701-2708, 2740), `rec[4]` = the placed item's height
+byte. The block min/max records (`0x10084190`) raise an object top only on the anchor tile (rec[3] bit 7), computed as `(ftol(f14 / 0.04f) + rec[4]) & 0xff`
+(a division, unlike the exporter's `* 25`, which differs for 24 types), stored as `max >> 1`, `min >> 1`. **x87 precision matters:** at 24-bit
+precision 29 types get +1 (f14 = 0.64, 1.4, 2.6, 2.8, 3.6, 4.6); the live control word is UNKNOWN (CAP-2); the sim uses the exact
+floor of the f32 value times 25 (the 53/64-bit result). Which objects trigger a coarse rebuild: the type flag word (u16 at HEAD `+0x1c`) bit
+`0x2000` (coast; 30 types incl. 810, 821, 1020, 1021, 1302/1304/1306, 1412-1417, 3018) or `0x4000` (road/bridge; 35 types), plus type ids
+`0x141..0x160` at the removal site; mines (`0x3000`), mountains (`0x1000`), houses, farms and walls do not. The `flags` argument of the place
+method at runtime is UNKNOWN (the loader passes `0x4000000`). Synthetic checks: an h = 19 object on water does not block, h = 20 does
+(`objtile` vectors); an h = 20 object wall routes exactly like a terrain wall of vertex height 20. **Shore band** (type 3, class 0 cost 50 orthogonal /
+69 diagonal against 10/13): a band cell costs +40 per orthogonal step and +19 per turn into it; the engine leaves the band when an open row costs
+less than 40 per crossed band cell and crosses it when the detour costs more; equal costs are decided by FIFO order (cases in
+`object_shore_cases.txt`; the builder rule that creates type 3 was not re-executed). Worked examples on 64 x 64 open sea (start (4.5, 20.5), goal (40.5, 20.5), radius 6): no stamp E10 E10 E10 E6; a ship exactly at
 the goal NE1 E10 E10 E10 E3 (end tile (38, 19)); a ship at (38.5, 20.5) NE1 E10 E10 E10 E5; the committed fixture `route_runs.txt` holds all
 of them. The registry cells are lists with the newest unit appended: within a cell the scan is oldest first, and a unit that stays
 in its cell keeps its place (the update re-appends only when the cell changes, registry slot `+0x2c` = `0x10098200`). A goal on land within 6 tiles of

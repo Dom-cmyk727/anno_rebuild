@@ -454,8 +454,9 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   not on screen, never waited for); one that was in view and left it is `OutOfView` and waits; a
   commit that invalidated no chunk is `NothingToDraw`; a turn that published no building change
   (a refused or no-op command) is `NoVisualChange`. Present-call success is not display time.
-  The state is bounded: one watch per island (changes to one island merge, which only makes the
-  wait stricter), at most 1 024 takes not yet shown (the two oldest merge beyond that), 1 024
+  The state is bounded: one part per commit of an island, judged and shown on its own and settled in
+  version order (at most 64 per island; beyond that the two oldest merge, which only makes the wait
+  stricter), at most 1 024 takes not yet shown (the two oldest merge beyond that), 1 024
   settled ones kept (an older command reads `Unknown`), at most 1 024 turns named per take (the worst case of the unshown takes is about 8 MB of turn numbers, the settled history as much again; a hidden window takes nothing, so the bound is far above a session's use). The
   sim's outcome stands either way. The old rule (followed turn and no pending island) is
   object-list completion only: with the chunk workers held it said drawn while the old chunks

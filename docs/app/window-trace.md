@@ -64,7 +64,7 @@ and `bench_picture --aggregate` reads its event file.
    display latency: none of those is observed.
 
    The window decides the same boundaries for its own feedback with or without a trace (`ChangeVisibility`,
-   `visibility.hpp`; docs/app/game-shell.md, "Not drawn yet"): one watch per island over the same fresh/usable
+   `visibility.hpp`; docs/app/game-shell.md, "Not drawn yet"): one part per commit of an island over the same fresh/usable
    observation of the change's keys in a frame's view (`observe_keys`, shared with `FrameTracer`), so a
    command is shown only by a successfully presented frame that draws all of its chunks.
 

@@ -1517,7 +1517,7 @@ TEST_CASE("scenario island lock: world state, hash, save and load, a failed load
     bad[bad.size() / 2] ^= 0x5a;
     CHECK_FALSE(sim::World::load(bad, registry()).ok());
     // The previous stream version number (117: no lock byte) is refused by the version checks.
-    island_test::check_unsupported_versions(locked.save(), registry(), {117});
+    island_test::check_unsupported_versions(locked.save(), registry(), {117, 120});
 }
 
 namespace {

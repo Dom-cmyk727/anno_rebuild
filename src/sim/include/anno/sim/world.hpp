@@ -107,7 +107,10 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // (all after the existing fields of the record); each Figure gains `u32 state_word` at the end; the
 // registry digest's figure types gain bewohntype, range_88, hull_half_88. See
 // docs/sim/ship-founding.md section 16.
-inline constexpr std::uint32_t kStateHashVersion = 120;
+// Stream at 121 (task MAP-FOUND-3, docs/sim/shared-visibility.md): Rules gain `shared_visibility`
+// (groups of player ids: u64 group count, then per group u64 member count and u32 members), after
+// city_names. Every state hash moves through the Rules layout; sharing-off outcomes are unchanged.
+inline constexpr std::uint32_t kStateHashVersion = 121;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

@@ -516,6 +516,14 @@ struct Rules {
     /// world property 0x13; language-dependent, so persisted here and not read from a file at run
     /// time). Empty = no list: a founded city gets no name and no draw. No NUL in a name.
     std::vector<std::string> city_names;
+    /// MAP-FOUND-3 (stream 121, docs/sim/shared-visibility.md): the shared-visibility groups of the
+    /// five-ship start policy (owner decision C5), an ADAPTATION, not an original rule. Each group
+    /// is an ascending, unique list of at least two player ids; groups are pairwise disjoint. What
+    /// one member's founding reveals (city mask, island presence, ore discovery, the reveal's
+    /// visited city) is mirrored to the rest of the group. Empty = sharing off (every original
+    /// scenario). The ids are validated against the player table (peace between members) by the
+    /// world's invariants.
+    std::vector<std::vector<std::uint32_t>> shared_visibility;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

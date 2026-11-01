@@ -388,6 +388,21 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
             insert_player(mask, rel.other);
         }
     }
+    // The shared-visibility audience (an ADAPTATION, docs/sim/shared-visibility.md): the founder
+    // and the other members of his group that are players of the world. Ascending, unique.
+    std::vector<PlayerId> audience{me};
+    for (const std::vector<std::uint32_t>& group : w.rules_.shared_visibility) {
+        if (std::binary_search(group.begin(), group.end(), me.v)) {
+            for (const std::uint32_t member : group) {
+                if (w.players_.find(PlayerId{member}) != nullptr) {
+                    insert_player(audience, PlayerId{member});
+                }
+            }
+        }
+    }
+    for (const PlayerId a : audience) {
+        insert_player(mask, a);
+    }
 
     // The reveal, planned on the world as it is: the claim only turns neutral tiles into the new
     // city\'s, whose mask already holds the founder, so no sample it keeps depends on the claim.
@@ -449,7 +464,9 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
     city.index.stamp = index_stamp;
     // Registration: the mask, the island\'s players present.
     city.player_mask = mask;
-    insert_player(island->players_present, me);
+    for (const PlayerId a : audience) {
+        insert_player(island->players_present, a);
+    }
     // The Kontor counter (the building already holds the old value).
     static_cast<void>(CityCreation::commit_kontor(w, kplan.value()));
     // Territory: the disc for the market block 33..35, then the footprint, neutral tiles only.
@@ -463,15 +480,21 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
     if (claims_disc(type->prodtype)) {
         for (OreObject& o : island->ore_objects) {
             if (object_in_reach(o.x, o.y, centre_x, centre_y, fw, fh, radius, object_table)) {
-                insert_player(o.discovered, me);
+                for (const PlayerId a : audience) {
+                    insert_player(o.discovered, a);
+                }
             }
         }
     }
     // The reveal\'s single visit.
     if (visited.has_value()) {
         City* other = island->city(CityNo{*visited});
-        insert_player(other->player_mask, me);
-        insert_player(player->discovery, other->owner);
+        for (const PlayerId a : audience) {
+            insert_player(other->player_mask, a);
+            if (Player* ap = w.players_.find(a)) {
+                insert_player(ap->discovery, other->owner);
+            }
+        }
     }
     // The island recount (0x134(1)): every player in a city\'s mask learns that city\'s owner.
     for (const std::optional<City>& c : island->cities) {

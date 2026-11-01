@@ -333,7 +333,7 @@ TEST_CASE("expedition tree: a stream of another version or with a corrupt refere
     const std::vector<std::uint8_t> good = w.save();
 
     // Unsupported versions (header-only edits with a valid checksum; each reaches its own check).
-    island_test::check_unsupported_versions(good, types, {115});
+    island_test::check_unsupported_versions(good, types, {115, 120});
 
     // A parent that is not in the registry: written through the test access, saved, refused.
     sim::World broken = w;
@@ -593,8 +593,8 @@ TEST_CASE("ship holds: a stream of the whole-ton layout or a truncated hold fail
     // 116 had whole-ton holds of 8 bytes, 117 raw amounts without the island lock: both numbers are
     // refused by the version checks (the bytes are this build's layout with only the number
     // changed).
-    island_test::check_unsupported_versions(good, types, {116, 117, 118, 119});
-    CHECK(sim::kStateHashVersion == 120);
+    island_test::check_unsupported_versions(good, types, {116, 117, 118, 119, 120});
+    CHECK(sim::kStateHashVersion == 121);
 
     // Truncation of the flat stream inside a hold amount fails and the error names the figure.
     std::vector<std::uint8_t> flat = island_test::flat_stream(w);

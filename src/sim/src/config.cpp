@@ -495,6 +495,27 @@ std::string Rules::validate() const {
             return bad(kOwner, "founding_types", "must be ascending, unique and non-zero");
         }
     }
+    {
+        std::vector<std::uint32_t> all;
+        for (std::size_t g = 0; g < shared_visibility.size(); ++g) {
+            const std::vector<std::uint32_t>& group = shared_visibility[g];
+            if (group.size() < 2) {
+                return bad(kOwner, "shared_visibility",
+                           "group " + std::to_string(g) + " has fewer than two members");
+            }
+            for (std::size_t i = 1; i < group.size(); ++i) {
+                if (group[i - 1] >= group[i]) {
+                    return bad(kOwner, "shared_visibility",
+                               "group " + std::to_string(g) + " is not ascending and unique");
+                }
+            }
+            all.insert(all.end(), group.begin(), group.end());
+        }
+        std::sort(all.begin(), all.end());
+        if (std::adjacent_find(all.begin(), all.end()) != all.end()) {
+            return bad(kOwner, "shared_visibility", "a player is in more than one group");
+        }
+    }
     for (const std::string& n : city_names) {
         if (n.find('\0') != std::string::npos) {
             return bad(kOwner, "city_names", "a name contains a NUL byte");

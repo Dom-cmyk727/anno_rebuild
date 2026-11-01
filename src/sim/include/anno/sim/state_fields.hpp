@@ -261,7 +261,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.links);
 }
 
-static_assert(field_count<Rules>() == 22, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 23, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -286,6 +286,9 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.removal_clear_tile);
     ar::seq(a, s.founding_types, 4, [&](auto& x) { a.u32(x); }); // stream 120
     ar::seq(a, s.city_names, 8, [&](auto& x) { a.str(x); });     // stream 120
+    ar::seq(a, s.shared_visibility, 8, [&](auto& group) {        // stream 121
+        ar::seq(a, group, 4, [&](auto& x) { a.u32(x); });
+    });
 }
 
 // ---- settings scope

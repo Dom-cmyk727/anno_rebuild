@@ -28,6 +28,38 @@ PlayerTable make_player_table(const SimConfig& cfg) {
     return t;
 }
 
+std::string shared_visibility_problem(const Rules& rules, const PlayerTable& table,
+                                      const SimConfig& cfg) {
+    for (std::size_t g = 0; g < rules.shared_visibility.size(); ++g) {
+        const std::vector<std::uint32_t>& group = rules.shared_visibility[g];
+        const std::string where = "rules.shared_visibility[" + std::to_string(g) + "]";
+        for (const std::uint32_t id : group) {
+            if (id >= cfg.player_slots || id >= table.slots.size() ||
+                !table.slots[id].has_value()) {
+                return where + ": player " + std::to_string(id) + " is not a player of the world";
+            }
+        }
+        for (const std::uint32_t a : group) {
+            const Player& pa = *table.slots[a];
+            for (const std::uint32_t b : group) {
+                if (a == b) {
+                    continue;
+                }
+                for (std::uint32_t kind = 0; kind < 3; ++kind) {
+                    if (pa.relation(kind, PlayerId{b}) != 0) {
+                        static constexpr const char* kName[3] = {"TRADE", "MILIT", "WAR"};
+                        return where + ": players " + std::to_string(a) + " -> " +
+                               std::to_string(b) + " are not at peace (" + kName[kind] + " is " +
+                               std::to_string(pa.relation(kind, PlayerId{b})) +
+                               "); shared visibility requires TRADE 0, MILIT 0, WAR 0";
+                    }
+                }
+            }
+        }
+    }
+    return {};
+}
+
 std::string validate_players(const PlayerTable& table, const SimConfig& cfg) {
     if (table.slots.size() != cfg.player_slots) {
         return "players.slots: has " + std::to_string(table.slots.size()) +

@@ -191,6 +191,7 @@ void expected_config(Stream& s) {
     s.u64(1);         // founding_types: one entry
     s.u32(1302);      // the ship menu offers the Kontor 1302 only
     s.u64(0);         // city_names: no list
+    s.u64(0);         // shared_visibility: no group (stream 121)
 }
 
 void expected_settings(Stream& s) {
@@ -353,6 +354,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("removal_clear_tile", [](sim::Rules& r) { r.removal_clear_tile = true; });
     m.emplace_back("founding_types", [](sim::Rules& r) { r.founding_types.push_back(1304); });
     m.emplace_back("city_names", [](sim::Rules& r) { r.city_names.push_back("Bremen"); });
+    m.emplace_back("shared_visibility", [](sim::Rules& r) { r.shared_visibility = {{0, 1}}; });
     return m;
 }
 
@@ -561,7 +563,8 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.removal_clear_tile);
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
-    static_assert(sim::field_count<sim::Rules>() == 22);
+    CHECK(r.shared_visibility.empty());
+    static_assert(sim::field_count<sim::Rules>() == 23);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1470,7 +1473,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 120);
+    CHECK(sim::kStateHashVersion == 121);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

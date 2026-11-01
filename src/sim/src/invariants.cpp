@@ -65,6 +65,9 @@ std::string World::check_invariants() const {
         problem = validate_players(players_, config_);
     }
     if (problem.empty()) {
+        problem = shared_visibility_problem(rules_, players_, config_);
+    }
+    if (problem.empty()) {
         problem = validate_islands(islands_, config_, settings_, *types_);
     }
     if (!problem.empty()) {

@@ -83,7 +83,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 120
+STATE_HASH_VERSION = 121
 PRNG_TIMELINE_VERSION = 3
 
 
@@ -244,9 +244,10 @@ def rules_bytes(full_tick=False):
     # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp,
     # island_candidate_order (S14 stage 2: Sorted = 0), removal_clear_tile (F37)
     flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
-    # founding_types (stream 120): u64 count 1, the Kontor 1302
+    # founding_types (stream 120): u64 count 1, the Kontor 1302; shared_visibility (121): u64 0
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0))
+            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0)
+            + u64(0))  # city_names (120), shared_visibility (121): both empty
 
 
 def settings_bytes(width=0, height=0):

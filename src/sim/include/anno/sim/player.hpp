@@ -179,6 +179,12 @@ struct PlayerTable {
 /// stream runs it on what it just read.
 [[nodiscard]] std::string validate_players(const PlayerTable& table, const SimConfig& cfg);
 
+/// The world-level part of Rules::shared_visibility (docs/sim/shared-visibility.md section 4):
+/// every member is a player of the table below player_slots, and every ordered pair of distinct
+/// members of a group is at peace (TRADE 0, MILIT 0, WAR 0). Empty when it holds.
+[[nodiscard]] std::string shared_visibility_problem(const Rules& rules, const PlayerTable& table,
+                                                    const SimConfig& cfg);
+
 /// The two per-player passes of the original that this stage does not own: a
 /// null function is the documented default (does nothing). `ctx` is the
 /// caller's own context (not state).

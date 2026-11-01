@@ -290,6 +290,13 @@ gpu::ResampleFilter resample_filter(double s) {
 
 class Viewer {
   public:
+    ~Viewer() {
+        if (dev_ != nullptr && play_ != nullptr) {
+            play_->set_batch_observer({}); // it points into knowledge_
+        }
+    }
+    Viewer(const Viewer&) = delete;
+    Viewer& operator=(const Viewer&) = delete;
     Viewer(std::shared_ptr<const render::Scene> scene, std::size_t group, std::size_t threads,
            Renderer renderer, render::RiverFlowMode river_flow, render::WaterStyle water,
            std::size_t lookahead_chunks, ZoomOptions zoom, const ViewerHooks* hooks,
@@ -301,6 +308,7 @@ class Viewer {
           script_(dev_ != nullptr ? hooks->script : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
+            attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
         }
         frames_.river_flow = river_flow;
         frames_.max_lookahead_chunks = lookahead_chunks;
@@ -1384,10 +1392,13 @@ void Viewer::draw() {
     // The frame boundary: the picture first, then the one scene handle of this frame.
     follow_picture();
     const std::shared_ptr<const render::Scene> gen = current();
-    if (knowledge_ && play_ != nullptr &&
-        knowledge_->update(play_->picture().buildings(), play_->picture().buildings_version(),
-                           *gen)) {
-        update_title(); // the occupancy the preview knows changed
+    if (knowledge_ && play_ != nullptr) {
+        // The first seed, and the reseed after a spell with the tool off, from the picture's
+        // per-island list (O(the city), once); the takes keep it current otherwise (R4).
+        knowledge_->ensure(play_->picture(), *gen, dev_->enabled());
+        if (knowledge_->take_changed()) {
+            update_title(); // the occupancy the preview knows changed
+        }
     }
     int pw = 0, ph = 0;
     SDL_GetWindowSizeInPixels(window_, &pw, &ph);

@@ -19,6 +19,9 @@ std::size_t PlayFollower::follow(render::FrameRenderer& frames, WindowTrace* tra
         }
     }
     if (!batches.empty()) {
+        if (batch_observer_) {
+            batch_observer_(batches);
+        }
         picture_.apply(batches);
     }
     // Commits what is ready (a full reclaim backlog skips it until a later frame) and invalidates

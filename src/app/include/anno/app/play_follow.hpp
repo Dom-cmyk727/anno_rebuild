@@ -5,8 +5,11 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include <anno/app/play.hpp>
 #include <anno/app/scene_picture.hpp>
@@ -26,6 +29,12 @@ class PlayFollower {
     /// With `trace` (the window trace, opt-in): a BatchTaken per batch taken (its turn; a collapsed
     /// resync carries the newest), at the take, and a Generation after a commit.
     std::size_t follow(render::FrameRenderer& frames, WindowTrace* trace = nullptr);
+    /// The window's tap on the taken batches (round ee review, R4): called with every non-empty
+    /// take, on the window thread, before the picture applies it. Whatever it does must be
+    /// proportional to the batches (PlacementKnowledge::on_batches), never to the world.
+    using BatchObserver =
+        std::function<void(const std::vector<std::shared_ptr<const BuildingBatch>>&)>;
+    void set_batch_observer(BatchObserver observer) { batch_observer_ = std::move(observer); }
     /// The newest turn whose building changes are all in the picture's desired state (round ee,
     /// E4): the snapshot's turn read before the last take (a turn's batch is in the mailbox before
     /// its snapshot is published, PlayRunner::publish). nullopt before any turn was published.
@@ -43,6 +52,7 @@ class PlayFollower {
     ScenePicture& picture_;
     PlayRunner& runner_;
     std::optional<std::uint64_t> followed_turn_;
+    BatchObserver batch_observer_;
 };
 
 /// What the window loop knows at the top of an iteration. The paused animation stops the frames,

@@ -9,8 +9,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
-#include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,6 +22,8 @@
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/play_follow.hpp>
+#include <anno/app/scene_picture.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
 
@@ -64,10 +68,34 @@ void blend_preview(const render::Scene& scene, const Preview& preview, std::size
 class PlacementKnowledge {
   public:
     explicit PlacementKnowledge(DevToolSetup setup);
-    /// Re-indexes when `version` differs from the last one indexed; returns whether it did.
-    /// `scene` names the city island's number (the buildings' island key).
+    /// Re-indexes from a whole building list when `version` differs from the last one indexed;
+    /// returns whether it did. `scene` names the city island's number (the buildings' island key).
+    /// A scan of `buildings`: for a test or a one-off seed, not for the window's frames (they use
+    /// ensure and on_batches).
     bool update(const std::vector<SceneBuilding>& buildings, std::uint64_t version,
                 const render::Scene& scene);
+    /// Rebuilds the index from the city island's own buildings (`local`; others are ignored).
+    /// O(local city). Counted by rebuilds().
+    void seed(std::span<const SceneBuilding> local, const render::Scene& scene);
+    /// Follows the batches the window took (PlayFollower::set_batch_observer) without a rebuild:
+    /// a delta of the city's island adds or removes its tiles, a delta of another island is one
+    /// comparison and nothing else, and a resync batch reseeds from its list. Does nothing while
+    /// the tool is disabled (`enabled` false): the index is then stale and ensure() reseeds it
+    /// when the tool is on again. Returns whether the index changed. Window thread.
+    bool on_batches(const std::vector<std::shared_ptr<const BuildingBatch>>& batches,
+                    const render::Scene& scene, bool enabled);
+    /// Seeds from the picture's per-island list when the index was never built or went stale
+    /// (the tool was disabled, or the first frame); O(1) otherwise and while disabled.
+    bool ensure(const ScenePicture& picture, const render::Scene& scene, bool enabled);
+    /// Whether the index changed since the last call (the window refreshes its title then).
+    [[nodiscard]] bool take_changed() {
+        const bool c = changed_;
+        changed_ = false;
+        return c;
+    }
+    /// Deltas of the city's island applied incrementally, and batches reseeded (a test counts
+    /// them next to rebuilds()).
+    [[nodiscard]] std::size_t deltas_applied() const { return deltas_applied_; }
     struct Verdict {
         /// A known refusal (its basis is in `text`); false: unchecked or nothing to check.
         bool refused = false;
@@ -85,11 +113,23 @@ class PlacementKnowledge {
   private:
     DevToolSetup setup_;
     std::optional<std::uint64_t> version_;
-    std::set<std::pair<std::int32_t, std::int32_t>> occupied_;
+    /// Tiles of the city's island covered by published buildings, with how many cover each.
+    std::map<std::pair<std::int32_t, std::int32_t>, std::uint32_t> occupied_;
+    std::optional<std::uint32_t> number_;
+    bool seeded_ = false, stale_ = true, changed_ = false;
+    std::size_t deltas_applied_ = 0;
+    void add_tiles(const SceneBuilding& b, int sign);
     /// Whether the last update built the index (the city's island in the scene, a registry).
     bool indexed_ = false;
     std::size_t rebuilds_ = 0;
 };
+
+/// Wires `knowledge` to `follower`'s batches the way the window does (round ee review, R4): every
+/// take is followed incrementally (PlacementKnowledge::on_batches) while `tool` is enabled. The
+/// window calls PlacementKnowledge::ensure each frame for the first seed and after a disabled
+/// spell. `knowledge`, `tool` and `follower` must outlive the observer (clear it with
+/// `follower.set_batch_observer({})` first otherwise).
+void attach_occupancy(PlayFollower& follower, PlacementKnowledge& knowledge, const DevTool& tool);
 
 /// The feedback line for the title: the tool's state (dev_tool_status), the money and the
 /// selected type's cost goods from `snapshot` (with its turn), the preview's knowledge, and the

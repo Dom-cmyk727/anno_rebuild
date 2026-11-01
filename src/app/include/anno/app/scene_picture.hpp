@@ -127,6 +127,10 @@ class ScenePicture {
     [[nodiscard]] std::shared_ptr<const render::Scene> scene() const { return current_; }
     /// The picture's buildings (the desired state), sorted by building_before. Window thread.
     [[nodiscard]] const std::vector<SceneBuilding>& buildings() const { return picture_; }
+    /// The picture's buildings of island `number` (the desired state, in batch order), from the
+    /// per-island index; empty for an island without any. O(1): no scan of buildings() (round ee
+    /// review, R4). Window thread; valid until the next apply().
+    [[nodiscard]] const std::vector<SceneBuilding>& island_buildings(std::uint32_t number) const;
     /// Advances whenever apply() changes buildings() (round ee: a reader that indexes the list
     /// rebuilds its index only then). Window thread.
     [[nodiscard]] std::uint64_t buildings_version() const { return buildings_version_; }

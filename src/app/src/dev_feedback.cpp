@@ -135,19 +135,80 @@ bool PlacementKnowledge::update(const std::vector<SceneBuilding>& buildings, std
         return false;
     }
     version_ = version;
+    seed(buildings, scene);
+    return true;
+}
+
+void PlacementKnowledge::seed(std::span<const SceneBuilding> local, const render::Scene& scene) {
     ++rebuilds_;
     occupied_.clear();
     indexed_ = false;
+    seeded_ = true;
+    stale_ = false;
+    changed_ = true;
+    number_.reset();
     const auto index = city_island(scene, setup_.island);
     if (!index || !setup_.registry) {
-        return true;
+        return;
     }
     indexed_ = true;
-    const std::uint32_t number = scene.islands[*index].number;
-    for (const SceneBuilding& b : buildings) {
-        if (b.island != number) {
+    number_ = scene.islands[*index].number;
+    for (const SceneBuilding& b : local) {
+        if (b.island == *number_) {
+            add_tiles(b, +1);
+        }
+    }
+}
+
+bool PlacementKnowledge::on_batches(
+    const std::vector<std::shared_ptr<const BuildingBatch>>& batches, const render::Scene& scene,
+    bool enabled) {
+    if (!enabled) {
+        stale_ = true; // the batches are not followed while the tool is off; ensure() reseeds
+        return false;
+    }
+    if (!seeded_ || stale_) {
+        return false; // ensure() seeds from the picture, which already has these batches or will
+    }
+    if (!indexed_ || !number_) {
+        return false;
+    }
+    bool changed = false;
+    for (const auto& batch : batches) {
+        if (batch->resync) {
+            seed(batch->full, scene); // the list after the batch replaces everything
+            changed = true;
             continue;
         }
+        for (const BuildingDelta& d : batch->deltas) {
+            if (d.building.island != *number_) {
+                continue; // another island: nothing to index (one comparison)
+            }
+            add_tiles(d.building, d.kind == BuildingDelta::Kind::Added ? +1 : -1);
+            ++deltas_applied_;
+            changed = true;
+        }
+    }
+    changed_ = changed_ || changed;
+    return changed;
+}
+
+bool PlacementKnowledge::ensure(const ScenePicture& picture, const render::Scene& scene,
+                                bool enabled) {
+    if (!enabled || (seeded_ && !stale_)) {
+        return false;
+    }
+    // The city island's number is the scene's; the picture keeps its buildings per island.
+    const auto index = city_island(scene, setup_.island);
+    seed(index ? std::span<const SceneBuilding>(
+                     picture.island_buildings(scene.islands[*index].number))
+               : std::span<const SceneBuilding>(),
+         scene);
+    return true;
+}
+
+void PlacementKnowledge::add_tiles(const SceneBuilding& b, int sign) {
+    {
         const sim::BuildingType* type = setup_.registry->find(sim::TypeId{b.type});
         const auto [w, h] = type != nullptr ? sim::footprint(*type, b.rotation)
                                             : std::pair<std::uint32_t, std::uint32_t>{1, 1};
@@ -160,11 +221,18 @@ bool PlacementKnowledge::update(const std::vector<SceneBuilding>& buildings, std
         const std::int64_t y1 = std::min(by + h, std::int64_t{setup_.island.y0} + setup_.island.h);
         for (std::int64_t y = std::max<std::int64_t>(by, setup_.island.y0); y < y1; ++y) {
             for (std::int64_t x = std::max<std::int64_t>(bx, setup_.island.x0); x < x1; ++x) {
-                occupied_.insert({static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)});
+                const std::pair<std::int32_t, std::int32_t> key{static_cast<std::int32_t>(x),
+                                                                static_cast<std::int32_t>(y)};
+                if (sign > 0) {
+                    ++occupied_[key];
+                } else if (const auto it = occupied_.find(key); it != occupied_.end()) {
+                    if (--it->second == 0) {
+                        occupied_.erase(it);
+                    }
+                }
             }
         }
     }
-    return true;
 }
 
 bool PlacementKnowledge::occupied(sim::TileXY tile) const {
@@ -178,7 +246,7 @@ bool PlacementKnowledge::occupied_in(std::int64_t x0, std::int64_t y0, std::int6
     for (std::int64_t x = x0; x < x1; ++x) {
         const auto it =
             occupied_.lower_bound({static_cast<std::int32_t>(x), static_cast<std::int32_t>(y0)});
-        if (it != occupied_.end() && it->first == x && it->second < y1) {
+        if (it != occupied_.end() && it->first.first == x && it->first.second < y1) {
             return true;
         }
     }
@@ -210,6 +278,8 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
     // and no tile list is made. What passes lies inside the island, so the occupancy test below
     // costs at most one lookup per column of the admitted region.
     const auto extent = tool.input().footprint_extent(*hover);
+    // A zero-sized definition cannot come from the validating registry builder (the sim's rule,
+    // F25); the branch keeps the check closed for a registry that does not validate.
     if (!extent || extent->w == 0 || extent->h == 0) {
         v.refused = true;
         v.text = "would be refused: the type has a zero-sized footprint";
@@ -322,6 +392,15 @@ std::string feedback_line(const DevTool& tool, const PlacementKnowledge::Verdict
         }
     }
     return s;
+}
+
+void attach_occupancy(PlayFollower& follower, PlacementKnowledge& knowledge, const DevTool& tool) {
+    follower.set_batch_observer(
+        [&follower, &knowledge, &tool](const std::vector<std::shared_ptr<const BuildingBatch>>& b) {
+            if (const auto scene = follower.picture().scene()) {
+                knowledge.on_batches(b, *scene, tool.enabled());
+            }
+        });
 }
 
 std::string drawn_note(const std::optional<CommandOutcome>& latest,

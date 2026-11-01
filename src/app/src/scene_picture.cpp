@@ -967,6 +967,12 @@ void ScenePicture::wait_idle() {
     state_->idle.wait(lock, [this] { return state_->jobs.empty() && state_->running == 0; });
 }
 
+const std::vector<SceneBuilding>& ScenePicture::island_buildings(std::uint32_t number) const {
+    static const std::vector<SceneBuilding> none;
+    const auto it = by_island_.find(number);
+    return it == by_island_.end() ? none : it->second;
+}
+
 std::size_t ScenePicture::pending() const {
     const std::lock_guard lock(state_->mutex);
     return state_->dirty.size();

@@ -11,10 +11,16 @@ so an adversarial map cannot stall a tick; exceeding a limit returns `BudgetExce
   unreachable goal still floods the whole window.
 - `fine_pops`: every pop of the fine Dijkstra, over all retries. The flood stops when the chosen goal tile is labelled
   (output-identical: labels never change after discovery).
+- `unit_cap` is validated to at most 1024: the density work of one search is `unit_cap x 64 candidates x goal cells`, at most about
+  6 million operations per query at the bound (9 searches, 9 goal cells) and 0.4 million at the default 64. This replaces counting
+  density work in the pop budgets.
 - `memory_bytes`: **logical** sizes only (element count times element size, never `capacity()`, which differs between standard
   libraries and would make the verdict platform dependent): the window arrays (label, flag, fine-block ordinal: 6 bytes per
   coarse cell), the two heaps, the corridor's fine blocks (64 bytes each) and ordinals, the coarse path, the learned list, the trace and the
-  result runs. High-water mark in `RouteWork::bytes_high`.
+  result runs. Every allocation that can grow with the map or the path (the coarse path, each corridor block, each heap node, each
+  trace step and run) is accounted BEFORE it is made (`grow`), so a large `max_window_blocks` cannot overshoot: a failing query's
+  high-water mark is at most one refused allocation (68 bytes) above the limit (`route limits: memory is checked before every
+  allocation`, swept over 38 limits with a valid control). High-water mark in `RouteWork::bytes_high`.
 - `max_window_blocks` (32 = the original `SetWindow` limit) is checked on the start-centred window before anything is allocated;
   a larger window is `BudgetExceeded{Window}` (the original answers -2 for the same case).
 
@@ -30,8 +36,8 @@ Release of the numbers: `anno_sim_tests -tc='route*'` (the real-island case need
 | fixture V21, bay with two learned masks | 172 | 1,433 | 2 | 1,804 |
 | fixture V22, diagonal-only wall (unreachable) | 36 | 0 | 0 | 480 |
 | largest of the 24 route-run vectors | 172 | 1,433 | - | 2,420 |
-| real candidates a, b, c: 30 seat-to-seat routes (1431 x 1431 world, window 179 x 179 cells) | max 23,428 | max 26,567 | 0 | max 212,931 |
-| real candidates: the 15 witness queries | max 22,322 | max 3,169 | 0 | max 195,238 |
+| real candidates a, b, c: 30 seat-to-seat routes (1431 x 1431 world, window 179 x 179 cells) | max 22,691 | max 26,523 | 0 | max 215,724 |
+| real candidates: the 15 witness queries | max 22,324 | max 3,169 | 0 | max 196,434 |
 | synthetic 2048 x 2048 sea, diagonal 1016 tiles from the middle (window 256 x 256 cells) | 39,117 | 32,302 | 0 | 442,568 |
 | same sea, 1000 tiles west | 65,421 | 8,059 | 0 | 405,396 |
 | same sea, unreachable goal (the full flood of every cell) | 65,487 | 0 | 0 | 405,252 |
@@ -47,6 +53,7 @@ learned masks; the learned-mask retries are exercised by the emulated vectors (u
 | `coarse_budget` | 600,000 | 65,487 (full window flood) | 9.2x; also above 9 x 65,536 = 589,824, the most pops the original-sized window can cost in 9 searches (retry cap 8 + 1), so a query the original completes on its window is never refused |
 | `fine_budget` | 4,000,000 | 32,302 | 124x; corridor flood of a 1016-tile diagonal. A 4096-tile world path (about 1,500 corridor cells, 9 searches) costs about 0.9 million |
 | `memory_bytes` | 64 MiB | 442,568 | 151x |
+| `unit_cap` (validated maximum 1024) | 64 | - | the original value; bounded for the density work |
 | `window_radius_tiles` | 1024 | - | the original value |
 | `max_window_blocks` | 32 | - | the original value |
 | `goal_radius_tiles` | 6 | - | the original value |

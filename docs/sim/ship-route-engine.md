@@ -56,21 +56,50 @@ if the goal tile is unlabelled one connectivity bit of a path cell is cleared (`
    cost entries of the original table are uniform for ship class 0 and are not modelled.
 7. **Learned count.** `RouteWork::learned` is the number of masks applied; when the cap refuses a retry `retry_cap_hit` is set
    (the original resets its own count to 0 on that path; the fixtures' `learned` column shows 0 there).
-8. **Shore band (type 3) is an input** (`CoastIndex(source, shore_cells)`), pass 2 of the builder was not re-executed. An
-   incremental `rebuild_rect` updates only the cells of the rectangle, as the original rebuilds only the changed rectangle.
+8. **Shore band (type 3) is derived** from the island block records (`TileSource::block_range`, `WorldTileSource` for aligned island
+   blocks) exactly as pass 2 of `0x100aae00`: the cell's sector holds an island block and the cell or one of its 8 neighbours inside
+   the world has a record with `32 < 2 max` and `32 > 2 min` (halved heights). 60 worlds from the real builder under emulation match
+   cell for cell (`builder_vectors.txt`); explicit `shore_cells` can be added on top (tests, mods). `rebuild_rect` recomputes masks
+   for the cells of the rectangle and cost types for them plus a one-cell halo (a record changes its 8 neighbours); it assumes island
+   COVERAGE did not change (use a full rebuild for that). Islands that are not aligned blocks have no records and no band.
 9. **Object terrain.** `base` (rec[4], the placed item's height byte) defaults to 0 because the sim does not carry it; the 11
    height-map types use their scalar; the exact floor of the f32 value is used (x87 precision CAP-2 unknown).
    `WorldTileSource` uses the block shortcut only for 8-aligned islands whose size is a multiple of 8, else the tiles.
-10. **Stamps are a caller input** (tiles, in registry scan order, first `unit_cap` used). Building them from the figure registry
-    belongs to the movement packages.
+10. **Stamps.** `plan_route` takes stamp tiles (first `unit_cap` used). `local_ship_stamps` (`route_stamps.hpp`) builds them from a
+    minimal `ShipSpatialView` (ships per 16 x 16-tile cell): cells overlapped by the radius only, z-cell then x-cell then ascending
+    id (ADAPTATION of the registry's insertion order), `d^2 <= r^2` inclusive, `state & 0xa == 0`, ship group, stop at `unit_cap` hits
+    (the planning ship and direction-less ships count against the cap, as in the original), stamp = `pos + dir * 25` truncated
+    exactly in 2^-24 units. The f32 sum of the original can differ from the exact one by a tile only when the point lies within
+    about 2^-14 tile of a tile border at positions above 1000 (not modelled).
 11. **Test hook in production code.** `route_detail::Perturbation` / `plan_route_perturbed` are compiled into the library (no
     `#define` is allowed in the sim); production code calls `plan_route`, which passes the default.
 12. **Goal cell for goals outside the window** is `trunc((x - window origin) / 8)` (the original's `ftol((x - x0) * 0.125)`, DERIVED
     for negative offsets); only fixtures `goal_off_map_west` touches it and agrees.
 
+## What the order tests pin (and one order that is unobservable under the default costs)
+
+`route_unit_test.cpp` ("every wrong order, tie, cost or score rule ...") runs eleven deliberate mutants over 514 emulated vectors
+(route_runs, route_emulated, route_ties, route_ties_cost, route_scores); each walks a LEGAL route and each differs from the
+original's exact runs / end tile / best score in at least one vector: reversed fine order, LIFO fine ties, fine diagonal cost 20,
+LIFO coarse ties, fine NW<->NE, SW<->SE and W<->E swapped, coarse perpendicular turns swapped, coarse start order W,E,N,S, the
+straight step tried first, and a rounding score (the truncation `ftol(64 d^2)` is pinned by 120 arbitrary-goal vectors whose `64 d^2`
+is not a multiple of 1024, with the engine's own `best`).
+**Unobservable under the default costs:** the coarse order "straight step first versus last". A straight step costs `orth` (10)
+and a turn `diag - orth` (3), different values, so the heap orders the three children by cost; the discovery order inside one
+expansion only ranks children of equal cost, and two nodes of different expansions never interleave their sequence numbers (each
+expansion takes a contiguous block). The order is therefore pinned with a patched cost table (`route_ties_cost.txt`: class 0
+coarse costs 3 / 6 in the original's table under emulation, a turn costs a straight step) where it does change results.
+
+## Pointers and lifetime (not simulation state)
+
+`CoastIndex` holds a raw pointer to its `TileSource`; `WorldTileSource` holds raw pointers to the islands and the type registry (and
+`RouteTerrainOptions::item_base` is a callback). Both are derived, never saved, hashed or part of a checksum. They must be rebuilt
+or `rebind`-ed after a `World` copy, move, load or resync, and nothing may change the world while a plan runs on them. The item
+height byte `base` (rec[4]) is supplied by `RouteTerrainOptions::item_base`: the sim does not carry it today (0); the owner of the tile
+record (a later stream version, with the placement code) supplies it.
+
 ## Open questions for the orchestrator
 
-- Pass 2 of the coarse builder (shore band rule) as a derived function, to be validated against the unicorn builder before use.
 - The sim's tile record has no item height byte (rec[4]): add it with the next stream version if object blocking must match the
   original on coastal buildings (they carry 48 in the corpus).
-- Partial last sectors (item 3).
+- Partial last sectors (item 3, `docs/open-questions.md` OQ-NAVC-1).

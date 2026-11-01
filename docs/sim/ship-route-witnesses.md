@@ -16,31 +16,38 @@ whole 1431 x 1431 world) from the spawn tile to the centre of the witness water 
 tile with an independent legality check (`route_world_test.cpp`: every entered tile water, a diagonal step needs both side tiles,
 bounds). The land rule is the original's: a tile is water iff `floor(sum of its four corner vertices / 4) <= 19`, with the zero
 padding beyond the island, plus the object predicate `((h + base) & 0xff) > 19` with `base = 0` (the sim does not carry the placed
-item's height byte, see *Caveats*). The shore band (type 3) is not derived (named dependency, pass 2 of the coarse builder was not
-re-executed): the coarse cost of band cells is 10 everywhere here.
+item's height byte, see *Caveats*). The shore band (cost type 3, 50/69 against 10/13) is DERIVED from the island block records by
+`CoastIndex` exactly as pass 2 of the original builder does (validated against the builder under emulation, 60 worlds, cell for
+cell: `fixtures/synthetic/sim/nav/builder_vectors.txt`); this report was re-run with the derived band (revision 2 of the report: the
+first revision ran without any band).
 
 ## Result
 
 All 15 witnesses are found (status `Planned`), every route walks legally, none needed a learned coarse mask, and every route ends
-within the goal radius. Fourteen end exactly on the witness water tile.
+within the goal radius, with the derived shore band in the coarse map (315 / 337 / 404 allocated sectors on candidates a / b / c). Fourteen end exactly on the witness water tile.
 
 | cand | seat | island | tool cost (Manhattan) | status | engine steps (8-connected) | runs | end tile | witness water tile | d^2 | witness tile under the original rule |
 |---|---|---|---|---|---|---|---|---|---|---|
 | a | 0 | 110 | 267 | Planned | 205 | 22 | (107,618) | (107,618) | 0 | water |
-| a | 1 | 101 | 103 | Planned | 74 | 8 | (623,754) | (623,754) | 0 | water |
+| a | 1 | 101 | 103 | Planned | 74 | 9 | (623,754) | (623,754) | 0 | water |
 | a | 2 | 8 | 125 | Planned | 111 | 12 | (1118,791) | (1118,791) | 0 | water |
 | a | 3 | 106 | 153 | Planned | 88 | 10 | (1036,152) | (1036,151) | 1 | object |
-| a | 4 | 9 | 49 | Planned | 46 | 6 | (183,1146) | (183,1146) | 0 | water |
+| a | 4 | 9 | 49 | Planned | 46 | 7 | (183,1146) | (183,1146) | 0 | water |
 | b | 0 | 0 | 86 | Planned | 86 | 10 | (284,242) | (284,242) | 0 | water |
 | b | 1 | 111 | 121 | Planned | 108 | 15 | (786,137) | (786,137) | 0 | water |
 | b | 2 | 125 | 143 | Planned | 143 | 16 | (227,718) | (227,718) | 0 | water |
 | b | 3 | 103 | 99 | Planned | 86 | 10 | (814,613) | (814,613) | 0 | water |
 | b | 4 | 127 | 44 | Planned | 44 | 5 | (1200,456) | (1200,456) | 0 | water |
 | c | 0 | 0 | 61 | Planned | 45 | 8 | (262,137) | (262,137) | 0 | water |
-| c | 1 | 123 | 52 | Planned | 45 | 5 | (861,595) | (861,595) | 0 | water |
+| c | 1 | 123 | 52 | Planned | 45 | 7 | (861,595) | (861,595) | 0 | water |
 | c | 2 | 114 | 130 | Planned | 108 | 13 | (1006,136) | (1006,136) | 0 | water |
 | c | 3 | 3 | 72 | Planned | 72 | 8 | (1120,528) | (1120,528) | 0 | water |
 | c | 4 | 5 | 101 | Planned | 87 | 11 | (273,934) | (273,934) | 0 | water |
+
+Effect of the derived shore band (compared with the first revision of this report, which ran with every coarse cell open): the
+step counts, the end tiles and the statuses are identical for all 15 witnesses; the run lists changed for three (candidate a seat 1:
+8 to 9 runs, a seat 4: 6 to 7, c seat 1: 5 to 7), i.e. the coarse search now bends around band cells that the Manhattan tool ignores,
+and the coarse work grew (largest witness query 22,324 coarse pops, was 22,322). No witness is lost to the band.
 
 Differences against the tool:
 
@@ -64,13 +71,17 @@ Differences against the tool:
 
 ## Caveats (named, not hidden)
 
-- `base = 0`: the placed item's height byte (`rec[4]`, `state >> 8`) is not carried by the sim (`TileLayer::aux` is a stand-in
+- `base = 0` (an input hook, `RouteTerrainOptions::item_base`; whoever adds the item height byte to the tile record in a later stream version supplies it): the placed item's height byte (`rec[4]`, `state >> 8`) is not carried by the sim (`TileLayer::aux` is a stand-in
   that every loader leaves at 0). The original adds it to the object height; coast buildings carry 48 in the corpus statistics
   (`RA3` section 2.5), so with the real byte more object tiles block than here. The result for witness a/3 can only get stricter.
 - The 11 object types with a height map (1020, 1021, 2701-2708, 2740) use their scalar in the adapter; the original uses the map.
 - The x87 precision of the original is unknown (CAP-2): 29 types differ by one height unit between 24- and 53-bit precision;
   the port takes the exact value.
-- The shore band is not derived; a cost-only effect (and only for routes that cross band cells).
+- The shore band is derived from the island block records of ALIGNED island blocks (origin and size multiples of 8); the candidates'
+  islands are all aligned. Other islands would have no records and no band.
+- Zone near the world edge: the world is 1431 tiles wide (not a multiple of 8 or 64); the port treats tiles beyond the edge as land
+  (OQ-NAVC-1). The witnesses end at x <= 1200 and z <= 1146 and the seat spawns start at x <= 1108, z <= 680: all more than 200 tiles
+  from the east and south edge, so none depends on that choice.
 - A chosen candidate would still need the planned `MoveCmd`/stepper packages; this report covers the route query only.
 
 ## Reproduction

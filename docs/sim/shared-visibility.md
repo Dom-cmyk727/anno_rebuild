@@ -107,7 +107,7 @@ participant sets (e.g. {1,3,4}) are supported; non-default ids come from the dat
 | 3 | P's founding: group members appear in the new city's mask, island presence, discovered ore; reveal of an older city reaches the group | synthetic + real loader |
 | 4 | non-members (existing player outside the group) acquire nothing | synthetic |
 | 5 | unexplored info stays unknown: before any founding nothing is set; a city beyond reach is not in any mask | real loader |
-| 6 | sharing off (original scenario, empty policy): founding outcomes identical to stream 120 (existing founding tests unchanged); only the version-driven hashes move | corpus + founding tests |
+| 6 | sharing off (original scenario, empty policy): founding outcomes identical to stream 120 (existing founding tests unchanged); hashes move through the version, and for scenarios with a non-zero player `DISCO` also through the restored contact bits (section 9) | corpus + founding tests |
 | 7 | different participant set and non-default ids; absent member refused; unsorted/duplicate/overlapping groups refused; non-peace refused | unit |
 | 8 | save/load and replay reproduce the hashes; a refused creation or founding leaves bytes/PRNG unchanged | unit + CLI replay |
 | 9 | stream 121: a 120 save is refused with the version message; valid control | version guard |

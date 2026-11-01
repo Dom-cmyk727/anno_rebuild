@@ -8394,3 +8394,39 @@ Load `DISCO` once its link to property 7 is read, and decide the five-ship start
 
 ### Final integration review
 Fresh reviewer on `84b7f79`: APPROVED, no P1/P2. P3 applied in `4f22cf6`: a non-finite or huge OCCUR position is refused (it would have been an undefined cast on a malformed file; new test), a mixed-parity stage-2 test (a swapped-term mutant is caught), supersession tags on the older contract lines (16.1 row 8, Q1, C8, Q-kind). The gate was re-run on `4f22cf6` (counts above). Unresolved owner decisions: C5 initial relations of the five-ship start; whether kind 11 should wait for a port of the CompLogic island-record bookkeeping; whether `tEvent` posts are needed for campaign scripts.
+
+## MAP.2 — MAP-FOUND-3: hull safety, replay status gate, digest oracle, peace/shared-visibility start, canary (2026-11-01) — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like` (Mac, Apple Clang, `-Werror`). Baseline docs `f0812cd`, code `4f22cf6`; **code head `92d4e04`** (final gates), documentation/ledger head recorded in the last commit of the branch. No merge, rebase, push, cherry-pick or reset; nothing under `game/`, `data/`, candidates, the active map, `test_support`, the coordinator or W4's worktree was touched; no candidate selected or installed, no spawn moved, no island equalised, no territory granted.
+
+### Effective start policy (owner decision C5; an explicit ADAPTATION, not an original-Anno claim)
+The five-ship start is **at peace** (no `DIPL` row exists; TRADE/MILIT/WAR all 0), **with shared visibility** (`Rules::shared_visibility`, default one group of the five seats, participants explicit data via `ShipStartPolicy`) and **without alliances** (no relation byte is ever written; the original's MILIT==3 registration marking is untouched and separate). Sharing mirrors what a member's founding actually reveals (new city's mask, island presence, ore discovery, the reveal's visited city and the resulting contact) to the group; it reveals nothing at start and grants no land or right. Original loaded scenarios have sharing off. Contract/evidence/acceptance: `docs/sim/shared-visibility.md`.
+
+### Acceptance per package
+| Package | Result | Commit(s) | Independent review |
+|---|---|---|---|
+| A hull domain | done: one domain `|hull| < 2^39` raw units enforced at the registry seal (builder and file paths), veto saturates before arithmetic; absent/zero/positive/shipped negative (type 391) preserved. First UBSan failure retained (`14208 + INT64_MAX` at `figure_veto.cpp:93`; builder accepted INT64_MAX): `cache/map2-found3/A/` | `f4d0bbd` | APPROVED, no findings |
+| B replay status | done: all replay run cases use `RunToolExpectError.cmake` (exit status AND output); `CheckToolCheckContract.cmake` proves rejection of right-text/wrong-status (both ways), right-status/wrong-text, no output, failed launch; real `m2_found.log` (0) and `m2_found_wrong.log` (1); required in the gate with `--require-test` | `9654b19` | APPROVED (8 lenient mutants rejected) |
+| C digest oracle | done: `tools/figure_digest_ref.py` (independent, from the written contract 17.3a) + 15 vectors; field-count guard; hand-derived non-empty ore wire bytes; CTest `figure_digest_reference_agrees`. No persisted layout changed in C | `f48ac6d`, follow-up | APPROVED with minors applied |
+| D start policy | done: contract reviewed before implementation (CHANGES REQUIRED, applied), DISCO/relation evidence (player `DISCO` = property 7, AnnoWelt `0x1001d61d`; loader implemented), `Rules::shared_visibility`, world-level peace + membership invariant (create and load), founding mirror, `ShipStartPolicy`, stream **121** (distinct version, goldens re-baselined, Python transcription agrees), version guards `{…,120}` | `f971e3d`, `581e9e9`, `052be30`, `b904e78` | CHANGES REQUIRED (one missing test, two doc items) then corrected |
+| E canary + closeout | done: real-candidate canary (five ships/crews, no city; two founders, payments, ownership, mirrored sets, a refused conflict without leak, replay from the log's own save); ships relocated beside engine-validated sites **as fixture setup, not a sailed route** | `d53b143` | see final integration review |
+
+### Gates (final code `92d4e04`, clean tree; macOS arm64 Debug and ASan/UBSan; binary hashes `cache/map2-found3/final/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---|---|---|---|---|
+| focused (sim) | 171 | 171 | 0 | 0 | 0 |
+| sim, all | 836 | 835 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| replay-contract + digest reference (`anno_sim_replay`, `figure_digest_reference`; required: check_contract, founding_run, founding_wrong_run, figure_digest_reference_agrees) | 37 | 37 | 0 | 0 | 0 |
+| ASan+UBSan focused | 171 | 171 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 836 | 835 | 0 | 0 | 1 (opt-in) |
+Also: `lint_sim`, `clang-format --dry-run`, `sim_stream.py --check` (goldens agree), `figure_digest_ref.py --check`, coast/territory fixture checks all 0; CLI replay `g2`–`g6` and `m2_found.log` exit 0 with every checkpoint matched, `m2_found_wrong.log` DIVERGED at entry 3, exit 1. Disclosure: the first headless gate invocations in the final script exited 5 with `build/mac-headless.run.lock: File exists` (a stale lock left by my own earlier killed attempt; no tests ran); the saved logs `hl-*.log` are the reruns after removing that lock. **NOT_RUN:** Windows MSVC, Linux/WSL GCC/Clang `-Werror`, the Linux sanitizer lane, any run of the original game. A local Mac result is not cross-platform acceptance.
+
+### Mutation evidence (scratch `cache/map2-found3/mutate_d.py`)
+8 of 9 policy mutants killed; the survivor removes the filter that skips a group member absent from the player table, which `check_invariants` already makes unreachable (equivalent mutant, defence in depth); a tenth (peer rule replaced by the group) was added after the review and is killed.
+
+### Identities
+Candidate geometry = manifest `content_hash` (unchanged, candidate files unchanged). Gameplay setup = the world's rules digest / state hash / replay header (stream 121; every hash moves through the Rules layout, sharing-off outcomes are unchanged — the independent Python transcription agrees for every golden it models).
+
+### Remaining fidelity/platform limits
+Original: kind-11 city-number reuse is refused conservatively, loaded COMP records uncertain, discovery-event consumers and the first-discovery event are not modelled, file-loaded ore objects are not mineable deposits. The shared state is headless information (contact/masks/discovered sets), **not** rendered fog; sailing, diplomacy commands, fog rendering and full-map visibility are not built. UNKNOWN: readers of property 7, relation values other than 0/3, whether the 46 shipped `0xcdcdcdcd` DISCO values survive at runtime. Disclosed behaviour change to ORIGINAL loaded scenarios: non-zero player `DISCO` records now restore contact bits for existing players (corpus re-baselined). Peace is checked at creation/load, not maintained (no diplomacy commands exist).

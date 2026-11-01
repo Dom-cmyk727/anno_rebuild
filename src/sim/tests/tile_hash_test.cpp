@@ -682,6 +682,8 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     }
     is.climate = 4;
     is.lock = 3;
+    is.city_cursor = 5;
+    is.kontor_counter = 0x01020304U;
     is.next_serial = 9;
     is.sweep = {0x1111, 1, 2, 3, 4};
     is.event300_stamp = 0x2222;
@@ -696,7 +698,9 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     want.u32(3);
     want.u32(2);
     want.u32(4);
-    want.u8(3); // lock (stream 118)
+    want.u8(3);            // lock (stream 118)
+    want.i32(5);           // city_cursor (stream 119)
+    want.u32(0x01020304U); // kontor_counter (stream 119)
     want.u32(9);
     want.u64(0); // no terrain
     want.u16(0x1111);

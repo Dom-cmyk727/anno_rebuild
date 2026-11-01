@@ -78,8 +78,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 118
-PRNG_TIMELINE_VERSION = 2
+STATE_HASH_VERSION = 119
+PRNG_TIMELINE_VERSION = 3
 
 
 def fnv(data, h=0xCBF29CE484222325):
@@ -248,12 +248,16 @@ def settings_bytes(width=0, height=0):
             + u8(0) + u32(0) + u8(0) + u8(0) + u32(3) + u32(100))
 
 
-def rng_table_digest():
+def rng_values():
     x, values = 1, []
     for _ in range(2048):
         x = (x * 214013 + 2531011) & 0xFFFFFFFF
         values.append((x >> 16) & 0x7FFF)
-    return fnv(b''.join(u16(v) for v in values))
+    return values
+
+
+def rng_table_digest():
+    return fnv(b''.join(u16(v) for v in rng_values()))
 
 
 def player_table_after(steps, step_ms):
@@ -406,7 +410,7 @@ def index_digest(stamp, lists):
 
 
 def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
-                index_stamp=0, cursors=None):
+                index_stamp=0, cursors=None, name=b''):
     """One present city. buildings_by_list: {list id: (hint, [bytes or None, ...])};
     a list that is not given is a fresh one (hint -1, cursor 0, one empty slot).
     cursors: {list id: scheduler cursor}; index_stamp: the index's shared stamp."""
@@ -423,6 +427,7 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
                                          for _ in range(WAREHOUSE_GOODS))
     b += u64(BUILD_GOODS) + b''.join(u32(0) + u64(0) for _ in range(BUILD_GOODS))
     b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
+    b += u64(len(name)) + name  # stream 119: city property 0x12 (u64 length, bytes)
     b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
@@ -444,14 +449,15 @@ def farm_bytes(out=0, raw=0):
             + STATUS_NONE)
 
 
-def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload):
+def building_bytes(serial, island, type_id, x, y, byte0e, tag, payload, kontor_id=0):
+    # rotation, byte0e, byte0f, u32 kontor_id (stream 119), payload tag, payload
     return (u64((island << 32) + serial) + u32(type_id) + struct.pack('<i', x)
-            + struct.pack('<i', y) + u8(0) + u8(byte0e) + u8(0) + u8(tag) + payload)
+            + struct.pack('<i', y) + u8(0) + u8(byte0e) + u8(0) + u32(kontor_id) + u8(tag) + payload)
 
 
 def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, terrain=None,
                   cities=None, next_serial=1, sweep=(0, 0, 0, 0, 0), e300=0, objmgr=(0, 0),
-                  ring=(0, 0), lock=0):
+                  ring=(0, 0), lock=0, city_cursor=-1, kontor_counter=1):
     tiles = [[0, 0, NEUTRAL_OWNER, 0, 2, 0, 0, 0, 0, 0] for _ in range(w * h)]
     at = 0
     for owner, length in owner_runs:
@@ -476,7 +482,8 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
             tiles[index][9] = 1
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
-         + u32(climate) + u8(lock) + u32(next_serial) + u64(td))
+         + u32(climate) + u8(lock) + struct.pack('<i', city_cursor) + u32(kontor_counter)
+         + u32(next_serial) + u64(td))
     b += u16(sweep[0]) + b''.join(u32(v) for v in sweep[1:])   # sweep: stamp, grow x/y, fauna x/y
     b += u16(e300)                    # event300_stamp
     b += u16(objmgr[0]) + u32(objmgr[1])    # objmgr
@@ -569,10 +576,13 @@ class IslandSim:
             self.tick((ms >> 1) & M32)
 
 
-def two_island_scenario(steps=0, step_ms=10, locks=None):
+def two_island_scenario(steps=0, step_ms=10, locks=None, extra_city=None):
     """synthetic::two_island_scenario() after `steps` advances: (players, island
     digests by slot). `locks` maps a slot to its LOCKED byte (stream 118; default 0)."""
     locks = locks or {}
+    # extra_city = (number, owner, stamp, name): a city created on island 0 by the city creation
+    # operation (docs/sim/city-creation.md): stamp in the city's tick stamp and its index stamp,
+    # the name from the draw, the island's allocation cursor on that slot.
     players = {0: new_player(0), 1: new_player(1, kind=12, money=25000, name=b'AI')}
     height = [i % 7 for i in range(600)]
     gfx = [(i * 3) & 0xFFFF for i in range(600)]
@@ -590,17 +600,23 @@ def two_island_scenario(steps=0, step_ms=10, locks=None):
         c = sim.cities[no]
         return city_digest(no, owner, tick_stamp=c['tick_stamp'], index_stamp=c['index_stamp'],
                            cursors=c['cursor'])
+    cities0, cursor0 = {0: city(sim0, 0, 0)}, 0
+    if extra_city is not None:
+        no, owner, stamp, name = extra_city
+        cities0[no] = city_digest(no, owner, tick_stamp=stamp, index_stamp=stamp, name=name)
+        cursor0 = no
     islands = {
         0: island_digest(0, 100, 100, 64, 64, 2, [(15, 128), (0, 64 * 62)],
                          [(200, 1201, 0), (201, 1202, 3), (4095, 1203, 7)],
                          [(b'EISENERZ', 110, 120, 2000 * 256, True)],
-                         cities={0: city(sim0, 0, 0)}, lock=locks.get(0, 0), **state(sim0)),
+                         cities=cities0, lock=locks.get(0, 0), city_cursor=cursor0,
+                         **state(sim0)),
         3: island_digest(3, 300, 200, 30, 20, 6, [(1, 300)],
                          [(0, 2001, 0), (599, 2002, 1)],
                          [(b'GOLD', 301, 202, 123456, False),
                           (b'STEINE', 329, 219, 2000 * 256, True)],
                          (height, gfx, fertility), cities={1: city(sim3, 1, 1)}, lock=locks.get(3, 0),
-                         **state(sim3)),
+                         city_cursor=1, **state(sim3)),
     }
     return players, islands
 
@@ -637,7 +653,7 @@ def g1_scenario(steps=0, step_ms=10):
         cities={0: city_digest(0, 0, {4: production}, tick_stamp=c['tick_stamp'],
                                index_stamp=c['index_stamp'], cursors=c['cursor'])},
         next_serial=3, sweep=tuple(sim.sweep), e300=sim.e300, objmgr=tuple(sim.objmgr),
-        ring=tuple(sim.ring))
+        ring=tuple(sim.ring), city_cursor=0)
     return {0: new_player(0)}, {0: island}
 
 
@@ -764,6 +780,18 @@ def values():
         out[key] = state_hash(registry, 1234, 10 * steps, 10 * steps // 2,
                               players_digest(stamp, cursor, slots), islands=isl,
                               world=(512, 512), steps=steps, step_ms=10, monopoly=monopoly)
+    # S5 plus one created city (stream 119): player 1 founds a city on island 0 at stamp 4242 with a
+    # three-name list; the name draw is T[(cursor + 1) mod 2048] mod 3 at the seed's cursor, which leaves
+    # the world generator one step on.
+    names = [b'Alpha', b'Beta', b'Gamma']
+    table = rng_values()
+    draw_at = (1234 + 1) % 2048
+    players, islands = two_island_scenario(0, extra_city=(1, 1, 4242, names[table[draw_at] % 3]))
+    isl = islands_digest(islands)
+    slots, stamp, cursor = table_run(players, 0, 10)
+    out['s5_islands_city_created'] = state_hash(
+        registry, draw_at, 0, 0, players_digest(stamp, cursor, slots), islands=isl, world=(512, 512),
+        steps=0, step_ms=10, monopoly=monopoly_entries([(2, [0]), (6, [1])], {0: 1, 1: 1}, 0))
     # S5 with locks (stream 118): the same scenario at creation, island 0 with LOCKED byte 2 (a raw
     # byte, not a bool) and island 3 with 1; the tick does not read the lock.
     players, islands = two_island_scenario(0, locks={0: 2, 3: 1})

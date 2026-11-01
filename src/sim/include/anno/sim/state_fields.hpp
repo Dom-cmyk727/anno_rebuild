@@ -678,7 +678,7 @@ template <class A, Same<House> S> void fields(A& a, S& s) {
     ar::seq(a, s.stock, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Building>() == 8, "a Building member needs a line in fields(Building)");
+static_assert(field_count<Building>() == 9, "a Building member needs a line in fields(Building)");
 
 /// The u8 tag of each Payload alternative in the stream: the PayloadTag values
 /// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6,
@@ -701,6 +701,7 @@ template <class A, Same<Building> S> void fields(A& a, S& s) {
     a.u8(s.rotation);
     a.u8(s.byte0e);
     a.u8(s.byte0f);
+    a.u32(s.kontor_id); // stream 119: building +0x1e
     ar::variant<kPayloadTags>(a, s.payload, [&](auto& alternative) { fields(a, alternative); });
 }
 
@@ -805,7 +806,7 @@ template <class A, Same<TradeEntry> S> void fields(A& a, S& s) {
     a.u32(s.price);
 }
 
-static_assert(field_count<City>() == 8, "a City member needs a line in fields(City)");
+static_assert(field_count<City>() == 9, "a City member needs a line in fields(City)");
 
 /// One city (docs/sim/state.md §9.3): `u32 number, u32 owner, u16 tick_stamp`, the
 /// stock (`u32 capacity`, u32 list), the goods settings, the build goods, the trade
@@ -820,6 +821,7 @@ template <class A, Same<City> S> void fields(A& a, S& s) {
     ar::seq(a, s.build_goods, 12, [&](auto& g) { fields(a, g); });
     ar::seq(a, s.trade_lists, 8,
             [&](auto& list) { ar::seq(a, list, 12, [&](auto& e) { fields(a, e); }); });
+    a.str(s.name); // stream 119: city property 0x12
     fields(a, s.index);
 }
 
@@ -855,16 +857,16 @@ template <class A, class V> void cities_io(A& a, V& cities) {
 // can count its members: index, tiles, terrain, climate, deposits, next_serial,
 // sweep, event300_stamp, drought, objmgr, ring, cities, reserved_object_count, cache
 // (the derived index cache is not in the stream).
-static_assert(field_count<Island>() == 15,
+static_assert(field_count<Island>() == 17,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
-/// u32 w, u32 h`, `u32 climate, u8 lock (118), u32 next_serial, u64 terrain_digest` (0 if none),
-/// the sweep, `u16 event300_stamp`, the object manager, the ring, the optional
-/// drought, the deposits, `u64 reserved_object_count`, scope `tiles`, scope `cities`
-/// (stage S6). The terrain itself is not in the stream (its blobs travel in the save frame, §9.5):
-/// reading leaves a placeholder that carries the digest, and the frame replaces it by the verified
-/// blobs.
+/// u32 w, u32 h`, `u32 climate, u8 lock (118), i32 city_cursor and u32 kontor_counter (119), u32
+/// next_serial, u64 terrain_digest` (0 if none), the sweep, `u16 event300_stamp`, the object
+/// manager, the ring, the optional drought, the deposits, `u64 reserved_object_count`, scope
+/// `tiles`, scope `cities` (stage S6). The terrain itself is not in the stream (its blobs travel in
+/// the save frame, §9.5): reading leaves a placeholder that carries the digest, and the frame
+/// replaces it by the verified blobs.
 template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u32(s.index.v);
     std::int32_t x0 = s.tiles.x0();
@@ -876,7 +878,9 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u32(w);
     a.u32(h);
     a.u32(s.climate);
-    a.u8(s.lock); // stream 118: the LOCKED byte (island +0xc4)
+    a.u8(s.lock);            // stream 118: the LOCKED byte (island +0xc4)
+    a.i32(s.city_cursor);    // stream 119: the ring's allocation cursor
+    a.u32(s.kontor_counter); // stream 119: island +0xc6
     a.u32(s.next_serial);
     std::uint64_t terrain = s.terrain ? s.terrain->digest : 0;
     a.u64(terrain);

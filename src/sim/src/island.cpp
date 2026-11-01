@@ -523,6 +523,13 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
     if (is.next_serial < 1) {
         return p + ".next_serial: must be at least 1";
     }
+    if (is.city_cursor < -1 || is.city_cursor >= static_cast<std::int64_t>(cfg.city_slots)) {
+        return p + ".city_cursor: " + std::to_string(is.city_cursor) + " is outside -1.." +
+               std::to_string(cfg.city_slots) + " (SimConfig.city_slots)";
+    }
+    if (is.kontor_counter < 1) {
+        return p + ".kontor_counter: must be at least 1";
+    }
     {
         const std::string problem = validate_cities(is, slot, cfg, types);
         if (!problem.empty()) {

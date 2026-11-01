@@ -70,6 +70,8 @@ struct ScenarioSpec {
         TypeId type;
         std::int32_t x = 0, y = 0;
         std::uint8_t rotation = 0, byte0f = 0;
+        /// A market's KONTID (stream 119; 0 = none), kept from the nested record.
+        std::uint32_t kontor_id = 0;
         /// nullopt = the make_* default of the type's class (a mine finds its
         /// deposit at attach); a given payload replaces it, keeps its stocks,
         /// switches and `last`, and must satisfy payload_problem for the type.
@@ -110,6 +112,8 @@ struct ScenarioSpec {
         std::uint32_t w = 0, h = 0, climate = 0;
         /// The island's LOCKED byte (stream 118): 0 when the island has no LOCKED record.
         std::uint8_t lock = 0;
+        /// The island's Kontor counter (stream 119): the KONTORID record's u16, default 1.
+        std::uint32_t kontor_counter = 1;
         std::shared_ptr<const Terrain> terrain;
         /// {owner, length}, row major from the top-left; the tiles after the last
         /// run are neutral (SimConfig::neutral_owner).

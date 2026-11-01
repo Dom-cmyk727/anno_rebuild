@@ -97,7 +97,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Stream at 118 (task MAP-2, the island lock): each island gains `u8 lock` after its climate, the
 // persisted LOCKED byte (island +0xc4, property 0x10); 0 for an island that has no LOCKED record.
 // Every island stream is one byte longer; the lock itself is state. No PRNG site.
-inline constexpr std::uint32_t kStateHashVersion = 118;
+// Stream at 119 (task MAP-2, city creation): each island gains `i32 city_cursor` (the ring's
+// allocation cursor, ring+0x40, -1 for a fresh island) and `u32 kontor_counter` (island +0xc6,
+// default 1) after its lock; each city gains `string name` (city property 0x12, empty) at the end
+// of its fields; each building gains `u32 kontor_id` (building +0x1e, 0 except for markets) after
+// byte0f. See docs/sim/city-creation.md. The PRNG timeline moves to 3 (CityName, CityNameLoad).
+inline constexpr std::uint32_t kStateHashVersion = 119;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -108,7 +113,9 @@ inline constexpr std::uint32_t kSaveVersion = 1;
 /// (D AnnoScene 0x10009550), and the unported load sites LinkOrePlace,
 /// LinkNativeName, LinkTreasureKind, LinkTreasurePlace (0x10008490) and
 /// ComputerName (0x100025a0) in the manifest.
-inline constexpr std::uint32_t kPrngTimelineVersion = 2;
+/// Version 3 (task MAP-2, city creation): the ported advance-phase site CityName (D AnnoWelt
+/// 0x10096910) and the unported load-phase site CityNameLoad in the manifest.
+inline constexpr std::uint32_t kPrngTimelineVersion = 3;
 
 struct StateIO;
 struct ScenarioSpec;
@@ -316,6 +323,7 @@ class World {
     friend struct WorldTestAccess;
     friend struct Scheduler;
     friend struct Commands;
+    friend struct CityCreation;
 
     WorldClock clock_;
     WorldRng rng_;

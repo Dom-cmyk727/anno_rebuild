@@ -904,9 +904,10 @@ TEST_CASE("scenario HEAD2 player-mask with only the owner's bit does not warn (T
                       Kind::Head2FieldNotMapped) == 1);
 }
 
-TEST_CASE("scenario market KONTID is read but not kept (T26)") {
-    // A MARKTKOMBI (class MarketCombi) entry with one nested KONTID: read and consumed
-    // (not UndecodedBuildingRecord), its number not kept (the Market payload has none).
+TEST_CASE("scenario market KONTID is kept as Building::kontor_id (stream 119)") {
+    // A MARKTKOMBI (class MarketCombi) entry with one nested KONTID: read and consumed (not
+    // UndecodedBuildingRecord) and, since stream 119, kept in the building
+    // (docs/sim/city-creation.md E14).
     Buf prod2;
     item(prod2, kMarketCombi, 0, 0, 0, 5, 3);
     Buf kontid = record("KONTID", [] {
@@ -917,13 +918,31 @@ TEST_CASE("scenario market KONTID is read but not kept (T26)") {
     Buf prod = entry(5, 3, kontid);
     Buf recs = record("PROD", prod);
     const sim::LoadedScenario s = load(t26_city_scene({}, recs, prod2));
-    CHECK(warnings_of(s, Kind::MarketNumberNotKept) == 1);
+    CHECK(warnings_of(s, Kind::MarketNumberNotKept) == 0); // nothing is dropped any more
     CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 0);
     REQUIRE(s.spec.islands[0].cities.size() == 1);
     CHECK(s.spec.islands[0].cities[0].buildings.size() == 1); // the market is created
+    CHECK(s.spec.islands[0].cities[0].buildings[0].kontor_id == 7);
     auto w = sim::World::create(s.spec, registry());
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
     CHECK(w.value().check_invariants() == "");
+    // The created building carries the loaded KONTID; the island counter is untouched (default 1).
+    const sim::Island* first = nullptr;
+    for (const auto& slot : w.value().islands()) {
+        first = first == nullptr && slot.has_value() ? &*slot : first;
+    }
+    REQUIRE(first != nullptr);
+    const sim::Island& is = *first;
+    std::uint32_t found = 0;
+    for (const auto& c : is.cities) {
+        if (c.has_value()) {
+            const sim::Building* b = w.value().find_building(sim::make_building_id(is.index, 1));
+            REQUIRE(b != nullptr);
+            found = b->kontor_id;
+        }
+    }
+    CHECK(found == 7);
+    CHECK(is.kontor_counter == 1);
 }
 
 TEST_CASE("scenario VOLK people names map through the 14-name table (T26)") {
@@ -1399,6 +1418,47 @@ TEST_CASE("scenario island LOCKED record: absent, zero, locked, raw byte, duplic
     REQUIRE(a.ok());
     REQUIRE(b.ok());
     CHECK(a.value().state_hash() == b.value().state_hash());
+}
+
+TEST_CASE("scenario island KONTORID record: loaded counter, absent default, malformed refused") {
+    // D AnnoWelt 0x10089bb1: the record's u16 becomes the island's Kontor counter; without the
+    // record the constructor's 1 stays. ADAPTATION: a record that is not 2 bytes, or 0, is refused.
+    const auto with = [](const Buf& extra) {
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, insel5(40, 60, 8, 8, 7, 2, extra));
+        return scene("ANNO", kids);
+    };
+    const auto counter_of = [&](const Buf& extra) {
+        const sim::LoadedScenario s = load(with(extra));
+        REQUIRE(s.spec.islands.size() == 1);
+        return s.spec.islands[0].kontor_counter;
+    };
+    const auto rec2 = [](std::uint32_t v) {
+        Buf b;
+        put16(b, v);
+        return chunk("KONTORID", b);
+    };
+    CHECK(counter_of({}) == 1);          // absent: the default
+    CHECK(counter_of(rec2(300)) == 300); // loaded
+    CHECK(counter_of(rec2(65535)) == 65535);
+    Buf twice = rec2(5);
+    append(twice, rec2(9));
+    CHECK(counter_of(twice) == 9); // a later record overwrites
+    // The loaded value reaches the world and is the next Kontor id.
+    auto w = sim::World::create(load(with(rec2(300))).spec, registry(), sim::SimConfig{});
+    REQUIRE(w.ok());
+    CHECK(w.value().islands()[7]->kontor_counter == 300);
+    // Malformed: 1 byte, 3 bytes, 0 bytes, and value 0 each have their own diagnostic; the control
+    // above (a valid 2-byte record) reaches the same code.
+    CHECK(refusal(with(chunk("KONTORID", Buf{5}))).find(".KONTORID: expected 2 bytes, got 1") !=
+          std::string::npos);
+    CHECK(
+        refusal(with(chunk("KONTORID", Buf{5, 0, 0}))).find(".KONTORID: expected 2 bytes, got 3") !=
+        std::string::npos);
+    CHECK(refusal(with(chunk("KONTORID", Buf{}))).find(".KONTORID: expected 2 bytes, got 0") !=
+          std::string::npos);
+    CHECK(refusal(with(rec2(0))).find(".KONTORID: 0 is not a usable Kontor counter") !=
+          std::string::npos);
 }
 
 TEST_CASE("scenario island lock: world state, hash, save and load, a failed load changes nothing") {

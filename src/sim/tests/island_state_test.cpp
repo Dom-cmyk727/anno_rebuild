@@ -13,6 +13,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/archive.hpp>
+#include <anno/sim/city_creation.hpp>
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/island.hpp>
@@ -579,7 +580,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 15);
+    CHECK(sim::field_count<sim::Island>() == 17);
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -606,7 +607,7 @@ TEST_CASE("island fields are counted") {
     // word, stream 108), deposits count + goods length + goods bytes + x + y + remaining + reserve
     // (7), reserved (1), tiles: 3 dims + 6 x 10 columns, cities: the slot count (no slot in this
     // island).
-    CHECK(prims == 8 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 60 + 1);
+    CHECK(prims == 10 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 60 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -626,7 +627,9 @@ TEST_CASE("islands scope stream layout") {
         want.u32(wd);
         want.u32(ht);
         want.u32(is.climate);
-        want.u8(is.lock); // stream 118
+        want.u8(is.lock);            // stream 118
+        want.i32(is.city_cursor);    // stream 119
+        want.u32(is.kontor_counter); // stream 119
         want.u32(1);
         want.u64(is.terrain ? is.terrain->digest : 0);
         // sweep (u16 stamp, 4 x u32), event300 (u16), objmgr (u16, u32), ring (u16,
@@ -805,6 +808,8 @@ TEST_CASE("island perturbation moves the hash") {
         {"climate", [](sim::Island& i) { i.climate = 3; }},
         {"lock", [](sim::Island& i) { i.lock = 1; }},
         {"lock raw byte", [](sim::Island& i) { i.lock = 2; }},
+        {"city_cursor", [](sim::Island& i) { i.city_cursor = 3; }},
+        {"kontor_counter", [](sim::Island& i) { i.kontor_counter = 9; }},
         {"next_serial", [](sim::Island& i) { i.next_serial = 2; }},
         {"terrain removed", [](sim::Island& i) { i.terrain.reset(); }},
         {"terrain replaced", [](sim::Island& i) { i.terrain = sim::make_terrain({9}, {}, {}); }},
@@ -1298,11 +1303,11 @@ TEST_CASE("drought record stream layout") {
     fields(ia, std::as_const(is));
     const std::vector<std::uint8_t>& b = ia.data();
     // index, x0, y0, w, h, climate, lock (1 byte, stream 118), next_serial, terrain digest, sweep
-    // (18), event300, objmgr (6), ring (6): 4 * 7 + 1 + 8 + 18 + 2 + 6 + 6 = 69 bytes, then the
-    // presence byte.
-    REQUIRE(b.size() > 70 + want.v.size());
-    CHECK(b[69] == 1);
-    CHECK(std::equal(want.v.begin(), want.v.end(), b.begin() + 70));
+    // (18), event300, objmgr (6), ring (6), plus city_cursor and kontor_counter (8, stream 119):
+    // 4 * 7 + 1 + 8 + 8 + 18 + 2 + 6 + 6 = 77 bytes, then the presence byte.
+    REQUIRE(b.size() > 78 + want.v.size());
+    CHECK(b[77] == 1);
+    CHECK(std::equal(want.v.begin(), want.v.end(), b.begin() + 78));
     // Read back, every field.
     sim::Island back;
     sim::ReadArchive r(b);
@@ -2242,6 +2247,33 @@ TEST_CASE("golden s5 islands") {
         }
         CHECK(problem == "");
         CHECK(locked.state_hash() != make_world(syn::two_island_scenario(1234)).state_hash());
+    }
+    // The same scenario after one created city (stream 119): player 1 on island 0 at stamp 4242
+    // with a three-name list. Hand-derived: city 0 occupies slot 0 so the new city is slot 1; the
+    // draw is T[(1234 + 1) mod 2048] = T[1235] = 30195, 30195 mod 3 = 0: "Alpha"; the generator
+    // moves one step. The golden is the independent tools/sim_stream.py value.
+    {
+        sim::World cw = make_world(syn::two_island_scenario(1234));
+        const std::vector<std::string> names = {"Alpha", "Beta", "Gamma"};
+        sim::CityRequest rq;
+        rq.island = sim::IslandId{0};
+        rq.owner = sim::PlayerId{1};
+        rq.stamp = 4242;
+        rq.names = std::span<const std::string>(names);
+        auto plan = sim::CityCreation::prepare(cw, rq);
+        REQUIRE(plan.ok());
+        CHECK(plan.value().number.v == 1);
+        CHECK(plan.value().name == "Alpha");
+        REQUIRE(sim::CityCreation::commit(cw, plan.value()).ok());
+        CHECK(cw.rng().cursor() == 1235);
+        CHECK(cw.islands()[0]->city_cursor == 1);
+        std::string update_line;
+        const std::string problem =
+            anno::test::check_golden("s5_islands_city_created", "S5", cw.state_hash(), update_line);
+        if (anno::test::update_mode()) {
+            MESSAGE("golden line: " << update_line);
+        }
+        CHECK(problem == "");
     }
     // The semantic side of the golden: the islands are as built, whatever the hash says.
     CHECK(w.islands()[3]->tiles.owner(299) == 1);

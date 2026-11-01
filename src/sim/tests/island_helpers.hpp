@@ -82,6 +82,7 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     s.u64(2);
     s.u64(0);
     s.u64(0);
+    s.u64(0); // the city name, empty (stream 119)
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {

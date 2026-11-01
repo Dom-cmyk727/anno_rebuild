@@ -347,6 +347,13 @@ struct Island {
     /// here reads it, and no rule of this engine sets it at run time (the setter's callers that
     /// target islands are unresolved, docs/re section 11.5).
     std::uint8_t lock = 0;
+    /// D: the city ring's ALLOCATION cursor, ring+0x40 (island +0x78): the slot of the LAST city
+    /// added, -1 for a fresh island; set by every add, left alone by removal. Not the scheduler's
+    /// cursor (`ring`, ring+0x46). docs/sim/city-creation.md E1-E3, section 2.
+    std::int32_t city_cursor = -1;
+    /// D: island property 0x11, the word at +0xc6 (default 1, loaded from KONTORID): the next
+    /// Kontor id. ADAPT: u32 with a checked increment (the original wraps at 16 bits).
+    std::uint32_t kontor_counter = 1;
     /// Append-only (production.hpp): the ore objects of the island.
     std::vector<Deposit> deposits;
     /// The building serial counter (stage S6); serial 0 means "none", so >= 1.

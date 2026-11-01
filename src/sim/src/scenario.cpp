@@ -184,6 +184,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     static_cast<void>(out.tiles.reset(is.x0, is.y0, is.w, is.h, cfg.chunk_edge));
     out.climate = is.climate;
     out.lock = is.lock;
+    out.kontor_counter = is.kontor_counter;
     out.terrain = is.terrain;
     const std::uint64_t tiles = out.tiles.tile_count();
     // Tiles after the last run are neutral.
@@ -256,6 +257,11 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
         }
         out.cities[cs.no.v] = std::move(city);
     }
+    // The ring's allocation cursor is the slot of the LAST city added in load order (D 0x100967e0
+    // sets ring+0x40 at every add, STADT2 adds in file order); the creation loop above is sorted by
+    // number, so the cursor comes from the spec's last entry (the adapter lists cities in file
+    // order). No city: -1. docs/sim/city-creation.md E3, section 3.
+    out.city_cursor = is.cities.empty() ? -1 : static_cast<std::int32_t>(is.cities.back().no.v);
     for (const std::size_t k : order) {
         const Spec::CitySpec& cs = is.cities[k];
         City& city = *out.cities[cs.no.v];
@@ -267,6 +273,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
             rec.y = bs.y;
             rec.rotation = bs.rotation;
             rec.byte0f = bs.byte0f;
+            rec.kontor_id = bs.kontor_id;
             const auto made = create_building(cfg, rules, types, out, city, rec, 0,
                                               bs.payload.has_value() ? &*bs.payload : nullptr);
             if (!made.ok()) {

@@ -89,6 +89,9 @@ struct Building {
     /// D +0x0f (property 4); the original overwrites it from the terrain height
     /// check (0x1007c790, O-27).
     std::uint8_t byte0f = 0;
+    /// D +0x1e (property 0xe), the KONTID of a market: the island's Kontor counter value taken when
+    /// it was founded, or the loaded record's. 0 for every other building. ADAPT: u32.
+    std::uint32_t kontor_id = 0;
     Payload payload;
 };
 
@@ -99,6 +102,9 @@ struct PlacementRecord {
     std::int32_t x = 0, y = 0;
     std::uint8_t rotation = 0;
     std::uint8_t byte0f = 0;
+    /// The market KONTID to store (Building::kontor_id): a loaded record's, or the Kontor counter's
+    /// old value when the founding path builds the warehouse. 0 = none.
+    std::uint32_t kontor_id = 0;
 };
 
 using BuildingList = SlotList<Building>;

@@ -206,6 +206,7 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     b.rotation = rec.rotation;
     b.byte0e = ty->cls == RuntimeClass::House ? kByte0eHouse : kByte0eDefault;
     b.byte0f = rec.byte0f;
+    b.kontor_id = rec.kontor_id;
     // 5. The placement tick (D: property 0x23 -> 0x10073380 -> slot +0x120, F1).
     if (initial == nullptr) {
         stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now));

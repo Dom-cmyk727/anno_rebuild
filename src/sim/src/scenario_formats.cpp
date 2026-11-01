@@ -819,6 +819,7 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                 // deep flag of a mine (create_building step 2-3; the stamp of step 5 is
                 // 0 at tick 0, the default), then the Load's fields.
                 std::optional<Payload> payload;
+                std::uint32_t kontor_id = 0; // a market's KONTID (stream 119)
                 if (e.payload.size() > 4) {
                     const Bytes rec = e.payload.subspan(4);
                     if (type->cls == RuntimeClass::House) {
@@ -866,21 +867,17 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                     } else if (type->cls == RuntimeClass::Market ||
                                type->cls == RuntimeClass::MarketCombi) {
                         // The market record (0x1006be00): one nested KONTID u16 = the market's
-                        // number on its island. The Market payload has no number field and T26
-                        // adds none, so it is read but not kept (MarketNumberNotKept, OQ-158).
-                        std::string number = "?";
+                        // number on its island (building +0x1e). Kept since stream 119 as
+                        // Building::kontor_id (docs/sim/city-creation.md E14); the Market payload
+                        // itself still has no number field. Several KONTID records: the last wins,
+                        // as in the original's sequential reads.
                         if (auto subs = tagged::parse_records(rec, e.offset)) {
                             for (const tagged::Record& sub : subs.value()) {
                                 if (sub.name == "KONTID" && sub.payload.size() >= 2) {
-                                    number = std::to_string(formats::u16_le(sub.payload, 0));
+                                    kontor_id = formats::u16_le(sub.payload, 0);
                                 }
                             }
                         }
-                        warn.once(ScenarioWarningKind::MarketNumberNotKept, "cities", "market", ep,
-                                  e.name, e.offset,
-                                  "the market's KONTID (number " + number +
-                                      ") is read but not kept: the Market payload has no number "
-                                      "field (OQ-158); the record is consumed");
                     } else {
                         const ClassInfo& cls = types.class_info(type->cls);
                         payload = make_payload(*type, cls, config, types);
@@ -925,6 +922,7 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                 bs.y = is.y0 + static_cast<std::int32_t>(bi->y);
                 bs.rotation = bi->rotation; // +0x68
                 bs.byte0f = bi->height;     // +0x70 stores +0x0f (0x10071c40)
+                bs.kontor_id = kontor_id;
                 bs.payload = std::move(payload);
                 city.buildings.push_back(std::move(bs));
             }
@@ -1074,6 +1072,21 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
         const std::string_view name = rec.name();
         const std::uint64_t at = base + rec.offset;
         if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
+            continue;
+        }
+        if (name == "KONTORID") {
+            // D AnnoWelt 0x10089bb1–0x10089bf4: the record's u16 becomes island +0xc6, the Kontor
+            // counter (864 records in the data: all 2 bytes, values 1..; none 0). ADAPTATION: any
+            // other length, or 0 (the engine's counter is at least 1), is refused with the path.
+            if (rec.payload.size() != 2) {
+                return path + ".KONTORID: expected 2 bytes, got " +
+                       std::to_string(rec.payload.size());
+            }
+            const std::uint32_t counter = formats::u16_le(rec.payload, 0);
+            if (counter == 0) {
+                return path + ".KONTORID: 0 is not a usable Kontor counter (at least 1)";
+            }
+            is.kontor_counter = counter;
             continue;
         }
         if (name == "LOCKED") {

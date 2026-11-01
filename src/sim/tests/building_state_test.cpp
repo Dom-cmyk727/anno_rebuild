@@ -61,6 +61,7 @@ sim::Building common(sim::Payload payload) {
     b.rotation = 3;
     b.byte0e = 0x82;
     b.byte0f = 9;
+    b.kontor_id = 0x0A0B0C0DU;
     b.payload = std::move(payload);
     return b;
 }
@@ -75,6 +76,7 @@ Stream common_bytes(std::uint32_t tag) {
     s.u8(3);
     s.u8(0x82);
     s.u8(9);
+    s.u32(0x0A0B0C0DU); // kontor_id (stream 119)
     s.u8(tag);
     return s;
 }
@@ -305,6 +307,9 @@ std::vector<LayoutRow> layout_rows() {
         s.u32(0x2233);
         rows.push_back({"House", common(p), s, 8 + 4 + 2});
     }
+    for (LayoutRow& row : rows) {
+        row.primitives += 1; // the kontor_id scalar (stream 119)
+    }
     return rows;
 }
 
@@ -322,16 +327,16 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::Mine>() == 9);
     CHECK(sim::field_count<sim::Market>() == 5);
     CHECK(sim::field_count<sim::House>() == 4); // last, residents_64, e, stock
-    CHECK(sim::field_count<sim::Building>() == 8);
+    CHECK(sim::field_count<sim::Building>() == 9);
     CHECK(sim::field_count<sim::BuildingIndex>() == 4); // service_counters*, house_counts*
-    CHECK(sim::field_count<sim::City>() == 8);
+    CHECK(sim::field_count<sim::City>() == 9);
     CHECK(sim::field_count<sim::CityStock>() == 2);
     CHECK(sim::field_count<sim::GoodsSetting>() == 2);
     CHECK(sim::field_count<sim::BuildGoods>() == 2);
     CHECK(sim::field_count<sim::TradeEntry>() == 3);
     CHECK(sim::field_count<sim::IslandIndexCache>() == 2); // derived, no field list
-    CHECK(sim::field_count<sim::Island>() == 15);          // cache*
-    CHECK(sim::field_count<sim::PlacementRecord>() == 5);
+    CHECK(sim::field_count<sim::Island>() == 17);          // cache*
+    CHECK(sim::field_count<sim::PlacementRecord>() == 6);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
     CHECK(std::variant_size_v<sim::Payload> == 8);
     CHECK(sim::kPayloadTags.size() == 8);
@@ -402,7 +407,7 @@ TEST_CASE("a building stream refuses a payload tag and a status code that do not
     LayoutRow row = layout_rows()[1]; // the Workshop
     for (const std::uint8_t tag : {std::uint8_t{8}, std::uint8_t{9}, std::uint8_t{255}}) {
         std::vector<std::uint8_t> bad = row.expect.v;
-        bad[8 + 4 + 4 + 4 + 3] = tag; // the tag byte
+        bad[8 + 4 + 4 + 4 + 3 + 4] = tag; // the tag byte (after id, type, x, y, 3 bytes, kontor_id)
         sim::Building b;
         sim::ReadArchive r(bad);
         fields(r, b);
@@ -418,7 +423,7 @@ TEST_CASE("a building stream refuses a payload tag and a status code that do not
     CHECK(r.failed());
     // A bool byte of 2 in the payload fails too.
     bad = row.expect.v;
-    bad[26] = 2; // switched_on: after the common part (23 bytes), the tag and last (2)
+    bad[30] = 2; // switched_on: after the common part (27 bytes), the tag and last (2)
     sim::ReadArchive r2(bad);
     sim::Building b2;
     fields(r2, b2);

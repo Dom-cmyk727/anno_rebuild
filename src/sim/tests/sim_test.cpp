@@ -392,7 +392,9 @@ TEST_CASE("draw sources forward the site and the world stream") {
     CHECK(static_cast<int>(sim::DrawSite::LinkRawMaterial) == 7);
     CHECK(static_cast<int>(sim::DrawSite::LinkTreasure) == 11);
     CHECK(static_cast<int>(sim::DrawSite::ComputerName) == 16);
-    CHECK(static_cast<int>(sim::DrawSite::Count_) == 17);
+    CHECK(static_cast<int>(sim::DrawSite::CityName) == 17);
+    CHECK(static_cast<int>(sim::DrawSite::CityNameLoad) == 18);
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 19);
     CHECK(sim::DrawRecord{}.count == 0);
 }
 
@@ -588,9 +590,9 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x0aeb5fc40a95ec8dULL); // empty_world at 118 (sim_stream.py)
-    CHECK(sim::kStateHashVersion == 118);
-    CHECK(sim::kPrngTimelineVersion == 2);
+    CHECK(sim::World().state_hash() == 0x5c12b04ec74a3eaeULL); // empty_world at 119 (sim_stream.py)
+    CHECK(sim::kStateHashVersion == 119);
+    CHECK(sim::kPrngTimelineVersion == 3);
 }
 
 namespace {
@@ -877,7 +879,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{118, 0, 0, 0, 2, 0, 0, 0});
+          std::vector<std::uint8_t>{119, 0, 0, 0, 3, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -920,7 +922,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[4] = 3;
+        bad[4] = 4; // this build's timeline is 3
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

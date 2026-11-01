@@ -110,6 +110,8 @@ struct PlaySnapshot {
 /// so a window that takes the batch never takes it before that time.
 struct TurnObservation {
     std::uint64_t turn = 0;
+    /// `applied`: the turn's commands, a command without a wire form (refused as Unencodable)
+    /// included; `rejected`: the refused ones among them.
     std::size_t applied = 0, rejected = 0;
     /// The refusals' reason names, in the sim's order, joined with ','.
     std::string reasons;
@@ -201,7 +203,7 @@ class PlayRunner {
     /// Commands for the turns (commands_file.hpp), ordered by turn and, within a turn, in file
     /// order (a stable sort: a line for an earlier turn after a later one still runs). A turn
     /// applies the ones that name it, before its steps (`Turn::commands`). Their receipts are
-    /// {Script, 1..} in that order. Call before `start`.
+    /// {Script, 1..} in that order. Call once, before `start` and `run_n` (the receipts restart).
     void set_script(std::vector<ScriptedCommand> script);
     /// Queues a command for the next turn to start (the window's input; W4.4 B2) and returns its
     /// receipt {Window, n}, n from 1 in submission order. Thread-safe and never waits for a turn.

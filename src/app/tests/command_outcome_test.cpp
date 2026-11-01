@@ -145,6 +145,11 @@ TEST_CASE("outcome log: a reader that falls behind is told exactly what it lost,
     CHECK(current.lost == 0);
     CHECK(current.outcomes.size() == 2);
     CHECK(log.since(11).outcomes.empty());
+    // A reader that asks beyond the next number does not skip ahead (review of package A).
+    const app::OutcomeRead ahead = log.since(100);
+    CHECK(ahead.outcomes.empty());
+    CHECK(ahead.lost == 0);
+    CHECK(ahead.next == 11);
     // Each receipt's state now.
     CHECK(log.find({app::CommandOrigin::Window, 1}).state == State::Lost);
     CHECK(log.find({app::CommandOrigin::Window, 10}).state == State::Applied);
@@ -319,7 +324,9 @@ TEST_CASE("command outcomes: a command posted while a turn is held at its gate w
         open = true;
     }
     cv.notify_all();
-    REQUIRE(eventually([&] { return runner.outcome(second).state != State::Queued; }));
+    // The outcome is recorded before the turn's wake is sent: wait for both.
+    REQUIRE(eventually(
+        [&] { return runner.outcome(second).state != State::Queued && wakes.load() >= 2; }));
     const app::CommandOutcome a = runner.outcome(first), b = runner.outcome(second);
     CHECK(a.state == State::Applied);
     CHECK(b.state == State::Applied);

@@ -32,7 +32,7 @@ struct CommandId {
 /// The outcome of one command.
 struct CommandOutcome {
     enum class State : std::uint8_t {
-        /// Submitted, not run yet (a window command whose turn has not started).
+        /// Issued, no outcome recorded yet: waiting for its turn, or in a turn in flight.
         Queued,
         /// Run: the sim accepted the command (`sim::ApplyResult::ok()`). A drag can be partly
         /// built or a demolish can find nothing on a tile: `records` tells, per record.
@@ -55,7 +55,8 @@ struct CommandOutcome {
     std::vector<sim::Reject> records;
     /// Its number in the order outcomes were recorded, from 1 with no gap (OutcomeLog).
     std::uint64_t seq = 0;
-    /// Records whose status is None.
+    /// Records whose status is None (a placed building, a removed one). A Build record of type 0
+    /// is skipped by the sim and also None; the window never sends one.
     [[nodiscard]] std::size_t records_done() const;
 };
 
@@ -83,7 +84,8 @@ class OutcomeLog {
     /// Notes that `origin` has issued its commands up to number `n` (the script when it is set,
     /// the window as it submits): those ids are Queued until they run.
     void issued(CommandOrigin origin, std::uint64_t n);
-    /// The outcomes from sequence number `from` on.
+    /// The outcomes from sequence number `from` on. A `from` beyond the next sequence number reads
+    /// as nothing, with `next` the next sequence number (a reader never skips ahead).
     [[nodiscard]] OutcomeRead since(std::uint64_t from) const;
     /// What is known about `id` now: Queued (issued, not run), Applied or Refused (kept), Lost
     /// (run, evicted), Unknown (never issued).

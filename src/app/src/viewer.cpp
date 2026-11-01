@@ -839,7 +839,7 @@ std::string Viewer::run() {
 
 void Viewer::handle(const SDL_Event& e) {
     if (wake_event_ != 0 && e.type == wake_event_) {
-        dirty_ = true; // a building batch arrived (the runner's listener): draw it now
+        dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
         return;
     }
     const float density = SDL_GetWindowPixelDensity(window_);

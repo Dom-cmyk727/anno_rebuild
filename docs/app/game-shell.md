@@ -295,6 +295,9 @@ A command is identified from its submission to its outcome (`command_outcome.hpp
 - **Wake.** The runner's wake listener (`set_wake_listener`) fires after every turn that pushed a
   building batch or ran a command, so a refusal or an accepted no-op wakes a window that waits
   for events. `PlaySnapshot::outcomes_next` is the outcome sequence after that turn.
+- **Only the turn's commands:** a refusal the sim reports for a command applied during a step
+  (an AI seam's, `scheduler.cpp`) belongs to no receipt; the runner drains it with the other host
+  events. PlayRunner installs no AI seam today.
 - **Not acceptance:** a receipt, the queue, and a picture update. A building can be accepted and
   still drawn later (the picture is asynchronous).
 

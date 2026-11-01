@@ -74,7 +74,7 @@ OutcomeRead OutcomeLog::since(std::uint64_t from) const {
     const std::lock_guard lock(mu_);
     OutcomeRead read;
     from = std::max<std::uint64_t>(from, 1);
-    read.next = std::max(from, next_seq_);
+    read.next = next_seq_;
     const std::uint64_t first = kept_.empty() ? next_seq_ : kept_.front().seq;
     if (from < first) {
         read.lost_from = from;

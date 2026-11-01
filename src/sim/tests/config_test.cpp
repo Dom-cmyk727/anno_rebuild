@@ -194,22 +194,22 @@ void expected_config(Stream& s) {
     s.u64(0);         // city_names: no list
     s.u64(0);         // shared_visibility: no group (stream 121)
     // nav (stream 122): hand-written defaults (docs/sim/ship-navigation.md 7, 12)
-    s.u32(0x200e);                 // move_blocked_mask
-    s.u32(4);                      // plans_per_advance
-    s.u32(10);                     // run_cap
-    s.u32(8);                      // retry_cap
-    s.u32(6);                      // goal_radius_tiles
-    s.u32(64);                     // unit_cap
-    s.u32(1024);                   // window_radius_tiles
-    s.u32(32);                     // window_blocks
-    s.u64(std::uint64_t{1} << 22); // coarse_budget
-    s.u64(std::uint64_t{1} << 24); // fine_budget
-    s.u64(std::uint64_t{1} << 28); // memory_bytes
-    s.u32(1);                      // volk_number
-    s.u32(35);                     // health_span_percent
-    s.u32(65);                     // health_floor_percent
-    s.u32(17);                     // cargo_penalty_percent
-    s.u64(4);                      // class_costs: four classes
+    s.u32(0x200e);                  // move_blocked_mask
+    s.u32(4);                       // plans_per_advance
+    s.u32(10);                      // run_cap
+    s.u32(8);                       // retry_cap
+    s.u32(6);                       // goal_radius_tiles
+    s.u32(64);                      // unit_cap
+    s.u32(1024);                    // window_radius_tiles
+    s.u32(32);                      // window_blocks
+    s.u64(600000);                  // coarse_budget
+    s.u64(4000000);                 // fine_budget
+    s.u64(std::uint64_t{64} << 20); // memory_bytes
+    s.u32(1);                       // volk_number
+    s.u32(35);                      // health_span_percent
+    s.u32(65);                      // health_floor_percent
+    s.u32(17);                      // cargo_penalty_percent
+    s.u64(4);                       // class_costs: four classes
     for (int i = 0; i < 4; ++i) {
         s.u16(10); // open_orth
         s.u16(13); // open_diag
@@ -1891,7 +1891,9 @@ TEST_CASE("rules digest changes with every NavRules field and validates its doma
          [](sim::NavRules& n) { n.retry_cap = 65; }},
         {"goal_radius_tiles", [](sim::NavRules& n) { n.goal_radius_tiles = 32; },
          [](sim::NavRules& n) { n.goal_radius_tiles = 33; }},
-        {"unit_cap", [](sim::NavRules& n) { n.unit_cap = 4096; },
+        {"unit_cap", [](sim::NavRules& n) { n.unit_cap = 1024; },
+         [](sim::NavRules& n) { n.unit_cap = 1025; }},
+        {"unit_cap", [](sim::NavRules& n) { n.unit_cap = 1; },
          [](sim::NavRules& n) { n.unit_cap = 0; }},
         {"window_blocks", [](sim::NavRules& n) { n.window_blocks = 256; },
          [](sim::NavRules& n) { n.window_blocks = 257; }},

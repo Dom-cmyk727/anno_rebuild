@@ -535,7 +535,7 @@ std::string Rules::validate() const {
              {range("plans_per_advance", n.plans_per_advance, 1, 65535),
               range("run_cap", n.run_cap, 1, 255), range("retry_cap", n.retry_cap, 1, 64),
               range("goal_radius_tiles", n.goal_radius_tiles, 1, 32),
-              range("unit_cap", n.unit_cap, 1, 4096),
+              range("unit_cap", n.unit_cap, 1, 1024),
               range("window_radius_tiles", n.window_radius_tiles, 1, 8192),
               range("window_blocks", n.window_blocks, 1, 256),
               range("coarse_budget", n.coarse_budget, 1, std::uint64_t{1} << 40),

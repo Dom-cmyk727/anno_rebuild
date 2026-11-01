@@ -239,10 +239,10 @@ def link_tables_bytes():
 
 def nav_rules_bytes():
     """Rules::nav defaults (stream 122, docs/sim/ship-navigation.md 7 and 12): move_blocked_mask 0x200e, plans_per_advance 4, run_cap 10,
-    retry_cap 8, goal_radius_tiles 6, unit_cap 64, window_radius_tiles 1024, window_blocks 32, the three u64 limits (2^22 coarse pops,
-    2^24 fine pops, 2^28 bytes), volk_number 1, health span/floor 35/65, cargo penalty 17, then four cost classes of u16 10 13 50 69."""
+    retry_cap 8, goal_radius_tiles 6, unit_cap 64, window_radius_tiles 1024, window_blocks 32, the three u64 limits (600000 coarse pops,
+    4000000 fine pops, 64 MiB; package C measurements), volk_number 1, health span/floor 35/65, cargo penalty 17, then four cost classes of u16 10 13 50 69."""
     b = u32(0x200E) + u32(4) + u32(10) + u32(8) + u32(6) + u32(64) + u32(1024) + u32(32)
-    b += u64(1 << 22) + u64(1 << 24) + u64(1 << 28)
+    b += u64(600000) + u64(4000000) + u64(64 << 20)
     b += u32(1) + u32(35) + u32(65) + u32(17)
     b += u64(4) + b''.join(u16(10) + u16(13) + u16(50) + u16(69) for _ in range(4))
     return b

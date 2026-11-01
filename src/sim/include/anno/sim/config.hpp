@@ -465,16 +465,18 @@ struct NavRules {
     /// The goal acceptance radius in tiles (6.0 in the original; the score constant is 64 * r^2), 1
     /// .. 32.
     std::uint32_t goal_radius_tiles = 6;
-    /// Obstacle stamps per query (0x40 in the route engine's own unit query), 1 .. 4096.
+    /// Obstacle stamps per query (0x40 in the route engine's own unit query), 1 .. 1024 (the density work of a search is unit_cap x 64 candidates x the goal cells).
     std::uint32_t unit_cap = 64;
     /// Half-width of the start-centred search window in tiles ([ship+0x6e] = 0x400), 1 .. 8192.
     std::uint32_t window_radius_tiles = 1024;
     /// Blocks of 64 tiles per axis a window may span (SetWindow: 32), 1 .. 256.
     std::uint32_t window_blocks = 32;
     /// Per-query work limits (node pops) and working-set bytes; exceeding one is BudgetExceeded.
-    std::uint64_t coarse_budget = std::uint64_t{1} << 22;
-    std::uint64_t fine_budget = std::uint64_t{1} << 24;
-    std::uint64_t memory_bytes = std::uint64_t{1} << 28;
+    /// Defaults measured in package C (docs/sim/ship-route-limits.md): at least 8x the largest legal
+    /// query of the three real candidates and of the original-sized window.
+    std::uint64_t coarse_budget = 600000;
+    std::uint64_t fine_budget = 4000000;
+    std::uint64_t memory_bytes = std::uint64_t{64} << 20;
     /// The player value 3 (Volk number) for which the cargo term of the speed factor applies (1).
     std::uint32_t volk_number = 1;
     /// The speed factor V = trunc((trunc(health_span * hp / maxhp) + health_floor) * L / 100), with

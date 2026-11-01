@@ -99,9 +99,10 @@ formats::Result<CityNo, CityRefusal> CityCreation::commit(World& world, const Ci
         return CityRefusal::StalePlan;
     }
     Island& island = *world.islands_[plan.island.v];
-    if (world.rng_.cursor() != plan.rng_cursor || island.city_cursor != plan.city_cursor ||
-        island.cities.size() != cfg.city_slots || plan.number.v >= island.cities.size() ||
-        island.cities[plan.number.v].has_value() ||
+    // A plan is made by prepare(); a hand-built one naming the neutral value is never applied.
+    if (plan.number.v == cfg.neutral_owner || world.rng_.cursor() != plan.rng_cursor ||
+        island.city_cursor != plan.city_cursor || island.cities.size() != cfg.city_slots ||
+        plan.number.v >= island.cities.size() || island.cities[plan.number.v].has_value() ||
         cities_of(island, plan.owner) != plan.owner_cities) {
         return CityRefusal::StalePlan;
     }
@@ -138,7 +139,8 @@ formats::Result<std::uint32_t, KontorRefusal> CityCreation::commit_kontor(World&
         return KontorRefusal::UnknownIsland;
     }
     Island& island = *world.islands_[plan.island.v];
-    if (island.kontor_counter != plan.counter) {
+    // A plan is made by prepare_kontor(), where the id IS the counter; any other pair is stale.
+    if (island.kontor_counter != plan.counter || plan.id != plan.counter) {
         return KontorRefusal::StaleKontor;
     }
     if (island.kontor_counter == std::numeric_limits<std::uint32_t>::max()) {

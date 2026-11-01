@@ -60,7 +60,8 @@ struct Stream {
 /// text, not from the field list): number, owner, tick stamp; the stock (capacity
 /// 50 t, 56 goods of 0); 56 goods settings; 5 build goods; 2 empty trade lists; the
 /// index (stamp 0, 6 fresh lists of one empty slot: hint -1, cursor 0).
-inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t owner) {
+inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t owner,
+                              const std::string& name = {}) {
     s.u32(number);
     s.u32(owner);
     s.u16(0);
@@ -82,7 +83,10 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     s.u64(2);
     s.u64(0);
     s.u64(0);
-    s.u64(0); // the city name, empty (stream 119)
+    s.u64(name.size()); // the city name (stream 119): u64 length, then the bytes
+    for (const char c : name) {
+        s.u8(static_cast<std::uint8_t>(c));
+    }
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {

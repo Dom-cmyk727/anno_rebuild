@@ -107,6 +107,34 @@ TEST_CASE("city creation: refusal order") {
     refused(w, req(1), sim::CityRefusal::InvalidMetadata);
     sim::WorldTestAccess::islands(w)[0]->city_cursor = 0;
     CHECK(sim::CityCreation::prepare(w, req(1)).ok());
+    // The other InvalidMetadata branches: a city table that is not city_slots long, and zero slots.
+    {
+        sim::World shortened = world_with({{0, 0}});
+        sim::WorldTestAccess::islands(shortened)[0]->cities.pop_back();
+        refused(shortened, req(1), sim::CityRefusal::InvalidMetadata);
+        sim::World none = world_with({{0, 0}});
+        sim::WorldTestAccess::config(none).city_slots = 0;
+        refused(none, req(1), sim::CityRefusal::InvalidMetadata);
+    }
+    // Pairs of simultaneous defects, each in the contract's order (section 4):
+    // player before metadata ...
+    refused(w, req(31, 65536), sim::CityRefusal::UnknownPlayer);
+    // ... metadata before the own-city rule, the own-city rule before the name data, the full ring
+    // before the name data.
+    const std::vector<std::string> none_listed;
+    sim::World has_city = world_with({{0, 2}});
+    refused(has_city, req(2, 65536), sim::CityRefusal::InvalidMetadata);
+    sim::CityRequest own_and_empty = req(2);
+    own_and_empty.names = std::span<const std::string>(none_listed);
+    refused(has_city, own_and_empty, sim::CityRefusal::OwnCityOnIsland);
+    Cities fifteen;
+    for (std::uint32_t i = 0; i < 15; ++i) {
+        fifteen.emplace_back(i, i);
+    }
+    const sim::World full = world_with(fifteen);
+    sim::CityRequest full_and_empty = req(20);
+    full_and_empty.names = std::span<const std::string>(none_listed);
+    refused(full, full_and_empty, sim::CityRefusal::NoCitySlot);
 }
 
 TEST_CASE("city creation: own city and rivals") {
@@ -257,11 +285,15 @@ TEST_CASE("city creation: loaded cursor") {
 TEST_CASE("city creation: scheduler cursor is not the allocation cursor") {
     sim::World w = world_with({{0, 0}, {3, 1}});
     const std::int32_t cursor = island0(w).city_cursor;
+    CHECK(cursor == 3);
     const std::uint32_t slot = sim::CityCreation::prepare(w, req(5)).value().number.v;
     for (int i = 0; i < 200; ++i) {
         w.advance(10); // the island scheduler walks its own ring cursor
     }
     CHECK(island0(w).city_cursor == cursor);
+    // The two cursors are different words: after the ticks the scheduler's is elsewhere, so a
+    // creation that read it as the allocation cursor would allocate a different slot.
+    CHECK(static_cast<std::int64_t>(island0(w).ring.cursor) != island0(w).city_cursor);
     CHECK(sim::CityCreation::prepare(w, req(5)).value().number.v == slot);
     // Creating a city does not touch the scheduler's cursor or stamp.
     const sim::CityRing ring = island0(w).ring;
@@ -380,11 +412,34 @@ TEST_CASE("city creation: stale plan") {
     stale([&](sim::World& w) { create(w, req(2)); });
     // (b) another draw advanced the PRNG (the peeked name would be wrong)
     stale([](sim::World& w) { static_cast<void>(sim::WorldTestAccess::rng(w).next()); });
+    // (d) a rival took the planned slot without the allocation cursor moving
+    stale([](sim::World& w) {
+        sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+        is.cities[1] = sim::make_city(sim::CityNo{1}, sim::PlayerId{2}, w.config());
+    });
+    // (e) the allocation cursor moved without the planned slot being taken
+    stale([](sim::World& w) { sim::WorldTestAccess::islands(w)[0]->city_cursor = 5; });
     // (c) the owner's own city appeared in another slot without the cursor moving
     stale([](sim::World& w) {
         sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
         is.cities[7] = sim::make_city(sim::CityNo{7}, sim::PlayerId{1}, w.config());
     });
+}
+
+TEST_CASE("city creation: a hand-built plan naming the neutral slot is refused") {
+    // Control: the plan from prepare commits. Defect: the same plan with number set to the neutral
+    // value (15, empty and otherwise consistent) is refused and nothing changes.
+    sim::World w = world_with({{0, 0}});
+    auto p = sim::CityCreation::prepare(w, req(1));
+    REQUIRE(p.ok());
+    sim::CityPlan forged = p.value();
+    forged.number = sim::CityNo{w.config().neutral_owner};
+    const Snap before = snap(w);
+    auto c = sim::CityCreation::commit(w, forged);
+    REQUIRE_FALSE(c.ok());
+    CHECK(c.error() == sim::CityRefusal::StalePlan);
+    CHECK(snap(w) == before);
+    CHECK(sim::CityCreation::commit(w, p.value()).ok());
 }
 
 TEST_CASE("city creation: stamp and persistence") {
@@ -490,6 +545,51 @@ TEST_CASE("kontor ids") {
     REQUIRE_FALSE(over.ok());
     CHECK(over.error() == sim::KontorRefusal::CounterOverflow);
     CHECK(snap(edge) == at_max);
+}
+
+TEST_CASE("kontor ids: an inconsistent hand-built plan is refused") {
+    sim::ScenarioSpec spec = syn::empty_scenario(1234);
+    sim::ScenarioSpec::PlayerSpec ps;
+    ps.id = sim::PlayerId{0};
+    spec.players.push_back(ps);
+    sim::ScenarioSpec::IslandSpec is = syn::plain_island(0, 40, 24, 6, 4);
+    is.kontor_counter = 7;
+    spec.islands.push_back(std::move(is));
+    sim::World w = island_test::make_world(spec);
+    auto p = sim::CityCreation::prepare_kontor(w, sim::IslandId{0});
+    REQUIRE(p.ok());
+    sim::KontorPlan forged = p.value();
+    forged.id = 99; // would hand out an id that is not the counter
+    const Snap before = snap(w);
+    auto c = sim::CityCreation::commit_kontor(w, forged);
+    REQUIRE_FALSE(c.ok());
+    CHECK(c.error() == sim::KontorRefusal::StaleKontor);
+    CHECK(snap(w) == before);
+    CHECK(sim::CityCreation::commit_kontor(w, p.value()).value() == 7); // the control commits
+}
+
+TEST_CASE("city stream layout with a name") {
+    // The name sits between the trade lists and the index scope: u64 length, then the bytes
+    // (hand-written bytes, not the implementation's output).
+    const sim::SimConfig cfg;
+    sim::City city = sim::make_city(sim::CityNo{3}, sim::PlayerId{7}, cfg);
+    city.name = "Alpha";
+    island_test::Stream want;
+    island_test::append_empty_city(want, 3, 7, "Alpha");
+    sim::WriteArchive wa;
+    fields(wa, std::as_const(city));
+    CHECK(wa.data() == want.v);
+    sim::City empty = sim::make_city(sim::CityNo{3}, sim::PlayerId{7}, cfg);
+    sim::WriteArchive wb;
+    fields(wb, std::as_const(empty));
+    CHECK(wb.data().size() + 5 == wa.data().size()); // only the five name bytes differ in size
+    // And it reads back.
+    sim::ReadArchive r(wa.data());
+    sim::City back = sim::make_city(sim::CityNo{0}, sim::PlayerId{0}, cfg);
+    fields(r, back);
+    CHECK_FALSE(r.failed());
+    CHECK(back.name == "Alpha");
+    CHECK(back.number == city.number);
 }
 
 TEST_CASE("kontor ids: the building takes the old counter") {

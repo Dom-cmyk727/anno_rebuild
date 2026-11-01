@@ -15,6 +15,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/archive.hpp>
+#include <anno/sim/city_creation.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/founding_payment.hpp>
 #include <anno/sim/scenario.hpp>
@@ -667,4 +668,86 @@ TEST_CASE(
     CHECK(refused.error() ==
           sim::payment::Refusal{sim::payment::Status::InsufficientGoods, wood, 12802, 12801});
     CHECK(world.state_hash() == hash);
+}
+
+TEST_CASE("canary: payment, city and Kontor preparation are non-mutating; the city operation holds "
+          "its invariants") {
+    // Connects the ship cargo and payment preparation (founding_payment.hpp) with the city
+    // prerequisites (city_creation.hpp). It founds NO warehouse: nothing here applies a payment,
+    // builds, claims territory or issues a command. docs/sim/city-creation.md.
+    const auto types = ship_registry();
+    sim::ScenarioSpec spec = expedition_spec(*types);
+    spec.islands.push_back(syn::plain_island(0, 40, 24, 6, 4));
+    const sim::GoodsId wood = goods(*types, "HOLZ");
+    const sim::GoodsId tools = goods(*types, "WERKZEUG");
+    spec.figures[0].holds = {{wood, 12801}, {tools, 12800}, {tools, 7680}};
+    spec.islands.back().kontor_counter = 12;
+    auto created = sim::World::create(spec, types);
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    sim::World world = std::move(created).value();
+    sim::WorldTestAccess::rng(world).set_cursor(0);
+
+    const sim::Figure* ship = sim::find_figure(world.figures(), sim::FigureId{1});
+    REQUIRE(ship != nullptr);
+    const sim::PlayerId owner = ship->owner;
+    const sim::Player* player = world.players().find(owner);
+    REQUIRE(player != nullptr);
+    sim::BuildingType type;
+    type.cost_gold = 1000;
+    type.cost_goods = {{wood, 12801}, {tools, 20480}};
+
+    // 1. All three preparations on the live world, none of them applied.
+    const std::vector<std::uint8_t> bytes = world.save();
+    const std::uint64_t hash = world.state_hash();
+    const std::uint32_t rng_cursor = world.rng().cursor();
+    const auto pay = sim::payment::prepare(ship->holds, player->money, type);
+    REQUIRE(pay.ok());
+    const std::vector<std::string> names = {"Alpha", "Beta", "Gamma"};
+    sim::CityRequest rq;
+    rq.island = sim::IslandId{0};
+    rq.owner = owner;
+    rq.stamp = 99;
+    rq.names = std::span<const std::string>(names);
+    const auto city = sim::CityCreation::prepare(world, rq);
+    REQUIRE(city.ok());
+    const auto kontor = sim::CityCreation::prepare_kontor(world, sim::IslandId{0});
+    REQUIRE(kontor.ok());
+    CHECK(pay.value().money_after == 29000);
+    CHECK(city.value().number.v == 0);
+    CHECK(city.value().name == "Gamma"); // T[1] = 18467, 18467 mod 3 = 2
+    CHECK(kontor.value().id == 12);
+    CHECK(world.save() == bytes);
+    CHECK(world.state_hash() == hash);
+    CHECK(world.rng().cursor() == rng_cursor);
+
+    // 2. The internal city operation on a copy, separately: invariants, the one PRNG step, the
+    // Kontor identifier, the persisted state. The payment plan is not applied (the cargo stays).
+    sim::World copy = world;
+    REQUIRE(sim::CityCreation::commit(copy, city.value()).ok());
+    auto id = sim::CityCreation::commit_kontor(copy, kontor.value());
+    REQUIRE(id.ok());
+    CHECK(id.value() == 12);
+    CHECK(copy.rng().cursor() == rng_cursor + 1);
+    CHECK(copy.check_invariants().empty());
+    const sim::Island& is = *copy.islands()[0];
+    CHECK(is.city(sim::CityNo{0}) != nullptr);
+    CHECK(is.city(sim::CityNo{0})->owner == owner);
+    CHECK(is.city(sim::CityNo{0})->name == "Gamma");
+    CHECK(is.city_cursor == 0);
+    CHECK(is.kontor_counter == 13);
+    CHECK(sim::find_figure(copy.figures(), sim::FigureId{1})->holds ==
+          ship->holds);                                        // cargo untouched
+    CHECK(copy.players().find(owner)->money == player->money); // gold untouched
+    auto reloaded = sim::World::load(copy.save(), types);
+    REQUIRE_MESSAGE(reloaded.ok(), (reloaded.ok() ? std::string() : reloaded.error()));
+    CHECK(reloaded.value().state_hash() == copy.state_hash());
+    CHECK(reloaded.value().check_invariants().empty());
+    CHECK(reloaded.value().islands()[0]->city(sim::CityNo{0})->name == "Gamma");
+    // The same owner cannot found a second city on this island, and the world is unchanged by the
+    // refusal.
+    const std::uint64_t after = copy.state_hash();
+    auto again = sim::CityCreation::prepare(copy, rq);
+    REQUIRE_FALSE(again.ok());
+    CHECK(again.error() == sim::CityRefusal::OwnCityOnIsland);
+    CHECK(copy.state_hash() == after);
 }

@@ -151,10 +151,16 @@ bool PlacementKnowledge::update(const std::vector<SceneBuilding>& buildings, std
         const sim::BuildingType* type = setup_.registry->find(sim::TypeId{b.type});
         const auto [w, h] = type != nullptr ? sim::footprint(*type, b.rotation)
                                             : std::pair<std::uint32_t, std::uint32_t>{1, 1};
-        for (std::uint32_t dy = 0; dy < h; ++dy) {
-            for (std::uint32_t dx = 0; dx < w; ++dx) {
-                occupied_.insert({setup_.island.x0 + b.x + static_cast<std::int32_t>(dx),
-                                  setup_.island.y0 + b.y + static_cast<std::int32_t>(dy)});
+        // The rectangle in 64-bit coordinates, clamped to the city's island: a tile outside it
+        // is never asked about (check refuses the footprint first), and a registry dimension
+        // cannot overflow a 32-bit tile or fill the index past the island (round ee review, R3).
+        const std::int64_t bx = std::int64_t{setup_.island.x0} + b.x;
+        const std::int64_t by = std::int64_t{setup_.island.y0} + b.y;
+        const std::int64_t x1 = std::min(bx + w, std::int64_t{setup_.island.x0} + setup_.island.w);
+        const std::int64_t y1 = std::min(by + h, std::int64_t{setup_.island.y0} + setup_.island.h);
+        for (std::int64_t y = std::max<std::int64_t>(by, setup_.island.y0); y < y1; ++y) {
+            for (std::int64_t x = std::max<std::int64_t>(bx, setup_.island.x0); x < x1; ++x) {
+                occupied_.insert({static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)});
             }
         }
     }
@@ -163,6 +169,20 @@ bool PlacementKnowledge::update(const std::vector<SceneBuilding>& buildings, std
 
 bool PlacementKnowledge::occupied(sim::TileXY tile) const {
     return occupied_.contains({tile.x, tile.y});
+}
+
+bool PlacementKnowledge::occupied_in(std::int64_t x0, std::int64_t y0, std::int64_t x1,
+                                     std::int64_t y1) const {
+    // The set orders by x, then y: one lower_bound per column answers whether the column holds
+    // an occupied tile in [y0, y1). The caller has clamped the rectangle to the island (int32).
+    for (std::int64_t x = x0; x < x1; ++x) {
+        const auto it =
+            occupied_.lower_bound({static_cast<std::int32_t>(x), static_cast<std::int32_t>(y0)});
+        if (it != occupied_.end() && it->first == x && it->second < y1) {
+            return true;
+        }
+    }
+    return false;
 }
 
 PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
@@ -185,17 +205,28 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
                     : std::string("no buildable type");
         return v;
     }
-    for (const sim::TileXY& t : tool.input().footprint_at(*hover)) {
-        if (!setup_.island.contains(t)) {
-            v.refused = true;
-            v.text = "would be refused: the footprint leaves the city's island";
-            return v;
-        }
-        if (occupied(t)) {
-            v.refused = true;
-            v.text = "would be refused: occupied in the published picture";
-            return v;
-        }
+    // The footprint as a rectangle in 64-bit coordinates, tested against the island before any
+    // tile is looked at (round ee review, R3): an oversized or zero definition is refused in O(1)
+    // and no tile list is made. What passes lies inside the island, so the occupancy test below
+    // costs at most one lookup per column of the admitted region.
+    const auto extent = tool.input().footprint_extent(*hover);
+    if (!extent || extent->w == 0 || extent->h == 0) {
+        v.refused = true;
+        v.text = "would be refused: the type has a zero-sized footprint";
+        return v;
+    }
+    const TileRect& isl = setup_.island;
+    const std::int64_t ex1 = extent->x0 + extent->w, ey1 = extent->y0 + extent->h;
+    if (extent->x0 < isl.x0 || extent->y0 < isl.y0 || ex1 > std::int64_t{isl.x0} + isl.w ||
+        ey1 > std::int64_t{isl.y0} + isl.h) {
+        v.refused = true;
+        v.text = "would be refused: the footprint leaves the city's island";
+        return v;
+    }
+    if (occupied_in(extent->x0, extent->y0, ex1, ey1)) {
+        v.refused = true;
+        v.text = "would be refused: occupied in the published picture";
+        return v;
     }
     // What the window did not check, named (round ee review of C, P3): the sim decides those.
     std::vector<std::string> unchecked{"the placement rule"};

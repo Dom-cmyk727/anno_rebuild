@@ -58,9 +58,23 @@ class DevInput {
     [[nodiscard]] bool demolish_mode() const { return demolish_; }
     /// The last refusal or hint for the player ("" when none); cleared by the next event.
     [[nodiscard]] const std::string& message() const { return message_; }
-    /// The tiles the selected type covers at `origin` with the current rotation (the
-    /// preview's footprint; the sim's verdict comes back as CommandRejected).
-    [[nodiscard]] std::vector<sim::TileXY> footprint_at(sim::TileXY origin) const;
+    /// The rectangle the selected type covers at `origin` with the current rotation, in 64-bit
+    /// tile coordinates [x0, x0 + w) x [y0, y0 + h): made without enumerating a tile, so any
+    /// registry dimension (nonzero 32-bit today) is safe to ask about (round ee review, R3).
+    /// nullopt: no selected type. A zero w or h is a definition without a footprint.
+    struct Extent {
+        std::int64_t x0 = 0, y0 = 0;
+        std::uint32_t w = 0, h = 0;
+        [[nodiscard]] std::uint64_t area() const { return std::uint64_t{w} * h; }
+    };
+    [[nodiscard]] std::optional<Extent> footprint_extent(sim::TileXY origin) const;
+    /// The tiles the selected type covers at `origin` with the current rotation, row by row.
+    /// Empty when the rectangle has more than `max_tiles` tiles or leaves the 32-bit tile
+    /// coordinates: the caller names the region it admits (the city's island), so the allocation
+    /// is bounded by it and not by a definition's dimensions. The preview and the feedback do not
+    /// call it; they use footprint_extent (the sim's verdict comes back as CommandRejected).
+    [[nodiscard]] std::vector<sim::TileXY> footprint_at(sim::TileXY origin,
+                                                        std::uint64_t max_tiles) const;
     /// The tiles a drag from `from` to `to` covers: a straight line along the longer
     /// axis (ties go to x), from `from` to `to` inclusive, in stream order.
     [[nodiscard]] static std::vector<sim::TileXY> line(sim::TileXY from, sim::TileXY to);

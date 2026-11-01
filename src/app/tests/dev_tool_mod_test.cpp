@@ -178,11 +178,11 @@ TEST_CASE("dev tool data: a second definition (another id, a non-square footprin
     REQUIRE(build.placements.size() == 1);
     CHECK(build.placements[0].type == kMod);
     CHECK(build.placements[0].rotation == 0);
-    CHECK(tool.input().footprint_at({kX0 + 10, kY0 + 10}).size() == 3);
+    CHECK(tool.input().footprint_at({kX0 + 10, kY0 + 10}, 16).size() == 3);
     CHECK(app::dev_tool_status(tool).find("build 74565 (3x1, 777 gold) rotation 0") !=
           std::string::npos);
     key(tool, app::ToolInput::Kind::Rotate);
-    const auto turned = tool.input().footprint_at({kX0 + 10, kY0 + 10});
+    const auto turned = tool.input().footprint_at({kX0 + 10, kY0 + 10}, 16);
     REQUIRE(turned.size() == 3);
     CHECK(turned.back() == sim::TileXY{kX0 + 10, kY0 + 12}); // along y now
     CHECK(app::dev_tool_status(tool).find("(1x3, 777 gold) rotation 1") != std::string::npos);

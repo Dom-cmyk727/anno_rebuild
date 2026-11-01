@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cstdlib>
+#include <limits>
 #include <utility>
 
 #include <anno/app/dev_input.hpp>
@@ -31,17 +32,31 @@ bool DevInput::road_like() const {
     return type != nullptr && (type->flags_word & sim::kRoadFlag) != 0;
 }
 
-std::vector<sim::TileXY> DevInput::footprint_at(sim::TileXY origin) const {
-    std::vector<sim::TileXY> out;
+std::optional<DevInput::Extent> DevInput::footprint_extent(sim::TileXY origin) const {
     const sim::BuildingType* type = selected_type();
     if (type == nullptr) {
-        return out;
+        return std::nullopt;
     }
     const auto [w, h] = sim::footprint(*type, rotation_);
-    for (std::uint32_t dy = 0; dy < h; ++dy) {
-        for (std::uint32_t dx = 0; dx < w; ++dx) {
-            out.push_back(sim::TileXY{origin.x + static_cast<std::int32_t>(dx),
-                                      origin.y + static_cast<std::int32_t>(dy)});
+    return Extent{origin.x, origin.y, w, h};
+}
+
+std::vector<sim::TileXY> DevInput::footprint_at(sim::TileXY origin, std::uint64_t max_tiles) const {
+    std::vector<sim::TileXY> out;
+    const auto extent = footprint_extent(origin);
+    if (!extent || extent->area() > max_tiles) {
+        return out;
+    }
+    // The far corner must be a 32-bit tile coordinate too, or a tile could not be named.
+    constexpr std::int64_t kMax = std::numeric_limits<std::int32_t>::max();
+    if (extent->x0 + extent->w - 1 > kMax || extent->y0 + extent->h - 1 > kMax) {
+        return out;
+    }
+    out.reserve(static_cast<std::size_t>(extent->area()));
+    for (std::uint32_t dy = 0; dy < extent->h; ++dy) {
+        for (std::uint32_t dx = 0; dx < extent->w; ++dx) {
+            out.push_back(sim::TileXY{static_cast<std::int32_t>(extent->x0 + dx),
+                                      static_cast<std::int32_t>(extent->y0 + dy)});
         }
     }
     return out;

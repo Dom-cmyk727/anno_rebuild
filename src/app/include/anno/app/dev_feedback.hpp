@@ -77,6 +77,10 @@ class PlacementKnowledge {
     /// How many times the index was rebuilt (a test counts them).
     [[nodiscard]] std::size_t rebuilds() const { return rebuilds_; }
     [[nodiscard]] bool occupied(sim::TileXY tile) const;
+    /// Whether any tile of [x0, x1) x [y0, y1) is occupied: one ordered lookup per column. The
+    /// rectangle must be inside the city's island (check clamps first).
+    [[nodiscard]] bool occupied_in(std::int64_t x0, std::int64_t y0, std::int64_t x1,
+                                   std::int64_t y1) const;
 
   private:
     DevToolSetup setup_;

@@ -313,7 +313,8 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(f.load_ticks);
         a.u32(f.bewohntype);
         a.u32(f.range_88);
-        a.u32(f.hull_half_88);
+        a.boolean(f.hull_half_88.has_value());
+        a.i64(f.hull_half_88.value_or(0));
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -402,12 +403,16 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
     }
     // LOGIC[0x25] * 0.125 tile (type slot 0x68(4)), 7 tiles when 0 (constant 0x40e00000).
     t.range_88 = logic[0x25] == 0 ? 7U * 256U : std::uint32_t{logic[0x25]} * 32U;
-    // HEAD f32 at byte 0x10 (type property 5, the ship hull half-extent), rounded to 1/256 tile.
-    if (head->size() >= 0x14) {
+    // HEAD f32 at byte 0x10 (type property 5, the hull half-extent), in 1/256 tile, for the hull
+    // classes (BEWOHNTYPE 113..128, the ships: the founding veto reads their hull box,
+    // docs/re/ship-founding.md 14.1). Any finite value below 2^31 tiles is kept, negative ones
+    // included (the shipped file has the 0xCCCCCCCC fill in type 391); a HEAD without the field, or
+    // a value that is not finite or is beyond that bound, leaves the hull ABSENT, not zero.
+    if (t.bewohntype >= 113 && t.bewohntype <= 128 && head->size() >= 0x14) {
         const float half = f32(*head, 0x10);
         const double hull = static_cast<double>(half) * 256.0;
-        if (std::isfinite(hull) && hull > 0.0 && hull < 65536.0 * 256.0) {
-            t.hull_half_88 = static_cast<std::uint32_t>(std::llround(hull));
+        if (std::isfinite(hull) && std::fabs(hull) < 2147483648.0 * 256.0) {
+            t.hull_half_88 = std::llround(hull);
         }
     }
     return t;

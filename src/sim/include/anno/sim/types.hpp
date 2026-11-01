@@ -162,7 +162,15 @@ struct FigureType {
     /// AnnoGame 0x1000fd04, constant 0x40e00000 at 0x10021d04): the hostile veto's range.
     std::uint32_t range_88 = 0;
     /// HEAD[0x10] (f32) rounded to 1/256 tile: the hull half-extent of ships (property 5).
-    std::uint32_t hull_half_88 = 0;
+    ///
+    /// SIGNED, because the shipped file holds a ship-class type (391) whose field is the
+    /// uninitialised fill 0xCCCCCCCC (-1.07e8 tiles): the original does float arithmetic with it
+    /// (an inverted box that never overlaps) and so does the veto, exactly, in integers. Absent
+    /// (nullopt) for every type whose HEAD has no such field (all non-ship classes, where it is
+    /// irrelevant, and ship-class types with a 16-byte HEAD: 343, 1510), and for a value that is
+    /// not a finite length below 2^31 tiles. A consumer that needs a hull and finds it absent
+    /// must refuse, never read it as 0 (docs/sim/ship-founding.md section 17.3).
+    std::optional<std::int64_t> hull_half_88 = std::nullopt;
 };
 
 /// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];

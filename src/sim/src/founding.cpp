@@ -1,5 +1,6 @@
 // The ship-founding transaction (see founding.hpp, docs/sim/ship-founding.md section 16).
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -19,7 +20,10 @@
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
 #include <anno/sim/territory.hpp>
+#include <anno/sim/tick.hpp>
 #include <anno/sim/world.hpp>
+
+#include "scheduler_internal.hpp"
 
 namespace anno::sim {
 
@@ -132,7 +136,8 @@ std::optional<std::uint32_t> Founding::reveal_city(const Island& island,
     return lowest;
 }
 
-ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f) {
+ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f,
+                            const InAdvance* in_advance) {
     const SimConfig& cfg = w.config_;
     const TypeRegistry& types = *w.types_;
     const PlayerId me = command.issuer;
@@ -257,7 +262,7 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f)
         const std::int64_t gx0 = origin.x - m, gy0 = origin.y - m;
         const std::int64_t gx1 = origin.x + ext.w + m, gy1 = origin.y + ext.h + m;
         std::vector<veto::NearbyFigure> near;
-        std::set<FigureId> parents; // built on the first crew question
+        std::set<FigureId> parents; // figures with a crewed child, built on the first crew question
         bool parents_built = false;
         for (const std::optional<Figure>& slot : w.figures_.list.slots) {
             if (!slot.has_value()) {
@@ -291,11 +296,11 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f)
                 n.owner = {veto::Fact::False, PlayerId{}};
             }
             n.range_88 = gt->range_88;
-            n.hull_half_88 = gt->hull_half_88;
+            n.hull_half_88 = gt->hull_half_88; // absent stays absent: the veto then refuses
             if (gt->bewohntype >= vrules.crew_kind_min && gt->bewohntype <= vrules.crew_kind_max) {
                 if (!parents_built) {
                     for (const std::optional<Figure>& s2 : w.figures_.list.slots) {
-                        if (s2.has_value() && s2->parent.valid()) {
+                        if (s2.has_value() && s2->parent.valid() && s2->crew_slot.has_value()) {
                             parents.insert(s2->parent);
                         }
                     }
@@ -395,7 +400,22 @@ ApplyResult Founding::apply(World& w, const Command& command, const FoundCmd& f)
         s->holds = pay.value().holds;
     }
     // The city (slot, owner, stamp, name, the single name draw), adopting the building index.
-    const auto created = CityCreation::commit(w, cplan.value());
+    // Inside an advance the name draw goes through the advance's counting source, so the
+    // report attributes it to DrawSite::CityName; between advances the generator is used directly.
+    DrawSource* source = in_advance != nullptr && in_advance->draws != nullptr
+                             ? static_cast<DrawSource*>(in_advance->draws)
+                             : nullptr;
+    const auto draws_before = source != nullptr
+                                  ? static_cast<CountingDraw*>(in_advance->draws)->counts
+                                  : std::array<std::uint32_t, kDrawSiteCount>{};
+    const auto created = CityCreation::commit(w, cplan.value(), source);
+    if (source != nullptr) {
+        // Report the draw to the advance like every seam does (Scheduler::merge adds it to
+        // SimOutput::draws under its site, DrawSite::CityName).
+        Effects fx;
+        fx.draws = draw_records_between(draws_before, in_advance->draws->counts);
+        Scheduler::merge(w, fx, in_advance->ctx->tick, in_advance->ctx->t, true);
+    }
     City& city = *island->cities[created.value().v];
     const auto index_stamp = city.index.stamp; // set by the city commit (BuildingIndex::stamp)
     city.index = std::move(local.index);

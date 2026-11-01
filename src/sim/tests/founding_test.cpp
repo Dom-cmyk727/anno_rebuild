@@ -85,6 +85,13 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     b.figure_type(fig(9501, 99, 7 * kT, 0));     // a soldier
     b.figure_type(fig(9502, 108, 7 * kT, 0));    // a war machine
     b.figure_type(fig(9503, 113, 16 * kT, 397)); // a rival ship
+    sim::FigureType no_hull = fig(9504, 113, 16 * kT, 0);
+    no_hull.hull_half_88 = std::nullopt; // a ship type whose HEAD has no hull field (absent)
+    b.figure_type(no_hull);
+    sim::FigureType neg = fig(9505, 113, 16 * kT, 0);
+    neg.hull_half_88 = -7 * 256; // an inverted box, like the shipped type 391
+    b.figure_type(neg);
+    b.figure_type(fig(9506, 113, 16 * kT, 0)); // a ship with a present zero hull
     auto r = b.build();
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return r.value();
@@ -1032,5 +1039,137 @@ TEST_CASE("founding demonstration: command, result, territory, a conflict and th
     CHECK(fresh.state_hash() == w.state_hash());
     if (print) {
         std::cout << o.str();
+    }
+}
+
+#include <anno/sim/draw.hpp>
+#include <anno/sim/tick.hpp>
+
+TEST_CASE("founding A1: only a child with a crew slot crews a war machine") {
+    // A hostile (WAR 3) war machine of player 1, kind 9502 (BEWOHNTYPE 108), stands 4 tiles east of
+    // the footprint's corner (54, 30), inside the machine's range 7. Without a crew it is not
+    // usable, so it takes the point/hull branch, stands outside the rectangle and does not block.
+    // A child that is merely CARRIED (a parent link, no crew slot) is containment, not crew.
+    const auto fixture = [](int child) {
+        Setup s = base_setup();
+        s.spec.players[0].relations = {sim::Relation{sim::PlayerId{1}, 0, 0, 3, 0}};
+        s.spec.figures.push_back(soldier_at(1, 58, 30, 9502)); // figure index 3
+        if (child > 0) {
+            sim::ScenarioSpec::FigureSpec c = soldier_at(1, 58, 30, 718);
+            c.parent = 3;
+            c.crew_slot = child == 2 ? std::optional<std::uint32_t>(0U) : std::nullopt;
+            s.spec.figures.push_back(c);
+        }
+        return s;
+    };
+    {
+        sim::World w = make(fixture(0)); // no child
+        CHECK(w.check_invariants().empty());
+        CHECK(w.apply(control_command()).ok());
+    }
+    {
+        sim::World w = make(fixture(1)); // a carried child: containment only
+        CHECK(w.check_invariants().empty());
+        CHECK(w.apply(control_command()).ok());
+    }
+    {
+        sim::World w = make(fixture(2)); // the same child in a real crew slot
+        CHECK(w.check_invariants().empty());
+        rejected(w, control_command(), sim::Reject::FigureInTheWay);
+    }
+}
+
+TEST_CASE("founding A3: the city-name draw is reported once inside an advance") {
+    const auto count = [](const sim::World& w, sim::DrawSite site) {
+        std::uint32_t n = 0;
+        for (const sim::DrawRecord& d : w.last_output().draws) {
+            n += d.site == site ? d.count : 0;
+        }
+        return n;
+    };
+    // Accepted: the AI seam submits the control command inside the advance.
+    {
+        sim::World w = make(base_setup());
+        auto& ai = sim::WorldTestAccess::seams(w).ai;
+        ai.name = "found-command";
+        ai.fn = [](void*, const sim::TickContext&, const sim::SerialWorld&,
+                   std::vector<sim::Command>& out) { out.push_back(control_command()); };
+        w.advance(5000);
+        REQUIRE(isl(w).cities[0].has_value());
+        CHECK(w.last_output().rng_cursor_before == 1234);
+        CHECK(w.last_output().rng_cursor_after == 1235);
+        CHECK(count(w, sim::DrawSite::CityName) == 1);
+        std::uint32_t all = 0;
+        for (const sim::DrawRecord& d : w.last_output().draws) {
+            all += d.count;
+        }
+        CHECK(all == 1); // nothing else drew
+    }
+    // Rejected: a bad rotation draws nothing and attributes nothing.
+    {
+        sim::World w = make(base_setup());
+        auto& ai = sim::WorldTestAccess::seams(w).ai;
+        ai.name = "found-command";
+        ai.fn = [](void*, const sim::TickContext&, const sim::SerialWorld&,
+                   std::vector<sim::Command>& out) {
+            sim::Command c = control_command();
+            std::get<sim::FoundCmd>(c.body).placement.rotation = 9;
+            out.push_back(c);
+        };
+        w.advance(5000);
+        CHECK_FALSE(isl(w).cities[0].has_value());
+        CHECK(w.last_output().rng_cursor_after == w.last_output().rng_cursor_before);
+        CHECK(count(w, sim::DrawSite::CityName) == 0);
+    }
+    // Between advances (World::apply): the generator advances by the one draw; no advance is in
+    // progress, so there is no per-advance report to attribute it to (last_output is the previous
+    // advance's, untouched), as for every other seam draw outside an advance.
+    {
+        sim::World w = make(base_setup());
+        w.advance(100);
+        const std::size_t before_n = w.last_output().draws.size();
+        const std::uint32_t cursor = w.rng().cursor();
+        REQUIRE(w.apply(control_command()).ok());
+        CHECK(w.rng().cursor() == cursor + 1);
+        CHECK(w.last_output().draws.size() == before_n);
+    }
+}
+
+TEST_CASE("founding A2: a rival ship's hull fact decides the hull test, absent hull refuses") {
+    // Footprint [50,54) x [30,34). A rival (relation 0: the point/hull branch) ship at (55.5, 31.5)
+    // is outside the rectangle: only the hull box can matter. Hull 397: xmin = trunc(53.95) = 53 <
+    // 54, overlaps. Hull 0 and an inverted (-7 tiles) box do not. An absent hull cannot be decided:
+    // FigureFactsMissing, state unchanged. Inside the rectangle the point test needs no hull.
+    const auto run = [](std::uint32_t kind, double x) {
+        Setup s = base_setup();
+        s.spec.figures.push_back(soldier_at(1, x, 31.5, kind));
+        sim::World w = make(s);
+        CHECK(w.check_invariants().empty());
+        return w;
+    };
+    {
+        sim::World w = run(9503, 55.5); // hull 397
+        rejected(w, control_command(), sim::Reject::FigureInTheWay);
+    }
+    {
+        sim::World w = run(9504, 55.5); // hull absent
+        rejected(w, control_command(), sim::Reject::FigureFactsMissing);
+    }
+    {
+        sim::World w =
+            run(9504, 53.5); // absent hull, but inside the rectangle: the point test decides
+        rejected(w, control_command(), sim::Reject::FigureInTheWay);
+    }
+    {
+        sim::World w = run(9505, 55.5); // inverted box
+        CHECK(w.apply(control_command()).ok());
+    }
+    {
+        sim::World w = run(9506, 55.5); // present zero hull
+        CHECK(w.apply(control_command()).ok());
+    }
+    {
+        sim::World w = run(9506, 53.5); // present zero hull inside the rectangle
+        rejected(w, control_command(), sim::Reject::FigureInTheWay);
     }
 }

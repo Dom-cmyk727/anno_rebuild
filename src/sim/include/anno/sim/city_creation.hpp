@@ -18,6 +18,7 @@
 #include <string>
 
 #include <anno/formats/result.hpp>
+#include <anno/sim/draw.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/world.hpp>
 
@@ -74,8 +75,11 @@ struct CityCreation {
                                                                         const CityRequest& req);
     /// Applies the plan: the city in its slot (owner, stamp, name), the allocation cursor, and the
     /// single name draw when the plan has one. Returns the city number.
-    [[nodiscard]] static formats::Result<CityNo, CityRefusal> commit(World& world,
-                                                                     const CityPlan& plan);
+    /// `source`, when given, is the draw source the name draw goes through (inside an advance the
+    /// advance's counting source, so the draw is attributed to DrawSite::CityName in the advance's
+    /// report); null draws on the world generator directly (between advances: nothing reports it).
+    [[nodiscard]] static formats::Result<CityNo, CityRefusal>
+    commit(World& world, const CityPlan& plan, DrawSource* source = nullptr);
 
     /// The Kontor identifier step of City::Place for a new market: reads the counter only.
     [[nodiscard]] static formats::Result<KontorPlan, KontorRefusal>

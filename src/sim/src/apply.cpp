@@ -708,7 +708,7 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
     } else if (const auto* s = std::get_if<SetTradeSlotCmd>(&command.body)) {
         result = set_trade_slot(env, command, *s);
     } else if (const auto* fd = std::get_if<FoundCmd>(&command.body)) {
-        result = Founding::apply(w, command, *fd);
+        result = Founding::apply(w, command, *fd, in_advance);
     } else {
         // A legacy record is never executed (fail closed, §8.3).
         result.status = Reject::Unsupported;

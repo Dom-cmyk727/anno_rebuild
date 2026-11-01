@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include <anno/sim/apply.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
@@ -31,7 +32,8 @@ struct Command;
 struct Founding {
     /// Validates and applies one FoundCmd. Total. On success `records[0].building` is the new
     /// warehouse; on a rejection nothing changed.
-    static ApplyResult apply(World& w, const Command& command, const FoundCmd& found);
+    static ApplyResult apply(World& w, const Command& command, const FoundCmd& found,
+                             const InAdvance* in_advance = nullptr);
 
     /// The reveal's centre (AnnoWelt 0x10085f31): the origin plus (w - 1) / 2 and (h - 1) / 2 of
     /// the ACCEPTED rotation's footprint, truncated; not the parity terms the territory claim uses.

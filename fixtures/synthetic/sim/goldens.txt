@@ -321,8 +321,8 @@ s13_g5_end S13 120 3f2d838786daf548
 # before the first and after every 300th advance, t24_g6_end the hash at tick 300 000. SELF-BASELINED like the
 # S7 .. S13 goldens (ANNO_UPDATE_GOLDEN also rewrites g6.log); transport_test.cpp holds
 # the cart's and the carrier's trips tick by tick to values derived by hand.
-t24_g6_checkpoints T24 120 e13b8dd6b640011b
-t24_g6_end T24 120 9ab47dec2bc7695a
+t24_g6_checkpoints T24 120 36c84aad043cef53
+t24_g6_end T24 120 553c49ac27d01fbe
 
 # Re-baselined at stream version 112 (T33.4 F5, 2026-10-26). The code has hashed
 # version 112, including the walk-table digest in the header, since bd336ce; this
@@ -373,4 +373,4 @@ p1_g7_create P1 120 1f06f3ddd628dcb4
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
-m2_found_session M2 120 6ec44764b8b6759e
+m2_found_session M2 120 2bc3c42a6131850f

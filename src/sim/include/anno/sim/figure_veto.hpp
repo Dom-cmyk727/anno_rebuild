@@ -97,9 +97,10 @@ struct NearbyFigure {
     /// The type's range in 1/256 tile, already resolved (the original reads LOGIC[0x25] / 8 and
     /// substitutes 7 for 0); nullopt = not supplied. Required only on the hostile branch.
     std::optional<std::uint32_t> range_88;
-    /// The type's hull half-extent in 1/256 tile; nullopt = not supplied. Required only for
-    /// kinds with a hull on the non-hostile branch when the point test did not already veto.
-    std::optional<std::uint32_t> hull_half_88;
+    /// The type's hull half-extent in 1/256 tile, signed as the original's float (a negative one
+    /// gives an inverted box that never overlaps); nullopt = not supplied. Required only for kinds
+    /// with a hull on the non-hostile branch when the point test did not already veto.
+    std::optional<std::int64_t> hull_half_88;
 };
 
 /// The original's constants, as data (CLAUDE.md: no hard-coded limits). Defaults are the

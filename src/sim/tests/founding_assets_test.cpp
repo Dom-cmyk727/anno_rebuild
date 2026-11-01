@@ -129,6 +129,16 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     CHECK(scout->bewohntype == 97);
     CHECK(scout->range_88 == 7 * 256); // LOGIC[0x25] = 56 -> 7 tiles
     CHECK(donkey->bewohntype == 53);
+    CHECK_FALSE(scout->hull_half_88.has_value()); // a class without a hull
+    // The ship-class types of the file: valid hulls, the present zero of 1509, the uninitialised
+    // 0xCCCCCCCC fill of 391 kept as the signed float it is, and the absent field of 343 and 1510.
+    const auto hull = [&](std::uint32_t id) { return types->find_figure_type(id)->hull_half_88; };
+    CHECK(hull(1502) == std::optional<std::int64_t>(397));
+    CHECK(hull(1501) == std::optional<std::int64_t>(602));
+    CHECK(hull(1509) == std::optional<std::int64_t>(0));
+    CHECK(hull(391) == std::optional<std::int64_t>(-27487789056LL));
+    CHECK_FALSE(hull(343).has_value());
+    CHECK_FALSE(hull(1510).has_value());
 
     const fs::path manifest_path = fs::path(ANNO_REPO_DIR) / "data" / "maps" / "candidates" /
                                    "ship-start-v2" / "lan5-ship-a.json";

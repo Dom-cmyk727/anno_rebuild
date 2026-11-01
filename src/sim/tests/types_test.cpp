@@ -1706,7 +1706,8 @@ TEST_CASE("registry digest changes with every field") {
         {"load_ticks", [](auto& f) { f.load_ticks += 1; }},
         {"bewohntype", [](auto& f) { f.bewohntype += 1; }},
         {"range_88", [](auto& f) { f.range_88 += 1; }},
-        {"hull_half_88", [](auto& f) { f.hull_half_88 += 1; }},
+        {"hull_half_88", [](auto& f) { f.hull_half_88 = f.hull_half_88.value_or(0) + 1; }},
+        {"hull_half_88 present zero", [](auto& f) { f.hull_half_88 = 0; }},
     };
     for (const auto& [name, mutate] : fmuts) {
         sim::FigureType f = fig;

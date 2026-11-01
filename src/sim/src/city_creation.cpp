@@ -93,7 +93,8 @@ formats::Result<CityPlan, CityRefusal> CityCreation::prepare(const World& world,
     return plan;
 }
 
-formats::Result<CityNo, CityRefusal> CityCreation::commit(World& world, const CityPlan& plan) {
+formats::Result<CityNo, CityRefusal> CityCreation::commit(World& world, const CityPlan& plan,
+                                                          DrawSource* source) {
     const SimConfig& cfg = world.config();
     if (plan.island.v >= world.islands_.size() || !world.islands_[plan.island.v].has_value()) {
         return CityRefusal::StalePlan;
@@ -112,7 +113,8 @@ formats::Result<CityNo, CityRefusal> CityCreation::commit(World& world, const Ci
     city.tick_stamp = plan.stamp;
     city.index.stamp = plan.stamp;
     if (plan.draws) {
-        GlobalDraw door{world.rng_};
+        GlobalDraw global{world.rng_};
+        DrawSource& door = source != nullptr ? *source : static_cast<DrawSource&>(global);
         static_cast<void>(door.next(DrawSite::CityName)); // the value the plan peeked
         city.name = plan.name;
     }

@@ -1,0 +1,32 @@
+# Route-run vectors (MAP-NAV-1 N4, prerequisite of implementation package P2).
+# EXPECTED VALUES COME FROM THE ORIGINAL CODE UNDER EMULATION (the real route engine bytes of AnnoWelt.dll executed under unicorn with
+# only the world object faked; evidence note docs/re/ship-navigation.md section 9 and 11), tag `emulated original (coarse+fine)`. They are
+# NOT hand-derived. tools/ship_nav_ref.py route-check cross-checks them against the independent passage reference: the status, that
+# the run total ends on the tile the reference chooses as goal candidate, run lengths <= 10 and the direction table; the discovery
+# order / tie rule they pin is only reproducible by the C++ port (P2). Not covered: ship congestion, shore-band cells, object
+# footprints, maps larger than 64x64, cost classes other than 0.
+# Format: route <name> | 64 64 | land <x0,z0,x1,z1> ... | start x z | goal x z | status | runs (W SW S SE E NE N NW + length) or -
+# Directions: W (-1,0) SW (-1,+1) S (0,+1) SE (+1,+1) E (+1,0) NE (+1,-1) N (0,-1) NW (-1,-1); z grows southward.
+route V1 | 64 64 | land  | start 4.5 20.5 | goal 40.5 20.5 | 0 | E10 E10 E10 E6
+route V2 | 64 64 | land  | start 44.5 20.5 | goal 8.5 20.5 | 0 | W10 W10 W10 W6
+route V3 | 64 64 | land  | start 20.5 4.5 | goal 20.5 29.5 | 0 | S10 S10 S5
+route V4 | 64 64 | land  | start 4.5 4.5 | goal 14.5 14.5 | 0 | SE10
+route V5 | 64 64 | land  | start 14.5 14.5 | goal 4.5 4.5 | 0 | NW10
+route V6 | 64 64 | land  | start 4.5 20.5 | goal 17.5 7.5 | 0 | NE10 NE3
+route V7 | 64 64 | land 30,0,31,39 | start 10.5 20.5 | goal 50.5 20.5 | 0 | SE10 SE9 S1 E3 NE10 NE8 N2
+route V8 | 64 64 | land 30,0,31,19 30,21,31,63 | start 10.5 20.5 | goal 50.5 20.5 | 0 | E10 E10 E10 E10
+route V9 | 64 64 | land 30,0,31,25 30,27,31,63 | start 10.5 20.5 | goal 50.5 20.5 | 0 | SE6 E10 E6 NE6 E10 E2
+route V10 | 64 64 | land  | start 4.5 4.5 | goal 12.5 8.5 | 0 | SE4 E4
+route V11 | 64 64 | land  | start 4.5 4.5 | goal 8.5 12.5 | 0 | SE4 S4
+route V12 | 64 64 | land  | start 20.5 4.5 | goal 12.5 8.5 | 0 | SW4 W4
+route V13 | 64 64 | land  | start 4.5 20.5 | goal 12.5 16.5 | 0 | NE4 E4
+route V14 | 64 64 | land  | start 4.5 4.5 | goal 16.5 6.5 | 0 | SE2 E10
+route V15 | 64 64 | land 20,20,20,20 | start 10.5 20.5 | goal 30.5 20.5 | 0 | NE1 E10 SE1 E8
+route V16 | 64 64 | land 19,19,21,21 | start 10.5 20.5 | goal 30.5 20.5 | 0 | NE2 E10 SE2 E6
+route V17 | 64 64 | land 0,30,63,63 | start 4.5 20.5 | goal 40.5 34.5 | 0 | SE9 E10 E10 E7
+route V18 | 64 64 | land 0,0,63,31 | start 10.5 50.5 | goal 30.5 28.5 | 0 | NE10 NE8 E2
+route V19 | 64 64 | land  | start 20.5 20.5 | goal 20.5 20.5 | 2 | -
+route V20 | 64 64 | land  | start 20.5 20.5 | goal 22.5 20.5 | 0 | E2
+route V21 | 64 64 | land 10,20,50,23 10,40,50,43 10,20,13,43 | start 58.5 32.5 | goal 9.5 32.5 | 0 | SW7 S5 W10 W10 W10 W10 W2 N10 N2
+route V22 | 64 64 | land 0,63,0,63 1,62,1,62 2,61,2,61 3,60,3,60 4,59,4,59 5,58,5,58 6,57,6,57 7,56,7,56 8,55,8,55 9,54,9,54 10,53,10,53 11,52,11,52 12,51,12,51 13,50,13,50 14,49,14,49 15,48,15,48 16,47,16,47 17,46,17,46 18,45,18,45 19,44,19,44 20,43,20,43 21,42,21,42 22,41,22,41 23,40,23,40 24,39,24,39 25,38,25,38 26,37,26,37 27,36,27,36 28,35,28,35 29,34,29,34 30,33,30,33 31,32,31,32 32,31,32,31 33,30,33,30 34,29,34,29 35,28,35,28 36,27,36,27 37,26,37,26 38,25,38,25 39,24,39,24 40,23,40,23 41,22,41,22 42,21,42,21 43,20,43,20 44,19,44,19 45,18,45,18 46,17,46,17 47,16,47,16 48,15,48,15 49,14,49,14 50,13,50,13 51,12,51,12 52,11,52,11 53,10,53,10 54,9,54,9 55,8,55,8 56,7,56,7 57,6,57,6 58,5,58,5 59,4,59,4 60,3,60,3 61,2,61,2 62,1,62,1 63,0,63,0 | start 10.5 10.5 | goal 50.5 50.5 | -2 | -
+route V23 | 64 64 | land 0,0,63,31 | start 10.5 50.5 | goal 30.5 25.5 | -2 | -

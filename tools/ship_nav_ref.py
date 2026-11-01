@@ -274,7 +274,73 @@ def check_passage(path, mut=None):
     return bad
 
 
+DIRS = {'W': (-1, 0), 'SW': (-1, 1), 'S': (0, 1), 'SE': (1, 1), 'E': (1, 0), 'NE': (1, -1), 'N': (0, -1), 'NW': (-1, -1)}
+
+
+def check_routes(path, mut=None):
+    """Cross-checks emulated-original route-run vectors against the independent passage reference."""
+    bad, count = [], 0
+    for n, line in enumerate(open(path), 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [x.strip() for x in line.split('|')]
+        name = parts[0].split()[1]
+        W, H = map(int, parts[1].split())
+        land = set()
+        for rect in parts[2].split()[1:]:
+            x0, z0, x1, z1 = map(int, rect.split(','))
+            land.update((x, z) for z in range(z0, z1 + 1) for x in range(x0, x1 + 1))
+        start = tuple(map(float, parts[3].split()[1:]))
+        goal = tuple(map(float, parts[4].split()[1:]))
+        status = int(parts[5])
+        runs = [] if parts[6] == '-' else parts[6].split()
+        count += 1
+        st, cx, cz, _ = passage(W, H, land, start, goal)
+        problems = []
+        if st != status:
+            problems.append('status %s, passage reference %s' % (status, st))
+        x, z = math.floor(start[0]), math.floor(start[1])
+        cap = 9 if mut == 'cap9' else 10
+        for r in runs:
+            d = r.rstrip('0123456789')
+            length = int(r[len(d):])
+            if d not in DIRS or length > cap or length < 1:
+                problems.append('bad run %s' % r)
+                continue
+            dx, dz = DIRS[d]
+            if mut == 'flip_z':
+                dz = -dz
+            x, z = x + dx * length, z + dz * length
+        if status == 0 and (x, z) != (cx, cz):
+            problems.append('runs end on %s, candidate %s' % ((x, z), (cx, cz)))
+        if status != 0 and runs:
+            problems.append('runs on a non-route status')
+        if problems:
+            bad.append((n, name, problems))
+    if count < 20:
+        bad.append((0, 'fixture', ['fewer than 20 route vectors']))
+    return bad
+
+
 def main_passage(argv):
+    if argv[1] in ('route-check', 'route-selftest'):
+        if argv[1] == 'route-check':
+            bad = check_routes(argv[2])
+            for b in bad:
+                print('ROUTE MISMATCH line %d %s: %s' % b)
+            print('ship route vectors', 'agree' if not bad else 'DIFFER')
+            return 1 if bad else 0
+        if check_routes(argv[2]):
+            print('selftest: the unmutated route cross-check already fails')
+            return 1
+        ok = True
+        for m in ['cap9', 'flip_z']:
+            caught = bool(check_routes(argv[2], m))
+            print('mutant %-8s %s' % (m, 'caught' if caught else 'SURVIVED'))
+            ok = ok and caught
+        print('route selftest', 'ok' if ok else 'FAILED')
+        return 0 if ok else 1
     if argv[1] == 'passage-check':
         if len(parse_passage(argv[2])) < 16:
             print('fewer than 16 passage cases: the fixture is truncated or misnamed')
@@ -297,7 +363,7 @@ def main_passage(argv):
 
 
 def main(argv):
-    if len(argv) == 3 and argv[1] in ('passage-check', 'passage-selftest'):
+    if len(argv) == 3 and argv[1] in ('passage-check', 'passage-selftest', 'route-check', 'route-selftest'):
         return main_passage(argv)
     if len(argv) != 3 or argv[1] not in ('check', 'selftest'):
         print(__doc__)

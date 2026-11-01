@@ -163,9 +163,11 @@ cleared), kind 2 = flags `|= 0x204`. Emulated on the real bytes (1502, `f0 = 0.1
 ### 7.4 Segment-end hook `0x10042210` (slot `+0x17c`)
 Called at the end of every non-final segment. Stamps `[+0x72]`; if `(state & 7) == 1` it calls world slot `+0xcc`
 (`0x1009d9b0`, arguments `ftol(x), ftol(z), 14, 5, owner`; only this call is guarded by that test). Unconditionally it queries
-the unit registry (slot `+0x14`, mask `0xf9cf`, radius `type.slot+0x68(4)`, up to 0x100 entries; the radius value for a 1502
-(16.0 in `docs/re/fire-and-ships.md` 3.1) is not re-derived: `LOGIC` byte `0x24` of a 1502 is 0, so the slot's source is
-UNKNOWN). With two or more units (self counts), the avoid option set (`[+0x148] ? [+0x14a] : [+0x166]`) and
+the unit registry (slot `+0x14`, mask `0xf9cf`, radius `type.slot+0x68(4)`, up to 0x100 entries). Type slot `+0x68(i)` (`0x1000fd00`) returns `float [type+0x14+4*i]`, filled at
+AnnoGame `0x10010262..0x10010352`: (0) `LOGIC[0x12]/8`, (1) `max(LOGIC[0x27]/8, slot 0)`, (2) `LOGIC[0x24]/8`, (4) `LOGIC[0x25]/8`
+(0 means 7.0), (5) `LOGIC[0x28]/8` (0 means 2.0). A 1502 (`LOGIC[0x12] = 0x40`, `[0x24] = 0`, `[0x25] = 0x80`, `[0x27] = 0x40`,
+`[0x28] = 0x28`, identical for 1501..1506) therefore has slot values 8.0, 8.0, 0.0, 16.0 (index 4) and 5.0 (index 5): the hook
+radius is **16.0 tiles**. With two or more units (self counts), the avoid option set (`[+0x148] ? [+0x14a] : [+0x166]`) and
 `state & 0x2106 == 0` it runs the avoid routine `0x10041bd0` (section 10.3), then, if `(state & 0x2007) == 1`, the
 local replan `0x1003de40`. A third path (`0x1004235f`): if `state & 0x6806 == 0x800` (replan pending) it calls the wrapper
 `0x1003dc20`, i.e. `0x1003de40(0, 0)`, even with fewer than two units. A non-zero result makes the integrator skip the
@@ -188,12 +190,19 @@ where exact mathematics gives 8. Vectors built by the route engine are multiples
 `2 * dir8`.
 
 ### 7.7 State words
-`+0x40` (u16): `0x0001` moving; `0x0002` final (set by kind 1 and by hit points reaching 0; no instruction in
-`0x10030000-0x10044800` clears it); `0x0004` final reached / kind 2; `0x0020`, `0x0100` from the HEAD record;
-`0x0200` segment-active marker; `0x0800` replan pending; `0x8000` units aboard (non-`0x61` crew). A move order is
-refused by `0x100a5f70` iff `state & 0x200e` is non-zero (for type groups `0x6c..0x70`, not ships, it additionally needs a
-non-empty hold). SetOrder also has an order-id `0x13` branch (flags `& 0xf0000 == 0x30000`, non-zero target) and a plain
-stop when `x = z = 0`; order id 1 is not unconditional.
+`+0x40` (u16; every immediate write in `0x10030000..0x10044800` was scanned): `0x0001` moving (set by kind >= 8, cleared by kind
+0/3 and the idle hook); `0x0002` final (set by kind 1 and by hit points reaching 0; never cleared); `0x0004` set when a final
+segment ends and by kind 2 (it suppresses the replan through mask `0x2007`); `0x0008` activity byte `+0x75 == 0x13`; units with
+`0x000a` set are skipped by registry queries; `0x0020` HEAD byte 1 non-negative; `0x0100` initialised from `HEAD[0xa] & 1`
+(0 for a 1502, 3 for the other five ships; the HEAD record binding is an assumption) and cleared on every SetOrder when `0x8000`
+is clear, while set it skips the avoid branch; `0x0200` active-segment marker (set at `0x1003ec75`, in no hook mask);
+`0x0800` replan pending: set at exactly one place, `0x1003e740` (`or word [ebp+0x40], 0x801`) after `0x1003de40` installs a
+detour segment, cleared at `0x1003de9b`, `0x1003fbb2`, `0x1003ff1b`, `0x10040190`, `0x100426a1`, so it is clear in a fresh
+order; `0x2000` and `0x4000`: no immediate writer in the ship range (setter UNKNOWN), they appear only in masks; `0x8000` is set
+when the ship has **no** crew (derived at `0x10042a8f..0x10042b5f` from crew byte `+0x7a` and a type-`0x61` crew test; the earlier
+gloss "units aboard" was inverted). A move order is refused by `0x100a5f70` iff `state & 0x200e` is non-zero (for type groups
+`0x6c..0x70`, not ships, it additionally needs a non-empty hold). SetOrder also has an order-id `0x13` branch (flags
+`& 0xf0000 == 0x30000`, non-zero target) and a plain stop when `x = z = 0`; order id 1 is not unconditional.
 
 ### 7.8 Persistence and crew
 Saved: the 16-byte `SCHIFF` prefix (facing `attr`, `f32` position) and a 16-byte HEAD record (byte 0 the avoid stance `+0x166`, dword `+4` = `+0x160`, byte 8 = `+0x7a`, hit points as `max(1, hp*128/maxhp)`
@@ -294,9 +303,18 @@ slot `+0xf8` = `0x100aae00` (rectangle argument): per cell the island block reco
 extremes): `19 >= 2*max` -> `0xfff` (all water), `19 < 2*min` -> `0` (all land), else mixed: the 8 x 8 tile map is
 packed by `0x100a4130` into a **12-bit edge-connectivity mask**. A second pass sets cost type 3 (**shore band**) for any
 cell with an 8-neighbour whose height range straddles level 32 (`T2 = ftol(1.28/0.04) = 32` on doubled half-heights).
-The only types ever in the coarse map are 0 and 3. The map is rebuilt for a changed rectangle when a placed or removed
-island object has class bits `& 0x7000` equal to `0x2000` or `0x4000` (call sites `0x10082afd`, `0x10083802`);
-whether load performs a full build is UNKNOWN.
+The only types ever in the coarse map are 0 and 3. **There is no whole-map build.** The world Init (`..0x100aad49`) allocates the sector array with every pointer NULL and calls
+no builder. The builder is reached through world slot `+0x1d0` (thunk `0x100aba70` -> `0x100aae00(rect)`; six callers, all world
+methods): the island-attach method `0x100a2b50` (rect = the island's bounding box; its only caller is `0x100af240`, world slot
+`+0x1c0` Reset, which loops over all islands) and `0x100a26b0`, `0x100a2840`, `0x100a2e60`, `0x100a1da0` (two sites). The island
+place/remove methods (`0x10082040`, `0x10082b10`) rebuild only the changed rectangle, and only when their flag argument has
+`& 0x7000` equal to `0x2000` or `0x4000` (call sites `0x10082afd`, `0x10083802`); the island loader passes `0x4000000`, so
+load-time placement never rebuilds. That Reset runs after the islands exist and before the first order is DERIVED, not proven
+(CAP-3). **Vertex grid:** island Init (`0x1008c18a..0x1008c1d0`) allocates `(H+2) x (W+1)` bytes, zero-filled, stride `W+1`; the
+HEIGHT chunk copy (`0x10084870`, slot `+0xac` of island vtable `0x100ca19c`) writes only the `W x H` samples, so
+`vertex(x, y) = HEIGHT[x, y]` for `x < W, y < H` and **0** for column `W` and rows `H`, `H+1` (the repo's `VertexGrid` and
+`kBoundaryVertexHeight = 0` follow the same rule). Consequence (DERIVED): the tiles of the last column and row read zero
+vertices, which pulls their corner average down (more water at the island border).
 
 ### 9.3 Coarse search
 Mask: bit `3*s + k` means water touching source edge `s` also touches target edge `t = (s + 3 - k) mod 4`; edges
@@ -312,8 +330,14 @@ entered cell's orthogonal cost, a turn to either side costs `diag - orth` of tha
 contain a connection ending at the edge facing the current cell or its nibble flag (masks `0x2111` N, `0x8444` S,
 `0x4888` W, `0x1222` E); exit test on the current cell: its (entry edge to exit edge) bit or the nibble bit; and the
 class-table mask byte must contain the direction bit (W `0x01`, S `0x04`, E `0x10`, N `0x40`). Class 0 costs: type 0
-10/13 (orth/diag), type 1/2 15/20 and 20/27, type 3 (shore) 50/69. Window: at most 32 x 32 blocks of 64 tiles
-(`SetWindow 0x1000edd0`; larger is rejected and the query fails).
+10/13 (orth/diag), type 1/2 15/20 and 20/27, type 3 (shore) 50/69. Window: built by ship slot `+0x164` = `0x10040940`
+(`ret 8`): a box centred on the ship's **start tile only** (the target is not part of it), `r = u16 [ship+0x6e]` (default `0x400`;
+the only ship-level store found is `0x10044080` when a class-`0x1a00` object is attached), x range `[max(0, tx-r), min(W, tx+r+1))`,
+z likewise; `SetWindow 0x1000edd0` floors x0, z0 to a multiple of 8 and **rejects** a box with more than 32 blocks of 64 tiles
+per axis (2048 tiles from the aligned origin; the engine does not set the window-valid byte, block creation returns NULL and
+the query fails, the failure code -2 is DERIVED). An unclipped `r = 1024` box is 2049 tiles wide (33 blocks) and is rejected: it
+is accepted only when the map edge clips it, so for maps up to 1024 tiles the box is the whole map, and a target more than 1024
+tiles from the start lies outside the box.
 
 ### 9.4 Fine search, goal, learning, output
 The fine level is Dijkstra at one-tile resolution inside the blocks of the coarse path plus the missing corner of each

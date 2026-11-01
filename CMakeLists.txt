@@ -142,6 +142,12 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME ship_passage_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py passage-selftest
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/passage_cases.txt)
+    add_test(NAME ship_route_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_runs.txt)
+    add_test(NAME ship_route_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_runs.txt)
     add_test(NAME test_verdict_contract
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
   else()

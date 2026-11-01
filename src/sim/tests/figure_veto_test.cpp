@@ -230,7 +230,9 @@ TEST_CASE("veto: own, friendly and hostile owners take different branches") {
     expect_clear(orphan);
     orphan.pos = sim::FixedPos{11 * T, 13 * T};
     expect_veto(orphan, veto::Reason::PointInFootprint);
-    // Property 0x1c == 0x11 exempts the hostile branch (the figure then takes path B).
+    // Property 0x1c == 0x11 SKIPS a usable, owned, hostile figure (AnnoFrame.dll 0x10045238 jumps
+    // to the loop increment): it neither takes path A nor falls to path B. Control: 0x10 and 0x12
+    // veto by range. Inside the rectangle (where path B would veto) the skipped figure is Clear.
     veto::NearbyFigure exempt = hostile(kSoldier, 18 * T, 12 * T);
     exempt.owner_property_1c = 0x11;
     expect_clear(exempt);
@@ -238,6 +240,20 @@ TEST_CASE("veto: own, friendly and hostile owners take different branches") {
     expect_veto(exempt, veto::Reason::HostileInRange);
     exempt.owner_property_1c = 0x12;
     expect_veto(exempt, veto::Reason::HostileInRange);
+    veto::NearbyFigure skipped = hostile(kSoldier, 11 * T, 13 * T);
+    skipped.owner_property_1c = 0x10;
+    expect_veto(skipped, veto::Reason::HostileInRange); // control: in range of a corner
+    skipped.owner_property_1c = 0x11;
+    expect_clear(skipped); // not PointInFootprint
+    // A hostile ship whose hull overlaps (and whose range is 0, so path A cannot hit): skipped too.
+    veto::NearbyFigure hull = hostile(kShip, 9 * T + T / 2, 14 * T, 0);
+    hull.owner_property_1c = 0x10;
+    expect_clear(hull); // control: path A with range 0 misses every corner, and A never falls to B
+    hull.relation_war = 0;
+    expect_veto(hull, veto::Reason::HullOverlap); // control: the non-hostile branch sees the hull
+    hull.relation_war = 3;
+    hull.owner_property_1c = 0x11;
+    expect_clear(hull);
     // The exemption value is data.
     veto::Rules rules;
     rules.exempt_owner_property = 0x12;
@@ -265,7 +281,7 @@ TEST_CASE("veto: the hostile branch measures corners with equality as a hit, not
     // The hostile branch does not look at the rectangle: a hostile soldier in the middle of the
     // footprint with range 1 is 2.83 from every corner and does NOT veto (path A), whereas the same
     // figure on the non-hostile branch does.
-    expect_clear(hostile(kSoldier, 12 * T, 14 * T, 1 * T));
+    expect_clear(hostile(kSoldier, 12 * T, 14 * T, 1 * T)); // path A never falls to path B
     veto::NearbyFigure friendly = hostile(kSoldier, 12 * T, 14 * T, 1 * T);
     friendly.relation_war = 0;
     expect_veto(friendly, veto::Reason::PointInFootprint);

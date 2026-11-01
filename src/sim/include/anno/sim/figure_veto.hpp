@@ -21,9 +21,11 @@
 //     BEWOHNTYPE 108..112 (the original's war machines) has at least one occupied crew slot.
 //     Path A applies when the figure is usable, has an owner, is hostile to the placing
 //     player (different player and the placing player's relation byte of kind 2 towards the
-//     owner is non-zero) and the owner's property 0x1c is not 0x11: it vetoes when the
+//     owner is non-zero): when the owner's property 0x1c is 0x11 the figure is skipped (no
+//     veto, AnnoFrame.dll 0x10045233 je 0x10045494); otherwise it vetoes when the
 //     figure's position is within the type's range of ANY of the four integer corners of the
-//     footprint (distance squared <= range squared, equality is a hit). Otherwise path B: it
+//     footprint (distance squared <= range squared, equality is a hit) and never falls to
+//     path B. A figure that is not usable, has no owner or is not hostile takes path B: it
 //     vetoes when the position lies in the half-open footprint rectangle, or, for BEWOHNTYPE
 //     113..128, when its hull box (the position +- the type's hull half-extent, each bound
 //     truncated toward zero) overlaps the rectangle.
@@ -36,9 +38,11 @@
 // not representable: the caller rounds it, the choice is the caller's and the boundary
 // difference is limited to positions within 1/256 tile of a truncation boundary). With
 // positions that are multiples of 1/256 and a hull half-extent that is exact in both
-// representations, the comparisons are exactly the original's. The original does not do the
-// comparisons in a single fixed format (x87); results at those boundaries are NOT claimed
-// outside this domain.
+// representations, the comparisons are exactly the original's. Path A rounds dx^2 and r^2 to
+// f32 (x87, AnnoFrame.dll 0x10045242-0x100452bc); the integer comparison equals it when
+// range <= 16 tiles and |position| < 2^16 tiles (then every square is exact in f32). Outside
+// that domain, and wherever the x87 precision control differs (unknown), results at the
+// boundary are NOT claimed to equal the original's.
 //
 // Complexity: one linear pass over the candidates, early return only when nothing remains to
 // learn (a veto), no sort, no pairwise scan, no allocation. Iteration order is the span's
@@ -113,8 +117,9 @@ struct Rules {
     std::uint32_t crew_kind_min = 108, crew_kind_max = 112;
     /// Kinds with a hull box on the non-hostile branch (class group 0x71).
     std::uint32_t hull_kind_min = 113, hull_kind_max = 128;
-    /// The owner property value that exempts the hostile branch (0x1c == 0x11). Its meaning is
-    /// not established (docs/re/ship-founding.md section 14); only the comparison is.
+    /// The owner property value (0x1c == 0x11) for which a hostile figure is skipped outright.
+    /// Its meaning is not established (docs/re/ship-founding.md section 14); only the comparison
+    /// is.
     std::uint32_t exempt_owner_property = 0x11;
     /// The selected ship's state-word bit that rejects it (AnnoFrame.dll 0x10048d54); unnamed.
     std::uint32_t selected_ship_reject_bit = 0x02;

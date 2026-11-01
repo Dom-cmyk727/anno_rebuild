@@ -158,7 +158,9 @@ Decision decide(PlayerId placing, const NearbyFigure& f, const Rect& rect, const
         return missing(Missing::OwnerProperty1c);
     }
     if (*f.owner_property_1c == rules.exempt_owner_property) {
-        return plain_branch(f, rect, rules);
+        // 0x10045233 cmp [..], 0x11; je 0x10045494: the loop increment. The figure is SKIPPED,
+        // it does not fall to the point/hull test.
+        return clear();
     }
     return hostile_branch(f, rect);
 }

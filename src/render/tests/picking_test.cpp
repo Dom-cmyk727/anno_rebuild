@@ -205,7 +205,7 @@ TEST_CASE("picking: a raised tile hides the lower ground behind it, and the pick
 }
 
 TEST_CASE("picking: non-finite input, a degenerate geometry and points beyond the safe range pick "
-          "nothing; the screen map is a pixel's centre" *
+          "nothing, and the screen map is a pixel's centre" *
           doctest::test_suite("picking")) {
     const auto g = anno::render::pick_geometry(1);
     const auto flat = [](float, float) { return std::optional<float>(0.0F); };

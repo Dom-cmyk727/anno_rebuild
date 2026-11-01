@@ -338,7 +338,7 @@ TEST_CASE("command outcomes: a command posted while a turn is held at its gate w
 }
 
 TEST_CASE("command outcomes: a command with no wire form is refused as Unencodable and changes "
-          "nothing; a refusal and a no-op change no picture and still wake the window" *
+          "nothing, and a refusal and a no-op change no picture and still wake the window" *
           doctest::test_suite("command_outcome")) {
     auto d = dev_world();
     auto twin = dev_world();

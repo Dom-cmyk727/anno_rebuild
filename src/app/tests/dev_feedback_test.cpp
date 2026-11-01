@@ -377,7 +377,7 @@ TEST_CASE("dev feedback: the composed title never lets an earlier command's refu
     MESSAGE("title: " << title);
 }
 
-TEST_CASE("dev feedback: the developer start's resources are the fixed map's only; an original "
+TEST_CASE("dev feedback: the developer start's resources are the fixed map's only, an original "
           "scenario keeps its own" *
           doctest::test_suite("dev_feedback")) {
     const auto dir = anno::test::game_dir();

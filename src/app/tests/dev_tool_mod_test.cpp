@@ -245,9 +245,10 @@ TEST_CASE("dev tool data: a second definition (another id, a non-square footprin
     CHECK(app::preview_note(tool, *s, 1).find("no entry 501") != std::string::npos);
 }
 
-TEST_CASE("dev tool data: an empty buildable list only demolishes; a malformed definition sends "
-          "nothing" *
-          doctest::test_suite("dev_tool_mod")) {
+TEST_CASE(
+    "dev tool data: an empty buildable list only demolishes, and a malformed definition sends "
+    "nothing" *
+    doctest::test_suite("dev_tool_mod")) {
     const auto s = scene();
     const Frame f = frame_over(s, kX0 + 15, kY0 + 15);
     {

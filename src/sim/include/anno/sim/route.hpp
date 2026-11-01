@@ -32,8 +32,12 @@ namespace anno::sim {
 // ---------------------------------------------------------------------------------------------
 
 /// Per-query limits. Every field has the original's value as its default except the three work
-/// limits, which the original does not have (it floods the window); their defaults are measured
-/// (docs/sim/ship-route-limits.md). validate() is the only gate: plan_route refuses invalid limits.
+/// limits, which the original does not have (it floods the window). Their defaults are at least 8x
+/// the largest legal query measured on the real candidates and on the original-sized window of
+/// 256 x 256 cells, and the coarse default exceeds the most pops the original-sized window can
+/// ever cost (9 searches of 65,536 cells), so a query that the original completes on its window is
+/// never refused by default (docs/sim/ship-route-limits.md). validate() is the only gate:
+/// plan_route refuses invalid limits.
 struct RouteLimits {
     /// Half-width of the start-centred window in tiles (ship +0x6e, original 0x400 = 1024).
     std::int32_t window_radius_tiles = 1024;
@@ -49,13 +53,13 @@ struct RouteLimits {
     /// Density stamps honoured per query (the registry query capacity, 0x40).
     std::uint32_t unit_cap = 64;
     /// Coarse node pops over the whole query, all retries included.
-    std::uint64_t coarse_budget = 4000000;
+    std::uint64_t coarse_budget = 600000;
     /// Fine node pops over the whole query, all retries included.
-    std::uint64_t fine_budget = 16000000;
+    std::uint64_t fine_budget = 4000000;
     /// Accounted working-set bytes (logical sizes of the coarse and fine working sets, the learned
     /// list and the result runs; never container capacities, which differ between standard
     /// libraries).
-    std::uint64_t memory_bytes = 256ull * 1024 * 1024;
+    std::uint64_t memory_bytes = 64ull * 1024 * 1024;
 };
 
 /// Empty when the limits are valid, else a one-line diagnostic.

@@ -41,6 +41,14 @@ sim::TileMapSource wall_map() {
     return m;
 }
 
+std::uint64_t total_run_steps(const std::vector<sim::RouteRun>& runs) {
+    std::uint64_t n = 0;
+    for (const auto& r : runs) {
+        n += r.steps;
+    }
+    return n;
+}
+
 std::string serialize(const sim::RouteResult& r) {
     std::string s = std::to_string(static_cast<int>(r.status)) + "/" +
                     std::to_string(static_cast<int>(r.exceeded)) + "/" + runs_to_string(r.runs) +
@@ -852,4 +860,53 @@ TEST_CASE("route memory accounting: logical bytes, independent of the query repe
     CHECK(arrived.status == sim::RouteStatus::Arrived);
     CHECK(arrived.runs.empty());
     CHECK(arrived.work.bytes_high < a.work.bytes_high + 1);
+}
+
+TEST_CASE("route limits: the defaults carry a margin of at least 8x over the largest "
+          "original-sized window") {
+    // The original window is at most 32 x 32 blocks of 64 tiles = 2048 x 2048 tiles = 256 x 256
+    // cells. Open sea corner to corner (a long legal route) and an unreachable goal (the flood of
+    // every cell).
+    sim::TileMapSource sea(2048, 2048);
+    const sim::CoastIndex open_index(sea, {});
+    const sim::RouteLimits defaults;
+    const auto costs = sim::RouteCostTable::original();
+    // A start in the middle sees the whole map; one at the corner only [0, 1025) (radius 1024).
+    const auto far =
+        sim::plan_route(open_index, tile_query(1024, 1024, 2040, 2040), defaults, costs);
+    REQUIRE(far.status == sim::RouteStatus::Planned);
+    CHECK(total_run_steps(far.runs) == 1016);
+    const auto mid = sim::plan_route(open_index, tile_query(1024, 1024, 24, 1030), defaults, costs);
+    REQUIRE(mid.status == sim::RouteStatus::Planned);
+    CHECK(sim::plan_route(open_index, tile_query(0, 0, 2047, 2047), defaults, costs).status ==
+          sim::RouteStatus::OutsideWindow);
+    // A closed goal ring in the far corner: the coarse search floods the window and finds nothing.
+    sim::TileMapSource walled(2048, 2048);
+    walled.fill_rect(1990, 1990, 2047, 1990, false);
+    walled.fill_rect(1990, 2047, 2047, 2047, false);
+    walled.fill_rect(1990, 1990, 1990, 2047, false);
+    walled.fill_rect(2047, 1990, 2047, 2047, false);
+    walled.fill_rect(1991, 1991, 2046, 2046,
+                     false); // solid island: the goal is 14+ tiles from water
+    const sim::CoastIndex walled_index(walled, {});
+    const auto flood =
+        sim::plan_route(walled_index, tile_query(1024, 1024, 2020, 2020), defaults, costs);
+    CHECK(flood.status == sim::RouteStatus::Unreachable);
+    MESSAGE("diagonal 1016 tiles: " << far.work.coarse_pops << " coarse, " << far.work.fine_pops
+                                    << " fine pops, " << far.work.bytes_high << " bytes");
+    MESSAGE("1000 tiles west: " << mid.work.coarse_pops << " coarse, " << mid.work.fine_pops
+                                << " fine pops, " << mid.work.bytes_high << " bytes");
+    MESSAGE("unreachable goal (full flood): " << flood.work.coarse_pops << " coarse pops, "
+                                              << flood.work.bytes_high << " bytes");
+    for (const auto* r : {&far, &mid, &flood}) {
+        CHECK(defaults.coarse_budget >= 8 * r->work.coarse_pops);
+        CHECK(defaults.fine_budget >= 8 * r->work.fine_pops);
+        CHECK(defaults.memory_bytes >= 8 * r->work.bytes_high);
+    }
+    // The structural bound: nine searches (the learned-mask cap plus one) of every cell of the
+    // window.
+    CHECK(defaults.coarse_budget >= 9u * 256u * 256u);
+    // The small representative queries of the fixtures are orders of magnitude below the defaults.
+    const auto small = plan_default(wall_map(), tile_query(10, 20, 50, 20));
+    CHECK(small.work.coarse_pops * 1000 < defaults.coarse_budget);
 }

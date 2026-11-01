@@ -321,3 +321,233 @@ TEST_CASE("route world: a coast index over an island equals a clean rebuild and 
     CHECK(index.verify_against_clean_rebuild(band)
               .empty()); // the original index still matches its source
 }
+
+// ---------------------------------------------------------------------------------------------
+// the real shipped islands
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::uint8_t> read_all(const fs::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+struct Witness {
+    std::string candidate;
+    int seat = 0, island = 0, tool_cost = 0;
+    int spawn_x = 0, spawn_z = 0, site_x = 0, site_z = 0, water_x = 0, water_z = 0;
+};
+
+std::vector<Witness> load_witnesses() {
+    std::vector<Witness> out;
+    for (const std::string& line : fixture_lines("candidate_witnesses.txt")) {
+        const auto p = split(line, '|');
+        Witness w;
+        w.candidate = words(p[0])[1];
+        w.seat = std::stoi(words(p[1])[1]);
+        w.island = std::stoi(words(p[2])[1]);
+        w.tool_cost = std::stoi(words(p[3])[1]);
+        const auto sp = words(p[4]);
+        const auto si = words(p[5]);
+        const auto wa = words(p[6]);
+        w.spawn_x = std::stoi(sp[1]);
+        w.spawn_z = std::stoi(sp[2]);
+        w.site_x = std::stoi(si[1]);
+        w.site_z = std::stoi(si[2]);
+        w.water_x = std::stoi(wa[1]);
+        w.water_z = std::stoi(wa[2]);
+        out.push_back(w);
+    }
+    return out;
+}
+
+std::uint64_t total_steps(const std::vector<sim::RouteRun>& runs) {
+    std::uint64_t n = 0;
+    for (const auto& r : runs) {
+        n += r.steps;
+    }
+    return n;
+}
+
+void emit(const std::string& line) {
+    const char* out = std::getenv("ANNO_ROUTE_REAL_OUT");
+    if (out != nullptr && *out != '\0') {
+        std::ofstream f(out, std::ios::app);
+        f << line << '\n';
+    }
+}
+
+} // namespace
+
+TEST_CASE(
+    "route on the real islands: coast index, seat-to-seat routes, the 15 saved witness routes" *
+    doctest::test_suite("heavy")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sl::OriginalRegistryLoad loaded_types =
+        sl::load_original_registry(*dir, sl::FigureEntries::Required);
+    REQUIRE_MESSAGE(loaded_types.error.empty(), loaded_types.error);
+    const auto types = loaded_types.types;
+    const auto names = sl::load_city_names(*dir);
+    REQUIRE_MESSAGE(names.ok(), (names.ok() ? std::string() : names.error()));
+    sim::Rules rules;
+    rules.city_names = names.value();
+    const std::vector<Witness> witnesses = load_witnesses();
+    REQUIRE(witnesses.size() == 15);
+
+    std::uint64_t max_coarse = 0, max_fine = 0, max_bytes = 0;
+    std::uint32_t seat_routes = 0, witness_found = 0;
+    for (const char cand : {'a', 'b', 'c'}) {
+        const fs::path manifest_path = fs::path(ANNO_REPO_DIR) / "data" / "maps" / "candidates" /
+                                       "ship-start-v2" /
+                                       (std::string("lan5-ship-") + cand + ".json");
+        const auto parsed = sm::parse(read_all(manifest_path));
+        REQUIRE(parsed.ok());
+        auto loaded = sl::load_ship_start(parsed.value(), *dir, types, {}, rules);
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        const sim::World w = std::move(loaded).value();
+        INFO("candidate " << cand);
+
+        const auto t0 = std::chrono::steady_clock::now();
+        const sim::WorldTileSource src(w);
+        const sim::CoastIndex index(src, {});
+        const auto t1 = std::chrono::steady_clock::now();
+        CHECK(index.verify_against_clean_rebuild({}).empty());
+        MESSAGE(
+            "candidate " << cand << ": world " << src.width() << " x " << src.height() << ", "
+                         << index.cells_x() << " x " << index.cells_z() << " cells, "
+                         << index.allocated_sectors() << " real sectors, index build "
+                         << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count()
+                         << " ms");
+        CHECK(index.allocated_sectors() > 0);
+
+        // A cell-for-cell comparison with the tile-scanning classification (no block shortcut): the
+        // differences are cells where the shortcut and the tiles disagree about all-water /
+        // all-land.
+        sim::RouteTerrainOptions scan;
+        scan.block_shortcut = false;
+        const sim::WorldTileSource scan_src(w, scan);
+        sim::RouteTerrainOptions terrain_only;
+        terrain_only.objects_block = false;
+        const sim::WorldTileSource terrain_src(w, terrain_only);
+        const sim::CoastIndex scan_index(scan_src, {});
+        std::uint64_t differing = 0, shortcut_cells = 0, differing_words = 0;
+        for (std::int32_t cz = 0; cz < index.cells_z(); ++cz) {
+            for (std::int32_t cx = 0; cx < index.cells_x(); ++cx) {
+                shortcut_cells += src.cell_uses_shortcut(cx, cz) ? 1 : 0;
+                differing += src.classify_cell(cx, cz) == scan_src.classify_cell(cx, cz) ? 0 : 1;
+                differing_words += index.mask(cx, cz) == scan_index.mask(cx, cz) ? 0 : 1;
+            }
+        }
+        MESSAGE("candidate " << cand << ": " << shortcut_cells << " cells from the block shortcut, "
+                             << differing << " classified differently from their tiles, "
+                             << differing_words << " with a different coarse mask");
+        emit(std::string("index\t") + cand + "\t" + std::to_string(index.allocated_sectors()) +
+             "\t" + std::to_string(shortcut_cells) + "\t" + std::to_string(differing) + "\t" +
+             std::to_string(differing_words));
+
+        // Seat-to-seat routes between the five ships (all in exterior sea).
+        std::vector<std::pair<std::int32_t, std::int32_t>> ships;
+        for (std::uint32_t seat = 0; seat < 5; ++seat) {
+            const sim::Figure* f = sim::find_figure(w.figures(), sim::FigureId{3 * seat + 1});
+            REQUIRE(f != nullptr);
+            ships.push_back({f->pos.x, f->pos.y});
+            CHECK(src.tile_is_water(f->pos.x >> 8, f->pos.y >> 8));
+        }
+        for (std::size_t i = 0; i < ships.size(); ++i) {
+            for (std::size_t j = i + 1; j < ships.size(); ++j) {
+                sim::RouteQuery q;
+                q.start_x = ships[i].first >> 8;
+                q.start_z = ships[i].second >> 8;
+                q.goal_x_q8 = ships[j].first;
+                q.goal_z_q8 = ships[j].second;
+                const auto t2 = std::chrono::steady_clock::now();
+                const auto res =
+                    sim::plan_route(index, q, sim::RouteLimits{}, sim::RouteCostTable::original());
+                const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - t2)
+                                    .count();
+                CAPTURE(i);
+                CAPTURE(j);
+                REQUIRE(res.status == sim::RouteStatus::Planned);
+                const Walk walk = walk_runs(src, q.start_x, q.start_z, res.runs, 10);
+                CHECK(walk.problem.empty());
+                CHECK(walk.end_x == res.end_x);
+                CHECK(walk.end_z == res.end_z);
+                CHECK(res.score > 0); // the end tile is within the goal radius
+                max_coarse = std::max(max_coarse, res.work.coarse_pops);
+                max_fine = std::max(max_fine, res.work.fine_pops);
+                max_bytes = std::max(max_bytes, res.work.bytes_high);
+                ++seat_routes;
+                emit(std::string("seat\t") + cand + "\t" + std::to_string(i) + "\t" +
+                     std::to_string(j) + "\t" + std::to_string(res.work.coarse_pops) + "\t" +
+                     std::to_string(res.work.fine_pops) + "\t" +
+                     std::to_string(res.work.bytes_high) + "\t" + std::to_string(res.work.learned) +
+                     "\t" + std::to_string(total_steps(res.runs)) + "\t" + std::to_string(ms));
+            }
+        }
+
+        // The saved geometric witness routes of this candidate, re-evaluated under the original
+        // rules.
+        for (const Witness& wit : witnesses) {
+            if (wit.candidate != std::string(1, cand)) {
+                continue;
+            }
+            sim::RouteQuery q;
+            q.start_x = wit.spawn_x;
+            q.start_z = wit.spawn_z;
+            q.goal_x_q8 = wit.water_x * 256 + 128;
+            q.goal_z_q8 = wit.water_z * 256 + 128;
+            const auto t2 = std::chrono::steady_clock::now();
+            const auto res =
+                sim::plan_route(index, q, sim::RouteLimits{}, sim::RouteCostTable::original());
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - t2)
+                                .count();
+            CAPTURE(wit.seat);
+            CHECK(src.tile_is_water(wit.spawn_x, wit.spawn_z));
+            const std::string goal_state =
+                src.tile_is_water(wit.water_x, wit.water_z)
+                    ? "water"
+                    : (terrain_src.tile_is_water(wit.water_x, wit.water_z) ? "object" : "terrain");
+            const Walk walk = walk_runs(src, q.start_x, q.start_z, res.runs, 10);
+            CHECK(walk.problem.empty());
+            if (res.status == sim::RouteStatus::Planned ||
+                res.status == sim::RouteStatus::Arrived) {
+                ++witness_found;
+                CHECK(walk.end_x == res.end_x);
+                CHECK(walk.end_z == res.end_z);
+            }
+            max_coarse = std::max(max_coarse, res.work.coarse_pops);
+            max_fine = std::max(max_fine, res.work.fine_pops);
+            max_bytes = std::max(max_bytes, res.work.bytes_high);
+            const std::int64_t dx = static_cast<std::int64_t>(res.end_x) - wit.water_x;
+            const std::int64_t dz = static_cast<std::int64_t>(res.end_z) - wit.water_z;
+            emit(std::string("witness\t") + cand + "\t" + std::to_string(wit.seat) + "\t" +
+                 std::to_string(wit.island) + "\t" + std::to_string(wit.tool_cost) + "\t" +
+                 std::to_string(static_cast<int>(res.status)) + "\t" +
+                 std::to_string(total_steps(res.runs)) + "\t" + std::to_string(res.runs.size()) +
+                 "\t" + std::to_string(res.end_x) + "\t" + std::to_string(res.end_z) + "\t" +
+                 std::to_string(wit.water_x) + "\t" + std::to_string(wit.water_z) + "\t" +
+                 std::to_string(dx * dx + dz * dz) + "\t" + goal_state + "\t" +
+                 std::to_string(res.work.coarse_pops) + "\t" + std::to_string(res.work.fine_pops) +
+                 "\t" + std::to_string(res.work.bytes_high) + "\t" +
+                 std::to_string(res.work.learned) + "\t" + std::to_string(ms));
+        }
+    }
+    CHECK(seat_routes == 30);
+    CHECK(witness_found == 15);
+    // The default limits carry at least 8x the largest legal query measured here.
+    const sim::RouteLimits defaults;
+    CHECK(defaults.coarse_budget >= 8 * max_coarse);
+    CHECK(defaults.fine_budget >= 8 * max_fine);
+    CHECK(defaults.memory_bytes >= 8 * max_bytes);
+    MESSAGE("largest legal query on the real candidates: " << max_coarse << " coarse pops, "
+                                                           << max_fine << " fine pops, "
+                                                           << max_bytes << " bytes");
+    MESSAGE("witness routes found under the original rules: " << witness_found << " of 15");
+}

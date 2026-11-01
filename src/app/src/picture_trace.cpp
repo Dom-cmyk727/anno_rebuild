@@ -371,12 +371,13 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             if (d.t4 >= 0) {
                 ++s.presented;
                 present.push_back(d.t4 - d.t0);
-                // A later commit of the island before the presentation: the frame may show that
-                // newer content for the same chunks (coalesced, kept explicit).
+                // A later commit of the island before the presentation. The trace does not say
+                // whether it touched the same chunks, so this is not a count of coalesced pixels:
+                // the frame may show the newer content, or the edit's own.
                 const auto later = committed_at.upper_bound({d.island, d.generation});
                 if (later != committed_at.end() && later->first.first == d.island &&
                     later->second < d.t4) {
-                    ++s.present_coalesced;
+                    ++s.present_after_recommit;
                 }
             } else if (d.t3 >= 0) {
                 ++s.present_unfinished;
@@ -570,8 +571,15 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
         const auto ready = gpu_at.find(p);
         const auto shown = presented_at.find(p);
         std::set<double> seen;
+        // The first frame that drew the change and presented must carry its presented (round ed
+        // review: a completion the producer lost would otherwise read as unfinished work).
+        std::optional<std::uint64_t> first_shown;
         for (const double t : times) {
             const auto frame = frame_at(submitted_at_time, t);
+            if (frame && presented_frame.contains(*frame) &&
+                (!first_shown || *frame < *first_shown)) {
+                first_shown = frame;
+            }
             if (!frame) {
                 s.contradictions.push_back("drawn of " + pair_name(p) +
                                            " at a time with no frame_submitted");
@@ -589,6 +597,16 @@ TraceSummary summarize(std::span<const TraceEvent> input) {
             if (shown != presented_at.end() &&
                 t > *std::min_element(shown->second.begin(), shown->second.end())) {
                 s.contradictions.push_back("drawn of " + pair_name(p) + " after its presented");
+            }
+        }
+        if (first_shown) {
+            const double t_present = presented_frame.at(*first_shown);
+            if (shown == presented_at.end() || std::find(shown->second.begin(), shown->second.end(),
+                                                         t_present) == shown->second.end()) {
+                s.contradictions.push_back("frame " + std::to_string(*first_shown) + " drew " +
+                                           pair_name(p) +
+                                           " and presented, but no presented of it "
+                                           "at that frame");
             }
         }
     }
@@ -754,7 +772,7 @@ std::string format_summary(const TraceSummary& s) {
     }
     if (s.window) {
         o << "window=1 presented=" << s.presented << " present_unfinished=" << s.present_unfinished
-          << " present_coalesced=" << s.present_coalesced
+          << " present_after_recommit=" << s.present_after_recommit
           << " frames_submitted=" << s.frames_submitted
           << " frames_presented=" << s.frames_presented << " frames_failed=" << s.frames_failed
           << " batches_published=" << s.batches_published << " batches_taken=" << s.batches_taken

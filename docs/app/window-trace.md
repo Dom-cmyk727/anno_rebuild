@@ -24,7 +24,8 @@ and `bench_picture --aggregate` reads its event file.
    then `generation` g for that commit.
 5. **CPU readiness.** For the islands of a commit: `no_visible_change(i, g)` when none of the keys island
    i's change invalidated (in every zoom group) is in the view of the first attempt after the commit; the
-   change is offscreen and never waited for. Otherwise the change is visible, and each rendered frame
+   change is offscreen and never waited for. That first attempt decides even when its acquire failed:
+   after a resize, keys visible only in the new view leave the change offscreen (a known limit). Otherwise the change is visible, and each rendered frame
    observes the change's keys within that frame's own view and zoom group: `chunks_ready(i, g)` the first
    time they are all cached and fresh at one observation.
 6. **GPU usability.** `gpu_ready(i, g)` the first time the same frame's keys are all GPU-usable at one
@@ -51,10 +52,13 @@ and `bench_picture --aggregate` reads its event file.
      ends first; nothing is presented to empty the waiting set. One island's frame never completes
      another's, and a later generation of the same island is its own change. When a later commit of
      the same island made the keys stale first, the frame that presents the earlier change draws the
-     newer content; the aggregate counts that edit as `present_coalesced`.
+     newer content. The aggregate counts presented edits whose island committed again before the
+     presentation (`present_after_recommit`); the trace does not name a commit's chunks, so that count
+     does not say whether the newer commit touched the same ones.
    - Round ec (before `drawn`) completed a change at the first successful frame at or after its
      `gpu_ready` frame, whatever that frame drew. Its traces have no `drawn` and the current aggregate
-     refuses them (docs/perf/README.md, "Round ed: saved window evidence").
+     refuses them (docs/perf/README.md, "Round ed: the saved window evidence, read by the corrected
+     readers").
 
    This is the CPU-side return of the present call. It is not GPU completion, not scanout, and not
    display latency: none of those is observed.
@@ -111,7 +115,8 @@ and `bench_picture --aggregate` reads its event file.
   - a `presented(i, g)` needs that pair's `gpu_ready` not after it;
   - it needs a `frame_presented` at the same time, whose frame is not below the frame of the `gpu_ready`;
   - that frame has a `drawn(i, g)` at its submission, and no earlier presented frame has one (round ed):
-    a deferred completion is accepted, an unrelated frame is not;
+    a deferred completion is accepted, an unrelated frame is not; and the first presented frame with a
+    `drawn(i, g)` carries the `presented(i, g)` (a lost completion is not unfinished work);
   - a `drawn(i, g)` is at a `frame_submitted`'s time, not before that pair's `gpu_ready`, once per frame
     and never after the pair's `presented`; a `gpu_ready` has a `drawn` of its frame;
   - a `batch_taken` of a turn needs its `batch_published` before it;
@@ -190,7 +195,16 @@ The paired overhead control is in `docs/perf/README.md` (round ec).
 
 - `tools/bench/window_case.sh` runs one scripted, traced window with its provenance (`run.txt`) and peak
   RSS (`time.txt`), then aggregates the trace.
-- `tools/bench/window_table.py <matrix>` validates every case and tabulates frames, cadence, acquire and
-  present calls, edit boundaries and the stderr control lines. Its contract is
-  `tools/bench/window_table_test.sh` (CTest `window_table_contract`).
+- `tools/bench/window_matrix.sh <anno1503> <bench_picture> <new dir> [<large drawable> [<cases>]]` runs
+  the matrix, or a requested subset of it. It writes `plan.tsv` (every case, and whether it was
+  selected) before the first window, and `results.tsv` as the cases end.
+- `tools/bench/window_table.py <bench_picture> <matrix>` validates every case and tabulates frames,
+  cadence, acquire and present calls, edit boundaries and the stderr control lines. Since round ed it
+  aggregates every raw trace itself with the given `bench_picture`: the `aggregate.txt` and
+  `aggregate_exit` saved at the run are not trusted, and a saved summary that differs is named. It checks
+  the inventory (`plan.tsv` against `results.tsv` and the case directories) and says whether the table is
+  the full matrix or a requested subset; an unfinished campaign, an empty one, and a lost, duplicated or
+  unplanned case are refused. Its contract is `tools/bench/window_table_test.sh` (CTest
+  `window_table_contract`, a required preflight of `tools/test/run_selected.sh`; with the canonical
+  `run_selected.py`, `--require-test window_table_contract`).
 - The round-ec measurements are in `docs/perf/README.md`.

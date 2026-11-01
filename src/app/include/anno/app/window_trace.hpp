@@ -151,14 +151,20 @@ class WindowTrace {
 /// not on the GPU complete nothing; the change keeps waiting, and is reported unfinished if the
 /// session ends first. The frame's scene is the one taken after the boundary that committed the
 /// change, so it holds that generation or a later one: a later commit of the same island over the
-/// same keys is drawn instead, which the aggregate counts as coalesced.
+/// same keys is drawn instead (the aggregate counts presentations after such a recommit).
+/// Whether a change is visible at all is decided by the first attempt after its commit, also when
+/// that attempt's acquire failed: keys visible only in a later view (after a resize) leave it
+/// offscreen.
 class FrameTracer {
   public:
     using Ready = std::function<bool(const render::ChunkKey&)>;
     /// `max_outstanding` bounds the changes waiting at once (outstanding()). Reason: a hidden
-    /// window commits without drawing, and a change that never becomes usable waits forever; 100
-    /// 000 is far beyond the islands a session commits between two drawn frames. A commit past it
-    /// is counted as a drop, so the trace is incomplete rather than unbounded.
+    /// window commits without drawing, a change that never becomes usable waits forever, and a
+    /// visible change waits for as long as the view stays away from it (round ed); each waiting
+    /// change is checked once per traced frame. 100 000 waiting changes is far beyond a test
+    /// session's edits (the round-ec matrix had at most 60 in a run). A commit past it is counted
+    /// as a drop, so the trace is incomplete rather than unbounded; a larger session gives a larger
+    /// bound here.
     explicit FrameTracer(WindowTrace& trace, std::size_t max_outstanding = 100000)
         : trace_(trace), max_outstanding_(max_outstanding) {}
 

@@ -145,11 +145,12 @@ struct TraceSummary {
     Distribution gpu_ms;
     /// Window traces (round ec): edits whose change a frame drew and whose present call returned
     /// success (presented, latency present_ms from the edit), edits GPU-usable but never in such a
-    /// frame (present_unfinished), and the frames by outcome. present_coalesced (round ed): of the
-    /// presented edits, those whose island committed a later generation before the presentation
-    /// (the frame may show that newer content for the same chunks).
+    /// frame (present_unfinished), and the frames by outcome. present_after_recommit (round ed): of
+    /// the presented edits, those whose island committed a later generation before the
+    /// presentation. The trace does not name the chunks a commit touched, so the frame may show
+    /// that newer content for the edit's chunks, or the edit's own.
     bool window = false;
-    std::size_t presented = 0, present_unfinished = 0, present_coalesced = 0;
+    std::size_t presented = 0, present_unfinished = 0, present_after_recommit = 0;
     std::size_t frames_submitted = 0, frames_presented = 0, frames_failed = 0;
     std::size_t batches_published = 0, batches_taken = 0;
     Distribution present_ms;
@@ -184,7 +185,7 @@ struct TraceSummary {
     ///   pair's Presented; a GpuReady has a Drawn of its frame (the first frame that draws the
     ///   change usable); a Presented's frame has a Drawn of that pair, and no earlier presented
     ///   frame has one (the first successful present of a frame that draws it, not of any later
-    ///   frame);
+    ///   frame); and the first presented frame with a Drawn of a pair carries its Presented;
     /// - a FramePresented needs the FrameSubmitted of its frame before it, and a frame is never
     ///   both presented and failed;
     /// - a BatchTaken needs the BatchPublished of its turn before it;

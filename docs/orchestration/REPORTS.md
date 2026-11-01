@@ -8358,7 +8358,7 @@ Mountain object masks and consumers; player property 7 consumers; the type-11 ha
 Continuation gate (CHANGES REQUIRED: missing registration-time recount, undefined name-list origin, under-specified precheck set, owner questions, stale text → all applied in §16.7); packages 6–8 (APPROVED; four P2 test gaps — reveal radius, centre, per-rotation ownership, +4 wrap docs — closed with new cases that fail the reviewer's mutants); final integration review of `96770ed` (APPROVED; P2 NOT_RUN statement added in §17.2; three P3 test gaps open, section 4). Evidence reports are retained in the session transcript only.
 
 ## MAP.2 — second packet: founding defects repaired, replay evidence, kind 11, discovery, flexibility (2026-11-01)
-Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baseline `d3bfbd7` (code `96770ed`), **final code `84b7f79`** (clean tree for the gate; documentation commits follow). No merge, push, rebase or prune; `game/`, candidates, the active map, `TASKS.md`, the coordinator and other executors untouched. Review ledger with findings and dispositions: `docs/orchestration/evidence/map2-founding-reviews.md`; contract `docs/sim/ship-founding.md` §17.3–17.8; evidence `docs/re/ship-founding.md` §16.
+Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baseline `d3bfbd7` (code `96770ed`), **final code `4f22cf6`** (clean tree for the gate, `cache/map2-gates4/final3/`; an earlier full gate on `84b7f79` is `final2/`, same counts; documentation commits follow). No merge, push, rebase or prune; `game/`, candidates, the active map, `TASKS.md`, the coordinator and other executors untouched. Review ledger with findings and dispositions: `docs/orchestration/evidence/map2-founding-reviews.md`; contract `docs/sim/ship-founding.md` §17.3–17.8; evidence `docs/re/ship-founding.md` §16.
 
 ### Packages
 | Package | Status | Review |
@@ -8372,7 +8372,7 @@ Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baselin
 ### Demonstrated behaviour
 Founding through `World::apply` for kind 8 and 11 players with registry-derived costs, footprints and radii; atomic refusals; same-site and distant-site conflicts in both orders; the reveal; ore discovery on a real island (6 ore objects, 1 in reach discovered by the founder, 5 untouched); loaded cities with HEAD2 masks interacting with a new founding; save/load; recorded replay in a fresh process; one founding costs a linear pass over the figure registry (`cache/map2-gates4/E3-bench.txt`: 449 µs at 6 figures, 125 µs at 1,000, 374 µs at 50,000).
 
-### Gates (final code `84b7f79`; macOS arm64, Debug, `-Werror`; binary hashes in `cache/map2-gates4/final2/binary-hashes.txt`)
+### Gates (final code `4f22cf6`; macOS arm64, Debug, `-Werror`; binary hashes in `cache/map2-gates4/final3/binary-hashes.txt`)
 | Gate | Selected | Executed | Failed | Empty | Skipped |
 |---|---|---|---|---|---|
 | focused | 136 | 136 | 0 | 0 | 0 |
@@ -8380,7 +8380,7 @@ Founding through `World::apply` for kind 8 and 11 players with registry-derived 
 | formats | 82 | 82 | 0 | 0 | 0 |
 | ASan+UBSan focused | 136 | 136 | 0 | 0 | 0 |
 | ASan+UBSan sim, all | 819 | 818 | 0 | 0 | 1 (opt-in) |
-`anno-sim-replay` on `g2`–`g6` and `m2_found.log`: every checkpoint matched; `m2_found_wrong.log`: DIVERGED at entry 3, exit 1; ctest `anno_sim_replay_founding_run`/`_wrong_run` pass (the same ctest run skipped two game-dir scenario replays because ANNO1503_GAME_DIR was not set in that shell). lint_sim, `sim_stream.py --check` (goldens agree), fixture checks and clang-format clean. First failures kept: `cache/map2-gates4/pkgA-before-fix.txt`, `p2-first-attempt-preflight-fail.log`, `p2-second-attempt-preflight-fail.log`, `pkgCD-sim-1.log`. Goldens that moved: G6 and the scenario corpus (figure-type digest, ore objects), the pin `m2_found_session` and the two fixtures; the Python reference covers the new island/player/city fields (not the figure-type digest, which is self-baselined).
+`anno-sim-replay` on `g2`–`g6` and `m2_found.log`: every checkpoint matched; `m2_found_wrong.log`: DIVERGED at entry 3, exit 1; ctest `anno_sim_replay_founding_run`/`_wrong_run` pass (the final3 ctest run had ANNO1503_GAME_DIR set). lint_sim, `sim_stream.py --check` (goldens agree), fixture checks and clang-format clean. First failures kept: `cache/map2-gates4/pkgA-before-fix.txt`, `p2-first-attempt-preflight-fail.log`, `p2-second-attempt-preflight-fail.log`, `pkgCD-sim-1.log`. Goldens that moved: G6 and the scenario corpus (figure-type digest, ore objects), the pin `m2_found_session` and the two fixtures; the Python reference covers the new island/player/city fields (not the figure-type digest, which is self-baselined).
 **NOT_RUN:** Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), the Linux sanitizer lane, any run of the original game.
 
 ### Remaining fidelity gaps and consequences
@@ -8391,3 +8391,6 @@ Founding through `World::apply` for kind 8 and 11 players with registry-derived 
 - The distance limit 12, query margin, rotation order, coast rule and the reveal/object geometries are original rules in code, not data.
 ### Next smallest task
 Load `DISCO` once its link to property 7 is read, and decide the five-ship start's initial relations (owner decision C5); then, if wanted, replace the kind-11 wrap over-approximation by porting the CompLogic island-record bookkeeping (messages 4, 0xe) so stale records are known exactly.
+
+### Final integration review
+Fresh reviewer on `84b7f79`: APPROVED, no P1/P2. P3 applied in `4f22cf6`: a non-finite or huge OCCUR position is refused (it would have been an undefined cast on a malformed file; new test), a mixed-parity stage-2 test (a swapped-term mutant is caught), supersession tags on the older contract lines (16.1 row 8, Q1, C8, Q-kind). The gate was re-run on `4f22cf6` (counts above). Unresolved owner decisions: C5 initial relations of the five-ship start; whether kind 11 should wait for a port of the CompLogic island-record bookkeeping; whether `tEvent` posts are needed for campaign scripts.

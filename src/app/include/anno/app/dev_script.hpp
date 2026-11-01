@@ -15,7 +15,8 @@
 //   wait frames N | wait turns N | wait outcome | wait drawn | wait ms N
 //   expect title TEXT     the window title contains TEXT
 //   expect outcome STATE [REASON]   the tool's latest command is STATE (Queued, Applied, Refused,
-//                         Lost), with the sim's REASON (reject_name) when given
+//                         Lost), with the sim's REASON (reject_name) when given; `none`: the
+//                         latest click sent no command (the window shows no receipt)
 //   checkpoint NAME       log the turn, the title and the latest outcome
 //   screenshot NAME       the window's own rectangle as NAME.png in the session directory
 //                         (macOS screencapture -R; elsewhere logged as not run)
@@ -85,7 +86,16 @@ class DevScript {
     /// iteration (after they were handled). Appends to log().
     [[nodiscard]] DevScriptAction step(const DevScriptState& state);
 
+    /// How long a wait (or the first frame) may take before the script fails: a stalled session
+    /// must end, not hang.
+    static constexpr double kWaitLimitMs = 30000.0;
+
     [[nodiscard]] bool done() const { return next_ >= steps_.size() || failed_; }
+    /// Fails the script for a reason outside its steps (the window's).
+    void abort(const std::string& why) {
+        failed_ = true;
+        log_.push_back("FAIL: " + why);
+    }
     [[nodiscard]] bool failed() const { return failed_; }
     [[nodiscard]] const std::vector<std::string>& log() const { return log_; }
     /// The window's own lines (a screenshot's result) in the log.

@@ -1233,11 +1233,13 @@ void Viewer::update_title() {
         // The runner's line and the feedback from one snapshot (dev_title), published data only
         // (dev_feedback.hpp): the snapshot, the picture's buildings, and the outcome of the
         // tool's latest command by its receipt.
-        const auto snap = play_->runner().snapshot();
+        // The outcome first, then the snapshot: the snapshot is then at least as new as the
+        // outcome, so "Applied" never stands next to money from before it (review of C, P3).
         std::optional<CommandOutcome> latest;
         if (latest_receipt_) {
             latest = play_->runner().outcome(*latest_receipt_);
         }
+        const auto snap = play_->runner().snapshot();
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -1270,10 +1272,11 @@ bool Viewer::on_gpu() const {
 void Viewer::follow_picture() {
     const auto start = Clock::now();
     if (play_ != nullptr) {
+        const auto followed = play_->followed_turn();
         const std::size_t n = play_->follow(frames_, trace_);
         committed_ += n;
-        if (n > 0 && dev_ != nullptr && dev_->enabled()) {
-            update_title(); // a commit can end "not drawn yet"
+        if ((n > 0 || play_->followed_turn() != followed) && dev_ != nullptr && dev_->enabled()) {
+            update_title(); // a commit or a newer followed turn can end "not drawn yet"
         }
 #ifdef ANNO_VIEWER_GPU
         if (tracer_ && n > 0) {
@@ -1289,8 +1292,20 @@ void Viewer::follow_picture() {
 }
 
 void Viewer::script_tick() {
-    if (script_ == nullptr || !pointer_frame_) {
-        return; // the script starts once a frame was drawn
+    if (script_ == nullptr || script_->done()) {
+        return;
+    }
+    if (!pointer_frame_) {
+        // The script starts once a frame was drawn; a window that never draws one fails it
+        // within the script's wait limit instead of running forever (review of E3).
+        const double waited =
+            std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
+        if (waited > DevScript::kWaitLimitMs) {
+            script_->abort("no frame was drawn within " +
+                           std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) + " ms");
+            running_ = false;
+        }
+        return;
     }
     DevScriptState st;
     st.frames = drawn_frames_;

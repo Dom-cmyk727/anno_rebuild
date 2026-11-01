@@ -1046,6 +1046,9 @@ void check_released(const TeardownResult& r, const anno::test::Destructions& des
     for (const anno::test::Held& h : r.generations) {
         CAPTURE(h.generation);
         CHECK(destroyed.thread_of(h) != std::this_thread::get_id());
+        // No scene of the case's lineage, held or not, is destroyed on the test thread (round
+        // ec's wider check, by identity: round ee review of E1).
+        CHECK(destroyed.on_thread(h.lineage, std::this_thread::get_id()) == 0);
     }
     auto& reclaimer = render::SceneReclaimer::shared();
     REQUIRE(eventually([&] {

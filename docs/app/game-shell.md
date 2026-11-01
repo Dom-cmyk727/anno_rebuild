@@ -422,9 +422,11 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 - **Not drawn yet** (`drawn_note`, E4): the line says when an applied command's change is not in
   the picture: "not drawn yet: turn T is not in the picture" until the window's follow step took
   that turn's batch (`PlayFollower::followed_turn`: the snapshot read before the take, since a
-  turn's batch is in the mailbox before its snapshot), then "not drawn yet: the picture is
-  rebuilding N islands" while `ScenePicture::pending` is above 0. The sim's outcome stands either
-  way; a commit updates the line. `dev_barrier_test.cpp` holds every picture build at a gate:
+  turn's batch is in the mailbox before its snapshot), then "not drawn yet: N islands of the
+  picture are not committed" while `ScenePicture::pending` is above 0 (rebuilding, deferred or
+  failed islands; the change's island may be one). The sim's outcome stands either way; a commit
+  or a newer followed turn updates the line. A type the picture cannot draw at all
+  (`kPictureAnlageIds`) is named by the preview note, not by this one. `dev_barrier_test.cpp` holds every picture build at a gate:
   the runner's turns, the outcomes, the tool and the follow step go on (the follow step returns in
   well under a millisecond), the line says "not drawn yet", and the open gate draws it.
 - **A scripted session in the live window** (`dev_script.hpp`, E3): `ANNO_DEV_SCRIPT=<file>`
@@ -432,11 +434,18 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   window's handler as a person's input does; while it runs the window takes no other input (the
   events carry their own device id, `kScriptDevice`). It waits on frames, turns, outcomes and the
   picture, checks the title and the latest outcome, and can capture the window's own rectangle
-  (macOS). `ANNO_DEV_SESSION=<new dir>` writes the applied commands (`--commands` format), the
-  state hash after each turn that ran commands and every 25th turn, every kept outcome and the
-  script's log. `--play <map> --commands <file> --replay-hashes <file>` replays them without a
-  window and compares the hashes. Recording hashes costs a full `state_hash` on those turns (about
-  0.17 s on lan5 in a debug build, visible in the turn p95).
+  (macOS). A script that never sees a drawn frame, or a wait past 30 s, fails instead of hanging.
+  Window events that are not input (focus, leaving the window) still reach the tool: they can
+  only drop a press, so they can fail a session but never make one pass.
+  `ANNO_DEV_SESSION=<new dir>` writes the applied commands (`--commands` format), the state hash
+  after each turn that ran commands and every 25th turn, every kept outcome, the invocation (map,
+  speed: `session.txt`) and the script's log (`dev_session.hpp`). `--play <map> --speed <s>
+  --commands <file> --replay-hashes <file>` replays them without a window at that speed and
+  compares the hashes and, with the session's `outcomes.txt` next to the hash file, every
+  outcome's turn, state, reason and record results (`replay_session`; tests in
+  `dev_script_test.cpp`: a moved command fails on a hash, a refused command of another type on
+  its outcome). Recording hashes costs a full `state_hash` on those turns (about 0.17 s on lan5 in
+  a debug build, visible in the turn p95).
 
 ### Immutable per-island object lists (W4.3, round du)
 

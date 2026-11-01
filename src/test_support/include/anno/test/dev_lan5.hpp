@@ -122,8 +122,11 @@ inline app::DevTool tool_at(const Lan5& l, sim::TypeId type, sim::TileXY tile, i
     return tool;
 }
 
-/// A tile of the city's island whose `size` x `size` square has ground and no building of the
-/// city by the sim's own lookup (World::building_at), at least `margin` tiles from the edge.
+/// A tile of the city's island whose `size` x `size` square has no building of the city by the
+/// sim's own lookup (World::building_at), at least `margin` tiles from the edge. Not land:
+/// Scene::ground_height has a value on every tile of the island's rectangle, sea included (lan5's
+/// first such tile, (1050, 442), is open sea; the sim's placement rule does not check terrain,
+/// OQ-052).
 inline std::optional<sim::TileXY> free_tile(const Lan5& l, std::int32_t size = 6,
                                             std::int32_t margin = 2) {
     const auto w = static_cast<std::int32_t>(l.setup.island.w);
@@ -134,10 +137,7 @@ inline std::optional<sim::TileXY> free_tile(const Lan5& l, std::int32_t size = 6
             bool clear = true;
             for (std::int32_t dy = 0; dy < size && clear; ++dy) {
                 for (std::int32_t dx = 0; dx < size && clear; ++dx) {
-                    clear =
-                        l.play.world.building_at(*l.setup.city, t.x + dx, t.y + dy) == nullptr &&
-                        l.scene->ground_height(static_cast<float>(t.x + dx) + 0.5F,
-                                               static_cast<float>(t.y + dy) + 0.5F);
+                    clear = l.play.world.building_at(*l.setup.city, t.x + dx, t.y + dy) == nullptr;
                 }
             }
             if (clear) {

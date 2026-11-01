@@ -219,6 +219,8 @@ std::string dev_tool_status(const DevTool& tool) {
         s += "build " + std::to_string(type->id.v) + " (" + std::to_string(w) + "x" +
              std::to_string(h) + ", " + std::to_string(type->cost_gold) + " gold) rotation " +
              std::to_string(in.rotation());
+    } else if (const auto id = in.selected()) {
+        s += "type " + std::to_string(id->v) + " is not in the registry"; // a malformed setup
     } else {
         s += "no buildable type";
     }

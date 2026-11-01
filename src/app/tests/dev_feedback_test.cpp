@@ -21,6 +21,7 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/sim/building.hpp>
 #include <anno/test/dev_lan5.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -205,6 +206,63 @@ TEST_CASE("dev feedback: on an original scenario, the preview sprites of placed 
                           << "scene's own frame and anchor (" << skipped
                           << " with a state low byte left out); " << turned
                           << " rotation pairs of one type draw other frames");
+}
+
+TEST_CASE("dev feedback: every buildable type of lan5 at every rotation has the registry's "
+          "footprint in its Anlagen entry, and a preview or a reason for none" *
+          doctest::test_suite("dev_feedback")) {
+    // Round ee, D (review: the acceptance row "every original type"): data, not one type.
+    auto l = lan5();
+    if (!l) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto free = free_tile(*l, 8);
+    REQUIRE(free.has_value());
+    std::size_t drawn = 0, noted = 0, transparent = 0, compared = 0;
+    for (const sim::TypeId t : l->setup.types) {
+        const sim::BuildingType* type = l->setup.registry->find(t);
+        REQUIRE(type != nullptr);
+        for (int r = 0; r < 4; ++r) {
+            CAPTURE(t.v);
+            CAPTURE(r);
+            // The registry's footprint (HEAD[0], HEAD[1], odd rotations swapped) is the Anlagen
+            // entry's, which the scene draws with.
+            const auto fp = l->scene->anlagen.footprint(t.v);
+            if (fp) {
+                const auto [w, h] = sim::footprint(*type, static_cast<std::uint8_t>(r));
+                const bool odd = (r & 1) != 0;
+                CHECK(w == (odd ? fp->second : fp->first));
+                CHECK(h == (odd ? fp->first : fp->second));
+                ++compared;
+            }
+            const app::DevTool tool = tool_at(*l, t, *free, r);
+            const std::string note = app::preview_note(tool, *l->scene, 1);
+            const auto pv = app::make_preview(tool, *l->scene, 1, 0);
+            if (!note.empty()) {
+                CHECK_FALSE(pv.has_value()); // a reason, and nothing drawn
+                ++noted;
+                continue;
+            }
+            REQUIRE(pv.has_value());
+            // The object it draws is the type at the rotation and the hovered tile.
+            CHECK(pv->object.first.anlage == t.v);
+            CHECK(pv->object.first.rotation == r);
+            CHECK(static_cast<std::int32_t>(pv->object.first.x) == free->x - l->setup.island.x0);
+            CHECK(static_cast<std::int32_t>(pv->object.first.y) == free->y - l->setup.island.y0);
+            if (pv->sprites.empty()) {
+                ++transparent; // the entry's frames resolve to nothing at this rotation
+            } else {
+                ++drawn;
+            }
+        }
+    }
+    CHECK(drawn > 0);
+    CHECK(compared == 4 * l->setup.types.size());
+    MESSAGE(l->setup.types.size() << " buildable types x 4 rotations: footprints compared "
+                                  << compared << ", previews with sprites " << drawn
+                                  << ", without sprites " << transparent << ", with a reason "
+                                  << noted);
 }
 
 TEST_CASE("dev feedback: occupancy and costs are refusals only with a published basis, the rest is "

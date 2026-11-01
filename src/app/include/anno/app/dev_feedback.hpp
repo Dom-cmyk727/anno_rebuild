@@ -100,8 +100,9 @@ class PlacementKnowledge {
 
 /// Whether the picture shows what an applied command built or removed (round ee, E4): "" when it
 /// does or the command was not applied; "not drawn yet: ..." when the command's turn is not in
-/// the picture's desired state (`followed_turn`, PlayFollower), or when the picture is still
-/// rebuilding (`pending` islands, ScenePicture::pending: the island of the change may be one).
+/// the picture's desired state (`followed_turn`, PlayFollower), or while `pending` islands of the
+/// picture are not committed (ScenePicture::pending: rebuilding, deferred or failed; the island of
+/// the change may be one).
 /// The sim's outcome stands either way; only the picture is behind.
 [[nodiscard]] std::string drawn_note(const std::optional<CommandOutcome>& latest,
                                      std::optional<std::uint64_t> followed_turn,

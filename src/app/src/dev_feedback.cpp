@@ -180,7 +180,9 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
     }
     const sim::BuildingType* type = tool.input().selected_type();
     if (type == nullptr) {
-        v.text = "no buildable type";
+        const auto id = tool.input().selected();
+        v.text = id ? "type " + std::to_string(id->v) + " is not in the registry"
+                    : std::string("no buildable type");
         return v;
     }
     for (const sim::TileXY& t : tool.input().footprint_at(*hover)) {
@@ -300,8 +302,9 @@ std::string drawn_note(const std::optional<CommandOutcome>& latest,
         return "not drawn yet: turn " + std::to_string(latest->turn) + " is not in the picture";
     }
     if (pending > 0) {
-        return "not drawn yet: the picture is rebuilding " + std::to_string(pending) +
-               (pending == 1 ? " island" : " islands");
+        return "not drawn yet: " + std::to_string(pending) +
+               (pending == 1 ? " island of the picture is" : " islands of the picture are") +
+               " not committed";
     }
     return {};
 }

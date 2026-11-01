@@ -272,7 +272,9 @@ TEST_CASE(
         CHECK(tool.message().find("type 999 is not in the registry") != std::string::npos);
         app::PlacementKnowledge knows(tool.setup());
         static_cast<void>(knows.update({}, 1, *s));
-        CHECK(knows.check(tool, nullptr).text == "no buildable type");
+        CHECK(knows.check(tool, nullptr).text == "type 999 is not in the registry");
+        CHECK(app::dev_tool_status(tool).find("type 999 is not in the registry") !=
+              std::string::npos);
     }
     {
         // A zero footprint: the registry builder refuses it (the sim's rule, unchanged).

@@ -12,9 +12,6 @@ namespace anno::app {
 
 namespace {
 
-/// How long a wait may take before the step fails (a stalled session must end, not hang).
-constexpr double kWaitLimitMs = 30000.0;
-
 std::optional<std::int64_t> integer(const std::string& s) {
     char* end = nullptr;
     const long long v = std::strtoll(s.c_str(), &end, 10);
@@ -267,8 +264,9 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
             if (!over) {
-                if (what != "ms" && st.now_ms > *wait_ms_ + kWaitLimitMs) {
-                    fail(s, "not over after " + std::to_string(static_cast<int>(kWaitLimitMs)) +
+                if (what != "ms" && st.now_ms > *wait_ms_ + DevScript::kWaitLimitMs) {
+                    fail(s, "not over after " +
+                                std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) +
                                 " ms (outcome " + outcome_text(st.latest) + ", pending " +
                                 std::to_string(st.pending) + ")");
                 }
@@ -366,6 +364,11 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             if (s.args[0] == "title" && s.args.size() == 2) {
                 if (st.title.find(s.args[1]) == std::string::npos) {
                     fail(s, "the title is '" + st.title + "'");
+                    break;
+                }
+            } else if (s.args[0] == "outcome" && s.args.size() == 2 && s.args[1] == "none") {
+                if (st.latest) {
+                    fail(s, "the latest outcome is " + outcome_text(st.latest));
                     break;
                 }
             } else if (s.args[0] == "outcome" && s.args.size() >= 2) {

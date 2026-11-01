@@ -150,7 +150,7 @@ TEST_CASE("dev tool at a picture barrier: input, turns and outcomes go on, an ap
     CHECK(picture.pending() > 0);
     CHECK(picture.scene()->generation() == before);
     const std::string held = app::drawn_note(applied, follower.followed_turn(), picture.pending());
-    CHECK_MESSAGE(held.find("the picture is rebuilding") != std::string::npos, held);
+    CHECK_MESSAGE(held.find("1 island of the picture is not committed") != std::string::npos, held);
     // The occupancy the window knows already has it (the desired state), so the same tile is a
     // known refusal; the sim agrees when asked.
     CHECK(knows.update(picture.buildings(), picture.buildings_version(), *picture.scene()));

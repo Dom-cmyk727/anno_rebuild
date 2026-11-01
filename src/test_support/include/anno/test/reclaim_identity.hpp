@@ -45,6 +45,11 @@ class Destructions {
                 seen->threads.push_back(std::this_thread::get_id());
             });
     }
+    /// Uninstalls the observer (round ee review of E1: no reliance on a separate reset; a call
+    /// already running still writes only into the shared record).
+    ~Destructions() { anno::render::SceneReclaimer::shared().set_test_observer({}); }
+    Destructions(const Destructions&) = delete;
+    Destructions& operator=(const Destructions&) = delete;
     /// That scene's destruction (lineage and generation).
     [[nodiscard]] bool of(const Held& h) const {
         const std::lock_guard lock(seen_->mutex);
@@ -69,6 +74,15 @@ class Destructions {
             std::count_if(seen_->scenes.begin(), seen_->scenes.end(), [&](const auto& p) {
                 return p.first == lineage && p.second >= min_generation;
             }));
+    }
+    /// How many scenes of `lineage` were destroyed on thread `t`.
+    [[nodiscard]] std::size_t on_thread(const std::string& lineage, std::thread::id t) const {
+        const std::lock_guard lock(seen_->mutex);
+        std::size_t n = 0;
+        for (std::size_t i = 0; i < seen_->scenes.size(); ++i) {
+            n += seen_->scenes[i].first == lineage && seen_->threads[i] == t ? 1 : 0;
+        }
+        return n;
     }
     /// A destruction of any scene with that generation number (round ec's check, which a
     /// generation 0 of another lineage satisfies).

@@ -41,21 +41,19 @@
 // on Windows). --renderer auto (default) composes on the GPU when one is
 // available (build option ANNO_BUILD_GPU), else on the CPU; gpu fails
 // without a GPU, cpu never uses it.
-#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
-#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include <anno/app/cli.hpp>
-#include <anno/app/command_outcome.hpp>
 #include <anno/app/commands_file.hpp>
+#include <anno/app/dev_session.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/png.hpp>
@@ -64,7 +62,6 @@
 #include <anno/app/window_trace.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
-#include <anno/sim/reject.hpp>
 
 #ifdef ANNO_WITH_VIEWER
 #include "viewer.hpp"
@@ -159,65 +156,38 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
     return built && built->objects.failed != 0 ? 1 : 0;
 }
 
-/// --replay-hashes (round ee, E3): the recorded session's commands on the loaded world, turn by
-/// turn on this thread, against the state hash after each turn `file` lists ("<turn> <hex>").
-/// 0 when every listed turn agrees, 1 at the first that differs or a file that cannot be read.
-int replay_hashes(anno::sim::World world, std::vector<anno::app::ScriptedCommand> commands,
-                  const fs::path& file) {
-    std::ifstream in(file);
-    if (!in) {
+/// --replay-hashes (round ee, E3; dev_session.hpp): the recorded session's commands on the loaded
+/// world at `speed`, against the state hashes `file` lists and, when an outcomes.txt lies next to
+/// it, every recorded outcome. 0 when everything agrees, 1 at the first difference or a file that
+/// cannot be read.
+int replay_hashes(anno::sim::World world, unsigned speed,
+                  std::vector<anno::app::ScriptedCommand> commands, const fs::path& file) {
+    auto read = [](const fs::path& f) -> std::optional<std::string> {
+        std::ifstream in(f, std::ios::binary);
+        if (!in) {
+            return std::nullopt;
+        }
+        std::ostringstream text;
+        text << in.rdbuf();
+        return text.str();
+    };
+    const auto hash_text = read(file);
+    if (!hash_text) {
         std::fprintf(stderr, "--replay-hashes: cannot read %s\n", file.string().c_str());
         return 1;
     }
-    std::vector<anno::app::PlayRunner::TurnHash> want;
-    std::string line;
-    while (std::getline(in, line)) {
-        std::istringstream words(line);
-        anno::app::PlayRunner::TurnHash t;
-        if (!(words >> t.turn >> std::hex >> t.hash)) {
-            std::fprintf(stderr, "--replay-hashes: not '<turn> <hex>': %s\n", line.c_str());
-            return 1;
-        }
-        want.push_back(t);
-    }
-    if (want.empty()) {
-        std::fprintf(stderr, "--replay-hashes: no checkpoints in %s\n", file.string().c_str());
+    const auto hashes = anno::app::parse_hashes(*hash_text);
+    if (!hashes) {
+        std::fprintf(stderr, "--replay-hashes: %s: %s\n", file.string().c_str(),
+                     hashes.error().c_str());
         return 1;
     }
-    anno::app::PlayRunner runner(std::move(world));
-    runner.set_script(std::move(commands));
-    runner.set_record_hashes(true);
-    std::uint64_t last = 0;
-    for (const auto& t : want) {
-        last = std::max(last, t.turn);
-    }
-    runner.run_n(static_cast<std::uint32_t>(last + 1));
-    std::map<std::uint64_t, std::uint64_t> got;
-    for (const auto& t : runner.recorded_hashes()) {
-        got[t.turn] = t.hash;
-    }
-    std::size_t compared = 0;
-    for (const auto& t : want) {
-        const auto it = got.find(t.turn);
-        if (it == got.end()) {
-            std::fprintf(stderr, "--replay-hashes: turn %llu was not recorded in the replay\n",
-                         static_cast<unsigned long long>(t.turn));
-            return 1;
-        }
-        if (it->second != t.hash) {
-            std::fprintf(stderr,
-                         "--replay-hashes: turn %llu differs: recorded %016llx, replayed %016llx "
-                         "(%zu earlier checkpoints agreed)\n",
-                         static_cast<unsigned long long>(t.turn),
-                         static_cast<unsigned long long>(t.hash),
-                         static_cast<unsigned long long>(it->second), compared);
-            return 1;
-        }
-        ++compared;
-    }
-    std::fprintf(stderr, "--replay-hashes: %zu checkpoints agree (turns 0 .. %llu)\n", compared,
-                 static_cast<unsigned long long>(last));
-    return 0;
+    const auto outcomes = read(file.parent_path() / "outcomes.txt");
+    const anno::app::ReplayReport r = anno::app::replay_session(
+        std::move(world), speed, std::move(commands), hashes.value(),
+        outcomes ? std::optional<std::string_view>(*outcomes) : std::nullopt);
+    std::fprintf(stderr, "--replay-hashes: %s\n", r.message.c_str());
+    return r.agree ? 0 : 1;
 }
 
 #ifdef ANNO_WITH_VIEWER
@@ -226,7 +196,7 @@ int replay_hashes(anno::sim::World world, std::vector<anno::app::ScriptedCommand
 /// outcomes.txt (every kept outcome) and script.log (the scripted session's steps). Returns false
 /// with the reason printed when a file could not be written.
 bool write_session(const fs::path& dir, const anno::app::PlayRunner& runner,
-                   const anno::app::DevScript* script) {
+                   const anno::app::DevScript* script, const std::string& invocation) {
     bool ok = true;
     auto put = [&](const char* name, const std::string& text) {
         std::ofstream out(dir / name, std::ios::binary);
@@ -243,29 +213,9 @@ bool write_session(const fs::path& dir, const anno::app::PlayRunner& runner,
     } else {
         put("commands.txt", commands.value());
     }
-    std::ostringstream hashes;
-    for (const auto& t : runner.recorded_hashes()) {
-        char buf[48];
-        std::snprintf(buf, sizeof buf, "%llu %016llx\n", static_cast<unsigned long long>(t.turn),
-                      static_cast<unsigned long long>(t.hash));
-        hashes << buf;
-    }
-    put("hashes.txt", hashes.str());
-    std::ostringstream outcomes;
-    const anno::app::OutcomeRead read = runner.outcomes_since(1);
-    if (read.lost > 0) {
-        outcomes << "lost " << read.lost << " from " << read.lost_from << "\n";
-    }
-    for (const anno::app::CommandOutcome& o : read.outcomes) {
-        outcomes << (o.id.origin == anno::app::CommandOrigin::Script ? "script" : "window") << " #"
-                 << o.id.n << " turn " << o.turn << " " << anno::app::outcome_state_name(o.state)
-                 << " " << anno::sim::reject_name(o.status);
-        for (const anno::sim::Reject r : o.records) {
-            outcomes << " " << anno::sim::reject_name(r);
-        }
-        outcomes << "\n";
-    }
-    put("outcomes.txt", outcomes.str());
+    put("hashes.txt", anno::app::format_hashes(runner.recorded_hashes()));
+    put("outcomes.txt", anno::app::format_outcomes(runner.outcomes_since(1)));
+    put("session.txt", invocation);
     if (script != nullptr) {
         std::string log;
         for (const std::string& l : script->log()) {
@@ -331,7 +281,8 @@ int run(const std::vector<std::string>& raw) {
             commands = std::move(parsed).value();
         }
         if (args->replay_hashes) {
-            return replay_hashes(std::move(play->world), std::move(commands), *args->replay_hashes);
+            return replay_hashes(std::move(play->world), args->play_speed, std::move(commands),
+                                 *args->replay_hashes);
         }
         buildings = anno::app::play_buildings(play->world);
         building_classes.assign(anno::app::kPictureAnlageIds, false);
@@ -538,7 +489,9 @@ int run(const std::vector<std::string>& raw) {
     picture.reset();
     int status = err.empty() ? 0 : 1;
     if (runner && !session_dir.empty()) {
-        if (!write_session(session_dir, *runner, script ? &*script : nullptr) && status == 0) {
+        if (!write_session(session_dir, *runner, script ? &*script : nullptr,
+                           anno::app::format_invocation(name, args->play_speed)) &&
+            status == 0) {
             status = 1;
         }
         std::fprintf(stderr, "dev session: %s\n", session_dir.string().c_str());

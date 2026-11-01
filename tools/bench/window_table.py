@@ -416,6 +416,8 @@ def peak_rss(case):
             return f"{int(line.split()[0]) / 2**30:.2f} GiB"
         if "Maximum resident set size (kbytes):" in line:  # GNU time -v: KiB
             return f"{int(line.split(':')[1]) / 2**20:.2f} GiB"
+        if line.startswith("Peak working set size (bytes):"):  # window_case.py (Windows): bytes
+            return f"{int(line.split(':')[1]) / 2**30:.2f} GiB"
     raise Unusable("time.txt has no maximum resident set size")
 
 

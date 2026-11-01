@@ -673,6 +673,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         outcomes_.record(o);
     }
     next->outcomes_next = outcomes_.next();
+    if (publish_gate_) {
+        publish_gate_(turn); // the outcomes are readable, the snapshot is not yet (R1's test)
+    }
     // The window trace's record of the turn (opt-in), filled before the batch and the refusals
     // move into the mailbox.
     std::optional<TurnObservation> observed;
@@ -718,6 +721,22 @@ void PlayRunner::set_wake_listener(std::function<void()> listener) {
 
 void PlayRunner::set_turn_gate(std::function<void(std::uint64_t)> gate) {
     turn_gate_ = std::move(gate);
+}
+
+void PlayRunner::set_publish_gate(std::function<void(std::uint64_t)> gate) {
+    publish_gate_ = std::move(gate);
+}
+
+PlayFeedback PlayRunner::feedback(std::optional<CommandId> receipt) const {
+    // The snapshot first: its watermark (outcomes_next) bounds which outcomes may be shown with
+    // it. Reading the outcome first and the snapshot second cannot give that, because the sim
+    // thread records outcomes before it swaps the snapshot (publish).
+    PlayFeedback read;
+    read.snapshot = snapshot();
+    if (receipt) {
+        read.latest = outcomes_.find_published(*receipt, read.snapshot->outcomes_next);
+    }
+    return read;
 }
 
 void PlayRunner::set_turn_observer(std::function<void(const TurnObservation&)> observer) {

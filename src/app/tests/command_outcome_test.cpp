@@ -7,6 +7,8 @@
 #include <condition_variable>
 #include <cstdint>
 #include <filesystem>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -394,4 +396,229 @@ TEST_CASE("command outcomes: a command with no wire form is refused as Unencodab
     runner.run_n(1);
     CHECK(wakes == before + 2);
     MESSAGE("empty-tile demolish record: " << sim::reject_name(n.records[0]));
+}
+
+namespace {
+
+/// What a window thread could read at one moment, both ways: the pair the window used to read
+/// (the outcome first, then the snapshot) and the runner's consistent read.
+struct Reads {
+    app::CommandOutcome old_outcome;
+    std::shared_ptr<const app::PlaySnapshot> old_snapshot;
+    app::PlayFeedback now;
+};
+
+Reads read_both(const app::PlayRunner& runner, app::CommandId id) {
+    Reads r;
+    r.old_outcome = runner.outcome(id);
+    r.old_snapshot = runner.snapshot();
+    r.now = runner.feedback(id);
+    return r;
+}
+
+/// The cheapest type (by gold) that costs gold: a paid build, whose goods cost (if any) is charged
+/// too.
+std::optional<sim::TypeId> paid_type(const DevWorld& d) {
+    std::optional<sim::TypeId> best;
+    std::uint64_t gold = 0;
+    for (std::uint32_t id = 1; id <= 0xFFFFu; ++id) {
+        const sim::BuildingType* type = d.load.world.types().find(sim::TypeId{id});
+        if (type == nullptr || type->cost_gold == 0 ||
+            !app::anlage_is_building(d.load.world, static_cast<std::uint16_t>(id))) {
+            continue;
+        }
+        if (!best || type->cost_gold < gold) {
+            best = sim::TypeId{id};
+            gold = type->cost_gold;
+        }
+    }
+    return best;
+}
+
+} // namespace
+
+TEST_CASE("outcome feedback: an outcome recorded before its snapshot is withheld, and a paid "
+          "build, a refusal and a no-op agree with the snapshot once published (round ee review "
+          "R1; game files)" *
+          doctest::test_suite("command_outcome")) {
+    auto d = dev_world();
+    if (!d) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const DevWorld w = *d;
+    const auto paid = paid_type(w);
+    REQUIRE(paid.has_value());
+    const auto cost = static_cast<std::int64_t>(w.load.world.types().find(*paid)->cost_gold);
+    app::PlayRunner runner(std::move(d->load.world));
+    runner.run_n(1); // the first snapshot with the developer's money (the constructor's is empty)
+    const app::CommandId build_id = runner.post_command(build(w, 4, 4, paid));
+    const app::CommandId refused_id = runner.post_command(build(w, -500, -500, paid));
+    const app::CommandId noop_id = runner.post_command(demolish(w, 30, 30));
+    const std::int64_t before = runner.snapshot()->money;
+    const std::vector<std::uint32_t> goods_before = runner.snapshot()->goods;
+    REQUIRE(before > cost);
+
+    // The reads in the window between the outcomes' record and the snapshot's swap.
+    std::map<std::string, Reads> at_gate;
+    std::uint64_t gate_turn = 0;
+    runner.set_publish_gate([&](std::uint64_t turn) {
+        gate_turn = turn;
+        at_gate["paid"] = read_both(runner, build_id);
+        at_gate["refused"] = read_both(runner, refused_id);
+        at_gate["noop"] = read_both(runner, noop_id);
+    });
+    runner.run_n(1);
+    REQUIRE(at_gate.size() == 3);
+
+    // The legal interleaving exists: the live log already holds the paid build's outcome while
+    // the snapshot is still the one from before the charge. This is what the window used to show.
+    const Reads& paid_gate = at_gate.at("paid");
+    REQUIRE(paid_gate.old_outcome.state == State::Applied);
+    CHECK(paid_gate.old_snapshot->money == before);
+    CHECK(paid_gate.old_snapshot->outcomes_next <= paid_gate.old_outcome.seq);
+    // The consistent read never pairs them: the outcome is withheld, the money is the old one.
+    REQUIRE(paid_gate.now.latest.has_value());
+    CHECK(paid_gate.now.latest->state == State::Queued);
+    CHECK(paid_gate.now.latest->deferred);
+    CHECK(paid_gate.now.snapshot->money == before);
+    CHECK(paid_gate.now.snapshot->turn < gate_turn);
+    // Refusal and no-op are withheld the same way.
+    for (const char* key : {"refused", "noop"}) {
+        const Reads& r = at_gate.at(key);
+        INFO(key);
+        CHECK(r.old_outcome.state != State::Queued);
+        REQUIRE(r.now.latest.has_value());
+        CHECK(r.now.latest->state == State::Queued);
+        CHECK(r.now.latest->deferred);
+    }
+
+    // After publication the same receipts are final, and the money shows the charge.
+    const app::PlayFeedback after_paid = runner.feedback(build_id);
+    REQUIRE(after_paid.latest.has_value());
+    CHECK(after_paid.latest->state == State::Applied);
+    CHECK_FALSE(after_paid.latest->deferred);
+    CHECK(after_paid.latest->seq < after_paid.snapshot->outcomes_next);
+    CHECK(after_paid.snapshot->money == before - cost);
+    if (!w.load.world.types().find(*paid)->cost_goods.empty()) {
+        CHECK(after_paid.snapshot->goods !=
+              goods_before); // the goods charge shows with the outcome
+        CHECK(paid_gate.now.snapshot->goods == goods_before);
+    }
+    CHECK(runner.feedback(refused_id).latest->state == State::Refused);
+    CHECK(runner.feedback(noop_id).latest->state == State::Applied);
+    // A receipt that never ran stays Queued, not deferred; one never issued stays Unknown.
+    const app::CommandId later = runner.post_command(build(w, 12, 4, paid));
+    CHECK_FALSE(runner.feedback(later).latest->deferred);
+    CHECK(runner.feedback(later).latest->state == State::Queued);
+    CHECK(runner.feedback(app::CommandId{app::CommandOrigin::Window, 999}).latest->state ==
+          State::Unknown);
+}
+
+TEST_CASE("outcome feedback: a paid build seen from a reader thread while the sim thread holds "
+          "its publication never shows Applied beside the old money, and the read never waits "
+          "(round ee review R1; game files)" *
+          doctest::test_suite("command_outcome")) {
+    auto d = dev_world();
+    if (!d) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const DevWorld w = *d;
+    const auto paid = paid_type(w);
+    REQUIRE(paid.has_value());
+    const auto cost = static_cast<std::int64_t>(w.load.world.types().find(*paid)->cost_gold);
+    app::PlayRunner runner(std::move(d->load.world));
+    runner.run_n(1); // the first snapshot with the developer's money (the constructor's is empty)
+    std::mutex m;
+    std::condition_variable cv;
+    bool held = false, open = false;
+    runner.set_publish_gate([&](std::uint64_t) {
+        std::unique_lock lock(m);
+        if (open || held) {
+            return;
+        }
+        held = true;
+        cv.notify_all();
+        cv.wait(lock, [&] { return open; });
+    });
+    struct Release {
+        std::mutex& m;
+        std::condition_variable& cv;
+        bool& open;
+        app::PlayRunner& runner;
+        ~Release() {
+            {
+                const std::lock_guard lock(m);
+                open = true;
+            }
+            cv.notify_all();
+            runner.stop();
+        }
+    } release{m, cv, open, runner};
+    const app::CommandId id = runner.post_command(build(w, 4, 4, paid));
+    const std::int64_t before = runner.snapshot()->money;
+    REQUIRE(before > cost);
+    runner.start();
+    {
+        std::unique_lock lock(m);
+        REQUIRE(cv.wait_for(lock, std::chrono::seconds(20), [&] { return held; }));
+    }
+    // The sim thread is inside the publication: the outcome is recorded, the snapshot is not.
+    const auto t0 = std::chrono::steady_clock::now();
+    const Reads gate = read_both(runner, id);
+    const auto read_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0)
+            .count();
+    CHECK(read_us < 100000); // the reads do not wait for the held publication
+    CHECK(gate.old_outcome.state == State::Applied);
+    CHECK(gate.old_snapshot->money == before);
+    REQUIRE(gate.now.latest.has_value());
+    CHECK(gate.now.latest->state == State::Queued);
+    CHECK(gate.now.latest->deferred);
+    CHECK(gate.now.snapshot->money == before);
+    {
+        const std::lock_guard lock(m);
+        open = true;
+    }
+    cv.notify_all();
+    REQUIRE(eventually([&] { return runner.feedback(id).latest->state != State::Queued; }));
+    const app::PlayFeedback done = runner.feedback(id);
+    CHECK(done.latest->state == State::Applied);
+    CHECK(done.snapshot->money == before - cost);
+}
+
+TEST_CASE("outcome feedback: a lost outcome is withheld until its snapshot is published and "
+          "then reads Lost, and the newest one is kept (round ee review R1; game files)" *
+          doctest::test_suite("command_outcome")) {
+    auto d = dev_world();
+    if (!d) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const DevWorld w = *d;
+    app::PlayRunner runner(std::move(d->load.world));
+    runner.set_outcome_bounds(1, 100);
+    const app::CommandId a = runner.post_command(build(w, 4, 4));
+    const app::CommandId b = runner.post_command(build(w, 12, 4));
+    const app::CommandId c = runner.post_command(build(w, 20, 4));
+    std::optional<Reads> gate_a, gate_c;
+    runner.set_publish_gate([&](std::uint64_t) {
+        gate_a = read_both(runner, a);
+        gate_c = read_both(runner, c);
+    });
+    runner.run_n(1);
+    REQUIRE(gate_a.has_value());
+    REQUIRE(gate_c.has_value());
+    // Before publication `a` is already evicted (one outcome kept) but cannot be called Lost:
+    // it may be an outcome the reader has not been told about.
+    CHECK(gate_a->old_outcome.state == State::Lost);
+    CHECK(gate_a->now.latest->state == State::Queued);
+    CHECK(gate_a->now.latest->deferred);
+    CHECK(gate_c->now.latest->state == State::Queued);
+    // Published: evicted outcomes are Lost, and the newest is kept.
+    CHECK(runner.feedback(a).latest->state == State::Lost);
+    CHECK(runner.feedback(b).latest->state == State::Lost);
+    CHECK(runner.feedback(c).latest->state == State::Applied);
+    CHECK_FALSE(runner.feedback(a).latest->deferred);
 }

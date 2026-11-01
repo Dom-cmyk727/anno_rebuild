@@ -90,6 +90,10 @@ OutcomeRead OutcomeLog::since(std::uint64_t from) const {
 
 CommandOutcome OutcomeLog::find(CommandId id) const {
     const std::lock_guard lock(mu_);
+    return find_locked(id);
+}
+
+CommandOutcome OutcomeLog::find_locked(CommandId id) const {
     CommandOutcome out;
     out.id = id;
     const std::size_t o = origin_index(id.origin);
@@ -107,6 +111,25 @@ CommandOutcome OutcomeLog::find(CommandId id) const {
         }
     }
     out.state = CommandOutcome::State::Lost;
+    return out;
+}
+
+CommandOutcome OutcomeLog::find_published(CommandId id, std::uint64_t published_next) const {
+    const std::lock_guard lock(mu_);
+    CommandOutcome out = find_locked(id);
+    const std::uint64_t first = kept_.empty() ? next_seq_ : kept_.front().seq;
+    const bool withheld = out.state == CommandOutcome::State::Lost
+                              ? first > published_next
+                              : (out.state == CommandOutcome::State::Applied ||
+                                 out.state == CommandOutcome::State::Refused) &&
+                                    out.seq >= published_next;
+    if (withheld) {
+        CommandOutcome queued;
+        queued.id = id;
+        queued.state = CommandOutcome::State::Queued;
+        queued.deferred = true;
+        return queued;
+    }
     return out;
 }
 

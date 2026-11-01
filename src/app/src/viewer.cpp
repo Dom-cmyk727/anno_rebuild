@@ -1233,13 +1233,13 @@ void Viewer::update_title() {
         // The runner's line and the feedback from one snapshot (dev_title), published data only
         // (dev_feedback.hpp): the snapshot, the picture's buildings, and the outcome of the
         // tool's latest command by its receipt.
-        // The outcome first, then the snapshot: the snapshot is then at least as new as the
-        // outcome, so "Applied" never stands next to money from before it (review of C, P3).
-        std::optional<CommandOutcome> latest;
-        if (latest_receipt_) {
-            latest = play_->runner().outcome(*latest_receipt_);
-        }
-        const auto snap = play_->runner().snapshot();
+        // One consistent read (PlayRunner::feedback): the snapshot first, the outcome as of its
+        // publication, so "Applied" never stands next to money from before it. The runner
+        // records a turn's outcomes before it swaps the snapshot, so reading the outcome first
+        // does not give that (round ee review, R1).
+        const PlayFeedback read = play_->runner().feedback(latest_receipt_);
+        const std::optional<CommandOutcome>& latest = read.latest;
+        const auto& snap = read.snapshot;
         // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
         std::string note = pointer_frame_ && pointer_frame_->scene
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
@@ -1310,9 +1310,10 @@ void Viewer::script_tick() {
     DevScriptState st;
     st.frames = drawn_frames_;
     st.now_ms = std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
-    st.snapshot = play_->runner().snapshot();
-    if (latest_receipt_) {
-        st.latest = play_->runner().outcome(*latest_receipt_);
+    {
+        PlayFeedback read = play_->runner().feedback(latest_receipt_); // one consistent read (R1)
+        st.snapshot = std::move(read.snapshot);
+        st.latest = std::move(read.latest);
     }
     st.followed_turn = play_->followed_turn();
     st.pending = play_->picture().pending();

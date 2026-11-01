@@ -55,6 +55,10 @@ struct CommandOutcome {
     std::vector<sim::Reject> records;
     /// Its number in the order outcomes were recorded, from 1 with no gap (OutcomeLog).
     std::uint64_t seq = 0;
+    /// Set by OutcomeLog::find_published on a Queued answer for a command that already ran but
+    /// whose publication (the snapshot that follows its turn) the reader has not seen: the
+    /// outcome exists and is withheld until then (round ee review, R1).
+    bool deferred = false;
     /// Records whose status is None (a placed building, a removed one). A Build record of type 0
     /// is skipped by the sim and also None; the window never sends one.
     [[nodiscard]] std::size_t records_done() const;
@@ -90,6 +94,13 @@ class OutcomeLog {
     /// What is known about `id` now: Queued (issued, not run), Applied or Refused (kept), Lost
     /// (run, evicted), Unknown (never issued).
     [[nodiscard]] CommandOutcome find(CommandId id) const;
+    /// `find`, restricted to the outcomes a reader has seen published: `published_next` is the
+    /// `PlaySnapshot::outcomes_next` of the snapshot the reader holds. An outcome recorded at or
+    /// after it (its turn's snapshot is not published yet) is answered Queued with `deferred`
+    /// set, never as Applied/Refused beside a snapshot from before it. An outcome that is no
+    /// longer kept (Lost) is answered the same way while it cannot be told from one that is not
+    /// published (everything kept is newer than the watermark), and as Lost once it can.
+    [[nodiscard]] CommandOutcome find_published(CommandId id, std::uint64_t published_next) const;
     /// The sequence number the next recorded outcome gets.
     [[nodiscard]] std::uint64_t next() const;
     /// New bounds (at least one outcome is always kept); evicts what no longer fits.
@@ -99,6 +110,7 @@ class OutcomeLog {
 
   private:
     void evict_locked();
+    [[nodiscard]] CommandOutcome find_locked(CommandId id) const;
 
     mutable std::mutex mu_;
     std::size_t max_outcomes_, max_records_;

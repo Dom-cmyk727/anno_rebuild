@@ -122,6 +122,16 @@ struct PlaySnapshot {
     std::uint64_t outcomes_next = 1;
 };
 
+/// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and
+/// the outcome of one command, read so that the outcome is never newer than the snapshot. The
+/// runner records a turn's outcomes before it swaps in the snapshot that follows them, so the
+/// live log can be ahead of the snapshot for a moment; an outcome that is, is withheld
+/// (`latest->deferred`, state Queued) until its snapshot is published.
+struct PlayFeedback {
+    std::shared_ptr<const PlaySnapshot> snapshot;
+    std::optional<CommandOutcome> latest;
+};
+
 /// What one turn did, for the window trace (round ec, B2; docs/app/window-trace.md): the commands
 /// it applied, the refusals among them (from the turn's results, round ee: the reasons in command
 /// order), and the batch it pushed. `published` is read just before the batch enters the mailbox,
@@ -213,6 +223,15 @@ class PlayRunner {
     }
     /// What is known about one command now (Queued, Applied, Refused, Lost or Unknown).
     [[nodiscard]] CommandOutcome outcome(CommandId id) const { return outcomes_.find(id); }
+    /// The snapshot and, when `receipt` is given, that command's outcome as of the snapshot's
+    /// publication (PlayFeedback; OutcomeLog::find_published). The snapshot is read first and the
+    /// outcome is answered against its watermark, so money and goods are never from before an
+    /// outcome shown next to them. Never waits for the sim: two short locks, one after the other.
+    [[nodiscard]] PlayFeedback feedback(std::optional<CommandId> receipt) const;
+    /// Test seam: called on the sim thread inside every publication, after the turn's outcomes
+    /// are recorded and before its snapshot is swapped in, with the turn index (the interleaving
+    /// a concurrent reader can see). No lock is held. Call before `start`.
+    void set_publish_gate(std::function<void(std::uint64_t turn)> gate);
     /// The outcome store's bounds (OutcomeLog: outcomes, per-record entries). Call before `start`.
     void set_outcome_bounds(std::size_t outcomes, std::size_t records);
     /// How many batches the mailbox holds before it collapses them into a resync
@@ -291,6 +310,7 @@ class PlayRunner {
     std::mutex listener_mu_;
     std::function<void()> listener_;
     std::function<void(std::uint64_t)> turn_gate_;
+    std::function<void(std::uint64_t)> publish_gate_;
     std::function<void(const TurnObservation&)> turn_observer_;
     // The script and its cursor (sim thread only once started).
     std::vector<ScriptedCommand> script_;

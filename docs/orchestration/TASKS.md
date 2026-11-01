@@ -2,9 +2,183 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
+## Current dispatch — 2026-11-01: rendering moves to Windows; MAP stays on Mac
+
+**Read this dispatch before the historical rounds below.** Executors receive new
+assignments through this tracked file on GitHub
+(`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
+round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
+package, accept unreviewed changes, or change MAP's assignment.
+
+| Lane | Host and ownership | Current instruction |
+|---|---|---|
+| Rendering / W4.4 | Windows workstation with RTX 4090 after the current Mac handoff | **W4-WIN-0 READY now.** Prepare the host and read the packet below. Finish/review the current W4.4 work before releasing W4-WIN-1–6 on a pinned commit. |
+| MAP.2 / founding | Mac, existing MAP executor | Continue the existing founding correction/dependency packet. No migration, reassignment or interruption. |
+
+**Reviewed baseline:** `task/W4-3-live-buildings` at
+`3483d665a5b0f6d92a3f88c9ac519d0bd7e1272d` (round ed; code at `c2bdf91`).
+The orchestrator reviewed its complete round-ed diff, recomputed the saved gate
+verdicts, matched tested binary hashes, reran the window-table contracts and 27
+trace cases, and reproduced both canary tables. **Accepted for that local repair
+scope only.** Windows/Linux/GPU target acceptance, original visual parity and
+late-game performance remain open.
+
+**Current W4.4 is still in progress, not accepted:** at dispatch preparation the
+Mac branch was at `7d5cf2113f1b227024fbe0a321b4669b2cbd62ce` with additional
+uncommitted edits. That is an observation, **not a handoff pin**. Do not reset it,
+copy its build tree, or have a second executor implement the same packages. The
+last observed GitHub rendering head was `c869fb7`; pulling the task board alone
+does not deliver the current rendering code. Re-check remote refs at intake.
+
+### Read order and delivery
+
+1. Repository `AGENTS.md` if present, `CLAUDE.md`, `docs/PLAN.md` §§0.1–0.4,
+   `docs/testing/evidence-contract.md`, and `docs/testing/README.md`.
+2. This current dispatch; W4.4's **round-dr amendment** in the historical task
+   entry below; `docs/app/game-shell.md`, `docs/app/gpu-handoff.md`,
+   `docs/app/window-trace.md`, and the latest W4 report in `REPORTS.md`.
+3. On the released rendering revision, inspect `src/app/include/anno/app/play.hpp`,
+   `dev_input.hpp` and `dev_feedback.hpp` where present; their implementations;
+   `src/app/src/viewer.cpp`; `src/render/include/anno/render/picking.hpp`; the
+   input, feedback, picking, preview and picture GPU tests; and
+   `tools/bench/window_{case,matrix,table}.*` plus their contracts.
+
+Keep a clean main checkout for the latest board and canonical gate. An executor
+with an older task checkout can read the fetched board using
+`git show origin/main:docs/orchestration/TASKS.md`; no main merge is needed to read
+instructions. Use the canonical Python gate with explicit `--source-root` and
+`--build-dir`, recording both workflow and tested-source revisions. Resolve
+paths on Windows; the Mac's absolute paths and ignored `cache/` files are not
+portable prerequisites. W4-specific docs/code may exist only on the rendering
+branch; read them at the released revision when available. Their absence from an
+older main checkout does not block host intake. Do not operate in another
+executor's dirty checkout.
+
+### W4-WIN-0 — host intake and migration preparation · READY
+
+- Record CPU/model/core counts, RAM, GPU(s)/VRAM/driver/backend, Windows version,
+  free disk on source/build/evidence volumes, display resolutions/scaling/refresh,
+  MSVC/CMake/Python versions and WSL distributions/toolchains. Confirm original
+  game-file availability without changing or redistributing them.
+- Inspect active jobs and available memory. Choose build/test concurrency from
+  this host, not the Mac calibration. Keep admission control and GPU resource
+  serialization enabled; do not replace a coordinator or delete its journal.
+- Locate a suitable owned checkout and verify `origin` is the GitHub repository.
+  Fetch/read the current board. Do not clean, reset or prune copied worktrees.
+- Prepare an intake report with capabilities, missing prerequisites and exact
+  remote heads. A missing 4K display or unavailable Radeon/WSL is a specific
+  limitation, not permission to label an equivalent test passed.
+- **Release condition for code work:** the current Mac executor finishes its
+  package, reports code/docs heads and review evidence, the orchestrator reviews
+  it, and this board names the committed, published rendering revision to use.
+  The exact SHA must exist on GitHub and match the Windows checkout. Only one
+  host owns further implementation on the rendering branch after the handoff.
+  While waiting, complete this intake; do not redo W4.4 or test an old remote head
+  and report it as the new result. No further owner choice about the host is needed.
+
+### Current W4.4 scope — preserve work already authorized
+
+These are the in-flight packages, not a second Windows assignment:
+
+- **A — command outcomes:** correlate submission, turn/command position and the
+  authoritative result; bound retention with explicit loss; do not infer
+  acceptance from submission, missing refusal or picture publication. Cover mixed
+  outcomes, identical commands, delayed consumers, overflow, unrepresentable
+  commands and outcomes with no building batch. Preserve ordering and state hashes.
+- **B — real input:** reuse the existing developer tool and picking helpers;
+  handle window/drawable/view/island coordinates, DPI, zoom, height, focus loss,
+  cancellation and safe numeric bounds. Test independent known coordinates as
+  well as round trips, through the adapter used by the live window.
+- **C — preview and feedback:** actual selected assets/rotation/footprint, a
+  truthful distinction between geometric preview and authoritative acceptance,
+  command-specific refusals and current resources. No window access to `World`.
+  Complete place/rotate/demolish/road drag, with explicit bounded long-drag behavior.
+  Developer resource overrides stay configurable and off for original scenarios.
+- **D — flexibility/scaling:** registry-driven IDs, costs, footprints and assets;
+  test a different non-square definition and non-default player/city. Reject
+  unsupported definitions safely. Avoid whole-world copies/scans per pointer move
+  and speculative plugin frameworks. UI.2 must be able to reuse these interfaces.
+- **E — integration:** lifetime-safe remaining test observers; diagnosed contention
+  check; actual input → command → replay checkpoints; input/outcomes continue while
+  render work is held; inspect screenshots of preview, placement and refusal.
+
+Each package and final integration require independent read-only review, corrected
+findings and retained dispositions. The round-dr amendment keeps this a minimal
+developer tool, not the final UI or a new bindings-design exercise.
+
+### W4-WIN-1–6 — Windows/RTX verification packet · QUEUED AFTER REVIEW
+
+The following acceptance work is assigned to the Windows rendering lane once the
+release condition above is met. The next board update must pin the actual reviewed
+head and incorporate its findings; do not assume `3483d66` or the observed WIP head
+is that release. Preserve Mac evidence as Mac evidence.
+
+1. **Fresh target build and preflight.** Configure/build the owned Windows source
+   with the `msvc` presets and Release configuration. Never reuse Mac objects or
+   CMake caches. Run the canonical test-name/verdict preflights, inventory the
+   exact tests and required contracts, and hash the tested binaries. Run a cheap
+   app/input/trace check and one RTX GPU canary before broad suites. Repair scoped
+   portability defects with focused regressions and review; no coordinator redesign.
+2. **MSVC app/render acceptance.** Run relevant app, allocation, input, picking,
+   preview and CPU render tests with original assets set. Use the canonical Python
+   runner with `--config Release`, explicit roots, retained logs and inventory.
+   Inventory selectors before execution; missing or empty selections fail.
+   On supported UNIX/WSL builds require `picture_matrix_contract` and
+   `window_table_contract`. If those shell contracts are not registered on native
+   Windows, execute them on the matching WSL source and report the boundary;
+   do not fake registration or count native absence as a pass.
+3. **RTX 4090 GPU acceptance.** Identify the actual adapter and backend. Execute
+   `play: GPU matches the CPU path on one scene`, picture replacement/ownership,
+   invalidation, stale completions, constrained upload/stand-in/dissolve cases and
+   any new preview cases. Then run the inventoried applicable GPU suite, including
+   timing checks. An RTX-required case skipped on the RTX host is not acceptance.
+   Repeat the corrected stand-ins case with controlled CPU contention; keep GPU
+   work serialized, record STALLED/WATCHDOG diagnostics and investigate before a
+   retry. Run applicable tests on the Radeon if available with its own identity;
+   an NVIDIA-specific skip is not Radeon parity proof.
+4. **Real Windows window.** First one-edit, resize and trace on/off canaries; then
+   the existing 13-case matrix at 1080p and actual 3840×2160 if supported. Record
+   drawable pixels, refresh/cadence, trace completeness, command outcomes, per-stage
+   edit latency, p50/p95/p99/max with sample counts, queues and memory. The existing
+   `window_case.sh` uses UNIX `time`/`perl` and is not a native Windows launcher:
+   use the native viewer trace plus a small reviewed Windows launch wrapper if
+   necessary, preserving plan/results/raw-event validation. Do not run a WSLg
+   window and label it native Windows. Re-aggregate raw traces; no stale summaries,
+   fabricated 4K dimensions, or present-return-as-display-latency claims.
+5. **WSL and fidelity follow-ups.** Run GCC 13/Clang 18 `-Werror` checks using
+   `tools/check_unix_warnings.sh`, with actual tool versions and omissions stated;
+   run relevant sanitizer/contract tests on a correctly configured supported build.
+   Reproduce OQ-525 against the CPU/fresh/original references appropriate to each
+   claim; retain existing tolerances. Record Windows timing results separately:
+   they cannot close the two Metal-specific failures. Original-runtime captures
+   require the documented harness and their own provenance, not GPU/CPU equality.
+6. **Closeout.** Correct demonstrated in-scope defects, obtain per-package and final
+   independent review, and run final gates after the final code changes. Report
+   selected/executed/failed/empty/skipped/incomplete separately, preserve first
+   failures, and pin source/config/adapter/binary/log identities. State remaining
+   platform/visual/performance limits and stop for orchestrator review. No open-ended
+   optimization, full UI, founding, map selection or network implementation is added.
+
+**Performance and mod-support constraints:** preserve original assets, painter
+order and faithful rules. Rendering must stay asynchronous and memory-bounded;
+commands never wait for builds/uploads/reclamation/presentation. A 60-building
+canary or the 4090's speed does not establish large-city/complex-economy multiplayer
+scaling or the PLAN's four-core target. Use the existing verified larger workload
+for a bounded target-host baseline where available, report its actual populations
+and active work, and leave unrepresented workloads open. Configuration/content
+changes that affect authoritative behavior remain deterministic and identifiable.
+
+**Isolation and stop:** MAP remains on the Mac; do not cherry-pick its in-progress
+founding work, change active map/candidates or original game files, stop others'
+jobs/keep-awake assertions, or merge/rebase/push task code without a release
+instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
+publishes this board. Preserve the owner's current keep-awake setup.
+
+---
+
 **Round bp (2026-10-26, owner instruction):** for every task after the one an executor has in progress now, **subagents are allowed again where necessary and helpful**. §1 item 5 has the rules: the task stays the executor's, subagents' results are checked against the files before they enter a commit, resource-budgeted concurrency under round cp, the orchestrator's review stays. §1 item 11 no longer forbids them inside a sub-task.
 
-Last update: 2026-10-31 dw — **W4 CPU corrections remain CHANGES REQUIRED** at `3db3df3` (code `ba8f300`). Multi-worker river teardown still produces ASan use-after-free; final reclamation can occur on the window thread; failed builds lose pending convergence. Release/dense-scene and byte-budget evidence remains owed. Comprehensive overnight CPU completion assigned below; no GPU integration release. Other lanes and T10c F6's pause are unchanged.
+Historical dispatch, 2026-10-31 dw (W4 status superseded by the current dispatch above) — **W4 CPU corrections remain CHANGES REQUIRED** at `3db3df3` (code `ba8f300`). Multi-worker river teardown still produces ASan use-after-free; final reclamation can occur on the window thread; failed builds lose pending convergence. Release/dense-scene and byte-budget evidence remains owed. Comprehensive overnight CPU completion assigned below; no GPU integration release. Other lanes and T10c F6's pause are unchanged.
 
 **Round dw (2026-10-31, orchestrator): second CPU review and overnight completion assignment.**
 - **Review:** branch `task/W4-3-live-buildings`, report `3db3df3`, code `ba8f300`; later commits docs-only. R2 dirty-child/synchronous freshness and R3 loader backing ownership show substantive progress; do not undo them. R1/R4 are not closed; R5/R6 are incomplete despite the report heading. Independent evidence and assessment are in the round-dw REPORTS section and main's `cache/orch-dw/`.

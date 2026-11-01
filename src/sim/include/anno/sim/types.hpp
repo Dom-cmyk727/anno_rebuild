@@ -173,6 +173,16 @@ struct FigureType {
     std::optional<std::int64_t> hull_half_88 = std::nullopt;
 };
 
+/// The supported domain of FigureType::hull_half_88: |value| < 2^31 tiles, i.e. strictly below
+/// kMaxHullHalf88 in 1/256 tile (2^39). The original-file decoder keeps exactly this range; the
+/// registry seal (TypeRegistry::build, Builder::build) refuses a value outside it, so every
+/// construction path agrees. With |position| <= 2^31 raw units the veto's position +- hull sums
+/// stay below 2^40, far inside int64. (The pure veto additionally saturates, so it is safe for
+/// any int64 a caller hands it directly: figure_veto.cpp.) Absent, zero, positive and negative
+/// values inside the bound are all distinct, supported facts. A mod needing larger hulls raises
+/// this constant together with the veto's saturation limit.
+inline constexpr std::int64_t kMaxHullHalf88 = std::int64_t{1} << 39;
+
 /// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];
 /// docs/re/production.md §2.3; P: 35 of the 921 types).
 inline constexpr std::uint32_t kRoadFlag = 0x4000;

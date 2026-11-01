@@ -88,7 +88,14 @@ Decision plain_branch(const NearbyFigure& f, const Rect& r, const Rules& rules) 
     if (!f.hull_half_88) {
         return missing(Missing::HullHalfExtent);
     }
-    const std::int64_t h = *f.hull_half_88;
+    // Any int64 is accepted from a direct caller: saturate before the arithmetic (not after an
+    // overflow). |h| <= 2^60 and |pos| < 2^31 keep every sum inside int64; a hull that large
+    // already covers or inverts every rectangle (edges <= 2^48 raw units), so the decision is the
+    // one the exact value would give.
+    constexpr std::int64_t kHullSat = std::int64_t{1} << 60;
+    const std::int64_t h = *f.hull_half_88 < -kHullSat  ? -kHullSat
+                           : *f.hull_half_88 > kHullSat ? kHullSat
+                                                        : *f.hull_half_88;
     const std::int64_t xmin = trunc_tiles(std::int64_t{f.pos.x} - h);
     const std::int64_t xmax = trunc_tiles(std::int64_t{f.pos.x} + h);
     const std::int64_t ymin = trunc_tiles(std::int64_t{f.pos.y} - h);

@@ -544,6 +544,11 @@ ScenarioSpec g7_scenario(const SyntheticTypes& types, std::uint32_t seed) {
 }
 
 formats::Result<SyntheticTypes, std::string> make_founding_types() {
+    return make_founding_types_with({});
+}
+
+formats::Result<SyntheticTypes, std::string>
+make_founding_types_with(std::vector<FigureType> extra_figures) {
     constexpr TypeId kKontor{1302}, kKontor63{9301}, kObstruction{9100}, kScenery{9101},
         kWorkshop{9201};
     const GoodsId kTools = 0x29, kWood = 0x2a;
@@ -605,6 +610,9 @@ formats::Result<SyntheticTypes, std::string> make_founding_types() {
     b.figure_type(fig(9504, 113, 16 * kOne, std::nullopt)); // a ship type without a hull field
     b.figure_type(fig(9505, 113, 16 * kOne, -7 * 256));     // an inverted box, like type 391
     b.figure_type(fig(9506, 113, 16 * kOne, 0));            // a present zero hull
+    for (FigureType& extra : extra_figures) {
+        b.figure_type(std::move(extra));
+    }
     auto built = b.build();
     if (!built) {
         return built.error();

@@ -807,6 +807,15 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
             return "duplicate figure type id " + std::to_string(figures[i].id);
         }
     }
+    for (const FigureType& f : figures) {
+        if (f.hull_half_88 &&
+            (*f.hull_half_88 <= -kMaxHullHalf88 || *f.hull_half_88 >= kMaxHullHalf88)) {
+            return "figure type " + std::to_string(f.id) + " hull half-extent " +
+                   std::to_string(*f.hull_half_88) +
+                   " is outside the supported domain (|value| < " + std::to_string(kMaxHullHalf88) +
+                   " in 1/256 tile)";
+        }
+    }
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
     r.digest_ = digest_registry(types, goods_in, classes, figures, groups);

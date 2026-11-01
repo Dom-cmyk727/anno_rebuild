@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <anno/formats/result.hpp>
 #include <anno/sim/ids.hpp>
@@ -61,6 +62,11 @@ struct SyntheticTypes {
 /// 717, donkey 718, soldier 9501, war machine 9502, ships 9503..9506 with a present, absent,
 /// negative and zero hull). `kontor` is 1302; the other ids are fixed (see founding_test.cpp).
 formats::Result<SyntheticTypes, std::string> make_founding_types();
+
+/// The same registry plus `extra_figures` (a test's additional figure types, e.g. hull facts at
+/// the edges of the supported domain). Errors are the registry seal's, unchanged.
+formats::Result<SyntheticTypes, std::string>
+make_founding_types_with(std::vector<FigureType> extra_figures);
 
 /// The registry of the types above on the original goods and class tables.
 formats::Result<SyntheticTypes, std::string> make_synthetic_types();

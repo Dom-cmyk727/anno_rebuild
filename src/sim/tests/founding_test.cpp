@@ -1194,6 +1194,46 @@ TEST_CASE("founding A2: a rival ship's hull fact decides the hull test, absent h
     }
 }
 
+TEST_CASE("founding hull domain: the edge of the supported domain through registry and founding") {
+    // Extra ship types at the largest supported hulls (the builder refuses anything beyond:
+    // figure_facts_test.cpp). A rival ship near the site with the large positive hull overlaps
+    // (FigureInTheWay, nothing changed: rejected() compares bytes and PRNG); with the large
+    // negative hull the box is inverted and the founding is accepted (the control).
+    const std::int64_t k = sim::kMaxHullHalf88;
+    const auto world_with = [&](std::int64_t hull) {
+        sim::FigureType t;
+        t.id = 9601;
+        t.bewohntype = 113;
+        t.range_88 = 16 * 256;
+        t.hull_half_88 = hull;
+        auto reg = syn::make_founding_types_with({t});
+        REQUIRE_MESSAGE(reg.ok(), (reg.ok() ? std::string() : reg.error()));
+        Setup s = base_setup();
+        s.spec.figures.push_back(soldier_at(1, 55.5, 31.5, 9601));
+        auto r = sim::World::create(s.spec, reg.value().registry, s.cfg, s.rules);
+        REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
+        return std::move(r).value();
+    };
+    {
+        sim::World w = world_with(k - 1);
+        rejected(w, control_command(), sim::Reject::FigureInTheWay);
+    }
+    {
+        sim::World w = world_with(-(k - 1));
+        CHECK(w.apply(control_command()).ok());
+    }
+    // Beyond the domain the registry itself is refused before any world exists.
+    {
+        sim::FigureType t;
+        t.id = 9601;
+        t.bewohntype = 113;
+        t.hull_half_88 = k;
+        const auto r = syn::make_founding_types_with({t});
+        REQUIRE_FALSE(r.ok());
+        CHECK(r.error().find("outside the supported domain") != std::string::npos);
+    }
+}
+
 namespace {
 
 std::filesystem::path fixture_log_path(const char* name) {

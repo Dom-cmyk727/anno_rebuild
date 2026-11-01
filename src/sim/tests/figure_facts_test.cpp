@@ -117,3 +117,88 @@ TEST_CASE("figure facts: the veto's behaviour for present, negative, zero and ab
     // The point test needs no hull: inside the rectangle an absent hull still vetoes.
     CHECK(verdict(std::nullopt, 53 * 256 + 128) == sim::veto::Verdict::Vetoed);
 }
+
+namespace {
+
+sim::FigureType ship_type(std::uint32_t id, std::optional<std::int64_t> hull) {
+    sim::FigureType t;
+    t.id = id;
+    t.bewohntype = 113;
+    t.range_88 = 16 * 256;
+    t.hull_half_88 = hull;
+    return t;
+}
+
+/// Seals a registry through the public Builder with one ship type of the given hull.
+anno::formats::Result<std::shared_ptr<const sim::TypeRegistry>, std::string>
+seal_with(std::optional<std::int64_t> hull) {
+    sim::TypeRegistry::Builder b;
+    b.figure_type(ship_type(1502, hull));
+    return b.build();
+}
+
+sim::veto::Verdict veto_with(std::int64_t hull, std::int32_t x, std::int32_t y) {
+    sim::veto::NearbyFigure f;
+    f.registration = sim::veto::Registration::SectorCell;
+    f.kind = 113;
+    f.pos = sim::FixedPos{x, y};
+    f.owner = {sim::veto::Fact::True, sim::PlayerId{0}};
+    f.hull_half_88 = hull;
+    return sim::veto::nearby_figures(sim::PlayerId{0}, {50, 30}, 4, 4,
+                                     std::span<const sim::veto::NearbyFigure>(&f, 1))
+        .verdict;
+}
+
+} // namespace
+
+TEST_CASE("figure facts: the builder enforces the same hull domain as the file decoder") {
+    const std::int64_t k = sim::kMaxHullHalf88;
+    REQUIRE(k == (std::int64_t{1} << 39));
+    // Inside the domain (both edges, zero, ordinary, the shipped negative): accepted, exact.
+    for (const std::int64_t ok :
+         {std::int64_t{0}, std::int64_t{397}, k - 1, -(k - 1), std::int64_t{-27487789056LL}}) {
+        const auto r = seal_with(ok);
+        REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
+        CHECK(r.value()->find_figure_type(1502)->hull_half_88 == std::optional<std::int64_t>(ok));
+    }
+    // Absent stays absent.
+    {
+        const auto r = seal_with(std::nullopt);
+        REQUIRE(r.ok());
+        CHECK_FALSE(r.value()->find_figure_type(1502)->hull_half_88.has_value());
+    }
+    // Outside it: a specific refusal naming the type and the value, never a registry.
+    for (const std::int64_t bad : {k, -k, k + 1, -k - 1, std::numeric_limits<std::int64_t>::max(),
+                                   std::numeric_limits<std::int64_t>::min()}) {
+        const auto r = seal_with(bad);
+        REQUIRE_FALSE(r.ok());
+        CHECK(r.error().find("figure type 1502 hull half-extent " + std::to_string(bad)) !=
+              std::string::npos);
+        CHECK(r.error().find("outside the supported domain") != std::string::npos);
+    }
+    // The decoder's bound is the same one: just under 2^31 tiles is kept, 2^31 tiles is absent.
+    CHECK(hull_of("SHIP", 20, 1073741824.0F).has_value());
+    CHECK_FALSE(hull_of("SHIP", 20, 2147483648.0F).has_value());
+}
+
+TEST_CASE("figure facts: the public veto is safe for any int64 hull, with the exact decision") {
+    const std::int32_t outside = 55 * 256 + 128;
+    const std::int32_t y = 31 * 256 + 128;
+    constexpr auto big = std::numeric_limits<std::int64_t>::max();
+    constexpr auto small = std::numeric_limits<std::int64_t>::min();
+    // A positive hull this large covers every rectangle; a negative one is an inverted box.
+    for (const std::int64_t h : {big, big - 1, std::int64_t{1} << 62}) {
+        CHECK(veto_with(h, outside, y) == sim::veto::Verdict::Vetoed);
+        // A figure far outside the query rectangle is not a candidate whatever its hull.
+        CHECK(veto_with(h, std::numeric_limits<std::int32_t>::max(),
+                        std::numeric_limits<std::int32_t>::min()) == sim::veto::Verdict::Clear);
+    }
+    for (const std::int64_t h : {small, small + 1, -(std::int64_t{1} << 62)}) {
+        CHECK(veto_with(h, outside, y) == sim::veto::Verdict::Clear);
+        CHECK(veto_with(h, std::numeric_limits<std::int32_t>::min(),
+                        std::numeric_limits<std::int32_t>::max()) == sim::veto::Verdict::Clear);
+    }
+    // Controls at the edge of the supported domain give the same answers as the extremes.
+    CHECK(veto_with(sim::kMaxHullHalf88 - 1, outside, y) == sim::veto::Verdict::Vetoed);
+    CHECK(veto_with(-(sim::kMaxHullHalf88 - 1), outside, y) == sim::veto::Verdict::Clear);
+}

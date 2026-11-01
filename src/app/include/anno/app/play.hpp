@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <anno/app/building_delta.hpp>
+#include <anno/app/command_outcome.hpp>
 #include <anno/app/command_queue.hpp>
 #include <anno/app/commands_file.hpp>
 #include <anno/app/loader.hpp>
@@ -95,20 +96,17 @@ struct PlaySnapshot {
     std::int64_t money = 0;
     std::vector<std::uint32_t> goods;
     /// The reason of the last refused command, kept for a few seconds of turns
-    /// (empty when none). The full list is take_rejections().
+    /// (empty when none), for the title. Each command's own outcome is outcome() /
+    /// outcomes_since().
     std::string last_rejection;
-};
-
-/// A command the sim refused (CommandRejected, the host's UI event): the turn
-/// that refused it and the reason name (sim::reject_name).
-struct RejectionNote {
-    std::uint64_t turn = 0;
-    std::string reason;
+    /// The next outcome sequence number after this turn (OutcomeLog): a reader that has read up
+    /// to it has every outcome this snapshot follows.
+    std::uint64_t outcomes_next = 1;
 };
 
 /// What one turn did, for the window trace (round ec, B2; docs/app/window-trace.md): the commands
-/// it applied, the refusals the sim reported for them (CommandRejected: the reason, no command
-/// index), and the batch it pushed. `published` is read just before the batch enters the mailbox,
+/// it applied, the refusals among them (from the turn's results, round ee: the reasons in command
+/// order), and the batch it pushed. `published` is read just before the batch enters the mailbox,
 /// so a window that takes the batch never takes it before that time.
 struct TurnObservation {
     std::uint64_t turn = 0;
@@ -177,32 +175,42 @@ class PlayRunner {
     /// window's idle check reads it every loop iteration; it copies nothing. A read that races a
     /// push sees the batch at the next iteration, and the listener below wakes that iteration.
     [[nodiscard]] bool batches_waiting() const { return batches_waiting_.load(); }
-    /// Called on the sim thread after a turn pushed a batch (outside the snapshot lock), so a
-    /// window that waits for events wakes for it (the viewer posts an SDL event). Thread-safe:
-    /// once a call that clears it returns, the previous listener is not called again.
-    void set_batch_listener(std::function<void()> listener);
+    /// Called on the sim thread after a turn pushed a batch or ran commands (outside the snapshot
+    /// lock), so a window that waits for events wakes for it (the viewer posts an SDL event): a
+    /// refusal or an accepted command with no picture change wakes it too (round ee, A3).
+    /// Thread-safe: once a call that clears it returns, the previous listener is not called again.
+    void set_wake_listener(std::function<void()> listener);
     /// Test seam: called on the sim thread inside every turn, after its commands are chosen and
     /// before the turn runs, with the turn index (a turn held in flight). Call before `start`.
     void set_turn_gate(std::function<void(std::uint64_t turn)> gate);
     /// Called on the sim thread at the end of every turn, after its publication (and after the
     /// batch listener), with what the turn did. Opt-in (the window trace). Call before `start`.
     void set_turn_observer(std::function<void(const TurnObservation&)> observer);
-    /// Every refused command since the last call, oldest first (the window takes them
-    /// once per frame, as the batches). The list is kept to the last 256 refusals
-    /// (kRejectionKeep): a window that stops taking them loses the oldest, not the newest.
-    [[nodiscard]] std::vector<RejectionNote> take_rejections();
+    /// The outcomes of the commands run since sequence number `from` (round ee, A1; OutcomeLog):
+    /// in the order they ran, with the range a slow reader lost, never a silent gap. Any thread.
+    [[nodiscard]] OutcomeRead outcomes_since(std::uint64_t from) const {
+        return outcomes_.since(from);
+    }
+    /// What is known about one command now (Queued, Applied, Refused, Lost or Unknown).
+    [[nodiscard]] CommandOutcome outcome(CommandId id) const { return outcomes_.find(id); }
+    /// The outcome store's bounds (OutcomeLog: outcomes, per-record entries). Call before `start`.
+    void set_outcome_bounds(std::size_t outcomes, std::size_t records);
     /// How many batches the mailbox holds before it collapses them into a resync
     /// (BuildingMailbox). Default: one second of turns. Call before `start`.
     void set_batch_bound(std::size_t bound);
-    /// Commands for the turns, in file order (commands_file.hpp). A turn applies
-    /// the ones that name it, before its steps (`Turn::commands`). Call before `start`.
+    /// Commands for the turns (commands_file.hpp), ordered by turn and, within a turn, in file
+    /// order (a stable sort: a line for an earlier turn after a later one still runs). A turn
+    /// applies the ones that name it, before its steps (`Turn::commands`). Their receipts are
+    /// {Script, 1..} in that order. Call before `start`.
     void set_script(std::vector<ScriptedCommand> script);
-    /// Queues a command for the next turn to start (the window's input; W4.4 B2).
-    /// Thread-safe. The turn applies its scripted commands first, then the queued
-    /// ones in push order (CommandQueue).
-    void post_command(sim::Command command);
-    /// Every command applied so far, with the turn that applied it, oldest first:
-    /// the record a determinism test replays. Thread-safe.
+    /// Queues a command for the next turn to start (the window's input; W4.4 B2) and returns its
+    /// receipt {Window, n}, n from 1 in submission order. Thread-safe and never waits for a turn.
+    /// The turn applies its scripted commands first, then the queued ones in push order
+    /// (CommandQueue). The receipt is not acceptance: outcome() says what the sim did.
+    CommandId post_command(sim::Command command);
+    /// Every command given to the sim so far (with a wire form: one without is refused as
+    /// Unencodable and never applied), with the turn that applied it, oldest first: the record a
+    /// determinism test replays. Thread-safe.
     [[nodiscard]] std::vector<ScriptedCommand> applied_commands() const;
     [[nodiscard]] std::string title_line() const;
     /// Observable after synchronous `run_n`; the window never receives World.
@@ -213,11 +221,7 @@ class PlayRunner {
     void loop();
     void one_turn();
     void publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t applied,
-                 std::shared_ptr<const BuildingBatch> batch, std::vector<RejectionNote> rejected);
-    /// Refusals kept for take_rejections. Reason: a refusal is a turn and a short
-    /// name, and 256 is about a minute of refusals at a few per second. Making it a
-    /// setting is a small change if a session needs more.
-    static constexpr std::size_t kRejectionKeep = 256;
+                 std::shared_ptr<const BuildingBatch> batch, std::vector<CommandOutcome> ran);
     /// Seconds of turns the title keeps showing the last refusal (30 turns).
     static constexpr std::uint64_t kRejectionShowTurns = 30;
     void publish_snapshot(std::shared_ptr<const PlaySnapshot> snapshot);
@@ -256,14 +260,15 @@ class PlayRunner {
     // The script and its cursor (sim thread only once started).
     std::vector<ScriptedCommand> script_;
     std::size_t script_next_ = 0;
-    // The window's commands (thread-safe by itself) and the record of what was applied
-    // (written by the sim thread under snap_mu_; read by applied_commands under it).
+    // The window's commands (thread-safe by itself), the record of what was applied
+    // (written by the sim thread under snap_mu_; read by applied_commands under it), and the
+    // commands' outcomes (thread-safe by itself).
     CommandQueue queue_;
     std::vector<ScriptedCommand> applied_;
-    // The developer player's city (sim thread, found at construction), the refusals
-    // waiting for the window (under snap_mu_), and the last refusal shown in the title.
+    OutcomeLog outcomes_;
+    // The developer player's city (sim thread, found at construction) and the last refusal
+    // shown in the title.
     std::optional<sim::CityRef> developer_city_;
-    std::vector<RejectionNote> rejections_;
     std::string last_reason_;
     std::uint64_t last_reason_turn_ = 0;
 };

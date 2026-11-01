@@ -257,7 +257,7 @@ TEST_CASE("play follow: a turn in flight when the window pauses publishes after 
     auto runner = std::make_unique<app::PlayRunner>(std::move(p->load.world));
     runner->set_script({{2, p->build_at(4, 4)}});
     runner->set_turn_gate([&gate](std::uint64_t turn) { gate.pass(turn); });
-    runner->set_batch_listener([&wakes] { wakes.fetch_add(1); });
+    runner->set_wake_listener([&wakes] { wakes.fetch_add(1); });
     app::PlayFollower follower(picture, *runner);
     const TurnGateOpener opener(gate);
     runner->start();
@@ -313,7 +313,7 @@ TEST_CASE("play follow: a turn in flight when the window pauses publishes after 
     }
     CHECK(runner->snapshot()->turn == turn_after);
     CHECK(runner->snapshot()->paused);
-    runner->set_batch_listener({});
+    runner->set_wake_listener({});
     runner->stop();
 }
 
@@ -431,10 +431,18 @@ TEST_CASE("play follow: the window trace records each turn's outcome from the si
     CHECK(!seen[2].batch); // refused: nothing changed, nothing published
     CHECK(app::turn_outcome(trace.turns()[2]) == "rejected");
     CHECK(seen[3].applied == 0);
-    // The refusal the window takes names the same reason.
-    const auto refused = runner->take_rejections();
-    REQUIRE(refused.size() == 1);
-    CHECK(seen[2].reasons == refused[0].reason);
+    // The refused command's own outcome names the same reason.
+    const app::OutcomeRead read = runner->outcomes_since(1);
+    CHECK(read.lost == 0);
+    std::size_t refusals = 0;
+    for (const app::CommandOutcome& o : read.outcomes) {
+        if (o.state == app::CommandOutcome::State::Refused) {
+            ++refusals;
+            CHECK(o.turn == seen[2].turn);
+            CHECK(seen[2].reasons == sim::reject_name(o.status));
+        }
+    }
+    CHECK(refusals == 1);
     // The window's side: the take, then the commit of turn 1's build.
     app::PlayFollower follower(picture, *runner);
     static_cast<void>(follower.follow(frames, &trace));

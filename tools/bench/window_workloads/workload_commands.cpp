@@ -44,7 +44,8 @@ int main(int argc, char** argv) {
         for (const auto& c : world.islands()[i]->cities) {
             if (c && c->owner == app::developer_player() && !city) {
                 city = sim::CityRef{world.islands()[i]->index, c->number};
-                origin = sim::TileXY{world.islands()[i]->tiles.x0(), world.islands()[i]->tiles.y0()};
+                origin =
+                    sim::TileXY{world.islands()[i]->tiles.x0(), world.islands()[i]->tiles.y0()};
                 w = world.islands()[i]->tiles.width();
                 h = world.islands()[i]->tiles.height();
             }
@@ -87,11 +88,11 @@ int main(int argc, char** argv) {
             p.rotation = 0;
             build.placements.push_back(p);
             cmd.body = build;
-            runner.post_command(cmd);
+            const app::CommandId id = runner.post_command(cmd);
             runner.run_n(1);
             ++trials;
-            const bool ok = !runner.take_building_batches().empty();
-            (void)runner.take_rejections();
+            const bool ok = !runner.take_building_batches().empty() &&
+                            runner.outcome(id).state == app::CommandOutcome::State::Applied;
             if (ok) {
                 found.push_back(cmd);
             }

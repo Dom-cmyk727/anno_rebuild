@@ -721,14 +721,14 @@ std::string Viewer::run() {
         ClearListener& operator=(const ClearListener&) = delete;
         ~ClearListener() {
             if (play != nullptr) {
-                play->runner().set_batch_listener({});
+                play->runner().set_wake_listener({});
             }
         }
     } clear_listener{play_};
     if (play_ != nullptr) {
         wake_event_ = SDL_RegisterEvents(1);
         if (wake_event_ != 0) {
-            play_->runner().set_batch_listener([type = wake_event_] {
+            play_->runner().set_wake_listener([type = wake_event_] {
                 SDL_Event e{};
                 e.type = type;
                 SDL_PushEvent(&e);
@@ -814,7 +814,7 @@ std::string Viewer::run() {
     // the reclaimer. The GPU finishes its submissions before the compositor is destroyed; the
     // wave simulation's background preparations release the generation they hold as they end.
     if (play_ != nullptr) {
-        play_->runner().set_batch_listener({}); // no SDL event after the window is gone
+        play_->runner().set_wake_listener({}); // no SDL event after the window is gone
     }
     frames_.set_workers(nullptr);
     for (auto& t : seas) {

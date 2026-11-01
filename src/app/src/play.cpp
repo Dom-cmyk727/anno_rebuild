@@ -483,43 +483,57 @@ void PlayRunner::one_turn() {
     sim::Turn turn;
     turn.index = index_++;
     turn.step_ms = step_ms_;
-    // The script's commands for this turn, in file order (the file is sorted by turn).
+    // The script's commands for this turn, in file order (set_script sorted them by turn), then
+    // the window's commands queued before this turn started, in push order. Which turn takes a
+    // window command depends on wall time; its content and order do not (CommandQueue).
+    std::vector<CommandId> ids;
     while (script_next_ < script_.size() && script_[script_next_].turn <= turn.index) {
-        if (script_[script_next_].turn == turn.index) {
-            turn.commands.push_back(script_[script_next_].command);
-        }
+        turn.commands.push_back(script_[script_next_].command);
+        ids.push_back(CommandId{CommandOrigin::Script, script_next_ + 1});
         ++script_next_;
     }
-    // The window's commands queued before this turn started, in push order. Which turn
-    // takes a command depends on wall time; its content and order do not (CommandQueue).
-    for (sim::Command& command : queue_.take()) {
-        turn.commands.push_back(std::move(command));
+    for (CommandQueue::Entry& entry : queue_.take()) {
+        turn.commands.push_back(std::move(entry.command));
+        ids.push_back(CommandId{CommandOrigin::Window, entry.n});
     }
     {
         std::lock_guard lock(snap_mu_);
         for (const sim::Command& command : turn.commands) {
-            applied_.push_back({turn.index, command});
+            if (sim::has_wire_form(command.body)) {
+                applied_.push_back({turn.index, command});
+            }
         }
     }
     if (turn_gate_) {
         turn_gate_(turn.index); // test seam: the turn is in flight from here
     }
     const auto started = schedule_->now();
-    sim::run_turn(world_, nullptr, turn, steps_);
+    // One execution path: the sim's own loop reports what each command did (round ee, A2).
+    std::vector<sim::ApplyResult> results;
+    sim::run_turn(world_, nullptr, turn, steps_, &results);
     const auto us =
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
     // The turn cost above is the sim's; the diff that publishes its changes is
     // timed separately (the bench reports both).
-    // The refusals of this turn (the sim's host events, CommandRejected only).
-    std::vector<RejectionNote> rejected;
-    for (const sim::SimEvent& event : world_.drain_events()) {
-        if (event.kind == sim::SimEventKind::CommandRejected) {
-            rejected.push_back(RejectionNote{
-                turn.index, std::string(sim::reject_name(static_cast<sim::Reject>(event.code)))});
+    // The sim's host events are drained (their refusals are in `results`, per command).
+    static_cast<void>(world_.drain_events());
+    std::vector<CommandOutcome> ran;
+    ran.reserve(results.size());
+    for (std::size_t i = 0; i < results.size(); ++i) {
+        CommandOutcome o;
+        o.id = ids[i];
+        o.turn = turn.index;
+        o.position = static_cast<std::uint32_t>(i);
+        o.status = results[i].status;
+        o.state = results[i].ok() ? CommandOutcome::State::Applied : CommandOutcome::State::Refused;
+        o.records.reserve(results[i].records.size());
+        for (const sim::RecordResult& r : results[i].records) {
+            o.records.push_back(r.status);
         }
+        ran.push_back(std::move(o));
     }
     publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, turn.commands.size(),
-            building_batch(turn.index), std::move(rejected));
+            building_batch(turn.index), std::move(ran));
 }
 
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
@@ -538,7 +552,7 @@ std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t tu
 
 void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t applied,
                          std::shared_ptr<const BuildingBatch> batch,
-                         std::vector<RejectionNote> rejected) {
+                         std::vector<CommandOutcome> ran) {
     const auto now = std::chrono::steady_clock::now();
     costs_.push_back({now, turn_us});
     const auto cut = now - std::chrono::seconds(1);
@@ -564,9 +578,11 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             next->goods = island->cities[developer_city_->city.v]->stock.stock;
         }
     }
-    if (!rejected.empty()) {
-        last_reason_ = rejected.back().reason;
-        last_reason_turn_ = rejected.back().turn;
+    for (const CommandOutcome& o : ran) {
+        if (o.state == CommandOutcome::State::Refused) {
+            last_reason_ = std::string(sim::reject_name(o.status));
+            last_reason_turn_ = o.turn;
+        }
     }
     if (!last_reason_.empty() && turn >= last_reason_turn_ + kRejectionShowTurns) {
         last_reason_.clear();
@@ -592,6 +608,12 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         full_list = buildings_;
     }
     const bool pushed = batch != nullptr;
+    // The outcomes are recorded before the snapshot that follows them is published, so a reader
+    // that sees the snapshot finds them (outcomes_next).
+    for (CommandOutcome& o : ran) {
+        outcomes_.record(o);
+    }
+    next->outcomes_next = outcomes_.next();
     // The window trace's record of the turn (opt-in), filled before the batch and the refusals
     // move into the mailbox.
     std::optional<TurnObservation> observed;
@@ -599,9 +621,12 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         observed.emplace();
         observed->turn = turn;
         observed->applied = applied;
-        observed->rejected = rejected.size();
-        for (const RejectionNote& note : rejected) {
-            observed->reasons += (observed->reasons.empty() ? "" : ",") + note.reason;
+        for (const CommandOutcome& o : ran) {
+            if (o.state == CommandOutcome::State::Refused) {
+                ++observed->rejected;
+                observed->reasons += (observed->reasons.empty() ? "" : ",") +
+                                     std::string(sim::reject_name(o.status));
+            }
         }
         observed->batch = pushed;
         observed->deltas = batch ? batch->deltas.size() : 0;
@@ -613,17 +638,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             mailbox_.push_prepared(std::move(batch), std::move(full_list));
             batches_waiting_.store(true);
         }
-        for (RejectionNote& note : rejected) {
-            rejections_.push_back(std::move(note));
-        }
-        if (rejections_.size() > kRejectionKeep) {
-            rejections_.erase(rejections_.begin(),
-                              rejections_.begin() +
-                                  static_cast<std::ptrdiff_t>(rejections_.size() - kRejectionKeep));
-        }
         snap_ = std::move(next);
     }
-    if (pushed) {
+    if (pushed || !ran.empty()) {
         // The window's wake-up, after the publication (outside the snapshot lock).
         const std::lock_guard lock(listener_mu_);
         if (listener_) {
@@ -635,7 +652,7 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     }
 }
 
-void PlayRunner::set_batch_listener(std::function<void()> listener) {
+void PlayRunner::set_wake_listener(std::function<void()> listener) {
     const std::lock_guard lock(listener_mu_);
     listener_ = std::move(listener);
 }
@@ -668,19 +685,22 @@ void PlayRunner::set_batch_bound(std::size_t bound) {
 }
 
 void PlayRunner::set_script(std::vector<ScriptedCommand> script) {
+    std::stable_sort(
+        script.begin(), script.end(),
+        [](const ScriptedCommand& a, const ScriptedCommand& b) { return a.turn < b.turn; });
     script_ = std::move(script);
     script_next_ = 0;
+    outcomes_.issued(CommandOrigin::Script, script_.size());
 }
 
-void PlayRunner::post_command(sim::Command command) {
-    queue_.push(std::move(command));
+CommandId PlayRunner::post_command(sim::Command command) {
+    const CommandId id{CommandOrigin::Window, queue_.push(std::move(command))};
+    outcomes_.issued(CommandOrigin::Window, id.n);
+    return id;
 }
 
-std::vector<RejectionNote> PlayRunner::take_rejections() {
-    std::lock_guard lock(snap_mu_);
-    std::vector<RejectionNote> out;
-    out.swap(rejections_);
-    return out;
+void PlayRunner::set_outcome_bounds(std::size_t outcomes, std::size_t records) {
+    outcomes_.set_bounds(outcomes, records);
 }
 
 std::vector<ScriptedCommand> PlayRunner::applied_commands() const {

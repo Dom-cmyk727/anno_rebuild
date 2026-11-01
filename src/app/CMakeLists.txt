@@ -3,6 +3,7 @@
 # them; the window needs SDL3 (ANNO_BUILD_VIEWER).
 add_library(anno_app_core
   src/building_delta.cpp
+  src/command_outcome.cpp
   src/commands_file.cpp
   src/dev_input.cpp
   src/legal_workload.cpp
@@ -52,7 +53,7 @@ if(ANNO_BUILD_TESTS)
     tests/scene_picture_publish_test.cpp
     tests/play_follow_test.cpp
     tests/credit_test.cpp tests/picture_check_test.cpp tests/legal_workload_test.cpp
-    tests/picture_trace_test.cpp tests/window_trace_test.cpp)
+    tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")

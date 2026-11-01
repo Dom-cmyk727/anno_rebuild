@@ -130,7 +130,12 @@ struct Turn {
 /// recorder's rule for commands: one without a wire form (has_wire_form, e.g. a Build of
 /// more placements than one record holds) is skipped, not applied, so a recorded and an
 /// unrecorded session of the same commands reach the same state (S10).
-void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps);
+/// `results` (when non-null) receives one result per command of the turn, in stream order,
+/// from the same loop: World::apply's (or Recorder::submit's) result, and Unencodable for a
+/// command skipped for having no wire form. It changes nothing in the world (round ee, A2: the
+/// host's command feedback).
+void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps,
+              std::vector<ApplyResult>* results = nullptr);
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms);
 

@@ -48,29 +48,33 @@ std::int32_t tile_x(const sim::Command& cmd) {
 
 } // namespace
 
-TEST_CASE("command queue: order is push order, across takes") {
+TEST_CASE("command queue: order is push order, across takes, and receipts number the pushes") {
     anno::app::CommandQueue queue;
     constexpr std::int32_t kCount = 5000;
     std::vector<std::int32_t> taken;
+    std::vector<std::uint64_t> numbers, receipts;
     std::thread window([&] {
         for (std::int32_t i = 0; i < kCount; ++i) {
-            queue.push(demolish_at(i, 0));
+            receipts.push_back(queue.push(demolish_at(i, 0)));
         }
     });
     // The sim side takes while the window pushes; every take is in push order.
     while (taken.size() < static_cast<std::size_t>(kCount)) {
-        for (const sim::Command& cmd : queue.take()) {
-            taken.push_back(tile_x(cmd));
+        for (const anno::app::CommandQueue::Entry& e : queue.take()) {
+            taken.push_back(tile_x(e.command));
+            numbers.push_back(e.n);
         }
     }
     window.join();
-    for (const sim::Command& cmd : queue.take()) {
-        taken.push_back(tile_x(cmd));
+    for (const anno::app::CommandQueue::Entry& e : queue.take()) {
+        taken.push_back(tile_x(e.command));
+        numbers.push_back(e.n);
     }
     REQUIRE(taken.size() == static_cast<std::size_t>(kCount));
     bool in_order = true;
     for (std::size_t i = 0; i < taken.size(); ++i) {
-        in_order = in_order && taken[i] == static_cast<std::int32_t>(i);
+        in_order = in_order && taken[i] == static_cast<std::int32_t>(i) && numbers[i] == i + 1 &&
+                   receipts[i] == i + 1;
     }
     CHECK(in_order);
 }
@@ -359,23 +363,23 @@ TEST_CASE("feedback: a refused build is reported once with its reason, and money
         cmd.body = std::move(build);
         return cmd;
     };
-    runner.post_command(build_at(4, 4));
+    const anno::app::CommandId first = runner.post_command(build_at(4, 4));
     runner.run_n(1);
-    CHECK(runner.take_rejections().empty());
+    CHECK(runner.outcome(first).state == anno::app::CommandOutcome::State::Applied);
     // The same tile again: the sim refuses it (occupied), and nothing else changes.
-    runner.post_command(build_at(4, 4));
+    const anno::app::CommandId again = runner.post_command(build_at(4, 4));
     runner.run_n(1);
-    const auto refused = runner.take_rejections();
-    REQUIRE(refused.size() == 1);
-    CHECK(refused[0].turn == 1);
-    CHECK_FALSE(refused[0].reason.empty());
-    CHECK(runner.take_rejections().empty());
+    const anno::app::CommandOutcome refused = runner.outcome(again);
+    REQUIRE(refused.state == anno::app::CommandOutcome::State::Refused);
+    CHECK(refused.turn == 1);
+    const std::string reason(sim::reject_name(refused.status));
+    CHECK(refused.status != sim::Reject::None);
 
     const auto snap = runner.snapshot();
-    CHECK(snap->last_rejection == refused[0].reason);
-    CHECK(runner.title_line().find("refused: " + refused[0].reason) != std::string::npos);
+    CHECK(snap->last_rejection == reason);
+    CHECK(runner.title_line().find("refused: " + reason) != std::string::npos);
     CHECK(snap->money > 0);
     CHECK(snap->money <= 10000000);
     CHECK_FALSE(snap->goods.empty());
-    MESSAGE("refused build: " << refused[0].reason << "; title: " << runner.title_line());
+    MESSAGE("refused build: " << reason << "; title: " << runner.title_line());
 }

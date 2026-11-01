@@ -261,13 +261,45 @@ turn <n> demolish <x> <y> [<x> <y>]...
   sim never sees a command the file made up.
 - A `build` with more than 4 095 placements or a `demolish` with more than
   8 190 tiles has no wire form (`has_wire_form`, `command.hpp`); the runner
-  refuses that line at load time with a message. It is not split silently; the
-  window's drag splits a longer path (B3).
+  refuses that line at load time with a message. It is not split, neither here nor by the
+  window's drag: a drag over the limit is refused before it is sent (round ee).
 - The runner applies a turn's commands in file order, then runs the turn's
   steps (`Turn::commands` is applied first by `run_turn`).
 
 The window's commands (W4.4) and the file's commands use the same queue, so
 both reach a turn the same way.
+
+### Command outcomes (W4.4, round ee)
+
+A command is identified from its submission to its outcome (`command_outcome.hpp`):
+
+- **Receipt.** `PlayRunner::post_command` returns `CommandId{Window, n}`, n from 1 in submission
+  order (assigned under the queue's lock). The script's commands are `{Script, 1..}` in their run
+  order: `set_script` sorts them by turn, keeping file order within a turn, so a line for an
+  earlier turn after a later one still runs (before round ee it was skipped). A receipt is app-side
+  bookkeeping: never sent to the sim, never hashed, not a network protocol.
+- **Execution.** A turn runs the script's commands, then the window's in push order, through
+  `sim::run_turn`, whose loop now also returns one `ApplyResult` per command (the same loop; the
+  world is unchanged by asking). The runner records, per command, the turn, its position in the
+  turn, the command's status and each record's status. Nothing is correlated by content:
+  identical commands get their own receipts and outcomes.
+- **States.** `Queued` (issued, not run), `Applied` (the sim accepted it; a drag can be partly
+  built and a demolish can find nothing on a tile, which `records` says per record), `Refused`
+  (the sim's reason), `Lost` (run, but evicted from the bounded store before it was read) and
+  `Unknown` (never issued). A command with no wire form is `Refused` as `Unencodable`: the sim's
+  rule skips it, it is never applied, and it is not in `applied_commands()`.
+- **Bound.** `OutcomeLog` keeps at most 4 096 outcomes and 65 536 per-record entries
+  (`set_outcome_bounds`; about 1 MiB at most); the newest is always kept. `outcomes_since(seq)`
+  returns the kept outcomes in run order with the exact range a slow reader lost; `outcome(id)`
+  says `Lost` for an evicted one. A reader never has to infer acceptance from a missing refusal.
+- **Wake.** The runner's wake listener (`set_wake_listener`) fires after every turn that pushed a
+  building batch or ran a command, so a refusal or an accepted no-op wakes a window that waits
+  for events. `PlaySnapshot::outcomes_next` is the outcome sequence after that turn.
+- **Not acceptance:** a receipt, the queue, and a picture update. A building can be accepted and
+  still drawn later (the picture is asynchronous).
+
+Tests: `src/app/tests/command_outcome_test.cpp` (suite `command_outcome`), and
+`run_turn reports one result per command…` in `src/sim/tests/replay_test.cpp`.
 
 ### Immutable per-island object lists (W4.3, round du)
 

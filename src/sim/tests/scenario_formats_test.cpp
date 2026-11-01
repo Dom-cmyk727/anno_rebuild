@@ -1948,3 +1948,83 @@ TEST_CASE("P1 import: created houses sum to resident_sum, save then load is exac
     CHECK(back.value().state_hash() == before);
     CHECK(back.value().check_invariants() == "");
 }
+
+TEST_CASE(
+    "scenario DISCOVER, HEAD2 mask, DIPL and the registration of loaded cities (stream 120)") {
+    // Players 0 (the city owner), 1, 2 and 3; player 0's DIPL: MILIT 3 towards player 1 (a peer),
+    // MILIT 3 towards player 5 (a legal slot, no player: never a peer), MILIT 2 towards player 2
+    // (not 3), WAR 3 towards player 3 (not MILIT). The island has a DISCOVER word with bit 2
+    // (player 2 present). The city of player 0 has HEAD2 [0x30] = 0b1001000 (bits 3 and 6).
+    //
+    // Expected by hand: the city mask is the file bits {3, 6} plus the registration {owner 0, the
+    // MILIT=3 peer 1} = {0, 1, 3, 6} (player 6 has no player block but the file bit is kept: a bit
+    // of a player below player_slots); the island's players present are the DISCOVER bit {2} plus
+    // the city owner {0} = {0, 2}; the recount lets players in the mask learn the owner: players 0,
+    // 1 (and 3, who has a block) learn player 0; player 6 has no block and learns nothing.
+    const auto player = [](std::uint32_t idx, const Buf& extra) {
+        Buf recs = record("HEAD", player_head(8, 1, "P", static_cast<std::uint8_t>(idx + 1)));
+        append(recs, extra);
+        return chunk("SPIELER", spieler(idx, recs));
+    };
+    Buf dipl;
+    append(dipl, record("MILIT", Buf{1, 3, 0, 0}));
+    append(dipl, record("MILIT", Buf{5, 3, 0, 0}));
+    append(dipl, record("MILIT", Buf{2, 2, 0, 0}));
+    append(dipl, record("WAR", Buf{3, 3, 0, 0}));
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, player(0, record("DIPL", dipl)));
+    append(kids, player(1, {}));
+    append(kids, player(2, {}));
+    append(kids, player(3, {}));
+    Buf discover;
+    put32(discover, 0x00000004U);
+    append(kids, insel5(40, 60, 16, 8, 7, 2, chunk("DISCOVER", discover)));
+    Buf head2(64, 0);
+    head2[0x30] = 0x48; // bits 3 and 6
+    Buf city = {2, 0};
+    put16(city, 50);
+    put16(city, 63);
+    append(city, record("HEAD2", head2));
+    append(kids, chunk("SPIELER", spieler(0, record("STADT2", city))));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.islands.size() == 1);
+    const auto ids = [](std::initializer_list<std::uint32_t> v) {
+        std::vector<sim::PlayerId> out;
+        for (const std::uint32_t i : v) {
+            out.push_back(sim::PlayerId{i});
+        }
+        return out;
+    };
+    // The relation rows of player 0 as the loader stored them (byte 0 other, byte 1 value).
+    REQUIRE(s.spec.players.size() == 4);
+    REQUIRE(s.spec.players[0].relations.size() == 4); // rows for 1, 2, 3 and 5, ascending
+    CHECK(s.spec.players[0].relations[0] == sim::Relation{sim::PlayerId{1}, 0, 3, 0, 0});
+    CHECK(s.spec.players[0].relations[1] == sim::Relation{sim::PlayerId{2}, 0, 2, 0, 0});
+    CHECK(s.spec.players[0].relations[2] == sim::Relation{sim::PlayerId{3}, 0, 0, 3, 0});
+    CHECK(s.spec.players[0].relations[3] == sim::Relation{sim::PlayerId{5}, 0, 3, 0, 0});
+    const auto& is = s.spec.islands[0];
+    REQUIRE(is.cities.size() == 1);
+    CHECK(is.cities[0].player_mask == ids({0, 1, 3, 6}));
+    CHECK(is.players_present == ids({0, 2}));
+    CHECK(s.spec.players[0].discovery == ids({0}));
+    CHECK(s.spec.players[1].discovery == ids({0}));
+    CHECK(s.spec.players[2].discovery.empty());
+    CHECK(s.spec.players[3].discovery == ids({0}));
+    // And through World::create: the sets validate and persist.
+    auto w = sim::World::create(s.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().check_invariants().empty());
+    CHECK(w.value().islands()[7]->cities[2]->player_mask == ids({0, 1, 3, 6}));
+    // DISCOVER: absent -> empty; a later record replaces; a record that is not 4 bytes is refused.
+    const auto with = [](const Buf& extra) {
+        Buf k = chunk("HEAD", head_bytes());
+        append(k, insel5(40, 60, 8, 8, 7, 2, extra));
+        return scene("ANNO", k);
+    };
+    CHECK(load(with({})).spec.islands[0].players_present.empty());
+    Buf two = chunk("DISCOVER", Buf{1, 0, 0, 0});
+    append(two, chunk("DISCOVER", Buf{2, 0, 0, 0}));
+    CHECK(load(with(two)).spec.islands[0].players_present == ids({1}));
+    CHECK(refusal(with(chunk("DISCOVER", Buf{1, 0}))).find(".DISCOVER: expected 4 bytes, got 2") !=
+          std::string::npos);
+}

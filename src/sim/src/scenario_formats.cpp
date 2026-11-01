@@ -616,18 +616,31 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
             // a non-default slot count [0x26]/[0x27]: no City field. One
             // Head2FieldNotMapped per city that carries one.
             const std::uint32_t mask30 = le32(&b[0x30]);
-            const std::uint32_t owner_bit =
-                city.owner.v < 32 ? (1U << city.owner.v) : 0U; // bit by player index
+            // D 0x1002ec4c (saver) / the HEAD2 reader: the dword is ORed into the city mask
+            // (city +0x61c). Bit i = player i; the registration bits (owner, MILIT peers) are added
+            // after all players are read (finalize_discovery below). A bit of a player at or
+            // beyond player_slots cannot be represented and is kept out of the set (reported once
+            // as Head2FieldNotMapped through `unmapped`).
+            if (k.name == "HEAD2") {
+                for (std::uint32_t bit = 0; bit < 32 && bit < config.player_slots; ++bit) {
+                    if ((mask30 >> bit & 1U) != 0) {
+                        city.player_mask.push_back(PlayerId{bit});
+                    }
+                }
+            }
             const bool unmapped =
                 slots_not_kept || le16(&b[0x2c]) != 0 ||
                 (k.name == "HEAD2" &&
-                 (le16(&b[0x34]) != 0 || le16(&b[0x36]) != 0 || (mask30 & ~owner_bit) != 0));
+                 (le16(&b[0x34]) != 0 || le16(&b[0x36]) != 0 ||
+                  (config.player_slots < 32 && (mask30 >> config.player_slots) != 0)));
             if (unmapped) {
-                warn.add(ScenarioWarningKind::Head2FieldNotMapped, kp, k.name, k.offset,
-                         "HEAD2 carries a field with no City target (property [0x2c], the research "
-                         "sub-object [0x34]/[0x36], a non-owner bit in the player mask [0x30], or "
-                         "a trade-list slot count [0x26]/[0x27] other than 4/6): not mapped (O-40, "
-                         "OQ-157)");
+                warn.add(
+                    ScenarioWarningKind::Head2FieldNotMapped, kp, k.name, k.offset,
+                    "HEAD2 carries a field with no City target (property [0x2c], the research "
+                    "sub-object [0x34]/[0x36], a bit of the player mask [0x30] for a player beyond "
+                    "player_slots, or "
+                    "a trade-list slot count [0x26]/[0x27] other than 4/6): not mapped (O-40, "
+                    "OQ-157)");
             }
         } else if (k.name == "BAUMAT") {
             // 0x1002e862–0x1002e8cd: length / 8 entries {u16 [0] goods (file numbering,
@@ -1100,6 +1113,30 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
             is.lock = rec.payload[0];
             continue;
         }
+        if (name == "DISCOVER") {
+            // D AnnoWelt 0x10089977 (loader), 0x1008a669 (saver): 4 bytes; the loader keeps the low
+            // u16 as island +0xa6, the players present (bit i = player i). Every shipped record is
+            // 4 bytes with a zero upper word (864 islands). ADAPTATION: any other length, or a bit
+            // of a player at or beyond player_slots, refuses the load with the path; the upper word
+            // is not kept (the original does not read it).
+            if (rec.payload.size() != 4) {
+                return path + ".DISCOVER: expected 4 bytes, got " +
+                       std::to_string(rec.payload.size());
+            }
+            const std::uint32_t word = formats::u16_le(rec.payload, 0);
+            is.players_present.clear();
+            for (std::uint32_t bit = 0; bit < 16; ++bit) {
+                if ((word >> bit & 1U) == 0) {
+                    continue;
+                }
+                if (bit >= config.player_slots) {
+                    return path + ".DISCOVER: player " + std::to_string(bit) +
+                           " is not below player_slots";
+                }
+                is.players_present.push_back(PlayerId{bit});
+            }
+            continue;
+        }
         if (name == "BERGWERK2") {
             warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
                      "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");
@@ -1475,6 +1512,50 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 return *e;
             }
             is->cities.push_back(std::move(city));
+        }
+    }
+
+    // Registration semantics of the loaded cities (AnnoWelt 0x100861c0 runs for every STADT2 city,
+    // docs/re/ship-founding.md 15.1): the owner's bit and the bits of the players whose MILIT
+    // relation to the owner is 3 join the HEAD2 mask already read; the owner joins the island's
+    // players present (after the DISCOVER word was read); then the island recount (0x134) lets
+    // every player in a city's mask learn that city's owner (player property 7). Players not in the
+    // world are not peers and learn nothing.
+    {
+        const auto add = [](std::vector<PlayerId>& set, PlayerId p) {
+            const auto at = std::lower_bound(set.begin(), set.end(), p);
+            if (at == set.end() || *at != p) {
+                set.insert(at, p);
+            }
+        };
+        const auto find_player = [&](PlayerId id) -> ScenarioSpec::PlayerSpec* {
+            for (ScenarioSpec::PlayerSpec& ps : spec.players) {
+                if (ps.id == id) {
+                    return &ps;
+                }
+            }
+            return nullptr;
+        };
+        for (ScenarioSpec::IslandSpec& isl : spec.islands) {
+            for (ScenarioSpec::CitySpec& c : isl.cities) {
+                std::sort(c.player_mask.begin(), c.player_mask.end());
+                add(c.player_mask, c.owner);
+                if (const ScenarioSpec::PlayerSpec* owner = find_player(c.owner)) {
+                    for (const Relation& rel : owner->relations) {
+                        if (rel.milit == 3 && find_player(rel.other) != nullptr) {
+                            add(c.player_mask, rel.other);
+                        }
+                    }
+                }
+                add(isl.players_present, c.owner);
+            }
+            for (const ScenarioSpec::CitySpec& c : isl.cities) {
+                for (const PlayerId known : c.player_mask) {
+                    if (ScenarioSpec::PlayerSpec* ps = find_player(known)) {
+                        add(ps->discovery, c.owner);
+                    }
+                }
+            }
         }
     }
 

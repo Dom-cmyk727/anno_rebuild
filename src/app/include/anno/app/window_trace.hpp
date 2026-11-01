@@ -93,6 +93,18 @@ struct TurnRecord {
 /// grid of that group the frame draws; render::visible_chunks).
 [[nodiscard]] std::vector<render::ChunkKey> view_keys(render::Rect view, std::size_t group);
 
+/// One observation of a change's chunk keys in one frame (FrameTracer::presented and
+/// ChangeVisibility::frame_done share it, so there is one definition of "drawn"): `any` whether a
+/// key lies in the frame's view, `all_fresh` whether every such key is cached and fresh on the CPU,
+/// `all_usable` whether every such key is also usable on the GPU (GPU-usable implies CPU-fresh).
+struct KeyObservation {
+    bool any = false, all_fresh = true, all_usable = true;
+};
+[[nodiscard]] KeyObservation
+observe_keys(const std::vector<render::ChunkKey>& keys, const std::set<render::ChunkKey>& in_view,
+             const std::function<bool(const render::ChunkKey&)>& fresh,
+             const std::function<bool(const render::ChunkKey&)>& usable);
+
 class WindowTrace {
   public:
     /// `max_events` and `max_frames` (> 0) bound what is kept; memory for them is reserved here.

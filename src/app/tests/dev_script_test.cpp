@@ -249,3 +249,49 @@ TEST_CASE("dev session: the replay agrees with a recorded run, and a moved comma
     CHECK_MESSAGE(c.message.find("outcome 2 differs") != std::string::npos, c.message);
     MESSAGE("replay: " << same.message << "; moved: " << m.message << "; changed: " << c.message);
 }
+
+TEST_CASE("dev script: wait drawn ends only when the change is settled on its way to the screen "
+          "(round ee review, R2)" *
+          doctest::test_suite("dev_script")) {
+    using V = app::Visibility;
+    const auto latest = [](app::CommandOutcome::State state) {
+        app::CommandOutcome o;
+        o.id = {app::CommandOrigin::Window, 1};
+        o.state = state;
+        o.turn = 7;
+        return o;
+    };
+    const auto run = [&](app::CommandOutcome::State state, V visibility) {
+        auto script = app::DevScript::parse("wait drawn\nexpect visibility " +
+                                            std::string(app::visibility_name(visibility)) + "\n");
+        REQUIRE(script.ok());
+        app::DevScriptState st;
+        st.latest = latest(state);
+        st.visibility = visibility;
+        st.now_ms = 1.0;
+        static_cast<void>(script.value().step(st));
+        return script.value().done() && !script.value().failed();
+    };
+    // Every earlier boundary keeps waiting: the sim applied it, a picture update is not display.
+    for (const V waiting : {V::NotInPicture, V::Committing, V::AwaitingFrame, V::ChunksStale,
+                            V::NotOnGpu, V::NotPresented, V::OutOfView}) {
+        CAPTURE(app::visibility_name(waiting));
+        CHECK_FALSE(run(app::CommandOutcome::State::Applied, waiting));
+    }
+    // Settled: shown, or classified as not shown at all (and the expectation names which).
+    for (const V settled : {V::Visible, V::Offscreen, V::NothingToDraw, V::NoVisualChange}) {
+        CAPTURE(app::visibility_name(settled));
+        CHECK(run(app::CommandOutcome::State::Applied, settled));
+    }
+    // A command that was not applied has no change to wait for; a queued one is not over.
+    CHECK(run(app::CommandOutcome::State::Refused, V::NoVisualChange));
+    CHECK_FALSE(run(app::CommandOutcome::State::Queued, V::NoVisualChange));
+    // The expectation fails when the change is somewhere else than named.
+    auto script = app::DevScript::parse("expect visibility Visible\n");
+    REQUIRE(script.ok());
+    app::DevScriptState st;
+    st.latest = latest(app::CommandOutcome::State::Applied);
+    st.visibility = V::Offscreen;
+    static_cast<void>(script.value().step(st));
+    CHECK(script.value().failed());
+}

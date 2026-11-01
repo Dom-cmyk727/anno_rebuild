@@ -257,8 +257,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 over = st.latest && st.latest->state != CommandOutcome::State::Queued;
             } else if (what == "drawn") {
                 over = st.latest && st.latest->state != CommandOutcome::State::Queued &&
-                       drawn_note(st.latest, st.followed_turn, st.pending).empty() &&
-                       st.pending == 0;
+                       (st.latest->state != CommandOutcome::State::Applied ||
+                        !visibility_waiting(st.visibility));
             } else {
                 fail(s, "unknown wait");
                 break;
@@ -267,8 +267,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 if (what != "ms" && st.now_ms > *wait_ms_ + DevScript::kWaitLimitMs) {
                     fail(s, "not over after " +
                                 std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) +
-                                " ms (outcome " + outcome_text(st.latest) + ", pending " +
-                                std::to_string(st.pending) + ")");
+                                " ms (outcome " + outcome_text(st.latest) + ", visibility " +
+                                visibility_name(st.visibility) + ")");
                 }
                 break;
             }
@@ -366,6 +366,12 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                     fail(s, "the title is '" + st.title + "'");
                     break;
                 }
+            } else if (s.args[0] == "visibility" && s.args.size() == 2) {
+                if (s.args[1] != visibility_name(st.visibility)) {
+                    fail(s, std::string("the latest command's change is at ") +
+                                visibility_name(st.visibility));
+                    break;
+                }
             } else if (s.args[0] == "outcome" && s.args.size() == 2 && s.args[1] == "none") {
                 if (st.latest) {
                     fail(s, "the latest outcome is " + outcome_text(st.latest));
@@ -389,7 +395,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             log_.push_back("checkpoint " + s.args[0] + ": turn " +
                            std::to_string(st.snapshot ? st.snapshot->turn : 0) + ", frames " +
                            std::to_string(st.frames) + ", outcome " + outcome_text(st.latest) +
-                           ", pending " + std::to_string(st.pending) + ", title: " + st.title);
+                           ", visibility " + visibility_name(st.visibility) +
+                           ", title: " + st.title);
         } else if (s.verb == "screenshot") {
             act.screenshot = s.args[0];
         } else if (s.verb == "quit") {

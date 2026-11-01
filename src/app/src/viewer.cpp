@@ -368,6 +368,18 @@ class Viewer {
 #endif
     [[nodiscard]] bool on_gpu() const;
     void update_title();
+    /// Where the change of `latest` (an applied command) is on its way to the screen
+    /// (ChangeVisibility); NoVisualChange for anything else. Window thread.
+    Visibility command_visibility(const std::optional<CommandOutcome>& latest) const {
+        if (!latest || latest->state != CommandOutcome::State::Applied || play_ == nullptr) {
+            return Visibility::NoVisualChange;
+        }
+        return play_->visibility().classify(latest->turn);
+    }
+    Visibility title_visibility_ = Visibility::NoVisualChange;
+    /// Refreshes the title when the latest command's change moved to another stage (a frame
+    /// presented it, or its object list committed).
+    void refresh_visibility_title();
     void pan(double dx, double dy);
     void clamp();
     void zoom(int step, std::optional<std::pair<double, double>> anchor);
@@ -1216,6 +1228,17 @@ FrameDemand Viewer::demand(bool can_draw) const {
     return d;
 }
 
+void Viewer::refresh_visibility_title() {
+    if (dev_ == nullptr || play_ == nullptr || !dev_->enabled() || !latest_receipt_) {
+        return;
+    }
+    const Visibility now = command_visibility(play_->runner().feedback(latest_receipt_).latest);
+    if (now != title_visibility_) {
+        title_visibility_ = now;
+        update_title();
+    }
+}
+
 void Viewer::update_title() {
     std::string title = "anno1503 — " + name_ + " — zoom group " + std::to_string(group_);
     if (water_ == render::WaterStyle::Enhanced) {
@@ -1253,8 +1276,7 @@ void Viewer::update_title() {
                                ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
                                : std::string();
         // Whether the picture shows the latest command's change yet (round ee, E4).
-        if (const std::string drawn =
-                drawn_note(latest, play_->followed_turn(), play_->picture().pending());
+        if (const std::string drawn = drawn_note(latest, command_visibility(latest));
             !drawn.empty()) {
             note += (note.empty() ? "" : " | ") + drawn;
         }
@@ -1284,7 +1306,9 @@ void Viewer::follow_picture() {
         const std::size_t n = play_->follow(frames_, trace_);
         committed_ += n;
         if ((n > 0 || play_->followed_turn() != followed) && dev_ != nullptr && dev_->enabled()) {
-            update_title(); // a commit or a newer followed turn can end "not drawn yet"
+            update_title(); // a commit or a newer followed turn can move "not drawn yet" on
+            title_visibility_ =
+                command_visibility(play_->runner().feedback(latest_receipt_).latest);
         }
 #ifdef ANNO_VIEWER_GPU
         if (tracer_ && n > 0) {
@@ -1323,8 +1347,7 @@ void Viewer::script_tick() {
         st.snapshot = std::move(read.snapshot);
         st.latest = std::move(read.latest);
     }
-    st.followed_turn = play_->followed_turn();
-    st.pending = play_->picture().pending();
+    st.visibility = command_visibility(st.latest);
     st.tool = dev_;
     st.frame = &*pointer_frame_;
     st.density = SDL_GetWindowPixelDensity(window_);
@@ -1444,6 +1467,11 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
     // The window trace's row of this attempt, recorded on every way out (docs/app/window-trace.md).
+    if (play_ != nullptr) {
+        // Decides for each change committed since the last attempt whether this attempt's view
+        // holds it (ChangeVisibility), with or without a trace.
+        play_->visibility().begin_frame(view, group_);
+    }
     if (tracer_) {
         FrameRecord rec;
         rec.generation = gen->generation();
@@ -1572,22 +1600,26 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_end_ = Clock::now();
     const double present = since_ms(p, steps_end_);
     steps_.push_back({"present", present});
+    // After the present call, so the trace adds nothing between submission and present; the
+    // events of the submission carry its time. CPU-ready: cached and not stale (bench_picture's
+    // boundary); GPU-usable: also the compositor's copy is that chunk's, whole, and not
+    // dissolving. The chunk state changes only inside render, so after the present call it is
+    // the render's. The window's own readiness (ChangeVisibility) uses the same two predicates.
+    auto fresh = [this](const render::ChunkKey& k) {
+        return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
+    };
+    auto usable = [this, &fresh](const render::ChunkKey& k) {
+        if (!fresh(k)) {
+            return false;
+        }
+        const auto cs = gpu_->frame->chunk_state(k);
+        return cs.serial == frames_.chunk(k)->serial && !cs.fading;
+    };
+    if (play_ != nullptr) {
+        play_->visibility().frame_done(presented == WGPUStatus_Success, fresh, usable);
+        refresh_visibility_title();
+    }
     if (tracer_) {
-        // After the present call, so the trace adds nothing between submission and present; the
-        // events of the submission carry its time. CPU-ready: cached and not stale (bench_picture's
-        // boundary); GPU-usable: also the compositor's copy is that chunk's, whole, and not
-        // dissolving. The chunk state changes only inside render, so after the present call it is
-        // the render's.
-        auto fresh = [this](const render::ChunkKey& k) {
-            return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
-        };
-        auto usable = [this, &fresh](const render::ChunkKey& k) {
-            if (!fresh(k)) {
-                return false;
-            }
-            const auto cs = gpu_->frame->chunk_state(k);
-            return cs.serial == frames_.chunk(k)->serial && !cs.fading;
-        };
         const bool picture_idle = play_ != nullptr && play_->picture().pending() == 0 &&
                                   !play_->runner().batches_waiting();
         tracer_->presented(trace_->ms_at(p), trace_->ms_at(present_start),
@@ -1626,6 +1658,9 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const auto render_start = Clock::now();
     steps_.push_back({"picture", picture_ms_});
     steps_.push_back({"draw prologue", since_ms(picture_end_, render_start)});
+    if (play_ != nullptr) {
+        play_->visibility().begin_frame(view, group_); // the CPU path's frame, as draw_gpu's
+    }
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
     if (dev_ != nullptr) {
         if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
@@ -1648,6 +1683,14 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"texture copy", since_ms(rendered, present_start)});
     SDL_RenderPresent(renderer_);
     steps_end_ = Clock::now();
+    if (play_ != nullptr) {
+        // The CPU path has no GPU copy: a fresh chunk was drawn into this frame's buffer.
+        auto fresh = [this](const render::ChunkKey& k) {
+            return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
+        };
+        play_->visibility().frame_done(true, fresh, fresh);
+        refresh_visibility_title();
+    }
     // SDL's present waits for vsync.
     display_wait_ms_ = since_ms(present_start, steps_end_);
     chunks_received_ += s.chunks_built; // reported with the periodic line, not per frame

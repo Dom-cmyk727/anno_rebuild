@@ -63,6 +63,11 @@ and `bench_picture --aggregate` reads its event file.
    This is the CPU-side return of the present call. It is not GPU completion, not scanout, and not
    display latency: none of those is observed.
 
+   The window decides the same boundaries for its own feedback with or without a trace (`ChangeVisibility`,
+   `visibility.hpp`; docs/app/game-shell.md, "Not drawn yet"): one watch per island over the same fresh/usable
+   observation of the change's keys in a frame's view (`observe_keys`, shared with `FrameTracer`), so a
+   command is shown only by a successfully presented frame that draws all of its chunks.
+
 ## Identifiers and clocks
 
 - **Session:** the trace directory and its `manifest.txt`. The manifest holds:

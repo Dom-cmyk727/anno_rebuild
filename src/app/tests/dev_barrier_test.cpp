@@ -133,7 +133,7 @@ TEST_CASE("dev tool at a picture barrier: input, turns and outcomes go on, an ap
     const app::CommandOutcome applied = runner.outcome(first);
     // Before the window's next follow step: the command's turn is not in the picture.
     const std::string not_in =
-        app::drawn_note(applied, follower.followed_turn(), picture.pending());
+        app::drawn_note(applied, follower.visibility().classify(applied.turn));
     CHECK_MESSAGE(not_in.find("not drawn yet") != std::string::npos, not_in);
     // The follow step takes the batch and returns at once although every build waits at the gate.
     std::size_t committed = 0;
@@ -149,8 +149,10 @@ TEST_CASE("dev tool at a picture barrier: input, turns and outcomes go on, an ap
     CHECK(committed == 0);
     CHECK(picture.pending() > 0);
     CHECK(picture.scene()->generation() == before);
-    const std::string held = app::drawn_note(applied, follower.followed_turn(), picture.pending());
-    CHECK_MESSAGE(held.find("1 island of the picture is not committed") != std::string::npos, held);
+    // Desired, not committed: the object list build waits at the gate (the Committing stage).
+    CHECK(follower.visibility().classify(applied.turn) == app::Visibility::Committing);
+    const std::string held = app::drawn_note(applied, follower.visibility().classify(applied.turn));
+    CHECK_MESSAGE(held.find("still being rebuilt") != std::string::npos, held);
     // The occupancy the window knows already has it (the desired state), so the same tile is a
     // known refusal; the sim agrees when asked.
     CHECK(knows.update(picture.buildings(), picture.buildings_version(), *picture.scene()));
@@ -178,6 +180,9 @@ TEST_CASE("dev tool at a picture barrier: input, turns and outcomes go on, an ap
         return picture.pending() == 0 && committed > 0;
     }));
     CHECK(picture.scene()->generation() > before);
-    CHECK(app::drawn_note(applied, follower.followed_turn(), picture.pending()).empty());
+    // Committed is not drawn (round ee review, R2): no frame has looked at the change, so the
+    // line still says so. The frames that show it are in dev_visibility_test.cpp.
+    CHECK(follower.visibility().classify(applied.turn) == app::Visibility::AwaitingFrame);
+    CHECK_FALSE(app::drawn_note(applied, follower.visibility().classify(applied.turn)).empty());
     runner.stop();
 }

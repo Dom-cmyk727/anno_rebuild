@@ -403,20 +403,11 @@ void attach_occupancy(PlayFollower& follower, PlacementKnowledge& knowledge, con
         });
 }
 
-std::string drawn_note(const std::optional<CommandOutcome>& latest,
-                       std::optional<std::uint64_t> followed_turn, std::size_t pending) {
+std::string drawn_note(const std::optional<CommandOutcome>& latest, Visibility visibility) {
     if (!latest || latest->state != CommandOutcome::State::Applied) {
         return {};
     }
-    if (!followed_turn || *followed_turn < latest->turn) {
-        return "not drawn yet: turn " + std::to_string(latest->turn) + " is not in the picture";
-    }
-    if (pending > 0) {
-        return "not drawn yet: " + std::to_string(pending) +
-               (pending == 1 ? " island of the picture is" : " islands of the picture are") +
-               " not committed";
-    }
-    return {};
+    return visibility_note(visibility, latest->turn);
 }
 
 std::string dev_title(const PlaySnapshot& snapshot, const DevTool& tool,

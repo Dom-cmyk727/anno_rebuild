@@ -18,15 +18,22 @@ std::size_t PlayFollower::follow(render::FrameRenderer& frames, WindowTrace* tra
             trace->event(t, TraceKind::BatchTaken, 0, batch->turn);
         }
     }
+    std::vector<std::uint64_t> before;
     if (!batches.empty()) {
         if (batch_observer_) {
             batch_observer_(batches);
         }
+        before = picture_.desired_versions();
         picture_.apply(batches);
     }
+    visibility_.taken(followed_turn_, batches, before,
+                      batches.empty() ? before : picture_.desired_versions());
     // Commits what is ready (a full reclaim backlog skips it until a later frame) and invalidates
     // the change's keys: the cached chunks keep drawing until their rebuilds arrive.
     const std::size_t committed = picture_.commit(frames);
+    if (committed > 0) {
+        visibility_.committed(picture_.last_commit());
+    }
     if (trace != nullptr && committed > 0) {
         trace->event_now(TraceKind::Generation, 0, picture_.scene()->generation());
     }

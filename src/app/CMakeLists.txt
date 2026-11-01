@@ -19,6 +19,7 @@ add_library(anno_app_core
   src/png.cpp
   src/scene_picture.cpp
   src/still.cpp
+  src/visibility.cpp
   src/window_trace.cpp
 )
 target_include_directories(anno_app_core PUBLIC include)
@@ -61,7 +62,8 @@ if(ANNO_BUILD_TESTS)
     tests/scene_picture_publish_test.cpp
     tests/play_follow_test.cpp
     tests/credit_test.cpp tests/picture_check_test.cpp tests/legal_workload_test.cpp
-    tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp)
+    tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp
+    tests/visibility_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
@@ -81,7 +83,8 @@ if(ANNO_BUILD_TESTS)
     # The developer tool through the window's own SDL mapping (synthetic SDL events; no window).
     add_executable(anno_app_input_tests tests/main.cpp tests/dev_tool_test.cpp
       tests/dev_feedback_test.cpp tests/dev_tool_mod_test.cpp
-      tests/dev_barrier_test.cpp tests/dev_script_test.cpp tests/dev_occupancy_test.cpp)
+      tests/dev_barrier_test.cpp tests/dev_script_test.cpp tests/dev_occupancy_test.cpp
+      tests/dev_visibility_test.cpp)
     target_link_libraries(anno_app_input_tests PRIVATE anno_app_sdl anno_test_support
       doctest::doctest)
     target_compile_definitions(anno_app_input_tests PRIVATE

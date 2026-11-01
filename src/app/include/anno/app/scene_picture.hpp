@@ -169,6 +169,11 @@ class ScenePicture {
     /// Results are committed by commit().
     void wait_idle();
 
+    /// The desired version of every island, by island index (a copy; O(islands)). A change to an
+    /// island advances its entry at once (apply), so two calls around an apply name the islands it
+    /// touched (ChangeVisibility::taken). Window thread.
+    [[nodiscard]] std::vector<std::uint64_t> desired_versions() const;
+
     /// Islands whose committed state differs from the desired state: changed, deferred, waiting for
     /// a retry or failed. Zero means converged. Window thread.
     [[nodiscard]] std::size_t pending() const;

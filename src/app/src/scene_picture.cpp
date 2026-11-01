@@ -973,6 +973,11 @@ const std::vector<SceneBuilding>& ScenePicture::island_buildings(std::uint32_t n
     return it == by_island_.end() ? none : it->second;
 }
 
+std::vector<std::uint64_t> ScenePicture::desired_versions() const {
+    const std::lock_guard lock(state_->mutex);
+    return state_->desired;
+}
+
 std::size_t ScenePicture::pending() const {
     const std::lock_guard lock(state_->mutex);
     return state_->dirty.size();

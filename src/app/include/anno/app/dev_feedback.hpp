@@ -24,6 +24,7 @@
 #include <anno/app/play.hpp>
 #include <anno/app/play_follow.hpp>
 #include <anno/app/scene_picture.hpp>
+#include <anno/app/visibility.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
 
@@ -142,15 +143,15 @@ void attach_occupancy(PlayFollower& follower, PlacementKnowledge& knowledge, con
                                         const std::optional<CommandOutcome>& latest,
                                         std::string_view note = {});
 
-/// Whether the picture shows what an applied command built or removed (round ee, E4): "" when it
-/// does or the command was not applied; "not drawn yet: ..." when the command's turn is not in
-/// the picture's desired state (`followed_turn`, PlayFollower), or while `pending` islands of the
-/// picture are not committed (ScenePicture::pending: rebuilding, deferred or failed; the island of
-/// the change may be one).
-/// The sim's outcome stands either way; only the picture is behind.
+/// Whether the window shows what an applied command built or removed (round ee, E4; review R2):
+/// "" when it does (a frame that draws every chunk of the change was presented) or the command
+/// was not applied; otherwise why not, from `visibility` (ChangeVisibility::classify for the
+/// command's turn): "not drawn yet: ..." at each earlier boundary (desired state, committed object
+/// list, fresh chunks, GPU copy, successful present, the view), and a plain statement for a change
+/// that is offscreen, draws nothing or changed no picture. The sim's outcome stands either way;
+/// only the picture is behind. Present-call success is not display time.
 [[nodiscard]] std::string drawn_note(const std::optional<CommandOutcome>& latest,
-                                     std::optional<std::uint64_t> followed_turn,
-                                     std::size_t pending);
+                                     Visibility visibility);
 
 /// The window title's text after its name while the tool is on, from one snapshot (round ee
 /// review of C, P2-1): the runner's line without the money (PlayRunner::title_of; its refusal

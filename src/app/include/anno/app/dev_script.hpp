@@ -13,7 +13,15 @@
 //   pan DX DY             a right-button drag by (DX, DY) window points from the window centre
 //   wheel N               N wheel notches at the window centre (positive: closer)
 //   wait frames N | wait turns N | wait outcome | wait drawn | wait ms N
+//                         `wait drawn` ends when an applied command's change is settled on its way
+//                         to the screen: presented (Visible), or classified as not shown at all
+//                         (Offscreen, NothingToDraw, NoVisualChange). It does not end at the
+//                         earlier boundaries (not in the picture, object list not committed,
+//                         chunks not fresh, GPU copy not usable, no successful present, out of
+//                         view). Use `expect visibility Visible` to require that it was shown.
 //   expect title TEXT     the window title contains TEXT
+//   expect visibility NAME  the latest command's change is at NAME (visibility_name: Visible,
+//                         Offscreen, NothingToDraw, NoVisualChange, or a waiting stage)
 //   expect outcome STATE [REASON]   the tool's latest command is STATE (Queued, Applied, Refused,
 //                         Lost), with the sim's REASON (reject_name) when given; `none`: the
 //                         latest click sent no command (the window shows no receipt)
@@ -36,6 +44,7 @@
 #include <anno/app/command_outcome.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/visibility.hpp>
 #include <anno/formats/result.hpp>
 
 namespace anno::app {
@@ -55,8 +64,9 @@ struct DevScriptState {
     double now_ms = 0;
     std::shared_ptr<const PlaySnapshot> snapshot;
     std::optional<CommandOutcome> latest;
-    std::optional<std::uint64_t> followed_turn;
-    std::size_t pending = 0;
+    /// Where the latest command's change is on its way to the screen (ChangeVisibility::classify
+    /// of its turn; NoVisualChange for a command that was not applied).
+    Visibility visibility = Visibility::NoVisualChange;
     const DevTool* tool = nullptr;
     /// The last drawn frame (none before the first).
     const PointerFrame* frame = nullptr;

@@ -365,8 +365,17 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
     changes.
 - **What it knows** (`PlacementKnowledge`), from published data only:
   - the city's island tiles;
-  - the tiles the picture's published buildings cover (`ScenePicture::buildings`, re-indexed
-    only when `buildings_version` changes, never per pointer move);
+  - the tiles the picture's published buildings cover on the city's island, kept by the deltas of
+    the batches the window takes (round ee review, R4: `PlayFollower::set_batch_observer`,
+    `attach_occupancy`, `PlacementKnowledge::on_batches`): a delta of another island is one
+    comparison and nothing else, a delta of the city's island adds or removes its tiles
+    (reference counted, so overlapping buildings stay), a resync batch reseeds from its list
+    (O(the list), as the picture's own resync is), and a disabled tool does no work and is
+    reseeded from the picture's per-island list (`ScenePicture::island_buildings`, O(the city))
+    when it is on again (`ensure`). Never a scan per pointer move or per frame. What remains on
+    the window thread for an edit on another island is the picture's own `apply` (a sorted insert
+    into its building list and the per-island index, about 0.2 ms at 50 000 buildings in
+    `dev_occupancy_test.cpp`'s reference row), which is not occupancy work;
   - the latest snapshot's money, goods and `costs_waived` (the free-build flag or rule) against
     the type's gold and goods costs.
 
@@ -407,6 +416,16 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 - **Empty and malformed data:** with no buildable type the tool only demolishes; a listed id the
   registry lacks sends nothing and names the id; a zero footprint is refused by the registry
   builder; a footprint larger than the island is a known refusal.
+- **A footprint is tested as a rectangle before any tile is made** (round ee review, R3): the
+  check widens the rotated rectangle to 64 bits (`DevInput::footprint_extent`) and refuses one
+  that leaves the city's island, or has no area, in O(1); what passes lies inside the island, and
+  occupancy is asked with one ordered lookup per column. A registry definition of any width (a
+  1,000,000 x 1 or a 4 294 967 295 square) therefore costs no list and no overflow; there is no
+  building-size cap, the island is the region. The indexing of published buildings clamps each
+  rectangle to the island in 64 bits. `footprint_at` (a tile list) takes the size of the region
+  the caller admits and returns nothing beyond it. `alloc_test.cpp` refuses any single allocation
+  above 64 KiB in the window under test, so the old enumeration fails there instead of using the
+  host's memory.
 - **Pointer moves rebuild nothing:** not the occupancy index (100 000 moves, one rebuild), not the
   scene or the picture (the tool has no access to either). An unpublished command changes no
   published version.
@@ -421,22 +440,44 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 
 ### A scripted session and a picture that lags (W4.4, round ee, E3 and E4)
 
-- **Not drawn yet** (`drawn_note`, E4): the line says when an applied command's change is not in
-  the picture: "not drawn yet: turn T is not in the picture" until the window's follow step took
-  that turn's batch (`PlayFollower::followed_turn`: the snapshot read before the take, since a
-  turn's batch is in the mailbox before its snapshot), then "not drawn yet: N islands of the
-  picture are not committed" while `ScenePicture::pending` is above 0 (rebuilding, deferred or
-  failed islands; the change's island may be one). The sim's outcome stands either way; a commit
-  or a newer followed turn updates the line. A type the picture cannot draw at all
-  (`kPictureAnlageIds`) is named by the preview note, not by this one. `dev_barrier_test.cpp` holds every picture build at a gate:
-  the runner's turns, the outcomes, the tool and the follow step go on (the slowest follow step was
-  0.25 ms in the dev gate, 1.2 ms under ASan), the line says "not drawn yet", and the open gate draws
-  it.
+- **Not drawn yet** (`drawn_note`, E4; corrected in round ee review R2): the line says where an
+  applied command's change is on its way to the screen (`ChangeVisibility`, `visibility.hpp`),
+  from the same boundaries the window trace records and with or without a trace. In order: the
+  command's turn is in the picture's desired state (`NotInPicture`, `PlayFollower::followed_turn`
+  semantics: the snapshot read before the take, since a turn's batch is in the mailbox before its
+  snapshot); the island's object list is committed (`Committing`); a frame attempt has looked at
+  the change (`AwaitingFrame`); every chunk of the change in the view is fresh on the CPU
+  (`ChunksStale`) and usable on the GPU, not dissolving (`NotOnGpu`); and a frame that draws all of
+  them returned success from its present call (`NotPresented`, then `Visible`). `KeyObservation`
+  (`observe_keys`) is the one definition of "drawn", shared with `FrameTracer`. A change none of
+  whose chunks was in the first attempt's view after its commit is `Offscreen` (in the picture,
+  not on screen, never waited for); one that was in view and left it is `OutOfView` and waits; a
+  commit that invalidated no chunk is `NothingToDraw`; a turn that published no building change
+  (a refused or no-op command) is `NoVisualChange`. Present-call success is not display time.
+  The state is bounded: one watch per island (changes to one island merge, which only makes the
+  wait stricter), at most 1 024 takes not yet shown (the two oldest merge beyond that), 1 024
+  settled ones kept (an older command reads `Unknown`), at most 4 096 turns named per take. The
+  sim's outcome stands either way. The old rule (followed turn and no pending island) is
+  object-list completion only: with the chunk workers held it said drawn while the old chunks
+  still drew (`dev_visibility_test.cpp` shows both answers on lan5 with held workers).
+  `dev_barrier_test.cpp` holds every picture build at a gate: the runner's turns, the outcomes, the
+  tool and the follow step go on (the slowest follow step was 0.25 ms in the dev gate, 1.2 ms under
+  ASan), the line says "not drawn yet", and the open gate commits it but does not call it drawn.
+- **One consistent read of the outcome and the resources** (round ee review R1): the runner
+  records a turn's outcomes before it swaps in the snapshot that follows them, so the live log can
+  be ahead of the snapshot for a moment. `PlayRunner::feedback` reads the snapshot first and
+  answers the outcome against its `outcomes_next` watermark (`OutcomeLog::find_published`): a newer
+  outcome, or an evicted one that cannot be told from an unpublished one, is withheld as Queued
+  with `deferred` set, and the next read shows it with the money and goods of its own turn.
+  The title and the script both read through it; `PlayRunner::outcome` is the raw log. Nothing
+  waits for the sim: two short locks, one after the other.
 - **A scripted session in the live window** (`dev_script.hpp`, E3): `ANNO_DEV_SCRIPT=<file>`
   pushes the script's key, mouse and wheel events into SDL's own queue, so they reach the
   window's handler as a person's input does; while it runs the window takes no other input (the
   events carry their own device id, `kScriptDevice`). It waits on frames, turns, outcomes and the
-  picture, checks the title and the latest outcome, and can capture the window's own rectangle
+  picture (`wait drawn` ends only when an applied command's change is settled: presented, or
+  classified Offscreen, NothingToDraw or NoVisualChange; `expect visibility NAME` names the stage),
+  checks the title and the latest outcome, and can capture the window's own rectangle
   (macOS; the capture runs `screencapture` on the window thread, a 0.2 to 0.3 s stall per shot that
   belongs to the test harness, not to the play path). A script that never sees a drawn frame, or a wait past 30 s, fails instead of hanging.
   Window events that are not input (focus, leaving the window) still reach the tool: they can

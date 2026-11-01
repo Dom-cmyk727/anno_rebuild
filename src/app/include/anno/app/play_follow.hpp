@@ -13,6 +13,7 @@
 
 #include <anno/app/play.hpp>
 #include <anno/app/scene_picture.hpp>
+#include <anno/app/visibility.hpp>
 #include <anno/app/window_trace.hpp>
 #include <anno/render/frame.hpp>
 
@@ -44,6 +45,10 @@ class PlayFollower {
     /// (PlayRunner::batches_waiting, a flag read without copying anything), or a change is not
     /// committed yet (ScenePicture::pending). O(islands) for the pending count, no building scan.
     [[nodiscard]] bool has_work() const;
+    /// Where each applied command's change is on its way to the screen (ChangeVisibility). The
+    /// follower feeds it the takes and the commits; the viewer feeds it the frames. Window thread.
+    [[nodiscard]] ChangeVisibility& visibility() { return visibility_; }
+    [[nodiscard]] const ChangeVisibility& visibility() const { return visibility_; }
     [[nodiscard]] ScenePicture& picture() { return picture_; }
     [[nodiscard]] const ScenePicture& picture() const { return picture_; }
     [[nodiscard]] PlayRunner& runner() { return runner_; }
@@ -53,6 +58,7 @@ class PlayFollower {
     PlayRunner& runner_;
     std::optional<std::uint64_t> followed_turn_;
     BatchObserver batch_observer_;
+    ChangeVisibility visibility_;
 };
 
 /// What the window loop knows at the top of an iteration. The paused animation stops the frames,

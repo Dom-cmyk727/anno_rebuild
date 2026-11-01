@@ -241,6 +241,23 @@ EvidenceOutcome WindowTrace::finalize(const std::filesystem::path& dir, const st
         });
 }
 
+KeyObservation observe_keys(const std::vector<render::ChunkKey>& keys,
+                            const std::set<render::ChunkKey>& in_view,
+                            const std::function<bool(const render::ChunkKey&)>& fresh,
+                            const std::function<bool(const render::ChunkKey&)>& usable) {
+    KeyObservation o;
+    for (const render::ChunkKey& k : keys) {
+        if (in_view.count(k) == 0) {
+            continue;
+        }
+        o.any = true;
+        const bool f = fresh(k);
+        o.all_fresh = o.all_fresh && f;
+        o.all_usable = o.all_usable && f && usable(k);
+    }
+    return o;
+}
+
 void FrameTracer::committed(std::uint32_t island, std::uint64_t generation,
                             std::vector<render::ChunkKey> keys) {
     if (outstanding() >= max_outstanding_) {
@@ -302,16 +319,7 @@ void FrameTracer::presented(double t_submit, double p0, double p1, std::uint32_t
     // One observation, at the submission, of each waiting change's keys in this frame's view: CPU
     // first, then GPU (GPU-usable implies CPU-ready). Only this frame's state counts.
     std::erase_if(visible_, [&](Watch& c) {
-        bool any = false, all_fresh = true, all_usable = true;
-        for (const render::ChunkKey& k : c.keys) {
-            if (in_view_.count(k) == 0) {
-                continue;
-            }
-            any = true;
-            const bool f = fresh(k);
-            all_fresh = all_fresh && f;
-            all_usable = all_usable && f && usable(k);
-        }
+        const auto [any, all_fresh, all_usable] = observe_keys(c.keys, in_view_, fresh, usable);
         if (!any) {
             return false; // out of this frame's view: it draws nothing of the change
         }

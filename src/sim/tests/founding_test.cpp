@@ -1342,3 +1342,121 @@ TEST_CASE("founding B4: serial and counter exhaustion refuse, a MILIT peer absen
         CHECK(w.check_invariants().empty());
     }
 }
+
+TEST_CASE("founding E1: an alternate definition, a non-default player and city slot, end to end") {
+    // Type 9401: id 9401, 5 x 3, gold 120, tools 2 t, wood 4 t, action radius 10 (none of these is
+    // 1302's value). Player 3 founds with its own ship (figure 4) holding wood 10 t and tools 5 t.
+    // A city of player 1 sits in slot 4, so the allocation cursor is 4 and the new city is
+    // number 5. Initial rotation 1 (3 wide, 5 tall): click (51, 32) -> origin (51 - 1, 32 - 2) =
+    // (50, 30); the shore column x = 50 has 6 vertices (n = unrotated width + 1), accepted at once.
+    Setup s = base_setup();
+    sim::ScenarioSpec::PlayerSpec p3;
+    p3.id = sim::PlayerId{3};
+    p3.kind = 8;
+    p3.money = 1000;
+    s.spec.players.push_back(p3);
+    s.spec.islands[0].cities.push_back(syn::plain_city(4, 1));
+    s.rules.founding_types = {1302, 9401};
+    sim::ScenarioSpec::FigureSpec ship;
+    ship.kind = 1502;
+    ship.owner = sim::PlayerId{3};
+    ship.pos = sim::FixedPos{static_cast<std::int32_t>(57 * kT + kT / 2),
+                             static_cast<std::int32_t>(32 * kT + kT / 2)};
+    ship.holds = {sim::ShipHold{kWood, 10 * kT}, sim::ShipHold{kTools, 5 * kT}};
+    s.spec.figures.push_back(ship); // figure id 4
+    sim::FoundCmd f;
+    f.ship = sim::FigureId{4};
+    f.placement.type = sim::TypeId{9401};
+    f.placement.x = 50;
+    f.placement.y = 30;
+    f.placement.rotation = 1;
+    f.click_x = 51;
+    f.click_y = 32;
+    const sim::Command cmd{sim::PlayerId{3}, f};
+
+    sim::World w = make(s);
+    REQUIRE(w.check_invariants().empty());
+    const sim::ApplyResult r = w.apply(cmd);
+    REQUIRE(r.ok());
+    // Payment from the definition: gold 1000 - 120, wood 2560 - 1024, tools 1280 - 512.
+    CHECK(w.players().find(sim::PlayerId{3})->money == 880);
+    const sim::Figure* sh = sim::find_figure(w.figures(), sim::FigureId{4});
+    CHECK(sh->holds[0] == sim::ShipHold{kWood, 1536});
+    CHECK(sh->holds[1] == sim::ShipHold{kTools, 768});
+    // City number 5, owner player 3; the cursor follows; the Kontor id is the island's counter.
+    REQUIRE(isl(w).cities[5].has_value());
+    CHECK(isl(w).cities[5]->owner == sim::PlayerId{3});
+    CHECK(isl(w).city_cursor == 5);
+    const sim::Building* b = isl(w).find_building(r.records[0].building);
+    REQUIRE(b != nullptr);
+    CHECK(b->type == sim::TypeId{9401});
+    CHECK(b->rotation == 1);
+    CHECK(b->byte0f == 0x30);
+    CHECK(b->kontor_id == 1);
+    // The footprint is 3 wide and 5 tall (x 50..52, y 30..34), nothing at x 53 or y 35.
+    for (std::uint32_t y = 30; y < 36; ++y) {
+        for (std::uint32_t x = 50; x < 54; ++x) {
+            CHECK(isl(w).tiles.object(y * 120ULL + x) == ((x < 53 && y < 35) ? 9401U : 0U));
+        }
+    }
+    // Territory: radius 10 around that footprint, then the footprint: 349 tiles, rows 22..42, the
+    // first and last row x 48..54, the middle rows x 41..61 (the emulated original,
+    // cache/map2-gates4/emu_alt_territory.py: AnnoWelt 0x10085840 over a neutral 120 x 100 grid).
+    CHECK(owned_by(w, 5) == 349);
+    CHECK(isl(w).tiles.owner(22 * 120ULL + 48) == 5);
+    CHECK(isl(w).tiles.owner(22 * 120ULL + 54) == 5);
+    CHECK(isl(w).tiles.owner(22 * 120ULL + 47) == s.cfg.neutral_owner);
+    CHECK(isl(w).tiles.owner(22 * 120ULL + 55) == s.cfg.neutral_owner);
+    CHECK(isl(w).tiles.owner(21 * 120ULL + 50) == s.cfg.neutral_owner);
+    CHECK(isl(w).tiles.owner(43 * 120ULL + 50) == s.cfg.neutral_owner);
+    for (const std::uint32_t y : {30U, 32U, 34U}) {
+        CHECK(isl(w).tiles.owner(y * 120ULL + 41) == 5);
+        CHECK(isl(w).tiles.owner(y * 120ULL + 61) == 5);
+        CHECK(isl(w).tiles.owner(y * 120ULL + 40) == s.cfg.neutral_owner);
+        CHECK(isl(w).tiles.owner(y * 120ULL + 62) == s.cfg.neutral_owner);
+    }
+    CHECK(w.check_invariants().empty());
+    // Persistence and replay through the same path.
+    auto loaded = sim::World::load(w.save(), registry());
+    REQUIRE(loaded.ok());
+    CHECK(loaded.value().state_hash() == w.state_hash());
+}
+
+TEST_CASE("founding E2: definitions the command cannot decode refuse, nothing changes") {
+    // A market-block type whose flag word is not the decoded coast class: Unsupported.
+    {
+        Setup s = base_setup();
+        s.rules.founding_types = {1302, 9402};
+        sim::World w = make(s);
+        sim::Command c = control_command();
+        found_of(c).placement.type = sim::TypeId{9402};
+        rejected(w, c, sim::Reject::Unsupported);
+    }
+    // A type offered in the rules but absent from the registry: UnknownType (the rules list is
+    // data; the registry is the authority on what exists).
+    {
+        Setup s = base_setup();
+        s.rules.founding_types = {1302, 9999};
+        sim::World w = make(s);
+        sim::Command c = control_command();
+        found_of(c).placement.type = sim::TypeId{9999};
+        rejected(w, c, sim::Reject::UnknownType);
+    }
+    // The rules list itself must be ascending, unique and non-zero: a malformed list does not
+    // create a world.
+    for (const std::vector<std::uint32_t>& bad :
+         {std::vector<std::uint32_t>{1304, 1302}, std::vector<std::uint32_t>{1302, 1302},
+          std::vector<std::uint32_t>{0}}) {
+        Setup s = base_setup();
+        s.rules.founding_types = bad;
+        auto r = sim::World::create(s.spec, registry(), s.cfg, s.rules);
+        CHECK_FALSE(r.ok());
+    }
+    // An empty list offers nothing: every founding is NotAFoundingType.
+    {
+        Setup s = base_setup();
+        s.rules.founding_types.clear();
+        sim::World w = make(s);
+        rejected(w, control_command(), sim::Reject::NotAFoundingType);
+    }
+}

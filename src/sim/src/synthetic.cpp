@@ -569,6 +569,21 @@ formats::Result<SyntheticTypes, std::string> make_founding_types() {
     k63.width = 6;
     k63.height = 3;
     b.add(k63);
+    // An alternate definition: a 5 x 3 Kontor-class type with its own id, costs (gold 120, tools 2
+    // t, wood 4 t) and action radius 10; and one in the market block whose flag word is not the
+    // decoded coast class (refused as Unsupported, never accepted blindly).
+    BuildingType alt = k;
+    alt.id = TypeId{9401};
+    alt.width = 5;
+    alt.height = 3;
+    alt.action_radius = 10;
+    alt.cost_gold = 120;
+    alt.cost_goods = {CostEntry{kTools, 2 * kOne}, CostEntry{kWood, 4 * kOne}};
+    b.add(alt);
+    BuildingType undecoded = k;
+    undecoded.id = TypeId{9402};
+    undecoded.flags_word = 0x0087;
+    b.add(undecoded);
     b.add_plain(kObstruction, 193);
     b.add_plain(kScenery, 193).flags_word(kScenery, 0x20);
     b.add_workshop(kWorkshop, "STOFFE", "WOLLE", 6, 11, 5, 0);

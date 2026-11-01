@@ -133,6 +133,29 @@ def density(stamps, tile, mut=None):
     return state
 
 
+def plan_nodes(facing, runs, mut=None):
+    """Node list the route-engine conversion (0x100a8c50) gives the ship (docs/re/ship-navigation.md 8.1): turn nodes ONLY before the
+    first run, then one movement node per run. want = 2*dir8 of the first run, diff = (want - facing) & 15 mapped to -7..+8
+    (8 stays +8); |diff| <= 2 gives no turn nodes, else |diff| turn nodes carrying the facings f, f+s, ... (s = +1 for diff > 0, so
+    the planner turns a reversal in the + direction; the stepper's own phase turns -1). Returns [('T', facing)...] + [('M', dir8, len)]."""
+    out = []
+    want = 2 * runs[0][0]
+    diff = (want - facing) & 15
+    if diff > 8:
+        diff -= 16
+    if abs(diff) > (3 if mut == 'dead_zone3' else 2):
+        step = 1 if diff > 0 else -1
+        if mut == 'reversal_minus' and diff == 8:
+            step = -1
+        f = facing
+        for _ in range(abs(diff)):
+            out.append(('T', f & 15))
+            f += step
+    for d, n in runs:
+        out.append(('M', d, n))
+    return out
+
+
 def fmt_frac(f):
     f = Fraction(f)
     return str(f.numerator) if f.denominator == 1 else repr(float(f))
@@ -160,6 +183,10 @@ def run_record(kind, args, mut=None):
         i = args.index('tile')
         stamps = [(float(a.split(',')[0]), float(a.split(',')[1]), args[0], int(args[1])) for a in args[2:i]]
         return [str(density(stamps, (int(args[i + 1]), int(args[i + 2])), mut))]
+    if kind == 'plannodes':
+        facing = int(args[0])
+        runs = [(DIRNAMES.index(r.rstrip('0123456789')), int(r.lstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ'))) for r in args[1:]]
+        return [('T%d' % n[1]) if n[0] == 'T' else ('M%d,%d' % (n[1], n[2])) for n in plan_nodes(facing, runs, mut)]
     if kind == 'turn_ticks':
         t = turn_ticks(args[0], mut)
         return [fmt_frac(t)]
@@ -299,6 +326,7 @@ def check_passage(path, mut=None):
     return bad
 
 
+DIRNAMES = ['W', 'SW', 'S', 'SE', 'E', 'NE', 'N', 'NW']
 DIRS = {'W': (-1, 0), 'SW': (-1, 1), 'S': (0, 1), 'SE': (1, 1), 'E': (1, 0), 'NE': (1, -1), 'N': (0, -1), 'NW': (-1, -1)}
 
 
@@ -359,9 +387,9 @@ def route_problems(rec, mut=None):
     that only the C++ port can reproduce."""
     problems, end = path_legality(rec, mut)
     st, cx, cz, _ = passage(rec['W'], rec['H'], rec['land'], rec['start'], rec['goal'])
-    if rec['stamped'] and rec['end'] is not None:
-        cx, cz = rec['end']
-    if st != rec['status'] and not rec['stamped']:
+    if rec['stamped']:
+        problems.append('stamped route records are not allowed here: use offer_cases.txt (independent candidate model)')
+    if st != rec['status']:
         problems.append('status %s, passage reference %s' % (rec['status'], st))
     if rec['status'] == 0 and end != (cx, cz):
         problems.append('runs end on %s, candidate %s' % (end, (cx, cz)))
@@ -382,8 +410,8 @@ def check_routes(path, mut=None):
         problems = route_problems(rec, mut)
         if problems:
             bad.append((n, rec['name'], problems))
-    if count < 30:
-        bad.append((0, 'fixture', ['fewer than 30 route vectors']))
+    if count < 24:
+        bad.append((0, 'fixture', ['fewer than 24 route vectors']))
     return bad
 
 
@@ -478,14 +506,14 @@ def check_offers(path, mut=None):
                 stamps.append((float(x), float(z), k, 2 if k == 'K5' else 1))
         pops = [tuple(int(v) for v in tok.split(',')) for tok in parts[4].split()[1:]]
         end = tuple(map(int, parts[5].split()[1:]))
-        best = int(parts[6].split()[1])
+        best = None if parts[6].split()[1] == '-' else int(parts[6].split()[1])
         runs = parts[7].split()
         count += 1
         tile, sc = select_candidate(lambda t: 0 <= t[0] < 64 and 0 <= t[1] < 64, goal, stamps, pops, mut)
         problems = []
         if tile != end:
             problems.append('end tile %s, reference %s' % (end, tile))
-        if sc != best:
+        if best is not None and sc != best:
             problems.append('best score %s, reference %s' % (best, sc))
         rec = dict(W=64, H=64, land=set(), start=start, runs=runs)
         leg, walked = path_legality(rec)
@@ -499,7 +527,31 @@ def check_offers(path, mut=None):
     return bad
 
 
-def check_objects(path):
+def tile_cell_cost(path_tiles, band, plain):
+    """Proxy cost of a tile path: 10 per orthogonal / 14 per diagonal step, plus 40 / 55 for entering a tile of a band coarse cell
+    (the coarse cost 50/69 against 10/13 summed over the steps the coarse level charges). Used only to compare two RECORDED runs."""
+    c = 0
+    for (px, pz), (nx, nz) in zip(path_tiles, path_tiles[1:]):
+        diag = px != nx and pz != nz
+        c += 14 if diag else 10
+        if not plain and ((nx // 8), (nz // 8)) in band:
+            c += 55 if diag else 40
+    return c
+
+
+def run_tiles(start, runs):
+    x, z = math.floor(start[0]), math.floor(start[1])
+    out = [(x, z)]
+    for r in runs:
+        d = r.rstrip('0123456789')
+        dx, dz = DIRS[d]
+        for _ in range(int(r[len(d):])):
+            x, z = x + dx, z + dz
+            out.append((x, z))
+    return out
+
+
+def check_objects(path, mut=None):
     bad, ntile, nshore = [], 0, 0
     for n, line in enumerate(open(path), 1):
         line = line.strip()
@@ -509,9 +561,21 @@ def check_objects(path):
             left, right = [x.strip() for x in line.split('|')]
             h, base = map(int, left.split()[1:])
             ntile += 1
-            got = 'blocked' if ((h + base) & 0xFF) > 19 else 'free'
+            thr = 20 if mut == 'thr20' else 19
+            v = (h + base) if mut == 'no_wrap' else ((h + base) & 0xFF)
+            got = 'blocked' if v > thr else 'free'
+            if mut == 'footprint_land':
+                got = 'blocked'
             if got != right:
                 bad.append((n, 'objtile %d %d: expected %s got %s' % (h, base, right, got)))
+        elif line.startswith('objfoot'):
+            left, right = [x.strip() for x in line.split('|')]
+            h, base, w, d = map(int, left.split()[1:])
+            ntile += 1
+            blocked = (((h + base) & 0xFF) > 19) if mut != 'footprint_land' else True
+            got = w * d if blocked else 0
+            if got != int(right):
+                bad.append((n, 'objfoot %d %d %d %d: expected %s got %s' % (h, base, w, d, right, got)))
         elif line.startswith('shore'):
             nshore += 1
             parts = [x.strip() for x in line.split('|')]
@@ -523,12 +587,31 @@ def check_objects(path):
                     land.update((x, z) for z in range(z0, z1 + 1) for x in range(x0, x1 + 1))
             start = tuple(map(float, parts[3].split()[1:]))
             end = tuple(map(int, parts[8].split()[1:]))
+            band = {tuple(map(int, b.split(','))) for b in parts[2].split()[1:]}
+            paths = {}
             for field in (parts[6], parts[7]):
                 toks = field.split()
                 runs = toks[2:] if toks[0] == 'no_band' or toks[0] == 'band' else toks
+                if mut == 'swap_runs':
+                    runs = (parts[7] if field is parts[6] else parts[6]).split()[2:]
                 prob, walked = path_legality(dict(W=W, H=H, land=land, start=start, runs=runs))
                 if prob or walked != end:
                     bad.append((n, 'shore walk %s: %s end %s' % (parts[0], prob, walked)))
+                paths[toks[0]] = run_tiles(start, runs)
+            # independent optimality-against-the-other-path property: each recorded path is no worse under its own cost model
+            nb, bd = paths['no_band'], paths['band']
+            def entered(path_tiles):  # band coarse cells entered, counted per entry (leaving and re-entering counts again)
+                cnt, prev = 0, None
+                for t in path_tiles:
+                    c = (t[0] // 8, t[1] // 8)
+                    if c != prev and c in band:
+                        cnt += 1
+                    prev = c
+                return cnt
+            if entered(bd) > entered(nb):
+                bad.append((n, 'shore %s: the band run enters more band cells (%d) than the no-band run (%d)' % (parts[0], entered(bd), entered(nb))))
+            if tile_cell_cost(nb, band, True) > tile_cell_cost(bd, band, True):
+                bad.append((n, 'shore %s: the no-band run is longer than the band run under the plain model' % parts[0]))
     if ntile < 12 or nshore < 7:
         bad.append((0, 'fixture truncated'))
     return bad
@@ -552,6 +635,17 @@ def main_goal(argv):
             ok = ok and caught
         print('offer selftest', 'ok' if ok else 'FAILED')
         return 0 if ok else 1
+    if argv[1] == 'object-selftest':
+        if check_objects(argv[2]):
+            print('selftest: the unmutated object reference already fails')
+            return 1
+        ok = True
+        for m in ['thr20', 'no_wrap', 'footprint_land', 'swap_runs']:
+            caught = bool(check_objects(argv[2], m))
+            print('mutant %-15s %s' % (m, 'caught' if caught else 'SURVIVED'))
+            ok = ok and caught
+        print('object selftest', 'ok' if ok else 'FAILED')
+        return 0 if ok else 1
     bad = check_objects(argv[2])
     for b in bad:
         print('OBJECT/SHORE MISMATCH line %d: %s' % b)
@@ -561,63 +655,78 @@ def main_goal(argv):
 
 # ---- planning admission (MAP-NAV-2 A2) ------------------------------------------------------------------------
 
-def admission_sim(rule, n, dtick, ships, quota, advances, adversary, seed=0):
+def admission_sim(rule, n, dtick, ships, quota, advances, adversary, seed=0, ready_delay=0):
     """Models the registry cursor/cadence (visit k = clamp(floor(dtick*n/50), 1, n) slots per Advance from a circular cursor,
-    slots visited in ascending order) and the planning admission of every ship in `ships` (slot indices) that has a pending
-    order. Rules: `quota_first` = the first `quota` visited pending ships per Advance (the rejected first-come rule);
-    `fifo_reserve` = a visited pending ship is admitted iff the number of OLDER pending tickets is smaller than the quota
-    left in this Advance (a replacement keeps the ship's ticket; a served or cancelled ticket is removed). Adversaries:
-    `replace_served` = a served ship immediately receives a new order (a new, youngest ticket) and, under fifo_reserve,
-    other pending ships are replaced every Advance (their tickets stay). Returns (service counts per ship, max wait in
-    Advances for any ticket from its issue to its service)."""
+    slots visited IN CURSOR ORDER, i.e. with wrap-around, not sorted) and the planning admission of every ship in `ships` (slot
+    indices) that has a pending order. Rules: `quota_first` = the first `quota` visited pending ships per Advance (the rejected
+    first-come rule); `fifo_reserve` = a visited, READY pending ship is admitted iff the number of OLDER pending tickets is smaller
+    than the quota left in this Advance (a replacement keeps the ship's ticket; a served, cancelled or blocked ticket is removed);
+    mutants: `fifo_renew` (a replacement renews the ticket), `fifo_keep_blocked` (a blocked ship keeps its ticket forever).
+    Readiness: after an order is accepted the ship reaches its pick-up point `ready_delay` Advances later (0 = at once);
+    adversaries: `replace_served` (a served ship is re-commanded at once with a new youngest ticket), `replace_all` (every pending
+    ship is re-commanded every Advance), `random` (random replacement / cancellation / re-command / readiness / blocking),
+    `block_oldest` (the ship holding the oldest ticket enters a blocked state at once). Returns (service counts per ship, max wait
+    in Advances of any ticket from issue to service or to the end of the run).
+    """
     import random
     rng = random.Random(seed)
     k = max(1, min(n, (dtick * n) // 50))
     seq = 0
-    tickets = {}          # slot -> (seq, issued advance)
-    for sl in ships:
+    tickets = {}   # slot -> [seq, issued advance, ready advance]
+    blocked = set()
+
+    def issue(sl, a):
+        nonlocal seq
         seq += 1
-        tickets[sl] = (seq, 0)
+        delay = rng.randint(0, ready_delay) if adversary == 'random' else ready_delay
+        tickets[sl] = [seq, a, a + delay]
+
+    for sl in ships:
+        issue(sl, 0)
+    if adversary == 'block_oldest':
+        blocked.add(min(tickets, key=lambda x: tickets[x][0]))
     served = {sl: 0 for sl in ships}
     max_wait = 0
     cursor = 0
     for a in range(advances):
         visited = [(cursor + i) % n for i in range(k)]
         remaining = quota
-        for sl in sorted(visited):
+        for sl in visited:
             if sl not in tickets:
                 continue
-            mine = tickets[sl][0]
-            older = sum(1 for (q, _) in tickets.values() if q < mine)
-            ok = remaining > 0 if rule == 'quota_first' else older < remaining  # fifo_reserve and the mutant fifo_renew
-            if rule == 'fifo_no_reserve':
-                ok = remaining > 0 and older == 0
+            if sl in blocked and rule != 'fifo_keep_blocked':
+                del tickets[sl]            # a blocked ship's order and ticket are dropped at its visit
+                continue
+            mine, _, ready_at = tickets[sl]
+            if a < ready_at or sl in blocked:
+                continue                   # not at its pick-up point yet (it keeps its ticket, which reserves quota)
+            older = sum(1 for t in tickets.values() if t[0] < mine)
+            ok = remaining > 0 if rule == 'quota_first' else older < remaining
             if ok:
                 remaining -= 1
                 served[sl] += 1
                 max_wait = max(max_wait, a - tickets[sl][1])
                 del tickets[sl]
                 if adversary in ('replace_served', 'random', 'replace_all'):
-                    seq += 1
-                    tickets[sl] = (seq, a)
-        if adversary == 'replace_all':  # every pending ship is re-commanded every Advance; the correct rule KEEPS tickets
-            if rule == 'fifo_renew':    # mutant: a replacement renews the ticket (moves the ship to the back)
-                for sl in sorted(tickets):
-                    seq += 1
-                    tickets[sl] = (seq, tickets[sl][1])
+                    issue(sl, a)
+        if adversary == 'replace_all' and rule == 'fifo_renew':
+            for sl in sorted(tickets):
+                seq += 1
+                tickets[sl][0] = seq
         if adversary == 'random':
-            for sl in ships:  # random replacement / cancellation / re-command; replacement KEEPS the ticket
+            for sl in ships:
                 r = rng.random()
-                if sl in tickets and r < 0.3 and rule != 'quota_first':
-                    pass  # replaced: ticket unchanged
+                if sl in tickets and r < 0.3:
+                    if rule == 'fifo_renew':
+                        seq += 1
+                        tickets[sl][0] = seq
                 elif sl in tickets and r < 0.35:
-                    del tickets[sl]  # cancelled
+                    del tickets[sl]
                 elif sl not in tickets and r < 0.5:
-                    seq += 1
-                    tickets[sl] = (seq, a)
+                    issue(sl, a)
         cursor = (cursor + k) % n
-    for (_, issued) in tickets.values():  # a ticket still unserved at the end has waited at least this long (starvation)
-        max_wait = max(max_wait, advances - issued)
+    for t in tickets.values():
+        max_wait = max(max_wait, advances - t[1])
     return [served[sl] for sl in ships], max_wait
 
 
@@ -633,15 +742,16 @@ def main_admission(argv):
         rule, nn, dtick = f[1], int(f[2]), int(f[3])
         ships = [int(x) for x in f[4].split(',')]
         quota, adv, adversary = int(f[5]), int(f[6]), f[7]
-        counts, _ = admission_sim(rule, nn, dtick, ships, quota, adv, adversary)
+        rd = int(f[8]) if len(f) > 8 else 0
+        counts, _ = admission_sim(rule, nn, dtick, ships, quota, adv, adversary, ready_delay=rd)
         if right.startswith('counts'):
             want = [int(x) for x in right.split()[1:]]
             if counts != want:
                 bad.append((n, 'counts %s expected %s' % (counts, want)))
-        else:  # bound <max wait advances formula>: every ticket served within (older+1)*C + ready slack
+        else:  # bound: every ticket served within (ships+1)*C + ships*ready_delay Advances
             C = -(-nn // max(1, min(nn, (dtick * nn) // 50)))
-            _, mw = admission_sim(rule, nn, dtick, ships, quota, adv, adversary, seed=int(right.split()[1]))
-            bound = (len(ships) + 1) * C
+            _, mw = admission_sim(rule, nn, dtick, ships, quota, adv, adversary, seed=int(right.split()[1]), ready_delay=rd)
+            bound = (len(ships) + 1) * C + len(ships) * rd
             expect_ok = right.split()[2] == 'within'
             if (mw <= bound) != expect_ok:
                 bad.append((n, 'max wait %d, bound %d, expected %s' % (mw, bound, right.split()[2])))
@@ -668,18 +778,20 @@ def main_passage(argv):
             print('mutant %-17s %s' % (m, 'caught' if caught else 'SURVIVED'))
             ok = ok and caught
         # legality mutants must let a counterexample ESCAPE (i.e. they are detected by the counterexample file)
-        cx = argv[2].replace('route_runs.txt', 'route_counterexamples.txt')
-        for m in ['allow_corner_cut', 'no_land_check', 'no_bounds_check']:
-            escaped = False
+        cx = argv[3]
+        need = {'allow_corner_cut': 'C_corner_cut', 'no_land_check': 'C_wall_crossing', 'no_bounds_check': 'C_leave_and_reenter'}
+        for m, which in need.items():
+            escaped = set()
             for line in open(cx):
                 line = line.strip()
                 if not line or line.startswith('#'):
                     continue
                 rec = parse_route(line)
                 if rec['expect'] != 'accept' and not route_problems(rec, m):
-                    escaped = True
-            print('legality mutant %-17s %s' % (m, 'caught by a counterexample' if escaped else 'SURVIVED'))
-            ok = ok and escaped
+                    escaped.add(rec['name'])
+            good = which in escaped
+            print('legality mutant %-17s %s' % (m, ('lets %s escape' % which) if good else 'SURVIVED (expected %s to escape, got %s)' % (which, sorted(escaped))))
+            ok = ok and good
         print('route selftest', 'ok' if ok else 'FAILED')
         return 0 if ok else 1
     if argv[1] == 'passage-check':
@@ -704,7 +816,7 @@ def main_passage(argv):
 
 
 def main(argv):
-    if len(argv) == 3 and argv[1] in ('offer-check', 'offer-selftest', 'object-check'):
+    if len(argv) == 3 and argv[1] in ('offer-check', 'offer-selftest', 'object-check', 'object-selftest'):
         return main_goal(argv)
     if len(argv) == 3 and argv[1] == 'admission-check':
         return main_admission(argv)
@@ -714,7 +826,9 @@ def main(argv):
             print('COUNTEREXAMPLE ESCAPED line %d %s: %s' % b)
         print('ship route counterexamples', 'rejected as required' if not bad else 'NOT REJECTED')
         return 1 if bad else 0
-    if len(argv) == 3 and argv[1] in ('passage-check', 'passage-selftest', 'route-check', 'route-selftest'):
+    if len(argv) == 4 and argv[1] == 'route-selftest':
+        return main_passage(argv)
+    if len(argv) == 3 and argv[1] in ('passage-check', 'passage-selftest', 'route-check'):
         return main_passage(argv)
     if len(argv) != 3 or argv[1] not in ('check', 'selftest'):
         print(__doc__)
@@ -722,7 +836,7 @@ def main(argv):
     if argv[1] == 'check':
         bad = check(argv[2])
         kinds = {r[1] for r in load(argv[2])}
-        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate', 'density'}
+        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate', 'density', 'plannodes'}
         if kinds != expected:
             print('record kinds present %s, expected %s' % (sorted(kinds), sorted(expected)))
             return 1
@@ -732,7 +846,7 @@ def main(argv):
         return 1 if bad else 0
     # selftest: every deliberate mistake must be caught by at least one vector
     mutants = ['round_hp', 'thresh2', 'reversal_plus', 'no_half', 'odd', 'limit1', 'overshoot', 'floor_visit',
-               'drop_leftover', 'round_tile', 'max_combine']
+               'drop_leftover', 'round_tile', 'max_combine', 'dead_zone3', 'reversal_minus']
     ok = True
     if check(argv[2]):
         print('selftest: the unmutated reference already fails')

@@ -96,3 +96,15 @@ density K5 2 40.5,20.5 38.5,20.5 tile 35 20 | 0
 density K3 1 40.5,20.5 tile 40 20 | 2
 density K3 1 40.5,20.5 tile 41 21 | 1
 density K3 1 40.5,20.5 tile 42 20 | 0
+# plannodes facing run ... | nodes   Turn nodes (T<facing>) only before the first run, then one movement node per run (M<dir8>,<steps>);
+#   want = 2*dir8, diff = (want - facing) & 15 mapped to -7..+8; |diff| <= 2: no turn nodes; else |diff| nodes with facings f, f+s, ... (s = +1 for diff > 0:
+#   the PLANNER turns a reversal in the + direction, the stepper's own phase -1).  Hand-derived from this closed form (and equal to the emulated original, evidence 8.1).
+plannodes 8 E10 E10 E4 | M4,10 M4,10 M4,4
+plannodes 8 SE10 SE9 S1 E3 NE10 NE8 N2 | M3,10 M3,9 M2,1 M4,3 M5,10 M5,8 M6,2
+plannodes 8 W10 | T8 T9 T10 T11 T12 T13 T14 T15 M0,10
+plannodes 8 S5 | T8 T7 T6 T5 M2,5
+plannodes 8 E3 SE4 S2 | M4,3 M3,4 M2,2
+plannodes 0 N4 | T0 T15 T14 T13 M6,4
+plannodes 3 W2 | T3 T2 T1 M0,2
+plannodes 14 SW3 | T14 T15 T0 T1 M1,3
+plannodes 8 NE5 | M5,5

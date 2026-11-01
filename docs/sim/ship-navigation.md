@@ -44,7 +44,7 @@ callers can observe it. This keeps the command a pure state write.
 
 Accepted command: stop semantics first (ORIGINAL slot `+0xdc` then `+0xe4`): clear the order and the node list, set the
 plan end to the current position, trim the in-flight segment to the remainder past whole lattice steps (modulo one tile,
-modulo the diagonal step length for an odd facing), then record order id 1, phase 0, target `(x, y)`.
+modulo the diagonal step length for an odd facing), then record the order (12.1: a world `order_id`, phase 0, target `(x, y)`).
 
 ## 3. Pick-up, planning and state machine
 
@@ -56,9 +56,11 @@ IDLE --order recorded--> (current segment ends, node list empty, order pending)
    -> SEGMENT-START: d>=3 TURN phases (facing +-1 immediately, f0/0.01 units each), then MOVE chunks <= 1 tile
    -> MOVING <-> SEGMENT-END (collision hook = density only here) -> next node ... -> list empty -> IDLE (arrived)
 ```
-Pick-up latency (ORIGINAL): the order is picked up only when a segment ends and no node remains; an idle ship has a
-1.0-tile idle segment at speed 0.01 (500 ticks), so latency up to one second plus the trimmed remainder is original
-behaviour and is kept (faithful default). A rules switch `ship_pickup_immediate` (default off, QoL, outside the faithful
+Pick-up latency (ORIGINAL): the order is picked up only when a segment ends and no node remains. The idle hook's segment (remaining 1.0,
+speed 0.01 = 500 ticks) belongs to a ship that has **no** order; accepting an order first performs the stop semantics (12.1), which gives a
+non-moving ship the short segment `remaining 0.01, speed 0.01` (1 stepper unit = 5 ticks), so pick-up follows within about one visit (a
+ship in a turn phase finishes it first; a moving ship sails its trimmed remainder, less than one lattice step). This is the original
+behaviour and is kept. A rules switch `ship_pickup_immediate` (default off, QoL, outside the faithful
 core) may plan at command time later; it is not part of this slice.
 
 The route is computed from the **start tile centre** (`ftol(x) + 0.5`), but the plan commit writes **no position**: the nodes
@@ -82,7 +84,8 @@ or config, never constants in `sim`; the alternate-type test uses a different sh
 
 **Per-ship motion state** (new persisted state, section 8): `segment {vx, vy (Q0.32 signed), length, speed, kind}`,
 `remaining`, node list, order record `{id, phase, flag, flags, target}`, `factor_percent` (V), `chunk_factor`, `last`
-(u16), position accumulator **`pos_fine` in 2^-32 tile (i64 per axis)**, facing `dir16`. **Seam fit (checked against `scheduler.cpp`):** the existing figure-tick seam dispatches the whole registry visit and writes only
+(u16), position accumulator **`pos_fine` in 2^-32 tile (i64 per axis)**, facing `dir16`. **Superseded by 12.4:** the "ticks scaled by 5", `distance_x5`, "floored at 2^-32 tick" and "error below 2^-32 per boundary" statements of
+this paragraph; the numeric scales are those of 12.4. **Seam fit (checked against `scheduler.cpp`):** the existing figure-tick seam dispatches the whole registry visit and writes only
 its own figure and its `Effects`; the ship mover must therefore be installed as a **dispatch by figure kind** (navigating kinds go
 to the mover, all others to the existing body, so carts and carriers are unaffected), and crew slaving and the density read need
 a named `Effects` operation and a read-only registry view. `last` is the ship's own stepper stamp (`+0x42`) and is **separate**
@@ -205,8 +208,9 @@ and goldens move with the version; the independent Python reference moves with t
 3. x87 precision (CAP-2) and the registry cursor at load (CAP-3) are runtime-only. The coarse-map build (per island at placement, before the
    first tick) and the vertex-grid padding (zero beyond `W x H`, identical to the repo's `VertexGrid`/`kBoundaryVertexHeight = 0`, so the
    existing terrain view is reused for the land rule) are settled statically. Remaining static items that do not block this contract: the
-   object-top contribution to block extrema and tile type 9 (a building footprint becomes blocked; the exact object rule is read when the
-   coast data is ported), the setters of state bits `0x2000`/`0x4000`, the UI pick provider and group body.
+   object-top contribution to block extrema (12.6: anchor tile only, `ftol(f / 0.04f)`, stored `>> 1`; the builder rule that creates shore type 3 from
+   these records was not re-executed, so the coast-data port must read `0x100aae00` pass 2 before shore classification is implemented: a named
+   dependency of package C), the setters of state bits `0x2000`/`0x4000`, the UI pick provider and group body.
 4. A candidate whose witness relies on a one-tile channel or on shore tiles needs re-evaluation under the original land
    rule before selection (evidence 11); this packet selects none.
 
@@ -228,7 +232,7 @@ and goldens move with the version; the independent Python reference moves with t
   record and the node list; sets the plan end to the current position; for a ship in a moving segment trims `remaining` by the whole lattice
   steps it contains (`remaining -= trunc(remaining) * 1.0` for an even facing; `remaining -= trunc(remaining / 1.4142135) * 1.4142135` for an odd
   facing: **the remainder past the whole steps is kept**, which the ship still sails, then it idles); resets the speed-factor multiplier to 1.0;
-  a ship not in a moving segment gets the idle segment (`remaining 0.01`, `speed 0.01`). `StopCmd` additionally emits `Stopped{ship, order_id}`
+  a ship not in a moving segment gets the idle segment (`remaining 0.01`, `speed 0.01`, q32 `42949672` for both), **except** a non-moving ship whose state bit `0x200` is set (a turn segment in progress): it gets only the multiplier reset and finishes its turn segment first (`0x1004341e`). The odd-facing trim uses `n = trunc(rem * c)` and `rem -= n * (1/c)` in the original (x87, `1/c = 1.41421357`); the sim uses `rem -= n * L_d` with the f32 length constant `L_d` (3.6e-8 tile per step apart: ADAPTATION). `StopCmd` additionally emits `Stopped{ship, order_id}`
   when an order was cancelled. A superseded `MoveCmd` order is simply replaced; no event.
 - **Outcome vocabulary (stable identity):** every routed order ends in exactly one of `RouteFailed{ship, order_id, reason}` with reason
   `Unreachable` (engine status -2), `BudgetExceeded` (a work or memory limit of 12.3), `OutsideWindow` (the target lies outside the start-centred
@@ -248,8 +252,9 @@ and goldens move with the version; the independent Python reference moves with t
 
 ### 12.2 Fair bounded planning admission (replaces the quota of section 6(a))
 State (persisted and hashed, 12.5): world `next_ticket` (u64); per navigating ship an optional `ticket` (u64). Rule:
-1. A ticket is issued by an accepted `MoveCmd` only when the ship has none; **replacement keeps it**; a served order, `StopCmd`, ship removal or
-   a refused plan (`RouteFailed`) removes it.
+1. A ticket is issued by an accepted `MoveCmd` only when the ship has none; **replacement keeps it**; a served order, `StopCmd`, ship removal, a refused
+   plan (`RouteFailed`) or **the ship entering a blocked state** (`state_word & move_blocked_mask`, checked at its visit: the order and ticket are dropped with
+   `RouteFailed{ShipBlocked}`) removes it. A ticket therefore never outlives its ship's ability to reach the pick-up point, so no ticket can reserve quota forever.
 2. Per Advance `quota` plans may start (`route_plans_per_advance`, default 4). During the registry visit phase, when a ship is visited, its
    order is pending and its pick-up point is reached (segment ended, node list empty), it is **admitted iff the number of pending tickets
    older than its own is smaller than the quota left in this Advance**; admitting consumes one unit of quota and the ticket. Otherwise the
@@ -260,9 +265,13 @@ State (persisted and hashed, 12.5): world `next_ticket` (u64); per navigating sh
 4. **Finite service bound (proof to be mechanised in E):** let a ship hold the oldest pending ticket. Every ship visited earlier in the same
    Advance was admitted only if quota remained for all older tickets, so quota is left when the oldest ticket's ship is visited and it is
    admitted at its next visit after it reaches its pick-up point. A ticket with `p` older pending tickets is therefore served within
-   `(p + 1) * C + R` Advances where `C = ceil(n / k)` is the registry pass length (`n` slots, `k = clamp(floor(dtick * n / 50), 1, n)` visited per
-   Advance) and `R` is the time to reach the pick-up point (at most one chunk of 1.0 tile, or one idle cycle). `tools/ship_nav_ref.py
-   admission-check` models the real cursor/cadence (100 slots, 5-tick Advances, ships in slots 1..5) with hand-derived counts: the rejected
+   `(p + 1) * C + p * R` Advances where `C = ceil(n / k)` is the registry pass length (`n` slots, `k = clamp(floor(dtick * n / 50), 1, n)` visited per
+   Advance, slots visited in **cursor order with wrap-around**) and `R` is the per-ship time to reach the pick-up point after acceptance: a trimmed
+   remainder shorter than one lattice step (`L_d / speed`, e.g. 39 stepper units = 196 ticks for a 1502 diagonal) or the 1-unit stop segment (5 ticks),
+   i.e. at most `ceil(L_d / (speed * 5))` Advances per ship; it is a **per-type finite number**, not a constant, and older not-yet-ready tickets keep
+   reserving quota for the whole of their `R`. `tools/ship_nav_ref.py
+   admission-check` models the real cursor/cadence (100 slots, 5-tick Advances, ships in slots 1..5) with hand-derived counts and a readiness model (a ticket becomes servable `ready_delay` Advances after acceptance; a blocked ship drops its ticket; the
+   mutant that keeps a blocked ship's ticket starves everybody behind it): the rejected
    first-come rule serves `100 100 100 100 0` over 1000 Advances, the fair rule `100 100 100 50 50` with no ticket waiting more than 20
    Advances, a property check over random replacement/cancellation seeds, and a negative control (renewing the ticket on replacement starves
    the youngest ship).
@@ -276,17 +285,18 @@ C from measured representative small and real-candidate queries with a margin (n
 a larger default is the remedy, never a partial route. Original window behaviour is the default of a configuration value, not a fixed array.
 
 ### 12.4 Numeric scales, residues, rounding and seals (replaces the sketch of section 4)
-- **Lengths and speeds** are exact integers in `q32` = 2^-32 tile: an axis step is `2^32`; a diagonal step length is `0x3FB504F3` = `11863283 * 2^9`
-  (exact); a diagonal axis component is `c = 11863283 / 2^24` (exact rational of the original f32 `0x3F3504F3`); the diagonal displacement per
-  step is therefore `c * L_d = 1.00000012` tile, exactly as the original's constants give (not forced to 1.0).
+- **Lengths and speeds** are exact integers in `q32` = 2^-32 tile: an axis step is `2^32`; a diagonal step length is `L_d = 11863283 * 2^9` q32 (= 6074000896, **above 2^32: lengths are u64**; the exact rational of the original f32 `0x3FB504F3`, 1.41421354; the integer `0x3FB504F3` itself is just the f32 bit pattern); a diagonal axis component is `c = 11863283 / 2^24` (exact rational of the original f32 `0x3F3504F3`); the diagonal displacement per
+  step is therefore `2 * c^2 = 0.9999999658` tile per step (a shortfall of 3.4e-8 per step), exactly as the original's constants give (not forced to 1.0).
+  A run's node length is the exact integer `steps * L_d` (the original rounds `f32(1.4142135 * steps)`; the difference is at most 2^-20 relative: ADAPTATION).
 - **Type speed** `speed_q32 = round_nearest_even(f32_value * 2^32)`; **seal domain** `0 < speed_q32 < 2^28` (about 0.0625 tile per stepper unit;
   HEAD values are <= 0.05), `turn_step_q32` (HEAD f0) in `(0, 2^32)`, `V` in `1..100` (percent). Absolute conversion error <= 2^-33 tile per unit.
 - **Time** is the integer tick difference `d = u16(now - last)`. One tick = 1/5 stepper unit; no division by 5 is ever made: the budget of a
   visit is `B = d * speed_q32 * V` in the scale `q32 / 500` (value < 2^16 * 2^28 * 2^7 = 2^51, u64). Remaining length is held as `rem_q32 * 500`
   (<= 2^32 * 500 per chunk, u64). A step uses `P = min(B, rem * 500)`; when the segment finishes, the unused budget `B - P` converts to the next
-  segment's scale as `floor((B - P) * (s_new * V_new) / (s_old * V_old))` (one floor; none when the product is unchanged; error < 1/500 q32).
-  Turn segments use speed `0.01f` (q32 `42949673`) with no `V`; a zero-length segment finishes immediately and cannot loop (a progress guard
+  segment's scale as `floor((B - P) * (s_new * V_new) / (s_old * V_old))` (one floor; none when the product is unchanged; error < 1/500 q32). The product reaches `2^51 * 2^35 = 2^86`: it needs the same portable 128-bit helper and a **128 / 64 division** (specified and unit-tested alongside it).
+  Turn segments (and the stop's idle segment) use speed `0.01f` = q32 **`42949672`** (exactly; `f32(0.01) * 2^32` is an integer, not `42949673`) and `V = 100` in the budget formula; a turn segment's length is `turn_step_q32`, the idle segment's remaining is the **same `42949672`** (so a 5-tick visit at V = 100 finishes it: budget `5 * 42949672 * 100`, remaining `42949672 * 500`); a zero-length segment finishes immediately and cannot loop (a progress guard
   limits consecutive zero-length segments per visit to the node count).
+- **Residue sign rule:** a diagonal axis displacement is the signed quantity `s * floor((P * 11863283 + res24_in) / 2^24)` where the magnitude is accumulated per axis with its own non-negative `res24` and **the sign is applied to the whole-unit part after the floor**: for a west or north segment the residue accumulates the same non-negative fraction (a half-unit of magnitude per step), the displacement subtracts the floored magnitude, so the residue never goes negative and is reset to 0 when a segment of the opposite sign starts on that axis (the dropped fraction is < 2^-32 tile: one more rounding, ADAPTATION, listed with the others).
 - **Position:** per axis `pos_u` (i64) = position * 2^32 * 500 and a residue `res24` (u32 < 2^24) carrying the diagonal product: axis step
   displacement `P`; diagonal axis displacement `floor(P * 11863283 / 2^24)` with the remainder added to `res24` (a carry into `pos_u` when
   `res24 >= 2^24`). The product `P * 11863283` is < 2^75: a **portable 64 x 64 -> 128 helper** (no `__int128`) is required and its signed and
@@ -312,3 +322,15 @@ against `offer_cases.txt` (its `pops` are the emulation's, an input to the indep
 UNKNOWN, CAP-2, so the 29 types that differ at 24-bit precision are recorded) and no class test: **not every footprint is land, and a footprint is
 not exempt from blocking**. The coast-data rebuild trigger is a data flag on building types (`coast_rebuild`), default from the original type
 flag bits `0x2000`/`0x4000` and the removal group `0x141..0x160`; shore cost type 3 uses the validated class cost table (class 0: 50/69).
+
+### 12.7 Plan nodes from the route runs (B0, ORIGINAL; executed on the real bytes, 300 random plans and all 128 facing x dir8 combinations)
+The route engine's runs `(dir8, steps <= 10)` become, in `0x100a8c50`: **turn nodes only before the first run, then exactly one movement node per run**
+(runs are not merged; heading changes between runs are the stepper's own turn phases). With `want = 2 * dir8(run 0)`, `diff = (want - facing) & 15` mapped to
+`-7..+8` (8 stays +8): `|diff| <= 2` gives no turn node, otherwise `|diff|` turn nodes with facings `f, f+s, ..., f+(|diff|-1)s` (mod 16), `s = +1` if `diff > 0`
+(so the **planner turns a 180 degree reversal in the + direction** with 8 nodes, 440 ticks for a 1502, where the stepper's own phase would turn -1 in 330). A turn
+node is `velocity 0, length = turn_step, speed 0.01, kind 3` (facing set at its start, then it lasts `f0 / 0.01` units = 55 ticks for a 1502); a movement node is
+`velocity = dir * speed` (diagonal `c * speed` per axis), `length = steps` (axis) or `steps * L_d` (diagonal), `speed`. The commit seeds the first node as the current
+segment with `remaining 0`, sets the facing directly to `dir16` of the first **movement** vector (a turn-first plan: transient 4, DERIVED) and writes no position.
+Between runs a 90 degree change costs 2 stepper phases (110 ticks, 1502), 135 degrees 4 phases, 180 degrees 6 phases (the `d >= 3` rule of 7.3). The node
+builder is `plan_nodes` in `tools/ship_nav_ref.py` with `plannodes` vectors (closed form, hand-derived, equal to the emulation). The order record's state machine
+(`phase` 0 -> 1 at pick-up; success keeps `1/1`, arrival clears; status 2 clears next callback without moving; failure clears at once) is the persisted `Order` of 12.5.

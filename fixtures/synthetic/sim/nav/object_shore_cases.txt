@@ -15,6 +15,11 @@ objtile -48 49 | free
 objtile 100 156 | free
 objtile 50 0 | blocked
 objtile 19 1 | blocked
+# objfoot <h> <base> <w> <d> | blocked tile count : a w x d footprint of independent object tiles (each tile tested alone): all blocked or none.
+objfoot 19 0 3 3 | 0
+objfoot 20 0 3 3 | 9
+objfoot 3 16 2 2 | 0
+objfoot 4 16 2 4 | 8
 # shore <name> | land <rects> | band <cx,cz> ... | start x z | goal x z | cost class | no_band: status runs | band: status runs
 #   Band cells (type 3: cost 50/69 instead of 10/13 at the COARSE level) injected into the coarse export of the emulated engine; the builder rule that creates type 3
 #   (cells with a neighbour whose height range straddles level 32) was not re-executed. Consumed by the C++ route port; ship_nav_ref.py shore-check only walks the runs (legality, endpoint).

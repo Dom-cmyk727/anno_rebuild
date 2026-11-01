@@ -378,8 +378,7 @@ of the records): the stamp point is **truncated** (`ftol`, no 0.5 offset: 40.7 -
 about 7400 tiles). **Stamps change neither the coarse nor the fine costs**: both callers of `0x1000f120` are inside `Offer` (`0x1000f260`),
 so congestion only changes which goal-disc candidate becomes the end node. **Goal callback and Offer, pinned (MAP-NAV-2 A3; reproduced by an independent Python transcription against the real functions
 under emulation: about 1200 randomised cases, 0 mismatches in the winner tile and in the best score):** the callback computes
-`score = 2304 - ftol(64 * d^2)` (dx stored as f32) and offers a candidate only if `score > best` (strict; `best` starts at 0, so
-d >= 6.0 and equal scores are never offered). `Offer(rec, 1)` (`0x1000f260`, `ret 8`; the `arg >= 4` branch is dead for ships) returns 1
+`score = 2304 - ftol(64 * d^2)` (dx stored as f32) and offers a candidate only if `score > best` (strict; `best` starts at 0, so d >= 6.0 is never offered; a candidate whose score equals the best of an **uncongested** stored candidate is not offered, while, as long as only congested candidates are stored, `best` stays 0 and equal-score congested candidates are offered). `Offer(rec, 1)` (`0x1000f260`, `ret 8`; the `arg >= 4` branch is dead for ships) returns 1
 only for an uncongested candidate (density 0), stores it and the callback then **raises `best`**, stopping the search when
 `score >= 2304` (d < 0.125). A congested candidate returns 0: it is stored if nothing is stored yet or its density is strictly lower than the
 stored node's (density of the stored node recomputed), and **never raises `best`**. Consequences: free beats congested at equal score in

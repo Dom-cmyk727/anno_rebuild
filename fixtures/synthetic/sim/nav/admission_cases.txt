@@ -1,6 +1,6 @@
 # Planning-admission cases (MAP-NAV-2 A2). Registry model: n slots, dtick ticks per Advance, k = clamp(floor(dtick*n/50), 1, n)
-# slots visited per Advance from a circular cursor (cursor 0 at start), visited in ascending slot order; ships in the listed slots each have
-# one pending order at start.   Format: admission <rule> <n> <dtick> <slots> <quota> <advances> <adversary> | counts <served per ship> | bound <seed> within|exceeds
+# slots visited per Advance from a circular cursor (cursor 0 at start), visited IN CURSOR ORDER (with wrap-around); ships in the listed slots each have
+# one pending order at start.   Format: admission <rule> <n> <dtick> <slots> <quota> <advances> <adversary> [ready_delay Advances] | counts <served per ship> | bound <seed> within|exceeds
 # HAND DERIVATION (n = 100, dtick = 5: k = 10, so the cursor window 0..9 covers slots 1..5 only every 10th Advance, all five in the SAME Advance, order 1,2,3,4,5):
 #   quota_first (the rejected rule), quota 4: slots 1..4 are served in every one of the 100 cycles, slot 5 never -> 100 100 100 100 0.
 #   fifo_reserve, adversary replace_served (a served ship is re-commanded at once with a new youngest ticket): cycle 0 serves 1..4 and defers 5; cycle 1: ship 1..3 are
@@ -18,3 +18,10 @@ admission quota_first 100 5 1,2,3,4,5 4 2000 replace_served | bound 1 exceeds
 # the mutant that renews the ticket on replacement starves the youngest ship (negative control).
 admission fifo_reserve 100 5 1,2,3,4,5 4 2000 replace_all | bound 5 within
 admission fifo_renew 100 5 1,2,3,4,5 4 2000 replace_all | bound 5 exceeds
+# Readiness: a ship reaches its pick-up point `ready_delay` Advances after its order (a trimmed segment remainder or an idle segment): older not-yet-ready
+# tickets keep reserving quota, so the bound grows by ships * ready_delay.
+admission fifo_reserve 100 5 1,2,3,4,5 1 3000 random 6 | bound 3 within
+admission fifo_reserve 100 5 1,2,3,4,5,6 2 3000 random 11 | bound 8 within
+# A blocked ship (state mask) drops its order and ticket at its visit; the mutant that keeps the ticket starves everybody behind it (quota 1: slot 1 holds the oldest ticket forever).
+admission fifo_reserve 100 5 1,2,3,4,5 1 1000 block_oldest | bound 1 within
+admission fifo_keep_blocked 100 5 1,2,3,4,5 1 1000 block_oldest | bound 1 exceeds

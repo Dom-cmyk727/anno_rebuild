@@ -181,7 +181,8 @@ formats::Result<fs::path, std::string> resolve_content_path(const fs::path& cont
 formats::Result<sim::World, std::string>
 load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
                 std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config,
-                const sim::Rules& rules, const sim::Executor& ex) {
+                const sim::Rules& rules_in, const sim::Executor& ex,
+                const ShipStartPolicy& policy) {
     if (!types) {
         return std::string("registry: is null");
     }
@@ -405,6 +406,33 @@ load_ship_start(const sm::Manifest& manifest, const fs::path& game_dir,
         }
     }
 
+    // The gameplay policy (owner decision C5): shared visibility among the participating seats.
+    // Participants are data: the default is every seat created above; a given list must name
+    // seats of this start. `rules_in` already holding groups cannot be combined with a policy.
+    sim::Rules rules = rules_in;
+    {
+        std::vector<std::uint32_t> group;
+        if (policy.shared_visibility.has_value()) {
+            if (!rules.shared_visibility.empty()) {
+                return std::string("policy: shared visibility is given both in the rules and in "
+                                   "the ship-start policy");
+            }
+            group = *policy.shared_visibility;
+            for (const std::uint32_t seat : group) {
+                if (seat >= out.spec.players.size()) {
+                    return "policy.shared_visibility: " + std::to_string(seat) +
+                           " is not a seat of this start";
+                }
+            }
+        } else if (rules.shared_visibility.empty()) {
+            for (const sim::ScenarioSpec::PlayerSpec& p : out.spec.players) {
+                group.push_back(p.id.v);
+            }
+        }
+        if (!group.empty()) {
+            rules.shared_visibility.push_back(std::move(group));
+        }
+    }
     auto world = sim::World::create(out.spec, std::move(types), config, rules, {}, ex);
     if (!world) {
         return world.error();
@@ -419,8 +447,9 @@ std::optional<std::string> install_ship_start(sim::World& target, const sm::Mani
                                               const fs::path& game_dir,
                                               std::shared_ptr<const sim::TypeRegistry> types,
                                               const sim::SimConfig& config, const sim::Rules& rules,
-                                              const sim::Executor& ex) {
-    auto built = load_ship_start(manifest, game_dir, std::move(types), config, rules, ex);
+                                              const sim::Executor& ex,
+                                              const ShipStartPolicy& policy) {
+    auto built = load_ship_start(manifest, game_dir, std::move(types), config, rules, ex, policy);
     if (!built) {
         return built.error();
     }

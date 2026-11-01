@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <anno/formats/result.hpp>
 #include <anno/formats/ship_manifest.hpp>
@@ -54,6 +55,18 @@ namespace anno::sim_load {
 [[nodiscard]] formats::Result<std::filesystem::path, std::string>
 resolve_content_path(const std::filesystem::path& content_root, const std::string& relative);
 
+/// The gameplay setup of the five-ship start that is NOT candidate geometry (owner decision C5,
+/// docs/sim/shared-visibility.md): which seats share visibility. The start is at peace without
+/// alliances whatever the policy (the loader creates no DIPL rows). The participants are explicit
+/// data; the default is every seat the loader creates. The manifest content hash describes the
+/// geometry only; this policy lands in Rules::shared_visibility and so in the world's rules
+/// digest, state hash and replay header.
+struct ShipStartPolicy {
+    /// nullopt = the owner default (all seats, one group). An empty vector = no sharing. Otherwise
+    /// the seats (ascending, unique, each a seat of the start) that form the one group.
+    std::optional<std::vector<std::uint32_t>> shared_visibility;
+};
+
 /// Builds the world. `game_dir` holds the manifest's `base` scenario and Scenes/Islands.
 /// The manifest must be the supported baseline (ship_manifest::baseline_ok). The world has
 /// developer_start semantics OFF: no Kontor, no city, no owned tile.
@@ -61,16 +74,16 @@ resolve_content_path(const std::filesystem::path& content_root, const std::strin
 load_ship_start(const formats::ship_manifest::Manifest& manifest,
                 const std::filesystem::path& game_dir,
                 std::shared_ptr<const sim::TypeRegistry> types, const sim::SimConfig& config = {},
-                const sim::Rules& rules = {}, const sim::Executor& ex = sim::serial_executor());
+                const sim::Rules& rules = {}, const sim::Executor& ex = sim::serial_executor(),
+                const ShipStartPolicy& policy = {});
 
 /// load_ship_start into `target`: `target` is assigned only when the whole load succeeded; on
 /// an error it is untouched. Returns the error, or nullopt.
-[[nodiscard]] std::optional<std::string>
-install_ship_start(sim::World& target, const formats::ship_manifest::Manifest& manifest,
-                   const std::filesystem::path& game_dir,
-                   std::shared_ptr<const sim::TypeRegistry> types,
-                   const sim::SimConfig& config = {}, const sim::Rules& rules = {},
-                   const sim::Executor& ex = sim::serial_executor());
+[[nodiscard]] std::optional<std::string> install_ship_start(
+    sim::World& target, const formats::ship_manifest::Manifest& manifest,
+    const std::filesystem::path& game_dir, std::shared_ptr<const sim::TypeRegistry> types,
+    const sim::SimConfig& config = {}, const sim::Rules& rules = {},
+    const sim::Executor& ex = sim::serial_executor(), const ShipStartPolicy& policy = {});
 
 /// The baseline expectation on a loaded world, stricter than the generic graph rules: five
 /// seats, ids 3 * seat + 1 .. 3 * seat + 3 = ship 1502, scout 717, donkey 718 of that owner;

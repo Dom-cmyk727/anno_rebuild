@@ -83,6 +83,8 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "LinkTreasuresCapped";
     case ScenarioWarningKind::LinkTemplatePlayers:
         return "LinkTemplatePlayers";
+    case ScenarioWarningKind::PlayerDiscoveryBitsDropped:
+        return "PlayerDiscoveryBitsDropped";
     case ScenarioWarningKind::MarketNumberNotKept:
         return "MarketNumberNotKept";
     case ScenarioWarningKind::BuildGoodsOutOfRange:
@@ -126,6 +128,7 @@ std::vector<ScenarioWarningKind> all_warning_kinds() {
             ScenarioWarningKind::LinkTreasureUnplaced,
             ScenarioWarningKind::LinkTreasuresCapped,
             ScenarioWarningKind::LinkTemplatePlayers,
+            ScenarioWarningKind::PlayerDiscoveryBitsDropped,
             ScenarioWarningKind::MarketNumberNotKept,
             ScenarioWarningKind::BuildGoodsOutOfRange,
             ScenarioWarningKind::TradeEntryBeyondSlots,
@@ -1421,7 +1424,8 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         return "players: " + players.error();
     }
     const std::map<std::uint32_t, std::optional<GoodsId>> goods = goods_remap(scene, types);
-    std::map<std::uint32_t, std::size_t> by_index; // SPIELER index -> spec.players
+    std::map<std::uint32_t, std::size_t> by_index;      // SPIELER index -> spec.players
+    std::map<std::uint32_t, std::uint32_t> disco_masks; // SPIELER index -> DISCO dword
     std::size_t block_no = 0;
     for (const sze::Player& pl : players.value()) {
         const std::string path = "players[" + std::to_string(block_no++) + "]";
@@ -1478,6 +1482,18 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                             }
                         }
                     }
+                } else if (r.name == "DISCO") {
+                    // D AnnoWelt 0x1001d61d: the record is read into [player+0xac] = player
+                    // property 7 (getter 0x1001bea0 / 0x1001bede), bit i = player i; the saver
+                    // writes 4 bytes (0x1001f1e3). All 373 shipped records have length 4. Strict:
+                    // another length refuses the load (the original copies the chunk length
+                    // unclamped). The bits are applied after all players are known (disco_masks
+                    // below).
+                    if (r.payload.size() != 4) {
+                        return path + ".DISCO: " + std::to_string(r.payload.size()) +
+                               " bytes, the record is a 4-byte player set";
+                    }
+                    disco_masks[pl.index] = le32(r.payload.data());
                 } else if (r.name == "DIPL") {
                     // D AnnoWelt 0x1001d758: each sub-record is one dword, byte 0 the OTHER player
                     // and byte 1 the value; TRADE, MILIT and WAR fill the three relation bytes of
@@ -1594,6 +1610,34 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 return *e;
             }
             is->cities.push_back(std::move(city));
+        }
+    }
+
+    // The players' DISCO sets (property 7): the bits of players that exist in the scenario and
+    // lie below player_slots are restored; the others are dropped with one warning. The
+    // registration and recount below then add to the restored set.
+    for (const auto& [index, mask] : disco_masks) {
+        ScenarioSpec::PlayerSpec& ps = spec.players[by_index.at(index)];
+        for (std::uint32_t bit = 0; bit < 32; ++bit) {
+            if ((mask >> bit & 1U) == 0) {
+                continue;
+            }
+            const auto at = std::find_if(
+                spec.players.begin(), spec.players.end(),
+                [&](const ScenarioSpec::PlayerSpec& o) { return o.id == PlayerId{bit}; });
+            if (bit < config.player_slots && at != spec.players.end()) {
+                if (!std::binary_search(ps.discovery.begin(), ps.discovery.end(), PlayerId{bit})) {
+                    ps.discovery.insert(
+                        std::lower_bound(ps.discovery.begin(), ps.discovery.end(), PlayerId{bit}),
+                        PlayerId{bit});
+                }
+            } else {
+                warn.once(ScenarioWarningKind::PlayerDiscoveryBitsDropped, "players", "DISCO",
+                          "players[" + std::to_string(index) + "].DISCO", "DISCO", 0,
+                          "DISCO names players that are not in the scenario or not below "
+                          "player_slots (e.g. the shipped 0xcdcdcdcd fill); those bits are not "
+                          "kept");
+            }
         }
     }
 

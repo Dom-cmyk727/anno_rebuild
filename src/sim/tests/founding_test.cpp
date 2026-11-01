@@ -1779,3 +1779,238 @@ TEST_CASE("founding C: kind-11 humans found with kind 8's effects, a wrapped num
         rejected(w, control_command(), sim::Reject::Unsupported);
     }
 }
+
+// ---- MAP-FOUND-3 package D: the shared-visibility policy (docs/sim/shared-visibility.md) --------
+
+namespace {
+
+std::vector<sim::PlayerId> pids(std::initializer_list<std::uint32_t> v) {
+    std::vector<sim::PlayerId> out;
+    for (const std::uint32_t i : v) {
+        out.push_back(sim::PlayerId{i});
+    }
+    return out;
+}
+
+/// Two cities of player 2 (non-member) on single tiles (50, 34) and (58, 34), masks {2}.
+Setup visit_setup(std::vector<std::vector<std::uint32_t>> groups) {
+    Setup s = tall_setup(62);
+    s.rules.shared_visibility = std::move(groups);
+    s.spec.islands[0].owner_runs = {{15, 34U * 120U + 50U}, {3, 1}, {15, 7}, {4, 1}};
+    for (const std::uint32_t n : {3U, 4U}) {
+        sim::ScenarioSpec::CitySpec c = syn::plain_city(n, 2);
+        c.player_mask = pids({2});
+        s.spec.islands[0].cities.push_back(c);
+    }
+    s.spec.islands[0].players_present = pids({2});
+    return s;
+}
+
+} // namespace
+
+TEST_CASE("shared visibility: a member's founding reaches the group, nobody else, nothing more") {
+    const auto run = [](std::vector<std::vector<std::uint32_t>> groups) {
+        Setup s = base_setup();
+        s.rules.shared_visibility = std::move(groups);
+        s.spec.islands[0].ore_objects = {ore_at(44, 25), ore_at(100, 150) /* out of reach */};
+        sim::World w = make(s);
+        REQUIRE(w.check_invariants().empty());
+        const std::uint64_t cursor = w.rng().cursor();
+        REQUIRE(w.apply(control_command(0)).ok());
+        CHECK(w.rng().cursor() == cursor + 1); // the one name draw, the policy draws nothing
+        return w;
+    };
+    const sim::World off = run({});
+    const sim::World on = run({{0, 1}});
+    // Sharing off: exactly the original's founder-only state.
+    CHECK(isl(off).cities[0]->player_mask == pids({0}));
+    CHECK(isl(off).players_present == pids({0}));
+    CHECK(isl(off).ore_objects[0].discovered == pids({0}));
+    CHECK(off.players().find(sim::PlayerId{1})->discovery.empty());
+    // Sharing on, group {0, 1}: the new city, the island, the ore in reach and the contact reach
+    // player 1; player 2 (existing, not a member) gets nothing; the ore out of reach stays unknown.
+    CHECK(isl(on).cities[0]->player_mask == pids({0, 1}));
+    CHECK(isl(on).players_present == pids({0, 1}));
+    CHECK(isl(on).ore_objects[0].discovered == pids({0, 1}));
+    CHECK(isl(on).ore_objects[1].discovered.empty());
+    CHECK(on.players().find(sim::PlayerId{0})->discovery == pids({0}));
+    CHECK(on.players().find(sim::PlayerId{1})->discovery == pids({0}));
+    CHECK(on.players().find(sim::PlayerId{2})->discovery.empty());
+    // Not a right, not a relation: the territory, the money and every relation row are exactly
+    // the sharing-off world's.
+    for (std::uint64_t i = 0; i < isl(on).tiles.tile_count(); ++i) {
+        REQUIRE(isl(on).tiles.owner(i) == isl(off).tiles.owner(i));
+    }
+    for (std::uint32_t p = 0; p < 3; ++p) {
+        CHECK(on.players().find(sim::PlayerId{p})->money ==
+              off.players().find(sim::PlayerId{p})->money);
+        CHECK(on.players().find(sim::PlayerId{p})->relations.empty());
+    }
+    // The nearby-figure veto is the policy-independent one: a rival ship in the way is refused
+    // the same with and without the policy (member 1's ship near member 0's site, and the
+    // outsider's).
+    for (const std::uint32_t rival : {1U, 2U}) {
+        for (const bool shared : {false, true}) {
+            Setup s = base_setup();
+            s.rules.shared_visibility = shared ? std::vector<std::vector<std::uint32_t>>{{0, 1}}
+                                               : std::vector<std::vector<std::uint32_t>>{};
+            s.spec.figures.push_back(soldier_at(rival, 51.5, 31.5));
+            sim::World w = make(s);
+            rejected(w, control_command(0), sim::Reject::FigureInTheWay);
+        }
+    }
+}
+
+TEST_CASE("shared visibility: the reveal's single visit, the early-out and Q's own founding") {
+    // Player 2 (a non-member) owns cities 3 and 4. Without sharing, player 0 visits city 3 and then
+    // player 1 visits city 3 as well (the lowest city lacking it); with the group {0, 1} city 3
+    // already holds player 1 after player 0's founding, so player 1's visit reaches city 4: the
+    // group reveals faster than one player (docs/sim/shared-visibility.md 2, rule d).
+    for (const bool shared : {false, true}) {
+        INFO(std::string(shared ? "group {0,1}" : "sharing off"));
+        sim::World w = make(visit_setup(shared ? std::vector<std::vector<std::uint32_t>>{{0, 1}}
+                                               : std::vector<std::vector<std::uint32_t>>{}));
+        REQUIRE(w.check_invariants().empty());
+        REQUIRE(w.apply(control_command(0)).ok());
+        CHECK(isl(w).cities[3]->player_mask == (shared ? pids({0, 1, 2}) : pids({0, 2})));
+        CHECK(isl(w).cities[4]->player_mask == pids({2}));
+        // Contact: the visit tells the founder (and the group) who owns city 3.
+        CHECK(w.players().find(sim::PlayerId{0})->discovery == pids({0, 2}));
+        CHECK(w.players().find(sim::PlayerId{1})->discovery == (shared ? pids({0, 2}) : pids({})));
+        // Player 1's own founding is legal exactly as without a policy (same site rules).
+        REQUIRE(w.apply(command_p1(62)).ok());
+        CHECK(isl(w).cities[3]->player_mask == pids({0, 1, 2}));
+        CHECK(isl(w).cities[4]->player_mask == (shared ? pids({0, 1, 2}) : pids({2})));
+        // The non-member never learns of the members through the policy.
+        CHECK(w.players().find(sim::PlayerId{2})->discovery == pids({2}));
+    }
+}
+
+TEST_CASE(
+    "shared visibility: groups are validated, peace is required, nothing leaks between groups") {
+    const auto create_error = [](Setup s) {
+        auto r = sim::World::create(s.spec, registry(), s.cfg, s.rules);
+        return r.ok() ? std::string() : r.error();
+    };
+    const auto has = [](const std::string& e, const char* part) {
+        return e.find(part) != std::string::npos;
+    };
+    // The valid control.
+    {
+        Setup s = base_setup();
+        s.rules.shared_visibility = {{0, 1}};
+        CHECK(create_error(s).empty());
+    }
+    // Structure (Rules::validate): short, unsorted, duplicated, overlapping groups.
+    for (const auto& [groups, part] :
+         std::vector<std::pair<std::vector<std::vector<std::uint32_t>>, const char*>>{
+             {{{0}}, "fewer than two members"},
+             {{{1, 0}}, "not ascending and unique"},
+             {{{0, 0}}, "not ascending and unique"},
+             {{{0, 1}, {1, 2}}, "more than one group"}}) {
+        Setup s = base_setup();
+        s.rules.shared_visibility = groups;
+        const std::string e = create_error(s);
+        CHECK_MESSAGE(has(e, part), e);
+        CHECK(has(e, "shared_visibility"));
+    }
+    // World (create): a member that is not a player, one beyond player_slots.
+    for (const std::uint32_t missing : {7U, 40U}) {
+        Setup s = base_setup();
+        s.rules.shared_visibility = {{0, missing}};
+        const std::string e = create_error(s);
+        CHECK_MESSAGE(has(e, ("player " + std::to_string(missing) + " is not a player").c_str()),
+                      e);
+    }
+    // Peace: every relation byte of every ordered pair must be zero; an explicit all-zero row and
+    // an absent row are both peace; the credit is ignored; towards a non-member anything goes.
+    const auto relation_world = [&](sim::Relation r, std::uint32_t owner = 0) {
+        Setup s = base_setup();
+        s.rules.shared_visibility = {{0, 1}};
+        s.spec.players[owner].relations = {r};
+        return create_error(s);
+    };
+    CHECK(relation_world(sim::Relation{sim::PlayerId{1}, 0, 0, 0, 0}).empty());
+    CHECK(relation_world(sim::Relation{sim::PlayerId{1}, 0, 0, 0, 500}).empty()); // credit only
+    CHECK(relation_world(sim::Relation{sim::PlayerId{2}, 3, 3, 3, 0}).empty());   // non-member
+    CHECK(has(relation_world(sim::Relation{sim::PlayerId{1}, 3, 0, 0, 0}), "TRADE is 3"));
+    CHECK(has(relation_world(sim::Relation{sim::PlayerId{1}, 0, 3, 0, 0}), "MILIT is 3"));
+    CHECK(has(relation_world(sim::Relation{sim::PlayerId{1}, 0, 0, 3, 0}), "WAR is 3"));
+    CHECK(
+        has(relation_world(sim::Relation{sim::PlayerId{0}, 0, 0, 1, 0}, 1), "WAR is 1")); // 1 -> 0
+    // A refused creation leaves nothing: two creations with the same invalid input give the same
+    // error and no world (World::create returns a Result).
+    // A save that names a missing member is refused on load (the world-level invariant).
+    {
+        Setup s = base_setup();
+        s.rules.shared_visibility = {{0, 1}};
+        sim::World w = make(s);
+        sim::WorldTestAccess::rules(w).shared_visibility = {{0, 9}};
+        auto loaded = sim::World::load(w.save(), registry(), {});
+        REQUIRE_FALSE(loaded.ok());
+        CHECK(has(loaded.error(), "player 9 is not a player"));
+        sim::WorldTestAccess::rules(w).shared_visibility = {{0, 1}};
+        CHECK(sim::World::load(w.save(), registry(), {}).ok()); // the control
+    }
+    // Two disjoint groups: nothing leaks between them; a member that is defeated still receives.
+    {
+        Setup s = tall_setup(62);
+        s.spec.players.push_back(sim::ScenarioSpec::PlayerSpec{});
+        s.spec.players.back().id = sim::PlayerId{3};
+        s.spec.players.back().kind = 8;
+        s.rules.shared_visibility = {{0, 1}, {2, 3}};
+        sim::World w = make(s);
+        sim::WorldTestAccess::players(w).slots[1]->state = sim::PlayerState::Defeated;
+        REQUIRE(w.apply(control_command(0)).ok());
+        CHECK(isl(w).cities[0]->player_mask == pids({0, 1}));
+        CHECK(isl(w).players_present == pids({0, 1}));
+        CHECK(w.players().find(sim::PlayerId{2})->discovery.empty());
+        CHECK(w.players().find(sim::PlayerId{3})->discovery.empty());
+        CHECK(w.players().find(sim::PlayerId{1})->discovery == pids({0}));
+    }
+}
+
+TEST_CASE(
+    "shared visibility: save/load, replay on 1, 2, 4 and 7 executor threads, refused founding") {
+    Setup s = visit_setup({{0, 1}});
+    sim::World w = make(s);
+    // A refused founding writes no mirror: the veto rejects, bytes and PRNG unchanged.
+    {
+        Setup bad = s;
+        bad.spec.figures.push_back(soldier_at(2, 51.5, 31.5));
+        sim::World blocked = make(bad);
+        rejected(blocked, control_command(0), sim::Reject::FigureInTheWay);
+        CHECK(isl(blocked).cities[3]->player_mask == pids({2}));
+    }
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    REQUIRE(rec.submit(control_command(0)).ok());
+    REQUIRE(rec.submit(command_p1(62)).ok());
+    rec.advance(500);
+    rec.checkpoint();
+    // Save and load keep the policy and the mirrored sets (same hash).
+    auto loaded = sim::World::load(w.save(), registry(), {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    CHECK(loaded.value().state_hash() == w.state_hash());
+    CHECK(loaded.value().rules().shared_visibility == s.rules.shared_visibility);
+    // Replay in a fresh world reproduces every checkpoint, whatever the thread count.
+    for (const unsigned threads : {1U, 2U, 4U, 7U}) {
+        island_test::ThreadExecutor ex(threads);
+        auto fresh = sim::World::create(s.spec, registry(), s.cfg, s.rules, {}, ex);
+        REQUIRE_MESSAGE(fresh.ok(), (fresh.ok() ? std::string() : fresh.error()));
+        auto outcome = sim::replay(fresh.value(), rec.log());
+        REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+        CHECK(outcome.value().reproduced());
+        CHECK(fresh.value().state_hash() == w.state_hash());
+    }
+    // A different participant set is a different world identity (rules digest and state hash), and
+    // a replay of this log on it is refused.
+    Setup other = s;
+    other.rules.shared_visibility = {{0, 2}};
+    sim::World ow = make(other);
+    CHECK(ow.rules().digest() != w.rules().digest());
+    CHECK(ow.state_hash() != make(s).state_hash());
+    auto refused = sim::replay(ow, rec.log());
+    CHECK((!refused.ok() || !refused.value().reproduced()));
+}

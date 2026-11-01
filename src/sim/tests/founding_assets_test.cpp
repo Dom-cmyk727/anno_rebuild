@@ -18,6 +18,9 @@
 
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/replay.hpp>
+#include <anno/sim/scenario.hpp>
+#include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/terrain_view.hpp>
 #include <anno/sim/world.hpp>
@@ -313,4 +316,291 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
         sim::find_figure(w.figures(), sim::FigureId{1})->pos;
     REQUIRE(w2.apply(command).ok());
     CHECK(w2.state_hash() == w.state_hash());
+}
+
+// ---- MAP-FOUND-3 package D on the real loader (docs/sim/shared-visibility.md) ------------------
+
+namespace {
+
+struct RealStart {
+    sm::Manifest manifest;
+    std::vector<std::uint8_t> manifest_bytes;
+    std::shared_ptr<const sim::TypeRegistry> types;
+    fs::path dir;
+    sim::Rules rules;
+};
+
+RealStart real_start(const fs::path& dir) {
+    RealStart r;
+    r.dir = dir;
+    r.types = original_types(dir);
+    const fs::path manifest_path = fs::path(ANNO_REPO_DIR) / "data" / "maps" / "candidates" /
+                                   "ship-start-v2" / "lan5-ship-a.json";
+    r.manifest_bytes = read_all(manifest_path);
+    auto parsed = sm::parse(r.manifest_bytes);
+    REQUIRE(parsed.ok());
+    r.manifest = std::move(parsed).value();
+    auto names = sl::load_city_names(dir);
+    REQUIRE(names.ok());
+    r.rules.city_names = names.value();
+    return r;
+}
+
+std::vector<sim::PlayerId> pid_set(std::initializer_list<std::uint32_t> v) {
+    std::vector<sim::PlayerId> out;
+    for (const std::uint32_t i : v) {
+        out.push_back(sim::PlayerId{i});
+    }
+    return out;
+}
+
+/// The seat's ship is placed beside `site` (the first offset that passes, tried on copies) and the
+/// founding command is returned; nullopt when no offset passes.
+std::optional<sim::Command> place_for_founding(sim::World& w, const Site& site,
+                                               std::uint32_t seat) {
+    sim::FoundCmd cmd;
+    cmd.ship = sim::FigureId{3ULL * seat + 1};
+    cmd.placement.type = sim::TypeId{1302};
+    cmd.placement.rotation = 0;
+    cmd.placement.x = site.click_x - 1;
+    cmd.placement.y = site.click_y - 1;
+    cmd.click_x = site.click_x;
+    cmd.click_y = site.click_y;
+    const sim::Command command{sim::PlayerId{seat}, cmd};
+    for (const std::pair<int, int> d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
+                                        std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
+        sim::World trial = w;
+        sim::Figure* s = sim::find_figure(sim::WorldTestAccess::figures(trial), cmd.ship);
+        s->pos.x = (site.click_x + d.first) * 256 + 128;
+        s->pos.y = (site.click_y + d.second) * 256 + 128;
+        if (trial.apply(command).ok()) {
+            sim::find_figure(sim::WorldTestAccess::figures(w), cmd.ship)->pos = s->pos;
+            return command;
+        }
+    }
+    return std::nullopt;
+}
+
+bool in_reach_of_origin(const sim::OreObject& o, std::int64_t origin_x, std::int64_t origin_y) {
+    static constexpr std::array<int, 25> kT30 = {30, 30, 30, 30, 30, 30, 29, 29, 29, 29, 28, 28, 27,
+                                                 27, 27, 26, 25, 25, 24, 23, 22, 21, 20, 19, 18};
+    const std::int64_t cx = origin_x + 1, cy = origin_y + 1;
+    const std::int64_t dy = o.y > cy ? 1 + (o.y - cy) : cy - o.y;
+    const std::int64_t dx = o.x > cx ? 1 + (o.x - cx) : cx - o.x;
+    return dy <= 24 && dx <= kT30[static_cast<std::size_t>(dy)];
+}
+
+} // namespace
+
+TEST_CASE("ship start policy: peace, shared visibility and no alliances on the real loader") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    RealStart rs = real_start(*dir);
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+
+    // ---- the loaded start: the owner default (all five seats) at peace, nothing revealed -------
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World w = std::move(loaded).value();
+    REQUIRE(w.check_invariants().empty());
+    CHECK(w.rules().shared_visibility == std::vector<std::vector<std::uint32_t>>{{0, 1, 2, 3, 4}});
+    for (std::uint32_t a = 0; a < 5; ++a) {
+        const sim::Player* pa = w.players().find(sim::PlayerId{a});
+        REQUIRE(pa != nullptr);
+        CHECK(pa->relations.empty()); // no DIPL row at all, not merely zero values
+        CHECK(pa->discovery.empty()); // unexplored stays unknown
+        for (std::uint32_t b = 0; b < 5; ++b) {
+            for (std::uint32_t kind = 0; kind < 3; ++kind) {
+                CHECK(pa->relation(kind, sim::PlayerId{b}) == 0); // peace: no trade/military/war
+            }
+        }
+    }
+    std::size_t ore_total = 0;
+    for (const auto& island : w.islands()) {
+        if (!island) {
+            continue;
+        }
+        CHECK(island->players_present.empty());
+        for (const sim::OreObject& o : island->ore_objects) {
+            CHECK(o.discovered.empty());
+            ++ore_total;
+        }
+        for (std::uint64_t i = 0; i < island->tiles.tile_count(); ++i) {
+            REQUIRE(island->tiles.owner(i) == w.config().neutral_owner); // no territorial right
+        }
+    }
+    CHECK(ore_total > 0);
+    const std::uint64_t pristine = w.state_hash();
+
+    // ---- a founding by seat 0 reaches all five seats, and nothing else ------------------------
+    const std::optional<Site> site = find_legal_site(w, kontor, w.config().neutral_owner);
+    REQUIRE(site.has_value());
+    const auto command = place_for_founding(w, *site, 0);
+    REQUIRE(command.has_value());
+    const sim::World before_founding = w;
+    const sim::ApplyResult r = w.apply(*command);
+    REQUIRE(r.ok());
+    REQUIRE(w.check_invariants().empty());
+    const sim::Island& is = *w.islands()[site->island];
+    REQUIRE(is.cities[0].has_value());
+    CHECK(is.cities[0]->player_mask == pid_set({0, 1, 2, 3, 4}));
+    CHECK(is.players_present == pid_set({0, 1, 2, 3, 4}));
+    const sim::Building* b = is.find_building(r.records[0].building);
+    REQUIRE(b != nullptr);
+    std::size_t reached = 0;
+    for (const sim::OreObject& o : is.ore_objects) {
+        const bool want = in_reach_of_origin(o, b->x, b->y);
+        reached += want ? 1 : 0;
+        CHECK(o.discovered == (want ? pid_set({0, 1, 2, 3, 4}) : pid_set({})));
+    }
+    CHECK(reached > 0); // not vacuous
+    for (std::uint32_t p = 0; p < 5; ++p) {
+        // The recount: every player in the new city's mask learns its owner (seat 0).
+        CHECK(w.players().find(sim::PlayerId{p})->discovery == pid_set({0}));
+        CHECK(w.players().find(sim::PlayerId{p})->relations.empty()); // still no alliance
+        CHECK(w.players().find(sim::PlayerId{p})->money ==
+              (p == 0 ? 29650 : before_founding.players().find(sim::PlayerId{p})->money));
+    }
+    // Other islands stay unexplored; the only owned tiles are the founder's city 0 on this island.
+    for (std::size_t i = 0; i < w.islands().size(); ++i) {
+        if (!w.islands()[i] || i == site->island) {
+            continue;
+        }
+        CHECK(w.islands()[i]->players_present.empty());
+        for (const sim::OreObject& o : w.islands()[i]->ore_objects) {
+            CHECK(o.discovered.empty());
+        }
+    }
+    for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
+        const std::uint32_t owner = is.tiles.owner(i);
+        CHECK((owner == w.config().neutral_owner || owner == 0));
+    }
+    // Save/load and replay on the real data.
+    auto reloaded = sim::World::load(w.save(), rs.types, {});
+    REQUIRE_MESSAGE(reloaded.ok(), (reloaded.ok() ? std::string() : reloaded.error()));
+    CHECK(reloaded.value().state_hash() == w.state_hash());
+    CHECK(reloaded.value().rules().shared_visibility == w.rules().shared_visibility);
+    {
+        auto fresh = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+        REQUIRE(fresh.ok());
+        sim::World w3 = std::move(fresh).value();
+        sim::find_figure(sim::WorldTestAccess::figures(w3), sim::FigureId{1})->pos =
+            sim::find_figure(w.figures(), sim::FigureId{1})->pos;
+        auto started = sim::Recorder::start(w3);
+        REQUIRE(started.ok());
+        sim::Recorder rec = std::move(started).value();
+        REQUIRE(rec.submit(*command).ok());
+        rec.advance(1000);
+        rec.checkpoint();
+        auto again = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+        REQUIRE(again.ok());
+        sim::World w4 = std::move(again).value();
+        sim::find_figure(sim::WorldTestAccess::figures(w4), sim::FigureId{1})->pos =
+            sim::find_figure(w.figures(), sim::FigureId{1})->pos;
+        auto outcome = sim::replay(w4, rec.log());
+        REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+        CHECK(outcome.value().reproduced());
+        CHECK(w4.state_hash() == w3.state_hash());
+    }
+
+    // ---- the policy is gameplay setup, not geometry -------------------------------------------
+    auto none =
+        sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules, sim::serial_executor(),
+                            sl::ShipStartPolicy{std::vector<std::uint32_t>{}});
+    REQUIRE_MESSAGE(none.ok(), (none.ok() ? std::string() : none.error()));
+    CHECK(none.value().rules().shared_visibility.empty());
+    CHECK(none.value().state_hash() != pristine); // different gameplay setup identity
+    CHECK(none.value().rules().digest() != w.rules().digest());
+    CHECK(read_all(fs::path(ANNO_REPO_DIR) / "data" / "maps" / "candidates" / "ship-start-v2" /
+                   "lan5-ship-a.json") ==
+          rs.manifest_bytes); // the candidate geometry file is unchanged
+    CHECK(sm::parse(rs.manifest_bytes).value().content_hash == rs.manifest.content_hash);
+}
+
+TEST_CASE("ship start policy: other participant sets, non-default seats, refused inputs") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    RealStart rs = real_start(*dir);
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+    // Participants {1, 3, 4}: seat 3 founds; 1 and 4 share, 0 and 2 (existing seats) do not.
+    auto loaded =
+        sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules, sim::serial_executor(),
+                            sl::ShipStartPolicy{std::vector<std::uint32_t>{1, 3, 4}});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World w = std::move(loaded).value();
+    CHECK(w.rules().shared_visibility == std::vector<std::vector<std::uint32_t>>{{1, 3, 4}});
+    const std::optional<Site> site = find_legal_site(w, kontor, w.config().neutral_owner);
+    REQUIRE(site.has_value());
+    const auto command = place_for_founding(w, *site, 3);
+    REQUIRE(command.has_value());
+    REQUIRE(w.apply(*command).ok());
+    const sim::Island& is = *w.islands()[site->island];
+    CHECK(is.cities[0]->owner == sim::PlayerId{3});
+    CHECK(is.cities[0]->player_mask == pid_set({1, 3, 4}));
+    CHECK(is.players_present == pid_set({1, 3, 4}));
+    for (const std::uint32_t p : {0U, 2U}) {
+        CHECK(w.players().find(sim::PlayerId{p})->discovery.empty());
+    }
+    for (const std::uint32_t p : {1U, 3U, 4U}) {
+        CHECK(w.players().find(sim::PlayerId{p})->discovery == pid_set({3}));
+    }
+    // Refused inputs: a non-seat, a one-member group, two sources of the policy; each a clear
+    // error and no world.
+    const auto error_of = [&](const sl::ShipStartPolicy& policy, const sim::Rules& rules) {
+        auto r = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rules, sim::serial_executor(),
+                                     policy);
+        return r.ok() ? std::string() : r.error();
+    };
+    const auto has = [](const std::string& e, const char* part) {
+        return e.find(part) != std::string::npos;
+    };
+    CHECK(has(error_of(sl::ShipStartPolicy{std::vector<std::uint32_t>{1, 5}}, rs.rules),
+              "5 is not a seat"));
+    CHECK(has(error_of(sl::ShipStartPolicy{std::vector<std::uint32_t>{2}}, rs.rules),
+              "fewer than two members"));
+    CHECK(has(error_of(sl::ShipStartPolicy{std::vector<std::uint32_t>{3, 1}}, rs.rules),
+              "not ascending and unique"));
+    sim::Rules with_groups = rs.rules;
+    with_groups.shared_visibility = {{0, 1}};
+    CHECK(has(error_of(sl::ShipStartPolicy{std::vector<std::uint32_t>{1, 2}}, with_groups),
+              "both in the rules and in the ship-start policy"));
+    CHECK(error_of(sl::ShipStartPolicy{}, with_groups).empty()); // rules alone are honoured
+}
+
+TEST_CASE("scenario player DISCO on the shipped scenes: restored sets, sharing off by default") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // Scenes/0201SingleAddOn/single39.sze: a player record with DISCO 0e000000 (players 1, 2, 3)
+    // right after BONUS (file offset 1814; docs/sim/shared-visibility.md 9).
+    const fs::path file = *dir / "Scenes" / "0201SingleAddOn" / "single39.sze";
+    if (!fs::exists(file)) {
+        MESSAGE("skipping: " << file.string() << " not present");
+        return;
+    }
+    const std::vector<std::uint8_t> bytes = read_all(file);
+    const auto types = original_types(*dir);
+    auto l = sim::load_scenario(bytes, *types, sim::SimConfig{});
+    REQUIRE_MESSAGE(l.ok(), (l.ok() ? std::string() : l.error()));
+    bool found = false;
+    for (const sim::ScenarioSpec::PlayerSpec& p : l.value().spec.players) {
+        if (std::binary_search(p.discovery.begin(), p.discovery.end(), sim::PlayerId{1}) &&
+            std::binary_search(p.discovery.begin(), p.discovery.end(), sim::PlayerId{2}) &&
+            std::binary_search(p.discovery.begin(), p.discovery.end(), sim::PlayerId{3})) {
+            found = true;
+        }
+    }
+    CHECK(found);
+    auto w = sim::World::create(l.value().spec, types, sim::SimConfig{});
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().rules().shared_visibility.empty()); // an ordinary scenario: sharing off
+    CHECK(w.value().check_invariants().empty());
 }

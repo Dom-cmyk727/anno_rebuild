@@ -1227,9 +1227,10 @@ TEST_CASE("scenario warning kinds") {
     // below (the market, the trade lists, the build goods, the HEAD2 fields, the
     // statistics); only their reachability is checked there, not here.
     static constexpr Kind kT26Dedicated[] = {
-        Kind::MarketNumberNotKept, Kind::BuildGoodsOutOfRange,  Kind::TradeEntryBeyondSlots,
-        Kind::Head2FieldNotMapped, Kind::StatisticsNotModelled, Kind::StatisticsHistoryNotModelled,
-        Kind::HouseResetNotApplied};
+        Kind::MarketNumberNotKept,   Kind::BuildGoodsOutOfRange,
+        Kind::TradeEntryBeyondSlots, Kind::Head2FieldNotMapped,
+        Kind::StatisticsNotModelled, Kind::StatisticsHistoryNotModelled,
+        Kind::HouseResetNotApplied,  Kind::PlayerDiscoveryBitsDropped /* the DISCO case */};
     for (const Kind k : sim::all_warning_kinds()) {
         INFO(sim::warning_kind_name(k));
         CHECK(sim::warning_kind_name(k) != "?");
@@ -2036,6 +2037,61 @@ TEST_CASE(
     append(two, chunk("DISCOVER", Buf{2, 0, 0, 0}));
     CHECK(load(with(two)).spec.islands[0].players_present == ids({1}));
     CHECK(refusal(with(chunk("DISCOVER", Buf{1, 0}))).find(".DISCOVER: expected 4 bytes, got 2") !=
+          std::string::npos);
+}
+
+TEST_CASE("scenario player DISCO: property 7 restored for players that exist, others dropped") {
+    // AnnoWelt 0x1001d61d reads the 4-byte record into player property 7 (bit i = player i).
+    // Players 0, 1, 2, 3 exist. Player 0 DISCO = 0b1110 -> {1, 2, 3}; player 1 DISCO = 0xcdcdcdcd
+    // (the shipped uninitialised fill: bits 0,2,3,6,7,10,11,... ) -> only the bits of existing
+    // players {0, 2, 3} are kept and ONE warning reports the rest; player 2 has no DISCO -> empty;
+    // player 3 DISCO = 0 -> empty. A DISCO that is not 4 bytes refuses the load.
+    const auto player = [](std::uint32_t idx, const Buf& extra) {
+        Buf recs = record("HEAD", player_head(8, 1, "P", static_cast<std::uint8_t>(idx + 1)));
+        append(recs, extra);
+        return chunk("SPIELER", spieler(idx, recs));
+    };
+    const auto ids = [](std::initializer_list<std::uint32_t> v) {
+        std::vector<sim::PlayerId> out;
+        for (const std::uint32_t i : v) {
+            out.push_back(sim::PlayerId{i});
+        }
+        return out;
+    };
+    const auto scene_of = [&](const Buf& disco0, const Buf& disco1) {
+        Buf kids = chunk("HEAD", head_bytes());
+        append(kids, player(0, disco0));
+        append(kids, player(1, disco1));
+        append(kids, player(2, {}));
+        append(kids, player(3, record("DISCO", Buf{0, 0, 0, 0})));
+        return scene("ANNO", kids);
+    };
+    const sim::LoadedScenario s = load(scene_of(record("DISCO", Buf{0x0e, 0, 0, 0}),
+                                                record("DISCO", Buf{0xcd, 0xcd, 0xcd, 0xcd})));
+    REQUIRE(s.spec.players.size() == 4);
+    CHECK(s.spec.players[0].discovery == ids({1, 2, 3}));
+    CHECK(s.spec.players[1].discovery == ids({0, 2, 3}));
+    CHECK(s.spec.players[2].discovery.empty());
+    CHECK(s.spec.players[3].discovery.empty());
+    std::size_t dropped = 0;
+    for (const sim::ScenarioWarning& w : s.warnings) {
+        dropped += w.kind == sim::ScenarioWarningKind::PlayerDiscoveryBitsDropped ? 1 : 0;
+    }
+    CHECK(dropped == 1);
+    // Control: only existing bits -> no warning. Then the world validates and persists the sets.
+    const sim::LoadedScenario clean = load(scene_of(record("DISCO", Buf{0x0e, 0, 0, 0}), {}));
+    for (const sim::ScenarioWarning& w : clean.warnings) {
+        CHECK(w.kind != sim::ScenarioWarningKind::PlayerDiscoveryBitsDropped);
+    }
+    auto world = sim::World::create(clean.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
+    auto back = sim::World::load(world.value().save(), registry());
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    CHECK(back.value().players().find(sim::PlayerId{0})->discovery == ids({1, 2, 3}));
+    // Wrong lengths refuse, with the path.
+    CHECK(refusal(scene_of(record("DISCO", Buf{1, 0, 0}), {})).find(".DISCO: 3 bytes") !=
+          std::string::npos);
+    CHECK(refusal(scene_of(record("DISCO", Buf{1, 0, 0, 0, 0}), {})).find(".DISCO: 5 bytes") !=
           std::string::npos);
 }
 

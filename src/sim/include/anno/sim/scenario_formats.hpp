@@ -117,6 +117,10 @@ enum class ScenarioWarningKind : std::uint8_t {
     /// read, and the original's name draws for native cities (D 0x10008848–
     /// 0x10008b20) are not made.
     LinkTemplatePlayers,
+    /// A player's DISCO record (player property 7, D AnnoWelt 0x1001d61d) names players that are
+    /// not in the scenario or not below player_slots (the shipped fill 0xcdcdcdcd does): those bits
+    /// are not kept. Once per scenario. (MAP-FOUND-3 package D, docs/sim/shared-visibility.md 9.)
+    PlayerDiscoveryBitsDropped,
     // --- T26 (the city records into the state) ---
     /// A market KONTID (the market's number on its island, D AnnoWelt 0x1006be00,
     /// 0x1006bda0): the Market payload (production.hpp) has no number field and T26

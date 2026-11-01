@@ -92,3 +92,5 @@ src/sim/src/figure_veto.cpp:kFar = std::int64_t\{1\} << 40;  # an overflow guard
 
 # --- scenario_formats.cpp (MAP-2 package D)
 src/sim/src/scenario_formats.cpp:(?:const float local_[xz] = std::bit_cast<float>|std::trunc\(local_[xz]\))  # load-time conversion: the f32 world position of an OCCUR ore object to its integer tile (ftol, truncation toward zero, the original\'s object manager); the engine stores only the tile
+src/sim/include/anno/sim/types.hpp:inline constexpr std::int64_t kMaxHullHalf88  # arithmetic-safety domain of the signed hull fact (2^31 tiles, the file decoder's bound); a mod needing more raises it together with the veto saturation (MAP-FOUND-3 A)
+src/sim/src/figure_veto.cpp:constexpr std::int64_t kHullSat  # saturation limit that keeps position +- hull inside int64 for any caller-supplied hull; a numeric-safety bound, not game data (MAP-FOUND-3 A)

@@ -6,6 +6,7 @@
 // every expected value follows from the bytes written and the evidence the adapter
 // cites, never from the adapter.
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -215,6 +216,14 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
         big.width = 2;
         big.height = 2;
         b.add(big);
+    }
+    // Figure types of the OCCUR objects (BEWOHNTYPE ERZSYMBOL 145, SCHATZ 146, WALSYMBOL 147).
+    for (const std::pair<std::uint32_t, std::uint32_t> ft :
+         {std::pair{1560U, 145U}, std::pair{1550U, 146U}, std::pair{1570U, 147U}}) {
+        sim::FigureType t;
+        t.id = ft.first;
+        t.bewohntype = ft.second;
+        b.figure_type(t);
     }
     auto r = b.build();
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
@@ -2026,5 +2035,63 @@ TEST_CASE(
     append(two, chunk("DISCOVER", Buf{2, 0, 0, 0}));
     CHECK(load(with(two)).spec.islands[0].players_present == ids({1}));
     CHECK(refusal(with(chunk("DISCOVER", Buf{1, 0}))).find(".DISCOVER: expected 4 bytes, got 2") !=
+          std::string::npos);
+}
+
+TEST_CASE("scenario OCCUR ore objects: island-local positions, masks, kinds, malformed refused") {
+    // Island at (40, 60), 16 x 8. ENTRY2 (24 bytes): dword0 = type << 14, f32 X, Z, height
+    // (ISLAND-LOCAL tiles), u16 amount, u16 pad, u32 discovery mask. Expected by hand: ore A (type
+    // 1560, X 3.5, Z 2.5, mask 0b101) -> tile (40 + 3, 60 + 2) = (43, 62), players {0, 2}; ore B
+    // (X 15.9, Z 7.2, mask 0, amount 400) -> (40 + 15, 60 + 7) = (55, 67); a treasure (1550) and a
+    // 42-byte whale symbol (1570) are not ore and not stored; type 1999 is unknown to the
+    // registry: one UnknownObject warning, skipped.
+    const auto f32 = [](Buf& b, float v) { put32(b, std::bit_cast<std::uint32_t>(v)); };
+    const auto entry = [&](std::uint32_t type, float x, float z, std::uint32_t amount,
+                           std::uint32_t mask, std::size_t size = 24) {
+        Buf p;
+        put32(p, type << 14);
+        f32(p, x);
+        f32(p, z);
+        f32(p, 0.0F);
+        put16(p, amount);
+        put16(p, 0);
+        put32(p, mask);
+        p.resize(size, 0);
+        return record("ENTRY2", p);
+    };
+    Buf occur;
+    append(occur, entry(1560, 3.5F, 2.5F, 2000, 0x5));
+    append(occur, entry(1550, 4.5F, 3.5F, 7, 0)); // treasure
+    append(occur, entry(1560, 15.9F, 7.2F, 400, 0));
+    append(occur, entry(1570, 5.0F, 5.0F, 1, 0, 42)); // whale symbol, 42 bytes
+    append(occur, entry(1999, 6.0F, 6.0F, 1, 0));     // unknown type
+    Buf kids = chunk("HEAD", head_bytes());
+    append(kids, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", occur)));
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.islands.size() == 1);
+    const auto& ore = s.spec.islands[0].ore_objects;
+    REQUIRE(ore.size() == 2);
+    CHECK(ore[0].type == 1560);
+    CHECK(ore[0].x == 43);
+    CHECK(ore[0].y == 62);
+    CHECK(ore[0].amount == 2000);
+    CHECK(ore[0].discovered == std::vector<sim::PlayerId>{sim::PlayerId{0}, sim::PlayerId{2}});
+    CHECK(ore[1].x == 55);
+    CHECK(ore[1].y == 67);
+    CHECK(ore[1].amount == 400);
+    CHECK(ore[1].discovered.empty());
+    CHECK(warnings_of(s, Kind::UnknownObject) == 1);
+    CHECK(warnings_of(s, Kind::UnknownRecord) == 0); // OCCUR is decoded now
+    // It reaches the world and the state (validated, hashed).
+    auto w = sim::World::create(s.spec, registry(), sim::SimConfig{});
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    CHECK(w.value().islands()[7]->ore_objects.size() == 2);
+    CHECK(w.value().check_invariants().empty());
+    // An ore entry that is not 24 bytes is refused with its path.
+    Buf bad;
+    append(bad, entry(1560, 3.5F, 2.5F, 1, 0, 26));
+    Buf bad_kids = chunk("HEAD", head_bytes());
+    append(bad_kids, insel5(40, 60, 16, 8, 7, 2, chunk("OCCUR", bad)));
+    CHECK(refusal(scene("ANNO", bad_kids)).find("an ore object is 24 bytes, got 26") !=
           std::string::npos);
 }

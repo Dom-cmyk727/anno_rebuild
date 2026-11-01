@@ -89,9 +89,23 @@ render::Rect view_at(const render::Scene& scene, std::uint32_t number, std::int3
 }
 
 bool drain(app::ScenePicture& picture, render::FrameRenderer& frames) {
-    for (int round = 0; round < 40 && picture.pending() > 0; ++round) {
+    // A commit that found the reaper behind (ScenePicture::Stats::commit_skipped), or a deferred
+    // start still waiting for it, is retried by the next call, and the reaper needs the processor
+    // to catch up: under CPU contention (a loaded host, parallel test processes) it can take
+    // longer than a hot loop of 40 calls. Only commits that committed count against the
+    // bound (a hot loop that keeps committing fails the case); a call that committed nothing
+    // gives the reaper a moment, bounded by a deadline so a stuck island still fails the case
+    // (W4-WIN-1: the pinned revision failed here with the reaper starved).
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    for (int round = 0; round < 40 && picture.pending() > 0;) {
         picture.wait_idle();
-        picture.commit(frames);
+        if (picture.commit(frames) > 0) {
+            ++round;
+        } else if (std::chrono::steady_clock::now() > until) {
+            break;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
     return picture.pending() == 0;
 }

@@ -67,9 +67,23 @@ std::shared_ptr<const app::BuildingBatch> added(std::uint64_t turn, std::uint32_
 }
 
 bool drain(app::ScenePicture& picture, render::FrameRenderer& frames, int rounds) {
-    for (int round = 0; round < rounds && picture.pending() > 0; ++round) {
+    // A commit that found the reaper behind (ScenePicture::Stats::commit_skipped), or a deferred
+    // start still waiting for it, is retried by the next call, and the reaper needs the processor
+    // to catch up: under CPU contention (a loaded host, parallel test processes) it can take
+    // longer than a hot loop of rounds calls. Only commits that committed count against the
+    // bound (a hot loop that keeps committing fails the case); a call that committed nothing
+    // gives the reaper a moment, bounded by a deadline so a stuck island still fails the case
+    // (W4-WIN-1: the pinned revision failed here with the reaper starved).
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    for (int round = 0; round < rounds && picture.pending() > 0;) {
         picture.wait_idle();
-        picture.commit(frames);
+        if (picture.commit(frames) > 0) {
+            ++round;
+        } else if (std::chrono::steady_clock::now() > until) {
+            break;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
     return picture.pending() == 0;
 }
@@ -389,6 +403,14 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
             std::uint64_t turn = 1;
             std::vector<Held> held;
             for (std::size_t i = 0; i < workers; ++i) {
+                // The reaper first: a change to an island that is in flight is deferred while the
+                // reaper is behind (Limits::max_reclaim_backlog), and only a later commit starts
+                // it, which this test does not make before the barrier. Under CPU contention the
+                // reaper lags (W4-WIN-1); wait for it as the checks below do.
+                REQUIRE(eventually([&picture] {
+                    const auto s = picture.stats();
+                    return s.reclaim_completed == s.reclaim_queued;
+                }));
                 held.push_back(hold(picture.scene()));
                 picture.apply({added(turn++, 0, static_cast<std::uint16_t>(i + 1))});
                 REQUIRE(eventually([&] { return gate.entered.load() == static_cast<int>(i + 1); }));

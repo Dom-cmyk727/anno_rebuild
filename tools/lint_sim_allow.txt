@@ -94,3 +94,12 @@ src/sim/src/figure_veto.cpp:kFar = std::int64_t\{1\} << 40;  # an overflow guard
 src/sim/src/scenario_formats.cpp:(?:const float local_[xz] = std::bit_cast<float>|std::trunc\(local_[xz]\))  # load-time conversion: the f32 world position of an OCCUR ore object to its integer tile (ftol, truncation toward zero, the original\'s object manager); the engine stores only the tile
 src/sim/include/anno/sim/types.hpp:inline constexpr std::int64_t kMaxHullHalf88  # arithmetic-safety domain of the signed hull fact (2^31 tiles, the file decoder's bound); a mod needing more raises it together with the veto saturation (MAP-FOUND-3 A)
 src/sim/src/figure_veto.cpp:constexpr std::int64_t kHullSat  # saturation limit that keeps position +- hull inside int64 for any caller-supplied hull; a numeric-safety bound, not game data (MAP-FOUND-3 A)
+
+# --- ship navigation state (MAP-NAV-2 package B; docs/sim/ship-navigation.md 12.4, 12.5)
+src/sim/include/anno/sim/figure.hpp:inline constexpr std::int64_t kNavPosUnitsPerQ8  # a unit conversion (position denominator 500 x 2^24 per Q24.8 step, derived in 12.4), not a count
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint32_t kNavIdleSpeedQ32  # the original's constant 0.01f as q32 (AnnoWelt 0x10043383), a fact of the arithmetic not a limit
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavUnitQ32  # 1.0 tile as q32, a unit of the fixed-point format
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavDiagStepQ32  # the diagonal step length 11863283 x 2^9 q32 (12.4), a derived constant of the arithmetic
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::size_t kNavMaxNodes  # allocation bound for a corrupt save, with the stated path to derive it from NavRules once routes exist (comment at its definition)
+src/sim/include/anno/sim/types.hpp:inline constexpr std::uint32_t kMaxNavSpeedQ32  # arithmetic-safety domain of the speed fact (budget d x speed x V stays below 2^51), the same kind as kMaxHullHalf88
+src/sim/src/types.cpp:std::optional<std::uint32_t> q32_of_f32\(float value\)  # load-time conversion of an f32 file field to an integer fact (round to nearest even on the exact value); no float reaches state

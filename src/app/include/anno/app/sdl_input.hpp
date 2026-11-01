@@ -23,7 +23,8 @@ namespace anno::app {
 
 /// The window's whole step for one event: the mapping, then DevTool::handle with the frame that
 /// was drawn. Returns whether the tool took the event and the commands it made (the window posts
-/// them). The live window calls exactly this.
+/// them). The live window calls exactly this. A key repeat of the tool's keys (B; with the tool on,
+/// N, P, T, X and Esc) is taken and does nothing, so a held Esc never reaches the window's quit.
 struct ToolStep {
     bool taken = false;
     std::vector<sim::Command> commands;

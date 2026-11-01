@@ -564,6 +564,33 @@ TEST_CASE("dev tool: press, move, cancel, release and focus-loss sequences make 
         CHECK(tool.enabled()); // the repeat did not turn it off
         CHECK(tool.hover() == std::optional<sim::TileXY>{sim::TileXY{kX0 + 20, kY0 + 3}});
     }
+    SUBCASE("a held Esc cancels once and its repeats stay the tool's (never the window's quit)") {
+        app::DevTool tool(setup());
+        const app::PointerFrame frame = win.frame();
+        feed(tool, win, {key(SDLK_B), key(SDLK_X)});
+        REQUIRE(tool.input().demolish_mode());
+        CHECK(app::dev_tool_step(tool, key(SDLK_ESCAPE), 1.0F, &frame).taken); // the cancel
+        CHECK_FALSE(tool.input().demolish_mode());
+        CHECK_FALSE(tool.has_pending());
+        SDL_Event held = key(SDLK_ESCAPE);
+        held.key.repeat = true;
+        for (int i = 0; i < 3; ++i) {
+            CHECK(app::dev_tool_step(tool, held, 1.0F, &frame).taken); // not the window's
+        }
+        for (const SDL_Keycode k : {SDLK_N, SDLK_P, SDLK_T, SDLK_X, SDLK_B}) {
+            SDL_Event r = key(k);
+            r.key.repeat = true;
+            const auto before = tool.input().selected();
+            CHECK(app::dev_tool_step(tool, r, 1.0F, &frame).taken);
+            CHECK(tool.input().selected() == before);
+            CHECK_FALSE(tool.input().demolish_mode());
+            CHECK(tool.enabled());
+        }
+        // With the tool off, a held Esc is the window's (only B stays the tool's).
+        feed(tool, win, {key(SDLK_B)});
+        REQUIRE_FALSE(tool.enabled());
+        CHECK_FALSE(app::dev_tool_step(tool, held, 1.0F, &frame).taken);
+    }
 }
 
 TEST_CASE("dev tool: a drag longer than one record is refused before its path is made, and a "

@@ -408,3 +408,48 @@ TEST_CASE("dev tool data: per-move work against growing unrelated content (a mea
                            << " us), " << r.indexed << " tiles indexed");
     }
 }
+
+TEST_CASE("dev tool data: another player's city on another island: its commands carry that issuer "
+          "and city, and the index keys on that island" *
+          doctest::test_suite("dev_tool_mod")) {
+    // Integration review of round ee (P2-2): nothing assumes player 1, city 0 or island 0.
+    const auto s = scene(3); // islands 0, 1, 2 in a row; the city is on island 1
+    const std::int32_t x1 = kX0 + kSize + 2;
+    app::DevToolSetup st = setup({kHouse});
+    st.issuer = sim::PlayerId{3};
+    st.city = sim::CityRef{sim::IslandId{7}, sim::CityNo{2}};
+    st.island = app::TileRect{x1, kY0, static_cast<std::uint32_t>(kSize),
+                              static_cast<std::uint32_t>(kSize)};
+    app::DevTool tool(st);
+    const Frame f = frame_over(s, x1 + 15, kY0 + 15);
+    key(tool, app::ToolInput::Kind::Toggle);
+    auto cmds = click(tool, f, x1 + 6, kY0 + 7);
+    REQUIRE(cmds.size() == 1);
+    CHECK(cmds[0].issuer == sim::PlayerId{3});
+    const auto& build = std::get<sim::BuildCmd>(cmds[0].body);
+    CHECK(build.city == sim::CityRef{sim::IslandId{7}, sim::CityNo{2}});
+    CHECK(build.placements[0].x == x1 + 6);
+    CHECK(build.placements[0].y == kY0 + 7);
+    // A click on island 0 (another island) is not the city's: nothing is sent.
+    CHECK(click(tool, f, kX0 + 20, kY0 + 7).empty());
+    key(tool, app::ToolInput::Kind::ToggleDemolish);
+    cmds = click(tool, f, x1 + 6, kY0 + 7);
+    REQUIRE(cmds.size() == 1);
+    CHECK(cmds[0].issuer == sim::PlayerId{3});
+    CHECK(std::get<sim::DemolishCmd>(cmds[0].body).city ==
+          sim::CityRef{sim::IslandId{7}, sim::CityNo{2}});
+    // The occupancy index takes the buildings of the city's island (scene island number 1) and
+    // places them at that island's origin; island 0's building at the same local tile is not it.
+    app::PlacementKnowledge knows(st);
+    CHECK(knows.update({app::SceneBuilding{1, kHouse.v, 3, 4, 0, 0},
+                        app::SceneBuilding{0, kHouse.v, 10, 10, 0, 0}},
+                       1, *s));
+    CHECK(knows.occupied({x1 + 3, kY0 + 4}));
+    CHECK(knows.occupied({x1 + 4, kY0 + 5})); // 2x2
+    CHECK_FALSE(knows.occupied({x1 + 10, kY0 + 10}));
+    CHECK_FALSE(knows.occupied({kX0 + 10, kY0 + 10}));
+    // The preview looks for the city's island in the scene by its origin.
+    key(tool, app::ToolInput::Kind::ToggleDemolish);
+    move(tool, f, x1 + 6, kY0 + 7);
+    CHECK(app::preview_note(tool, *s, 1).find("no entry 501") != std::string::npos);
+}

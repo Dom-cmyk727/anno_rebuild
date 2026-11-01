@@ -61,6 +61,14 @@ std::optional<ToolInput> tool_input_from_sdl(const SDL_Event& e, float density, 
 ToolStep dev_tool_step(DevTool& tool, const SDL_Event& event, float density,
                        const PointerFrame* frame) {
     ToolStep step;
+    if (event.type == SDL_EVENT_KEY_DOWN && event.key.repeat) {
+        // A held key of the tool's does nothing, and it is still the tool's: a held Esc after a
+        // cancel must not reach the window's own Esc (quit; integration review of round ee, P2-1).
+        const SDL_Keycode k = event.key.key;
+        step.taken = k == SDLK_B || (tool.enabled() && (k == SDLK_N || k == SDLK_P || k == SDLK_T ||
+                                                        k == SDLK_X || k == SDLK_ESCAPE));
+        return step;
+    }
     const auto input = tool_input_from_sdl(event, density, tool.enabled(), tool.has_pending());
     if (!input) {
         return step;

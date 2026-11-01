@@ -317,7 +317,8 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   - The right button pans (the left button still pans with the tool off); the keys and the
     wheel are unchanged.
   - Losing focus, leaving the window or being hidden drops a press. Motion only moves the hover,
-    never a command. Key repeats are ignored.
+    never a command. A repeat of the tool's keys (B; with the tool on, N, P, T, X and Esc) does
+    nothing and stays the tool's: a held Esc never reaches the window's quit.
 - **The pick** (`dev_tool.hpp`, `render/picking.hpp`). The tool picks on the frame the window last
   drew, never on the camera's target:
   - SDL's window points are multiplied by the pixel density to get drawable pixels.
@@ -412,10 +413,11 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 - **Per-move work** (pick, `DevTool::handle`, `make_preview`, `preview_note`, `check`,
   `feedback_line`; Apple M5 Max, debug build, `dev_tool_mod_test.cpp`): flat in the number of
   published buildings (4 to 100 004), and nearly flat in the scene's islands since the pick asks
-  only the islands its ray crosses (`render::pick_ray`; 19.5 µs at 64 islands, 69 µs before). At
-  one island it went from 13 to 18 µs (the crossed-island list). The index rebuild, once per
-  published change, is 0.26 ms at 100 004 buildings. This is not large-city, complex-economy or
-  multiplayer performance, which stays open.
+  only the islands its ray crosses (`render::pick_ray`). One build, before and after the change
+  (`cache/ee-runs/d6-pick-before-after.log`): 15.2 to 17.3 µs at one island (the crossed-island
+  list), 212 to 18.8 µs at 64 islands. In the round's dev gate (G2, under load) 20.0 µs at one island
+  and 21.6 µs at 64. The index rebuild, once per published change, is 0.28 ms at 100 004
+  buildings. This is not large-city, complex-economy or multiplayer performance, which stays open.
 
 ### A scripted session and a picture that lags (W4.4, round ee, E3 and E4)
 
@@ -427,14 +429,16 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   failed islands; the change's island may be one). The sim's outcome stands either way; a commit
   or a newer followed turn updates the line. A type the picture cannot draw at all
   (`kPictureAnlageIds`) is named by the preview note, not by this one. `dev_barrier_test.cpp` holds every picture build at a gate:
-  the runner's turns, the outcomes, the tool and the follow step go on (the follow step returns in
-  well under a millisecond), the line says "not drawn yet", and the open gate draws it.
+  the runner's turns, the outcomes, the tool and the follow step go on (the slowest follow step was
+  0.25 ms in the dev gate, 1.2 ms under ASan), the line says "not drawn yet", and the open gate draws
+  it.
 - **A scripted session in the live window** (`dev_script.hpp`, E3): `ANNO_DEV_SCRIPT=<file>`
   pushes the script's key, mouse and wheel events into SDL's own queue, so they reach the
   window's handler as a person's input does; while it runs the window takes no other input (the
   events carry their own device id, `kScriptDevice`). It waits on frames, turns, outcomes and the
   picture, checks the title and the latest outcome, and can capture the window's own rectangle
-  (macOS). A script that never sees a drawn frame, or a wait past 30 s, fails instead of hanging.
+  (macOS; the capture runs `screencapture` on the window thread, a 0.2 to 0.3 s stall per shot that
+  belongs to the test harness, not to the play path). A script that never sees a drawn frame, or a wait past 30 s, fails instead of hanging.
   Window events that are not input (focus, leaving the window) still reach the tool: they can
   only drop a press, so they can fail a session but never make one pass.
   `ANNO_DEV_SESSION=<new dir>` writes the applied commands (`--commands` format), the state hash
@@ -444,7 +448,9 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   compares the hashes and, with the session's `outcomes.txt` next to the hash file, every
   outcome's turn, state, reason and record results (`replay_session`; tests in
   `dev_script_test.cpp`: a moved command fails on a hash, a refused command of another type on
-  its outcome). Recording hashes costs a full `state_hash` on those turns (about 0.17 s on lan5 in
+  its outcome). A window command without a wire form (refused as Unencodable before the sim) is in
+  `outcomes.txt` but not in `commands.txt`, so such a session's replay reports a difference, never a
+  false agreement; only a drag over 4 095 tiles makes one. Recording hashes costs a full `state_hash` on those turns (about 0.17 s on lan5 in
   a debug build, visible in the turn p95).
 
 ### Immutable per-island object lists (W4.3, round du)

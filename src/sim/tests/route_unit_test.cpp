@@ -910,3 +910,36 @@ TEST_CASE("route limits: the defaults carry a margin of at least 8x over the lar
     const auto small = plan_default(wall_map(), tile_query(10, 20, 50, 20));
     CHECK(small.work.coarse_pops * 1000 < defaults.coarse_budget);
 }
+
+TEST_CASE("route limits: work of the representative small queries (the fixtures V1, V7, V21, V22)") {
+    const sim::RouteLimits defaults;
+    std::uint64_t max_coarse = 0, max_fine = 0, max_bytes = 0;
+    for (const std::string& line : fixture_lines("route_runs.txt")) {
+        const auto parts = split(line, '|');
+        const std::string name = words(parts[0])[1];
+        const auto dims = words(parts[1]);
+        sim::TileMapSource map(std::stoi(dims[0]), std::stoi(dims[1]));
+        add_land(map, words(parts[2]));
+        const auto st = words(parts[3]);
+        const auto go = words(parts[4]);
+        sim::RouteQuery q;
+        q.start_x = decimal_floor(st[1]);
+        q.start_z = decimal_floor(st[2]);
+        q.goal_x_q8 = decimal_to_q8(go[1]);
+        q.goal_z_q8 = decimal_to_q8(go[2]);
+        const sim::CoastIndex index(map, {});
+        const auto r = sim::plan_route(index, q, defaults, sim::RouteCostTable::original());
+        max_coarse = std::max(max_coarse, r.work.coarse_pops);
+        max_fine = std::max(max_fine, r.work.fine_pops);
+        max_bytes = std::max(max_bytes, r.work.bytes_high);
+        if (name == "V1" || name == "V7" || name == "V21" || name == "V22") {
+            MESSAGE(name << ": " << r.work.coarse_pops << " coarse pops, " << r.work.fine_pops << " fine pops, "
+                         << r.work.learned << " learned, " << r.work.bytes_high << " bytes");
+        }
+    }
+    MESSAGE("largest of the 24 route-run vectors: " << max_coarse << " coarse, " << max_fine << " fine, " << max_bytes
+                                                    << " bytes");
+    CHECK(defaults.coarse_budget >= 8 * max_coarse);
+    CHECK(defaults.fine_budget >= 8 * max_fine);
+    CHECK(defaults.memory_bytes >= 8 * max_bytes);
+}

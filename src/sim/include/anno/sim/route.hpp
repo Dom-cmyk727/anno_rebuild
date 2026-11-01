@@ -20,6 +20,7 @@
 #pragma once
 
 #include <array>
+#include <compare>
 #include <cstdint>
 #include <span>
 #include <string>

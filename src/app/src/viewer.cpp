@@ -1240,6 +1240,10 @@ void Viewer::refresh_visibility_title() {
 }
 
 void Viewer::update_title() {
+    // Whatever stage the title is about to show is the stage refresh_visibility_title compares to.
+    if (dev_ != nullptr && play_ != nullptr && latest_receipt_) {
+        title_visibility_ = command_visibility(play_->runner().feedback(latest_receipt_).latest);
+    }
     std::string title = "anno1503 — " + name_ + " — zoom group " + std::to_string(group_);
     if (water_ == render::WaterStyle::Enhanced) {
         title += " — enhanced water (not original)";
@@ -1596,6 +1600,11 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     if (presented != WGPUStatus_Success && !present_error_shown_) {
         std::fprintf(stderr, "presenting the frame failed\n");
         present_error_shown_ = true;
+    }
+    if (presented != WGPUStatus_Success && play_ != nullptr && play_->visibility().busy()) {
+        // A change waits for a presented frame (ChangeVisibility): draw again, so an idle window
+        // does not stay NotPresented until some input arrives.
+        dirty_ = true;
     }
     steps_end_ = Clock::now();
     const double present = since_ms(p, steps_end_);

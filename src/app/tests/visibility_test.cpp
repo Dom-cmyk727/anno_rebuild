@@ -149,8 +149,9 @@ TEST_CASE("visibility: coalesced commits, independent islands and a resync" *
         CHECK(v.classify(6) == V::Visible);
     }
     {
-        // The island commits version 1, and version 2 before any frame: one watch over both
-        // commits' chunks; the frame must draw all of them (a stricter wait, never a lost one).
+        // The island commits version 1, and version 2 before any frame: each commit is its own
+        // part, judged and shown on its own, settled in version order. The first chunk draws and is
+        // presented: version 1 is shown; version 2's chunk is not fresh, so version 2 is not.
         app::ChangeVisibility v;
         v.taken(5, batch_at(5), {0}, {1});
         v.taken(6, batch_at(6), {1}, {2});
@@ -160,10 +161,9 @@ TEST_CASE("visibility: coalesced commits, independent islands and a resync" *
             return k == render::ChunkKey{1, 0, 0};
         };
         frame(v, render::Rect{0, 0, 1000, 300}, true, only_first, only_first);
-        CHECK(v.classify(5) == V::ChunksStale); // the second chunk is not fresh
-        CHECK(v.classify(6) == V::ChunksStale);
-        frame(v, render::Rect{0, 0, 1000, 300}, true, kYes, kYes);
         CHECK(v.classify(5) == V::Visible);
+        CHECK(v.classify(6) == V::ChunksStale); // the second commit's chunk is not fresh
+        frame(v, render::Rect{0, 0, 1000, 300}, true, kYes, kYes);
         CHECK(v.classify(6) == V::Visible);
     }
     {
@@ -226,4 +226,72 @@ TEST_CASE("visibility: the memory is bounded, merged takes wait longer and never
     }
     CHECK(h.classify(m) == V::Visible);
     CHECK(h.classify(1) == V::Unknown);
+}
+
+TEST_CASE("visibility: turn 0, a batch newer than the snapshot, an older stuck change that must "
+          "not relabel a later one, and a newer commit whose chunks are offscreen" *
+          doctest::test_suite("visibility")) {
+    {
+        // Turn indices start at 0.
+        app::ChangeVisibility v;
+        v.taken(0, batch_at(0), {0}, {1});
+        CHECK(v.classify(0) == V::Committing);
+        v.committed(commit_of(0, 1, {kHere}));
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(0) == V::Visible);
+    }
+    {
+        // The follower read the snapshot of turn 4 and then took a batch of turn 6 (the mailbox is
+        // filled before the snapshot): turn 6 is in the desired state, turn 5 had no batch.
+        app::ChangeVisibility v;
+        v.taken(4, batch_at(6), {0}, {1});
+        CHECK(v.classify(6) == V::Committing);
+        CHECK(v.classify(5) == V::NoVisualChange);
+        v.taken(6, {}, {1}, {1});
+        CHECK(v.classify(6) == V::Committing);
+        CHECK(v.classify(7) == V::NotInPicture);
+    }
+    {
+        // An older take on island 1 is stuck (never committed). Turn 2's change on island 0 ends
+        // offscreen; turn 3's, later on the same island, is presented. Turn 2 stays Offscreen.
+        app::ChangeVisibility v;
+        v.taken(1, batch_at(1), {0, 0}, {0, 1}); // island 1, version 1: stuck
+        v.taken(2, batch_at(2), {0, 1}, {1, 1}); // island 0, version 1
+        v.committed(commit_of(0, 1, {kThere}));
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(2) == V::Offscreen);
+        v.taken(3, batch_at(3), {1, 1}, {2, 1}); // island 0, version 2
+        v.committed(commit_of(0, 2, {kHere}));
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(3) == V::Visible);
+        CHECK(v.classify(2) == V::Offscreen); // not relabelled by the later presentation
+        CHECK(v.classify(1) == V::Committing);
+    }
+    {
+        // A newer commit of an island adds chunks that are not in view while the older commit's
+        // chunk is: the older one is shown, the newer one is offscreen, never Visible.
+        app::ChangeVisibility v;
+        v.taken(1, batch_at(1), {0}, {1});
+        v.committed(commit_of(0, 1, {kHere}));
+        frame(v, kViewHere, true, kNo, kNo); // watched, chunk stale
+        v.taken(2, batch_at(2), {1}, {2});
+        v.committed(commit_of(0, 2, {kThere}));
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(1) == V::Visible);
+        CHECK(v.classify(2) == V::Offscreen);
+    }
+    {
+        // More commits of one island than parts are kept: the oldest merge (a stricter wait) and
+        // the island still settles.
+        app::ChangeVisibility v;
+        const std::size_t n = app::ChangeVisibility::kMaxParts + 20;
+        for (std::size_t i = 0; i < n; ++i) {
+            v.taken(i, batch_at(i), {i}, {i + 1});
+            v.committed(commit_of(0, i + 1, {kHere}));
+        }
+        frame(v, kViewHere, true, kYes, kYes);
+        CHECK(v.classify(0) == V::Visible);
+        CHECK(v.classify(n - 1) == V::Visible);
+        CHECK(v.waiting() == 0);
+    }
 }

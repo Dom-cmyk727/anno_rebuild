@@ -151,44 +151,91 @@ void ChangeVisibility::taken(std::optional<std::uint64_t> followed,
     takes_.push_back(std::move(t));
 }
 
-void ChangeVisibility::settle_island(std::size_t index, Settle kind) {
-    IslandState& s = islands_[index];
-    s.settled = std::max(s.settled, s.watch ? s.watch->version : s.committed);
-    s.settle_kind = kind;
-    s.watch.reset();
+void ChangeVisibility::record_settle(IslandState& s, std::uint64_t version, Settle kind) {
+    s.settled = std::max(s.settled, version);
+    s.settles.emplace_back(version, kind);
+    while (s.settles.size() > 256) {
+        s.settles.pop_front();
+    }
+}
+
+void ChangeVisibility::advance(IslandState& s) {
+    while (!s.parts.empty()) {
+        const Part& front = s.parts.front();
+        Settle kind = Settle::None;
+        switch (front.state) {
+        case Part::State::Shown:
+            kind = Settle::Presented;
+            break;
+        case Part::State::Offscreen:
+            kind = Settle::Offscreen;
+            break;
+        case Part::State::Empty:
+            kind = Settle::NothingToDraw;
+            break;
+        default:
+            return; // not finished: the later parts wait for it
+        }
+        record_settle(s, front.version, kind);
+        s.parts.pop_front();
+    }
+}
+
+Visibility ChangeVisibility::take_result(const Take& t) const {
+    Visibility result = Visibility::NothingToDraw;
+    for (const auto& [index, version] : t.islands) {
+        const auto it = islands_.find(index);
+        if (it == islands_.end()) {
+            continue;
+        }
+        // The settle that completed this version: the first one at or after it.
+        const auto settle = std::find_if(it->second.settles.begin(), it->second.settles.end(),
+                                         [v = version](const auto& p) { return p.first >= v; });
+        if (settle == it->second.settles.end()) {
+            return Visibility::Unknown; // aged out of the island's bounded record
+        }
+        if (settle->second == Settle::Presented) {
+            return Visibility::Visible;
+        }
+        if (settle->second == Settle::Offscreen) {
+            result = Visibility::Offscreen;
+        }
+    }
+    return result;
 }
 
 void ChangeVisibility::committed(const std::vector<ScenePicture::CommittedIsland>& islands) {
     for (const ScenePicture::CommittedIsland& c : islands) {
         IslandState& s = islands_[c.index];
         s.committed = std::max(s.committed, c.version);
-        if (s.watch) {
-            // A newer commit of an island with a change still waiting: one watch for both, over
-            // the union of their chunks and the newer version (a stricter wait).
-            s.watch->version = std::max(s.watch->version, c.version);
-            for (const render::ChunkKey& k : c.keys) {
-                s.watch->keys.push_back(k);
-            }
-            std::sort(s.watch->keys.begin(), s.watch->keys.end());
-            s.watch->keys.erase(
-                std::unique(s.watch->keys.begin(), s.watch->keys.end(),
+        Part part;
+        part.version = c.version;
+        part.keys = c.keys;
+        std::sort(part.keys.begin(), part.keys.end());
+        part.keys.erase(
+            std::unique(part.keys.begin(), part.keys.end(),
+                        [](const auto& a, const auto& b) { return !(a < b) && !(b < a); }),
+            part.keys.end());
+        part.state = part.keys.empty() ? Part::State::Empty : Part::State::Unjudged;
+        s.parts.push_back(std::move(part));
+        if (s.parts.size() > kMaxParts) {
+            // Merge the two oldest: the union of their chunks under the newer version, judged
+            // again. Only stricter than keeping both.
+            Part second = std::move(s.parts[1]);
+            Part& first = s.parts[0];
+            first.version = second.version;
+            first.keys.insert(first.keys.end(), second.keys.begin(), second.keys.end());
+            std::sort(first.keys.begin(), first.keys.end());
+            first.keys.erase(
+                std::unique(first.keys.begin(), first.keys.end(),
                             [](const auto& a, const auto& b) { return !(a < b) && !(b < a); }),
-                s.watch->keys.end());
-            s.watch->cpu_ready = s.watch->gpu_ready = false;
-        } else if (c.keys.empty()) {
-            s.settled = std::max(s.settled, c.version);
-            s.settle_kind = Settle::NothingToDraw;
-        } else {
-            Watch w;
-            w.version = c.version;
-            w.keys = c.keys;
-            std::sort(w.keys.begin(), w.keys.end());
-            w.keys.erase(
-                std::unique(w.keys.begin(), w.keys.end(),
-                            [](const auto& a, const auto& b) { return !(a < b) && !(b < a); }),
-                w.keys.end());
-            s.watch = std::move(w);
+                first.keys.end());
+            first.state = first.keys.empty() ? Part::State::Empty : Part::State::Unjudged;
+            first.cpu_ready = first.gpu_ready = false;
+            first.in_view = true;
+            s.parts.erase(s.parts.begin() + 1);
         }
+        advance(s);
     }
     retire_takes();
 }
@@ -197,52 +244,48 @@ void ChangeVisibility::begin_frame(render::Rect view, std::size_t group) {
     in_view_.clear();
     bool any = false;
     for (const auto& [index, s] : islands_) {
-        any = any || s.watch.has_value();
+        any = any || !s.parts.empty();
     }
     if (!any) {
         return;
     }
     const std::vector<render::ChunkKey> keys = view_keys(view, group);
     in_view_.insert(keys.begin(), keys.end());
-    std::vector<std::size_t> offscreen;
     for (auto& [index, s] : islands_) {
-        if (!s.watch || s.watch->viewed) {
-            continue;
+        for (Part& part : s.parts) {
+            if (part.state != Part::State::Unjudged) {
+                continue;
+            }
+            // The first attempt after the commit decides (FrameTracer::begin): in view, it is
+            // watched; none of its chunks in view, it is offscreen and never waited for.
+            const bool seen = std::any_of(part.keys.begin(), part.keys.end(),
+                                          [this](const auto& k) { return in_view_.count(k) != 0; });
+            part.state = seen ? Part::State::Viewed : Part::State::Offscreen;
         }
-        const bool seen = std::any_of(s.watch->keys.begin(), s.watch->keys.end(),
-                                      [this](const auto& k) { return in_view_.count(k) != 0; });
-        if (seen) {
-            s.watch->viewed = true;
-        } else {
-            offscreen.push_back(index);
-        }
-    }
-    for (const std::size_t index : offscreen) {
-        settle_island(index, Settle::Offscreen);
+        advance(s);
     }
     retire_takes();
 }
 
 void ChangeVisibility::frame_done(bool present_ok, const FrameTracer::Ready& fresh,
                                   const FrameTracer::Ready& usable) {
-    std::vector<std::size_t> shown;
     for (auto& [index, s] : islands_) {
-        if (!s.watch || !s.watch->viewed) {
-            continue;
+        for (Part& part : s.parts) {
+            if (part.state != Part::State::Viewed) {
+                continue;
+            }
+            const KeyObservation o = observe_keys(part.keys, in_view_, fresh, usable);
+            part.in_view = o.any;
+            if (!o.any) {
+                continue; // out of this frame's view: it draws nothing of the change
+            }
+            part.cpu_ready = o.all_fresh;
+            part.gpu_ready = o.all_usable;
+            if (o.all_usable && present_ok) {
+                part.state = Part::State::Shown;
+            }
         }
-        const KeyObservation o = observe_keys(s.watch->keys, in_view_, fresh, usable);
-        s.watch->in_view = o.any;
-        if (!o.any) {
-            continue; // out of this frame's view: it draws nothing of the change
-        }
-        s.watch->cpu_ready = o.all_fresh;
-        s.watch->gpu_ready = o.all_usable;
-        if (o.all_usable && present_ok) {
-            shown.push_back(index);
-        }
-    }
-    for (const std::size_t index : shown) {
-        settle_island(index, Settle::Presented);
+        advance(s);
     }
     retire_takes();
 }
@@ -265,13 +308,14 @@ Visibility ChangeVisibility::take_stage(const Take& t) const {
         Visibility stage = Visibility::AwaitingFrame;
         if (it == islands_.end() || it->second.committed < version) {
             stage = Visibility::Committing;
-        } else if (it->second.watch) {
-            const Watch& w = *it->second.watch;
-            stage = !w.viewed      ? Visibility::AwaitingFrame
-                    : !w.in_view   ? Visibility::OutOfView
-                    : !w.cpu_ready ? Visibility::ChunksStale
-                    : !w.gpu_ready ? Visibility::NotOnGpu
-                                   : Visibility::NotPresented;
+        } else if (!it->second.parts.empty()) {
+            // The parts settle in order: the front one is what holds this version back.
+            const Part& p = it->second.parts.front();
+            stage = p.state == Part::State::Unjudged ? Visibility::AwaitingFrame
+                    : !p.in_view                     ? Visibility::OutOfView
+                    : !p.cpu_ready                   ? Visibility::ChunksStale
+                    : !p.gpu_ready                   ? Visibility::NotOnGpu
+                                                     : Visibility::NotPresented;
         }
         worst = waiting ? std::min(worst, stage) : stage;
         waiting = true;
@@ -283,19 +327,7 @@ void ChangeVisibility::retire_takes() {
     while (!takes_.empty() && take_done(takes_.front())) {
         const Take& t = takes_.front();
         // How the change ended: shown if any island's presented, else offscreen, else nothing.
-        Visibility result = Visibility::NothingToDraw;
-        for (const auto& [index, version] : t.islands) {
-            const auto it = islands_.find(index);
-            const Settle kind = it == islands_.end() ? Settle::None : it->second.settle_kind;
-            if (kind == Settle::Presented) {
-                result = Visibility::Visible;
-                break;
-            }
-            if (kind == Settle::Offscreen) {
-                result = Visibility::Offscreen;
-            }
-        }
-        history_.push_back({t.from, t.through, t.turns, t.coarse, result});
+        history_.push_back({t.from, t.through, t.turns, t.coarse, take_result(t)});
         while (history_.size() > kMaxHistory) {
             floor_ = std::max(floor_.value_or(0), history_.front().through);
             history_.pop_front();
@@ -319,18 +351,7 @@ Visibility ChangeVisibility::classify(std::uint64_t turn) const {
             return take_stage(*it);
         }
         // Done, behind an older take that is not: its end is the same rule as in retire_takes.
-        Visibility result = Visibility::NothingToDraw;
-        for (const auto& [index, version] : it->islands) {
-            const auto s = islands_.find(index);
-            const Settle kind = s == islands_.end() ? Settle::None : s->second.settle_kind;
-            if (kind == Settle::Presented) {
-                return Visibility::Visible;
-            }
-            if (kind == Settle::Offscreen) {
-                result = Visibility::Offscreen;
-            }
-        }
-        return result;
+        return take_result(*it);
     }
     for (auto it = history_.rbegin(); it != history_.rend(); ++it) {
         if (turn < it->from || turn > it->through) {

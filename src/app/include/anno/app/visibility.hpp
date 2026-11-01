@@ -5,9 +5,10 @@
 // on the GPU in a frame whose view holds them (FrameTracer's observation, shared in observe_keys),
 // and that frame's present call succeeded. Present-call success is not physical display time.
 //
-// Window thread only. Memory is bounded: one watch per island (changes to one island merge, which
-// only makes the wait stricter), a bounded queue of takes that are not yet shown, and a bounded
-// ring of the outcomes of settled ones. Nothing here waits, and nothing is kept per command.
+// Window thread only. Memory is bounded: one part per commit of an island, at most kMaxParts per
+// island (beyond it the two oldest merge, which only makes the wait stricter), a bounded queue of
+// takes that are not yet shown, and a bounded ring of the outcomes of settled ones. Nothing here
+// waits, and nothing is kept per command.
 #pragma once
 
 #include <cstddef>
@@ -74,7 +75,8 @@ class ChangeVisibility {
     /// never a lost one). kMaxHistory: settled takes kept to answer for recent commands; a command
     /// older than that reads Unknown. kMaxTurns: turns one take names; beyond it the take answers
     /// for its whole range.
-    static constexpr std::size_t kMaxTakes = 1024, kMaxHistory = 1024, kMaxTurns = 4096;
+    static constexpr std::size_t kMaxTakes = 1024, kMaxHistory = 1024, kMaxTurns = 1024,
+                                 kMaxParts = 64;
 
     /// The frame boundary took `batches` (possibly none) and the picture's desired versions went
     /// from `before` to `after` (ScenePicture::desired_versions); `followed` is the newest turn
@@ -102,18 +104,27 @@ class ChangeVisibility {
     [[nodiscard]] std::optional<std::uint64_t> followed() const { return followed_; }
 
   private:
-    struct Watch {
+    enum class Settle : std::uint8_t { None, Presented, Offscreen, NothingToDraw };
+    /// One commit of an island: the chunks it invalidated, judged and shown on their own. An
+    /// island's parts settle in version order (a later part that is shown waits for an earlier
+    /// one), so a version is never called shown because an older commit's chunks were (round ee
+    /// review, R2). Parts of one island beyond kMaxParts merge (the two oldest: union of the
+    /// chunks, the newer version, judged again): a stricter wait, never a lost change.
+    struct Part {
         std::uint64_t version = 0;
         std::vector<render::ChunkKey> keys;
-        bool viewed = false, cpu_ready = false, gpu_ready = false, in_view = true;
+        enum class State : std::uint8_t { Unjudged, Viewed, Offscreen, Shown, Empty };
+        State state = State::Unjudged;
+        bool cpu_ready = false, gpu_ready = false, in_view = true;
     };
-    enum class Settle : std::uint8_t { None, Presented, Offscreen, NothingToDraw };
     struct IslandState {
         /// The newest version committed, and the newest version for which every version up to it
-        /// is settled (settle_kind says how the newest settled one ended).
+        /// is settled (`settles` says how each ended).
         std::uint64_t committed = 0, settled = 0;
-        Settle settle_kind = Settle::None;
-        std::optional<Watch> watch;
+        /// How each settled version ended, ascending (bounded): a take's result is the end of the
+        /// settle that completed it, not the island's latest (round ee review, R2).
+        std::deque<std::pair<std::uint64_t, Settle>> settles;
+        std::deque<Part> parts;
     };
     struct Take {
         std::uint64_t from = 0, through = 0;
@@ -128,7 +139,11 @@ class ChangeVisibility {
         Visibility result = Visibility::Visible;
     };
 
-    void settle_island(std::size_t index, Settle kind);
+    /// Settles the island's finished parts from the front, in version order.
+    void advance(IslandState& s);
+    void record_settle(IslandState& s, std::uint64_t version, Settle kind);
+    /// How `t` ended, from the settles that completed its islands (Visible if any was presented).
+    [[nodiscard]] Visibility take_result(const Take& t) const;
     void retire_takes();
     [[nodiscard]] bool take_done(const Take& t) const;
     [[nodiscard]] Visibility take_stage(const Take& t) const;

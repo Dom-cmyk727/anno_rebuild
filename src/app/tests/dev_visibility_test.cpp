@@ -183,8 +183,8 @@ TEST_CASE("visibility through the pipeline: held chunk workers keep a committed 
     draw(true);
     CHECK(follower.visibility().classify(turn) == V::ChunksStale);
     CHECK_FALSE(app::drawn_note(out, V::ChunksStale).empty());
-    // The negative control: the old rule accepted exactly here (premature), the new answer waits.
-    CHECK(old_rule_says_drawn);
+    // The negative control: the old rule accepted exactly here (premature, checked above), the
+    // new answer waits.
     CHECK(app::visibility_waiting(follower.visibility().classify(turn)));
     // A frame still shows the old picture: it equals the one before the change.
     CHECK(shown == before);

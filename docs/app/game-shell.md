@@ -374,7 +374,7 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
     reseeded from the picture's per-island list (`ScenePicture::island_buildings`, O(the city))
     when it is on again (`ensure`). Never a scan per pointer move or per frame. What remains on
     the window thread for an edit on another island is the picture's own `apply` (a sorted insert
-    into its building list and the per-island index, about 0.2 ms at 50 000 buildings in
+    into its building list and the per-island index, about 1 ms at 50 000 buildings (Release, Windows; 0.8 to 1.6 ms over three runs) in
     `dev_occupancy_test.cpp`'s reference row), which is not occupancy work;
   - the latest snapshot's money, goods and `costs_waived` (the free-build flag or rule) against
     the type's gold and goods costs.
@@ -456,7 +456,7 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   (a refused or no-op command) is `NoVisualChange`. Present-call success is not display time.
   The state is bounded: one watch per island (changes to one island merge, which only makes the
   wait stricter), at most 1 024 takes not yet shown (the two oldest merge beyond that), 1 024
-  settled ones kept (an older command reads `Unknown`), at most 4 096 turns named per take. The
+  settled ones kept (an older command reads `Unknown`), at most 1 024 turns named per take (the worst case of the unshown takes is about 8 MB of turn numbers, the settled history as much again; a hidden window takes nothing, so the bound is far above a session's use). The
   sim's outcome stands either way. The old rule (followed turn and no pending island) is
   object-list completion only: with the chunk workers held it said drawn while the old chunks
   still drew (`dev_visibility_test.cpp` shows both answers on lan5 with held workers).

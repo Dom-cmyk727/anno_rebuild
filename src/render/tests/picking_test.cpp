@@ -228,6 +228,11 @@ TEST_CASE("picking: non-finite input, a degenerate geometry and points beyond th
     REQUIRE(scaled);
     CHECK(scaled->first == doctest::Approx(-95.0));
     CHECK(scaled->second == doctest::Approx(60.25));
+    // A pointer with a fraction (a high-density display) is in the pixel its integer part names.
+    const auto fraction = anno::render::scene_point({-100.25, 50.0, 2.0}, 10.7, 20.2);
+    REQUIRE(fraction);
+    CHECK(fraction->first == doctest::Approx(-95.0));
+    CHECK(fraction->second == doctest::Approx(60.25));
     CHECK_FALSE(anno::render::scene_point({0.0, 0.0, 0.0}, 1.0, 1.0));
     CHECK_FALSE(anno::render::scene_point({0.0, 0.0, 1.0}, nan, 1.0));
 }

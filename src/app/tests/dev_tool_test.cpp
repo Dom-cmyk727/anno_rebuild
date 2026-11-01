@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -16,6 +17,8 @@
 #include <doctest/doctest.h>
 
 #include <anno/app/dev_tool.hpp>
+#include <anno/app/loader.hpp>
+#include <anno/app/play.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/assets/island.hpp>
 #include <anno/formats/anlagen.hpp>
@@ -24,6 +27,7 @@
 #include <anno/render/resample.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/test/game_dir.hpp>
 
 namespace app = anno::app;
 namespace render = anno::render;
@@ -34,14 +38,14 @@ namespace {
 constexpr std::int32_t kX0 = 100, kY0 = 40, kSize = 30;
 const sim::TypeId kPlain{501}, kRoad{502};
 
-std::shared_ptr<const render::Scene> scene() {
+std::shared_ptr<const render::Scene> scene(std::int32_t x0 = kX0, std::int32_t y0 = kY0) {
     auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
     bytes->push_back(std::vector<std::uint8_t>(64, 0));
     anno::formats::insel::Island island;
     island.head = (*bytes)[0];
     island.number = 0;
-    island.x = kX0;
-    island.y = kY0;
+    island.x = static_cast<std::uint16_t>(x0);
+    island.y = static_cast<std::uint16_t>(y0);
     island.width = kSize;
     island.height = kSize;
     return render::Scene::create("dev-tool", {island}, anno::assets::island::GroundTextures{},
@@ -82,16 +86,20 @@ struct Window {
     double cx = 0, cy = 0, scale = 0, tw = 0, th = 0;
     int w = 0, h = 0;
     float density = 1.0F;
+    /// The zoom level of a tile width: the built groups, else the first derived level.
+    [[nodiscard]] std::size_t group() const {
+        return tw == 84 ? 0 : tw == 42 ? 1 : tw == 20 ? 2 : 3;
+    }
     [[nodiscard]] app::PointerFrame frame() const {
         if (scale == 0) {
             const render::Rect view{static_cast<int>(std::lround(cx - w / 2.0)),
                                     static_cast<int>(std::lround(cy - h / 2.0)), w, h};
-            return app::pointer_frame(view, nullptr, tw, th, scene, w, h);
+            return app::pointer_frame(view, nullptr, group(), tw, th, scene, w, h);
         }
         const auto rv = render::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
                                                static_cast<std::uint32_t>(h), scale,
                                                render::ResampleFilter::Bilinear);
-        return app::pointer_frame(rv.view, &rv.resample, tw, th, scene, w, h);
+        return app::pointer_frame(rv.view, &rv.resample, group(), tw, th, scene, w, h);
     }
     /// The window point (SDL's coordinates) over the drawn centre of world tile (x, y) on flat
     /// ground: tile_top's top vertex plus half a diamond, placed on the drawable without the
@@ -227,15 +235,17 @@ TEST_CASE("dev tool: under continuous zoom a point just inside a tile's edge pic
           "view's sub-pixel offset counts" *
           doctest::test_suite("dev_tool")) {
     // The camera is placed so that the output's left and top edges lie 0.9 of a grid pixel past
-    // the integer view origin (the Resample's offset), and the point is 0.02 of a tile inside the
-    // tile's -u edge: without the offset the pick moves about 0.06 of a tile back, into x - 1.
+    // the integer view origin (the Resample's offset). The pointer is the whole drawable pixel
+    // nearest the point 0.05 of a tile inside the tile's -u edge (a pointer names a pixel; its
+    // rounding moves the point at most about 0.04 of a tile): without the offset the pick moves
+    // 0.06 of a tile or more back, into x - 1.
     const auto sc = scene();
     const sim::TileXY t{kX0 + 11, kY0 + 13};
     for (const auto& [tw, th, scale] :
          std::vector<std::array<double, 3>>{{42, 21, 1.37}, {20, 10, 2.0}, {10, 5, 3.5}}) {
         CAPTURE(tw);
         const int w = 1600, h = 1000;
-        const double u = t.x + 0.02, v = t.y + 0.5;
+        const double u = t.x + 0.05, v = t.y + 0.5;
         const double sx = (u - v) * tw / 2.0, sy = (u + v) * th / 2.0;
         // cx - w / (2 s) = floor(sx) - 300 + 0.9, and likewise in y.
         const double cx = std::floor(sx) - 300.0 + 0.9 + w / (2.0 * scale);
@@ -246,13 +256,163 @@ TEST_CASE("dev tool: under continuous zoom a point just inside a tile's edge pic
                 .resample.scale;
         REQUIRE(s == scale);
         const double edge_x = cx - w / (2.0 * s), edge_y = cy - h / (2.0 * s);
-        const std::pair<float, float> at{static_cast<float>((sx - edge_x) * s - 0.5),
-                                         static_cast<float>((sy - edge_y) * s - 0.5)};
+        const std::pair<float, float> at{static_cast<float>(std::round((sx - edge_x) * s - 0.5)),
+                                         static_cast<float>(std::round((sy - edge_y) * s - 0.5))};
         app::DevTool tool(setup());
         const auto cmds = feed(tool, win, {key(SDLK_B), button(true, at), button(false, at)});
         REQUIRE(cmds.size() == 1);
         CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{t});
     }
+}
+
+TEST_CASE(
+    "dev tool: an island whose origin has an odd x + y is drawn half a pixel high at group 1, "
+    "and a point just inside a tile's edge still picks that tile" *
+    doctest::test_suite("dev_tool")) {
+    // Review of package B (P2-1): the scene places an island at the integer iso::tile_top of its
+    // origin, (x + y) * 21 / 2 at group 1, so an odd sum is drawn 0.5 px above the continuous
+    // rule. The pointer is a whole pixel whose centre lies 0.25 px below tile T's upper-right
+    // edge (v = T.y, from corner (T.x, T.y) to (T.x + 1, T.y)) as the island was drawn: the
+    // integer offset plus the continuous local position. The continuous rule alone puts that
+    // edge 0.5 px lower, above the pixel: tile T.y - 1.
+    const std::int32_t x0 = kX0 + 1, y0 = kY0; // 141: odd
+    const auto sc = scene(x0, y0);
+    app::DevToolSetup st = setup();
+    st.island.x0 = x0;
+    const sim::TileXY t{x0 + 9, y0 + 12};
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+        CAPTURE(group);
+        const auto [tw, th] = render::kTile[group];
+        const auto top = render::tile_top(x0, y0, group);
+        // The edge's midpoint as drawn, and a window around it.
+        const double lu = t.x - x0 + 0.5, lv = t.y - y0;
+        const double xe = top.first + (lu - lv) * tw / 2.0;
+        const double ye = top.second + (lu + lv) * th / 2.0;
+        Window win{sc,   xe + 100.3, ye - 80.6, 0, static_cast<double>(tw), static_cast<double>(th),
+                   1600, 1000,       1.0F};
+        const double edge_x = static_cast<double>(std::lround(win.cx - win.w / 2.0));
+        const double edge_y = static_cast<double>(std::lround(win.cy - win.h / 2.0));
+        // A column near the midpoint whose centre's edge height leaves the next pixel centre
+        // below it by less than half a pixel (the edge rises half a pixel per pixel).
+        std::optional<std::pair<float, float>> at;
+        for (int dx = 0; dx < 2 && !at; ++dx) {
+            const double px = std::floor(xe - edge_x) + dx;
+            const double xc = edge_x + px + 0.5;
+            const double y_edge = ye + (xc - xe) * th / tw;
+            const double py = std::floor(y_edge - edge_y - 0.5) + 1.0; // first centre below
+            const double d = edge_y + py + 0.5 - y_edge;
+            if (d > 0.0 && d < 0.5) {
+                at = std::pair{static_cast<float>(px), static_cast<float>(py)};
+            }
+        }
+        REQUIRE(at.has_value());
+        app::DevTool tool(st);
+        const auto cmds = feed(tool, win, {key(SDLK_B), button(true, *at), button(false, *at)});
+        REQUIRE(cmds.size() == 1);
+        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{t});
+    }
+    // The rounding itself: half a pixel up at group 1, none at groups 0 and 2, and group 2's
+    // scaled at a derived level (here there is none to scale).
+    CHECK(app::placement_rounding(*sc, 0, 1, 42).second == doctest::Approx(-0.5));
+    CHECK(app::placement_rounding(*sc, 0, 0, 84).second == doctest::Approx(0.0));
+    CHECK(app::placement_rounding(*sc, 0, 2, 20).second == doctest::Approx(0.0));
+}
+
+TEST_CASE(
+    "dev tool: on lan5's developer island, with its heights, every sampled ground pixel picks "
+    "the tile the renderer drew there" *
+    doctest::test_suite("dev_tool")) {
+    // Review of package B (P2-2): elevation through the adapter, against the renderer's own record
+    // of the tile at each pixel (draw_ground_grids' GroundProbe), at pixels away from tile edges
+    // (an edge pixel's centre can lie on either side). The island's placement is the scene's,
+    // with its own rounding.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto path = std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() /
+                      "data" / "maps" / "lan5.txt";
+    auto play = app::load_play(*dir, path);
+    REQUIRE(play.ok());
+    auto loaded = app::load_placed_scene(*dir, play.value().name, play.value().placed);
+    REQUIRE(loaded.ok());
+    const std::shared_ptr<const render::Scene> sc = loaded.value().scene;
+    const app::DevToolSetup st = app::dev_tool_setup(play.value());
+    REQUIRE(st.city.has_value());
+    std::optional<std::size_t> index;
+    for (std::size_t k = 0; k < sc->islands.size(); ++k) {
+        if (sc->islands[k].x == st.island.x0 && sc->islands[k].y == st.island.y0) {
+            index = k;
+        }
+    }
+    REQUIRE(index.has_value());
+    const auto& island = sc->islands[*index];
+    const auto gfx = island.gfx_ids();
+    const auto heights = island.heights();
+    REQUIRE(gfx.ok());
+    REQUIRE(heights.ok());
+    std::size_t checked = 0, wrong = 0;
+    for (const std::size_t group : {std::size_t{1}, std::size_t{2}}) {
+        CAPTURE(group);
+        const render::Placement* placed = nullptr;
+        for (const render::Placement& p : sc->layouts[group]) {
+            if (p.index == *index) {
+                placed = &p;
+            }
+        }
+        REQUIRE(placed != nullptr);
+        const auto [tw, th] = render::kTile[group];
+        // A 640 x 400 px window of the island around its middle, in island-local pixels.
+        const auto mid = render::tile_top(island.width / 2, island.height / 2, group);
+        render::Canvas local;
+        local.width = 640;
+        local.height = 400;
+        local.origin = {mid.first - 320, mid.second - 200};
+        local.pixels.assign(local.width * local.height * 4, 0);
+        render::GroundProbe probe = render::GroundProbe::for_canvas(local);
+        render::draw_ground_grids(local, island.width, island.height, gfx.value(), heights.value(),
+                                  sc->textures, group, sc->lift, &probe);
+        // The window shows exactly that region: scene pixel offset + local origin is drawable 0.
+        const int vx = placed->offset.first + local.origin.first;
+        const int vy = placed->offset.second + local.origin.second;
+        const app::PointerFrame frame = app::pointer_frame(render::Rect{vx, vy, 640, 400}, nullptr,
+                                                           group, tw, th, sc, 640, 400);
+        app::DevTool tool(st);
+        static_cast<void>(tool.handle({app::ToolInput::Kind::Toggle, 0, 0}, nullptr));
+        for (std::size_t py = 0; py < local.height; py += 7) {
+            for (std::size_t px = 0; px < local.width; px += 7) {
+                const auto [u, v] = probe.pos[py * local.width + px];
+                if (std::isnan(u)) {
+                    continue;
+                }
+                const double fu = u - std::floor(u), fv = v - std::floor(v);
+                if (fu < 0.06 || fu > 0.94 || fv < 0.06 || fv > 0.94) {
+                    continue;
+                }
+                const sim::TileXY want{st.island.x0 + static_cast<std::int32_t>(std::floor(u)),
+                                       st.island.y0 + static_cast<std::int32_t>(std::floor(v))};
+                if (!st.island.contains(want)) {
+                    continue;
+                }
+                const std::pair<float, float> at{static_cast<float>(px), static_cast<float>(py)};
+                std::vector<sim::Command> cmds;
+                for (const SDL_Event& e : {button(true, at), button(false, at)}) {
+                    for (sim::Command& c : app::dev_tool_step(tool, e, 1.0F, &frame).commands) {
+                        cmds.push_back(std::move(c));
+                    }
+                }
+                ++checked;
+                if (cmds.size() != 1 || placements(cmds[0]) != std::vector<sim::TileXY>{want}) {
+                    ++wrong;
+                }
+            }
+        }
+    }
+    MESSAGE("lan5 developer island: " << checked << " ground pixels checked, " << wrong
+                                      << " picked another tile");
+    CHECK(checked > 1000);
+    CHECK(wrong == 0);
 }
 
 TEST_CASE("dev tool: a resized window maps the same tile with its new frame" *

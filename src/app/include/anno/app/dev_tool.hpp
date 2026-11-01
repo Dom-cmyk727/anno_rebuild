@@ -52,6 +52,8 @@ struct DevToolSetup {
 struct PointerFrame {
     render::ScreenMap map;
     render::PickGeometry geometry;
+    /// The zoom level drawn (a built group, or a derived level after them).
+    std::size_t group = 0;
     std::shared_ptr<const render::Scene> scene;
     int drawable_w = 0, drawable_h = 0;
 };
@@ -61,7 +63,7 @@ struct PointerFrame {
 /// continuous zoom resamples (render::resampled_view: the view's origin plus the Resample's
 /// offset, at its scale). `scene` is the frame's own generation.
 [[nodiscard]] PointerFrame pointer_frame(render::Rect view, const render::Resample* resample,
-                                         double tile_w, double tile_h,
+                                         std::size_t group, double tile_w, double tile_h,
                                          std::shared_ptr<const render::Scene> scene, int drawable_w,
                                          int drawable_h);
 
@@ -120,6 +122,14 @@ class DevTool {
     std::optional<sim::TileXY> hover_, press_;
     std::string message_;
 };
+
+/// The rounding of island `index`'s placement at zoom level `group` of `scene`, in scene pixels:
+/// the scene draws an island at the integer iso::tile_top of its world origin, so at group 1
+/// (tile height 21) an origin with an odd x + y sits half a pixel above the continuous rule the
+/// pick solves (round ee review of B). A derived level is a reduction of group 2's picture: its
+/// rounding is group 2's at its scale. (0, 0) when the scene has no placement for the island.
+[[nodiscard]] std::pair<double, double>
+placement_rounding(const render::Scene& scene, std::size_t index, std::size_t group, double tile_w);
 
 /// One line for the window title: the selected type (its id and footprint), the rotation, the
 /// demolish mode, the tile under the pointer and the last hint.

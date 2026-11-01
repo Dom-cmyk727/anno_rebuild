@@ -46,9 +46,10 @@ struct PickGeometry {
 }
 
 /// How a frame's drawable pixels map to the scene pixels it shows (round ee, B1): the scene
-/// point under the centre of drawable pixel (px, py) is (x0 + (px + 0.5) / scale, y0 + (py + 0.5)
-/// / scale). A stepped zoom draws scene pixel view.x + px at px: x0 = view.x, scale 1. A
-/// continuous zoom resamples (resample.hpp): x0 = view.x + Resample::offset_x, scale =
+/// point under the centre of the drawable pixel holding (px, py) is (x0 + (floor(px) + 0.5) /
+/// scale, ...): a pointer with a fraction (a high-density display reports one) is in the pixel
+/// its integer part names. A stepped zoom draws scene pixel view.x + px at px: x0 = view.x,
+/// scale 1. A continuous zoom resamples (resample.hpp): x0 = view.x + Resample::offset_x, scale =
 /// Resample::scale (the scale resampled_view settled on, not the one asked for).
 struct ScreenMap {
     double x0 = 0.0, y0 = 0.0;
@@ -62,7 +63,8 @@ struct ScreenMap {
         !std::isfinite(m.scale) || !(m.scale > 0.0)) {
         return std::nullopt;
     }
-    return std::pair{m.x0 + (px + 0.5) / m.scale, m.y0 + (py + 0.5) / m.scale};
+    return std::pair{m.x0 + (std::floor(px) + 0.5) / m.scale,
+                     m.y0 + (std::floor(py) + 0.5) / m.scale};
 }
 
 /// Scene pixel of corner (u, v) at height `h` (HEIGHT units): the forward rule,

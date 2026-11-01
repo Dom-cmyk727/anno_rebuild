@@ -1,4 +1,5 @@
 // The developer building tool (see the header).
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -7,10 +8,32 @@
 
 namespace anno::app {
 
-PointerFrame pointer_frame(render::Rect view, const render::Resample* resample, double tile_w,
-                           double tile_h, std::shared_ptr<const render::Scene> scene,
+std::pair<double, double> placement_rounding(const render::Scene& scene, std::size_t index,
+                                             std::size_t group, double tile_w) {
+    const std::size_t built = std::min(group, render::kGroups - 1);
+    if (index >= scene.islands.size()) {
+        return {0.0, 0.0};
+    }
+    const auto& island = scene.islands[index];
+    for (const render::Placement& p : scene.layouts[built]) {
+        if (p.index != index) {
+            continue;
+        }
+        const auto [tw, th] = render::kTile[built];
+        const double x = static_cast<double>(island.x), y = static_cast<double>(island.y);
+        const double ex = p.offset.first - (x - y) * tw / 2.0;
+        const double ey = p.offset.second - (x + y) * th / 2.0;
+        const double scale = group < render::kGroups ? 1.0 : tile_w / tw;
+        return {ex * scale, ey * scale};
+    }
+    return {0.0, 0.0};
+}
+
+PointerFrame pointer_frame(render::Rect view, const render::Resample* resample, std::size_t group,
+                           double tile_w, double tile_h, std::shared_ptr<const render::Scene> scene,
                            int drawable_w, int drawable_h) {
     PointerFrame f;
+    f.group = group;
     f.map.x0 = view.x + (resample != nullptr ? resample->offset_x : 0.0);
     f.map.y0 = view.y + (resample != nullptr ? resample->offset_y : 0.0);
     f.map.scale = resample != nullptr ? resample->scale : 1.0;
@@ -41,9 +64,18 @@ std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, d
         return fail("no tile here");
     }
     const render::Scene& scene = *frame.scene;
-    const auto tile =
-        render::pick_tile(point->first, point->second, frame.geometry,
-                          [&scene](float u, float v) { return scene.ground_height(u, v); });
+    // The city's island is drawn at its integer placement: undo that rounding first, so the pick
+    // solves the rule the island's pixels were drawn with.
+    std::pair<double, double> rounding{0.0, 0.0};
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        if (scene.islands[k].x == setup_.island.x0 && scene.islands[k].y == setup_.island.y0) {
+            rounding = placement_rounding(scene, k, frame.group, frame.geometry.tile_w);
+            break;
+        }
+    }
+    const auto tile = render::pick_tile(
+        point->first - rounding.first, point->second - rounding.second, frame.geometry,
+        [&scene](float u, float v) { return scene.ground_height(u, v); });
     if (!tile) {
         return fail("no tile here");
     }

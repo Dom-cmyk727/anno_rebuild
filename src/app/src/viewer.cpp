@@ -857,6 +857,7 @@ void Viewer::handle(const SDL_Event& e) {
         // the pointer picks what is on screen. Its commands go to the runner's queue; the
         // receipts are kept for the feedback.
         const bool was_on = dev_->enabled();
+        const auto hovered = dev_->hover();
         ToolStep step = dev_tool_step(*dev_, e, SDL_GetWindowPixelDensity(window_),
                                       pointer_frame_ ? &*pointer_frame_ : nullptr);
         for (sim::Command& command : step.commands) {
@@ -866,8 +867,11 @@ void Viewer::handle(const SDL_Event& e) {
             if (dev_->enabled() != was_on) {
                 drag_ = false; // a left drag that began as a pan ends with it
             }
-            update_title();
-            dirty_ = true;
+            // A motion within the same tile changes nothing shown: no redraw, no new title.
+            if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered) {
+                update_title();
+                dirty_ = true;
+            }
             // The window keeps its own handling of motion (the cursor, a right-button pan) and
             // of focus and visibility; the rest was the tool's.
             switch (e.type) {
@@ -1392,8 +1396,8 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const auto s =
         g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(), resample);
     // What the pointer is over from now on: this frame's map, zoom level and scene.
-    pointer_frame_ = pointer_frame(view, resample, levels().tile_w(group_), levels().tile_h(group_),
-                                   gen, out_w, out_h);
+    pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
+                                   levels().tile_h(group_), gen, out_w, out_h);
     const auto p = Clock::now();
     for (const auto& step : s.steps()) {
         steps_.push_back({step.name, step.ms});
@@ -1464,8 +1468,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"picture", picture_ms_});
     steps_.push_back({"draw prologue", since_ms(picture_end_, render_start)});
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
-    pointer_frame_ =
-        pointer_frame(view, nullptr, levels().tile_w(group_), levels().tile_h(group_), gen, w, h);
+    pointer_frame_ = pointer_frame(view, nullptr, group_, levels().tile_w(group_),
+                                   levels().tile_h(group_), gen, w, h);
     const auto rendered = Clock::now();
     const double known = s.chunks_ms + s.ground_ms + s.water_objects_ms + s.sea_ms + s.objects_ms;
     steps_.push_back({"chunks", s.chunks_ms});

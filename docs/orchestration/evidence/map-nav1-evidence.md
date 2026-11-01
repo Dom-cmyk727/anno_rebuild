@@ -23,9 +23,13 @@ restated with addresses in `docs/re/ship-navigation.md`.
 | N4.3 original-runtime capture card | CAP-1..6, 6c | `docs/testing/ship-navigation-capture-card.md` | NOT_RUN (queued) |
 | N5.1-N5.5 contract, bounded work, config, visibility, packages | `docs/sim/ship-navigation.md` | sim | draft for review |
 
-Open static items (not blockers for contract review): the UI pick provider and group order body; fine-stage block-edge
-behaviour under original code; coarse-map load build; island height-grid padding; hook `slot +0x68(4)` radius source; who sets
-state `0x800`/other state bits. Runtime-only: x87 control word, registry cursor at load, land-start-as-candidate (CAP-6c).
+Resolved by the second static round: coarse-map build timing (per island at placement), vertex-grid padding, search window (start-centred, 1024),
+hook radius (16.0) and stamp radius (5.0) sources, state `0x800`/`0x8000` semantics, the route engine's unit query and stamp semantics
+(stamps affect only the goal-candidate choice), fine-stage block edges (4400 + 600 randomised cases on the original bytes, no deviation),
+the multiplayer player-id path (unauthenticated), 23 + 7 emulated route-run vectors. Open static items (not blockers for contract review):
+the UI pick provider and group order body; object-top contribution to block extrema / tile type 9; setters of state bits
+`0x2000`/`0x4000`; the cell-list effect of the registry position update callers. Runtime-only: x87 control word, registry cursor at load,
+land-start-as-candidate (CAP-6c), and confirmation of the builder call pattern at load (CAP-3).
 
 ## Review ledger
 - N1-N3 evidence note: independent re-verification of 15 load-bearing claims against the binaries: CONFIRMED (stepper, segment start,
@@ -37,3 +41,8 @@ state `0x800`/other state bits. Runtime-only: x87 control word, registry cursor 
   (rounding of L, negative hp truncation, positive wrap, chunk limit, coordinate rounding, map-edge bound, route-run coverage,
   land-start candidate): vectors added or limitation documented; `emulated` label corrected to `coarse-emulated`; capture card
   completed; Python-missing warning and empty-fixture guards added.
+- Final contract review (fresh): CHANGES REQUIRED with 13 findings (atomicity label, owner-check scope, world-level coast index, route-engine
+  obstacle query values, window rule, i64 widths and missing integrator references, seam fit with `scheduler.cpp`, serial planning, deferral
+  semantics, crew label, P2 acceptance overstatement, unread static dependencies, codec note). Applied; the unread static dependencies were
+  then read (second static round) and integrated; the remaining open items are named above. A focused re-review of the corrections follows in
+  the REPORTS entry.

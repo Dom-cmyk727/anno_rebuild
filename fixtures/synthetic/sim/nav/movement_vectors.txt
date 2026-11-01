@@ -76,3 +76,23 @@ integrate 0.04 1 5 25 | 1 25
 integrate 0.04 3 25 15 | 3 15
 integrate 0.04 3 7 53 | 2.968 0
 integrate 0.04 3 7 54 | 3 54
+# density kernel R x,z ... tile x z | value   route-engine unit stamps (docs/re/ship-navigation.md 9.4): the stamp point is truncated
+#     to its tile (40.5 -> 40, 40.7 -> 40); kernel K5 (R 2) is 0 0 1 0 0 / 0 1 2 1 0 / 1 2 3 2 1 / 0 1 2 1 0 / 0 0 1 0 0, K3 (R 1) is
+#     all 1 with centre 2; values combine in record order: state' = [[0,1,2,3],[1,1,2,3],[2,2,3,3],[3,3,3,3]][state][kernel value].
+#     Hand-derived from the kernels and the table (also agrees with the original's 0x1000f120 under emulation, evidence note).
+density K5 2 40.5,20.5 tile 40 20 | 3
+density K5 2 40.5,20.5 tile 38 20 | 1
+density K5 2 40.5,20.5 tile 41 19 | 1
+density K5 2 40.5,20.5 tile 40 18 | 1
+density K5 2 40.5,20.5 tile 37 20 | 0
+density K5 2 40.7,20.5 tile 40 20 | 3
+density K5 2 40.7,20.5 tile 42 20 | 1
+density K5 2 40.5,20.5 38.5,20.5 tile 39 20 | 3
+density K5 2 40.5,20.5 38.5,20.5 tile 38 20 | 3
+density K5 2 40.5,20.5 38.5,20.5 tile 40 19 | 2
+density K5 2 40.5,20.5 38.5,20.5 tile 37 19 | 1
+density K5 2 40.5,20.5 38.5,20.5 tile 36 20 | 1
+density K5 2 40.5,20.5 38.5,20.5 tile 35 20 | 0
+density K3 1 40.5,20.5 tile 40 20 | 2
+density K3 1 40.5,20.5 tile 41 21 | 1
+density K3 1 40.5,20.5 tile 42 20 | 0

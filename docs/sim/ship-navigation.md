@@ -30,7 +30,7 @@ state and every set unchanged (tested like `FoundCmd`, the unchanged assertion i
 | # | Check | Source |
 |---|---|---|
 | 1 | the figure exists | ORIGINAL (`0x1005d380` null check) |
-| 2 | the figure's owner is the issuer | ORIGINAL in the selection layer (AnnoWelt `0x1001a5d0`, `world.slot +0x158`); the net `0x6c` handler itself has none, the sim checks in the command |
+| 2 | the figure's owner is the issuer | the original checks ownership in the selection layer (`0x1001a5d0`) against the *claimed* player (the player id travels in the packet and is not authenticated against the connection, evidence 8); the net `0x6c` handler has none. **ADAPTATION:** the sim checks against the authenticated issuer |
 | 3 | the figure kind has a `navigation` type fact (a validated registry fact, section 4), i.e. is a sailing ship | ORIGINAL in spirit (the selection requires class group 6 or 7 and the world picks the engine by type group); expressed as a registry fact (ADAPTATION: data, not group numbers) |
 | 4 | `state_word & rules.move_blocked_mask == 0`, default `0x200e` | ORIGINAL (`0x100a5f70`) |
 | 5 | the target is inside the world (`0 <= x < world_w`, same for y) | ADAPTATION (original: none, the path engine decides later) |
@@ -118,15 +118,15 @@ neighbour order exactly as evidenced. **Static coast data** is a **world-level**
 `[world+0x6aa4]`: 64 x 64-tile sectors, each 8 x 8 coarse cells, a null sector = open water `0xfff`): derived state assembled from
 the island rectangles in island-slot order (deterministic), rebuilt for a changed rectangle when a placed or removed object has
 the original's class bits (`& 0x7000` equal to `0x2000` or `0x4000`, which becomes a data flag on the building type with the
-original classes as default), never hashed, rebuilt on load (whether the original builds the whole map at load is a static
-open item, see section 11). **Local obstacles** enter only as the ship-density
+original classes as default), never hashed, rebuilt on load (the original builds it per island at placement before the first tick, evidence 9.2). **Local obstacles** enter only as the ship-density
 stamps (5 x 5 kernel, cost classes by density) from other ships near the start/goal, queried by tile from the figure
 registry. The route engine's own query is evidenced (evidence 9.4): radius `stamp_radius` around the start, inclusive `d^2 <= r^2`, units with
 state `0xa` clear and ship group, scan order = 16 x 16-tile cells by z then x, cap `route_unit_cap` = 0x40, each stamped at
-`pos + heading * 25.0` with the 5 x 5 kernel (the stamp body `0x10010870`, its edge clamping and the in-cell list order are still
-being read: static open item). **ADAPTATION:** the sim has no 16 x 16-tile cell lists, so it reproduces the scan order as (z-cell,
-x-cell, ascending figure id) computed from positions; the order only matters when more than 64 ships are in range and is part of
-the rules identity. Never use wall-clock state. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
+`pos + heading * 25.0` with the 5 x 5 kernel (a stamp is only a record; the tile is the truncated point; density is evaluated per candidate tile, **no clamping**, and affects only the
+goal-candidate choice, evidence 9.4; density vectors in `movement_vectors.txt`). The original's in-cell order is registry insertion
+order (oldest first, re-appended only when a unit changes cell), which depends on movement history. **ADAPTATION:** the sim has no
+16 x 16-tile cell lists, so it reproduces the scan order as (z-cell, x-cell, ascending figure id) computed from positions; the order
+only matters when more than 64 ships are in range and is part of the rules identity. Never use wall-clock state. The nearby-figure hull veto of founding is unrelated and unchanged. The first implementation port covers the
 **global** engine; the 12-unit local detour replan (section 10 of the evidence) is **deferred**: the slice accepts
 that ships may overlap and that the density stamps are used only at planning time. This is an ADAPTATION noted in the
 acceptance review; it removes the order dependence of the segment-end hook for the first slice and the dependent
@@ -203,6 +203,10 @@ and goldens move with the version; the independent Python reference moves with t
    part of this slice (flags 0).
 2. Decide the failed-plan behaviour (section 2), the exact-rational arithmetic adaptation (section 4), deferral of the
    local detour/avoid (section 5), the planning budget semantics (section 6) and persistence of motion state (section 8).
-3. x87 precision, coarse-map load build, height-grid padding, registry cursor at load: capture cards CAP-2, CAP-3.
+3. x87 precision (CAP-2) and the registry cursor at load (CAP-3) are runtime-only. The coarse-map build (per island at placement, before the
+   first tick) and the vertex-grid padding (zero beyond `W x H`, identical to the repo's `VertexGrid`/`kBoundaryVertexHeight = 0`, so the
+   existing terrain view is reused for the land rule) are settled statically. Remaining static items that do not block this contract: the
+   object-top contribution to block extrema and tile type 9 (a building footprint becomes blocked; the exact object rule is read when the
+   coast data is ported), the setters of state bits `0x2000`/`0x4000`, the UI pick provider and group body.
 4. A candidate whose witness relies on a one-tile channel or on shore tiles needs re-evaluation under the original land
    rule before selection (evidence 11); this packet selects none.

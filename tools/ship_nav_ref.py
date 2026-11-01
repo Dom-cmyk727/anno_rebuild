@@ -113,6 +113,26 @@ def integrate(speed, lens, visit_ticks, n, mut=None):
     return pos, done
 
 
+K5 = [[0, 0, 1, 0, 0], [0, 1, 2, 1, 0], [1, 2, 3, 2, 1], [0, 1, 2, 1, 0], [0, 0, 1, 0, 0]]
+K3 = [[1, 1, 1], [1, 2, 1], [1, 1, 1]]
+DENS = [[0, 1, 2, 3], [1, 1, 2, 3], [2, 2, 3, 3], [3, 3, 3, 3]]  # state' = DENS[state][kernel value]
+
+
+def density(stamps, tile, mut=None):
+    """Ship-density at a tile from route-engine stamps (docs/re/ship-navigation.md 9.4): each stamp is
+    (x, z, kernel, R); its tile is the TRUNCATED point; the kernel cell is tile - (stamp tile - R); the values combine in
+    record order through DENS."""
+    state = 0
+    for sx, sz, kern, R in stamps:
+        tx = round(sx) if mut == 'round_tile' else math.trunc(sx)
+        tz = round(sz) if mut == 'round_tile' else math.trunc(sz)
+        col, row = tile[0] - (tx - R), tile[1] - (tz - R)
+        if 0 <= col <= 2 * R and 0 <= row <= 2 * R:
+            k = (K5 if kern == 'K5' else K3)[row][col]
+            state = max(state, k) if mut == 'max_combine' else DENS[state][k]
+    return state
+
+
 def fmt_frac(f):
     f = Fraction(f)
     return str(f.numerator) if f.denominator == 1 else repr(float(f))
@@ -135,6 +155,11 @@ def run_record(kind, args, mut=None):
     if kind == 'integrate':
         pos, done = integrate(args[0], [Fraction(x) for x in args[1].split(',')], int(args[2]), int(args[3]), mut)
         return [fmt_frac(pos), str(done)]
+    if kind == 'density':
+        # density <K5|K3> <R> <x,z> ... tile <x> <z>
+        i = args.index('tile')
+        stamps = [(float(a.split(',')[0]), float(a.split(',')[1]), args[0], int(args[1])) for a in args[2:i]]
+        return [str(density(stamps, (int(args[i + 1]), int(args[i + 2])), mut))]
     if kind == 'turn_ticks':
         t = turn_ticks(args[0], mut)
         return [fmt_frac(t)]
@@ -295,8 +320,11 @@ def check_routes(path, mut=None):
         goal = tuple(map(float, parts[4].split()[1:]))
         status = int(parts[5])
         runs = [] if parts[6] == '-' else parts[6].split()
+        stamped = len(parts) > 7
         count += 1
         st, cx, cz, _ = passage(W, H, land, start, goal)
+        if stamped:  # stamps move the chosen candidate: the recorded end tile is the reference
+            cx, cz = map(int, parts[8].split()[1:])
         problems = []
         if st != status:
             problems.append('status %s, passage reference %s' % (status, st))
@@ -318,8 +346,8 @@ def check_routes(path, mut=None):
             problems.append('runs on a non-route status')
         if problems:
             bad.append((n, name, problems))
-    if count < 20:
-        bad.append((0, 'fixture', ['fewer than 20 route vectors']))
+    if count < 30:
+        bad.append((0, 'fixture', ['fewer than 30 route vectors']))
     return bad
 
 
@@ -371,7 +399,7 @@ def main(argv):
     if argv[1] == 'check':
         bad = check(argv[2])
         kinds = {r[1] for r in load(argv[2])}
-        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate'}
+        expected = {'speedfactor', 'turn', 'dir8', 'dir16vec', 'chunks', 'turn_ticks', 'integrate', 'density'}
         if kinds != expected:
             print('record kinds present %s, expected %s' % (sorted(kinds), sorted(expected)))
             return 1
@@ -381,7 +409,7 @@ def main(argv):
         return 1 if bad else 0
     # selftest: every deliberate mistake must be caught by at least one vector
     mutants = ['round_hp', 'thresh2', 'reversal_plus', 'no_half', 'odd', 'limit1', 'overshoot', 'floor_visit',
-               'drop_leftover']
+               'drop_leftover', 'round_tile', 'max_combine']
     ok = True
     if check(argv[2]):
         print('selftest: the unmutated reference already fails')

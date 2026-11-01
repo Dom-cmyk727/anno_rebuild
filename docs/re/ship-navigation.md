@@ -255,6 +255,14 @@ for kind 1; group capped at 30 ships); the group body, and therefore the per-shi
 group, is UNKNOWN. The screen-to-world pick provider (`pick = [tFrameGame +0x50]`, `slot +0x94`/`+0x90`) was not
 identified, so tile-centre versus sub-tile rounding of the click is UNKNOWN. No water/land test is made in the cursor.
 
+**Multiplayer authentication.** The sender (`0x1005f200`) writes the player id from the player object it is given; the server
+(`0x100553e0`) accepts command types `0x64..0xc7` from any client and queues them unexamined; the turn entry has no sender field;
+the receiving client (`0x1005ffd0` -> `0x100601e4` -> `0x1005f120`) takes the player from the packet's u16 (`list.slot +0xc`; a null
+result drops the command) and the selection ownership check compares the ship with the **claimed player's** selection. So the
+original does not authenticate the player id against the connection (a modified client can forge it, DERIVED); the ownership
+check bounds a forged command to ships the forged player owns. Whether the selection-setting kinds filter by owner, and whether
+the transport drops unregistered senders, are runtime observations.
+
 **Net `0x6c` path (host/script).** Net command `0x6c`, payload kind 1: `u16 figure id | u8 kind = 1 | f32 x | f32 y | f32 z` (y ignored). Single
 player: AnnoFrame `0x100591f0` calls the ship's slot `+0xdc` (stop) then slot `+0xe4` (SetOrder `0x10040b00`);
 multiplayer packs in AnnoFrame `0x1005d410`, turn dispatcher `0x1005ffd0`, table entry `0x6c` handler `0x1005d380`
@@ -309,8 +317,10 @@ methods): the island-attach method `0x100a2b50` (rect = the island's bounding bo
 `+0x1c0` Reset, which loops over all islands) and `0x100a26b0`, `0x100a2840`, `0x100a2e60`, `0x100a1da0` (two sites). The island
 place/remove methods (`0x10082040`, `0x10082b10`) rebuild only the changed rectangle, and only when their flag argument has
 `& 0x7000` equal to `0x2000` or `0x4000` (call sites `0x10082afd`, `0x10083802`); the island loader passes `0x4000000`, so
-load-time placement never rebuilds. That Reset runs after the islands exist and before the first order is DERIVED, not proven
-(CAP-3). **Vertex grid:** island Init (`0x1008c18a..0x1008c1d0`) allocates `(H+2) x (W+1)` bytes, zero-filled, stride `W+1`; the
+load-time placement never rebuilds. The Reset itself is **not** on the load path: its only world caller is the multiplayer resync handler (AnnoFrame `0x100584a8`
+in `0x100582e0`, net `0xd6`). At load the map is built **per island at placement, before the first tick**: scenario path world slot
+`+0x88` (`0x100a24d0`) -> `+0x1cc` (`0x100a1da0`) -> `+0x1d4` (rect) and `+0x1d0` (builder) at `0x100a1fac` and `0x100a20c7`; savegame
+path Load `0x100ae270` -> island loader `0x100a2ea0` (call `0x100ae6cb`) -> `+0x1d4`/`+0x1d0` at `0x100a2fd7`. **Vertex grid:** island Init (`0x1008c18a..0x1008c1d0`) allocates `(H+2) x (W+1)` bytes, zero-filled, stride `W+1`; the
 HEIGHT chunk copy (`0x10084870`, slot `+0xac` of island vtable `0x100ca19c`) writes only the `W x H` samples, so
 `vertex(x, y) = HEIGHT[x, y]` for `x < W, y < H` and **0** for column `W` and rows `H`, `H+1` (the repo's `VertexGrid` and
 `kBoundaryVertexHeight = 0` follow the same rule). Consequence (DERIVED): the tiles of the last column and row read zero
@@ -331,8 +341,8 @@ contain a connection ending at the edge facing the current cell or its nibble fl
 `0x4888` W, `0x1222` E); exit test on the current cell: its (entry edge to exit edge) bit or the nibble bit; and the
 class-table mask byte must contain the direction bit (W `0x01`, S `0x04`, E `0x10`, N `0x40`). Class 0 costs: type 0
 10/13 (orth/diag), type 1/2 15/20 and 20/27, type 3 (shore) 50/69. Window: built by ship slot `+0x164` = `0x10040940`
-(`ret 8`): a box centred on the ship's **start tile only** (the target is not part of it), `r = u16 [ship+0x6e]` (default `0x400`;
-the only ship-level store found is `0x10044080` when a class-`0x1a00` object is attached), x range `[max(0, tx-r), min(W, tx+r+1))`,
+(`ret 8`): a box centred on the ship's **start tile only** (the target is not part of it), `r = u16 [ship+0x6e]` (default `0x400`, stored by the base constructor `0x100405d0` at `0x10040623`; the `0x10044080` store is
+another class's slot (a building's action radius) and no loader or HEAD record changes it for ships), x range `[max(0, tx-r), min(W, tx+r+1))`,
 z likewise; `SetWindow 0x1000edd0` floors x0, z0 to a multiple of 8 and **rejects** a box with more than 32 blocks of 64 tiles
 per axis (2048 tiles from the aligned origin; the engine does not set the window-valid byte, block creation returns NULL and
 the query fails, the failure code -2 is DERIVED). An unclipped `r = 1024` box is 2049 tiles wide (33 blocks) and is rejected: it
@@ -356,8 +366,20 @@ cells by z-cell rows ascending (outer), x-cell columns ascending (inner), then t
 `dx^2 + dz^2 <= r^2` (inclusive), `(state & 0xa) == 0` and its group is in the mask, returns `{unit, d^2}` unsorted and stops at
 64 entries (later units are silently dropped). Consumer, in buffer order: skip a unit whose direction pointer (`slot +0x60` =
 `unit +0x20`) is NULL or whose id equals `word [req1+0x18]`, stamp at `(unit.x + dir.x * 25.0, unit.z + dir.z * 25.0)` (`0x100c2214` = 25.0)
-through `engine.slot +0x6c(X, Z, table 0x100cccf4, mode 2)` (a ship querier stamps unconditionally; other queriers only when the unit's
-state lacks `0x400`, table `0x100ccce0`, mode 1). A goal on land within 6 tiles of
+through the route engine's stamp call (sub-object vtable `0x100c1a3c` slot `+0x6c` = `0x1000f0e0`, thunk `0x10010870`; a ship querier
+stamps unconditionally with kernel `0x100cccf4` and radius R = 2, other queriers only when the unit's state lacks `0x400`, kernel
+`0x100ccce0`, R = 1). The stamp call **only appends** a record `{x f32, z f32, kernel*, radius u8}` (16 bytes at `S+0x1f98`, 64 records
+max, cleared at the end of `SetWindow`); nothing is converted or clamped there. The kernels are the full 5 x 5 `0 0 1 0 0 / 0 1 2 1 0 / 1 2 3 2 1
+/ 0 1 2 1 0 / 0 0 1 0 0` and the 3 x 3 `1 1 1 / 1 2 1 / 1 1 1`. The density is evaluated lazily per queried tile (`0x1000f120`, `ret 4`, the only reader
+of the records): the stamp point is **truncated** (`ftol`, no 0.5 offset: 40.7 -> 40), the kernel cell of tile `(tx, tz)` is
+`(tx - (sx - R), tz - (sz - R))` and is used only inside `0..2R`, values combine in record order through
+`state' = [[0,1,2,3],[1,1,2,3],[2,2,3,3],[3,3,3,3]][state][kernel value]` (table `0x100c15b0`; a Python reference matched the real function on
+about 7400 tiles). **Stamps change neither the coarse nor the fine costs**: both callers of `0x1000f120` are inside `Offer` (`0x1000f260`),
+so congestion only changes which goal-disc candidate becomes the end node (a congested candidate is stored but does not raise the best
+score). Worked examples on 64 x 64 open sea (start (4.5, 20.5), goal (40.5, 20.5), radius 6): no stamp E10 E10 E10 E6; a ship exactly at
+the goal NE1 E10 E10 E10 E3 (end tile (38, 19)); a ship at (38.5, 20.5) NE1 E10 E10 E10 E5; the committed fixture `route_runs.txt` holds all
+of them. The registry cells are lists with the newest unit appended: within a cell the scan is oldest first, and a unit that stays
+in its cell keeps its place (the update re-appends only when the cell changes, registry slot `+0x2c` = `0x10098200`). A goal on land within 6 tiles of
 reachable water routes to the nearest candidate; farther returns -2. **Retry loop:** if the fine search cannot pass a coarse
 cell, `0x10013fb0` clears the connectivity bit "entry edge of the previous cell to the exit edge towards the failing
 cell" (the start cell clears nibble bits), up to **8** learned masks per query (list reset every query); a `-1`
@@ -428,7 +450,7 @@ hull half-extent. So friendly and own ships are handled only by the density stam
 | goal on land within 6 tiles of reachable water | invalid endpoint | routes to the nearest water candidate (score 2304 - ftol(64 d^2)) | same (documented) |
 | goal on land farther than 6 | invalid | -2 | -2 |
 | goal = start tile | trivial | status 2 (no runs), order consumed | order accepted, no movement |
-| ship-to-ship obstruction | not modelled | density stamps (cost x3/x4, density 3 blocks); hostile owners trigger the avoid routine | density stamps; hostile avoidance deferred |
+| ship-to-ship obstruction | not modelled | route engine: stamps only change which goal candidate is chosen (no cost change); the local detour planner (segment ends) uses density costs x3/x4 and blocks density 3; hostile owners trigger the avoid routine | stamps at planning time; local detour and hostile avoidance deferred |
 | land definition | `HEIGHT < 16` per tile | floor(corner average) <= 19 per tile + building footprints | the original rule |
 Original-column results for the coarse and end-to-end rows come from executing the original coarse expansion,
 mask packer and start-nibble functions under unicorn on hand-built maps; the fine stage and goal bookkeeping in those runs
@@ -450,10 +472,9 @@ pass labels are unchanged here; geometric witnesses remain tool-only until then.
    order); right-click water at four sub-tile offsets.
 2. x87 precision control at runtime: no `_controlfp`/`fldcw` setup located in the exe/DLL init. Settle: `fnstcw` at a
    breakpoint on `0x100428d0` (`0x027f` = 53 bit, `0x037f` = 64 bit, `0x007f` = 24 bit).
-3. Whether the world Reset (`0x100af240`, which attaches every island and thereby builds the coarse map) runs after island
-   creation and before the first order (DERIVED); the object-top contribution to block extrema and to tile type 9; whether any
-   start ship has a non-default `[ship+0x6e]` search radius; the setter of state bits `0x2000`/`0x4000`. Settle: break at
-   `0x100aae00` during load, log the rectangle and the return address, and dump `[world+0x6aa4]` sector words. (The fine
+3. The object-top contribution to block extrema and to tile type 9; the setter of state bits `0x2000`/`0x4000`. Settle: break at
+   `0x100aae00` during a scenario start and a savegame load (expect one call per island and none from Reset) and dump
+   `[world+0x6aa4]` sector words. (The fine
    stage at block edges was run on the original bytes: 4400 randomised corridor cases and 600 lazy-block cases against a Python
    transcription, 0 deviations from the interior rule; the vertex-grid padding is settled in 9.2.)
 4. Registry cursor and last-tick at load (read `[reg+0x20]`, `[reg+0x22]` before and after a load).

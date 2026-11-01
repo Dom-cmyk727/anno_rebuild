@@ -2,34 +2,38 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-01: Windows rendering intake; MAP navigation contract
+## Current dispatch — 2026-11-01: round-ee repairs and Windows verification; MAP navigation contract
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package or accept unreviewed changes. MAP-FOUND-3 is accepted for its local
+package or accept unreviewed changes. Round ee is reviewed: four repairs precede
+rendering acceptance. MAP-FOUND-3 is accepted for its local
 headless scope; MAP's next assignment is MAP-NAV-1 below.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090 after the current Mac handoff | **W4-WIN-0 READY now.** Prepare the host and read the packet below. Finish/review the current W4.4 work before releasing W4-WIN-1–6 on a pinned commit. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner after intake | **READY: W4-WIN-0 → 1 → R1–R4 → 2–6.** Repair the four reviewed round-ee defects, then complete target-host verification. Source pin below; no main merge. |
 | MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-1 READY.** Recover the navigation rules and prepare a reviewed deterministic movement contract and fixtures. MAP-FOUND-3 is accepted locally; movement implementation is not yet released. |
 
-**Reviewed baseline:** `task/W4-3-live-buildings` at
-`3483d665a5b0f6d92a3f88c9ac519d0bd7e1272d` (round ed; code at `c2bdf91`).
-The orchestrator reviewed its complete round-ed diff, recomputed the saved gate
-verdicts, matched tested binary hashes, reran the window-table contracts and 27
-trace cases, and reproduced both canary tables. **Accepted for that local repair
-scope only.** Windows/Linux/GPU target acceptance, original visual parity and
-late-game performance remain open.
+**Rendering handoff pin:** `task/W4-3-live-buildings` at
+`a29b07949201e3ea5bf30c800e392f337c1ec598` (round ee documentation), code
+`093559ce63331770ae67b1abacacd8fc5fcc4155`. The complete source is published on
+GitHub on that task branch for this migration. Main carries the instructions and
+review, not a merge of rendering implementation. Read the
+[round-ee review and four findings](reviews/2026-11-01-w4-ee.md).
+**CHANGES REQUIRED**, not accepted W4.4. Round ed at `3483d66` remains accepted
+for its prior local scope; the earlier `7d5cf21` WIP observation and `c869fb7`
+remote head are superseded and must not be used as the new test baseline.
 
-**Current W4.4 is still in progress, not accepted:** at dispatch preparation the
-Mac branch was at `7d5cf2113f1b227024fbe0a321b4669b2cbd62ce` with additional
-uncommitted edits. That is an observation, **not a handoff pin**. Do not reset it,
-copy its build tree, or have a second executor implement the same packages. The
-last observed GitHub rendering head was `c869fb7`; pulling the task board alone
-does not deliver the current rendering code. Re-check remote refs at intake.
+The Mac rendering executor has stopped at this clean pin. Windows now owns
+further rendering implementation; do not run a second Mac implementation lane.
+Verify that the fetched remote task branch contains the pin. For an older clean
+owned checkout, verify its current HEAD is an ancestor of the pinned target before
+fast-forwarding to that target. If local HEAD is newer than the pin or diverged,
+preserve its commits and report both refs before changing it. No reset, force push,
+prune or main merge. Mac builds and ignored evidence are not copied.
 
 ### Rendering read order and common delivery
 
@@ -41,7 +45,9 @@ does not deliver the current rendering code. Re-check remote refs at intake.
 3. On the released rendering revision, inspect `src/app/include/anno/app/play.hpp`,
    `dev_input.hpp` and `dev_feedback.hpp` where present; their implementations;
    `src/app/src/viewer.cpp`; `src/render/include/anno/render/picking.hpp`; the
-   input, feedback, picking, preview and picture GPU tests; and
+   `command_outcome`, `dev_session`, `dev_script`, `play_follow` and
+   `scene_picture` interfaces/implementations; the input, feedback, picking,
+   preview and picture GPU tests; and
    `tools/bench/window_{case,matrix,table}.*` plus their contracts.
 
 Keep a clean main checkout for the latest board and canonical gate. An executor
@@ -69,17 +75,15 @@ executor's dirty checkout.
 - Prepare an intake report with capabilities, missing prerequisites and exact
   remote heads. A missing 4K display or unavailable Radeon/WSL is a specific
   limitation, not permission to label an equivalent test passed.
-- **Release condition for code work:** the current Mac executor finishes its
-  package, reports code/docs heads and review evidence, the orchestrator reviews
-  it, and this board names the committed, published rendering revision to use.
-  The exact SHA must exist on GitHub and match the Windows checkout. Only one
-  host owns further implementation on the rendering branch after the handoff.
-  While waiting, complete this intake; do not redo W4.4 or test an old remote head
-  and report it as the new result. No further owner choice about the host is needed.
+- **Code work is released for this packet:** verify the published pin above, then
+  complete W4-WIN-1's fresh build and cheap canaries before R1–R4. The review's
+  fixes may be implemented on Windows; no additional owner approval is needed.
+  A missing external prerequisite blocks only dependent checks. Continue useful
+  independent work and report NOT_RUN with the exact cause.
 
-### Current W4.4 scope — preserve work already authorized
+### Round-ee W4.4 scope — preserve completed work while repairing the findings
 
-These are the in-flight packages, not a second Windows assignment:
+These packages describe the delivered feature; do not restart them:
 
 - **A — command outcomes:** correlate submission, turn/command position and the
   authoritative result; bound retention with explicit loss; do not infer
@@ -107,12 +111,85 @@ Each package and final integration require independent read-only review, correct
 findings and retained dispositions. The round-dr amendment keeps this a minimal
 developer tool, not the final UI or a new bindings-design exercise.
 
-### W4-WIN-1–6 — Windows/RTX verification packet · QUEUED AFTER REVIEW
+### W4-WIN-R — four bounded round-ee repairs · READY after the fresh-build canaries
 
-The following acceptance work is assigned to the Windows rendering lane once the
-release condition above is met. The next board update must pin the actual reviewed
-head and incorporate its findings; do not assume `3483d66` or the observed WIP head
-is that release. Preserve Mac evidence as Mac evidence.
+Read the linked review first. Implement one concern per commit, writing each
+small regression before its fix. Use the actual window consumer or its shared
+adapter: testing a helper with prearranged inputs does not prove the wiring.
+
+**R1 — coherent outcome/resource feedback.**
+
+1. Trace `PlayRunner::publish`, `OutcomeLog`, `PlaySnapshot::outcomes_next`,
+   `Viewer::update_title` and scripted reads. State the legal interleaving in
+   which an outcome exists before its resource snapshot.
+2. Add a deterministic barrier case with a paid build: the early outcome must
+   not be paired with pre-charge resources; after publication the same receipt
+   and updated money/goods must agree. Include refusal, no-op and lost outcomes.
+3. Implement a bounded consistent read or defer the outcome using a publication
+   watermark. Do not spin/retry indefinitely or block the window until a turn ends.
+   Review lock ordering and preserve command/replay/state semantics.
+4. Independently review the interleaving, consumer wiring and negative control;
+   correct findings before marking R1 complete.
+
+**R2 — truthful render readiness for feedback and scripted waits.**
+
+1. Separate accepted, desired state, object-list committed, CPU chunks fresh,
+   GPU replacement usable and successfully presented. Reuse `window_trace` and
+   the current chunk serial/generation/surface boundaries where practical; keep
+   the behavior correct when tracing is disabled.
+2. Add cases that commit the object list while chunk workers remain held, then
+   hold uploads/dissolve, and then fail a present. `wait drawn` must not succeed
+   and the title must not imply visibility at these earlier boundaries.
+3. Correlate the command's actual affected visible content with the presented
+   frame. Handle coalesced/superseded edits, no-op commands, offscreen edits,
+   pan/zoom/resize and unsupported visuals explicitly; neither hang forever nor
+   label offscreen work visible. Represent pending state without growing an
+   unbounded per-command render history or waiting from the input path.
+4. Prove the positive case with a fresh reference/readback for a non-empty changed
+   region, and a negative control that prematurely accepts object-list completion.
+   Update the barrier test's claim, script contract and documentation. Independent
+   review must inspect production readiness use, not just a generated note string.
+
+**R3 — bounded footprint validation.**
+
+1. Check rotated rectangle extent with widened/checked arithmetic before enumerating
+   tiles. Cover a zero/unknown definition, a much-too-wide/tall definition,
+   coordinate boundaries, rotation and a legitimate larger definition.
+2. Remove temporary whole-footprint allocation from the feedback query. Bound work
+   by the admitted region; preserve data-driven dimensions, not a hardcoded original
+   building-size cap. Review the adjacent occupancy indexing arithmetic as well.
+3. Use an allocation/work guard to show huge invalid dimensions are refused before
+   enumeration. Do not exhaust host memory as a test. Keep the valid control so an
+   implementation that always refuses fails. Obtain independent review.
+
+**R4 — isolate occupancy work from unrelated content and disabled input.**
+
+1. Reproduce the global-version path: hold the selected city's content fixed, edit
+   another island, and observe the current complete city-index rebuild. Also cover
+   the developer tool disabled in an ordinary play window.
+2. Use existing island-local deltas/versions or bounded immutable preparation to
+   avoid a full world scan and full city-set reconstruction on each frame/update.
+   Do not relocate that scan to another window callback. Preserve the published-data
+   boundary: the window still must not read the mutable World.
+3. Verify local additions, demolition, overlap/refusal feedback, resync/coalescing,
+   tool re-enable and missing registry entries. An unrelated edit must not rebuild
+   or enumerate unchanged city occupancy; same-island changes must still update it.
+4. Measure bounded Release costs at growing valid local city sizes and unrelated
+   world sizes, separately from pointer-move microbenchmarks. State what is synthetic
+   and what is actually simulated. Review the algorithm and invariants, not just
+   whether a fast 4090 workstation beats a timing threshold.
+
+After each repair's independent review and focused checks pass, continue the
+remaining Windows packet without another orchestrator pause. If a repair needs
+an unresolved gameplay rule, stop only that dependent change and describe the
+boundary; do not invent terrain, height, roads or founding behavior.
+
+### W4-WIN-1–6 — Windows/RTX verification packet · READY
+
+Order: host intake (0), fresh build and cheap canaries (1), repairs R1–R4, then
+acceptance 2–6 on the corrected revision. Preserve valid Mac evidence at its
+actual source/configuration and retain failed attempts. No initial broad matrix
+is needed merely to reconfirm the reviewed defects.
 
 1. **Fresh target build and preflight.** Configure/build the owned Windows source
    with the `msvc` presets and Release configuration. Never reuse Mac objects or
@@ -131,14 +208,22 @@ is that release. Preserve Mac evidence as Mac evidence.
 3. **RTX 4090 GPU acceptance.** Identify the actual adapter and backend. Execute
    `play: GPU matches the CPU path on one scene`, picture replacement/ownership,
    invalidation, stale completions, constrained upload/stand-in/dissolve cases and
-   any new preview cases. Then run the inventoried applicable GPU suite, including
+   the new preview cases. Add the pending continuous-zoom preview comparison
+   against the CPU composition/resampling reference, with changed pixels and an
+   intentionally wrong overlay control; do not call the stepped group-1 test proof
+   of this path. Then run the inventoried applicable GPU suite, including
    timing checks. An RTX-required case skipped on the RTX host is not acceptance.
    Repeat the corrected stand-ins case with controlled CPU contention; keep GPU
    work serialized, record STALLED/WATCHDOG diagnostics and investigate before a
    retry. Run applicable tests on the Radeon if available with its own identity;
    an NVIDIA-specific skip is not Radeon parity proof.
-4. **Real Windows window.** First one-edit, resize and trace on/off canaries; then
-   the existing 13-case matrix at 1080p and actual 3840×2160 if supported. Record
+4. **Real Windows window.** First one-edit, resize and trace on/off canaries. Run
+   the developer-tool session with real sprites, current-receipt outcomes and
+   headless replay; preserve commands/hashes/outcomes and a failing altered-command
+   control. The round-ee screenshot action is macOS-only: use a reviewed native
+   capture path or explicit manual capture of the game window; NOT_RUN is not a
+   screenshot. Capture title feedback separately if the client image excludes it.
+   Then run the existing 13-case matrix at 1080p and actual 3840×2160 if supported. Record
    drawable pixels, refresh/cadence, trace completeness, command outcomes, per-stage
    edit latency, p50/p95/p99/max with sample counts, queues and memory. The existing
    `window_case.sh` uses UNIX `time`/`perl` and is not a native Windows launcher:
@@ -154,7 +239,9 @@ is that release. Preserve Mac evidence as Mac evidence.
    they cannot close the two Metal-specific failures. Original-runtime captures
    require the documented harness and their own provenance, not GPU/CPU equality.
 6. **Closeout.** Correct demonstrated in-scope defects, obtain per-package and final
-   independent review, and run final gates after the final code changes. Report
+   independent review, and run final affected gates after the final code changes.
+   Reuse unaffected expensive gates only with an explicit dependency rationale;
+   do not relabel e4c726b/269f795 Mac gates as tests of 093559c or a Windows revision. Report
    selected/executed/failed/empty/skipped/incomplete separately, preserve first
    failures, and pin source/config/adapter/binary/log identities. State remaining
    platform/visual/performance limits and stop for orchestrator review. No open-ended
@@ -169,9 +256,9 @@ for a bounded target-host baseline where available, report its actual population
 and active work, and leave unrepresented workloads open. Configuration/content
 changes that affect authoritative behavior remain deterministic and identifiable.
 
-**Isolation and stop:** MAP remains on the Mac; do not cherry-pick its in-progress
-founding work, change active map/candidates or original game files, stop others'
-jobs/keep-awake assertions, or merge/rebase/push task code without a release
+**Isolation and stop:** MAP remains on the Mac; do not cherry-pick its active
+navigation or separate founding changes, change active map/candidates or original
+game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task code without a release
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 

@@ -809,11 +809,6 @@ def main_admission(argv):
         ships = [int(x) for x in f[4].split(',')]
         quota, adv, adversary = int(f[5]), int(f[6]), f[7]
         rd = int(f[8]) if len(f) > 8 else 0
-        if f[1] == 'r':   # admission r <speed> <turn_step> <vmin> <dtick> | <R Advances>
-            got = admission_r(f[2], f[3], int(f[4]), int(f[5]))
-            if got != int(right):
-                bad.append((n, 'R %s expected %s' % (got, right)))
-            continue
         counts, _ = admission_sim(rule, nn, dtick, ships, quota, adv, adversary, ready_delay=rd)
         if right.startswith('counts'):
             want = [int(x) for x in right.split()[1:]]

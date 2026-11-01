@@ -240,15 +240,13 @@ and goldens move with the version; the independent Python reference moves with t
   `StopCmd`): clears the node list; sets the plan end to the current position; resets the speed-factor multiplier to 1.0; and, for a ship whose state bit 0
   ("moving") is set, trims `remaining` to the remainder past its whole 1.0-length chunks (`remaining -= trunc(remaining) * 1.0`: the remainder is kept and
   still sailed, then the ship idles). **Definitions used in this document:** the state bit 0 is set by a *movement segment* (kind >= 8) **and by the stepper's
-  own turn phase** (`0x1003ec75`: `state |= 0x201`, facing changed by +-1 so it is **odd** during the phase), and is clear in the planner's kind-3 turn nodes,
+  own turn phase** (`0x1003ec75`: `state |= 0x201`, facing changed by +-1, so its parity alternates between consecutive phases), and is clear in the planner's kind-3 turn nodes,
   the idle segments and terminal segments. The original's odd/even selector is **bit 0 of the ship's `dir16` facing**: in a movement segment the facing is
-  `dir16` of a lattice vector (`2 * dir8`, even), so diagonal movement segments trim by 1.0 as well; in a stepper turn phase the facing is odd and the odd
-  branch runs, but its `remaining` is `turn_step` (< 1 tile, validated) so `trunc(remaining * 0.7071)` and `trunc(remaining)` are both 0 and **the trim is a
+  `dir16` of a lattice vector (`2 * dir8`, even), so diagonal movement segments trim by 1.0 as well; in a stepper turn phase the facing is odd or even (it alternates) and either branch may run, but its `remaining` is `turn_step` (< 1 tile, validated) so `trunc(remaining * 0.7071)` and `trunc(remaining)` are both 0 and **the trim is a
   no-op on either branch**; the port therefore trims movement segments by 1.0 and leaves turn phases untouched, and refuses an odd facing in a *movement*
   segment (invalid state); an odd facing in a Turn segment is valid. A ship that is not moving (bit 0 clear) gets the idle segment (`remaining = speed =
-  0.01f` = q32 `42949672`). The original's two other non-moving branches are unreachable for a ship the commands accept: state bit `0x200` without bit 0 is
-  the terminal kinds' `0x202`/`0x204` (inside the blocked mask), and a non-moving ship with state bit `0x2000` (blocked mask) returns without change; both are
-  ported as "refused" for any mask containing them. **ADAPTATION:** a ship whose current segment is already the idle segment with `remaining <= 0.01f` is **not
+  0.01f` = q32 `42949672`). The original's two other non-moving branches are unreachable for a ship the commands accept: state bit `0x200` without bit 0 only comes from the terminal kinds' `0x202`/`0x204`, whose bits `0x2`/`0x4` are in the blocked mask (`0x200` alone is not in `0x200e`), and a non-moving ship with state bit `0x2000` (blocked mask) returns without change; both are
+  ported as "refused" for any mask containing them. The persisted segment kind (Idle / Turn-planner node / Turn-stepper phase / Move) distinguishes the stepper's turn phase (stop lets it finish) from the planner's kind-3 node (bit 0 clear: a stop replaces it by the idle segment). **ADAPTATION:** a ship whose current segment is already the idle segment with `remaining <= 0.01f` is **not
   re-armed** by a further stop or replacement (the original re-arms it), so repeated replacements cannot keep an older ticket permanently unready.
   *Order part* (only `StopCmd`; `MoveCmd` does not do this): removes the pending ticket and clears the order record; emits `Stopped{ship, order_id}` when an order
   was cancelled. `MoveCmd` acceptance performs the motion part, then records the new order and **keeps an existing ticket**. A superseded order is simply replaced; no event.
@@ -288,7 +286,7 @@ State (persisted and hashed, 12.5): world `next_ticket` (u64); per navigating sh
    remainder shorter than one lattice step (`L_d / speed`, e.g. 39 stepper units = 196 ticks for a 1502 diagonal) or the 1-unit stop segment (5 ticks),
    i.e. at most `R = ceil(max(R_move, R_turn) / dtick_min)` Advances where, in **ticks**, `R_move = ceil(5 * 2^32 * 100 / (speed_q32 * V_min))` (one 1.0-length chunk at the slowest
    allowed factor `V_min`, 65 % in the faithful speed factor; a stepper unit is 5 ticks) and `R_turn = ceil(5 * turn_step_q32 / 42949672)` (the turn segment at speed 0.01);
-   for a 1502 (speed 0.036, `f0 = 0.11`, `V_min = 65`, `dtick = 5`) that is 214 ticks = 43 Advances, not the 6 of the earlier unit-confused formula. it is a **per-type finite number**, not a constant. The derivation is
+   for a 1502 (speed 0.036, `f0 = 0.11`, `V_min = 65`, `dtick = 5`) that is 214 ticks = 43 Advances, not the 6 of the earlier unit-confused formula. R is a **per-type finite number**, not a constant. The derivation is
    `wait_i <= max(wait_{i-1}, R) + C`, so the bound holds for `p = 0` too (the oldest ticket must also become ready). Preconditions, all validated: `route_plans_per_advance >= 1`;
    `C` is evaluated at the current registry size `n` and the smallest Advance `dtick` (`k = clamp(floor(dtick * n / 50), 1, n)`); a visit's budget is at least the 5 ticks of
    the 1-unit stop segment (the no-re-arm rule above removes the need for it to hold with tiny registries). `tools/ship_nav_ref.py

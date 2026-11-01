@@ -46,3 +46,11 @@ land-start-as-candidate (CAP-6c), and confirmation of the builder call pattern a
   semantics, crew label, P2 acceptance overstatement, unread static dependencies, codec note). Applied; the unread static dependencies were
   then read (second static round) and integrated; the remaining open items are named above. A focused re-review of the corrections follows in
   the REPORTS entry.
+
+## MAP-NAV-2 package A: review record (reviewed revision `7b0dcf3`)
+Independent read-only reviews: (1) head `d8aa70d` CHANGES REQUIRED (7 findings: wrong constants 42949672/diagonal displacement/lengths above 2^32, fairness gap with unready/blocked ticket holders and
+cursor-order visits, shore/object oracles, copied stamped endpoints, stop semantics, stale text, tool weaknesses); (2) head `a28c008` CHANGES REQUIRED (N1-N7: stop selector, bound at p = 0, residue
+sign persistence, stop/ticket split, R completeness, shore residue, stale text); (3) head `5f94dd8` CHANGES REQUIRED (N8 moving-segment definition, N9 R unit error, N10 residue at deferral); (4) head
+`7b0dcf3` **APPROVED**, only non-blocking wording (applied in the next documentation commit). Both original counterexamples (V7 wall crossing; corner cutting and leaving/re-entering the map with a valid endpoint)
+are rejected by `route-reject`; the unchanged valid fixtures pass. Known limits stated in the documents: the route oracle accepts legal non-canonical runs; the admission bound tested by
+the tool is looser than `(p+1)*C + R` (R is derived by `admission_r`, vectors hand-derived); shore tie cases and `objtile` are emulation inputs.

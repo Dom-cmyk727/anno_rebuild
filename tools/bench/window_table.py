@@ -422,6 +422,10 @@ def peak_rss(case):
 
 
 def main():
+    # The table holds non-ASCII text (an arrow); a Windows console or pipe defaults to a legacy code page and
+    # the run would die on the first such line (W4-WIN-4: UnicodeEncodeError, cp1252).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2

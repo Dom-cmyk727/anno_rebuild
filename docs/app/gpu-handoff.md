@@ -215,7 +215,9 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
   - Acceptance: a deadline in frames, or the GPU gate at `-j 1`, passing in a full gate.
 - **Round ec's intermittent `publish: one, two and four workers each hold a version ahead at a barrier, and
   the newest is published`** (anno_app_tests; failed once under ASan at workers = 2, "a held generation seen
-  destroyed"). Round ed found a test defect that produces exactly that failure, and fixed it:
+  destroyed"). Round ed found a test defect that can produce exactly that failure, and fixed it. Its
+  acceptance (passing repeatedly in a full ASan gate) is recorded in this round's report; until then
+  the item stays open:
   - The case's observer recorded only `generation()`. Every scene lineage starts at generation 0, and
     each iteration released its base scene (generation 0) after clearing its observer and after its last
     reclaimer wait, so the shared reclaimer could destroy it after the next iteration had installed its
@@ -228,8 +230,8 @@ The CPU cases of the bridge (scene_picture*, legal_workload) are unchanged and p
   - The ownership check itself was vacuous at workers = 2 for the same reason (the test owned the
     generation it checked).
   - Now: destructions are recorded by lineage (`Scene::name`) and generation (`src/app/tests/
-    reclaim_identity.hpp`); each held generation is also checked through a `weak_ptr` (still owned, without
-    owning it); the test owns none of the picture's generations (it compares against a reference scene of
+    reclaim_identity.hpp`); once the picture's reaper and the reclaimer have caught up, each held generation
+    is checked through a `weak_ptr` to have exactly one owner, its build (without the test owning it); the test owns none of the picture's generations (it compares against a reference scene of
     its own); the observer's record is shared by value, because the reclaimer calls a copy of the observer
     outside its lock, so a call can still run after the observer is cleared. The sibling case
     `accounting: one, two and four workers each hold a superseded generation at a barrier` had the same

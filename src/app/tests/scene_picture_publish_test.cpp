@@ -453,10 +453,13 @@ TEST_CASE("publish: one, two and four workers each hold a version ahead at a bar
             }
             CHECK(picture.stats().outstanding == workers);
             // Every held generation but the current one is retired by the picture: only its
-            // blocked build owns it, and it must keep it.
+            // blocked build owns it, and it must keep it. The picture's reaper and the reclaimer
+            // catch up first, so a retired handle still on its way out cannot stand in for the
+            // build's (round ed review of package 3).
+            REQUIRE(settled(picture));
             for (std::size_t i = 0; i + 1 < held.size(); ++i) {
                 CAPTURE(held[i].generation);
-                CHECK(!held[i].scene.expired());
+                CHECK(held[i].scene.use_count() == 1); // the build's handle, and no other
                 CHECK(!destroyed.of(held[i]));
             }
             gate.open.store(true);

@@ -402,11 +402,18 @@ TEST_CASE("accounting: one, two and four workers each hold a superseded generati
             }
             CHECK(picture.stats().outstanding == workers);
             CHECK(picture.stats().discarded == 0);
-            // The superseded generations are alive only through their jobs: each is still owned
-            // and none is destroyed yet.
+            // The superseded generations are alive only through their jobs: each is owned by its
+            // build and nothing else, and none is destroyed yet. The picture's reaper and the
+            // reclaimer catch up first, so a retired handle still on its way out cannot stand in
+            // for the build's (round ed review of package 3).
+            REQUIRE(eventually([&picture] {
+                const auto s = picture.stats();
+                return s.reclaim_completed == s.reclaim_queued;
+            }));
+            REQUIRE(reclaimer_settled());
             for (std::size_t i = 0; i + 1 < held.size(); ++i) {
                 CAPTURE(held[i].generation);
-                CHECK(!held[i].scene.expired());
+                CHECK(held[i].scene.use_count() == 1);
                 CHECK(!destroyed.of(held[i]));
             }
             gate.open.store(true);

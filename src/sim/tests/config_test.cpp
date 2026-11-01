@@ -188,6 +188,9 @@ void expected_config(Stream& s) {
     s.boolean(false); // timer0_clamp
     s.u8(0);          // island_candidate_order (Sorted)
     s.boolean(false); // removal_clear_tile
+    s.u64(1);         // founding_types: one entry
+    s.u32(1302);      // the ship menu offers the Kontor 1302 only
+    s.u64(0);         // city_names: no list
 }
 
 void expected_settings(Stream& s) {
@@ -348,6 +351,8 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
         r.island_candidate_order = sim::IslandCandidateOrder::Cached;
     });
     m.emplace_back("removal_clear_tile", [](sim::Rules& r) { r.removal_clear_tile = true; });
+    m.emplace_back("founding_types", [](sim::Rules& r) { r.founding_types.push_back(1304); });
+    m.emplace_back("city_names", [](sim::Rules& r) { r.city_names.push_back("Bremen"); });
     return m;
 }
 
@@ -555,7 +560,8 @@ TEST_CASE("rules defaults are faithful") {
     CHECK(r.island_candidate_order == sim::IslandCandidateOrder::Sorted);
     CHECK_FALSE(r.removal_clear_tile);
     CHECK(r.validate().empty());
-    static_assert(sim::field_count<sim::Rules>() == 20);
+    CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
+    static_assert(sim::field_count<sim::Rules>() == 22);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1464,7 +1470,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 119);
+    CHECK(sim::kStateHashVersion == 120);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

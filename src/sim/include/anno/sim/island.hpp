@@ -354,6 +354,10 @@ struct Island {
     /// D: island property 0x11, the word at +0xc6 (default 1, loaded from KONTORID): the next
     /// Kontor id. ADAPT: u32 with a checked increment (the original wraps at 16 bits).
     std::uint32_t kontor_counter = 1;
+    /// MAP-2 (stream 120): D island property 0xe (+0xa6), the players present, ascending unique
+    /// (the original's 16-bit word; saved in the DISCOVER record). The derived word +0xaa is
+    /// computed on demand (island_complete), not stored.
+    std::vector<PlayerId> players_present;
     /// Append-only (production.hpp): the ore objects of the island.
     std::vector<Deposit> deposits;
     /// The building serial counter (stage S6); serial 0 means "none", so >= 1.

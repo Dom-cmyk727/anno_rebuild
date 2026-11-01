@@ -508,6 +508,14 @@ struct Rules {
     /// mine's ids. On: the named tile when it holds this building's id, otherwise
     /// the first footprint tile in `place_object_record`'s order that does.
     bool removal_clear_tile = false;
+    /// MAP-2 (stream 120, docs/sim/ship-founding.md section 16): the building type ids a ship may
+    /// found a city with, ascending and unique. The original's ship menu offers 1302 only
+    /// (View.dll 0x10063ba0); the shared predicate additionally needs PRODTYPE 33..64.
+    std::vector<std::uint32_t> founding_types = {1302};
+    /// MAP-2 (stream 120): the world's city-name list (the STAEDTE section of the game's Texte.dat,
+    /// world property 0x13; language-dependent, so persisted here and not read from a file at run
+    /// time). Empty = no list: a founded city gets no name and no draw. No NUL in a name.
+    std::vector<std::string> city_names;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

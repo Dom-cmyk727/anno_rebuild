@@ -58,6 +58,11 @@ T33.5 stage 2 (stream 113) adds foot_dx (u16), foot_dy (u16), foot_rotation
 T33.5 stage 3 (stream 114) adds Rules::removal_clear_tile, one byte of the
 header. The tile columns are unchanged.
 
+Stream 120 (task MAP-2, ship founding) adds Rules::founding_types (u64 count, u32 ids; the default
+holds 1302), per player the relation rows and the discovery set (two u64 counts, 0 here), per city
+the player mask, per island the players present (a u64 count each, 0 here) and per figure the u32
+state word (the transcribed registries hold no figure).
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -78,7 +83,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 119
+STATE_HASH_VERSION = 120
 PRNG_TIMELINE_VERSION = 3
 
 
@@ -239,8 +244,9 @@ def rules_bytes(full_tick=False):
     # enforce_research, stat_decay_wide, bankrupt_deadline_wrap_safe, timer0_clamp,
     # island_candidate_order (S14 stage 2: Sorted = 0), removal_clear_tile (F37)
     flags = bytes([0, 0, 1 if full_tick else 0, 0, 0, 0])
+    # founding_types (stream 120): u64 count 1, the Kontor 1302
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
-            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0))
+            + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0))
 
 
 def settings_bytes(width=0, height=0):
@@ -293,6 +299,8 @@ def player_bytes(p):
     b += string(p['name'])
     b += u64(65) + bytes(65)   # research state
     b += u64(65) + bytes(130)  # research progress
+    b += u64(0)  # relations (stream 120): no row, the constructor's zero fill
+    b += u64(0)  # discovery (stream 120): empty set
     return b
 
 
@@ -428,6 +436,7 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
     b += u64(BUILD_GOODS) + b''.join(u32(0) + u64(0) for _ in range(BUILD_GOODS))
     b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
     b += u64(len(name)) + name  # stream 119: city property 0x12 (u64 length, bytes)
+    b += u64(0)  # player_mask (stream 120): empty set
     b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
@@ -483,6 +492,7 @@ def island_digest(slot, x0, y0, w, h, climate, owner_runs, objects, deposits, te
     td = terrain_digest(*terrain) if terrain else 0
     b = (u32(slot) + struct.pack('<i', x0) + struct.pack('<i', y0) + u32(w) + u32(h)
          + u32(climate) + u8(lock) + struct.pack('<i', city_cursor) + u32(kontor_counter)
+         + u64(0)  # players_present (stream 120): empty set
          + u32(next_serial) + u64(td))
     b += u16(sweep[0]) + b''.join(u32(v) for v in sweep[1:])   # sweep: stamp, grow x/y, fauna x/y
     b += u16(e300)                    # event300_stamp

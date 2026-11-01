@@ -53,6 +53,29 @@ struct ResearchState {
 /// importer of a scenario or save maps 0xff to this value).
 inline constexpr std::uint32_t kNoColour = 0xFFFFFFFFU;
 
+/// Whether `set` is ascending, unique and every member is a valid player id below `slots`
+/// (the shape of City::player_mask, Island::players_present and Player::discovery).
+[[nodiscard]] inline bool is_player_set(const std::vector<PlayerId>& set, std::uint32_t slots) {
+    for (std::size_t i = 0; i < set.size(); ++i) {
+        if (!set[i].valid() || set[i].v >= slots || (i > 0 && !(set[i - 1] < set[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// One row of the original's relation table (D: player +0x1ac + 6 * other, 32 rows of 6 bytes,
+/// zero-filled by the constructor 0x10021820; docs/re/ship-founding.md section 15.1): the three
+/// relation bytes of this player towards `other` (TRADE, MILIT, WAR; the loader stores only the
+/// loading player's own row) and the CREDIT word. A row that is absent is all zero (the
+/// constructor's fill). Kept sparse and ordered by `other`: no 32-player table.
+struct Relation {
+    PlayerId other;
+    std::uint8_t trade = 0, milit = 0, war = 0;
+    std::uint16_t credit = 0;
+    friend bool operator==(const Relation&, const Relation&) = default;
+};
+
 struct Player {
     /// The player's slot in the table (original u8).
     PlayerId index;
@@ -92,6 +115,15 @@ struct Player {
     /// Bytes; no encoding is assumed.
     std::vector<std::uint8_t> name;
     ResearchState research;
+    /// MAP-2 (stream 120): the relation rows, ascending by `other`, unique, no row for the
+    /// player itself.
+    std::vector<Relation> relations;
+    /// MAP-2 (stream 120): D player property 7 (+0xac), the owners this player has discovered, as
+    /// an ascending unique set (the original's dword mask; no 32-player limit).
+    std::vector<PlayerId> discovery;
+
+    /// The relation byte `which` (0 TRADE, 1 MILIT, 2 WAR) towards `other`; 0 for an absent row.
+    [[nodiscard]] std::uint8_t relation(std::uint32_t which, PlayerId other) const;
 };
 
 struct PlayerTable {

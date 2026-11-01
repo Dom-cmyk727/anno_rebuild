@@ -6,6 +6,7 @@
 #include <anno/sim/building.hpp>
 #include <anno/sim/hash.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/player.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/types.hpp>
 
@@ -404,6 +405,9 @@ std::string validate_cities(const Island& is, std::size_t slot, const SimConfig&
             return cp + ".number: is " + std::to_string(city.number.v) + ", the slot is " +
                    std::to_string(c);
         }
+        if (!is_player_set(city.player_mask, cfg.player_slots)) {
+            return cp + ".player_mask: not an ascending unique set below SimConfig.player_slots";
+        }
         if (city.stock.stock.size() != cfg.warehouse_goods) {
             return cp + ".stock: " + std::to_string(city.stock.stock.size()) +
                    " goods, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
@@ -526,6 +530,9 @@ std::string validate_island(const Island& is, std::size_t slot, const SimConfig&
     if (is.city_cursor < -1 || is.city_cursor >= static_cast<std::int64_t>(cfg.city_slots)) {
         return p + ".city_cursor: " + std::to_string(is.city_cursor) + " is outside -1.." +
                std::to_string(cfg.city_slots) + " (SimConfig.city_slots)";
+    }
+    if (!is_player_set(is.players_present, cfg.player_slots)) {
+        return p + ".players_present: not an ascending unique set below SimConfig.player_slots";
     }
     if (is.kontor_counter < 1) {
         return p + ".kontor_counter: must be at least 1";

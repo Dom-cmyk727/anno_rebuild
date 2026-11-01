@@ -87,6 +87,7 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     for (const char c : name) {
         s.u8(static_cast<std::uint8_t>(c));
     }
+    s.u64(0); // the player mask (stream 120): an empty set, a u64 count
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {

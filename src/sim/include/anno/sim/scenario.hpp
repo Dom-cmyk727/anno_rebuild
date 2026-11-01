@@ -19,6 +19,7 @@
 #include <anno/sim/figure.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/player.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/settings.hpp>
@@ -46,6 +47,12 @@ struct ScenarioSpec {
         /// Research state bytes; empty = all zero, else exactly
         /// SimConfig::research_entries bytes.
         std::vector<std::uint8_t> research;
+        /// The relation rows (stream 120; the DIPL record): ascending by `other`, unique, never the
+        /// player itself, `other` below SimConfig::player_slots. Empty = the constructor's zero
+        /// fill.
+        std::vector<Relation> relations;
+        /// Player property 7 (stream 120): ascending unique players; empty by default.
+        std::vector<PlayerId> discovery;
     };
     /// BERGWERK2 stand-in (D18): an ore object at a world tile.
     struct DepositSpec {
@@ -104,6 +111,9 @@ struct ScenarioSpec {
         /// From STADT2 VK (list 1) and EK (list 0) (T26).
         std::optional<std::vector<std::vector<TradeEntry>>> trade_lists;
         std::vector<BuildingSpec> buildings;
+        /// City property 0 (stream 120): ascending unique players; empty by default (the loaders do
+        /// not read HEAD2 [0x30] yet: docs/sim/ship-founding.md section 16).
+        std::vector<PlayerId> player_mask;
     };
     struct IslandSpec {
         /// The slot in the island table (INSELLNK order == slot order).
@@ -114,6 +124,8 @@ struct ScenarioSpec {
         std::uint8_t lock = 0;
         /// The island's Kontor counter (stream 119): the KONTORID record's u16, default 1.
         std::uint32_t kontor_counter = 1;
+        /// Island property 0xe (stream 120): ascending unique players; empty by default.
+        std::vector<PlayerId> players_present;
         std::shared_ptr<const Terrain> terrain;
         /// {owner, length}, row major from the top-left; the tiles after the last
         /// run are neutral (SimConfig::neutral_owner).
@@ -141,6 +153,8 @@ struct ScenarioSpec {
         /// Exact amounts in raw 1/256 ton (stream 117); each goods must be in the registry's goods
         /// table.
         std::vector<ShipHold> holds;
+        /// The state word (stream 120); 0 = a scenario ship.
+        std::uint32_t state_word = 0;
     };
     std::vector<PlayerSpec> players;
     /// Figures at tick 0, in id order. Default: none.

@@ -52,8 +52,8 @@ src/sim/include/anno/sim/building.hpp:kByte0e(?:Default|House)  # initial value 
 # they become integers (sixths of a tile, 2^-24 tile per tick, ticks) when the
 # registry is built, and no state holds a float (docs/re/transport.md §4, §6).
 src/sim/src/types.cpp:bit_cast<float>  # load-time conversion: reads an f32 of Anlagen.dat / FigurenHeader.dat
-src/sim/src/types.cpp:const double (?:six|q24|ticks) = static_cast<double>  # load-time conversion in double precision to an integer of the registry
-src/sim/src/types.cpp:float (?:speed|wait) = f32\(  # load-time conversion: the f32 speed and load wait of a figure type
+src/sim/src/types.cpp:const double (?:six|q24|ticks|hull) = static_cast<double>  # load-time conversion in double precision to an integer of the registry
+src/sim/src/types.cpp:float (?:speed|wait|half) = f32\(  # load-time conversion: the f32 speed and load wait of a figure type
 
 # --- transport.hpp / transport.cpp (task T24)
 # Job codes (D: the unit job table) and a HEAD flag bit: discriminants, not counts.

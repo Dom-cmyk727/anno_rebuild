@@ -155,6 +155,14 @@ struct FigureType {
     /// 0x100101f4-0x10010211, type +0x30) at the wait rate 0.01 (0x10035260) and the
     /// time scale 0.2: round(500 · v) (OQ-162).
     std::uint32_t load_ticks = 0;
+    /// MAP-2 (stream 120): the BEWOHNTYPE record (type slot +0x50); 0 = none (97..128 are the
+    /// queried classes of the founding veto, 113 the ship class).
+    std::uint32_t bewohntype = 0;
+    /// LOGIC[0x25] * 0.125 in 1/256 tile, 7 tiles when the byte is 0 (type slot 0x68(4),
+    /// AnnoGame 0x1000fd04, constant 0x40e00000 at 0x10021d04): the hostile veto's range.
+    std::uint32_t range_88 = 0;
+    /// HEAD[0x10] (f32) rounded to 1/256 tile: the hull half-extent of ships (property 5).
+    std::uint32_t hull_half_88 = 0;
 };
 
 /// The HEAD flag word bit of a road or bridge (type +0x12, HEAD u16 [0x1c];

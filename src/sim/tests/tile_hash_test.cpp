@@ -701,6 +701,7 @@ TEST_CASE("tiles scope byte layout and raw hash") {
     want.u8(3);            // lock (stream 118)
     want.i32(5);           // city_cursor (stream 119)
     want.u32(0x01020304U); // kontor_counter (stream 119)
+    want.u64(0);           // players_present (stream 120)
     want.u32(9);
     want.u64(0); // no terrain
     want.u16(0x1111);

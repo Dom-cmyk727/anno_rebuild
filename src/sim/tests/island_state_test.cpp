@@ -580,7 +580,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 17);
+    CHECK(sim::field_count<sim::Island>() == 18);
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -607,7 +607,7 @@ TEST_CASE("island fields are counted") {
     // word, stream 108), deposits count + goods length + goods bytes + x + y + remaining + reserve
     // (7), reserved (1), tiles: 3 dims + 6 x 10 columns, cities: the slot count (no slot in this
     // island).
-    CHECK(prims == 10 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 60 + 1);
+    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 3 + 60 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -630,6 +630,7 @@ TEST_CASE("islands scope stream layout") {
         want.u8(is.lock);            // stream 118
         want.i32(is.city_cursor);    // stream 119
         want.u32(is.kontor_counter); // stream 119
+        want.u64(0);                 // players_present (stream 120): an empty set
         want.u32(1);
         want.u64(is.terrain ? is.terrain->digest : 0);
         // sweep (u16 stamp, 4 x u32), event300 (u16), objmgr (u16, u32), ring (u16,
@@ -1304,10 +1305,11 @@ TEST_CASE("drought record stream layout") {
     const std::vector<std::uint8_t>& b = ia.data();
     // index, x0, y0, w, h, climate, lock (1 byte, stream 118), next_serial, terrain digest, sweep
     // (18), event300, objmgr (6), ring (6), plus city_cursor and kontor_counter (8, stream 119):
-    // 4 * 7 + 1 + 8 + 8 + 18 + 2 + 6 + 6 = 77 bytes, then the presence byte.
-    REQUIRE(b.size() > 78 + want.v.size());
-    CHECK(b[77] == 1);
-    CHECK(std::equal(want.v.begin(), want.v.end(), b.begin() + 78));
+    // and the empty players_present set (u64 count, stream 120):
+    // 4 * 7 + 1 + 8 + 8 + 8 + 18 + 2 + 6 + 6 = 85 bytes, then the presence byte.
+    REQUIRE(b.size() > 86 + want.v.size());
+    CHECK(b[85] == 1);
+    CHECK(std::equal(want.v.begin(), want.v.end(), b.begin() + 86));
     // Read back, every field.
     sim::Island back;
     sim::ReadArchive r(b);

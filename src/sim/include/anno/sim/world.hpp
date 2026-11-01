@@ -102,7 +102,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // default 1) after its lock; each city gains `string name` (city property 0x12, empty) at the end
 // of its fields; each building gains `u32 kontor_id` (building +0x1e, 0 except for markets) after
 // byte0f. See docs/sim/city-creation.md. The PRNG timeline moves to 3 (CityName, CityNameLoad).
-inline constexpr std::uint32_t kStateHashVersion = 119;
+// Stream at 120 (task MAP-2, ship founding): Rules gain `founding_types`; each Player gains its
+// relation rows and its discovery set; each City its player_mask; each Island its players_present
+// (all after the existing fields of the record); each Figure gains `u32 state_word` at the end; the
+// registry digest's figure types gain bewohntype, range_88, hull_half_88. See
+// docs/sim/ship-founding.md section 16.
+inline constexpr std::uint32_t kStateHashVersion = 120;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

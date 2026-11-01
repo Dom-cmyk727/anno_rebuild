@@ -121,6 +121,8 @@ struct Rules {
     /// Its meaning is not established (docs/re/ship-founding.md section 14); only the comparison
     /// is.
     std::uint32_t exempt_owner_property = 0x11;
+    /// BEWOHNTYPE of the ship class (the registry name SHIP).
+    std::uint32_t ship_kind = 113;
     /// The selected ship's state-word bit that rejects it (AnnoFrame.dll 0x10048d54); unnamed.
     std::uint32_t selected_ship_reject_bit = 0x02;
 };

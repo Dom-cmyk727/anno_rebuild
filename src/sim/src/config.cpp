@@ -490,6 +490,16 @@ std::string Rules::validate() const {
                    "is not an enumerator (" + std::to_string(static_cast<std::uint8_t>(prng_mode)) +
                        ")");
     }
+    for (std::size_t i = 0; i < founding_types.size(); ++i) {
+        if (founding_types[i] == 0 || (i > 0 && founding_types[i - 1] >= founding_types[i])) {
+            return bad(kOwner, "founding_types", "must be ascending, unique and non-zero");
+        }
+    }
+    for (const std::string& n : city_names) {
+        if (n.find('\0') != std::string::npos) {
+            return bad(kOwner, "city_names", "a name contains a NUL byte");
+        }
+    }
     if (events_max_dispatch == 0) {
         return bad(kOwner, "events_max_dispatch", "must be at least 1");
     }

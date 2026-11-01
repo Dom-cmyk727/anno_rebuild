@@ -185,6 +185,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     out.climate = is.climate;
     out.lock = is.lock;
     out.kontor_counter = is.kontor_counter;
+    out.players_present = is.players_present;
     out.terrain = is.terrain;
     const std::uint64_t tiles = out.tiles.tile_count();
     // Tiles after the last run are neutral.
@@ -240,6 +241,7 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
     for (const std::size_t k : order) {
         const Spec::CitySpec& cs = is.cities[k];
         City city = make_city(cs.no, cs.owner, cfg);
+        city.player_mask = cs.player_mask;
         if (cs.capacity.has_value()) {
             city.stock.capacity = *cs.capacity;
         }
@@ -330,6 +332,20 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
             return p + ".id: slot " + std::to_string(ps.id.v) + " is used twice";
         }
         player_taken[ps.id.v] = 1;
+        {
+            // The relation and discovery shape (validate_players checks the built world again).
+            for (std::size_t r = 0; r < ps.relations.size(); ++r) {
+                const Relation& rel = ps.relations[r];
+                if (!rel.other.valid() || rel.other.v >= config.player_slots ||
+                    rel.other == ps.id || (r > 0 && !(ps.relations[r - 1].other < rel.other))) {
+                    return p + ".relations[" + std::to_string(r) +
+                           "]: not ascending, unique, below player_slots and other than the player";
+                }
+            }
+            if (!is_player_set(ps.discovery, config.player_slots)) {
+                return p + ".discovery: not an ascending unique set below player_slots";
+            }
+        }
         if (!ps.research.empty() && ps.research.size() != config.research_entries) {
             return p + ".research: " + std::to_string(ps.research.size()) +
                    " entries, SimConfig.research_entries is " +
@@ -443,6 +459,8 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         p.flags_a0 = ps.flags_a0;
         p.default_colour = ps.colour == 0xff ? kNoColour : static_cast<std::uint32_t>(ps.colour);
         p.name = ps.name;
+        p.relations = ps.relations;
+        p.discovery = ps.discovery;
         if (!ps.research.empty()) {
             p.research.state = ps.research;
         }
@@ -467,6 +485,7 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         }
         f.crew_slot = fs.crew_slot;
         f.holds = fs.holds;
+        f.state_word = fs.state_word;
         if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {
             return idx_path("figures", i) + ": the figure registry cannot take it";
         }

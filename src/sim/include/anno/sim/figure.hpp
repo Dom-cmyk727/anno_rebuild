@@ -153,6 +153,11 @@ struct Figure {
     /// The ship's holds, in order. Empty for every figure that is not a ship. Not
     /// `cargo_goods` / `cargo_88`, which keep their one-load meaning (transport).
     std::vector<ShipHold> holds;
+    /// MAP-2 (stream 120): D the figure's state word (slot +0x8c(0); a ship: u16 +0x40), widened.
+    /// Bit 0x02 rejects the selected ship, 0x0a excludes a figure from the nearby query, 0x200e
+    /// makes it unusable (figure_veto.hpp). 0 is the state of a scenario ship for every bit that
+    /// matters (docs/re/ship-founding.md section 14.1).
+    std::uint32_t state_word = 0;
 };
 
 /// D: the unit registry (world +0x114).

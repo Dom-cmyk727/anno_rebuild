@@ -1359,6 +1359,53 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                             }
                         }
                     }
+                } else if (r.name == "DIPL") {
+                    // D AnnoWelt 0x1001d758: each sub-record is one dword, byte 0 the OTHER player
+                    // and byte 1 the value; TRADE, MILIT and WAR fill the three relation bytes of
+                    // this player's own row, CREDIT the u16 of bytes 1..2 (docs/re/ship-founding.md
+                    // section 15.1). The loader writes no reverse row. Strict: a sub-record shorter
+                    // than 2 bytes (4 for CREDIT), an unnamed one or a player not below
+                    // player_slots or equal to the player refuses the load.
+                    auto subs = tagged::parse_records(r.payload, r.offset + tagged::kHeaderLen);
+                    if (!subs) {
+                        return path + ".DIPL: " + subs.error();
+                    }
+                    std::map<std::uint32_t, Relation> rows;
+                    for (const tagged::Record& d : subs.value()) {
+                        const bool credit = d.name == "CREDIT";
+                        if (d.name != "TRADE" && d.name != "MILIT" && d.name != "WAR" && !credit) {
+                            warn.unknown_record("players", path + ".DIPL." + std::string(d.name),
+                                                d.name, d.offset);
+                            continue;
+                        }
+                        if (d.payload.size() < (credit ? 3U : 2U)) {
+                            return path + ".DIPL." + std::string(d.name) + ": " +
+                                   std::to_string(d.payload.size()) + " bytes, the reader needs " +
+                                   (credit ? "3" : "2");
+                        }
+                        const std::uint32_t other = d.payload[0];
+                        if (other >= config.player_slots || other == pl.index) {
+                            return path + ".DIPL." + std::string(d.name) + ": player " +
+                                   std::to_string(other) +
+                                   (other == pl.index ? " is the player itself"
+                                                      : " is not below player_slots");
+                        }
+                        Relation& row = rows[other];
+                        row.other = PlayerId{other};
+                        if (d.name == "TRADE") {
+                            row.trade = d.payload[1];
+                        } else if (d.name == "MILIT") {
+                            row.milit = d.payload[1];
+                        } else if (d.name == "WAR") {
+                            row.war = d.payload[1];
+                        } else {
+                            row.credit =
+                                static_cast<std::uint16_t>(d.payload[1] | d.payload[2] << 8);
+                        }
+                    }
+                    for (const auto& [other, row] : rows) {
+                        p.relations.push_back(row); // ascending by `other` (std::map order)
+                    }
                 } else {
                     warn.unknown_record("players", path + "." + std::string(r.name), r.name,
                                         r.offset);

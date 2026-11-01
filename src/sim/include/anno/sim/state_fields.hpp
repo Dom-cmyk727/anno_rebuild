@@ -261,7 +261,7 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.links);
 }
 
-static_assert(field_count<Rules>() == 20, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 22, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -284,6 +284,8 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.timer0_clamp);
     a.enumv(s.island_candidate_order);
     a.boolean(s.removal_clear_tile);
+    ar::seq(a, s.founding_types, 4, [&](auto& x) { a.u32(x); }); // stream 120
+    ar::seq(a, s.city_names, 8, [&](auto& x) { a.str(x); });     // stream 120
 }
 
 // ---- settings scope
@@ -320,7 +322,17 @@ template <class A, Same<ResearchState> S> void fields(A& a, S& s) {
     ar::seq(a, s.progress, 2, [&](auto& x) { a.u16(x); });
 }
 
-static_assert(field_count<Player>() == 20, "a Player member needs a line in fields(Player)");
+static_assert(field_count<Relation>() == 5, "a Relation member needs a line in fields(Relation)");
+
+template <class A, Same<Relation> S> void fields(A& a, S& s) {
+    a.u32(s.other.v);
+    a.u8(s.trade);
+    a.u8(s.milit);
+    a.u8(s.war);
+    a.u16(s.credit);
+}
+
+static_assert(field_count<Player>() == 22, "a Player member needs a line in fields(Player)");
 
 template <class A, Same<Player> S> void fields(A& a, S& s) {
     a.u32(s.index.v);
@@ -349,6 +361,8 @@ template <class A, Same<Player> S> void fields(A& a, S& s) {
     a.boolean(s.free_build);
     ar::seq(a, s.name, 1, [&](auto& x) { a.u8(x); });
     fields(a, s.research);
+    ar::seq(a, s.relations, 9, [&](auto& r) { fields(a, r); }); // stream 120
+    ar::seq(a, s.discovery, 4, [&](auto& p) { a.u32(p.v); });   // stream 120
 }
 
 static_assert(field_count<PlayerTable>() == 3,
@@ -806,7 +820,7 @@ template <class A, Same<TradeEntry> S> void fields(A& a, S& s) {
     a.u32(s.price);
 }
 
-static_assert(field_count<City>() == 9, "a City member needs a line in fields(City)");
+static_assert(field_count<City>() == 10, "a City member needs a line in fields(City)");
 
 /// One city (docs/sim/state.md §9.3): `u32 number, u32 owner, u16 tick_stamp`, the
 /// stock (`u32 capacity`, u32 list), the goods settings, the build goods, the trade
@@ -821,7 +835,8 @@ template <class A, Same<City> S> void fields(A& a, S& s) {
     ar::seq(a, s.build_goods, 12, [&](auto& g) { fields(a, g); });
     ar::seq(a, s.trade_lists, 8,
             [&](auto& list) { ar::seq(a, list, 12, [&](auto& e) { fields(a, e); }); });
-    a.str(s.name); // stream 119: city property 0x12
+    a.str(s.name);                                              // stream 119: city property 0x12
+    ar::seq(a, s.player_mask, 4, [&](auto& p) { a.u32(p.v); }); // stream 120: city property 0
     fields(a, s.index);
 }
 
@@ -857,7 +872,7 @@ template <class A, class V> void cities_io(A& a, V& cities) {
 // can count its members: index, tiles, terrain, climate, deposits, next_serial,
 // sweep, event300_stamp, drought, objmgr, ring, cities, reserved_object_count, cache
 // (the derived index cache is not in the stream).
-static_assert(field_count<Island>() == 17,
+static_assert(field_count<Island>() == 18,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
@@ -881,6 +896,7 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     a.u8(s.lock);            // stream 118: the LOCKED byte (island +0xc4)
     a.i32(s.city_cursor);    // stream 119: the ring's allocation cursor
     a.u32(s.kontor_counter); // stream 119: island +0xc6
+    ar::seq(a, s.players_present, 4, [&](auto& p) { a.u32(p.v); }); // stream 120: island +0xa6
     a.u32(s.next_serial);
     std::uint64_t terrain = s.terrain ? s.terrain->digest : 0;
     a.u64(terrain);
@@ -968,7 +984,7 @@ template <class A, Same<ShipHold> S> void fields(A& a, S& s) {
     a.u64(s.amount_88);
 }
 
-static_assert(field_count<Figure>() == 18, "a Figure member needs a line in fields(Figure)");
+static_assert(field_count<Figure>() == 19, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -993,6 +1009,7 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.parent.v);
     ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
     ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
+    a.u32(s.state_word); // stream 120
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64

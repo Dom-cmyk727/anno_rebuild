@@ -5,6 +5,15 @@
 
 namespace anno::sim {
 
+std::uint8_t Player::relation(std::uint32_t which, PlayerId other) const {
+    for (const Relation& r : relations) { // ascending by `other`; rows are few
+        if (r.other == other) {
+            return which == 0 ? r.trade : (which == 1 ? r.milit : (which == 2 ? r.war : 0));
+        }
+    }
+    return 0;
+}
+
 Player make_player(PlayerId index, const SimConfig& cfg) {
     Player p;
     p.index = index;
@@ -46,6 +55,17 @@ std::string validate_players(const PlayerTable& table, const SimConfig& cfg) {
             return where + ".research.progress: has " + std::to_string(p.research.progress.size()) +
                    " entries, SimConfig.research_entries is " +
                    std::to_string(cfg.research_entries);
+        }
+        for (std::size_t r = 0; r < p.relations.size(); ++r) {
+            const Relation& rel = p.relations[r];
+            if (!rel.other.valid() || rel.other.v >= cfg.player_slots || rel.other == p.index ||
+                (r > 0 && !(p.relations[r - 1].other < rel.other))) {
+                return where + ".relations[" + std::to_string(r) +
+                       "]: not ascending, unique, below player_slots and other than the player";
+            }
+        }
+        if (!is_player_set(p.discovery, cfg.player_slots)) {
+            return where + ".discovery: not an ascending unique set below player_slots";
         }
         // The remainder of S / upkeep_slices is below upkeep_slices in every state
         // play reaches (a validated configuration has upkeep_slices >= 1).

@@ -15,6 +15,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <anno/formats/bytes.hpp>
@@ -228,7 +229,7 @@ static_assert(field_count<BuildingType>() == 23,
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
-static_assert(field_count<FigureType>() == 5, "a FigureType member needs a line in the digest");
+static_assert(field_count<FigureType>() == 8, "a FigureType member needs a line in the digest");
 static_assert(field_count<GoodsInfo>() == 2, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
@@ -310,6 +311,9 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(f.capacity_88);
         a.u32(f.layer);
         a.u32(f.load_ticks);
+        a.u32(f.bewohntype);
+        a.u32(f.range_88);
+        a.u32(f.hull_half_88);
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -376,6 +380,36 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
         return who + "LOGIC load wait is not a duration";
     }
     t.load_ticks = static_cast<std::uint32_t>(std::llround(ticks));
+    // MAP-2 (stream 120): the founding veto's per-type facts. BEWOHNTYPE is a name; the numbers of
+    // the names the veto classifies come from the table at AnnoGame 0x10024cb8 (docs/re/
+    // annogame.md; 53 ESEL, 97..113, 150 FLAGGE). A name outside this list gets 0: the table
+    // places the other names below 97 or above 128, where no rule of the veto looks.
+    if (const auto name = e.record_str("BEWOHNTYPE")) {
+        static constexpr std::array<std::pair<std::string_view, std::uint32_t>, 19> kBewohn{{
+            {"ESEL", 53},      {"ERKUNDER", 97},   {"TRAGTIER", 98},
+            {"SCHWERT", 99},   {"BOGEN", 100},     {"ARMBRUST", 101},
+            {"LANZE", 102},    {"MUSKETIER", 103}, {"KAVALARIE", 104},
+            {"GEWEHR", 105},   {"MEDICUS", 106},   {"BEDIENUNG", 107},
+            {"KANONIER", 108}, {"MOERSER", 109},   {"BELAGERTURM", 110},
+            {"KATAPULT", 111}, {"SHIP", 113},      {"FLAGGE", 150},
+            {"", 0},
+        }};
+        for (const auto& [n, number] : kBewohn) {
+            if (!n.empty() && *name == n) {
+                t.bewohntype = number;
+            }
+        }
+    }
+    // LOGIC[0x25] * 0.125 tile (type slot 0x68(4)), 7 tiles when 0 (constant 0x40e00000).
+    t.range_88 = logic[0x25] == 0 ? 7U * 256U : std::uint32_t{logic[0x25]} * 32U;
+    // HEAD f32 at byte 0x10 (type property 5, the ship hull half-extent), rounded to 1/256 tile.
+    if (head->size() >= 0x14) {
+        const float half = f32(*head, 0x10);
+        const double hull = static_cast<double>(half) * 256.0;
+        if (std::isfinite(hull) && hull > 0.0 && hull < 65536.0 * 256.0) {
+            t.hull_half_88 = static_cast<std::uint32_t>(std::llround(hull));
+        }
+    }
     return t;
 }
 

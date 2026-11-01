@@ -294,8 +294,10 @@ def stderr_intervals(case):
 
 def peak_rss(case):
     for line in read(case / "time.txt").splitlines():
-        if "maximum resident set size" in line:
+        if "maximum resident set size" in line:  # macOS /usr/bin/time -l: bytes
             return f"{int(line.split()[0]) / 2**30:.2f} GiB"
+        if "Maximum resident set size (kbytes):" in line:  # GNU time -v: KiB
+            return f"{int(line.split(':')[1]) / 2**20:.2f} GiB"
     raise Unusable("time.txt has no maximum resident set size")
 
 

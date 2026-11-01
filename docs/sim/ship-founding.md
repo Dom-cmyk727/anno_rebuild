@@ -250,3 +250,58 @@ Still not done (separated by kind). **Evidence:** figure-veto inputs (A1 initial
 ### 15.2 Third round (task MAP-2: city creation prerequisites, stream 119, PRNG timeline 3)
 Contract: `docs/sim/city-creation.md` (effect table, cursor identity, initialization, refusal order, state and timeline, cause-specific rows). Implemented as internal, headless operations (`city_creation.hpp`: `CityCreation::prepare/commit` for a city, `prepare_kontor/commit_kontor` for the Kontor identifier): the ring's allocation cursor `Island::city_cursor` (a different word from the scheduler's `Island::ring.cursor`), slot allocation with the neutral value never allocated, registration into `Island::cities` (the one membership source), the city stamp, the single `CityName` draw (a new ported draw site; `CityNameLoad` is the unported load-phase twin), `Island::kontor_counter`, `City::name`, `Building::kontor_id`, the loader's `KONTORID` and market `KONTID`. Same player + same island refuses; any other player's city, here or elsewhere, never does. No command, codec or `Reject` value, and no warehouse is founded.
 Still open, with the exact dependency (research ledger `docs/re/ship-founding.md` §13): the city's player mask and island `+0xaa` (relation table, consumers), the extra effects of the always-reached registration arm (city property 2, island property `0xb`, the tile-bit-31 routine `0x100a1040` [its CLEAR arm at founding, gated by player property 6], the AI record), the viewer-dependent `0x40000000` tile pass, the hold notification's change of `ship+0x3c`, the figure veto's inputs (no endless scenario has a WAR record; the embarked scout is not in a sector cell; ship activity `0x13`), discovery/reveal and the two messages, and the unresolved virtual callees.
+
+## 16. Integration contract for `FoundCmd` (pass 4; supersedes the status line, §4 P12, §6 items 3, 5, 6, 9 and the "not done" list of §15.2 where they differ)
+**Status: PROPOSED, to be reviewed before implementation (continuation gate).** Evidence: `docs/re/ship-founding.md` §11–§14. Older text above is historical where it differs: P12 is now stated by `figure_veto.hpp` (the property-`0x1c` case is a *skip*, not path B; the scan rectangle of an odd rotation is B×B), §6 item 3's "players whose relation of kind 1 equals 3" is MILIT, §6 item 6 covers only objects the engine models, §13.1/§13.3 examples were checked against the real registry (1302: 4×4, wood 12, tools 5, gold 350, radius 24, flag word `0x2087`) and stand.
+
+### 16.1 Dependency table (first human-player warehouse; kind-8 player)
+| # | Original | Reachable | Inputs / reads / writes / PRNG | Engine representation | Disposition |
+|---|---|---|---|---|---|
+| 1 | `AnnoFrame 0x10048d54` selected-ship bit `0x02` | yes | ship state word | `Figure::state_word` (new, stream 120) | implement; fact is data, not inferred from HP |
+| 2 | `AnnoFrame 0x10045080`, `AnnoWelt 0x100a4df0/0x100a5f70/0x100985c0` veto | yes | figures, relations, volk, type facts; reads only; no PRNG | `figure_veto.hpp` (done), `FigureType::{bewohntype, range_88, hull_half_88}` (new), `Player::relations` (new), `Player::volk` (exists), embarked = has parent, crew = has child | implement |
+| 3 | `AnnoWelt 0x10041760` payment | yes | holds, gold; writes holds, gold | `payment::prepare` (done) | implement; slot notification → 8 |
+| 4 | `0x100967e0` city ring, `0x10096910` name draw | yes | one world draw (list exists) | `CityCreation` (done) | implement |
+| 5 | `0x100861c0` registration | yes | city mask (owner bit plus MILIT==3 peers), island present word, island colour byte, city colour | `City::player_mask`, `Island::players_present` (new); colours presentation, not modelled | implement masks; colours omitted (presentation) |
+| 6 | `0x1007c790` terrain, `0x10008920` overlap, `0x10008f90` coast | yes | heights, objects | `site::` (done) | implement |
+| 7 | `0x10085840` claim stage 1 (territory) | yes | neutral tiles | `territory::` (done) | implement |
+| 8 | claim stage 2 (objects in the disc: treasure gold + removal timer, mountains) | yes in the original | object masks, event log, gold | engine has no island objects other than deposits | **omitted state, named**; owner decision Q1 |
+| 9 | reveal `0x10080c10` flags 1 (other cities in R+8) | yes when another city shares the island | city mask, player prop 7, island present/complete words | new state of 5; reveal port | implement as read, including the single-visit quirk |
+| 10 | `City::Place`, `Create`, Kontor counter | yes | building, KONTID | `create_building`, `CityCreation::*kontor` (done) | implement |
+| 11 | city slot `+0xbc` `0x10028400` | yes | stock cap, trade slot counts | first warehouse rewrites constructor defaults (`0x3200`, 6, 4) | no change for level-0 first warehouse; assert |
+| 12 | `0x100a1040`, `0x10082a46` tile bit 31, `world+0x120` | yes in a client with a viewer | per-client tile bit, overview grid | not modelled | VISIBILITY, per client, draw-only on the evidence; never drives sim |
+| 13 | place messages 2 and 4, type-`0x19` record | kind 8: no (`[player+0xc]` null); kind 11/12: yes | AI-private state; the type-11 `0x19` path may place a building and draw | no AI | founding by a player of kind other than 8 → `Reject::Unsupported` |
+| 14 | `ship+0x3c` via slot `0xa0` | yes | derived float, not serialised | none (derived cache) | consumers are movement (sailing, out of scope); recomputed where sailing exists |
+
+### 16.2 Fact classes
+- **Original facts** (read): the table above, the research note, the corrected rules in `figure_veto.hpp`.
+- **Emulated observations**: coast rule, territory profile (U2/U3 fixtures).
+- **Inference**: tile bit 31 is draw-only (pattern search of 8 modules); a kind-8 human has no AI object; first-warehouse slot counts equal the constructor defaults (INFRAMIN index 0 reading).
+- **Deliberate adaptations**: atomic founding; masks and presence as sets (no 16/32-player limit); reveal arithmetic on unbounded coordinates; Q24.8 positions; the original's out-of-range sample read at the island edge reads "no owner".
+- **Unknown**: mountain object masks and consumers, player property 7 consumers, the type-11 `0x19` PRNG path, x87 precision control, scout disembark, activity `0x13`.
+
+### 16.3 Owner decisions (proposed, stated precisely)
+- **Relations**: explicit persisted data (`Player::relations`, directional rows of TRADE, MILIT, WAR bytes and a credit word), loaded from `DIPL`. Rows absent = zero, which is the original constructor's zero-fill, not an assumption that everyone is friendly; both the hostile and the non-hostile branch are exercised by tests.
+- **Discovery and messages are not presentation-only.** The city mask, player property 7, island present/complete words and the veto's inputs are authoritative state. The tile-bit-31 pass and the notifier are per-client and are classified from their consumers (draw only).
+- **Malformed records**: the strict behaviour of LOCKED and KONTORID stays.
+- **Load-time naming**: the original draws no name at load (list attached after the scene, HEAD2 overwrites). The loader keeps drawing nothing; `CityNameLoad` stays unported and unreachable.
+- **Q1 (open)**: the engine models no island objects except deposits, so the original's first-discovery effects of claim stage 2 (treasure objects: gold at discovery and removal after a timer; mountain objects: masks of unknown consumers) cannot occur. The recommendation is to keep them out of the first founding unit, with this named omission.
+
+### 16.4 The transaction
+`FoundCmd { FigureId ship; PlacementWire placement; i32 click_x, click_y; }`, wire type `0x70` appended as the last alternative. `placement.x/y` is the origin and must equal the origin derived from the click (centring, clamp); `placement.rotation` is the initial rotation; `placement.type` the building type; `byte7/byte8` ignored. The payer and owner are derived from the ship (`ship.owner == issuer`); no payer or city field exists.
+
+Preparation is pure (const world) and runs, in this order, stopping at the first failure:
+1. issuer exists (`UnknownIssuer`); its kind is 8 (`Unsupported`).
+2. ship figure exists (`UnknownFigure`), its type is the ship class (BEWOHNTYPE 113) (`NotAShip`), `owner == issuer` (`NotShipOwner`), state bit `0x02` clear (`ShipDisabled`).
+3. type known, non-zero (`UnknownType`), rotation ≤ 3 (`BadRotation`), type offered by `Rules::founding_types` and PRODTYPE in 33..64 (`NotAFoundingType`), origin equals the derived origin (`BadValue`).
+4. island under the origin (`UnknownIsland`), not locked (`IslandLocked`), initial footprint inside it (`OutOfIsland`), distance (`OutOfRange`), origin tile and footprint neutral (`SiteOwned`), no own city on the island (`OwnCityOnIsland`).
+5. rotation trials (`site::first_accepted_rotation`) each with its own bounds, overlap and coast rule (`Occupied`, `TerrainRefused`, `NoRotationFits` when all fail, `Unsupported` when a row is undecoded).
+6. figure veto on the accepted rotation (`FigureInTheWay`, or `FigureFactsMissing` when a fact the verdict needs is absent).
+7. payment (`CannotAfford`), city slot and name (`NoCitySlot`, `UnusableNameData`), Kontor counter (`SerialExhausted`), creation precheck, territory precheck, reveal plan.
+
+Commit applies, with no fallible step left: payment (holds, gold), city, Kontor, building (`create_building` on the fresh city cannot fail after the precheck: a new city's lists are empty), territory (disc then footprint, neutral tiles only), masks and reveal. Every prepared item is recomputed from the live world in the same call (a command is applied between advances by one thread), so a stale plan cannot occur inside one apply; `commit` of each helper still re-checks and the transaction asserts success.
+
+### 16.5 Rejection and conflicts
+Every rejection above happens before any write: `state_hash()` and the PRNG cursor are unchanged. Conflicts follow the host-defined order (`state.md` §8.1): (a) same site, one turn: the first Ok; the second sees owned tiles → `SiteOwned`, uncharged; (b) two distant unowned areas of one island: both Ok when the first claim leaves the second footprint neutral and the second player has no city there; the second's reveal visits the first city only when its sampled tiles meet that city's disc; (c) a player's second command for the same island: `OwnCityOnIsland`; (d) a payment/city plan cannot go stale inside one apply; across turns each command re-derives everything.
+
+### 16.6 State and version boundary (stream 120)
+New persisted state: `FigureType::{bewohntype, range_88, hull_half_88}` (registry digest), `Figure::state_word`, `Player::relations`, `Player::discovery` (property 7 as a set), `City::player_mask`, `Island::players_present`, `Rules::founding_types`. The stream version moves 119 → 120; older streams are refused by version as before (no claim that 119 saves load). The PRNG timeline is unchanged (3). Goldens move only through the version and the new fields' zero values; independent Python reference updated.

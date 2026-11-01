@@ -439,7 +439,7 @@ std::optional<sim::TypeId> paid_type(const DevWorld& d) {
 
 TEST_CASE("outcome feedback: an outcome recorded before its snapshot is withheld, and a paid "
           "build, a refusal and a no-op agree with the snapshot once published (round ee review "
-          "R1; game files)" *
+          "R1, game files)" *
           doctest::test_suite("command_outcome")) {
     auto d = dev_world();
     if (!d) {
@@ -525,7 +525,7 @@ TEST_CASE("outcome feedback: an outcome recorded before its snapshot is withheld
 
 TEST_CASE("outcome feedback: a paid build seen from a reader thread while the sim thread holds "
           "its publication never shows Applied beside the old money, and the read never waits "
-          "(round ee review R1; game files)" *
+          "(round ee review R1, game files)" *
           doctest::test_suite("command_outcome")) {
     auto d = dev_world();
     if (!d) {
@@ -594,7 +594,7 @@ TEST_CASE("outcome feedback: a paid build seen from a reader thread while the si
 }
 
 TEST_CASE("outcome feedback: a lost outcome is withheld until its snapshot is published and "
-          "then reads Lost, and the newest one is kept (round ee review R1; game files)" *
+          "then reads Lost, and the newest one is kept (round ee review R1, game files)" *
           doctest::test_suite("command_outcome")) {
     auto d = dev_world();
     if (!d) {

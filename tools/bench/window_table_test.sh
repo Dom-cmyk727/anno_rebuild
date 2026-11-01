@@ -1,7 +1,11 @@
 #!/bin/bash
-# Contract test of window_table.py (round ec, D): a synthetic window case that is complete and
-# consistent is tabulated with its known numbers, and each kind of unusable evidence is refused with
-# its reason while the other cases keep their rows.
+# Contract test of window_table.py (round ec, D; round ed, 2): a synthetic window case that is
+# complete and consistent is tabulated with its known numbers, and each kind of unusable evidence is
+# refused with its reason while the other cases keep their rows. Every trace is aggregated by the
+# given bench_picture when the table is made: a saved aggregate.txt or run.txt cannot vouch for a
+# trace that was cut or contradicts itself. The inventory (plan.tsv, results.tsv) is checked: an
+# empty campaign, a lost, duplicated or unplanned case, and an unfinished campaign are refused; a
+# requested subset is labelled as one; an idle case with no command is valid.
 #
 #   tools/bench/window_table_test.sh <bench_picture binary>
 set -u
@@ -20,12 +24,12 @@ F2=$'2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t5.5\t0.1\t5.6\t6.0\tTimeout\t0\t-1.000000\
 make_case() { # matrix, case
     local c="$1/$2"
     mkdir -p "$c/trace"
-    printf 't_ms\tkind\tisland\tversion\n0\tgpu_mode\t0\t1\n1\tbatch_published\t0\t3\n2\tbatch_taken\t0\t3\n2\tdesired\t0\t1\n3\tcommitted\t0\t1\n3\tgeneration\t0\t1\n4\tframe_submitted\t1\t1\n4\tchunks_ready\t0\t1\n4\tgpu_ready\t0\t1\n5\tframe_presented\t1\t1\n5\tpresented\t0\t1\n6\tframe_failed\t1\t2\n10\trun_end\t0\t0\n' \
+    printf 't_ms\tkind\tisland\tversion\n0\tgpu_mode\t0\t1\n1\tbatch_published\t0\t3\n2\tbatch_taken\t0\t3\n2\tdesired\t0\t1\n3\tcommitted\t0\t1\n3\tgeneration\t0\t1\n4\tframe_submitted\t1\t1\n4\tchunks_ready\t0\t1\n4\tgpu_ready\t0\t1\n4\tdrawn\t0\t1\n5\tframe_presented\t1\t1\n5\tpresented\t0\t1\n6\tframe_failed\t1\t2\n10\trun_end\t0\t0\n' \
         > "$c/trace/events.tsv"
     printf '%s\n%s\n%s\n' "$H" "$F1" "$F2" > "$c/trace/frames.tsv"
     printf 'turn\tt_ms\tapplied\trejected\toutcome\treasons\tbatch\tdeltas\n3\t1.0\t1\t0\taccepted\t-\t1\t1\n' \
         > "$c/trace/sim.tsv"
-    printf 'window_trace 1\nadapter Test adapter\ntrace events=13 frames=2 turns=1 dropped=0 bounds=1/1/1\n' \
+    printf 'window_trace 1\nadapter Test adapter\ntrace events=14 frames=2 turns=1 dropped=0 bounds=1/1/1\n' \
         > "$c/trace/manifest.txt"
     printf 'zoom group 2, 8x8 px: 60.0 fps, frame avg 1.0 ms / worst 2.0 ms\nzoom group 2, 8x8 px: 120.0 fps, frame avg 0.5 ms / worst 1.0 ms\n' \
         > "$c/stderr.txt"
@@ -34,13 +38,15 @@ make_case() { # matrix, case
     local agg=$?
     printf 'commands=x sha256=0 lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=%s\n' "$agg" > "$c/run.txt"
     printf '%s\t0\t1\t-\n' "$2" >> "$1/results.tsv"
+    printf '%s\t1\n' "$2" >> "$1/plan.tsv"
 }
 new_matrix() {
     mkdir -p "$1"
     printf 'case\tstatus\twall_s\tload_after\n' > "$1/results.tsv"
+    printf 'case\tselected\n' > "$1/plan.tsv"
 }
 table() { # matrix, expected, what
-    python3 "$TABLE" "$1" > "$WORK/out" 2> "$WORK/err"
+    python3 "$TABLE" "$BENCH" "$1" > "$WORK/out" 2> "$WORK/err"
     local rc=$?
     [ "$rc" -eq "$2" ] || fail "$3: exit $rc, expected $2 ($(tail -2 "$WORK/err"))"
     ! grep -q Traceback "$WORK/err" || fail "$3: a traceback"
@@ -51,6 +57,9 @@ make_case "$WORK/m_good" good
 grep -q "^run=complete status=0 (succeeded)" "$WORK/m_good/good/aggregate.txt" ||
     fail "the synthetic case does not aggregate as a success: $(cat "$WORK/m_good/good/aggregate.stderr")"
 table "$WORK/m_good" 0 "a complete, consistent window case"
+grep -q "^Campaign: the full matrix, 1 of 1 planned cases" "$WORK/out" || fail "campaign line"
+grep -q "^Aggregate: $BENCH sha256 [0-9a-f]\{64\}" "$WORK/out" || fail "aggregate identity"
+! grep -q "differs from the current aggregate" "$WORK/out" || fail "a fresh case named as stale"
 # Known numbers: two attempts, one presented; the edit presented 3 ms after its desired event.
 grep -q "^| good | 8x8 | 8x8 | 1 | Test adapter | 2 / 1 / 1 | 0 | run=complete status=0 (succeeded) |" \
     "$WORK/out" || fail "identity row"
@@ -74,7 +83,7 @@ grep -q "| 1.50 GiB |" "$WORK/out" || fail "GNU time: peak RSS not read"
 # and events.tsv disagreeing on a frame, and more commands applied than the file holds.
 for bad in gap mismatch count contradictory incomplete notime sim_outcome present_order overlap \
     failed_submit epoch_back junk_cols wrong_skip junk_present neg_acquire over_reject swapped \
-    too_many drawable_no_epoch generation_back reasons_count; do
+    too_many drawable_no_epoch generation_back reasons_count no_drawn status; do
     new_matrix "$WORK/m_$bad"
     make_case "$WORK/m_$bad" good
     make_case "$WORK/m_$bad" bad
@@ -85,11 +94,12 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     count) sed -i.orig 's/acquire_skipped$/acquire_retry/; s/\tTimeout\t/\tOutdated\t/' "$c/trace/frames.tsv" &&
         sed -i.orig '/frame_failed/d' "$c/trace/events.tsv" &&
         "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> /dev/null ;;
-    contradictory) printf 'commands=x lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=0\naggregate_exit=2\n' > "$c/run.txt" &&
-        echo "bench_picture: contradiction: presented before its gpu_ready" > "$c/aggregate.stderr" ;;
-    incomplete) printf 'commands=x lines=1\ndrawable_asked=8x8 trace=on\nwindow_exit=5\naggregate_exit=6\n' > "$c/run.txt" &&
-        sed -i.orig '/run_end/d' "$c/trace/events.tsv" &&
-        "$BENCH" --aggregate "$c/trace/events.tsv" > "$c/aggregate.txt" 2> /dev/null ;;
+    # Round ed: the raw trace changed after the run; its saved aggregate.txt (a success) and run.txt
+    # (aggregate_exit=0) are kept. Only the trace decides.
+    contradictory) sed -i.orig 's/^5\tpresented\t0\t1$/3.5\tpresented\t0\t1/' "$c/trace/events.tsv" ;;
+    incomplete) sed -i.orig '/run_end/d' "$c/trace/events.tsv" ;;
+    no_drawn) sed -i.orig '/drawn/d' "$c/trace/events.tsv" ;;
+    status) sed -i.orig 's/^bad\t0\t/bad\t5\t/' "$WORK/m_$bad/results.tsv" ;;
     notime) rm "$c/time.txt" ;;
     sim_outcome) sed -i.orig 's/\taccepted\t/\trejected\t/' "$c/trace/sim.tsv" ;;
     present_order) sed -i.orig 's/\t4.0\t4.5\t5.0\tSuccess/\t4.0\t5.5\t5.0\tSuccess/' "$c/trace/frames.tsv" ;;
@@ -101,7 +111,8 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
     junk_present) sed -i.orig 's/\tSuccess\tpresented$/\tbanana\tpresent_failed/' "$c/trace/frames.tsv" ;;
     neg_acquire) sed -i.orig 's/\t5.6\t6.0\tTimeout/\t5.6\t5.2\tTimeout/' "$c/trace/frames.tsv" ;;
     over_reject) sed -i.orig 's/\t1\t0\taccepted\t-\t1\t1$/\t1\t2\tinvalid\tx,y\t1\t1/' "$c/trace/sim.tsv" ;;
-    swapped) sed -i.orig 's/^5\tframe_presented\t1\t1$/4.9\tframe_presented\t1\t1/' "$c/trace/events.tsv" ;;
+    # Both present events moved, so the trace stays consistent and only the cross-check refuses it.
+    swapped) sed -i.orig 's/^5\tframe_presented\t1\t1$/4.9\tframe_presented\t1\t1/; s/^5\tpresented\t0\t1$/4.9\tpresented\t0\t1/' "$c/trace/events.tsv" ;;
     too_many) sed -i.orig 's/lines=1/lines=0/' "$c/run.txt" ;;
     drawable_no_epoch) sed -i.orig 's/^2\t1\t1\t0\t0\t8\t8\t2\t1\t8\t8\t/2\t1\t1\t0\t0\t8\t8\t2\t1\t16\t16\t/' "$c/trace/frames.tsv" ;;
     generation_back) sed -i.orig 's/^2\t1\t1\t/2\t1\t0\t/' "$c/trace/frames.tsv" ;;
@@ -115,7 +126,10 @@ for bad in gap mismatch count contradictory incomplete notime sim_outcome presen
         grep -q "case bad: evidence not usable" "$WORK/err" || fail "$bad: no stderr line"
     fi
 done
-python3 "$TABLE" "$WORK/m_gap" 2>&1 | grep -q "frame 3, expected 2" || fail "gap: reason"
+reason() { # matrix, text
+    python3 "$TABLE" "$BENCH" "$1" 2>&1 | grep -qF -- "$2"
+}
+reason "$WORK/m_gap" "frame 3, expected 2" || fail "gap: reason"
 for pair in "overlap:starts before the previous one ended" \
     "failed_submit:an attempt without a texture has submit or present times" \
     "epoch_back:epoch 1 after epoch 2" "junk_cols:'abc' is not a whole number" \
@@ -123,14 +137,87 @@ for pair in "overlap:starts before the previous one ended" \
     "neg_acquire:the acquire is out of order" "over_reject:2 rejections for 1 commands" \
     "swapped:frame 1: frames.tsv gives frame_presented" "too_many:1 commands applied for 0" \
     "drawable_no_epoch:drawable 16x16 in epoch 1 of 8x8" "generation_back:generation 0 after generation 1" \
-    "reasons_count:reasons 'a,b,c' for 1 rejections"; do
-    python3 "$TABLE" "$WORK/m_${pair%%:*}" 2>&1 | grep -q "${pair#*:}" || fail "${pair%%:*}: reason"
+    "reasons_count:reasons 'a,b,c' for 1 rejections" \
+    "mismatch:outcome acquire_skipped with SuccessOptimal and texture 0" \
+    "notime:time.txt unreadable" "sim_outcome:outcome rejected for 1 applied, 0 rejected" \
+    "present_order:the frame's boundaries are out of order"; do
+    reason "$WORK/m_${pair%%:*}" "${pair#*:}" || fail "${pair%%:*}: reason"
 done
-python3 "$TABLE" "$WORK/m_count" 2>&1 | grep -q "frames_failed=1, the trace 0" || fail "count: reason"
-python3 "$TABLE" "$WORK/m_incomplete" 2>&1 | grep -q "trace incomplete: run=INCOMPLETE" ||
+reason "$WORK/m_count" "frames_failed=1, the trace 0" || fail "count: reason"
+# Round ed, 2A/2C: the saved success does not hide a cut or contradictory trace.
+grep -q "^run=complete status=0 (succeeded)" "$WORK/m_incomplete/bad/aggregate.txt" &&
+    grep -q "^aggregate_exit=0" "$WORK/m_incomplete/bad/run.txt" ||
+    fail "incomplete: the saved success is not there"
+reason "$WORK/m_incomplete" "case bad: evidence not usable: trace incomplete: run=INCOMPLETE (no run_end" ||
     fail "incomplete: reason"
-python3 "$TABLE" "$WORK/m_contradictory" 2>&1 | grep -q "aggregate exit 2: .*before its gpu_ready" ||
+reason "$WORK/m_contradictory" "case bad: evidence not usable: trace unreadable: " ||
     fail "contradictory: reason"
+reason "$WORK/m_contradictory" "presented of island 0 generation 1 before its gpu_ready" ||
+    fail "contradictory: the aggregate's reason"
+reason "$WORK/m_no_drawn" "which has no drawn of it" || fail "no_drawn: reason"
+reason "$WORK/m_status" "results.tsv status 5, run.txt window_exit 0" || fail "status: reason"
+# A trace edited after its run is aggregated as it is now, and the stale saved summary is named.
+new_matrix "$WORK/m_stale"
+make_case "$WORK/m_stale" good
+make_case "$WORK/m_stale" late
+sed -i.orig 's/^6\tframe_failed\t1\t2$/6\tframe_failed\t1\t2\n7\tconverged\t0\t0/' \
+    "$WORK/m_stale/late/trace/events.tsv"
+table "$WORK/m_stale" 0 "a trace whose saved summary is older than its events"
+grep -q "differs from the current aggregate (the current one is used): late\.$" "$WORK/out" ||
+    fail "stale: the case is not named"
+# An idle case: no command, no edit, every frame presented. Zero commands is a valid case.
+new_matrix "$WORK/m_idle"
+make_case "$WORK/m_idle" idle
+c="$WORK/m_idle/idle"
+printf 't_ms\tkind\tisland\tversion\n0\tgpu_mode\t0\t1\n4\tframe_submitted\t1\t1\n5\tframe_presented\t1\t1\n6\tframe_failed\t1\t2\n10\trun_end\t0\t0\n' \
+    > "$c/trace/events.tsv"
+printf 'turn\tt_ms\tapplied\trejected\toutcome\treasons\tbatch\tdeltas\n' > "$c/trace/sim.tsv"
+sed -i.orig 's/lines=1/lines=0/' "$c/run.txt"
+table "$WORK/m_idle" 0 "an idle case with no command"
+grep -q "^| idle | 0 / 0 / 0 / 0 / 0 | n=0 | 0 | 0 | 0 | " "$WORK/out" || fail "idle: edits row"
+# The inventory (2D, 2E).
 mkdir -p "$WORK/m_none"
 table "$WORK/m_none" 2 "a matrix without results.tsv"
+new_matrix "$WORK/m_noplan"
+make_case "$WORK/m_noplan" good
+rm "$WORK/m_noplan/plan.tsv"
+table "$WORK/m_noplan" 2 "a matrix without plan.tsv"
+new_matrix "$WORK/m_empty"
+table "$WORK/m_empty" 2 "a header-only results.tsv and a plan that selects nothing"
+grep -q "plan.tsv selects no case" "$WORK/err" || fail "empty: reason"
+new_matrix "$WORK/m_zero_of_one"
+printf 'one\t1\n' >> "$WORK/m_zero_of_one/plan.tsv"
+table "$WORK/m_zero_of_one" 1 "a selected case that never ran (header-only results.tsv)"
+grep -q "INCOMPLETE campaign: 0 of 1 selected cases ran; no result for one" "$WORK/err" ||
+    fail "zero of one: reason"
+new_matrix "$WORK/m_partial"
+make_case "$WORK/m_partial" a
+printf 'b\t1\n' >> "$WORK/m_partial/plan.tsv"
+table "$WORK/m_partial" 1 "a campaign that stopped after its first case"
+grep -q "INCOMPLETE campaign: 1 of 2 selected cases ran; no result for b" "$WORK/err" ||
+    fail "partial: reason"
+new_matrix "$WORK/m_subset"
+make_case "$WORK/m_subset" a
+printf 'b\t0\n' >> "$WORK/m_subset/plan.tsv"
+table "$WORK/m_subset" 0 "a requested subset"
+grep -q "^Campaign: a requested subset, 1 of 2 planned cases (a); not the full matrix\.$" \
+    "$WORK/out" || fail "subset: campaign line"
+new_matrix "$WORK/m_dup"
+make_case "$WORK/m_dup" a
+printf 'a\t0\t1\t-\n' >> "$WORK/m_dup/results.tsv"
+table "$WORK/m_dup" 1 "a case listed twice"
+grep -q "results.tsv lists case a twice" "$WORK/err" || fail "dup: reason"
+new_matrix "$WORK/m_lost"
+make_case "$WORK/m_lost" a
+make_case "$WORK/m_lost" b
+sed -i.orig '/^b\t/d' "$WORK/m_lost/results.tsv" "$WORK/m_lost/plan.tsv"
+table "$WORK/m_lost" 1 "a case directory results.tsv does not list"
+grep -q "case directory b is not listed in results.tsv" "$WORK/err" || fail "lost: reason"
+new_matrix "$WORK/m_unplanned"
+make_case "$WORK/m_unplanned" a
+sed -i.orig 's/^a\t1$/a\t0/' "$WORK/m_unplanned/plan.tsv"
+printf 'z\t1\n' >> "$WORK/m_unplanned/plan.tsv"
+table "$WORK/m_unplanned" 1 "a result for a case the plan does not select"
+grep -q "results.tsv lists case a, which plan.tsv does not select" "$WORK/err" ||
+    fail "unplanned: reason"
 echo "all window table contract checks passed"

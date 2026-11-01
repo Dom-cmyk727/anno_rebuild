@@ -68,7 +68,7 @@ expect 5 "$rc" "a preflight target that does not build"
 grep -q "preflight target no_such_preflight_target did not build" "$WORK/run.log" ||
     fail "unbuilt preflight target: reason"
 grep -q 'PREFLIGHT_TARGETS-bench_picture' "$RUNNER" || fail "the default preflight target changed"
-# The default preflights are the round's three, by name.
-grep -q 'test_names_are_selectable test_verdict_contract picture_matrix_contract' "$RUNNER" ||
+# The default preflights, by name (round ed added the window table's contract).
+grep -q 'test_names_are_selectable test_verdict_contract picture_matrix_contract window_table_contract' "$RUNNER" ||
     fail "the default preflights changed"
 echo "all run_selected contract checks passed"

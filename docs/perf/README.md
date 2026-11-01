@@ -1604,7 +1604,8 @@ None was refused by the three new rules.
 These are the first measurements of the real viewer path. Each run is `anno1503 --play
 data/maps/lan5.txt --commands <file> --renderer gpu`, with the window trace on (`docs/app/window-trace.md`).
 
-Every row was checked by `tools/bench/window_table.py` before it was tabulated:
+Every row was checked by `tools/bench/window_table.py` before it was tabulated (round ec's reader; round
+ed's corrected readers refuse most of these traces, see "Round ed: the saved window evidence" below):
 - the aggregate's verdict;
 - a strict reading of every column of frames.tsv and sim.tsv;
 - each frame row cross-checked against its events: frame id, epoch and times;
@@ -1740,3 +1741,27 @@ kept, with its table (`d-matrix-superseded-table.md`, views column), and not cit
 - No genuine 2160p drawable.
 - No late-game economy. The city is the developer's start city with up to 60 cheap buildings.
 - PLAN §0.3 needs presented frames on target hardware. These rows do not decide it.
+
+### Round ed: the saved window evidence, read by the corrected readers
+
+Round ed changed what a `presented` means (`docs/app/window-trace.md`, boundary 9): the first successful
+present of a frame that draws the change, with a `drawn` event for each such frame. Round ec's traces
+have no `drawn`, and `window_table.py` now aggregates every raw trace itself instead of reading the saved
+`aggregate.txt`. The originals are untouched in `cache/ec-runs/d-matrix-c025fc2-c025fc2/`; the
+re-reading used a copy (`cache/ed-runs/h-ec-matrix-copy/`, with a `plan.tsv` reconstructed from its
+`results.tsv`, since round ec wrote none).
+
+- **The corrected aggregate** (`cache/ed-runs/h-revalidate-ec.txt`, `.json`): the two idle traces are
+  consistent (exit 0). The nine traces with edits are refused (exit 2): their `gpu_ready` events have no
+  `drawn` of their frame, and their `presented` events no `drawn` of the presenting frame. The table
+  therefore lists those nine as evidence not usable (`cache/ed-runs/h-ec-table.md`, exit 1).
+- **What the raw files still support** (`cache/ed-runs/revalidate_ec.py`): round ec's rule and round ed's
+  agree for a change when it was presented by its own `gpu_ready` frame, that frame presented, and every
+  attempt from the commit to that frame had one view. Then the `gpu_ready` frame drew the change usable
+  and was the first to. In all nine traces every attempted frame presented, and all 304 presented changes
+  meet the three conditions, the resize run's included (none of its changes waited across the resize).
+  So round ec's latency numbers are supported by this derivation from the raw files, not by the
+  validator, which cannot accept a trace without `drawn`.
+- **Remeasured:** only a canary at round ed's final source (in this round's report), because the
+  producer's behaviour changed only for failed presents and view changes during a wait, which no round-ec
+  case had. The round-ec matrix is not re-run.

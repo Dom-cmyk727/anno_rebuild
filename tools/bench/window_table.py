@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """window_table.py: the report tables of a window matrix (tools/bench/window_case.sh), from raw files.
 
-    tools/bench/window_table.py <matrix out_dir>
+    tools/bench/window_table.py <bench_picture binary> <matrix out_dir>
+
+The inventory first (round ed): plan.tsv (written by window_matrix.sh before its first window) lists
+every case of the matrix and whether it was selected; results.tsv lists the cases that ran. Refused:
+a missing or malformed plan.tsv or results.tsv, a plan that selects no case (exit 2), a case listed
+twice, a result for a case the plan does not select, a selected case without a result, a case
+directory that results.tsv does not list, a results status that is not run.txt's window_exit (exit
+1). The table then says whether it is the full matrix or a requested subset of it.
 
 For every case of results.tsv (in its order), with the trace on:
-  - the evidence is validated first: aggregate_exit in run.txt (bench_picture --aggregate of the
-    trace: 0 complete and successful, 6 failed; incomplete, contradictory or anything else is unusable), frames.tsv
+  - the evidence is validated first: the raw trace is aggregated now by the given bench_picture
+    (--aggregate events.tsv; 0 complete and successful, 6 failed; incomplete, contradictory or
+    anything else is unusable). The aggregate.txt saved at the run is not trusted: a case whose
+    saved summary differs from the current one is named (the current one is used). Then frames.tsv
     and sim.tsv read strictly (docs/app/window-trace.md: the header, whole tokens, frame ids 1, 2,
     3, ... with no gap, frame starts that never go back, an outcome that matches the acquire and the
     present status, turns that increase), and the files agree with the aggregate (frames submitted,
@@ -26,9 +35,12 @@ the two can be compared on the same measure.
 
 A present-call return is not display: nothing here observes scanout or GPU completion.
 Percentiles are nearest-rank with their sample counts (p95 needs 20, p99 100). Exit status: 0 every
-case usable and successful; 1 some case's evidence is not usable (an incomplete trace included); 6 all
-usable but some run failed; 2 bad arguments or no results.tsv.
+case usable and successful, and every selected case ran; 1 some case's evidence is not usable (an
+incomplete trace included) or the inventory is not; 6 all usable but some run failed; 2 bad
+arguments, no results.tsv or plan.tsv, or no case selected.
 """
+import hashlib
+import importlib.util
 import math
 import re
 import sys
@@ -252,11 +264,100 @@ def cross_check(frames, events):
                                f"{have}")
 
 
-def aggregate_lines(case):
-    text = read(case / "aggregate.txt").splitlines()
-    if not text or not text[0].startswith("run="):
-        raise Unusable("aggregate.txt has no run line")
-    return {l.split(" ", 1)[0].split("=", 1)[0]: l for l in text}
+def load_picture_table():
+    """picture_table.py beside this file: its aggregate() (loaded by path, so -I works)."""
+    spec = importlib.util.spec_from_file_location("picture_table",
+                                                  Path(__file__).with_name("picture_table.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+PICTURE_TABLE = load_picture_table()
+
+
+def aggregate_lines(binary, case):
+    """The current aggregate of the raw trace, by key, and whether the run succeeded."""
+    try:
+        lines, succeeded = PICTURE_TABLE.aggregate(binary, case / "trace" / "events.tsv")
+    except PICTURE_TABLE.Unusable as e:
+        raise Unusable(str(e)) from None
+    return {l.split(" ", 1)[0].split("=", 1)[0]: l for l in lines}, lines, succeeded
+
+
+class Inventory(Exception):
+    """The matrix's inventory is not usable; `code` is the exit status."""
+
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.code = code
+
+
+def read_tsv(path, header):
+    try:
+        lines = path.read_text().split("\n")
+    except OSError as e:
+        raise Inventory(f"{path}: {e.strerror or e}", 2) from None
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not lines or lines[0].split("\t") != header:
+        raise Inventory(f"{path.name} line 1: not the header {chr(9).join(header)!r}", 1)
+    rows = []
+    for n, line in enumerate(lines[1:], start=2):
+        f = line.split("\t")
+        if len(f) != len(header) or not f[0] or "/" in f[0] or f[0] in (".", ".."):
+            raise Inventory(f"{path.name} line {n}: not a row of {len(header)} fields with a case "
+                            "name", 1)
+        rows.append(f)
+    return rows
+
+
+def inventory(matrix):
+    """The cases to tabulate (results.tsv order) and the campaign line; Inventory when unusable."""
+    plan = read_tsv(matrix / "plan.tsv", ["case", "selected"])
+    results = read_tsv(matrix / "results.tsv", ["case", "status", "wall_s", "load_after"])
+    planned, selected = [], []
+    for name, sel in plan:
+        if name in planned:
+            raise Inventory(f"plan.tsv lists case {name} twice", 1)
+        if sel not in ("0", "1"):
+            raise Inventory(f"plan.tsv: case {name} selected '{sel}' (0 or 1)", 1)
+        planned.append(name)
+        if sel == "1":
+            selected.append(name)
+    if not selected:
+        raise Inventory("plan.tsv selects no case: there is no campaign to tabulate", 2)
+    names = []
+    for name, status, _, _ in results:
+        if name in names:
+            raise Inventory(f"results.tsv lists case {name} twice", 1)
+        if name not in selected:
+            raise Inventory(f"results.tsv lists case {name}, which plan.tsv does not select", 1)
+        if not WHOLE.fullmatch(status):
+            raise Inventory(f"results.tsv: case {name} status '{status}' is not a whole number", 1)
+        names.append(name)
+    on_disk = sorted(p.name for p in matrix.iterdir() if p.is_dir())
+    lost = [d for d in on_disk if d not in names]
+    if lost:
+        raise Inventory(f"case directory {lost[0]} is not listed in results.tsv", 1)
+    missing = [n for n in selected if n not in names]
+    if missing:
+        raise Inventory(f"INCOMPLETE campaign: {len(names)} of {len(selected)} selected cases ran; "
+                        f"no result for {', '.join(missing)}", 1)
+    statuses = {name: status for name, status, _, _ in results}
+    if len(selected) == len(planned):
+        campaign = f"Campaign: the full matrix, {len(planned)} of {len(planned)} planned cases."
+    else:
+        campaign = (f"Campaign: a requested subset, {len(selected)} of {len(planned)} planned cases "
+                    f"({', '.join(selected)}); not the full matrix.")
+    return names, statuses, campaign
+
+
+def sha256(path):
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError as e:
+        return f"unreadable ({e.strerror or e})"
 
 
 def boundary(lines, key):
@@ -302,22 +403,27 @@ def peak_rss(case):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print(__doc__, file=sys.stderr)
         return 2
-    matrix = Path(sys.argv[1])
+    binary, matrix = sys.argv[1], Path(sys.argv[2])
     try:
-        results = (matrix / "results.tsv").read_text().splitlines()[1:]
-    except OSError as e:
-        print(f"window_table: {matrix / 'results.tsv'}: {e.strerror or e}", file=sys.stderr)
-        return 2
+        names, statuses, campaign = inventory(matrix)
+    except Inventory as e:
+        print(f"window_table: {matrix}: {e}", file=sys.stderr)
+        return e.code
+    print(campaign)
+    print(f"Aggregate: {binary} sha256 {sha256(binary)} (every trace aggregated now).")
+    print()
     identity, timing, edits, control = [], [], [], []
-    unusable, failed = [], []
-    for line in results:
-        name = line.split("\t")[0]
+    unusable, failed, stale = [], [], []
+    for name in names:
         case = matrix / name
         try:
             run = kv(read(case / "run.txt").replace("\n", " "))
+            if run.get("window_exit") != statuses[name]:
+                raise Unusable(f"results.tsv status {statuses[name]}, run.txt window_exit "
+                               f"{run.get('window_exit')}")
             fps, busy_s = stderr_intervals(case)
             control.append(f"| {name} | {run.get('trace', '?')} | {dist(fps, 1)} | {dist(busy_s, 2)} | "
                            f"{peak_rss(case)} |")
@@ -325,15 +431,13 @@ def main():
                 if run.get("window_exit") != "0":
                     failed.append(name)
                 continue
-            agg_exit = run.get("aggregate_exit")
-            if agg_exit not in ("0", "6"):
-                why = read(case / "aggregate.stderr").strip().replace("\n", " ")
-                raise Unusable(f"aggregate exit {agg_exit}: {why or 'no output'}")
-            agg = aggregate_lines(case)
-            if agg["run"].startswith("run=INCOMPLETE"):
-                raise Unusable(f"trace incomplete: {agg['run']}")
-            if (agg_exit == "0") != agg["run"].endswith("(succeeded)"):
-                raise Unusable(f"aggregate exit {agg_exit} contradicts '{agg['run']}'")
+            agg, agg_text, succeeded = aggregate_lines(binary, case)
+            try:
+                saved = (case / "aggregate.txt").read_text().splitlines()
+            except OSError:
+                saved = None
+            if saved != agg_text:
+                stale.append(name)
             frames = read_frames(case / "trace" / "frames.tsv")
             sim = read_sim(case / "trace" / "sim.tsv")
             w = kv(agg.get("window", ""))
@@ -346,7 +450,7 @@ def main():
                 if w.get(key) != str(have):
                     raise Unusable(f"frames.tsv/sim.tsv give {key}={have}, the trace {w.get(key)}")
             cross_check(frames, read_frame_events(case / "trace" / "events.tsv"))
-            if agg_exit != "0" or run.get("window_exit") != "0":
+            if not succeeded or run.get("window_exit") != "0":
                 failed.append(name)
             manifest = read(case / "trace" / "manifest.txt").splitlines()
             adapter = next((l[len("adapter "):] for l in manifest if l.startswith("adapter ")), "?")
@@ -389,6 +493,10 @@ def main():
             print(f"| {name} | evidence not usable: {err} |")
             print(f"window_table: case {name}: evidence not usable: {err}", file=sys.stderr)
             unusable.append(name)
+    if stale:
+        print(f"Saved aggregate.txt differs from the current aggregate (the current one is used): "
+              f"{', '.join(stale)}.")
+        print()
     print("| case | drawable asked | drawable (px) | views | adapter | frames attempted / presented / "
           "failed | dropped | trace |")
     print("|---|---|---|---:|---|---|---:|---|")

@@ -23,4 +23,6 @@ c++ -O2 -std=c++20 -Isrc/{app,render,assets,formats,sim_load,sim}/include worklo
 ./a.out <game_dir> data/maps/lan5.txt sustained.commands sustained 60 30 4
 ```
 
-`tools/bench/window_matrix.sh` runs the whole matrix.
+`tools/bench/window_matrix.sh` runs the whole matrix, or a requested subset of it (its fifth argument,
+a regular expression over the case names); `tools/bench/window_table.py <bench_picture> <matrix>`
+tabulates it.

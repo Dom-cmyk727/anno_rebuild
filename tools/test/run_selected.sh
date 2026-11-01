@@ -11,6 +11,8 @@
 #   test_names_are_selectable   the same name check, as registered
 #   test_verdict_contract       the verdict reader's own contract
 #   picture_matrix_contract     the evidence pipeline's contracts (runner, aggregate, table)
+#   window_table_contract       the window table's public command (round ed: it re-aggregates every
+#                               trace and checks the matrix inventory)
 # A preflight that is missing or fails stops the run before the selection starts (exit 5). The
 # preflights run whatever the selection is; a selector that also matches them does not replace them.
 # What the preflights execute is built first, whatever <target> is (round ec review of A: the
@@ -35,7 +37,7 @@ HERE=$(cd "$(dirname "$0")/../.." && pwd)
 # The source tree the name check reads, and the preflight tests (the contract test,
 # tools/test/run_selected_test.sh, points them at a fixture project).
 SOURCES="${ANNO_RUN_SELECTED_SOURCES:-$HERE}"
-PREFLIGHTS="${ANNO_RUN_SELECTED_PREFLIGHTS:-test_names_are_selectable test_verdict_contract picture_matrix_contract}"
+PREFLIGHTS="${ANNO_RUN_SELECTED_PREFLIGHTS:-test_names_are_selectable test_verdict_contract picture_matrix_contract window_table_contract}"
 # An empty value builds none (the contract test's fixture project has no targets).
 PREFLIGHT_TARGETS="${ANNO_RUN_SELECTED_PREFLIGHT_TARGETS-bench_picture}"
 LOCK="$BUILD.run.lock"

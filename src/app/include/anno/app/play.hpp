@@ -221,7 +221,9 @@ class PlayRunner {
     [[nodiscard]] OutcomeRead outcomes_since(std::uint64_t from) const {
         return outcomes_.since(from);
     }
-    /// What is known about one command now (Queued, Applied, Refused, Lost or Unknown).
+    /// What is known about one command now (Queued, Applied, Refused, Lost or Unknown): the raw
+    /// log, which can be ahead of snapshot() by a publication. A reader that also shows the
+    /// snapshot's money or goods must use feedback() (round ee review, R1).
     [[nodiscard]] CommandOutcome outcome(CommandId id) const { return outcomes_.find(id); }
     /// The snapshot and, when `receipt` is given, that command's outcome as of the snapshot's
     /// publication (PlayFeedback; OutcomeLog::find_published). The snapshot is read first and the

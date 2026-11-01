@@ -452,6 +452,10 @@ TEST_CASE("outcome feedback: an outcome recorded before its snapshot is withheld
     const auto cost = static_cast<std::int64_t>(w.load.world.types().find(*paid)->cost_gold);
     app::PlayRunner runner(std::move(d->load.world));
     runner.run_n(1); // the first snapshot with the developer's money (the constructor's is empty)
+    // An earlier, published outcome stays shown while the next turn is mid-publication.
+    const app::CommandId earlier = runner.post_command(build(w, 20, 20));
+    runner.run_n(1);
+    REQUIRE(runner.feedback(earlier).latest->state == State::Applied);
     const app::CommandId build_id = runner.post_command(build(w, 4, 4, paid));
     const app::CommandId refused_id = runner.post_command(build(w, -500, -500, paid));
     const app::CommandId noop_id = runner.post_command(demolish(w, 30, 30));
@@ -467,9 +471,13 @@ TEST_CASE("outcome feedback: an outcome recorded before its snapshot is withheld
         at_gate["paid"] = read_both(runner, build_id);
         at_gate["refused"] = read_both(runner, refused_id);
         at_gate["noop"] = read_both(runner, noop_id);
+        at_gate["earlier"] = read_both(runner, earlier);
     });
     runner.run_n(1);
-    REQUIRE(at_gate.size() == 3);
+    REQUIRE(at_gate.size() == 4);
+    REQUIRE(at_gate.at("earlier").now.latest.has_value());
+    CHECK(at_gate.at("earlier").now.latest->state == State::Applied);
+    CHECK_FALSE(at_gate.at("earlier").now.latest->deferred);
 
     // The legal interleaving exists: the live log already holds the paid build's outcome while
     // the snapshot is still the one from before the charge. This is what the window used to show.
@@ -565,12 +573,9 @@ TEST_CASE("outcome feedback: a paid build seen from a reader thread while the si
         REQUIRE(cv.wait_for(lock, std::chrono::seconds(20), [&] { return held; }));
     }
     // The sim thread is inside the publication: the outcome is recorded, the snapshot is not.
-    const auto t0 = std::chrono::steady_clock::now();
+    // The reads return while the publication is held: that they return at all is the proof that
+    // they do not wait for it (the sim thread cannot proceed until `open`).
     const Reads gate = read_both(runner, id);
-    const auto read_us =
-        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0)
-            .count();
-    CHECK(read_us < 100000); // the reads do not wait for the held publication
     CHECK(gate.old_outcome.state == State::Applied);
     CHECK(gate.old_snapshot->money == before);
     REQUIRE(gate.now.latest.has_value());

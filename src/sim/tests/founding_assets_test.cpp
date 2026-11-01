@@ -604,3 +604,110 @@ TEST_CASE("scenario player DISCO on the shipped scenes: restored sets, sharing o
     CHECK(w.value().rules().shared_visibility.empty()); // an ordinary scenario: sharing off
     CHECK(w.value().check_invariants().empty());
 }
+
+TEST_CASE("ship start canary: two participants found, a conflict is refused, replay reproduces") {
+    // Headless end-to-end canary on the unchanged candidate (MAP-FOUND-3 E). Sailing is not
+    // implemented: the test RELOCATES the ships of seats 0, 1 and 2 beside sites it validated
+    // through the engine's own command BEFORE the recording starts (fixture setup, not a sailed
+    // route), so the log's initial save already holds the relocated ships.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    RealStart rs = real_start(*dir);
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World w = std::move(loaded).value();
+    // Five ships with crews (scout, donkey) and no city anywhere.
+    CHECK(sl::expedition_baseline_problem(w).empty());
+    for (const auto& island : w.islands()) {
+        if (island) {
+            for (const auto& c : island->cities) {
+                CHECK_FALSE(c.has_value());
+            }
+        }
+    }
+    const auto ship_pos = [](const sim::World& world, std::uint64_t id) {
+        return sim::find_figure(world.figures(), sim::FigureId{id})->pos;
+    };
+    const auto set_pos = [](sim::World& world, std::uint64_t id, sim::FixedPos pos) {
+        sim::find_figure(sim::WorldTestAccess::figures(world), sim::FigureId{id})->pos = pos;
+    };
+    // Setup on a trial copy: site 1 for seat 0, then the next legal site (on the world after the
+    // first founding) for seat 2.
+    sim::World trial = w;
+    const std::optional<Site> first = find_legal_site(trial, kontor, trial.config().neutral_owner);
+    REQUIRE(first.has_value());
+    const auto c0 = place_for_founding(trial, *first, 0);
+    REQUIRE(c0.has_value());
+    set_pos(w, 1, ship_pos(trial, 1));
+    set_pos(w, 4, ship_pos(trial, 1)); // seat 1's ship sits beside the same site (the conflict)
+    REQUIRE(trial.apply(*c0).ok());
+    const std::optional<Site> second = find_legal_site(trial, kontor, trial.config().neutral_owner);
+    REQUIRE(second.has_value());
+    const auto c2 = place_for_founding(trial, *second, 2);
+    REQUIRE(c2.has_value());
+    set_pos(w, 7, ship_pos(trial, 7));
+    REQUIRE(w.check_invariants().empty());
+
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    REQUIRE(rec.submit(*c0).ok()); // the recorder applies the command to `w` and logs it
+
+    // A conflicting command: seat 1 at the very same site is refused (owned tiles), uncharged,
+    // and leaks no discovery (bytes and PRNG unchanged).
+    {
+        sim::FoundCmd same = std::get<sim::FoundCmd>(c0->body);
+        same.ship = sim::FigureId{4};
+        const std::vector<std::uint8_t> bytes = w.save();
+        const std::uint32_t cursor = w.rng().cursor();
+        const sim::ApplyResult refused = w.apply(sim::Command{sim::PlayerId{1}, same});
+        CHECK(refused.status == sim::Reject::SiteOwned);
+        CHECK(w.save() == bytes);
+        CHECK(w.rng().cursor() == cursor);
+    }
+    const sim::World after_first = w;
+
+    REQUIRE(rec.submit(*c2).ok());
+    REQUIRE(w.check_invariants().empty());
+    std::size_t cities = 0;
+    for (const auto& island : w.islands()) {
+        if (!island) {
+            continue;
+        }
+        for (const auto& c : island->cities) {
+            if (c.has_value()) {
+                ++cities;
+                CHECK((c->owner == sim::PlayerId{0} || c->owner == sim::PlayerId{2}));
+                CHECK(c->player_mask == pid_set({0, 1, 2, 3, 4}));
+            }
+        }
+    }
+    CHECK(cities == 2);
+    CHECK(w.players().find(sim::PlayerId{0})->money == 29650);
+    CHECK(w.players().find(sim::PlayerId{2})->money == 29650);
+    for (const std::uint32_t p : {1U, 3U, 4U}) {
+        CHECK(w.players().find(sim::PlayerId{p})->money == 30000); // nobody else paid
+    }
+    for (std::uint32_t p = 0; p < 5; ++p) {
+        CHECK(w.players().find(sim::PlayerId{p})->discovery == pid_set({0, 2}));
+        CHECK(w.players().find(sim::PlayerId{p})->relations.empty());
+        // The state after seat 0 alone did not yet know seat 2 (nothing pre-revealed).
+        CHECK(after_first.players().find(sim::PlayerId{p})->discovery == pid_set({0}));
+    }
+    // Replay: the two recorded foundings plus a checkpoint reproduce in a fresh world built from
+    // the log's own initial save.
+    rec.advance(500);
+    rec.checkpoint();
+    auto read = sim::read_log(sim::write_log(rec.log()).value());
+    REQUIRE(read.ok());
+    auto fresh = sim::World::load(read.value().initial_save, rs.types, {});
+    REQUIRE_MESSAGE(fresh.ok(), (fresh.ok() ? std::string() : fresh.error()));
+    auto outcome = sim::replay(fresh.value(), read.value());
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    CHECK(outcome.value().reproduced());
+    CHECK(fresh.value().state_hash() == w.state_hash());
+}

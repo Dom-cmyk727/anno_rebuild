@@ -87,4 +87,4 @@ is wrong. Report such an outcome before the contract is implemented.
 ## CAP-6c: is a land start tile a goal candidate?
 Start the ship on a land tile (editor-placed) next to water and order a move to exactly that tile centre. Rows as CAP-6. The two
 possible answers are status 2 (the start tile is offered) or status 0 at the adjacent water tile (score 2240 for a neighbour at
-distance 1). The contract does not assert either; the answer fixes the `start == goal` rule of the route query.
+distance 1). The first sailing slice uses and labels the **conservative rule**: a land start may escape to adjacent reachable water but is not itself offered as a destination candidate (contract 12.1; `passage_cases.txt` `start_on_land_next_to_water`). Original-runtime parity of this case stays UNKNOWN until this card is run; a status-2 answer would change only the `start == goal` case of a land start.

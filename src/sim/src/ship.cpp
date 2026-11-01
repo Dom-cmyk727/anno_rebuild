@@ -49,6 +49,16 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             return where + ".nav.seg.factor_percent: " + std::to_string(g.factor_percent) +
                    " is not in 1 .. 100";
         }
+        if (g.kind != NavSegKind::Move && (g.factor_percent != 100 || g.dir8 != 0)) {
+            return where + ".nav.seg: a turn or idle segment has factor 100 and dir8 0 (V = 100)";
+        }
+        {
+            const std::int64_t edge = std::int64_t{kWorldEdgeBound} * 256;
+            if (f.pos.x < -edge || f.pos.x > edge || f.pos.y < -edge || f.pos.y > edge) {
+                return where + ".pos: outside the world bound of " +
+                       std::to_string(kWorldEdgeBound) + " tiles";
+            }
+        }
         switch (g.kind) {
         case NavSegKind::Move:
             if (g.dir8 > 7) {
@@ -75,8 +85,8 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             }
             break;
         case NavSegKind::Idle:
-            if (g.speed_q32 != kNavIdleSpeedQ32 || g.remaining_q32 > kNavUnitQ32) {
-                return where + ".nav.seg: the idle segment runs at 0.01 with at most 1.0 left";
+            if (g.speed_q32 != kNavIdleSpeedQ32 || g.remaining_q32 > kNavIdleSpeedQ32) {
+                return where + ".nav.seg: the idle segment runs at 0.01 with at most 0.01 left";
             }
             break;
         }
@@ -91,12 +101,16 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             const NavNode& n = m.nodes[i];
             const std::string at = where + ".nav.nodes[" + std::to_string(i) + "]";
             if (n.kind == NavSegKind::Move) {
-                if (n.dir8 > 7 || n.speed_q32 == 0 || n.speed_q32 >= kMaxNavSpeedQ32 ||
-                    n.length_q32 == 0 || n.length_q32 > (std::uint64_t{255} * kNavDiagStepQ32)) {
-                    return at + ": a movement node is out of range";
+                // A run of 1 .. run_cap whole steps: orthogonal steps are 1.0, diagonal L_d (12.4).
+                const std::uint64_t step = (n.dir8 & 1U) != 0 ? kNavDiagStepQ32 : kNavUnitQ32;
+                if (n.dir8 > 7 || n.facing != 0 || n.speed_q32 == 0 ||
+                    n.speed_q32 >= kMaxNavSpeedQ32 || n.length_q32 == 0 ||
+                    n.length_q32 % step != 0 || n.length_q32 / step > rules.nav.run_cap) {
+                    return at + ": a movement node is out of range (1 .. run_cap whole steps of "
+                                "its direction, facing 0)";
                 }
             } else if (n.kind == NavSegKind::Turn) {
-                if (n.facing > 15 || n.length_q32 != facts.turn_step_q32 ||
+                if (n.facing > 15 || n.dir8 != 0 || n.length_q32 != facts.turn_step_q32 ||
                     n.speed_q32 != kNavIdleSpeedQ32) {
                     return at + ": a turn node must carry facing < 16, the type's turn step and "
                                 "speed 0.01";
@@ -111,6 +125,14 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             }
             if (!orders.insert(m.order->order_id).second) {
                 return where + ".nav.order.order_id: duplicated across ships";
+            }
+            // 12.2: an unrouted order waits for its planning slot and holds the ticket; a routed
+            // one has consumed it and carries the plan.
+            if (!m.order->routed && (!m.ticket.has_value() || !m.nodes.empty())) {
+                return where + ".nav: an unrouted order needs its ticket and has no nodes";
+            }
+            if (m.order->routed && m.ticket.has_value()) {
+                return where + ".nav.ticket: a routed order has consumed its ticket";
             }
         } else if (m.ticket.has_value() || !m.nodes.empty()) {
             return where + ".nav: a ticket or pending nodes without an order";

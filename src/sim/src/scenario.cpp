@@ -489,6 +489,8 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         f.holds = fs.holds;
         f.state_word = fs.state_word;
         if (const FigureType* ft = w.types_->find_figure_type(fs.kind); ft != nullptr && ft->nav) {
+            // The position is inside the configured world (checked above), far below 2^22 Q8, so
+            // pos * 500 * 2^24 stays inside i64.
             f.nav = make_nav_motion(f.pos, static_cast<std::uint16_t>(w.clock_.tick()));
         }
         if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {

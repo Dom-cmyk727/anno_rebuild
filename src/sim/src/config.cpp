@@ -525,6 +525,12 @@ std::string Rules::validate() const {
                                               " .. " + std::to_string(hi))
                                     : std::string();
         };
+        // Reasons for the bounds (each is a validation limit, not game data; a mod needing more
+        // widens the bound together with the dependent width): run_cap and retry_cap fit the
+        // node count/u8 plan fields, goal_radius_tiles and window_radius_tiles keep the coarse
+        // window inside a 16-bit cell grid, unit_cap bounds a query's obstacle list, window_blocks
+        // bounds the coarse grid memory, the budgets and memory_bytes stay below 2^40 so the
+        // admission arithmetic in u64 cannot overflow.
         for (const std::string& problem :
              {range("plans_per_advance", n.plans_per_advance, 1, 65535),
               range("run_cap", n.run_cap, 1, 255), range("retry_cap", n.retry_cap, 1, 64),
@@ -547,6 +553,12 @@ std::string Rules::validate() const {
         if (n.health_span_percent + n.health_floor_percent > 100) {
             return bad("NavRules", "health_span_percent",
                        "health_span_percent + health_floor_percent exceeds 100");
+        }
+        // The cargo factor L is at least 100 - cargo_penalty_percent, so V is at least
+        // trunc(floor * (100 - penalty) / 100): that must stay >= 1 (a zero speed budget).
+        if (n.health_floor_percent * (100 - n.cargo_penalty_percent) < 100) {
+            return bad("NavRules", "cargo_penalty_percent",
+                       "floor * (100 - penalty) / 100 is below 1: the speed factor could reach 0");
         }
         if (n.class_costs.empty() || n.class_costs.size() > 256) {
             return bad("NavRules", "class_costs", "must hold 1 .. 256 classes");

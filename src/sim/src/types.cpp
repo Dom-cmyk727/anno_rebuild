@@ -505,12 +505,19 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
         n.nav_class = logic[0x10];
         n.max_hp = std::uint32_t{logic[0x1e]} | (std::uint32_t{logic[0x1f]} << 8);
         n.stamp_radius_88 = logic[0x28] == 0 ? 2U * 256U : std::uint32_t{logic[0x28]} * 32U;
-        if (speed_q32.has_value() && turn_q32.has_value()) {
+        // A type without hit points (the shipped 343 and 1510) is not a navigating type. Any other
+        // value outside the supported domains is a load error naming the field: a mod ship that
+        // silently could not be ordered would be worse (MAP-NAV-2 B review).
+        if (n.max_hp != 0) {
+            if (!speed_q32.has_value() || !turn_q32.has_value()) {
+                return who + "navigation: HEAD speed or turn step is not a representable length";
+            }
             n.speed_q32 = *speed_q32;
             n.turn_step_q32 = *turn_q32;
-            if (nav_facts_problem(n).empty()) {
-                t.nav = n;
+            if (std::string problem = nav_facts_problem(n); !problem.empty()) {
+                return who + "navigation: " + problem;
             }
+            t.nav = n;
         }
     }
     return t;

@@ -1,6 +1,7 @@
 // The navigation facts and the persisted ship motion state (task MAP-NAV-2 package B; contract
 // docs/sim/ship-navigation.md 12.4, 12.5). Synthetic: no game files. Expected values are derived
 // by hand or by tools/figure_digest_ref.py / Python big integers, never read back from the code.
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -105,7 +106,8 @@ seal_nav(const sim::NavFacts& n) {
 }
 
 /// The expedition registry with a navigating ship type 1502 (scout and donkey do not navigate).
-std::shared_ptr<const sim::TypeRegistry> nav_registry() {
+std::shared_ptr<const sim::TypeRegistry> nav_registry(std::uint32_t nav_id = kShip,
+                                                      const sim::NavFacts& facts = kFacts) {
     auto base = syn::make_synthetic_types();
     REQUIRE(base);
     sim::TypeRegistry::Builder b;
@@ -113,9 +115,15 @@ std::shared_ptr<const sim::TypeRegistry> nav_registry() {
     for (const sim::BuildingType& t : base.value().registry->types()) {
         b.add(t);
     }
-    sim::FigureType ship{kShip, 0, 0, 0, 0};
+    sim::FigureType ship{nav_id, 0, 0, 0, 0};
     ship.bewohntype = 113;
-    ship.nav = kFacts;
+    ship.nav = facts;
+    if (nav_id != kShip) {
+        // 1502 stays a ship-class type without navigation facts: nothing special about the id.
+        sim::FigureType plain{kShip, 0, 0, 0, 0};
+        plain.bewohntype = 113;
+        b.figure_type(plain);
+    }
     b.figure_type(ship)
         .figure_type(sim::FigureType{kScout, 0, 0, 0, 0})
         .figure_type(sim::FigureType{kDonkey, 0, 0, 0, 0});
@@ -166,16 +174,26 @@ void make_busy(sim::World& w, std::uint64_t id) {
     f.dir16 = 6; // dir8 3 (SE) x 2
     sim::NavMotion& m = *f.nav;
     m.order = sim::NavOrder{7, true, 12345, -678};
-    m.ticket = 9;
+    m.ticket.reset();
     m.seg = sim::NavSegment{sim::NavSegKind::Move, 3, 87, kFacts.speed_q32, std::uint64_t{1} << 31};
     m.nodes = {
         sim::NavNode{sim::NavSegKind::Turn, 0, 4, kFacts.turn_step_q32, sim::kNavIdleSpeedQ32},
-        sim::NavNode{sim::NavSegKind::Move, 4, 0, sim::kNavDiagStepQ32, kFacts.speed_q32}};
+        sim::NavNode{sim::NavSegKind::Move, 4, 0, 3 * sim::kNavUnitQ32, kFacts.speed_q32}};
     m.last = 0xFFF0;
     m.res24[0] = 12345;
     m.res24[1] = 0xFFFFFF;
     m.pos_u[0] = std::int64_t{f.pos.x} * sim::kNavPosUnitsPerQ8 + 777;
     m.pos_u[1] = std::int64_t{f.pos.y} * sim::kNavPosUnitsPerQ8 + (sim::kNavPosUnitsPerQ8 - 1);
+}
+
+/// An accepted order waiting for its planning slot: unrouted, holding ticket `ticket`, no plan.
+void make_waiting(sim::World& w, std::uint64_t id, std::uint64_t order, std::uint64_t ticket) {
+    sim::IdCounters& ids = sim::WorldTestAccess::ids(w);
+    ids.next_order_id = 100;
+    ids.next_ticket = 50;
+    sim::NavMotion& m = *figure(w, id).nav;
+    m.order = sim::NavOrder{order, false, 300, 400};
+    m.ticket = ticket;
 }
 
 } // namespace
@@ -193,18 +211,56 @@ TEST_CASE("nav facts: the loader converts the file's f32 values and bytes exactl
     // Rounding to nearest even: f32 values that are exact multiples of 2^-32 convert exactly.
     CHECK(loaded("SHIP", head_of(0.5F, 0.0625F * 0.5F), logic_of(1))->turn_step_q32 == (1U << 31));
     CHECK(loaded("SHIP", head_of(0.5F, 0.0625F * 0.5F), logic_of(1))->speed_q32 == (1U << 27));
-    // Just below the speed domain is kept; the domain edge itself, and beyond, is not a ship that
-    // navigates (the type loads, it just has no nav facts).
+    // Rounding to nearest even below 2^-9 (the shipped values convert exactly): expected values
+    // are Python Fractions of f32 * 2^32. 3*2^-33 -> 1.5 (tie) -> 2; 5*2^-33 -> 2.5 (tie) -> 2;
+    // 7*2^-33 -> 3.5 (tie) -> 4; 5*2^-34 -> 1.25 -> 1; 7*2^-34 -> 1.75 -> 2.
+    const auto speed_of = [](float f1) {
+        return loaded("SHIP", head_of(0.5F, f1), logic_of(10))->speed_q32;
+    };
+    CHECK(speed_of(std::ldexp(3.0F, -33)) == 2U);
+    CHECK(speed_of(std::ldexp(5.0F, -33)) == 2U);
+    CHECK(speed_of(std::ldexp(7.0F, -33)) == 4U);
+    CHECK(speed_of(std::ldexp(5.0F, -34)) == 1U);
+    CHECK(speed_of(std::ldexp(7.0F, -34)) == 2U);
+    CHECK(speed_of(std::ldexp(1.0F, -31)) == 2U); // exact
+    CHECK(loaded("SHIP", head_of(std::ldexp(7.0F, -34), 0.036F), logic_of(10))->turn_step_q32 ==
+          2U);
+    // Just below the speed domain is kept; the edge itself, and beyond, is a load error naming the
+    // field (a mod ship that silently could not be ordered would be worse).
     const float below = std::nextafter(0.0625F, 0.0F); // 2^-4 - 2^-28 -> q32 2^28 - 16
     REQUIRE(loaded("SHIP", head_of(0.11F, below), logic_of(10)).has_value());
     CHECK(loaded("SHIP", head_of(0.11F, below), logic_of(10))->speed_q32 == (1U << 28) - 16U);
-    CHECK_FALSE(loaded("SHIP", head_of(0.11F, 0.0625F), logic_of(10)).has_value());
-    CHECK_FALSE(loaded("SHIP", head_of(0.11F, 0.5F), logic_of(10)).has_value());
-    // Not navigating (the type loads, it has no nav facts): no speed, no turn step, no hit points
-    // (the shipped 343 and 1510).
-    CHECK_FALSE(loaded("SHIP", head_of(0.11F, 0.0F), logic_of(10)).has_value());
-    CHECK_FALSE(loaded("SHIP", head_of(0.0F, 0.036F), logic_of(10)).has_value());
+    const auto navigation_error = [](float f0, float f1, const std::vector<std::uint8_t>& logic) {
+        return load_error("SHIP", head_of(f0, f1), logic);
+    };
+    CHECK(navigation_error(0.11F, 0.0625F, logic_of(10)) ==
+          "figure 1502: navigation: speed_q32 268435456 is not in 1 .. 268435455");
+    CHECK(navigation_error(0.11F, 0.5F, logic_of(10)) ==
+          "figure 1502: navigation: speed_q32 2147483648 is not in 1 .. 268435455");
+    CHECK(navigation_error(0.11F, 0.0F, logic_of(10)) ==
+          "figure 1502: navigation: speed_q32 0 is not in 1 .. 268435455");
+    CHECK(navigation_error(0.11F, std::ldexp(1.0F, -33), logic_of(10)) ==
+          "figure 1502: navigation: speed_q32 0 is not in 1 .. 268435455"); // tie 0.5 -> even 0
+    CHECK(navigation_error(0.11F, std::numeric_limits<float>::denorm_min(), logic_of(10)) ==
+          "figure 1502: navigation: speed_q32 0 is not in 1 .. 268435455");
+    CHECK(navigation_error(0.0F, 0.036F, logic_of(10)) ==
+          "figure 1502: navigation: turn_step_q32 is 0");
+    CHECK(navigation_error(1.0F, 0.036F, logic_of(10)) ==
+          "figure 1502: navigation: HEAD speed or turn step is not a representable length");
+    {
+        // Both hold counts 0 (the shipped type 391 has none): the type navigates; the cargo term
+        // of the speed factor is 0 for it (ship-navigation.md 12.4, no capacity, no cargo).
+        std::vector<std::uint8_t> no_holds = logic_of(10);
+        no_holds[0x13] = no_holds[0x14] = 0;
+        const auto nh = loaded("SHIP", head_of(0.11F, 0.036F), no_holds);
+        REQUIRE(nh.has_value());
+        CHECK(nh->hold_count_a == 0U);
+        CHECK(nh->hold_count_b == 0U);
+    }
+    // A type without hit points (the shipped 343 and 1510) is simply not a navigating type,
+    // whatever else its data says.
     CHECK_FALSE(loaded("SHIP", head_of(0.11F, 0.036F), logic_of(0)).has_value());
+    CHECK_FALSE(loaded("SHIP", head_of(0.0F, 0.5F), logic_of(0)).has_value());
     // A negative or NaN speed, or a HEAD shorter than 8 bytes, is refused by the existing loader
     // checks before any nav fact is derived.
     CHECK(load_error("SHIP", head_of(0.11F, -0.036F), logic_of(10)) ==
@@ -284,49 +340,133 @@ TEST_CASE("nav motion: a scenario gives idle motion to navigating ships only") {
 TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid controls pass") {
     const auto types = nav_registry();
     const sim::World base = nav_world(types);
+    // Ship 1: a routed diagonal movement with pending nodes. Ship 2: an unrouted order waiting.
     sim::World busy = base;
     make_busy(busy, 1);
+    make_waiting(busy, 2, 8, 9);
     REQUIRE_MESSAGE(busy.check_invariants().empty(), busy.check_invariants());
-    // Each mutation is applied to a copy of the busy world and must name its cause.
     struct Case {
         const char* needle;
         void (*edit)(sim::World&);
     };
+    const auto turn_ship2 = [](sim::World& w) {
+        sim::NavSegment& g = figure(w, 2).nav->seg;
+        g.kind = sim::NavSegKind::Turn;
+        g.speed_q32 = sim::kNavIdleSpeedQ32;
+        g.remaining_q32 = kFacts.turn_step_q32;
+    };
+    (void)turn_ship2;
     const Case cases[] = {
-        {"missing for figure type", [](sim::World& w) { figure(w, 1).nav.reset(); }},
-        {"present for figure type",
+        {"figures.list.slots[0].nav: missing for figure type",
+         [](sim::World& w) { figure(w, 1).nav.reset(); }},
+        {"figures.list.slots[2].nav: present for figure type",
          [](sim::World& w) { figure(w, 3).nav = sim::make_nav_motion(figure(w, 3).pos, 0); }},
-        {"factor_percent", [](sim::World& w) { figure(w, 1).nav->seg.factor_percent = 0; }},
-        {"factor_percent", [](sim::World& w) { figure(w, 1).nav->seg.factor_percent = 101; }},
-        {"dir8", [](sim::World& w) { figure(w, 1).nav->seg.dir8 = 8; }},
-        {"facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 7; }},
-        {"facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 4; }},
-        {"movement chunk",
+        {"nav.seg.factor_percent: 0",
+         [](sim::World& w) { figure(w, 1).nav->seg.factor_percent = 0; }},
+        {"nav.seg.factor_percent: 101",
+         [](sim::World& w) { figure(w, 1).nav->seg.factor_percent = 101; }},
+        {"nav.seg.dir8: 8", [](sim::World& w) { figure(w, 1).nav->seg.dir8 = 8; }},
+        {"needs the facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 7; }},
+        {"needs the facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 4; }},
+        {"a movement chunk is at most 1.0",
          [](sim::World& w) { figure(w, 1).nav->seg.remaining_q32 = (1ULL << 32) + 1; }},
-        {"seg.speed_q32", [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 0; }},
-        {"seg.speed_q32", [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 1U << 28; }},
-        {"order_id", [](sim::World& w) { figure(w, 1).nav->order->order_id = 0; }},
-        {"order_id", [](sim::World& w) { figure(w, 1).nav->order->order_id = 100; }},
-        {"duplicated across ships",
-         [](sim::World& w) { figure(w, 2).nav->order = sim::NavOrder{7, false, 0, 0}; }},
-        {"ticket", [](sim::World& w) { *figure(w, 1).nav->ticket = 50; }},
-        {"ticket", [](sim::World& w) { *figure(w, 1).nav->ticket = 0; }},
-        {"without an order", [](sim::World& w) { figure(w, 1).nav->order.reset(); }},
+        {"nav.seg.speed_q32: outside", [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 0; }},
+        {"nav.seg.speed_q32: outside",
+         [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 1U << 28; }},
+        {"turn or idle segment has factor 100",
+         [](sim::World& w) { figure(w, 2).nav->seg.factor_percent = 99; }},
+        {"turn or idle segment has factor 100",
+         [](sim::World& w) { figure(w, 2).nav->seg.dir8 = 1; }},
+        {"idle segment runs at 0.01 with at most 0.01 left",
+         [](sim::World& w) { figure(w, 2).nav->seg.remaining_q32 = 42949673ULL; }},
+        {"idle segment runs at 0.01 with at most 0.01 left",
+         [](sim::World& w) { figure(w, 2).nav->seg.speed_q32 = 42949673U; }},
+        {"a turn segment runs at 0.01",
+         [](sim::World& w) {
+             figure(w, 2).nav->seg = sim::NavSegment{sim::NavSegKind::Turn, 0, 100, 42949673U, 1};
+         }},
+        {"above the type's turn step",
+         [](sim::World& w) {
+             figure(w, 2).nav->seg =
+                 sim::NavSegment{sim::NavSegKind::TurnPhase, 0, 100, 42949672U, 472446401ULL};
+         }},
+        {"slots[1].dir16: 16 is not in 0 .. 15", [](sim::World& w) { figure(w, 2).dir16 = 16; }},
+        {"order_id: not below ids.next_order_id",
+         [](sim::World& w) { figure(w, 1).nav->order->order_id = 0; }},
+        {"order_id: not below ids.next_order_id",
+         [](sim::World& w) { figure(w, 1).nav->order->order_id = 100; }},
+        {"order_id: duplicated across ships",
+         [](sim::World& w) { figure(w, 2).nav->order->order_id = 7; }},
+        {"nav.ticket: not below ids.next_ticket",
+         [](sim::World& w) { *figure(w, 2).nav->ticket = 50; }},
+        {"nav.ticket: not below ids.next_ticket",
+         [](sim::World& w) { *figure(w, 2).nav->ticket = 0; }},
+        {"nav.ticket: duplicated across ships",
+         [](sim::World& w) {
+             // Ship 1 becomes a second waiting ship with the same ticket.
+             sim::NavMotion& m = *figure(w, 1).nav;
+             m.nodes.clear();
+             m.seg = sim::make_nav_motion(figure(w, 1).pos, 0).seg;
+             m.res24[0] = m.res24[1] = 0;
+             figure(w, 1).dir16 = 6;
+             m.order->routed = false;
+             m.ticket = 9;
+         }},
+        {"a ticket or pending nodes without an order",
+         [](sim::World& w) { figure(w, 2).nav->order.reset(); }},
+        {"an unrouted order needs its ticket and has no nodes",
+         [](sim::World& w) { figure(w, 2).nav->ticket.reset(); }},
+        {"an unrouted order needs its ticket and has no nodes",
+         [](sim::World& w) {
+             figure(w, 2).nav->nodes.push_back(
+                 sim::NavNode{sim::NavSegKind::Move, 4, 0, sim::kNavUnitQ32, kFacts.speed_q32});
+         }},
+        {"a routed order has consumed its ticket",
+         [](sim::World& w) { figure(w, 1).nav->ticket = 3; }},
         {"res24: not below 2^24", [](sim::World& w) { figure(w, 1).nav->res24[0] = 1U << 24; }},
-        {"res24: non-zero outside",
-         [](sim::World& w) { figure(w, 1).nav->seg.dir8 = 4, figure(w, 1).dir16 = 8; }},
+        {"res24: non-zero outside a diagonal movement segment",
+         [](sim::World& w) {
+             figure(w, 1).nav->seg.dir8 = 4;
+             figure(w, 1).dir16 = 8;
+         }},
+        {"res24: non-zero outside a diagonal movement segment",
+         [](sim::World& w) { figure(w, 1).nav->seg.remaining_q32 = 0; }},
         {"Figure::pos does not equal floor(pos_u) on axis 0",
          [](sim::World& w) { figure(w, 1).nav->pos_u[0] += sim::kNavPosUnitsPerQ8; }},
         {"Figure::pos does not equal floor(pos_u) on axis 1",
          [](sim::World& w) { figure(w, 1).nav->pos_u[1] -= 800LL << 24; }},
-        {"pos_u: outside",
+        {"nav.pos_u: outside +-2^61",
          [](sim::World& w) { figure(w, 1).nav->pos_u[0] = std::int64_t{1} << 61; }},
-        {"nodes[0]", [](sim::World& w) { figure(w, 1).nav->nodes[0].facing = 16; }},
-        {"nodes[0]", [](sim::World& w) { figure(w, 1).nav->nodes[0].length_q32 += 1; }},
-        {"nodes[1]", [](sim::World& w) { figure(w, 1).nav->nodes[1].length_q32 = 0; }},
-        {"nodes[1]", [](sim::World& w) { figure(w, 1).nav->nodes[1].dir8 = 8; }},
-        {"nodes[1]",
+        {".pos: outside the world bound",
+         [](sim::World& w) { figure(w, 1).pos.x = (1 << 22) + 1; }},
+        {"nodes[0]: a turn node must carry facing < 16",
+         [](sim::World& w) { figure(w, 1).nav->nodes[0].facing = 16; }},
+        {"nodes[0]: a turn node must carry facing < 16",
+         [](sim::World& w) { figure(w, 1).nav->nodes[0].length_q32 += 1; }},
+        {"nodes[0]: a turn node must carry facing < 16",
+         [](sim::World& w) { figure(w, 1).nav->nodes[0].speed_q32 = 1; }},
+        {"nodes[0]: a turn node must carry facing < 16",
+         [](sim::World& w) { figure(w, 1).nav->nodes[0].dir8 = 1; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].length_q32 = 0; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].dir8 = 8; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].facing = 1; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].length_q32 += 1; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].length_q32 = 11 * sim::kNavDiagStepQ32; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].speed_q32 = 0; }},
+        {"nodes[1]: a node is a movement or a turn",
          [](sim::World& w) { figure(w, 1).nav->nodes[1].kind = sim::NavSegKind::Idle; }},
+        {"65537 pending nodes exceed the bound",
+         [](sim::World& w) {
+             figure(w, 1).nav->nodes.assign(
+                 65537,
+                 sim::NavNode{sim::NavSegKind::Move, 4, 0, sim::kNavUnitQ32, kFacts.speed_q32});
+         }},
     };
     for (const Case& c : cases) {
         INFO(c.needle);
@@ -339,7 +479,8 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         CHECK_FALSE(refused.ok());
     }
     // Valid controls close to the refusals: a residue just below 2^24 on a diagonal move, a
-    // chunk of exactly 1.0, factor 1 and 100, facing 2*dir8 for every direction.
+    // chunk of exactly 1.0, factor 1 and 100, facing 2*dir8 for every direction, a node of
+    // exactly run_cap whole steps, an idle segment with exactly 0.01 left, a full turn step.
     for (std::uint8_t dir8 = 0; dir8 < 8; ++dir8) {
         sim::World w = busy;
         figure(w, 1).nav->seg.dir8 = dir8;
@@ -355,6 +496,60 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         figure(w, 1).nav->seg.remaining_q32 = 1ULL << 32;
         CHECK(w.check_invariants().empty());
     }
+    {
+        sim::World w = busy;
+        figure(w, 1).nav->nodes[1].length_q32 = 10 * sim::kNavUnitQ32;
+        figure(w, 1).nav->nodes.push_back(
+            sim::NavNode{sim::NavSegKind::Move, 3, 0, 10 * sim::kNavDiagStepQ32, 1});
+        figure(w, 1).nav->nodes.push_back(sim::NavNode{
+            sim::NavSegKind::Turn, 0, 15, kFacts.turn_step_q32, sim::kNavIdleSpeedQ32});
+        figure(w, 2).nav->seg.remaining_q32 = 42949672ULL;
+        CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+        figure(w, 2).nav->seg =
+            sim::NavSegment{sim::NavSegKind::TurnPhase, 0, 100, 42949672U, kFacts.turn_step_q32};
+        CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+        figure(w, 1).pos.x = 1 << 22; // exactly the world bound
+        figure(w, 1).nav->pos_u[0] = (std::int64_t{1} << 22) * sim::kNavPosUnitsPerQ8;
+        CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    }
+}
+
+TEST_CASE("nav motion: another ship type and other players carry the same state") {
+    // Type 2001 navigates and owner 3/4 own the ships; 1502 is a ship-class type WITHOUT
+    // navigation facts in this registry. Nothing in the state or its validation may depend on
+    // the id 1502 or on player 0.
+    const auto types = nav_registry(2001);
+    CHECK_FALSE(types->find_figure_type(1502)->nav.has_value());
+    REQUIRE(types->find_figure_type(2001)->nav.has_value());
+    sim::ScenarioSpec spec = syn::empty_scenario(5);
+    for (std::uint32_t p = 3; p < 5; ++p) {
+        sim::ScenarioSpec::PlayerSpec ps;
+        ps.id = sim::PlayerId{p};
+        ps.money = 1;
+        spec.players.push_back(ps);
+    }
+    for (std::uint32_t i = 0; i < 3; ++i) {
+        sim::ScenarioSpec::FigureSpec f;
+        f.kind = i == 2 ? kShip : 2001;
+        f.owner = sim::PlayerId{3 + (i % 2)};
+        f.pos = sim::FixedPos{static_cast<std::int32_t>(256 * (5 + i) + 1), 256 * 7 + 2};
+        spec.figures.push_back(f);
+    }
+    auto created = sim::World::create(spec, types);
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    sim::World w = std::move(created).value();
+    CHECK(figure(w, 1).nav.has_value());
+    CHECK(figure(w, 2).nav.has_value());
+    CHECK_FALSE(figure(w, 3).nav.has_value());
+    CHECK(w.check_invariants().empty());
+    make_busy(w, 2);
+    CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    auto back = sim::World::load(w.save(), types);
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    CHECK(back.value().state_hash() == w.state_hash());
+    // The same state in a registry where 2001 does not navigate is refused with the figure named.
+    auto other = sim::World::load(w.save(), nav_registry(kShip));
+    CHECK_FALSE(other.ok());
 }
 
 TEST_CASE("nav motion: the wire bytes equal the hand transcription") {
@@ -416,6 +611,7 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
     const auto types = nav_registry();
     sim::World w = nav_world(types);
     make_busy(w, 1);
+    make_waiting(w, 2, 8, 9);
     REQUIRE(w.check_invariants().empty());
     const std::vector<std::uint8_t> bytes = w.save();
     auto loaded_world = sim::World::load(bytes, types);
@@ -433,8 +629,7 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
         void (*apply)(sim::World&);
     };
     const Edit edits[] = {
-        {"order_id", [](sim::World& x) { figure(x, 1).nav->order->order_id = 8; }},
-        {"routed", [](sim::World& x) { figure(x, 1).nav->order->routed = false; }},
+        {"order_id", [](sim::World& x) { figure(x, 1).nav->order->order_id = 20; }},
         {"target x", [](sim::World& x) { figure(x, 1).nav->order->target_x_q8 += 1; }},
         {"target y", [](sim::World& x) { figure(x, 1).nav->order->target_y_q8 += 1; }},
         {"order absent",
@@ -443,8 +638,20 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
              figure(x, 1).nav->ticket.reset();
              figure(x, 1).nav->nodes.clear();
          }},
-        {"ticket", [](sim::World& x) { *figure(x, 1).nav->ticket = 10; }},
-        {"ticket absent", [](sim::World& x) { figure(x, 1).nav->ticket.reset(); }},
+        {"ticket", [](sim::World& x) { *figure(x, 2).nav->ticket = 10; }},
+        {"waiting order id", [](sim::World& x) { figure(x, 2).nav->order->order_id = 21; }},
+        {"waiting target", [](sim::World& x) { figure(x, 2).nav->order->target_y_q8 = -1; }},
+        {"order consumed its ticket",
+         [](sim::World& x) {
+             figure(x, 2).nav->order->routed = true;
+             figure(x, 2).nav->ticket.reset();
+         }},
+        {"seg dir8",
+         [](sim::World& x) {
+             figure(x, 1).nav->seg.dir8 = 1;
+             figure(x, 1).dir16 = 2;
+         }},
+        {"turn node facing", [](sim::World& x) { figure(x, 1).nav->nodes[0].facing = 5; }},
         {"seg factor", [](sim::World& x) { figure(x, 1).nav->seg.factor_percent = 88; }},
         {"seg remaining", [](sim::World& x) { figure(x, 1).nav->seg.remaining_q32 -= 1; }},
         {"seg speed", [](sim::World& x) { figure(x, 1).nav->seg.speed_q32 -= 1; }},
@@ -452,18 +659,23 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
          [](sim::World& x) {
              figure(x, 1).nav->seg.kind = sim::NavSegKind::Idle;
              figure(x, 1).nav->seg.speed_q32 = sim::kNavIdleSpeedQ32;
+             figure(x, 1).nav->seg.remaining_q32 = sim::kNavIdleSpeedQ32;
+             figure(x, 1).nav->seg.factor_percent = 100;
+             figure(x, 1).nav->seg.dir8 = 0;
              figure(x, 1).nav->res24[0] = figure(x, 1).nav->res24[1] = 0;
          }},
         {"node dropped", [](sim::World& x) { figure(x, 1).nav->nodes.pop_back(); }},
-        {"node length", [](sim::World& x) { figure(x, 1).nav->nodes[1].length_q32 += 1; }},
+        {"node length",
+         [](sim::World& x) { figure(x, 1).nav->nodes[1].length_q32 += sim::kNavUnitQ32; }},
         {"node speed", [](sim::World& x) { figure(x, 1).nav->nodes[1].speed_q32 += 1; }},
-        {"node dir", [](sim::World& x) { figure(x, 1).nav->nodes[1].dir8 = 5; }},
+        {"node dir", [](sim::World& x) { figure(x, 1).nav->nodes[1].dir8 = 6; }},
         {"last", [](sim::World& x) { figure(x, 1).nav->last += 1; }},
         {"pos_u x", [](sim::World& x) { figure(x, 1).nav->pos_u[0] += 1; }},
         {"pos_u y", [](sim::World& x) { figure(x, 1).nav->pos_u[1] -= 1; }},
         {"res24 x", [](sim::World& x) { figure(x, 1).nav->res24[0] += 1; }},
         {"res24 y", [](sim::World& x) { figure(x, 1).nav->res24[1] -= 1; }},
         {"order counter", [](sim::World& x) { sim::WorldTestAccess::ids(x).next_order_id += 1; }},
+        {"idle remaining", [](sim::World& x) { figure(x, 2).nav->seg.remaining_q32 -= 1; }},
         {"ticket counter", [](sim::World& x) { sim::WorldTestAccess::ids(x).next_ticket += 1; }},
     };
     std::vector<std::uint64_t> seen{base};
@@ -483,8 +695,8 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
 }
 
 TEST_CASE("nav motion: make_nav_motion is the documented idle state at any position") {
-    for (const sim::FixedPos p : {sim::FixedPos{0, 0}, sim::FixedPos{-1, 1},
-                                  sim::FixedPos{(1 << 23) * 256 - 1, -(1 << 23) * 256}}) {
+    for (const sim::FixedPos p :
+         {sim::FixedPos{0, 0}, sim::FixedPos{-1, 1}, sim::FixedPos{(1 << 22), -(1 << 22)}}) {
         const sim::NavMotion m = sim::make_nav_motion(p, 65535);
         CHECK(m.seg.kind == sim::NavSegKind::Idle);
         CHECK(m.seg.speed_q32 == 42949672U);
@@ -500,4 +712,52 @@ TEST_CASE("nav motion: make_nav_motion is the documented idle state at any posit
     CHECK(sim::kNavIdleSpeedQ32 == 42949672U);
     CHECK(sim::kNavDiagStepQ32 == 6074000896ULL);
     CHECK(sim::kNavUnitQ32 == 4294967296ULL);
+}
+
+TEST_CASE("nav motion: a ship outside the configured world is refused before any motion state") {
+    // pos * 500 * 2^24 must stay inside i64: the scenario's world-size check (existing) keeps
+    // every navigating ship far below 2^22 Q8, and validate_navigation bounds a loaded state by
+    // the absolute world bound (cases above).
+    const auto types = nav_registry();
+    for (const std::int32_t v : {std::numeric_limits<std::int32_t>::max(),
+                                 std::numeric_limits<std::int32_t>::min(), (1 << 22) + 1}) {
+        for (const sim::FixedPos pos : {sim::FixedPos{v, 0}, sim::FixedPos{0, v}}) {
+            sim::ScenarioSpec spec = syn::empty_scenario(1);
+            sim::ScenarioSpec::PlayerSpec ps;
+            ps.id = sim::PlayerId{0};
+            spec.players.push_back(ps);
+            sim::ScenarioSpec::FigureSpec f;
+            f.kind = kShip;
+            f.owner = sim::PlayerId{0};
+            f.pos = pos;
+            spec.figures.push_back(f);
+            auto r = sim::World::create(spec, types);
+            REQUIRE_FALSE(r.ok());
+            CHECK(has(r.error(), "figures[0].pos"));
+        }
+    }
+}
+
+TEST_CASE("nav motion: a navigation class the Rules table lacks is refused when a ship exists") {
+    // Default Rules hold four classes (0..3). A registry whose ship type uses class 3 is fine,
+    // class 4 names the type and both numbers.
+    sim::NavFacts f = kFacts;
+    f.nav_class = 3;
+    sim::World ok = nav_world(nav_registry(kShip, f));
+    CHECK(ok.check_invariants().empty());
+    f.nav_class = 4;
+    sim::ScenarioSpec spec = syn::empty_scenario(2);
+    sim::ScenarioSpec::PlayerSpec ps;
+    ps.id = sim::PlayerId{0};
+    spec.players.push_back(ps);
+    sim::ScenarioSpec::FigureSpec fs;
+    fs.kind = kShip;
+    fs.owner = sim::PlayerId{0};
+    fs.pos = sim::FixedPos{256 * 10, 256 * 10};
+    spec.figures.push_back(fs);
+    const auto types4 = nav_registry(kShip, f);
+    auto created = sim::World::create(spec, types4);
+    // create may refuse or yield a world whose invariants name the class; either names it.
+    const std::string problem = created.ok() ? created.value().check_invariants() : created.error();
+    CHECK(has(problem, "has nav_class 4, Rules.nav.class_costs holds 4"));
 }

@@ -3,6 +3,7 @@
 // the viewer builds them, against expectations derived from iso::tile_top (not from the picking
 // code). A synthetic scene with one island at world tile (100, 40): no game files, flat ground.
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -93,13 +94,27 @@ struct Window {
         return app::pointer_frame(rv.view, &rv.resample, tw, th, scene, w, h);
     }
     /// The window point (SDL's coordinates) over the drawn centre of world tile (x, y) on flat
-    /// ground: tile_top's top vertex plus half a diamond, through the frame's own mapping
-    /// backwards (drawable pixel = (scene - x0) * scale - 0.5, a pixel's centre).
+    /// ground: tile_top's top vertex plus half a diamond, placed on the drawable without the
+    /// frame's map (independently of pointer_frame): a stepped view's left edge is the viewer's
+    /// rounded lround(cx - w / 2); a continuous view's is cx - w / (2 * scale) at the scale
+    /// resampled_view settled on (its own definition). Drawable pixel = (scene - edge) * scale,
+    /// less half a pixel for the pixel's centre.
     [[nodiscard]] std::pair<float, float> point_at(int x, int y) const {
         const double sx = (x - y) * tw / 2.0, sy = (x + y) * th / 2.0 + th / 2.0;
-        const app::PointerFrame f = frame();
-        const double px = (sx - f.map.x0) * f.map.scale - 0.5;
-        const double py = (sy - f.map.y0) * f.map.scale - 0.5;
+        double edge_x = 0, edge_y = 0, s = 1.0;
+        if (scale == 0) {
+            edge_x = static_cast<double>(std::lround(cx - w / 2.0));
+            edge_y = static_cast<double>(std::lround(cy - h / 2.0));
+        } else {
+            s = render::resampled_view(cx, cy, static_cast<std::uint32_t>(w),
+                                       static_cast<std::uint32_t>(h), scale,
+                                       render::ResampleFilter::Bilinear)
+                    .resample.scale;
+            edge_x = cx - w / (2.0 * s);
+            edge_y = cy - h / (2.0 * s);
+        }
+        const double px = (sx - edge_x) * s - 0.5;
+        const double py = (sy - edge_y) * s - 0.5;
         return {static_cast<float>(px / density), static_cast<float>(py / density)};
     }
 };
@@ -205,6 +220,38 @@ TEST_CASE("dev tool: a click over a known tile builds there through the window's
                 CHECK(cmds[0].issuer == setup().issuer);
             }
         }
+    }
+}
+
+TEST_CASE("dev tool: under continuous zoom a point just inside a tile's edge picks that tile: the "
+          "view's sub-pixel offset counts" *
+          doctest::test_suite("dev_tool")) {
+    // The camera is placed so that the output's left and top edges lie 0.9 of a grid pixel past
+    // the integer view origin (the Resample's offset), and the point is 0.02 of a tile inside the
+    // tile's -u edge: without the offset the pick moves about 0.06 of a tile back, into x - 1.
+    const auto sc = scene();
+    const sim::TileXY t{kX0 + 11, kY0 + 13};
+    for (const auto& [tw, th, scale] :
+         std::vector<std::array<double, 3>>{{42, 21, 1.37}, {20, 10, 2.0}, {10, 5, 3.5}}) {
+        CAPTURE(tw);
+        const int w = 1600, h = 1000;
+        const double u = t.x + 0.02, v = t.y + 0.5;
+        const double sx = (u - v) * tw / 2.0, sy = (u + v) * th / 2.0;
+        // cx - w / (2 s) = floor(sx) - 300 + 0.9, and likewise in y.
+        const double cx = std::floor(sx) - 300.0 + 0.9 + w / (2.0 * scale);
+        const double cy = std::floor(sy) - 200.0 + 0.9 + h / (2.0 * scale);
+        Window win{sc, cx, cy, scale, tw, th, w, h, 1.0F};
+        const double s =
+            render::resampled_view(cx, cy, w, h, scale, render::ResampleFilter::Bilinear)
+                .resample.scale;
+        REQUIRE(s == scale);
+        const double edge_x = cx - w / (2.0 * s), edge_y = cy - h / (2.0 * s);
+        const std::pair<float, float> at{static_cast<float>((sx - edge_x) * s - 0.5),
+                                         static_cast<float>((sy - edge_y) * s - 0.5)};
+        app::DevTool tool(setup());
+        const auto cmds = feed(tool, win, {key(SDLK_B), button(true, at), button(false, at)});
+        REQUIRE(cmds.size() == 1);
+        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{t});
     }
 }
 

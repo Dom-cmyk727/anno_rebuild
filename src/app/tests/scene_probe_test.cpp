@@ -98,7 +98,7 @@ TEST_CASE("probe: whole-scene rebuild and a coalesced 50-build burst on the fixe
     std::vector<anno::app::SceneBuilding> burst = buildings;
     for (int i = 0; i < 50 && !buildings.empty(); ++i) {
         anno::app::SceneBuilding extra = buildings.front();
-        extra.x += i + 1;
+        extra.x = static_cast<std::uint16_t>(extra.x + i + 1);
         burst.push_back(extra);
     }
     {

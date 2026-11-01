@@ -14,6 +14,7 @@
 
 #include <anno/app/building_delta.hpp>
 #include <anno/app/cli.hpp>
+#include <anno/app/dev_script.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/play_follow.hpp>
 #include <anno/app/window_trace.hpp>
@@ -34,6 +35,10 @@ struct ViewerHooks {
     /// events (sdl_input.hpp) with the last drawn frame and posts its commands to the runner. The
     /// caller owns it; null leaves the tool out.
     DevTool* dev = nullptr;
+    /// A scripted session for the tool (dev_script.hpp; ANNO_DEV_SCRIPT): with `dev`, the window
+    /// pushes the script's events into SDL's queue and closes when it ends or fails. The caller
+    /// owns it and reads its log after run_viewer returns.
+    DevScript* script = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

@@ -38,7 +38,7 @@ anno_target_defaults(anno1503)
 if(ANNO_BUILD_VIEWER)
   # The play window's SDL mapping for the developer tool (round ee, B3): the window and its tests
   # link the same code.
-  add_library(anno_app_sdl src/sdl_input.cpp)
+  add_library(anno_app_sdl src/sdl_input.cpp src/dev_script.cpp)
   target_link_libraries(anno_app_sdl PUBLIC anno_app_core SDL3::SDL3)
   anno_target_defaults(anno_app_sdl)
   target_sources(anno1503 PRIVATE src/viewer.cpp)
@@ -79,7 +79,8 @@ if(ANNO_BUILD_TESTS)
   if(ANNO_BUILD_VIEWER)
     # The developer tool through the window's own SDL mapping (synthetic SDL events; no window).
     add_executable(anno_app_input_tests tests/main.cpp tests/dev_tool_test.cpp
-      tests/dev_feedback_test.cpp)
+      tests/dev_feedback_test.cpp tests/dev_tool_mod_test.cpp
+      tests/dev_barrier_test.cpp)
     target_link_libraries(anno_app_input_tests PRIVATE anno_app_sdl anno_test_support
       doctest::doctest)
     target_compile_definitions(anno_app_input_tests PRIVATE

@@ -80,6 +80,30 @@ struct ScreenMap {
 /// The highest ground in HEIGHT units: the files store a corner height as one byte.
 inline constexpr double kMaxGroundHeight = 255.0;
 
+/// The world points pick_tile's ray passes through for scene pixel (sx, sy): (u0, v0) at height
+/// 0 and (u1, v1) at `max_height` (the ray is a straight segment between them). A caller can keep
+/// its height lookups to what this segment crosses (round ee, D6: a lookup over every island per
+/// step grew with the scene). nullopt for the inputs pick_tile refuses.
+struct PickRay {
+    double u0 = 0, v0 = 0, u1 = 0, v1 = 0;
+};
+[[nodiscard]] inline std::optional<PickRay> pick_ray(double sx, double sy, const PickGeometry& g,
+                                                     double max_height = kMaxGroundHeight) {
+    if (!std::isfinite(sx) || !std::isfinite(sy) || !std::isfinite(g.tile_w) ||
+        !std::isfinite(g.tile_h) || !std::isfinite(g.lift) || !(g.tile_w > 0.0) ||
+        !(g.tile_h > 0.0) || !std::isfinite(max_height) || max_height < 0.0) {
+        return std::nullopt;
+    }
+    auto at = [&](double h) {
+        const double yflat = sy + g.lift * h;
+        return std::pair{(yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0,
+                         (yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0};
+    };
+    const auto [u0, v0] = at(0.0);
+    const auto [u1, v1] = at(max_height);
+    return PickRay{u0, v0, u1, v1};
+}
+
 /// The world tile under scene pixel (sx, sy), or nullopt. `height(u, v)` is the ground height in
 /// HEIGHT units at the world point (u, v), nullopt over open sea (height 0).
 ///

@@ -23,12 +23,33 @@ std::optional<std::size_t> city_island(const render::Scene& scene, const TileRec
 
 } // namespace
 
+std::string preview_note(const DevTool& tool, const render::Scene& scene, std::size_t group) {
+    const sim::BuildingType* type = tool.input().selected_type();
+    if (!tool.enabled() || tool.input().demolish_mode() || !tool.hover() || type == nullptr) {
+        return {};
+    }
+    const std::string id = std::to_string(type->id.v);
+    if (type->id.v >= kPictureAnlageIds) {
+        return "no preview: id " + id + " does not fit a PROD2 item, the picture does not draw it";
+    }
+    if (scene.anlagen.entry(type->id.v) == nullptr) {
+        return "no preview: the scene's Anlagen has no entry " + id;
+    }
+    if (group >= render::kGroups) {
+        return "no preview at a derived zoom level";
+    }
+    if (!city_island(scene, tool.setup().island)) {
+        return "no preview: the city's island is not in the scene";
+    }
+    return {};
+}
+
 std::optional<Preview> make_preview(const DevTool& tool, const render::Scene& scene,
                                     std::size_t group, std::uint64_t time_ms) {
     const auto hover = tool.hover();
     const sim::BuildingType* type = tool.input().selected_type();
     if (!tool.enabled() || tool.input().demolish_mode() || !hover || type == nullptr ||
-        group >= render::kGroups || type->id.v > 0x0FFFu) {
+        !preview_note(tool, scene, group).empty()) {
         return std::nullopt;
     }
     const TileRect& rect = tool.setup().island;
@@ -116,10 +137,12 @@ bool PlacementKnowledge::update(const std::vector<SceneBuilding>& buildings, std
     version_ = version;
     ++rebuilds_;
     occupied_.clear();
+    indexed_ = false;
     const auto index = city_island(scene, setup_.island);
     if (!index || !setup_.registry) {
         return true;
     }
+    indexed_ = true;
     const std::uint32_t number = scene.islands[*index].number;
     for (const SceneBuilding& b : buildings) {
         if (b.island != number) {
@@ -172,6 +195,14 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
             return v;
         }
     }
+    // What the window did not check, named (round ee review of C, P3): the sim decides those.
+    std::vector<std::string> unchecked{"the placement rule"};
+    if (!indexed_) {
+        unchecked.emplace_back("occupancy (no published index)");
+    }
+    if (snapshot == nullptr) {
+        unchecked.emplace_back("costs (no snapshot)");
+    }
     if (snapshot != nullptr && !snapshot->costs_waived) {
         if (snapshot->money < static_cast<std::int64_t>(type->cost_gold)) {
             v.refused = true;
@@ -184,7 +215,12 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
             need[c.goods] += c.amount_88;
         }
         for (const auto& [goods, amount] : need) {
-            if (goods < snapshot->goods.size() && snapshot->goods[goods] < amount) {
+            if (goods >= snapshot->goods.size()) {
+                unchecked.push_back("goods " + std::to_string(goods) +
+                                    " (outside the published stock)");
+                continue;
+            }
+            if (snapshot->goods[goods] < amount) {
                 v.refused = true;
                 const sim::GoodsInfo* info =
                     setup_.registry ? setup_.registry->goods(goods) : nullptr;
@@ -195,29 +231,37 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
             }
         }
     }
-    v.text = "unchecked: terrain and the placement rule are the sim's" + turn;
+    std::string list;
+    for (std::size_t i = 0; i < unchecked.size(); ++i) {
+        list += (i == 0 ? "" : i + 1 == unchecked.size() ? " and " : ", ") + unchecked[i];
+    }
+    // The sim's placement rule is a stand-in that does not check terrain yet (OQ-052): a building
+    // on open water is accepted today, so the text says so rather than promise a terrain check.
+    v.text = "unchecked: " + list + " (the sim's; it does not check terrain yet, OQ-052)" + turn;
     return v;
 }
 
 std::string feedback_line(const DevTool& tool, const PlacementKnowledge::Verdict& verdict,
-                          const PlaySnapshot* snapshot,
-                          const std::optional<CommandOutcome>& latest) {
+                          const PlaySnapshot* snapshot, const std::optional<CommandOutcome>& latest,
+                          std::string_view note) {
     std::string s = dev_tool_status(tool);
     if (snapshot != nullptr) {
         s += " | money " + std::to_string(snapshot->money);
         if (const sim::BuildingType* type = tool.input().selected_type();
             type != nullptr && !tool.input().demolish_mode()) {
-            std::set<sim::GoodsId> listed;
+            // Each cost goods: held / needed, in the stock's units (the type's own costs).
+            std::map<sim::GoodsId, std::uint64_t> need;
             for (const sim::CostEntry& c : type->cost_goods) {
-                if (!listed.insert(c.goods).second) {
-                    continue;
-                }
+                need[c.goods] += c.amount_88;
+            }
+            for (const auto& [goods, amount] : need) {
                 const sim::GoodsInfo* info =
-                    tool.setup().registry ? tool.setup().registry->goods(c.goods) : nullptr;
-                s += ", " + (info != nullptr ? info->name : "goods " + std::to_string(c.goods)) +
+                    tool.setup().registry ? tool.setup().registry->goods(goods) : nullptr;
+                s += ", " + (info != nullptr ? info->name : "goods " + std::to_string(goods)) +
                      " " +
-                     (c.goods < snapshot->goods.size() ? std::to_string(snapshot->goods[c.goods])
-                                                       : std::string("?"));
+                     (goods < snapshot->goods.size() ? std::to_string(snapshot->goods[goods])
+                                                     : std::string("?")) +
+                     "/" + std::to_string(amount);
             }
         }
         if (snapshot->costs_waived) {
@@ -226,6 +270,10 @@ std::string feedback_line(const DevTool& tool, const PlacementKnowledge::Verdict
     }
     if (!verdict.text.empty()) {
         s += " | " + verdict.text;
+    }
+    if (!note.empty()) {
+        s += " | ";
+        s += note;
     }
     if (latest) {
         s += " | command #" + std::to_string(latest->id.n) + ": " +
@@ -241,6 +289,28 @@ std::string feedback_line(const DevTool& tool, const PlacementKnowledge::Verdict
         }
     }
     return s;
+}
+
+std::string drawn_note(const std::optional<CommandOutcome>& latest,
+                       std::optional<std::uint64_t> followed_turn, std::size_t pending) {
+    if (!latest || latest->state != CommandOutcome::State::Applied) {
+        return {};
+    }
+    if (!followed_turn || *followed_turn < latest->turn) {
+        return "not drawn yet: turn " + std::to_string(latest->turn) + " is not in the picture";
+    }
+    if (pending > 0) {
+        return "not drawn yet: the picture is rebuilding " + std::to_string(pending) +
+               (pending == 1 ? " island" : " islands");
+    }
+    return {};
+}
+
+std::string dev_title(const PlaySnapshot& snapshot, const DevTool& tool,
+                      const PlacementKnowledge::Verdict& verdict,
+                      const std::optional<CommandOutcome>& latest, std::string_view note) {
+    return PlayRunner::title_of(snapshot, false) + " — " +
+           feedback_line(tool, verdict, &snapshot, latest, note);
 }
 
 } // namespace anno::app

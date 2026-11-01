@@ -79,9 +79,16 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 /// The scenario loader's split: an Anlagen id whose type has a list in the layout.
 [[nodiscard]] bool anlage_is_building(const sim::World& world, std::uint16_t anlage);
 
+/// The types the developer tool cycles (round ee, D1), registry data in TypeId order and of any id
+/// width: every type whose PRODTYPE has a list in `layout` (what the sim's Build places;
+/// without a list it answers Unsupported, apply.cpp) and every road type (kRoadFlag: the drag's
+/// subject; roads are tile objects the sim does not build yet, so their outcome is Unsupported).
+[[nodiscard]] std::vector<sim::TypeId> buildable_types(const sim::TypeRegistry& registry,
+                                                       const sim::ListLayout& layout);
+
 /// The developer tool's setup (dev_tool.hpp), read from `load` before the runner takes its world:
-/// the registry, the types the loader places as buildings (TypeId order), and the developer
-/// player's first city with its island's tiles (none: the tool stays off).
+/// the registry, buildable_types under the world's layout, and the developer player's first city
+/// with its island's tiles (none: the tool stays off).
 [[nodiscard]] DevToolSetup dev_tool_setup(const PlayLoad& load);
 
 /// What the window reads. Not a World.
@@ -106,9 +113,9 @@ struct PlaySnapshot {
     /// Build costs are waived for the developer player (its free-build flag, or the session's
     /// free-build rule): a cost the window compares with `money` and `goods` is then no refusal.
     bool costs_waived = false;
-    /// The reason of the last refused command, kept for a few seconds of turns
-    /// (empty when none), for the title. Each command's own outcome is outcome() /
-    /// outcomes_since().
+    /// The reason of the last refused command and that command ("NotLand (window command #3)"),
+    /// kept for a few seconds of turns (empty when none), for the title. Each command's own outcome
+    /// is outcome() / outcomes_since().
     std::string last_rejection;
     /// The next outcome sequence number after this turn (OutcomeLog): a reader that has read up
     /// to it has every outcome this snapshot follows.
@@ -225,7 +232,22 @@ class PlayRunner {
     /// Unencodable and never applied), with the turn that applied it, oldest first: the record a
     /// determinism test replays. Thread-safe.
     [[nodiscard]] std::vector<ScriptedCommand> applied_commands() const;
+    /// The world's state hash after each turn that ran commands and after every kHashEvery-th
+    /// turn, recorded when `on` (round ee, E3: a session's checkpoints, replayed headlessly with
+    /// --replay-hashes). Call before `start`. 16 bytes an entry, unbounded: a test session's
+    /// length. kHashEvery: a full hash per turn was slower than the turn cadence on lan5 in a
+    /// debug build; a test tool's choice, not a rule (it could be an option).
+    void set_record_hashes(bool on) { record_hashes_ = on; }
+    static constexpr std::uint64_t kHashEvery = 25;
+    struct TurnHash {
+        std::uint64_t turn = 0, hash = 0;
+    };
+    /// The recorded hashes, oldest first. Thread-safe.
+    [[nodiscard]] std::vector<TurnHash> recorded_hashes() const;
     [[nodiscard]] std::string title_line() const;
+    /// title_line of one snapshot: the tick, game time, turn time, lag, pause, the money when
+    /// `money`, and the last refusal with the command it belongs to.
+    [[nodiscard]] static std::string title_of(const PlaySnapshot& snapshot, bool money);
     /// Observable after synchronous `run_n`; the window never receives World.
     [[nodiscard]] std::uint64_t state_hash() const { return world_.state_hash(); }
     [[nodiscard]] std::uint32_t step_ms() const { return step_ms_; }
@@ -278,6 +300,8 @@ class PlayRunner {
     // commands' outcomes (thread-safe by itself).
     CommandQueue queue_;
     std::vector<ScriptedCommand> applied_;
+    bool record_hashes_ = false;
+    std::vector<TurnHash> hashes_;
     OutcomeLog outcomes_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.

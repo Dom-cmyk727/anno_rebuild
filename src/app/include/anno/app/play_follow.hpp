@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 
 #include <anno/app/play.hpp>
 #include <anno/app/scene_picture.hpp>
@@ -25,6 +26,11 @@ class PlayFollower {
     /// With `trace` (the window trace, opt-in): a BatchTaken per batch taken (its turn; a collapsed
     /// resync carries the newest), at the take, and a Generation after a commit.
     std::size_t follow(render::FrameRenderer& frames, WindowTrace* trace = nullptr);
+    /// The newest turn whose building changes are all in the picture's desired state (round ee,
+    /// E4): the snapshot's turn read before the last take (a turn's batch is in the mailbox before
+    /// its snapshot is published, PlayRunner::publish). nullopt before any turn was published.
+    /// Committed and drawn is more: ScenePicture::pending() is 0 then.
+    [[nodiscard]] std::optional<std::uint64_t> followed_turn() const { return followed_turn_; }
     /// Whether the picture needs frames without new input: a batch is waiting in the mailbox
     /// (PlayRunner::batches_waiting, a flag read without copying anything), or a change is not
     /// committed yet (ScenePicture::pending). O(islands) for the pending count, no building scan.
@@ -36,6 +42,7 @@ class PlayFollower {
   private:
     ScenePicture& picture_;
     PlayRunner& runner_;
+    std::optional<std::uint64_t> followed_turn_;
 };
 
 /// What the window loop knows at the top of an iteration. The paused animation stops the frames,

@@ -154,6 +154,12 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
                 message_ = "no buildable type";
                 break;
             }
+            if (selected_type() == nullptr) {
+                // A listed id the registry lacks (a malformed setup): the sim would refuse it
+                // (UnknownType); nothing is sent (round ee D4).
+                message_ = "type " + std::to_string(selected()->v) + " is not in the registry";
+                break;
+            }
             if (tiles.size() > 1 && !road_like()) {
                 message_ = "a drag places a road; the selected type is not one";
                 break;

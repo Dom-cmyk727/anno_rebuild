@@ -352,7 +352,7 @@ TEST_CASE(
     const auto heights = island.heights();
     REQUIRE(gfx.ok());
     REQUIRE(heights.ok());
-    std::size_t checked = 0, wrong = 0;
+    std::size_t checked = 0, wrong = 0, compared = 0, differ = 0;
     for (const std::size_t group : {std::size_t{1}, std::size_t{2}}) {
         CAPTURE(group);
         const render::Placement* placed = nullptr;
@@ -408,7 +408,28 @@ TEST_CASE(
                 }
             }
         }
+        // The pick asks only the islands its ray crosses (round ee, D6): at every third pixel,
+        // edges included, it is the pick over Scene::ground_height (every island).
+        const auto rounding = app::placement_rounding(*sc, *index, group, tw);
+        for (int py = 0; py < 400; py += 3) {
+            for (int px = 0; px < 640; px += 3) {
+                const auto point = render::scene_point(frame.map, px, py);
+                REQUIRE(point.has_value());
+                const auto full = render::pick_tile(
+                    point->first - rounding.first, point->second - rounding.second, frame.geometry,
+                    [&sc](float u, float v) { return sc->ground_height(u, v); });
+                std::optional<sim::TileXY> want;
+                if (full && st.island.contains({full->first, full->second})) {
+                    want = sim::TileXY{full->first, full->second};
+                }
+                ++compared;
+                differ += tool.pick(frame, px, py) != want ? 1 : 0;
+            }
+        }
     }
+    MESSAGE(compared << " pixels: the crossed-island pick and the every-island pick differ at "
+                     << differ);
+    CHECK(differ == 0);
     MESSAGE("lan5 developer island: " << checked << " ground pixels checked, " << wrong
                                       << " picked another tile");
     CHECK(checked > 1000);

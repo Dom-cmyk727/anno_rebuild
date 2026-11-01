@@ -623,6 +623,10 @@ class Scene : public std::enable_shared_from_this<Scene> {
                         const std::function<std::optional<float>(int, int)>* terrain) const;
     /// Ground height at world point (x, y); nullopt over open sea.
     [[nodiscard]] std::optional<float> ground_height(float x, float y) const;
+    /// The ground height of island `index` at world point (x, y); nullopt outside it (or without
+    /// its height grid). ground_height is the first island in index order that has one.
+    [[nodiscard]] std::optional<float> island_ground_height(std::size_t index, float x,
+                                                            float y) const;
     /// Whether any unit is drawn into `rect` at `group`.
     /// With `ships` false, units on the sea surface are not counted.
     [[nodiscard]] bool units_touch(Rect rect, std::size_t group, bool ships = true) const;

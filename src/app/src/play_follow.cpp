@@ -4,7 +4,14 @@
 namespace anno::app {
 
 std::size_t PlayFollower::follow(render::FrameRenderer& frames, WindowTrace* trace) {
+    // The snapshot before the take: every batch of its turn and earlier is in the mailbox (the
+    // runner pushes a turn's batch before it publishes the turn's snapshot), so after the take
+    // they are all in the picture's desired state. Tick 0: no turn published yet.
+    const auto snap = runner_.snapshot();
     const auto batches = runner_.take_building_batches();
+    if (snap->tick > 0) {
+        followed_turn_ = snap->turn;
+    }
     if (trace != nullptr && !batches.empty()) {
         const double t = trace->now_ms();
         for (const auto& batch : batches) {

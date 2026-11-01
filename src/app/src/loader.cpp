@@ -396,9 +396,9 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
                            const SceneObjects& objects) {
     std::map<std::uint32_t, std::vector<SceneBuilding>> by_slot;
     for (const SceneBuilding& b : objects.buildings) {
-        // PROD2 stores the Anlagen id in 12 bits (formats::insel masks with
-        // 0x0FFF). A wider id must not be truncated into that field.
-        if (b.type > 0x0FFF) {
+        // PROD2 stores the Anlagen id in 12 bits (kPictureAnlageIds). A wider id must not be
+        // truncated into that field.
+        if (b.type >= kPictureAnlageIds) {
             out.notes.push_back("play: Anlagen id " + std::to_string(b.type) +
                                 " does not fit a PROD2 item");
             continue;

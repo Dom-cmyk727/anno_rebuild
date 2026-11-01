@@ -2126,3 +2126,13 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - **Experiment (not committed):** round to nearest in `over` only gives max 1; in `lerp4` only, max 1; in both, 0 on this view (`cache/eb-runs/p4-experiment-*`).
   - **Elsewhere:** docs/render/iso.md records the same effect on enhanced rivers ("the CPU path rounds down at each step of the sea", within 2/255). The ≤ 1 bound of "GPU frames match the CPU path" was measured on views without water objects on the per-frame sprite path.
 - **How to resolve:** decide the reference from the original where it applies. The original's 8-bit blends (the shadow `dst/2 + dst/8`, AnnoDisplay.dll 0x10019f80) truncate, but its sea and straight-alpha sprites are this project's model, not traced. Then either make both CPU steps round to nearest and re-baseline the CPU digests and river bounds, or keep truncation and state a per-stage bound for the GPU. Until then, GPU/CPU visual parity is not accepted for views with water objects below the waterline.
+
+## OQ-550: The height a command-built building is drawn at (W4.4 round ee)
+- **Status:** open.
+- **Area:** sim / app (the building's height byte, the placement preview).
+- **Question:** At which height does the original draw a building the player places? The terrain height under its origin tile, or 0?
+- **What we know:**
+  - A building made by a Build command gets `byte0f = 0` (`src/sim/src/apply.cpp`, `create.cpp`). The play picture draws a building at its height byte (`SceneBuilding::height`, `loader.cpp`).
+  - The developer tool's preview stands at the ground height under its origin tile (`make_preview`, `dev_feedback.hpp`). On lan5's developer island that is height 40 at the first city building's tile, so a placed building is drawn lower than its preview was.
+  - Buildings loaded from a scenario keep their file's height byte.
+- **How to resolve:** trace where the original sets the height byte of a building it creates (AnnoGame.dll, the build command's apply). Then set it in the sim, under the rules config if it is not the original's, and make the preview use the same value. Until then the preview discloses that it stands on the ground (`docs/app/game-shell.md`).

@@ -1763,14 +1763,24 @@ Scene::render_with_terrain(Rect rect, std::size_t group, Layers layers,
 
 std::optional<float> Scene::ground_height(float x, float y) const {
     for (std::size_t k = 0; k < islands.size(); ++k) {
-        const auto& i = islands[k];
-        const float lx = x - static_cast<float>(i.x), ly = y - static_cast<float>(i.y);
-        const bool inside = lx >= 0.0F && lx < static_cast<float>(i.width) && ly >= 0.0F &&
-                            ly < static_cast<float>(i.height);
-        const auto& g = objects_[k].grids;
-        if (inside && g) {
-            return terrain_height(g->second, i.width, i.height, lx, ly);
+        if (const auto h = island_ground_height(k, x, y)) {
+            return h;
         }
+    }
+    return std::nullopt;
+}
+
+std::optional<float> Scene::island_ground_height(std::size_t index, float x, float y) const {
+    if (index >= islands.size()) {
+        return std::nullopt;
+    }
+    const auto& i = islands[index];
+    const float lx = x - static_cast<float>(i.x), ly = y - static_cast<float>(i.y);
+    const bool inside = lx >= 0.0F && lx < static_cast<float>(i.width) && ly >= 0.0F &&
+                        ly < static_cast<float>(i.height);
+    const auto& g = objects_[index].grids;
+    if (inside && g) {
+        return terrain_height(g->second, i.width, i.height, lx, ly);
     }
     return std::nullopt;
 }

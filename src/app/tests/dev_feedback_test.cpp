@@ -4,9 +4,14 @@
 // Skips when ANNO1503_GAME_DIR is unset.
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -16,6 +21,7 @@
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/test/dev_lan5.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace app = anno::app;
@@ -24,87 +30,9 @@ namespace sim = anno::sim;
 
 namespace {
 
-struct Lan5 {
-    app::PlayLoad play;
-    std::shared_ptr<const render::Scene> scene;
-    app::DevToolSetup setup;
-    std::size_t island = 0;
-    std::vector<app::SceneBuilding> buildings;
-};
-
-std::optional<Lan5> lan5() {
-    const auto dir = anno::test::game_dir();
-    if (!dir) {
-        return std::nullopt;
-    }
-    const auto path = std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() /
-                      "data" / "maps" / "lan5.txt";
-    auto play = app::load_play(*dir, path);
-    REQUIRE(play.ok());
-    // The scene as --play loads it: the sim's buildings, not the templates' (main.cpp).
-    const std::vector<app::SceneBuilding> buildings = app::play_buildings(play.value().world);
-    std::vector<bool> classes(0x1000, false);
-    for (std::size_t id = 0; id < classes.size(); ++id) {
-        classes[id] = app::anlage_is_building(play.value().world, static_cast<std::uint16_t>(id));
-    }
-    app::SceneObjects objects;
-    objects.is_building = [&classes](std::uint16_t id) {
-        return id < classes.size() && classes[id];
-    };
-    objects.buildings = buildings;
-    auto loaded = app::load_placed_scene(*dir, play.value().name, play.value().placed, &objects);
-    REQUIRE(loaded.ok());
-    Lan5 l{std::move(play.value()), loaded.value().scene, {}, 0, {}};
-    l.setup = app::dev_tool_setup(l.play);
-    REQUIRE(l.setup.city.has_value());
-    bool found = false;
-    for (std::size_t k = 0; k < l.scene->islands.size(); ++k) {
-        if (l.scene->islands[k].x == l.setup.island.x0 &&
-            l.scene->islands[k].y == l.setup.island.y0) {
-            l.island = k;
-            found = true;
-        }
-    }
-    REQUIRE(found);
-    l.buildings = app::play_buildings(l.play.world);
-    return l;
-}
-
-/// A tool selecting `type` (cycled to, as N would), hovering world tile `tile` at group 1.
-app::DevTool tool_at(const Lan5& l, sim::TypeId type, sim::TileXY tile, int rotations = 0) {
-    app::DevTool tool(l.setup);
-    static_cast<void>(tool.handle({app::ToolInput::Kind::Toggle, 0, 0}, nullptr));
-    for (std::size_t i = 0; i < l.setup.types.size() && tool.input().selected() != type; ++i) {
-        static_cast<void>(tool.handle({app::ToolInput::Kind::NextType, 0, 0}, nullptr));
-    }
-    REQUIRE(tool.input().selected() == type);
-    for (int i = 0; i < rotations; ++i) {
-        static_cast<void>(tool.handle({app::ToolInput::Kind::Rotate, 0, 0}, nullptr));
-    }
-    // Hover the tile through a real pick: a frame whose drawable pixel (0, 0) is the tile's
-    // drawn centre (the island's placement plus the local diamond's centre, flat-ground
-    // approximation: the pick then finds the tile itself with the heights).
-    const auto [tw, th] = render::kTile[1];
-    const render::Placement* placed = nullptr;
-    for (const render::Placement& p : l.scene->layouts[1]) {
-        if (p.index == l.island) {
-            placed = &p;
-        }
-    }
-    REQUIRE(placed != nullptr);
-    const int lx = tile.x - l.setup.island.x0, ly = tile.y - l.setup.island.y0;
-    const double h =
-        l.scene->ground_height(static_cast<float>(tile.x) + 0.5F, static_cast<float>(tile.y) + 0.5F)
-            .value_or(0.0F);
-    const double lift = h * 2.059 * tw / 84.0;
-    const int sx = placed->offset.first + (lx - ly) * tw / 2;
-    const int sy = placed->offset.second + (lx + ly) * th / 2 + th / 2 - static_cast<int>(lift);
-    const app::PointerFrame frame = app::pointer_frame(render::Rect{sx - 400, sy - 300, 800, 600},
-                                                       nullptr, 1, tw, th, l.scene, 800, 600);
-    static_cast<void>(tool.handle({app::ToolInput::Kind::Move, 400, 300}, &frame));
-    REQUIRE(tool.hover() == std::optional<sim::TileXY>{tile});
-    return tool;
-}
+using anno::test::free_tile;
+using anno::test::lan5;
+using anno::test::tool_at;
 
 } // namespace
 
@@ -159,13 +87,33 @@ TEST_CASE("dev feedback: the preview is the scene's own sprite of the type at th
     CHECK(matched == preview->sprites.size());
     MESSAGE("preview of type " << b->type << ": " << preview->sprites.size()
                                << " sprites, all found in the scene's own drawing");
-    // Rotated once more: another footprint (odd turn of a non-square type) or other frames.
-    const app::DevTool turned = tool_at(*l, sim::TypeId{b->type}, tile, b->rotation + 1);
-    const auto rotated = app::make_preview(turned, *l->scene, 1, 0);
-    REQUIRE(rotated.has_value());
-    const bool other_frames = rotated->sprites.empty() || preview->sprites.empty() ||
-                              rotated->sprites.front().frame != preview->sprites.front().frame;
-    CHECK((other_frames || rotated->object.second != preview->object.second));
+    // The tool's rotation reaches the sprite (round ee review of C, P3): at each rotation the
+    // preview is Scene::preview_sprites at that rotation, and at least two rotations of the type
+    // draw other frames (the scene's own drawing of every rotation is the next case's, on an
+    // original scenario with many buildings).
+    using FramePtr = const anno::formats::figuren::Frame*;
+    std::set<std::vector<FramePtr>> distinct;
+    for (int r = 0; r < 4; ++r) {
+        const auto pv =
+            app::make_preview(tool_at(*l, sim::TypeId{b->type}, tile, r), *l->scene, 1, 0);
+        REQUIRE(pv.has_value());
+        const auto direct = l->scene->preview_sprites(
+            l->island, static_cast<std::uint16_t>(b->type), static_cast<std::uint8_t>(r),
+            static_cast<std::uint16_t>(b->x), static_cast<std::uint16_t>(b->y),
+            pv->object.first.height(), 1, 0);
+        std::vector<FramePtr> frames, want;
+        for (const render::SpriteDraw& d : pv->sprites) {
+            frames.push_back(d.frame);
+        }
+        for (const render::SpriteDraw& d : direct) {
+            want.push_back(d.frame);
+        }
+        CHECK(frames == want);
+        if (!frames.empty()) {
+            distinct.insert(frames);
+        }
+    }
+    CHECK(distinct.size() >= 2);
     // Another type at the same tile: its own entry.
     for (const sim::TypeId t : l->setup.types) {
         if (t.v != b->type) {
@@ -181,6 +129,82 @@ TEST_CASE("dev feedback: the preview is the scene's own sprite of the type at th
     static_cast<void>(demolish.handle({app::ToolInput::Kind::ToggleDemolish, 0, 0}, nullptr));
     CHECK_FALSE(app::make_preview(demolish, *l->scene, 1, 0));
     CHECK_FALSE(app::make_preview(tool, *l->scene, render::kGroups, 0));
+}
+
+TEST_CASE("dev feedback: on an original scenario, the preview sprites of placed objects' types and "
+          "rotations are the scene's own drawing of them" *
+          doctest::test_suite("dev_feedback")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
+    auto play = app::load_play(*dir, file);
+    REQUIRE(play);
+    // Loaded as --view loads it (no SceneObjects): the scenario's own placed objects (a start
+    // without buildings; its trees, rocks and scenery have rotations too, and preview_sprites
+    // treats every Anlagen entry alike).
+    auto loaded = app::load_scene(*dir, file, play.value().links, nullptr);
+    REQUIRE(loaded);
+    const render::Scene& scene = *loaded.value().scene;
+    using FramePtr = const anno::formats::figuren::Frame*;
+    std::map<std::uint16_t, std::map<std::uint8_t, std::set<FramePtr>>> by_type;
+    std::size_t checked = 0, sprites = 0, skipped = 0;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        const render::Placement* placed = nullptr;
+        for (const render::Placement& p : scene.layouts[1]) {
+            if (p.index == k) {
+                placed = &p;
+            }
+        }
+        if (placed == nullptr) {
+            continue;
+        }
+        const auto drawn = scene.sprites_in(placed->bounds, 1, 0, render::SpriteLayer::Objects,
+                                            render::WaterStyle::Original);
+        std::set<std::tuple<FramePtr, int, int>> drawn_at;
+        for (const render::SpriteDraw& d : drawn) {
+            drawn_at.insert({d.frame, d.anchor.first, d.anchor.second});
+        }
+        // The island's objects as the scene holds them (its own lists; the first 2 000 of each
+        // island): each one's type, rotation, tile and height are what the preview is made from.
+        const auto& others = scene.island_lists(k).other;
+        for (std::size_t i = 0; i < others.size() && i < 2000; ++i) {
+            const auto& placed_object = others[i].first;
+            if ((placed_object.state & 0xFFU) != 0) {
+                // The state's low byte (a variant or phase: with it, some of Single_01's
+                // objects draw another frame) is not the preview's input: a placement starts at 0
+                // (Scene::preview_sprites takes the height only).
+                ++skipped;
+                continue;
+            }
+            const auto pv = scene.preview_sprites(k, placed_object.anlage, placed_object.rotation,
+                                                  placed_object.x, placed_object.y,
+                                                  placed_object.height(), 1, 0);
+            for (const render::SpriteDraw& d : pv) {
+                CHECK(drawn_at.contains({d.frame, d.anchor.first, d.anchor.second}));
+                by_type[placed_object.anlage][placed_object.rotation].insert(d.frame);
+                ++sprites;
+            }
+            ++checked;
+        }
+    }
+    // Rotations of one type that draw other frames: a preview ignoring the rotation fails above.
+    std::size_t turned = 0;
+    for (const auto& [type, rotations] : by_type) {
+        for (auto i = rotations.begin(); i != rotations.end(); ++i) {
+            for (auto j = std::next(i); j != rotations.end(); ++j) {
+                turned += i->second != j->second ? 1 : 0;
+            }
+        }
+    }
+    CHECK(checked > 100);
+    CHECK(turned > 0);
+    MESSAGE("Single_01: " << checked << " objects, " << sprites << " preview sprites, all at the "
+                          << "scene's own frame and anchor (" << skipped
+                          << " with a state low byte left out); " << turned
+                          << " rotation pairs of one type draw other frames");
 }
 
 TEST_CASE("dev feedback: occupancy and costs are refusals only with a published basis, the rest is "
@@ -212,25 +236,9 @@ TEST_CASE("dev feedback: occupancy and costs are refusals only with a published 
     const auto on_taken = knows.check(tool_at(*l, type, taken), &snap);
     CHECK(on_taken.refused);
     CHECK(on_taken.text.find("occupied in the published picture") != std::string::npos);
-    // A free tile of the island: unchecked (terrain and the rule are the sim's).
-    std::optional<sim::TileXY> free;
-    const app::DevTool probe(l->setup);
-    for (std::int32_t y = 2; y < static_cast<std::int32_t>(l->setup.island.h) - 6 && !free; ++y) {
-        for (std::int32_t x = 2; x < static_cast<std::int32_t>(l->setup.island.w) - 6 && !free;
-             ++x) {
-            const sim::TileXY t{l->setup.island.x0 + x, l->setup.island.y0 + y};
-            bool clear = true;
-            for (std::int32_t dy = 0; dy < 6; ++dy) {
-                for (std::int32_t dx = 0; dx < 6; ++dx) {
-                    clear = clear && !knows.occupied({t.x + dx, t.y + dy});
-                }
-            }
-            if (clear && l->scene->ground_height(static_cast<float>(t.x) + 0.5F,
-                                                 static_cast<float>(t.y) + 0.5F)) {
-                free = t;
-            }
-        }
-    }
+    // A free tile of the island by the sim's own lookup: unchecked (the placement rule is the
+    // sim's).
+    const std::optional<sim::TileXY> free = free_tile(*l);
     REQUIRE(free.has_value());
     const app::DevTool on_free = tool_at(*l, type, *free);
     const auto unchecked = knows.check(on_free, &snap);
@@ -301,6 +309,72 @@ TEST_CASE("dev feedback: the line names the latest command's outcome by its rece
     newer.records = {sim::Reject::None, sim::Reject::Occupied, sim::Reject::None};
     CHECK(app::feedback_line(tool, {}, &snap, newer).find("Applied (2 of 3 records)") !=
           std::string::npos);
+}
+
+TEST_CASE("dev feedback: the composed title never lets an earlier command's refusal pass for the "
+          "latest command's, and shows the money once" *
+          doctest::test_suite("dev_feedback")) {
+    auto l = lan5();
+    if (!l) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    // A type without goods costs, a free tile by the sim's lookup, and the tool there (all read
+    // before the world moves into the runner).
+    std::optional<sim::TypeId> plain;
+    for (const sim::TypeId t : l->setup.types) {
+        const sim::BuildingType* type = l->setup.registry->find(t);
+        if (!plain && type != nullptr && type->cost_goods.empty() && type->width == 1 &&
+            type->height == 1 && (type->flags_word & sim::kRoadFlag) == 0) {
+            plain = t;
+        }
+    }
+    REQUIRE(plain.has_value());
+    const auto free = free_tile(*l);
+    REQUIRE(free.has_value());
+    const app::DevTool tool = tool_at(*l, *plain, *free);
+    app::PlacementKnowledge knows(l->setup);
+    const app::DevToolSetup setup = l->setup;
+    app::PlayRunner runner(std::move(l->play.world));
+    const auto build = [&] {
+        sim::Command cmd;
+        cmd.issuer = setup.issuer;
+        sim::BuildCmd b;
+        b.city = *setup.city;
+        b.placements.push_back(sim::PlacementWire{*plain, free->x, free->y, 0, 0, 0});
+        cmd.body = std::move(b);
+        return cmd;
+    };
+    const app::CommandId first = runner.post_command(build());
+    runner.run_n(1);
+    REQUIRE(runner.outcome(first).state == app::CommandOutcome::State::Applied);
+    const app::CommandId refused = runner.post_command(build()); // the same tile: Occupied
+    runner.run_n(1);
+    REQUIRE(runner.outcome(refused).state == app::CommandOutcome::State::Refused);
+    sim::Command demolish;
+    demolish.issuer = setup.issuer;
+    demolish.body = sim::DemolishCmd{*setup.city, {*free}};
+    const app::CommandId latest = runner.post_command(std::move(demolish));
+    runner.run_n(1);
+    REQUIRE(runner.outcome(latest).state == app::CommandOutcome::State::Applied);
+    const auto snap = runner.snapshot();
+    const std::string title =
+        app::dev_title(*snap, tool, knows.check(tool, snap.get()), runner.outcome(latest));
+    // The refusal is still in the runner's line (within kRejectionShowTurns), named by its
+    // command; the latest command's own outcome is what the feedback names.
+    const std::string refusal =
+        "refused: Occupied (window command #" + std::to_string(refused.n) + ")";
+    CHECK_MESSAGE(title.find(refusal) != std::string::npos, title);
+    CHECK_MESSAGE(title.find("command #" + std::to_string(latest.n) + ": Applied") !=
+                      std::string::npos,
+                  title);
+    std::size_t money = 0;
+    for (std::size_t at = title.find("money "); at != std::string::npos;
+         at = title.find("money ", at + 1)) {
+        ++money;
+    }
+    CHECK_MESSAGE(money == 1, title);
+    MESSAGE("title: " << title);
 }
 
 TEST_CASE("dev feedback: the developer start's resources are the fixed map's only; an original "

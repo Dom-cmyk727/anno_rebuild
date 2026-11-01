@@ -285,7 +285,7 @@ struct ScenePicture::State {
     /// island's edit or recovery does not erase another island's failure (round dx, DX3a).
     std::vector<std::string> failure;
     bool stop = false;
-    /// Anlagen ids below 0x1000 that are buildings (the loader's rule, asked once).
+    /// Anlagen ids below kPictureAnlageIds that are buildings (the loader's rule, asked once).
     std::shared_ptr<const std::vector<bool>> is_building;
     Stats stats;
     /// Per build: the milliseconds in the queue and in the build (bounded; see the worker).
@@ -370,7 +370,7 @@ ScenePicture::ScenePicture(std::shared_ptr<const render::Scene> base,
         }
         reindex(islands);
     }
-    auto table = std::make_shared<std::vector<bool>>(0x1000, false);
+    auto table = std::make_shared<std::vector<bool>>(kPictureAnlageIds, false);
     for (std::size_t id = 0; id < table->size(); ++id) {
         (*table)[id] = is_building(static_cast<std::uint16_t>(id));
     }

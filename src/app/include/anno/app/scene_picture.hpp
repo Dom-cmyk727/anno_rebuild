@@ -112,7 +112,8 @@ class ScenePicture {
     /// `base` is generation 0 as loaded; its byte buffers are owned by the scene itself
     /// (render::Scene::Backing), so the picture needs no other owner. `buildings` are the sim's
     /// buildings at load, sorted by building_before. `is_building` is the loader's classification
-    /// of Anlagen ids (asked once per id up to 0x0FFF). `threads` (at least 1) build object lists.
+    /// of Anlagen ids (asked once per id below kPictureAnlageIds). `threads` (at least 1) build
+    /// object lists.
     ScenePicture(std::shared_ptr<const render::Scene> base, std::vector<SceneBuilding> buildings,
                  const std::function<bool(std::uint16_t)>& is_building, std::size_t threads = 1,
                  Limits limits = {});

@@ -331,7 +331,8 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   - Commands are in world tiles, as the command file's are.
 - **Data, not constants.** `dev_tool_setup` reads, at load, before the runner takes the world:
   - the registry;
-  - the types the loader places as buildings, in TypeId order;
+  - the buildable types (`buildable_types`: list-backed and road types, in TypeId order; see
+    "The tool's data and robustness");
   - the developer player's first city and its island's tile rectangle.
 
   The window never reads the World.
@@ -347,13 +348,18 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 - **The preview** (`dev_feedback.hpp`, `Scene::preview_sprites`):
   - It is the selected type's own sprites: its ANLAGEN entry, the selected rotation, the
     hovered tile, and the ground height under the origin tile's corner (the sim's own height for
-    the building can differ). They come from the renderer's own `place_prepared` on the frame's
-    scene.
+    the building can differ: a command-built building has height byte 0 today, OQ-550). They
+    come from the renderer's own `place_prepared` on the frame's scene. Checked against the
+    scene's own drawing of 18 822 placed objects of Single_01 (frame and anchor, every rotation)
+    and, on the GPU, against the CPU blend (Metal: 0 pixels apart by more than 1).
   - The GPU compositor draws them after everything else of the frame (an `overlay` span of
     `GpuFrame::render`); the CPU renderer blends them after its frame (`blend_preview`). So they
     lie on top of the picture: a preview, not part of the painter's order.
   - No preview at a derived zoom level (sprites exist at the built groups), in the demolish mode,
-    or without a hovered tile on the city's island.
+    or without a hovered tile on the city's island. When a type has no sprite to show, the line
+    says why (`preview_note`): an id the picture cannot draw (`kPictureAnlageIds`: a PROD2 item
+    holds 12 bits; such a building is built by the sim but not drawn), no Anlagen entry for the
+    type, a derived level, or the city's island not in the scene.
   - Moving the pointer changes no object list and starts no chunk rebuild: only the overlay
     changes.
 - **What it knows** (`PlacementKnowledge`), from published data only:
@@ -365,20 +371,72 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 
   A refusal is shown only with one of those as its basis ("would be refused: occupied in the
   published picture", "… gold N needed, M held (published turn T)"). Everything else is
-  "unchecked: terrain and the placement rule are the sim's". The sim revalidates every command
-  when it runs it; the published picture can be behind it.
+  unchecked, and the text names what: the sim's placement rule always, occupancy when no index
+  could be built, costs without a snapshot, goods outside the published stock. The sim
+  revalidates every command when it runs it; the published picture can be behind it. The sim's
+  placement rule is still the stand-in of OQ-052 (inside the island, owned tiles, no overlap):
+  it does not check terrain, so a building on open water inside the island's rectangle is
+  applied and drawn there (lan5's developer island is a 256 x 256 rectangle that is mostly
+  sea). The line says so instead of promising a terrain check.
 - **The feedback line** (the window title, `feedback_line`), from left to right:
   - the tool's state: the type, its footprint and gold cost, the rotation, the hovered tile and
     the last local hint;
-  - the money and the type's cost goods from the snapshot;
+  - the money and the type's cost goods from the snapshot (held / needed);
   - the preview's knowledge;
   - the outcome of the tool's latest command, looked up by its receipt: Queued, Applied (with how
     many of its records did something), Refused with the sim's reason, or Lost.
 
-  An earlier command's outcome is never shown as the latest's.
+  An earlier command's outcome is never shown as the latest's: while the tool is on, the title is
+  `dev_title` of one snapshot (the money once), the runner's last refusal names its command
+  ("refused: Occupied (window command #2)"), and a click that sent nothing clears the receipt
+  shown (the tool's own reason is in the line).
 - **Resources:** the developer start's test money and goods (`FixedPlayOptions`, fixed maps such
   as `lan5.txt` only) are the sim's own state, charged and refused as any other. An original
   scenario keeps its own resources.
+
+### The tool's data and robustness (W4.4, round ee, package D)
+
+- **The buildable list** is registry data (`buildable_types`): every type whose PRODTYPE has a
+  list in the sim's layout, and every road type, in TypeId order and of any id width (TypeId is
+  32 bit in the sim and on the wire). Roads are tile objects the sim does not build yet: their
+  command is refused as Unsupported, which the feedback shows. A modded layout changes the list.
+- **A second definition** (another id, a non-square footprint, other costs, no sprite) needs no
+  code: its commands carry its id and rotation, its rotated footprint drives the island and
+  occupancy checks, its costs the cost check and the line (`dev_tool_mod_test.cpp`).
+- **Empty and malformed data:** with no buildable type the tool only demolishes; a listed id the
+  registry lacks sends nothing and names the id; a zero footprint is refused by the registry
+  builder; a footprint larger than the island is a known refusal.
+- **Pointer moves rebuild nothing:** not the occupancy index (100 000 moves, one rebuild), not the
+  scene or the picture (the tool has no access to either). An unpublished command changes no
+  published version.
+- **Per-move work** (pick, `DevTool::handle`, `make_preview`, `preview_note`, `check`,
+  `feedback_line`; Apple M5 Max, debug build, `dev_tool_mod_test.cpp`): flat in the number of
+  published buildings (4 to 100 004), and nearly flat in the scene's islands since the pick asks
+  only the islands its ray crosses (`render::pick_ray`; 19.5 µs at 64 islands, 69 µs before). At
+  one island it went from 13 to 18 µs (the crossed-island list). The index rebuild, once per
+  published change, is 0.26 ms at 100 004 buildings. This is not large-city, complex-economy or
+  multiplayer performance, which stays open.
+
+### A scripted session and a picture that lags (W4.4, round ee, E3 and E4)
+
+- **Not drawn yet** (`drawn_note`, E4): the line says when an applied command's change is not in
+  the picture: "not drawn yet: turn T is not in the picture" until the window's follow step took
+  that turn's batch (`PlayFollower::followed_turn`: the snapshot read before the take, since a
+  turn's batch is in the mailbox before its snapshot), then "not drawn yet: the picture is
+  rebuilding N islands" while `ScenePicture::pending` is above 0. The sim's outcome stands either
+  way; a commit updates the line. `dev_barrier_test.cpp` holds every picture build at a gate:
+  the runner's turns, the outcomes, the tool and the follow step go on (the follow step returns in
+  well under a millisecond), the line says "not drawn yet", and the open gate draws it.
+- **A scripted session in the live window** (`dev_script.hpp`, E3): `ANNO_DEV_SCRIPT=<file>`
+  pushes the script's key, mouse and wheel events into SDL's own queue, so they reach the
+  window's handler as a person's input does; while it runs the window takes no other input (the
+  events carry their own device id, `kScriptDevice`). It waits on frames, turns, outcomes and the
+  picture, checks the title and the latest outcome, and can capture the window's own rectangle
+  (macOS). `ANNO_DEV_SESSION=<new dir>` writes the applied commands (`--commands` format), the
+  state hash after each turn that ran commands and every 25th turn, every kept outcome and the
+  script's log. `--play <map> --commands <file> --replay-hashes <file>` replays them without a
+  window and compares the hashes. Recording hashes costs a full `state_hash` on those turns (about
+  0.17 s on lan5 in a debug build, visible in the turn p95).
 
 ### Immutable per-island object lists (W4.3, round du)
 

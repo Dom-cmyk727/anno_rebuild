@@ -83,6 +83,8 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.play_speed = *speed;
         } else if (a == "--commands") {
             out.commands = utf8_path(v);
+        } else if (a == "--replay-hashes") {
+            out.replay_hashes = utf8_path(v);
         } else if (a == "--game-dir") {
             out.game_dir = utf8_path(v);
         } else if (a == "--group") {

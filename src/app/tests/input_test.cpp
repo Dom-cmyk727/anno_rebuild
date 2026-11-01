@@ -376,7 +376,8 @@ TEST_CASE("feedback: a refused build is reported once with its reason, and money
     CHECK(refused.status != sim::Reject::None);
 
     const auto snap = runner.snapshot();
-    CHECK(snap->last_rejection == reason);
+    // Attributed to its command (round ee review of C, P2-1).
+    CHECK(snap->last_rejection == reason + " (window command #" + std::to_string(again.n) + ")");
     CHECK(runner.title_line().find("refused: " + reason) != std::string::npos);
     CHECK(snap->money > 0);
     CHECK(snap->money <= 10000000);

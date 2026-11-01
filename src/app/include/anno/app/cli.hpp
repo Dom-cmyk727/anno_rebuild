@@ -25,14 +25,17 @@ inline constexpr const char* kUsage =
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
     "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
-    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>]\n"
+    "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>] "
+    "[--commands <file> [--replay-hashes <file>]] (--play)\n"
     "(--group 0-2: the built zoom levels; 3 and up: derived levels, --png only, bounded by "
     "--max-derived-levels)\n"
     "(--png only: [--zoom-factor <scale>] [--resample nearest|bilinear|box|area], the picture "
     "composed at --group and resampled by the CPU model of the GPU pass)\n"
     "environment: ANNO_GPU_ADAPTER=<index> (bench_frame --list-adapters), "
     "ANNO_VIEW_RESAMPLE=nearest|bilinear|box|area (the continuous zoom's magnifying filter; "
-    "default bilinear above scale 1, box below)\n";
+    "default bilinear above scale 1, box below), ANNO_DEV_SCRIPT=<file> (--play: a scripted "
+    "developer-tool session, dev_script.hpp), ANNO_DEV_SESSION=<new dir> (--play: the "
+    "session's commands, outcomes and per-turn hashes)\n";
 
 /// World tiles accepted by --at: INSEL5 positions are u16 (docs/formats/insel.md);
 /// the margin keeps every projected coordinate inside int range.
@@ -110,6 +113,10 @@ struct Args {
     unsigned play_speed = 100;
     /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).
     std::optional<std::filesystem::path> commands;
+    /// --play --commands <file> --replay-hashes <file>: no window; runs the commands' turns and
+    /// compares the state hash after each turn the file lists (round ee, E3: a recorded session's
+    /// hashes.txt, "<turn> <hash hex>" per line).
+    std::optional<std::filesystem::path> replay_hashes;
     std::optional<std::filesystem::path> game_dir;
     std::optional<std::size_t> group;
     std::optional<std::filesystem::path> png;

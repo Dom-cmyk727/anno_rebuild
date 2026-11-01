@@ -56,6 +56,13 @@ struct LinkTemplate {
     std::filesystem::path file;
 };
 
+/// The Anlagen ids the picture can draw: 0 .. kPictureAnlageIds - 1. A PROD2 item holds the id in
+/// 12 bits (formats::insel::PlacedObject::parse masks 0x0FFF), and the picture draws buildings as
+/// PROD2 items; a wider id (a mod's type: TypeId is 32 bit in the sim and on the wire) is built by
+/// the sim but not drawn (a note, round ee D3). Path to lift it: an object source for the scene
+/// that is not a PROD2 item.
+inline constexpr std::uint32_t kPictureAnlageIds = 0x1000;
+
 /// A building the sim placed, in island-local tiles. `island` is the island
 /// table slot (the link number when it fits in 16 bits, or the embedded
 /// island's number). `type` is the Anlagen id; a value that does not fit a

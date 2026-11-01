@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <anno/app/dev_tool.hpp>
 #include <anno/sim/building.hpp>
@@ -76,9 +77,33 @@ std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, d
     if (!rounding) {
         return fail("the city's island is not in the scene"); // never a pick without its offset
     }
-    const auto tile = render::pick_tile(
-        point->first - rounding->first, point->second - rounding->second, frame.geometry,
-        [&scene](float u, float v) { return scene.ground_height(u, v); });
+    const double sx = point->first - rounding->first, sy = point->second - rounding->second;
+    // The islands the ray's segment can meet, in index order (round ee, D6): the march then asks
+    // only those, and gets what Scene::ground_height (the first island in index order) gives.
+    // A tile of margin covers the float conversion of the lookups.
+    const auto ray = render::pick_ray(sx, sy, frame.geometry);
+    if (!ray) {
+        return fail("no tile here");
+    }
+    const double u_lo = std::min(ray->u0, ray->u1) - 1.0, u_hi = std::max(ray->u0, ray->u1) + 1.0;
+    const double v_lo = std::min(ray->v0, ray->v1) - 1.0, v_hi = std::max(ray->v0, ray->v1) + 1.0;
+    std::vector<std::size_t> crossed;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        const auto& i = scene.islands[k];
+        if (i.x + static_cast<double>(i.width) >= u_lo && i.x <= u_hi &&
+            i.y + static_cast<double>(i.height) >= v_lo && i.y <= v_hi) {
+            crossed.push_back(k);
+        }
+    }
+    const auto tile =
+        render::pick_tile(sx, sy, frame.geometry, [&scene, &crossed](float u, float v) {
+            for (const std::size_t k : crossed) {
+                if (const auto h = scene.island_ground_height(k, u, v)) {
+                    return h;
+                }
+            }
+            return std::optional<float>{};
+        });
     if (!tile) {
         return fail("no tile here");
     }

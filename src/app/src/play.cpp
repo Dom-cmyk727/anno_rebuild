@@ -236,6 +236,18 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
     return out;
 }
 
+std::vector<sim::TypeId> buildable_types(const sim::TypeRegistry& registry,
+                                         const sim::ListLayout& layout) {
+    std::vector<sim::TypeId> out;
+    for (const sim::BuildingType& type : registry.types()) {
+        if (layout.list_for(type.prodtype).has_value() || (type.flags_word & sim::kRoadFlag) != 0) {
+            out.push_back(type.id);
+        }
+    }
+    std::sort(out.begin(), out.end(), [](sim::TypeId a, sim::TypeId b) { return a.v < b.v; });
+    return out;
+}
+
 DevToolSetup dev_tool_setup(const PlayLoad& load) {
     DevToolSetup s;
     s.registry = load.registry;
@@ -254,15 +266,7 @@ DevToolSetup dev_tool_setup(const PlayLoad& load) {
         }
     }
     if (s.registry) {
-        // The types the loader places as buildings (anlage_is_building): data, in TypeId order.
-        for (const sim::BuildingType& type : s.registry->types()) {
-            if (type.id.v <= 0xFFFFu &&
-                anlage_is_building(world, static_cast<std::uint16_t>(type.id.v))) {
-                s.types.push_back(type.id);
-            }
-        }
-        std::sort(s.types.begin(), s.types.end(),
-                  [](sim::TypeId a, sim::TypeId b) { return a.v < b.v; });
+        s.types = buildable_types(*s.registry, world.config().layout);
     }
     return s;
 }
@@ -394,8 +398,17 @@ std::shared_ptr<const PlaySnapshot> PlayRunner::snapshot() const {
     return snap_;
 }
 
+std::vector<PlayRunner::TurnHash> PlayRunner::recorded_hashes() const {
+    const std::lock_guard lock(snap_mu_);
+    return hashes_;
+}
+
 std::string PlayRunner::title_line() const {
-    const auto snap = snapshot();
+    return title_of(*snapshot(), developer_city_.has_value());
+}
+
+std::string PlayRunner::title_of(const PlaySnapshot& snapshot, bool money) {
+    const PlaySnapshot* snap = &snapshot;
     char buf[192];
     std::snprintf(buf, sizeof buf, "tick %llu, game %llu ms, turn p95 %.1f ms",
                   static_cast<unsigned long long>(snap->tick),
@@ -408,7 +421,7 @@ std::string PlayRunner::title_line() const {
     if (snap->paused) {
         line += ", paused";
     }
-    if (developer_city_) {
+    if (money) {
         line += ", money " + std::to_string(snap->money);
     }
     if (!snap->last_rejection.empty()) {
@@ -545,6 +558,13 @@ void PlayRunner::one_turn() {
     // One execution path: the sim's own loop reports what each command did (round ee, A2).
     std::vector<sim::ApplyResult> results;
     sim::run_turn(world_, nullptr, turn, steps_, &results);
+    // A turn that ran commands, and every kHashEvery-th turn: hashing the whole world each turn
+    // slowed lan5's turns past their cadence in a debug build (round ee, E3's first run).
+    if (record_hashes_ && (!turn.commands.empty() || turn.index % kHashEvery == 0)) {
+        const std::uint64_t hash = world_.state_hash();
+        const std::lock_guard lock(snap_mu_);
+        hashes_.push_back({turn.index, hash});
+    }
     const auto us =
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
     // The turn cost above is the sim's; the diff that publishes its changes is
@@ -615,7 +635,11 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     }
     for (const CommandOutcome& o : ran) {
         if (o.state == CommandOutcome::State::Refused) {
-            last_reason_ = std::string(sim::reject_name(o.status));
+            // Attributed (round ee review of C, P2-1): the title must not let an earlier
+            // command's refusal pass for a later one's.
+            last_reason_ = std::string(sim::reject_name(o.status)) + " (" +
+                           (o.id.origin == CommandOrigin::Script ? "script" : "window") +
+                           " command #" + std::to_string(o.id.n) + ")";
             last_reason_turn_ = o.turn;
         }
     }

@@ -41,16 +41,21 @@
 // on Windows). --renderer auto (default) composes on the GPU when one is
 // available (build option ANNO_BUILD_GPU), else on the CPU; gpu fails
 // without a GPU, cpu never uses it.
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/command_outcome.hpp>
+#include <anno/app/commands_file.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/png.hpp>
@@ -59,6 +64,7 @@
 #include <anno/app/window_trace.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/scene.hpp>
+#include <anno/sim/reject.hpp>
 
 #ifdef ANNO_WITH_VIEWER
 #include "viewer.hpp"
@@ -153,6 +159,124 @@ int write_scene_png(const anno::render::Scene& scene, std::size_t group, std::op
     return built && built->objects.failed != 0 ? 1 : 0;
 }
 
+/// --replay-hashes (round ee, E3): the recorded session's commands on the loaded world, turn by
+/// turn on this thread, against the state hash after each turn `file` lists ("<turn> <hex>").
+/// 0 when every listed turn agrees, 1 at the first that differs or a file that cannot be read.
+int replay_hashes(anno::sim::World world, std::vector<anno::app::ScriptedCommand> commands,
+                  const fs::path& file) {
+    std::ifstream in(file);
+    if (!in) {
+        std::fprintf(stderr, "--replay-hashes: cannot read %s\n", file.string().c_str());
+        return 1;
+    }
+    std::vector<anno::app::PlayRunner::TurnHash> want;
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream words(line);
+        anno::app::PlayRunner::TurnHash t;
+        if (!(words >> t.turn >> std::hex >> t.hash)) {
+            std::fprintf(stderr, "--replay-hashes: not '<turn> <hex>': %s\n", line.c_str());
+            return 1;
+        }
+        want.push_back(t);
+    }
+    if (want.empty()) {
+        std::fprintf(stderr, "--replay-hashes: no checkpoints in %s\n", file.string().c_str());
+        return 1;
+    }
+    anno::app::PlayRunner runner(std::move(world));
+    runner.set_script(std::move(commands));
+    runner.set_record_hashes(true);
+    std::uint64_t last = 0;
+    for (const auto& t : want) {
+        last = std::max(last, t.turn);
+    }
+    runner.run_n(static_cast<std::uint32_t>(last + 1));
+    std::map<std::uint64_t, std::uint64_t> got;
+    for (const auto& t : runner.recorded_hashes()) {
+        got[t.turn] = t.hash;
+    }
+    std::size_t compared = 0;
+    for (const auto& t : want) {
+        const auto it = got.find(t.turn);
+        if (it == got.end()) {
+            std::fprintf(stderr, "--replay-hashes: turn %llu was not recorded in the replay\n",
+                         static_cast<unsigned long long>(t.turn));
+            return 1;
+        }
+        if (it->second != t.hash) {
+            std::fprintf(stderr,
+                         "--replay-hashes: turn %llu differs: recorded %016llx, replayed %016llx "
+                         "(%zu earlier checkpoints agreed)\n",
+                         static_cast<unsigned long long>(t.turn),
+                         static_cast<unsigned long long>(t.hash),
+                         static_cast<unsigned long long>(it->second), compared);
+            return 1;
+        }
+        ++compared;
+    }
+    std::fprintf(stderr, "--replay-hashes: %zu checkpoints agree (turns 0 .. %llu)\n", compared,
+                 static_cast<unsigned long long>(last));
+    return 0;
+}
+
+#ifdef ANNO_WITH_VIEWER
+/// ANNO_DEV_SESSION (round ee, E3): the session's record in a new directory: commands.txt (the
+/// applied commands in the --commands format), hashes.txt (the state hash after every turn),
+/// outcomes.txt (every kept outcome) and script.log (the scripted session's steps). Returns false
+/// with the reason printed when a file could not be written.
+bool write_session(const fs::path& dir, const anno::app::PlayRunner& runner,
+                   const anno::app::DevScript* script) {
+    bool ok = true;
+    auto put = [&](const char* name, const std::string& text) {
+        std::ofstream out(dir / name, std::ios::binary);
+        out << text;
+        if (!out) {
+            std::fprintf(stderr, "dev session: %s not written\n", name);
+            ok = false;
+        }
+    };
+    const auto commands = anno::app::format_commands(runner.applied_commands());
+    if (!commands) {
+        std::fprintf(stderr, "dev session: %s\n", commands.error().message.c_str());
+        ok = false;
+    } else {
+        put("commands.txt", commands.value());
+    }
+    std::ostringstream hashes;
+    for (const auto& t : runner.recorded_hashes()) {
+        char buf[48];
+        std::snprintf(buf, sizeof buf, "%llu %016llx\n", static_cast<unsigned long long>(t.turn),
+                      static_cast<unsigned long long>(t.hash));
+        hashes << buf;
+    }
+    put("hashes.txt", hashes.str());
+    std::ostringstream outcomes;
+    const anno::app::OutcomeRead read = runner.outcomes_since(1);
+    if (read.lost > 0) {
+        outcomes << "lost " << read.lost << " from " << read.lost_from << "\n";
+    }
+    for (const anno::app::CommandOutcome& o : read.outcomes) {
+        outcomes << (o.id.origin == anno::app::CommandOrigin::Script ? "script" : "window") << " #"
+                 << o.id.n << " turn " << o.turn << " " << anno::app::outcome_state_name(o.state)
+                 << " " << anno::sim::reject_name(o.status);
+        for (const anno::sim::Reject r : o.records) {
+            outcomes << " " << anno::sim::reject_name(r);
+        }
+        outcomes << "\n";
+    }
+    put("outcomes.txt", outcomes.str());
+    if (script != nullptr) {
+        std::string log;
+        for (const std::string& l : script->log()) {
+            log += l + "\n";
+        }
+        put("script.log", log);
+    }
+    return ok;
+}
+#endif
+
 int run(const std::vector<std::string>& raw) {
     const auto args = anno::app::parse_args(raw);
     if (!args) {
@@ -175,12 +299,16 @@ int run(const std::vector<std::string>& raw) {
     std::vector<anno::app::SceneBuilding> buildings;
     std::vector<anno::app::ScriptedCommand> commands;
     // The loader's classification of Anlagen ids as a table, taken from the world before it moves
-    // into the runner (the ids below 0x1000, those ScenePicture classifies): nothing on the window
-    // side reads the world afterwards.
+    // into the runner (the ids below kPictureAnlageIds, those ScenePicture classifies): nothing on
+    // the window side reads the world afterwards.
     std::vector<bool> building_classes;
     anno::app::SceneObjects objects;
     const anno::app::SceneObjects* objects_ptr = nullptr;
     std::span<const anno::app::LinkTemplate> links;
+    if (args->replay_hashes && !(args->play && args->commands)) {
+        std::fprintf(stderr, "%s: --replay-hashes needs --play and --commands\n", name.c_str());
+        return 2;
+    }
     if (args->commands && !args->play) {
         std::fprintf(stderr, "%s: --commands needs --play\n", name.c_str());
         return 2;
@@ -202,8 +330,11 @@ int run(const std::vector<std::string>& raw) {
             }
             commands = std::move(parsed).value();
         }
+        if (args->replay_hashes) {
+            return replay_hashes(std::move(play->world), std::move(commands), *args->replay_hashes);
+        }
         buildings = anno::app::play_buildings(play->world);
-        building_classes.assign(0x1000, false);
+        building_classes.assign(anno::app::kPictureAnlageIds, false);
         for (std::size_t id = 0; id < building_classes.size(); ++id) {
             building_classes[id] =
                 anno::app::anlage_is_building(play->world, static_cast<std::uint16_t>(id));
@@ -287,6 +418,33 @@ int run(const std::vector<std::string>& raw) {
     // The developer building tool (round ee; B in the window): its setup is read from the world
     // before the runner takes it.
     std::optional<anno::app::DevTool> dev;
+    // A scripted session (ANNO_DEV_SCRIPT=<file>) and its record (ANNO_DEV_SESSION=<new dir>),
+    // round ee E3: --play only.
+    std::optional<anno::app::DevScript> script;
+    fs::path session_dir;
+    if (const char* sf = std::getenv("ANNO_DEV_SCRIPT"); sf != nullptr && *sf != 0) {
+        std::ifstream in{fs::path(sf), std::ios::binary};
+        std::ostringstream text;
+        text << in.rdbuf();
+        auto parsed = anno::app::DevScript::parse(text.str());
+        if (!play || !in || !parsed) {
+            std::fprintf(stderr, "ANNO_DEV_SCRIPT=%s: %s\n", sf,
+                         !play ? "needs --play"
+                         : !in ? "cannot be read"
+                               : parsed.error().c_str());
+            return 2;
+        }
+        script.emplace(std::move(parsed).value());
+    }
+    if (const char* sd = std::getenv("ANNO_DEV_SESSION"); sd != nullptr && *sd != 0) {
+        session_dir = fs::path(sd);
+        std::error_code ec;
+        if (!play || fs::exists(session_dir, ec) || !fs::create_directories(session_dir, ec)) {
+            std::fprintf(stderr, "ANNO_DEV_SESSION=%s: %s\n", sd,
+                         !play ? "needs --play" : "not a new directory");
+            return 2;
+        }
+    }
     // The window trace (docs/app/window-trace.md): ANNO_VIEW_TRACE=<directory that does not
     // exist>, with --play and the GPU renderer. Bounded (ANNO_VIEW_TRACE_EVENTS, _FRAMES), written
     // once after the window, the sim thread and the builders have stopped.
@@ -345,6 +503,10 @@ int run(const std::vector<std::string>& raw) {
         dev.emplace(anno::app::dev_tool_setup(*play));
         hooks.dev = &*dev;
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
+        runner->set_record_hashes(!session_dir.empty());
+        if (script) {
+            hooks.script = &*script;
+        }
         if (trace) {
             // The sim thread's record of every turn: its outcome, and the batch's publication.
             runner->set_turn_observer([t = trace.get()](const anno::app::TurnObservation& o) {
@@ -375,6 +537,22 @@ int run(const std::vector<std::string>& raw) {
     }
     picture.reset();
     int status = err.empty() ? 0 : 1;
+    if (runner && !session_dir.empty()) {
+        if (!write_session(session_dir, *runner, script ? &*script : nullptr) && status == 0) {
+            status = 1;
+        }
+        std::fprintf(stderr, "dev session: %s\n", session_dir.string().c_str());
+    }
+    if (script) {
+        for (const std::string& l : script->log()) {
+            if (l.rfind("FAIL", 0) == 0 || l.rfind("checkpoint", 0) == 0) {
+                std::fprintf(stderr, "dev script: %s\n", l.c_str());
+            }
+        }
+        if ((script->failed() || !script->done()) && status == 0) {
+            status = 1; // a script that failed or did not finish fails the run
+        }
+    }
     if (trace) {
         // Nothing records from here on: the window returned, the sim thread is joined and the
         // builders are stopped. The run's own status is the window's.

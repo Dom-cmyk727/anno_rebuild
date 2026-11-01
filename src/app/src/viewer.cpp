@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <set>
 #include <string>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include <anno/app/dev_feedback.hpp>
+#include <anno/app/dev_script.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
@@ -295,7 +297,8 @@ class Viewer {
         : play_(play), levels_(scene->levels()), name_(scene->name), group_(group), zoom_opt_(zoom),
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
           trace_(hooks != nullptr ? hooks->trace : nullptr),
-          dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr) {
+          dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
+          script_(dev_ != nullptr ? hooks->script : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
         }
@@ -457,6 +460,11 @@ class Viewer {
     std::optional<PointerFrame> pointer_frame_;
     std::optional<PlacementKnowledge> knowledge_;
     std::optional<CommandId> latest_receipt_;
+    /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
+    DevScript* script_ = nullptr;
+    std::uint64_t drawn_frames_ = 0;
+    Clock::time_point started_ = Clock::now();
+    void script_tick();
     /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
     std::optional<Clock::time_point> quit_at_;
     /// Test hook (ANNO_VIEW_RESIZE=<seconds>:<w>x<h>): one resize at this time, to this drawable.
@@ -796,6 +804,7 @@ std::string Viewer::run() {
             handle(e);
         }
         events_ms_ = std::chrono::duration<double, std::milli>(Clock::now() - events_start).count();
+        script_tick();
         if (running_ && can_draw && (animating || dirty_)) {
             dirty_ = false;
             if (pending_zoom_) {
@@ -851,6 +860,9 @@ std::string Viewer::run() {
 }
 
 void Viewer::handle(const SDL_Event& e) {
+    if (script_ != nullptr && foreign_input(e)) {
+        return; // a scripted session takes only its own input (dev_script.hpp, kScriptDevice)
+    }
     if (wake_event_ != 0 && e.type == wake_event_) {
         dirty_ = true; // a building batch or a command outcome (the runner's wake): draw it now
         update_title();
@@ -867,6 +879,12 @@ void Viewer::handle(const SDL_Event& e) {
                                       pointer_frame_ ? &*pointer_frame_ : nullptr);
         for (sim::Command& command : step.commands) {
             latest_receipt_ = play_->runner().post_command(std::move(command));
+        }
+        if (step.taken && step.commands.empty() && e.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+            e.button.button == SDL_BUTTON_LEFT) {
+            // A click that sent nothing (off the island, refused locally): the title shows the
+            // tool's reason, not the previous command's outcome (round ee review of C, P3).
+            latest_receipt_.reset();
         }
         if (step.taken) {
             if (dev_->enabled() != was_on) {
@@ -1203,23 +1221,35 @@ void Viewer::update_title() {
 #else
     title += " — CPU";
 #endif
-    if (hooks_ != nullptr && hooks_->title) {
+    const bool dev_on = dev_ != nullptr && dev_->enabled() && knowledge_;
+    if (hooks_ != nullptr && hooks_->title && !dev_on) {
         const std::string extra = hooks_->title();
         if (!extra.empty()) {
             title += " — ";
             title += extra;
         }
     }
-    if (dev_ != nullptr && dev_->enabled() && knowledge_) {
-        // The feedback from published data only (dev_feedback.hpp): the snapshot, the picture's
-        // buildings, and the outcome of the tool's latest command by its receipt.
+    if (dev_on) {
+        // The runner's line and the feedback from one snapshot (dev_title), published data only
+        // (dev_feedback.hpp): the snapshot, the picture's buildings, and the outcome of the
+        // tool's latest command by its receipt.
         const auto snap = play_->runner().snapshot();
         std::optional<CommandOutcome> latest;
         if (latest_receipt_) {
             latest = play_->runner().outcome(*latest_receipt_);
         }
+        // Why there is no preview, from the frame the pointer is over (its scene and zoom level).
+        std::string note = pointer_frame_ && pointer_frame_->scene
+                               ? preview_note(*dev_, *pointer_frame_->scene, pointer_frame_->group)
+                               : std::string();
+        // Whether the picture shows the latest command's change yet (round ee, E4).
+        if (const std::string drawn =
+                drawn_note(latest, play_->followed_turn(), play_->picture().pending());
+            !drawn.empty()) {
+            note += (note.empty() ? "" : " | ") + drawn;
+        }
         title +=
-            " — " + feedback_line(*dev_, knowledge_->check(*dev_, snap.get()), snap.get(), latest);
+            " — " + dev_title(*snap, *dev_, knowledge_->check(*dev_, snap.get()), latest, note);
     }
     if (fps_) {
         char buf[64];
@@ -1242,6 +1272,9 @@ void Viewer::follow_picture() {
     if (play_ != nullptr) {
         const std::size_t n = play_->follow(frames_, trace_);
         committed_ += n;
+        if (n > 0 && dev_ != nullptr && dev_->enabled()) {
+            update_title(); // a commit can end "not drawn yet"
+        }
 #ifdef ANNO_VIEWER_GPU
         if (tracer_ && n > 0) {
             const std::uint64_t g = play_->picture().scene()->generation();
@@ -1255,7 +1288,81 @@ void Viewer::follow_picture() {
     picture_ms_ = std::chrono::duration<double, std::milli>(picture_end_ - start).count();
 }
 
+void Viewer::script_tick() {
+    if (script_ == nullptr || !pointer_frame_) {
+        return; // the script starts once a frame was drawn
+    }
+    DevScriptState st;
+    st.frames = drawn_frames_;
+    st.now_ms = std::chrono::duration<double, std::milli>(Clock::now() - started_).count();
+    st.snapshot = play_->runner().snapshot();
+    if (latest_receipt_) {
+        st.latest = play_->runner().outcome(*latest_receipt_);
+    }
+    st.followed_turn = play_->followed_turn();
+    st.pending = play_->picture().pending();
+    st.tool = dev_;
+    st.frame = &*pointer_frame_;
+    st.density = SDL_GetWindowPixelDensity(window_);
+    if (!(st.density > 0.0F)) {
+        st.density = 1.0F;
+    }
+    SDL_GetWindowSize(window_, &st.window_w, &st.window_h);
+    if (const char* t = SDL_GetWindowTitle(window_); t != nullptr) {
+        st.title = t;
+    }
+    DevScriptAction act = script_->step(st);
+    for (SDL_Event& e : act.events) {
+        e.common.timestamp = SDL_GetTicksNS();
+        if (!SDL_PushEvent(&e)) {
+            std::fprintf(stderr, "dev script: SDL_PushEvent: %s\n", SDL_GetError());
+        }
+    }
+    if (act.look) {
+        // The camera on the tile's drawn centre at the zoom level last drawn (the forward rule
+        // of the pick, DevScript::scene_point).
+        if (const auto p = DevScript::scene_point(*pointer_frame_, *dev_, *act.look)) {
+            cam_x_ = p->first;
+            cam_y_ = p->second;
+            clamp();
+        }
+    }
+    if (act.screenshot) {
+        // The window's own rectangle only (never the rest of the screen), into the session
+        // directory (ANNO_DEV_SESSION): macOS's screencapture. Elsewhere: logged as not run.
+        const char* dir = std::getenv("ANNO_DEV_SESSION");
+#ifdef __APPLE__
+        int x = 0, y = 0, w = 0, h = 0;
+        SDL_GetWindowPosition(window_, &x, &y);
+        SDL_GetWindowSize(window_, &w, &h);
+        if (dir != nullptr && *dir != 0) {
+            const std::string file =
+                (std::filesystem::path(dir) / (*act.screenshot + ".png")).string();
+            const std::string cmd = "screencapture -x -R" + std::to_string(x) + "," +
+                                    std::to_string(y) + "," + std::to_string(w) + "," +
+                                    std::to_string(h) + " '" + file + "'";
+            const int rc = std::system(cmd.c_str());
+            script_->note("screenshot " + *act.screenshot + ": " + file + " (" + std::to_string(w) +
+                          "x" + std::to_string(h) + " points at " + std::to_string(x) + "," +
+                          std::to_string(y) + ", exit " + std::to_string(rc) + ")");
+        } else {
+            script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no ANNO_DEV_SESSION)");
+        }
+#else
+        static_cast<void>(dir);
+        script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no capture on this platform)");
+#endif
+    }
+    if (!act.events.empty() || act.look) {
+        dirty_ = true;
+    }
+    if (act.quit || script_->done()) {
+        running_ = false;
+    }
+}
+
 void Viewer::draw() {
+    ++drawn_frames_;
     draw_start_ = Clock::now();
     display_wait_ms_ = 0;
     // The frame boundary: the picture first, then the one scene handle of this frame.

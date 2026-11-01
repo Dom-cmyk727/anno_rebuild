@@ -21,6 +21,7 @@ objfoot 20 0 3 3 | 9
 objfoot 3 16 2 2 | 0
 objfoot 4 16 2 4 | 8
 # objtile/objfoot are the predicate written as data: the discriminating evidence for the exporter (0x10090350 executed with the real AnnoGame height function under emulation) is in the private notes, not in this repository; the tool's selftest only proves the predicate is applied (threshold, 8-bit wrap, no footprint=land).
+# Limits: the tie cases (S4-S6) and the band run's own optimality are emulation inputs for the C++ port, not oracles of this tool.
 # shore <name> | land <rects> | band <cx,cz> ... | start x z | goal x z | cost class | no_band: status runs | band: status runs
 #   Band cells (type 3: cost 50/69 instead of 10/13 at the COARSE level) injected into the coarse export of the emulated engine; the builder rule that creates type 3
 #   (cells with a neighbour whose height range straddles level 32) was not re-executed. Consumed by the C++ route port; ship_nav_ref.py shore-check only walks the runs (legality, endpoint).

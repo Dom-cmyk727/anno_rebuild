@@ -25,3 +25,12 @@ admission fifo_reserve 100 5 1,2,3,4,5,6 2 3000 random 11 | bound 8 within
 # A blocked ship (state mask) drops its order and ticket at its visit; the mutant that keeps the ticket starves everybody behind it (quota 1: slot 1 holds the oldest ticket forever).
 admission fifo_reserve 100 5 1,2,3,4,5 1 1000 block_oldest | bound 1 within
 admission fifo_keep_blocked 100 5 1,2,3,4,5 1 1000 block_oldest | bound 1 exceeds
+# R (Advances) from the type facts: R = ceil(max(5 / (speed * vmin/100), 5 * turn_step / 0.01) ticks / dtick). Hand-derived:
+#   speed 0.04, vmin 100: one chunk = 25 units = 125 ticks; turn_step 0.11 = 55 ticks -> 125 ticks = 25 Advances at dtick 5.
+#   speed 0.04, vmin 65: 25 / 0.65 = 38.46 units = 192.3 ticks -> 193 ticks -> 39 Advances.   speed 0.036, vmin 65: 27.78 / 0.65 = 42.74 units = 213.7 ticks -> 43 Advances.
+#   A turn-dominated type: speed 0.5 (10 ticks/chunk), turn_step 0.5 = 250 ticks -> 50 Advances.
+admission r 0.04 0.11 100 5 | 25
+admission r 0.04 0.11 65 5 | 39
+admission r 0.036 0.11 65 5 | 43
+admission r 0.5 0.5 100 5 | 50
+admission r 0.036 0.11 65 1 | 214

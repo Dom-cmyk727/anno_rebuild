@@ -473,11 +473,25 @@ inline bool make_pipe(int fds[2]) {
 ///  - Elsewhere: one close action per descriptor from 3 to the open-file limit,
 ///    capped at 4096. A close of a descriptor that is not open succeeds in glibc
 ///    (checked in cache/f3/exp/fdexp.out), so the loop is safe.
-inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions) {
-#if defined(__GLIBC__) && defined(__USE_GNU) &&                                                    \
+///  - macOS: posix_spawn fails as a whole (EBADF) when an addclose names a
+///    descriptor that is not open, so the loop below would refuse every spawn.
+///    The spawn attribute POSIX_SPAWN_CLOEXEC_DEFAULT closes every descriptor
+///    the file actions do not name; stdio is named with addinherit_np. The
+///    attribute's other flags are kept.
+inline void close_descriptors_from_3(posix_spawn_file_actions_t* actions, posix_spawnattr_t* attr) {
+#if defined(__APPLE__)
+    short flags = 0;
+    posix_spawnattr_getflags(attr, &flags);
+    posix_spawnattr_setflags(attr, static_cast<short>(flags | POSIX_SPAWN_CLOEXEC_DEFAULT));
+    for (int fd = 0; fd < 3; ++fd) {
+        posix_spawn_file_actions_addinherit_np(actions, fd);
+    }
+#elif defined(__GLIBC__) && defined(__USE_GNU) &&                                                  \
     (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
+    (void)attr;
     posix_spawn_file_actions_addclosefrom_np(actions, 3);
 #else
+    (void)attr;
     long limit = ::sysconf(_SC_OPEN_MAX);
     if (limit < 0 || limit > 4096) {
         limit = 4096;

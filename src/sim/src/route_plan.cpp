@@ -172,6 +172,10 @@ class Planner {
     std::uint8_t* fine_tile(std::int32_t tx, std::int32_t tz);
     bool fine_enterable(std::int32_t tx, std::int32_t tz);
     void note_memory();
+    std::uint64_t bytes_now() const;
+    /// Accounts `extra` bytes about to be allocated; false (and the limit flag set) when the limit
+    /// would be passed.
+    bool grow(std::uint64_t extra);
     bool fail_limit(RouteLimit which);
 
     std::int32_t cell_x(std::int32_t cell) const { return cell % ncx_; }
@@ -233,10 +237,11 @@ bool Planner::fail_limit(RouteLimit which) {
     res_.status = RouteStatus::BudgetExceeded;
     res_.exceeded = which;
     res_.runs.clear();
+    res_.end_x = res_.end_z = res_.score = res_.best_score = 0;
     return false;
 }
 
-void Planner::note_memory() {
+std::uint64_t Planner::bytes_now() const {
     const std::uint64_t cells = static_cast<std::uint64_t>(ncx_) * static_cast<std::uint64_t>(ncz_);
     std::uint64_t b = cells * (sizeof(std::uint8_t) * 2 + sizeof(std::int32_t));
     b += heap_.size() * sizeof(CoarseNode);
@@ -247,7 +252,16 @@ void Planner::note_memory() {
     b += learned_.size() * sizeof(Learned);
     b += trace_dirs_.size();
     b += res_.runs.size() * sizeof(RouteRun);
-    meter_.note(b);
+    return b;
+}
+
+void Planner::note_memory() {
+    meter_.note(bytes_now());
+}
+
+bool Planner::grow(std::uint64_t extra) {
+    meter_.note(bytes_now() + extra);
+    return !meter_.over;
 }
 
 bool Planner::in_disc(std::int64_t tx, std::int64_t tz) const {
@@ -367,14 +381,17 @@ void Planner::expand_coarse(std::int32_t cell, std::uint32_t label, std::uint32_
     if (labelled) {
         const std::uint32_t a = label - 0x80;
         entry_edge = a / 2;
-        if (a == 0 || a == 4) {
-            order = {6, 2, a, 0};
-        } else {
-            order = {0, 4, a, 0};
+        std::uint32_t p0 = (a == 0 || a == 4) ? 6u : 0u;
+        std::uint32_t p1 = (a == 0 || a == 4) ? 2u : 4u;
+        if (pert_.coarse_swap_perp) {
+            std::swap(p0, p1);
         }
+        order = pert_.coarse_straight_first ? std::array<std::uint32_t, 4>{a, p0, p1, 0}
+                                            : std::array<std::uint32_t, 4>{p0, p1, a, 0};
         n = 3;
     } else {
-        order = {6, 2, 0, 4};
+        order = pert_.coarse_start_order_alt ? std::array<std::uint32_t, 4>{0, 4, 6, 2}
+                                             : std::array<std::uint32_t, 4>{6, 2, 0, 4};
         n = 4;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -408,6 +425,9 @@ void Planner::expand_coarse(std::int32_t cell, std::uint32_t label, std::uint32_
             step = straight ? cc_->open_orth
                             : static_cast<std::uint32_t>(cc_->open_diag - cc_->open_orth);
         }
+        if (!grow(sizeof(CoarseNode))) {
+            return; // the memory limit would be passed by this node; the search loop reports it
+        }
         labels_[static_cast<std::uint64_t>(nb)] = static_cast<std::uint8_t>(0x80 + d);
         heap_.push_back({cost + step, seq_++, nb});
         const bool lifo = pert_.lifo_coarse_ties;
@@ -436,7 +456,7 @@ void Planner::goal_test(std::int32_t cell, std::uint32_t label) {
         // 2304 - ftol(64 d^2), d from the tile centre (+0.5) to the Q24.8 goal, in integers.
         const std::int64_t dxq = (2 * tx + 1) * 128 - q_.goal_x_q8;
         const std::int64_t dzq = (2 * tz + 1) * 128 - q_.goal_z_q8;
-        const std::int64_t t = (dxq * dxq + dzq * dzq) / 1024;
+        const std::int64_t t = (dxq * dxq + dzq * dzq + (pert_.round_score ? 512 : 0)) / 1024;
         const std::int64_t score = score_limit_ - t;
         if (score <= 0 || score <= best_) {
             continue; // the callback offers only a strictly better score, and never d >= radius
@@ -529,6 +549,9 @@ void Planner::add_block(std::int32_t cell) {
     if (ordinal_[static_cast<std::uint64_t>(cell)] >= 0) {
         return;
     }
+    if (!grow(64 + sizeof(std::int32_t))) {
+        return; // one fine block (64 bytes) and its ordinal entry would pass the memory limit
+    }
     ordinal_[static_cast<std::uint64_t>(cell)] = static_cast<std::int32_t>(corridor_.size());
     corridor_.push_back(cell);
     const std::int32_t cx0 = static_cast<std::int32_t>(ox_) + 8 * cell_x(cell);
@@ -584,6 +607,9 @@ Planner::FineOutcome Planner::fine_search() {
         const std::uint64_t cap =
             static_cast<std::uint64_t>(ncx_) * static_cast<std::uint64_t>(ncz_);
         for (std::uint64_t guard = 0; guard <= cap; ++guard) {
+            if (!grow(sizeof(std::int32_t))) {
+                break;
+            }
             path_.push_back(cell);
             const std::uint32_t label = labels_[static_cast<std::uint64_t>(cell)];
             if (label < 0x80 || label > 0x86) {
@@ -592,6 +618,10 @@ Planner::FineOutcome Planner::fine_search() {
             const Dir& dd = kDir[label - 0x80];
             cell = (cell_z(cell) - dd.dz) * ncx_ + (cell_x(cell) - dd.dx);
         }
+    }
+    if (meter_.over) {
+        fail_limit(RouteLimit::Memory);
+        return FineOutcome::Budget;
     }
     // The corridor: the path's blocks plus the missing corner of every 2 x 2 turn.
     for (const std::int32_t c : corridor_) {
@@ -621,8 +651,20 @@ Planner::FineOutcome Planner::fine_search() {
     *fine_tile(start_tx_, start_tz_) = kFineStart;
     fheap_.push_back({0, fseq_++, start_tx_, start_tz_});
     const auto after = [this](const FineNode& a, const FineNode& b) { return fine_after(a, b); };
-    const std::array<std::uint8_t, 8>& order =
-        pert_.reverse_fine_order ? kFineOrderReversed : kFineOrder;
+    std::array<std::uint8_t, 8> order = pert_.reverse_fine_order ? kFineOrderReversed : kFineOrder;
+    const auto swap_codes = [&order](std::uint8_t a, std::uint8_t b) {
+        std::iter_swap(std::find(order.begin(), order.end(), a),
+                       std::find(order.begin(), order.end(), b));
+    };
+    if (pert_.swap_fine_nw_ne) {
+        swap_codes(7, 5);
+    }
+    if (pert_.swap_fine_sw_se) {
+        swap_codes(1, 3);
+    }
+    if (pert_.swap_fine_w_e) {
+        swap_codes(0, 4);
+    }
     bool found = stored_tx_ == start_tx_ && stored_tz_ == start_tz_;
     while (!found && !fheap_.empty()) {
         note_memory();
@@ -651,6 +693,9 @@ Planner::FineOutcome Planner::fine_search() {
             if (!ok) {
                 continue;
             }
+            if (!grow(sizeof(FineNode))) {
+                break; // the loop head reports the memory limit
+            }
             *fine_tile(nx, nz) = d;
             fheap_.push_back(
                 {node.cost + (diagonal ? pert_.fine_diag_cost : 10u), fseq_++, nx, nz});
@@ -677,6 +722,10 @@ void Planner::finish_trace() {
         if (b == kFineStart) {
             break;
         }
+        if (!grow(1)) {
+            fail_limit(RouteLimit::Memory);
+            return;
+        }
         trace_dirs_.push_back(b);
         x -= kDir[b].dx;
         z -= kDir[b].dz;
@@ -687,6 +736,10 @@ void Planner::finish_trace() {
             res_.runs.back().steps < lim_.run_cap) {
             ++res_.runs.back().steps;
         } else {
+            if (!grow(sizeof(RouteRun))) {
+                fail_limit(RouteLimit::Memory);
+                return;
+            }
             res_.runs.push_back({*it, 1});
         }
     }
@@ -696,6 +749,9 @@ void Planner::finish_trace() {
     res_.best_score = static_cast<std::int32_t>(best_);
     res_.status = res_.runs.empty() ? RouteStatus::Arrived : RouteStatus::Planned;
     note_memory();
+    if (meter_.over) {
+        fail_limit(RouteLimit::Memory);
+    }
 }
 
 void Planner::set_work() {

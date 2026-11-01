@@ -368,6 +368,113 @@ def cmd_builder(count, seed):
     return out
 
 
+def fmt_q8(k):
+    """k / 256 as an exact decimal (at most 8 fractional digits)."""
+    t = ('%.8f' % (k / 256.0)).rstrip('0').rstrip('.')
+    return t
+
+
+COST_PATCH = None
+
+
+def run_engine(rows, start, goal):
+    from eng import Eng
+    e = Eng(rows).setup()
+    if COST_PATCH:
+        # class 0, type 0: the coarse cost bytes at 0x100d1140 + 0x400 + type * 8 + k (k even orthogonal, odd diagonal)
+        orth, diag = COST_PATCH
+        e.mu.mem_write(0x100d1140 + 0x400, bytes([orth, diag] * 4))
+    r = e.full(start, goal)
+    best = e.u32(e.W + 4 + 0x1044)
+    learned = e.u32(e.W + 0x1f74)
+    return r, best, learned
+
+
+def cmd_scores(count, seed):
+    """Goals at arbitrary Q24.8 positions: pins the score truncation (2304 - ftol(64 d^2)) and the best score."""
+    rng = random.Random(seed)
+    out = []
+    while len(out) < count:
+        w, h = 64, 64
+        rects = []
+        for _ in range(rng.randrange(0, 4)):
+            x0, z0 = rng.randrange(8, 50), rng.randrange(8, 50)
+            rects.append((x0, z0, x0 + rng.randrange(0, 20), z0 + rng.randrange(0, 20)))
+        rows = rows_from_rects(w, h, rects)
+        sx, sz = rng.randrange(2, 62), rng.randrange(2, 62)
+        if rows[sz][sx] != '.':
+            continue
+        sk = (rng.randrange(256), rng.randrange(256))
+        gx_k, gz_k = rng.randrange(4 * 256, 60 * 256), rng.randrange(4 * 256, 60 * 256)
+        # d^2 * 64 not a multiple of 1024 for almost every draw
+        start = (sx + sk[0] / 256.0, sz + sk[1] / 256.0)
+        goal = (gx_k / 256.0, gz_k / 256.0)
+        r, best, learned = run_engine(rows, start, goal)
+        runs = ' '.join('%s%d' % (DIRS[d], n) for d, n in r['runs']) if r['runs'] else '-'
+        end = '%d %d' % (int(r['cand'][0]), int(r['cand'][1])) if r['cand'] else '- -'
+        land = ' '.join('%d,%d,%d,%d' % t for t in rects) or '-'
+        out.append('score sc%d | %d %d | land %s | start %s %s | goal %s %s | %d | %s | end %s | best %d' % (
+            len(out), w, h, land, fmt_q8(int(sk[0] + sx * 256)), fmt_q8(int(sk[1] + sz * 256)),
+            fmt_q8(gx_k), fmt_q8(gz_k), r['status'], runs, end, best))
+    return out
+
+
+def cmd_ties(count, seed):
+    """Mirror-symmetric obstacles about the axis through the start and a goal on that axis: equal-cost
+    mirrored detours, decided only by the discovery order / FIFO ties of the original."""
+    rng = random.Random(seed)
+    out = []
+    while len(out) < count:
+        w = h = rng.choice([64, 64, 128])
+        sx = rng.randrange(w // 4, 3 * w // 4)
+        sz = rng.randrange(h // 2, 3 * h // 4)
+        a = rng.randrange(1, 10 if w == 64 else 22)
+        d = rng.randrange(0, 6)
+        t = rng.randrange(1, 4 if w == 64 else 8)
+        g = rng.randrange(2, 12)
+        rects = [(sx - a, sz - d - t, sx + a, sz - d - 1)]
+        for _ in range(rng.randrange(0, 5)):          # symmetric scatter
+            x = rng.randrange(max(0, sx - 20), sx)
+            z = rng.randrange(max(0, sz - 30), sz + 6)
+            rects.append((x, z, x, z))
+            rects.append((2 * sx - x, z, 2 * sx - x, z))
+        if rng.random() < 0.5:                         # symmetric side pillars
+            rects.append((sx - a - 3, sz - d - t - 4, sx - a - 2, sz - d - t + 2))
+            rects.append((sx + a + 2, sz - d - t - 4, sx + a + 3, sz - d - t + 2))
+        gx, gz = sx, sz - d - t - g
+        if gz < 2:
+            continue
+        start = (sx + 0.5, sz + 0.5)
+        goal = (gx + 0.5, gz + 0.5)
+        o = rng.randrange(4)
+
+        def tf(x, z):
+            if o == 0:
+                return x, z
+            if o == 1:
+                return x, h - 1 - z
+            if o == 2:
+                return z, x
+            return h - 1 - z, x
+        tr = []
+        for (x0, z0, x1, z1) in rects:
+            ax, az = tf(x0, z0)
+            bx, bz = tf(x1, z1)
+            tr.append((min(ax, bx), min(az, bz), max(ax, bx), max(az, bz)))
+        s2 = tf(sx, sz)
+        g2 = tf(gx, gz)
+        rows = rows_from_rects(w, h, tr)
+        if rows[s2[1]][s2[0]] != '.' or rows[g2[1]][g2[0]] != '.':
+            continue
+        r, best, learned = run_engine(rows, (s2[0] + 0.5, s2[1] + 0.5), (g2[0] + 0.5, g2[1] + 0.5))
+        runs = ' '.join('%s%d' % (DIRS[dd], n) for dd, n in r['runs']) if r['runs'] else '-'
+        land = ' '.join('%d,%d,%d,%d' % t4 for t4 in tr) or '-'
+        out.append('route ti%d | %d %d | land %s | band - | start %s %s | goal %s %s | %d | %s | learned %d' % (
+            len(out), w, h, land, fmt_f(s2[0] + 0.5), fmt_f(s2[1] + 0.5), fmt_f(g2[0] + 0.5), fmt_f(g2[1] + 0.5),
+            r['status'], runs, learned))
+    return out
+
+
 def main():
     cmd = sys.argv[1]
     count, seed = int(sys.argv[2]), int(sys.argv[3])
@@ -375,6 +482,13 @@ def main():
         lines = cmd_packer(count, seed)
     elif cmd == 'nibble':
         lines = cmd_nibble(count, seed)
+    elif cmd == 'scores':
+        lines = cmd_scores(count, seed)
+    elif cmd == 'ties':
+        global COST_PATCH
+        if len(sys.argv) > 5:
+            COST_PATCH = (int(sys.argv[4]), int(sys.argv[5]))
+        lines = cmd_ties(count, seed)
     elif cmd == 'builder':
         lines = cmd_builder(count, seed)
     elif cmd == 'routes':

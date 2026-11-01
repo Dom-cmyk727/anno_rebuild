@@ -28,7 +28,8 @@ struct Planned {
 sim::RouteResult plan(const sim::TileMapSource& map, std::int32_t sx, std::int32_t sz,
                       std::int32_t gx_q8, std::int32_t gz_q8,
                       const std::vector<sim::RouteStamp>& stamps = {},
-                      const std::vector<sim::CellCoord>& shore = {}, std::uint32_t cls = 0) {
+                      const std::vector<sim::CellCoord>& shore = {}, std::uint32_t cls = 0,
+                      const sim::RouteCostTable& costs = sim::RouteCostTable::original()) {
     const sim::CoastIndex index(map, shore);
     sim::RouteQuery q;
     q.start_x = sx;
@@ -37,7 +38,7 @@ sim::RouteResult plan(const sim::TileMapSource& map, std::int32_t sx, std::int32
     q.goal_z_q8 = gz_q8;
     q.nav_class = cls;
     q.stamps = stamps;
-    return sim::plan_route(index, q, sim::RouteLimits{}, sim::RouteCostTable::original());
+    return sim::plan_route(index, q, sim::RouteLimits{}, costs);
 }
 
 std::int32_t status_code(const sim::RouteResult& r) {
@@ -220,7 +221,9 @@ TEST_CASE("route fixtures: the walk-legality helper rejects the corrupt records 
     CHECK(rejected >= 3);
 }
 
-static void check_emulated_routes(const std::vector<std::string>& lines, std::uint32_t min_cases) {
+static void
+check_emulated_routes(const std::vector<std::string>& lines, std::uint32_t min_cases,
+                      const sim::RouteCostTable& costs = sim::RouteCostTable::original()) {
     std::uint32_t executed = 0, learning = 0, planned = 0, failed = 0, with_band = 0, big = 0;
     for (const std::string& line : lines) {
         const auto parts = split(line, '|');
@@ -240,7 +243,7 @@ static void check_emulated_routes(const std::vector<std::string>& lines, std::ui
         const auto st = words(parts[4]);
         const auto go = words(parts[5]);
         const auto res = plan(map, decimal_floor(st[1]), decimal_floor(st[2]), decimal_to_q8(go[1]),
-                              decimal_to_q8(go[2]), {}, band);
+                              decimal_to_q8(go[2]), {}, band, 0, costs);
         CAPTURE(name);
         CHECK(status_code(res) == std::stoi(parts[6]));
         CHECK(runs_to_string(res.runs) == parts[7]);
@@ -295,4 +298,48 @@ TEST_CASE("route fixtures: optional extra campaign file (ANNO_ROUTE_EXTRA, same 
         }
     }
     check_emulated_routes(lines, 1);
+}
+
+TEST_CASE("route fixtures: arbitrary Q24.8 goals pin the score truncation, the end tile and the "
+          "engine's best") {
+    std::uint32_t n = 0, inexact_scores = 0;
+    for (const std::string& line : fixture_lines("route_scores.txt")) {
+        const auto parts = split(line, '|');
+        const auto dims = words(parts[1]);
+        sim::TileMapSource map(std::stoi(dims[0]), std::stoi(dims[1]));
+        add_land(map, words(parts[2]));
+        const auto st = words(parts[3]);
+        const auto go = words(parts[4]);
+        const auto end = words(parts[7]);
+        const auto res = plan(map, decimal_floor(st[1]), decimal_floor(st[2]), decimal_to_q8(go[1]),
+                              decimal_to_q8(go[2]));
+        CAPTURE(parts[0]);
+        CHECK(q8_exact(go[1]));
+        CHECK(status_code(res) == std::stoi(parts[5]));
+        CHECK(runs_to_string(res.runs) == parts[6]);
+        if (end[1] != "-") {
+            CHECK(res.end_x == std::stoi(end[1]));
+            CHECK(res.end_z == std::stoi(end[2]));
+            // 64 d^2 is not a multiple of 1024 for these goals: the score truncates a fraction.
+            const std::int64_t dx = (2 * std::int64_t{res.end_x} + 1) * 128 - decimal_to_q8(go[1]);
+            const std::int64_t dz = (2 * std::int64_t{res.end_z} + 1) * 128 - decimal_to_q8(go[2]);
+            inexact_scores += ((dx * dx + dz * dz) % 1024 != 0) ? 1 : 0;
+        }
+        CHECK(res.best_score == std::stoi(words(parts[8])[1]));
+        ++n;
+    }
+    CHECK(n >= 100);
+    CHECK(inexact_scores >= 80);
+}
+
+TEST_CASE(
+    "route fixtures: mirror ties with a patched coarse cost table (turn cost == straight cost)") {
+    sim::RouteCostTable costs = sim::RouteCostTable::original();
+    costs.classes[0].open_orth = 3;
+    costs.classes[0].open_diag = 6;
+    check_emulated_routes(fixture_lines("route_ties_cost.txt"), 90, costs);
+}
+
+TEST_CASE("route fixtures: mirror ties with the default costs (discovery order and FIFO decide)") {
+    check_emulated_routes(fixture_lines("route_ties.txt"), 140);
 }

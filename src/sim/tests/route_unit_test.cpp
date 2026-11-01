@@ -242,7 +242,7 @@ TEST_CASE("route limits and costs: validation names the bad field, defaults are 
     CHECK(bad([](sim::RouteLimits& l) { l.run_cap = 256; }).find("run_cap") != std::string::npos);
     CHECK(bad([](sim::RouteLimits& l) { l.retry_cap = 256; }).find("retry_cap") !=
           std::string::npos);
-    CHECK(bad([](sim::RouteLimits& l) { l.unit_cap = 65536; }).find("unit_cap") !=
+    CHECK(bad([](sim::RouteLimits& l) { l.unit_cap = 1025; }).find("unit_cap") !=
           std::string::npos);
     CHECK(bad([](sim::RouteLimits& l) { l.coarse_budget = 0; }).find("coarse_budget") !=
           std::string::npos);
@@ -253,7 +253,7 @@ TEST_CASE("route limits and costs: validation names the bad field, defaults are 
     // The valid edges of each range (controls).
     CHECK(bad([](sim::RouteLimits& l) {
               l.retry_cap = 0;
-              l.unit_cap = 0;
+              l.unit_cap = 1024;
               l.run_cap = 255;
               l.goal_radius_tiles = 255;
           }).empty());
@@ -550,78 +550,116 @@ TEST_CASE("route density: kernel placement, truncated stamp tile, record-order c
 // perturbation: a wrong tie / order / cost still walks a legal route but is not the original's
 // ---------------------------------------------------------------------------------------------
 
-TEST_CASE("route perturbation: wrong order, tie or cost reach a legal endpoint but fail the exact "
+TEST_CASE("route perturbation: every wrong order, tie, cost or score rule walks a legal route but "
+          "fails the exact "
           "comparison") {
     struct Variant {
         std::string name;
         sim::route_detail::Perturbation p;
     };
-    std::vector<Variant> variants(4);
-    variants[0] = {"reverse fine order", {}};
-    variants[0].p.reverse_fine_order = true;
-    variants[1] = {"lifo fine ties", {}};
-    variants[1].p.lifo_fine_ties = true;
-    variants[2] = {"fine diagonal cost 20", {}};
-    variants[2].p.fine_diag_cost = 20;
-    variants[3] = {"lifo coarse ties", {}};
-    variants[3].p.lifo_coarse_ties = true;
+    std::vector<Variant> variants;
+    const auto add = [&](const char* name, auto mutate) {
+        Variant v{name, {}};
+        mutate(v.p);
+        variants.push_back(v);
+    };
+    add("reverse fine order", [](auto& p) { p.reverse_fine_order = true; });
+    add("lifo fine ties", [](auto& p) { p.lifo_fine_ties = true; });
+    add("fine diagonal cost 20", [](auto& p) { p.fine_diag_cost = 20; });
+    add("lifo coarse ties", [](auto& p) { p.lifo_coarse_ties = true; });
+    add("fine NW <-> NE swapped", [](auto& p) { p.swap_fine_nw_ne = true; });
+    add("fine SW <-> SE swapped", [](auto& p) { p.swap_fine_sw_se = true; });
+    add("fine W <-> E swapped", [](auto& p) { p.swap_fine_w_e = true; });
+    add("coarse straight step first", [](auto& p) { p.coarse_straight_first = true; });
+    add("coarse perpendicular turns swapped", [](auto& p) { p.coarse_swap_perp = true; });
+    add("coarse start order W,E,N,S", [](auto& p) { p.coarse_start_order_alt = true; });
+    add("score rounds instead of truncating", [](auto& p) { p.round_score = true; });
 
-    // Every vector of route_runs.txt and of the generated route_emulated.txt.
+    // The vectors: route_runs, the generated emulated routes (without shore cells), the mirror-tie
+    // scenarios and the arbitrary-goal score scenarios; each carries the original's runs and, where
+    // the fixture has them, the end tile and the engine's best score.
     struct Vec {
         sim::TileMapSource map;
         sim::RouteQuery q;
         std::string runs;
         std::int32_t status;
+        std::int32_t end_x = -1, end_z = -1, best = -1;
+        sim::RouteCostTable costs = sim::RouteCostTable::original();
     };
     std::vector<Vec> vecs;
-    for (const char* file : {"route_runs.txt", "route_emulated.txt"}) {
-        const bool emu = std::string(file) == "route_emulated.txt";
+    for (const char* file : {"route_runs.txt", "route_emulated.txt", "route_ties.txt",
+                             "route_ties_cost.txt", "route_scores.txt"}) {
+        const std::string f = file;
+        // route_runs: name|dims|land|start|goal|status|runs ; route_emulated / route_ties: ... band
+        // at 3 ; route_scores: name|dims|land|start|goal|status|runs|end|best
+        const std::size_t off =
+            (f == "route_emulated.txt" || f == "route_ties.txt" || f == "route_ties_cost.txt") ? 1
+                                                                                               : 0;
         for (const std::string& line : fixture_lines(file)) {
             const auto parts = split(line, '|');
             const auto dims = words(parts[1]);
             Vec v{sim::TileMapSource(std::stoi(dims[0]), std::stoi(dims[1])),
                   {},
-                  parts[emu ? 7 : 6],
-                  std::stoi(parts[emu ? 6 : 5])};
+                  parts[6 + off],
+                  std::stoi(parts[5 + off])};
+            if (f == "route_ties_cost.txt") {
+                v.costs.classes[0].open_orth = 3;
+                v.costs.classes[0].open_diag = 6;
+            }
             add_land(v.map, words(parts[2]));
-            const auto st = words(parts[emu ? 4 : 3]);
-            const auto go = words(parts[emu ? 5 : 4]);
+            const auto st = words(parts[3 + off]);
+            const auto go = words(parts[4 + off]);
             v.q.start_x = decimal_floor(st[1]);
             v.q.start_z = decimal_floor(st[2]);
             v.q.goal_x_q8 = decimal_to_q8(go[1]);
             v.q.goal_z_q8 = decimal_to_q8(go[2]);
-            if (emu && words(parts[3]).size() > 1 && words(parts[3])[1] != "-") {
+            if (f == "route_scores.txt") {
+                const auto e = words(parts[7]);
+                if (e[1] != "-") {
+                    v.end_x = std::stoi(e[1]);
+                    v.end_z = std::stoi(e[2]);
+                }
+                v.best = std::stoi(words(parts[8])[1]);
+            }
+            if (off == 1 && words(parts[3]).size() > 1 && words(parts[3])[1] != "-") {
                 continue; // band cells need the shore input; the plain vectors are enough here
             }
             vecs.push_back(std::move(v));
         }
     }
-    CHECK(vecs.size() >= 140);
+    CHECK(vecs.size() >= 300);
     for (const Variant& v : variants) {
         CAPTURE(v.name);
         std::uint32_t differing = 0, legal_differing = 0;
         for (const Vec& c : vecs) {
             const sim::CoastIndex index(c.map, {});
-            const auto exact =
-                sim::plan_route(index, c.q, sim::RouteLimits{}, sim::RouteCostTable::original());
+            const auto exact = sim::plan_route(index, c.q, sim::RouteLimits{}, c.costs);
             const auto wrong = sim::route_detail::plan_route_perturbed(
-                index, c.q, sim::RouteLimits{}, sim::RouteCostTable::original(), v.p);
+                index, c.q, sim::RouteLimits{}, c.costs, v.p);
             REQUIRE(runs_to_string(exact.runs) ==
                     c.runs); // the unperturbed engine is the original's
-            if (wrong.status == exact.status && wrong.end_x == exact.end_x &&
-                wrong.end_z == exact.end_z && runs_to_string(wrong.runs) != c.runs) {
+            if (c.end_x >= 0) {
+                REQUIRE(exact.end_x == c.end_x);
+                REQUIRE(exact.end_z == c.end_z);
+            }
+            if (c.best >= 0) {
+                REQUIRE(exact.best_score == c.best);
+            }
+            const bool same = wrong.status == exact.status && wrong.end_x == exact.end_x &&
+                              wrong.end_z == exact.end_z && wrong.best_score == exact.best_score &&
+                              runs_to_string(wrong.runs) == c.runs;
+            if (!same && wrong.status == exact.status) {
                 ++differing;
                 const Walk w = walk_runs(c.map, c.q.start_x, c.q.start_z, wrong.runs, 10);
-                if (w.problem.empty() && w.end_x == exact.end_x && w.end_z == exact.end_z) {
+                if (w.problem.empty() && w.end_x == wrong.end_x && w.end_z == wrong.end_z) {
                     ++legal_differing;
                 }
             }
         }
         MESSAGE(v.name << ": " << differing << " of " << vecs.size() << " vectors differ, "
-                       << legal_differing << " of them legal with the same endpoint");
+                       << legal_differing << " of them are legal routes");
         CHECK(differing >= 1);
-        CHECK(legal_differing >=
-              1); // legal route, same endpoint, different runs: only exact comparison sees it
+        CHECK(legal_differing >= 1); // a legal route that only the exact comparison rejects
     }
 }
 
@@ -1137,4 +1175,138 @@ TEST_CASE("route builder: removal and neighbour effects of the tile-derived band
     r.mn = 5;
     r.mx = 25;
     CHECK_FALSE(index.verify_against_clean_rebuild({}).empty());
+}
+
+TEST_CASE("route limits: memory is checked before every allocation of the path, the corridor and "
+          "the heaps") {
+    // The largest window (256 x 256 cells), a 1016-tile diagonal: the working set is far above the
+    // window arrays (6 bytes per cell), so a limit between the two fails INSIDE the search, not at
+    // the start.
+    sim::TileMapSource sea(2048, 2048);
+    const sim::CoastIndex index(sea, {});
+    const sim::RouteQuery q = tile_query(1024, 1024, 2040, 2040);
+    const auto costs = sim::RouteCostTable::original();
+    const auto control = sim::plan_route(index, q, sim::RouteLimits{}, costs);
+    REQUIRE(control.status == sim::RouteStatus::Planned);
+    const std::uint64_t high = control.work.bytes_high;
+    const std::uint64_t arrays = 256ull * 256ull * 6ull;
+    REQUIRE(high > arrays + 1000);
+    std::uint32_t failed = 0, passed = 0;
+    for (std::uint64_t limit = arrays + 1; limit <= high + 64; limit += (high - arrays) / 37 + 1) {
+        sim::RouteLimits l;
+        l.memory_bytes = limit;
+        const auto r = sim::plan_route(index, q, l, costs);
+        CAPTURE(limit);
+        if (limit >= high) {
+            CHECK(serialize(r) == serialize(control)); // valid control: enough room, same result
+            ++passed;
+        } else {
+            CHECK(r.status == sim::RouteStatus::BudgetExceeded);
+            CHECK(r.exceeded == sim::RouteLimit::Memory);
+            CHECK(r.runs.empty());
+            // The accounted high-water mark never passes the limit by more than the one allocation
+            // that was refused (a fine block with its ordinal, 68 bytes, is the largest).
+            CHECK(r.work.bytes_high <= limit + 68);
+            ++failed;
+        }
+    }
+    CHECK(failed >= 20);
+    CHECK(passed >= 1);
+    // The exact boundary: high passes, high - 1 fails.
+    sim::RouteLimits edge;
+    edge.memory_bytes = high;
+    CHECK(sim::plan_route(index, q, edge, costs).status == sim::RouteStatus::Planned);
+    edge.memory_bytes = high - 1;
+    CHECK(sim::plan_route(index, q, edge, costs).exceeded == sim::RouteLimit::Memory);
+    // A window of more than 32 blocks (a configured max_window_blocks) cannot overshoot either: the
+    // window arrays are accounted before they are allocated.
+    sim::TileMapSource wide(2600, 64);
+    const sim::CoastIndex wi(wide, {});
+    sim::RouteLimits big;
+    big.max_window_blocks = 64;
+    big.window_radius_tiles = 4000;
+    big.memory_bytes = 1000; // below the window arrays
+    const auto w = sim::plan_route(wi, tile_query(1300, 32, 1400, 32), big, costs);
+    CHECK(w.status == sim::RouteStatus::BudgetExceeded);
+    CHECK(w.exceeded == sim::RouteLimit::Memory);
+    big.memory_bytes = 64ull * 1024 * 1024;
+    CHECK(sim::plan_route(wi, tile_query(1300, 32, 1400, 32), big, costs).status ==
+          sim::RouteStatus::Planned);
+}
+
+TEST_CASE("route limits: unit_cap is bounded so the density work of a query is bounded") {
+    sim::RouteLimits l;
+    l.unit_cap = 1024;
+    CHECK(sim::validate(l).empty());
+    l.unit_cap = 1025;
+    CHECK_FALSE(sim::validate(l).empty());
+    // The worst legal case still plans: 1024 stamps on top of the goal.
+    sim::TileMapSource m(64, 64);
+    const sim::CoastIndex index(m, {});
+    sim::RouteQuery q = tile_query(4, 20, 40, 20);
+    for (int i = 0; i < 1500; ++i) {
+        q.stamps.push_back({40 + i % 3, 20 + i % 2, sim::StampKernel::K5});
+    }
+    l.unit_cap = 1024;
+    const auto r = sim::plan_route(index, q, l, sim::RouteCostTable::original());
+    CHECK(r.status == sim::RouteStatus::Planned);
+}
+
+TEST_CASE("route partial cells: a world that is not a multiple of 8 treats the tiles beyond its "
+          "edge as land") {
+    // 70 x 50 tiles: the last cell column holds tiles 64..69 (and 70, 71 outside), the last cell
+    // row 48..49.
+    sim::TileMapSource edge(70, 50);
+    edge.fill_rect(30, 10, 31, 30, false); // a wall to make the route non-trivial
+    // The same world padded to 72 x 56 with explicit land beyond the edge: the results must be
+    // identical.
+    sim::TileMapSource padded(72, 56);
+    padded.fill_rect(30, 10, 31, 30, false);
+    padded.fill_rect(70, 0, 71, 55, false);
+    padded.fill_rect(0, 50, 71, 55, false);
+    const sim::CoastIndex ie(edge, {});
+    const sim::CoastIndex ip(padded, {});
+    CHECK(ie.cells_x() == 9);
+    CHECK(ie.cells_z() == 7);
+    CHECK(ie.mask(8, 0) != 0xfff); // the partial column is not open
+    CHECK(ie.mask(8, 0) == ip.mask(8, 0));
+    CHECK(ie.mask(0, 6) == ip.mask(0, 6));
+    CHECK(ie.mask(8, 6) == ip.mask(8, 6));
+    const auto costs = sim::RouteCostTable::original();
+    struct Case {
+        int sx, sz, gx, gz;
+    };
+    // Starts and goals in and beyond the partial cells; goals beyond the world edge (the outside is
+    // land).
+    const Case cases[] = {{60, 20, 69, 20}, {60, 49, 69, 49}, {10, 49, 65, 49}, {66, 5, 66, 45},
+                          {10, 10, 69, 49}, {60, 20, 73, 20}, {20, 40, 20, 54}, {69, 0, 69, 49},
+                          {5, 5, 71, 52},   {68, 48, 40, 5}};
+    for (const Case& c : cases) {
+        CAPTURE(c.sx);
+        CAPTURE(c.sz);
+        CAPTURE(c.gx);
+        CAPTURE(c.gz);
+        const auto a =
+            sim::plan_route(ie, tile_query(c.sx, c.sz, c.gx, c.gz), sim::RouteLimits{}, costs);
+        const auto b =
+            sim::plan_route(ip, tile_query(c.sx, c.sz, c.gx, c.gz), sim::RouteLimits{}, costs);
+        CHECK(runs_to_string(a.runs) == runs_to_string(b.runs));
+        CHECK(a.status == b.status);
+        CHECK(a.end_x == b.end_x);
+        CHECK(a.end_z == b.end_z);
+        if (a.status == sim::RouteStatus::Planned) {
+            const Walk w = walk_runs(edge, c.sx, c.sz, a.runs, 10);
+            CHECK(w.problem.empty());
+            CHECK(w.end_x < 70);
+            CHECK(w.end_z < 50);
+        }
+    }
+    // A goal one tile beyond the east edge ends on the last column, d = 1.5; two beyond ends at d
+    // = 2.5.
+    const auto east = sim::plan_route(ie, tile_query(60, 20, 71, 20), sim::RouteLimits{}, costs);
+    REQUIRE(east.status == sim::RouteStatus::Planned);
+    CHECK(east.end_x == 69);
+    // The start tile itself may lie in the partial column.
+    CHECK(sim::plan_route(ie, tile_query(69, 49, 69, 49), sim::RouteLimits{}, costs).status ==
+          sim::RouteStatus::Arrived);
 }

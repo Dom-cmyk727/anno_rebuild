@@ -353,6 +353,18 @@ struct Perturbation {
     bool lifo_coarse_ties = false;
     /// Corner cutting allowed in the fine search (a diagonal only needs its target tile).
     bool allow_corner_cut = false;
+    /// Mirror pairs of the fine discovery order swapped: NW <-> NE, SW <-> SE, W <-> E.
+    bool swap_fine_nw_ne = false;
+    bool swap_fine_sw_se = false;
+    bool swap_fine_w_e = false;
+    /// Coarse labelled expansion: the straight step is tried first (instead of last), or the two
+    /// perpendicular turns are tried in the opposite order (S before N, E before W).
+    bool coarse_straight_first = false;
+    bool coarse_swap_perp = false;
+    /// Coarse start-cell order N, S, W, E replaced by W, E, N, S.
+    bool coarse_start_order_alt = false;
+    /// The goal score rounds 64 d^2 to the nearest integer instead of truncating it (ftol).
+    bool round_score = false;
 };
 
 [[nodiscard]] RouteResult plan_route_perturbed(const CoastIndex& index, const RouteQuery& query,

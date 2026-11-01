@@ -39,8 +39,10 @@ std::string validate(const RouteLimits& l) {
     if (l.retry_cap > 255) {
         return fail("route limits: retry_cap must be at most 255");
     }
-    if (l.unit_cap > 65535) {
-        return fail("route limits: unit_cap must be at most 65535");
+    if (l.unit_cap > 1024) {
+        // The density work of one search is unit_cap stamps x 64 candidates x the goal cells; at
+        // 1024 and 9 searches it stays below 6 million operations per query.
+        return fail("route limits: unit_cap must be at most 1024");
     }
     if (l.coarse_budget < 1) {
         return fail("route limits: coarse_budget must be at least 1");

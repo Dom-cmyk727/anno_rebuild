@@ -71,21 +71,21 @@ inline std::vector<std::string> fixture_lines(const std::string& name) {
     return lines;
 }
 
-/// Decimal "40.5" / "-2.5" to Q24.8, rounding half away from zero (fixture goals are tile centres
-/// or x.1-style decimals; only exact Q8 values reproduce the f32 emulation bit for bit).
+/// Decimal "40.5" / "-2.5" to Q24.8, rounding half away from zero (a goal that is exact in Q24.8 - tile
+/// centres, k/256 - converts exactly; only those reproduce the f32 emulation bit for bit).
 inline std::int32_t decimal_to_q8(const std::string& s) {
     const bool neg = !s.empty() && s[0] == '-';
     const std::string t = neg ? s.substr(1) : s;
     const auto dot = t.find('.');
     std::int64_t whole = std::stoll(t.substr(0, dot));
-    std::int64_t micro = 0;
+    std::int64_t nano = 0;
     if (dot != std::string::npos) {
         std::string frac = t.substr(dot + 1);
-        frac.resize(6, '0');
-        micro = std::stoll(frac.substr(0, 6));
+        frac.resize(9, '0');
+        nano = std::stoll(frac.substr(0, 9));
     }
-    const std::int64_t q8 = (whole * 1000000 + micro) * 256;
-    const std::int64_t r = (q8 + 500000) / 1000000;
+    const std::int64_t q8 = (whole * 1000000000 + nano) * 256;
+    const std::int64_t r = (q8 + 500000000) / 1000000000;
     return static_cast<std::int32_t>(neg ? -r : r);
 }
 
@@ -95,8 +95,8 @@ inline bool q8_exact(const std::string& s) {
         return true;
     }
     std::string frac = s.substr(dot + 1);
-    frac.resize(6, '0');
-    return (std::stoll(frac) * 256) % 1000000 == 0;
+    frac.resize(9, '0');
+    return (std::stoll(frac) * 256) % 1000000000 == 0;
 }
 
 /// floor of a decimal (the fixtures' start points are positive).

@@ -285,6 +285,12 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
             const int dy = o.y > cy ? 1 + (o.y - cy) : cy - o.y;
             const int dx = o.x > cx ? 1 + (o.x - cx) : cx - o.x;
             const bool want = dy <= 24 && dx <= t30[static_cast<std::size_t>(dy)];
+            // The frame guard: the loaded position is inside the island (OCCUR floats are
+            // island-local, the loader added the origin).
+            CHECK(o.x >= after.tiles.x0());
+            CHECK(o.y >= after.tiles.y0());
+            CHECK(o.x < std::int64_t{after.tiles.x0()} + after.tiles.width());
+            CHECK(o.y < std::int64_t{after.tiles.y0()} + after.tiles.height());
             in_reach += want ? 1 : 0;
             const bool has =
                 std::binary_search(o.discovered.begin(), o.discovered.end(), sim::PlayerId{0});

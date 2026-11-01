@@ -11,8 +11,12 @@
 //   dy = trunc(31 - 32.5) = -1, 37 <= 168. Hull 397/256: xmin = trunc((57.5 - 1.55)) = 55 >= 54.
 //   Seed 1234: the name draw is T[1235] = 30195 (MSVC rand() from 1); mod 4 = 3 -> names[3].
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <variant>
 #include <vector>
@@ -904,4 +908,129 @@ TEST_CASE("founding: the reveal centre follows the ACCEPTED rotation, not the in
     REQUIRE(r.ok());
     CHECK(isl(w).find_building(r.records[0].building)->rotation == 1);
     CHECK(isl(w).cities[0]->player_mask == std::vector<sim::PlayerId>{sim::PlayerId{0}});
+}
+
+namespace {
+
+/// One character per 2 x 4 tiles for x 30..79: the owner digit, '.' for neutral, 'K' on a
+/// warehouse.
+std::string ownership_diagram(const sim::World& w, std::uint32_t y0, std::uint32_t y1) {
+    const sim::Island& is = isl(w);
+    std::string out;
+    for (std::uint32_t y = y0; y < y1; y += 4) {
+        for (std::uint32_t x = 30; x < 80; x += 2) {
+            const std::uint64_t idx = y * 120ULL + x;
+            char c = '.';
+            if (is.tiles.owner(idx) != w.config().neutral_owner) {
+                c = static_cast<char>('0' + is.tiles.owner(idx));
+            }
+            if (is.tiles.object(idx) == 1302) {
+                c = 'K';
+            }
+            out.push_back(c);
+        }
+        out.push_back('\n');
+    }
+    return out;
+}
+
+std::string holds_text(const sim::World& w, std::uint64_t ship) {
+    std::string t;
+    for (const sim::ShipHold& h : sim::find_figure(w.figures(), sim::FigureId{ship})->holds) {
+        t += " [goods " + std::to_string(h.goods) + ": " + std::to_string(h.amount_88) + "/256 t]";
+    }
+    return t;
+}
+
+} // namespace
+
+TEST_CASE("founding demonstration: command, result, territory, a conflict and the replay") {
+    // The assertions always run; ANNO_FOUNDING_DEMO=1 prints the demonstration:
+    //   ANNO_FOUNDING_DEMO=1 anno_sim_tests -tc='founding demonstration*'
+    const bool print = std::getenv("ANNO_FOUNDING_DEMO") != nullptr;
+    std::ostringstream o;
+    Setup s = tall_setup(30); // player 1's ship #4 lies next to the same site as player 0's
+    // A second ship of player 1 (#7) beside the site (50, 62), for its later, legal founding.
+    sim::ScenarioSpec::FigureSpec second = s.spec.figures[3];
+    second.pos.y = static_cast<std::int32_t>(62 * kT + 2 * kT + kT / 2);
+    s.spec.figures.push_back(second);
+    sim::World w = make(s);
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    rec.checkpoint();
+
+    o << "== world before founding (tick 0, seed 1234) ==\n"
+      << "island 0: 120 x 200 tiles, coast column x = 50 (land west, sea east), all neutral\n"
+      << "player 0: gold " << w.players().find(sim::PlayerId{0})->money
+      << ", ship #1 at (57.5, 32.5)," << holds_text(w, 1) << "\n"
+      << "player 1: gold " << w.players().find(sim::PlayerId{1})->money
+      << ", ship #4 at (57.5, 32.5), ship #7 at (57.5, 64.5)\n"
+      << "state hash " << anno::test::hex16(w.state_hash()) << "\n\n";
+
+    const sim::Command c0 = control_command(0);
+    const auto& f0 = std::get<sim::FoundCmd>(c0.body);
+    o << "== command: issuer 0, FoundCmd ship " << f0.ship.v << ", type " << f0.placement.type.v
+      << ", origin (" << f0.placement.x << ", " << f0.placement.y << "), rotation "
+      << int{f0.placement.rotation} << ", click (" << f0.click_x << ", " << f0.click_y << ")\n";
+    const auto wire = sim::encode_record(c0.body);
+    REQUIRE(wire.ok());
+    o << "wire record (" << wire.value().size() << " bytes):";
+    for (const std::uint8_t b : wire.value()) {
+        char hex[4];
+        std::snprintf(hex, sizeof hex, " %02x", b);
+        o << hex;
+    }
+    o << "\n";
+    const sim::ApplyResult r0 = rec.submit(c0);
+    REQUIRE(r0.ok());
+    const sim::Building* b0 = isl(w).find_building(r0.records[0].building);
+    REQUIRE(b0 != nullptr);
+    o << "== result: " << sim::reject_name(r0.status) << "\n"
+      << "city 0 of player 0, name '" << isl(w).cities[0]->name << "'; warehouse type "
+      << b0->type.v << " at (" << b0->x << ", " << b0->y << "), rotation " << int{b0->rotation}
+      << ", byte0f 0x" << std::hex << int{b0->byte0f} << std::dec << ", KONTID " << b0->kontor_id
+      << "\n"
+      << "gold " << w.players().find(sim::PlayerId{0})->money
+      << " (-350); ship #1 holds:" << holds_text(w, 1) << "\nPRNG cursor " << w.rng().cursor()
+      << " (one draw); tiles of city 0: " << owned_by(w, 0)
+      << "\nterritory (x 30..79 in steps of 2, rows 0..63 in steps of 4):\n"
+      << ownership_diagram(w, 0, 64) << "\n";
+
+    const std::int64_t gold1 = w.players().find(sim::PlayerId{1})->money;
+    const sim::ApplyResult rc = rec.submit(command_p1(30));
+    o << "== conflicting command: player 1 with ship #4 targets the same site ==\nresult: "
+      << sim::reject_name(rc.status) << "; player 1 gold "
+      << w.players().find(sim::PlayerId{1})->money << " (was " << gold1 << ")\n\n";
+    sim::Command c1 = command_p1(62);
+    found_of(c1).ship = sim::FigureId{7};
+    const sim::ApplyResult r1 = rec.submit(c1);
+    o << "== player 1 founds at (50, 62) with ship #7: " << sim::reject_name(r1.status) << " ==\n"
+      << "city 1 owned by player " << isl(w).cities[1]->owner.v
+      << "; the reveal added player 1 to city 0's mask (" << isl(w).cities[0]->player_mask.size()
+      << " players); player 1 discovered " << w.players().find(sim::PlayerId{1})->discovery.size()
+      << " owners\n"
+      << ownership_diagram(w, 0, 100) << "\n";
+    rec.advance(5000);
+    rec.checkpoint();
+    const sim::ReplayLog log = rec.log();
+    sim::World fresh = make(s);
+    auto outcome = sim::replay(fresh, log);
+    REQUIRE(outcome.ok());
+    o << "== replay of the recorded session (" << log.entries.size()
+      << " entries) in a fresh world ==\n"
+      << "checkpoints " << outcome.value().checkpoints_matched << "/"
+      << outcome.value().checkpoints_total << " matched; final hash "
+      << anno::test::hex16(fresh.state_hash()) << " (live world "
+      << anno::test::hex16(w.state_hash()) << ")\n";
+    CHECK(rc.status == sim::Reject::SiteOwned);
+    CHECK(w.players().find(sim::PlayerId{1})->money == gold1 - 350);
+    CHECK(r1.ok());
+    CHECK(isl(w).cities[0]->player_mask.size() == 2);
+    CHECK(outcome.value().reproduced());
+    CHECK(outcome.value().checkpoints_matched == 2);
+    CHECK(fresh.state_hash() == w.state_hash());
+    if (print) {
+        std::cout << o.str();
+    }
 }

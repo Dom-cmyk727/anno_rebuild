@@ -22,6 +22,7 @@
 
 #include <anno/formats/figuren.hpp>
 #include <anno/sim/archive.hpp>
+#include <anno/sim/field_count.hpp>
 #include <anno/sim/figure_veto.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/state_fields.hpp>
@@ -256,7 +257,7 @@ std::vector<DigestCase> read_vectors() {
 
 TEST_CASE("figure digest: the registry identity of figure facts equals the independent reference") {
     const std::vector<DigestCase> cases = read_vectors();
-    REQUIRE(cases.size() >= 15);
+    REQUIRE(cases.size() == 15); // tools/figure_digest_ref.py CASES
     std::vector<std::uint64_t> seen;
     for (const DigestCase& c : cases) {
         INFO("case " << c.name);
@@ -345,3 +346,8 @@ TEST_CASE("ore objects: the discovery-set wire bytes, derived by hand") {
     want_list.insert(want_list.end(), empty_bytes.begin(), empty_bytes.end());
     CHECK(lw.data() == want_list);
 }
+
+// A ninth FigureType member must reach the digest, the reference and its vectors.
+static_assert(sim::field_count<sim::FigureType>() == 8,
+              "a FigureType member needs a line in digest_registry, figure_digest_ref.py and the "
+              "vectors");

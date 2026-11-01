@@ -127,6 +127,9 @@ if(ANNO_BUILD_TESTS)
   # it with test_names_are_selectable as a mandatory preflight.
   find_package(Python3 COMPONENTS Interpreter)
   if(Python3_FOUND)
+    add_test(NAME figure_digest_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/figure_digest_ref.py --check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/figure_digest_vectors.txt)
     add_test(NAME test_verdict_contract
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
   endif()

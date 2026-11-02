@@ -2034,59 +2034,8 @@ struct Seat {
 
 struct OpeningOut {
     std::vector<OStep> ledger;
-    bool moved = false;
     std::array<sim::BuildingId, 2> warehouses{};
 };
-
-/// The water tile nearest to the ship from which an UnloadCmd (`probe`, seat's own warehouse) is
-/// accepted with the ship standing there AND the route engine plans the way to it exactly. Trial
-/// copies only (a ship may be placed on a copy; the executed world never).
-std::optional<std::pair<int, int>> pick_unload_goal(const sim::World& real, std::uint64_t ship_id,
-                                                    const sim::Building& wh,
-                                                    const sim::Command& probe) {
-    const sim::WorldTileSource src(real, sim::ship_route_terrain_options());
-    const sim::CoastIndex index(src, {});
-    const sim::Figure& ship = ship_of(real, ship_id);
-    struct Cand {
-        int d, x, y;
-    };
-    std::vector<Cand> cands;
-    const int sx = ship.pos.x >> 8, sy = ship.pos.y >> 8;
-    for (int dy = -10; dy <= 10; ++dy) {
-        for (int dx = -10; dx <= 10; ++dx) {
-            const int x = wh.x + 2 + dx, y = wh.y + 2 + dy;
-            if (x >= 0 && y >= 0 && src.tile_is_water(x, y) && (x != sx || y != sy)) {
-                cands.push_back({std::max(std::abs(x - sx), std::abs(y - sy)), x, y});
-            }
-        }
-    }
-    std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) {
-        return a.d != b.d ? a.d < b.d : (a.y != b.y ? a.y < b.y : a.x < b.x);
-    });
-    int tried = 0;
-    for (const Cand& c : cands) {
-        if (tried++ > 600) {
-            break;
-        }
-        sim::World t = real;
-        sim::WorldTestAccess::relocate(t, sim::FigureId{ship_id},
-                                       sim::FixedPos{c.x * 256 + 128, c.y * 256 + 128}); // trial
-        if (!t.apply(probe).ok()) {
-            continue;
-        }
-        sim::RouteQuery q;
-        q.start_x = ship.pos.x >> 8;
-        q.start_z = ship.pos.y >> 8;
-        q.goal_x_q8 = c.x * 256 + 128;
-        q.goal_z_q8 = c.y * 256 + 128;
-        const sim::RouteResult r =
-            sim::plan_route(index, q, sim::RouteLimits{}, sim::RouteCostTable::original());
-        if (r.status == sim::RouteStatus::Planned && r.end_x == c.x && r.end_z == c.y) {
-            return std::pair{c.x, c.y};
-        }
-    }
-    return std::nullopt;
-}
 
 /// Orders the legs (MoveCmd) and advances until each ship reported ShipArrived. No founding.
 SailOutcome sail_phase(Driver& d, sim::World& w, const std::vector<SailLeg>& legs, bool timing) {
@@ -2308,7 +2257,7 @@ OpeningOut run_opening(sim::World& w, sim::Recorder* rec, const std::vector<Sail
     }
     REQUIRE(city_count(w) == 2);
 
-    // ---- 2. is a move needed to be within the unloading range? ---------------------------------
+    // ---- 2. is the arrival position within the unloading range? ---------------------------------
     const auto first_hold = [&](const Seat& s) {
         const Holds& h = ship_of(w, s.ship).holds;
         for (std::uint32_t i = 0; i < h.size(); ++i) {
@@ -2325,47 +2274,27 @@ OpeningOut run_opening(sim::World& w, sim::Recorder* rec, const std::vector<Sail
                             sim::UnloadCmd{sim::FigureId{s.ship}, wh, hold,
                                            ship_of(w, s.ship).holds.at(hold).goods, tons}};
     };
-    std::vector<SailLeg> moves;
+    // lan5-ship-a needs no move: a probe UnloadCmd on a copy at the arrival position is accepted
+    // for both seats. A move-then-unload path is NOT covered by this test; if the probe is ever
+    // refused the case fails with the numbers instead of moving the ship.
     for (std::size_t i = 0; i < 2; ++i) {
         const Seat& s = seats[i];
         const sim::Command probe = unload_cmd(s, s.warehouse, first_hold(s), 1);
         sim::World trial = w;
         const sim::ApplyResult pr = trial.apply(probe);
         const sim::Figure& sh = ship_of(w, s.ship);
+        const sim::Building& kb = *w.find_building(s.warehouse);
         if (detail) {
             MESSAGE("seat " << s.player << ": ship tile (" << (sh.pos.x >> 8) << ", "
-                            << (sh.pos.y >> 8) << "), warehouse origin ("
-                            << w.find_building(s.warehouse)->x << ", "
-                            << w.find_building(s.warehouse)->y
+                            << (sh.pos.y >> 8) << "), warehouse origin (" << kb.x << ", " << kb.y
                             << "), probe unload at the arrival position: "
                             << sim::reject_name(pr.status));
         }
-        if (pr.status == ok) {
-            continue;
-        }
-        REQUIRE_MESSAGE(pr.status == sim::Reject::OutOfRange,
-                        "the probe unload is refused for " << sim::reject_name(pr.status));
-        const auto goal = pick_unload_goal(w, s.ship, *w.find_building(s.warehouse), probe);
-        REQUIRE_MESSAGE(goal.has_value(),
-                        "seat " << s.player
-                                << ": no reachable water tile inside the radius-5 disc");
-        SailLeg m;
-        m.player = s.player;
-        m.ship = s.ship;
-        m.goal_x = goal->first;
-        m.goal_y = goal->second;
-        moves.push_back(m);
-        if (detail) {
-            MESSAGE("seat " << s.player << " moves to (" << m.goal_x << ", " << m.goal_y << ")");
-        }
-    }
-    if (!moves.empty()) {
-        out.moved = true;
-        observe();
-        const SailOutcome mv = sail_phase(d, w, moves, false);
-        REQUIRE(mv.all_arrived);
-        CHECK(mv.worst_excess_q8 <= 0); // a normal move, not a jump
-        rebase();
+        REQUIRE_MESSAGE(pr.status == ok,
+                        "seat " << s.player << ": the unload at the arrival position is refused ("
+                                << sim::reject_name(pr.status) << "): ship tile ("
+                                << (sh.pos.x >> 8) << ", " << (sh.pos.y >> 8)
+                                << "), Kontor origin (" << kb.x << ", " << kb.y << ")");
     }
 
     // ---- 3. the rival's attempts (information is shared, access is not) ----------------------
@@ -2483,7 +2412,8 @@ OpeningOut run_opening(sim::World& w, sim::Recorder* rec, const std::vector<Sail
         reload();
     }
 
-    // ---- 6. the ordinary buildings: the commands refused before now succeed ------------------
+    // ---- 6. the ordinary buildings: the commands refused before now succeed (identical commands)
+    // ------------------
     for (std::size_t i = 0; i < 2; ++i) {
         Seat& s = seats[i];
         s.build_cost.assign(sim::kOriginalWarehouseGoods, 0);
@@ -2600,6 +2530,7 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
           "two seats, reload and replay") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
+        // Without the game files this case returns early with a MESSAGE: not an executed pass.
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
@@ -2669,7 +2600,6 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
     CHECK(city_count(w) == 0);
     const sim::World at_arrival = w; // the same voyage; the variants below start from it
     const OpeningOut main_run = run_opening(w, &rec, legs, rs.types, 0, true);
-    MESSAGE("the unloading position needed a move: " << std::string(main_run.moved ? "yes" : "no"));
     REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     const std::vector<std::uint8_t> final_save = w.save();
     const std::uint64_t final_hash = w.state_hash();
@@ -2682,7 +2612,6 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
         sim::World v = at_arrival;
         const OpeningOut var = run_opening(v, nullptr, legs, rs.types, mask, false);
         CHECK(var.ledger == main_run.ledger);
-        CHECK(var.moved == main_run.moved);
         CHECK(v.state_hash() == final_hash);
         CHECK(v.save() == final_save);
     }
@@ -2705,7 +2634,9 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
     CHECK(outcome.value().reproduced());
     CHECK(fresh.value().state_hash() == final_hash);
     CHECK(fresh.value().save() == final_save);
-    for (const int variant : {0, 1}) { // 0: fewer tons (also exported), 1: another hold
+    {
+        // One in-process tampered replay (one tons fewer, also exported); the changed hold index
+        // and the exported log are covered by the fresh-process CLI run of the exported log.
         sim::ReplayLog tampered = read.value();
         bool edited = false;
         for (sim::ReplayEntry& e : tampered.entries) {
@@ -2713,24 +2644,18 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
                 auto* u = std::get_if<sim::UnloadCmd>(&c.body);
                 if (u != nullptr && !edited && c.issuer.v == 0 && u->ship == sim::FigureId{1} &&
                     u->warehouse == main_run.warehouses[0] && u->tons > 1) {
-                    if (variant == 0) {
-                        u->tons -= 1;
-                    } else {
-                        u->hold += 1;
-                    }
+                    u->tons -= 1;
                     edited = true;
                 }
             }
         }
         REQUIRE(edited);
-        if (variant == 0) {
-            if (const char* bad_path = std::getenv("ANNO_OPENING_LOG_TAMPERED");
-                bad_path != nullptr && *bad_path) {
-                const auto bad_bytes = sim::write_log(tampered);
-                REQUIRE(bad_bytes.ok());
-                const std::string e = export_log_if_requested(bad_path, bad_bytes.value());
-                REQUIRE_MESSAGE(e.empty(), e);
-            }
+        if (const char* bad_path = std::getenv("ANNO_OPENING_LOG_TAMPERED");
+            bad_path != nullptr && *bad_path) {
+            const auto bad_bytes = sim::write_log(tampered);
+            REQUIRE(bad_bytes.ok());
+            const std::string e = export_log_if_requested(bad_path, bad_bytes.value());
+            REQUIRE_MESSAGE(e.empty(), e);
         }
         auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
         REQUIRE(fresh2.ok());

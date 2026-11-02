@@ -31,6 +31,7 @@
 #include <anno/sim/route_world.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/scenario_formats.hpp>
+#include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/synthetic.hpp>
@@ -1661,10 +1662,12 @@ std::optional<std::uint8_t> window_level(const sim::Island& is, const sim::Build
     return level;
 }
 
-/// The building stands with `height` as byte0f and on every footprint tile.
-void check_placed(const sim::World& w, const sim::BuildingType& t, const Origin& o) {
-    const sim::Island& is = *w.islands()[0];
-    const sim::Building* b = w.building_at(kBuildCity, o.x, o.y);
+/// The building stands with `height` as byte0f and on every footprint tile (city `ref` of the
+/// island slot `ref.island`).
+void check_placed_in(const sim::World& w, sim::CityRef ref, const sim::BuildingType& t,
+                     const Origin& o) {
+    const sim::Island& is = *w.islands()[ref.island.v];
+    const sim::Building* b = w.building_at(ref, o.x, o.y);
     REQUIRE(b != nullptr);
     CHECK(b->type == t.id);
     CHECK(static_cast<unsigned>(b->byte0f) == o.height);
@@ -1681,6 +1684,10 @@ void check_placed(const sim::World& w, const sim::BuildingType& t, const Origin&
             CHECK(static_cast<unsigned>(is.tiles.item_height(idx)) == o.height);
         }
     }
+}
+
+void check_placed(const sim::World& w, const sim::BuildingType& t, const Origin& o) {
+    check_placed_in(w, kBuildCity, t, o);
 }
 
 std::vector<std::uint8_t> footprint_heights(const sim::World& w, const sim::BuildingType& t,
@@ -1947,6 +1954,784 @@ TEST_CASE(
             REQUIRE(bad_bytes.ok());
             const std::string e = export_log_if_requested(bad_path, bad_bytes.value());
             REQUIRE_MESSAGE(e.empty(), e);
+        }
+        auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
+        REQUIRE(fresh2.ok());
+        auto bad = sim::replay(fresh2.value(), tampered);
+        CHECK((!bad.ok() || !bad.value().reproduced()));
+    }
+}
+
+// ---- MAP-CARGO-1 U4: the real opening loop without fixture grants -------------------------------
+// The sailed canary's two participants (seat 0 and seat 2, different owners) on the UNCHANGED
+// candidate and loadout: sail, arrive, found (FoundCmd), move normally only if the unloading range
+// of docs/sim/ship-cargo.md section 5 requires it, UnloadCmd one command per hold, then ordinary
+// BuildCmds on the founded city's own territory. Every change of the executed world goes through
+// public commands (Recorder::submit / World::apply) and World::advance; the test only reads and
+// SEARCHES copies. Nothing is granted: no stock, no gold, no relocation, no free type.
+
+namespace {
+
+using Holds = std::vector<sim::ShipHold>;
+
+const sim::Figure& ship_of(const sim::World& w, std::uint64_t id) {
+    const sim::Figure* f = sim::find_figure(w.figures(), sim::FigureId{id});
+    REQUIRE(f != nullptr);
+    return *f;
+}
+
+std::optional<sim::CityRef> city_of_player(const sim::World& w, std::uint32_t player) {
+    for (std::size_t i = 0; i < w.islands().size(); ++i) {
+        const auto& isl = w.islands()[i];
+        if (!isl) {
+            continue;
+        }
+        for (std::size_t j = 0; j < isl->cities.size(); ++j) {
+            const auto& c = isl->cities[j];
+            if (c.has_value() && c->owner == sim::PlayerId{player}) {
+                return sim::CityRef{sim::IslandId{static_cast<std::uint32_t>(i)},
+                                    sim::CityNo{static_cast<std::uint32_t>(j)}};
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::size_t city_count(const sim::World& w) {
+    std::size_t n = 0;
+    for (const auto& isl : w.islands()) {
+        for (const auto& c : isl ? isl->cities : decltype(isl->cities){}) {
+            n += c.has_value() ? 1 : 0;
+        }
+    }
+    return n;
+}
+
+/// One row of the comparison ledger: what a public command answered and what the world holds
+/// after it, for both seats. Two runs of the same commands must produce equal rows.
+struct OStep {
+    std::string label;
+    sim::Reject status = sim::Reject::None;
+    std::uint64_t moved_88 = 0;
+    std::int64_t gold0 = 0, gold2 = 0;
+    std::vector<std::uint32_t> stock0, stock2;
+    Holds holds0, holds2;
+    std::uint64_t hash = 0;
+    friend bool operator==(const OStep&, const OStep&) = default;
+};
+
+/// What the accounting of one seat needs (all goods quantities in 1/256 ton).
+struct Seat {
+    std::uint32_t player = 0;
+    std::uint64_t ship = 0;
+    std::optional<sim::CityRef> city;
+    sim::BuildingId warehouse;
+    Holds start_holds;
+    std::int64_t gold_start = 0, gold_spent = 0, gold_observed = 0, last_gold = 0;
+    std::vector<std::int64_t> found_cost, credits, build_cost, observed;
+    std::vector<std::uint32_t> last_stock;
+    Origin a, b; // PIONIER site, HANDWERK site (terrain level in .height)
+};
+
+struct OpeningOut {
+    std::vector<OStep> ledger;
+    bool moved = false;
+    std::array<sim::BuildingId, 2> warehouses{};
+};
+
+/// The water tile nearest to the ship from which an UnloadCmd (`probe`, seat's own warehouse) is
+/// accepted with the ship standing there AND the route engine plans the way to it exactly. Trial
+/// copies only (a ship may be placed on a copy; the executed world never).
+std::optional<std::pair<int, int>> pick_unload_goal(const sim::World& real, std::uint64_t ship_id,
+                                                    const sim::Building& wh,
+                                                    const sim::Command& probe) {
+    const sim::WorldTileSource src(real, sim::ship_route_terrain_options());
+    const sim::CoastIndex index(src, {});
+    const sim::Figure& ship = ship_of(real, ship_id);
+    struct Cand {
+        int d, x, y;
+    };
+    std::vector<Cand> cands;
+    const int sx = ship.pos.x >> 8, sy = ship.pos.y >> 8;
+    for (int dy = -10; dy <= 10; ++dy) {
+        for (int dx = -10; dx <= 10; ++dx) {
+            const int x = wh.x + 2 + dx, y = wh.y + 2 + dy;
+            if (x >= 0 && y >= 0 && src.tile_is_water(x, y) && (x != sx || y != sy)) {
+                cands.push_back({std::max(std::abs(x - sx), std::abs(y - sy)), x, y});
+            }
+        }
+    }
+    std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) {
+        return a.d != b.d ? a.d < b.d : (a.y != b.y ? a.y < b.y : a.x < b.x);
+    });
+    int tried = 0;
+    for (const Cand& c : cands) {
+        if (tried++ > 600) {
+            break;
+        }
+        sim::World t = real;
+        sim::WorldTestAccess::relocate(t, sim::FigureId{ship_id},
+                                       sim::FixedPos{c.x * 256 + 128, c.y * 256 + 128}); // trial
+        if (!t.apply(probe).ok()) {
+            continue;
+        }
+        sim::RouteQuery q;
+        q.start_x = ship.pos.x >> 8;
+        q.start_z = ship.pos.y >> 8;
+        q.goal_x_q8 = c.x * 256 + 128;
+        q.goal_z_q8 = c.y * 256 + 128;
+        const sim::RouteResult r =
+            sim::plan_route(index, q, sim::RouteLimits{}, sim::RouteCostTable::original());
+        if (r.status == sim::RouteStatus::Planned && r.end_x == c.x && r.end_z == c.y) {
+            return std::pair{c.x, c.y};
+        }
+    }
+    return std::nullopt;
+}
+
+/// Orders the legs (MoveCmd) and advances until each ship reported ShipArrived. No founding.
+SailOutcome sail_phase(Driver& d, sim::World& w, const std::vector<SailLeg>& legs, bool timing) {
+    SailOutcome out;
+    for (const SailLeg& leg : legs) {
+        REQUIRE(d.apply(sail_command(leg)).ok());
+    }
+    std::vector<sim::FixedPos> last;
+    std::vector<std::uint16_t> last_visit;
+    for (const SailLeg& leg : legs) {
+        const sim::Figure& f = ship_of(w, leg.ship);
+        last.push_back(f.pos);
+        last_visit.push_back(f.nav->last);
+    }
+    std::size_t arrived = 0;
+    (void)w.drain_events();
+    for (std::uint64_t adv = 1; adv <= 40000 && arrived < legs.size(); ++adv) {
+        const auto t0 = std::chrono::steady_clock::now();
+        d.advance(10);
+        if (timing) {
+            out.advance_us.push_back(
+                std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0)
+                    .count());
+        }
+        for (const sim::SimEvent& e : w.drain_events()) {
+            if (e.kind == sim::SimEventKind::ShipArrived) {
+                ++arrived;
+            } else if (e.kind == sim::SimEventKind::ShipRouteFailed) {
+                ++out.failures;
+                arrived = legs.size();
+            }
+        }
+        for (std::size_t i = 0; i < legs.size(); ++i) {
+            const sim::Figure& f = ship_of(w, legs[i].ship);
+            const std::int32_t step =
+                std::max(std::abs(f.pos.x - last[i].x), std::abs(f.pos.y - last[i].y));
+            const auto ticks = static_cast<std::uint16_t>(f.nav->last - last_visit[i]);
+            out.worst_step_q8 = std::max(out.worst_step_q8, step);
+            out.worst_excess_q8 = std::max<std::int64_t>(
+                out.worst_excess_q8, step - (std::int64_t{ticks} * 18432 / 10000 + 1));
+            last[i] = f.pos;
+            last_visit[i] = f.nav->last;
+        }
+        if (adv % 2000 == 0) {
+            d.checkpoint();
+        }
+        out.arrival_advances = adv;
+    }
+    out.all_arrived = out.failures == 0 && arrived == legs.size();
+    d.checkpoint();
+    return out;
+}
+
+/// The legal origins of `type` on the city's own tiles (every footprint tile owned by the city:
+/// the tile owner value is the city number),
+/// nearest to the warehouse first (Chebyshev distance of the origins, then row-major); `avoid`
+/// excludes sites that touch an earlier choice.
+std::optional<Origin>
+own_site(const sim::World& w, sim::CityRef ref, const sim::BuildingType& type,
+         const sim::Building& wh,
+         const std::vector<std::pair<Origin, const sim::BuildingType*>>& avoid) {
+    const sim::Island& is = *w.islands()[ref.island.v];
+    const auto [fw, fh] = sim::footprint(type, 0);
+    std::optional<Origin> best;
+    int best_d = 1 << 30;
+    for (const Origin& o : legal_origins(is, w.types(), type)) {
+        bool mine = true;
+        for (std::int32_t dy = 0; dy < static_cast<std::int32_t>(fh) && mine; ++dy) {
+            for (std::int32_t dx = 0; dx < static_cast<std::int32_t>(fw) && mine; ++dx) {
+                const sim::Slot idx = is.tile_index(o.x + dx, o.y + dy);
+                mine = idx != sim::kNoSlot && is.tiles.owner(idx) == ref.city.v;
+            }
+        }
+        for (const auto& [ao, at] : avoid) {
+            const auto [aw, ah] = sim::footprint(*at, 0);
+            mine = mine && apart(o, fw, fh, ao, aw, ah);
+        }
+        if (!mine) {
+            continue;
+        }
+        const int d = std::max(std::abs(o.x - wh.x), std::abs(o.y - wh.y));
+        if (d < best_d) {
+            best_d = d;
+            best = o;
+        }
+    }
+    return best;
+}
+
+std::int64_t aboard_of(const Holds& holds, sim::GoodsId g) {
+    std::int64_t n = 0;
+    for (const sim::ShipHold& h : holds) {
+        n += h.goods == g ? static_cast<std::int64_t>(h.amount_88) : 0;
+    }
+    return n;
+}
+
+/// The whole opening of both seats from the moment both ships have arrived: found, (move,)
+/// refusals of the rival, build-before-unload refusals, one unload per hold, build. `reload_mask`
+/// saves and loads the world after the founding (bit 0) and after the unloading (bit 1).
+OpeningOut run_opening(sim::World& w, sim::Recorder* rec, const std::vector<SailLeg>& legs,
+                       const std::shared_ptr<const sim::TypeRegistry>& types, unsigned reload_mask,
+                       bool detail) {
+    namespace ct = command_test;
+    Driver d{&w, rec};
+    REQUIRE(legs.size() == 2);
+    const sim::BuildingType& kontor = *types->find(sim::TypeId{1302});
+    const sim::BuildingType& pionier = *types->find(sim::TypeId{kPionier});
+    const sim::BuildingType& handwerk = *types->find(sim::TypeId{kHandwerk});
+    OpeningOut out;
+    std::vector<Seat> seats(2);
+    for (std::size_t i = 0; i < 2; ++i) {
+        seats[i].player = legs[i].player;
+        seats[i].ship = legs[i].ship;
+        seats[i].start_holds = ship_of(w, legs[i].ship).holds;
+        seats[i].gold_start = gold_of(w, legs[i].player);
+        seats[i].last_gold = seats[i].gold_start;
+    }
+    const auto stock_of = [&](const Seat& s) {
+        return s.city ? ct::city(w, *s.city).stock.stock : std::vector<std::uint32_t>{};
+    };
+    const auto observe = [&] { // simulation changes between commands: counted, never ignored
+        for (Seat& s : seats) {
+            s.observed.resize(sim::kOriginalWarehouseGoods, 0);
+            const std::vector<std::uint32_t> now = stock_of(s);
+            for (std::size_t g = 0; g < now.size() && g < s.last_stock.size(); ++g) {
+                s.observed[g] +=
+                    static_cast<std::int64_t>(now[g]) - static_cast<std::int64_t>(s.last_stock[g]);
+            }
+            s.gold_observed += gold_of(w, s.player) - s.last_gold;
+        }
+    };
+    const auto rebase = [&] {
+        for (Seat& s : seats) {
+            s.last_stock = stock_of(s);
+            s.last_gold = gold_of(w, s.player);
+        }
+    };
+    const auto snap = [&](const std::string& label, const sim::ApplyResult& r) {
+        OStep st;
+        st.label = label;
+        st.status = r.status;
+        st.moved_88 = r.records.empty() ? 0 : r.records[0].transferred_88;
+        st.gold0 = gold_of(w, seats[0].player);
+        st.gold2 = gold_of(w, seats[1].player);
+        st.stock0 = stock_of(seats[0]);
+        st.stock2 = stock_of(seats[1]);
+        st.holds0 = ship_of(w, seats[0].ship).holds;
+        st.holds2 = ship_of(w, seats[1].ship).holds;
+        st.hash = w.state_hash();
+        if (detail) {
+            MESSAGE("opening " << label << ": " << sim::reject_name(r.status) << ", moved(8.8) "
+                               << st.moved_88 << ", gold " << st.gold0 << "/" << st.gold2);
+        }
+        out.ledger.push_back(std::move(st));
+    };
+    const auto command = [&](const std::string& label, const sim::Command& c) {
+        observe();
+        const std::vector<std::uint8_t> before = w.save();
+        const sim::ApplyResult r = d.apply(c);
+        if (r.status != sim::Reject::None) {
+            REQUIRE_MESSAGE(w.save() == before, label << ": a refused command changed the world");
+        }
+        rebase();
+        snap(label, r);
+        d.checkpoint();
+        return r;
+    };
+    const auto settle = [&](std::uint32_t ms) {
+        d.advance(ms);
+        d.checkpoint();
+    };
+    const auto reload = [&] {
+        auto back = sim::World::load(w.save(), types);
+        REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+        REQUIRE(back.value().state_hash() == w.state_hash());
+        w = std::move(back).value();
+    };
+    const sim::Reject ok = sim::Reject::None;
+
+    // ---- 1. found the first warehouse of each seat --------------------------------------------
+    for (std::size_t i = 0; i < 2; ++i) {
+        Seat& s = seats[i];
+        const Holds before = ship_of(w, s.ship).holds;
+        const sim::ApplyResult r =
+            command("found seat " + std::to_string(s.player), found_command(legs[i]));
+        REQUIRE_MESSAGE(r.status == ok, "founding was refused: " << sim::reject_name(r.status));
+        s.warehouse = r.records.at(0).building;
+        s.city = city_of_player(w, s.player);
+        REQUIRE(s.city.has_value());
+        out.warehouses[i] = s.warehouse;
+        s.last_stock = stock_of(s);
+        const Holds after = ship_of(w, s.ship).holds;
+        REQUIRE(before.size() == after.size());
+        s.found_cost.assign(sim::kOriginalWarehouseGoods, 0);
+        for (std::size_t h = 0; h < before.size(); ++h) {
+            REQUIRE(before[h].amount_88 >= after[h].amount_88);
+            if (before[h].goods != 0) {
+                s.found_cost.at(before[h].goods) +=
+                    static_cast<std::int64_t>(before[h].amount_88 - after[h].amount_88);
+            }
+        }
+        s.gold_spent += kontor.cost_gold;
+        if (detail) {
+            // The founding consumed exactly what the registry says, from the holds, and the gold.
+            std::vector<std::int64_t> want(sim::kOriginalWarehouseGoods, 0);
+            for (const auto& cg : kontor.cost_goods) {
+                want.at(cg.goods) += cg.amount_88;
+            }
+            CHECK(s.found_cost == want);
+            CHECK(gold_of(w, s.player) == s.gold_start - kontor.cost_gold);
+            const auto stock = stock_of(s);
+            CHECK(std::all_of(stock.begin(), stock.end(), [](std::uint32_t v) { return v == 0; }));
+        }
+        settle(100);
+    }
+    if ((reload_mask & 1U) != 0) {
+        reload();
+    }
+    REQUIRE(city_count(w) == 2);
+
+    // ---- 2. is a move needed to be within the unloading range? ---------------------------------
+    const auto first_hold = [&](const Seat& s) {
+        const Holds& h = ship_of(w, s.ship).holds;
+        for (std::uint32_t i = 0; i < h.size(); ++i) {
+            if (h[i].goods != 0 && h[i].amount_88 != 0) {
+                return i;
+            }
+        }
+        FAIL("a ship without cargo");
+        return 0U;
+    };
+    const auto unload_cmd = [&](const Seat& s, sim::BuildingId wh, std::uint32_t hold,
+                                std::uint32_t tons) {
+        return sim::Command{sim::PlayerId{s.player},
+                            sim::UnloadCmd{sim::FigureId{s.ship}, wh, hold,
+                                           ship_of(w, s.ship).holds.at(hold).goods, tons}};
+    };
+    std::vector<SailLeg> moves;
+    for (std::size_t i = 0; i < 2; ++i) {
+        const Seat& s = seats[i];
+        const sim::Command probe = unload_cmd(s, s.warehouse, first_hold(s), 1);
+        sim::World trial = w;
+        const sim::ApplyResult pr = trial.apply(probe);
+        const sim::Figure& sh = ship_of(w, s.ship);
+        if (detail) {
+            MESSAGE("seat " << s.player << ": ship tile (" << (sh.pos.x >> 8) << ", "
+                            << (sh.pos.y >> 8) << "), warehouse origin ("
+                            << w.find_building(s.warehouse)->x << ", "
+                            << w.find_building(s.warehouse)->y
+                            << "), probe unload at the arrival position: "
+                            << sim::reject_name(pr.status));
+        }
+        if (pr.status == ok) {
+            continue;
+        }
+        REQUIRE_MESSAGE(pr.status == sim::Reject::OutOfRange,
+                        "the probe unload is refused for " << sim::reject_name(pr.status));
+        const auto goal = pick_unload_goal(w, s.ship, *w.find_building(s.warehouse), probe);
+        REQUIRE_MESSAGE(goal.has_value(),
+                        "seat " << s.player
+                                << ": no reachable water tile inside the radius-5 disc");
+        SailLeg m;
+        m.player = s.player;
+        m.ship = s.ship;
+        m.goal_x = goal->first;
+        m.goal_y = goal->second;
+        moves.push_back(m);
+        if (detail) {
+            MESSAGE("seat " << s.player << " moves to (" << m.goal_x << ", " << m.goal_y << ")");
+        }
+    }
+    if (!moves.empty()) {
+        out.moved = true;
+        observe();
+        const SailOutcome mv = sail_phase(d, w, moves, false);
+        REQUIRE(mv.all_arrived);
+        CHECK(mv.worst_excess_q8 <= 0); // a normal move, not a jump
+        rebase();
+    }
+
+    // ---- 3. the rival's attempts (information is shared, access is not) ----------------------
+    const sim::BuildingType* types_to_build[2] = {&handwerk, &pionier};
+    for (std::size_t i = 0; i < 2; ++i) { // legal sites, decided on the live world by the rule
+        Seat& s = seats[i];
+        const sim::Building& wh = *w.find_building(s.warehouse);
+        const auto b = own_site(w, *s.city, handwerk, wh, {});
+        REQUIRE_MESSAGE(b.has_value(), "seat " << s.player << ": no HANDWERK site on its own land");
+        const auto a = own_site(w, *s.city, pionier, wh, {{*b, &handwerk}});
+        REQUIRE_MESSAGE(a.has_value(), "seat " << s.player << ": no PIONIER site on its own land");
+        s.a = *a;
+        s.b = *b;
+        if (detail) {
+            MESSAGE("seat " << s.player << " sites: HANDWERK (" << b->x << ", " << b->y
+                            << ") level " << unsigned{b->height} << ", PIONIER (" << a->x << ", "
+                            << a->y << ") level " << unsigned{a->height});
+        }
+    }
+    const auto build_cmd = [&](const Seat& s, const sim::BuildingType& t, const Origin& o,
+                               std::uint32_t issuer) {
+        return ct::build(issuer, *s.city, {ct::at(t.id, o.x, o.y)});
+    };
+    for (std::size_t i = 0; i < 2; ++i) {
+        const std::size_t j = 1 - i;
+        const Seat& me = seats[i];
+        const Seat& other = seats[j];
+        const std::string tag =
+            "seat " + std::to_string(me.player) + " vs seat " + std::to_string(other.player);
+        const auto r1 = command(tag + " unload into the rival warehouse",
+                                unload_cmd(me, other.warehouse, first_hold(me), 1));
+        const auto r2 = command(tag + " build in the rival city",
+                                build_cmd(other, pionier, other.a, me.player));
+        sim::UnloadCmd stolen{sim::FigureId{other.ship}, me.warehouse, 0, 0, 1};
+        stolen.goods = ship_of(w, other.ship).holds.at(first_hold(other)).goods;
+        stolen.hold = first_hold(other);
+        const auto r3 =
+            command(tag + " unload the rival ship", sim::Command{sim::PlayerId{me.player}, stolen});
+        if (detail) {
+            CHECK(r1.status == sim::Reject::NotCityOwner);
+            CHECK(r2.status == sim::Reject::NotCityOwner);
+            CHECK(r3.status == sim::Reject::NotShipOwner);
+        }
+    }
+
+    // ---- 4. the same builds BEFORE unloading: cargo aboard is not city stock ------------------
+    for (std::size_t i = 0; i < 2; ++i) {
+        const Seat& s = seats[i];
+        const auto rh = command("seat " + std::to_string(s.player) + " HANDWERK before unloading",
+                                build_cmd(s, handwerk, s.b, s.player));
+        const auto rp = command("seat " + std::to_string(s.player) + " PIONIER before unloading",
+                                build_cmd(s, pionier, s.a, s.player));
+        if (detail) {
+            CHECK(rh.status == sim::Reject::CannotAfford);
+            CHECK(rp.status == sim::Reject::CannotAfford);
+        }
+    }
+    settle(100);
+
+    // ---- 5. unload: one command per hold, whole tons, honouring the store limit --------------
+    for (std::size_t i = 0; i < 2; ++i) {
+        Seat& s = seats[i];
+        s.credits.assign(sim::kOriginalWarehouseGoods, 0);
+        const std::size_t n_holds = ship_of(w, s.ship).holds.size();
+        for (std::uint32_t h = 0; h < n_holds; ++h) {
+            const sim::ShipHold hold = ship_of(w, s.ship).holds[h];
+            if (hold.goods == 0 || hold.amount_88 == 0) {
+                continue;
+            }
+            const std::uint32_t tons = static_cast<std::uint32_t>((hold.amount_88 + 255) / 256);
+            const sim::City& city = ct::city(w, *s.city);
+            const std::uint64_t cap = city.stock.capacity, have = city.stock.stock.at(hold.goods);
+            const std::uint64_t free_88 = cap > have ? cap - have : 0;
+            const std::uint64_t want = sim::ShipCargo::amount_88(tons, hold.amount_88, free_88);
+            const sim::ApplyResult r =
+                command("seat " + std::to_string(s.player) + " unload hold " + std::to_string(h),
+                        unload_cmd(s, s.warehouse, h, tons));
+            if (detail) {
+                MESSAGE("seat " << s.player << " hold " << h << ": goods " << hold.goods << ", "
+                                << hold.amount_88 << " aboard, asked " << tons << " t, store "
+                                << have << "/" << cap << " -> moved "
+                                << (r.records.empty() ? 0 : r.records[0].transferred_88)
+                                << " (expected " << want << ")");
+            }
+            if (want == 0) {
+                if (detail) {
+                    CHECK(r.status == sim::Reject::StockFull);
+                }
+                continue;
+            }
+            REQUIRE_MESSAGE(r.status == ok, "unload refused: " << sim::reject_name(r.status));
+            const std::uint64_t moved = r.records.at(0).transferred_88;
+            if (detail) {
+                CHECK(moved == want);
+                CHECK(ship_of(w, s.ship).holds[h].amount_88 == hold.amount_88 - moved);
+                CHECK(ct::city(w, *s.city).stock.stock.at(hold.goods) == have + moved);
+            }
+            s.credits.at(hold.goods) += static_cast<std::int64_t>(moved);
+            settle(100); // the simulation runs between the commands; its changes are observed
+        }
+        // The store is full for what is still aboard: a repeat is refused (B15), nothing moves.
+        for (std::uint32_t h = 0; h < n_holds; ++h) {
+            const sim::ShipHold hold = ship_of(w, s.ship).holds[h];
+            if (hold.goods != 0 && hold.amount_88 != 0) {
+                const auto r = command("seat " + std::to_string(s.player) + " repeat hold " +
+                                           std::to_string(h) + " into the full store",
+                                       unload_cmd(s, s.warehouse, h, 1));
+                if (detail) {
+                    CHECK(r.status == sim::Reject::StockFull);
+                }
+            }
+        }
+    }
+    if ((reload_mask & 2U) != 0) {
+        reload();
+    }
+
+    // ---- 6. the ordinary buildings: the commands refused before now succeed ------------------
+    for (std::size_t i = 0; i < 2; ++i) {
+        Seat& s = seats[i];
+        s.build_cost.assign(sim::kOriginalWarehouseGoods, 0);
+        for (std::size_t k = 0; k < 2; ++k) {
+            const sim::BuildingType& t = *types_to_build[k];
+            const Origin& o = k == 0 ? s.b : s.a;
+            observe();
+            const std::vector<std::uint32_t> stock0 = stock_of(s);
+            const std::int64_t gold0 = gold_of(w, s.player);
+            const sim::ApplyResult r =
+                command("seat " + std::to_string(s.player) + " build " + std::to_string(t.id.v),
+                        build_cmd(s, t, o, s.player));
+            REQUIRE_MESSAGE(r.status == ok, "seat " << s.player << " build " << t.id.v
+                                                    << " refused: " << sim::reject_name(r.status));
+            for (const auto& cg : t.cost_goods) {
+                s.build_cost.at(cg.goods) += cg.amount_88;
+            }
+            s.gold_spent += t.cost_gold;
+            if (detail) {
+                check_placed_in(w, *s.city, t, o);
+                const std::vector<std::uint32_t> stock1 = stock_of(s);
+                std::vector<std::int64_t> spent(stock0.size(), 0);
+                for (const auto& cg : t.cost_goods) {
+                    spent.at(cg.goods) += cg.amount_88;
+                }
+                for (std::size_t g = 0; g < stock0.size(); ++g) {
+                    CHECK(static_cast<std::int64_t>(stock0[g]) -
+                              static_cast<std::int64_t>(stock1[g]) ==
+                          spent[g]);
+                }
+                CHECK(gold0 - gold_of(w, s.player) == t.cost_gold);
+            }
+            settle(100);
+        }
+    }
+    settle(500);
+    observe();
+    rebase();
+
+    // ---- 7. the ledger ------------------------------------------------------------------------
+    if (detail) {
+        for (const Seat& s : seats) {
+            const Holds now = ship_of(w, s.ship).holds;
+            const auto stock = stock_of(s);
+            std::int64_t observed_total = 0;
+            for (std::size_t g = 0; g < sim::kOriginalWarehouseGoods; ++g) {
+                const auto gid = static_cast<sim::GoodsId>(g);
+                // starting cargo - founding consumption - unloads = cargo still aboard
+                CHECK(aboard_of(s.start_holds, gid) - s.found_cost.at(g) - s.credits.at(g) ==
+                      aboard_of(now, gid));
+                // city credits - building consumption + observed simulation changes = stock
+                CHECK(s.credits.at(g) - s.build_cost.at(g) + s.observed.at(g) ==
+                      static_cast<std::int64_t>(stock.at(g)));
+                observed_total += s.observed.at(g) < 0 ? -s.observed.at(g) : s.observed.at(g);
+            }
+            CHECK(gold_of(w, s.player) == s.gold_start - s.gold_spent + s.gold_observed);
+            MESSAGE("seat " << s.player << " ledger: gold " << s.gold_start << " - spent "
+                            << s.gold_spent << " + observed " << s.gold_observed << " = "
+                            << gold_of(w, s.player) << "; |observed stock changes| "
+                            << observed_total);
+            std::string text;
+            for (std::size_t g = 0; g < sim::kOriginalWarehouseGoods; ++g) {
+                if (s.credits.at(g) != 0 || s.build_cost.at(g) != 0 || s.found_cost.at(g) != 0 ||
+                    stock.at(g) != 0 || aboard_of(now, static_cast<sim::GoodsId>(g)) != 0) {
+                    text += "goods " + std::to_string(g) + ": start aboard " +
+                            std::to_string(aboard_of(s.start_holds, static_cast<sim::GoodsId>(g))) +
+                            " - founding " + std::to_string(s.found_cost.at(g)) + " - unloaded " +
+                            std::to_string(s.credits.at(g)) + " = aboard " +
+                            std::to_string(aboard_of(now, static_cast<sim::GoodsId>(g))) +
+                            "; credits " + std::to_string(s.credits.at(g)) + " - build " +
+                            std::to_string(s.build_cost.at(g)) + " + observed " +
+                            std::to_string(s.observed.at(g)) + " = store " +
+                            std::to_string(stock.at(g)) + " | ";
+                }
+            }
+            MESSAGE("seat " << s.player << " goods ledger (8.8): " << text);
+        }
+        REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    }
+    return out;
+}
+
+std::vector<SailLeg> plan_opening_legs(const RealStart& rs, const sim::World& pristine) {
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+    std::vector<SailLeg> legs(2);
+    legs[0].player = 0;
+    legs[0].ship = 1; // seat 0
+    legs[1].player = 2;
+    legs[1].ship = 7; // seat 2
+    const auto first_site = find_legal_site(pristine, kontor, pristine.config().neutral_owner);
+    REQUIRE(first_site.has_value());
+    legs[0].site = *first_site;
+    const auto g0 = pick_water_goal(pristine, pristine, legs[0]);
+    REQUIRE_MESSAGE(g0.has_value(), "no reachable water tile beside the first site");
+    legs[0].goal_x = g0->first;
+    legs[0].goal_y = g0->second;
+    sim::World trial = pristine;
+    sim::WorldTestAccess::relocate(trial, sim::FigureId{1},
+                                   sim::FixedPos{g0->first * 256 + 128, g0->second * 256 + 128});
+    REQUIRE(trial.apply(found_command(legs[0])).ok());
+    const auto second_site = find_legal_site(trial, kontor, trial.config().neutral_owner);
+    REQUIRE(second_site.has_value());
+    legs[1].site = *second_site;
+    const auto g1 = pick_water_goal(pristine, trial, legs[1]);
+    REQUIRE_MESSAGE(g1.has_value(), "no reachable water tile beside the second site");
+    legs[1].goal_x = g1->first;
+    legs[1].goal_y = g1->second;
+    return legs;
+}
+
+} // namespace
+
+TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadout and builds, "
+          "two seats, reload and replay") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    RealStart rs = real_start(*dir);
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    const sim::World pristine = std::move(loaded).value();
+    REQUIRE(sl::expedition_baseline_problem(pristine).empty());
+    const std::uint64_t pristine_hash = pristine.state_hash();
+
+    // ---- the registry facts the ledger is derived from ---------------------------------------
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+    const sim::BuildingType& pionier = *rs.types->find(sim::TypeId{kPionier});
+    const sim::BuildingType& handwerk = *rs.types->find(sim::TypeId{kHandwerk});
+    const auto wood = *rs.types->goods_by_name("HOLZ");
+    const auto tools = *rs.types->goods_by_name("WERKZEUG");
+    CHECK(kontor.cost_gold == 350);
+    REQUIRE(pionier.cost_goods.size() == 1);
+    CHECK(pionier.cost_goods[0].goods == wood);
+    CHECK(pionier.cost_goods[0].amount_88 == 3 * 256);
+    CHECK(pionier.cost_gold == 0);
+    REQUIRE(handwerk.cost_goods.size() == 2);
+    CHECK(handwerk.cost_gold == 300);
+    CHECK(handwerk.cost_goods[0].goods == tools);
+    CHECK(handwerk.cost_goods[0].amount_88 == 3 * 256);
+    CHECK(handwerk.cost_goods[1].goods == wood);
+    CHECK(handwerk.cost_goods[1].amount_88 == 4 * 256);
+    // Both are affordable from the unchanged loadout: the ship carries wood and tools beyond the
+    // founding cost, and 29650 gold remain.
+    MESSAGE("registry: Kontor 1302 gold "
+            << kontor.cost_gold << ", PIONIER 501 gold " << pionier.cost_gold << " wood(8.8) "
+            << pionier.cost_goods[0].amount_88 << ", HANDWERK 1001 gold " << handwerk.cost_gold);
+
+    // ---- the starting state: every hold, the gold, no city anywhere --------------------------
+    CHECK(city_count(pristine) == 0);
+    for (const std::uint64_t id : {1ULL, 4ULL, 7ULL, 10ULL, 13ULL}) {
+        std::string text;
+        for (const sim::ShipHold& h : ship_of(pristine, id).holds) {
+            text += std::to_string(h.goods) + ":" + std::to_string(h.amount_88) + " ";
+        }
+        const std::uint32_t seat = static_cast<std::uint32_t>((id - 1) / 3);
+        MESSAGE("start ship " << id << " (seat " << seat << ", owner "
+                              << ship_of(pristine, id).owner.v << ") holds goods:amount(8.8) "
+                              << text << "| gold " << gold_of(pristine, seat));
+        CHECK(gold_of(pristine, seat) == 30000);
+    }
+
+    const std::vector<SailLeg> legs = plan_opening_legs(rs, pristine);
+
+    // ---- the recorded run: sail, then the whole opening --------------------------------------
+    sim::World w = pristine;
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    Driver d{&w, &rec};
+    const SailOutcome voyage = sail_phase(d, w, legs, false);
+    REQUIRE_MESSAGE(voyage.failures == 0, "a route failed");
+    REQUIRE(voyage.all_arrived);
+    CHECK(voyage.worst_excess_q8 <= 0); // no teleport
+    for (const SailLeg& leg : legs) {
+        const sim::Figure& s = ship_of(w, leg.ship);
+        CHECK(s.pos.x / 256 == leg.goal_x);
+        CHECK(s.pos.y / 256 == leg.goal_y);
+        CHECK(ship_of(w, leg.ship).holds == ship_of(pristine, leg.ship).holds); // cargo untouched
+        CHECK(gold_of(w, leg.player) == 30000);
+    }
+    CHECK(city_count(w) == 0);
+    const sim::World at_arrival = w; // the same voyage; the variants below start from it
+    const OpeningOut main_run = run_opening(w, &rec, legs, rs.types, 0, true);
+    MESSAGE("the unloading position needed a move: " << std::string(main_run.moved ? "yes" : "no"));
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    const std::vector<std::uint8_t> final_save = w.save();
+    const std::uint64_t final_hash = w.state_hash();
+    // 2 foundings, 6 refusals of the rival, 4 builds refused before unloading, 2 x (4 unloads and
+    // 1 refused repeat), 4 builds.
+    CHECK(main_run.ledger.size() == 26);
+
+    // ---- save and load between founding and unloading, and after unloading: same outcomes -----
+    for (const unsigned mask : {1U, 2U, 3U}) {
+        sim::World v = at_arrival;
+        const OpeningOut var = run_opening(v, nullptr, legs, rs.types, mask, false);
+        CHECK(var.ledger == main_run.ledger);
+        CHECK(var.moved == main_run.moved);
+        CHECK(v.state_hash() == final_hash);
+        CHECK(v.save() == final_save);
+    }
+
+    // ---- replay: this process, through bytes, and a changed UnloadCmd -------------------------
+    auto bytes = sim::write_log(rec.log());
+    REQUIRE(bytes.ok());
+    {
+        const std::string e =
+            export_log_if_requested(std::getenv("ANNO_OPENING_LOG"), bytes.value());
+        REQUIRE_MESSAGE(e.empty(), e);
+    }
+    auto read = sim::read_log(bytes.value());
+    REQUIRE(read.ok());
+    auto fresh = sim::World::load(read.value().initial_save, rs.types, {});
+    REQUIRE_MESSAGE(fresh.ok(), (fresh.ok() ? std::string() : fresh.error()));
+    CHECK(fresh.value().state_hash() == pristine_hash);
+    auto outcome = sim::replay(fresh.value(), read.value());
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    CHECK(outcome.value().reproduced());
+    CHECK(fresh.value().state_hash() == final_hash);
+    CHECK(fresh.value().save() == final_save);
+    for (const int variant : {0, 1}) { // 0: fewer tons (also exported), 1: another hold
+        sim::ReplayLog tampered = read.value();
+        bool edited = false;
+        for (sim::ReplayEntry& e : tampered.entries) {
+            for (sim::Command& c : e.commands) {
+                auto* u = std::get_if<sim::UnloadCmd>(&c.body);
+                if (u != nullptr && !edited && c.issuer.v == 0 && u->ship == sim::FigureId{1} &&
+                    u->warehouse == main_run.warehouses[0] && u->tons > 1) {
+                    if (variant == 0) {
+                        u->tons -= 1;
+                    } else {
+                        u->hold += 1;
+                    }
+                    edited = true;
+                }
+            }
+        }
+        REQUIRE(edited);
+        if (variant == 0) {
+            if (const char* bad_path = std::getenv("ANNO_OPENING_LOG_TAMPERED");
+                bad_path != nullptr && *bad_path) {
+                const auto bad_bytes = sim::write_log(tampered);
+                REQUIRE(bad_bytes.ok());
+                const std::string e = export_log_if_requested(bad_path, bad_bytes.value());
+                REQUIRE_MESSAGE(e.empty(), e);
+            }
         }
         auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
         REQUIRE(fresh2.ok());

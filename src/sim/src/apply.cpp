@@ -19,6 +19,7 @@
 #include <anno/sim/driver.hpp>
 #include <anno/sim/founding.hpp>
 #include <anno/sim/placement.hpp>
+#include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
@@ -722,6 +723,8 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
         result = ShipOrders::move(w, command, *mv, in_advance);
     } else if (const auto* st = std::get_if<StopCmd>(&command.body)) {
         result = ShipOrders::stop(w, command, *st, in_advance);
+    } else if (const auto* un = std::get_if<UnloadCmd>(&command.body)) {
+        result = ShipCargo::unload(w, command, *un, in_advance);
     } else {
         // A legacy record is never executed (fail closed, §8.3).
         result.status = Reject::Unsupported;

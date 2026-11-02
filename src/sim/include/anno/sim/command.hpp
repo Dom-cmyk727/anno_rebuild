@@ -126,9 +126,22 @@ struct StopCmd {
     friend bool operator==(const StopCmd&, const StopCmd&) = default;
 };
 
+/// 0xF073 (native, MAP-CARGO-1): a ship unloads one hold, or part of it, into the city of the named
+/// warehouse (docs/sim/ship-cargo.md section 3). The issuer is the authenticated player; the
+/// command carries no payer, owner, city or credit. `tons` is a whole-ton request, 0 is refused.
+struct UnloadCmd {
+    FigureId ship;
+    BuildingId warehouse;   ///< stable (island << 32) + serial, never reused
+    std::uint32_t hold = 0; ///< index into Figure::holds (the original's rec[1])
+    GoodsId goods = 0;      ///< must equal the hold's goods (the original's rec[0])
+    std::uint32_t tons = 0; ///< requested whole tons (the original's rec[2..3], widened)
+    friend bool operator==(const UnloadCmd&, const UnloadCmd&) = default;
+};
+
 /// Alternative order = the codec's tag order and part of the replay format.
-using Body = std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd,
-                          SetTradeSlotCmd, SetSpeedCmd, LegacyRawCmd, FoundCmd, MoveCmd, StopCmd>;
+using Body =
+    std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd, SetTradeSlotCmd,
+                 SetSpeedCmd, LegacyRawCmd, FoundCmd, MoveCmd, StopCmd, UnloadCmd>;
 
 struct Command {
     /// Stamped by the host (single player: the local player), never read from a
@@ -150,18 +163,19 @@ enum WireType : std::uint16_t {
     kWireFound = 0xF070,
     kWireMove = 0xF071, ///< MAP-NAV-2, same reasoning as kWireFound
     kWireStop = 0xF072,
+    kWireUnload = 0xF073, ///< MAP-CARGO-1, same reasoning as kWireFound
     kWireSetProductionLine = 0x74,
     kWireSetSpeed = 0x7a,
     kWireSetTradeFlag = 0x7c
 };
 
-/// Whether `type` is one of the nine native record types. (0xF070 became native with MAP-2; a log
+/// Whether `type` is one of the ten native record types. (0xF070 became native with MAP-2; a log
 /// that holds a LegacyRawCmd of that type from before is no longer representable; no original
 /// record has that type and the replay fixtures hold none: docs/sim/ship-founding.md section 16.)
 [[nodiscard]] constexpr bool is_native_wire_type(std::uint16_t type) {
     return type == kWireBuild || type == kWireDemolish || type == kWireSetTradeSlot ||
            type == kWireSetProductionLine || type == kWireSetSpeed || type == kWireSetTradeFlag ||
-           type == kWireFound || type == kWireMove || type == kWireStop;
+           type == kWireFound || type == kWireMove || type == kWireStop || type == kWireUnload;
 }
 
 /// The record type a body is written with (LegacyRawCmd: its own type field).

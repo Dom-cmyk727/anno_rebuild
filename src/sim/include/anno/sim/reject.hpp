@@ -81,7 +81,16 @@ enum class Reject : std::uint16_t {
     NoCitySlot,
     // MAP-NAV-2 (MoveCmd / StopCmd, docs/sim/ship-navigation.md 12.1), appended in order.
     /// The ship is a crew child (it has a parent) and takes no orders.
-    ShipEmbarked
+    ShipEmbarked,
+    // MAP-CARGO-1 (UnloadCmd, docs/sim/ship-cargo.md section 3), appended in order.
+    /// UnloadCmd: the named building's type is not an eligible warehouse type.
+    NotAWarehouse,
+    /// UnloadCmd: the named hold does not hold the named goods, or holds none of it (amount 0).
+    HoldGoodsMismatch,
+    /// UnloadCmd: the goods id is 0 or outside the city's stock table.
+    UnsupportedGoods,
+    /// UnloadCmd: the city's store has no room left for the goods (full or over capacity).
+    StockFull
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -89,6 +98,9 @@ enum class Reject : std::uint16_t {
 struct RecordResult {
     Reject status = Reject::None;
     BuildingId building;
+    /// MAP-CARGO-1: the amount an accepted UnloadCmd moved from the hold into the city store, in
+    /// 1/256 ton (docs/sim/ship-cargo.md section 3). 0 for every other command and every refusal.
+    std::uint64_t transferred_88 = 0;
 };
 
 /// The result of World::apply (stage S8): the status of the command as a whole
@@ -181,6 +193,14 @@ struct ApplyResult {
         return "NoCitySlot";
     case Reject::ShipEmbarked:
         return "ShipEmbarked";
+    case Reject::NotAWarehouse:
+        return "NotAWarehouse";
+    case Reject::HoldGoodsMismatch:
+        return "HoldGoodsMismatch";
+    case Reject::UnsupportedGoods:
+        return "UnsupportedGoods";
+    case Reject::StockFull:
+        return "StockFull";
     }
     return "?";
 }

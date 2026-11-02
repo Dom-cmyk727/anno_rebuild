@@ -840,6 +840,22 @@ std::uint32_t CityStock::add(std::uint32_t g, std::uint32_t amount) {
     return amount;
 }
 
+std::uint64_t CityStock::free_88(std::uint32_t g) const {
+    if (g >= stock.size() || stock[g] >= capacity) {
+        return 0;
+    }
+    return std::uint64_t{capacity} - stock[g];
+}
+
+bool CityStock::credit(std::uint32_t g, std::uint64_t amount) {
+    if (g >= stock.size() || amount > free_88(g)) {
+        return false;
+    }
+    // stock[g] + amount <= capacity <= 2^32 - 1: the narrowing cannot lose a bit.
+    stock[g] = static_cast<std::uint32_t>(std::uint64_t{stock[g]} + amount);
+    return true;
+}
+
 std::uint32_t CityStock::remove(std::uint32_t g, std::uint32_t amount) {
     if (g >= stock.size()) {
         return 0;

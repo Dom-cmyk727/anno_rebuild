@@ -342,6 +342,7 @@ class World {
     friend struct CityCreation;
     friend struct Founding;
     friend struct ShipOrders;
+    friend struct ShipCargo;
     friend struct ShipMover;
     friend class RouteCache;
 

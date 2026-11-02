@@ -68,6 +68,12 @@ formats::Result<SyntheticTypes, std::string> make_founding_types();
 formats::Result<SyntheticTypes, std::string>
 make_founding_types_with(std::vector<FigureType> extra_figures);
 
+/// make_founding_types plus the cargo ship 9510 (MAP-CARGO-2): BEWOHNTYPE 113, range 16, hull 1.55,
+/// navigation facts with four cargo holds (hold_count_a 4, hold_count_b 0) and a hold capacity of
+/// 50 t (12800), the shipped 1502's. The ship 1502 of the same registry has no navigation facts
+/// (a LoadCmd on it is refused NoCargoFacts). The registry of cargo_load.log (src/tools/sim_replay).
+formats::Result<SyntheticTypes, std::string> make_cargo_types();
+
 /// The registry of the types above on the original goods and class tables.
 formats::Result<SyntheticTypes, std::string> make_synthetic_types();
 

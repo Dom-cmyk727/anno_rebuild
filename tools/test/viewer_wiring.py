@@ -40,6 +40,10 @@ CASES = HERE / "tools" / "test" / "viewer_wiring"
 
 
 def main(argv):
+    # The session log holds the window title (an em dash). A Windows pipe defaults to the ANSI code page, and the
+    # gate reads this output back as UTF-8 (found by the first W4-WIN-FINAL gate run): say UTF-8.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None, "stderr": []}
     pos = []
     it = iter(argv)

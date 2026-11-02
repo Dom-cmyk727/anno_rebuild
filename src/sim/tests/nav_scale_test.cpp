@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
 
+#include "evidence_out.hpp"
 #include "ship_helpers.hpp"
 #include "world_access.hpp"
 
@@ -305,9 +307,15 @@ void check_locality(const Result& r) {
     }
 }
 
-void write_outputs(const fs::path& dir, const std::vector<Result>& rs) {
-    fs::create_directories(dir);
-    std::ofstream cfg(dir / "config.txt");
+/// Writes config.txt, samples.csv and summary.csv under `dir`. Returns "" or the first failing
+/// path and operation (MAP-BUILD-1 A: a requested file that cannot be written fails the case).
+std::string write_outputs(const fs::path& dir, const std::vector<Result>& rs) {
+    std::error_code mk;
+    fs::create_directories(dir, mk);
+    if (mk) {
+        return dir.string() + ": create_directories failed";
+    }
+    std::ostringstream cfg;
     const sim::NavRules rules;
     cfg << "seed=" << kSeed << "\nadvance_ms=" << kAdvanceMs
         << "\nadvances_per_config=" << kAdvances
@@ -318,10 +326,10 @@ void write_outputs(const fs::path& dir, const std::vector<Result>& rs) {
         << " unit_cap=" << rules.unit_cap << " run_cap=" << rules.run_cap
         << " window_radius_tiles=" << rules.window_radius_tiles << "\n"
         << "orders: MoveCmd to (x+30 clamp 250, z) for the first `orders` ships\n";
-    std::ofstream raw(dir / "samples.csv");
+    std::ostringstream raw;
     raw << "config,mode,advance,ns,admission_steps,stamp_cells,stamp_entries,crew_visits,"
            "index_builds,index_rect_rebuilds,index_cells_rebuilt,tickets,unrouted_before\n";
-    std::ofstream sum(dir / "summary.csv");
+    std::ostringstream sum;
     sum << "config,mode,F,I,near,orders,ships,figures_total,advances,p50_us,p95_us,p99_us,max_us,"
            "first_adv_us,p50_after_first_us,admission_steps,stamp_cells,stamp_entries,crew_visits,"
            "index_builds,index_rect_rebuilds,index_cells_rebuilt,plan_advances,"
@@ -358,6 +366,21 @@ void write_outputs(const fs::path& dir, const std::vector<Result>& rs) {
             << pct(r.delays, 1.0) << ',' << pct(r.delays, 0.5) << ',' << r.unserved << ','
             << static_cast<double>(r.create_ns) / 1e6 << '\n';
     }
+    // A stale file of an earlier run must not survive as if it were this run's output.
+    for (const char* name : {"config.txt", "samples.csv", "summary.csv"}) {
+        std::error_code rm;
+        if (fs::is_regular_file(dir / name, rm)) {
+            fs::remove(dir / name, rm);
+        }
+    }
+    const std::pair<const char*, std::string> files[] = {
+        {"config.txt", cfg.str()}, {"samples.csv", raw.str()}, {"summary.csv", sum.str()}};
+    for (const auto& [name, text] : files) {
+        if (std::string err = sim::test::write_evidence_file(dir / name, text); !err.empty()) {
+            return err;
+        }
+    }
+    return {};
 }
 
 } // namespace
@@ -415,6 +438,29 @@ TEST_CASE("nav scale measurements (ANNO_SIM_NAV_SCALE)") {
             CHECK(it->second->delays == r.delays);
         }
     }
-    write_outputs(fs::path(out), results);
+    const std::string write_error = write_outputs(fs::path(out), results);
+    REQUIRE_MESSAGE(write_error.empty(), write_error);
     MESSAGE("wrote " << results.size() << " runs to " << std::string(out));
+}
+
+TEST_CASE("nav scale writer: a requested file that cannot be written is an error") {
+    // Cheap controls on the actual writer (not the long measurement): a one-sample result.
+    Result r;
+    r.cfg.name = "tiny";
+    r.samples.resize(1);
+    const std::vector<Result> rs = {r};
+    const fs::path dir = fs::temp_directory_path() / "anno_nav_scale_writer_test";
+    fs::remove_all(dir);
+    CHECK(write_outputs(dir, rs).empty()); // valid control
+    CHECK(fs::file_size(dir / "summary.csv") > 0);
+    CHECK_FALSE(fs::exists(dir / "summary.csv.partial"));
+    for (const char* victim : {"config.txt", "samples.csv", "summary.csv"}) {
+        fs::remove_all(dir);
+        fs::create_directories(dir / victim); // the requested file is a directory
+        const std::string err = write_outputs(dir, rs);
+        INFO("victim " << victim);
+        CHECK(err.find(victim) != std::string::npos);
+        CHECK(err.find("directory") != std::string::npos);
+    }
+    fs::remove_all(dir);
 }

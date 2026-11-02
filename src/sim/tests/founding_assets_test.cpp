@@ -17,6 +17,7 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -37,7 +38,22 @@
 #include <anno/sim_load/ship_start.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "evidence_out.hpp"
 #include "world_access.hpp"
+
+namespace {
+
+/// Exports a replay log to the operator-named path (ANNO_SAIL_LOG*). Returns "" when no path was
+/// requested or the file was published; otherwise the failing path and operation (MAP-BUILD-1 A).
+std::string export_log_if_requested(const char* path, const std::vector<std::uint8_t>& bytes) {
+    if (path == nullptr || *path == '\0') {
+        return {};
+    }
+    return anno::sim::test::write_evidence_file(
+        path, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+}
+
+} // namespace
 
 namespace {} // namespace
 
@@ -1090,10 +1106,10 @@ TEST_CASE(
     // ---- replay in a fresh world from the log, through bytes, and a tampered log --------------
     auto bytes = sim::write_log(rec.log());
     REQUIRE(bytes.ok());
-    if (const char* out_path = std::getenv("ANNO_SAIL_LOG"); out_path != nullptr && *out_path) {
-        std::ofstream(out_path, std::ios::binary)
-            .write(reinterpret_cast<const char*>(bytes.value().data()),
-                   static_cast<std::streamsize>(bytes.value().size()));
+    {
+        const std::string export_error =
+            export_log_if_requested(std::getenv("ANNO_SAIL_LOG"), bytes.value());
+        REQUIRE_MESSAGE(export_error.empty(), export_error);
     }
     auto read = sim::read_log(bytes.value());
     REQUIRE(read.ok());
@@ -1123,9 +1139,8 @@ TEST_CASE(
             bad_path != nullptr && *bad_path) {
             const auto bad_bytes = sim::write_log(tampered);
             REQUIRE(bad_bytes.ok());
-            std::ofstream(bad_path, std::ios::binary)
-                .write(reinterpret_cast<const char*>(bad_bytes.value().data()),
-                       static_cast<std::streamsize>(bad_bytes.value().size()));
+            const std::string export_error = export_log_if_requested(bad_path, bad_bytes.value());
+            REQUIRE_MESSAGE(export_error.empty(), export_error);
         }
         auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
         REQUIRE(fresh2.ok());
@@ -1224,4 +1239,33 @@ TEST_CASE("sailed founding canary: a real route failure leaves the ship idle wit
     CHECK(after->pos.x / 256 == start.x / 256); // it did not leave its tile
     CHECK(after->pos.y / 256 == start.y / 256);
     CHECK(w.check_invariants().empty());
+}
+
+TEST_CASE("sail log export: a requested path that cannot be written fails with its path") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "anno_sail_export_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const std::vector<std::uint8_t> payload = {1, 2, 3, 250, 0, 7};
+    // Valid control: published, byte-identical, no partial file left behind.
+    CHECK(export_log_if_requested((dir / "ok.bin").string().c_str(), payload).empty());
+    {
+        std::ifstream f(dir / "ok.bin", std::ios::binary);
+        const std::vector<std::uint8_t> back((std::istreambuf_iterator<char>(f)),
+                                             std::istreambuf_iterator<char>());
+        CHECK(back == payload);
+    }
+    CHECK_FALSE(fs::exists(dir / "ok.bin.partial"));
+    // No request means nothing to do and nothing to fail.
+    CHECK(export_log_if_requested(nullptr, payload).empty());
+    CHECK(export_log_if_requested("", payload).empty());
+    // Negative controls: the destination is a directory; the parent does not exist.
+    fs::create_directories(dir / "is_dir");
+    const std::string dir_err = export_log_if_requested((dir / "is_dir").string().c_str(), payload);
+    CHECK(dir_err.find("is_dir") != std::string::npos);
+    CHECK(dir_err.find("directory") != std::string::npos);
+    const std::string open_err =
+        export_log_if_requested((dir / "missing" / "x.bin").string().c_str(), payload);
+    CHECK(open_err.find("open failed") != std::string::npos);
+    fs::remove_all(dir);
 }

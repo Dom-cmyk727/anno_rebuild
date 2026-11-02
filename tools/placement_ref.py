@@ -209,7 +209,9 @@ def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
 def terrain_class(flags_word):
     """Classify a type's flag word for the BuildCmd terrain/height path.
     Returns (name, supported)."""
-    f = flags_word & 0xFFFF
+    if flags_word > 0xFFFF:                              # the original's word is a u16; wider is not decoded
+        return 'flag word wider than 16 bits', False
+    f = flags_word
     if (f & ~0x0080) == 0x0004:
         return 'ordinary-land', True                    # no class, bit 4, mode 0, bit 0x10 clear
     if f & 0x7017 == 0x2007:

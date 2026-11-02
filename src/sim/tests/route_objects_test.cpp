@@ -799,8 +799,7 @@ TEST_CASE(
     expect_history_independent(beside);
 
     // Control 2 (the cause): the same command under the deliberately installed stand-in stores
-    // height 0, the same building does not close the channel, and the stored byte is 0 after a
-    // save and load too.
+    // height 0, the same building does not close the channel.
     sim::Seams stand_in;
     stand_in.placement_rule = sim::stand_in_placement_seam();
     sim::World zero = make_world_with(spec, stand_in);

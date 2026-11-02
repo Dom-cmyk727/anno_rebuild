@@ -769,3 +769,40 @@ TEST_CASE("build terrain: dry run and live run refuse the same record for the sa
     CHECK(occupied_first >= 5);
     CHECK(terrain_seen >= 20);
 }
+
+TEST_CASE("build terrain: ownership and funds are decided in their own order around the terrain") {
+    // Each pair has the same command on legal land (the control) and on sea, so the terrain
+    // refusal is not hidden by, and does not hide, an ownership or funds failure.
+    const sim::TypeId type = kit().house; // 2 x 2, 100 gold
+    for (const bool sea : {false, true}) {
+        // Poor player: on legal land the funds refuse; on sea the terrain refuses first.
+        Site poor;
+        poor.money = 50;
+        if (sea) {
+            poor.fill(2, 2, 3, 3, 0x00);
+        }
+        sim::World w = poor.world();
+        refused(w, build_at(type, 3, 3),
+                sea ? sim::Reject::TerrainRefused : sim::Reject::CannotAfford);
+        // Rich control: the same sites with enough gold. Land builds, sea is still refused.
+        Site rich;
+        if (sea) {
+            rich.fill(2, 2, 3, 3, 0x00);
+        }
+        sim::World r = rich.world();
+        if (sea) {
+            refused(r, build_at(type, 3, 3), sim::Reject::TerrainRefused);
+        } else {
+            CHECK(r.apply(build_at(type, 3, 3)).ok());
+        }
+        // Foreign tiles (columns 8..15 belong to player 1's city): the owner rule answers first
+        // on sea too, because it precedes the terrain rule; on legal land it answers the same.
+        Site split;
+        split.split = true;
+        if (sea) {
+            split.fill(7, 3, 3, 3, 0x00);
+        }
+        sim::World s = split.world();
+        refused(s, build_at(type, 7, 3), sim::Reject::TileNotOwned);
+    }
+}

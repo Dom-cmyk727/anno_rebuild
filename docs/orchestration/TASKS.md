@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Mac opening accepted; Windows verifier corrections then live opening
+## Current dispatch — 2026-11-02: Mac manual loading; Windows verifier corrections then live opening
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -27,7 +27,11 @@ checked. The orchestrator published and remote-verified this exact Mac pin;
 executors do not choose a newer moving tip or merge it into main.
 Windows/MSVC, Linux gates and live-window validation of this Mac code remain
 pending. W4-WIN-VERIFY is the Windows executor's bounded
-current assignment. Owner continuation, 2026-11-02: after
+current assignment. Following the owner's request for the next Mac assignment,
+**MAP-CARGO-2** below adds manual own-warehouse-to-ship loading. It continues
+from the accepted Mac checkpoint and does not change the Windows integration
+input `0c401c8d`. Its contract review gates implementation; no loading behavior
+or later Mac source is accepted in advance. Owner continuation, 2026-11-02: after
 that closeout and the Mac gameplay candidate are reviewed and accepted at exact
 published pins, W4-OPENING-1 below integrates selection, sailing, founding,
 unloading and building in the live window for an owner playtest. It is conditional
@@ -36,7 +40,7 @@ future work, not permission to take an unreviewed Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY READY.** Close sanitizer-output propagation and full script identity with focused checks; retain the completed corpus and unaffected adapter results. **W4-OPENING-1 stays queued**, gated on accepted Windows and Mac pins. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 and MAP-CARGO-1 ACCEPTED, LOCAL HEADLESS SCOPE.** Preserve `0c401c8d`, its worktree and evidence; stop at this checkpoint. This exact integration input is published and remote-verified. Windows owns the next live opening implementation after its verifier closeout is accepted. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-CARGO-2 READY.** Continue from accepted `0c401c8d` with the reviewed original loading contract, then the headless command, tests and canary. Preserve `0c401c8d` as Windows' fixed input; no new loading/UI dependency is imposed on its current assignment. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1066,6 +1070,189 @@ navigation or separate founding changes, change active map/candidates or origina
 game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task code without a release
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
+
+### MAP-CARGO-2 — load supplies from an owned warehouse onto a ship · READY
+
+**Orchestrator assignment, 2026-11-02, following the owner's request for the
+next Mac task.** The accepted opening already sails, founds, unloads and builds.
+This independent gameplay unit lets players take city supplies aboard again
+for resupply and expansion. It is headless manual loading only.
+
+**Start:** reuse the existing Mac worktree and `task/MAP-2-original-like`, based
+on accepted `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve any newer work
+and explain its ancestry; do not reset to that pin. The completed CARGO-1 packet's
+stop is superseded for this new assignment. Continue L1–L5 without another owner
+prompt, within the rules established by L1's corrected independent review.
+
+**Parallel boundary:** Windows continues W4-WIN-VERIFY and later consumes
+exactly `0c401c8d` for W4-OPENING-1. Do not add this new loading command to its
+requirements, move its accepted input or edit any app/render/W4 files. New Mac
+work is a later review candidate, not part of the accepted opening until reviewed.
+
+**Outcome:** public commands transfer a requested legal quantity from the named
+owned warehouse's city into the named owned ship's hold. Actual stock debit
+equals hold credit, limits and mixed/empty holds follow the reviewed original
+rules or explicit hardening adaptations, and save/replay reproduce the result.
+No stock grant or direct mutation can satisfy the real-file canary.
+
+**Excluded:** automatic routes, buying/selling or foreign/allied warehouses,
+crew disembarkation, UI/rendering, combat, a mod runtime, general ship-eligibility
+redesign, unrelated economy/road work, coordinator and shared-runner repairs.
+Do not reopen accepted placement/navigation/unloading or repeat their matrices.
+
+#### Read order and preflight
+
+1. Fetch `origin/main`; read its `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4,
+   `docs/testing/{evidence-contract,README}.md`, this packet and
+   [the accepted cargo review](reviews/2026-11-02-map-cargo1.md).
+   Read with `git show origin/main:<path>`; **do not merge main** into the
+   task branch or copy its implementation files into yours.
+2. Read the latest MAP-CARGO-1 report and
+   `docs/re/{ship-cargo,ship-founding,production,fire-and-ships}.md`,
+   `docs/sim/{ship-cargo,ship-navigation,ship-start-integration,state}.md`.
+   The load arm is already located at AnnoWelt `0x100ac498–0x100ac8e1`;
+   View's load handler is `0x1005a8d0`. These are starting evidence, not a
+   complete loading contract. Reuse the existing private disassembly tooling.
+3. Read the current command/codec/dispatch/replay, `ShipCargo`, `CityStock`,
+   `Figure` holds, `FigureType`/NavFacts, original registry loader, CargoRules,
+   state fields and `unload_test.cpp`/real opening canary. Follow actual paths
+   under `src/sim/{include/anno/sim,src,tests}` and `src/sim_load`.
+   Read `tools/{cargo_ref,sim_stream}.py` and cargo fixtures before deriving
+   expected values from production code.
+4. Confirm source/build/workflow identities, available RAM/disk/CPU load and
+   tool versions. Reuse the Mac calibration when current capacity permits
+   (16 compile, 8 light tests as ceilings); keep admission enabled. Keep the
+   screen awake for owned work and release only your own assertion. Never
+   change another executor's jobs, worktree or coordinator.
+
+#### L1 — finish the original loading contract first
+
+1. Trace the manual load click through the command sink to city debit and
+   hold credit. Resolve the hold selector, goods echo, whole/fractional request
+   units, stock rounding, per-hold versus aggregate capacity, and which type
+   fields supply the limit. Read the necessary callees; do not infer loading
+   by merely reversing the unload formula or using automatic-route behavior.
+2. Pin ownership, eligible ship/warehouse, live range, moving/carried state,
+   empty-hold goods assignment, same-goods top-up, different-goods refusal,
+   duplicate holds, partial/full/zero transfers and normalization. Keep unknown
+   independent arms separate. A rule required for this command must be traced
+   before implementation; a precise true blocker is reported, never guessed.
+3. Write a loading section in `docs/re/ship-cargo.md` and a proposed contract
+   in `docs/sim/ship-cargo.md`: predicate/commit order, typed command/outcome,
+   refusals, checked units, data-driven capacities/rules and original-versus-
+   adaptation table. Existing range/authority semantics are reused where the
+   evidence agrees. Shared visibility remains information, not permission.
+4. Extend the independent Python reference and hand-derived vectors before
+   engine code: empty/same/different goods, stock/hold/request limits,
+   fractional stored balances, boundary values, partial transfers and competing
+   requests. Keep loading and unloading expectations distinguishable. Obtain
+   an independent read-only contract/reference review; correct it before L2.
+
+#### L2 — add the authoritative loading command
+
+1. Add one minimal typed command through existing native codec, dispatch,
+   result and replay paths. Choose an unused tag without renumbering existing
+   alternatives. Include independent hand-written bytes and wrong-length cases.
+   Document the existing wire compatibility policy accurately.
+2. Resolve the current ship/warehouse and city through existing indexes at
+   apply. Validate L1's order and prepare an exact transfer plan before writes.
+   The ship cannot gain more than the city loses; the city cannot lose more
+   than its current available stock, and the selected hold cannot exceed its
+   evidenced capacity. No wrapping, hidden clamping, whole-world clone or scan.
+3. Use current registry/rules facts for capacities, goods and hold counts; no
+   fixed ship 1502, warehouse 1302, player/seat, four-hold limit or building-
+   material whitelist. Retain CARGO-1's disclosed ship-class limitation rather
+   than starting a separate capability redesign. Explicitly refuse unsupported
+   or missing required capacity facts instead of substituting a guessed limit.
+4. Commit debit/credit together through suitable existing APIs, with the actual
+   transferred amount in the command result. A refusal preserves serialized
+   state, PRNG, gold, holds and stock; the existing host rejection notice is
+   separate. Keep cargo-dependent speed updates at their established segment
+   boundary. Add no transfer state unless required by the established rule.
+5. New authoritative rule fields must be validated, serialized and hashed
+   immediately. Bump state identity only when required; avoid gratuitous golden
+   changes. Version-negative tests must reseal a valid control and assert the
+   version-specific reason. Get focused independent implementation review.
+
+#### L3 — verify conservation and meaningful refusals
+
+1. Test through encode/decode and `World::apply`, starting from a legal nonzero
+   positive control. Vary one predicate at a time and require the intended
+   reason plus unchanged state. Cover L1's empty/top-up/mixed cases, holds and
+   stock near bounds, partial capacity, repeat requests, target replacement,
+   two ships competing for limited stock, another owner and data-defined types.
+2. Assert exact debit, credit, report, untouched other holds/goods and per-goods
+   conservation in a wide accumulator. Test load then unload with no Advance:
+   combined goods must be conserved, though hold layout need not be restored
+   unless the contract requires it. Cover stored fractional remainders without
+   inventing fractional command requests.
+3. Use focused counterexamples to actual write sites: credit without stock
+   debit and debit beyond the hold's accepted credit. The relevant first
+   transfer must fail the intended accounting assertion while its legal
+   control executes. Use fresh state where later cascading failures would
+   obscure the result; no broad mutation quota or repeated long voyage.
+4. Verify save/load around loading, subsequent commands, replay and changed
+   quantity/target divergence. Check cargo affects subsequent sailing segments
+   according to the existing speed contract and crew stay carried. Independent
+   review covers these tests and corrections before L4.
+
+#### L4 — one real-file resupply canary
+
+1. Start from the unchanged candidate/loadout through the accepted opening
+   path: sail, found, unload and build. Reuse its voyage/helpers/recording where
+   compatible rather than repeating sailing for every loading assertion. Any
+   saved starting point must be reproducible by public commands and linked to
+   its source/log identity; no machine-private cache becomes a required fixture.
+2. Select legitimate remaining city goods and load them aboard through the new
+   command. Exercise two different owners and at least one newly emptied hold
+   and one evidenced top-up/partial case if the unchanged state supports it.
+   Assert the scenario's actual policy and accounting preconditions. No grant,
+   changed loadout/cost, relocation or direct transfer helper in the run.
+3. Keep a ledger derived from original starting quantities and command outcomes;
+   distinguish independently justified simulation consumption/production from
+   transfer differences. In windows intended to have no economy changes,
+   assert zero rather than absorbing unexplained differences into an observed
+   remainder. A rival request must reach the intended ownership refusal.
+4. Compare reload boundaries with uninterrupted state and outcomes; run one
+   fresh-process replay and a changed-load negative. Reuse one complete
+   recording where practical. Publish files only through checked writers and
+   retain commands, hashes, status and timing. Review the actual no-grants path.
+
+#### L5 — finite closeout and handoff
+
+1. Freeze source/tools after focused corrections. Run the cheap references and
+   contracts, affected cargo/codec/state/founding/placement/navigation/replay
+   cases and ASan/UBSan, then one affected full-sim gate with original files.
+   Include formats/load only if their code changed. Reuse unaffected U5/E1
+   evidence with dependency notes; no render, adapter, heavy-render corpus,
+   coordinator or performance campaign belongs to this unit.
+2. Require exact test inventories, executed/skipped counts, diagnostic output
+   and correct rejection/divergence reasons. Preserve first failures. Use fresh
+   owned temp paths. A timeout allowance is disclosed per lane; a failure must
+   be diagnosed before retrying, not erased by a longer global deadline.
+3. One fresh independent integration reviewer follows input -> ownership/range/
+   capacity -> stock debit/hold credit -> sailing/persistence/replay, checking
+   the loading/unloading interaction and final canary. Correct actionable
+   findings and re-review only the changed paths. Prose-only corrections do
+   not reopen broad gates.
+4. Report exact code/test/docs/workflow pins, the acceptance table, supported
+   and unsupported rules, original facts/adaptations, source/binary/fixture
+   identities, failed attempts and target-host NOT_RUN lanes. Give a small
+   future Windows API delta; do not edit its UI or demand that its current
+   opening task integrate loading before its existing playtest.
+
+**Stop:** one independently reviewed local headless manual-loading candidate,
+with conserved real supplies, meaningful refusals, reproducible save/replay and
+the original unload path preserved. Commit small concerns on the existing Mac
+branch and stop for orchestrator review. No task-code push, main merge/rebase,
+force push, pruning, candidate selection/install, `game/` edit, TASKS edit or
+Windows work. Preserve the accepted `0c401c8d` handoff and its evidence.
+
+**Dispatch review:** independent read-only reviewer
+`/root/review_windows_dispatch` approved this task packet with no findings.
+This is documentation approval, not loading-rule or implementation acceptance.
+All existing W4 packets and prior MAP acceptance/history were compared with
+main `8b3deaf0` and remain byte-identical; whitespace checks pass.
 
 ### MAP-BUILD-1 — build on valid terrain after founding · ACCEPTED LOCAL HEADLESS SCOPE
 

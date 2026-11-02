@@ -1072,3 +1072,196 @@ TEST_CASE("unload units: the stock helpers and the pure rules") {
     CHECK(sim::CargoRules{{2, 2, 3}}.validate().find("increases") != std::string::npos);
     CHECK(sim::CargoRules{{0}}.validate().empty()); // radius 0: the footprint itself
 }
+
+// ---------------------------------------------------------------------------------------------
+// Save and load around a session, a recorded session in a fresh process, divergence
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// The session of the committed fixture cargo_unload.log: the opening after founding, then the
+/// repeat that finds the store full, a repeat of the first command, a refusal, an advance.
+std::vector<sim::Command> session_commands(const sim::World& w) {
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    const sim::BuildingId rival = bid(w, 1, 60, 10);
+    const auto c = [&](const sim::UnloadCmd& u) {
+        return sim::Command{sim::PlayerId{0}, sim::Body{u}};
+    };
+    return {c(cmd(1, wh, 0, kWood, 38)),    // ok 9728
+            c(cmd(1, wh, 1, kFood, 10)),    // ok 2560
+            c(cmd(1, wh, 2, kTools, 45)),   // ok 11520
+            c(cmd(1, wh, 3, kTools, 30)),   // ok 1280, 25 t stay aboard
+            c(cmd(1, wh, 3, kTools, 30)),   // StockFull
+            c(cmd(1, wh, 0, kWood, 38)),    // HoldGoodsMismatch (a repeat)
+            c(cmd(1, rival, 1, kFood, 1))}; // NotCityOwner (visible, not permitted)
+}
+
+const std::vector<sim::Reject> kSessionStatus = {
+    sim::Reject::None,        sim::Reject::None,      sim::Reject::None,
+    sim::Reject::None,        sim::Reject::StockFull, sim::Reject::HoldGoodsMismatch,
+    sim::Reject::NotCityOwner};
+const std::vector<std::uint64_t> kSessionAmount = {9728, 2560, 11520, 1280, 0, 0, 0};
+
+std::filesystem::path fixture_log_path(const char* name) {
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / name;
+}
+
+std::vector<std::uint8_t> read_file(const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+sim::ReplayLog record_session(std::vector<sim::Reject>* statuses = nullptr,
+                              std::vector<std::uint64_t>* amounts = nullptr) {
+    sim::World w = make(Setup{});
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    rec.checkpoint();
+    for (const sim::Command& c : session_commands(w)) {
+        const sim::ApplyResult r = rec.submit(c);
+        if (statuses != nullptr) {
+            statuses->push_back(r.status);
+        }
+        if (amounts != nullptr) {
+            amounts->push_back(r.records.empty() ? 0 : r.records[0].transferred_88);
+        }
+        rec.checkpoint();
+    }
+    rec.advance(5000);
+    rec.checkpoint();
+    return rec.log();
+}
+
+sim::ReplayOutcome replay_log(const sim::ReplayLog& log, sim::World& world_out) {
+    REQUIRE(log.registry_digest == registry()->digest());
+    auto loaded = sim::World::load(log.initial_save, registry(), {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    world_out = std::move(loaded).value();
+    auto outcome = sim::replay(world_out, log);
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    return outcome.value();
+}
+
+} // namespace
+
+TEST_CASE("unload session: save and load between any two commands change no outcome") {
+    sim::World straight = make(Setup{});
+    const std::vector<sim::Command> cmds = session_commands(straight);
+    std::vector<sim::Reject> status_a;
+    std::vector<std::uint64_t> amount_a;
+    std::vector<std::vector<std::uint8_t>> saves_a;
+    for (const sim::Command& c : cmds) {
+        const sim::ApplyResult r = straight.apply(c);
+        status_a.push_back(r.status);
+        amount_a.push_back(r.records.empty() ? 0 : r.records[0].transferred_88);
+        saves_a.push_back(straight.save());
+    }
+    CHECK(status_a == kSessionStatus);
+    CHECK(amount_a == kSessionAmount);
+    // The same session, saved and reloaded before every command.
+    sim::World w = make(Setup{});
+    for (std::size_t i = 0; i < cmds.size(); ++i) {
+        auto again = sim::World::load(w.save(), registry());
+        REQUIRE(again.ok());
+        w = std::move(again).value();
+        const sim::ApplyResult r = w.apply(cmds[i]);
+        CHECK(r.status == status_a[i]);
+        CHECK((r.records.empty() ? 0 : r.records[0].transferred_88) == amount_a[i]);
+        CHECK(w.save() == saves_a[i]);
+    }
+}
+
+TEST_CASE("unload session: a recorded transfer replays, a changed amount or target diverges, and "
+          "retries create nothing") {
+    std::vector<sim::Reject> statuses;
+    std::vector<std::uint64_t> amounts;
+    const sim::ReplayLog log = record_session(&statuses, &amounts);
+    CHECK(statuses == kSessionStatus);
+    CHECK(amounts == kSessionAmount);
+    auto bytes = sim::write_log(log);
+    REQUIRE(bytes.ok());
+    // The wrong log: the first command asks 10 t instead of 38. Its outcome differs, so the first
+    // checkpoint after it differs.
+    sim::ReplayLog wrong = log;
+    bool changed = false;
+    for (sim::ReplayEntry& e : wrong.entries) {
+        for (sim::Command& c : e.commands) {
+            if (!changed && std::holds_alternative<sim::UnloadCmd>(c.body)) {
+                std::get<sim::UnloadCmd>(c.body).tons = 10;
+                changed = true;
+            }
+        }
+    }
+    REQUIRE(changed);
+    auto wrong_bytes = sim::write_log(wrong);
+    REQUIRE(wrong_bytes.ok());
+    if (anno::test::update_mode()) {
+        for (const auto& [name, data] :
+             {std::pair{"cargo_unload.log", &bytes.value()},
+              std::pair{"cargo_unload_wrong.log", &wrong_bytes.value()}}) {
+            const std::string err = anno::sim::test::write_evidence_file(
+                fixture_log_path(name),
+                std::string_view(reinterpret_cast<const char*>(data->data()), data->size()));
+            REQUIRE_MESSAGE(err.empty(), err);
+        }
+        MESSAGE("fixtures cargo_unload.log and cargo_unload_wrong.log rewritten");
+    }
+    CHECK(read_file(fixture_log_path("cargo_unload.log")) == bytes.value());
+    CHECK(read_file(fixture_log_path("cargo_unload_wrong.log")) == wrong_bytes.value());
+
+    // Replaying the COMMITTED bytes: every checkpoint matches and the end state is the session's.
+    const auto committed = sim::read_log(read_file(fixture_log_path("cargo_unload.log")));
+    REQUIRE(committed.ok());
+    sim::World good(1);
+    const sim::ReplayOutcome ok = replay_log(committed.value(), good);
+    CHECK(ok.reproduced());
+    CHECK(ok.checkpoints_total == 9);
+    CHECK(ok.checkpoints_matched == 9);
+    CHECK(city(good, 0).stock.stock[kWood] == 9728);
+    CHECK(city(good, 0).stock.stock[kTools] == 12800);
+    CHECK(ship(good).holds[3] == sim::ShipHold{kTools, 6400});
+    // Conservation over the whole replay: what the replay starts with is what it ends with.
+    auto initial = sim::World::load(committed.value().initial_save, registry(), {});
+    REQUIRE(initial.ok());
+    CHECK(totals(initial.value()) == totals(good));
+    // Retries create nothing: send every command of the session again to the end state.
+    const Snap end = snap(good);
+    const std::vector<sim::Reject> retry = {
+        sim::Reject::HoldGoodsMismatch, sim::Reject::HoldGoodsMismatch,
+        sim::Reject::HoldGoodsMismatch, sim::Reject::StockFull,
+        sim::Reject::StockFull,         sim::Reject::HoldGoodsMismatch,
+        sim::Reject::NotCityOwner};
+    const std::vector<sim::Command> again = session_commands(good);
+    for (std::size_t i = 0; i < again.size(); ++i) {
+        const auto& u = std::get<sim::UnloadCmd>(again[i].body);
+        expect_refused(good, 0, u, retry[i]);
+    }
+    CHECK(snap(good).save == end.save);
+
+    // The committed wrong log: detected, and the first command moved less.
+    const auto wrong_read = sim::read_log(read_file(fixture_log_path("cargo_unload_wrong.log")));
+    REQUIRE(wrong_read.ok());
+    sim::World bad(1);
+    const sim::ReplayOutcome no = replay_log(wrong_read.value(), bad);
+    CHECK_FALSE(no.reproduced());
+    REQUIRE(no.diverged_entry.has_value());
+    CHECK(no.checkpoints_matched < no.checkpoints_total);
+
+    // A changed target (the rival's warehouse instead of the owner's) refuses and diverges.
+    sim::ReplayLog elsewhere = log;
+    changed = false;
+    for (sim::ReplayEntry& e : elsewhere.entries) {
+        for (sim::Command& c : e.commands) {
+            if (!changed && std::holds_alternative<sim::UnloadCmd>(c.body)) {
+                std::get<sim::UnloadCmd>(c.body).warehouse = bid(good, 1, 60, 10);
+                changed = true;
+            }
+        }
+    }
+    REQUIRE(changed);
+    sim::World moved(1);
+    const sim::ReplayOutcome diverged = replay_log(elsewhere, moved);
+    CHECK_FALSE(diverged.reproduced());
+    CHECK(city(moved, 1).stock.stock[kWood] == 0); // nothing reached the rival either
+}

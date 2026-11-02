@@ -13,7 +13,7 @@ the original's 32-bit register arithmetic does (evidence of the difference, neve
   cargo_ref.py selftest                  the rule's own checks (hand-derived numbers, independent of the vector files), the load vector
                                          file, and the load mutants (each must be caught)
   cargo_ref.py check [vectors.txt]       run a vector file (unload: `case` blocks; load: `loadcase` blocks; default: both fixtures); exit 0/1
-  cargo_ref.py mutants [load_vectors]    run the load vectors against two broken load rules; exit 0 only if both are rejected
+  cargo_ref.py mutants [load_vectors]    run the load vectors against the broken load rules (LOAD_MUTANTS); exit 0 only if every one is rejected
 
 MAP-CARGO-2 L1 adds the LOAD (own warehouse -> ship hold), again from the disassembly alone (docs/re/ship-cargo.md section 11):
   AnnoWelt.dll 0x100ac360 flag 0, 0x100ac498-0x100ac8e7   plan_load = the REBUILD rule (ADAPTATION of the arm: goods bound, wide
@@ -113,23 +113,28 @@ def orig_unload(holds, index, goods, tons, stock, cap, goods_count=DEFAULT_GOODS
 
 
 # ------------------------------------------------------------------ the LOAD, REBUILD rule (MAP-CARGO-2 L1)
-def resolve_hold(holds, n0, hold_cap, pref, goods):
+def resolve_hold(holds, n0, hold_cap, pref, goods, mutant=None):
     """The hold a load goes to, or None. ORIGINAL order (0x100ac4b5-0x100ac56f): the named hold if it holds `goods` and has at least one
     whole ton free; else the search over holds 0..n0-1: the first empty hold unless a hold of `goods` with free > 0 exists, then the one
-    with the most free space (strictly greater, lowest index on ties). ADAPTATION: an empty hold is goods 0 AND amount 0."""
+    with the most free space (strictly greater, lowest index on ties). ADAPTATION: an empty hold is goods 0 AND amount 0.
+    `mutant` (tests only) breaks one hold-selection rule: threshold_255 (preferred needs 255 free, not 256), tie_ge (ties go to the
+    highest index), empty_first (an empty hold beats a same-goods hold with room)."""
     g, a = holds[pref]
-    if g == goods and hold_cap - a >= TON:
+    if g == goods and hold_cap - a >= (TON - 1 if mutant == 'threshold_255' else TON):
         return pref
     cand, best = None, 0
+    cand_empty = False
     for k in range(min(n0, len(holds))):
         g, a = holds[k]
         if g == 0 and a == 0:
             if cand is None:
-                cand = k
+                cand, cand_empty = k, True
         elif g == goods:
             free = hold_cap - a
-            if free > 0 and best < free:
-                best, cand = free, k
+            if mutant == 'empty_first' and cand_empty:
+                continue
+            if free > 0 and (best <= free if mutant == 'tie_ge' else best < free):
+                best, cand, cand_empty = free, k, False
     return cand
 
 
@@ -144,13 +149,13 @@ def plan_load(holds, n0, hold_cap, pref, goods, tons, stock, goods_count=DEFAULT
         return ('reject', 'BadIndex')
     if goods == 0 or goods >= goods_count:
         return ('reject', 'UnsupportedGoods')
-    idx = resolve_hold(holds, n0, hold_cap, pref, goods)
+    idx = resolve_hold(holds, n0, hold_cap, pref, goods, mutant)
     if idx is None:
         return ('reject', 'HoldsFull')
     room = hold_cap - holds[idx][1]
     if room <= 0:
         return ('reject', 'HoldsFull')
-    avail = (stock.get(goods, 0) // TON) * TON            # the store rounded DOWN to whole tons (0x100ac5bf)
+    avail = stock.get(goods, 0) if mutant == 'no_floor' else (stock.get(goods, 0) // TON) * TON  # rounded DOWN to whole tons (0x100ac5bf)
     if avail == 0:
         return ('reject', 'StockShort')
     x = min(tons * TON, room, avail)
@@ -344,9 +349,11 @@ def selftest():
     eq((o[0], o[2], o[3]), (-256, [(42, 65023)], {42: 255}), 'orig E2')
     eq(plan_load([(42, 65279)], 1, 65280, 0, 42, 1, {42: M32})[1], 1, 'rebuild E2 wide')
     # the load mutants are caught by the vector file (see mutants())
-    if os.path.exists(LOAD_VECTORS):
-        eq(check(LOAD_VECTORS, quiet=True), 0, 'load vector file')
-        eq(mutants(LOAD_VECTORS, quiet=True), 0, 'load mutants are caught')
+    # The load vector file is a required input: a missing file is a FAILURE, never a skip (MAP-CARGO-2 L2).
+    if not os.path.exists(LOAD_VECTORS):
+        raise SystemExit(f'cargo_ref selftest FAILED: the load vector file is missing: {LOAD_VECTORS}')
+    eq(check(LOAD_VECTORS, quiet=True), 0, 'load vector file')
+    eq(mutants(LOAD_VECTORS, quiet=True), 0, 'load mutants are caught')
     print(f'cargo_ref selftest: {n} checks ok')
 
 
@@ -516,10 +523,13 @@ def check_load(path, planner=plan_load, quiet=False):
     return fails
 
 
+LOAD_MUTANTS = ('credit_only', 'debit_request', 'threshold_255', 'tie_ge', 'empty_first', 'no_floor')
+
+
 def mutants(path, quiet=False):
     """Every broken load rule must fail at least one case of the load vector file. -> number of mutants that SURVIVED."""
     survived = 0
-    for m in ('credit_only', 'debit_request'):
+    for m in LOAD_MUTANTS:
         caught = check_load(path, lambda *a, **k: plan_load(*a, mutant=m, **k), quiet=True)
         if not quiet:
             print(f'mutant {m}: {"caught by " + str(caught) + " failures" if caught else "SURVIVED"}')

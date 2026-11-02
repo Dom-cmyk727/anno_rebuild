@@ -210,16 +210,17 @@ def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
     A road class type is the original rule (analysis requested: the server derives the byte) plus the level floor R-A2."""
     t = reg.get(tid)
     if t is not None and road_class(t):
-        v, why, b = place(isl, reg, tid, x, y, rot, flags, rec8_in)
-        if v == ACCEPT:
-            fw, fh = (t.w, t.h) if rot & 1 == 0 else (t.h, t.w)
+        fw, fh = (t.w, t.h) if rot & 1 == 0 else (t.h, t.w)
+        inside = isl.x0 <= x and x + fw <= isl.x0 + isl.W and isl.y0 <= y and y + fh <= isl.y0 + isl.H
+        if inside and rot in (0, 1, 2, 3):                                         # R-A3 sits with the occupancy step, before any terrain verdict
             for dy in range(fh):
                 for dx in range(fw):
                     e = reg.get(isl.obj(x + dx, y + dy))
-                    if e is not None and e.group == 0xC1 and not road_class(e):     # R-A3: ramp, pier (and any other group 0xc1 piece)
-                        return REJECT, 'OCCUPIED', b
-            if b < ROAD_FLOOR:                                                     # R-A2
-                return REJECT, 'LOWLEVEL', b
+                    if e is not None and e.group == 0xC1 and not road_class(e):     # ramp, pier (a bridge piece the original refuses itself)
+                        return REJECT, 'OCCUPIED', rec8_in
+        v, why, b = place(isl, reg, tid, x, y, rot, flags, rec8_in)
+        if v == ACCEPT and b < ROAD_FLOOR:                                         # R-A2
+            return REJECT, 'LOWLEVEL', b
         return v, why, b
     if t is not None:
         name, sup = terrain_class(t.flags)

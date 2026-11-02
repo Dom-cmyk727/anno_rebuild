@@ -7,7 +7,7 @@ Labels: **ORIGINAL** (address in the RE note), **ADAPT** an approved deviation w
 ## 1. Outcome and boundary
 
 An owned city builds and removes the ordinary land roads of the shipped registry through the existing `BuildCmd` / `DemolishCmd`. A road is a **tile object**: it is written into the island's tile layer (object id, offset/rotation bytes, height byte, walk code and mask) and into nothing else.
-It allocates no building record and no building serial, joins no building list, is in no derived building index and returns no `BuildingId`. Route searches and the market-cart delivery read the tile layer, so they see the change on their next search.
+It allocates no building record and no building serial, joins no building list, is in no derived building index and returns no `BuildingId`. The serial-exhaustion check (`SerialExhausted`) is **skipped for a road**, which takes no serial. Route searches and the market-cart delivery read the tile layer, so they see the change on their next search.
 Not in this unit: a `RoadsCmd`, fake building ids, bridges, ramps, piers, walls, plazas, upgrades, trade routes, a connectivity cache, a new pathfinder, UI/render integration, neighbour-dependent shape choice (U-R1).
 
 ## 2. Eligibility (`road_class`, parsed facts only)
@@ -42,16 +42,16 @@ The shipped roads cost gold only (5 dirt, 10 cobblestone). **Replacing a road wi
 * **Sequential (default):** record by record in stream order, each checked against the state the earlier ones left (a road written by record *i* is on the tile layer when record *i+1* is checked).
 * **`Rules::build_atomic`:** a dry run validates every record against a scratch budget first and one failure places nothing (`AtomicAbort` for the others). The budget accounts **by record kind, in command order**: a building takes gold, goods, one serial and its footprint tiles (`Occupied` for a later record touching them);
   a road takes gold and goods and **no serial**, and puts a *virtual object* (its type id) on its tile. A later record's occupancy test sees the virtual object through the same `overlap_with_existing` the live path applies to the written tile (so building-over-road is `Occupied`, road-over-road is compatible, road-over-ramp is `Occupied`), and the live and dry runs refuse the same record with the same status.
-* The scratch budget never writes the tile layer. Required property: for every command the dry run and the live run decide identically, and a refused command leaves bytes, hash, PRNG, money, goods, buildings, tiles and events unchanged.
+* The scratch budget never writes the tile layer. The virtual-object test runs inside `check_record` before the placement rule (the rule and an installed `placement_rule` seam take no budget); a seam that replaces the default rule (the D17 stand-in) answers `Occupied` for road-over-road and is a test seam only, as for buildings. Required property: for every command the dry run and the live run decide identically, and a refused command leaves bytes, hash, PRNG, money, goods, buildings, tiles and events unchanged.
 
 ## 6. The tile write and its lifetime
 
-The writer is the existing `place_object_record(layer, types, type, x, y, rotation, phase = 0, height)`; for a `STRASSE` it writes the id, the in-footprint offset, the rotation, the height byte, **walk code 0 and mask 0** (ORIGINAL HEAD pair (0, 3), `walk_code`), through the `TileLayer` setters. Those setters mark the changed tile for the route index (`TileLayer::route_dirty`), so a ship route index stays equal to a clean rebuild, with no new bookkeeping.
-**There is no road connectivity cache and no per-tile global recompute.** A walk search builds its `WalkCells` from the live tile layer on every call; the first search after a change reads the new codes. A road tile is walkable for the market cart (layer 3 admits code 0) and for a carrier (layer 0); a non-road tile is walkable for layer 0 only (code 2), so the layers keep their respective original rules.
+The writer is the existing `place_object_record(layer, types, type, x, y, rotation, phase = 0, height)` (no neighbour store was found in the original's placement function; the rest of `City::Place` is not fully enumerated, re section 3); for a `STRASSE` it writes the id, the in-footprint offset, the rotation, the height byte, the **walk code derived from the HEAD pair by `walk_code` and mask 0** (ORIGINAL: code 0 for the (0, 3) types, 1 for 2528, 4 for 2530-2533; all admitted by layer 3), through the `TileLayer` setters. Those setters mark the changed tile for the route index (`TileLayer::route_dirty`), so a ship route index stays equal to a clean rebuild, with no new bookkeeping.
+**There is no road connectivity cache and no per-tile global recompute.** A walk search builds its `WalkCells` from the live tile layer on every call; the first search after a change reads the new codes. A road tile is walkable for the market cart (layer 3 admits codes 0, 1, 4) and for a carrier (layer 0); a non-road tile is walkable for layer 0 only (code 2), so the layers keep their respective original rules.
 
 ## 7. Removal (`DemolishCmd`)
 
-A tile is removed by the existing non-building branch of `demolish`: the tile must be the city's (`TileNotOwned` otherwise), the tile carries no building, and its object id is non-zero; the clear arm of `0x10082c30` runs (`clear_object_record`): id 0, offset/rotation 0, code 2, mask 0, **height byte kept** (ORIGINAL). Nothing else changes: no neighbouring tile, no building record, no serial, no terrain, no money (**no refund**, the original touches no building list for group `0xc1`; the refund table is U-R3).
+A tile is removed by the existing non-building branch of `demolish`: the tile must be the city's (`TileNotOwned` otherwise), the tile carries no building, and its object id is non-zero; the clear arm of `0x10082c30` runs as a **stand-in** (`clear_object_record`; ADAPT: the original's arm selection is unread, U-R5): id 0, offset/rotation 0, code 2, mask 0, height byte kept. Nothing else changes: no neighbouring tile, no building record, no serial, no terrain, no money (**no refund**: none is evidenced and none is invented; U-R3).
 A second removal of the same tile finds no object: `NoBuildingAtTile` and no change. A building on the tile is removed by the building branch (unchanged); a road and a building never share a tile. The branch clears any object with an id (OQ-201: scenery too); the road claim covers the land-road ids and the unrelated branches keep their behaviour.
 
 ## 8. Traffic across a change
@@ -61,7 +61,7 @@ A second removal of the same tile finds no object: `NoBuildingAtTile` and no cha
   This is an **adaptation by absence**: the original's reaction of a cart to a road that disappears (replan, stop, retry) is **UNKNOWN** and the deferred fine-route/retry subsystem is not introduced here.
 * Market carts (layer 3, road-dependent) and workshop carriers (layer 0, open land) keep their own rules; this unit changes neither table.
 
-## 9. Hand-derived vectors (`placement_vectors.txt`, R-01..R-23)
+## 9. Hand-derived vectors (`placement_vectors.txt`, R-01..R-24)
 
 Grid: 10 x 10 island at the origin, flat `0x30` unless stated, vertex column 10 and row 10 are 0. `type 16` = `STRASSE 0x4186`, `17` = `0x1186`, `18` = bridge (198), `19` = ramp (194), `20` = `F & 3 == 1`, `21` = mode 3, `22`/`23` = 2x1 mode 2/0. `E` = emulated original answer, `P` = the reference.
 
@@ -85,4 +85,4 @@ No state layout change: the tile object id, offset bytes, height byte, walk code
 
 ## 11. Unknowns carried (none is silently substituted)
 
-U-R1 UI id and neighbour-variant choice; U-R2 the road cursor's terrain test (stood in for by R-A2); U-R3 the refund table and the second jump table of `RemoveAt`; U-R4 road over ramp/pier (R-A3); the original's reaction of a travelling cart to a vanished road (section 8). Original-runtime capture of a real road build/remove click: NOT_RUN.
+U-R1 UI id and neighbour-variant choice; U-R2 the road cursor's terrain test (stood in for by R-A2); U-R3 the refund table and the second jump table of `RemoveAt`; U-R4 road over ramp/pier (R-A3); U-R5 the removal arm (clear vs replacement, section 7); the original's reaction of a travelling cart to a vanished road (section 8). Original-runtime capture of a real road build/remove click: NOT_RUN.

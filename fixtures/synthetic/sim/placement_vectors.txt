@@ -1325,3 +1325,23 @@ case road2x1_mode0_max_cell
   place 23 2 2 0 2000000 0
   expect accept 64
 end
+
+# R-24: precedence: a ramp piece under a road on a flat 0x10 (floor-refused) tile answers Occupied, not TerrainRefused (R-A3 is the occupancy step, before the terrain verdict)
+case road_over_ramp_piece_on_bad_terrain
+  island 0 0 10 10
+  v 0 1010101010101010101000
+  v 1 1010101010101010101000
+  v 2 1010101010101010101000
+  v 3 1010101010101010101000
+  v 4 1010101010101010101000
+  v 5 1010101010101010101000
+  v 6 1010101010101010101000
+  v 7 1010101010101010101000
+  v 8 1010101010101010101000
+  v 9 1010101010101010101000
+  v 10 0000000000000000000000
+  obj 3 3 19
+  place 16 3 3 0 2000000 0
+  expect reject OCCUPIED
+  original accept 16
+end

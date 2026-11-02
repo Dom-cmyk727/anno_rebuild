@@ -2,23 +2,227 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-01: round-ee repairs and Windows verification; MAP sailing implementation
+## Current dispatch — 2026-11-02: Windows repair closeout; MAP sailing implementation
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package or accept unreviewed changes. Round ee is reviewed: four repairs precede
-rendering acceptance. MAP-FOUND-3 is accepted for its local
+package or accept unreviewed changes. Windows reports an R1–R4 repair candidate
+at `9ba01f1`, not yet published or accepted; W4-WIN-CLOSE below is its next
+assignment. MAP-FOUND-3 is accepted for its local
 headless scope. MAP-NAV-1 is reviewed with two bounded findings; MAP's next
 assignment is MAP-NAV-2 below, with implementation conditional on package A.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner after intake | **READY: W4-WIN-0 → 1 → R1–R4 → 2–6.** Repair the four reviewed round-ee defects, then complete target-host verification. Source pin below; no main merge. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-CLOSE READY.** Publish the frozen review candidate, close the disclosed consumer/evidence gaps and diagnose the two unresolved failures. No main merge or restart of valid broad gates. |
 | MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-2 A READY; B–F after A's independent approval.** Repair the route oracle and planning fairness contract, close exact implementation dependencies, then implement and verify headless sailing through to founding. |
 
-**Rendering handoff pin:** `task/W4-3-live-buildings` at
+### W4-WIN-CLOSE — publish for review and finish bounded repair acceptance · READY
+
+Read the [handoff assessment](reviews/2026-11-02-w4-win-handoff.md).
+The orchestrator has reviewed the supplied report against the assignment, but
+cannot inspect unpublished Windows code or local ignored logs. The reported
+head is `9ba01f1`, with `src/` at `4ecea07`; resolve and record full hashes.
+GitHub was still at `a29b079` when checked. **Source review and acceptance remain
+pending.** The prior packet below supplies requirements, not an instruction to
+reset to its older pin, repeat host migration or restart R1–R4 from scratch.
+
+**Goal:** make the actual candidate reviewable, close missing tests of production
+viewer wiring/presentation/evidence failures, and give the two unexplained test
+failures an evidence-based disposition. Do not start UI.2, new gameplay, renderer
+optimization, coordinator repair or another large performance campaign.
+
+#### Read order and working boundaries
+
+1. Fetch/read current `origin/main` `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4,
+   `docs/testing/{evidence-contract,README}.md`, this packet and both the linked
+   handoff assessment and `reviews/2026-11-01-w4-ee.md`. Do not merge main into
+   the task branch or switch workflows in the middle of a run.
+2. Read the task branch's final Windows report and independent review records,
+   `docs/app/{game-shell,gpu-handoff,window-trace}.md`, and relevant performance
+   tables. Compare every claimed final result with its actual source/tool/binary.
+3. Inspect `src/app/src/viewer.cpp` and its real title/script/frame consumers,
+   `dev_feedback`, `dev_script`, `command_outcome`, `play_follow`, the code
+   containing `ChangeVisibility`, and their tests. Read the changed picture-worker
+   tests/reclaimer waits and all five changed `drain()` helpers with callers.
+4. Inspect `tools/bench/window_table.py`, `window_table_test.sh`, the native
+   Windows launch/capture wrapper and its contracts, `picture_matrix_test.sh`,
+   and all files in the post-`f8bc0a6` tool/report diff. Locate new filenames with
+   `git diff --name-only`/`rg`; do not infer the last tool's scope from its title.
+
+Keep the Mac MAP lane untouched. Do not cherry-pick its active navigation work.
+Record current CPU/RAM/disk/GPU/display/tool versions and host contention only
+where needed to interpret new runs; reuse the valid intake. Keep admission and
+GPU serialization on. Do not close the owner's game or other applications to
+manufacture a clean result; choose an uncontended window or report the load.
+Keep the screen awake throughout owned jobs, and preserve other awake assertions.
+
+#### C0 — publish the frozen candidate and preserve review evidence first
+
+1. Confirm branch, clean/dirty state and full commit hashes. Preserve newer work
+   rather than resetting to `9ba01f1`. Record the ordered commits and changed
+   paths since `a29b079`, including the exact final tool fix. Do not manufacture
+   a new code-head label from the last report commit.
+2. **Explicit publication authorization:** fetch origin and confirm the remote
+   task branch is an ancestor of the committed candidate. Push that candidate
+   normally to `origin/task/W4-3-live-buildings` for review and verify the remote
+   full hash. No force push, main merge/push, rebase or deletion. If the remote
+   advanced/diverged, preserve both sides and report; do not overwrite another
+   writer. Do not wait for source approval before this review-only publication.
+3. Preserve existing evidence under immutable run IDs, including the timeout,
+   stalled-reclaimer failure, invalid controls and superseding runs. Add a
+   compact text-only review index under
+   `docs/orchestration/evidence/w4-win-close/` with source/configuration/adapter/
+   binary/tool hashes, commands, test inventories, counts, paths and available
+   failure extracts. No original assets, binaries, credentials or entire cache
+   dump in git. Mark unavailable/deleted evidence explicitly.
+4. Prepare a source-free evidence archive with the full logs, raw trace inputs,
+   inventories and review records needed to reproduce the claimed tables; include
+   a checksum manifest. Make it available through an existing authorized shared
+   artifact channel if one exists. Otherwise retain it and report its path/size/
+   hash and which evidence remains inaccessible to the orchestrator. Do not call
+   a Windows-local path a shared artifact or silently claim independent verification.
+5. After recording/publishing the checkpoint, continue C1–C4 without another
+   owner confirmation. Source publication does not certify the repairs.
+
+#### C1 — test R1 and R4 through their actual viewer consumers
+
+1. R1: hold the real publication interval between recording a paid-build outcome
+   and publishing its resource snapshot. Exercise the title and scripted consumer
+   with that interval held. The earlier snapshot must not show the newer Applied
+   receipt beside old resources; after release, the same receipt and paid resources
+   must agree. Include refusal/no-op/lost controls as relevant. The window must
+   remain responsive; no spin-until-published workaround.
+2. The regression must reach the viewer's real read/watermark wiring, or a shared
+   adapter whose use by that viewer is itself exercised. Mutate the production
+   call site back to the old read/watermark behavior and show the named regression
+   fails for the mismatched state. Calling a correct helper directly is insufficient.
+3. R4: drive the actual viewer update path with the tool disabled, an unrelated
+   island delta, a relevant local build/demolish and tool re-enable/resync. Observe
+   bounded update/enumeration counters and correct occupancy feedback. Grow valid
+   unrelated content separately from local occupancy; use work counts rather than
+   a fragile microsecond cutoff as the regression assertion.
+4. Revert the relevant production R4 call site/enable gate in an isolated owned
+   mutant build and require failure. Confirm a valid local update still occurs;
+   a viewer that never updates occupancy must fail too. Preserve R3's huge-invalid
+   and valid-content controls; no new allocation campaign is necessary.
+5. Every mutation record names source diff, rebuilt target, executable SHA-256,
+   exact selected test and expected failing assertion. An unmutated binary is an
+   invalid run. Restore source, rebuild the affected target and verify the valid
+   control. Obtain independent read-only review of code, caller and proof together.
+
+#### C2 — close R2's asynchronous presentation boundaries in a native window
+
+1. Use the actual `ChangeVisibility` consumer with tracing off as well as on.
+   Observe the same command/island/chunk-generation/frame/surface epoch at each
+   transition. Keep an Applied edit pending while object-list work is committed
+   but required CPU chunks are held, then while upload/replacement is held, and
+   while a visible dissolve has not completed. Input and sim outcomes must progress.
+2. Use existing limits/barriers or a small reviewed test hook to control those
+   boundaries. A fixed sleep or simply skipping `frame_done` does not establish
+   which boundary was held. In the real window, demonstrate the held upload/
+   replacement case and dissolve case, then release them and require a successful
+   matching present before `Visible`/`wait drawn` succeeds.
+3. Exercise one failed/skipped present through the production consumer seam and
+   one native minimized/obscured/unavailable-surface transition where supported.
+   Record what the backend actually does; an obscured window may still present
+   successfully. Do not equate obscuration with API failure or physical visibility.
+   Pan/resize to a new surface epoch, reveal an offscreen change and confirm a
+   prior frame cannot incorrectly satisfy the current visibility condition.
+4. Retain a non-empty changed-region CPU/fresh/readback positive comparison and
+   a negative control that promotes object-list completion prematurely. Check
+   no-visual-change/offscreen/out-of-view/nothing-to-draw cases separately from
+   `Visible`; no false success or indefinite wait from a mislabeled terminal state.
+5. Use focused RTX window cases, not a new 13-case campaign. Run a Radeon canary
+   only if needed to validate a changed shared GPU path; the full Radeon window
+   matrix stays a named follow-up. Independent reviewer checks the actual viewer
+   feed and why the held controls discriminate, not merely timeout exit codes.
+
+#### C3 — explain the two failures with a finite investigation
+
+1. Inventory the original whole-app WSL sanitizer timeout and the one stalled-
+   reclaimer assertion by stable name, assertion, source/binary, command, timeout,
+   admission state, host load and last observed progress. Preserve originals.
+   EA FC27 running at the time does not by itself attribute either failure.
+2. Inspect the two picture-worker tests and five drain-helper changes for the
+   exact starvation mechanism and correctness of their synchronization. A test
+   should wait for the event it asserts, release its own barriers on every exit,
+   and retain a watchdog. It must not change production scheduling or drop the
+   assertion merely to obtain a pass. Reproduce the necessary ordering with
+   controlled gates rather than 24 unbounded busy processes.
+3. For the reclaimer case, add observable lifecycle/counter state and a small
+   fixed repeat set (at most ten focused attempts unless a new hypothesis
+   justifies more). Obtain a deterministic regression for an identified defect.
+   If it does not reproduce, say so; ten green runs do not explain the old failure.
+   The missing terminal-only reproduction cannot be recovered by rewriting a log.
+4. For the slow sanitizer case, inspect its changed dependencies and useful
+   progress first. Make at most one instrumented isolated diagnostic run initially,
+   with captured progress and owned-process stack/wait state near the deadline.
+   Compare a baseline only if it can distinguish a new regression from existing
+   work cost. Do not rerun the entire app gate or blindly extend its timeout.
+5. If a scoped defect is found, fix it and run the discriminating case plus
+   affected dependents. If an unchanged expensive test or external contention
+   is established, document the evidence, a justified test-specific policy and
+   separate follow-up. An unexplained failure remains OPEN; do not waive it on
+   your own. End the finite investigation with cause/fix/proof or an exact
+   unresolved hypothesis and the one next observation needed, not a green-only retry.
+
+#### C4 — final tools, provenance and one bounded acceptance pass
+
+1. Obtain read-only review of every change after the prior `f8bc0a6` audit,
+   including `9ba01f1`'s report correction and the last tool fix. Reconcile
+   selected/executed/failed/empty/skipped/incomplete counts from raw outcomes,
+   and map each retained earlier gate to final changed dependencies. The MSVC,
+   RTX and Radeon rows currently name different source revisions; keep that fact.
+2. Add public-command contract cases for watchdog termination, unreadable peak
+   memory and capture refusal, each with a successful control. Assert the declared
+   non-success/incomplete behavior, absent success artifact, preserved child exit
+   status and useful diagnostic. Use tiny fixtures/subprocesses, not a long render.
+   A missing required memory measurement is not zero or a successful measured run.
+   Test the native launcher behavior on Windows; run UNIX-only shell contracts
+   on matching WSL source as already permitted. Do not invent native passes.
+3. Re-aggregate saved raw traces using the final tool and validate the actual
+   fields behind the reported 500 fps and zero drops. Distinguish frame-loop/
+   present-return cadence, trace loss, API failures and physical display behavior.
+   Retain the oversized 3840×2160 drawable label and its valid pixel-workload
+   evidence; no native-4K or scanout claim. If raw inputs are invalid, rerun only
+   affected cases after the cheap contract checks pass.
+4. Freeze source and tools. Run the new consumer/visibility/tool contracts first,
+   then one real-window/replay canary. Use the canonical runner for affected
+   MSVC cases and focused WSL ASan/UBSan; rerun warning checks on changed C++ scope.
+   Reuse expensive unaffected gates only with the recorded dependency rationale.
+   A tool-only correction normally requires re-reading retained data, not rerunning
+   GPU workloads. Keep all failed/invalid attempts linked to their replacements.
+5. A fresh final integration reviewer checks C1–C4, final viewer wiring and
+   evidence validity. It does not author fixes, delegate its review or duplicate
+   broad gates. Correct actionable findings and re-review only their changes and
+   affected interactions. Append the final acceptance matrix and exact code/tool/
+   report heads to `REPORTS.md`, preserving unresolved items and scope limits.
+6. Publish the completed committed closeout to the same review task branch using
+   an ordinary non-force push and verify its remote hash. This packet authorizes
+   these review publications only; **no merge or push to main**. Preserve referenced
+   logs/build identities before cleaning up owned temporary resources.
+
+**Stopping criteria:** stop for orchestrator review when source is published,
+R1/R4 consumer regressions and R2 boundary controls discriminate, final tools and
+affected gates are reviewed, and both failure investigations have an explicit
+disposition. If either failure remains unexplained or a critical control still
+fails, report **CHANGES REQUIRED / OPEN**, with the finite work completed and
+precise remaining blocker; do not report acceptance or loop indefinitely.
+The source/evidence must still be published/preserved for review.
+
+Native 4K display/scanout, full Radeon window coverage, physical display latency,
+late-game city/economy/multiplayer scaling, Metal timing, OQ-525, terrain/height,
+roads and final UI remain separately named follow-ups. This packet does not waive
+them or require them to block independently reviewed MAP gameplay. Preserve
+original assets/painter order, configurable content and asynchronous bounded
+rendering; no simulation mutation from the viewer.
+
+### Prior Windows packet — requirements retained, do not restart
+
+**Original rendering handoff pin:** `task/W4-3-live-buildings` at
 `a29b07949201e3ea5bf30c800e392f337c1ec598` (round ee documentation), code
 `093559ce63331770ae67b1abacacd8fc5fcc4155`. The complete source is published on
 GitHub on that task branch for this migration. Main carries the instructions and

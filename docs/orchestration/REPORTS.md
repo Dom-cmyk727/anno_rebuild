@@ -10297,4 +10297,22 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 
 ### Final integration review and heads
 
-(The final integration review is recorded here after it returns.)
+- **Heads:** source and tools frozen at `07a7505201066a0522804527fd3abb4e8022fe8e` (every `-06-final` gate records it as the tested head with an
+  empty diff); everything after it is documentation and the evidence index (`f403287`, `cf8f6b1`, `618ff9b`, and the commit carrying this
+  paragraph; `git diff --stat 07a7505..HEAD` shows only `docs/`). The published head is whatever `git ls-remote origin
+  refs/heads/task/W4-3-live-buildings` returns after the final ordinary push (no force, no main merge, no rebase); an earlier push left the
+  remote at `4dc9a35`.
+- **Independent reviews:** C1 APPROVE (nine non-blocking, dispositioned); C2 CHANGES REQUIRED (B1 chunk hold not released before the workers
+  are joined; B2 window-state record too thin) fixed and covered by `boundary_exit_in_hold` and the timeline; C4 CHANGES REQUIRED (vacuous
+  assertion, lost child status, unnamed skips, no pass log, stale INDEX statements) fixed; final integration review (fresh reviewer, head
+  `f403287`): CHANGES REQUIRED, documentation only (an overbroad "identical to the pin", a "load about 1 / alone" claim, the native baseline,
+  the clock note, mutant-base and manual-run caveats), corrected in `cf8f6b1`; the same reviewer's re-check of `cf8f6b1` found four
+  remaining wording issues, corrected in `618ff9b`, which no reviewer has re-read. The reviewers found no source, test or evidence defect
+  that invalidates C1, C2 or C4, and no scope violation (no main merge, no coordinator or MAP change, no original asset in git).
+- **Result against the stopping criteria:** source published and indexed; R1/R4 consumer regressions and R2 boundary controls discriminate
+  (mutants recorded); final tools and affected gates reviewed and green at `07a7505`; both failure investigations have a disposition —
+  **but failure B's attribution is an inference (OPEN) and the whole-app sanitizer gate has no green run (failure A is a cost problem whose
+  timeout policy is the orchestrator's decision)**, so this is reported as a review candidate with those items OPEN, not as acceptance.
+- **Next smallest unit (not started):** the orchestrator's review; then (1) the timeout/heavy-suite policy for the two ASan-expensive corpus
+  cases, (2) a `CAPTURE` of the reclaimer baseline in the stalled-reclaimer case so the next occurrence explains itself, (3) the named
+  follow-ups (native 4K, Radeon window matrix, display latency, scaling).

@@ -1151,3 +1151,447 @@ TEST_CASE("load facts: the shipped 1502 has a 50 t hold and four cargo holds (re
     CHECK(synthetic->capacity_88 == t->capacity_88);
     CHECK(synthetic->nav->hold_count_a == t->nav->hold_count_a);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Conservation: load then unload, unload then load, and the guard for the two wrong behaviours
+// ---------------------------------------------------------------------------------------------
+
+TEST_CASE("load round trip: load then unload, and unload then load, conserve and restore") {
+    { // load then unload with no Advance: the layout comes back (a fractional store included)
+        Setup s;
+        s.stock[kWood] = 20 * kT + 100;
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        const Snap start = snap(w);
+        const auto goods = totals(w);
+        (void)load_ok(w, 0, cmd(1, wh, 0, kWood, 7), 7 * kT, 0);
+        CHECK(totals(w) == goods);
+        (void)unload_ok(w, 0, ucmd(1, wh, 0, kWood, 7), 7 * kT);
+        CHECK(totals(w) == goods);
+        CHECK(snap(w).holds == start.holds);
+        CHECK(snap(w).stocks == start.stocks);
+        CHECK(snap(w).money == start.money);
+        CHECK(snap(w).cursor == start.cursor);
+        CHECK(city(w, 0).stock.stock[kWood] == 20 * kT + 100);
+    }
+    { // unload then load: a 38 t hold of wood into a store with a 100 unit fraction
+        Setup s;
+        s.ships[0].holds = {sim::ShipHold{kWood, 38 * kT}, sim::ShipHold{kFood, 10 * kT},
+                            sim::ShipHold{}, sim::ShipHold{}};
+        s.stock[kWood] = 100;
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        const Snap start = snap(w);
+        const auto goods = totals(w);
+        (void)unload_ok(w, 0, ucmd(1, wh, 0, kWood, 38), 38 * kT);
+        CHECK(city(w, 0).stock.stock[kWood] == 38 * kT + 100);
+        // hold 0 is empty (0:0): the search finds it first; floor(9828) = 9728 moves back
+        (void)load_ok(w, 0, cmd(1, wh, 0, kWood, 38), 38 * kT, 0);
+        CHECK(totals(w) == goods);
+        CHECK(snap(w).holds == start.holds);
+        CHECK(snap(w).stocks == start.stocks);
+    }
+    { // unload into a smaller store leaves the rest aboard; loading it back conserves the sum
+        Setup s;
+        s.ships[0].holds = {sim::ShipHold{kTools, 30 * kT}, sim::ShipHold{}, sim::ShipHold{},
+                            sim::ShipHold{}};
+        s.stock[kTools] = 45 * kT;
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        const auto goods = totals(w);
+        (void)unload_ok(w, 0, ucmd(1, wh, 0, kTools, 30), 5 * kT); // only 5 t fit
+        CHECK(ship(w).holds[0] == sim::ShipHold{kTools, 25 * kT});
+        (void)load_ok(w, 0, cmd(1, wh, 0, kTools, 30), 25 * kT, 0); // 25 t is room; stock is 50 t
+        CHECK(totals(w) == goods);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kTools, 50 * kT});
+    }
+}
+
+TEST_CASE("load conservation: ship plus city is invariant, debit equals credit equals the report") {
+    // Four hand-derived steps on a fresh world. The first one is limited by the hold's room, so a
+    // debit of the REQUEST (instead of the credit) breaks the debit-side assertion at step one, and
+    // a credit without a debit breaks it too; the report and the credit side stay green for both.
+    Setup s;
+    s.stock[kWood] = 30 * kT + 40;
+    s.stock[kTools] = 2 * kT;
+    s.ships[0].holds[1] = sim::ShipHold{kWood, 46 * kT}; // 4 t of room
+    sim::World w = make(s);
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    struct Step {
+        const char* what;
+        sim::LoadCmd c;
+        std::uint64_t amount; // the hand-derived transfer
+        std::size_t hold;     // the hold that receives it
+    };
+    const std::vector<Step> steps = {
+        // hint hold 1 holds wood and has 4 t (1024 units) free: preferred; request 10 t, room 4 t.
+        {"limited by the hold's room", cmd(1, wh, 1, kWood, 10), 1024, 1},
+        // hold 1 is full now: search; hold 0 (empty) is the candidate; floor(7656 - 1024 = 6696 /
+        // 256)
+        // = 26 t = 6656 available; request 7 t = 1792 -> 1792.
+        {"whole request into the first empty hold", cmd(1, wh, 1, kWood, 7), 1792, 0},
+        // hold 0 holds 1792 (7 t), 43 t free: preferred; stock 6696 - 1792 = 4904, floor = 4864;
+        // the
+        // request 40 t = 10240 is limited by the store's whole tons: 4864.
+        {"limited by the store's whole tons", cmd(1, wh, 0, kWood, 40), 4864, 0},
+        // tools: 2 t = 512 in the store, hold 2 is empty: 512 move (request 50 t), 0 remain.
+        {"another goods, the store emptied", cmd(1, wh, 0, kTools, 50), 512, 2},
+    };
+    for (const Step& st : steps) {
+        INFO(st.what);
+        const auto before = totals(w);
+        const sim::ShipHold hold_before = ship(w).holds[st.hold];
+        const std::uint32_t stock_before = city(w, 0).stock.stock[st.c.goods];
+        const Sent sent = send(w, 0, st.c);
+        // The control: the report and the credit side.
+        CHECK(sent.r.status == sim::Reject::None);
+        REQUIRE(sent.r.records.size() == 1);
+        CHECK(sent.r.records[0].transferred_88 == st.amount);
+        CHECK(ship(w).holds[st.hold].amount_88 - hold_before.amount_88 == st.amount);
+        CHECK(ship(w).holds[st.hold].goods == st.c.goods);
+        // The debit side and the conservation: the two things a wrong producer breaks.
+        CHECK(stock_before - city(w, 0).stock.stock[st.c.goods] == st.amount);
+        CHECK(totals(w) == before);
+    }
+    CHECK(city(w, 0).stock.stock[kWood] == 40);
+    CHECK(city(w, 0).stock.stock[kTools] == 0);
+    CHECK(holds_text(ship(w).holds) == "42:6656 42:12800 41:512 0:0");
+}
+
+TEST_CASE("load control: a fully satisfied request moves exactly the request") {
+    // The legal control of the guard above: here the request is the amount, so a debit by the
+    // request equals the credit and only a missing debit shows.
+    Setup s;
+    s.stock[kWood] = 20 * kT;
+    sim::World w = make(s);
+    const auto before = totals(w);
+    const Sent sent = send(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 5));
+    CHECK(sent.r.status == sim::Reject::None);
+    REQUIRE(sent.r.records.size() == 1);
+    CHECK(sent.r.records[0].transferred_88 == 1280);
+    CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 1280});  // the credit side
+    CHECK(city(w, 0).stock.stock[kWood] == 20 * kT - 1280); // the debit side
+    CHECK(totals(w) == before);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Save and load around a session, a recorded session in a fresh process, divergence
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+Setup session_setup() {
+    Setup s;
+    s.stock[kWood] = 20 * kT;  // 5120
+    s.stock[kFood] = 30 * kT;  // 7680
+    s.stock[kTools] = 50 * kT; // 12800: the store's capacity
+    return s;
+}
+
+/// The session of the committed fixture cargo_load.log: loads into empty and same-goods holds, a
+/// redirect, a stock refusal, a rival's warehouse refused, then an unload of what was loaded.
+std::vector<sim::Command> session_commands(const sim::World& w) {
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    const sim::BuildingId rival = bid(w, 1, 60, 10);
+    const auto l = [&](const sim::LoadCmd& c) {
+        return sim::Command{sim::PlayerId{0}, sim::Body{c}};
+    };
+    return {l(cmd(1, wh, 0, kWood, 10)),   // ok 2560 into the empty hold 0
+            l(cmd(1, wh, 0, kWood, 100)),  // ok 2560: hold 0 tops up, the store is emptied
+            l(cmd(1, wh, 0, kWood, 1)),    // StockShort
+            l(cmd(1, wh, 1, kFood, 5)),    // ok 1280 into hold 1
+            l(cmd(1, wh, 0, kTools, 60)),  // ok 12800: hold 0 has wood, redirected to hold 2
+            l(cmd(1, wh, 2, kTools, 1)),   // StockShort (hold 2 is full, hold 3 would be taken)
+            l(cmd(1, rival, 1, kFood, 1)), // NotCityOwner (visible, not permitted)
+            sim::Command{sim::PlayerId{0},
+                         sim::Body{ucmd(1, wh, 0, kWood, 20)}}}; // ok 5120 back into the store
+}
+
+const std::vector<sim::Reject> kSessionStatus = {
+    sim::Reject::None, sim::Reject::None,       sim::Reject::StockShort,   sim::Reject::None,
+    sim::Reject::None, sim::Reject::StockShort, sim::Reject::NotCityOwner, sim::Reject::None};
+const std::vector<std::uint64_t> kSessionAmount = {2560, 2560, 0, 1280, 12800, 0, 0, 5120};
+
+std::filesystem::path fixture_log_path(const char* name) {
+    return std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / name;
+}
+
+std::vector<std::uint8_t> read_file(const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+sim::ReplayLog record_session(std::vector<sim::Reject>* statuses = nullptr,
+                              std::vector<std::uint64_t>* amounts = nullptr) {
+    sim::World w = make(session_setup());
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    rec.checkpoint();
+    for (const sim::Command& c : session_commands(w)) {
+        const sim::ApplyResult r = rec.submit(c);
+        if (statuses != nullptr) {
+            statuses->push_back(r.status);
+        }
+        if (amounts != nullptr) {
+            amounts->push_back(r.records.empty() ? 0 : r.records[0].transferred_88);
+        }
+        rec.checkpoint();
+    }
+    rec.advance(5000);
+    rec.checkpoint();
+    return rec.log();
+}
+
+sim::ReplayOutcome replay_log(const sim::ReplayLog& log, sim::World& world_out) {
+    REQUIRE(log.registry_digest == registry()->digest());
+    auto loaded = sim::World::load(log.initial_save, registry(), {});
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    world_out = std::move(loaded).value();
+    auto outcome = sim::replay(world_out, log);
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    return outcome.value();
+}
+
+} // namespace
+
+TEST_CASE("load session: the hand-derived outcomes, and save/load before and after a load") {
+    sim::World straight = make(session_setup());
+    const std::vector<sim::Command> cmds = session_commands(straight);
+    std::vector<sim::Reject> status_a;
+    std::vector<std::uint64_t> amount_a;
+    std::vector<std::vector<std::uint8_t>> saves_a;
+    for (const sim::Command& c : cmds) {
+        const auto before = totals(straight);
+        const sim::ApplyResult r = straight.apply(c);
+        status_a.push_back(r.status);
+        amount_a.push_back(r.records.empty() ? 0 : r.records[0].transferred_88);
+        saves_a.push_back(straight.save());
+        CHECK(totals(straight) == before);
+    }
+    CHECK(status_a == kSessionStatus);
+    CHECK(amount_a == kSessionAmount);
+    CHECK(holds_text(ship(straight).holds) == "0:0 26:1280 41:12800 0:0");
+    CHECK(city(straight, 0).stock.stock[kWood] == 5120);
+    CHECK(city(straight, 0).stock.stock[kFood] == 6400);
+    CHECK(city(straight, 0).stock.stock[kTools] == 0);
+    // The same session, saved and reloaded before every command (and so after every one): the same
+    // outcome and the same bytes.
+    sim::World w = make(session_setup());
+    for (std::size_t i = 0; i < cmds.size(); ++i) {
+        auto again = sim::World::load(w.save(), registry());
+        REQUIRE(again.ok());
+        w = std::move(again).value();
+        const sim::ApplyResult r = w.apply(cmds[i]);
+        CHECK(r.status == status_a[i]);
+        CHECK((r.records.empty() ? 0 : r.records[0].transferred_88) == amount_a[i]);
+        CHECK(w.save() == saves_a[i]);
+    }
+    // Immediately before and after one load, then the next command (a refusal and an accept).
+    sim::World a = make(session_setup());
+    sim::World b = make(session_setup());
+    const sim::LoadCmd first = std::get<sim::LoadCmd>(cmds[0].body);
+    auto reloaded_a = sim::World::load(a.save(), registry());
+    REQUIRE(reloaded_a.ok());
+    a = std::move(reloaded_a).value();
+    (void)load_ok(a, 0, first, 2560, 0);
+    (void)load_ok(b, 0, first, 2560, 0);
+    CHECK(a.save() == b.save());
+    auto reloaded_b = sim::World::load(b.save(), registry());
+    REQUIRE(reloaded_b.ok());
+    b = std::move(reloaded_b).value();
+    CHECK(b.state_hash() == a.state_hash());
+    const sim::LoadCmd next = cmd(1, first.warehouse, 0, kWood, 100);
+    (void)load_ok(a, 0, next, 2560, 0);
+    (void)load_ok(b, 0, next, 2560, 0);
+    expect_refused(a, 0, next, sim::Reject::StockShort);
+    expect_refused(b, 0, next, sim::Reject::StockShort);
+    CHECK(a.save() == b.save());
+}
+
+TEST_CASE("load session: a recorded load replays, a changed amount or target diverges, and "
+          "retries create nothing") {
+    std::vector<sim::Reject> statuses;
+    std::vector<std::uint64_t> amounts;
+    const sim::ReplayLog log = record_session(&statuses, &amounts);
+    CHECK(statuses == kSessionStatus);
+    CHECK(amounts == kSessionAmount);
+    auto bytes = sim::write_log(log);
+    REQUIRE(bytes.ok());
+    // The wrong log: the first command asks 1 t instead of 10. Its outcome differs, so the first
+    // checkpoint after it differs.
+    sim::ReplayLog wrong = log;
+    bool changed = false;
+    for (sim::ReplayEntry& e : wrong.entries) {
+        for (sim::Command& c : e.commands) {
+            if (!changed && std::holds_alternative<sim::LoadCmd>(c.body)) {
+                std::get<sim::LoadCmd>(c.body).tons = 1;
+                changed = true;
+            }
+        }
+    }
+    REQUIRE(changed);
+    auto wrong_bytes = sim::write_log(wrong);
+    REQUIRE(wrong_bytes.ok());
+    if (anno::test::update_mode()) {
+        for (const auto& [name, data] : {std::pair{"cargo_load.log", &bytes.value()},
+                                         std::pair{"cargo_load_wrong.log", &wrong_bytes.value()}}) {
+            const std::string err = anno::sim::test::write_evidence_file(
+                fixture_log_path(name),
+                std::string_view(reinterpret_cast<const char*>(data->data()), data->size()));
+            REQUIRE_MESSAGE(err.empty(), err);
+        }
+        MESSAGE("fixtures cargo_load.log and cargo_load_wrong.log rewritten");
+    }
+    CHECK(read_file(fixture_log_path("cargo_load.log")) == bytes.value());
+    CHECK(read_file(fixture_log_path("cargo_load_wrong.log")) == wrong_bytes.value());
+
+    // Replaying the COMMITTED bytes: every checkpoint matches and the end state is the session's.
+    const auto committed = sim::read_log(read_file(fixture_log_path("cargo_load.log")));
+    REQUIRE(committed.ok());
+    sim::World good(1);
+    const sim::ReplayOutcome ok = replay_log(committed.value(), good);
+    CHECK(ok.reproduced());
+    CHECK(ok.checkpoints_total == 10);
+    CHECK(ok.checkpoints_matched == 10);
+    CHECK(holds_text(ship(good).holds) == "0:0 26:1280 41:12800 0:0");
+    CHECK(city(good, 0).stock.stock[kTools] == 0);
+    CHECK(city(good, 0).stock.stock[kFood] == 6400);
+    // Conservation over the whole replay: what the replay starts with is what it ends with.
+    auto initial = sim::World::load(committed.value().initial_save, registry(), {});
+    REQUIRE(initial.ok());
+    CHECK(totals(initial.value()) == totals(good));
+    // Retries create nothing: every command of the session sent again (twice) on the end state
+    // moves goods between the hold and the store but never creates or destroys any, per goods.
+    const auto end_totals = totals(good);
+    for (int round = 0; round < 2; ++round) {
+        for (const sim::Command& c : session_commands(good)) {
+            (void)good.apply(c);
+            CHECK(totals(good) == end_totals);
+        }
+    }
+    CHECK(good.check_invariants().empty());
+
+    // The committed wrong log: detected, and the first command moved less.
+    const auto wrong_read = sim::read_log(read_file(fixture_log_path("cargo_load_wrong.log")));
+    REQUIRE(wrong_read.ok());
+    sim::World bad(1);
+    const sim::ReplayOutcome no = replay_log(wrong_read.value(), bad);
+    CHECK_FALSE(no.reproduced());
+    REQUIRE(no.diverged_entry.has_value());
+    CHECK(no.checkpoints_matched < no.checkpoints_total);
+
+    // A changed target (the rival's warehouse instead of the owner's) refuses and diverges; the
+    // rival's store received nothing and lost nothing.
+    sim::ReplayLog elsewhere = log;
+    changed = false;
+    for (sim::ReplayEntry& e : elsewhere.entries) {
+        for (sim::Command& c : e.commands) {
+            if (!changed && std::holds_alternative<sim::LoadCmd>(c.body)) {
+                std::get<sim::LoadCmd>(c.body).warehouse = bid(good, 1, 60, 10);
+                changed = true;
+            }
+        }
+    }
+    REQUIRE(changed);
+    sim::World moved(1);
+    const sim::ReplayOutcome diverged = replay_log(elsewhere, moved);
+    CHECK_FALSE(diverged.reproduced());
+    CHECK(city(moved, 1).stock.stock[kWood] == 0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cargo and sailing
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// The factors of the Move segments in the order they start, sampled every 10 ms: a new segment
+/// is a Move sample after a non-Move sample or one whose remaining length grew.
+struct SegmentWatch {
+    std::vector<std::uint32_t> starts;
+    bool in_move = false;
+    std::uint64_t last_remaining = 0;
+    void sample(const sim::Figure& f) {
+        const sim::NavSegment& seg = f.nav->seg;
+        if (seg.kind != sim::NavSegKind::Move) {
+            in_move = false;
+            return;
+        }
+        if (!in_move || seg.remaining_x500 > last_remaining) {
+            starts.push_back(seg.factor_percent);
+        }
+        in_move = true;
+        last_remaining = seg.remaining_x500;
+    }
+};
+
+} // namespace
+
+TEST_CASE("load sailing: a segment started after the load has the new factor, the running "
+          "segment keeps its factor, the crew stays carried") {
+    // An empty ship of 4 + 2 holds of 1000 t sails at V = 100; after 3000 t of wood are aboard, L =
+    // 100 - trunc(17 * 768000 / (6 * 256000)) = 92 and V = (35 + 65) * 92 / 100 = 92
+    // (tools/ship_step_ref.py, speed_factor_vectors.txt).
+    Setup s;
+    s.types = registry_with(9507, 1000 * kT, std::pair{4U, 2U});
+    s.rules.nav.cargo_penalty_percent = 17;
+    ShipDef sh;
+    sh.kind = 9507;
+    sh.tx = 16;
+    sh.ty = 38;
+    sh.holds = std::vector<sim::ShipHold>(6);
+    ShipDef scout;
+    scout.kind = 717;
+    scout.tx = 16;
+    scout.ty = 38;
+    scout.parent = 0;
+    scout.holds = {};
+    s.ships = {sh, scout};
+    s.wx = 15;
+    s.wy = 30;
+    s.capacity = 4000 * kT;
+    s.stock[kWood] = 4000 * kT;
+    const sim::MoveCmd go{sim::FigureId{1}, 70 * 256 + 128, 38 * 256 + 128};
+    sim::World empty = make(s);  // keeps sailing empty
+    sim::World loaded = make(s); // loads while the first segment is running
+    REQUIRE(empty.apply(sim::Command{sim::PlayerId{0}, go}).ok());
+    REQUIRE(loaded.apply(sim::Command{sim::PlayerId{0}, go}).ok());
+    SegmentWatch a, b;
+    bool done = false;
+    for (int i = 0; i < 6000 && a.starts.size() < 8; ++i) {
+        empty.advance(10);
+        loaded.advance(10);
+        a.sample(ship(empty));
+        b.sample(ship(loaded));
+        if (!done && !b.starts.empty()) {
+            CHECK(b.starts[0] == 100); // the first movement segment runs at the empty factor
+            const sim::BuildingId wh = bid(loaded, 0, 15, 30);
+            const sim::FigureId crew_parent = ship(loaded, 2).parent;
+            // Three holds of 1000 t, one command each, with no Advance between them.
+            for (std::size_t h = 0; h < 3; ++h) {
+                (void)load_ok(loaded, 0, cmd(1, wh, 0, kWood, 3000), 1000 * kT, h);
+            }
+            CHECK(loaded.figures().list.slots[0]->nav->seg.factor_percent == 100); // untouched
+            CHECK(holds_text(ship(loaded).holds) == "42:256000 42:256000 42:256000 0:0 0:0 0:0");
+            CHECK(ship(loaded, 2).parent == crew_parent); // the scout is still carried
+            CHECK(ship(loaded, 2).parent == sim::FigureId{1});
+            done = true;
+            b.starts.resize(1);
+        }
+    }
+    REQUIRE(done);
+    // The empty ship sails every segment at 100.
+    REQUIRE(a.starts.size() >= 6);
+    for (const std::uint32_t f : a.starts) {
+        CHECK(f == 100);
+    }
+    // The loaded ship's first segment ran at 100 to its end, every later one starts at 92.
+    REQUIRE(b.starts.size() >= 4);
+    CHECK(b.starts[0] == 100);
+    for (std::size_t i = 1; i < b.starts.size(); ++i) {
+        CHECK(b.starts[i] == 92);
+    }
+    CHECK(ship(loaded, 2).parent == sim::FigureId{1});
+    CHECK(loaded.check_invariants().empty());
+}

@@ -58,6 +58,14 @@ if(ANNO_BUILD_TESTS)
                            "checkpoints 9/9.*reproduced: every checkpoint matched")
   anno_sim_replay_run_test(anno_sim_replay_cargo_unload_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/cargo_unload_wrong.log" 1
                            "DIVERGED at entry")
+  # MAP-CARGO-2: a recorded loading session (empty-hold load, same-goods top-up, a stock refusal, a
+  # redirect to another hold, a rival's warehouse refused, an unload) in a fresh process on
+  # synthetic::make_cargo_types. The wrong log asks 1 t instead of 10 in its first command:
+  # detected at the first checkpoint after it.
+  anno_sim_replay_run_test(anno_sim_replay_cargo_load_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/cargo_load.log" 0
+                           "checkpoints 10/10.*reproduced: every checkpoint matched")
+  anno_sim_replay_run_test(anno_sim_replay_cargo_load_wrong_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/cargo_load_wrong.log" 1
+                           "DIVERGED at entry")
   # The golden G3 (stage S11): every production class through advance on the synthetic
   # types, 21 checkpoints.
   anno_sim_replay_run_test(anno_sim_replay_g3_run "run|${PROJECT_SOURCE_DIR}/fixtures/synthetic/sim/g3.log" 0

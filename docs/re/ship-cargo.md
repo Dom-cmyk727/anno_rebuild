@@ -1,6 +1,6 @@
-# Ship cargo: the manual ship -> own-warehouse unload
+# Ship cargo: the manual ship <-> own-warehouse transfer (unload: sections 1-10; load: section 11)
 
-**Status:** MAP-CARGO-1 U1, 2026-11-02. Static reading of the original instructions (no run of the game, no emulation: the
+**Status:** MAP-CARGO-1 U1, 2026-11-02 (sections 1-10); MAP-CARGO-2 L1, 2026-11-02 (section 11, the load). Static reading of the original instructions (no run of the game, no emulation: the
 primitives below are straight-line register arithmetic that `tools/cargo_ref.py` transcribes and checks against hand-derived
 vectors). Contract that uses this note: [`docs/sim/ship-cargo.md`](../sim/ship-cargo.md).
 Earlier notes it completes: [`ship-founding.md`](ship-founding.md) 10.7 (hold record, deduction, emptied hold),
@@ -181,7 +181,7 @@ With `T = 256` and stock <= capacity (every state the original itself produces):
   `[TOOLTIP:SCHIFFMAIN]`) is decremented through slot `+0x88(5, n - 1)` and **one ton** of goods `rec[0]` (`0x100`) is added to the city
   with **no ownership test**. Only the multiplayer packet bit can select it (the view builds `rec[6] = 0`). Excluded; the rebuild must
   not accept it (contract: no `rec[6]`).
-* **Load arm** (flag 0, `0x100ac498`-`0x100ac8e1`): city stock is read rounded **down** to whole tons; not this package.
+* **Load arm** (flag 0, `0x100ac498`-`0x100ac8e1`): traced in section 11 (MAP-CARGO-2 L1).
 * **Foreign arm** (owners differ): gold, relation 3, notifications; excluded (shared visibility is not trading permission).
 * **Throw cargo overboard** (`CTRL+W`): `View.dll 0x10062840` builds a record whose goods byte is `0x8e` ("all") and calls client slot `+0x5c`
   = `0x100591d0` -> world `+0xfc` = `0x100accf0`; the arm moves holds into a flotsam object (kind `0x654`). Not a transfer to a city.
@@ -235,3 +235,147 @@ the observable effect is the same. A transfer must therefore only change the hol
 | Consumer of stock words `+6`/`+8`, notification records of the foreign arm | **U** | OQ-CARGO-2 |
 | `0x6b`, foreign arm, cannon arm semantics | **U** (excluded) | OQ-CARGO-3 |
 | Runtime capture of one manual unload | NOT_RUN | not required by the contract |
+
+
+## 11. The manual LOAD: own warehouse -> ship hold (MAP-CARGO-2 L1, 2026-11-02)
+
+Method: the same pinned modules (SHA-256 re-checked against the table above before reading), static reading with capstone, every
+callee of the same-owner path read to its `ret`. **No emulation** (unicorn is not installed on this host; NOT_RUN): the arm is
+straight-line register arithmetic plus one small loop, transcribed as `orig_load` in `tools/cargo_ref.py` and checked against hand-derived
+vectors (`fixtures/synthetic/sim/cargo_load_vectors.txt`). Contract that uses this section: `docs/sim/ship-cargo.md` section 12.
+Nothing below was inferred by reversing the unload arm or from the automatic route stop; where the arms share a primitive it is said.
+
+### 11.1 The click, to the world call (D unless S)
+
+```
+View.dll "Load goods" click 0x1005a8d0 (thunk 0x1005aa20, registered at 0x1005a0a1; the unload thunk 0x1005aa30 at 0x10059f89)
+  a. wanted goods  = 0x1005b2c0([view+0x634])  0x1005a8d9-0x1005a8ea
+        reads the selected entry of the city goods list: object [view+0x634], page [obj+0x5f0] of the array [obj+0x5e4], child (0xb00, 0),
+        property 0x1b3 -> out; out[1]'s property 0x1bf -> the goods byte (S: the meaning of the properties).  0 -> return, NOTHING is sent.
+  b. hold hint     0x1005a8f0-0x1005a98a: selected hold = property 0x1b3 of [[view+0x5d4]] (value -> ebx, child -> its 0x1bf = that hold's goods g_sel).
+        if g_sel == wanted  or  g_sel == 0 : keep the selected hold;
+        else scan holds i = 0 .. [view+0x638]-1 (child (0xb00, i), property 0x1bf) for the FIRST with goods 0, select it (slot +0x4c, property 0x1b3) and ebx = i;
+        no empty hold found: the selected (different-goods) hold stays the hint.                                        (control flow D, property meaning S)
+  c. record (0x1005a9ab-0x1005a9c1): rec[0] = wanted goods, rec[1] = hold hint (bl), rec[2..3] = [view+0x640] (request in whole tons: the amount
+        buttons 1/5/10/50, default 10), rec[4..5] = 0, rec[6] = 0.
+  d. city = 0x1005d8c0() (called twice; the first result is discarded, 0x1005a98f), client = [frame] slot +0x98, call client slot +0x60
+        (rec, ship = [view+0x630], flag = 0 (push 0 at 0x1005a9d8), city) at 0x1005a9e2; then the display refresh 0x1005a650(ship slot +0x78).
+tNetClient slot +0x60 = AnnoFrame 0x100591a0 (forwards the 4 arguments unchanged) -> world slot +0x100 = AnnoWelt 0x100ac360   (same as the unload)
+```
+
+Compared with the unload handler `0x1005a7f0` (section 2): **same** amount source `[view+0x640]`, same city function `0x1005d8c0` (so the same
+eligible ship group `0x71`, the same `0x1003f200` mode 0 range test, the same owner/relation filter), same client slot, same refresh, **no** test
+of the returned city for null (the world arm dereferences it unconditionally, `0x100ac5b7`: the tab's enabling is the only guard, OQ-CARGO-1/5).
+**Different**: the flag (`push 0` vs `push 1`); the goods byte (here the city list's selection, there the selected hold's goods); the hold byte (here
+a hint that avoids a hold with other goods, there the selected hold); the early return when no city goods is selected. The range/target rules of the
+unload (section 3) therefore apply to the load click unchanged (**D**: one function, two callers).
+
+### 11.2 Multiplayer wire (D)
+
+Type `0x6a` (`AnnoFrame 0x1005d0a0`-`0x1005d170`, section 4) carries the load with `u8 [0xa]` bit 0 = 0, bit 1 -> `rec[6]`; `u16 [4]` tons, `u8 [8]`
+goods, `u8 [9]` hold, the city by (island, city number) in `u16 [2]`. The record is pushed with the flag to `0x100591a0` only if the city pointer
+resolved (`test ebp, ebp; je`, `0x1005d11c`); nothing compares the packet's ship or city with the sender (`docs/re/tick-loop.md` line 92).
+Type `0x6b` (two figure ids, goods byte, two words) calls client slot `+0x5c` = `0x100591d0` -> world slot `+0xfc` = `0x100accf0` (the overboard/flotsam
+function, goods `0x8e` at `[rec]`, `0x100acd1c`): **not** a warehouse load; its other branches are U (OQ-CARGO-3).
+
+### 11.3 The world arm `0x100ac360`, flag 0 (D, instruction by instruction)
+
+Frame as in section 5 (`edi` = rec, `ebx` = ship, `ebp` = type, `[esp+0x190]` = city). Facts used from other modules (read):
+type vtable `0x10021d10` (AnnoGame): slot `+0x84` = `0x1000fb50` = `movzx eax, word [type+0xf2]` (**per-hold capacity** in 1/256 t, loaded as
+`LOGIC[0x11] << 8` at `0x10010281`), slot `+0x88(i)` = `0x1000fb60` = `byte [type+0xf6+i]` (`LOGIC[0x13]` = n0, the cargo holds; `LOGIC[0x14]` = n1,
+`0x1001036e`). Hold vtable `0x100c4f28`: slot `+0` = `0x1002ff40` (`mov [hold+4], al`: **set goods**), `+4` goods (`0x10037560`), `+8` amount
+(`0x10037570`, `movzx word [hold+6]`), `+0xc` = `0x1003b950` (**add**: `add word [hold+6], ax`, wraps, then the ship's slot `+0xa0` speed hook),
+`+0x10` take (section 5). City vtable `0x100c2f40`: `+0x7c` stock (`0x1002da30`, `[city+0x334+12g]`, no bound), `+0x84` = `0x1002da90` **remove**
+(section 5: `amount = min(amount, stock)`, `removed += amount`, `stock -= amount`).
+
+1. `rec[6] == 1`: the cannon arms (section 11.6). Else `n0 = type slot +0x88(0)`; **return 0 if `rec[1] >= n0`** (signed `jl`, `0x100ac476`). `rec[1]` is a byte.
+2. flag 0 -> `0x100ac498`. `G = rec[0]` (a byte, saved at `[esp+0x1c]`). `H = ship slot +0x84(rec[1])` (the named hold, `ship + 0xb0 + 12*i`, unbounded).
+3. **Preferred hold** (`0x100ac4b5`-`0x100ac4d9`): if `H.goods == G` **and** `cap - H.amount >= 0x100` (signed; `cap` = type slot `+0x84`) -> keep `H`, go to step 5.
+   Note: an **empty** named hold (goods 0) is *not* preferred unless `G == 0`; a same-goods hold with less than one whole ton free is not preferred either.
+4. **Search** (`0x100ac4df`-`0x100ac56f`): `cand = none`, `best = 0`; if `n0 <= 0` return 0. For `k = 0 .. n0-1` (signed `jl`, holds `ship slot +0x84(k)`):
+   `g = hold.goods`; if `g == 0`: `cand = k` only if `cand` is still none (the first empty hold); else if `g == G`: `free = cap - amount`; if `free > 0` and
+   `best < free` (strict): `best = free`, `cand = k` (so **a same-goods hold with any room beats every empty hold, the emptiest same-goods hold wins, ties go to the
+   lowest index**); a hold with other goods is skipped. If `cand` is none return 0 (`0x100ac571`). The search ignores the named index and the UI selection.
+5. **Amount** (`0x100ac580`-`0x100ac5ca`), `esi = rec.word[2] << 8` (a u16 of tons, up to 65535 t); `esi = min(esi, cap - amount(cand))` (signed `jle`);
+   `avail = stock(G) & 0xffffff00` (**the city's stock rounded down to whole tons**, `0x100ac5bc`-`0x100ac5bf`, no bound on `G`); `esi = min(esi, avail)` (signed);
+   `esi == 0` -> return 0 (`0x100ac5cc`). A **negative** `esi` continues (defects, 11.5).
+6. **Owner test** (`0x100ac5dd`-`0x100ac5f3`): ship slot `+0x1c` against city slot `+0x1c`; equal -> `0x100ac8b3`; unequal: the foreign arm (11.6).
+7. **Commit, same owner** (`0x100ac8b3`-`0x100ac8e7`): hold slot `+0` (set goods = `G`), hold slot `+0xc` (add `esi`), city slot `+0x84` (remove `G`, `esi`); return `esi`.
+   No gold, no message, no range or state test. The hold add notifies the ship (speed hook, section 9; the stored factor is read at the next segment start).
+
+Result of one successful load, with `T = 256` and hold/stock states the original itself produces:
+`x = min(request, cap - amount(cand), floor_T(stock(G)))`; **credit == debit == x** (the remove cannot clamp because `x <= floor_T(stock)`; the add cannot wrap
+because `amount + x <= cap <= 255 * 256 < 65536`). The remainder of a fractional stock stays in the city (stock 600 -> 2 t loadable, 88 stay; stock 255 -> nothing).
+`x` is a whole number of tons unless the hold's free space is fractional, in which case the hold is filled **exactly** (x = 128 is possible) and the city is debited exactly 128.
+This differs from the unload (section 6 A): the load does not lose cargo to rounding.
+
+### 11.4 Pinned decisions (each D unless labelled)
+
+| Question | Original |
+|---|---|
+| Hold selector | a **preference**: used only if it holds the requested goods and has >= 1 t free, else the search of step 4 picks the hold (never a refusal for "different goods") |
+| Goods echo | `rec[0]` is the goods to **load** (the city list selection), compared against the hold's goods; it is not an echo of the hold |
+| Request unit | whole tons, u16 (`rec[2..3] << 8`); fractions only in the hold's free space and the stock |
+| Stock rounding | stock **rounded down** to whole tons before the min; a stock below 1 t gives `esi = 0` -> return 0 |
+| Per-hold vs aggregate capacity | **per hold**: `cap - amount(cand)` with `cap` = type slot `+0x84` = `LOGIC[0x11] << 8`; no aggregate check in the arm (the aggregate `(n0+n1)*cap` appears only in the speed hook) |
+| Which holds | indices `0 .. n0-1` with `n0` = `LOGIC[0x13]` (**not** `n0 + n1`): the named index and the search are both bounded by `n0` (shipped 1502: n0 = 4, n1 = 2, cap = 50 t) |
+| Empty-hold goods assignment | `hold.goods := G` by slot `+0` at commit; the amount is **added** to whatever amount the hold had |
+| Same-goods top-up | yes, preferred (>= 1 t free) or by the search (any room); partial fills of a fractional free space are allowed through the search |
+| Different goods in the named hold | not a refusal: the search runs; refusal (return 0) only if no same-goods hold with room and no empty hold exists |
+| Duplicate holds of one goods | the emptiest wins (strict `>`, lowest index on ties); a named same-goods hold with >= 1 t free wins over a roomier one |
+| Zero / partial / full | zero request: return 0; partial: `x < request` limited by hold room or whole-ton stock; full: `x = request` |
+| Hold normalisation | none at load: goods byte set, amount added; an emptied hold is the unload's `0:0` |
+| Ownership | the world arm needs ship owner == city owner for the free path; no sender test (single player: the view offers own ships; multiplayer: none) |
+| Eligible ship / warehouse / range | from the click: `0x1005d8c0` -> `0x1003f200` mode 0 (section 3), identical to the unload click |
+| Ship state (moving, carried, hit points) | **no test** in `0x100ac360`; the tab's enabling is U (OQ-CARGO-1) |
+| Goods eligibility | **no class test, no ban list, no bound** in the arm (any byte `G`); `0x8e` is only the overboard function; the city list's content is UI (U, OQ-CARGO-5) |
+
+### 11.5 Defects of the arm (D; hand-executed, each is a vector with an `orig` line)
+
+* **E1. Goods bound.** `G >= 0x38` (or the table's size) reads `city + 0x334 + 12*G` out of the table and the remove writes there; `G == 0` is accepted
+  (an empty named hold equals goods 0). The view never sends 0 (step a), the wire can. The rebuild refuses both (`UnsupportedGoods`).
+* **E2. Signed compares.** A stock `>= 2^31` (or a negative `cap - amount`) makes `esi` negative; the add then subtracts (word wrap) and the remove clamps to the whole stock:
+  stock `0xFFFFFFFF`, hold 65279, cap 65280, request 1 t -> return `-256`, hold 65023, stock 255. Unreachable in the original (city capacity <= 900 t, search never selects a hold with `free <= 0`
+  and the preferred test requires `>= 256`); reachable in the rebuild's u32 stock fields, so the rebuild uses wide arithmetic.
+* **E3. Relabelling an unnamed amount.** A hold with goods 0 and a non-zero amount (a state the original's own unload never produces) is picked as the "first empty hold"; its amount is
+  relabelled to `G` without leaving the city: goods are created. The rebuild treats only goods 0 **and** amount 0 as empty.
+* **E4. Null city.** The arm dereferences the city before anything else tests it (`0x100ac5b7`); only the caller prevents it.
+* No other mint or loss on the same-owner path: unlike the unload, credit and debit are the same `esi`.
+
+### 11.6 Independent arms (kept apart, not used by the manual load)
+
+* **Cannon arms** (`rec[6] == 1`): flag 0 (`0x100ac3d7`-`0x100ac43d`) takes **one ton** of goods `rec[0]` from the city (`remove(G, 0x100)`) if its stock is non-zero and the ship's counter
+  (`ship slot +0x8c(5)`) is below `type slot +0x88(2)`, and increments the counter (`ship slot +0x88(5)`): no owner test, no goods bound. Flag 1 is the unload's cannon arm (section 7). U (OQ-CARGO-3); the rebuild has no `rec[6]`.
+* **Foreign arm** (owners differ, `0x100ac5f9`-`0x100ac8b0`): needs relation `player slot +0x7c(0, other) == 3`, then price tables, gold and `0xd` notification records. Not traced beyond that. U; excluded.
+* **Automatic route stop** (`0x10055bb0`, calls at `0x10055d8a`, `0x10055ee3`) uses the **same** world slot `+0x100` and therefore this same arm; its own record construction (hold index, goods, amount from the route node) and
+  its no-range-test context were not read for this package. The manual rule above was read from the arm and the manual click only.
+* **Overboard / `0x6b`** `0x100accf0`: a different function (11.2).
+
+### 11.7 The cargo-dependent sailing speed (unchanged)
+
+The hold add (`0x1003b950`) notifies the ship like the take does; `0x100427b0` stores the factor `+0x3c` immediately and the movement reads it **only when a segment starts**
+(section 9, `ship-navigation.md` 7.5-7.8). The rebuild derives the factor at every segment start from the current holds (`docs/sim/ship-navigation.md` 12.8, 12.14); a segment under way keeps the factor
+it started with. A load therefore writes only `Figure::holds`; it does not touch `NavMotion`.
+
+### 11.8 Rebuild facts the load needs (read from `src/sim`, not from the original)
+
+`FigureType::capacity_88 = LOGIC[0x11] << 8` (`types.cpp` line 453; shipped 1501-1509: 50 t = 12800; 1511: 20 t) and `NavFacts::hold_count_a = LOGIC[0x13]` (line 503; only for BEWOHNTYPE 113 types with hit points),
+both already part of the hashed registry digest (`types.cpp` lines 334, 348). The accepted unload bounds the hold index by `hold_count_a + hold_count_b` (`ship_cargo.cpp`, step 9) where the original
+bounds it by `n0` alone (`0x100ac476`): for the shipped opening ship (4 holds, n0 = 4) there is no difference, but a ship with n1 > 0 and more hold records than n0 would let the rebuild's unload address a slot the original refuses.
+Recorded as finding F-L1 for the owner/orchestrator; the load uses `n0` only.
+
+### 11.9 Evidence matrix (loading)
+
+| Item | Status | Where |
+|---|---|---|
+| Load click chain, record bytes, flag 0 | D (property meanings S) | 11.1 |
+| Same range/target function as the unload click | D | 11.1 |
+| Wire `0x6a` bit 0 = 0, no sender test | D | 11.2 |
+| Preferred hold / search order / tie-break | D | 11.3 steps 3-4 |
+| Request unit, per-hold capacity, stock rounded down | D | 11.3 step 5 |
+| Type fields: capacity `LOGIC[0x11]<<8`, n0 `LOGIC[0x13]` | D (type slots read in AnnoGame) + P (shipped values from `FigurenHeader.dat`) | 11.3, 11.4 |
+| Commit: set goods, add, remove; credit == debit | D | 11.3 step 7 |
+| Defects E1-E4 | D (hand-executed; E2/E3 are vectors) | 11.5 |
+| Runtime capture / emulation of a load | NOT_RUN | not required by the contract |
+| Tab enabling for a moving ship, city goods list content | **U** | OQ-CARGO-1, OQ-CARGO-5 |
+| Route-stop record construction, foreign arm, cannon arms, `0x6b` branches | **U** (excluded) | 11.6, OQ-CARGO-3 |

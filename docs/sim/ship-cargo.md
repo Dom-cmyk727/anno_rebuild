@@ -5,7 +5,7 @@
 `tools/cargo_ref.py`, `fixtures/synthetic/sim/cargo_vectors.txt`. Labels: **ORIGINAL** a traced rule kept; **ADAPTATION** a deliberate
 change of the rebuild; **UNKNOWN** unread, with a bounded blocker in `docs/open-questions.md` (OQ-CARGO-*).
 Scope (owner, 2026-11-02): the manual transfer ship hold -> **own** warehouse/city storage through the headless command path.
-Excluded: loading city goods aboard, automatic routes, buying/selling, foreign or allied warehouses, cannons, crew, combat, UI,
+Excluded (for sections 1-11; sections 12 ff. propose the load): loading city goods aboard, automatic routes, buying/selling, foreign or allied warehouses, cannons, crew, combat, UI,
 network transport. Shared visibility is information, never permission. U2 implements this; U3/U4 test it.
 
 ## 1. The original action in four lines
@@ -268,3 +268,163 @@ authoritative state; `CargoRules` moves the stream to 124 (state.md), `kCommandW
   range, 3 tile, 8 city-set rows); B1 `unload B1`; B2, B3, B4, B7, B8, B9, B10 `unload predicates`; B5, B6 `unload B5 B6`; B11 `unload B11`
   and `unload sailing`; B12 `unload B12`; B13-B15 `unload B13 B14 B15`; B16 `unload B16` and `unload session`.
 
+
+
+## 12. Loading: an owned warehouse's city -> the ship's hold (MAP-CARGO-2 L1, PROPOSED, 2026-11-02)
+
+**Status:** a proposed contract, before any engine code; it needs the independent contract/reference review before L2. Evidence:
+[`docs/re/ship-cargo.md`](../re/ship-cargo.md) section 11 (the click, the wire, `AnnoWelt.dll 0x100ac360` flag 0). Independent reference:
+`tools/cargo_ref.py` (`plan_load` = this section, `orig_load` = the original's arithmetic), 42 hand-derived cases in
+`fixtures/synthetic/sim/cargo_load_vectors.txt`. Labels as in section 2. Scope: the manual transfer city store -> **own** ship hold through the headless
+command path. Excluded: automatic route stops (they share the world function but their record is not read), buying from foreign or allied warehouses
+(the original's relation-3 arm), the cannon arms, `0x6b`, crew, UI. Shared visibility is information, never permission. The sailing-speed contract is
+unchanged: the cargo factor is derived at **segment start** from the current holds (section 8); a load writes only `Figure::holds`.
+
+### 12.1 What the original does, in six lines (ORIGINAL, section 11)
+
+The "Load goods" click sends `{goods wanted, hold hint, tons}` plus the ship and the city found by the same `0x1005d8c0`/`0x1003f200` as the unload. The world arm
+takes the **named hold only if it already holds that goods and has a whole ton free**; otherwise it **searches** holds `0 .. n0-1` for the same-goods hold with the most
+room (any room > 0, lowest index on ties), else the first empty hold, else does nothing. The amount is `min(request tons, room of that hold, the city's stock rounded down to whole
+tons)`; the hold gets the goods id and the amount, the city loses the same amount. There is no range, state or sender test at execution.
+
+### 12.2 The command and its outcome
+
+```cpp
+/// 0xF074 (native, MAP-CARGO-2): a ship takes goods aboard from the city of the named warehouse.
+/// Issuer = the authenticated player. Nothing about payer, owner, city, price or debit is supplied.
+struct LoadCmd {
+    FigureId ship;
+    BuildingId warehouse;        ///< stable: (island << 32) + serial, never reused
+    std::uint32_t hold = 0;      ///< the PREFERRED hold (the original's rec[1]); the plan may pick another (12.4 step 11)
+    GoodsId goods = 0;           ///< the goods to take aboard (the original's rec[0]); NOT an echo of the hold
+    std::uint32_t tons = 0;      ///< requested whole tons (the original's rec[2..3], widened); 0 refused
+    friend bool operator==(const LoadCmd&, const LoadCmd&) = default;
+};
+```
+
+* **Wire tag `0xF074`**, variant alternative 11 (after `UnloadCmd` = 10, so no existing alternative moves), `kWireLoad = 0xF074`, native in `is_native_wire_type`. Checked: `0xF074` is
+  unused in `src`, `docs`, `tools`; the **only** mention is `src/sim/tests/command_codec_test.cpp:551-554`, which pins `0xF074` as a *legacy* neighbour (`{0x70, 0xF06F, 0xF074}`):
+  L2 must edit that test (move the legacy neighbour to `0xF075`) and add `{0xF074, 28}` to the wrong-length table at line 283. `0xF06F` and `0xF075` stay legacy.
+* **Payload 28 bytes**, little endian, same layout as `UnloadCmd`: `u64 ship, u64 warehouse, u32 hold, u32 goods, u32 tons` (`ship`/`warehouse` as `FigureId`/`BuildingId` raw u64). Decode refuses a wrong length.
+  `LegacyRawCmd` of `0xF074` becomes unencodable. `kCommandWireVersion` stays 1 (the precedent of `MoveCmd`, `StopCmd`, `UnloadCmd`); L2 confirms against the replay-format rule.
+* **Outcome:** `ApplyResult.status`; on success `records[0]` carries `status None`, `building = warehouse` and `transferred_88` (**reused**: the amount that left the city and entered the hold, 1/256 ton).
+  The hold that received it is not a new field: it is a deterministic function of the pre-state (12.4 step 11) and readable from the world. If L3 finds a test or UI needs it directly, a `std::uint32_t hold` on
+  `RecordResult` is a non-hashed, non-serialized addition; it is not required by this contract.
+* **Rejects** reused: `UnknownIssuer`, `BadValue`, `UnknownFigure`, `NotAShip`, `NotShipOwner`, `NoBuildingAtTile`, `NotAWarehouse`, `UnknownCity`, `NotCityOwner`, `OutOfRange`, `BadIndex`, `UnsupportedGoods`.
+  **Appended** after `StockFull` (alternative order is the replay format), three, all necessary because no existing enumerator says the same:
+  `NoCargoFacts` (the ship's type has no cargo hold count; explicit refusal instead of a guess), `HoldsFull` (no hold can take this goods: none of the first `n0` holds is a same-goods hold with room or an empty hold with
+  capacity), `StockShort` (the city holds less than one whole ton of the goods). `HoldGoodsMismatch` is **not** used: the original never refuses a different-goods hold, it redirects.
+
+### 12.3 Predicate table (load)
+
+| # | Predicate | Original | Rebuild | Class |
+|---|---|---|---|---|
+| L-P1 | Issuer | none (MP unauthenticated) | host-stamped `Command::issuer`; no payer/owner/city/price in the command | ADAPTATION (as P1) |
+| L-P2 | Eligible ship | view offers the tab for type group `0x71`; the arm takes any figure with holds | figure exists, ship class (BEWOHNTYPE 113), `ship.owner == issuer` | original class + ADAPTATION owner (as P2) |
+| L-P3 | Ship state (moving, turning, hit points, carried) | **no test** in the arm; tab enabling U (OQ-CARGO-1/5) | **none**: a moving ship loads at its position at the apply tick | ORIGINAL (as P3) |
+| L-P4 | Eligible warehouse, target city | the same `0x1005d8c0` -> `0x1003f200` mode 0 as the unload click: PRODTYPE `0x23`, the building's own city | the building named exists, PRODTYPE in `CargoRules::warehouse_prodtypes`; the city is **derived** from it | ORIGINAL type/target, data-defined (as P4, P5) |
+| L-P5 | Warehouse owner | arm: ship owner == city owner for the free path (else the relation-3 trade arm, excluded) | `city.owner == issuer` (and the ship's owner is the issuer); every other owner refused, allied or visible alike | SCOPE EXCLUSION (as P6) |
+| L-P6 | Range | click time only; the **same** function as the unload | the same test as section 5, re-run at apply against live state | ORIGINAL rule, ADAPTATION: revalidated (as P7-P8) |
+| L-P7 | Cargo facts | `n0 = LOGIC[0x13]`, per-hold capacity `LOGIC[0x11] << 8` of the figure type | `NavFacts::hold_count_a` and `FigureType::capacity_88`; a type without nav facts: `NoCargoFacts`; capacity 0: `HoldsFull` | ORIGINAL fields; ADAPTATION: explicit refusal |
+| L-P8 | Hold index | `rec[1] < n0` (signed), else return 0 | `hold < min(holds.size(), hold_count_a)` else `BadIndex`; **not** `hold_count_b` | ORIGINAL |
+| L-P9 | Goods bound | **none** (any byte; out-of-table read and write, defect E1; goods 0 accepted) | `0 < goods < city stock table size` else `UnsupportedGoods`; no whitelist, no class test (the arm has none) | ADAPTATION (hardening) |
+| L-P10 | Request unit | whole tons, u16 | `tons` u32, 0 refused (`BadValue`); stored unit 1/256 t | ORIGINAL unit, widened |
+| L-P11 | Hold choice | preferred hold if same goods and >= 256 units free, else search (12.4 step 11) | the same; the empty test is goods 0 **and** amount 0 | ORIGINAL; ADAPTATION only for the empty test (E3) |
+| L-P12 | Amount | `min(request, hold room, floor_T(stock))`, signed 32-bit | the same in u64: `min(tons*256, hold_cap - amount, floor_T(stock))` | ORIGINAL; widened (E2) |
+| L-P13 | Stock fraction | stock rounded **down** to whole tons; a remainder stays in the city | the same | ORIGINAL |
+| L-P14 | Credit vs debit | both are the same `esi`; no loss or mint on the same-owner path | `debit == credit == transferred_88`, asserted | ORIGINAL (already conserving) |
+| L-P15 | Hold fraction | a hold with `< 1 t` free is only used through the search; the transfer then equals the room (a fractional amount) | the same | ORIGINAL |
+| L-P16 | Different goods in the named hold | not a refusal: search elsewhere | the same; refusal only as `HoldsFull` when nothing fits | ORIGINAL |
+| L-P17 | Duplicate holds | the emptiest same-goods hold (strict `>`), lowest index on ties; a named same-goods hold with >= 1 t free is taken first | the same | ORIGINAL |
+| L-P18 | Stock above store capacity, `goods` held by the city | irrelevant: the load debits only | irrelevant | n/a |
+| L-P19 | Gold, tax, message, event, statistics word `+8` | none (the remove increments `removed`, U consumer, OQ-CARGO-2) | none | ORIGINAL; word not modelled |
+| L-P20 | Cannon arms, foreign/relation-3 arm, route stop record, `0x6b` | exist / share the world function | **not part of the command**; no `rec[6]`, no flag, no price | out of scope, UNKNOWN (OQ-CARGO-3) |
+
+### 12.4 Validation and commit order
+
+Each step reads live state; a refusal changes **no serialized byte**, no PRNG, no gold, no holds, no stock (only the existing host-facing `CommandRejected` event).
+
+| Step | Check | Reject |
+|---|---|---|
+| 0 | issuer is a known player | `UnknownIssuer` |
+| 1 | `tons != 0` | `BadValue` |
+| 2 | ship id in the registry | `UnknownFigure` |
+| 3 | ship class | `NotAShip` |
+| 4 | `ship.owner == issuer` | `NotShipOwner` |
+| 5 | warehouse building exists | `NoBuildingAtTile` |
+| 6 | building type's PRODTYPE in `warehouse_prodtypes` | `NotAWarehouse` |
+| 7 | the building's city exists and `city.owner == issuer` | `UnknownCity` / `NotCityOwner` |
+| 8 | range (section 5), the unload's helper | `OutOfRange` |
+| 9 | the ship's type has `nav` facts (`hold_count_a`) | `NoCargoFacts` |
+| 10 | `hold < min(holds.size(), hold_count_a)` | `BadIndex` |
+| 11 | `0 < goods < city stock table size` | `UnsupportedGoods` |
+| 12 | **resolve the hold** `r`: if `holds[hold].goods == goods` and `cap - amount >= 256` then `r = hold`; else over `k = 0 .. min(holds.size(), hold_count_a) - 1`: the first hold with goods 0 **and** amount 0 is the candidate unless a hold with `goods` and `room = cap - amount > 0` exists, then the one with the largest room (strictly greater; lowest index on ties). No candidate, or `room(r) <= 0` (`cap` = `FigureType::capacity_88`): | `HoldsFull` |
+| 13 | `avail = floor(stock[goods] / 256) * 256` (u64); `avail == 0` | `StockShort` |
+| 14 | `x = min(tons * 256, cap - amount(r), avail)`; `x > 0` here (steps 1, 12, 13) |  |
+| commit | `stock.debit(goods, x)` (new `CityStock::debit`: refuses unless `goods` in table and `x <= stock[goods]`; no clamp, no wrap), then `holds[r].goods = goods; holds[r].amount_88 += x` (checked add) | cannot fail; L2 asserts `debited == x` |
+
+Competing requests in one turn run in `TurnEntry::seq` order; each revalidates and sees the previous result (vectors `competing_two_ships_*`). Repeated and retransmitted entries follow section 6. Demolition,
+replacement or an ownership change between submission and execution give the same results as for the unload.
+
+### 12.5 Units and arithmetic (raw 1/256 ton)
+
+| Quantity | Type | Note |
+|---|---|---|
+| `ShipHold::amount_88` | u64 | `amount + x <= cap` is checked in u64 |
+| `FigureType::capacity_88` | u32 | per hold; shipped 1502: 50 t = 12800 (original: u16, `LOGIC[0x11] << 8`) |
+| `CityStock::stock[g]` | u32 | read as u64; `floor_T` = `(stock / 256) * 256` |
+| request | `u64(tons) * 256` | `tons <= 2^32 - 1`, product `< 2^40` |
+| room | `cap - amount` if positive else 0 | an over-capacity hold has no room (vectors `overfull_*`) |
+
+Conservation: `hold_after + stock_after == hold_before + stock_before` in a wide accumulator, `debit == credit == transferred_88`; a refusal changes nothing. `x` is a whole number of tons unless
+the chosen hold's room is fractional; then `x` equals the room exactly (vector `fractional_hold_room_moves_a_fraction`: 128 units leave the city, 128 enter the hold). **`CityStock::remove` must not be the
+debit** (it clamps silently and ignores `g >= size`); `CityStock::add` must not be used for anything here. A load followed by an unload of the same hold with no `Advance` between restores hold and stock
+(vectors `round_trip_*`); a smaller store limits the unload, the remainder stays aboard (`round_trip_into_a_smaller_store`).
+
+### 12.6 Data-driven facts and what is missing
+
+| Fact | Where | Missing / zero means |
+|---|---|---|
+| per-hold capacity | `FigureType::capacity_88` (`types.cpp:453`) | 0 -> every load `HoldsFull` (the type carries nothing); no default is substituted |
+| cargo hold count `n0` | `NavFacts::hold_count_a` (`types.cpp:503`) | no `nav` facts -> `NoCargoFacts`; **no fallback to `holds.size()`** (the unload falls back; a guessed limit is exactly what this refusal avoids) |
+| goods table size | `CityStock::stock.size()` | goods outside -> `UnsupportedGoods` |
+| warehouse set, dock disc | `Rules::cargo` | as the unload |
+| hold count `n1` (`hold_count_b`) | not used by the load | the load never addresses unit slots (vector `unit_slots_beyond_n0_are_never_used`) |
+
+Retained limitation (disclosed in CARGO-1): the ship class is BEWOHNTYPE 113 with navigation facts; no separate capability redesign. **Finding F-L1:** the accepted unload bounds the hold index by
+`hold_count_a + hold_count_b` (`ship_cargo.cpp`, step 9) where the original bounds it by `n0` (`0x100ac476`); identical for the shipped opening ship, different for a ship with `n1 > 0` and extra hold records.
+This section does not change the unload; the decision (align it to `n0`) is for the orchestrator and the next CARGO review.
+
+### 12.7 Original versus adaptation (summary)
+
+| Topic | Original | This contract |
+|---|---|---|
+| Hold selector | a hint; redirected when the hold has other goods or < 1 t free | the same (ORIGINAL), reported through the world state |
+| Different goods in the hold | search elsewhere, return 0 if nothing fits | the same; `HoldsFull` names the failure |
+| Empty hold | goods 0 | goods 0 **and** amount 0 (ADAPTATION: the original would relabel an unnamed amount, E3) |
+| Goods id | any byte, out-of-table access, goods 0 accepted | bound by the table, 0 refused (ADAPTATION, E1) |
+| Arithmetic | 32-bit signed compares; negative `esi` for a stock >= 2^31 (E2) | u64 throughout (ADAPTATION, E2) |
+| Stock rounding | down to whole tons; remainder stays | the same (ORIGINAL) |
+| Debit vs credit | equal | equal, asserted (ORIGINAL, no hardening needed) |
+| Crew / carried / moving state | no test | no test (ORIGINAL); any restriction is an owner decision |
+| Range | click time | re-run at apply (ADAPTATION) |
+| Sender | none | host-stamped issuer must own ship and city (ADAPTATION) |
+| Missing capacity facts | not possible (every type has the bytes) | explicit refusal (ADAPTATION of the registry model) |
+
+### 12.8 State identity: which fields need new hashed data
+
+**None.** The command adds no authoritative state. The per-hold capacity (`FigureType::capacity_88`) and the hold count (`NavFacts::hold_count_a`) are already loaded, validated (`nav_facts_problem`) and in the hashed
+registry digest (`types.cpp` lines 334 and 348); `Rules::cargo` (`warehouse_prodtypes`, `dock_half_widths`) is already hashed (stream 124). The three new `Reject` enumerators and the new wire tag are not state. So **no stream bump** is
+required by this contract; L2 must not bump it unless review finds a field above that is not in the digest. If the owner later wants a per-ship-class load policy (a rule not in the original), that is new hashed `Rules` data and a
+bump; this contract does not add one.
+
+### 12.9 Test obligations handed to L2/L3
+
+* Independent command bytes (hand-written) and wrong-length cases for `0xF074`; edit `command_codec_test.cpp` lines 283 and 551-554; version-negative tests reseal a valid control.
+* Positive control with a non-zero amount, then one predicate at a time, each asserting its reason and an unchanged state hash (steps 0-13); a refusal changes no serialized byte.
+* Every case of `cargo_load_vectors.txt` through the engine (42 cases); engine mutants: credit the hold without debiting the city; debit the request although the credit is smaller; both must fail the conservation
+  assertion while the positive control passes (the Python reference already rejects the analogous mutants: `cargo_ref.py mutants`).
+* Registry-driven: another owner, a data-defined ship type with its own capacity and `hold_count_a`, a type without nav facts (`NoCargoFacts`), capacity 0 (`HoldsFull`); no 1502/1302/player-0 constants.
+* Save/load before and after a load; fresh-process replay of a log with the command; the real opening canary: found -> unload -> **load back** conserves the combined goods; the cargo factor of a segment started after the load uses
+  the new holds, a segment under way keeps its factor.
+* Add `cargo_load_vectors.txt` to the CMake reference test (`cargo_reference_agrees` currently runs only the unload file; `cargo_reference_selftest` already runs the load file and the mutants).

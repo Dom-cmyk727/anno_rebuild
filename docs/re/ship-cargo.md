@@ -337,8 +337,8 @@ This differs from the unload (section 6 A): the load does not lose cargo to roun
 * **E2. Signed compares.** A stock `>= 2^31` (or a negative `cap - amount`) makes `esi` negative; the add then subtracts (word wrap) and the remove clamps to the whole stock:
   stock `0xFFFFFFFF`, hold 65279, cap 65280, request 1 t -> return `-256`, hold 65023, stock 255. Unreachable in the original (city capacity <= 900 t, search never selects a hold with `free <= 0`
   and the preferred test requires `>= 256`); reachable in the rebuild's u32 stock fields, so the rebuild uses wide arithmetic.
-* **E3. Relabelling an unnamed amount.** A hold with goods 0 and a non-zero amount (a state the original's own unload never produces) is picked as the "first empty hold"; its amount is
-  relabelled to `G` without leaving the city: goods are created. The rebuild treats only goods 0 **and** amount 0 as empty.
+* **E3. Relabelling an unnamed amount.** A hold with goods 0 and a non-zero amount (a state the original's own unload never produces) is picked as the "first empty hold" (vector `empty_goods_with_amount_is_not_empty`); its amount is
+  relabelled to `G` (the unnamed units become `G`; the total of numbers is unchanged but the goods are not conserved). The rebuild treats only goods 0 **and** amount 0 as empty.
 * **E4. Null city.** The arm dereferences the city before anything else tests it (`0x100ac5b7`); only the caller prevents it.
 * No other mint or loss on the same-owner path: unlike the unload, credit and debit are the same `esi`.
 
@@ -375,7 +375,7 @@ Recorded as finding F-L1 for the owner/orchestrator; the load uses `n0` only.
 | Request unit, per-hold capacity, stock rounded down | D | 11.3 step 5 |
 | Type fields: capacity `LOGIC[0x11]<<8`, n0 `LOGIC[0x13]` | D (type slots read in AnnoGame) + P (shipped values from `FigurenHeader.dat`) | 11.3, 11.4 |
 | Commit: set goods, add, remove; credit == debit | D | 11.3 step 7 |
-| Defects E1-E4 | D (hand-executed; E2/E3 are vectors) | 11.5 |
+| Defects E1-E4 | D (hand-executed; E2/E3 are vectors with `orig` lines) | 11.5 |
 | Runtime capture / emulation of a load | NOT_RUN | not required by the contract |
 | Tab enabling for a moving ship, city goods list content | **U** | OQ-CARGO-1, OQ-CARGO-5 |
 | Route-stop record construction, foreign arm, cannon arms, `0x6b` branches | **U** (excluded) | 11.6, OQ-CARGO-3 |

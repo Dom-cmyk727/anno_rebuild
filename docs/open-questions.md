@@ -2111,3 +2111,12 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** closed 2026-11-02 (coordinator decision).
 - **Area:** simulation / ship cargo / rules.
 - **Resolution:** `CargoRules { warehouse_prodtypes = {35}, dock_half_widths = {5,5,5,4,3,2} }` is a hashed, saved member of `Rules` from stream version 124, validated on create and load; the eligibility test uses it (no dependence on `founding_types`). See docs/sim/state.md (stream 124) and docs/sim/ship-cargo.md section 11.
+
+## OQ-CARGO-5: Which goods does the load list show, and when is the load button inert? (MAP-CARGO-2 L1, 2026-11-02)
+
+- **Status:** open, **not a blocker** for the command. The world arm has no goods class test, ban list or bound (`docs/re/ship-cargo.md` 11.4), so the contract bounds the goods only by the city's stock table.
+- **Area:** simulation / ship cargo (load), UI.
+- **Question:** the ship view's "Load goods" click (`View.dll 0x1005a8d0`) sends the goods byte of the selected entry of the city goods list (`0x1005b2c0`, object `[view+0x634]`). Which goods does that list offer (all 56, only goods with stock, the four categories of `[TOOLTIP:SCHIFF_HANDELEIGEN]`)? Is the button inert for a moving ship or when `0x1005d8c0` finds no city (the handler passes a null city on, and the world arm dereferences it at `0x100ac5b7`)? This is the load-side twin of OQ-CARGO-1.
+- **What is known:** the click needs a non-zero selected goods (`0x1005a8e4`); the hold hint avoids a hold with other goods when an empty one exists (`0x1005a92b`-`0x1005a98a`); the arm itself is state-free.
+- **Port:** the command accepts any goods in the table for which the city holds at least one whole ton; a UI that offers fewer goods is a presentation choice, not an original rule. A restriction would be a gameplay policy for the owner.
+- **How to resolve:** read the writers of the list control's property `0x1bf` (the builder around `0x1005e5xx`) and the enabling code of the tab, or watch the running original.

@@ -77,7 +77,7 @@
 //                         selected, tracked, latest (the controls' last command: queued, refused,
 //                         accepted, accepted-planning, sailing, arrived, route-failed, ...),
 //                         latest_kind, latest_reason, latest_moved (raw 1/256 ton of an unload),
-//                         ship.<id>.x|.y|.order|.hold<i>, store.<goods> (raw 8.8), tracked.<n>.state|.kind,
+//                         ship.<id>.x|.y|.dir|.order|.hold<i>, store.<goods> (raw 8.8), tracked.<n>.state|.kind,
 //                         tool, tick, generation / committed / discarded / pending_builds (the picture's work),
 //                         save.
 //                         `wait fact KEY OP VALUE within MS` waits up to MS milliseconds instead of

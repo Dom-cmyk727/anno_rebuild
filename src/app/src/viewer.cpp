@@ -1419,6 +1419,7 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
         f[p + "x"] = std::to_string(s.pos.x >> 8);
         f[p + "y"] = std::to_string(s.pos.y >> 8);
         f[p + "order"] = std::to_string(s.order_id ? *s.order_id : 0);
+        f[p + "dir"] = std::to_string(s.dir16);
         f[p + "holds"] = std::to_string(s.holds.size());
         for (std::size_t i = 0; i < s.holds.size(); ++i) {
             f[p + "hold" + std::to_string(i)] = std::to_string(s.holds[i].amount_88);

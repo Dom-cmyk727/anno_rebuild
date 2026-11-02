@@ -9945,3 +9945,160 @@ milestone; the final original-style UI remains UI.2).
 UI.2 builds the original-style interface on these interfaces (`post_command` receipts, `outcome`,
 `PlacementKnowledge`, `make_preview`, `drawn_note`). The placement rule's terrain check (OQ-052) belongs to
 the sim's placement unit. No merge, push, rebase, prune or reset.
+
+
+## W4-WIN: round-ee repairs R1-R4 and the Windows/RTX verification packet — 2026-11-02 — status: REVIEW CANDIDATE (stopped at the packet's final review boundary)
+
+- **Executor / host:** the Windows executor of the 2026-11-01 dispatch. AMD Ryzen 7 9800X3D (8C/16T), 31.1 GiB,
+  Windows 11 Pro 10.0.26300, NVIDIA GeForce RTX 4090 (driver 617.14, Vulkan) and AMD Radeon(TM) Graphics (Vulkan),
+  one enumerated monitor, 2560x1440 at 500 Hz (the Radeon's reported 1920x1080 is a controller default, not a monitor).
+  MSVC through the `msvc` preset (Visual Studio generator, Release); WSL Ubuntu with GCC 13.3.0 and Clang 18.1.3.
+- **Pin and checkout:** `origin/task/W4-3-live-buildings` = `a29b079` (verified on the fetched remote). The owned
+  checkout `E:\anno1503-worktrees\anno1503-W4-3` was clean at `8972b3d`, an ancestor of the pin (172 behind, 0 ahead):
+  fast-forwarded with `git merge --ff-only`; no reset, force, prune, main merge or push. `origin/main` = `b57c6f0` supplied the
+  board and the canonical gate (`tools/test/run_selected.py` from `E:\anno1503`, `--source-root` and `--build-dir` explicit).
+- **Heads:** code `fa94bf0` (the last commit touches `tools/bench/dev_session_capture.py` only; `src/` is as of `4ecea07`;
+  the gates below name the head each ran at). This report's commit follows it; nothing under `src/` or `tools/` changes after.
+- **Evidence (ignored):** `cache/gates/` (every gate log, its inventory, failed attempts labelled `-FAILED-`/`-INVALID-`),
+  `cache/win-ee/` (builds, mutation logs `mut-*`, intake, contention runs), `cache/win-ee/window/` (canaries, sessions,
+  captures, `final/matrix`, `final/matrix.table.md`).
+- **Admission and contention:** the budget coordinator and `RESOURCE_LOCK gpu` stayed on; no coordinator was replaced. At intake
+  EA FC27 (8.9 GiB, 6.9 GiB of GPU memory) was running and was left alone: the first full app run failed two worker cases under that
+  load (below). Builds used `--parallel 6`, gates `--jobs 6` (GPU gates 1), `ANNO_TEST_THREADS=8`. The owner's keep-awake was
+  requested through the app for this session only.
+- **Commits** (`a29b079..fa94bf0`, in order): `0886a54` MSVC C4244 fix; R1 `64a3003` (+ `7e27f25`, `e56e686`); R3 `21fb122`;
+  R4 `ada68d6` (+ `28fcefe`); R2 `cdbd1fc`, `adcfc11`, `d8ed91d` (+ `dd20345`); `52dab64` starved-reaper tests; `1fd82b8` GPU
+  continuous-zoom preview test; `ad8a447`, `f9a731b` Windows window runner, matrix and capture; `76495aa` GCC/Clang `-Werror` fixes;
+  `98d9329` SDL-free tests moved into `anno_app_tests`; `381b3e3`, `70817ed`, `fa94bf0` integration-review closeout; `4ecea07`
+  the play-scene GPU-vs-CPU case on the Radeon.
+
+### What changed (one line each; the specs are in docs/app/game-shell.md and window-trace.md)
+
+- **R1** `PlayRunner::feedback` reads the snapshot first and answers the outcome against its `outcomes_next` watermark
+  (`OutcomeLog::find_published`); an outcome recorded before its snapshot is withheld as Queued/`deferred`; title and script read
+  through it. A publish gate (test seam) holds the interleaving.
+- **R2** `ChangeVisibility` (`visibility.hpp`): NotInPicture, Committing, AwaitingFrame, ChunksStale, NotOnGpu, NotPresented,
+  OutOfView while waiting; Visible, Offscreen, NothingToDraw, NoVisualChange, Unknown settled. One part per commit of an island,
+  settled in version order; observation shared with `FrameTracer` (`observe_keys`); bounded (1 024 takes, 1 024 history, 1 024 turns
+  per take, 64 parts per island); works with tracing off. `wait drawn` ends only when settled; `expect visibility NAME`.
+- **R3** the footprint is a 64-bit rectangle tested against the island before any tile exists (`footprint_extent`); occupancy by one
+  ordered lookup per column; the index clamps in 64 bits; `footprint_at` takes the admitted region's size.
+- **R4** occupancy follows the takes' deltas (`PlayFollower::set_batch_observer`, `PlacementKnowledge::on_batches`, `ensure`):
+  another island's delta is one comparison, a local delta adds/removes tiles, a resync reseeds, a disabled tool does nothing and is
+  reseeded from `ScenePicture::island_buildings`.
+- **W4-WIN-1/5 portability fixes found by running:** C4244 in a test (the pin did not build with MSVC `/WX`); five `drain()`
+  helpers hot-looped against a starved reaper and one barrier case changed an in-flight island while the reaper lagged (both reproduced
+  with 24 busy processes: `pending=6 commit_skipped=100 reclaim_completed=0`); three R1 case names with `;`; GCC 13 findings on ten
+  files of the pin (sign conversion, a shadowed lambda parameter, the `istreambuf_iterator` null-dereference report in
+  `picture_trace.cpp`), the script's missing `src/test_support/src` include; `window_table.py` UTF-8 output.
+
+### Acceptance table
+
+| Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer |
+|---|---|---|---|---|
+| R1: an outcome never stands beside resources from before it | paid build (money + goods), refusal, no-op, lost, an older published outcome, a reader thread; deferred then final with `before - cost` | `feedback()` ignoring the watermark: 3 of 3 cases fail | `command_outcome_test.cpp`; `cache/win-ee/mut-r1-negative-control.log` | APPROVED (64a3003), notes 1-3 fixed |
+| R2: drawn only when a presented frame draws all of it | synthetic stages incl. turn 0, newer-than-snapshot batch, older stuck take, offscreen newer commit, merge, bounds; lan5 with held `ChunkWorkers`: ChunksStale, failed present NotPresented, then Visible and the frame equals a fresh-renderer reference (changed region > 100 px) | accepting the object-list commit as shown fails 5 + 12 checks; the old rule said drawn exactly where the new answer waits; real window: removing `frame_done` or `begin_frame` from the GPU path fails `wait drawn` after 30 s (ChunksStale / AwaitingFrame) | `visibility_test.cpp`, `dev_visibility_test.cpp`, `dev_script_test.cpp`; `mut-r2-negative-control.log`, `window/mut-m1-*`, `mut-m2-*` | CHANGES REQUIRED twice, fixed (per-commit parts, per-take results, merge, back-off); third check is the integration review |
+| R3: oversized footprints refused before enumeration | 1 000 000 x 1 and 4 294 967 295 squared refused in O(1) under a 64 KiB single-allocation limit; a 12 x 7 valid control; island edges both rotations; clamped index | enumerating first fails with `bad allocation` | `alloc_test.cpp`; `mut-r3-negative-control.log` | APPROVED (21fb122) |
+| R4: unrelated edits cost no occupancy work | lan5 through the real runner, picture and follower: other island 0 deltas, local build/demolish, disabled spell, resync (one resync batch, one reseed, no deltas), compared with a fresh scan after each step; overlap counts; unknown type | dropping the island filter and the enabled gate: 12 failures; deleting the resync branch: 6 failures | `dev_occupancy_test.cpp`; `mut-r4-negative-control.log`, `mut-r4-resync-negative-control.log` | CHANGES REQUIRED (minor), fixed in `28fcefe`, re-checked by the R2 review |
+| Continuous-zoom preview vs the CPU resample reference | RTX 4090 and Radeon: scale 0.8 and 1.3, max 1, 0 px over 2; 4 969 / 13 396 reference px changed | an overlay two tiles away: 7 820 / 20 897 px over 2 | `preview_gpu_test.cpp` | in the integration review |
+| Real native window | one-edit canary, scripted tool session (Applied+Visible, Refused Occupied+NoVisualChange, rotated, demolished), headless replay agrees, altered command diverges | altered command: `turn 60 differs ... (5 earlier checkpoints agreed)`, rc 1 | `window/final/` | integration review |
+
+### Gates (canonical runner, Release, original assets set; selected / executed passes / failed / empty / skipped / incomplete)
+
+| Gate | Head | Sel | Pass | Fail | Empty | Skip | Incompl | Verdict |
+|---|---|---:|---:|---:|---:|---|---:|---|
+| MSVC CPU: app, alloc, input, render, formats, assets (`msvc-cpu-03-final`) | 381b3e3 | 463 | 461 | 0 | 0 | 2 opt-in probes | 0 | PASS |
+| RTX 4090 GPU (`rtx4090-gpu-03-final`, `ANNO_REQUIRE_GPU=1`, adapter "NVIDIA GeForce RTX 4090 (Vulkan)") | 4ecea07 | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| Radeon GPU (`radeon-gpu-03-final`, "AMD Radeon(TM) Graphics (Vulkan)") | 70817ed | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| WSL GCC 13.3 + Clang 18.1.3 `-Werror`, `tools/check_unix_warnings.sh` | 70817ed (C++ as of 4ecea07) | 233 + 233 + 54 files | clean | | | | | PASS |
+| WSL GCC 13.3 ASan+UBSan, the 80 affected cases + `picture_matrix_contract` (213 s) + `window_table_contract` (19 s) required | 70817ed | 80 | 80 | 0 | 0 | 0 | 0 | PASS, 0 sanitizer lines |
+
+Notes on the table: the RTX-named case `play: GPU matches the CPU path on one scene` pins its adapter by name, so a Radeon gate
+only ran the RTX for it; a Radeon variant (`...on the Radeon iGPU`, max channel delta 1) was added (`4ecea07`) and runs on the Radeon.
+`msvc-cpu-03-final`'s 463 includes the SDL-free occupancy/visibility cases that now live in `anno_app_tests`
+(98d9329), so earlier inventories (`anno_app_input_tests.` prefixes) do not carry over.
+
+### Preserved failures and unusable attempts (not overwritten)
+
+- Fresh MSVC build of the pin: `scene_probe_test.cpp(101)` C4244 under `/WX` (`cache/win-ee/build-01.log`).
+- `cache/gates/app-r1-r4-01-FAILED-name-preflight.log` (R1 case names with `;`); `app-02-FAILED-reaper-starved.log` (203 selected, 2 failed:
+  `picture recovery: the same convergence ...` and `accounting: one, two and four workers ...`, also failing on the pin with the
+  C4244 fix: `build/pin`); `cache/win-ee/app-tests-full-01.log`, `app-tests-full-03-first-failure-reclaimer-stall.log` (one
+  `picture reclaim: a stalled process reclaimer ...` failure, not reproduced alone, 3 x contended, or in the full suite twice under
+  16-process contention: **unexplained, one occurrence**).
+- `radeon-gpu-01-FAILED-source-changed.*` (105 passes, verdict FAIL: the tree changed during selection: invalid);
+  `wsl-asan-build-01-FAILED-sdl-no-x11.log`; `wsl-asan-app-01-FAILED-git-worktree-path.out`;
+  `wsl-asan-app-02-FAILED-timeout-heavy-case.log` (below); `unix-warnings-01-FAILED-sign-conversion-shadow.log` and
+  `unix-warnings-pin-baseline.log` (GCC failed ten files of the pin, Clang one script omission); `mut-r4-negative-control-INVALID-unmutated-binary.log`
+  and `mut-r4-resync-negative-control-INVALID-unmutated-binary.log` (a mutation that did not compile ran the unmutated binary).
+- `window/final/dev-session-REFUSED-frame-overhang` (the capture guard was too strict, fixed `fa94bf0`);
+  `window/matrix-01.table-FAILED-cp1252.stderr` (`window_table.py` died on an arrow in a legacy code page, fixed `f9a731b`); a first
+  final-chain table run died on a shadowed name I introduced in `381b3e3` (fixed `70817ed`).
+
+### Windows evidence, separately (never closes the Metal failures or OQ-525)
+
+- **Native window:** `window_case.py` / `window_matrix.py` (new; the shell runners need UNIX `time`/`perl`). 13 of 13 planned cases,
+  all exit 0, every trace `run=complete status=0`, 0 drops, 0 failed frames, `frames attempted = presented`; adapter NVIDIA GeForce
+  RTX 4090 (Vulkan); binary `anno1503.exe` sha256 `58c60ad2c045c958...`; revision `4ecea07`, clean.
+- **Drawables:** 1920x1080 for 9 cases (the resize case 1600x900 then 1920x1080). The "3840x2160" cases have a real
+  3840x2160 drawable (manifest and `frames.tsv`), **but this host has no 4K display**: Windows enumerates one 2560x1440 monitor, so it is an
+  oversized surface, not a 4K-display result (`window_table.py` now says so from the displays `window_case.py` records). The
+  cadence (500.0 fps) is the 2560x1440 monitor's 500 Hz, measured from the 2-second window lines; present-call return is not display time.
+- **Edit latency (sustained, 60 edits, desired -> stage, ms p50 / p95 / max):** object-ready 18.0 / 18.1 / 18.1-18.2; visible CPU-ready
+  42.6-44.3 / 52.4-52.5 / 54.4-66.3; present call returned 42.6-44.3 / 52.4-52.5 / 54.4-66.4, 0 unfinished, at both drawables;
+  one edit 32.4-32.5; 20-command burst (1 turn) 58.3-58.5. Window-thread busy per frame p50 0.36 ms (1080p), 0.54-0.59 ms (3840x2160).
+  Peak working set 1.12-1.16 GiB (1080p), 1.41-1.47 GiB (3840x2160 drawable); trace on/off pairs show the same cadence and busy time (0.40 ms).
+  The old Mac figures are not comparable and are not used.
+- **Per-frame cost of `ChangeVisibility` at its bound** (1 024 takes waiting, every part watched, Release): 28.7 us per
+  `begin_frame`+`frame_done` (about 1.4 % of a 2 ms frame), 0.26 us per `classify`. Synthetic: hand-driven boundaries.
+- **R4 measurement (synthetic hand-built batches, no sim):** at 1 000 / 5 000 / 16 000 local buildings with 0 / 100 000 unrelated: the
+  old rescan+rebuild per unrelated edit 0.27-5.3 ms; the unrelated edit now 0.04 us; a local delta 0.14-0.15 us; the one-off seed
+  0.25-4.3 ms. `ScenePicture::apply` for one unrelated delta (the picture's own sorted insert) remains on the window thread: about
+  1 ms at 50 000 buildings; it is not occupancy work and is outside this repair.
+- **Contention:** the picture-worker cases pass 165 of 165 twice under 16 busy processes (`cache/win-ee/contend.py`), and the
+  `picture_gpu` suite (12 cases, the corrected stand-ins/dissolve case included) passes 3 of 3 under 16 busy processes on the RTX
+  with GPU work serialized; the `clock held: STALLED` diagnostic is the case's own (frames 2 165 / 7 552 / 3 418 over 22 / 70 / 34 s
+  versus 4 952 in 1.3 s idle) and was recorded, not retried.
+- **OQ-525 reproduced:** the four pixels differ by 2 on both Vulkan adapters exactly as on Metal (RTX 4090 and Radeon: (4171,4572) CPU
+  38,56,72 GPU 38,57,74, and the other three), 4 pixels above 1, inside the existing tolerance. A CPU-truncation versus GPU-rounding
+  statement only; no original-runtime capture was made and no tolerance changed.
+- **Screenshots:** `window/final/dev-session/shots/cmdN-{client,window}.png` and `cmdN-title.txt` for four commands: real sprites
+  (two placed objects on open sea, the sim's terrain stand-in, OQ-052), the Applied, Refused (Occupied) and demolish titles. The
+  client image excludes the title, the whole-window image truncates it; the full text is in `-title.txt`. Taken by GDI from the screen
+  with the window raised; a covered window is not detected, only a minimised or off-desktop client area is refused.
+
+### Not run, unavailable, or not proven (reported separately)
+
+- A 3840x2160 **display**; physical display latency and scan-out (present-call return only); Radeon in the window matrix (the window ran on
+  the RTX; the Radeon ran the GPU gate only); an occluded window or forced slow upload/dissolve in the real window (NotOnGpu and the dissolve
+  boundary are covered by injected predicates and the held-worker pipeline test, and by `Visible` in the real window, not by a forced
+  real GPU stall).
+- **Viewer wiring has no automated test** of its own for R1 (`feedback()` in `update_title`/`script_tick`) and R4 (`ensure`, the observer,
+  `~Viewer`); reverting them fails no test. R2's viewer feed is covered by the two real-window mutations above; R1 and R4 are covered by
+  inspection and by the real-window session, whose titles and outcomes are consistent, nothing stronger.
+- WSL ASan on the **whole** app gate: `wsl-asan-app-02` (178 selected at 98d9329) ran 175 passes, 2 opt-in skips and **one timeout** at
+  3 400 s of `anno_app_tests.play: islands are the ones the sim placed` (a heavy original-scenario case under ASan, on DrvFs); it is not
+  attributed (no pin run under ASan). The final gate is the 80 affected cases (PASS). No GPU or Vulkan case ran in WSL (no Vulkan device).
+- `picture_matrix_contract` and `window_table_contract` are not registered on native Windows (`UNIX` only): they ran on the matching WSL
+  source (above) and no Windows pass is claimed for them. The Python `window_*` tools have no Windows contract test beyond the matrix run.
+- Large-city, complex-economy and multiplayer scaling, the PLAN's four-core target; OQ-052 terrain, OQ-550 height, wide-id rendering,
+  derived-level previews, the two Metal timing failures: untouched. No gameplay rule, map or founding behaviour was added.
+- The first-time-seen `picture reclaim: a stalled process reclaimer` failure is unexplained (above).
+
+### Decisions and reasoning
+
+- **R2 as parts, not a merged watch:** the first design merged commits per island; the review showed a newer version could be called
+  visible by an older commit's chunks. One part per commit costs a bounded list and makes each take's result its own.
+- **Tests moved, not duplicated:** the occupancy and visibility lan5 cases do not use SDL, so they build in `anno_app_tests` and run in
+  WSL (no X11/Wayland dev libraries there); installing them would have been package churn.
+- **WSL tools:** `cmake` and `ninja` were installed into `~/anno-tools-venv` (PyPI, no sudo, nothing in the repo); the worktree's git
+  pointer is a Windows path, so the WSL gate sets `GIT_DIR`, `GIT_WORK_TREE`, autocrlf and `GIT_OPTIONAL_LOCKS=0`.
+- **Independent review:** read-only subagents, briefed with the requirement and the frozen commits, not the conclusion: R1, R3, R4,
+  R2 (twice), the R4 re-check, and the integration review of `98d9329`, whose findings (the oversize note, window evidence from the
+  final binary, final-head gates, the capture and runner docstrings, unlabelled failed logs, the per-frame cost at the bound, a Radeon
+  scene comparison) were fixed or are stated above. A **final** integration re-check of `fa94bf0` is pending: REVIEW PENDING.
+
+### Next smallest unit
+
+Orchestrator review of `fa94bf0`; then either UI.2 on these interfaces or a decision on the open items above (a 4K display run, a
+viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, prune or reset was done.

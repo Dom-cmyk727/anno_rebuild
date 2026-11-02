@@ -149,8 +149,8 @@ void TileLayer::mark(std::uint64_t idx) {
 
 void TileLayer::mark_route(std::uint64_t idx) {
     // w_ > 0 here: idx was checked against a non-empty column.
-    route_dirty_.add(x0_ + static_cast<std::int32_t>(idx % w_),
-                     y0_ + static_cast<std::int32_t>(idx / w_));
+    route_dirty_.add(std::int64_t{x0_} + static_cast<std::int64_t>(idx % w_),
+                     std::int64_t{y0_} + static_cast<std::int64_t>(idx / w_));
 }
 
 void TileLayer::set_object(std::uint64_t idx, std::uint32_t v) {

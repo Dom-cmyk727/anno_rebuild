@@ -112,11 +112,12 @@ class RouteDirty {
     [[nodiscard]] bool any() const { return all_ || any_; }
     /// The whole layer changed (a reset, an assignment): the rectangle is not meaningful.
     [[nodiscard]] bool all() const { return all_; }
-    [[nodiscard]] std::int32_t x0() const { return x0_; }
-    [[nodiscard]] std::int32_t y0() const { return y0_; }
-    [[nodiscard]] std::int32_t x1() const { return x1_; }
-    [[nodiscard]] std::int32_t y1() const { return y1_; }
-    void add(std::int32_t x, std::int32_t y) {
+    [[nodiscard]] std::int64_t x0() const { return x0_; }
+    [[nodiscard]] std::int64_t y0() const { return y0_; }
+    /// The exclusive upper edges are 64-bit: a changed tile at INT32_MAX has the edge 2^31.
+    [[nodiscard]] std::int64_t x1() const { return x1_; }
+    [[nodiscard]] std::int64_t y1() const { return y1_; }
+    void add(std::int64_t x, std::int64_t y) {
         if (!any_) {
             x0_ = x;
             y0_ = y;
@@ -139,7 +140,7 @@ class RouteDirty {
 
   private:
     bool all_ = false, any_ = false;
-    std::int32_t x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
+    std::int64_t x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
 };
 
 /// The tile columns of one island with their chunk digest cache.

@@ -54,6 +54,10 @@ std::vector<sim::Body> samples() {
                                   sim::BuildingId{0x0000000200000005ULL}, 3, 42, 38});
     v.emplace_back(sim::UnloadCmd{sim::FigureId{0}, sim::BuildingId{0xFFFFFFFFFFFFFFFEULL},
                                   0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU});
+    v.emplace_back(sim::LoadCmd{sim::FigureId{0x0000000300000011ULL},
+                                sim::BuildingId{0x000000010000002CULL}, 2, 41, 17});
+    v.emplace_back(sim::LoadCmd{sim::FigureId{0}, sim::BuildingId{0xFFFFFFFFFFFFFFFEULL},
+                                0xFFFFFFFFU, 0xFFFFFFFFU, 0xFFFFFFFFU});
     return v;
 }
 
@@ -106,7 +110,8 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     static_assert(std::is_same_v<std::variant_alternative_t<8, sim::Body>, sim::MoveCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<9, sim::Body>, sim::StopCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<10, sim::Body>, sim::UnloadCmd>);
-    static_assert(std::variant_size_v<sim::Body> == 11);
+    static_assert(std::is_same_v<std::variant_alternative_t<11, sim::Body>, sim::LoadCmd>);
+    static_assert(std::variant_size_v<sim::Body> == 12);
     CHECK(sim::kCommandWireVersion == 1);
     CHECK(sim::kWireBuild == 0x64);
     CHECK(sim::kWireDemolish == 0x68);
@@ -118,8 +123,9 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     for (std::uint32_t t = 0; t <= 0xFFFF; ++t) {
         natives += sim::is_native_wire_type(static_cast<std::uint16_t>(t)) ? 1 : 0;
     }
-    CHECK(natives == 10);
+    CHECK(natives == 11);
     CHECK(sim::kWireUnload == 0xF073);
+    CHECK(sim::kWireLoad == 0xF074);
     CHECK(sim::kWireFound == 0xF070);
     CHECK(sim::is_native_wire_type(0xF070));
     CHECK_FALSE(sim::is_native_wire_type(0x70)); // a legacy type, as before
@@ -190,6 +196,49 @@ TEST_CASE("command wire: exact bytes of every native record") {
     CHECK_FALSE(sim::has_wire_form(sim::Body{sim::LegacyRawCmd{0xF073, {}}}));
     CHECK_FALSE(sim::encode_record(sim::Body{sim::LegacyRawCmd{0xF073, Bytes(28, 0)}}).ok());
     CHECK(sim::kCommandWireVersion == 1);
+
+    // LoadCmd (0xF074, MAP-CARGO-2), hand-written from docs/sim/ship-cargo.md section 12.2 (not
+    // produced by the encoder): type 74 F0 | len 1C 00 | u64 ship | u64 warehouse | u32 hold |
+    // u32 goods | u32 tons, little endian. Values differ from the unload vector on every field.
+    const Bytes load_wire = {0x74, 0xF0, 0x1C, 0x00,                         // header, 28 bytes
+                             0x11, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, // ship 3:0x11
+                             0x2C, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, // warehouse 1:0x2C
+                             0x02, 0x00, 0x00, 0x00,                         // hold 2
+                             0x29, 0x00, 0x00, 0x00,                         // goods 41
+                             0x11, 0x00, 0x00, 0x00};                        // tons 17
+    const sim::Body load = sim::LoadCmd{sim::FigureId{0x0000000300000011ULL},
+                                        sim::BuildingId{0x000000010000002CULL}, 2, 41, 17};
+    CHECK(encoded(load) == load_wire);
+    auto load_back = sim::decode_record(load_wire);
+    REQUIRE(load_back.ok());
+    CHECK(load_back.value() == load);
+    // The same bytes under the unload tag are an UnloadCmd, never a LoadCmd (and vice versa).
+    Bytes as_unload = load_wire;
+    as_unload[0] = 0x73;
+    auto unload_of_load = sim::decode_record(as_unload);
+    REQUIRE(unload_of_load.ok());
+    CHECK(std::holds_alternative<sim::UnloadCmd>(unload_of_load.value()));
+    // kCommandWireVersion stays 1: a record one byte short or long, a length field that lies either
+    // way, and a StopCmd-sized payload are refused; the tag is native, so a LegacyRawCmd of it
+    // cannot be encoded.
+    Bytes load_short = load_wire;
+    load_short.pop_back();
+    CHECK_FALSE(sim::decode_record(load_short).ok());
+    Bytes load_long = load_wire;
+    load_long.push_back(0);
+    CHECK_FALSE(sim::decode_record(load_long).ok());
+    Bytes load_len_short = load_wire;
+    load_len_short[2] = 0x1B;
+    CHECK_FALSE(sim::decode_record(load_len_short).ok());
+    Bytes load_len_long = load_wire;
+    load_len_long[2] = 0x1D;
+    load_len_long.push_back(0);
+    CHECK_FALSE(sim::decode_record(load_len_long).ok());
+    CHECK_FALSE(sim::decode_record(record(0xF074, Bytes(8, 0))).ok());
+    CHECK(sim::is_native_wire_type(0xF074));
+    CHECK_FALSE(sim::has_wire_form(sim::Body{sim::LegacyRawCmd{0xF074, {}}}));
+    CHECK_FALSE(sim::encode_record(sim::Body{sim::LegacyRawCmd{0xF074, Bytes(28, 0)}}).ok());
+    CHECK(sim::wire_type(load) == 0xF074);
 }
 
 TEST_CASE("command wire: encode then decode is the identity") {
@@ -280,8 +329,8 @@ TEST_CASE("command wire: decode rejects length and count lies") {
         std::uint16_t type;
         std::size_t size;
     };
-    const Native natives[] = {{0x74, 13}, {0x7c, 18}, {0x73, 28},  {0x7a, 4},
-                              {0x64, 12}, {0x68, 12}, {0xF073, 28}};
+    const Native natives[] = {{0x74, 13}, {0x7c, 18}, {0x73, 28},   {0x7a, 4},
+                              {0x64, 12}, {0x68, 12}, {0xF073, 28}, {0xF074, 28}};
     for (const Native& n : natives) {
         for (std::size_t len = 0; len <= n.size + 20; ++len) {
             const Bytes rec = record(n.type, Bytes(len, 0));
@@ -548,10 +597,10 @@ TEST_CASE("command wire: FoundCmd bytes, round trip, hostile payloads and the ot
     // The other native encodings are unchanged by the new alternative (the exact bytes of the
     // existing test above are the proof; two are restated here).
     CHECK(encoded(sim::SetSpeedCmd{200}) == Bytes{0x7a, 0, 4, 0, 200, 0, 0, 0});
-    // Neighbouring types that stay legacy: 0x70 (the old candidate), 0xF06F and 0xF074 (0xF071 and
-    // 0xF072 became native with MAP-NAV-2, 0xF073 with MAP-CARGO-1).
+    // Neighbouring types that stay legacy: 0x70 (the old candidate), 0xF06F and 0xF075 (0xF071 and
+    // 0xF072 became native with MAP-NAV-2, 0xF073 with MAP-CARGO-1, 0xF074 with MAP-CARGO-2).
     for (const std::uint16_t t :
-         {std::uint16_t{0x70}, std::uint16_t{0xF06F}, std::uint16_t{0xF074}}) {
+         {std::uint16_t{0x70}, std::uint16_t{0xF06F}, std::uint16_t{0xF075}}) {
         auto r = sim::decode_record(
             Bytes{static_cast<std::uint8_t>(t & 0xff), static_cast<std::uint8_t>(t >> 8), 0, 0});
         REQUIRE(r.ok());

@@ -725,6 +725,8 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
         result = ShipOrders::stop(w, command, *st, in_advance);
     } else if (const auto* un = std::get_if<UnloadCmd>(&command.body)) {
         result = ShipCargo::unload(w, command, *un, in_advance);
+    } else if (const auto* ld = std::get_if<LoadCmd>(&command.body)) {
+        result = ShipCargo::load(w, command, *ld, in_advance);
     } else {
         // A legacy record is never executed (fail closed, §8.3).
         result.status = Reject::Unsupported;

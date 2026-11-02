@@ -90,7 +90,15 @@ enum class Reject : std::uint16_t {
     /// UnloadCmd: the goods id is 0 or outside the city's stock table.
     UnsupportedGoods,
     /// UnloadCmd: the city's store has no room left for the goods (full or over capacity).
-    StockFull
+    StockFull,
+    // MAP-CARGO-2 (LoadCmd, docs/sim/ship-cargo.md section 12.2), appended in order.
+    /// LoadCmd: the ship's type has no navigation facts, so no cargo hold count (no guessed limit).
+    NoCargoFacts,
+    /// LoadCmd: no hold of the first hold_count_a can take the goods (no same-goods hold with room
+    /// and no empty hold with capacity).
+    HoldsFull,
+    /// LoadCmd: the city holds less than one whole ton of the goods.
+    StockShort
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -98,8 +106,9 @@ enum class Reject : std::uint16_t {
 struct RecordResult {
     Reject status = Reject::None;
     BuildingId building;
-    /// MAP-CARGO-1: the amount an accepted UnloadCmd moved from the hold into the city store, in
-    /// 1/256 ton (docs/sim/ship-cargo.md section 3). 0 for every other command and every refusal.
+    /// MAP-CARGO-1/2: the amount an accepted UnloadCmd moved from the hold into the city store, or
+    /// an accepted LoadCmd moved from the city store into a hold, in 1/256 ton
+    /// (docs/sim/ship-cargo.md sections 3 and 12). 0 for every other command and every refusal.
     std::uint64_t transferred_88 = 0;
 };
 
@@ -201,6 +210,12 @@ struct ApplyResult {
         return "UnsupportedGoods";
     case Reject::StockFull:
         return "StockFull";
+    case Reject::NoCargoFacts:
+        return "NoCargoFacts";
+    case Reject::HoldsFull:
+        return "HoldsFull";
+    case Reject::StockShort:
+        return "StockShort";
     }
     return "?";
 }

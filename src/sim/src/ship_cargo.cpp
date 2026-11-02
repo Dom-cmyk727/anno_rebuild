@@ -1,4 +1,4 @@
-// UnloadCmd (see ship_cargo.hpp, docs/sim/ship-cargo.md).
+// UnloadCmd and LoadCmd (see ship_cargo.hpp, docs/sim/ship-cargo.md).
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -27,6 +27,29 @@ std::int64_t axis_distance(std::int64_t p, std::int64_t lo, std::int64_t length)
         return 0;
     }
     return std::min(p < lo ? lo - p : p - lo, p < hi ? hi - p : p - hi);
+}
+
+/// Whether `city_number` owns one of the tiles of the disc outline around the ship tile (tx, ty)
+/// (the unload's test, section 5: 24 reads).
+bool city_owns_outline_tile(const Island& island, std::uint32_t city_number, std::int64_t tx,
+                            std::int64_t ty, const CargoRules& cargo) {
+    const std::vector<std::uint32_t>& half = cargo.dock_half_widths;
+    for (std::size_t k = 0; k < half.size(); ++k) {
+        const std::int64_t wk = half[k], kk = static_cast<std::int64_t>(k);
+        const std::int64_t xs[4] = {tx - wk, tx + wk, tx - wk, tx + wk};
+        const std::int64_t ys[4] = {ty - kk, ty - kk, ty + kk, ty + kk};
+        for (int i = 0; i < 4; ++i) {
+            if (xs[i] < INT32_MIN || xs[i] > INT32_MAX || ys[i] < INT32_MIN || ys[i] > INT32_MAX) {
+                continue;
+            }
+            const Slot idx = island.tile_index(static_cast<std::int32_t>(xs[i]),
+                                               static_cast<std::int32_t>(ys[i]));
+            if (idx != kNoSlot && island.tiles.owner(idx) == city_number) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -163,6 +186,139 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
     if (debited.amount_88 == 0) {
         debited.goods = 0; // the emptied-hold normal form (0x1003b9a0)
     }
+    ApplyResult out;
+    RecordResult rr;
+    rr.building = cmd.warehouse;
+    rr.transferred_88 = x;
+    out.records.push_back(rr);
+    return out;
+}
+
+std::optional<std::size_t> ShipCargo::resolve_hold(const std::vector<ShipHold>& holds,
+                                                   std::size_t limit, std::uint32_t capacity_88,
+                                                   std::size_t preferred, GoodsId goods) {
+    const auto room_of = [capacity_88](const ShipHold& h) -> std::uint64_t {
+        return h.amount_88 >= capacity_88 ? 0 : std::uint64_t{capacity_88} - h.amount_88;
+    };
+    if (preferred < holds.size() && holds[preferred].goods == goods &&
+        room_of(holds[preferred]) >= 256) {
+        return preferred;
+    }
+    std::optional<std::size_t> candidate;
+    std::uint64_t best = 0;
+    for (std::size_t k = 0; k < std::min(limit, holds.size()); ++k) {
+        const ShipHold& h = holds[k];
+        if (h.goods == 0 && h.amount_88 == 0) {
+            if (!candidate.has_value()) {
+                candidate = k;
+            }
+        } else if (h.goods == goods) {
+            const std::uint64_t room = room_of(h);
+            if (room > 0 && best < room) {
+                best = room;
+                candidate = k;
+            }
+        }
+    }
+    return candidate;
+}
+
+ApplyResult ShipCargo::load(World& w, const Command& command, const LoadCmd& cmd,
+                            const InAdvance*) {
+    const TypeRegistry& types = *w.types_;
+    const CargoRules& cargo = w.rules_.cargo;
+    const veto::Rules vrules; // the ship class is the founding command's (BEWOHNTYPE 113)
+    // Step 0 (the issuer is a known player) is Commands::apply's. 1: the request.
+    if (cmd.tons == 0) {
+        return refuse(Reject::BadValue);
+    }
+    // 2-4: the ship.
+    const Figure* ship = find_figure(w.figures_, cmd.ship);
+    if (ship == nullptr) {
+        return refuse(Reject::UnknownFigure);
+    }
+    const FigureType* ship_type = types.find_figure_type(ship->kind);
+    if (ship_type == nullptr || ship_type->bewohntype != vrules.ship_kind) {
+        return refuse(Reject::NotAShip);
+    }
+    if (ship->owner != command.issuer) {
+        return refuse(Reject::NotShipOwner);
+    }
+    // 5-7: the warehouse and its city, found by id in the island that the id names (no scan).
+    const IslandId island_id = island_of(cmd.warehouse);
+    if (!island_id.valid() || island_id.v >= w.islands_.size() ||
+        !w.islands_[island_id.v].has_value()) {
+        return refuse(Reject::NoBuildingAtTile);
+    }
+    Island& island = *w.islands_[island_id.v];
+    const Building* building = island.find_building(cmd.warehouse);
+    if (building == nullptr) {
+        return refuse(Reject::NoBuildingAtTile);
+    }
+    const BuildingType* btype = types.find(building->type);
+    if (btype == nullptr || !std::binary_search(cargo.warehouse_prodtypes.begin(),
+                                                cargo.warehouse_prodtypes.end(), btype->prodtype)) {
+        return refuse(Reject::NotAWarehouse);
+    }
+    const auto key = island.cache.by_id.find(cmd.warehouse);
+    if (key == island.cache.by_id.end()) {
+        return refuse(Reject::NoBuildingAtTile);
+    }
+    City* city = island.city(key->second.city.city);
+    if (city == nullptr) {
+        return refuse(Reject::UnknownCity);
+    }
+    if (city->owner != command.issuer) {
+        return refuse(Reject::NotCityOwner);
+    }
+    // 8: range, against the live state (the unload's test: footprint disc, then the city owning a
+    // tile of the disc outline). The ship tile is the truncated position (Q24.8 >> 8).
+    const std::int64_t tx = ship->pos.x >> 8, ty = ship->pos.y >> 8;
+    const auto [fw, fh] = footprint(*btype, building->rotation);
+    if (!footprint_in_range(tx, ty, building->x, building->y, fw, fh, cargo) ||
+        !city_owns_outline_tile(island, city->number.v, tx, ty, cargo)) {
+        return refuse(Reject::OutOfRange);
+    }
+    // 9: the cargo facts. A type without navigation facts has no hold count: refused, not guessed.
+    if (!ship_type->nav.has_value()) {
+        return refuse(Reject::NoCargoFacts);
+    }
+    // 10: the preferred hold lies below the cargo hold count (hold_count_a only, not _b).
+    const std::size_t limit = static_cast<std::size_t>(
+        std::min<std::uint64_t>(ship->holds.size(), ship_type->nav->hold_count_a));
+    if (cmd.hold >= limit) {
+        return refuse(Reject::BadIndex);
+    }
+    // 11: the goods.
+    if (cmd.goods == 0 || cmd.goods >= city->stock.stock.size()) {
+        return refuse(Reject::UnsupportedGoods);
+    }
+    // 12-14: the plan, from the live hold and store, before any write.
+    const std::uint32_t capacity = ship_type->capacity_88;
+    const std::optional<std::size_t> chosen =
+        resolve_hold(ship->holds, limit, capacity, cmd.hold, cmd.goods);
+    if (!chosen.has_value()) {
+        return refuse(Reject::HoldsFull);
+    }
+    const std::uint64_t held = ship->holds[*chosen].amount_88;
+    const std::uint64_t room = held >= capacity ? 0 : std::uint64_t{capacity} - held;
+    if (room == 0) {
+        return refuse(Reject::HoldsFull);
+    }
+    const std::uint64_t available = std::uint64_t{city->stock.stock[cmd.goods]} / 256 * 256;
+    if (available == 0) {
+        return refuse(Reject::StockShort);
+    }
+    const std::uint64_t x = amount_88(cmd.tons, room, available); // > 0: all three are non-zero
+
+    // Commit: nothing below can fail. The debit is the exact planned amount (refused before the
+    // hold is touched), then the hold is credited by exactly that amount; held + x <= capacity.
+    if (!city->stock.debit(cmd.goods, x)) {
+        return refuse(Reject::AtomicAbort); // unreachable: x <= floor_T(stock)
+    }
+    ShipHold& credited = find_figure(w.figures_, cmd.ship)->holds[*chosen];
+    credited.goods = cmd.goods;
+    credited.amount_88 = held + x;
     ApplyResult out;
     RecordResult rr;
     rr.building = cmd.warehouse;

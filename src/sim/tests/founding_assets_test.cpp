@@ -1571,7 +1571,9 @@ TEST_CASE("build after founding: the founded city holds nothing, so no ordinary 
             break;
         }
     }
-    if (own_site.has_value()) {
+    REQUIRE_MESSAGE(own_site.has_value(),
+                    "no PIONIER site of the founded city is free of scenery: the refusal must run");
+    {
         const std::vector<std::uint8_t> before = w.save();
         const sim::ApplyResult r = w.apply(command_test::build(
             0, command_test::kCity0 /* island 0 */,
@@ -1586,9 +1588,6 @@ TEST_CASE("build after founding: the founded city holds nothing, so no ordinary 
         MESSAGE("same, island " << s->island << ": " << sim::reject_name(r2.status));
         CHECK(r2.status == sim::Reject::CannotAfford);
         CHECK(w.save() == before);
-    } else {
-        MESSAGE("no PIONIER site of the real founded city is free of scenery; the refusal is not "
-                "executed, the stock arithmetic above stands");
     }
 }
 
@@ -1756,8 +1755,10 @@ std::vector<Step> run_build_sequence(sim::World& w, sim::Recorder* rec, const Bu
     };
     const sim::Reject ok = sim::Reject::None;
     d.advance(100);
-    // 1. the same PIONIER command on the sea site of the real island: the terrain decides.
-    const sim::ApplyResult sea = command("1 sea site", pion(0, fx.sea));
+    // 1. the same PIONIER command on a terrain-refused site of the real island (the nearest origin
+    // where placement_rule answers TerrainRefused; not asserted to be open water): the terrain
+    // decides.
+    const sim::ApplyResult sea = command("1 terrain-refused site", pion(0, fx.sea));
     // 2. the second player sees the island and shares information, but has no build right.
     const sim::ApplyResult foreign = command("2 second player", pion(1, fx.a));
     // 3. the legal PIONIER (3 wood).
@@ -1829,12 +1830,14 @@ TEST_CASE(
     constexpr std::uint32_t kWoodT = 20, kToolsT = 10;
     auto found = find_build_fixture(start, rs.types, rs.manifest.edge_w, rs.manifest.edge_h, kGold,
                                     kWoodT, kToolsT);
-    REQUIRE_MESSAGE(found.has_value(), "no real island offers PIONIER, HANDWERK and a sea site");
+    REQUIRE_MESSAGE(found.has_value(),
+                    "no real island offers PIONIER, HANDWERK and a terrain-refused site");
     const BuildFixture fx = std::move(*found);
     MESSAGE("real island slot " << fx.island << ": PIONIER A (" << fx.a.x << ", " << fx.a.y
                                 << ") level " << unsigned{fx.a.height} << "; HANDWERK B (" << fx.b.x
                                 << ", " << fx.b.y << ") level " << unsigned{fx.b.height}
-                                << "; sea site (" << fx.sea.x << ", " << fx.sea.y << ")");
+                                << "; terrain-refused site (" << fx.sea.x << ", " << fx.sea.y
+                                << ")");
     const auto wood = *rs.types->goods_by_name("HOLZ");
     const auto tools = *rs.types->goods_by_name("WERKZEUG");
     const sim::BuildingType& pionier = *rs.types->find(sim::TypeId{kPionier});

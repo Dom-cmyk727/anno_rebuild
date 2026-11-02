@@ -573,7 +573,7 @@ TEST_CASE("opening, real files: a route the sim cannot plan ends as its own 'rou
     CHECK_FALSE(ship->order_id.has_value());
 }
 
-TEST_CASE("opening, real files: the runner keeps only its newest view; a held one is released when "
+TEST_CASE("opening, real files: the runner keeps only its newest view, a held one is released when "
           "dropped") {
     const auto dir = anno::test::game_dir();
     if (!dir) {

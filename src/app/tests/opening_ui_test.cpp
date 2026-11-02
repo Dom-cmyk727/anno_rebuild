@@ -222,7 +222,7 @@ TEST_CASE(
     CHECK(f.ui.selected().has_value());
 }
 
-TEST_CASE("controls: a stop is for the selected own ship; Esc cancels gesture, mode, selection, "
+TEST_CASE("controls: a stop is for the selected own ship, Esc cancels gesture, mode, selection, "
           "then nothing") {
     Fixture f;
     CHECK_FALSE(f.key(app::OpeningKey::Halt).taken == false); // taken: it answers with a message
@@ -361,7 +361,7 @@ TEST_CASE("controls: unloading asks for one hold and a quantity, from the stable
     CHECK(f.ui.message().find("no warehouse") != std::string::npos);
 }
 
-TEST_CASE("controls: a vanished ship drops the selection and the mode; modes exclude each other") {
+TEST_CASE("controls: a vanished ship drops the selection and the mode, modes exclude each other") {
     Fixture f;
     f.click(app::PointerButton::Left, 100, 100);
     f.key(app::OpeningKey::Unload);

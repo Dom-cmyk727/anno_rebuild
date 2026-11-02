@@ -19,6 +19,16 @@ NavMotion make_nav_motion(FixedPos pos, std::uint16_t tick_low) {
     return m;
 }
 
+void nav_place(Figure& f, FixedPos pos) {
+    f.pos = pos;
+    if (f.nav.has_value()) {
+        f.nav->pos_u[0] = std::int64_t{pos.x} * kNavPosUnitsPerQ8;
+        f.nav->pos_u[1] = std::int64_t{pos.y} * kNavPosUnitsPerQ8;
+        f.nav->res24[0] = 0;
+        f.nav->res24[1] = 0;
+    }
+}
+
 std::string validate_navigation(const FigureRegistry& registry, const IdCounters& ids,
                                 const TypeRegistry& types, const Rules& rules) {
     std::set<std::uint64_t> orders, tickets;
@@ -43,6 +53,12 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             return where + ".nav: figure type " + std::to_string(f.kind) + " has nav_class " +
                    std::to_string(facts.nav_class) + ", Rules.nav.class_costs holds " +
                    std::to_string(rules.nav.class_costs.size());
+        }
+        if (f.parent.valid() && (m.order.has_value() || m.ticket.has_value() || !m.nodes.empty() ||
+                                 m.seg.kind != NavSegKind::Idle || (f.state_word & 1U) != 0)) {
+            return where + ".nav: a carried navigating figure (parent " +
+                   std::to_string(f.parent.v) +
+                   ") holds an order, ticket, plan or motion; it does not sail on its own";
         }
         const NavSegment& g = m.seg;
         if (g.factor_percent < 1 || g.factor_percent > 100) {

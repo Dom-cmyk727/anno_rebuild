@@ -105,6 +105,10 @@ std::string World::check_invariants() const {
     if (!problem.empty()) {
         return problem;
     }
+    problem = figure_index_problem(figures_);
+    if (!problem.empty()) {
+        return problem;
+    }
     // A hold names goods of the registry (the registry is the content; validate_figures sees
     // no registry).
     for (std::size_t s = 0; s < figures_.list.slots.size(); ++s) {

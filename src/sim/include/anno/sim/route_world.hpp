@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <span>
 #include <vector>
 
@@ -92,6 +93,9 @@ class WorldTileSource final : public TileSource {
     /// anchor object tops): the record classify_cell tests and the shore band is derived from.
     [[nodiscard]] bool block_range(std::int32_t cx, std::int32_t cz, std::uint8_t& min_half,
                                    std::uint8_t& max_half) const override;
+    /// Island rectangles examined by tile lookups so far (diagnostic: 0 for open sea, at most the
+    /// islands touching a partly covered cell otherwise).
+    [[nodiscard]] std::uint64_t entries_examined() const { return entries_examined_; }
     /// Whether classify_cell answers this cell from the block shortcut (else from its tiles).
     [[nodiscard]] bool cell_uses_shortcut(std::int32_t cx, std::int32_t cz) const;
 
@@ -112,7 +116,11 @@ class WorldTileSource final : public TileSource {
     std::vector<Entry> entries_; ///< island-slot order
     /// For each world cell (row-major, cells_x wide): index into entries_ of the island whose
     /// rectangle contains the whole cell, or -1.
+    /// -1 = open sea (no island rectangle touches the cell), -2 = partly covered (see partial_).
     std::vector<std::int32_t> cell_entry_;
+    /// For a partly covered cell: the islands (slot order) whose rectangle touches it.
+    std::map<std::uint64_t, std::vector<std::int32_t>> partial_;
+    mutable std::uint64_t entries_examined_ = 0;
     std::int32_t cells_x_ = 0, cells_z_ = 0;
 };
 

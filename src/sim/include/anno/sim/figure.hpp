@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -241,7 +242,32 @@ struct FigureRegistry {
     /// (rebuild_figure_index; World::check_invariants compares it with a
     /// recomputation).
     std::map<FigureId, Slot> by_id;
+    /// DERIVED, never saved or hashed (MAP-NAV-3 N1): the children of every figure that has any,
+    /// ascending by child id. Lets a carrier reach its whole subtree without scanning the registry.
+    std::map<FigureId, std::vector<FigureId>> children;
+    /// DERIVED, never saved or hashed (N1): the pending planning tickets of all ships, ascending.
+    /// A ticket is unique (ids.next_ticket), so the ticket alone identifies its ship's place in
+    /// the fair-admission order (docs/sim/ship-navigation.md 12.2).
+    std::set<std::uint64_t> tickets;
+    /// DERIVED, never saved or hashed (N1): the sailing ships (a navigating figure without a
+    /// parent) by 16 x 16-tile registry cell, key {cell z, cell x} (the order of the original's
+    /// scan: z rows outer, x columns inner), the ids of a cell ascending.
+    std::map<std::pair<std::int32_t, std::int32_t>, std::set<FigureId>> ship_cells;
 };
+
+/// The 16 x 16-tile cell index of a Q24.8 coordinate (negative = cell 0, the original's clip).
+[[nodiscard]] std::int32_t figure_cell_of(std::int32_t q8);
+
+/// Keeps the derived indexes in step with a mutation made through `Figure&` (the registry cannot
+/// see in-place edits). `note_ticket` after a ticket was assigned, consumed or cleared;
+/// `note_ship_moved` after a sailing ship's position changed (pass the position before).
+void note_ticket(FigureRegistry& registry, std::optional<std::uint64_t> before,
+                 std::optional<std::uint64_t> after);
+void note_ship_moved(FigureRegistry& registry, const Figure& ship, FixedPos before);
+
+/// The first difference between the derived indexes and a fresh reconstruction from the list,
+/// or empty.
+[[nodiscard]] std::string figure_index_problem(const FigureRegistry& registry);
 
 /// An empty registry: one list of SimConfig::list_initial_size null elements (A6,
 /// the group list's constructor makes one, A7), stamp 0.

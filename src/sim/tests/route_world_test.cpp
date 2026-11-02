@@ -551,3 +551,33 @@ TEST_CASE(
                                                            << max_bytes << " bytes");
     MESSAGE("witness routes found under the original rules: " << witness_found << " of 15");
 }
+
+TEST_CASE("route world: open-sea cells are answered without scanning islands, partial cells scan "
+          "only the islands touching them") {
+    const auto types = object_registry({});
+    // 40 islands of 16 x 16 tiles on a 256-tile row, plus one unaligned 5 x 5 island at (101, 3)
+    // that covers only part of its 8 x 8 cells.
+    std::vector<sim::Island> store;
+    for (int i = 0; i < 40; ++i) {
+        store.push_back(make_island(i * 16, 64, 16, 16, 0));
+    }
+    store.push_back(make_island(101, 3, 5, 5, 0));
+    std::vector<const sim::Island*> islands;
+    for (const auto& is : store) {
+        islands.push_back(&is);
+    }
+    const sim::WorldTileSource src(islands, *types, 1024, 256);
+    // Open sea far from every rectangle: no island rectangle is examined at all.
+    CHECK(src.tile_is_water(500, 200));
+    CHECK(src.tile_is_water(3, 3));
+    CHECK(src.entries_examined() == 0);
+    // A tile on a whole-covered cell is a direct hit.
+    CHECK(src.tile_is_water(10, 70));
+    CHECK(src.entries_examined() == 0);
+    // A tile in the partly covered cell: only the one island touching it is examined (not 41), and
+    // the answer is what a full scan gives (island tile -> terrain rules; neighbour -> open sea).
+    CHECK(src.tile_is_water(102, 4));
+    CHECK(src.entries_examined() == 1);
+    CHECK(src.tile_is_water(107, 4)); // same cell, outside the island: still examined once more
+    CHECK(src.entries_examined() == 2);
+}

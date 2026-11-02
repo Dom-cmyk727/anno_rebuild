@@ -44,6 +44,11 @@ inline constexpr std::size_t kNavMaxNodes = 1U << 16;
 /// `remaining = speed = 0.01`, AnnoWelt 0x10040000), factor 100, no order, `last` = `tick_low`.
 [[nodiscard]] NavMotion make_nav_motion(FixedPos pos, std::uint16_t tick_low);
 
+/// Places a CARRIED navigating figure at `pos` (the carrier wrote its position): the fine position
+/// becomes the Q24.8 position exactly and the residue is cleared, so Figure::pos stays equal to
+/// floor(pos_u). The only way a position reaches a figure that does not sail on its own.
+void nav_place(Figure& f, FixedPos pos);
+
 /// Empty when the navigation state of every figure is consistent with its type and the counters:
 /// present exactly for navigating types, nav_class below the Rules table, segment and node ranges,
 /// `Figure::pos` equal to the floor of pos_u, residue rules, orders and tickets below the counters

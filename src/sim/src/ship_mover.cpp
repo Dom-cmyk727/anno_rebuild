@@ -44,42 +44,46 @@ RouteCostTable costs_of(const NavRules& n) {
     return t;
 }
 
-/// The ships of a registry, collected in ONE pass for the stamp query (the view then answers any
-/// cell from the list). The pass is per admitted plan, not per tick.
+/// The sailing ships around a point, answered from the registry's ship grid (figure.hpp
+/// `ship_cells`): a cell lookup is O(log cells + ships in the cell), independent of the number of
+/// unrelated figures. Counts every entry it examines in `work`.
 class RegistryShips final : public ShipSpatialView {
   public:
-    explicit RegistryShips(const FigureRegistry& reg) {
-        for (const auto& slot : reg.list.slots) {
-            if (!slot.has_value() || !slot->nav.has_value() || slot->parent.valid()) {
-                continue;
-            }
-            const Figure& f = *slot;
-            LocalShip s;
-            s.id = f.id.v;
-            s.x_q8 = f.pos.x;
-            s.z_q8 = f.pos.y;
-            s.state_word = f.state_word;
-            s.ship_group = true;
-            s.has_direction = true;
-            if (f.nav->seg.kind == NavSegKind::Move && f.nav->seg.dir8 < 8) {
-                const auto v = ShipMover::stamp_velocity_q32(f.nav->seg);
-                s.vel_x_q32 = v[0];
-                s.vel_z_q32 = v[1];
-            }
-            ships_.push_back(s);
-        }
-    }
+    RegistryShips(const FigureRegistry& reg, NavWork* work) : reg_(reg), work_(work) {}
     void ships_in_cell(std::int32_t cell_x, std::int32_t cell_z,
                        std::vector<LocalShip>& out) const override {
-        for (const LocalShip& s : ships_) {
-            if (ship_cell_of(s.x_q8) == cell_x && ship_cell_of(s.z_q8) == cell_z) {
-                out.push_back(s);
+        if (work_ != nullptr) {
+            ++work_->stamp_cells;
+        }
+        const auto it = reg_.ship_cells.find({cell_z, cell_x});
+        if (it == reg_.ship_cells.end()) {
+            return;
+        }
+        for (const FigureId id : it->second) {
+            if (work_ != nullptr) {
+                ++work_->stamp_entries;
             }
+            const Figure* f = find_figure(reg_, id);
+            if (f == nullptr || !f->nav.has_value() || f->parent.valid()) {
+                continue;
+            }
+            LocalShip s;
+            s.id = f->id.v;
+            s.x_q8 = f->pos.x;
+            s.z_q8 = f->pos.y;
+            s.state_word = f->state_word;
+            s.ship_group = true;
+            s.has_direction = true;
+            const auto v = ShipMover::stamp_velocity_q32(f->nav->seg);
+            s.vel_x_q32 = v[0];
+            s.vel_z_q32 = v[1];
+            out.push_back(s);
         }
     }
 
   private:
-    std::vector<LocalShip> ships_;
+    const FigureRegistry& reg_;
+    NavWork* work_;
 };
 
 /// The route nodes of the plan (12.7): turn nodes before the first run only, then one movement node
@@ -127,15 +131,17 @@ class WorldPlanner final : public NavPlanner {
         // Fair admission (12.2 rule 2): admitted iff the pending tickets older than ours are fewer
         // than the quota left in this Advance.
         const std::uint64_t mine = ship.nav->ticket.value_or(0);
-        std::uint64_t older = 0;
-        for (const auto& slot : w_.figures().list.slots) {
-            if (slot.has_value() && slot->nav.has_value() && slot->nav->ticket.has_value() &&
-                *slot->nav->ticket < mine) {
-                ++older;
-            }
-        }
         const std::uint64_t left =
             rules.plans_per_advance > started_ ? rules.plans_per_advance - started_ : 0;
+        // The tickets older than ours are the smallest members of the ticket set: it is enough to
+        // look at the first `left` of them (bounded by the quota, not by the registry).
+        std::uint64_t older = 0;
+        for (const std::uint64_t t : w_.figures().tickets) {
+            ++cache_.work.admission_steps;
+            if (t >= mine || ++older >= left) {
+                break;
+            }
+        }
         if (older >= left) {
             return NavPlan{NavPlanKind::Deferred, {}, {}};
         }
@@ -149,7 +155,7 @@ class WorldPlanner final : public NavPlanner {
         q.goal_x_q8 = ship.nav->order->target_x_q8;
         q.goal_z_q8 = ship.nav->order->target_y_q8;
         q.nav_class = facts_.nav_class;
-        q.stamps = ShipMover::local_stamps(w_, ship);
+        q.stamps = ShipMover::local_stamps(w_, ship, &cache_.work);
         const RouteResult r = plan_route(index, q, limits, costs_of(rules));
         NavPlan out;
         switch (r.status) {
@@ -217,7 +223,7 @@ std::array<std::int32_t, 2> ShipMover::stamp_velocity_q32(const NavSegment& seg)
             static_cast<std::int32_t>(kDirZ[seg.dir8] * mag)};
 }
 
-std::vector<RouteStamp> ShipMover::local_stamps(const World& w, const Figure& ship) {
+std::vector<RouteStamp> ShipMover::local_stamps(const World& w, const Figure& ship, NavWork* work) {
     const FigureType* type = w.types_->find_figure_type(ship.kind);
     const NavRules& rules = w.rules_.nav;
     LocalStampQuery sq;
@@ -228,7 +234,7 @@ std::vector<RouteStamp> ShipMover::local_stamps(const World& w, const Figure& sh
         type != nullptr && type->nav.has_value() ? type->nav->stamp_radius_88 : 1280U);
     sq.world_w = static_cast<std::int32_t>(w.settings().world_width);
     sq.world_h = static_cast<std::int32_t>(w.settings().world_height);
-    return local_ship_stamps(RegistryShips(w.figures()), sq, limits_of(rules));
+    return local_ship_stamps(RegistryShips(w.figures(), work), sq, limits_of(rules));
 }
 
 std::vector<NavNode> nav_nodes_of_runs(const std::vector<RouteRun>& runs, unsigned facing,
@@ -244,6 +250,7 @@ void ShipMover::visit(World& w, const TickContext& ctx, Figure& ship, Effects& f
     }
     const NavFacts& facts = *type->nav;
     NavMotion& m = *ship.nav;
+    const std::optional<std::uint64_t> ticket_before = m.ticket;
     std::vector<NavEvent> events;
     // A ship that entered a blocked state drops its order and ticket (12.2 rule 1).
     if (m.order.has_value() && (ship.state_word & w.rules_.nav.move_blocked_mask) != 0) {
@@ -264,20 +271,29 @@ void ShipMover::visit(World& w, const TickContext& ctx, Figure& ship, Effects& f
     for (const NavEvent& e : events) {
         fx.ui.push_back(event_of(e, ship, ctx.tick));
     }
+    note_ticket(w.figures_, ticket_before, m.ticket);
     if (ship.pos.x != before.x || ship.pos.y != before.y) {
-        // The crew is written from the carrier: every figure whose parent chain reaches this ship
-        // (scouts aboard, the donkey of a scout) takes its position through the effects buffer.
-        for (const auto& slot : w.figures_.list.slots) {
-            if (!slot.has_value() || !slot->parent.valid()) {
-                continue;
+        note_ship_moved(w.figures_, ship, before);
+        // The crew is written from the carrier: every descendant of this ship (scouts aboard, the
+        // donkey of a scout, any deeper chain) takes its position through the effects buffer. The
+        // walk is iterative over the registry's child index, so its work is the size of the
+        // carried subtree, not of the registry.
+        std::vector<FigureId> stack;
+        const auto push_children = [&](FigureId parent) {
+            const auto it = w.figures_.children.find(parent);
+            if (it != w.figures_.children.end()) {
+                for (auto c = it->second.rbegin(); c != it->second.rend(); ++c) {
+                    stack.push_back(*c);
+                }
             }
-            const Figure* p = &*slot;
-            for (int depth = 0; depth < 8 && p != nullptr && p->parent.valid(); ++depth) {
-                p = find_figure(w.figures_, p->parent);
-            }
-            if (p != nullptr && p->id == ship.id) {
-                fx.figure_moves.push_back(FigureMove{slot->id, ship.pos});
-            }
+        };
+        push_children(ship.id);
+        while (!stack.empty()) {
+            const FigureId id = stack.back();
+            stack.pop_back();
+            ++w.route_cache_.work.crew_visits;
+            fx.figure_moves.push_back(FigureMove{id, ship.pos});
+            push_children(id);
         }
     }
 }

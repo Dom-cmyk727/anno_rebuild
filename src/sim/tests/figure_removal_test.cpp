@@ -311,7 +311,8 @@ TEST_CASE("the interim return goes on expiry") {
     // or after born + N the figure ends as the original's do (end_figure); its slot stays
     // taken until phase C, figure_expiry_ticks later. The registry's deferred list and
     // phase D are gone: they never held a figure (OQ-131).
-    static_assert(sim::field_count<sim::FigureRegistry>() == 4); // list, stamp, expiry, by_id
+    static_assert(sim::field_count<sim::FigureRegistry>() ==
+                  7); // list, stamp, expiry, by_id, children, tickets, ship_cells
     const syn::SyntheticTypes t = types();
     sim::Rules rules;
     rules.interim_figure_return_ticks = 1000;

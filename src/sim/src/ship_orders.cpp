@@ -65,6 +65,7 @@ ApplyResult ShipOrders::move(World& w, const Command& command, const MoveCmd& cm
     m.order = NavOrder{w.ids_.next_order_id++, false, cmd.target_x_q8, cmd.target_y_q8};
     if (!m.ticket.has_value()) {
         m.ticket = w.ids_.next_ticket++; // a replacement keeps its ticket and so its place (12.2)
+        note_ticket(w.figures_, std::nullopt, m.ticket);
     }
     return {};
 }
@@ -95,6 +96,7 @@ ApplyResult ShipOrders::stop(World& w, const Command& command, const StopCmd& cm
         }
     }
     m.order.reset();
+    note_ticket(w.figures_, m.ticket, std::nullopt);
     m.ticket.reset();
     return {};
 }

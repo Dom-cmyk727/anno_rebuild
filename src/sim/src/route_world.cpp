@@ -131,6 +131,29 @@ void WorldTileSource::init(std::span<const Island* const> islands, std::int32_t 
                 cell_entry_[static_cast<std::uint64_t>(cz * cells_x_ + cx)] = index;
             }
         }
+        // Cells this rectangle only partly covers: the islands that touch such a cell are listed
+        // (slot order) so a tile lookup in it scans those islands only; a cell no rectangle
+        // touches stays -1 = open sea, answered without any scan.
+        if (t.width() > 0 && t.height() > 0) {
+            const std::int64_t cz0 = std::max<std::int64_t>(y0 >= 0 ? y0 / 8 : 0, 0);
+            const std::int64_t cz1 = std::min<std::int64_t>((y1 - 1) / 8, cells_z_ - 1);
+            const std::int64_t cx0 = std::max<std::int64_t>(x0 >= 0 ? x0 / 8 : 0, 0);
+            const std::int64_t cx1 = std::min<std::int64_t>((x1 - 1) / 8, cells_x_ - 1);
+            for (std::int64_t cz = cz0; cz <= cz1; ++cz) {
+                for (std::int64_t cx = cx0; cx <= cx1; ++cx) {
+                    const bool whole =
+                        cx * 8 >= x0 && cx * 8 + 8 <= x1 && cz * 8 >= y0 && cz * 8 + 8 <= y1;
+                    if (whole) {
+                        continue;
+                    }
+                    const auto key = static_cast<std::uint64_t>(cz * cells_x_ + cx);
+                    partial_[key].push_back(index);
+                    if (cell_entry_[key] == -1) {
+                        cell_entry_[key] = -2;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -143,9 +166,19 @@ const WorldTileSource::Entry* WorldTileSource::entry_at(std::int32_t x, std::int
     if (hit >= 0) {
         return &entries_[static_cast<std::uint64_t>(hit)];
     }
-    for (const Entry& e : entries_) {
-        if (e.island->tiles.contains(x, z)) {
-            return &e;
+    if (hit != -2) {
+        return nullptr; // open sea: no island rectangle touches this cell
+    }
+    const auto list =
+        partial_.find(static_cast<std::uint64_t>(cz) * static_cast<std::uint64_t>(cells_x_) +
+                      static_cast<std::uint64_t>(cx));
+    if (list != partial_.end()) {
+        for (const std::int32_t i : list->second) {
+            ++entries_examined_;
+            const Entry& e = entries_[static_cast<std::uint64_t>(i)];
+            if (e.island->tiles.contains(x, z)) {
+                return &e;
+            }
         }
     }
     return nullptr;

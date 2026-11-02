@@ -170,6 +170,7 @@ TEST_CASE("ship start: the baseline expectation fails a donkey parented to the s
     REQUIRE(donkey != nullptr);
     donkey->parent = sim::FigureId{1}; // the ship
     donkey->crew_slot = 1;             // a valid graph (crew slots 0 and 1 of the ship)...
+    sim::rebuild_figure_index(sim::WorldTestAccess::figures(w)); // the derived child index
     CHECK(w.check_invariants().empty());
     const std::string problem = sl::expedition_baseline_problem(w);
     CHECK_FALSE(problem.empty()); // ...but not the file's tree

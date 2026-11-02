@@ -19,6 +19,115 @@ FigureRegistry make_figure_registry(const SimConfig& cfg) {
     return r;
 }
 
+namespace {
+
+bool sails(const Figure& f) {
+    return f.nav.has_value() && !f.parent.valid();
+}
+
+std::pair<std::int32_t, std::int32_t> cell_key(FixedPos p) {
+    return {figure_cell_of(p.y), figure_cell_of(p.x)};
+}
+
+void index_figure(FigureRegistry& r, const Figure& f) {
+    if (f.parent.valid()) {
+        auto& kids = r.children[f.parent];
+        kids.insert(std::lower_bound(kids.begin(), kids.end(), f.id), f.id);
+    }
+    if (f.nav.has_value() && f.nav->ticket.has_value()) {
+        r.tickets.insert(*f.nav->ticket);
+    }
+    if (sails(f)) {
+        r.ship_cells[cell_key(f.pos)].insert(f.id);
+    }
+}
+
+void unindex_figure(FigureRegistry& r, const Figure& f) {
+    if (f.parent.valid()) {
+        const auto it = r.children.find(f.parent);
+        if (it != r.children.end()) {
+            auto& kids = it->second;
+            const auto k = std::lower_bound(kids.begin(), kids.end(), f.id);
+            if (k != kids.end() && *k == f.id) {
+                kids.erase(k);
+            }
+            if (kids.empty()) {
+                r.children.erase(it);
+            }
+        }
+    }
+    if (f.nav.has_value() && f.nav->ticket.has_value()) {
+        r.tickets.erase(*f.nav->ticket);
+    }
+    if (sails(f)) {
+        const auto it = r.ship_cells.find(cell_key(f.pos));
+        if (it != r.ship_cells.end()) {
+            it->second.erase(f.id);
+            if (it->second.empty()) {
+                r.ship_cells.erase(it);
+            }
+        }
+    }
+}
+
+} // namespace
+
+std::int32_t figure_cell_of(std::int32_t q8) {
+    return q8 < 0 ? 0 : (q8 / 256) >> 4;
+}
+
+void note_ticket(FigureRegistry& registry, std::optional<std::uint64_t> before,
+                 std::optional<std::uint64_t> after) {
+    if (before == after) {
+        return;
+    }
+    if (before.has_value()) {
+        registry.tickets.erase(*before);
+    }
+    if (after.has_value()) {
+        registry.tickets.insert(*after);
+    }
+}
+
+void note_ship_moved(FigureRegistry& registry, const Figure& ship, FixedPos before) {
+    if (!sails(ship)) {
+        return;
+    }
+    const auto from = cell_key(before);
+    const auto to = cell_key(ship.pos);
+    if (from == to) {
+        return;
+    }
+    const auto it = registry.ship_cells.find(from);
+    if (it != registry.ship_cells.end()) {
+        it->second.erase(ship.id);
+        if (it->second.empty()) {
+            registry.ship_cells.erase(it);
+        }
+    }
+    registry.ship_cells[to].insert(ship.id);
+}
+
+std::string figure_index_problem(const FigureRegistry& registry) {
+    FigureRegistry fresh;
+    fresh.list = registry.list;
+    rebuild_figure_index(fresh);
+    if (fresh.by_id != registry.by_id) {
+        return "figure index: by_id differs from a fresh reconstruction";
+    }
+    if (fresh.children != registry.children) {
+        return "figure index: children differs from a fresh reconstruction";
+    }
+    if (fresh.tickets != registry.tickets) {
+        return "figure index: tickets differs from a fresh reconstruction";
+    }
+    if (fresh.ship_cells != registry.ship_cells) {
+        return "figure index: ship_cells differs from a fresh reconstruction (a ship was moved or "
+               "re-parented without note_ship_moved)";
+    }
+    return {};
+}
+
 Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const Rules& rules) {
     const FigureId id = f.id;
     if (!id.valid() || registry.by_id.contains(id)) {
@@ -30,6 +139,7 @@ Slot add_figure(FigureRegistry& registry, Figure f, const SimConfig& cfg, const 
         return kNoSlot;
     }
     registry.by_id[id] = slot;
+    index_figure(registry, *registry.list.slots[slot]);
     return slot;
 }
 
@@ -63,9 +173,13 @@ Figure* find_figure(FigureRegistry& registry, FigureId id) {
 
 void rebuild_figure_index(FigureRegistry& registry) {
     registry.by_id.clear();
+    registry.children.clear();
+    registry.tickets.clear();
+    registry.ship_cells.clear();
     for (std::size_t s = 0; s < registry.list.slots.size(); ++s) {
         if (registry.list.slots[s].has_value()) {
             registry.by_id[registry.list.slots[s]->id] = static_cast<Slot>(s);
+            index_figure(registry, *registry.list.slots[s]);
         }
     }
 }
@@ -101,6 +215,7 @@ std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id) {
         return std::nullopt;
     }
     std::optional<Figure> out = std::move(registry.list.slots[s]);
+    unindex_figure(registry, *out);
     registry.list.remove(s);
     registry.by_id.erase(id);
     return out;

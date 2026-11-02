@@ -39,18 +39,7 @@
 
 #include "world_access.hpp"
 
-namespace {
-// Test-setup relocation (not a sailed route): moves the figure and keeps the navigation
-// motion state in step, so the invariant Figure::pos == floor(pos_u) still holds.
-void relocate(anno::sim::Figure& f, anno::sim::FixedPos pos) {
-    f.pos = pos;
-    if (f.nav) {
-        f.nav->pos_u[0] = std::int64_t{pos.x} * anno::sim::kNavPosUnitsPerQ8;
-        f.nav->pos_u[1] = std::int64_t{pos.y} * anno::sim::kNavPosUnitsPerQ8;
-        f.nav->res24[0] = f.nav->res24[1] = 0;
-    }
-}
-} // namespace
+namespace {} // namespace
 
 namespace sim = anno::sim;
 namespace sl = anno::sim_load;
@@ -256,9 +245,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
         s->pos.x = (found->click_x + d.first) * 256 + 128;
         s->pos.y = (found->click_y + d.second) * 256 + 128;
         if (trial.apply(command).ok()) {
-            sim::Figure* real =
-                sim::find_figure(sim::WorldTestAccess::figures(w), sim::FigureId{1});
-            relocate(*real, s->pos);
+            sim::WorldTestAccess::relocate(w, sim::FigureId{1}, s->pos);
             placed = true;
             break;
         }
@@ -354,8 +341,8 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     auto again = sl::load_ship_start(parsed.value(), *dir, types, {}, rules);
     REQUIRE(again.ok());
     sim::World w2 = std::move(again).value();
-    relocate(*sim::find_figure(sim::WorldTestAccess::figures(w2), sim::FigureId{1}),
-             sim::find_figure(w.figures(), sim::FigureId{1})->pos);
+    sim::WorldTestAccess::relocate(w2, sim::FigureId{1},
+                                   sim::find_figure(w.figures(), sim::FigureId{1})->pos);
     REQUIRE(w2.apply(command).ok());
     CHECK(w2.state_hash() == w.state_hash());
 }
@@ -416,7 +403,7 @@ std::optional<sim::Command> place_for_founding(sim::World& w, const Site& site,
         s->pos.x = (site.click_x + d.first) * 256 + 128;
         s->pos.y = (site.click_y + d.second) * 256 + 128;
         if (trial.apply(command).ok()) {
-            relocate(*sim::find_figure(sim::WorldTestAccess::figures(w), cmd.ship), s->pos);
+            sim::WorldTestAccess::relocate(w, cmd.ship, s->pos);
             return command;
         }
     }
@@ -529,8 +516,8 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
         auto fresh = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
         REQUIRE(fresh.ok());
         sim::World w3 = std::move(fresh).value();
-        relocate(*sim::find_figure(sim::WorldTestAccess::figures(w3), sim::FigureId{1}),
-                 sim::find_figure(w.figures(), sim::FigureId{1})->pos);
+        sim::WorldTestAccess::relocate(w3, sim::FigureId{1},
+                                       sim::find_figure(w.figures(), sim::FigureId{1})->pos);
         auto started = sim::Recorder::start(w3);
         REQUIRE(started.ok());
         sim::Recorder rec = std::move(started).value();
@@ -540,8 +527,8 @@ TEST_CASE("ship start policy: peace, shared visibility and no alliances on the r
         auto again = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
         REQUIRE(again.ok());
         sim::World w4 = std::move(again).value();
-        relocate(*sim::find_figure(sim::WorldTestAccess::figures(w4), sim::FigureId{1}),
-                 sim::find_figure(w.figures(), sim::FigureId{1})->pos);
+        sim::WorldTestAccess::relocate(w4, sim::FigureId{1},
+                                       sim::find_figure(w.figures(), sim::FigureId{1})->pos);
         auto outcome = sim::replay(w4, rec.log());
         REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
         CHECK(outcome.value().reproduced());
@@ -675,7 +662,7 @@ TEST_CASE("ship start canary: two participants found, a conflict is refused, rep
         return sim::find_figure(world.figures(), sim::FigureId{id})->pos;
     };
     const auto set_pos = [](sim::World& world, std::uint64_t id, sim::FixedPos pos) {
-        relocate(*sim::find_figure(sim::WorldTestAccess::figures(world), sim::FigureId{id}), pos);
+        sim::WorldTestAccess::relocate(world, sim::FigureId{id}, pos);
     };
     // Setup on a trial copy: site 1 for seat 0, then the next legal site (on the world after the
     // first founding) for seat 2.
@@ -818,8 +805,9 @@ std::optional<std::pair<int, int>> pick_water_goal(const sim::World& real, const
             continue; // keep a hull's distance from the shore, and bound the search
         }
         sim::World t = trial;
-        relocate(*sim::find_figure(sim::WorldTestAccess::figures(t), sim::FigureId{leg.ship}),
-                 sim::FixedPos{c.x * 256 + 128, c.y * 256 + 128}); // trial only
+        sim::WorldTestAccess::relocate(
+            t, sim::FigureId{leg.ship},
+            sim::FixedPos{c.x * 256 + 128, c.y * 256 + 128}); // trial only
         if (!t.apply(found_command(leg)).ok()) {
             continue;
         }
@@ -968,8 +956,9 @@ TEST_CASE(
     legs[0].goal_x = g0->first;
     legs[0].goal_y = g0->second;
     sim::World trial = pristine;
-    relocate(*sim::find_figure(sim::WorldTestAccess::figures(trial), sim::FigureId{1}),
-             sim::FixedPos{g0->first * 256 + 128, g0->second * 256 + 128}); // trial only
+    sim::WorldTestAccess::relocate(
+        trial, sim::FigureId{1},
+        sim::FixedPos{g0->first * 256 + 128, g0->second * 256 + 128}); // trial only
     REQUIRE(trial.apply(found_command(legs[0])).ok());
     const auto second_site = find_legal_site(trial, kontor, trial.config().neutral_owner);
     REQUIRE(second_site.has_value());

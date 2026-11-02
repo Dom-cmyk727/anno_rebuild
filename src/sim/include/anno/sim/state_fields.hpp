@@ -1140,8 +1140,9 @@ template <class A, Same<SlotList<Figure>> S> void fields(A& a, S& s) {
     }
 }
 
-// `by_id` is derived (rebuilt after a read) and is not in the stream.
-static_assert(field_count<FigureRegistry>() == 4,
+// `by_id`, `children`, `tickets` and `ship_cells` are derived (rebuilt after a read) and are not
+// in the stream.
+static_assert(field_count<FigureRegistry>() == 7,
               "a FigureRegistry member needs a line in fields(FigureRegistry) or a derived note");
 
 template <class A, Same<FigureRegistry> S> void fields(A& a, S& s) {

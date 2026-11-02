@@ -16,6 +16,7 @@
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/scheduler.hpp>
+#include <anno/sim/ship.hpp>
 #include <anno/sim/ship_mover.hpp>
 #include <anno/sim/tick.hpp>
 #include <anno/sim/timers.hpp>
@@ -144,7 +145,7 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
     // 1b. Crew positions written from their carrier ship (MAP-NAV-2).
     for (const FigureMove& m : fx.figure_moves) {
         if (Figure* f = find_figure(w.figures_, m.figure); f != nullptr) {
-            f->pos = m.pos;
+            nav_place(*f, m.pos); // also keeps the fine position of a carried navigating figure
         }
     }
     // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
@@ -295,7 +296,10 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
             const auto slot = static_cast<std::size_t>(cur);
             if (slot < reg.list.slots.size() && reg.list.slots[slot].has_value()) {
                 Figure& fig = *reg.list.slots[slot];
-                if (fig.nav.has_value()) {
+                if (fig.nav.has_value() && fig.parent.valid()) {
+                    // A carried navigating figure does not sail on its own: its position comes
+                    // from its carrier through the effects buffer (ship.hpp nav_place).
+                } else if (fig.nav.has_value()) {
                     // Dispatch by figure kind (docs/sim/ship-navigation.md 4): a navigating ship
                     // goes to the mover, with the same protocol as a seam (its own figure and its
                     // Effects, merged right after the call, C2).

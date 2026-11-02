@@ -10,7 +10,7 @@
 #   load   SHIP IDX G TONS -> ok MOVED RESOLVED | reject REASON     (IDX = the named/preferred hold, RESOLVED = the hold used)
 #   unload SHIP IDX G TONS -> ok MOVED | reject REASON              (the existing unload rule, for round trips)
 #   orig RET RESOLVED HOLD STOCK : the ORIGINAL arm (0x100ac360 flag 0, 32-bit semantics, hold amount a u16, signed compares) for the FIRST
-#       `load` of the case: return value (signed), the hold it used (-1 when it returned 0), that hold afterwards (goods:units) and the
+#       `load` of the case: return value (signed), the hold it used (-1 when it returned 0), that hold afterwards (goods:units; hold 0 when -1) and the
 #       stock of the requested goods afterwards. Evidence of agreement or of a defect, never an engine expectation.
 # Rebuild rule (restated for the hand derivation): preferred = the named hold if it holds G and has >= 256 units free, else the search
 # over holds 0..n0-1: the first EMPTY hold (goods 0 and amount 0) unless a hold of G with free > 0 exists, then the one with the most free
@@ -219,7 +219,7 @@ loadcase unit_slots_beyond_n0_are_never_used
   load A 0 42 1 -> reject HoldsFull
   endhold A 26:100 41:100 41:100 26:100 0:0 0:0
   endstock 42 5000
-  orig 0 -1 0:0 5000
+  orig 0 -1 26:100 5000
 
 # C17-C20: the goods bound. The rebuild refuses goods 0 and goods >= goods_count before any write (the original accepts any byte: defect E1).
 loadcase goods_zero_refused

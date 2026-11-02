@@ -29,7 +29,7 @@ if(ANNO_BUILD_TESTS)
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
                  tests/game_setup_test.cpp tests/house_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
-                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp tests/ship_step_test.cpp tests/ship_orders_test.cpp tests/ship_nav3_test.cpp tests/ship_health_test.cpp tests/route_objects_test.cpp
+                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp tests/ship_step_test.cpp tests/ship_orders_test.cpp tests/ship_nav3_test.cpp tests/ship_health_test.cpp tests/route_objects_test.cpp tests/placement_rule_test.cpp tests/build_terrain_test.cpp
                  tests/nav_scale_test.cpp
                  tests/evidence_out_test.cpp
                  tests/route_fixture_test.cpp

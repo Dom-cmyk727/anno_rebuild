@@ -23,6 +23,7 @@
 
 #include <anno/sim/command.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/route.hpp>
 #include <anno/sim/route_cache.hpp>
 #include <anno/sim/route_world.hpp>
@@ -58,7 +59,9 @@ constexpr std::uint32_t kLow = 9102;     // 1 x 1, h = trunc(0.13 * 25) = 3: blo
 constexpr std::uint32_t kWall1x3 = 9103; // 1 x 3, h = 20
 constexpr std::uint32_t kWall3x1 = 9104; // 3 x 1, h = 20
 constexpr std::uint32_t kTower = 9105;   // 1 x 1, h = 50, top 50: raises its block record
-constexpr std::uint32_t kGrass = 9015;   // growing, h = 0 (does not block)
+constexpr std::uint32_t kCoastWall =
+    9106;                              // the 1 x 3 weaver (h = 3) with the coast flag word 0x2087
+constexpr std::uint32_t kGrass = 9015; // growing, h = 0 (does not block)
 constexpr std::uint32_t kRipeGrass = 9016; // its successor, h = trunc(1.0 * 25) = 25 (blocks)
 
 std::uint32_t f32_bits(float f) {
@@ -97,6 +100,13 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
             set_scalar(c, 0.13f); // h = 3: blocks only with a base of at least 17
             c.width = 1;          // a 1 x 3 weaver fits across the channel
             c.height = 3;
+            // The same building as a coast type (flag word 0x2087, n = 2: the shore test is
+            // skipped), which BuildCmd can place across open water: its item height is the
+            // window's level.
+            sim::BuildingType coast = c;
+            coast.id = sim::TypeId{kCoastWall};
+            coast.flags_word = 0x2087;
+            b.add(std::move(coast));
         } else if (c.id.v == kGrass) {
             set_scalar(c, 0.0f);
         } else if (c.id.v == kRipeGrass) {
@@ -145,7 +155,8 @@ struct Item {
 /// The island is heights 30 (land) with a 3 tile wide channel from its west edge to x = 240.
 /// `vertex_water` carves extra water vertices (tests that need open water).
 sim::ScenarioSpec channel_spec(const std::vector<Item>& items, bool all_water = false,
-                               const std::vector<sim::ScenarioSpec::BuildingSpec>& buildings = {}) {
+                               const std::vector<sim::ScenarioSpec::BuildingSpec>& buildings = {},
+                               std::uint8_t land = 30) {
     sim::ScenarioSpec spec = syn::empty_scenario(11);
     sim::ScenarioSpec::PlayerSpec p;
     p.id = sim::PlayerId{0};
@@ -163,7 +174,7 @@ sim::ScenarioSpec channel_spec(const std::vector<Item>& items, bool all_water = 
     is.cities.push_back(syn::plain_city(0, 0));
     is.cities[0].buildings = buildings;
     std::vector<std::uint8_t> height(std::size_t{kIslandSize} * kIslandSize,
-                                     all_water ? std::uint8_t{0} : std::uint8_t{30});
+                                     all_water ? std::uint8_t{0} : land);
     if (!all_water) {
         for (std::uint32_t vz = 31; vz <= 32; ++vz) {
             for (std::uint32_t vx = 0; vx <= 40; ++vx) {
@@ -642,7 +653,8 @@ TEST_CASE("route objects: the height byte is validated and part of the state") {
 TEST_CASE("route objects: a loaded building with byte0f 0x30 changes a route") {
     // The weaver type has h = 3. A loaded building carries its byte0f as the height byte of its
     // footprint tiles: 0 leaves the channel open, 0x30 (a coast level, as a founded warehouse has
-    // in the original) closes it. Command-built buildings have 0 (limitation 5 of 12.13).
+    // in the original) closes it. (A command-built building has the terrain's level, see the
+    // BuildCmd cases below.)
     auto types = syn::make_growth_types();
     REQUIRE(types.ok());
     sim::ScenarioSpec::BuildingSpec low;
@@ -732,6 +744,100 @@ TEST_CASE("route objects: two Advances that share a tick still see a change made
         w.advance(0); // same tick as the previous visit: must still compare and rebuild
         CHECK(cache_of(w).work.index_rect_rebuilds > rects);
         CHECK_FALSE(island_of(w).tiles.route_dirty().any());
+        expect_history_independent(w);
+    }
+}
+
+namespace {
+
+sim::Command build_wall(std::int32_t x, std::int32_t y, std::uint32_t type = kCoastWall) {
+    return sim::Command{sim::PlayerId{0},
+                        sim::BuildCmd{sim::CityRef{sim::IslandId{0}, sim::CityNo{0}},
+                                      {sim::PlacementWire{sim::TypeId{type}, x, y, 0, 0, 0}}}};
+}
+
+sim::World make_world_with(const sim::ScenarioSpec& spec, sim::Seams seams) {
+    auto w = sim::World::create(spec, registry(), {}, {}, std::move(seams), sim::serial_executor());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    return std::move(w).value();
+}
+
+} // namespace
+
+TEST_CASE(
+    "route objects: a building placed by BuildCmd closes the channel through its real level") {
+    // Land of level 0x30 with the water channel (vertex rows 31 and 32 are 0). The coast type
+    // (1 x 3, h = 3) placed across the channel at (kWallX, 126) has the window rows 30..33, whose
+    // maximum is 0x30: the command stores 0x30 in byte0f and in the three tiles, and the object
+    // predicate ((3 + 0x30) & 0xff) > 19 closes the channel. Evidence for the blocking rule:
+    // docs/sim/ship-navigation.md 12.13; for the height: docs/sim/ship-placement.md R5.
+    const sim::ScenarioSpec spec = channel_spec({}, false, {}, 0x30);
+    sim::World w = make_world(spec);
+    REQUIRE(reaches_goal(probe(w)));
+    const std::uint64_t builds = cache_of(w).work.index_builds;
+    const sim::ApplyResult r = w.apply(build_wall(kWallX, kChannelY0));
+    REQUIRE_MESSAGE(r.ok(), "got " << sim::reject_name(r.status));
+    const sim::Building* b = w.find_building(r.records.at(0).building);
+    REQUIRE(b != nullptr);
+    CHECK(b->byte0f == 0x30);
+    for (std::int32_t y = kChannelY0; y <= kChannelY1; ++y) {
+        CHECK(island_of(w).tiles.item_height(idx_of(w, kWallX, y)) == 0x30);
+    }
+    CHECK(island_of(w).tiles.route_dirty().any());
+    CHECK_FALSE(reaches_goal(probe(w)));
+    CHECK(cache_of(w).work.index_builds == builds); // incremental: no whole-index rebuild
+    CHECK(cache_of(w).get(w).verify_against_clean_rebuild({}) == "");
+    expect_history_independent(w);
+
+    // Control 1: a legal site that is not on the route (land beside the channel) builds with the
+    // same level and leaves the route open.
+    sim::World beside = make_world(spec);
+    REQUIRE(reaches_goal(probe(beside)));
+    REQUIRE(beside.apply(build_wall(kWallX, kIslandY + 4)).ok());
+    CHECK(island_of(beside).tiles.item_height(idx_of(beside, kWallX, kIslandY + 5)) == 0x30);
+    CHECK(reaches_goal(probe(beside)));
+    expect_history_independent(beside);
+
+    // Control 2 (the cause): the same command under the deliberately installed stand-in stores
+    // height 0, the same building does not close the channel, and the stored byte is 0 after a
+    // save and load too.
+    sim::Seams stand_in;
+    stand_in.placement_rule = sim::stand_in_placement_seam();
+    sim::World zero = make_world_with(spec, stand_in);
+    REQUIRE(reaches_goal(probe(zero)));
+    const sim::ApplyResult z = zero.apply(build_wall(kWallX, kChannelY0));
+    REQUIRE(z.ok());
+    CHECK(zero.find_building(z.records.at(0).building)->byte0f == 0);
+    CHECK(reaches_goal(probe(zero)));
+}
+
+TEST_CASE("route objects: a BuildCmd between two Advances that share a tick is seen at once") {
+    // The cache is warm, advance(1) and advance(0) share a tick, a BuildCmd lands between them:
+    // the next visit must rebuild exactly the dirty rectangle and the route is closed.
+    for (const std::uint32_t parity : {0U, 1U}) {
+        sim::World w = make_world(channel_spec({}, false, {}, 0x30));
+        for (std::uint32_t i = 0; i < parity; ++i) {
+            w.advance(1);
+        }
+        w.advance(1);
+        w.advance(0);
+        REQUIRE(cache_of(w).work.index_builds == 1);
+        const std::uint64_t rects = cache_of(w).work.index_rect_rebuilds;
+        REQUIRE(w.apply(build_wall(kWallX, kChannelY0)).ok());
+        REQUIRE(island_of(w).tiles.route_dirty().any());
+        w.advance(0); // same tick as the previous visit
+        CHECK(cache_of(w).work.index_rect_rebuilds > rects);
+        CHECK_FALSE(island_of(w).tiles.route_dirty().any());
+        CHECK_FALSE(reaches_goal(probe(w)));
+        expect_history_independent(w);
+        // Demolition (the clear arm keeps the height byte, faithful) re-syncs the cache and equals
+        // a clean rebuild.
+        const std::uint64_t after_build = cache_of(w).work.index_rect_rebuilds;
+        REQUIRE(w.apply(demolish(kWallX, kChannelY0)).ok());
+        REQUIRE(island_of(w).tiles.route_dirty().any());
+        w.advance(0);
+        CHECK(cache_of(w).work.index_rect_rebuilds > after_build);
+        CHECK(cache_of(w).get(w).verify_against_clean_rebuild({}) == "");
         expect_history_independent(w);
     }
 }

@@ -5,6 +5,7 @@
 #include <string>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/figure_veto.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/world.hpp>
@@ -18,9 +19,6 @@ ApplyResult refuse(Reject r) {
     out.status = r;
     return out;
 }
-
-/// The ship class: the BEWOHNTYPE the founding command tests (figure_veto.hpp ship_kind, 113).
-constexpr std::uint32_t kShipBewohntype = 113;
 
 /// A ship founds a city with a warehouse type of Rules::founding_types whose PRODTYPE is in the
 /// market block 33..64 (founding.cpp); an unloading warehouse is the same set (the original's
@@ -84,6 +82,7 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
                               const InAdvance*) {
     const TypeRegistry& types = *w.types_;
     const CargoRules cargo = CargoRules::original();
+    const veto::Rules vrules; // the ship class is the founding command's (BEWOHNTYPE 113)
     // Step 0 (the issuer is a known player) is Commands::apply's. 1: the request.
     if (cmd.tons == 0) {
         return refuse(Reject::BadValue);
@@ -94,7 +93,7 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
         return refuse(Reject::UnknownFigure);
     }
     const FigureType* ship_type = types.find_figure_type(ship->kind);
-    if (ship_type == nullptr || ship_type->bewohntype != kShipBewohntype) {
+    if (ship_type == nullptr || ship_type->bewohntype != vrules.ship_kind) {
         return refuse(Reject::NotAShip);
     }
     if (ship->owner != command.issuer) {

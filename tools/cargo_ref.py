@@ -27,7 +27,7 @@ Vector file (fixtures/synthetic/sim/cargo_vectors.txt), one `case` per block:
   tile QX QY -> TX TY                  (Q24.8 position to tile)
   cityset NAME ship TX TY owned X,Y ... -> in|out
 Load vector file (fixtures/synthetic/sim/cargo_load_vectors.txt), one `loadcase` per block (see the header of that file):
-  holdcap U | goods_count N | nholds N|none | storecap U | stock G U | hold SHIP G U
+  holdcap U | goods_count N | nholds N|none | nholds_b N | storecap U | stock G U | hold SHIP G U
   load SHIP IDX G TONS -> ok MOVED RESOLVED | reject REASON ; unload SHIP IDX G TONS -> ok MOVED | reject REASON
   endhold SHIP G:U ... | endstock G U | orig RET RESOLVED G:U STOCK     (the original's result for the first load; G:U = hold 0 when RESOLVED is -1)
 Only the Python standard library is used.
@@ -443,6 +443,8 @@ def run_load_case(name, lines, planner=plan_load):
             store_cap = int(t[1])
         elif t[0] == 'nholds':
             nholds = None if t[1] == 'none' else int(t[1])
+        elif t[0] == 'nholds_b':
+            pass  # the type's SECOND hold group (hold_count_b): by the original it is NOT a transfer bound (0x100ac476), so it changes nothing here
         elif t[0] == 'stock':
             stock0[int(t[1])] = int(t[2])
         elif t[0] == 'hold':
@@ -474,6 +476,9 @@ def run_load_case(name, lines, planner=plan_load):
         if kind == 'load':
             r = planner(ships[ship], n0, hold_cap, idx, g, tons, stock, goods_count)
             got = ('ok', r[1], r[2]) if r[0] == 'ok' else r
+        elif n0 is not None and idx >= n0:
+            r = ('reject', 'BadIndex')      # unload step 9 (0x100ac476): valid cargo indices end at n0 - 1; nholds none = no facts, the carried holds bound it
+            got = r
         else:
             r = plan_unload(ships[ship], idx, g, tons, stock, store_cap, goods_count)
             got = ('ok', r[1]) if r[0] == 'ok' else r

@@ -746,13 +746,14 @@ std::string holds_text(const std::vector<sim::ShipHold>& h) {
 TEST_CASE("load vectors: every case of cargo_load_vectors.txt gives the same answers through the "
           "engine") {
     const std::vector<VectorCase> cases = read_load_vectors();
-    CHECK(cases.size() == 42);
+    CHECK(cases.size() == 43);
     std::size_t loads = 0, load_refusals = 0, unloads = 0, unload_refusals = 0;
     for (const VectorCase& c : cases) {
         INFO("case " << c.name);
         Setup s;
         std::uint32_t hold_cap = 12800;
         std::optional<std::uint32_t> nholds; // none = the first ship's hold count
+        std::uint32_t nholds_b = 0;          // the second hold group, never a transfer bound
         bool no_facts = false;
         std::map<std::string, std::uint64_t> ids; // ship label -> figure id
         std::map<std::string, std::vector<sim::ShipHold>> holds;
@@ -770,6 +771,8 @@ TEST_CASE("load vectors: every case of cargo_load_vectors.txt gives the same ans
                 } else {
                     nholds = static_cast<std::uint32_t>(std::stoul(l[1]));
                 }
+            } else if (l[0] == "nholds_b") {
+                nholds_b = static_cast<std::uint32_t>(std::stoul(l[1]));
             } else if (l[0] == "stock") {
                 s.stock[static_cast<sim::GoodsId>(std::stoul(l[1]))] =
                     static_cast<std::uint32_t>(std::stoull(l[2]));
@@ -789,8 +792,8 @@ TEST_CASE("load vectors: every case of cargo_load_vectors.txt gives the same ans
         const std::uint32_t n0 =
             nholds.value_or(static_cast<std::uint32_t>(holds[order[0]].size()));
         s.types = registry_with(9520, hold_cap,
-                                no_facts ? std::nullopt : std::optional{std::pair{n0, 0U}}, {},
-                                s.goods_count != sim::kOriginalWarehouseGoods);
+                                no_facts ? std::nullopt : std::optional{std::pair{n0, nholds_b}},
+                                {}, s.goods_count != sim::kOriginalWarehouseGoods);
         s.ships.clear();
         for (const std::string& label : order) {
             ShipDef d;

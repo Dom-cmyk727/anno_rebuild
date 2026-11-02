@@ -2883,10 +2883,11 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
     CHECK(main_run.ledger.size() == 26 + 4 + 14);
 
     // ---- save and load between founding and unloading, and after unloading: same outcomes -----
-    // Three variants as before, each combining boundaries: after founding + before the first
-    // load (5), after unloading + between the seats' loads (10), after founding + after the loads
-    // (17); every boundary is reloaded in at least one variant.
-    for (const unsigned mask : {5U, 10U, 17U}) {
+    // Three variants, each combining boundaries: after founding AND after unloading AND before the
+    // first load (7: the combined cut of the older CARGO-1 variant, restored by MAP-CARGO-3),
+    // after unloading + between the seats' loads (10), after founding + after the loads (17);
+    // every boundary is reloaded in at least one variant.
+    for (const unsigned mask : {7U, 10U, 17U}) {
         sim::World v = at_arrival;
         const OpeningOut var = run_opening(v, nullptr, legs, rs.types, mask, false);
         CHECK(var.ledger == main_run.ledger);

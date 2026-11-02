@@ -30,7 +30,7 @@ std::int64_t axis_distance(std::int64_t p, std::int64_t lo, std::int64_t length)
 }
 
 /// Whether `city_number` owns one of the tiles of the disc outline around the ship tile (tx, ty)
-/// (the unload's test, section 5: 24 reads).
+/// (the unload's and the load's test, section 5: 24 reads).
 bool city_owns_outline_tile(const Island& island, std::uint32_t city_number, std::int64_t tx,
                             std::int64_t ty, const CargoRules& cargo) {
     const std::vector<std::uint32_t>& half = cargo.dock_half_widths;
@@ -128,34 +128,20 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
     if (!footprint_in_range(tx, ty, building->x, building->y, fw, fh, cargo)) {
         return refuse(Reject::OutOfRange);
     }
-    {
-        // The warehouse's city must own one of the tiles of the disc outline (24 reads).
-        bool near_city = false;
-        const std::vector<std::uint32_t>& half = cargo.dock_half_widths;
-        for (std::size_t k = 0; k < half.size() && !near_city; ++k) {
-            const std::int64_t wk = half[k], kk = static_cast<std::int64_t>(k);
-            const std::int64_t xs[4] = {tx - wk, tx + wk, tx - wk, tx + wk};
-            const std::int64_t ys[4] = {ty - kk, ty - kk, ty + kk, ty + kk};
-            for (int i = 0; i < 4 && !near_city; ++i) {
-                if (xs[i] < INT32_MIN || xs[i] > INT32_MAX || ys[i] < INT32_MIN ||
-                    ys[i] > INT32_MAX) {
-                    continue;
-                }
-                const Slot idx = island.tile_index(static_cast<std::int32_t>(xs[i]),
-                                                   static_cast<std::int32_t>(ys[i]));
-                near_city = idx != kNoSlot && island.tiles.owner(idx) == city->number.v;
-            }
-        }
-        if (!near_city) {
-            return refuse(Reject::OutOfRange);
-        }
+    // The warehouse's city must own one of the tiles of the disc outline (24 reads); the same
+    // predicate as the load's, one implementation.
+    if (!city_owns_outline_tile(island, city->number.v, tx, ty, cargo)) {
+        return refuse(Reject::OutOfRange);
     }
-    // 9: the hold index, below the ship's hold count (the type's, when it has navigation facts).
+    // 9: the hold index, below the cargo hold count. With navigation facts that is hold_count_a
+    // only (original 0x100ac476: valid cargo indices end at a - 1; hold_count_b is not a transfer
+    // bound, MAP-CARGO-3 C1); it is also capped by the holds the figure actually carries. A type
+    // without navigation facts has no hold count: the established fallback is the carried holds
+    // (an adaptation, not an original rule; the load refuses such a type with NoCargoFacts).
     std::size_t hold_limit = ship->holds.size();
     if (ship_type->nav.has_value()) {
-        const std::uint64_t declared =
-            std::uint64_t{ship_type->nav->hold_count_a} + ship_type->nav->hold_count_b;
-        hold_limit = static_cast<std::size_t>(std::min<std::uint64_t>(hold_limit, declared));
+        hold_limit = static_cast<std::size_t>(
+            std::min<std::uint64_t>(hold_limit, ship_type->nav->hold_count_a));
     }
     if (cmd.hold >= hold_limit) {
         return refuse(Reject::BadIndex);

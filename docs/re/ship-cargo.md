@@ -360,9 +360,8 @@ it started with. A load therefore writes only `Figure::holds`; it does not touch
 ### 11.8 Rebuild facts the load needs (read from `src/sim`, not from the original)
 
 `FigureType::capacity_88 = LOGIC[0x11] << 8` (`types.cpp` line 453; shipped 1501-1509: 50 t = 12800; 1511: 20 t) and `NavFacts::hold_count_a = LOGIC[0x13]` (line 503; only for BEWOHNTYPE 113 types with hit points),
-both already part of the hashed registry digest (`types.cpp` lines 334, 348). The accepted unload bounds the hold index by `hold_count_a + hold_count_b` (`ship_cargo.cpp`, step 9) where the original
-bounds it by `n0` alone (`0x100ac476`): for the shipped opening ship (4 holds, n0 = 4) there is no difference, but a ship with n1 > 0 and more hold records than n0 would let the rebuild's unload address a slot the original refuses.
-Recorded as finding F-L1 for the owner/orchestrator; the load uses `n0` only.
+both already part of the hashed registry digest (`types.cpp` lines 334, 348). The unload bounded the hold index by `hold_count_a + hold_count_b` until MAP-CARGO-3 C1, where the original bounds it by `n0` alone (`0x100ac476`): for the shipped opening ship (4 holds, n0 = 4) there was no difference, but a ship with n1 > 0 and more hold records than n0 would have let the rebuild's unload address a slot the original refuses.
+Finding F-L1, closed in MAP-CARGO-3: the unload and the load both use `n0` only (`docs/sim/ship-cargo.md` section 12.6).
 
 ### 11.9 Evidence matrix (loading)
 

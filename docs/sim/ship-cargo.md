@@ -82,7 +82,7 @@ that is never hashed):
 | 6 | building type's PRODTYPE in `warehouse_prodtypes` | `NotAWarehouse` |
 | 7 | the building's city exists and `city.owner == issuer` | `UnknownCity` / `NotCityOwner` |
 | 8 | range (section 5) | `OutOfRange` |
-| 9 | `hold < min(holds.size(), type cargo hold count)` | `BadIndex` |
+| 9 | `hold < min(holds.size(), hold_count_a)` when the type has nav facts (**`hold_count_b` is not a bound**, original `0x100ac476`; MAP-CARGO-3 C1), else `hold < holds.size()` (existing no-nav adaptation: no original hold count exists for such a type; not an original-parity claim and the load refuses it with `NoCargoFacts`) | `BadIndex` |
 | 10 | `0 < goods < city stock goods count` | `UnsupportedGoods` |
 | 11 | `holds[hold].goods == goods` and `holds[hold].amount_88 != 0` | `HoldGoodsMismatch` (a hold with a goods id and amount 0 is loadable from saves/manifests and is treated as emptied, as `founding_payment.cpp` does: it holds none of the goods; no new reject, no invariant is assumed) |
 | 12 | `free > 0` | `StockFull` |
@@ -257,7 +257,7 @@ and of the foreign arm's notification records), OQ-CARGO-3 (cannon, `0x6b` and f
 authoritative state; `CargoRules` moves the stream to 124 (state.md), `kCommandWireVersion` is unchanged.
 
 * **Ship class** is the founding veto's BEWOHNTYPE 113 (`NotAShip` otherwise); the hold limit of step 9 is `min(holds.size(),
-  hold_count_a + hold_count_b)` when the type has navigation facts, else `holds.size()`.
+  hold_count_a)` when the type has navigation facts, else `holds.size()` (the sailing speed factor's `a + b` denominator (the speed-factor paragraph above) is a different quantity and unchanged).
 * **Rules (OQ-CARGO-4, closed).** `CargoRules` (`warehouse_prodtypes`, `dock_half_widths`) is a hashed, saved part of `Rules` from stream 124
   (`config.hpp`, `state_fields.hpp`); the eligibility test is `warehouse_prodtypes` against the building type's PRODTYPE, not `founding_types`.
   Validation in `Rules::validate` (specific `CargoRules.<field>` diagnostics). A data-defined warehouse type with its own PRODTYPE needs only a
@@ -274,7 +274,7 @@ authoritative state; `CargoRules` moves the stream to 124 (state.md), `kCommandW
 
 **Status:** a proposed contract, before any engine code; it needs the independent contract/reference review before L2. Evidence:
 [`docs/re/ship-cargo.md`](../re/ship-cargo.md) section 11 (the click, the wire, `AnnoWelt.dll 0x100ac360` flag 0). Independent reference:
-`tools/cargo_ref.py` (`plan_load` = this section, `orig_load` = the original's arithmetic), 42 hand-derived cases in
+`tools/cargo_ref.py` (`plan_load` = this section, `orig_load` = the original's arithmetic), 43 hand-derived cases in
 `fixtures/synthetic/sim/cargo_load_vectors.txt`. Labels as in section 2. Scope: the manual transfer city store -> **own** ship hold through the headless
 command path. Excluded: automatic route stops (they share the world function but their record is not read), buying from foreign or allied warehouses
 (the original's relation-3 arm), the cannon arms, `0x6b`, crew, UI. Shared visibility is information, never permission. The sailing-speed contract is
@@ -391,9 +391,8 @@ debit** (it clamps silently and ignores `g >= size`); `CityStock::add` must not 
 | warehouse set, dock disc | `Rules::cargo` | as the unload |
 | hold count `n1` (`hold_count_b`) | not used by the load | the load never addresses unit slots (vector `unit_slots_beyond_n0_are_never_used`) |
 
-Retained limitation (disclosed in CARGO-1): the ship class is BEWOHNTYPE 113 with navigation facts; no separate capability redesign. **Finding F-L1:** the accepted unload bounds the hold index by
-`hold_count_a + hold_count_b` (`ship_cargo.cpp`, step 9) where the original bounds it by `n0` (`0x100ac476`); identical for the shipped opening ship, different for a ship with `n1 > 0` and extra hold records.
-This section does not change the unload; the decision (align it to `n0`) is for the orchestrator and the next CARGO review.
+Retained limitation (disclosed in CARGO-1): the ship class is BEWOHNTYPE 113 with navigation facts; no separate capability redesign. **Finding F-L1, CLOSED in MAP-CARGO-3 C1:** the earlier unload bounded the hold index by
+`hold_count_a + hold_count_b`; the original bounds it by `n0` (`0x100ac476`). The unload now uses `min(holds.size(), hold_count_a)` for types with nav facts (identical for the shipped opening ship, a = 4); an index at or beyond `a` is `BadIndex` and leaves the world unchanged. Regression: `unload_test.cpp` "unload hold bound" (five rows: legal `a-1` paired with refused `a`, records beyond `a+b`, fewer records than `a`, `a = 0`), the corrected `unload data` expectation, and vector C43 `unload_bound_is_a_not_a_plus_b` (`cargo_ref.py` models the bound independently). A mutant restoring `a + b` fails those. Replays recorded before this change that unloaded a second-group slot (index >= `a` with `b > 0` and extra records) now diverge by refusal at that entry; no shipped content does this (the opening ship has `b` records only up to its four holds), and no state or wire field changed. The no-nav fallback (`holds.size()`) is unchanged and remains an adaptation.
 
 ### 12.7 Original versus adaptation (summary)
 
@@ -422,7 +421,7 @@ bump; this contract does not add one.
 
 * Independent command bytes (hand-written) and wrong-length cases for `0xF074`; edit `command_codec_test.cpp` lines 283 and 551-554; version-negative tests reseal a valid control.
 * Positive control with a non-zero amount, then one predicate at a time, each asserting its reason and an unchanged state hash (steps 0-13); a refusal changes no serialized byte.
-* Every case of `cargo_load_vectors.txt` through the engine (42 cases); engine mutants: credit the hold without debiting the city; debit the request although the credit is smaller; both must fail the conservation
+* Every case of `cargo_load_vectors.txt` through the engine (43 cases); engine mutants: credit the hold without debiting the city; debit the request although the credit is smaller; both must fail the conservation
   assertion while the positive control passes (the Python reference already rejects the analogous mutants: `cargo_ref.py mutants`).
 * Registry-driven: another owner, a data-defined ship type with its own capacity and `hold_count_a`, a type without nav facts (`NoCargoFacts`), capacity 0 (`HoldsFull`); no 1502/1302/player-0 constants.
 * Save/load before and after a load; fresh-process replay of a log with the command; the real opening canary: found -> unload -> **load back** conserves the combined goods; the cargo factor of a segment started after the load uses
@@ -434,9 +433,9 @@ bump; this contract does not add one.
 * **Code:** `LoadCmd` (`command.hpp`, variant alternative 11, `kWireLoad = 0xF074`, 28 bytes), `ShipCargo::load` and `ShipCargo::resolve_hold` (`ship_cargo.cpp`), `CityStock::debit`
   (`production.cpp`; refuses unless `goods` is in the table and `amount <= stock[goods]`, no clamp, no wrap), `Reject::NoCargoFacts / HoldsFull / StockShort` appended after `StockFull`.
   The validation order is the table of 12.4 (steps 0-14); the commit is `debit(goods, x)` then `holds[r] = {goods, amount + x}`, with `x` and `r` planned before any write and `amount + x <= capacity`.
-  The unload is untouched (finding F-L1 stays an open note); the 24-tile outline test of the unload is repeated in an anonymous helper of `ship_cargo.cpp` rather than extracted, to keep the accepted unload unchanged.
+  MAP-CARGO-3 C2: the 24-tile outline test is one anonymous helper (`city_owns_outline_tile`) called by both the unload and the load; the duplicate inline copy is gone, semantics and refusal order unchanged (the `B12` outline cases of both commands run through it).
 * **State identity:** no hashed field was added; `kStateHashVersion` stays 124 and no golden moved (`tools/sim_stream.py --check`). The wire tag and the three enumerators are not state.
 * **Tests:** `src/sim/tests/load_test.cpp` (every command through `encode_turn_entry -> decode_turn_entry -> World::apply`), `command_codec_test.cpp` (hand-written `0xF074` bytes, wrong lengths, `0xF075` is now the legacy neighbour),
-  the 42 vectors of `cargo_load_vectors.txt` through the engine, `cargo_ref.py` (`check` reads both vector files, `selftest` fails when the load file is missing, six mutants (credit-only, debit-the-request, and four rule mutants: threshold_255, tie_ge, empty_first for the hold choice and no_floor for the stock floor)).
+  the 43 vectors of `cargo_load_vectors.txt` through the engine, `cargo_ref.py` (`check` reads both vector files, `selftest` fails when the load file is missing, six mutants (credit-only, debit-the-request, and four rule mutants: threshold_255, tie_ge, empty_first for the hold choice and no_floor for the stock floor)).
   The fresh-process replay fixtures `cargo_load.log` / `cargo_load_wrong.log` use `synthetic::make_cargo_types()` (the founding registry plus the navigating cargo ship 9510: four holds of 50 t); `anno-sim-replay` knows that registry.
 * **Not covered here (L4/L5):** the real-file opening canary (found -> unload -> load back), the independent review, the Windows viewer.

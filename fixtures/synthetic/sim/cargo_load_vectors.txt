@@ -8,7 +8,9 @@
 # Defaults: holdcap 12800 (50 t per hold, LOGIC[0x11] << 8 of the shipped 1502), goods_count 56, storecap 12800 (unload steps),
 # nholds = the number of `hold` lines of the first ship (the type's n0; `nholds none` = the type has no cargo facts).
 #   load   SHIP IDX G TONS -> ok MOVED RESOLVED | reject REASON     (IDX = the named/preferred hold, RESOLVED = the hold used)
-#   unload SHIP IDX G TONS -> ok MOVED | reject REASON              (the existing unload rule, for round trips)
+#   unload SHIP IDX G TONS -> ok MOVED | reject REASON              (the existing unload rule, for round trips; IDX >= nholds is BadIndex,
+#       MAP-CARGO-3 C1: the original bounds the unload by n0 alone, 0x100ac476)
+#   nholds_b N : the type's second hold group (hold_count_b), default 0; never a transfer bound
 #   orig RET RESOLVED HOLD STOCK : the ORIGINAL arm (0x100ac360 flag 0, 32-bit semantics, hold amount a u16, signed compares) for the FIRST
 #       `load` of the case: return value (signed), the hold it used (-1 when it returned 0), that hold afterwards (goods:units; hold 0 when -1) and the
 #       stock of the requested goods afterwards. Evidence of agreement or of a defect, never an engine expectation.
@@ -540,3 +542,22 @@ loadcase hold_full_of_the_same_goods
   endhold A 42:12800
   endstock 42 5000
   orig 0 -1 42:12800 5000
+
+# C43 (MAP-CARGO-3 C1, F-L1): the type has n0 = 2 cargo holds (a) and a second group of 2 (b), the ship record carries 4. Original unload
+# (0x100ac476): valid indices end at n0 - 1 = 1. Hold 1 (= a - 1) tools 5120: 2 t = 512 -> ok 512, hold 4608; hold 0 wood 5120: 2 t -> ok 512,
+# hold 4608. Hold 2 (food) and hold 3 (wood) are second-group / extra records: BadIndex (a + b = 4 would have allowed both). Conserved:
+# 4 x 5120 = 20480 = 4608 + 4608 + 5120 + 5120 + 512 + 512 (the stock of tools 41 and wood 42).
+loadcase unload_bound_is_a_not_a_plus_b
+  nholds 2
+  nholds_b 2
+  hold A 42 5120
+  hold A 41 5120
+  hold A 26 5120
+  hold A 42 5120
+  unload A 1 41 2 -> ok 512
+  unload A 2 26 2 -> reject BadIndex
+  unload A 3 42 2 -> reject BadIndex
+  unload A 0 42 2 -> ok 512
+  endhold A 42:4608 41:4608 26:5120 42:5120
+  endstock 41 512
+  endstock 42 512

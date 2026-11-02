@@ -664,14 +664,16 @@ TEST_CASE("publication hold: an armed hold waits at the first publication that f
     // A failed REQUIRE must not leave a joinable thread (terminate): release and join on exit.
     struct Joiner {
         std::thread t;
-        app::PublicationHold* hold;
+        std::unique_ptr<app::PublicationHold>& hold; // reset later in the case: look at it at exit
         ~Joiner() {
-            hold->release();
+            if (hold) {
+                hold->release();
+            }
             if (t.joinable()) {
                 t.join();
             }
         }
-    } sim{std::thread([&runner] { runner.run_n(1); }), hold.get()};
+    } sim{std::thread([&runner] { runner.run_n(1); }), hold};
     REQUIRE(eventually([&] { return hold->held(); }));
     CHECK(hold->holds() == 1);
     // Inside the interval: the raw log has both outcomes, the consistent read withholds both, and

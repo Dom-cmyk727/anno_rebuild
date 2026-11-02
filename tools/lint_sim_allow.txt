@@ -104,3 +104,8 @@ src/sim/include/anno/sim/ship.hpp:inline constexpr std::size_t kNavMaxNodes  # a
 src/sim/include/anno/sim/types.hpp:inline constexpr std::uint32_t kMaxNavSpeedQ32  # arithmetic-safety domain of the speed fact (budget d x speed x V stays below 2^51), the same kind as kMaxHullHalf88
 src/sim/src/types.cpp:std::optional<std::uint32_t> q32_of_f32\(float value\)  # load-time conversion of an f32 file field to an integer fact (round to nearest even on the exact value); no float reaches state
 src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavScale  # the integrator budget scale (one tick = 1/5 unit, V a percent: q32 x 500), a unit of the fixed-point format
+src/sim/src/ship_step.cpp:constexpr std::uint64_t kDiagNumerator  # the exact rational numerator of the original's f32 0x3F3504F3 (c = 11863283 / 2^24), a constant of the arithmetic (12.4)
+src/sim/src/ship_step.cpp:constexpr unsigned kDiagShift  # the denominator exponent of c
+src/sim/src/ship_step.cpp:constexpr std::uint64_t kChunkLimit32  # the exact-sum reading of the original's chunk compare 1.0 + f32(1e-4) (12.9), an original constant
+src/sim/src/ship_step.cpp:constexpr std::uint32_t kMaxIterations  # termination guard of one visit on a corrupt state, not game data; every iteration leaves a valid state
+src/sim/src/ship_step.cpp:constexpr std::uint32_t kStateMoving  # state word bit 0 "moving" of the original (docs/re/ship-navigation.md 7.7)

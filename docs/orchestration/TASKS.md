@@ -47,6 +47,10 @@ and valid evidence are retained. **MAP-ROAD-CLOSE-1** below separates the new
 restrictions from faithful rules and performs focused verification. A separate
 subagent may start **MAP-ECON-1 E1 research only** in parallel. Harvest engine
 implementation remains gated on the corrected road unit and reviewed contract.
+Owner continuation, 2026-11-03: **MAP-ECON-1 E2–E6 below is authorized
+conditionally** to implement and test harvesting, wood production and warehouse
+delivery after those approvals. It is queued, not released by this board update;
+the orchestrator must record both exact accepted input pins first.
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
@@ -57,7 +61,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ROAD-CLOSE-1 READY; MAP-ECON-1 E1 RESEARCH ONLY may run in parallel.** Close the two explicit road policies, retain valid evidence, and prepare the forester worker contract in a separate subagent. No harvesting engine work yet. Windows keeps exact `0c401c8d`; its assignment is unchanged. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ROAD-CLOSE-1 READY; MAP-ECON-1 E1 RESEARCH may run in parallel. E2–E6 QUEUED pending the exact approved road and contract pins.** After release, implement the full harvesting/production/delivery loop with independent package reviews. No harvesting engine work before release. Windows keeps exact `0c401c8d`; its assignment is unchanged. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1239,11 +1243,187 @@ or ignore original progression to obtain an easy green opening.
    re-review. Stop with a genuinely ready contract or the exact unresolved
    mandatory predicate/address. If planting/regeneration is inseparable from
    the harvest lifecycle, report that scope dependency rather than silently
-   omitting it. E2–E6 engine work is not authorized by this research assignment.
+   omitting it. This research assignment does not release engine work; the
+   conditional E2–E6 continuation below has its own approval requirements.
 
 **Final stop:** reviewed road-policy correction with focused evidence, plus the
 reviewed forester research packet or a precise research dependency. No harvest
-engine, sustainable-economy, UI/render integration or new Windows dependency.
+engine until the conditional continuation below is released; no sustainable-
+economy, UI/render integration or new Windows dependency.
+
+### MAP-ECON-1 E2–E6 — harvest trees, produce wood and deliver it · CONDITIONAL, NOT RELEASED
+
+**Owner authorization, 2026-11-03:** once the road correction and forester
+contract are approved, the Mac executor may implement and test the complete
+headless harvesting -> wood production -> warehouse delivery loop, with an
+independent review of every substantive package and a final integration review.
+
+#### Release conditions and ownership
+
+1. The orchestrator records acceptance of the road correction and E1 contract,
+   with exact code/test/contract/documentation pins and allowed limits:
+
+   | Required input | Orchestrator acceptance / exact pin |
+   |---|---|
+   | MAP-ROAD-CLOSE-1 local code/tests and policy/state contract | **PENDING** |
+   | MAP-ECON-1 E1 forester evidence, contract and reference | **PENDING** |
+
+   A subagent/package approval alone does not fill these inputs. Until both are
+   recorded and this task is released, complete the current road/E1 assignments
+   and stop at their review boundary. This owner instruction authorizes the
+   continuation after approval; no repeated owner permission is needed between
+   E2–E6 once released.
+2. Use the existing Mac branch/worktree and the accepted input revisions,
+   preserving newer owned work. Read the acceptance records and current main
+   packet without merging main. No app/render/W4 changes, new Windows dependency,
+   coordinator/general runner campaign, original-file edits or candidate install.
+   Windows W4-OPENING-1 stays on exact
+   `0c401c8d084cfd9feb8aec846595291f87f22cce` until a separate integration task.
+3. Scope is the reviewed forester worker and existing eligible trees, connected
+   to existing farm production and carts. Other resource-worker families, full
+   economic progression and sustainable forestry are separate. If E1 establishes
+   planting/regeneration or another rule as inseparable, resolve that exact scope
+   dependency before release; do not silently trim the original lifecycle.
+
+#### Read order after release
+
+1. Read main `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4, the evidence contract,
+   testing README, this packet and both exact acceptance records.
+2. Read the approved `docs/re/forestry.md`, `docs/sim/forestry.md`, references/
+   vectors and E1 review dispositions. Follow the approved clauses and units;
+   earlier research leads are not substitute implementation rules.
+3. Read `docs/sim/{production,road-placement,ship-start-integration,ship-cargo}.md`,
+   applicable `docs/re/{production,transport}.md` clauses, state/figure/driver
+   lifecycle contracts and `docs/formats/{anlagen,figuren}.md`.
+4. Read current `src/sim/src/{driver,production,transport,scheduler,figure,types}.cpp`,
+   their headers, `tick.hpp`, `state_fields.hpp`, save/load/registry validation,
+   `src/sim_load/src/original_registry.cpp`, the related production/transport/
+   figure-removal tests, approved opening helpers, `tools/forester_ref.py` where
+   established, `tools/figure_digest_ref.py` and `tools/sim_stream.py`.
+
+#### E2 — immutable worker facts, minimum state and persistence
+
+1. Implement only the immutable facts and active-job state required by the
+   approved contract. Parse/derive job and resource behavior from original
+   content and the approved evidence mapping. Original IDs 801/102 may identify
+   real-file test fixtures; they must not select engine behavior. Do not replace
+   the forester with the workshop-carrier job or the D12 timed-return stand-in.
+2. Use an explicit resource target representation where needed; do not fabricate
+   a BuildingId for a tree or persist a pointer into a mutable tile/registry.
+   Define validation for missing/replaced targets and home/job ownership, using
+   the lifecycle agreed in E1. Keep unsupported jobs explicit.
+3. Include actual new registry facts/state in their appropriate digests and
+   field-by-field serialization. Bump the next free stream version only for the
+   actual new contract, after the accepted road version. Update independent byte
+   transcriptions/goldens with a field-level explanation. A valid positive control
+   and correctly resealed old-version negative must distinguish version refusal
+   from checksum damage. Do not rewrite expected hashes from C++ output alone.
+4. Keep the design data-driven and bounded by the existing content/configuration.
+   Test another data-defined type and owner without engine edits. No generic job
+   scripting framework, new hardcoded type/player limits or unrelated farm port.
+   Obtain independent review and focused re-review before E3.
+
+#### E3 — selection, travel, harvest and return
+
+1. Implement the reviewed lifecycle through normal driver/scheduler dispatch,
+   existing walking machinery and serial effects. Preserve deterministic search,
+   PRNG use, transition order and units. Bound work by the approved search rules;
+   no whole-world scan per worker or retry loop that makes no progress.
+2. Revalidate the live resource at the consuming transition. Selection alone
+   cannot authorize later harvesting after depletion/replacement. Two workers
+   selecting the same final resource units must not duplicate them; legitimate
+   sharing and ordering follow the contract. Cover same-type replacement too
+   where object identity matters.
+3. Perform resource consumption/transformation, cargo credit and home return in
+   the approved order through existing resource/tile writers and invalidation.
+   Release reservations/home counters exactly once. Test target loss, home
+   demolition before collection and while carrying, blocked return, full/missing
+   receiver, cancellation, expiry and repeated cleanup as applicable.
+4. Account for cargo through actual cleanup/expiry, beyond the instant a job
+   ends. No unexplained duplication/loss, invented refund, resource resurrection
+   or guessed recovery rule. Any evidenced original loss is explicitly recorded
+   and distinguished from an accidental engine loss. If the approved contract
+   leaves a necessary transition unresolved, stop that transition for clarification
+   and continue independent checks; do not substitute an apparent-success path.
+5. Review the package independently, including alternate orderings and failure
+   cleanup; fix findings and obtain focused re-review before reporting completion.
+
+#### E4 — connect harvesting to production and road-dependent delivery
+
+1. Start the forester's raw/output storage at zero in the integration fixture.
+   Demonstrate the causal chain: eligible resource harvested -> worker cargo ->
+   Farm.raw -> recipe consumption -> new HOLZ output -> cart cargo -> warehouse.
+   A sent/returned worker, reservation, capacity or pre-stocked output is not
+   evidence of production. Reuse the established production/cart bodies.
+2. Hand-derive one miniature resource/recipe/delivery sequence independently.
+   Record each boundary in its real units. Resource input and wood output are a
+   conversion, not assumed equal tonnages. Separate material retained, consumed,
+   converted, delivered and any contract-authorized loss; unexplained terms must
+   equal zero rather than merely being printed.
+3. Include no-resource, unreachable-resource and disconnected-road controls,
+   plus applicable switch/full-store cases. Follow the actual movement layers;
+   do not make all workers road-dependent. Existing cart clipping/overflow does
+   not authorize discarding a forester's cargo at another transition.
+4. Use a few purposeful negative controls, such as credit without depletion,
+   return without raw-input delivery, or production without input consumption.
+   Verify the intended boundary assertion fails while its legal control executes.
+   No generic mutation framework or broad repeated campaign is required.
+5. Obtain independent package review of production callers, lifecycle tests and
+   the material ledger, with focused correction/re-review.
+
+#### E5 — one authentic opening canary, save/reload and fresh-process replay
+
+1. Load an unchanged ship-start candidate and original loadout. With public
+   commands and normal advances only: sail, found, unload, build a legal forester
+   and connecting roads, then harvest existing eligible trees and deliver newly
+   produced wood. One seat is enough for this expensive canary; focused cases
+   cover additional workers and owners.
+2. Search for sites on copies; do not relocate the real ship or seed fixture
+   trees, Farm.raw, producer output or warehouse stock. No grants, free-build,
+   interim-return seam, progression bypass or loadout change. If stock room is
+   needed, use approved load/unload commands and record the transfers. If the
+   unchanged start cannot support the sequence, report the exact constraint.
+3. Separate initial ship wood and stock, construction costs, legal cargo transfers,
+   harvested raw material, conversion, cart cargo and warehouse deliveries.
+   Assert a positive newly produced delivery and every ledger equation. Existing
+   starting wood or an unexplained warehouse increase cannot satisfy the test.
+4. Save/reload at an outbound/harvesting state and a carrying/returning state.
+   Resumed and uninterrupted outcomes, final bytes/hash and required completion
+   timing agree under the contract. Cover these with small fixtures where possible
+   instead of multiplying full sailing variants.
+5. Record and replay the real canary in a fresh process with matched checkpoints.
+   A changed legal command must cause the expected divergence; demonstrate that
+   the changed command executes, so malformed bytes or an unrelated refusal do
+   not supply the negative proof. Keep exact source/tool/binary/log identities.
+
+#### E6 — finite gates, final integration review and stop
+
+1. Order work as cheap reference/negative checks -> focused Debug -> one real
+   canary/replay -> focused ASan/UBSan. Freeze all relevant source/tool inputs;
+   coordinate helper writes around gates. Use the canonical workflow, mandatory
+   contracts and exact inventories. Preserve first failures and report selected,
+   executed passes, failures, skips, empty and incomplete outcomes separately.
+2. Check affected driver/figure/resource/production/transport, persistence and
+   replay dependencies. Reuse unaffected evidence explicitly. Broaden only for a
+   named changed dependency or failure; no renderer/GPU matrix, full-ASan sailing
+   campaign, coordinator repairs or unrelated testing-framework project.
+3. A fresh independent integration reviewer inspects the frozen combined diff,
+   callers and raw evidence across E2–E5. It checks actual new production, policy
+   fidelity, target contention, resource/cargo accounting through cleanup, active-
+   job persistence and causal replay controls. It does not author fixes or repeat
+   long gates. Correct findings and obtain focused re-review.
+4. Update the forester contract and report with exact accepted-input/code/test/
+   documentation pins, evidence index, performed reviews, retained failures,
+   limitations and future Windows API/stream delta. Commit locally and stop for
+   orchestrator review; no task-code push, main merge/rebase, map install or UI
+   integration. Unavailable Windows/Linux/original-runtime/GPU checks stay NOT_RUN.
+
+**Stop:** the reviewed harvesting lifecycle produces new wood and delivers it
+through the normal simulation, with the real opening, required failure cases,
+active-job save/reload and fresh-process replay demonstrated. This is a first
+complete harvest/production/delivery loop, not acceptance of every worker family,
+planting/regeneration, sustainable forestry, full economic progression, multiplayer
+scale or target-host performance. Further gameplay/UI work waits for its own task.
 
 ### MAP-ROAD-1 — construct and remove ordinary land roads · REVIEWED, POLICY FOLLOW-UP ABOVE
 

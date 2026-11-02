@@ -75,6 +75,8 @@ struct Setup {
     sim::TypeId wtype = kKontor;                 // city 0's warehouse
     int wx = 15, wy = 10;
     std::uint32_t rotation = 0;
+    sim::TypeId rival_type = kKontor; // city 1's warehouse
+    int rival_x = 60, rival_y = 10;
     bool workshop = false; // a weaver at (30, 20) in city 0
     bool second_island = false;
     // The owner of a tile: city number, 15 = neutral.
@@ -122,7 +124,7 @@ sim::ScenarioSpec spec_of(const Setup& s) {
     }
     is.cities.push_back(c0);
     sim::ScenarioSpec::CitySpec c1 = syn::plain_city(1, 1);
-    c1.buildings.push_back({.type = kKontor, .x = 60, .y = 10});
+    c1.buildings.push_back({.type = s.rival_type, .x = s.rival_x, .y = s.rival_y});
     is.cities.push_back(c1);
     spec.islands.push_back(std::move(is));
     if (s.second_island) {
@@ -591,4 +593,482 @@ TEST_CASE("unload B11: a moving ship unloads at its position at the apply tick")
     }
     REQUIRE((ship(far).pos.x >> 8) > 25);
     expect_refused(far, 0, cmd(1, bid(far, 0, 15, 30), 0, kWood, 10), sim::Reject::OutOfRange);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The independent vectors, run through the engine
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+std::vector<std::string> split(const std::string& line) {
+    std::istringstream is(line);
+    std::vector<std::string> t;
+    for (std::string x; is >> x;) {
+        t.push_back(x);
+    }
+    return t;
+}
+
+sim::Reject reject_by_name(const std::string& name) {
+    for (std::uint16_t v = 0; v < 64; ++v) {
+        if (sim::reject_name(static_cast<sim::Reject>(v)) == name) {
+            return static_cast<sim::Reject>(v);
+        }
+    }
+    FAIL("no Reject called " << name);
+    return sim::Reject::None;
+}
+
+struct VectorFile {
+    struct Case {
+        std::string name;
+        std::vector<std::vector<std::string>> lines;
+    };
+    std::vector<Case> cases;
+    std::vector<std::vector<std::string>> extra; // range / tile / cityset rows
+};
+
+VectorFile read_vectors() {
+    VectorFile f;
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "cargo_vectors.txt");
+    REQUIRE(in.good());
+    bool in_case = false;
+    for (std::string raw; std::getline(in, raw);) {
+        raw = raw.substr(0, raw.find('#'));
+        const std::vector<std::string> t = split(raw);
+        if (t.empty()) {
+            continue;
+        }
+        if (t[0] == "case") {
+            f.cases.push_back({t[1], {}});
+            in_case = true;
+        } else if (t[0] == "range" || t[0] == "tile" || t[0] == "cityset") {
+            f.extra.push_back(t);
+            in_case = false;
+        } else if (in_case) {
+            f.cases.back().lines.push_back(t);
+        }
+    }
+    return f;
+}
+
+std::size_t index_of(const std::vector<std::string>& v, const char* token) {
+    return static_cast<std::size_t>(std::find(v.begin(), v.end(), token) - v.begin());
+}
+
+std::string holds_text(const std::vector<sim::ShipHold>& h) {
+    std::string out;
+    for (const sim::ShipHold& x : h) {
+        out +=
+            (out.empty() ? "" : " ") + std::to_string(x.goods) + ":" + std::to_string(x.amount_88);
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("unload vectors: every case of cargo_vectors.txt gives the same answers through the "
+          "engine") {
+    const VectorFile vf = read_vectors();
+    CHECK(vf.cases.size() == 34);
+    for (const VectorFile::Case& c : vf.cases) {
+        INFO("case " << c.name);
+        Setup s;
+        std::map<std::string, std::uint64_t> ids; // ship label -> figure id
+        s.ships.clear();
+        std::map<std::string, std::vector<sim::ShipHold>> holds;
+        std::vector<std::string> order;
+        for (const auto& l : c.lines) {
+            if (l[0] == "cap") {
+                s.capacity = static_cast<std::uint32_t>(std::stoull(l[1]));
+            } else if (l[0] == "stock") {
+                s.stock[static_cast<sim::GoodsId>(std::stoul(l[1]))] =
+                    static_cast<std::uint32_t>(std::stoull(l[2]));
+            } else if (l[0] == "hold") {
+                if (!holds.contains(l[1])) {
+                    order.push_back(l[1]);
+                }
+                holds[l[1]].push_back(
+                    sim::ShipHold{static_cast<sim::GoodsId>(std::stoul(l[2])), std::stoull(l[3])});
+            } else if (l[0] == "goods_count") {
+                REQUIRE(std::stoul(l[1]) == sim::kOriginalWarehouseGoods); // the default table
+            }
+        }
+        for (const std::string& label : order) {
+            ShipDef d;
+            d.holds = holds[label];
+            s.ships.push_back(d);
+            ids[label] = s.ships.size();
+        }
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        const auto goods0 = totals(w);
+        for (const auto& l : c.lines) {
+            if (l[0] != "req") {
+                continue;
+            }
+            const std::size_t arrow = index_of(l, "->");
+            const sim::UnloadCmd u =
+                cmd(ids[l[1]], wh, static_cast<std::uint32_t>(std::stoul(l[2])),
+                    static_cast<sim::GoodsId>(std::stoul(l[3])),
+                    static_cast<std::uint32_t>(std::stoul(l[4])));
+            if (l[arrow + 1] == "ok") {
+                (void)unload_ok(w, 0, u, std::stoull(l[arrow + 2]));
+            } else {
+                expect_refused(w, 0, u, reject_by_name(l[arrow + 2]));
+            }
+        }
+        for (const auto& l : c.lines) {
+            if (l[0] == "endhold") {
+                std::string want;
+                for (std::size_t i = 2; i < l.size(); ++i) {
+                    want += (want.empty() ? "" : " ") + l[i];
+                }
+                CHECK(holds_text(ship(w, ids[l[1]]).holds) == want);
+            } else if (l[0] == "endstock") {
+                CHECK(city(w, 0).stock.stock[std::stoul(l[1])] == std::stoull(l[2]));
+            }
+        }
+        CHECK(totals(w) == goods0);
+    }
+}
+
+TEST_CASE("unload vectors: range, tile and city-set rows agree with the engine") {
+    const VectorFile vf = read_vectors();
+    int range_rows = 0, engine_rows = 0, tile_rows = 0, cityset_rows = 0;
+    for (const auto& t : vf.extra) {
+        INFO(t[0] << " " << t[1]);
+        const std::size_t arrow = index_of(t, "->");
+        if (t[0] == "range") {
+            ++range_rows;
+            const int tx = std::stoi(t[3]), ty = std::stoi(t[4]);
+            const int x0 = std::stoi(t[6]), y0 = std::stoi(t[7]), w = std::stoi(t[8]),
+                      h = std::stoi(t[9]);
+            const bool accept = t[arrow + 1] == "accept";
+            CHECK(sim::ShipCargo::footprint_in_range(tx, ty, x0, y0, w, h,
+                                                     sim::CargoRules::original()) == accept);
+            if (w == 4 && h == 4) { // the engine's Kontor is 4 x 4
+                ++engine_rows;
+                Setup s;
+                s.ships[0].tx = tx;
+                s.ships[0].ty = ty;
+                s.wx = x0;
+                s.wy = y0;
+                s.owner = [](int, int) { return 0U; }; // the outline rule is satisfied everywhere
+                sim::World world = make(s);
+                const sim::UnloadCmd u = cmd(1, bid(world, 0, x0, y0), 0, kWood, 38);
+                if (accept) {
+                    (void)unload_ok(world, 0, u, 9728);
+                } else {
+                    expect_refused(world, 0, u, sim::Reject::OutOfRange);
+                }
+            }
+        } else if (t[0] == "tile") {
+            ++tile_rows;
+            // A W at (16, 10) makes tile x = 10 out of range and tile x = 11 in range; a W at
+            // (0, 6) makes tile y = 0 out of range (dy 6) and tile y = 1 in range.
+            const std::int32_t qx = std::stoi(t[1]), qy = std::stoi(t[2]);
+            const int tx = std::stoi(t[arrow + 1]), ty = std::stoi(t[arrow + 2]);
+            Setup s;
+            s.ships[0].raw_x = qx;
+            s.ships[0].raw_y = qy;
+            s.owner = [](int, int) { return 0U; };
+            s.wx = tx == 0 ? 0 : 16;
+            s.wy = tx == 0 ? 6 : 10;
+            sim::World world = make(s);
+            const sim::UnloadCmd u = cmd(1, bid(world, 0, s.wx, s.wy), 0, kWood, 38);
+            if (tx == 0) {
+                expect_refused(world, 0, u, sim::Reject::OutOfRange); // tile (0, 0): dy 6
+            } else if (tx == 10) {
+                expect_refused(world, 0, u, sim::Reject::OutOfRange); // tile x 10: dx 6
+            } else {
+                (void)unload_ok(world, 0, u, 9728); // tile x 11: dx 5
+            }
+            CHECK(ty >= 0);
+        } else {
+            ++cityset_rows;
+            const int tx = std::stoi(t[3]), ty = std::stoi(t[4]);
+            std::vector<std::pair<int, int>> owned;
+            for (std::size_t i = index_of(t, "owned") + 1; i < arrow; ++i) {
+                const auto comma = t[i].find(',');
+                owned.emplace_back(std::stoi(t[i].substr(0, comma)),
+                                   std::stoi(t[i].substr(comma + 1)));
+            }
+            Setup s;
+            s.ships[0].tx = tx;
+            s.ships[0].ty = ty;
+            s.wx = 11; // footprint x 11..14, y 9..12: none of the 22 outline tiles of (10, 10)
+            s.wy = 9;
+            s.owner = [owned](int x, int y) {
+                if (x >= 11 && x <= 14 && y >= 9 && y <= 12) {
+                    return 0U;
+                }
+                return std::find(owned.begin(), owned.end(), std::pair<int, int>{x, y}) !=
+                               owned.end()
+                           ? 0U
+                           : 15U;
+            };
+            sim::World world = make(s);
+            const sim::UnloadCmd u = cmd(1, bid(world, 0, 11, 9), 0, kWood, 38);
+            if (t[arrow + 1] == "in") {
+                (void)unload_ok(world, 0, u, 9728);
+            } else {
+                expect_refused(world, 0, u, sim::Reject::OutOfRange);
+            }
+        }
+    }
+    CHECK(range_rows == 15);
+    CHECK(engine_rows >= 9);
+    CHECK(tile_rows == 3);
+    CHECK(cityset_rows == 8);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sequences B13-B16, holds, fractions, bounds, contention
+// ---------------------------------------------------------------------------------------------
+
+TEST_CASE("unload B13 B14 B15: repeats, the opening after founding and the full store") {
+    { // B13: two identical commands in one turn
+        sim::World w = make(Setup{});
+        const sim::UnloadCmd c = cmd(1, bid(w, 0, 15, 10), 0, kWood, 38);
+        (void)unload_ok(w, 0, c, 9728);
+        expect_refused(w, 0, c, sim::Reject::HoldGoodsMismatch); // the hold is 0:0 now
+    }
+    // B14: the opening: one command per hold, the 50 t store holds 25 t less of the last tools.
+    sim::World w = make(Setup{});
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    (void)unload_ok(w, 0, cmd(1, wh, 0, kWood, 38), 9728);
+    (void)unload_ok(w, 0, cmd(1, wh, 1, kFood, 10), 2560);
+    (void)unload_ok(w, 0, cmd(1, wh, 2, kTools, 45), 11520);
+    (void)unload_ok(w, 0, cmd(1, wh, 3, kTools, 30), 1280); // only 5 t fit: 12800 - 11520
+    CHECK(city(w, 0).stock.stock[kWood] == 9728);
+    CHECK(city(w, 0).stock.stock[kFood] == 2560);
+    CHECK(city(w, 0).stock.stock[kTools] == 12800);
+    CHECK(ship(w).holds[0] == sim::ShipHold{0, 0});
+    CHECK(ship(w).holds[1] == sim::ShipHold{0, 0});
+    CHECK(ship(w).holds[2] == sim::ShipHold{0, 0});
+    CHECK(ship(w).holds[3] == sim::ShipHold{kTools, 6400}); // 25 t stay aboard
+    // B15: the next turn, the same command again: the store is full.
+    expect_refused(w, 0, cmd(1, wh, 3, kTools, 30), sim::Reject::StockFull);
+    CHECK(ship(w).holds[3] == sim::ShipHold{kTools, 6400});
+    CHECK(w.players().find(sim::PlayerId{0})->money == 5000);
+}
+
+TEST_CASE("unload B16: save and load around a transfer equal the uninterrupted world") {
+    sim::World straight = make(Setup{});
+    const sim::UnloadCmd c = cmd(1, bid(straight, 0, 15, 10), 0, kWood, 38);
+    // Save and load immediately before the transfer.
+    auto before = sim::World::load(straight.save(), registry());
+    REQUIRE(before.ok());
+    CHECK(before.value().save() == straight.save());
+    CHECK(before.value().state_hash() == straight.state_hash());
+    sim::World reloaded = std::move(before).value();
+    (void)unload_ok(straight, 0, c, 9728);
+    (void)unload_ok(reloaded, 0, c, 9728);
+    CHECK(reloaded.save() == straight.save());
+    // Save and load immediately after it, then the next command.
+    auto after = sim::World::load(straight.save(), registry());
+    REQUIRE(after.ok());
+    sim::World second = std::move(after).value();
+    CHECK(second.state_hash() == straight.state_hash());
+    expect_refused(second, 0, c, sim::Reject::HoldGoodsMismatch);
+    expect_refused(straight, 0, c, sim::Reject::HoldGoodsMismatch);
+    CHECK(second.save() == straight.save());
+    // A later command on both: the same answer and the same bytes.
+    const sim::UnloadCmd food = cmd(1, bid(second, 0, 15, 10), 1, kFood, 3);
+    (void)unload_ok(second, 0, food, 768);
+    (void)unload_ok(straight, 0, food, 768);
+    CHECK(second.save() == straight.save());
+}
+
+TEST_CASE("unload holds: duplicate goods are addressed by index and conserved at every step") {
+    Setup s;
+    s.ships[0].holds = {sim::ShipHold{kTools, 12800}, sim::ShipHold{kTools, 7680}};
+    sim::World w = make(s);
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    (void)unload_ok(w, 0, cmd(1, wh, 1, kTools, 10), 2560);  // the second hold first
+    (void)unload_ok(w, 0, cmd(1, wh, 0, kTools, 50), 10240); // only 40 t fit
+    expect_refused(w, 0, cmd(1, wh, 1, kTools, 1), sim::Reject::StockFull);
+    CHECK(holds_text(ship(w).holds) == "41:2560 41:5120");
+    CHECK(city(w, 0).stock.stock[kTools] == 12800);
+}
+
+TEST_CASE("unload store: near-full is partial, over capacity is a refusal that lowers nothing") {
+    { // 1000 units free: the transfer is the free space, the rest stays aboard
+        Setup s;
+        s.stock[kWood] = 12800 - 1000;
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 38), 1000);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 9728 - 1000});
+        CHECK(city(w, 0).stock.stock[kWood] == 12800);
+    }
+    for (const std::uint32_t over : {200U, 255U, 256U, 300U, 5000U}) {
+        // The original lowers such a store and credits the hold; this build refuses.
+        Setup s;
+        s.stock[kWood] = 12800 + over;
+        sim::World w = make(s);
+        expect_refused(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 38), sim::Reject::StockFull);
+        CHECK(city(w, 0).stock.stock[kWood] == 12800 + over);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 9728});
+    }
+    { // The capacity applies per goods: a full tools store does not stop the wood.
+        Setup s;
+        s.stock[kTools] = 12800;
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 38), 9728);
+    }
+}
+
+TEST_CASE("unload fractions: stored balances and remainders are exact, nothing is rounded away") {
+    { // a fractional hold: 1.5 t, two one-ton requests
+        Setup s;
+        s.ships[0].holds = {sim::ShipHold{kWood, 384}};
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        (void)unload_ok(w, 0, cmd(1, wh, 0, kWood, 1), 256);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 128});
+        (void)unload_ok(w, 0, cmd(1, wh, 0, kWood, 1), 128);
+        CHECK(ship(w).holds[0] == sim::ShipHold{0, 0});
+        CHECK(city(w, 0).stock.stock[kWood] == 384);
+    }
+    { // fractional free space: the store is filled exactly and the rest stays aboard
+        Setup s;
+        s.ships[0].holds = {sim::ShipHold{kWood, 768}};
+        s.stock[kWood] = 12672; // 128 free
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 3), 128);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 640}); // the original would keep 512
+        CHECK(city(w, 0).stock.stock[kWood] == 12800);
+    }
+    { // one unit of room
+        Setup s;
+        s.stock[kWood] = 12799;
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 38), 1);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 9727});
+    }
+    { // a fractional stored balance, a whole-ton request
+        Setup s;
+        s.stock[kWood] = 100;
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 38), 9728);
+        CHECK(city(w, 0).stock.stock[kWood] == 9828);
+    }
+    { // legitimate repeats: the same one-ton command, three times, three transfers
+        Setup s;
+        s.ships[0].holds = {sim::ShipHold{kWood, 5 * kT}};
+        sim::World w = make(s);
+        const sim::UnloadCmd one = cmd(1, bid(w, 0, 15, 10), 0, kWood, 1);
+        for (int i = 0; i < 3; ++i) {
+            (void)unload_ok(w, 0, one, 256);
+        }
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 2 * kT});
+    }
+}
+
+TEST_CASE("unload bounds: quantities near the u32 store and the u64 hold limits") {
+    { // capacity 2^32 - 1, 100 units free, a 1000 unit hold: credit 100, hold 900
+        Setup s;
+        s.capacity = 0xFFFFFFFFU;
+        s.stock[kWood] = 0xFFFFFFFFU - 100;
+        s.ships[0].holds = {sim::ShipHold{kWood, 1000}};
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 1), 100);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, 900});
+        CHECK(city(w, 0).stock.stock[kWood] == 0xFFFFFFFFU);
+        expect_refused(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 1), sim::Reject::StockFull);
+    }
+    { // a hold of 2^64 - 1 units: one ton leaves 2^64 - 257; the wide sums still agree
+        Setup s;
+        s.capacity = 0xFFFFFFFFU;
+        s.ships[0].holds = {sim::ShipHold{kWood, ~std::uint64_t{0}}};
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 1), 256);
+        CHECK(ship(w).holds[0] == sim::ShipHold{kWood, ~std::uint64_t{0} - 256});
+    }
+    { // the request 2^32 - 1 tons (2^40 - 256 units) against a 2^41 unit hold: the room decides
+        Setup s;
+        s.capacity = 0xFFFFFFFFU;
+        s.ships[0].holds = {sim::ShipHold{kWood, std::uint64_t{1} << 41}};
+        sim::World w = make(s);
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 0, kWood, 0xFFFFFFFFU), 0xFFFFFFFFU);
+        CHECK(ship(w).holds[0].amount_88 == (std::uint64_t{1} << 41) - 0xFFFFFFFFU);
+        CHECK(city(w, 0).stock.stock[kWood] == 0xFFFFFFFFU);
+    }
+    { // a request far above the hold takes the hold, and nothing more
+        sim::World w = make(Setup{});
+        (void)unload_ok(w, 0, cmd(1, bid(w, 0, 15, 10), 1, kFood, 0xFFFFFFFFU), 2560);
+    }
+}
+
+TEST_CASE("unload contention: two ships into one nearly full store in command order") {
+    for (const bool swapped : {false, true}) {
+        Setup s;
+        s.stock[kWood] = 12800 - 1000; // room for 1000 units
+        s.ships = {ShipDef{}, ShipDef{}};
+        s.ships[0].holds = {sim::ShipHold{kWood, 5000}};
+        s.ships[1].holds = {sim::ShipHold{kWood, 5000}};
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        const std::uint64_t first = swapped ? 2 : 1, second = swapped ? 1 : 2;
+        const auto start = totals(w);
+        CHECK(start.at(kWood) == Wide{0, 11800 + 10000});
+        (void)unload_ok(w, 0, cmd(first, wh, 0, kWood, 10), 1000);
+        expect_refused(w, 0, cmd(second, wh, 0, kWood, 10), sim::Reject::StockFull);
+        CHECK(ship(w, first).holds[0] == sim::ShipHold{kWood, 4000});
+        CHECK(ship(w, second).holds[0] == sim::ShipHold{kWood, 5000}); // untouched, not erased
+        CHECK(totals(w) == start);
+    }
+    { // three ships, room for 1.5 of them: 5000, 4000 (partial), then a refusal
+        Setup s;
+        s.capacity = 9000 + 1000; // the store ends at capacity
+        s.ships = {ShipDef{}, ShipDef{}, ShipDef{}};
+        for (ShipDef& d : s.ships) {
+            d.holds = {sim::ShipHold{kWood, 5000}};
+        }
+        sim::World w = make(s);
+        const sim::BuildingId wh = bid(w, 0, 15, 10);
+        (void)unload_ok(w, 0, cmd(1, wh, 0, kWood, 100), 5000);
+        (void)unload_ok(w, 0, cmd(2, wh, 0, kWood, 100), 5000);
+        expect_refused(w, 0, cmd(3, wh, 0, kWood, 100), sim::Reject::StockFull);
+    }
+}
+
+TEST_CASE("unload units: the stock helpers and the pure rules") {
+    sim::CityStock st;
+    st.stock = {0, 90, 150};
+    st.capacity = 100;
+    CHECK(st.free_88(0) == 100);
+    CHECK(st.free_88(1) == 10);
+    CHECK(st.free_88(2) == 0); // above the capacity: no room, never negative room
+    CHECK(st.free_88(3) == 0); // outside the table
+    CHECK_FALSE(st.credit(1, 11));
+    CHECK(st.stock[1] == 90);
+    CHECK_FALSE(st.credit(2, 1));
+    CHECK(st.stock[2] == 150); // never lowered
+    CHECK_FALSE(st.credit(3, 1));
+    CHECK_FALSE(st.credit(3, 0));
+    CHECK(st.credit(1, 10));
+    CHECK(st.stock[1] == 100);
+    CHECK(st.credit(0, 0));
+    CHECK(st.stock[0] == 0);
+    st.capacity = 0xFFFFFFFFU;
+    st.stock[0] = 0;
+    CHECK(st.free_88(0) == 0xFFFFFFFFULL);
+    CHECK_FALSE(st.credit(0, 0x100000000ULL));
+    CHECK(st.credit(0, 0xFFFFFFFFULL));
+    CHECK(st.stock[0] == 0xFFFFFFFFU);
+    // the plan's amount
+    CHECK(sim::ShipCargo::amount_88(0xFFFFFFFFU, ~std::uint64_t{0}, ~std::uint64_t{0}) ==
+          0xFFFFFFFFULL * 256);
+    CHECK(sim::ShipCargo::amount_88(1, 1000, 5000) == 256);
+    CHECK(sim::ShipCargo::amount_88(10, 1000, 5000) == 1000);
+    CHECK(sim::ShipCargo::amount_88(10, 5000, 1000) == 1000);
+    // the rules table
+    CHECK(sim::CargoRules::original().validate().empty());
+    CHECK(sim::CargoRules{}.validate().find("empty") != std::string::npos);
+    CHECK(sim::CargoRules{{4, 5}}.validate().find("radius") != std::string::npos);
+    CHECK(sim::CargoRules{{2, 2, 3}}.validate().find("increases") != std::string::npos);
+    CHECK(sim::CargoRules{{0}}.validate().empty()); // radius 0: the footprint itself
 }

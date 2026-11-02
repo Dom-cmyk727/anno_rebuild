@@ -2066,3 +2066,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** the coarse exporter fills a null sector with open water 0xfff and the kind-10 tile export of an empty region with water (8); both read past the world edge. The window is clipped to the world (`SetWindow` x1 = min(x1, width)) but the last coarse cell and block keep their full 8 and 64 tile extent. So the original MAY let a ship plan through water that exists only beyond the edge. Not run: no emulation with a world width that is not a multiple of 8.
 - **Port:** tiles outside the world are land and cells outside are mask 0; a cell that straddles the edge is packed with the outside as land (`route_unit_test.cpp`, "route partial cells": identical to the same world padded with explicit land). The 15 candidate witnesses end at x <= 1200, z <= 1146 of a 1431 world (more than 200 tiles from the edge), so none is in the affected zone; the seat ships start at least 100 tiles from it.
 - **How to resolve:** extend `tools/ship_nav_emulate.py` with a fake world of width 70 or 1431 and compare routes along the last column and row; or capture a ship route along the south coast of a 1431 map in the running game.
+
+## OQ-NAVC-2: Item height byte written by island growth (MAP-NAV-3 N3, 2026-11-02)
+
+- **Question:** when island growth replaces a tile's object id (`grow()` in `island_tick.cpp`, original AnnoWelt `0x1008b5f0`), what happens to the tile record's height byte (second dword byte 0)? The port leaves the existing byte untouched; a ripe object on a tile that never held a loaded item has base 0.
+- **Why it matters:** the byte is the base of the ship-route blocking predicate `((h + base) & 0xff) > 19`; a grown object may block or not depending on it.
+- **Evidence needed:** the store instructions of the growth visit (and of the object-replacement path it calls) with respect to second-dword byte 0. Nothing is stated as fact in code; the limitation is recorded in `docs/sim/ship-navigation.md` 12.13.
+

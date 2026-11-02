@@ -93,13 +93,14 @@ coarse costs 3 / 6 in the original's table under emulation, a turn costs a strai
 ## Pointers and lifetime (not simulation state)
 
 `CoastIndex` holds a raw pointer to its `TileSource`; `WorldTileSource` holds raw pointers to the islands and the type registry (and
-`RouteTerrainOptions::item_base` is a callback). Both are derived, never saved, hashed or part of a checksum. They must be rebuilt
-or `rebind`-ed after a `World` copy, move, load or resync, and nothing may change the world while a plan runs on them. The item
-height byte `base` (rec[4]) is supplied by `RouteTerrainOptions::item_base`: the sim does not carry it today (0); the owner of the tile
-record (a later stream version, with the placement code) supplies it.
+`RouteTerrainOptions::item_base` is an optional callback; the default is the tile's own `TileLayer::item_height`). Both are derived,
+never saved, hashed or part of a checksum. A `World` copy, move or load starts with an empty `RouteCache`. In a running world
+`RouteCache::sync` keeps the index current: terrain is immutable (a fingerprint rebuilds all if not), and tile-layer dirty
+rectangles of object, anchor and height-byte changes are applied with `rebuild_rect` (docs/sim/ship-navigation.md 12.13). Nothing
+may change the world while a plan runs on the index.
 
 ## Open questions for the orchestrator
 
-- The sim's tile record has no item height byte (rec[4]): add it with the next stream version if object blocking must match the
-  original on coastal buildings (they carry 48 in the corpus).
+- (Resolved by MAP-NAV-3 N3, 12.13) The item height byte (rec[4]) is carried as `TileLayer::item_height` (low byte of `aux`, no stream
+  change). Still open: the byte written by island growth (not evidenced).
 - Partial last sectors (item 3, `docs/open-questions.md` OQ-NAVC-1).

@@ -791,7 +791,7 @@ class TileLayer {
     [[nodiscard]] std::uint32_t object(std::uint32_t idx) const;      // type id of the object on the tile (island slot +0x94)
     [[nodiscard]] std::uint8_t phase(std::uint32_t idx) const;        // GrowthTile::phase
     [[nodiscard]] std::uint32_t owner(std::uint32_t idx) const;       // city number or neutral_owner; u32 (the original nibble is 4 bits, F3), so city_slots/neutral_owner above 65535 cannot truncate
-    [[nodiscard]] std::uint32_t aux(std::uint32_t idx) const;         // remaining record bits (flag 0x80 of byte +3, ...): O-11
+    [[nodiscard]] std::uint32_t aux(std::uint32_t idx) const;         // remaining record bits (flag 0x80 of byte +3, ...): O-11; byte 0 = the placed item's height byte (item_height, MAP-NAV-3 N3, docs/sim/ship-navigation.md 12.13), bits 8..31 must be 0 (validate_island)
     void set_object(std::uint32_t idx, std::uint32_t v);              // marks dirty
     void set_phase(std::uint32_t idx, std::uint8_t v);
     void set_owner(std::uint32_t idx, std::uint32_t v);

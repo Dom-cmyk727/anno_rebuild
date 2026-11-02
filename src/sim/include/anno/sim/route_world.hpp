@@ -45,7 +45,8 @@ struct RouteTerrainOptions {
     /// null reads the tile's own TileLayer::item_height (the production default). A callback
     /// replaces it (tests).
     std::function<std::uint8_t(const Island&, std::uint64_t tile_index)> item_base;
-    /// Objects block per the predicate above; false ignores them (terrain only).
+    /// Objects block per the predicate above (the production default, 12.13); false ignores them
+    /// (terrain only: tests and the mutant check).
     bool objects_block = true;
     /// Use the builder's block min / max shortcut for aligned island blocks; false classifies every
     /// cell by its tiles.

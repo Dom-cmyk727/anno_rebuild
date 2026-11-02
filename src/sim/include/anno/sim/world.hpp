@@ -365,8 +365,8 @@ class World {
     // in the sim writes it.
     TransportStats* transport_stats_ = nullptr;
     // Not state (derived, never hashed or saved): the coast index the ship route queries read;
-    // built on first use, dropped by every command that may change the islands and by copying the
-    // World.
+    // built on first use, kept in step by RouteCache::sync from the tile layers' dirty rectangles
+    // (docs/sim/ship-navigation.md 12.13), emptied by copying or moving the World.
     RouteCache route_cache_;
 };
 

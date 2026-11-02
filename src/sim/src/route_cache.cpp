@@ -107,6 +107,9 @@ void RouteCache::sync(World& world) {
                       static_cast<std::int32_t>(x1), static_cast<std::int32_t>(y1)},
             {});
         ++work.index_rect_rebuilds;
+        // The cells whose mask is rebuilt (the type halo of one more cell is rebuild_rect's own).
+        work.index_cells_rebuilt += static_cast<std::uint64_t>((x1 - 1) / 8 - x0 / 8 + 1) *
+                                    static_cast<std::uint64_t>((y1 - 1) / 8 - y0 / 8 + 1);
         slot->tiles.clear_route_dirty();
     }
 }

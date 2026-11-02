@@ -24,6 +24,7 @@ struct NavWork {
     std::uint64_t crew_visits = 0;         // descendants visited by the crew mirror
     std::uint64_t index_builds = 0;        // full coast index builds
     std::uint64_t index_rect_rebuilds = 0; // dirty rectangles applied incrementally
+    std::uint64_t index_cells_rebuilt = 0; // coarse cells in those rectangles (halo included)
     friend bool operator==(const NavWork&, const NavWork&) = default;
 };
 

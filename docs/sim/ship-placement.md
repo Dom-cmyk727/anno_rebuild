@@ -3,7 +3,7 @@
 **Status:** specification for MAP-BUILD-1 package C (no engine code here), 2026-11-02. Evidence: [`docs/re/ship-placement.md`](../re/ship-placement.md) (read it for addresses, emulation numbers and the unread parts).
 Oracle: `tools/placement_ref.py` with `fixtures/synthetic/sim/placement_vectors.txt` (checked against the original code by `tools/placement_emulate.py`).
 Resolves, for the supported classes: OQ-052 (the placement stand-in), OQ-NAVC-3 (height of a command-built building). OQ-NAVC-2 is closed by the growth trace (`re/ship-placement.md` §6).
-Pointer from `docs/sim/state.md` §8.4 and O-27. Related: [`ship-founding.md`](ship-founding.md) (P7-P11, the coast predicate), [`ship-navigation.md`](ship-navigation.md) 12.13 (tile height byte).
+Pointer from `docs/sim/state.md` §8.4 and O-27. Ordinary land roads (tile objects, `PRODTYPE STRASSE`) are the separate contract [`road-placement.md`](road-placement.md). Related: [`ship-founding.md`](ship-founding.md) (P7-P11, the coast predicate), [`ship-navigation.md`](ship-navigation.md) 12.13 (tile height byte).
 Labels: **ORIGINAL** (address) read or emulated; **ADAPT** an approved deviation, with the reason; **UNKNOWN**.
 
 ## 1. Dependency table (normal `BuildCmd`, not `FoundCmd`)

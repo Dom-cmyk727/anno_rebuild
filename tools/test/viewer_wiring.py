@@ -114,7 +114,7 @@ def main(argv):
         return 2
     out.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, ANNO_DEV_SCRIPT=str(script), ANNO_DEV_SESSION=str(out),
-               ANNO_VIEW_SIZE="1280x720", ANNO_VIEW_AT="1052,444", ANNO_VIEW_QUIT_S="240")
+               ANNO_VIEW_SIZE="1280x720", ANNO_VIEW_AT="1140,516", ANNO_VIEW_QUIT_S="240")
     if flags["app"]:
         env.pop("ANNO_VIEW_AT")  # the lan5 centre means nothing for another start (the opening centres itself)
         env["ANNO_SAVE_DIR"] = str(out.parent / f"{out.name}.saves")

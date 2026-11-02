@@ -60,7 +60,7 @@ the mode ends.
 
 **Unloading.** `U`: the target is the nearest own warehouse of the view, or the one clicked. The request is one hold
 (index, goods) and a whole-ton quantity, 1 .. the hold's tons rounded up. The advisory (`in range`, `would move`,
-`store a/b`) uses the sim's own pure functions (`ShipCargo::footprint_in_range`, `ShipCargo::amount_88`); the sim
+`store a/b`) uses the sim's own pure functions (`ShipCargo::footprint_in_range`, one of the two range predicates: the city must also own a tile of the dock outline, which only the sim checks; `ShipCargo::amount_88`); the sim
 decides. The result line shows the actual `transferred_88`, whether it was limited, and the hold before and after.
 
 ## 4. Save and resume

@@ -1278,6 +1278,10 @@ bool Viewer::opening_handle(const SDL_Event& e) {
             key = OpeningKey::Save;
             break;
         case SDLK_ESCAPE:
+            if (e.key.repeat) {
+                return true; // a held Esc is never the window's quit, whatever the first one
+                             // cancelled
+            }
             key = ui.has_pending() ? std::optional<OpeningKey>(OpeningKey::Escape) : std::nullopt;
             break;
         default:
@@ -1458,6 +1462,23 @@ void Viewer::pan(double dx, double dy) {
 }
 
 void Viewer::clamp() {
+    if (opening_ != nullptr && opening_->ui != nullptr) {
+        // A ship sails over the whole world, not only over the islands: the camera is kept inside
+        // the world's rectangle (its four corners at the sea surface), not inside the islands'
+        // bounds.
+        const OpeningSetup& s = opening_->ui->setup();
+        const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+        const double sea = static_cast<double>(render::kSeaLevel);
+        const auto a = render::corner_point(0, 0, sea, g);
+        const auto b = render::corner_point(s.world_w, 0, sea, g);
+        const auto c = render::corner_point(0, s.world_h, sea, g);
+        const auto d = render::corner_point(s.world_w, s.world_h, sea, g);
+        cam_x_ = std::clamp(cam_x_, std::min({a.first, b.first, c.first, d.first}),
+                            std::max({a.first, b.first, c.first, d.first}));
+        cam_y_ = std::clamp(cam_y_, std::min({a.second, b.second, c.second, d.second}),
+                            std::max({a.second, b.second, c.second, d.second}));
+        return;
+    }
     if (const auto b = current()->bounds(group_)) {
         cam_x_ = std::clamp(cam_x_, static_cast<double>(b->x), static_cast<double>(b->x) + b->w);
         cam_y_ = std::clamp(cam_y_, static_cast<double>(b->y), static_cast<double>(b->y) + b->h);

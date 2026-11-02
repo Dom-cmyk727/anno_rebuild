@@ -515,3 +515,129 @@ TEST_CASE("controls: a click's work is local to the ships of the view, and a mov
     CHECK(f.proj.picks == 1);
     CHECK(f.proj.boxes == 0);
 }
+
+TEST_CASE("controls: founding derives the origin per axis and rotation for a footprint that is not "
+          "square") {
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType wide;
+    wide.id = sim::TypeId{1302};
+    wide.prodtype = 35;
+    wide.width = 3;
+    wide.height = 5;
+    b.add(wide);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    auto s = setup();
+    s.registry = built.value();
+    s.islands = {app::IslandRect{0, 0, 0, 200, 200}};
+    // ox = max(0, cx - (w - 1) / 2), oy likewise, with the footprint of the cursor's rotation:
+    // rotation 0 and 2: 3 x 5 -> half 1, 2; rotation 1 and 3: 5 x 3 -> half 2, 1.
+    const int expect_dx[4] = {1, 2, 1, 2}, expect_dy[4] = {2, 1, 2, 1};
+    for (int rot = 0; rot < 4; ++rot) {
+        Fixture f;
+        f.ui = app::OpeningUi(s);
+        f.click(app::PointerButton::Left, 100, 100);
+        f.key(app::OpeningKey::Found);
+        for (int i = 0; i < rot; ++i) {
+            f.key(app::OpeningKey::Rotate);
+        }
+        const auto r = f.click(app::PointerButton::Left, 500, 700); // tile (50, 70)
+        REQUIRE(r.commands.size() == 1);
+        const auto* found = std::get_if<sim::FoundCmd>(&r.commands[0].body);
+        REQUIRE(found != nullptr);
+        CAPTURE(rot);
+        CHECK(found->placement.rotation == rot);
+        CHECK(found->placement.x == 50 - expect_dx[rot]);
+        CHECK(found->placement.y == 70 - expect_dy[rot]);
+        // Near the edge the origin is clamped at 0 on each axis separately.
+        Fixture g;
+        g.ui = app::OpeningUi(s);
+        g.click(app::PointerButton::Left, 100, 100);
+        g.key(app::OpeningKey::Found);
+        for (int i = 0; i < rot; ++i) {
+            g.key(app::OpeningKey::Rotate);
+        }
+        const auto edge = g.click(app::PointerButton::Left, 15, 500); // tile (1, 50)
+        const auto* e = std::get_if<sim::FoundCmd>(&edge.commands[0].body);
+        REQUIRE(e != nullptr);
+        CHECK(e->placement.x == std::max(0, 1 - expect_dx[rot]));
+        CHECK(e->placement.y == 50 - expect_dy[rot]);
+    }
+}
+
+TEST_CASE("controls: a press whose release never comes does not swallow Esc for good") {
+    Fixture f;
+    f.click(app::PointerButton::Left, 100, 100);
+    f.ui.pointer_down(app::PointerButton::Right, 200, 150);
+    f.ui.abort_gestures(); // focus lost, the release goes elsewhere
+    CHECK_FALSE(f.ui.pressed());
+    CHECK(f.key(app::OpeningKey::Escape).taken); // clears the selection
+    CHECK_FALSE(f.ui.selected().has_value());
+    CHECK_FALSE(f.key(app::OpeningKey::Escape).taken); // nothing left: the window's own
+    // Esc with the press still down cancels it and forgets it as well.
+    f.click(app::PointerButton::Left, 100, 100);
+    f.ui.pointer_down(app::PointerButton::Right, 200, 150);
+    CHECK(f.key(app::OpeningKey::Escape).taken);
+    CHECK_FALSE(f.ui.pressed());
+    CHECK(f.ui.has_pending()); // the selection is still there, Esc reaches it next
+}
+
+TEST_CASE(
+    "controls: an order replaced by a later one is 'replaced', also once the later one ended") {
+    Fixture f;
+    f.click(app::PointerButton::Left, 100, 100);
+    f.click(app::PointerButton::Right, 200, 150);
+    f.ui.submitted(0, app::CommandId{app::CommandOrigin::Window, 1}, 5);
+    f.click(app::PointerButton::Right, 300, 150);
+    f.ui.submitted(0, app::CommandId{app::CommandOrigin::Window, 2}, 6);
+    app::CommandOutcome a;
+    a.state = app::CommandOutcome::State::Applied;
+    a.id = f.ui.tracked()[0].receipt;
+    a.order_id = 7;
+    f.table[1] = a;
+    a.id = f.ui.tracked()[1].receipt;
+    a.order_id = 8;
+    f.table[2] = a;
+    // The second order arrived: the ship carries no order, and the first has no event of its own.
+    f.view.ships[0].order_id.reset();
+    app::ShipEventView e;
+    e.kind = app::ShipEventKind::Arrived;
+    e.ship = sim::FigureId{1};
+    e.order_id = 8;
+    f.view.events = {e};
+    CHECK(f.ui.state_of(f.ui.tracked()[0], f.feed()) == app::TrackState::Superseded);
+    CHECK(f.ui.state_of(f.ui.tracked()[1], f.feed()) == app::TrackState::Arrived);
+    // With nothing later to explain it, the order's end is simply no longer known.
+    Fixture g;
+    g.click(app::PointerButton::Left, 100, 100);
+    g.click(app::PointerButton::Right, 200, 150);
+    g.ui.submitted(0, app::CommandId{app::CommandOrigin::Window, 1}, 5);
+    app::CommandOutcome one;
+    one.state = app::CommandOutcome::State::Applied;
+    one.id = g.ui.tracked()[0].receipt;
+    one.order_id = 7;
+    g.table[1] = one;
+    CHECK(g.ui.state_of(g.ui.tracked()[0], g.feed()) == app::TrackState::Ended);
+}
+
+TEST_CASE("controls: an emptied hold is not sent") {
+    Fixture f;
+    f.view.ships[0].holds = {{42, 0}, {26, 2560}};
+    app::CityView city;
+    city.ref = sim::CityRef{sim::IslandId{0}, sim::CityNo{0}};
+    app::WarehouseView wh;
+    wh.id = sim::BuildingId{1};
+    wh.tile = sim::TileXY{8, 8};
+    wh.w = wh.h = 4;
+    city.warehouse = wh;
+    city.stock_88.assign(64, 0);
+    city.capacity_88 = 50 * 256;
+    f.view.cities = {city};
+    f.click(app::PointerButton::Left, 100, 100);
+    f.key(app::OpeningKey::Unload);
+    // The mode opens on the first non-empty hold; the hold then empties under it.
+    f.view.ships[0].holds = {{42, 0}, {26, 0}};
+    const auto r = f.key(app::OpeningKey::Send);
+    CHECK(r.commands.empty());
+    CHECK(f.ui.message().find("empty") != std::string::npos);
+}

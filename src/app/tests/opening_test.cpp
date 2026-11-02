@@ -608,3 +608,43 @@ TEST_CASE("opening, real files: the runner keeps only its newest view, a held on
     held.reset();
     CHECK(weak.expired()); // nothing else retained the old view
 }
+
+TEST_CASE("opening save: every header line is required and numbers are digits only") {
+    const auto good = app::format_opening_save(sample_save());
+    const std::string text(good.begin(), good.end());
+    const auto edit = [&](const std::string& from, const std::string& to) {
+        std::string t = text;
+        const auto at = t.find(from);
+        REQUIRE(at != std::string::npos);
+        t.replace(at, from.size(), to);
+        return std::vector<std::uint8_t>(t.begin(), t.end());
+    };
+    // A control: the unedited file reads.
+    CHECK(app::parse_opening_save(good).ok());
+    for (const char* line :
+         {"seat 2\n", "turn 41\n", "tick 4100\n", "manifest_name lan5-ship-a\n"}) {
+        CAPTURE(line);
+        const auto r = app::parse_opening_save(edit(line, ""));
+        REQUIRE_FALSE(r.ok());
+        CHECK(r.error().find("required line") != std::string::npos);
+    }
+    for (const char* bad : {"seat -1\n", "seat +2\n", "seat  2\n", "seat 4294967296\n", "seat 2x\n",
+                            "seat \n", "seat 99999999999999999999999\n"}) {
+        CAPTURE(bad);
+        const auto r = app::parse_opening_save(edit("seat 2\n", bad));
+        REQUIRE_FALSE(r.ok());
+        CHECK(r.error().find("not a number") != std::string::npos);
+    }
+    // A manifest name with a newline would end the header early: the writer keeps it on one line.
+    app::OpeningSave s = sample_save();
+    s.identity.manifest_name = "a\n\nb";
+    const auto round = app::parse_opening_save(app::format_opening_save(s));
+    REQUIRE_MESSAGE(round.ok(), (round.ok() ? std::string() : round.error()));
+    CHECK(round.value().identity.manifest_name == "a  b");
+    CHECK(round.value().world == s.world);
+}
+
+TEST_CASE("cli: --ship-start followed by --view is neither") {
+    CHECK_FALSE(
+        app::parse_args({"--ship-start", "m.json", "--seat", "0", "--view", "x.sze"}).has_value());
+}

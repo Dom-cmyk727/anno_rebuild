@@ -246,6 +246,9 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
     if (!have_file) {
         return std::nullopt;
     }
+    if (out.ship_start && !out.play) {
+        return std::nullopt; // --ship-start and then --view: neither a view nor an opening
+    }
     // The opening needs its participant named; the seat and the save mean nothing without it.
     if (out.ship_start ? !out.seat.has_value() : (out.seat || out.resume)) {
         return std::nullopt;

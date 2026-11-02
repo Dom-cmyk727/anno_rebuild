@@ -283,6 +283,7 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
             }
         }
     }
+    std::optional<sim::World> trial;
     for (const auto& island : world.islands()) {
         if (!island || !plain || s.foreign || !s.city || island->index == s.city->island) {
             continue;
@@ -298,7 +299,18 @@ DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
                 for (std::int32_t x = 2; x + 4 <= w && !s.foreign; ++x) {
                     const sim::TileXY at{island->tiles.x0() + x, island->tiles.y0() + y};
                     if (world.building_at(ref, at.x, at.y) == nullptr) {
-                        s.foreign = ForeignSpot{ref, city->owner, at, *plain};
+                        // The sim's placement rule refuses sloped ground (MAP-BUILD-1): the spot is
+                        // one the city's own owner can build on, tried on a copy of the world (a
+                        // refusal changes nothing, so one copy serves every try).
+                        if (!trial) {
+                            trial.emplace(world);
+                        }
+                        sim::BuildCmd build;
+                        build.city = ref;
+                        build.placements.push_back(sim::PlacementWire{*plain, at.x, at.y, 0, 0, 0});
+                        if (trial->apply(sim::Command{city->owner, std::move(build)}).ok()) {
+                            s.foreign = ForeignSpot{ref, city->owner, at, *plain};
+                        }
                     }
                 }
             }
@@ -378,6 +390,7 @@ PlayRunner::PlayRunner(sim::World world, unsigned speed_percent, PlaySchedule* s
         for (const std::optional<sim::City>& city : island->cities) {
             if (city && city->owner == developer_player() && !developer_city_) {
                 developer_city_ = sim::CityRef{island->index, city->number};
+                has_city_.store(true);
             }
         }
     }
@@ -440,7 +453,7 @@ std::vector<PlayRunner::TurnHash> PlayRunner::recorded_hashes() const {
 }
 
 std::string PlayRunner::title_line() const {
-    return title_of(*snapshot(), developer_city_.has_value());
+    return title_of(*snapshot(), has_city_.load());
 }
 
 std::string PlayRunner::title_of(const PlaySnapshot& snapshot, bool money) {
@@ -699,7 +712,18 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     next->turn = turn;
     // The local participant's money and its city's goods (copied; the window never reads the
     // World). The city is looked for again while there is none: a ship start founds it later.
-    if (!developer_city_) {
+    if (opening_) {
+        next->opening = std::make_shared<const OpeningView>(
+            collect_opening_view(world_, local_player_, ship_events_, turn));
+        // The participant's city is the first of its cities in (island, city) order, every turn:
+        // the same one the window's building tool follows (OpeningView::cities.front()).
+        if (next->opening && !next->opening->cities.empty()) {
+            developer_city_ = next->opening->cities.front().ref;
+        } else {
+            developer_city_.reset();
+        }
+        has_city_.store(developer_city_.has_value());
+    } else if (!developer_city_) {
         for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
             const auto& island = world_.islands()[i];
             if (!island) {
@@ -708,13 +732,10 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
             for (const std::optional<sim::City>& city : island->cities) {
                 if (city && city->owner == local_player_ && !developer_city_) {
                     developer_city_ = sim::CityRef{island->index, city->number};
+                    has_city_.store(true);
                 }
             }
         }
-    }
-    if (opening_) {
-        next->opening = std::make_shared<const OpeningView>(
-            collect_opening_view(world_, local_player_, ship_events_, turn));
     }
     if (developer_city_) {
         if (const sim::Player* player = world_.players().find(local_player_)) {

@@ -155,7 +155,7 @@ class ViewerWiringContract(unittest.TestCase):
         self.assertEqual(argv[0], "--play")
         self.assertTrue(argv[1].endswith("lan5.txt"), argv)
         self.assertEqual(argv[2:], ["--renderer", "cpu"])
-        self.assertEqual((out / "child_env.txt").read_text(encoding="utf-8").split("|")[1], "1052,444")
+        self.assertEqual((out / "child_env.txt").read_text(encoding="utf-8").split("|")[1], "1140,516")
 
     # ---- F1: the session record shows the invoked script ran
 

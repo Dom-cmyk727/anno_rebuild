@@ -62,9 +62,20 @@ std::optional<PickedPoint> FrameProjection::pick(double px, double py) const {
         if (!tile) {
             continue;
         }
-        const auto h = scene.island_ground_height(k, static_cast<float>(tile->first) + 0.5F,
-                                                  static_cast<float>(tile->second) + 0.5F);
-        if (h && *h > static_cast<float>(render::kWaterline)) {
+        // The sim's land classifier (docs/render/iso.md, iso.hpp kLandAverage): the average of the
+        // tile's four corner heights above 19. Not the centre against the waterline: a shoal tile
+        // the sim would plan to is not land here either.
+        float sum = 0.0F;
+        bool all = true;
+        for (const float dx : {0.0F, 1.0F}) {
+            for (const float dy : {0.0F, 1.0F}) {
+                const auto h = scene.island_ground_height(k, static_cast<float>(tile->first) + dx,
+                                                          static_cast<float>(tile->second) + dy);
+                all = all && h.has_value();
+                sum += h.value_or(0.0F);
+            }
+        }
+        if (all && sum / 4.0F > static_cast<float>(render::kLandAverage)) {
             out.tile = sim::TileXY{tile->first, tile->second};
             out.ground = true;
             return out;

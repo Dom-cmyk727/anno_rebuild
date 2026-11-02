@@ -1,3 +1,4 @@
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -28,7 +29,36 @@ std::string hex16(std::uint64_t v) {
     return buf;
 }
 
+/// A decimal (base 10) or hexadecimal (base 16) unsigned number of digits only: no sign, no space,
+/// no trailing text, no overflow. nullopt otherwise.
+std::optional<std::uint64_t> strict_number(const std::string& s, int base) {
+    if (s.empty() || s.size() > 20) {
+        return std::nullopt;
+    }
+    std::uint64_t v = 0;
+    for (const char c : s) {
+        int d = -1;
+        if (c >= '0' && c <= '9') {
+            d = c - '0';
+        } else if (base == 16 && c >= 'a' && c <= 'f') {
+            d = c - 'a' + 10;
+        } else if (base == 16 && c >= 'A' && c <= 'F') {
+            d = c - 'A' + 10;
+        }
+        if (d < 0 ||
+            v > (UINT64_MAX - static_cast<std::uint64_t>(d)) / static_cast<std::uint64_t>(base)) {
+            return std::nullopt;
+        }
+        v = v * static_cast<std::uint64_t>(base) + static_cast<std::uint64_t>(d);
+    }
+    return v;
+}
+
 std::optional<std::vector<std::uint8_t>> read_file(const fs::path& p) {
+    std::error_code ec;
+    if (!fs::is_regular_file(p, ec)) {
+        return std::nullopt;
+    }
     std::ifstream in(p, std::ios::binary);
     if (!in) {
         return std::nullopt;
@@ -144,6 +174,25 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
         if (hex16(loaded.value().rules().digest()) != expected_rules) {
             return rwhere + "the saved world carries other rules than its header names";
         }
+        if (loaded.value().clock().tick() != s.tick) {
+            return rwhere + "the saved world is at tick " +
+                   std::to_string(loaded.value().clock().tick()) + ", the header says " +
+                   std::to_string(s.tick);
+        }
+        // The scene is drawn from the manifest's islands: the saved world must have the same ones.
+        const auto rects = [](const sim::World& w) {
+            std::vector<std::array<std::int64_t, 5>> r;
+            for (const auto& island : w.islands()) {
+                if (island) {
+                    r.push_back({island->index.v, island->tiles.x0(), island->tiles.y0(),
+                                 island->tiles.width(), island->tiles.height()});
+                }
+            }
+            return r;
+        };
+        if (rects(loaded.value()) != rects(reference.value())) {
+            return rwhere + "the saved world's islands are not the manifest's";
+        }
         world.emplace(std::move(loaded).value());
         out.identity.resumed_from = to_utf8(*resume);
         out.identity.resumed_hash = hex16(s.state_hash);
@@ -237,11 +286,26 @@ std::vector<std::pair<std::uint32_t, std::uint32_t>> opening_ship_kinds(const si
     return std::vector<std::pair<std::uint32_t, std::uint32_t>>(kinds.begin(), kinds.end());
 }
 
+namespace {
+
+/// Informational header text on one line: control characters (a newline would end the header early)
+/// become spaces.
+std::string header_text(std::string s) {
+    for (char& c : s) {
+        if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f) {
+            c = ' ';
+        }
+    }
+    return s;
+}
+
+} // namespace
+
 std::vector<std::uint8_t> format_opening_save(const OpeningSave& save) {
     std::ostringstream h;
     h << "anno1503-opening-save 1\n"
       << "manifest_hash " << save.identity.manifest_hash << "\n"
-      << "manifest_name " << save.identity.manifest_name << "\n"
+      << "manifest_name " << header_text(save.identity.manifest_name) << "\n"
       << "seat " << save.identity.seat << "\n"
       << "rules_digest " << save.identity.rules_digest << "\n"
       << "registry_digest " << save.identity.registry_digest << "\n"
@@ -269,49 +333,54 @@ parse_opening_save(const std::vector<std::uint8_t>& bytes) {
     }
     OpeningSave save;
     std::uint64_t declared = 0;
-    bool have_bytes = false, have_hash = false;
-    std::map<std::string, bool> seen;
+    std::set<std::string> seen;
     while (std::getline(header, line)) {
         const std::size_t sp = line.find(' ');
         if (sp == std::string::npos) {
             return "malformed header line `" + line + "`";
         }
         const std::string key = line.substr(0, sp), value = line.substr(sp + 1);
-        if (seen[key]) {
+        if (!seen.insert(key).second) {
             return "duplicate header line `" + key + "`";
         }
-        seen[key] = true;
-        char* end = nullptr;
+        const auto number = [&](int base) { return strict_number(value, base); };
         if (key == "manifest_hash") {
             save.identity.manifest_hash = value;
         } else if (key == "manifest_name") {
             save.identity.manifest_name = value;
         } else if (key == "seat") {
-            save.identity.seat = static_cast<std::uint32_t>(std::strtoul(value.c_str(), &end, 10));
+            const auto n = number(10);
+            if (!n || *n > UINT32_MAX) {
+                return std::string("header line `seat` is not a number");
+            }
+            save.identity.seat = static_cast<std::uint32_t>(*n);
         } else if (key == "rules_digest") {
             save.identity.rules_digest = value;
         } else if (key == "registry_digest") {
             save.identity.registry_digest = value;
-        } else if (key == "turn") {
-            save.turn = std::strtoull(value.c_str(), &end, 10);
-        } else if (key == "tick") {
-            save.tick = std::strtoull(value.c_str(), &end, 10);
-        } else if (key == "state_hash") {
-            save.state_hash = std::strtoull(value.c_str(), &end, 16);
-            have_hash = true;
-        } else if (key == "bytes") {
-            declared = std::strtoull(value.c_str(), &end, 10);
-            have_bytes = true;
+        } else if (key == "turn" || key == "tick" || key == "bytes" || key == "state_hash") {
+            const auto n = number(key == "state_hash" ? 16 : 10);
+            if (!n) {
+                return "header line `" + key + "` is not a number";
+            }
+            (key == "turn"    ? save.turn
+             : key == "tick"  ? save.tick
+             : key == "bytes" ? declared
+                              : save.state_hash) = *n;
         } else {
             return "unknown header line `" + key + "`";
         }
-        if (end != nullptr && (*end != '\0' || value.empty())) {
-            return "header line `" + key + "` is not a number";
+    }
+    // Every line is required: a save with a line cut out (a seat, a tick) is not read as a default.
+    for (const char* required : {"manifest_hash", "manifest_name", "seat", "rules_digest",
+                                 "registry_digest", "turn", "tick", "state_hash", "bytes"}) {
+        if (!seen.contains(required)) {
+            return std::string("the header lacks the required line `") + required + "`";
         }
     }
-    if (!have_bytes || !have_hash || save.identity.manifest_hash.empty() ||
-        save.identity.rules_digest.empty() || save.identity.registry_digest.empty()) {
-        return std::string("the header lacks a required line");
+    if (save.identity.manifest_hash.empty() || save.identity.rules_digest.empty() ||
+        save.identity.registry_digest.empty()) {
+        return std::string("the header lacks a required value");
     }
     const std::size_t body = split + 2;
     if (bytes.size() - body != declared) {

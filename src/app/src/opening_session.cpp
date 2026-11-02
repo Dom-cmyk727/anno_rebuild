@@ -14,6 +14,8 @@ OpeningSaver::OpeningSaver(PlayRunner& runner, OpeningIdentity identity, std::fi
 }
 
 OpeningSaver::~OpeningSaver() {
+    // A capture asked for and not taken yet holds this object: the runner forgets it first.
+    runner_.cancel_capture();
     {
         const std::lock_guard lock(mu_);
         stop_ = true;
@@ -103,7 +105,17 @@ void OpeningSaver::work() {
         save.tick = capture.tick;
         save.state_hash = capture.hash;
         save.world = std::move(capture.save);
-        const std::string error = write_file(target_, format_opening_save(save));
+        const std::vector<std::uint8_t> bytes = format_opening_save(save);
+        // What was formatted must read back as what was saved: a file that cannot be resumed is a
+        // failed save, not "saved".
+        std::string error;
+        if (const auto back = parse_opening_save(bytes); !back.ok()) {
+            error = "the save does not read back: " + back.error();
+        } else if (back.value().state_hash != save.state_hash || back.value().world != save.world) {
+            error = "the save does not read back as written";
+        } else {
+            error = write_file(target_, bytes);
+        }
         char hash[32];
         std::snprintf(hash, sizeof hash, "%016llx", static_cast<unsigned long long>(capture.hash));
         std::string line = error.empty() ? "saved " + to_utf8(target_) + " (turn " +

@@ -2,14 +2,14 @@
 # the window keeps drawing and the sim keeps applying commands, and the change becomes Visible only
 # after the held stage is released and a presented frame draws it. Run with --gpu (a real window on
 # the RTX 4090 adapter), with and without --trace. Every `expect` fails the session if not met.
-look 1052 444
+look 1140 516
 key b
 select 1307
 rotate 0
 wait frames 90
 
 # ---- baseline: with nothing held the edit is shown ---------------------------------------------
-click 1052 444
+click 1140 516
 wait outcome
 wait drawn
 expect visibility Visible
@@ -17,7 +17,7 @@ checkpoint baseline_visible
 
 # ---- the chunk builders are held: the object list is committed, the CPU chunks are not fresh ---
 hold chunks
-click 1068 444
+click 1156 516
 wait outcome
 expect outcome Applied
 wait blocked
@@ -26,7 +26,7 @@ expect held chunks
 expect visibility ChunksStale
 checkpoint chunks_held
 # Input and the sim progress meanwhile: a second edit is accepted and applied, still not drawn.
-click 1076 444
+click 1164 516
 wait outcome
 expect outcome Applied
 wait frames 30
@@ -39,7 +39,7 @@ checkpoint chunks_released
 
 # ---- the uploads are held: the CPU chunks are fresh, the GPU copy is not the replacement -------
 hold uploads
-click 1084 444
+click 1172 516
 wait outcome
 wait visibility NotOnGpu
 wait frames 30
@@ -47,7 +47,7 @@ expect held uploads
 expect visibility NotOnGpu
 checkpoint uploads_held
 # Input and the sim progress while the replacement is held: another edit is accepted and applied.
-click 1100 444
+click 1188 516
 wait outcome
 expect outcome Applied
 wait frames 20
@@ -59,7 +59,7 @@ checkpoint uploads_released
 
 # ---- presents count as failed: everything is on the GPU, no successful present ------------------
 hold presents
-click 1092 444
+click 1180 516
 wait outcome
 wait visibility NotPresented
 wait frames 20

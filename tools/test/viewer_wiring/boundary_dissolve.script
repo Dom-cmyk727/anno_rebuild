@@ -11,9 +11,9 @@ wait frames 90
 wheel 6
 wait frames 150
 hold uploads
-look 1200 500
+look 1204 510
 wait frames 60
-click 1200 500
+click 1204 510
 wait outcome
 expect outcome Applied
 wait visibility NotOnGpu
@@ -25,7 +25,7 @@ wait frames 20
 expect visibility NotOnGpu
 checkpoint dissolving
 # Input meanwhile too: the sim goes on while the dissolve runs.
-click 1224 500
+click 1228 510
 wait outcome
 expect outcome Applied
 checkpoint dissolving_second_edit

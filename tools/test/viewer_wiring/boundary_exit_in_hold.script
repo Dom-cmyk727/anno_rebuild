@@ -1,13 +1,13 @@
 # W4-WIN-CLOSE C2 review B1: a session that ends while the chunk builders are held must exit at once,
 # not after the hold's 20 s watchdog (the workers parked in the gate are released before they are
 # joined). Run with --gpu --max-seconds 15.
-look 1052 444
+look 1140 516
 key b
 select 1307
 rotate 0
 wait frames 90
 hold chunks
-click 1068 444
+click 1156 516
 wait outcome
 wait blocked
 expect held chunks

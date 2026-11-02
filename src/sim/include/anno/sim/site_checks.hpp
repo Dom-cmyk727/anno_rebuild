@@ -228,7 +228,7 @@ template <class HeightAt>
         if (!v) {
             return {TerrainResult::Unreadable, 0};
         }
-        low += *v < 0x20 ? 1 : 0;
+        low += *v < 0x20 ? 1U : 0U;
     }
     if (low < n / 2) {
         return {TerrainResult::Rejected, 0};

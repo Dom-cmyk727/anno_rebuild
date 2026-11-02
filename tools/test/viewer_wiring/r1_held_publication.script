@@ -1,12 +1,12 @@
 # R1 through the real play window (W4-WIN-CLOSE C1): the title and the script read one consistent
 # state while a publication is held between a turn's outcome record and its snapshot.
 # Run by tools/test/viewer_wiring.py; every `expect` fails the session if it is not met.
-look 1052 444
+look 1140 516
 key b
 select paid
 rotate 0
 # A first paid build, to have a published outcome that stays shown (the "earlier" control).
-click 1052 444
+click 1140 516
 wait outcome
 expect outcome Applied
 expect published
@@ -16,7 +16,7 @@ wait turns 2
 note money
 hold publication
 select paid
-click 1068 444
+click 1156 516
 wait held
 # The window keeps drawing and handling input while the sim thread waits: frames pass, and keys
 # rebuild the title inside the interval (the tool's own events, not a refresh helper).
@@ -45,7 +45,7 @@ checkpoint released_paid
 # ---- a refusal, held the same way (the sim refuses a second build on the occupied tile) --------
 note money
 hold publication
-click 1068 444
+click 1156 516
 wait held
 wait frames 5
 key n

@@ -3,11 +3,11 @@
 # comparison), and is reseeded once when the tool comes back. The counts are PlacementKnowledge's
 # (rebuilds, deltas, tiles written, foreign deltas, batches seen while the tool was off); no timing.
 # Run by tools/test/viewer_wiring.py; every `expect` fails the session if it is not met.
-look 1052 444
+look 1140 516
 # ---- the tool is off: edits of the city and of another island reach the picture, not the index -
 expect work rebuilds == 0
 expect work tiles == 0
-local build 1307 1060 444
+local build 1307 1148 516
 foreign build
 wait turns 6
 expect work rebuilds == 0
@@ -21,8 +21,8 @@ checkpoint off_edits_not_followed
 key b
 wait frames 4
 expect work rebuilds == 1
-expect occupied 1060 444 yes
-expect occupied 1068 444 no
+expect occupied 1148 516 yes
+expect occupied 1156 516 no
 note work tiles
 note work rebuilds
 checkpoint reseeded_once
@@ -39,31 +39,31 @@ checkpoint foreign_edit_ignored
 # ---- a local build and demolish by the tool's own clicks: the tile deltas, no rebuild ----------
 select 1307
 rotate 0
-click 1068 444
+click 1156 516
 wait outcome
 wait drawn
 expect outcome Applied
 expect work deltas >= 1
 expect work rebuilds same
 expect work tiles grew
-expect occupied 1068 444 yes
+expect occupied 1156 516 yes
 note work tiles
 checkpoint local_build_followed
 key x
-click 1068 444
+click 1156 516
 wait outcome
 wait drawn
 expect work rebuilds same
 expect work tiles grew
-expect occupied 1068 444 no
+expect occupied 1156 516 no
 checkpoint local_demolish_followed
 
 # ---- off again: a local demolish and build are not followed; on again: one reseed ---------------
 key b
 note work deltas
 note work tiles
-local demolish 1060 444
-local build 1307 1076 444
+local demolish 1148 516
+local build 1307 1164 516
 wait turns 6
 expect work deltas same
 expect work tiles same
@@ -72,7 +72,7 @@ checkpoint second_off_spell
 key b
 wait frames 4
 expect work rebuilds grew
-expect occupied 1060 444 no
-expect occupied 1076 444 yes
+expect occupied 1148 516 no
+expect occupied 1164 516 yes
 checkpoint reseeded_again
 quit

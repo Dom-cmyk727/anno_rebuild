@@ -90,12 +90,11 @@ void OpeningUi::leave_modes() {
 void OpeningUi::abort_gestures() {
     // Every press in progress is cancelled: its release acts on nothing (a click after focus came
     // back must not issue an order the user never finished).
-    if (left_.down) {
-        left_.cancelled = true;
-    }
-    if (right_.down) {
-        right_.cancelled = true;
-    }
+    // The press is forgotten, not only marked: its release may never come (focus lost, another
+    // window got it, the building tool took the pointer), and a press that stays down would swallow
+    // Esc for good. An unpaired release is ignored (pointer_up).
+    left_ = Gesture{};
+    right_ = Gesture{};
     if (hover_point_) {
         hover_point_.reset(); // the pointer left, or the window lost focus: its tile is not known
         hover_changed_ = true;
@@ -597,6 +596,10 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
             return out;
         }
         const auto plan = unload_plan(feed);
+        if (plan && plan->hold < ship->holds.size() && ship->holds[plan->hold].amount_88 == 0) {
+            message_ = "no unload: hold [" + std::to_string(plan->hold) + "] is empty (Tab)";
+            return out;
+        }
         if (!plan || !plan->warehouse.valid()) {
             message_ =
                 "no unload: " + (plan ? plan->advisory : std::string("the ship has no cargo"));
@@ -713,6 +716,19 @@ TrackState OpeningUi::state_of(const Tracked& t, const UiFeed& feed) const {
     }
     if (ship->order_id && *ship->order_id > *out.order_id) {
         return TrackState::Superseded;
+    }
+    // The ship carries no order of this id and no event names it: either a later accepted order of
+    // the same ship replaced it (a replacement ends no event), or its event is no longer kept.
+    for (const Tracked& later : tracked_) {
+        if (later.kind != TrackKind::Move || later.ship != t.ship ||
+            later.receipt.n <= t.receipt.n) {
+            continue;
+        }
+        const CommandOutcome next = feed.outcome(later.receipt);
+        if (next.state == CommandOutcome::State::Applied && next.order_id &&
+            *next.order_id > *out.order_id) {
+            return TrackState::Superseded;
+        }
     }
     return TrackState::Ended;
 }

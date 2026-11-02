@@ -206,7 +206,7 @@ ScenarioCounts count(const LoadedScenario& s) {
             c.ore_outside += inside ? 0 : 1;
         }
         for (const OreObject& o : is.ore_objects) {
-            c.ore_discovered += o.discovered.empty() ? 0 : 1;
+            c.ore_discovered += o.discovered.empty() ? 0U : 1U;
         }
         c.cities += is.cities.size();
         for (const ScenarioSpec::CitySpec& city : is.cities) {

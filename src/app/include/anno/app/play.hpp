@@ -229,6 +229,13 @@ class PlayRunner {
     void set_local_player(sim::PlayerId player) {
         local_player_ = player;
         developer_city_.reset(); // the constructor looked for the default player's
+        has_city_.store(false);
+    }
+    /// Ends a capture that was asked for and has not run (the requester is going away).
+    /// Thread-safe.
+    void cancel_capture() {
+        const std::lock_guard lock(capture_mu_);
+        capture_ = nullptr;
     }
     /// Publishes an OpeningView with every snapshot and keeps the ship events for it.
     void set_opening(bool on) { opening_ = on; }
@@ -365,6 +372,9 @@ class PlayRunner {
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.
     std::optional<sim::CityRef> developer_city_;
+    /// developer_city_ has a value: the window's title reads it, developer_city_ is the sim
+    /// thread's.
+    std::atomic<bool> has_city_{false};
     sim::PlayerId local_player_ = developer_player();
     bool opening_ = false;
     ShipEventLog ship_events_;

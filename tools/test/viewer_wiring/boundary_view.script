@@ -2,7 +2,7 @@
 # is elsewhere is Offscreen and is never waited for; a change that was in view and is left behind is
 # OutOfView and is not satisfied by frames that do not draw it; a new surface epoch (a resize) does
 # not let an earlier frame count. Run with --gpu. Every `expect` fails the session if not met.
-look 1052 444
+look 1140 516
 key b
 select 1307
 rotate 0
@@ -10,31 +10,31 @@ wait frames 90
 
 # ---- committed while the view is elsewhere: Offscreen (the publication is held until it moved) -
 hold publication
-click 1052 444
+click 1140 516
 wait held
-look 1160 520
+look 1052 444
 wait frames 20
 release publication
 wait outcome
 wait drawn
 expect visibility Offscreen
-look 1052 444
+look 1140 516
 wait frames 40
 expect visibility Offscreen
 checkpoint offscreen_settled
 
 # ---- in view, then left behind: OutOfView, and back in view waits for the chunks again ---------
 hold chunks
-click 1068 444
+click 1156 516
 wait outcome
 wait blocked
 wait frames 20
 expect visibility ChunksStale
-look 1160 520
+look 1052 444
 wait frames 30
 expect visibility OutOfView
 checkpoint out_of_view
-look 1052 444
+look 1140 516
 wait frames 30
 expect visibility ChunksStale
 checkpoint back_in_view_stale
@@ -45,7 +45,7 @@ checkpoint view_visible
 
 # ---- a new surface epoch while the change waits: frames of the old epoch do not count -----------
 hold chunks
-click 1076 444
+click 1164 516
 wait outcome
 wait blocked
 wait frames 20
@@ -62,7 +62,7 @@ checkpoint resized_visible
 
 # ---- presents fail across a resize: frames of both epochs are presented-as-failed, then it shows -
 hold presents
-click 1092 444
+click 1180 516
 wait outcome
 wait visibility NotPresented
 resize 1280 720
@@ -75,13 +75,13 @@ expect visibility Visible
 checkpoint presents_across_resize_visible
 
 # ---- no visual change: a refused command and a demolish of an empty tile ----------------------
-click 1076 444
+click 1164 516
 wait outcome
 expect outcome Refused Occupied
 wait drawn
 expect visibility NoVisualChange
 key x
-click 1100 444
+click 1188 516
 wait outcome
 expect outcome Applied
 wait drawn

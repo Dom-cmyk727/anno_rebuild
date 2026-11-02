@@ -566,6 +566,29 @@ applying commands:
 - Not covered in the window: `NothingToDraw` (unit cases in `visibility_test`/`dev_visibility_test`),
   a physical display (present-call return is not display time), the Radeon window matrix.
 
+### Verdicts, CPU delivery and the reclaimer baseline (W4-WIN-FINAL)
+
+- **A viewer session passes on its record, not on the child's exit code** (`tools/test/viewer_wiring.py`,
+  `viewer_session.py`): the window's `script.log` must exist, be non-empty and hold every non-wait step of
+  the invoked script in order up to its terminal `quit` (`ran line N: VERB ARG0`), with no `FAIL` line, plus
+  the window's `session.txt`. A zero-exit program that records nothing no longer passes. Contract:
+  `viewer_wiring_contract` (fixture program, positive control first, each broken record fails at its own
+  check). `dev_session_capture.py` ends with a capture verdict apart from the window's status: exit 4 when a
+  requested capture was refused, of the wrong size (kept as `*.invalid`, never as a picture), left
+  unfinished or fewer than `--require-captures N`; the window's own nonzero status is preserved.
+- **The CPU window settles a change only after the frame was delivered** (`Viewer::draw_cpu`): the results of
+  `SDL_UpdateTexture`, `SDL_RenderTexture` and `SDL_RenderPresent` are checked in order; a failed stage skips the
+  later ones, the change stays pending (`NotPresented`), the window says which call failed (first time and every
+  hundredth per stage), retries at the 100 ms back-off, and the same command becomes `Visible` after a
+  delivered frame. Script seam: `fail|pass update|submit|present` hands that stage's real call a null texture
+  or renderer so SDL itself reports the failure; `expect failing`, `note frames`/`expect frames at-most N`.
+  Case: `cpu_delivery_failures` (ctest `viewer_wiring_cpu_delivery_failures`).
+- **The stalled-reclaimer case** settles the process-wide reclaimer before its baseline
+  (`stalled_reclaimer_case`, `settle_reclaimer`); the foreign-work regression runs that same body with
+  gate-arranged foreign generations and a handshake from the case's own settling poll; at each check the
+  counters (waiting, in flight, bytes, queued, completed) of one snapshot are in the failure message.
+  The 2026-11-01 occurrence stays a documented historical uncertainty (no counters were logged).
+
 ### Immutable per-island object lists (W4.3, round du)
 
 Status: implemented in the Mac continuation of round du (`render::Scene::with_islands`,

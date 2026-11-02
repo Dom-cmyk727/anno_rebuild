@@ -33,14 +33,15 @@ once with the label `heavy`, `PROCESSORS` and (sanitizer builds) `TIMEOUT 8000`.
 
 `viewer.cpp` and the SDL input cases are built only with `ANNO_BUILD_VIEWER=ON`. On WSL, SDL's X11/Wayland check
 fails without desktop development packages; the smallest supported headless setup is
-`-DSDL_UNIX_CONSOLE_BUILD=ON` (SDL3 builds with its dummy video driver; no package install). With the GPU
-library off (`-DANNO_BUILD_GPU=OFF`) the window is the CPU/SDL-dummy window, which is what
-`tools/test/viewer_wiring.py` drives (`SDL_VIDEODRIVER=dummy --renderer cpu`):
+`-DSDL_UNIX_CONSOLE_BUILD=ON` (SDL3 builds with its dummy video driver; no package install). The GPU library
+stays on, as in every CI configuration (`bench_picture`, which the shell contracts need, does not build with
+GCC `-Werror` without it): `viewer.cpp` is then instrumented with its GPU code too, and
+`tools/test/viewer_wiring.py` drives the CPU/SDL-dummy window (`SDL_VIDEODRIVER=dummy --renderer cpu`):
 
 ```
 cmake -S <src> -B ~/anno-build/w4-asan-viewer -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=g++-13 \
-      -DANNO_SANITIZE=ON -DANNO_BUILD_TESTS=ON -DANNO_BUILD_VIEWER=ON -DANNO_BUILD_GPU=OFF -DSDL_UNIX_CONSOLE_BUILD=ON
+      -DANNO_SANITIZE=ON -DANNO_BUILD_TESTS=ON -DANNO_BUILD_VIEWER=ON -DANNO_BUILD_GPU=ON -DSDL_UNIX_CONSOLE_BUILD=ON
 ```
 
-A headless CPU run says nothing about the GPU path or about a display. `tools/check_unix_warnings.sh` also
+A headless CPU run says nothing about the GPU path actually rendering or about a display (the sanitizer build cannot create a GPU device here). `tools/check_unix_warnings.sh` also
 compiles the app sources without `ANNO_VIEWER_GPU` with GCC (it found an unused function there).

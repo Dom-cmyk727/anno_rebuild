@@ -428,12 +428,12 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
 - **Rules option:** `Seams::*` (named, hashed).
 
 ## OQ-052: Placement validity is a stand-in (spec D17, stand-in)
-- **Status:** partly resolved by reading (MAP-BUILD-1 package B, 2026-11-02); the engine still uses the stand-in until package C. Open: the unsupported classes below.
+- **Status:** resolved for the supported classes and implemented (MAP-BUILD-1 packages B and C, 2026-11-02): `placement_rule` is the default of `Seams::placement_rule`; the D17 stand-in is only the named seam `stand_in_placement_seam()`. Open: the unsupported classes below.
 - **Area:** simulation / building UX
 - **What:** the island placement check is `0x1007c790` through island slot `+0x6c`, type slots `+0x6c` (`0x10008920`) and `+0x68` (`0x10008f90`). Now read and emulated (`docs/re/ship-placement.md`; contract `docs/sim/ship-placement.md`): for ordinary land (flag word `& 0x7017 == 0x0004`, 254 BuildCmd-reachable types) every vertex of the footprint window must be one multiple of 16 and at least 32, and that value is the height byte; the coast class (`& 0x7017 == 0x2007`, 19 reachable types) uses the shore rule of `ship-founding.md` 10.4. The apply path of the original skips the analysis and trusts the client's byte 8; the port derives it on the server.
 - **Still open (explicit `Unsupported`, never a default accept):** class `0x3000` (8 `MINE`, 4 `STEINBRUCH`; helper `0x10008a80` reads the type's `HIGHMAP` table at `+0x234`), flag bit `0x10` (per-chunk coverage test `0x1007c955`-`0x1007cb3d`), `0x400000` same-PRODTYPE replacement over a market/warehouse (`0x10027b62`), and an original-runtime capture of a real build click (NOT_RUN).
 - **Why it may change the feel:** mines and quarries cannot be built until the `0x3000` helper is read; building over a same-type market is refused.
-- **Faithful default implemented:** until package C, the stand-in rule; afterwards the rule above.
+- **Faithful default implemented:** the rule above (`placement.cpp`, `docs/sim/ship-placement.md` section 6); the stand-in is an explicit seam.
 - **Rules option:** `Seams::placement_rule`.
 
 ## OQ-053: Deposit goods and amounts are placeholders (spec D18, stand-in)
@@ -2076,7 +2076,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
 ## OQ-NAVC-3: Height byte of a command-built building (MAP-NAV-3 N3 review, 2026-11-02)
 
-- **Status:** rule read and specified (`docs/sim/ship-placement.md`); engine change is package C of MAP-BUILD-1.
+- **Status:** resolved and implemented for the supported classes (MAP-BUILD-1 C): a command-built building stores the derived height in `byte0f` and every footprint tile; see `docs/sim/ship-placement.md` section 6 and `route_objects_test.cpp`.
 - **Answer:** the original's UI preview computes `rec[8]` (the height `v` of the footprint window) and sends it; the apply call (`flags | 0x1000000`) skips the analysis and stores the wire byte as the building's `byte0f` and the tile height. The port computes the same `v` on the server from validated terrain and never reads the client byte (so a client cannot build on sea, which the original allows). Ordinary land: `v` (all window vertices equal, multiple of 16, `>= 32`); coast: `max & 0xf0`.
 - **Open:** nothing for the supported classes; the unsupported classes are in OQ-052.
 

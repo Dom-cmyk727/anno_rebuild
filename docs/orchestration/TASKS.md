@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Windows live opening; Mac ordinary roads
+## Current dispatch — 2026-11-03: Windows live opening; Mac road-policy closeout and forester research
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -39,10 +39,15 @@ locally** at clean code/gate source `3276a0bbef3381a348c8bd2e912fdc83b5ee8568`,
 docs `cf78d212f64b5a69633de70341e00e2b5a724e16`; see the
 [direct correction review](reviews/2026-11-02-map-cargo3.md). Its ordinary
 publication is remote-verified. F-L1, the duplicated outline predicate and the
-combined reload cut are closed. The next Mac unit is **MAP-ROAD-1**, below:
-ordinary-road construction/removal through the existing public commands, with
-a road-specific contract reviewed before engine changes. Correct the small
-CARGO-3 documentation wording in R0; do not restart cargo gates.
+combined reload cut are closed. **MAP-ROAD-1 is reviewed with one bounded policy
+correction**, local candidate `242c3433d879537dbaba8162da852a48109b6635`, tested
+source `6e7214686788d3d6f852e2ab4784f6c3b3ba73da`; see the
+[direct road review](reviews/2026-11-03-map-road1.md). The tile-object behavior
+and valid evidence are retained. **MAP-ROAD-CLOSE-1** below separates the new
+restrictions from faithful rules and performs focused verification. A separate
+subagent may start **MAP-ECON-1 E1 research only** in parallel. Harvest engine
+implementation remains gated on the corrected road unit and reviewed contract.
+CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
 reachable on GitHub. W4-OPENING-1 integrates selection, sailing, founding,
@@ -52,7 +57,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-CARGO-3 ACCEPTED LOCALLY; MAP-ROAD-1 READY.** Start R0–R5 below: road contract, public-command placement/removal, road-dependent transport and finite local verification. Windows continues to use exact `0c401c8d`; no new UI or integration dependency is imposed. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ROAD-CLOSE-1 READY; MAP-ECON-1 E1 RESEARCH ONLY may run in parallel.** Close the two explicit road policies, retain valid evidence, and prepare the forester worker contract in a separate subagent. No harvesting engine work yet. Windows keeps exact `0c401c8d`; its assignment is unchanged. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1092,7 +1097,162 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-ROAD-1 — construct and remove ordinary land roads · READY
+### MAP-ROAD-CLOSE-1 — separate the enhanced road policies; parallel forester contract · READY
+
+**Start:** existing Mac branch/worktree `task/MAP-2-original-like`, current local
+road candidate `242c3433d879537dbaba8162da852a48109b6635`, tested code
+`6e7214686788d3d6f852e2ab4784f6c3b3ba73da`. Preserve all completed R0–R5 work.
+Read the [direct review](reviews/2026-11-03-map-road1.md). No rollback, renewed
+road implementation, full preset system or infrastructure repair is assigned.
+Do not merge main into the task branch or push task code before review.
+
+**Outcome:** the two extra road restrictions are explicit hashed/saved choices,
+with the known original road predicates available. Valid previous evidence
+remains scoped to its source. In parallel, obtain a reviewed, original-evidence
+forester contract; this packet does not authorize the harvest engine yet.
+
+#### P0 — read, split ownership and freeze correctly
+
+1. Fetch/read main instructions, the evidence contract and testing README, this
+   packet and review. Read the road report/contract/RE note and
+   `docs/sim/rules-presets.md`. Inspect actual Rules entry points; setup's
+   `RulesPreset` enum is not an implemented preset-to-Rules mapping.
+2. Read `src/sim/include/anno/sim/{config,state_fields,world,placement}.hpp`,
+   `src/sim/src/{placement,apply}.cpp`, relevant config/placement/build/save/
+   version tests, `tools/{placement_ref,sim_stream}.py`, the road vectors and
+   real opening canary. Keep the existing authoritative-height adaptation.
+3. Spawn a separate research subagent for E1 below. Parent owns policy/state/
+   tests and road docs; child owns only the forester evidence/contract/reference.
+   It must not edit engine files, road files, shared REPORTS/TASKS or another
+   executor's checkout. During a frozen gate it may read and write ignored cache
+   research only; no tracked or non-ignored input changes. Promote its completed
+   files only after the gate ends and record the separate source/tool identities.
+4. Check current host CPU/RAM/disk/contention; reuse valid calibration with
+   admission on. Keep the screen awake for owned jobs. Stop only verified exact
+   owned PIDs/sessions; no pattern kills or coordinator changes. No Windows,
+   app/render/W4, active map, original asset or candidate change is assigned.
+
+#### P1 — implement the two explicit choices
+
+1. Orchestrator decision: keep R-A2/R-A3 as explicit enhanced road choices.
+   Add two Rules booleans, default false under the existing faithful convention:
+   `road_require_land_level` (the additional class-`0x4000` floor) and
+   `road_preserve_nonroad_pieces` (the additional ramp/pier refusal), or equally
+   precise names. Both true reproduce the current enhanced road behavior.
+2. Thread the world's actual Rules values through the default placement path
+   and make the pure-rule policy explicit. False for the first option removes
+   only the extra class-`0x4000` floor: class `0x1000` still has the original
+   level threshold and bit-4-gated slope test. False for the second removes only
+   R-A3; existing compatibility and unsupported-class gates still apply.
+3. Keep server-derived height in both policies. Do not restore client-controlled
+   heights, add new road families, change removal/refunds or revisit unrelated
+   transport behavior. Update the reference and document original versus enhanced
+   expectations without changing what the emulator calls the original.
+4. Existing World/ship-loader entry points already accept Rules. Select both
+   enhanced road options explicitly for enhanced sessions/canaries; document their
+   intended preset values. Do not introduce a complete preset mapper that decides
+   unrelated proposal rows or silently alters other session rules.
+5. Persist/hash both options through the existing field list, validation and
+   rules digest. Bump the state stream to the next free version for these actual
+   new fields, with independent Python transcription/golden updates. This is not
+   permission to change the command wire or Windows' exact version-124 input.
+
+#### P2 — small causal checks, then the affected gate
+
+1. Cover all four option combinations through public commands, pure placement
+   and the independent reference. Use otherwise-legal low-level class-`0x4000`
+   and road-over-ramp controls that change outcome only with the relevant option.
+   Keep class-`0x1000` floor/slope and bit-4 controls under both settings.
+2. Verify rules digests differ, save/reload preserves the choices, and original/
+   enhanced atomic/live mixed-batch decisions agree. Use controls where old
+   defaults and explicit enhanced values would produce different outcomes, so
+   testing a copied default cannot pass the policy wiring by accident.
+3. For the stream bump, start from a valid current save/replay control, change the
+   version and correctly recompute its integrity seal. Assert version refusal,
+   not checksum damage. Explain golden changes from the version word and the two
+   explicit rule bytes; do not copy hashes from the implementation as an oracle.
+4. Run the cheap checks first, then focused Debug and ASan/UBSan road/config/
+   save/version/replay cases via the canonical gate. Require the relevant public
+   contracts and reconcile exact inventories. Run one final Debug opening canary
+   with explicit enhanced road rules and fresh-process honest/changed-road replay.
+   If the stream bump makes old logs incompatible, retain them as old evidence
+   and generate the required final-version recording once; do not claim replay
+   reuse across incompatible formats.
+5. Reuse the unchanged portions of the earlier gate/mutant evidence with their
+   revisions. Recheck the controls affected by policy routing and state layout;
+   no full R0–R5 repeat, full-ASan opening, renderer corpus, GPU/adapter matrix,
+   coordinator or general runner campaign is assigned.
+
+#### P3 — narrow review, report and stop
+
+Obtain independent read-only review and focused re-review of fixes, covering
+actual Rules wiring, all policy combinations, persistence/version negatives and
+atomic/live behavior. Correct the replay-compatibility wording from the review.
+Keep original cursor/refund/removal unknowns explicit and do not claim cargo
+recovery beyond the travelling-cart test's actual observation. Commit locally,
+report exact code/docs/gate pins and future API/stream delta, and stop for
+orchestrator review. The only additional work permitted here is E1 below.
+
+#### MAP-ECON-1 E1 — parallel original-worker research and contract ONLY
+
+**Objective:** establish the first authentic forester chain: existing eligible
+tree -> worker -> Farm.raw -> existing production step -> HOLZ output -> existing
+road-connected warehouse cart. The canary must ultimately distinguish new wood
+from the wood carried by the ship. Pre-stocked producer output proves delivery,
+not harvesting/production. Do not substitute a later-unlocked charcoal building
+or ignore original progression to obtain an easy green opening.
+
+1. Read `docs/sim/production.md`, `docs/re/production.md` §§2/4.2/4.3/5 and its
+   open questions, `docs/re/{annowelt,transport}.md`, `docs/sim/state.md`
+   §§4.9/5.9 and D12/T22/T24, current road/ship-start/cargo contracts and
+   `docs/formats/{anlagen,figuren}.md`. Older statements that market carts are
+   unimplemented are superseded; missing harvest behavior is not.
+2. Read `src/sim/src/{driver,production,transport,scheduler,figure,types}.cpp`,
+   corresponding headers, `tick.hpp`, state fields/save/load, original registry,
+   `{production,transport,driver_classes,figure_removal,founding_assets}_test.cpp`
+   and `tools/{figure_digest_ref,sim_stream}.py`. The farm dispatch currently
+   returns job 0 and the forester worker body is not implemented. Do not disguise
+   a resource tile as an existing building-carrier target.
+3. Parse and pin original forester 801 / figure 102 facts and units. Trace farm
+   tick `AnnoWelt 0x1006ea90`, figure-type slot `+0x54` (AnnoGame loader
+   `0x1000fe00`, vtable `0x10021d10` installed at `0x10011129`), worker send
+   `0x10072d20`, entrance prerequisite `0x10072b50`, job factory `0x1003b0e0`,
+   harvest/repeat lead `0x1005c260`, and farm raw receiver `0x1006ee70`.
+   Follow only the identified forester path and its required callees. Existing
+   tools/private environments are preferred; no home-directory or bytewise
+   whole-binary scanning campaign.
+4. Establish job identity, eligible mature-tree classification, search order/
+   bounds, integer units/capacity, harvest amount and duration, tree depletion/
+   replacement, return, repeat, cancellation, home removal, target changes and
+   contention. Reconcile raw resource and produced-goods units from the recipe;
+   do not assume equal-ton conservation across a conversion. Distinguish evidence
+   from adaptations and original-runtime observations still NOT_RUN.
+5. Draft `docs/re/forestry.md` and `docs/sim/forestry.md` with module hashes,
+   addresses, hand-derived discriminating examples and the minimal proposed state/
+   commandless scheduler lifecycle. Add `tools/forester_ref.py` and synthetic
+   vectors only for established pure rules that benefit from an independent
+   reference. No src/ changes or seeded raw/output, fixture trees, loadout edits,
+   relocation or interim-return seam. While P2 gates run, keep drafts in ignored
+   cache; promote only at the coordinated checkpoint.
+6. A fresh independent read-only reviewer must challenge the evidence, units,
+   state/lifetime plan and causal examples. Fix findings and obtain focused
+   re-review. Stop with a genuinely ready contract or the exact unresolved
+   mandatory predicate/address. If planting/regeneration is inseparable from
+   the harvest lifecycle, report that scope dependency rather than silently
+   omitting it. E2–E6 engine work is not authorized by this research assignment.
+
+**Final stop:** reviewed road-policy correction with focused evidence, plus the
+reviewed forester research packet or a precise research dependency. No harvest
+engine, sustainable-economy, UI/render integration or new Windows dependency.
+
+### MAP-ROAD-1 — construct and remove ordinary land roads · REVIEWED, POLICY FOLLOW-UP ABOVE
+
+**Review checkpoint, 2026-11-03:** local docs/report `242c3433`, clean gate/code
+`6e721468`. Read the [direct review](reviews/2026-11-03-map-road1.md). The
+tile-object path and valid 46/46, 135/136 and 1059/1061 execution evidence are
+retained with their named opt-in skips. The two unconditional road adaptations
+need the bounded policy correction above before full acceptance. R0 is closed;
+do not restart R0–R5. Windows' fixed input and opening packet are unchanged.
 
 **Start:** existing Mac worktree, `task/MAP-2-original-like`, accepted code/tests
 `3276a0bbef3381a348c8bd2e912fdc83b5ee8568`, documentation head

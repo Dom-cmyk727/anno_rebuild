@@ -150,14 +150,7 @@ class WorldPlanner final : public NavPlanner {
         q.goal_x_q8 = ship.nav->order->target_x_q8;
         q.goal_z_q8 = ship.nav->order->target_y_q8;
         q.nav_class = facts_.nav_class;
-        LocalStampQuery sq;
-        sq.x_q8 = ship.pos.x;
-        sq.z_q8 = ship.pos.y;
-        sq.self_id = ship.id.v;
-        sq.radius_q8 = static_cast<std::int32_t>(facts_.stamp_radius_88);
-        sq.world_w = static_cast<std::int32_t>(w_.settings().world_width);
-        sq.world_h = static_cast<std::int32_t>(w_.settings().world_height);
-        q.stamps = local_ship_stamps(RegistryShips(w_.figures()), sq, limits);
+        q.stamps = ShipMover::local_stamps(w_, ship);
         const RouteResult r = plan_route(index, q, limits, costs_of(rules));
         NavPlan out;
         switch (r.status) {
@@ -211,6 +204,20 @@ SimEvent event_of(const NavEvent& e, const Figure& ship, std::uint64_t tick) {
 }
 
 } // namespace
+
+std::vector<RouteStamp> ShipMover::local_stamps(const World& w, const Figure& ship) {
+    const FigureType* type = w.types_->find_figure_type(ship.kind);
+    const NavRules& rules = w.rules_.nav;
+    LocalStampQuery sq;
+    sq.x_q8 = ship.pos.x;
+    sq.z_q8 = ship.pos.y;
+    sq.self_id = ship.id.v;
+    sq.radius_q8 = static_cast<std::int32_t>(
+        type != nullptr && type->nav.has_value() ? type->nav->stamp_radius_88 : 1280U);
+    sq.world_w = static_cast<std::int32_t>(w.settings().world_width);
+    sq.world_h = static_cast<std::int32_t>(w.settings().world_height);
+    return local_ship_stamps(RegistryShips(w.figures()), sq, limits_of(rules));
+}
 
 std::vector<NavNode> nav_nodes_of_runs(const std::vector<RouteRun>& runs, unsigned facing,
                                        const NavFacts& facts) {

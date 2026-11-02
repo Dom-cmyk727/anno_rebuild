@@ -22,6 +22,11 @@ class World;
                                                      unsigned facing, const NavFacts& facts);
 
 struct ShipMover {
+    /// The stamps the planner hands the route engine for `ship`: the look-ahead points of the
+    /// other ships near it (route_stamps.hpp). Public so tests can read what a moving world
+    /// really produces.
+    [[nodiscard]] static std::vector<RouteStamp> local_stamps(const World& w, const Figure& ship);
+
     /// One visit at the world tick `ctx.t`. `plans_started` counts the route plans admitted in the
     /// current Advance (the quota of 12.2); the caller owns it and resets it every Advance.
     static void visit(World& w, const TickContext& ctx, Figure& ship, Effects& fx,

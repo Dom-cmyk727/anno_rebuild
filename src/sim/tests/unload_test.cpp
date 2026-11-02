@@ -48,8 +48,7 @@ constexpr std::uint32_t kT = 256;
 constexpr sim::GoodsId kFood = 26, kTools = 41, kWood = 42;
 constexpr std::int32_t kWidth = 80, kHeight = 40;
 constexpr sim::TypeId kKontor{1302};
-constexpr sim::TypeId kKontorOff{9301}; // PRODTYPE 35, but not in Rules::founding_types
-constexpr sim::TypeId kWeaver{9201};    // a workshop: a building that is not a warehouse
+constexpr sim::TypeId kWeaver{9201}; // a workshop: a building that is not a warehouse
 
 std::shared_ptr<const sim::TypeRegistry> registry() {
     auto r = syn::make_founding_types();
@@ -442,8 +441,8 @@ TEST_CASE("unload predicates: one predicate flipped at a time each gives its own
         {"B7 a workshop is not a warehouse", sim::Reject::NotAWarehouse, 0,
          [](Setup& s) { s.workshop = true; },
          with([](sim::UnloadCmd& c, const sim::World& w) { c.warehouse = bid(w, 0, 30, 20); })},
-        {"a Kontor-class type outside founding_types is not a warehouse",
-         sim::Reject::NotAWarehouse, 0, [](Setup& s) { s.wtype = kKontorOff; }, base},
+        {"a PRODTYPE the rules do not list is not a warehouse", sim::Reject::NotAWarehouse, 0,
+         [](Setup& s) { s.rules.cargo.warehouse_prodtypes = {36}; }, base},
         {"B8 the rival's warehouse", sim::Reject::NotCityOwner, 0, [](Setup&) {},
          with([](sim::UnloadCmd& c, const sim::World& w) { c.warehouse = bid(w, 1, 60, 10); })},
         {"unknown warehouse serial", sim::Reject::NoBuildingAtTile, 0, [](Setup&) {},
@@ -746,8 +745,8 @@ TEST_CASE("unload vectors: range, tile and city-set rows agree with the engine")
             const int x0 = std::stoi(t[6]), y0 = std::stoi(t[7]), w = std::stoi(t[8]),
                       h = std::stoi(t[9]);
             const bool accept = t[arrow + 1] == "accept";
-            CHECK(sim::ShipCargo::footprint_in_range(tx, ty, x0, y0, w, h,
-                                                     sim::CargoRules::original()) == accept);
+            CHECK(sim::ShipCargo::footprint_in_range(tx, ty, x0, y0, w, h, sim::CargoRules{}) ==
+                  accept);
             if (w == 4 && h == 4) { // the engine's Kontor is 4 x 4
                 ++engine_rows;
                 Setup s;
@@ -1066,11 +1065,30 @@ TEST_CASE("unload units: the stock helpers and the pure rules") {
     CHECK(sim::ShipCargo::amount_88(10, 1000, 5000) == 1000);
     CHECK(sim::ShipCargo::amount_88(10, 5000, 1000) == 1000);
     // the rules table
-    CHECK(sim::CargoRules::original().validate().empty());
-    CHECK(sim::CargoRules{}.validate().find("empty") != std::string::npos);
-    CHECK(sim::CargoRules{{4, 5}}.validate().find("radius") != std::string::npos);
-    CHECK(sim::CargoRules{{2, 2, 3}}.validate().find("increases") != std::string::npos);
-    CHECK(sim::CargoRules{{0}}.validate().empty()); // radius 0: the footprint itself
+    CHECK(sim::CargoRules{}.problem().empty());
+    sim::CargoRules r;
+    r.dock_half_widths = {};
+    CHECK(r.problem().find("is empty") != std::string::npos);
+    r.dock_half_widths = {4, 5};
+    CHECK(r.problem().find("not the radius") != std::string::npos);
+    r.dock_half_widths = {2, 2, 3};
+    CHECK(r.problem().find("increases") != std::string::npos);
+    r.dock_half_widths = {0};
+    CHECK(r.problem().empty()); // radius 0: the footprint itself
+    r.dock_half_widths = std::vector<std::uint32_t>(300, 299);
+    CHECK(r.problem().find("more than 256") != std::string::npos);
+    r = {};
+    r.warehouse_prodtypes = {36, 35};
+    CHECK(r.problem().find("ascending") != std::string::npos);
+    r.warehouse_prodtypes = {0};
+    CHECK(r.problem().find("non-zero") != std::string::npos);
+    r.warehouse_prodtypes = {};
+    CHECK(r.problem().empty());
+    // Rules::validate names the owner and the field
+    sim::Rules rules;
+    rules.cargo.dock_half_widths = {3, 3};
+    CHECK(rules.validate().find("CargoRules") != std::string::npos);
+    CHECK(rules.validate().find("dock_half_widths") != std::string::npos);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1395,8 +1413,7 @@ TEST_CASE("unload data: another owner and a data-defined ship and warehouse type
           "edit") {
     // Player 1 owns city 1; its ship is a type of the registry with three declared holds although
     // the figure carries five; its warehouse is a data-defined type with PRODTYPE 36 (3 x 3) that
-    // Rules::founding_types names. A PRODTYPE 34 market and a Kontor-class type outside that list
-    // are not warehouses.
+    // Rules::cargo.warehouse_prodtypes lists ({35, 36}). A PRODTYPE 34 market is not a warehouse.
     auto reg = registry();
     sim::BuildingType wh36 = *reg->find(kKontor);
     wh36.id = sim::TypeId{9701};
@@ -1407,7 +1424,7 @@ TEST_CASE("unload data: another owner and a data-defined ship and warehouse type
     market34.prodtype = 34;
     Setup s;
     s.types = registry_with(9601, 2, 1, {wh36, market34});
-    s.rules.founding_types = {1302, 9701};
+    s.rules.cargo.warehouse_prodtypes = {35, 36};
     s.rival_type = sim::TypeId{9701};
     s.rival_x = 60;
     s.rival_y = 10;
@@ -1443,16 +1460,16 @@ TEST_CASE("unload data: another owner and a data-defined ship and warehouse type
         sim::World w = make(z);
         (void)unload_ok(w, 0, cmd(1, first_of(w, 0, {9701}), 0, kWood, 38), 9728);
     }
-    { // A PRODTYPE 34 market that the founding list does not name is no warehouse.
+    { // A PRODTYPE 34 market is no warehouse while the rules list 35 and 36.
         Setup z = s;
         z.wtype = sim::TypeId{9702};
         sim::World w = make(z);
         expect_refused(w, 0, cmd(1, first_of(w, 0, {9702}), 0, kWood, 38),
                        sim::Reject::NotAWarehouse);
     }
-    { // The founding list is the data: a world whose list drops 9701 refuses it.
+    { // The rules list is the data: a world whose list drops 36 refuses the type.
         Setup z = s;
-        z.rules.founding_types = {1302};
+        z.rules.cargo.warehouse_prodtypes = {35};
         sim::World w = make(z);
         expect_refused(w, 1, cmd(2, bid(w, 1, 60, 10), 1, kFood, 3), sim::Reject::NotAWarehouse);
     }

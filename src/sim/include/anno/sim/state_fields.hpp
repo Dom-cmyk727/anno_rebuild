@@ -289,7 +289,13 @@ template <class A, Same<NavRules> S> void fields(A& a, S& s) {
     ar::seq(a, s.class_costs, 8, [&](auto& k) { fields(a, k); });
 }
 
-static_assert(field_count<Rules>() == 24, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<CargoRules>() == 2, "a CargoRules member needs a line in fields");
+template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
+    ar::seq(a, s.warehouse_prodtypes, 4, [&](auto& x) { a.u32(x); });
+    ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
+}
+
+static_assert(field_count<Rules>() == 25, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -317,7 +323,8 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     ar::seq(a, s.shared_visibility, 8, [&](auto& group) {        // stream 121
         ar::seq(a, group, 4, [&](auto& x) { a.u32(x); });
     });
-    fields(a, s.nav); // stream 122
+    fields(a, s.nav);   // stream 122
+    fields(a, s.cargo); // stream 124
 }
 
 // ---- settings scope

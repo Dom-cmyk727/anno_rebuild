@@ -9,27 +9,15 @@
 #pragma once
 
 #include <cstdint>
-#include <vector>
 
 #include <anno/sim/apply.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/config.hpp>
 #include <anno/sim/reject.hpp>
 
 namespace anno::sim {
 
 class World;
-
-/// The range rule's data (docs/sim/ship-cargo.md section 5). The half-widths of the digital disc,
-/// index = distance in tiles along the other axis; the radius is size() - 1. Defaults are the
-/// original's (recurrence at AnnoWelt 0x1003f217, radius 5). Not yet part of Rules: a hashed field
-/// needs a state stream bump (OQ-CARGO-4), so the command uses original().
-struct CargoRules {
-    std::vector<std::uint32_t> dock_half_widths;
-    /// The original's values {5, 5, 5, 4, 3, 2}.
-    [[nodiscard]] static CargoRules original();
-    /// Empty when the table is usable (non-empty, first entry == radius, non-increasing).
-    [[nodiscard]] std::string validate() const;
-};
 
 struct ShipCargo {
     /// Validates (atomically) and applies one UnloadCmd. Total. On success `records[0]` carries the

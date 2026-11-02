@@ -712,8 +712,8 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
     // The previous stream versions are refused with their own message, a stream-123 control loads
     // (122 is the layout before NavMotion::health; the control is this build's valid, checksummed
     // save with only the number changed and re-sealed, and the 122 message names 122).
-    island_test::check_unsupported_versions(bytes, types, {116, 117, 118, 119, 120, 121, 122});
-    CHECK(sim::kStateHashVersion == 123);
+    island_test::check_unsupported_versions(bytes, types, {116, 117, 118, 119, 120, 121, 122, 123});
+    CHECK(sim::kStateHashVersion == 124);
 }
 
 TEST_CASE("nav motion: make_nav_motion is the documented idle state at any position") {

@@ -4,11 +4,14 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -217,6 +220,13 @@ void expected_config(Stream& s) {
         s.u16(50); // shore_orth
         s.u16(69); // shore_diag
     }
+    // cargo (stream 124): hand-written defaults (docs/sim/ship-cargo.md section 5)
+    s.u64(1);  // warehouse_prodtypes: one entry
+    s.u32(35); // KONTOR
+    s.u64(6);  // dock_half_widths: the radius-5 disc
+    for (const std::uint32_t w : {5U, 5U, 5U, 4U, 3U, 2U}) {
+        s.u32(w);
+    }
 }
 
 void expected_settings(Stream& s) {
@@ -381,6 +391,7 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("city_names", [](sim::Rules& r) { r.city_names.push_back("Bremen"); });
     m.emplace_back("shared_visibility", [](sim::Rules& r) { r.shared_visibility = {{0, 1}}; });
     m.emplace_back("nav", [](sim::Rules& r) { r.nav.plans_per_advance += 1; });
+    m.emplace_back("cargo", [](sim::Rules& r) { r.cargo.dock_half_widths = {4, 4, 3, 2, 1}; });
     return m;
 }
 
@@ -590,7 +601,7 @@ TEST_CASE("rules defaults are faithful") {
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
     CHECK(r.shared_visibility.empty());
-    static_assert(sim::field_count<sim::Rules>() == 24);
+    static_assert(sim::field_count<sim::Rules>() == 25);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1501,7 +1512,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 123);
+    CHECK(sim::kStateHashVersion == 124);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
@@ -1939,4 +1950,97 @@ TEST_CASE("rules digest changes with every NavRules field and validates its doma
     sim::Rules empty = base;
     empty.nav.class_costs.clear();
     CHECK(empty.validate().find("class_costs") != std::string::npos);
+}
+
+namespace {
+
+std::string hex_of(const std::vector<std::uint8_t>& v) {
+    static const char* d = "0123456789abcdef";
+    std::string out;
+    for (const std::uint8_t b : v) {
+        out += d[b >> 4];
+        out += d[b & 15];
+    }
+    return out;
+}
+
+std::vector<std::uint8_t> rules_stream(sim::Rules r) {
+    sim::WriteArchive wa;
+    fields(wa, r);
+    return wa.take();
+}
+
+} // namespace
+
+TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcription") {
+    // fixtures/synthetic/sim/cargo_rules_bytes.txt is written by tools/sim_stream.py from the spec
+    // alone (python3 -I tools/sim_stream.py --check also verifies that it is current).
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "cargo_rules_bytes.txt");
+    REQUIRE(in.good());
+    std::map<std::string, std::string> want;
+    for (std::string line; std::getline(in, line);) {
+        if (!line.empty() && line[0] != '#') {
+            std::istringstream ls(line);
+            std::string name, hex;
+            ls >> name >> hex;
+            want[name] = hex;
+        }
+    }
+    REQUIRE(want.size() == 4);
+    sim::Rules def;
+    const std::string def_hex = hex_of(rules_stream(def));
+    CHECK(def_hex == want["rules_default"]);
+    // The CargoRules bytes are the tail of the Rules scope.
+    CHECK(def_hex.size() >= want["cargo_default"].size());
+    CHECK(def_hex.substr(def_hex.size() - want["cargo_default"].size()) == want["cargo_default"]);
+    sim::Rules custom;
+    custom.cargo.warehouse_prodtypes = {35, 36, 40};
+    custom.cargo.dock_half_widths = {3, 3, 3, 2};
+    REQUIRE(custom.validate().empty());
+    const std::string custom_hex = hex_of(rules_stream(custom));
+    CHECK(custom_hex == want["rules_custom"]);
+    CHECK(custom_hex.substr(custom_hex.size() - want["cargo_custom"].size()) ==
+          want["cargo_custom"]);
+    CHECK(def_hex != custom_hex);
+    // The rules digest moves with each list, and the stream reads back.
+    CHECK(def.digest() != custom.digest());
+    sim::Rules back;
+    const std::vector<std::uint8_t> custom_bytes = rules_stream(custom);
+    sim::ReadArchive ra(custom_bytes);
+    fields(ra, back);
+    CHECK_FALSE(ra.failed());
+    CHECK(back.cargo == custom.cargo);
+}
+
+TEST_CASE("cargo rules: invalid tables are refused with their own diagnostic") {
+    const auto message = [](auto edit) {
+        sim::Rules r;
+        edit(r.cargo);
+        return r.validate();
+    };
+    CHECK(message([](sim::CargoRules& c) {
+              c.warehouse_prodtypes = {36, 35};
+          }).find("CargoRules.warehouse_prodtypes") != std::string::npos);
+    CHECK(message([](sim::CargoRules& c) {
+              c.warehouse_prodtypes = {35, 35};
+          }).find("ascending, unique") != std::string::npos);
+    CHECK(message([](sim::CargoRules& c) { c.warehouse_prodtypes = {0}; }).find("non-zero") !=
+          std::string::npos);
+    CHECK(message([](sim::CargoRules& c) { c.dock_half_widths.clear(); }).find("is empty") !=
+          std::string::npos);
+    CHECK(message([](sim::CargoRules& c) { c.dock_half_widths = {4, 5}; }).find("not the radius") !=
+          std::string::npos);
+    CHECK(message([](sim::CargoRules& c) { c.dock_half_widths = {2, 2, 3}; }).find("increases") !=
+          std::string::npos);
+    CHECK(message([](sim::CargoRules& c) {
+              c.dock_half_widths.assign(300, 299);
+          }).find("more than 256") != std::string::npos);
+    CHECK(message([](sim::CargoRules& c) { c.warehouse_prodtypes.clear(); }).empty());
+    // A world with such rules is not created, and the diagnostic reaches the caller.
+    auto bad_spec = sim::synthetic::empty_scenario(1);
+    sim::Rules r;
+    r.cargo.dock_half_widths = {4, 5};
+    auto made = sim::World::create(bad_spec, sim::TypeRegistry::empty(), {}, r);
+    REQUIRE_FALSE(made.ok());
+    CHECK(made.error().find("dock_half_widths") != std::string::npos);
 }

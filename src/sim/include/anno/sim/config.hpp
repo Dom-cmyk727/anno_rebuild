@@ -491,6 +491,25 @@ struct NavRules {
     friend bool operator==(const NavRules&, const NavRules&) = default;
 };
 
+/// MAP-CARGO-1 (stream 124, docs/sim/ship-cargo.md sections 2 and 5): the facts of the ship
+/// unloading rule that are data, not code. Defaults are the original's.
+struct CargoRules {
+    /// PRODTYPE numbers of the building types that are an eligible warehouse (the original: 35,
+    /// KONTOR, `cmp eax, 0x23` at AnnoWelt 0x1003f535). Ascending, unique, non-zero. An empty list
+    /// makes every unload refuse NotAWarehouse.
+    std::vector<std::uint32_t> warehouse_prodtypes = {35};
+    /// The half-widths of the digital disc around the ship's tile (recurrence at AnnoWelt
+    /// 0x1003f217, radius 5): entry k is the largest |dx| at |dy| = k; the radius is size() - 1.
+    /// Non-empty, entry 0 == radius, non-increasing, at most kMaxDockRadius + 1 entries.
+    std::vector<std::uint32_t> dock_half_widths = {5, 5, 5, 4, 3, 2};
+    /// Validation limit, not game data: the range test samples 4 * size() tiles per request, so a
+    /// loaded or configured table is bounded; a mod needing a wider dock raises it with the test.
+    static constexpr std::uint32_t kMaxDockRadius = 255;
+    /// Empty when valid, else "field: reason".
+    [[nodiscard]] std::string problem() const;
+    friend bool operator==(const CargoRules&, const CargoRules&) = default;
+};
+
 /// Opt-in changes. Every default is the original's behaviour; every field
 /// exists only for a decision-needed row of docs/sim/state.md §13 (and two
 /// cheat/QoL switches). Hashed in the header scope.
@@ -577,6 +596,8 @@ struct Rules {
     std::vector<std::vector<std::uint32_t>> shared_visibility;
     /// MAP-NAV-2 (stream 122): ship movement and route planning rules.
     NavRules nav;
+    /// MAP-CARGO-1 (stream 124): the ship unloading rule's data.
+    CargoRules cargo;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

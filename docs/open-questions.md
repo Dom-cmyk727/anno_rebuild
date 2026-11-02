@@ -2106,8 +2106,8 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Port:** none of them is accepted by the rebuild's `UnloadCmd`; the cannon arm in particular is a goods source without a ledger and must not be ported as written.
 - **How to resolve:** a separate package when loading, trading or cannons enter the scope.
 
-## OQ-CARGO-4: Where do the warehouse set and the dock disc live, without a state stream bump? (MAP-CARGO-1 U2, 2026-11-02)
+## OQ-CARGO-4: Where do the warehouse set and the dock disc live? (MAP-CARGO-1 U2, 2026-11-02) - CLOSED
 
-- **Status:** open (decision needed), interim implemented.
+- **Status:** closed 2026-11-02 (coordinator decision).
 - **Area:** simulation / ship cargo / rules.
-- **What is known:** The contract (docs/sim/ship-cargo.md section 5) puts `CargoRules { warehouse_prodtypes = {35}, dock_half_widths = {5,5,5,4,3,2} }` into the hashed Rules. Adding a field to `Rules` moves the state stream (the rules are in the header scope, `state_fields.hpp`), which U2 may not do ("no stream bump"). Interim, behaviour only: an eligible warehouse is a building whose type id is in `Rules::founding_types` (hashed, data, default `{1302}`) and whose PRODTYPE is in the market block 33..64, the same pair the founding command tests; the dock disc is `CargoRules::original()` (a code default, `ship_cargo.cpp`). With the shipped data this equals the contract (PRODTYPE 35 only). Differences: a data-defined type needs the founding list instead of its own PRODTYPE list, and a type in the list with PRODTYPE 33/34/36.. would be accepted; the disc radius is not configurable. Decision needed: add `CargoRules` to `Rules` with a stream bump (goldens, `tools/sim_stream.py`, `config_test`), or keep the interim.
+- **Resolution:** `CargoRules { warehouse_prodtypes = {35}, dock_half_widths = {5,5,5,4,3,2} }` is a hashed, saved member of `Rules` from stream version 124, validated on create and load; the eligibility test uses it (no dependence on `founding_types`). See docs/sim/state.md (stream 124) and docs/sim/ship-cargo.md section 11.

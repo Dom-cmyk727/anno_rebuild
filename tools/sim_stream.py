@@ -63,6 +63,9 @@ holds 1302), per player the relation rows and the discovery set (two u64 counts,
 the player mask, per island the players present (a u64 count each, 0 here) and per figure the u32
 state word (the transcribed registries hold no figure).
 
+Stream 124 (task MAP-CARGO-1) adds Rules::cargo after nav: the eligible warehouse PRODTYPEs and the dock
+half-widths (two u64-counted u32 lists).
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -83,7 +86,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 123
+STATE_HASH_VERSION = 124
 PRNG_TIMELINE_VERSION = 3
 
 
@@ -248,7 +251,17 @@ def nav_rules_bytes():
     return b
 
 
-def rules_bytes(full_tick=False):
+CARGO_DEFAULT = ([35], [5, 5, 5, 4, 3, 2])
+
+
+def cargo_rules_bytes(cargo=CARGO_DEFAULT):
+    """Rules::cargo (stream 124, docs/sim/ship-cargo.md section 5): u64 count and u32 PRODTYPEs of the eligible
+    warehouses (default 35, KONTOR), then u64 count and u32 dock half-widths (default the radius-5 disc 5 5 5 4 3 2)."""
+    prodtypes, widths = cargo
+    return u64(len(prodtypes)) + b''.join(u32(x) for x in prodtypes) + u64(len(widths)) + b''.join(u32(x) for x in widths)
+
+
+def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
@@ -258,7 +271,8 @@ def rules_bytes(full_tick=False):
     # founding_types (stream 120): u64 count 1, the Kontor 1302; shared_visibility (121): u64 0
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
             + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0)
-            + u64(0) + nav_rules_bytes())  # city_names (120), shared_visibility (121): both empty; nav (122)
+            + u64(0) + nav_rules_bytes()  # city_names (120), shared_visibility (121): both empty; nav (122)
+            + cargo_rules_bytes(cargo))  # cargo (124)
 
 
 def settings_bytes(width=0, height=0):
@@ -888,6 +902,22 @@ def ship_hold_fixture_text():
     return '\n'.join(lines) + '\n'
 
 
+CARGO_CUSTOM = ([35, 36, 40], [3, 3, 3, 2])
+
+
+def cargo_rules_fixture_text():
+    lines = ['# Rules bytes of stream version %d with the CargoRules of MAP-CARGO-1 (docs/sim/ship-cargo.md section 5).' % STATE_HASH_VERSION,
+             '# Written by tools/sim_stream.py --write-cargo-rules from the spec alone (no C++). Columns: name hex.',
+             '# cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.']
+    for name, cargo in (('default', CARGO_DEFAULT), ('custom', CARGO_CUSTOM)):
+        lines.append('cargo_%s %s' % (name, cargo_rules_bytes(cargo).hex()))
+        lines.append('rules_%s %s' % (name, rules_bytes(False, cargo).hex()))
+    return '\n'.join(lines) + '\n'
+
+
+CARGO_RULES_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
+                                   'synthetic', 'sim', 'cargo_rules_bytes.txt')
+
 HOLDS_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
                              'synthetic', 'sim', 'ship_holds.txt')
 
@@ -897,7 +927,14 @@ def main():
     ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
     ap.add_argument('--write-holds', action='store_true',
                     help='write fixtures/synthetic/sim/ship_holds.txt and exit')
+    ap.add_argument('--write-cargo-rules', action='store_true',
+                    help='write fixtures/synthetic/sim/cargo_rules_bytes.txt and exit')
     args = ap.parse_args()
+    if args.write_cargo_rules:
+        with open(CARGO_RULES_FIXTURE, 'w') as f:
+            f.write(cargo_rules_fixture_text())
+        print('wrote', os.path.normpath(CARGO_RULES_FIXTURE))
+        return 0
     if args.write_holds:
         with open(HOLDS_FIXTURE, 'w') as f:
             f.write(ship_hold_fixture_text())
@@ -930,6 +967,9 @@ def main():
         bad += 1
     if not os.path.exists(HOLDS_FIXTURE) or open(HOLDS_FIXTURE).read() != ship_hold_fixture_text():
         print('ship_holds.txt differs from the transcription (run --write-holds)')
+        bad += 1
+    if not os.path.exists(CARGO_RULES_FIXTURE) or open(CARGO_RULES_FIXTURE).read() != cargo_rules_fixture_text():
+        print('cargo_rules_bytes.txt differs from the transcription (run --write-cargo-rules)')
         bad += 1
     print('goldens agree' if bad == 0 else '%d difference(s)' % bad)
     return 1 if bad else 0

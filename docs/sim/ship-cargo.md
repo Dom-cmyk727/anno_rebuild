@@ -60,7 +60,7 @@ struct UnloadCmd {
   unencodable as for 0xF070-0xF072. Payload 28 bytes little-endian: `u64 ship, u64 warehouse, u32 hold, u32 goods, u32 tons`; decode refuses
   a wrong length. `kCommandWireVersion` is unchanged (the precedent of `MoveCmd`/`StopCmd`; U2 confirms against the replay-format rule and
   adds the independent command bytes).
-* **No new authoritative state:** the holds and the city stock already exist, are hashed and saved. No stream bump.
+* **No new authoritative state:** the holds and the city stock already exist, are hashed and saved. The only stream change is `Rules::cargo` (section 5, stream 124); the command itself adds none.
 * **Outcome:** `ApplyResult.status`; on success `records[0]` carries `status None`, `building = warehouse` and a new field
   `std::uint64_t transferred_88 = 0` on `RecordResult` (0 for every other command and every refusal). The hold and the stock after the
   transfer are read from the world.
@@ -253,13 +253,15 @@ and of the foreign arm's notification records), OQ-CARGO-3 (cannon, `0x6b` and f
 `UnloadCmd` is variant alternative 10, tag `0xF073` (`command.hpp`, `codec.cpp`), dispatched by `Commands::apply` to `ShipCargo::unload`
 (`ship_cargo.hpp/.cpp`, a friend of `World`). Validation is the order of section 3 against live state, resolving the ship with
 `find_figure` and the warehouse by the island its id names (`Island::find_building`, the `by_id` cache for its city): no scan and no clone.
-`CityStock::free_88` / `credit` implement section 4 (wide, no clamp, never lowers a stock). Behaviour only: no authoritative state,
-`kStateHashVersion` and `kCommandWireVersion` unchanged, no golden moved.
+`CityStock::free_88` / `credit` implement section 4 (wide, no clamp, never lowers a stock). The command adds no
+authoritative state; `CargoRules` moves the stream to 124 (state.md), `kCommandWireVersion` is unchanged.
 
 * **Ship class** is the founding veto's BEWOHNTYPE 113 (`NotAShip` otherwise); the hold limit of step 9 is `min(holds.size(),
   hold_count_a + hold_count_b)` when the type has navigation facts, else `holds.size()`.
-* **Interim of section 5's `CargoRules` (OQ-CARGO-4).** `warehouse_prodtypes` is not a Rules field yet: a warehouse is a building type listed in
-  `Rules::founding_types` whose PRODTYPE is 33..64; `dock_half_widths` is `CargoRules::original()` in code. Equal to the contract on the shipped data.
+* **Rules (OQ-CARGO-4, closed).** `CargoRules` (`warehouse_prodtypes`, `dock_half_widths`) is a hashed, saved part of `Rules` from stream 124
+  (`config.hpp`, `state_fields.hpp`); the eligibility test is `warehouse_prodtypes` against the building type's PRODTYPE, not `founding_types`.
+  Validation in `Rules::validate` (specific `CargoRules.<field>` diagnostics). A data-defined warehouse type with its own PRODTYPE needs only a
+  rules entry (`unload data`).
 * **Fractional requests** cannot be sent: the wire carries whole tons, so the "fractional request" case does not exist; fractional stored
   amounts and remainders are exact (tests `unload fractions`).
 * **Acceptance table coverage** (`src/sim/tests/unload_test.cpp`): A rows: every vector of `cargo_vectors.txt` through the engine (34 cases, 15

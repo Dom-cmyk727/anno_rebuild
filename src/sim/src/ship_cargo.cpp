@@ -20,14 +20,6 @@ ApplyResult refuse(Reject r) {
     return out;
 }
 
-/// A ship founds a city with a warehouse type of Rules::founding_types whose PRODTYPE is in the
-/// market block 33..64 (founding.cpp); an unloading warehouse is the same set (the original's
-/// KONTOR, PRODTYPE 35, is the one type of the default), so a data-defined second warehouse type
-/// needs no engine edit.
-constexpr bool is_market_block(std::uint32_t prodtype) {
-    return prodtype >= 33 && prodtype <= 64;
-}
-
 /// 0 when `p` lies in [lo, lo + length - 1], else the distance to the nearer edge tile.
 std::int64_t axis_distance(std::int64_t p, std::int64_t lo, std::int64_t length) {
     const std::int64_t hi = lo + length - 1;
@@ -38,25 +30,6 @@ std::int64_t axis_distance(std::int64_t p, std::int64_t lo, std::int64_t length)
 }
 
 } // namespace
-
-CargoRules CargoRules::original() {
-    return CargoRules{{5, 5, 5, 4, 3, 2}};
-}
-
-std::string CargoRules::validate() const {
-    if (dock_half_widths.empty()) {
-        return "cargo: dock_half_widths is empty";
-    }
-    if (dock_half_widths[0] != dock_half_widths.size() - 1) {
-        return "cargo: dock_half_widths[0] is not the radius";
-    }
-    for (std::size_t i = 1; i < dock_half_widths.size(); ++i) {
-        if (dock_half_widths[i] > dock_half_widths[i - 1]) {
-            return "cargo: dock_half_widths increases";
-        }
-    }
-    return {};
-}
 
 std::uint64_t ShipCargo::amount_88(std::uint32_t tons, std::uint64_t hold_amount_88,
                                    std::uint64_t free_88) {
@@ -81,7 +54,7 @@ bool ShipCargo::footprint_in_range(std::int64_t tx, std::int64_t ty, std::int64_
 ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd& cmd,
                               const InAdvance*) {
     const TypeRegistry& types = *w.types_;
-    const CargoRules cargo = CargoRules::original();
+    const CargoRules& cargo = w.rules_.cargo;
     const veto::Rules vrules; // the ship class is the founding command's (BEWOHNTYPE 113)
     // Step 0 (the issuer is a known player) is Commands::apply's. 1: the request.
     if (cmd.tons == 0) {
@@ -111,9 +84,8 @@ ApplyResult ShipCargo::unload(World& w, const Command& command, const UnloadCmd&
         return refuse(Reject::NoBuildingAtTile);
     }
     const BuildingType* btype = types.find(building->type);
-    if (btype == nullptr || !is_market_block(btype->prodtype) ||
-        !std::binary_search(w.rules_.founding_types.begin(), w.rules_.founding_types.end(),
-                            building->type.v)) {
+    if (btype == nullptr || !std::binary_search(cargo.warehouse_prodtypes.begin(),
+                                                cargo.warehouse_prodtypes.end(), btype->prodtype)) {
         return refuse(Reject::NotAWarehouse);
     }
     const auto key = island.cache.by_id.find(cmd.warehouse);

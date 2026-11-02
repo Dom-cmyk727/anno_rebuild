@@ -469,6 +469,30 @@ std::string WorldSettings::validate() const {
 
 // ---- Rules
 
+std::string CargoRules::problem() const {
+    for (std::size_t i = 0; i < warehouse_prodtypes.size(); ++i) {
+        if (warehouse_prodtypes[i] == 0 ||
+            (i > 0 && warehouse_prodtypes[i - 1] >= warehouse_prodtypes[i])) {
+            return "warehouse_prodtypes: must be ascending, unique and non-zero";
+        }
+    }
+    if (dock_half_widths.empty()) {
+        return "dock_half_widths: is empty";
+    }
+    if (dock_half_widths.size() > std::size_t{kMaxDockRadius} + 1) {
+        return "dock_half_widths: more than " + std::to_string(kMaxDockRadius + 1) + " entries";
+    }
+    if (dock_half_widths[0] != dock_half_widths.size() - 1) {
+        return "dock_half_widths: entry 0 is not the radius (size - 1)";
+    }
+    for (std::size_t i = 1; i < dock_half_widths.size(); ++i) {
+        if (dock_half_widths[i] > dock_half_widths[i - 1]) {
+            return "dock_half_widths: increases at entry " + std::to_string(i);
+        }
+    }
+    return {};
+}
+
 std::string Rules::validate() const {
     constexpr const char* kOwner = "Rules";
     if (!valid_slot_policy(slot_policy)) {
@@ -572,6 +596,10 @@ std::string Rules::validate() const {
                                " needs positive costs with diagonal >= orthogonal");
             }
         }
+    }
+    if (const std::string c = cargo.problem(); !c.empty()) {
+        const std::size_t colon = c.find(':');
+        return bad("CargoRules", c.substr(0, colon).c_str(), c.substr(colon + 2));
     }
     for (const std::string& n : city_names) {
         if (n.find('\0') != std::string::npos) {

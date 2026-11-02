@@ -118,7 +118,11 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // optional `u32 health` (the current hit points, absent = explicitly unknown) after res24. Rules
 // and the registry digest are unchanged; every state hash moves through the version in the header,
 // and a world with a navigating ship also through the new bytes.
-inline constexpr std::uint32_t kStateHashVersion = 123;
+// Stream at 124 (task MAP-CARGO-1, docs/sim/ship-cargo.md section 5): Rules gain `cargo`
+// (CargoRules: u64 count and u32 PRODTYPEs of the eligible warehouses, then u64 count and u32 dock
+// half-widths), after nav. Nothing else changes; every state hash moves through the version in the
+// header and the Rules bytes.
+inline constexpr std::uint32_t kStateHashVersion = 124;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

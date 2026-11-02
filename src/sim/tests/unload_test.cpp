@@ -1265,3 +1265,195 @@ TEST_CASE("unload session: a recorded transfer replays, a changed amount or targ
     CHECK_FALSE(diverged.reproduced());
     CHECK(city(moved, 1).stock.stock[kWood] == 0); // nothing reached the rival either
 }
+
+// ---------------------------------------------------------------------------------------------
+// Cargo and sailing, and data-defined content
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+/// The founding registry plus a navigating ship type `id` (BEWOHNTYPE 113) with `hold_a + hold_b`
+/// declared holds and a 1000 t hold capacity, and any extra building types.
+std::shared_ptr<const sim::TypeRegistry>
+registry_with(std::uint32_t id, std::uint32_t hold_a, std::uint32_t hold_b,
+              const std::vector<sim::BuildingType>& extra = {}) {
+    auto reg = registry();
+    sim::TypeRegistry::Builder b;
+    b.walk_tables(sim::synthetic_walk_tables());
+    for (const sim::BuildingType& t : reg->types()) {
+        b.add(t);
+    }
+    for (const sim::BuildingType& t : extra) {
+        b.add(t);
+    }
+    for (const sim::FigureType& f : reg->figure_types()) {
+        b.figure_type(f);
+    }
+    sim::FigureType nav = *reg->find_figure_type(1502);
+    nav.id = id;
+    nav.capacity_88 = 1000 * kT;
+    nav.nav = sim::NavFacts{154618816U, 472446400U, 6000U, hold_a, hold_b, 0U, 1280U};
+    b.figure_type(nav);
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    return built.value();
+}
+
+/// The factors of the Move segments in the order they start, sampled every 10 ms: a new segment
+/// is a Move sample after a non-Move sample or one whose remaining length grew.
+struct SegmentWatch {
+    std::vector<std::uint32_t> starts;
+    bool in_move = false;
+    std::uint64_t last_remaining = 0;
+    std::uint32_t current = 0;
+    void sample(const sim::Figure& f) {
+        const sim::NavSegment& seg = f.nav->seg;
+        if (seg.kind != sim::NavSegKind::Move) {
+            in_move = false;
+            return;
+        }
+        if (!in_move || seg.remaining_x500 > last_remaining) {
+            starts.push_back(seg.factor_percent);
+        }
+        in_move = true;
+        last_remaining = seg.remaining_x500;
+        current = seg.factor_percent;
+    }
+};
+
+} // namespace
+
+TEST_CASE("unload sailing: the cargo factor is read at the next segment start, a running segment "
+          "keeps its factor, the crew stays carried") {
+    // A 3000 t wood hold on a ship of 4 + 2 holds of 1000 t: L = 100 - trunc(17 * 768000 /
+    // (6 * 256000)) = 100 - 8 = 92 and, at full health, V = (35 + 65) * 92 / 100 = 92
+    // (tools/ship_step_ref.py, speed_factor_vectors.txt). Unloaded, S = 0 and V = 100.
+    Setup s;
+    s.types = registry_with(9507, 4, 2);
+    s.rules.nav.cargo_penalty_percent = 17;
+    ShipDef sh;
+    sh.kind = 9507;
+    sh.tx = 16;
+    sh.ty = 38;
+    sh.holds = {sim::ShipHold{kWood, 3000 * kT}};
+    ShipDef scout;
+    scout.kind = 717;
+    scout.tx = 16;
+    scout.ty = 38;
+    scout.parent = 0;
+    scout.holds = {};
+    s.ships = {sh, scout};
+    s.wx = 15;
+    s.wy = 30;
+    s.capacity = 4000 * kT;
+    const sim::MoveCmd go{sim::FigureId{1}, 70 * 256 + 128, 38 * 256 + 128};
+    sim::World loaded = make(s);   // keeps its cargo
+    sim::World unloaded = make(s); // unloads while the first segment is running
+    REQUIRE(loaded.apply(sim::Command{sim::PlayerId{0}, go}).ok());
+    REQUIRE(unloaded.apply(sim::Command{sim::PlayerId{0}, go}).ok());
+    SegmentWatch a, b;
+    bool done = false;
+    std::uint32_t factor_at_unload = 0;
+    for (int i = 0; i < 6000 && a.starts.size() < 8; ++i) {
+        loaded.advance(10);
+        unloaded.advance(10);
+        a.sample(ship(loaded));
+        b.sample(ship(unloaded));
+        if (!done && !b.starts.empty()) {
+            // The first movement segment is running with the cargo factor.
+            CHECK(b.starts[0] == 92);
+            const sim::BuildingId wh = bid(unloaded, 0, 15, 30);
+            const sim::FigureId crew_parent = ship(unloaded, 2).parent;
+            (void)unload_ok(unloaded, 0, cmd(1, wh, 0, kWood, 3000), 3000 * kT);
+            factor_at_unload = unloaded.figures().list.slots[0]->nav->seg.factor_percent;
+            CHECK(factor_at_unload == 92); // the running segment is untouched
+            CHECK(ship(unloaded).holds[0] == sim::ShipHold{0, 0});
+            CHECK(ship(unloaded, 2).parent == crew_parent); // the scout is still carried
+            CHECK(ship(unloaded, 2).parent == sim::FigureId{1});
+            done = true;
+            b.starts.resize(1); // forget nothing after this point
+        }
+    }
+    REQUIRE(done);
+    // The ship with its cargo sails every segment at 92.
+    REQUIRE(a.starts.size() >= 6);
+    for (const std::uint32_t f : a.starts) {
+        CHECK(f == 92);
+    }
+    // The unloaded ship's first segment ran at 92 to its end (checked above at the unload and by
+    // its sampling), every later one starts at 100.
+    REQUIRE(b.starts.size() >= 4);
+    CHECK(b.starts[0] == 92);
+    for (std::size_t i = 1; i < b.starts.size(); ++i) {
+        CHECK(b.starts[i] == 100);
+    }
+    CHECK(ship(unloaded, 2).parent == sim::FigureId{1}); // still carried after the voyage so far
+    CHECK(unloaded.check_invariants().empty());
+}
+
+TEST_CASE("unload data: another owner and a data-defined ship and warehouse type need no engine "
+          "edit") {
+    // Player 1 owns city 1; its ship is a type of the registry with three declared holds although
+    // the figure carries five; its warehouse is a data-defined type with PRODTYPE 36 (3 x 3) that
+    // Rules::founding_types names. A PRODTYPE 34 market and a Kontor-class type outside that list
+    // are not warehouses.
+    auto reg = registry();
+    sim::BuildingType wh36 = *reg->find(kKontor);
+    wh36.id = sim::TypeId{9701};
+    wh36.prodtype = 36;
+    wh36.width = wh36.height = 3;
+    sim::BuildingType market34 = *reg->find(kKontor);
+    market34.id = sim::TypeId{9702};
+    market34.prodtype = 34;
+    Setup s;
+    s.types = registry_with(9601, 2, 1, {wh36, market34});
+    s.rules.founding_types = {1302, 9701};
+    s.rival_type = sim::TypeId{9701};
+    s.rival_x = 60;
+    s.rival_y = 10;
+    ShipDef p1;
+    p1.kind = 9601;
+    p1.owner = 1;
+    p1.tx = 56;
+    p1.ty = 10;
+    p1.holds = {sim::ShipHold{kWood, 20 * kT}, sim::ShipHold{kFood, 7 * kT},
+                sim::ShipHold{kTools, 9 * kT}, sim::ShipHold{kTools, 9 * kT},
+                sim::ShipHold{kWood, 9 * kT}};
+    s.ships = {ShipDef{}, p1}; // player 0's 1502 and player 1's 9601
+    {
+        sim::World w = make(s);
+        const sim::BuildingId r = bid(w, 1, 60, 10);
+        // Player 1 unloads into its own data-defined warehouse. Player 0's identical request for
+        // player 1's ship is a wrong owner; player 0 into player 1's warehouse is a wrong city.
+        (void)unload_ok(w, 1, cmd(2, r, 1, kFood, 3), 3 * kT, 1);
+        CHECK(city(w, 1).stock.stock[kFood] == 3 * kT);
+        CHECK(city(w, 0).stock.stock[kFood] == 0);
+        expect_refused(w, 0, cmd(2, r, 0, kWood, 5), sim::Reject::NotShipOwner);
+        expect_refused(w, 0, cmd(1, r, 0, kWood, 5), sim::Reject::NotCityOwner);
+        // The declared hold count of the type (2 + 1) limits the index, not the five holds.
+        (void)unload_ok(w, 1, cmd(2, r, 2, kTools, 4), 4 * kT, 1);
+        expect_refused(w, 1, cmd(2, r, 3, kTools, 4), sim::Reject::BadIndex);
+        expect_refused(w, 1, cmd(2, r, 4, kWood, 4), sim::Reject::BadIndex);
+        // Player 1's ship cannot use player 0's warehouse.
+        expect_refused(w, 1, cmd(2, bid(w, 0, 15, 10), 0, kWood, 5), sim::Reject::NotCityOwner);
+    }
+    { // Player 0's own city may use the data-defined type too: no player 0 or type 1302 inside.
+        Setup z = s;
+        z.wtype = sim::TypeId{9701};
+        sim::World w = make(z);
+        (void)unload_ok(w, 0, cmd(1, first_of(w, 0, {9701}), 0, kWood, 38), 9728);
+    }
+    { // A PRODTYPE 34 market that the founding list does not name is no warehouse.
+        Setup z = s;
+        z.wtype = sim::TypeId{9702};
+        sim::World w = make(z);
+        expect_refused(w, 0, cmd(1, first_of(w, 0, {9702}), 0, kWood, 38),
+                       sim::Reject::NotAWarehouse);
+    }
+    { // The founding list is the data: a world whose list drops 9701 refuses it.
+        Setup z = s;
+        z.rules.founding_types = {1302};
+        sim::World w = make(z);
+        expect_refused(w, 1, cmd(2, bid(w, 1, 60, 10), 1, kFood, 3), sim::Reject::NotAWarehouse);
+    }
+}

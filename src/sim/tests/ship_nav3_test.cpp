@@ -402,3 +402,80 @@ TEST_CASE("N1 index: more ships in range than the unit cap are cut at the cap in
     // 64 hits (ids 1..64 in the single cell, ascending), the planner itself skipped.
     CHECK(stamps.size() == 63);
 }
+
+TEST_CASE("N1 carriage: navigating descendants below a plain carrier and a navigating child "
+          "of a navigating child ride whole") {
+    sim::ScenarioSpec spec = base_spec();
+    spec.figures.push_back(fig(kShip, sim::FixedPos{5340, tile_c(64)})); // 1 the ship
+    const auto child = [&](std::uint32_t kind, std::uint32_t parent) {
+        sim::ScenarioSpec::FigureSpec f = fig(kind, sim::FixedPos{5340, tile_c(64)});
+        f.parent = parent;
+        spec.figures.push_back(f);
+    };
+    child(kScout, 0); // 2 plain under the ship
+    child(kShip, 1);  // 3 navigating under a plain carrier
+    child(kShip, 2);  // 4 navigating child of a navigating child
+    child(kScout, 3); // 5 plain under that
+    // An unrelated parent tree elsewhere: its members must not move.
+    spec.figures.push_back(fig(kScout, sim::FixedPos{tile_c(300), tile_c(300)})); // 6
+    child(kScout, 5);                                                             // 7
+    sim::World w = make(spec);
+    REQUIRE(w.apply(move(1, 70, 64)).ok());
+    for (int i = 0; i < 300; ++i) {
+        w.advance(10);
+        REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    }
+    const std::int32_t x = fig_of(w, 1).pos.x;
+    CHECK(x != 5340);
+    for (const std::uint64_t id : {2U, 3U, 4U, 5U}) {
+        CHECK(fig_of(w, id).pos.x == x);
+        CHECK(fig_of(w, id).pos.y == fig_of(w, 1).pos.y);
+    }
+    CHECK(fig_of(w, 6).pos.x == tile_c(300));
+    CHECK(fig_of(w, 7).pos.x == 5340); // child of the unrelated tree keeps its own position
+    for (const std::uint64_t id : {3U, 4U}) {
+        CHECK_FALSE(fig_of(w, id).nav->order.has_value());
+        CHECK(fig_of(w, id).nav->pos_u[0] == std::int64_t{x} * sim::kNavPosUnitsPerQ8);
+    }
+    CHECK(sim::World::load(w.save(), ship_test::nav_ship_registry()).ok());
+}
+
+TEST_CASE("N1 index: removing a parent keeps every derived index equal to a rebuild, and a hostile "
+          "carried order is refused by save") {
+    sim::World w = carried_world(2, 3, true);
+    sim::FigureRegistry& reg = sim::WorldTestAccess::figures(w);
+    REQUIRE(sim::figure_index_problem(reg).empty());
+    REQUIRE(sim::remove_figure(reg, sim::FigureId{3}).has_value()); // a middle carrier
+    CHECK(sim::figure_index_problem(reg).empty());
+    CHECK(reg.children.count(sim::FigureId{3}) == 1); // its child still names it as parent
+    REQUIRE(sim::remove_figure(reg, sim::FigureId{4}).has_value());
+    CHECK(reg.children.count(sim::FigureId{3}) == 0);
+    CHECK(sim::figure_index_problem(reg).empty());
+    // A carried navigating figure given an order is refused when the state is saved.
+    sim::World v = carried_world(0, 0, true);
+    sim::find_figure(sim::WorldTestAccess::figures(v), sim::FigureId{2})->nav->order =
+        sim::NavOrder{1, false, 1000, 1000};
+    CHECK(v.check_invariants().find("does not sail on its own") != std::string::npos);
+}
+
+TEST_CASE("N1 index: the stamp query's work does not depend on far-away ships") {
+    sim::NavWork seen[2];
+    int k = 0;
+    for (const int far_ships : {10, 600}) {
+        sim::ScenarioSpec spec = base_spec();
+        for (int i = 0; i < 3; ++i) { // a neighbourhood: three ships in range of ship 1
+            spec.figures.push_back(fig(kShip, sim::FixedPos{tile_c(100 + i), tile_c(100)}));
+        }
+        for (int i = 0; i < far_ships; ++i) { // far-away parked ships, many cells away
+            spec.figures.push_back(
+                fig(kShip, sim::FixedPos{tile_c(300 + i % 100), tile_c(200 + i / 100)}));
+        }
+        sim::World w = make(spec);
+        sim::NavWork work;
+        const auto stamps = sim::ShipMover::local_stamps(w, fig_of(w, 1), &work);
+        CHECK(stamps.size() == 2); // the two other near ships
+        seen[k++] = work;
+    }
+    CHECK(seen[0] == seen[1]);
+    CHECK(seen[0].stamp_entries == 3);
+}

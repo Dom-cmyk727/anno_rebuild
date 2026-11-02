@@ -1,1 +1,2 @@
-build rc 1 (did not compile; no run)
+ANNOTATION (not a verbatim file): the original build.rc is the single character 1. The mutant did not compile: MSVC C4100 (unused parameter `ok`) under /WX after `if (false)`.
+It is kept as a failed attempt and superseded by f2-drop-real-returns.

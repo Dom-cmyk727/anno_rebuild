@@ -4,7 +4,8 @@ Generated from the Windows checkout at `37da91b901a0ead4ee4c45205a909e9e4b1eae8c
 copy or an **EXTRACT** (marked) of a git-ignored original under `cache/` of `E:\anno1503-worktrees\anno1503-W4-3`;
 the original path and its sha256 (of the Windows file as it is on disk, CRLF for text files that have it, so
 not the git blob hash) are in the table. Full logs stay preserved locally. No game data, screenshots, binaries
-or archives are in git. No values were redacted (no credential or personal data occurs in these files).
+or archives are in git. Nothing was redacted; the files contain local paths and the local user name (`C:\Users\altin`, `/home/altin`) and no credentials. Each extract file is a verbatim copy or an
+EXTRACT as marked in the `how` column (the extract files carry no header of their own); the sha256 is of the original on the Windows disk, not the git blob id of the committed copy.
 
 | extract | original (under the checkout) | original sha256 | how |
 |---|---|---|---|
@@ -49,7 +50,7 @@ or archives are in git. No values were redacted (no credential or personal data 
 | `extracts/f2-mutation-f2-force-success.diff` | `cache/f/mut/f2-force-success/source.diff` | `ae94cb0d2617bba134261dbf8abfad5dac88a15f4fd1d80f4b8d5b2960983ba9` | whole file |
 | `extracts/f2-mutation-f2-force-success.result.txt` | `cache/f/mut/f2-force-success/run.out` | `c6dd3970340bb1d9eac237d41f3c4e24c73cf2637a9c550503cbec719b022f94` | EXTRACT: FAIL/PASS lines |
 | `extracts/f2-mutation-f2-ignore-results.diff` | `cache/f/mut/f2-ignore-results/source.diff` | `9a03acd40f620e419debafe9abaa6da1616cf50a86cec36595d76f569ac586f5` | whole file |
-| `extracts/f2-mutation-f2-ignore-results.result.txt` | `cache/f/mut/f2-ignore-results/build.rc` | `6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b` | whole file |
+| `extracts/f2-mutation-f2-ignore-results.result.txt` | `cache/f/mut/f2-ignore-results/build.rc` | `6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b` | ANNOTATION written by the executor (the original is the character `1`; the mutant did not compile, MSVC C4100 under /WX) |
 | `extracts/f2-mutation-f2-no-backoff.diff` | `cache/f/mut/f2-no-backoff/source.diff` | `8f1a225e7e858049d375b4f9fcae7f159674e39cf0cc11ea2ff7891799a75630` | whole file |
 | `extracts/f2-mutation-f2-no-backoff.result.txt` | `cache/f/mut/f2-no-backoff/run.out` | `d7e1955b3e03c297e881d14b5adf7d3bd82e989bd1a489c9ec0a1eca18d8966c` | EXTRACT: FAIL/PASS lines |
 | `extracts/f3-mutation-settle-call-removed.diff` | `cache/f/f3/mut2/settle-call-removed.diff` | `36747be6db34ce85e37981346432fb88847295a0e3a069bb211368bc5a4c380d` | whole file |
@@ -69,3 +70,8 @@ or archives are in git. No values were redacted (no credential or personal data 
 | `extracts/inventory-wsl-viewer-asan.tsv` | `cache/f/ctest-inventory-wsl-viewer-asan.json` | `32f7cf3a28dccd209c48736b1d197cff3de0671ed0ff204d5c2bb6cefef5cf85` | EXTRACT: test names with LABELS/PROCESSORS/TIMEOUT |
 | `extracts/inventory-wsl-viewer-asan-final.tsv` | `cache/gates/wsl-f-inventory.json` | `6963e8fa3c1a8f2aaca07d4743fb033ba0aa5b5b8fccdc7084fed19ae85e0ec9` | EXTRACT: test names with LABELS/PROCESSORS/TIMEOUT |
 | `extracts/inventory-msvc.tsv` | `cache/f/ctest-inventory-msvc.json` | `584b1ac4563e339c3f09145a6fd1f936c3164f13902bb5e40ba3174207bcb7d7` | EXTRACT: test names with LABELS/PROCESSORS/TIMEOUT |
+| `extracts/wsl-viewer-runs-summary.txt` | `cache/f/wsl-viewer-runs/summary.txt` | `ac679c63389fadba988be4209d282a8c1c50fd41875d625aa24b8a48c448d983` | whole file (three viewer cases rerun against the instrumented anno1503 with their stderr kept; counts of `runtime error` and `sanitizer` lines) |
+| `extracts/canary-stages-script.log` | `cache/f/canary/stages/script.log` | `4cd3ceeb0f13f6e66349cc4d0d0573c1d72b15362875bea46a421e7979a95962` | whole file (RTX real-window canary, boundary_stages --gpu) |
+| `extracts/canary-exit-in-hold-script.log` | `cache/f/canary/exit-hold/script.log` | `0cb22221e51407464b846259cc7974b94d2b754ab2678073380876fca6954553` | whole file (RTX real-window canary, boundary_exit_in_hold --gpu) |
+| `extracts/canary-revalidate.txt` | `cache/f/canary/revalidate.txt` | `08ae1e3ba5846a31be9011037339d5daaff12b850b810b844ee60608346da1d3` | whole file (both canary sessions VALID under viewer_session.py) |
+| `extracts/canary-exe.sha256` | `cache/f/canary/exe.sha256` | `0c0e4cb72a16e59349be3113c41569109e0eed7131870d34d06f15e3c5414524` | whole file (anno1503.exe hash of the canary build) |

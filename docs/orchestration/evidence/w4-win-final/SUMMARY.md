@@ -7,9 +7,11 @@ are sha256 of the Windows working-tree file (CRLF for text files with `core.auto
 ## Identities
 
 - Branch `task/W4-3-live-buildings`. Code frozen at `8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; `37da91b901a0ead4ee4c45205a909e9e4b1eae8c`
-  adds only a `viewer_wiring.py` UTF-8 stdout fix; every gate below records `37da91b` as the tested head (clean tree, empty diff).
-  Commits after it are documentation and this evidence.
-- Workflow: `tools/test/run_selected.py` from `E:\anno1503` at `b57c6f0d0c747ecc41755b438d9377df38d2b7ac`, `--source-root`/`--build-dir` explicit.
+  adds only a `viewer_wiring.py` UTF-8 stdout fix; the three gates in the table (MSVC, WSL ordinary lane, WSL corpus lane) record `37da91b` as the tested head (clean
+  tree, empty diff). The F3 mutants and repeats ran at `8367dc0` (same test source), the RTX canary records only its executable hash, the first MSVC attempt ran at `8367dc0`.
+  Commits after `37da91b` are documentation and this evidence.
+- Workflow: `tools/test/run_selected.py` from `E:\anno1503` at `b57c6f0d0c747ecc41755b438d9377df38d2b7ac`, `--source-root`/`--build-dir` explicit. The MSVC logs record that
+  identity; the WSL logs' `workflow` block shows the task head instead, because the WSL script exports `GIT_DIR`/`GIT_WORK_TREE` for the task worktree (the runner was the same `/mnt/e/anno1503` checkout).
 - Windows build `build/win-a29b079` (Release, MSVC, cmake cache sha256 `534a743e...`): `anno_app_tests.exe` `21fcfd77...`,
   `anno_app_alloc_tests.exe` `4e370b37...`, `anno_app_input_tests.exe` `78430b0a...` (disk sha256, prefixes).
 - WSL build `~/anno-build/w4-asan-viewer` (Ubuntu, g++-13, Debug, `ANNO_SANITIZE=ON` ASan+UBSan, `ANNO_BUILD_VIEWER=ON`,
@@ -40,10 +42,10 @@ are sha256 of the Windows working-tree file (CRLF for text files with `core.auto
 |---|---|
 | Native MSVC, `msvc-cpu-f2-final` (`extracts/gate-msvc-cpu-f2-final.out`) | 220 / 218 / 0 / 0 / 2 opt-in probes / 0, PASS; includes both corpus cases natively and all six required contracts |
 | WSL warnings, `unix-warnings-f-final` | GCC and Clang, viewer and GPU on, and without GPU: clean |
-| WSL ordinary lane, viewer-enabled ASan+UBSan (`gate-wsl-asan-viewer-ordinary.out`) | 217 / 215 / 0 / 0 / 2 opt-in / 0, PASS, 0 sanitizer lines; `viewer_wiring_*` run against the instrumented `anno1503` |
+| WSL ordinary lane, viewer-enabled ASan+UBSan (`gate-wsl-asan-viewer-ordinary.out`) | 217 / 215 / 0 / 0 / 2 opt-in / 0, PASS, 0 sanitizer lines in the test output; `viewer_wiring_*` ran against the instrumented `anno1503` (about 140-155 s each). The gate scans the test output, not the stderr file of the viewer subprocess, and UBSan only prints (no `SANITIZE_NO_RECOVER` in the app targets; ASan aborts): a rerun of three cases with their stderr kept shows `extracts/wsl-viewer-runs-summary.txt` (counts of `runtime error` and `sanitizer`); an earlier read-only scan by the reviewer of six stderr files found none, but those files were in `/tmp` and are gone |
 | WSL corpus lane, same build, serial (`gate-wsl-asan-viewer-corpus.out`, `gate-corpus-progress-extract.txt`) | 2 / 2 / 0 / 0 / 0 / 0, PASS, 0 sanitizer lines: `play: islands are the ones the sim placed` 5 303.65 s (5 492/5 492 assertions, 50 scenarios, progress 106.9 s at the first, 5 303.0 s at the last), `play: tick 0 matches...` 2 374.47 s (3 478/3 478); both under `TIMEOUT 8000`; host load about 1 throughout (`gate-corpus-host-samples.txt`) |
-| RTX 4090 real-window canary (`boundary_stages`, `boundary_exit_in_hold`, `--gpu`) | PASS, both session logs VALID under the final validator (`cache/f/canary`) |
-| 106-case RTX and Radeon gates | reused from `07a7505` (`rtx4090-gpu-06-final`, `radeon-gpu-06-final`): `git diff 07a7505..HEAD` is empty for `src/render`, `src/sim`, `src/formats`, `src/assets`, and for the sources of `anno_app_core` (the only app code `anno_render_gpu_tests` links); the changed app files are `viewer.cpp` (executable only), `dev_script.*` (`anno_app_sdl`), tests and CMake. The rebuilt test executable's hash differs from the recorded one (MSVC relinks are not reproducible); no claim is made from the hash |
+| RTX 4090 real-window canary (`boundary_stages`, `boundary_exit_in_hold`, `--gpu`; exe `af86cf2c6093...`) | PASS, both session logs VALID under the final validator (`extracts/canary-*`; run on the `37da91b` build, no head recorded by the tool) |
+| 106-case RTX and Radeon gates | reused from `07a7505` (`rtx4090-gpu-06-final`, `radeon-gpu-06-final`): `git diff 07a7505..HEAD` is empty for `src/render`, `src/sim`, `src/formats`, `src/assets`, and for the sources of `anno_app_core` (the only app code `anno_render_gpu_tests` links); the changed app files are `viewer.cpp` (executable only), `dev_script.*` (`anno_app_sdl`), tests and CMake; `anno_render_gpu_tests` links only `anno_render_gpu`, `anno_app_core` and `anno_test_support`. The rebuilt test executable's hash differs from the recorded one (a reconfigure regenerated the embedded-WGSL sources with unchanged shaders and the library and executable were relinked; MSVC links are not byte-reproducible); no claim is made from the hash |
 
 Superseded and kept: `msvc-cpu-f-attempt1-FAILED-workflow-utf8` (`extracts/gate-msvc-cpu-f-attempt1-FAILED.out`: `viewer_wiring.py`
 printed the window title's em dash in the Windows code page and the gate read the log back as UTF-8; fixed in `37da91b`).
@@ -74,6 +76,8 @@ printed the window title's em dash in the Windows code page and the gate read th
 ## Limits
 
 Headless CPU/SDL-dummy sessions say nothing about the GPU path actually rendering or about a display; the sanitizer build cannot create a GPU device. Native 4K, physical
-display latency, the Radeon in a real window, scale, terrain/height, roads, UI and OQ-525 are unchanged named follow-ups. Mutation runs of F1-F3 were made at the commits named in
-`INDEX.md` extracts' diffs; the F3 mutants and focused repeats were rerun at the frozen code head. `capture()` run with a real Windows GDI grab in a lock-screen session would
+display latency, the Radeon in a real window, scale, terrain/height, roads, UI and OQ-525 are unchanged named follow-ups. Mutation runs: F1 mutants ran 09:13 on the `639af77` tree (mutated blobs are the final ones except `viewer_wiring.py`, blob `77a434f`, which lacks only the later
+4-line stdout hunk of `37da91b`); F2 mutants ran 09:17-09:19 on the final `viewer.cpp` blob `9ff70b8`; F3 mutants and the repeats ran 09:21 on the final test blob `e508fbc`.
+No mutant isolates the "local update still occurs" assertions of the R4 case. Durations and timings are ctest and monotonic values; the WSL wall-clock stamps (`2026-11-02T12:38:16`) lag
+the monotonic clock by about 10 minutes (the WSL clock stepped during the run). The validator trusts the window's own `script.log`: a fabricated matching log plus `session.txt` would pass (the contract's positive control is such a fixture). `capture()` run with a real Windows GDI grab in a lock-screen session would
 refuse, not pass.

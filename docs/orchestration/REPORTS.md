@@ -10321,7 +10321,7 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 
 - **Dispatch / identities:** `origin/main` `c30d830` (`TASKS.md` W4-WIN-FINAL and `reviews/2026-11-02-w4-win-close.md`, read without merging). Code frozen at
   `8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; `37da91b` adds a one-line `viewer_wiring.py` UTF-8 stdout fix (found by the first gate attempt); every
-  gate below records `37da91b` as its tested head. Documentation and the evidence subset follow. Commands, hashes, the numbered acceptance matrix and limits:
+  gate in the table of this section (MSVC, WSL ordinary lane, WSL corpus lane) records `37da91b` as its tested head (the F3 repeats and mutants ran at `8367dc0`, the RTX canary records only its exe hash). Documentation and the evidence subset follow. Commands, hashes, the numbered acceptance matrix and limits:
   `docs/orchestration/evidence/w4-win-final/SUMMARY.md`; extracts and originals' hashes: `INDEX.md` there. Full logs stay local (`cache/`).
 - **F1** `tools/test/viewer_wiring.py` passes a session only when its record shows the script ran (`viewer_session.py`): reproduced false pass kept (zero-exit
   fixture, no session), now FAIL; absent/empty/truncated/reordered/missing-step/wrong-script/extra/failed-step/no-quit/no-`session.txt` records fail at their own check,
@@ -10343,7 +10343,7 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 - **Gates (canonical runner; selected / executed / failed / empty / skipped / incomplete):** native MSVC 220 / 218 / 0 / 0 / 2 opt-in / 0 PASS (first attempt kept:
   workflow UTF-8 error); WSL warnings clean; WSL viewer-enabled ordinary lane 217 / 215 / 0 / 0 / 2 opt-in / 0, 0 sanitizer lines; **WSL corpus lane 2 / 2 / 0 / 0 / 0 / 0, 0 sanitizer
   lines: `play: islands are the ones the sim placed` 5 303.65 s (5 492 assertions), `play: tick 0 matches the viewer…` 2 374.47 s (3 478 assertions)**, host load about 1, under the 8 000 s
-  timeout; RTX real-window canary PASS; 106-case RTX/Radeon gates reused from `07a7505` (no change to render/sim/formats/assets or `anno_app_core` sources since).
+  timeout (ctest/monotonic durations; the WSL wall-clock stamps lag by about 10 minutes); RTX real-window canary PASS; 106-case RTX/Radeon gates reused from `07a7505` (no change to render/sim/formats/assets or `anno_app_core` sources since; `anno_render_gpu_tests` links only `anno_render_gpu`, `anno_app_core`, `anno_test_support`; the rebuilt exe hash differs because a reconfigure regenerated the WGSL sources unchanged). The gate counts sanitizer lines in the test output only: UBSan prints without aborting in the app targets and the viewer subprocess's stderr is not scanned by the gate; three viewer cases rerun with stderr kept show 0 `runtime error` / sanitizer lines (`extracts/wsl-viewer-runs-summary.txt`).
 - **Open / not done:** the whole-app sanitizer lane is now complete for the app, input and alloc suites in the viewer-enabled build, but not for other suites (render/formats/assets/sim under
   sanitizers are outside this packet). Failure B's attribution stays historical. Not covered: a submit-only mutant; the `in_flight` leg of settling pinned by a single-foreign-scene
   case; native 4K, Radeon real window, display latency, scale, OQ-525, terrain, roads, UI. W4-OPENING-1 is not started (queued behind the orchestrator's pin acceptance).

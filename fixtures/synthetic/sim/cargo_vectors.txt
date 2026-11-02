@@ -1,0 +1,284 @@
+# cargo_vectors.txt - hand-derived positive/negative cases of the manual ship -> own-warehouse unloading
+# (MAP-CARGO-1 U1). Format: tools/cargo_ref.py (docstring). Contract: docs/sim/ship-cargo.md; evidence:
+# docs/re/ship-cargo.md. Every expected value below was derived by hand from section 3 and 4 of the contract BEFORE
+# tools/cargo_ref.py computed anything (the reference was written afterwards, from the disassembly alone).
+#
+# Units: raw 1/256 ton ("units"); a request is in whole tons. Goods ids are the original's: 26 NAHRUNG (food),
+# 41 WERKZEUG (tools), 42 HOLZ (wood). `goods_count` is the number of goods a city stock holds (default 56 = 0x38).
+# `cap` is the city's capacity of every goods (default 12800 = 50 t). A hold written `0 0` is an emptied hold.
+# `req <ship> <hold index> <goods> <tons> -> ok <transferred units> | reject <REASON>`; REASON is an engine Reject
+# enumerator name. `orig <return> <hold after> <stock after>` is what the ORIGINAL's arithmetic (AnnoWelt.dll 0x100ac360
+# unload arm, 32-bit register semantics, hold amount a u16) does for the FIRST request of the case; it is evidence of the
+# difference, never an expectation of the engine. `endhold <ship> goods:units ...` and `endstock <goods> <units>` are
+# the state after all requests of the case (goods not listed must be unchanged from the `stock` lines).
+
+case exact_whole_hold
+  stock 42 0
+  hold A 42 9728
+  req A 0 42 38 -> ok 9728
+  endhold A 0:0
+  endstock 42 9728
+  orig 9728 0:0 9728
+
+case request_smaller_than_hold
+  stock 42 0
+  hold A 42 9728
+  req A 0 42 10 -> ok 2560
+  endhold A 42:7168
+  endstock 42 2560
+  orig 2560 42:7168 2560
+
+case request_larger_than_hold_takes_all
+  stock 26 0
+  hold A 26 2560
+  req A 0 26 50 -> ok 2560
+  endhold A 0:0
+  endstock 26 2560
+  orig 2560 0:0 2560
+
+case partial_by_capacity
+  stock 41 11520
+  hold A 41 7680
+  req A 0 41 30 -> ok 1280
+  endhold A 41:6400
+  endstock 41 12800
+  orig 1280 41:6400 12800
+
+case zero_capacity
+  cap 0
+  stock 42 0
+  hold A 42 9728
+  req A 0 42 38 -> reject StockFull
+  endhold A 42:9728
+  endstock 42 0
+  orig 0 42:9728 0
+
+case stock_equals_capacity
+  stock 42 12800
+  hold A 42 9728
+  req A 0 42 38 -> reject StockFull
+  endhold A 42:9728
+  endstock 42 12800
+  orig 0 42:9728 12800
+
+case over_capacity_by_200
+  stock 42 13000
+  hold A 42 9728
+  req A 0 42 38 -> reject StockFull
+  endhold A 42:9728
+  endstock 42 13000
+  orig 0 42:9728 13000
+
+# The original's arithmetic on a stock 300 units above the capacity (a state the original's own capacity recompute
+# 0x100284ac prevents): the free-space term goes negative, the hold GAINS 256 and the stock is lowered to the capacity.
+case over_capacity_by_300_original_defect
+  stock 42 13100
+  hold A 42 1000
+  req A 0 42 1 -> reject StockFull
+  endhold A 42:1000
+  endstock 42 13100
+  orig -256 42:1256 12800
+
+case duplicate_holds_are_addressed_by_index
+  stock 41 0
+  hold A 41 12800
+  hold A 41 7680
+  req A 1 41 10 -> ok 2560
+  req A 0 41 50 -> ok 10240
+  req A 1 41 1 -> reject StockFull
+  endhold A 41:2560 41:5120
+  endstock 41 12800
+
+case fractional_hold_remainder_two_commands
+  stock 42 0
+  hold A 42 384
+  req A 0 42 1 -> ok 256
+  req A 0 42 1 -> ok 128
+  endhold A 0:0
+  endstock 42 384
+  orig 256 42:128 256
+
+case fractional_free_space_ship_keeps_the_excess
+  stock 42 12672
+  hold A 42 768
+  req A 0 42 3 -> ok 128
+  endhold A 42:640
+  endstock 42 12800
+  orig 256 42:512 12800
+
+case one_unit_free
+  stock 42 12799
+  hold A 42 9728
+  req A 0 42 1 -> ok 1
+  endhold A 42:9727
+  endstock 42 12800
+  orig 256 42:9472 12800
+
+case free_space_exactly_one_ton
+  stock 42 12544
+  hold A 42 9728
+  req A 0 42 38 -> ok 256
+  endhold A 42:9472
+  endstock 42 12800
+  orig 256 42:9472 12800
+
+case fractional_stock_whole_request
+  stock 42 100
+  hold A 42 9728
+  req A 0 42 38 -> ok 9728
+  endhold A 0:0
+  endstock 42 9828
+  orig 9728 0:0 9828
+
+case u32_boundary_stock_would_wrap_in_the_original
+  cap 4294967295
+  stock 42 4294967195
+  hold A 42 1000
+  req A 0 42 1 -> ok 100
+  endhold A 42:900
+  endstock 42 4294967295
+  orig 256 42:744 155
+
+case hold_amount_u64_maximum
+  stock 42 0
+  hold A 42 18446744073709551615
+  req A 0 42 1 -> ok 256
+  endhold A 42:18446744073709551359
+  endstock 42 256
+
+case request_and_hold_far_above_u32_units
+  cap 4294967295
+  stock 42 0
+  hold A 42 2199023255552
+  req A 0 42 4294967295 -> ok 4294967295
+  endhold A 42:2194728288257
+  endstock 42 4294967295
+
+case last_supported_goods_id
+  stock 55 0
+  hold A 55 2560
+  req A 0 55 10 -> ok 2560
+  endhold A 0:0
+  endstock 55 2560
+
+case first_unsupported_goods_id
+  hold A 56 2560
+  req A 0 56 5 -> reject UnsupportedGoods
+  endhold A 56:2560
+
+case unsupported_goods_id_is_not_erased
+  hold A 60 5000
+  req A 0 60 1 -> reject UnsupportedGoods
+  endhold A 60:5000
+
+case empty_hold_goods_requested
+  hold A 0 0
+  req A 0 41 1 -> reject HoldGoodsMismatch
+  endhold A 0:0
+
+case empty_hold_goods_zero_requested
+  hold A 0 0
+  req A 0 0 1 -> reject UnsupportedGoods
+  endhold A 0:0
+
+case wrong_goods_for_the_hold
+  stock 41 0
+  hold A 42 9728
+  req A 0 41 38 -> reject HoldGoodsMismatch
+  endhold A 42:9728
+  endstock 41 0
+
+case hold_index_out_of_range
+  hold A 42 9728
+  req A 1 42 1 -> reject BadIndex
+  endhold A 42:9728
+
+case zero_request
+  hold A 42 9728
+  req A 0 42 0 -> reject BadValue
+  endhold A 42:9728
+
+case order_zero_request_before_index
+  hold A 42 9728
+  req A 99 42 0 -> reject BadValue
+  endhold A 42:9728
+
+case order_index_before_goods
+  hold A 42 9728
+  req A 99 60 1 -> reject BadIndex
+  endhold A 42:9728
+
+case order_goods_mismatch_before_stock_full
+  stock 41 12800
+  hold A 42 9728
+  req A 0 41 1 -> reject HoldGoodsMismatch
+  endhold A 42:9728
+  endstock 41 12800
+
+case two_ships_contend_first_wins
+  stock 42 11800
+  hold A 42 5000
+  hold B 42 5000
+  req A 0 42 10 -> ok 1000
+  req B 0 42 10 -> reject StockFull
+  endhold A 42:4000
+  endhold B 42:5000
+  endstock 42 12800
+
+case two_ships_contend_order_swapped
+  stock 42 11800
+  hold A 42 5000
+  hold B 42 5000
+  req B 0 42 10 -> ok 1000
+  req A 0 42 10 -> reject StockFull
+  endhold A 42:5000
+  endhold B 42:4000
+  endstock 42 12800
+
+case other_goods_and_holds_unchanged
+  stock 41 777
+  stock 26 5
+  stock 42 0
+  hold A 42 9728
+  hold A 41 12800
+  hold A 26 2560
+  req A 0 42 38 -> ok 9728
+  endhold A 0:0 41:12800 26:2560
+  endstock 41 777
+  endstock 26 5
+  endstock 42 9728
+
+# ---- docking range (AnnoWelt.dll 0x1003f200 mode 0): ship tile (tx, ty), warehouse footprint x0 y0 w h.
+# dx/dy = 0 when the ship tile lies inside the footprint on that axis, else the distance to the nearer edge tile; the
+# warehouse is in range iff dy <= 5 and dx <= half-width[dy] with half-widths 5 5 5 4 3 2 (radius 5).
+range dx5_dy0 ship 10 10 bld 15 10 4 4 -> accept
+range dx6_dy0 ship 10 10 bld 16 10 4 4 -> reject
+range dx5_dy3 ship 10 10 bld 15 13 4 4 -> reject
+range dx4_dy3 ship 10 10 bld 14 13 4 4 -> accept
+range dy6 ship 10 10 bld 10 16 4 4 -> reject
+range dy5_dx0 ship 10 10 bld 10 15 4 4 -> accept
+range dy5_dx3 ship 10 10 bld 13 15 4 4 -> reject
+range dy5_dx2 ship 10 10 bld 12 15 4 4 -> accept
+range ship_over_footprint ship 10 10 bld 8 8 4 4 -> accept
+range west_edge_dx5 ship 10 10 bld 2 8 4 4 -> accept
+range west_edge_dx6 ship 10 10 bld 1 8 4 4 -> reject
+range north_edge_dy5_dx0 ship 10 10 bld 8 2 4 4 -> accept
+range non_square_3x2_dx5 ship 10 10 bld 15 10 3 2 -> accept
+range non_square_2x3_dy4_dx4 ship 10 10 bld 14 14 2 3 -> reject
+range non_square_2x3_dy4_dx3 ship 10 10 bld 13 14 2 3 -> accept
+
+# ship tile from a Q24.8 position (truncation; positions are non-negative)
+tile 2815 2560 -> 10 10
+tile 2816 2560 -> 11 10
+tile 0 255 -> 0 0
+
+# ---- the city set (0x1003f2ae-0x1003f3b2): a city counts as near the ship only if it owns at least one of the 24
+# outline tiles (tx +- w[k], ty +- k), k = 0..5, w = 5 5 5 4 3 2. `owned` lists the tiles the city owns; all others are unowned.
+cityset outline_east ship 10 10 owned 15,10 -> in
+cityset east_off_outline ship 10 10 owned 16,10 -> out
+cityset interior_only ship 10 10 owned 10,10 11,10 12,10 -> out
+cityset corner_k3 ship 10 10 owned 14,7 -> in
+cityset corner_k3_off ship 10 10 owned 15,7 -> out
+cityset corner_k5 ship 10 10 owned 8,15 -> in
+cityset corner_k5_off ship 10 10 owned 9,15 -> out
+cityset south_k4 ship 10 10 owned 13,14 -> in

@@ -10351,4 +10351,15 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 
 ### Final integration review and heads
 
-(Recorded after the review returns.)
+- **Final integration review** (fresh read-only reviewer, head `553ed6a`): **APPROVE**, no blocking finding. It recounted the three gates from the raw logs (all record tested head `37da91b`,
+  empty diff), showed the ordinary and corpus lanes partition the 219-name required inventory with no gap or overlap, found the viewer-enabled build instrumented (`__asan_init`/`__ubsan_handle`
+  in all four binaries, `__asan_report` in `viewer.cpp.o`), recomputed all 61 evidence hashes (61 match), and checked scope. Its eight non-blocking items and nine statements to correct
+  were applied in documentation only (mutation-run base commits, the WSL workflow-identity note, the UBSan/stderr scan limit with a rerun of three viewer cases that shows 0 `runtime error` /
+  sanitizer lines, the 106-case reuse wording, tested-head qualification, wall-clock lag, redaction wording, an annotation for the one non-compiling mutant, canary extracts). Not changed:
+  the comment pointer in `src/app/CMakeLists.txt` (it names `docs/testing/README.md`; the text is in `docs/testing/app-sanitizer-lanes.md`) because it would touch frozen source for a comment;
+  no dedicated regression for the UTF-8 stdout fix (the gate attempt is the evidence).
+- **Heads:** code `8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; tools/test `37da91b901a0ead4ee4c45205a909e9e4b1eae8c` (tested head of the three gates); documentation and evidence follow
+  (`553ed6a`, `f1b70e7` and the commit carrying this paragraph; `git diff --stat 37da91b..HEAD` shows only `docs/`). The published head is what `git ls-remote origin refs/heads/task/W4-3-live-buildings`
+  returns after the ordinary push recorded in the session; remote before it: `f5a323d`.
+- **Stopping criteria:** F1-F4 meet their stated criteria; the final integration review approves; the candidate and the portable text evidence are published for the orchestrator. Not accepted by
+  me: acceptance is the orchestrator's. W4-OPENING-1 is not started (it waits for the orchestrator to record acceptance of the exact published Windows and Mac gameplay pins).

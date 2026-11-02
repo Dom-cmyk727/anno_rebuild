@@ -449,8 +449,8 @@ TEST_CASE("nav scale writer: a requested file that cannot be written is an error
     r.cfg.name = "tiny";
     r.samples.resize(1);
     const std::vector<Result> rs = {r};
-    const fs::path dir = fs::temp_directory_path() / "anno_nav_scale_writer_test";
-    fs::remove_all(dir);
+    const fs::path dir = sim::test::make_private_dir("anno_nav_scale_writer_test");
+    REQUIRE_FALSE(dir.empty());
     CHECK(write_outputs(dir, rs).empty()); // valid control
     CHECK(fs::file_size(dir / "summary.csv") > 0);
     CHECK_FALSE(fs::exists(dir / "summary.csv.partial"));

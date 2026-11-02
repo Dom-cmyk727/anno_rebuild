@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <ostream>
+#include <random>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -72,6 +73,29 @@ namespace anno::sim::test {
     if (ec) {
         fs::remove(partial, ec);
         return target.string() + ": rename failed";
+    }
+    return {};
+}
+
+/// Creates a directory that only this call owns (created exclusively under the system temp
+/// directory, named after `prefix` and 64 random bits) and returns its path; an empty path when no
+/// name could be claimed. Tests use it instead of a fixed name so that concurrent invocations of
+/// the same case (other build configurations, worktrees) never delete each other's files.
+[[nodiscard]] inline std::filesystem::path make_private_dir(const std::string& prefix) {
+    namespace fs = std::filesystem;
+    std::random_device rd;
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        const std::uint64_t bits = (std::uint64_t{rd()} << 32) ^ rd();
+        static constexpr char kHex[] = "0123456789abcdef";
+        std::string name = prefix + "_";
+        for (int i = 0; i < 16; ++i) {
+            name.push_back(kHex[(bits >> (4 * i)) & 0xf]);
+        }
+        const fs::path dir = fs::temp_directory_path() / name;
+        std::error_code ec;
+        if (fs::create_directory(dir, ec) && !ec) {
+            return dir;
+        }
     }
     return {};
 }

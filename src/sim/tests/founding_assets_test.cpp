@@ -1248,9 +1248,8 @@ TEST_CASE("sailed founding canary: a real route failure leaves the ship idle wit
 
 TEST_CASE("sail log export: a requested path that cannot be written fails with its path") {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "anno_sail_export_test";
-    fs::remove_all(dir);
-    fs::create_directories(dir);
+    const fs::path dir = anno::sim::test::make_private_dir("anno_sail_export_test");
+    REQUIRE_FALSE(dir.empty());
     const std::vector<std::uint8_t> payload = {1, 2, 3, 250, 0, 7};
     // Valid control: published, byte-identical, no partial file left behind.
     CHECK(export_log_if_requested((dir / "ok.bin").string().c_str(), payload).empty());

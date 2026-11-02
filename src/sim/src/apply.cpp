@@ -21,6 +21,7 @@
 #include <anno/sim/placement.hpp>
 #include <anno/sim/ship_cargo.hpp>
 #include <anno/sim/ship_orders.hpp>
+#include <anno/sim/site_checks.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
@@ -224,8 +225,12 @@ struct Budget {
     std::map<GoodsId, std::uint64_t> goods;
     /// Serials of the earlier records.
     std::uint64_t serials = 0;
-    /// Island tile indices the earlier records cover.
+    /// Island tile indices the earlier BUILDING records cover.
     std::set<std::uint64_t> tiles;
+    /// The type of the tile object an earlier ROAD record writes on a tile (the last record wins,
+    /// like the tile layer): the virtual object later records are checked against, so that the dry
+    /// run decides like the live run, which reads the written tile (road-placement.md section 5).
+    std::map<std::uint64_t, TypeId> objects;
 };
 
 /// One record after validation: the record to create (after an upgrade rewrite), its
@@ -237,6 +242,8 @@ struct Checked {
     const BuildingType* type = nullptr;
     PlacementRecord rec;
     bool free = false;
+    /// A tile object (a land road): no building record, no serial (MAP-ROAD-1).
+    bool tile_object = false;
 };
 
 /// The island tile indices of a footprint that lies on the island.
@@ -286,12 +293,15 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = Reject::BadRotation; // F4
             return out;
         }
-        // PRODTYPE 0 or a number without a list (roads, walls, scenery: tile objects,
-        // D: Place skips Create for the blocks above 0xa0) is not ported (O-4).
-        if (!env.cfg.layout.list_for(type->prodtype).has_value()) {
+        // PRODTYPE 0 or a number without a list (roads, walls, scenery: tile objects, D: Place
+        // skips Create for the blocks above 0xa0). The ordinary land roads are ported as tile
+        // objects (MAP-ROAD-1); every other such class is not (O-4).
+        const bool tile_object = !env.cfg.layout.list_for(type->prodtype).has_value();
+        if (tile_object && !is_land_road(*type)) {
             out.status = Reject::Unsupported;
             return out;
         }
+        out.tile_object = tile_object;
         // 2. The footprint on the island, on the city's tiles (D 0x10058890).
         if (const Reject r = footprint_owner_rule(is, env.cfg, *type, rec, city.number);
             r != Reject::None) {
@@ -312,6 +322,24 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         if (taken) {
             out.status = Reject::Occupied;
             return out;
+        }
+        // The objects earlier ROAD records of the dry run write: the same compatibility the live
+        // run applies to the written tile (the placement rule reads the live layer only).
+        if (budget != nullptr && !budget->objects.empty()) {
+            bool blocked = false;
+            for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
+                const auto it = budget->objects.find(idx);
+                const BuildingType* existing =
+                    it != budget->objects.end() ? env.types.find(it->second) : nullptr;
+                // Only land roads write virtual objects, so R-A3 cannot apply to them.
+                blocked = blocked ||
+                          (existing != nullptr && site::overlap_with_existing(*type, *existing) !=
+                                                      site::Compat::Compatible);
+            });
+            if (blocked) {
+                out.status = Reject::Occupied;
+                return out;
+            }
         }
         // 3. The placement rule for the EFFECTIVE type (D 0x1007c790, O-27): verdict and the
         // authoritative item height. The default is placement_rule (terrain, class, overlap);
@@ -346,9 +374,11 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         out.status = Reject::NotResearched;
         return out;
     }
-    // The serial the creation takes (create_building refuses 0 and 0xffffffff).
+    // The serial the creation takes (create_building refuses 0 and 0xffffffff). A tile object
+    // takes none.
     const std::uint64_t serials_before = budget != nullptr ? budget->serials : 0;
-    if (is.next_serial == 0 || std::uint64_t{is.next_serial} + serials_before >= 0xffffffffU) {
+    if (!out.tile_object &&
+        (is.next_serial == 0 || std::uint64_t{is.next_serial} + serials_before >= 0xffffffffU)) {
         out.status = Reject::SerialExhausted;
         return out;
     }
@@ -403,6 +433,11 @@ void spend(Budget& budget, const Island& is, const Checked& c) {
             budget.goods[cost.goods] += cost.amount_88;
         }
     }
+    if (c.tile_object) {
+        for_each_footprint_tile(is, *c.type, c.rec,
+                                [&](std::uint64_t idx) { budget.objects[idx] = c.type->id; });
+        return;
+    }
     ++budget.serials;
     for_each_footprint_tile(is, *c.type, c.rec,
                             [&](std::uint64_t idx) { budget.tiles.insert(idx); });
@@ -416,6 +451,20 @@ void spend(Budget& budget, const Island& is, const Checked& c) {
 /// refuses it, F32).
 RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checked& c) {
     RecordResult r;
+    if (c.tile_object) {
+        // A land road: the tile writer only (0x10082040), no building record, serial or seam.
+        static_cast<void>(place_object_record(is.tiles, env.types, *c.type, c.rec.x, c.rec.y,
+                                              c.rec.rotation, 0, c.rec.byte0f));
+        if (!c.free) {
+            owner.money -= std::int64_t{c.type->cost_gold};
+            for (const CostEntry& cost : c.type->cost_goods) {
+                city.build_goods[cost.goods - env.cfg.build_goods_first].spent += cost.amount_88;
+                static_cast<void>(city.stock.remove(cost.goods, cost.amount_88));
+            }
+        }
+        r.tile_object = true;
+        return r;
+    }
     const auto key = create_building(env.cfg, env.rules, env.types, is, city, c.rec,
                                      static_cast<std::uint32_t>(env.tick));
     if (!key.ok()) {

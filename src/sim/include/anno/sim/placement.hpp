@@ -70,6 +70,25 @@ struct PlacementParams {
     std::uint32_t coverage_flag = 0x10;
 };
 
+/// The facts that make a type an ordinary land road (docs/sim/road-placement.md section 2). A
+/// default argument like PlacementParams: no hashed state moves, and a data-defined type with
+/// these facts is a road without an engine edit.
+struct RoadParams {
+    /// PRODTYPE of the land roads (STRASSE; types.cpp name table, Named{193}).
+    std::uint32_t prodtype = 193;
+    /// The class bits (flag word & 0x7000) of a land road: the road class (accepted at once by the
+    /// original) and the slope class (mx - lo > 0x10 refused; AnnoGame 0x10008f90).
+    std::uint32_t road_class = 0x4000;
+    std::uint32_t slope_class = 0x1000;
+    /// The slope limit of the slope class.
+    std::uint32_t slope_limit = 0x10;
+};
+
+/// Whether `t` is an ordinary land road: PRODTYPE `params.prodtype`, a 16-bit flag word whose class
+/// bits are the road or the slope class, no coverage bit 0x10, a mode other than the single-quad
+/// average (flag word & 3 != 1) and a non-empty footprint. Facts of the parsed type only.
+[[nodiscard]] bool is_land_road(const BuildingType& t, const RoadParams& params = {});
+
 /// The placement rule of a normal Build record for the EFFECTIVE type (after any upgrade
 /// rewrite), docs/sim/ship-placement.md section 2 (R1-R6); oracle tools/placement_ref.py
 /// (engine_place). Order: the class gate (R3: ordinary land `(F & ~0x80) == 0x4`, coast
@@ -83,6 +102,10 @@ struct PlacementParams {
 /// never an accept and never a height of 0. Building tiles carry the building's type id, so a
 /// building under the footprint is answered by R2 (or, when the types are replaceable, by the
 /// F32 check of create_building).
+/// A land road (is_land_road) is a tile object and goes the road way of docs/sim/road-placement.md
+/// section 3: occupancy with the extra refusal of an existing group-0xc1 piece that is no land road
+/// (R-A3), then the window result by the flag word's mode (0 max, 2 min, 3 window max of the cell
+/// minima), the slope test of the slope class, and the level floor `params.min_level` (R-A2).
 [[nodiscard]] PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
                                              const BuildingType& effective,
                                              const PlacementRecord& rec,

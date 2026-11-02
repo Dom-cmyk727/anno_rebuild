@@ -58,6 +58,13 @@ struct Kit {
     sim::TypeId fixed{9611};    // tile object, flag word 0: nothing may be built over it
     sim::TypeId stone{9612};    // tile object, flag 0x20: removable
     sim::TypeId tree{9613};     // tile object, flag 0x20: removable
+    // MAP-ROAD-1: the land roads (PRODTYPE STRASSE 193) and the pieces they are checked against.
+    sim::TypeId road{9801};       // 0x4186, 5 gold, walk pair (0, 3) -> code 0
+    sim::TypeId road_slope{9802}; // 0x1186, 10 gold, pair (0, 3)
+    sim::TypeId road4{9803};      // 0x4186, 5 gold, pair (4, 3) -> code 4
+    sim::TypeId road_ext{9804};   // a second data-defined road: 0x4186, 7 gold, pair (0, 3)
+    sim::TypeId bridge{9805};     // PRODTYPE 198 (BRUECKE), 0x4386: not a land road
+    sim::TypeId ramp{9806}; // PRODTYPE 194 (RAMPE), 0x4186: a group-0xc1 piece, not a land road
 
     Kit() {
         sim::TypeRegistry::Builder b;
@@ -86,6 +93,26 @@ struct Kit {
         copy(base.pioneer_house, mountain, 2, 2, 0x3096);
         copy(base.pioneer_house, covered, 2, 2, 0x0094);
         copy(base.pioneer_house, odd_bit, 2, 2, 0x0184);
+        const auto road_copy = [&](sim::TypeId id, std::uint32_t prod, std::uint32_t flags,
+                                   std::uint32_t gold, std::uint8_t first, std::uint8_t shape) {
+            sim::BuildingType t = *base.registry->find(base.road);
+            t.id = id;
+            t.prodtype = prod;
+            t.flags_word = flags;
+            t.width = t.height = 1;
+            t.cost_gold = gold;
+            t.cost_goods.clear();
+            t.head_raw.assign(56, 0);
+            t.head_raw[0x2f] = first;
+            t.head_raw[0x30] = shape;
+            b.add(std::move(t));
+        };
+        road_copy(road, 193, 0x4186, 5, 0, 3);
+        road_copy(road_slope, 193, 0x1186, 10, 0, 3);
+        road_copy(road4, 193, 0x4186, 5, 4, 3);
+        road_copy(road_ext, 193, 0x4186, 7, 0, 3);
+        road_copy(bridge, 198, 0x4386, 5, 0, 3);
+        road_copy(ramp, 194, 0x4186, 5, 0, 3);
         b.add_plain(fixed, 291).add_plain(stone, 323).add_plain(tree, 225);
         b.flags_word(stone, 0x3a).flags_word(tree, 0x29);
         auto built = b.build();
@@ -124,6 +151,11 @@ struct Site {
         sim::ScenarioSpec::TileObjectSpec o;
         o.index = ly * size + lx;
         o.object = id.v;
+        for (const auto& have : objects) {
+            if (have.index == o.index) {
+                return; // a tile holds one object
+            }
+        }
         objects.push_back(o);
     }
 
@@ -805,4 +837,487 @@ TEST_CASE("build terrain: ownership and funds are decided in their own order aro
         sim::World s = split.world();
         refused(s, build_at(type, 7, 3), sim::Reject::TileNotOwned);
     }
+}
+
+// =============================================================================================
+// MAP-ROAD-1 R2-R4: the ordinary land roads through BuildCmd / DemolishCmd (docs/sim/road-
+// placement.md). A road is a tile object: no building record, no serial, no BuildingId. Every
+// refusal has the same command on legal terrain as its control; a refused command leaves the
+// whole save unchanged (`refused`).
+// =============================================================================================
+
+namespace {
+
+sim::Command demolish_at(std::int32_t lx, std::int32_t ly, std::uint32_t issuer = 0,
+                         sim::CityRef city = kC0) {
+    sim::DemolishCmd d;
+    d.city = city;
+    d.tiles = {{kX0 + lx, kY0 + ly}};
+    return sim::Command{sim::PlayerId{issuer}, d};
+}
+
+std::uint64_t tile_of(const sim::World& w, std::int32_t lx, std::int32_t ly) {
+    const sim::Slot idx = w.islands()[0]->tiles.index_of(kX0 + lx, kY0 + ly);
+    REQUIRE(idx != sim::kNoSlot);
+    return idx;
+}
+
+std::size_t building_count(const sim::World& w) {
+    return w.islands()[0]->cache.by_id.size();
+}
+
+/// The tile (lx, ly) carries `type` with item height `height`, walk code `code`, mask 0 and the
+/// one-tile footprint bytes.
+void check_road_tile(const sim::World& w, sim::TypeId type, std::int32_t lx, std::int32_t ly,
+                     std::uint8_t height, std::uint16_t code, std::uint8_t rotation = 0) {
+    const sim::TileLayer& t = w.islands()[0]->tiles;
+    const std::uint64_t i = tile_of(w, lx, ly);
+    CHECK(t.object(i) == type.v);
+    CHECK(static_cast<unsigned>(t.item_height(i)) == height);
+    CHECK(t.walk_code(i) == code);
+    CHECK(t.walk_mask(i) == 0);
+    CHECK(t.foot_dx(i) == 0);
+    CHECK(t.foot_dy(i) == 0);
+    CHECK(t.foot_rotation(i) == rotation);
+}
+
+/// The tile is as the reset left it: no object, code 2, mask 0.
+void check_free_tile(const sim::World& w, std::int32_t lx, std::int32_t ly) {
+    const sim::TileLayer& t = w.islands()[0]->tiles;
+    const std::uint64_t i = tile_of(w, lx, ly);
+    CHECK(t.object(i) == 0);
+    CHECK(t.walk_code(i) == 2);
+    CHECK(t.walk_mask(i) == 0);
+}
+
+} // namespace
+
+TEST_CASE("road build: a road is a tile object with the server height, no building, no serial") {
+    const Kit& k = kit();
+    Site s;
+    sim::World w = s.world();
+    const std::uint32_t serial = w.islands()[0]->next_serial;
+    const std::size_t buildings = building_count(w);
+    const std::int64_t gold = money_of(w);
+    const sim::ApplyResult r = w.apply(build_at(k.road, 3, 3, 2));
+    REQUIRE_MESSAGE(r.ok(), "got " << sim::reject_name(r.status));
+    REQUIRE(r.records.size() == 1);
+    CHECK(r.records[0].status == sim::Reject::None);
+    CHECK(r.records[0].tile_object);
+    CHECK_FALSE(r.records[0].building.valid()); // no fabricated id
+    CHECK(money_of(w) == gold - 5);             // the registry's 5 gold, nothing else
+    CHECK(w.islands()[0]->next_serial == serial);
+    CHECK(building_count(w) == buildings);
+    CHECK(w.building_at(kC0, kX0 + 3, kY0 + 3) == nullptr);
+    check_road_tile(w, k.road, 3, 3, 0x30, 0, 2);
+    // The neighbours are untouched.
+    for (const auto& [nx, ny] : {std::pair{2, 3}, {4, 3}, {3, 2}, {3, 4}, {2, 2}, {4, 4}}) {
+        check_free_tile(w, nx, ny);
+        CHECK(w.islands()[0]->tiles.item_height(tile_of(w, nx, ny)) == 0);
+    }
+    CHECK(w.check_invariants() == "");
+    // The control of the pair below: the same command on a building class still creates a building.
+    const sim::ApplyResult h = w.apply(build_at(k.house, 8, 8));
+    REQUIRE(h.ok());
+    CHECK_FALSE(h.records[0].tile_object);
+    CHECK(h.records[0].building.valid());
+    CHECK(w.islands()[0]->next_serial == serial + 1);
+    // Save and load: the same bytes, hash and tile record.
+    auto loaded = sim::World::load(w.save(), kit().reg);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    CHECK(loaded.value().state_hash() == w.state_hash());
+    check_road_tile(loaded.value(), k.road, 3, 3, 0x30, 0, 2);
+    // The walk code comes from the type's HEAD pair (4, 3), not from a constant.
+    const sim::ApplyResult r4 = w.apply(build_at(k.road4, 6, 3));
+    REQUIRE(r4.ok());
+    check_road_tile(w, k.road4, 6, 3, 0x30, 4);
+}
+
+TEST_CASE("road build: the terrain decides, with the height of the window and the level floor") {
+    const Kit& k = kit();
+    // Sea and shallow water refuse; the same road on 0x20 (the floor) and 0x30 is built.
+    for (const std::uint8_t level : {std::uint8_t{0x00}, std::uint8_t{0x10}}) {
+        INFO("level " << unsigned{level});
+        Site sea;
+        sea.fill(0, 0, kSize, kSize, level);
+        sim::World w = sea.world();
+        refused(w, build_at(k.road, 3, 3), sim::Reject::TerrainRefused);
+        refused(w, build_at(k.road_slope, 3, 3), sim::Reject::TerrainRefused);
+    }
+    for (const std::uint8_t level : {std::uint8_t{0x20}, std::uint8_t{0x30}, std::uint8_t{0xf0}}) {
+        INFO("level " << unsigned{level});
+        Site land;
+        land.fill(0, 0, kSize, kSize, level);
+        sim::World w = land.world();
+        REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+        check_road_tile(w, k.road, 3, 3, level, 0);
+    }
+    // The east edge reads the zero column: the class 0x4000 road is refused there (R-A2) ...
+    {
+        Site s;
+        sim::World w = s.world();
+        refused(w, build_at(k.road, 15, 3), sim::Reject::TerrainRefused);
+        REQUIRE(w.apply(build_at(k.road, 14, 3)).ok()); // ... the control one tile in
+    }
+    // Class 0x4000 has no slope test, the minimum cell minimum is the byte (0x30 of 30,30,30,40);
+    // the slope class refuses mx - lo > 0x10: 0x40 -> accepted, 0x41 -> refused.
+    for (const auto& row :
+         std::vector<std::pair<std::uint8_t, bool>>{{0x40, true}, {0x41, false}}) {
+        INFO("high vertex " << unsigned{row.first});
+        Site s;
+        s.set(4, 4, row.first);
+        sim::World w = s.world();
+        REQUIRE(w.apply(build_at(k.road, 3, 3)).ok()); // no slope test for the road class
+        check_road_tile(w, k.road, 3, 3, 0x30, 0);
+        if (row.second) {
+            REQUIRE(w.apply(build_at(k.road_slope, 3, 3)).ok());
+            check_road_tile(w, k.road_slope, 3, 3, 0x30, 0);
+        } else {
+            refused(w, build_at(k.road_slope, 3, 3), sim::Reject::TerrainRefused);
+        }
+    }
+    // The wire byte 8 never decides: 0x40 on sea is refused, 0 on land is built with 0x30.
+    {
+        Site sea;
+        sea.fill(0, 0, kSize, kSize, 0x00);
+        sim::World w = sea.world();
+        sim::PlacementWire p = ct::at(k.road, kX0 + 3, kY0 + 3);
+        p.byte8 = 0x40;
+        refused(w, ct::build(0, kC0, {p}), sim::Reject::TerrainRefused);
+        Site land;
+        sim::World l = land.world();
+        p.byte8 = 0;
+        REQUIRE(l.apply(ct::build(0, kC0, {p})).ok());
+        check_road_tile(l, k.road, 3, 3, 0x30, 0);
+    }
+    // A world without terrain decides nothing (never a height 0).
+    {
+        Site s;
+        s.terrain = false;
+        sim::World w = s.world();
+        refused(w, build_at(k.road, 3, 3), sim::Reject::Unsupported);
+    }
+}
+
+TEST_CASE("road build: classes outside the land road stay Unsupported") {
+    const Kit& k = kit();
+    Site s;
+    sim::World w = s.world();
+    refused(w, build_at(k.bridge, 3, 3), sim::Reject::Unsupported);
+    refused(w, build_at(k.ramp, 3, 3), sim::Reject::Unsupported);
+    refused(w, build_at(k.fixed, 3, 3), sim::Reject::Unsupported);
+    REQUIRE(w.apply(build_at(k.road, 3, 3)).ok()); // the control: the land road on the same tile
+}
+
+TEST_CASE("road build: ownership, funds and the issuer are decided as for a building") {
+    const Kit& k = kit();
+    // Another city's tiles, the neutral rim and a wrong issuer; each with the legal control.
+    {
+        Site s;
+        s.split = true;
+        sim::World w = s.world();
+        refused(w, build_at(k.road, 10, 3),
+                sim::Reject::TileNotOwned); // city 1's tile, city 0 commands
+        refused(w, build_at(k.road, 3, 3, 0, 1, kC0), sim::Reject::NotCityOwner);
+        REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+        // Another owner builds on its own tiles with a second data-defined type, no engine edit.
+        REQUIRE(w.apply(build_at(k.road_ext, 10, 3, 0, 1, kC1)).ok());
+        check_road_tile(w, k.road_ext, 10, 3, 0x30, 0);
+        CHECK(money_of(w, 1) == 10000 - 7);
+        CHECK(money_of(w, 0) == 10000 - 5);
+    }
+    // Affordability: 4 gold cannot pay a 5-gold road, exactly 5 can (and leaves 0).
+    {
+        Site poor;
+        poor.money = 4;
+        sim::World w = poor.world();
+        refused(w, build_at(k.road, 3, 3), sim::Reject::CannotAfford);
+        Site exact;
+        exact.money = 5;
+        sim::World e = exact.world();
+        REQUIRE(e.apply(build_at(k.road, 3, 3)).ok());
+        CHECK(money_of(e) == 0);
+        refused(e, build_at(k.road, 5, 3), sim::Reject::CannotAfford); // the next one has no gold
+    }
+    // Free build waives the cost and still builds the tile.
+    {
+        Site s;
+        sim::Rules rules;
+        rules.free_build_cheat = true;
+        sim::World w = s.world(rules);
+        REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+        CHECK(money_of(w) == 10000);
+        check_road_tile(w, k.road, 3, 3, 0x30, 0);
+    }
+}
+
+TEST_CASE("road build: duplicates replace and charge, buildings and other pieces block") {
+    const Kit& k = kit();
+    Site s;
+    s.object(8, 8, k.ramp);
+    s.object(9, 9, k.bridge);
+    sim::World w = s.world();
+    REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+    CHECK(money_of(w) == 10000 - 5);
+    // The same road again is compatible (group 0xc1): charged again, the tile is rewritten.
+    REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+    CHECK(money_of(w) == 10000 - 10);
+    // Another road type replaces it: the new type's cost, nothing refunded for the old one.
+    REQUIRE(w.apply(build_at(k.road_ext, 3, 3)).ok());
+    CHECK(money_of(w) == 10000 - 10 - 7);
+    check_road_tile(w, k.road_ext, 3, 3, 0x30, 0);
+    // A house on a road tile and a road on a house tile are Occupied.
+    refused(w, build_at(k.house, 3, 3), sim::Reject::Occupied);
+    REQUIRE(w.apply(build_at(k.house, 6, 6)).ok());
+    refused(w, build_at(k.road, 6, 6), sim::Reject::Occupied);
+    refused(w, build_at(k.road, 7, 7), sim::Reject::Occupied);
+    REQUIRE(w.apply(build_at(k.road, 8, 6)).ok()); // the control beside it
+    // A ramp piece (group 0xc1, not a land road) and a bridge piece are not replaced.
+    refused(w, build_at(k.road, 8, 8), sim::Reject::Occupied);
+    refused(w, build_at(k.road, 9, 9), sim::Reject::Occupied);
+    // Scenery is overwritten.
+    Site t;
+    t.object(5, 5, k.tree);
+    sim::World tw = t.world();
+    REQUIRE(tw.apply(build_at(k.road, 5, 5)).ok());
+    check_road_tile(tw, k.road, 5, 5, 0x30, 0);
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("road build: a mixed drag is partial when sequential and all-or-nothing when atomic") {
+    const Kit& k = kit();
+    // [road, road on sea, house, road on the house]: records 1 and 3 fail on their own reasons.
+    const auto drag = [&] {
+        return ct::build(0, kC0,
+                         {ct::at(k.road, kX0 + 3, kY0 + 3), ct::at(k.road, kX0 + 12, kY0 + 3),
+                          ct::at(k.house, kX0 + 6, kY0 + 6), ct::at(k.road, kX0 + 7, kY0 + 7)});
+    };
+    Site s;
+    s.fill(11, 0, 5, 6, 0x00); // sea around (12, 3)
+    {
+        sim::World w = s.world();
+        const std::uint32_t serial = w.islands()[0]->next_serial;
+        const sim::ApplyResult r = w.apply(drag());
+        CHECK(r.ok()); // accepted: it placed something
+        REQUIRE(r.records.size() == 4);
+        CHECK(r.records[0].status == sim::Reject::None);
+        CHECK(r.records[1].status == sim::Reject::TerrainRefused);
+        CHECK(r.records[2].status == sim::Reject::None);
+        CHECK(r.records[3].status == sim::Reject::Occupied);
+        CHECK(w.islands()[0]->next_serial == serial + 1); // only the house took a serial
+        CHECK(money_of(w) == 10000 - 5 - 100);
+        check_road_tile(w, k.road, 3, 3, 0x30, 0);
+        check_free_tile(w, 12, 3);
+        CHECK(w.check_invariants() == "");
+    }
+    {
+        sim::Rules atomic;
+        atomic.build_atomic = true;
+        sim::World w = s.world(atomic);
+        const std::vector<std::uint8_t> before = w.save();
+        const sim::ApplyResult r = w.apply(drag());
+        CHECK(r.status == sim::Reject::AtomicAbort);
+        CHECK(r.records[0].status == sim::Reject::AtomicAbort); // would have passed
+        CHECK(r.records[1].status == sim::Reject::TerrainRefused);
+        CHECK(r.records[2].status == sim::Reject::AtomicAbort);
+        CHECK(r.records[3].status == sim::Reject::Occupied); // the earlier house, in the dry run
+        CHECK(w.save() == before);
+        // The control: the legal records alone pass atomically and match the live run.
+        const std::uint32_t serial = w.islands()[0]->next_serial;
+        const sim::Command legal = ct::build(
+            0, kC0, {ct::at(k.road, kX0 + 3, kY0 + 3), ct::at(k.house, kX0 + 6, kY0 + 6)});
+        REQUIRE(w.apply(legal).ok());
+        CHECK(w.islands()[0]->next_serial == serial + 1);
+    }
+    // A road then a building on its tile, and a building then a road on its tile (atomic): both
+    // are refused with Occupied by the record that comes second, like the live path.
+    sim::Rules atomic;
+    atomic.build_atomic = true;
+    for (const bool road_first : {true, false}) {
+        INFO((road_first ? "road, then house" : "house, then road"));
+        Site t;
+        sim::World w = t.world(atomic);
+        const sim::PlacementWire road = ct::at(k.road, kX0 + 4, kY0 + 4);
+        const sim::PlacementWire house = ct::at(k.house, kX0 + 4, kY0 + 4);
+        const sim::ApplyResult r = w.apply(
+            ct::build(0, kC0, road_first ? std::vector{road, house} : std::vector{house, road}));
+        CHECK(r.status == sim::Reject::AtomicAbort);
+        CHECK(r.records[0].status == sim::Reject::AtomicAbort);
+        CHECK(r.records[1].status == sim::Reject::Occupied);
+    }
+    // Two roads on one tile are compatible in both runs: the second replaces the first.
+    {
+        Site t;
+        sim::World w = t.world(atomic);
+        REQUIRE(w.apply(ct::build(0, kC0,
+                                  {ct::at(k.road, kX0 + 4, kY0 + 4),
+                                   ct::at(k.road_ext, kX0 + 4, kY0 + 4)}))
+                    .ok());
+        check_road_tile(w, k.road_ext, 4, 4, 0x30, 0);
+        CHECK(money_of(w) == 10000 - 5 - 7);
+    }
+}
+
+TEST_CASE("road build: serials are not consumed and an exhausted island still builds roads") {
+    const Kit& k = kit();
+    Site s;
+    sim::World e = s.world();
+    sim::WorldTestAccess::islands(e)[0]->next_serial = 0xffffffffU;
+    // No serial is left: a building is refused ...
+    refused(e, build_at(k.house, 3, 3), sim::Reject::SerialExhausted);
+    // ... while a road needs none and is built.
+    REQUIRE(e.apply(build_at(k.road, 3, 3)).ok());
+    CHECK(e.islands()[0]->next_serial == 0xffffffffU);
+    check_road_tile(e, k.road, 3, 3, 0x30, 0);
+}
+
+TEST_CASE("road remove: DemolishCmd clears the tile object only, once, for the owner") {
+    const Kit& k = kit();
+    Site s;
+    s.split = true;
+    sim::World w = s.world();
+    REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+    REQUIRE(w.apply(build_at(k.road, 4, 3)).ok());
+    REQUIRE(w.apply(build_at(k.house, 6, 6)).ok());
+    REQUIRE(w.apply(build_at(k.road_ext, 10, 3, 0, 1, kC1)).ok());
+    const std::int64_t gold = money_of(w);
+    const std::uint32_t serial = w.islands()[0]->next_serial;
+    const std::size_t buildings = building_count(w);
+    // Another city's road tile and a wrong issuer are refused, the road stays (controls below).
+    {
+        const std::vector<std::uint8_t> before = w.save();
+        const sim::ApplyResult r = w.apply(demolish_at(10, 3));
+        REQUIRE(r.records.size() == 1);
+        CHECK(r.records[0].status == sim::Reject::TileNotOwned);
+        CHECK(w.save() == before);
+        refused(w, demolish_at(3, 3, 1, kC0), sim::Reject::NotCityOwner);
+    }
+    const sim::ApplyResult r = w.apply(demolish_at(3, 3));
+    REQUIRE(r.ok());
+    CHECK(r.records[0].status == sim::Reject::None);
+    check_free_tile(w, 3, 3);
+    // The height byte stays (the clear arm keeps it), the neighbours, serial, gold, buildings
+    // and the other city are untouched; there is no refund.
+    CHECK(w.islands()[0]->tiles.item_height(tile_of(w, 3, 3)) == 0x30);
+    check_road_tile(w, k.road, 4, 3, 0x30, 0);
+    check_road_tile(w, k.road_ext, 10, 3, 0x30, 0);
+    CHECK(money_of(w) == gold);
+    CHECK(w.islands()[0]->next_serial == serial);
+    CHECK(building_count(w) == buildings);
+    CHECK(w.building_at(kC0, kX0 + 6, kY0 + 6) != nullptr);
+    // A second removal finds nothing.
+    {
+        const std::vector<std::uint8_t> before = w.save();
+        const sim::ApplyResult again = w.apply(demolish_at(3, 3));
+        CHECK(again.records[0].status == sim::Reject::NoBuildingAtTile);
+        CHECK(w.save() == before);
+    }
+    // A mixture in one command: a house tile (the building branch), the road, an empty tile.
+    {
+        sim::DemolishCmd d;
+        d.city = kC0;
+        d.tiles = {{kX0 + 6, kY0 + 6}, {kX0 + 4, kY0 + 3}, {kX0 + 5, kY0 + 5}};
+        const sim::ApplyResult m = w.apply(sim::Command{sim::PlayerId{0}, d});
+        CHECK(m.records[0].status == sim::Reject::None);
+        CHECK(m.records[0].building.valid()); // the house, by id
+        CHECK(m.records[1].status == sim::Reject::None);
+        CHECK_FALSE(m.records[1].building.valid());
+        CHECK(m.records[2].status == sim::Reject::NoBuildingAtTile);
+        check_free_tile(w, 4, 3);
+        check_free_tile(w, 6, 6);
+        CHECK(building_count(w) == buildings - 1);
+    }
+    // Rebuild after removal: the tile is a road again, charged again.
+    const std::int64_t before_rebuild = money_of(w);
+    REQUIRE(w.apply(build_at(k.road, 3, 3)).ok());
+    CHECK(money_of(w) == before_rebuild - 5);
+    check_road_tile(w, k.road, 3, 3, 0x30, 0);
+    CHECK(w.check_invariants() == "");
+    auto loaded = sim::World::load(w.save(), kit().reg);
+    REQUIRE(loaded.ok());
+    CHECK(loaded.value().state_hash() == w.state_hash());
+}
+
+TEST_CASE("road build: dry run and live run decide alike over random mixed batches") {
+    // The atomic dry run puts virtual road objects on its budget; this checks it against the live
+    // run over random terrains with existing ramp/bridge/road pieces, houses and 1..5 records.
+    const Kit& k = kit();
+    const sim::TypeId types[] = {k.road, k.road_slope, k.road_ext, k.house, k.farm3, k.ramp};
+    const std::uint8_t levels[] = {0x00, 0x10, 0x20, 0x30, 0x30, 0x30, 0x31, 0x40};
+    Lcg rng{0x9e3779b97f4a7c15ULL};
+    sim::Rules atomic;
+    atomic.build_atomic = true;
+    std::size_t all_pass = 0, aborted = 0, occupied = 0, terrain = 0, road_records = 0;
+    for (int round = 0; round < 300; ++round) {
+        Site s;
+        s.fill(0, 0, kSize, kSize, levels[rng.next() % 8]);
+        for (int p = 0; p < 4; ++p) {
+            s.fill(rng.next() % kSize, rng.next() % kSize, 1 + rng.next() % 6, 1 + rng.next() % 6,
+                   levels[rng.next() % 8]);
+        }
+        for (int o = 0; o < 3; ++o) { // existing pieces: roads, ramps, bridges, a tree
+            const sim::TypeId pieces[] = {k.road, k.ramp, k.bridge, k.tree};
+            s.object(rng.next() % kSize, rng.next() % kSize, pieces[rng.next() % 4]);
+        }
+        std::vector<sim::PlacementWire> placements;
+        const std::uint32_t n = 1 + rng.next() % 5;
+        for (std::uint32_t i = 0; i < n; ++i) {
+            const sim::TypeId t = types[rng.next() % 6];
+            placements.push_back(ct::at(t, kX0 + static_cast<std::int32_t>(rng.next() % 14),
+                                        kY0 + static_cast<std::int32_t>(rng.next() % 14),
+                                        static_cast<std::uint8_t>(rng.next() % 4)));
+            if (i > 0 && rng.next() % 2 == 0) { // overlap the previous record on purpose
+                placements.back().x =
+                    placements[i - 1].x + static_cast<std::int32_t>(rng.next() % 2);
+                placements.back().y =
+                    placements[i - 1].y + static_cast<std::int32_t>(rng.next() % 2);
+            }
+        }
+        const sim::Command c = ct::build(0, kC0, placements);
+        sim::World a = s.world(atomic);
+        sim::World b = s.world();
+        const std::vector<std::uint8_t> initial = a.save();
+        const sim::ApplyResult dry = a.apply(c);
+        const sim::ApplyResult live = b.apply(c);
+        bool live_all = true;
+        for (const sim::RecordResult& r : live.records) {
+            live_all = live_all && r.status == sim::Reject::None;
+            road_records += r.tile_object ? 1 : 0;
+        }
+        INFO("round " << round);
+        if (live_all) {
+            ++all_pass;
+            CHECK(dry.ok());
+            const std::size_t from_a = island_test::flat_offset(a, "clock_rng");
+            const std::size_t from_b = island_test::flat_offset(b, "clock_rng");
+            REQUIRE(from_a != std::string::npos);
+            const std::vector<std::uint8_t> fa = island_test::flat_stream(a);
+            const std::vector<std::uint8_t> fb = island_test::flat_stream(b);
+            CHECK(std::vector<std::uint8_t>(fa.begin() + static_cast<std::ptrdiff_t>(from_a),
+                                            fa.end()) ==
+                  std::vector<std::uint8_t>(fb.begin() + static_cast<std::ptrdiff_t>(from_b),
+                                            fb.end()));
+        } else {
+            ++aborted;
+            CHECK(dry.status == sim::Reject::AtomicAbort);
+            CHECK(a.save() == initial);
+            for (std::size_t i = 0; i < live.records.size(); ++i) {
+                INFO("record " << i);
+                if (live.records[i].status == sim::Reject::None) {
+                    CHECK(dry.records[i].status == sim::Reject::AtomicAbort);
+                } else {
+                    CHECK(dry.records[i].status == live.records[i].status);
+                    occupied += live.records[i].status == sim::Reject::Occupied ? 1 : 0;
+                    terrain += live.records[i].status == sim::Reject::TerrainRefused ? 1 : 0;
+                }
+            }
+        }
+        CHECK(a.check_invariants() == "");
+        CHECK(b.check_invariants() == "");
+    }
+    CHECK(all_pass >= 20);
+    CHECK(aborted >= 20);
+    CHECK(occupied >= 20);
+    CHECK(terrain >= 20);
+    CHECK(road_records >= 100);
 }

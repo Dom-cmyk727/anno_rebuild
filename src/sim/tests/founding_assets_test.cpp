@@ -1291,6 +1291,8 @@ TEST_CASE("sail log export: a requested path that cannot be written fails with i
 namespace {
 
 constexpr std::uint32_t kPionier = 501, kHandwerk = 1001;
+/// MAP-ROAD-1: the dirt road (STRASSE, 0x4186, 5 gold, walk pair (0, 3)); Anlagen.dat id 2520.
+constexpr std::uint32_t kRoadDirt = 2520;
 
 struct Origin {
     std::int32_t x = 0, y = 0;
@@ -2029,13 +2031,61 @@ struct Seat {
     std::int64_t gold_start = 0, gold_spent = 0, gold_observed = 0, last_gold = 0;
     std::vector<std::int64_t> found_cost, credits, build_cost, observed, loaded;
     std::vector<std::uint32_t> last_stock;
-    Origin a, b; // PIONIER site, HANDWERK site (terrain level in .height)
+    Origin a, b;                    // PIONIER site, HANDWERK site (terrain level in .height)
+    std::size_t road_buildings = 0; // MAP-ROAD-1: buildings and next serial before the roads
+    std::uint32_t road_serial = 0;
 };
 
 struct OpeningOut {
     std::vector<OStep> ledger;
     std::array<sim::BuildingId, 2> warehouses{};
+    /// MAP-ROAD-1: per seat, the two adjacent road tiles of the first drag (the second one is
+    /// removed and rebuilt) and another legal tile for the changed-command control.
+    std::array<std::array<Origin, 2>, 2> road_pair{};
+    std::array<Origin, 2> road_alt{};
 };
+
+/// Two edge-adjacent tiles (x, y), (x + 1, y) where a land road is legal by the rule and the city
+/// owns the tile, nearest to the warehouse (Chebyshev distance, then row-major), and one more
+/// legal tile elsewhere.
+struct RoadSite {
+    Origin first, second, alt;
+};
+std::optional<RoadSite> road_site(const sim::World& w, sim::CityRef ref,
+                                  const sim::BuildingType& road, const sim::Building& wh) {
+    const sim::Island& is = *w.islands()[ref.island.v];
+    std::vector<Origin> legal;
+    for (const Origin& o : legal_origins(is, w.types(), road)) {
+        const sim::Slot idx = is.tile_index(o.x, o.y);
+        if (idx != sim::kNoSlot && is.tiles.owner(idx) == ref.city.v) {
+            legal.push_back(o);
+        }
+    }
+    std::stable_sort(legal.begin(), legal.end(), [&](const Origin& a, const Origin& b) {
+        return std::max(std::abs(a.x - wh.x), std::abs(a.y - wh.y)) <
+               std::max(std::abs(b.x - wh.x), std::abs(b.y - wh.y));
+    });
+    const auto has = [&](std::int32_t x, std::int32_t y) {
+        return std::any_of(legal.begin(), legal.end(),
+                           [&](const Origin& o) { return o.x == x && o.y == y; });
+    };
+    for (const Origin& o : legal) {
+        if (!has(o.x + 1, o.y)) {
+            continue;
+        }
+        for (const Origin& alt : legal) {
+            if ((alt.x == o.x || alt.x == o.x + 1) && alt.y == o.y) {
+                continue;
+            }
+            return RoadSite{
+                o,
+                *std::find_if(legal.begin(), legal.end(),
+                              [&](const Origin& q) { return q.x == o.x + 1 && q.y == o.y; }),
+                alt};
+        }
+    }
+    return std::nullopt;
+}
 
 /// Orders the legs (MoveCmd) and advances until each ship reported ShipArrived. No founding.
 SailOutcome sail_phase(Driver& d, sim::World& w, const std::vector<SailLeg>& legs, bool timing) {
@@ -2450,6 +2500,133 @@ OpeningOut run_opening(sim::World& w, sim::Recorder* rec, const std::vector<Sail
             }
             settle(100);
         }
+    }
+    // ---- 6a. ordinary land roads (MAP-ROAD-1 R4.3) --------------------------------------------
+    // After the unloading and the builds, with the original supplies and public commands only: a
+    // two-tile road drag on the city's own tiles, a rival's attempt, the removal of one tile, a
+    // repeated removal, and the rebuild. A road is a tile object: the gold falls by exactly the
+    // registry cost, no building and no serial appears, the tile record carries the height of
+    // the terrain window (recomputed here from the vertex grid, not by the rule under test) and the
+    // walk code of the type's HEAD pair (0, 3) = 0, and every later quiet window must stay quiet.
+    const sim::BuildingType& road = *types->find(sim::TypeId{kRoadDirt});
+    REQUIRE(sim::is_land_road(road));
+    REQUIRE(road.head_raw.size() > 0x30);
+    REQUIRE(road.head_raw[0x2f] == 0);
+    REQUIRE(road.head_raw[0x30] == 3);
+    REQUIRE(road.cost_goods.empty());
+    for (std::size_t i = 0; i < 2; ++i) {
+        Seat& s = seats[i];
+        const Seat& other = seats[1 - i];
+        const sim::Building& wh = *w.find_building(s.warehouse);
+        const auto site = road_site(w, *s.city, road, wh);
+        REQUIRE_MESSAGE(site.has_value(), "seat " << s.player << ": no road site on its own land");
+        out.road_pair[i] = {site->first, site->second};
+        out.road_alt[i] = site->alt;
+        const std::string tag = "seat " + std::to_string(s.player);
+        const sim::Island& is = *w.islands()[s.city->island.v];
+        const auto road_tile = [&](const Origin& o) {
+            const sim::Slot idx = is.tile_index(o.x, o.y);
+            REQUIRE(idx != sim::kNoSlot);
+            return idx;
+        };
+        const auto expect_road = [&](const Origin& o) { // the tile as the placement left it
+            if (!detail) {
+                return;
+            }
+            const sim::VertexGrid grid = sim::VertexGrid::of(is);
+            REQUIRE(grid.ok());
+            unsigned lo = 0xff;
+            for (const auto& [dx, dy] : {std::pair{0, 0}, {1, 0}, {0, 1}, {1, 1}}) {
+                const auto v = grid.at(o.x + dx, o.y + dy);
+                REQUIRE(v.has_value());
+                lo = std::min<unsigned>(lo, *v);
+            }
+            const sim::Slot idx = road_tile(o);
+            CHECK(is.tiles.object(idx) == kRoadDirt);
+            CHECK(static_cast<unsigned>(is.tiles.item_height(idx)) == (lo & 0xf0U));
+            CHECK(is.tiles.item_height(idx) == o.height);
+            CHECK(is.tiles.walk_code(idx) == 0);
+            CHECK(is.tiles.walk_mask(idx) == 0);
+            CHECK(is.tiles.foot_dx(idx) == 0);
+            CHECK(is.tiles.foot_dy(idx) == 0);
+            CHECK(is.cache.by_id.size() == s.road_buildings);
+            CHECK(is.next_serial == s.road_serial);
+        };
+        s.road_buildings = is.cache.by_id.size();
+        s.road_serial = is.next_serial;
+        const std::int64_t gold0 = gold_of(w, s.player);
+        const auto drag = command(tag + " build a road drag",
+                                  ct::build(s.player, *s.city,
+                                            {ct::at(road.id, site->first.x, site->first.y),
+                                             ct::at(road.id, site->second.x, site->second.y)}));
+        REQUIRE_MESSAGE(drag.status == ok,
+                        tag << " road drag refused: " << sim::reject_name(drag.status));
+        REQUIRE(drag.records.size() == 2);
+        for (const sim::RecordResult& rr : drag.records) {
+            REQUIRE(rr.status == ok);
+            if (detail) {
+                CHECK(rr.tile_object);
+                CHECK_FALSE(rr.building.valid());
+            }
+        }
+        s.gold_spent += 2 * road.cost_gold;
+        if (detail) {
+            CHECK(gold0 - gold_of(w, s.player) == 2 * road.cost_gold);
+            MESSAGE(tag << " roads at (" << site->first.x << ", " << site->first.y << ") and ("
+                        << site->second.x << ", " << site->second.y << "), level "
+                        << unsigned{site->first.height} << ", " << road.cost_gold << " gold each");
+        }
+        expect_road(site->first);
+        expect_road(site->second);
+        settle(100);
+        // The rival seat's attempt on this city: refused, nothing changes (the command layer
+        // checks the world is byte-identical).
+        const auto rival =
+            command(tag + " road in the rival city",
+                    ct::build(s.player, *other.city, {ct::at(road.id, site->alt.x, site->alt.y)}));
+        if (detail) {
+            CHECK(rival.status == sim::Reject::NotCityOwner);
+        }
+        // Remove the second tile: the tile object only, no refund.
+        const std::int64_t gold1 = gold_of(w, s.player);
+        const sim::Command rm{sim::PlayerId{s.player},
+                              sim::DemolishCmd{*s.city, {{site->second.x, site->second.y}}}};
+        const auto removed = command(tag + " remove a road tile", rm);
+        REQUIRE(removed.status == ok);
+        REQUIRE(removed.records.size() == 1);
+        REQUIRE(removed.records[0].status == ok);
+        if (detail) {
+            const sim::Slot idx = road_tile(site->second);
+            CHECK(is.tiles.object(idx) == 0);
+            CHECK(is.tiles.walk_code(idx) == 2);
+            CHECK(is.tiles.walk_mask(idx) == 0);
+            CHECK(gold_of(w, s.player) == gold1); // no refund
+            CHECK(is.cache.by_id.size() == s.road_buildings);
+            CHECK(is.next_serial == s.road_serial);
+        }
+        expect_road(site->first); // the neighbour tile is untouched
+        // A second removal of the same tile finds nothing and changes nothing.
+        {
+            const std::vector<std::uint8_t> before = w.save();
+            const auto again = command(tag + " remove the same road tile again", rm);
+            REQUIRE(again.records.size() == 1);
+            if (detail) {
+                CHECK(again.records[0].status == sim::Reject::NoBuildingAtTile);
+            }
+            REQUIRE_MESSAGE(w.save() == before, tag << ": a repeated removal changed the world");
+        }
+        // Rebuild it: charged again, the tile is a road again.
+        const std::int64_t gold2 = gold_of(w, s.player);
+        const auto rebuilt = command(
+            tag + " rebuild the road tile",
+            ct::build(s.player, *s.city, {ct::at(road.id, site->second.x, site->second.y)}));
+        REQUIRE(rebuilt.status == ok);
+        s.gold_spent += road.cost_gold;
+        if (detail) {
+            CHECK(gold2 - gold_of(w, s.player) == road.cost_gold);
+        }
+        expect_road(site->second);
+        settle(100);
     }
     settle(500);
     observe();
@@ -2880,7 +3057,8 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
     const std::uint64_t final_hash = w.state_hash();
     // 2 foundings, 6 refusals of the rival, 4 builds refused before unloading, 2 x (4 unloads and
     // 1 refused repeat), 4 builds, 4 refused rival loads, 2 x (5 loads and 2 refused loads).
-    CHECK(main_run.ledger.size() == 26 + 4 + 14);
+    // 2 x 5 road commands: drag, rival attempt, removal, repeated removal, rebuild.
+    CHECK(main_run.ledger.size() == 26 + 4 + 14 + 10);
 
     // ---- save and load between founding and unloading, and after unloading: same outcomes -----
     // Three variants, each combining boundaries: after founding AND after unloading AND before the
@@ -2949,6 +3127,38 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
             REQUIRE(fresh3.ok());
             auto bad3 = sim::replay(fresh3.value(), tampered_unload);
             CHECK((!bad3.ok() || !bad3.value().reproduced()));
+        }
+        {
+            // (3) MAP-ROAD-1: the rebuild of seat 0's removed road tile goes to another LEGAL tile
+            // (chosen by the rule before the drag, so the command executes and the world differs):
+            // exported (ANNO_OPENING_LOG_ROAD_TAMPERED) for the fresh-process CLI run.
+            sim::ReplayLog tampered_road = read.value();
+            bool moved = false;
+            for (sim::ReplayEntry& e : tampered_road.entries) {
+                for (sim::Command& c : e.commands) {
+                    auto* b = std::get_if<sim::BuildCmd>(&c.body);
+                    if (b != nullptr && !moved && c.issuer.v == 0 && b->placements.size() == 1 &&
+                        b->placements[0].type.v == kRoadDirt &&
+                        b->placements[0].x == main_run.road_pair[0][1].x &&
+                        b->placements[0].y == main_run.road_pair[0][1].y) {
+                        b->placements[0].x = main_run.road_alt[0].x;
+                        b->placements[0].y = main_run.road_alt[0].y;
+                        moved = true;
+                    }
+                }
+            }
+            REQUIRE(moved);
+            if (const char* road_path = std::getenv("ANNO_OPENING_LOG_ROAD_TAMPERED");
+                road_path != nullptr && *road_path) {
+                const auto road_bytes = sim::write_log(tampered_road);
+                REQUIRE(road_bytes.ok());
+                const std::string e = export_log_if_requested(road_path, road_bytes.value());
+                REQUIRE_MESSAGE(e.empty(), e);
+            }
+            auto fresh4 = sim::World::load(tampered_road.initial_save, rs.types, {});
+            REQUIRE(fresh4.ok());
+            auto bad4 = sim::replay(fresh4.value(), tampered_road);
+            CHECK((!bad4.ok() || !bad4.value().reproduced()));
         }
         if (const char* bad_path = std::getenv("ANNO_OPENING_LOG_TAMPERED");
             bad_path != nullptr && *bad_path) {

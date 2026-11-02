@@ -110,6 +110,10 @@ struct RecordResult {
     /// an accepted LoadCmd moved from the city store into a hold, in 1/256 ton
     /// (docs/sim/ship-cargo.md sections 3 and 12). 0 for every other command and every refusal.
     std::uint64_t transferred_88 = 0;
+    /// MAP-ROAD-1: true for an accepted BuildCmd record that placed a tile object (a land road):
+    /// no building was created, `building` stays the invalid id and no serial was taken
+    /// (docs/sim/road-placement.md section 4). False for every other record.
+    bool tile_object = false;
 };
 
 /// The result of World::apply (stage S8): the status of the command as a whole

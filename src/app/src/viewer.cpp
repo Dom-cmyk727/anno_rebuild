@@ -244,7 +244,7 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
     if (const char* s = std::getenv("ANNO_VIEW_FADE_MS"); s != nullptr && *s != 0) {
         char* end = nullptr;
         const unsigned long long ms = std::strtoull(s, &end, 10);
-        if (end != s && *end == 0) {
+        if (end != s && *end == 0 && s[0] != '-') {
             limits.chunk_fade_ms = ms;
         } else {
             std::fprintf(stderr, "ANNO_VIEW_FADE_MS=%s not understood (milliseconds)\n", s);
@@ -306,7 +306,7 @@ class Viewer {
             hold_->release(); // a session that ends inside a held publication frees the sim thread
         }
         if (chunk_hold_) {
-            chunk_hold_->release(); // and the builders (they are joined after this)
+            chunk_hold_->release(); // and the builders (also released before they are joined)
         }
         if (dev_ != nullptr && play_ != nullptr) {
             play_->set_batch_observer({}); // it points into knowledge_
@@ -891,6 +891,12 @@ std::string Viewer::run() {
     // wave simulation's background preparations release the generation they hold as they end.
     if (play_ != nullptr) {
         play_->runner().set_wake_listener({}); // no SDL event after the window is gone
+    }
+    if (chunk_hold_) {
+        // A session that ends inside `hold chunks` (quit, a failed step, the window closed): the
+        // workers parked in the gate must go before they are joined, or the exit waits for the
+        // hold's watchdog (W4-WIN-CLOSE C2 review, B1).
+        chunk_hold_->release();
     }
     frames_.set_workers(nullptr);
     for (auto& t : seas) {

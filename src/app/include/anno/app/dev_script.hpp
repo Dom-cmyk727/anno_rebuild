@@ -119,8 +119,9 @@ struct DevScriptState {
     bool chunks_armed = false, uploads_held = false, presents_failing = false;
     bool stage_holds_available = false;
     /// The scene generation of the last drawn frame and the surface epoch (the count of surface
-    /// configurations, 0 on the CPU path), for the checkpoint line: the same command, island
-    /// generation, frame and surface are named at every transition.
+    /// reconfigurations since the window opened, 0 on the CPU path; the window trace's epoch column
+    /// is this plus 1), for the checkpoint line: the same command, scene generation, frame count
+    /// and surface are named at every transition.
     std::uint64_t scene_generation = 0, surface_epoch = 0;
     /// The last drawn frame (none before the first).
     const PointerFrame* frame = nullptr;

@@ -9,6 +9,8 @@
                          is held between a turn's outcome record and its snapshot
   r4_occupancy           R4: the occupancy index follows the takes by their deltas, does nothing
                          while the tool is off, ignores another island's edit, and reseeds once
+  boundary_exit_in_hold  R2: a session that ends while the chunk builders are held exits at once
+                         (--gpu --max-seconds 15)
   boundary_*             R2 (GPU window, --gpu): where a change waits on its way to the screen while
                          a stage is held (chunk builders, uploads, dissolve, presents, view, size)
 Default: the real viewer (src/app/src/viewer.cpp) with SDL's dummy video driver and the CPU
@@ -23,6 +25,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
@@ -30,7 +33,7 @@ CASES = HERE / "tools" / "test" / "viewer_wiring"
 
 
 def main(argv):
-    flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}}
+    flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None}
     pos = []
     it = iter(argv)
     for a in it:
@@ -40,6 +43,8 @@ def main(argv):
             flags["trace"] = True
         elif a == "--adapter":
             flags["adapter"] = next(it, "0")
+        elif a == "--max-seconds":
+            flags["max_seconds"] = float(next(it, "0"))
         elif a == "--env":
             k, _, v = next(it, "=").partition("=")
             flags["env"][k] = v
@@ -78,6 +83,7 @@ def main(argv):
             return 2
     env.update(flags["env"])
     err_path = out.parent / f"{out.name}.stderr.txt"
+    started = time.monotonic()
     with open(err_path, "wb") as se:
         try:
             proc = subprocess.run([exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", renderer],
@@ -86,6 +92,7 @@ def main(argv):
         except subprocess.TimeoutExpired:
             print("viewer_wiring: FAIL: the window did not end within 300 s (watchdog)")
             return 1
+    elapsed = time.monotonic() - started
     log_file = out / "script.log"
     log = log_file.read_text(encoding="utf-8").splitlines() if log_file.is_file() else []
     fails = [line for line in log if "FAIL" in line]
@@ -94,10 +101,13 @@ def main(argv):
     ran_to_end = last == "quit" and not fails and rc == 0
     for line in log:
         print(line)
+    if flags["max_seconds"] is not None and elapsed > flags["max_seconds"]:
+        print(f"viewer_wiring: FAIL {case}: the window took {elapsed:.1f} s, more than {flags['max_seconds']} s")
+        return 1
     if rc != 0 or fails or not ran_to_end:
         print(f"viewer_wiring: FAIL {case}: window exit {rc}; {len(fails)} failed step(s); stderr {err_path}")
         return 1
-    print(f"viewer_wiring: PASS {case}: window exit 0, no failed step; session {out}")
+    print(f"viewer_wiring: PASS {case}: window exit 0 after {elapsed:.1f} s, no failed step; session {out}")
     return 0
 
 

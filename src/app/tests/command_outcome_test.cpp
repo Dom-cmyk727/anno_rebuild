@@ -732,3 +732,62 @@ TEST_CASE("publication hold: an armed hold waits at the first publication that f
     REQUIRE(waiting);
     CHECK(runner.snapshot()->turn > 0);
 }
+
+TEST_CASE("stage hold: an unarmed gate passes, an armed one parks every caller, and release, the "
+          "watchdog and the destructor each free them (W4-WIN-CLOSE C2)" *
+          doctest::test_suite("command_outcome")) {
+    // Unarmed: no wait.
+    {
+        app::StageHold hold;
+        hold.pass();
+        CHECK(hold.blocked() == 0);
+    }
+    // Armed: two callers park; release frees both and disarms; a later call passes.
+    {
+        app::StageHold hold;
+        hold.arm();
+        std::thread a([&hold] { hold.pass(); });
+        std::thread b([&hold] { hold.pass(); });
+        struct Joiner {
+            app::StageHold& h;
+            std::thread& a;
+            std::thread& b;
+            ~Joiner() {
+                h.release();
+                for (std::thread* t : {&a, &b}) {
+                    if (t->joinable()) {
+                        t->join();
+                    }
+                }
+            }
+        } joiner{hold, a, b};
+        REQUIRE(eventually([&] { return hold.blocked() == 2; }));
+        CHECK(hold.armed());
+        hold.release();
+        REQUIRE(eventually([&] { return hold.blocked() == 0; }));
+        CHECK_FALSE(hold.armed());
+        CHECK_FALSE(hold.expired());
+        hold.pass();
+    }
+    // The watchdog frees a caller nobody released, says so and disarms.
+    {
+        app::StageHold hold(std::chrono::milliseconds(60));
+        hold.arm();
+        hold.pass(); // returns by the watchdog
+        CHECK(hold.expired());
+        CHECK_FALSE(hold.armed());
+        CHECK(hold.blocked() == 0);
+    }
+    // The destructor frees a parked caller; the gate (a copy sharing the state) outlives the hold.
+    {
+        auto hold = std::make_unique<app::StageHold>();
+        std::function<void()> gate = hold->gate();
+        hold->arm();
+        std::thread t(gate);
+        const bool parked = eventually([&] { return hold->blocked() == 1; });
+        hold.reset();
+        t.join(); // would hang if the destructor did not release
+        REQUIRE(parked);
+        gate(); // a dead hold's gate passes
+    }
+}

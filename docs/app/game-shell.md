@@ -531,6 +531,32 @@ game files and skip (exit 77, class required-asset) without them.
   (full list in `dev_script.hpp`). `local` and `foreign` post ordinary commands; the sim applies its
   own rules to them.
 
+### R2 at each boundary, in the GPU window (W4-WIN-CLOSE, C2)
+
+`ChangeVisibility` is fed by the same boundaries with the trace off and on; the sessions below run the
+real window on the GPU renderer (`tools/test/viewer_wiring.py <exe> boundary_stages --gpu`, add `--trace`
+for the window trace) and hold one stage at a time while the window keeps drawing and the sim keeps
+applying commands:
+
+- `hold chunks` makes the chunk builders wait before each build (ChunkWorkers' test gate): the object
+  list commits, the CPU chunks stay stale, the change reads `ChunksStale`, and a second edit is still
+  accepted and applied meanwhile. `hold uploads` (`GpuFrame::set_test_hold_uploads`) leaves the CPU
+  chunks fresh and the GPU copy old or absent: `NotOnGpu`. `ANNO_VIEW_FADE_MS` lengthens the dissolve
+  (`boundary_dissolve`): the change stays `NotOnGpu` for the fade time after the uploads are released
+  and is `Visible` only after it. `hold presents` makes every present count as failed to the consumers
+  (the frame is still presented; this is the seam a failing surface takes): `NotPresented`. Each
+  `release` is followed by a successful present before `Visible`.
+- `boundary_view`: a change committed while the view is elsewhere is `Offscreen` and stays so when
+  the view returns; a change left behind by the view is `OutOfView` and `ChunksStale` again on return;
+  a resize (new surface epoch) while it waits does not let the old epoch's frames count; a refused
+  command and an empty demolish are `NoVisualChange`.
+- `tools/test/window_state_case.py` minimises, restores and covers the native window while a change
+  waits and records the backend's acquire and present statuses next to it. On the RTX 4090 (Vulkan)
+  minimising produced two `Outdated` acquires and a surface reconfigure, and a covered window kept
+  presenting with `Success`: an obscured window is not an API failure.
+- Not covered in the window: `NothingToDraw` (unit cases in `visibility_test`/`dev_visibility_test`),
+  a physical display (present-call return is not display time), the Radeon window matrix.
+
 ### Immutable per-island object lists (W4.3, round du)
 
 Status: implemented in the Mac continuation of round du (`render::Scene::with_islands`,

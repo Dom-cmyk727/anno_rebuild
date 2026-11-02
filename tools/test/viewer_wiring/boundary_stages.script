@@ -46,6 +46,12 @@ wait frames 30
 expect held uploads
 expect visibility NotOnGpu
 checkpoint uploads_held
+# Input and the sim progress while the replacement is held: another edit is accepted and applied.
+click 1100 444
+wait outcome
+expect outcome Applied
+wait frames 20
+expect visibility NotOnGpu
 release uploads
 wait drawn
 expect visibility Visible

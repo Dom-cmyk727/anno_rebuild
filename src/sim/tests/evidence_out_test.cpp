@@ -27,6 +27,14 @@ class FullDisk : public std::streambuf {
     std::streamsize left_;
 };
 
+/// Accepts every byte but fails the final flush, like a disk that reports the error late.
+class FlushFails : public std::streambuf {
+  protected:
+    std::streamsize xsputn(const char*, std::streamsize n) override { return n; }
+    int_type overflow(int_type c) override { return c; }
+    int sync() override { return -1; }
+};
+
 } // namespace
 
 TEST_CASE("evidence writer: a stream that runs out of space is an error") {
@@ -46,4 +54,10 @@ TEST_CASE("evidence writer: a stream already in a failed state is an error") {
     std::ostringstream os;
     os.setstate(std::ios::badbit);
     CHECK(anno::sim::test::write_stream_checked(os, "abc", "x") == "x: write failed");
+}
+
+TEST_CASE("evidence writer: a flush that fails after accepted writes is an error") {
+    FlushFails buf;
+    std::ostream os(&buf);
+    CHECK(anno::sim::test::write_stream_checked(os, "abc", "late.bin") == "late.bin: flush failed");
 }

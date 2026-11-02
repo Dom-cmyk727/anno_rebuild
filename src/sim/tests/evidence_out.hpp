@@ -4,7 +4,10 @@
 // that cannot be honoured (target is a directory, open fails, a write or the final flush/close
 // fails) must fail the calling case and must not print its success message. The file is written
 // to "<target>.partial" and renamed over the target only after every operation succeeded, so an
-// old or partial file is never left behind looking like the current run.
+// old or partial file is never left behind looking like the current run (an existing target is
+// removed before the attempt). Both functions are [[nodiscard]]: a caller that drops the result or
+// the REQUIRE on it fails to compile under -Werror. Close() failure cannot be injected into a real
+// ofstream; that branch is checked by reading only.
 #pragma once
 
 #include <cstdint>
@@ -19,8 +22,8 @@ namespace anno::sim::test {
 
 /// Writes `bytes` to `os` and flushes it. Returns an empty string, or "<operation> failed" naming
 /// the first operation that failed. `what` is the path or label used in the message.
-inline std::string write_stream_checked(std::ostream& os, std::string_view bytes,
-                                        const std::string& what) {
+[[nodiscard]] inline std::string write_stream_checked(std::ostream& os, std::string_view bytes,
+                                                      const std::string& what) {
     os.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     if (!os) {
         return what + ": write failed";
@@ -34,12 +37,16 @@ inline std::string write_stream_checked(std::ostream& os, std::string_view bytes
 
 /// Publishes `bytes` at `target`. Returns an empty string on success, else a message naming the
 /// failing path and operation. On failure `target` is untouched or absent, never partial.
-inline std::string write_evidence_file(const std::filesystem::path& target,
-                                       std::string_view bytes) {
+[[nodiscard]] inline std::string write_evidence_file(const std::filesystem::path& target,
+                                                     std::string_view bytes) {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (fs::is_directory(target, ec)) {
         return target.string() + ": destination is a directory";
+    }
+    // An earlier run's file must not survive a failed publication looking current.
+    if (fs::is_regular_file(target, ec)) {
+        fs::remove(target, ec);
     }
     const fs::path partial = fs::path(target.string() + ".partial");
     {

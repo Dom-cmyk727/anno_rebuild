@@ -1267,5 +1267,10 @@ TEST_CASE("sail log export: a requested path that cannot be written fails with i
     const std::string open_err =
         export_log_if_requested((dir / "missing" / "x.bin").string().c_str(), payload);
     CHECK(open_err.find("open failed") != std::string::npos);
+    // A failed publication removes the earlier run's file instead of leaving it looking current.
+    CHECK(export_log_if_requested((dir / "stale.bin").string().c_str(), payload).empty());
+    fs::create_directories(dir / "stale.bin.partial"); // the temporary name is taken: open fails
+    CHECK_FALSE(export_log_if_requested((dir / "stale.bin").string().c_str(), payload).empty());
+    CHECK_FALSE(fs::exists(dir / "stale.bin"));
     fs::remove_all(dir);
 }

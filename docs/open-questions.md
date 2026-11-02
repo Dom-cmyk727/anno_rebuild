@@ -2073,3 +2073,9 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Why it matters:** the byte is the base of the ship-route blocking predicate `((h + base) & 0xff) > 19`; a grown object may block or not depending on it.
 - **Evidence needed:** the store instructions of the growth visit (and of the object-replacement path it calls) with respect to second-dword byte 0. Nothing is stated as fact in code; the limitation is recorded in `docs/sim/ship-navigation.md` 12.13.
 
+## OQ-NAVC-3: Height byte of a command-built building (MAP-NAV-3 N3 review, 2026-11-02)
+
+- **Question:** the original's terrain function `0x1007c790` writes a height level into the placement record (`rec[8]`, stored as `byte0f`; a founded warehouse has `0x30`, `docs/re/ship-founding.md`). `BuildCmd` passes `byte0f = 0` because the client's byte8 is not used and the function is not ported, so a command-built building has height byte 0 on its tiles.
+- **Why it matters:** the byte is the base of the ship-route blocking predicate; a built shore building may block or not differently from the original.
+- **Path:** the placement-rule seam (O-27) is where a ported terrain function would supply the level. No value is invented in code.
+

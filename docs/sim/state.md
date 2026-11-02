@@ -1051,7 +1051,7 @@ struct Seams {
     using PlaceHook  = void (*)(void* ctx, const TickContext&, Island&, City&, Building&, Effects&);
     Seam<PlaceHook> on_placed, on_removed;                   // O-4, O-5: PRODTYPE hooks 0x44/0x49/0x4e/0x41, land claim, goods handlers
     using PlacementRuleFn = Reject (*)(void* ctx, const Island&, const BuildingType&, const PlacementRecord&);   // Reject lives in reject.hpp (§8.3)
-    Seam<PlacementRuleFn> placement_rule;                          // D 0x1007c790 (O-27); default §8.5
+    Seam<PlacementRuleFn> placement_rule;                          // D 0x1007c790 (O-27); default: the rule of docs/sim/ship-placement.md (stand-in only by explicit name)
     using Upgrade    = void (*)(void* ctx, const BuildingType&, PlacementRecord&);
     Seam<Upgrade> upgrade_rewrite;                           // D 0x100276a0 for PRODTYPE 0x43/0x48 (O-28)
     using CityEmpty  = bool (*)(void* ctx, const City&);

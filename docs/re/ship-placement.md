@@ -133,7 +133,7 @@ Domain of the agreement: footprints 1..5 x 1..4, islands 2..12 tiles square, lev
 
 `python3 tools/placement_ref.py classify`. Flag word `F` is the u16 at `HEAD` offset `0x1c` (type `+0x12`). Support predicate for the **terrain/height rule** of a normal `BuildCmd`:
 
-* **ordinary land:** `(F & 0x7017) == 0x0004` -> mode 0, class test on, class 0, no coverage test; result `v` of section 3.
+* **ordinary land:** `F & 0x7017 == 0x0004` (engine predicate `(F & ~0x0080) == 0x0004`, see `docs/sim/ship-placement.md` R3) -> mode 0, class test on, class 0, no coverage test; result `v` of section 3.
 * **evidenced coast:** `(F & 0x7017) == 0x2007` -> `ship-founding.md` 10.4 (helper and result `mx & 0xf0`), the same predicate as `coast_class_supported`.
 * everything else: not decided, **Unsupported**.
 

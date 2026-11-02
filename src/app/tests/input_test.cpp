@@ -210,8 +210,10 @@ TEST_CASE("replay: a recorded session replays through --commands to the same sta
     }
     const fs::path path =
         fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
-    auto first = anno::app::load_play(*dir, path);
-    auto second = anno::app::load_play(*dir, path);
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+    auto first = anno::app::load_play(*dir, path, fixed);
+    auto second = anno::app::load_play(*dir, path, fixed);
     REQUIRE(first.ok());
     REQUIRE(second.ok());
     // The developer player's city on the start island, and a cheap building type.
@@ -321,7 +323,9 @@ TEST_CASE("feedback: a refused build is reported once with its reason, and money
     }
     const fs::path path =
         fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
-    auto loaded = anno::app::load_play(*dir, path);
+    anno::app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+    auto loaded = anno::app::load_play(*dir, path, fixed);
     REQUIRE(loaded.ok());
     const auto& islands = loaded.value().world.islands();
     std::optional<sim::CityRef> city;

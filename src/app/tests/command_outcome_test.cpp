@@ -58,7 +58,9 @@ std::optional<DevWorld> dev_world() {
     }
     const fs::path path =
         fs::path(ANNO_FIXTURES_DIR).parent_path().parent_path() / "data" / "maps" / "lan5.txt";
-    auto loaded = app::load_play(*dir, path);
+    app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+    auto loaded = app::load_play(*dir, path, fixed);
     REQUIRE(loaded.ok());
     DevWorld d{std::move(loaded.value()), {}, {}, {}};
     bool found = false;

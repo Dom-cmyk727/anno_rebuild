@@ -17,6 +17,7 @@
 #include <anno/app/play.hpp>
 #include <anno/formats/fixed_map.hpp>
 #include <anno/sim/clock.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim_load/fixed_map.hpp>
@@ -56,7 +57,10 @@ std::optional<anno::sim::World> lan5_world(const fs::path& dir, bool resources =
     if (!loaded) {
         return std::nullopt;
     }
-    auto created = anno::sim::World::create(loaded.value().spec, registry.types);
+    // The tests build on island-relative tiles, not chosen for terrain: the named stand-in rule.
+    anno::sim::Seams seams;
+    seams.placement_rule = anno::sim::stand_in_placement_seam();
+    auto created = anno::sim::World::create(loaded.value().spec, registry.types, {}, {}, seams);
     if (!created) {
         return std::nullopt;
     }

@@ -17,6 +17,7 @@
 #include <anno/formats/fixed_map.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/game_setup.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/types.hpp>
@@ -103,7 +104,11 @@ load_fixed_play(const fs::path& game_dir, const formats::fixed_map::FixedMap& ma
     if (!loaded) {
         return loaded.error();
     }
-    auto created = sim::World::create(loaded.value().spec, types, cfg);
+    sim::Seams seams;
+    if (fixed.stand_in_placement) {
+        seams.placement_rule = sim::stand_in_placement_seam();
+    }
+    auto created = sim::World::create(loaded.value().spec, types, cfg, sim::Rules{}, seams);
     if (!created) {
         return created.error();
     }

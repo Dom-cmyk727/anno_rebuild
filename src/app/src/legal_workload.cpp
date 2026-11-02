@@ -86,6 +86,7 @@ LegalWorkload::build(const std::filesystem::path& game_dir, const std::filesyste
     fixed.seats = options.cities;
     fixed.gold = options.gold;
     fixed.goods_tons = options.goods_tons;
+    fixed.stand_in_placement = true; // the workload chooses tiles by reach, not by terrain
     auto loaded = load_play(game_dir, map_file, fixed);
     if (!loaded) {
         return "legal workload: " + loaded.error();

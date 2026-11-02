@@ -41,7 +41,9 @@ inline std::optional<Lan5> lan5(bool rivers = true) {
     }
     const auto path = std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() /
                       "data" / "maps" / "lan5.txt";
-    auto play = app::load_play(*dir, path);
+    app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // these suites isolate the app layers from terrain (OQ-052)
+    auto play = app::load_play(*dir, path, fixed);
     REQUIRE(play.ok());
     const std::vector<app::SceneBuilding> buildings = app::play_buildings(play.value().world);
     std::vector<bool> classes(app::kPictureAnlageIds, false);

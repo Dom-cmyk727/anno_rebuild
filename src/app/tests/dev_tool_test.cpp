@@ -333,7 +333,9 @@ TEST_CASE(
     }
     const auto path = std::filesystem::path(ANNO_FIXTURES_DIR).parent_path().parent_path() /
                       "data" / "maps" / "lan5.txt";
-    auto play = app::load_play(*dir, path);
+    app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+    auto play = app::load_play(*dir, path, fixed);
     REQUIRE(play.ok());
     auto loaded = app::load_placed_scene(*dir, play.value().name, play.value().placed);
     REQUIRE(loaded.ok());

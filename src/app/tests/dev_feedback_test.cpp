@@ -141,7 +141,9 @@ TEST_CASE("dev feedback: on an original scenario, the preview sprites of placed 
         return;
     }
     const auto file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
-    auto play = app::load_play(*dir, file);
+    app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+    auto play = app::load_play(*dir, file, fixed);
     REQUIRE(play);
     // Loaded as --view loads it (no SceneObjects): the scenario's own placed objects (a start
     // without buildings; its trees, rocks and scenery have rotations too, and preview_sprites

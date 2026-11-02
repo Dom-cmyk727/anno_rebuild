@@ -113,7 +113,9 @@ std::optional<Play> load_play() {
     if (!dir) {
         return std::nullopt;
     }
-    auto loaded = app::load_play(*dir, fixed_map());
+    app::FixedPlayOptions fixed;
+    fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+    auto loaded = app::load_play(*dir, fixed_map(), fixed);
     REQUIRE(loaded.ok());
     Play p{*dir, std::move(loaded).value(), {}, {}, nullptr, {}, {}, 0};
     sim::World& world = p.load.world;

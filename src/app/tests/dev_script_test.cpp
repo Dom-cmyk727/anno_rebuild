@@ -221,7 +221,9 @@ TEST_CASE("dev session: the replay agrees with a recorded run, and a moved comma
                       "data" / "maps" / "lan5.txt";
     const auto dir = anno::test::game_dir();
     auto load = [&] {
-        auto p = app::load_play(*dir, path);
+        app::FixedPlayOptions fixed;
+        fixed.stand_in_placement = true; // island-relative tiles, not chosen for terrain
+        auto p = app::load_play(*dir, path, fixed);
         REQUIRE(p.ok());
         return std::move(p.value().world);
     };

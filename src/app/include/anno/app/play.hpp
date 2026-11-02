@@ -65,6 +65,11 @@ struct FixedPlayOptions {
     /// money and goods, charged and refused by the sim as any other.
     std::int64_t gold = 10000000;
     std::uint32_t goods_tons = 190;
+    /// Installs the named stand-in placement rule (sim::stand_in_placement_seam) instead of the
+    /// terrain rule of MAP-BUILD-1. Only for suites that isolate another subsystem from terrain and
+    /// build on island-relative tiles chosen before that rule existed; never the default, and the
+    /// seam's name stays in the world's header hash.
+    bool stand_in_placement = false;
 };
 
 /// Registry, `load_scenario_with_links`, `World::create`. The link list names

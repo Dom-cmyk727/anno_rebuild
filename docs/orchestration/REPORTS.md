@@ -8485,3 +8485,38 @@ B round 1 and 2 CHANGES REQUIRED (applied); C round 1 CHANGES REQUIRED, round 2 
 
 ### Adaptations and limits that matter (all in `docs/sim/ship-navigation.md` 12.8-12.10 and `ship-route-*.md`)
 Exact-rational integer stepper (not original f32 noise; no runtime parity claimed); the speed factor is derived from the holds at every movement segment start (the original's stored multiplier and its reset by a stop are not modelled; health not modelled); the route cache reads terrain only (object blocking off: objects change without commands, which would make routes depend on save/load history); the placed items' height byte is not carried; the shore band exists for 8-aligned islands only (all three candidates); the world edge for sizes that are not a multiple of 64 differs (OQ-NAVC-1); local detours and hostile avoidance are deferred (ships may overlap); admission, stamps and the crew mirror scan the registry (O(registry) per attempt or moving-ship visit, a derived index is the improvement path); the planner is serial.
+
+
+## MAP.2 — MAP-NAV-3: finish navigation integration (2026-11-02) — status: READY FOR FINAL REVIEW (headless candidate; nothing merged or pushed)
+
+Branch `task/MAP-2-original-like`, start `4731d9a`, code/test head for the gates `30db4da797a6099857ee7849ad6ea40154b60dbb` (this report is documentation only on top of it). Mac, Apple Clang, `build/mac-headless` and `build/mac-asan`; Windows MSVC, Linux/WSL GCC and Clang `-Werror`, the Linux sanitizer lane, original-runtime captures and any performance gate are **NOT_RUN**.
+
+**Acceptance ledger (requirement -> evidence)**
+| Item | Result | Evidence |
+|---|---|---|
+| N0 three review findings reproduced before any fix | observed: stamp tile 46 against 22 by the velocity equation; carried navigating child: `check_invariants` and `save` fail with `Figure::pos does not equal floor(pos_u) on axis 0`; ninth-level descendant at x=5340 while the ship is at 5616 | `cache/map2-nav3/n0/n0-before.log`, commit `0a4dfff`; independent read-only review APPROVED |
+| N1 carried-motion invariant, derived children/ticket/ship-cell indexes, iterative subtree mirror | done; docs 12.12 | review CHANGES REQUIRED once (docs, locality-test strength, missing nested cases) -> fixed in `5f2dad7`; the fixes were not given a separate second review (the final integration review covers them) |
+| N2 stamp = position + 25 x segment velocity (2^-32 tile per stepper unit, captured factor) | done; docs 12.11 | review APPROVED, three P3 fixed; world-path endpoint (20,65) against (21,64) under a far look-ahead mutant |
+| N3 object-aware routing, item height byte (low byte of `aux`, layout unchanged), dirty rectangles + `RouteCache::sync`, objects block in production | done; docs 12.13; limitations OQ-NAVC-2 (growth height), OQ-NAVC-3 (command-built `byte0f`), OQ-NAVC-1 (unaligned edge) stay open | review CHANGES REQUIRED (4 P2) -> fixed (`58f80e2`, `22cae71`, `14b1e0f`) -> delta re-review APPROVED; mutants: `objects_block=false` fails 6 of 10 route-object cases, `sync` no-op fails 5; 15 witness routes unchanged |
+| N4 health input (`NavMotion::health`, unknown = full-health adaptation), stream **123**, populated byte oracle | done; docs 12.14 | review CHANGES REQUIRED (one stale doc line, wording) -> fixed in `19a078f`; full-health-only mutant fails 4 cases (damaged arrival 8505 ticks against 6955); `tools/nav_state_ref.py` bytes compared with production archive bytes |
+| N5.2 production-scale measurements | done; docs 12.15; `cache/map2-nav3/n5/measure/` (first run) and `measure-after-sync-fix/` | found an O(ships x islands) cost in `RouteCache::sync` (per ship visit) -> fixed with `sync_once` per tick (`19a078f`), re-measured |
+| N5.3 canary, fresh-process replay, changed target | done | `cache/map2-nav3/sail/`: seat 0 546 tiles and seat 2 882 tiles, 35,481 Advances (177,405 ticks) to the last arrival, both found with `FoundCmd`, no relocation; `anno-sim-replay run`: entries 35505, checkpoints 19/19, final tick 177655, reproduced, exit 0; changed first target: `DIVERGED at entry 2002`, exit 1 (manual evidence; the in-process equivalents are CHECKs of the canary test) |
+| N5.4 gates | below | `cache/map2-nav3/gates/F2` |
+| N5.5 final integration review | see the closing section of this entry | |
+
+**Failed and superseded runs (kept):** gate `F1` at `79ae02c` passed the five non-sanitizer lanes but its ASan/UBSan lanes FAILED (`island.hpp:123 signed integer overflow: 2147483647 + 1` in the N3 dirty rectangle, case `founding coordinates: occupancy sees an object on every tile, including above INT32_MAX`); fixed in `30db4da` (64-bit edges) and the whole set was re-run as `F2`. The first N5.2 run measured the sync cost above before the fix. The very first full-binary run during N1 (two `nav motion` cases) failed because the tests edited tickets in place without rebuilding the derived index; the tests were corrected (`f274aa2`).
+
+**Gate F2 (clean tree `30db4da`, `ANNO1503_GAME_DIR` set, `tools/test/run_selected.py`):**
+| Gate | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 266 | 265 | 0 / 0 / 0 | 1 (opt-in `nav scale measurements`) |
+| sim all | 974 | 972 | 0 / 0 / 0 | 2 (opt-in: transport statistics, nav scale) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay and references (incl. `nav_state_reference_agrees`, `ship_speed_factor_reference_agrees`) | 54 | 54 | 0 / 0 / 0 | 0 |
+| ASan/UBSan focused | 266 | 265 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 974 | 972 | 0 / 0 / 0 | 2 |
+Pins: test binary sha256 `745f89ef...` (headless), `e0c7395d...` (asan); lint, `sim_stream.py --check`, figure-digest check and clang-format all 0. The older E2 logs (`eeb68b9`) remain valid history for MAP-NAV-2 only.
+
+**Original rule versus approved adaptation (unchanged boundaries plus this packet):** original: stamp velocity, object predicate `((h + base) & 0xff) > 19`, health/cargo formula (RE 7.5). Adaptations: derived indexes and fair admission by tickets, any-object invalidation (the original refreshes only for coast/road objects), unknown health = full-health term, health in `NavMotion` with a new stream version 123, carried figures never sail on their own, `state_word & 1` rejected on carried figures (the port's own moving bit).
+
+**Residual limits:** growth and command-built building height bytes are not the original's (OQ-NAVC-2, -3); partial-sector edge (OQ-NAVC-1); no local detours or hostile avoidance; island phase is O(islands) base work; measurements are one host, open sea, 6-300 ships, F up to 10,000; the planner is serial; no importer for original ship health; sync halo evidence in 12.13.

@@ -3,6 +3,7 @@
 // address), P = the corpus (the spec section that states it).
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>

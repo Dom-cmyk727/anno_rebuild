@@ -66,6 +66,7 @@ RouteCache& RouteCache::operator=(RouteCache&& other) noexcept {
 }
 
 void RouteCache::clear() {
+    synced_ = false;
     impl_.reset();
 }
 
@@ -80,6 +81,15 @@ void RouteCache::build(World& world) {
     }
 }
 
+void RouteCache::sync_once(World& world, std::uint64_t tick) {
+    if (synced_ && synced_tick_ == tick && impl_ != nullptr) {
+        return;
+    }
+    sync(world);
+    synced_ = true;
+    synced_tick_ = tick;
+}
+
 void RouteCache::sync(World& world) {
     if (impl_ == nullptr || impl_->prints != prints_of(world)) {
         build(world);
@@ -91,8 +101,10 @@ void RouteCache::sync(World& world) {
         }
         const RouteDirty& d = slot->tiles.route_dirty();
         const TileLayer& t = slot->tiles;
-        // Tiles, half-open, world coordinates; one coarse cell (8 tiles) of halo on every side so
-        // the cell masks and the shore band derived from the eight neighbours' records are right.
+        // Tiles, half-open, world coordinates; one coarse cell (8 tiles) of halo on every side as a
+        // safety margin: the connectivity mask of a cell depends on that cell's tiles alone and the
+        // shore band on the eight neighbours' records, which rebuild_rect covers with its own type
+        // halo (docs/sim/ship-navigation.md 12.13, halo evidence).
         const std::int64_t kHalo = 8; // the coarse cell edge of the index (route.hpp), not a limit
         std::int64_t x0 = d.all() ? t.x0() : d.x0();
         std::int64_t y0 = d.all() ? t.y0() : d.y0();

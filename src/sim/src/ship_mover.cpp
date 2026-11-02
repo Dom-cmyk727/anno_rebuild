@@ -267,7 +267,7 @@ void ShipMover::visit(World& w, const TickContext& ctx, Figure& ship, Effects& f
                                           owner != nullptr ? owner->volk : 1, m.health);
     // The derived coast index follows every object change since the last visit (a command or
     // island growth), so a plan reads the authoritative state and not the history of a cache.
-    w.route_cache_.sync(w);
+    w.route_cache_.sync_once(w, ctx.tick);
     WorldPlanner planner(w, w.route_cache_, w.rules_.nav, facts, plans_started);
     const FixedPos before = ship.pos;
     nav_step(ship, env, planner, static_cast<std::uint16_t>(ctx.t), events);

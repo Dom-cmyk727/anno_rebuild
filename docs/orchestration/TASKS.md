@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Windows verifier corrections then opening controls; MAP unloading
+## Current dispatch — 2026-11-02: Mac opening accepted; Windows verifier corrections then live opening
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -14,17 +14,19 @@ tested tools/source at `37da91b`. The [direct final review](reviews/2026-11-02-w
 retains the CPU delivery/reclaimer corrections, completed corpus and unaffected
 GPU results. Two verifier corrections remain in **W4-WIN-VERIFY** below;
 no new full corpus or adapter matrix is assigned, and no rendering merge is approved.
-MAP-FOUND-3, corrected MAP-NAV-3 mechanics and MAP-BUILD-1 placement mechanics
-are accepted for their local headless scope. Placement code is
-`ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, documentation
-`d9e3415affa1224341c5336d81f38786fabe9f9b`; see the
-[direct placement review](reviews/2026-11-02-map-build1.md). Six saved E1 gate
-verdicts and fresh-process placement replay were independently checked.
-One bounded writer-test isolation correction remains; handle it at the next
-package checkpoint under MAP-CARGO-1 without interrupting U1's original-rule
-trace. MAP-CARGO-1 U1 is IN PROGRESS; no unloading implementation is accepted.
-Its reviewed contract still gates U2, and the real opening loop still requires
-unloading. W4-WIN-VERIFY is the Windows executor's bounded
+MAP-BUILD-1 and MAP-CARGO-1 are accepted for their local headless scope:
+the real ship-start opening sails, founds, unloads and builds for seats 0 and 2.
+Accepted Mac integration input is
+`0c401c8d084cfd9feb8aec846595291f87f22cce` on `task/MAP-2-original-like`;
+code/tests `7e5529f42378a13b3235d9d93023ee8a40c19c50`, clean U5 gate source
+`f0c8647fb543e3e512a9fc5470a9d04c0f6ff599`. See the
+[direct cargo review and limits](reviews/2026-11-02-map-cargo1.md).
+The writer-test isolation finding is closed at `9b6c547f`; six U5 verdicts,
+60/60 opening replay checkpoints and changed-unload divergence were independently
+checked. The orchestrator published and remote-verified this exact Mac pin;
+executors do not choose a newer moving tip or merge it into main.
+Windows/MSVC, Linux gates and live-window validation of this Mac code remain
+pending. W4-WIN-VERIFY is the Windows executor's bounded
 current assignment. Owner continuation, 2026-11-02: after
 that closeout and the Mac gameplay candidate are reviewed and accepted at exact
 published pins, W4-OPENING-1 below integrates selection, sailing, founding,
@@ -34,7 +36,7 @@ future work, not permission to take an unreviewed Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY READY.** Close sanitizer-output propagation and full script identity with focused checks; retain the completed corpus and unaffected adapter results. **W4-OPENING-1 stays queued**, gated on accepted Windows and Mac pins. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 mechanics accepted locally; MAP-CARGO-1 U1 IN PROGRESS.** Continue the unloading trace and reviewed contract, then U2–U5. Close the isolated temporary-directory finding below before cargo acceptance gates; do not restart placement or interrupt U1. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 and MAP-CARGO-1 ACCEPTED, LOCAL HEADLESS SCOPE.** Preserve `0c401c8d`, its worktree and evidence; stop at this checkpoint. This exact integration input is published and remote-verified. Windows owns the next live opening implementation after its verifier closeout is accepted. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -385,9 +387,11 @@ network multiplayer, trade-route, combat or renderer-optimization program.
 two corpus cases completed. The orchestrator reviewed the source and portable
 extracts, retaining the CPU/reclaimer corrections and completed corpus, while
 requiring the two bounded W4-WIN-VERIFY corrections above. This is not final
-Windows-candidate acceptance. Mac placement mechanics are accepted locally;
-MAP-CARGO-1 is still in progress. Do not start integration from either moving
-tip; the exact approved publication pins remain required below.
+Windows-candidate acceptance. The Mac opening candidate is now accepted at
+`0c401c8d084cfd9feb8aec846595291f87f22cce` with the scope and limits in the
+[cargo review](reviews/2026-11-02-map-cargo1.md). Its ordinary publication is
+remote-verified. Do not start integration from either moving tip; the
+accepted Windows correction pin is still required below.
 
 #### Release conditions and ownership
 
@@ -395,8 +399,10 @@ tip; the exact approved publication pins remain required below.
    candidate and the corrected Mac MAP-BUILD-1 plus MAP-CARGO-1 candidate,
    with full code/test/documentation commit ids and exact allowed limitations.
    Independent package approvals alone do not fill in these future integration
-   pins. Neither candidate is accepted by this dispatch; until those records
-   exist, finish the existing lane and stop at its current review boundary.
+   pins. The Mac input is accepted at
+   `0c401c8d084cfd9feb8aec846595291f87f22cce`; Windows W4-WIN-VERIFY acceptance
+   is still pending. Until the Windows record and both publications exist,
+   finish the verifier lane and stop at its review boundary.
 2. Both approved pins must be reachable from GitHub with their review/evidence
    summaries. The orchestrator arranges ordinary publication of the reviewed
    Mac task branch after its review; this packet does not tell the Mac executor
@@ -1061,7 +1067,13 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-BUILD-1 — build on valid terrain after founding · REVIEWED LOCAL MECHANICS; TEST ISOLATION FOLLOW-UP
+### MAP-BUILD-1 — build on valid terrain after founding · ACCEPTED LOCAL HEADLESS SCOPE
+
+**Completion checkpoint:** the required temporary-directory correction is fixed
+in `9b6c547f` and independently reproduced as 12/12 concurrent passes. It is
+included in the accepted Mac opening candidate `0c401c8d`; see the
+[cargo review](reviews/2026-11-02-map-cargo1.md). No placement repeat is assigned.
+The earlier review checkpoint and packet below remain acceptance history.
 
 **Review checkpoint, 2026-11-02:** mechanics accepted at code
 `ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, docs
@@ -1303,7 +1315,19 @@ new UI, coordinator and shared-test-workflow work are outside this packet.
 Preserve other jobs and the owner's awake assertion. Do not wait for another
 orchestrator prompt between the authorized packages.
 
-### MAP-CARGO-1 — unload the starting ship and build from its supplies · U1 IN PROGRESS
+### MAP-CARGO-1 — unload the starting ship and build from its supplies · ACCEPTED LOCAL HEADLESS SCOPE
+
+**Completion checkpoint, 2026-11-02:** U1–U5 are accepted at code/tests
+`7e5529f42378a13b3235d9d93023ee8a40c19c50`, clean U5 source
+`f0c8647fb543e3e512a9fc5470a9d04c0f6ff599`, documentation/integration input
+`0c401c8d084cfd9feb8aec846595291f87f22cce`. Read the
+[direct cargo review](reviews/2026-11-02-map-cargo1.md) for independent evidence,
+scope and retained limitations. Preserve the worktree and logs; no further Mac
+implementation is assigned by this checkpoint. The exact
+accepted pin is published and remote-verified. Windows consumes it only through
+the conditional W4-OPENING-1 integration packet, after its verifier acceptance.
+The U1-in-progress checkpoint, isolation follow-up and U1–U5 packet below are
+acceptance history, superseded for current status by this completion record.
 
 **Current checkpoint, 2026-11-02:** placement mechanics and E1 are accepted as
 described above. U1 is already running; preserve its work. Its corrected

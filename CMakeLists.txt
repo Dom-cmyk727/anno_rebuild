@@ -188,11 +188,6 @@ if(ANNO_BUILD_TESTS)
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/cargo_vectors.txt)
     add_test(NAME cargo_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py selftest)
-    add_test(NAME cargo_reference_agrees
-             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py check
-                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/cargo_vectors.txt)
-    add_test(NAME cargo_reference_selftest
-             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py selftest)
     add_test(NAME ship_step_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
     add_test(NAME test_verdict_contract

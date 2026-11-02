@@ -13,7 +13,7 @@ desktop compositor shows; the window is raised topmost for the capture):
   <out>/shots/cmdN-window.png   the whole window with its title bar (the DWM frame bounds)
   <out>/shots/cmdN-title.txt    the title text at the capture (GetWindowTextW)
 The log (<out>/capture.log) lists every capture with the window rectangle, the client rectangle and the
-DPI scale. A capture of a minimised window, or of one whose frame is not inside the virtual desktop, is refused
+DPI scale. A capture of a minimised window, or of one whose client area is not inside the virtual desktop, is refused
 and logged, never saved as a picture of the game. Being covered by another window is handled by raising
 the window topmost for the capture, not detected. Exit: the window's status, or 2 for bad arguments."""
 import ctypes
@@ -76,15 +76,18 @@ def capture(hwnd, name, shots, log):
         return False
     vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)  # SM_X/YVIRTUALSCREEN
     vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)  # SM_CX/CYVIRTUALSCREEN
-    fx0, fy0, fx1, fy1 = frame_rect(hwnd)
-    if fx0 < vx or fy0 < vy or fx1 > vx + vw or fy1 > vy + vh:
-        log.append(f"{name}: REFUSED, the window frame {(fx0, fy0, fx1, fy1)} is not inside the desktop")
+    cx0, cy0, cx1, cy1 = client_rect(hwnd)
+    if cx0 < vx or cy0 < vy or cx1 > vx + vw or cy1 > vy + vh:
+        # The game image must be fully on a monitor; the frame may overhang by a border (clipped below).
+        log.append(f"{name}: REFUSED, the client area {(cx0, cy0, cx1, cy1)} is not inside the desktop")
         return False
     # Topmost for the capture (HWND_TOPMOST = -1; SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW = 0x43), then released.
     user32.SetWindowPos(hwnd, wt.HWND(-1), 0, 0, 0, 0, 0x43)
     time.sleep(0.4)
     title = title_of(hwnd)
-    win, cl = frame_rect(hwnd), client_rect(hwnd)
+    fx0, fy0, fx1, fy1 = frame_rect(hwnd)
+    win = (max(fx0, vx), max(fy0, vy), min(fx1, vx + vw), min(fy1, vy + vh))  # clipped to the desktop
+    cl = client_rect(hwnd)
     ok = True
     for suffix, box in (("client", cl), ("window", win)):
         img = ImageGrab.grab(bbox=box, all_screens=True)

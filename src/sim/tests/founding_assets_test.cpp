@@ -25,6 +25,7 @@
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/route.hpp>
 #include <anno/sim/route_world.hpp>
@@ -32,12 +33,14 @@
 #include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/site_checks.hpp>
+#include <anno/sim/synthetic.hpp>
 #include <anno/sim/terrain_view.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/ship_start.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "command_helpers.hpp"
 #include "evidence_out.hpp"
 #include "world_access.hpp"
 
@@ -1274,4 +1277,677 @@ TEST_CASE("sail log export: a requested path that cannot be written fails with i
     CHECK_FALSE(export_log_if_requested((dir / "stale.bin").string().c_str(), payload).empty());
     CHECK_FALSE(fs::exists(dir / "stale.bin"));
     fs::remove_all(dir);
+}
+
+// ---- MAP-BUILD-1 package D4/D5: ordinary buildings on the real terrain --------------------------
+// D4.1 asks first whether the city a ship founds can afford a supported ordinary building. It
+// cannot (the founding leaves an empty warehouse; the ship's cargo is not city stock and nothing
+// transfers it), so the combined sail -> found -> build loop is BLOCKED ON UNLOADING: the sailed
+// canary above stays unchanged and the build is shown on a SEPARATE, explicitly stocked fixture:
+// the real terrain of a shipped island and the original registry, a city whose stock is declared
+// in the ScenarioSpec before the world exists. No post-founding grant, no zero-cost type change,
+// no transfer. Everything after creation goes through public commands (World::apply).
+
+namespace {
+
+constexpr std::uint32_t kPionier = 501, kHandwerk = 1001;
+
+struct Origin {
+    std::int32_t x = 0, y = 0;
+    std::uint8_t height = 0;
+};
+
+std::int64_t gold_of(const sim::World& w, std::uint32_t p) {
+    return w.players().find(sim::PlayerId{p})->money;
+}
+
+/// Every origin of the island where the placement rule accepts `type` (rotation 0), row-major.
+std::vector<Origin> legal_origins(const sim::Island& is, const sim::TypeRegistry& types,
+                                  const sim::BuildingType& type) {
+    std::vector<Origin> out;
+    for (std::int32_t y = is.tiles.y0();
+         y < is.tiles.y0() + static_cast<std::int32_t>(is.tiles.height()); ++y) {
+        for (std::int32_t x = is.tiles.x0();
+             x < is.tiles.x0() + static_cast<std::int32_t>(is.tiles.width()); ++x) {
+            sim::PlacementRecord rec;
+            rec.type = type.id;
+            rec.x = x;
+            rec.y = y;
+            const sim::PlacementResult r = sim::placement_rule(is, types, type, rec);
+            if (r.reject == sim::Reject::None) {
+                out.push_back({x, y, r.height});
+            }
+        }
+    }
+    return out;
+}
+
+/// The island of a fixture: the REAL terrain (the same shared Terrain object), geometry, climate
+/// and ore objects of `real`; no scenery (so every site is decided by the terrain alone). Tiles of
+/// city 0 are the rectangle [rx0, rx1] x [ry0, ry1] (world coordinates), the rest is neutral.
+sim::ScenarioSpec::IslandSpec fixture_island(const sim::Island& real, std::int32_t rx0,
+                                             std::int32_t ry0, std::int32_t rx1, std::int32_t ry1) {
+    sim::ScenarioSpec::IslandSpec is = anno::sim::synthetic::plain_island(
+        0, real.tiles.x0(), real.tiles.y0(), real.tiles.width(), real.tiles.height());
+    is.climate = real.climate;
+    is.terrain = real.terrain;
+    is.ore_objects = real.ore_objects;
+    constexpr std::uint32_t kNeutral = 15;
+    for (std::int32_t y = real.tiles.y0();
+         y < real.tiles.y0() + static_cast<std::int32_t>(real.tiles.height()); ++y) {
+        const auto left = static_cast<std::uint32_t>(
+            std::clamp(rx0 - real.tiles.x0(), 0, static_cast<std::int32_t>(real.tiles.width())));
+        if (y < ry0 || y > ry1) {
+            is.owner_runs.emplace_back(kNeutral, real.tiles.width());
+            continue;
+        }
+        const auto mine = static_cast<std::uint32_t>(rx1 - rx0 + 1);
+        if (left > 0) {
+            is.owner_runs.emplace_back(kNeutral, left);
+        }
+        is.owner_runs.emplace_back(0U, mine);
+        if (left + mine < real.tiles.width()) {
+            is.owner_runs.emplace_back(kNeutral, real.tiles.width() - left - mine);
+        }
+    }
+    is.cities.push_back(anno::sim::synthetic::plain_city(0, 0));
+    return is;
+}
+
+bool apart(const Origin& a, std::uint32_t aw, std::uint32_t ah, const Origin& b, std::uint32_t bw,
+           std::uint32_t bh) { // disjoint with a one tile margin
+    return a.x + static_cast<std::int32_t>(aw) + 1 <= b.x ||
+           b.x + static_cast<std::int32_t>(bw) + 1 <= a.x ||
+           a.y + static_cast<std::int32_t>(ah) + 1 <= b.y ||
+           b.y + static_cast<std::int32_t>(bh) + 1 <= a.y;
+}
+
+struct BuildFixture {
+    std::size_t island = 0; // slot in the real start
+    Origin a, b, sea;       // PIONIER site, HANDWERK site, a PIONIER site the terrain refuses
+    sim::ScenarioSpec spec;
+    sim::Rules rules;
+};
+
+/// Searches the real islands (in table order) for a PIONIER site A, a HANDWERK site B beside it
+/// and a terrain-refused PIONIER origin near both, all decided by the engine's own placement rule
+/// on a probe world that owns the whole island. Then builds the real fixture: the city owns only
+/// the bounding rectangle of the three footprints plus a margin.
+std::optional<BuildFixture>
+find_build_fixture(const sim::World& real_start,
+                   const std::shared_ptr<const sim::TypeRegistry>& types, std::int64_t edge_w,
+                   std::int64_t edge_h, std::int64_t gold, std::uint32_t wood_t,
+                   std::uint32_t tools_t) {
+    namespace syn = anno::sim::synthetic;
+    const sim::BuildingType& pionier = *types->find(sim::TypeId{kPionier});
+    const sim::BuildingType& handwerk = *types->find(sim::TypeId{kHandwerk});
+    const auto [pw, ph] = sim::footprint(pionier, 0);
+    const auto [hw, hh] = sim::footprint(handwerk, 0);
+    const auto wood = *types->goods_by_name("HOLZ");
+    const auto tools = *types->goods_by_name("WERKZEUG");
+    for (std::size_t i = 0; i < real_start.islands().size(); ++i) {
+        const auto& slot = real_start.islands()[i];
+        if (!slot.has_value() || slot->terrain == nullptr || slot->locked()) {
+            continue;
+        }
+        BuildFixture fx;
+        fx.island = i;
+        fx.rules.shared_visibility.push_back({0, 1}); // the two players share information
+        sim::ScenarioSpec probe = syn::empty_scenario(7);
+        probe.settings.world_width = static_cast<std::uint32_t>(edge_w);
+        probe.settings.world_height = static_cast<std::uint32_t>(edge_h);
+        for (std::uint32_t p = 0; p < 2; ++p) {
+            sim::ScenarioSpec::PlayerSpec ps;
+            ps.id = sim::PlayerId{p};
+            probe.players.push_back(ps);
+        }
+        probe.islands.push_back(
+            fixture_island(*slot, slot->tiles.x0(), slot->tiles.y0(),
+                           slot->tiles.x0() + static_cast<std::int32_t>(slot->tiles.width()) - 1,
+                           slot->tiles.y0() + static_cast<std::int32_t>(slot->tiles.height()) - 1));
+        auto pw_world = sim::World::create(probe, types, {}, fx.rules);
+        if (!pw_world.ok()) {
+            continue;
+        }
+        const sim::Island& pi = *pw_world.value().islands()[0];
+        const std::vector<Origin> as = legal_origins(pi, *types, pionier);
+        const std::vector<Origin> bs = legal_origins(pi, *types, handwerk);
+        std::size_t tried = 0;
+        for (const Origin& a : as) {
+            if (++tried > 3000) {
+                break;
+            }
+            const Origin* b = nullptr;
+            for (const Origin& c : bs) {
+                if (apart(a, pw, ph, c, hw, hh) && std::abs(c.x - a.x) <= 12 &&
+                    std::abs(c.y - a.y) <= 12) {
+                    b = &c;
+                    break;
+                }
+            }
+            if (b == nullptr) {
+                continue;
+            }
+            // The nearest origin where the rule says TerrainRefused (the sea), apart from A and B.
+            std::optional<Origin> sea;
+            int best = 1 << 30;
+            for (std::int32_t dy = -16; dy <= 16; ++dy) {
+                for (std::int32_t dx = -16; dx <= 16; ++dx) {
+                    Origin s{a.x + dx, a.y + dy, 0};
+                    sim::PlacementRecord rec;
+                    rec.type = pionier.id;
+                    rec.x = s.x;
+                    rec.y = s.y;
+                    if (!apart(a, pw, ph, s, pw, ph) || !apart(*b, hw, hh, s, pw, ph) ||
+                        sim::placement_rule(pi, *types, pionier, rec).reject !=
+                            sim::Reject::TerrainRefused) {
+                        continue;
+                    }
+                    const int d = std::max(std::abs(dx), std::abs(dy));
+                    if (d < best) {
+                        best = d;
+                        sea = s;
+                    }
+                }
+            }
+            if (!sea.has_value()) {
+                continue;
+            }
+            fx.a = a;
+            fx.b = *b;
+            fx.sea = *sea;
+            const std::int32_t rx0 = std::min({a.x, b->x, sea->x}) - 1;
+            const std::int32_t ry0 = std::min({a.y, b->y, sea->y}) - 1;
+            const std::int32_t rx1 =
+                std::max({a.x + static_cast<std::int32_t>(pw), b->x + static_cast<std::int32_t>(hw),
+                          sea->x + static_cast<std::int32_t>(pw)});
+            const std::int32_t ry1 =
+                std::max({a.y + static_cast<std::int32_t>(ph), b->y + static_cast<std::int32_t>(hh),
+                          sea->y + static_cast<std::int32_t>(ph)});
+            if (rx0 < slot->tiles.x0() || ry0 < slot->tiles.y0() ||
+                rx1 >= slot->tiles.x0() + static_cast<std::int32_t>(slot->tiles.width()) ||
+                ry1 >= slot->tiles.y0() + static_cast<std::int32_t>(slot->tiles.height())) {
+                continue;
+            }
+            // The scenario: two players with declared gold, the declared warehouse stock of the
+            // city (8.8 tons), the shared audience of city 0.
+            fx.spec = syn::empty_scenario(7);
+            fx.spec.settings.world_width = static_cast<std::uint32_t>(edge_w);
+            fx.spec.settings.world_height = static_cast<std::uint32_t>(edge_h);
+            for (std::uint32_t p = 0; p < 2; ++p) {
+                sim::ScenarioSpec::PlayerSpec ps;
+                ps.id = sim::PlayerId{p};
+                ps.money = gold;
+                fx.spec.players.push_back(ps);
+            }
+            sim::ScenarioSpec::IslandSpec is = fixture_island(*slot, rx0, ry0, rx1, ry1);
+            is.players_present = {sim::PlayerId{0}, sim::PlayerId{1}};
+            std::vector<std::uint32_t> stock(sim::kOriginalWarehouseGoods, 0);
+            stock.at(wood) = wood_t * sim::kTon;
+            stock.at(tools) = tools_t * sim::kTon;
+            is.cities[0].stock = stock;
+            is.cities[0].player_mask = {sim::PlayerId{0}, sim::PlayerId{1}};
+            fx.spec.islands.push_back(std::move(is));
+            return fx;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+TEST_CASE("build after founding: the founded city holds nothing, so no ordinary building is "
+          "affordable (sail -> found -> build is BLOCKED on unloading)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    RealStart rs = real_start(*dir);
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World w = std::move(loaded).value();
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+    const auto s = find_legal_site(w, kontor, w.config().neutral_owner);
+    REQUIRE(s.has_value());
+    // The founding command of the sailed canary (seat 0's ship, unchanged data), applied on a copy
+    // with the ship stood beside the site: the effect of FoundCmd does not depend on how the ship
+    // got there (the sailed canary asserts the same 29650 gold for both seats).
+    const auto found = place_for_founding(w, *s, 0);
+    REQUIRE(found.has_value());
+    const std::int64_t gold_before = gold_of(w, 0);
+    const sim::Figure* ship0 = sim::find_figure(w.figures(), sim::FigureId{1});
+    std::vector<sim::ShipHold> holds_before = ship0->holds;
+    REQUIRE(w.apply(*found).ok());
+    const sim::Island& is = *w.islands()[s->island];
+    const sim::City* city = is.city(sim::CityNo{0});
+    REQUIRE(city != nullptr);
+    const auto wood = *rs.types->goods_by_name("HOLZ");
+    const auto tools = *rs.types->goods_by_name("WERKZEUG");
+    std::uint64_t city_total = 0;
+    for (const std::uint32_t v : city->stock.stock) {
+        city_total += v;
+    }
+    MESSAGE("founded city 0 stock: total "
+            << city_total << " (8.8 units), wood " << city->stock.stock.at(wood) << ", tools "
+            << city->stock.stock.at(tools) << ", capacity " << city->stock.capacity);
+    MESSAGE("player 0 gold: " << gold_before << " -> " << gold_of(w, 0) << " (Kontor 350)");
+    std::string holds_text;
+    const sim::Figure* ship_after = sim::find_figure(w.figures(), sim::FigureId{1});
+    for (std::size_t i = 0; i < ship_after->holds.size(); ++i) {
+        holds_text += "hold" + std::to_string(i) + " goods " +
+                      std::to_string(ship_after->holds[i].goods) + " " +
+                      std::to_string(holds_before[i].amount_88) + " -> " +
+                      std::to_string(ship_after->holds[i].amount_88) + "; ";
+    }
+    MESSAGE("ship remaining cargo (raw 1/256 t): " << holds_text);
+    CHECK(city_total == 0);
+    CHECK(gold_of(w, 0) == 29650);
+    // The cost facts (docs/re/ship-placement.md section 5) from the real registry.
+    const sim::BuildingType& pionier = *rs.types->find(sim::TypeId{kPionier});
+    const sim::BuildingType& handwerk = *rs.types->find(sim::TypeId{kHandwerk});
+    CHECK(pionier.cost_gold == 0);
+    REQUIRE(pionier.cost_goods.size() == 1);
+    CHECK(pionier.cost_goods[0].goods == wood);
+    CHECK(pionier.cost_goods[0].amount_88 == 3 * 256);
+    CHECK(handwerk.cost_gold == 300);
+    REQUIRE(handwerk.cost_goods.size() == 2);
+    // Gold alone is not enough for either type: both need goods the city does not have.
+    CHECK(city->stock.stock.at(wood) < pionier.cost_goods[0].amount_88);
+    // A public BuildCmd on a legal site of the founded city is refused for the stock, and nothing
+    // changes (the site is found by the engine's own rule on the city's own tiles).
+    std::optional<Origin> own_site;
+    for (const Origin& o : legal_origins(is, *rs.types, pionier)) {
+        const auto [fw, fh] = sim::footprint(pionier, 0);
+        bool mine = true;
+        for (std::int32_t dy = 0; dy < static_cast<std::int32_t>(fh) && mine; ++dy) {
+            for (std::int32_t dx = 0; dx < static_cast<std::int32_t>(fw) && mine; ++dx) {
+                const sim::Slot idx = is.tile_index(o.x + dx, o.y + dy);
+                mine = idx != sim::kNoSlot && is.tiles.owner(idx) == 0;
+            }
+        }
+        if (mine) {
+            own_site = o;
+            break;
+        }
+    }
+    if (own_site.has_value()) {
+        const std::vector<std::uint8_t> before = w.save();
+        const sim::ApplyResult r = w.apply(command_test::build(
+            0, command_test::kCity0 /* island 0 */,
+            {command_test::at(sim::TypeId{kPionier}, own_site->x, own_site->y)}));
+        MESSAGE("BuildCmd PIONIER on the founded city at (" << own_site->x << ", " << own_site->y
+                                                            << "): " << sim::reject_name(r.status));
+        // The city is on island s->island; the helper addresses island 0, so only a refusal that
+        // is not about the stock would be a finding. Report it, assert the island-addressed form.
+        sim::CityRef ref{sim::IslandId{static_cast<std::uint32_t>(s->island)}, sim::CityNo{0}};
+        const sim::ApplyResult r2 = w.apply(command_test::build(
+            0, ref, {command_test::at(sim::TypeId{kPionier}, own_site->x, own_site->y)}));
+        MESSAGE("same, island " << s->island << ": " << sim::reject_name(r2.status));
+        CHECK(r2.status == sim::Reject::CannotAfford);
+        CHECK(w.save() == before);
+    } else {
+        MESSAGE("no PIONIER site of the real founded city is free of scenery; the refusal is not "
+                "executed, the stock arithmetic above stands");
+    }
+}
+
+namespace {
+
+constexpr sim::CityRef kBuildCity{sim::IslandId{0}, sim::CityNo{0}};
+
+/// One row of the evidence ledger: what a public command answered and what the world holds after.
+struct Step {
+    std::string label;
+    sim::Reject status = sim::Reject::None;
+    std::int64_t gold0 = 0, gold1 = 0;
+    std::uint32_t wood = 0, tools = 0;
+    std::uint64_t territory = 0;
+    std::string info; // the shared-information state of city 0 and the island
+    std::uint64_t hash = 0;
+    friend bool operator==(const Step&, const Step&) = default;
+};
+
+std::uint64_t territory_of(const sim::World& w) {
+    const sim::Island& is = *w.islands()[0];
+    std::uint64_t n = 0;
+    for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
+        n += is.tiles.owner(i) == 0 ? 1 : 0;
+    }
+    return n;
+}
+
+std::string info_of(const sim::World& w) {
+    const sim::Island& is = *w.islands()[0];
+    std::string s = "mask=";
+    for (const sim::PlayerId p : is.city(sim::CityNo{0})->player_mask) {
+        s += std::to_string(p.v) + ",";
+    }
+    s += " present=";
+    for (const sim::PlayerId p : is.players_present) {
+        s += std::to_string(p.v) + ",";
+    }
+    s += " discovery1=";
+    for (const sim::PlayerId p : w.players().find(sim::PlayerId{1})->discovery) {
+        s += std::to_string(p.v) + ",";
+    }
+    return s;
+}
+
+/// The independent oracle of the item height: the common value of the vertex window of the real
+/// terrain (vertices x..x+fw, y..y+fh, vertex (i, j) at j * width + i like the synthetic tests).
+std::optional<std::uint8_t> window_level(const sim::Island& is, const sim::BuildingType& t,
+                                         std::int32_t x, std::int32_t y) {
+    const auto [fw, fh] = sim::footprint(t, 0);
+    const std::uint32_t w = is.tiles.width();
+    if (is.terrain == nullptr ||
+        is.terrain->height.size() != std::uint64_t{w} * is.tiles.height()) {
+        return std::nullopt;
+    }
+    std::optional<std::uint8_t> level;
+    for (std::uint32_t j = 0; j <= fh; ++j) {
+        for (std::uint32_t i = 0; i <= fw; ++i) {
+            const auto vx = static_cast<std::uint32_t>(x - is.tiles.x0()) + i;
+            const auto vy = static_cast<std::uint32_t>(y - is.tiles.y0()) + j;
+            if (vx >= w || vy >= is.tiles.height()) {
+                return std::nullopt;
+            }
+            const std::uint8_t v = is.terrain->height[std::uint64_t{vy} * w + vx];
+            if (level.has_value() && *level != v) {
+                return std::nullopt;
+            }
+            level = v;
+        }
+    }
+    return level;
+}
+
+/// The building stands with `height` as byte0f and on every footprint tile.
+void check_placed(const sim::World& w, const sim::BuildingType& t, const Origin& o) {
+    const sim::Island& is = *w.islands()[0];
+    const sim::Building* b = w.building_at(kBuildCity, o.x, o.y);
+    REQUIRE(b != nullptr);
+    CHECK(b->type == t.id);
+    CHECK(static_cast<unsigned>(b->byte0f) == o.height);
+    CHECK(o.height >= 32);
+    CHECK(o.height % 16 == 0);
+    const auto oracle = window_level(is, t, o.x, o.y);
+    REQUIRE(oracle.has_value());
+    CHECK(static_cast<unsigned>(*oracle) == o.height); // the terrain's own window value
+    const auto [fw, fh] = sim::footprint(t, 0);
+    for (std::uint32_t dy = 0; dy < fh; ++dy) {
+        for (std::uint32_t dx = 0; dx < fw; ++dx) {
+            const sim::Slot idx = is.tile_index(o.x + static_cast<std::int32_t>(dx),
+                                                o.y + static_cast<std::int32_t>(dy));
+            CHECK(static_cast<unsigned>(is.tiles.item_height(idx)) == o.height);
+        }
+    }
+}
+
+std::vector<std::uint8_t> footprint_heights(const sim::World& w, const sim::BuildingType& t,
+                                            const Origin& o) {
+    const sim::Island& is = *w.islands()[0];
+    std::vector<std::uint8_t> out;
+    const auto [fw, fh] = sim::footprint(t, 0);
+    for (std::uint32_t dy = 0; dy < fh; ++dy) {
+        for (std::uint32_t dx = 0; dx < fw; ++dx) {
+            out.push_back(is.tiles.item_height(is.tile_index(o.x + static_cast<std::int32_t>(dx),
+                                                             o.y + static_cast<std::int32_t>(dy))));
+        }
+    }
+    return out;
+}
+
+/// The whole public-command sequence of the fixture, recorded through `rec` when given, with a
+/// save and load of the world after the steps selected by `reload_mask` (bit 0: after the first
+/// placement, bit 1: after the demolition). `detail` adds the in-line assertions (the uninterrupted
+/// run); the returned ledger is what the runs are compared by.
+std::vector<Step> run_build_sequence(sim::World& w, sim::Recorder* rec, const BuildFixture& fx,
+                                     const std::shared_ptr<const sim::TypeRegistry>& types,
+                                     unsigned reload_mask, bool detail) {
+    namespace ct = command_test;
+    Driver d{&w, rec};
+    const auto wood = *types->goods_by_name("HOLZ");
+    const auto tools = *types->goods_by_name("WERKZEUG");
+    const sim::BuildingType& pionier = *types->find(sim::TypeId{kPionier});
+    const sim::BuildingType& handwerk = *types->find(sim::TypeId{kHandwerk});
+    std::vector<Step> ledger;
+    const auto snap = [&](const std::string& label, sim::Reject status, std::int64_t gold0,
+                          std::uint32_t wood0, std::uint32_t tools0) {
+        Step s;
+        s.label = label;
+        s.status = status;
+        s.gold0 = gold_of(w, 0);
+        s.gold1 = gold_of(w, 1);
+        s.wood = ct::city(w, kBuildCity).stock.stock.at(wood);
+        s.tools = ct::city(w, kBuildCity).stock.stock.at(tools);
+        s.territory = territory_of(w);
+        s.info = info_of(w);
+        s.hash = w.state_hash();
+        if (detail) {
+            MESSAGE("ledger " << label << ": " << sim::reject_name(status) << ", gold p0 " << gold0
+                              << " -> " << s.gold0 << ", p1 " << s.gold1 << ", wood(8.8) " << wood0
+                              << " -> " << s.wood << ", tools(8.8) " << tools0 << " -> " << s.tools
+                              << ", territory " << s.territory << ", " << s.info);
+        }
+        ledger.push_back(std::move(s));
+    };
+    const auto command = [&](const std::string& label, const sim::Command& c) {
+        const std::int64_t gold0 = gold_of(w, 0);
+        const std::uint32_t wood0 = ct::city(w, kBuildCity).stock.stock.at(wood);
+        const std::uint32_t tools0 = ct::city(w, kBuildCity).stock.stock.at(tools);
+        const std::vector<std::uint8_t> before = w.save();
+        const sim::ApplyResult r = d.apply(c);
+        if (r.status != sim::Reject::None) {
+            REQUIRE_MESSAGE(w.save() == before, label << ": a refused command changed the world");
+        }
+        snap(label, r.status, gold0, wood0, tools0);
+        d.checkpoint();
+        return r;
+    };
+    const auto reload = [&] {
+        auto back = sim::World::load(w.save(), types);
+        REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+        REQUIRE(back.value().state_hash() == w.state_hash());
+        w = std::move(back).value();
+    };
+    const auto pion = [&](std::uint32_t player, const Origin& o) {
+        return ct::build(player, kBuildCity, {ct::at(sim::TypeId{kPionier}, o.x, o.y)});
+    };
+    const sim::Reject ok = sim::Reject::None;
+    d.advance(100);
+    // 1. the same PIONIER command on the sea site of the real island: the terrain decides.
+    const sim::ApplyResult sea = command("1 sea site", pion(0, fx.sea));
+    // 2. the second player sees the island and shares information, but has no build right.
+    const sim::ApplyResult foreign = command("2 second player", pion(1, fx.a));
+    // 3. the legal PIONIER (3 wood).
+    const sim::ApplyResult first = command("3 PIONIER at A", pion(0, fx.a));
+    if (detail) {
+        CHECK(sea.status == sim::Reject::TerrainRefused);
+        CHECK(foreign.status == sim::Reject::NotCityOwner);
+        REQUIRE(first.status == ok);
+        check_placed(w, pionier, fx.a);
+        CHECK(first.records.at(0).building.valid());
+    }
+    if ((reload_mask & 1U) != 0) {
+        reload();
+    }
+    d.advance(100);
+    d.checkpoint();
+    // 4. the legal HANDWERK (300 gold, 4 wood, 3 tools) beside it.
+    const sim::ApplyResult second =
+        command("4 HANDWERK at B",
+                ct::build(0, kBuildCity, {ct::at(sim::TypeId{kHandwerk}, fx.b.x, fx.b.y)}));
+    if (detail) {
+        REQUIRE(second.status == ok);
+        check_placed(w, handwerk, fx.b);
+    }
+    d.advance(100);
+    // 5. demolish the PIONIER: the clear arm keeps the height byte.
+    std::vector<std::uint8_t> heights_before;
+    if (detail) {
+        heights_before = footprint_heights(w, pionier, fx.a);
+    }
+    const sim::ApplyResult gone =
+        command("5 demolish A", ct::demolish(0, kBuildCity, {{fx.a.x, fx.a.y}}));
+    if (detail) {
+        REQUIRE(gone.status == ok);
+        CHECK(w.building_at(kBuildCity, fx.a.x, fx.a.y) == nullptr);
+        CHECK(footprint_heights(w, pionier, fx.a) == heights_before);
+    }
+    if ((reload_mask & 2U) != 0) {
+        reload();
+    }
+    d.advance(100);
+    d.checkpoint();
+    // 6. a second PIONIER on the freed site.
+    const sim::ApplyResult again = command("6 PIONIER at A again", pion(0, fx.a));
+    if (detail) {
+        REQUIRE(again.status == ok);
+        check_placed(w, pionier, fx.a);
+    }
+    d.advance(500);
+    d.checkpoint();
+    return ledger;
+}
+
+} // namespace
+
+TEST_CASE(
+    "build on the real terrain: stocked fixture, public commands, save and reload, and replay") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    namespace ct = command_test;
+    RealStart rs = real_start(*dir);
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    const sim::World start = std::move(loaded).value();
+    constexpr std::int64_t kGold = 5000;
+    constexpr std::uint32_t kWoodT = 20, kToolsT = 10;
+    auto found = find_build_fixture(start, rs.types, rs.manifest.edge_w, rs.manifest.edge_h, kGold,
+                                    kWoodT, kToolsT);
+    REQUIRE_MESSAGE(found.has_value(), "no real island offers PIONIER, HANDWERK and a sea site");
+    const BuildFixture fx = std::move(*found);
+    MESSAGE("real island slot " << fx.island << ": PIONIER A (" << fx.a.x << ", " << fx.a.y
+                                << ") level " << unsigned{fx.a.height} << "; HANDWERK B (" << fx.b.x
+                                << ", " << fx.b.y << ") level " << unsigned{fx.b.height}
+                                << "; sea site (" << fx.sea.x << ", " << fx.sea.y << ")");
+    const auto wood = *rs.types->goods_by_name("HOLZ");
+    const auto tools = *rs.types->goods_by_name("WERKZEUG");
+    const sim::BuildingType& pionier = *rs.types->find(sim::TypeId{kPionier});
+    const sim::BuildingType& handwerk = *rs.types->find(sim::TypeId{kHandwerk});
+    // The charges the ledger below must equal are the registry's own (8.8 tons).
+    REQUIRE(pionier.cost_goods.size() == 1);
+    REQUIRE(handwerk.cost_goods.size() == 2);
+    CHECK(pionier.cost_gold == 0);
+    CHECK(pionier.cost_goods[0].goods == wood);
+    CHECK(pionier.cost_goods[0].amount_88 == 3 * 256);
+    CHECK(handwerk.cost_gold == 300);
+    CHECK(handwerk.cost_goods[0].goods == tools);
+    CHECK(handwerk.cost_goods[0].amount_88 == 3 * 256);
+    CHECK(handwerk.cost_goods[1].goods == wood);
+    CHECK(handwerk.cost_goods[1].amount_88 == 4 * 256);
+
+    auto created = sim::World::create(fx.spec, rs.types, {}, fx.rules);
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    const sim::World pristine = std::move(created).value();
+    REQUIRE_MESSAGE(pristine.check_invariants().empty(), pristine.check_invariants());
+    // The declared fixture state, before any command.
+    CHECK(gold_of(pristine, 0) == kGold);
+    CHECK(ct::city(pristine, kBuildCity).stock.stock.at(wood) == kWoodT * sim::kTon);
+    CHECK(ct::city(pristine, kBuildCity).stock.stock.at(tools) == kToolsT * sim::kTon);
+    MESSAGE("territory tiles of city 0: " << territory_of(pristine) << "; " << info_of(pristine));
+
+    // ---- the uninterrupted, recorded run -------------------------------------------------------
+    sim::World w = pristine;
+    auto started = sim::Recorder::start(w);
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
+    sim::Recorder rec = std::move(started).value();
+    const std::vector<Step> ledger = run_build_sequence(w, &rec, fx, rs.types, 0, true);
+    REQUIRE(ledger.size() == 6);
+    REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+    const std::uint32_t t = sim::kTon;
+    // charges: exact per command (8.8 tons; the fixture started at kGold / kWoodT / kToolsT).
+    CHECK(ledger[0].gold0 == kGold); // sea refusal: nothing charged
+    CHECK(ledger[0].wood == kWoodT * t);
+    CHECK(ledger[0].tools == kToolsT * t);
+    CHECK(ledger[1].hash == ledger[0].hash); // foreign refusal: world unchanged
+    CHECK(ledger[2].gold0 == kGold);         // PIONIER: no gold, 3 wood
+    CHECK(ledger[2].wood == (kWoodT - 3) * t);
+    CHECK(ledger[2].tools == kToolsT * t);
+    CHECK(ledger[3].gold0 == kGold - 300); // HANDWERK: 300 gold, 4 wood, 3 tools
+    CHECK(ledger[3].wood == (kWoodT - 7) * t);
+    CHECK(ledger[3].tools == (kToolsT - 3) * t);
+    CHECK(ledger[4].gold0 == ledger[3].gold0); // demolition: no refund, no charge
+    CHECK(ledger[4].wood == ledger[3].wood);
+    CHECK(ledger[4].tools == ledger[3].tools);
+    CHECK(ledger[5].gold0 == kGold - 300); // second PIONIER: 3 wood again
+    CHECK(ledger[5].wood == (kWoodT - 10) * t);
+    CHECK(ledger[5].tools == (kToolsT - 3) * t);
+    for (const Step& s : ledger) {
+        CHECK(s.gold1 == kGold);                   // the second player never paid
+        CHECK(s.territory == ledger[0].territory); // building does not move the territory
+        CHECK(s.info == ledger[0].info);           // shared information unchanged
+    }
+    CHECK(ledger[0].info == "mask=0,1, present=0,1, discovery1=");
+    // Second PIONIER sits where the first stood: same level again.
+    check_placed(w, pionier, fx.a);
+
+    // ---- save and load after the placement and after the demolition: the same outcome -----------
+    {
+        sim::World w2 = pristine;
+        const std::vector<Step> reloaded = run_build_sequence(w2, nullptr, fx, rs.types, 3, false);
+        CHECK(reloaded == ledger);
+        CHECK(w2.state_hash() == w.state_hash());
+        CHECK(w2.save() == w.save());
+        sim::World w3 = pristine; // and a reload after the placement only
+        CHECK(run_build_sequence(w3, nullptr, fx, rs.types, 1, false) == ledger);
+        CHECK(w3.state_hash() == w.state_hash());
+    }
+
+    // ---- replay from the log: in this process, through bytes, and a changed command -------------
+    auto bytes = sim::write_log(rec.log());
+    REQUIRE(bytes.ok());
+    {
+        const std::string e = export_log_if_requested(std::getenv("ANNO_BUILD_LOG"), bytes.value());
+        REQUIRE_MESSAGE(e.empty(), e);
+    }
+    auto read = sim::read_log(bytes.value());
+    REQUIRE(read.ok());
+    auto fresh = sim::World::load(read.value().initial_save, rs.types, {});
+    REQUIRE_MESSAGE(fresh.ok(), (fresh.ok() ? std::string() : fresh.error()));
+    CHECK(fresh.value().state_hash() == pristine.state_hash());
+    auto outcome = sim::replay(fresh.value(), read.value());
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    CHECK(outcome.value().reproduced());
+    CHECK(fresh.value().state_hash() == w.state_hash());
+    {
+        sim::ReplayLog tampered = read.value();
+        bool edited = false;
+        for (sim::ReplayEntry& e : tampered.entries) {
+            for (sim::Command& c : e.commands) {
+                auto* b = std::get_if<sim::BuildCmd>(&c.body);
+                if (b != nullptr && !edited && c.issuer.v == 0 && b->placements.at(0).x == fx.a.x &&
+                    b->placements.at(0).y == fx.a.y) {
+                    b->placements[0].x += 1; // the first legal PIONIER one tile east
+                    edited = true;
+                }
+            }
+        }
+        REQUIRE(edited);
+        if (const char* bad_path = std::getenv("ANNO_BUILD_LOG_TAMPERED");
+            bad_path != nullptr && *bad_path) {
+            const auto bad_bytes = sim::write_log(tampered);
+            REQUIRE(bad_bytes.ok());
+            const std::string e = export_log_if_requested(bad_path, bad_bytes.value());
+            REQUIRE_MESSAGE(e.empty(), e);
+        }
+        auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
+        REQUIRE(fresh2.ok());
+        auto bad = sim::replay(fresh2.value(), tampered);
+        CHECK((!bad.ok() || !bad.value().reproduced()));
+    }
 }

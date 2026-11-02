@@ -18,8 +18,8 @@ keys are the ones tools/bench/window_table.py reads. Differences from the shell 
   not this tool and is never labelled native.
 Needs ANNO1503_GAME_DIR. Exit: the window's status; 124 when the watchdog killed it (it gets
 <seconds> + ANNO_WINDOW_CASE_GRACE_S, default 120, to end); 3 when the peak working set could not
-be read (the case is then not usable, whatever the window's own status was: the status is kept in
-run.txt's window_exit); 2 for bad arguments. Test hooks, read only from the environment:
+be read (the case is then not usable, whatever the window's own status was: the process's own end
+is kept in run.txt's child_exit, `killed` after the watchdog; window_exit is the status above); 2 for bad arguments. Test hooks, read only from the environment:
 ANNO_WINDOW_CASE_GRACE_S (the watchdog's margin, seconds) and ANNO_WINDOW_CASE_NO_PEAK=1 (the peak
 is reported as unreadable), for tools/test/window_tools_contract_test.py."""
 import ctypes
@@ -178,6 +178,7 @@ def main(argv):
                 break
             time.sleep(0.1)
         rc = proc.wait()
+        child_exit = "killed" if killed else str(rc)  # the process's own end, kept apart from window_exit
         if killed:
             rc = 124  # the watchdog's status (as timeout(1)), never mistaken for the window's own exit 1
             print(f"window_case: the window did not end within {limit} s and was killed (status 124)",
@@ -189,7 +190,7 @@ def main(argv):
     (out / "time.txt").write_text(f"Peak working set size (bytes): {peak}\n"
                                   f"Elapsed (wall clock) seconds: {time.monotonic() - started:.2f}\n")
     with open(out / "run.txt", "a") as f:
-        f.write(f"window_exit={rc} ended={datetime.now():%Y-%m-%d %H:%M:%S} "
+        f.write(f"window_exit={rc} child_exit={child_exit} ended={datetime.now():%Y-%m-%d %H:%M:%S} "
                 f"load_after=\"cpu_busy_pct={cpu_busy_pct():.1f}\"\n")
     if trace == "on":
         with open(out / "aggregate.txt", "wb") as so, open(out / "aggregate.stderr", "wb") as se:

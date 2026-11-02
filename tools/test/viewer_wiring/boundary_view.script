@@ -60,6 +60,20 @@ wait drawn
 expect visibility Visible
 checkpoint resized_visible
 
+# ---- presents fail across a resize: frames of both epochs are presented-as-failed, then it shows -
+hold presents
+click 1092 444
+wait outcome
+wait visibility NotPresented
+resize 1280 720
+wait frames 20
+expect visibility NotPresented
+checkpoint presents_across_resize
+release presents
+wait drawn
+expect visibility Visible
+checkpoint presents_across_resize_visible
+
 # ---- no visual change: a refused command and a demolish of an empty tile ----------------------
 click 1076 444
 wait outcome

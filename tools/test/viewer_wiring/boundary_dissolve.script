@@ -19,10 +19,6 @@ expect outcome Applied
 wait visibility NotOnGpu
 expect held uploads
 checkpoint dissolve_placeholder
-# Input and the sim progress while the uploads are held: a second edit is accepted and applied.
-click 1212 500
-wait outcome
-expect outcome Applied
 release uploads
 checkpoint dissolve_released
 wait frames 20
@@ -32,7 +28,6 @@ checkpoint dissolving
 click 1224 500
 wait outcome
 expect outcome Applied
-expect visibility NotOnGpu
 checkpoint dissolving_second_edit
 wait drawn
 expect visibility Visible

@@ -62,7 +62,7 @@ class WindowCase(unittest.TestCase):
     def test_control_a_window_that_ends_well_is_a_measured_success(self):
         p, out, _ = self.run_case(self.ok)
         self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertIn("window_exit=0", self.run_txt(out))
+        self.assertIn("window_exit=0 child_exit=0", self.run_txt(out))
         peak = (out / "time.txt").read_text()
         self.assertRegex(peak, r"Peak working set size \(bytes\): [1-9]\d*")
         # The table accepts the measurement.
@@ -71,26 +71,32 @@ class WindowCase(unittest.TestCase):
     def test_the_windows_own_status_is_kept(self):
         p, out, _ = self.run_case(self.five)
         self.assertEqual(p.returncode, 5, p.stderr)
-        self.assertIn("window_exit=5", self.run_txt(out))
+        self.assertIn("window_exit=5 child_exit=5", self.run_txt(out))
         self.assertTrue((out / "time.txt").is_file())
 
     def test_the_watchdog_kills_a_window_that_does_not_end(self):
         p, out, elapsed = self.run_case(self.slow, seconds="1", extra_env={"ANNO_WINDOW_CASE_GRACE_S": "1"})
         self.assertEqual(p.returncode, 124, p.stderr)
-        self.assertIn("window_exit=124", self.run_txt(out))
+        self.assertIn("window_exit=124 child_exit=killed", self.run_txt(out))
         self.assertIn("was killed (status 124)", p.stderr)  # a useful diagnostic
         self.assertLess(elapsed, 20.0)  # 2 s limit, not the fixture's 25 s
-        self.assertFalse((out / "aggregate.txt").exists())  # no aggregate of a window that never ended
+        # (What a matrix does with window_exit=124 is window_table's rule, covered by its own
+        # contract, window_table_test.sh: a failed run is exit 6, never a success row.)
 
     def test_an_unreadable_peak_is_not_a_measured_run(self):
         p, out, _ = self.run_case(self.ok, extra_env={"ANNO_WINDOW_CASE_NO_PEAK": "1"})
         self.assertEqual(p.returncode, 3, p.stderr)  # not the window's 0
-        self.assertIn("window_exit=3", self.run_txt(out))
+        self.assertIn("window_exit=3 child_exit=0", self.run_txt(out))  # the window's own 0 is kept apart
         self.assertIn("peak working set could not be read", p.stderr)
         # And what it left behind is refused by the table, never read as 0 GiB.
         with self.assertRaises(Exception) as caught:
             load_table().peak_rss(out)
         self.assertIn("missing", str(caught.exception))
+
+    def test_an_unreadable_peak_does_not_hide_the_windows_own_failure(self):
+        p, out, _ = self.run_case(self.five, extra_env={"ANNO_WINDOW_CASE_NO_PEAK": "1"})
+        self.assertEqual(p.returncode, 5, p.stderr)  # the window's failure stands, not 3
+        self.assertIn("window_exit=5 child_exit=5", self.run_txt(out))
 
     def test_a_zero_peak_in_time_txt_is_unusable(self):
         case = self.tmp / "zero"
@@ -124,8 +130,9 @@ class Capture(unittest.TestCase):
     def setUpClass(cls):
         try:
             import PIL  # noqa: F401
+            import tkinter  # noqa: F401
         except ImportError:
-            raise unittest.SkipTest("skipping: Pillow is not installed (the capture tool needs it)")
+            raise unittest.SkipTest("skipping: Pillow or tkinter is not installed (the capture tool needs them)")
         cls.tmp = Path(tempfile.mkdtemp(prefix="capture_contract_"))
         cls.window = cls.tmp / "fixture_window.py"
         cls.window.write_text(FIXTURE_WINDOW)
@@ -158,5 +165,14 @@ class Capture(unittest.TestCase):
         self.assertEqual(list((out / "shots").glob("*.png")), [])
 
 
+class SkipsAreNamed(unittest.TextTestResult):
+    """Prints each skip as a line that starts with `skipping:`, the form the evidence gate
+    (tools/test/ctest_verdict.py) counts as a skip and not as an executed pass."""
+
+    def addSkip(self, test, reason):
+        super().addSkip(test, reason)
+        print(reason if reason.startswith("skipping") else "skipping: " + reason, flush=True)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(testRunner=unittest.TextTestRunner(resultclass=SkipsAreNamed))

@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: bounded Windows final corrections; MAP placement then ship unloading
+## Current dispatch — 2026-11-02: Windows closeout then opening controls; MAP placement then unloading
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -17,12 +17,16 @@ first package of MAP-BUILD-1 below, followed immediately by terrain-aware
 building placement. Owner continuation, 2026-11-02: after the corrected placement
 integration review, continue with MAP-CARGO-1 below so the actual opening loop
 can sail, found, unload and build. Do not interrupt or restart current placement
-work to adopt this continuation. This dispatch changes only the Mac assignment;
-the entire Windows W4-WIN-FINAL packet remains in force without expansion.
+work to adopt this continuation. W4-WIN-FINAL remains the Windows executor's
+current assignment without expansion. Owner continuation, 2026-11-02: after
+that closeout and the Mac gameplay candidate are reviewed and accepted at exact
+published pins, W4-OPENING-1 below integrates selection, sailing, founding,
+unloading and building in the live window for an owner playtest. It is conditional
+future work, not permission to interrupt the current Windows corpus run.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL READY.** Fix viewer verdict/present handling, close capture and reclaimer controls, and complete scoped sanitizer coverage under the approved corpus policy. Reuse unaffected GPU evidence; no main merge. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL IN PROGRESS.** Finish the frozen acceptance chain and review publication. **W4-OPENING-1 is queued**, gated on accepted Windows and Mac pins; no interruption of current gates. |
 | MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1, then MAP-CARGO-1 after placement review.** Complete terrain/height placement; after its corrected independent integration review, implement ship-to-own-warehouse unloading and prove the actual opening loop without stock grants. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · READY
@@ -238,6 +242,248 @@ remain intact; no new hardcoded player/type/island limits or registry shortcuts
 for tests. Large-city/complex-economy/multiplayer scale and the named display,
 terrain, road and UI follow-ups remain separate work. MAP-NAV-3 and every Mac
 executor file/process remain untouched.
+
+### W4-OPENING-1 — live ship-start opening for an owner playtest · CONDITIONAL, NOT STARTED
+
+**Owner instruction, 2026-11-02:** once the Mac gameplay work is reviewed, wire
+ship selection, sailing, founding and unloading into the live Windows window so
+the owner can test the complete opening personally. Include the existing
+building tool after founding; a headless command demo alone does not meet this
+outcome. This is a bounded developer playtest UI, not the full UI.2/game-menu,
+network multiplayer, trade-route, combat or renderer-optimization program.
+
+**Current Windows checkpoint (owner-supplied, not independently verified here):**
+F1–F3 correction reviews approved; an initial gate failed on a UTF-8/Windows
+code-page mismatch in `viewer_wiring.py` and was retained, then fixed. The update
+mentions frozen head `8367dc0` and later clean build/warnings at `37da91b`.
+The ordinary viewer-enabled sanitizer lane reports 217 selected, 215 executed,
+0 failed, 2 opt-in skips and no sanitizer reports; the RTX canary reports pass.
+The two corpus cases are still running serially. This is **IN PROGRESS**, not
+acceptance. Let them finish; do not edit tracked source or start this task during
+that gate. The final closeout must reconcile actual source/tool/binary pins per
+lane, the failed encoding run and the final corpus/native verdicts. Do not infer
+that differently pinned runs tested one identical final source.
+
+#### Release conditions and ownership
+
+1. The orchestrator must record acceptance of both the final W4-WIN-FINAL
+   candidate and the corrected Mac MAP-BUILD-1 plus MAP-CARGO-1 candidate,
+   with full code/test/documentation commit ids and exact allowed limitations.
+   Independent package approvals alone do not fill in these future integration
+   pins. Neither candidate is accepted by this dispatch; until those records
+   exist, finish the existing lane and stop at its current review boundary.
+2. Both approved pins must be reachable from GitHub with their review/evidence
+   summaries. The orchestrator arranges ordinary publication of the reviewed
+   Mac task branch after its review; this packet does not tell the Mac executor
+   to interrupt work or push unreviewed source. Do not take a moving branch tip,
+   incomplete working tree or a copied binary as the integration input.
+3. Once released, use a Windows-owned integration branch `task/W4-opening-1`
+   from the approved rendering pin, reusing a suitable quiescent checkout.
+   An ordinary merge of the **approved MAP pin into this integration branch** is
+   authorized. This is the narrow exception needed to combine the two lanes:
+   no main merge/push, rewriting either reviewed branch, rebase, force push or
+   pruning. Preserve source branches and record both parents and resolutions.
+4. The Windows executor owns this integration/app/render work. It consumes the
+   accepted sim commands and contracts; it does not redesign gameplay or edit
+   the Mac executor's checkout. If merge conflicts in coordinator/test-support,
+   state formats or gameplay require a new semantic choice, isolate that exact
+   conflict for review and continue independent preparation. Do not resurrect
+   older coordinator semantics or start another infrastructure repair campaign.
+
+#### Read order and preflight
+
+1. Fetch/read main `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4 and §0.7,
+   `docs/testing/{evidence-contract,README}.md`, this packet and the two published
+   acceptance records. Read both final REPORTS entries and their portable
+   evidence indexes. Record the exact source and workflow revisions separately.
+2. Read accepted W4 `docs/app/{game-shell,gpu-handoff,window-trace}.md`,
+   `src/app/include/anno/app/{play,dev_tool,dev_input,dev_feedback,dev_session,
+   command_queue,command_outcome,scene_picture}.hpp`, and corresponding source,
+   `main.cpp`, `viewer.cpp`, `loader.cpp`, `dev_script.cpp`, picking/render-unit
+   APIs, `tools/test/viewer_wiring.py` and its session scripts/contracts. Follow
+   current filenames if the final closeout changed them.
+3. Read accepted MAP `docs/sim/{ship-start-integration,ship-founding,
+   ship-navigation,ship-cargo,shared-visibility}.md`, the MAP-BUILD-1 placement
+   contract, `src/sim_load` ship-start loader, current command/codec/result/replay
+   APIs and the real no-grants opening canary. Use the accepted unload command's
+   actual name and semantics, not a new parallel UI-only implementation.
+4. Check original figure sprite decoding, direction/animation/palette/shadow
+   handling and scene-unit composition already used by the scenario viewer.
+   Read applicable app input, visibility, picking and sprite-parity tests.
+   A static scenario's unit display is not proof of a live moving-ship path.
+5. Check current CPU/RAM/disk/RTX load and reuse Windows calibration with
+   admission control and serialized GPU tests. Keep the display awake during
+   owned runs; preserve the owner's awake assertion and other apps. Do not
+   overlap heavy acceptance with builds. Current closeout evidence stays intact.
+
+#### I1 — combine approved code and expose a true ship-start session
+
+1. Integrate the two exact pins on the integration branch. Review conflict
+   resolutions as their own small package. Compile the combined app/sim and run
+   the affected command, placement, founding, unloading and replay canaries
+   before adding window behavior. Resolve concrete Windows portability defects
+   with focused tests; do not silently borrow Mac or old-renderer acceptance.
+2. Add an explicit launch path using the typed ship-start manifest loader.
+   Preserve its content/path validation, rules, seed, original loadout, peace,
+   shared information and no alliances. Do not route it through the legacy fixed
+   map loader's developer resources or prebuilt-city setup. Record manifest,
+   content/rules identity and chosen local participant in saves/session logs.
+3. Start with ships and **zero cities**, centre the camera on the selected local
+   participant's ship, and provide a readable load error for an invalid manifest
+   or missing asset. Candidate A may be an explicitly named playtest input;
+   none is selected/installed as the release map and `lan5.txt` is unchanged.
+4. Local participant is explicit data validated against loaded seats. Commands
+   get the session's authenticated local issuer. Show other participants where
+   the accepted information model permits it, without granting their controls.
+   This is a local playtest in a five-seat world, not proof of network multiplayer.
+
+#### I2 — publish and draw live ships without blocking the simulation
+
+1. Extend immutable snapshots with the stable ids, owner/type, published position,
+   facing and supported animation/state needed to display/select ships, plus
+   local cargo/city-stock information needed by actions. Never expose a mutable
+   `World`, raw entity pointer or registry slot as durable UI identity. On reload
+   or disappearance, invalidate selections and pending targets deliberately.
+2. Use original decoded ship assets, orientation, colour and shadows through the
+   existing unit renderer for CPU and RTX paths. Carried scout/donkey remain
+   embarked; do not draw them as independent walkers or add disembarkation.
+   A marker moving over a static/missing ship is not a completed live-ship view.
+3. Keep moving units separate from static terrain and building generations.
+   A sailing tick must not trigger a whole-island/scene rebuild. Preserve painter
+   order/occlusion and the owning frame lifetime; drawing and picking use a
+   coherent published frame. Interpolation, if used, is presentation-only and
+   cannot change commands, replay or authoritative movement.
+4. Bound publication, pending uploads and retained frame resources. Missing or
+   busy content may display a truthful pending state without stalling turns or
+   input. Hold a ship snapshot/frame while the sim advances, then release it:
+   no dangling state, premature visibility claim or shutdown wait on an unreleased
+   test barrier. Use the already established ownership/present semantics.
+5. Measure a short moving-ship run and deterministic work counters: no terrain
+   rebuild from movement, picking work local to visible candidates, no growth in
+   retained snapshots after settling. Include unrelated-city content in one
+   focused control. This is a regression check, not a new late-game benchmark.
+
+#### I3 — selection, movement and usable controls
+
+1. Add ship hit-testing using the displayed transform/snapshot and stable ids,
+   with a visible selection indicator and owner/name/cargo feedback. Do not reuse
+   building/island-only picking for open-sea destinations. Test overlapping ships,
+   zoom/camera transforms, DPI/resize and stale selections; inspectable other
+   owners never become controllable through a local pick.
+2. Write a short action/control table before wiring handlers. Preserve existing
+   building shortcuts, wheel zoom and right-drag pan. Use familiar selection and
+   move gestures where compatible: distinguish a right click from a pan drag,
+   consume each gesture once, and never issue a move after a pan/cancel/focus loss.
+   If a gesture conflicts, use an explicit labelled move mode instead of silently
+   changing an existing action. Document every new binding on screen/help.
+3. Issue the accepted `MoveCmd` and `StopCmd` through the same command queue,
+   codec and simulation runner as existing building actions. A valid sea click
+   produces one order for the selected ship and local issuer; invalid/outside
+   input produces clear feedback. No direct position edit or test relocation.
+4. Track each command's own id/outcome: queued, accepted/planning, moving,
+   arrived, later route failure or refused with its actual reason. Acceptance is
+   not arrival, and arrival is not a successful present. Replacements/cancellation
+   cannot display an earlier order's success. Input and turns continue while the
+   renderer is held. No displayed route is claimed until a real plan exists.
+
+#### I4 — found, unload and enable the existing building tool
+
+1. Offer founding for an eligible selected ship through the accepted configurable
+   founding types. Display the original warehouse sprite/footprint and rotation;
+   preserve the contract's click/origin and rotation-search semantics. Preview
+   validation is advisory/read-only; `FoundCmd` decides at execution. Show price,
+   cargo requirements and the real refusal. Never create a city in the UI.
+2. After successful founding, derive the new city's id, ownership, warehouse and
+   stock from a new published snapshot. Enable/update building controls for that
+   city even though the session began without one. Remove assumptions that the
+   developer player's first city was fixed at runner construction. Reuse the
+   accepted terrain/height rule and ordinary build/demolish commands unchanged.
+3. Provide a minimal readable unload interaction: selected ship, selected own
+   warehouse, hold/goods and permitted quantity, destination stock/capacity,
+   action and result. Use the exact U1 request granularity and partial-transfer
+   rules. No arbitrary fixed amount, founding-material whitelist, four-hold cap,
+   remote-city credit or silent unload-all. Re-read/revalidate target identity
+   when sending; the sim still decides permissions, range and capacity.
+4. Show actual transferred amount and authoritative before/after cargo and city
+   stock, correlated to the command/snapshot. Refused or capacity-limited actions
+   cannot look like complete unloads. The user can unload the supplies needed
+   for the first ordinary building without console injection or developer grants.
+5. Keep modes understandable: select/move, founding preview and building preview
+   cannot consume one click twice. Escape cancels the current action; focus loss
+   cancels an incomplete gesture. A vanished/changed ship, city or warehouse
+   invalidates its target safely. Support another participant in a separate
+   explicitly chosen session, not a hidden ownership override.
+6. Provide a minimal save/resume path for the playtest using the existing sim
+   save format: capture at a defined turn boundary, perform file I/O outside the
+   window thread, and report write/load failures. A validated resume restores
+   the actual saved world and resets stale selections/queued input; an invalid
+   load leaves the running session intact. Preserve content/rules/local-seat
+   identity and start a correctly identified recording segment after resume.
+   A quick-save action and explicit resume launch option suffice; no save-slot
+   browser or general menu system is required. Do not assume the current live
+   window already has this path merely because the sim can save and load.
+
+#### I5 — prove the window adapters, not just helpers
+
+1. Drive the **production SDL window/input path** through a complete real session:
+   select the local ship, sail, arrive, found, unload from its remaining actual
+   holds, build a legal ordinary building, save/reload and continue. Preserve the
+   same no-grants ledger as the headless canary. Scripted input isolation applies
+   only to automation; the final owner session must accept real mouse/keyboard.
+2. Add cheap adapter controls for wrong owner, out-of-range unload, full storage,
+   invalid founding terrain, stale selection, cancel, pan-versus-order and a route
+   failure. Use valid controls and the actual command/outcome assertions so an
+   earlier unrelated refusal or absent script execution cannot satisfy the check.
+3. Challenge actual wiring with representative mutations: suppress/retarget a
+   window-issued ship command and prematurely show a previous command's success.
+   Require the intended command/outcome or state assertion to fail. Separately
+   prove a pan does not submit movement. No arbitrary mutation quota or full
+   voyage per negative test; one real-session proof plus small adapter cases.
+4. Record and replay the actual window-issued commands in a fresh headless process
+   with the same start manifest, local issuer, rules and seed. Match outcomes and
+   hashes; a changed unload quantity/target must diverge at a recorded checkpoint.
+   New commands must survive the real session serializer, not only the sim codec.
+5. On RTX, verify ships visibly move/turn, the warehouse and first building appear
+   after successful presentation, and selection/cargo feedback follows the right
+   snapshot. Cover one zoom/pan/resize sequence and held-render recovery. Compare
+   a small nonempty moving-ship scene with CPU composition including occlusion;
+   renderer parity is separate from gameplay state and physical display latency.
+6. Save inspected local screenshots and brief session evidence at start, selected
+   ship underway, founded warehouse, unloaded stock and first built structure.
+   Record actual drawable resolution. Captures containing original art stay
+   local; publish only permitted text evidence/hashes, never original assets.
+
+#### I6 — scoped target-host acceptance and owner handoff
+
+1. Freeze corrected source. Run affected native MSVC app/input/sim/load/replay
+   gates; WSL GCC/Clang warnings; viewer-enabled ASan/UBSan for changed adapters
+   and gameplay integration; and relevant RTX/CPU unit-render checks plus the
+   real-window canary. Reuse valid unrelated W4-WIN-FINAL/MAP evidence. Rerun the
+   costly corpus only when touched dependencies or a concrete regression require
+   it, under its already approved serial timeout/admission policy.
+2. Every substantive package gets independent read-only review; fixes receive
+   focused re-review. One final integration reviewer checks accepted-source
+   integration, input authority, snapshot lifetimes, true command serialization,
+   no-grants accounting, controls and the portable evidence subset. No declaration
+   of ready merely because a helper suite or a native build passed.
+3. Provide a reproducible Windows launch command/script using the inspected
+   build, explicit candidate/local seat and original asset directory, plus a
+   one-page control/playtest card (`docs/testing/ship-opening-playtest.md`):
+   launch, select, move/stop, found, unload, build, save, reload, expected feedback
+   and known limitations. No manual file editing or debug grants to finish the
+   opening. Distinguish automated completion from the owner's still-NOT_RUN
+   personal acceptance; owner availability does not block delivering the build.
+4. Commit reviewable concerns and a text-only acceptance/evidence index. Publish
+   the new integration branch with an ordinary push after ancestry checks and
+   verify its remote hash. No main push/merge, forced update, candidate install
+   or external message. Stop with the review candidate and usable owner launch
+   instructions; no further UI.2, network or trade-route expansion.
+
+**Stop condition:** an independently reviewed Windows opening-playtest candidate
+whose real live-window session completes select -> sail -> found -> unload ->
+build with original supplies, with replay agreement and a reproducible owner
+launch path. This is not full multiplayer, full original-runtime fidelity,
+native-4K or late-game performance acceptance. Record those limits explicitly.
 
 ### W4-WIN-CLOSE — publish for review and finish bounded repair acceptance · REVIEWED, SUPERSEDED BY W4-WIN-FINAL
 

@@ -178,6 +178,11 @@ if(ANNO_BUILD_TESTS)
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/nav_state_vectors.txt)
     add_test(NAME nav_state_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/nav_state_ref.py selftest)
+    add_test(NAME placement_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/placement_vectors.txt)
+    add_test(NAME placement_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py selftest)
     add_test(NAME ship_step_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
     add_test(NAME test_verdict_contract

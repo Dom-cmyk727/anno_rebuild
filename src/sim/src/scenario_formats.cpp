@@ -1321,7 +1321,8 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
             t.index = tile;
             t.object = o.anlage;
             t.rotation = static_cast<std::uint8_t>(o.rotation);
-            t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
+            t.phase = o.phase();   // low 6 bits of state (D AnnoWelt 0x1007aa40)
+            t.height = o.height(); // state >> 8 (insel.md), stored as the tile's height byte
             is.objects.push_back(t);
         }
     }

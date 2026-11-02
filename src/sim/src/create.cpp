@@ -256,8 +256,8 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // the stored phase is 0, the reset of byte 3 (0x1008c81e). `b` was moved
     // into the slot; the placed copy still holds x, y and rotation.
     const Building& placed = *target.slots[slot];
-    static_cast<void>(
-        place_object_record(island.tiles, types, *ty, placed.x, placed.y, placed.rotation, 0));
+    static_cast<void>(place_object_record(island.tiles, types, *ty, placed.x, placed.y,
+                                          placed.rotation, 0, placed.byte0f));
     // 9. The shared tail (residents, running-cost statistics): no stored state yet
     // (O-9, O-23).
     return key;

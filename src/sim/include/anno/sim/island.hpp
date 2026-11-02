@@ -88,6 +88,60 @@ struct Terrain {
 
 struct TileIO;
 
+/// The tile rectangle (world tiles, half-open) a TileLayer changed since the route cache last read
+/// it. DERIVED: never hashed, never saved. It records only changes of what the ship-route
+/// predicate reads (object id, foot anchor, item height byte), so an economic change that leaves
+/// the tiles alone leaves it empty. Copying a TileLayer copies the rectangle (the copy starts with
+/// the same pending change); ASSIGNING one over another marks the whole layer changed, because the
+/// target's readers saw different content.
+class RouteDirty {
+  public:
+    RouteDirty() = default;
+    RouteDirty(const RouteDirty&) = default;
+    RouteDirty(RouteDirty&&) noexcept = default;
+    RouteDirty& operator=(const RouteDirty&) {
+        all_ = true;
+        return *this;
+    }
+    RouteDirty& operator=(RouteDirty&&) noexcept {
+        all_ = true;
+        return *this;
+    }
+    ~RouteDirty() = default;
+
+    [[nodiscard]] bool any() const { return all_ || any_; }
+    /// The whole layer changed (a reset, an assignment): the rectangle is not meaningful.
+    [[nodiscard]] bool all() const { return all_; }
+    [[nodiscard]] std::int32_t x0() const { return x0_; }
+    [[nodiscard]] std::int32_t y0() const { return y0_; }
+    [[nodiscard]] std::int32_t x1() const { return x1_; }
+    [[nodiscard]] std::int32_t y1() const { return y1_; }
+    void add(std::int32_t x, std::int32_t y) {
+        if (!any_) {
+            x0_ = x;
+            y0_ = y;
+            x1_ = x + 1;
+            y1_ = y + 1;
+            any_ = true;
+            return;
+        }
+        x0_ = x < x0_ ? x : x0_;
+        y0_ = y < y0_ ? y : y0_;
+        x1_ = x + 1 > x1_ ? x + 1 : x1_;
+        y1_ = y + 1 > y1_ ? y + 1 : y1_;
+    }
+    void mark_all() { all_ = true; }
+    void clear() {
+        all_ = false;
+        any_ = false;
+        x0_ = y0_ = x1_ = y1_ = 0;
+    }
+
+  private:
+    bool all_ = false, any_ = false;
+    std::int32_t x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
+};
+
 /// The tile columns of one island with their chunk digest cache.
 class TileLayer {
   public:
@@ -130,8 +184,15 @@ class TileLayer {
     [[nodiscard]] std::uint8_t phase(std::uint64_t idx) const;
     /// City number, or neutral_owner. A u32 (F3).
     [[nodiscard]] std::uint32_t owner(std::uint64_t idx) const;
-    /// The remaining record bits (flag 0x80 of byte +3, ...): O-11.
+    /// The remaining record bits (flag 0x80 of byte +3, ...): O-11. Byte 0 is the placed item's
+    /// height byte (item_height); bits 8..31 are 0 until a later stage models them, and
+    /// validate_island refuses a state that holds anything there (MAP-NAV-3 N3).
     [[nodiscard]] std::uint32_t aux(std::uint64_t idx) const;
+    /// The placed item's height byte: byte 0 of the original tile record's second dword
+    /// (docs/re/transport.md; written by AnnoWelt 0x10082260 / 0x10082494, kept by the clear arm
+    /// 0x10082f00). The base of the route predicate ((h + base) & 0xff) > 19. Stored in the low
+    /// byte of `aux`, so the stream layout is unchanged.
+    [[nodiscard]] std::uint8_t item_height(std::uint64_t idx) const;
     /// Walk code of the tile (the record's byte 8..15, high u16 of the cell).
     /// Reset value 2 (empty land); object tiles hold their type's code
     /// (HEAD pair through AnnoGame 0x100091f0 and the rotation getter).
@@ -166,6 +227,8 @@ class TileLayer {
     void set_phase(std::uint64_t idx, std::uint8_t v);
     void set_owner(std::uint64_t idx, std::uint32_t v);
     void set_aux(std::uint64_t idx, std::uint32_t v);
+    /// Replaces byte 0 of `aux`, keeps bits 8..31.
+    void set_item_height(std::uint64_t idx, std::uint8_t v);
     /// Set the walk code of the tile (task T33.4 fix-up F5).
     void set_walk_code(std::uint64_t idx, std::uint16_t v);
     /// Set the walk mask of the tile (task T33.4 fix-up F5).
@@ -178,6 +241,10 @@ class TileLayer {
     /// reset(); 0 in every correct run. A diagnostic, not state: never hashed or
     /// saved.
     [[nodiscard]] std::uint64_t ignored_writes() const { return ignored_writes_; }
+    /// The tiles whose object id, foot anchor or item height byte changed since the last
+    /// clear_route_dirty (see RouteDirty). Derived, never hashed or saved.
+    [[nodiscard]] const RouteDirty& route_dirty() const { return route_dirty_; }
+    void clear_route_dirty() { route_dirty_.clear(); }
 
     /// Index of the chunk a tile index is in (row-major chunk order);
     /// chunk_count() (one beyond the last chunk) for idx >= tile_count(), which
@@ -213,6 +280,7 @@ class TileLayer {
     friend struct TileIO;
 
     void mark(std::uint64_t idx);
+    void mark_route(std::uint64_t idx);
 
     std::int32_t x0_ = 0, y0_ = 0;
     std::uint32_t w_ = 0, h_ = 0, edge_ = 0, cx_ = 0, cy_ = 0;
@@ -242,6 +310,8 @@ class TileLayer {
     std::vector<std::uint8_t> dirty_;
     // Diagnostic, not state: writes dropped for an index beyond the layer.
     std::uint64_t ignored_writes_ = 0;
+    // Derived, never saved: the tiles the ship-route predicate must re-read.
+    RouteDirty route_dirty_;
 };
 
 /// D: island +0x9a (stamp = the world tick at island init, D 0x1008c2e6),

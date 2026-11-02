@@ -70,6 +70,11 @@ struct ScenarioSpec {
         /// read at AnnoWelt 0x1008964e). Follows `phase` so a positional
         /// `{index, object, phase}` aggregate keeps its phase. Default 0.
         std::uint8_t rotation = 0;
+        /// The item's height byte (insel.md item `state >> 8`; the original's tile record
+        /// second dword byte 0, written at AnnoWelt 0x10082494): the base of the ship-route
+        /// object predicate (TileLayer::item_height). Follows `rotation` so the positional
+        /// aggregates keep their meaning. Default 0.
+        std::uint8_t height = 0;
     };
     /// A building placed at load (PROD2 record stand-in): created at tick 0
     /// through create_building, no cost charged.

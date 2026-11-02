@@ -718,11 +718,6 @@ ApplyResult Commands::apply(World& w, const Command& command, const InAdvance* i
         // A legacy record is never executed (fail closed, §8.3).
         result.status = Reject::Unsupported;
     }
-    if (result.ok() && !std::holds_alternative<MoveCmd>(command.body) &&
-        !std::holds_alternative<StopCmd>(command.body) &&
-        !std::holds_alternative<SetSpeedCmd>(command.body)) {
-        w.route_cache_.clear(); // the islands may have changed: the derived coast index is rebuilt
-    }
     if (!result.ok()) {
         SimEvent e;
         e.kind = SimEventKind::CommandRejected;

@@ -19,9 +19,10 @@
 //    pass 2 of the builder; islands that are not aligned blocks have no records and derive no band.
 //
 // Documented limits of this adapter (nothing is guessed): the 11 object types that carry a height
-// map in the original (1020, 1021, 2701-2708, 2740) use their scalar here, and the sim does not
-// carry the placed item's height byte (TileLayer::aux is a stand-in that every loader leaves 0), so
-// base is 0 unless the caller supplies RouteTerrainOptions::item_base.
+// map in the original (1020, 1021, 2701-2708, 2740) use their scalar here. The placed item's height
+// byte (base) is the tile's TileLayer::item_height unless the caller supplies
+// RouteTerrainOptions::item_base (MAP-NAV-3 N3; island growth leaves it 0, an open limitation,
+// docs/sim/ship-navigation.md 12.13).
 //
 // The source reads the World; the World must not change while a CoastIndex built on it is planning.
 #pragma once
@@ -40,8 +41,9 @@
 namespace anno::sim {
 
 struct RouteTerrainOptions {
-    /// The placed item's height byte (rec[4]) of the object tile with this row-major tile index, or
-    /// null for 0 everywhere.
+    /// The placed item's height byte (rec[4]) of the object tile with this row-major tile index;
+    /// null reads the tile's own TileLayer::item_height (the production default). A callback
+    /// replaces it (tests).
     std::function<std::uint8_t(const Island&, std::uint64_t tile_index)> item_base;
     /// Objects block per the predicate above; false ignores them (terrain only).
     bool objects_block = true;
@@ -62,16 +64,15 @@ struct RouteTerrainOptions {
 /// negative h wraps and blocks).
 [[nodiscard]] bool object_tile_blocks(std::int64_t h, std::uint32_t base);
 
-/// The terrain options the ship mover and its tests use (docs/sim/ship-navigation.md 12.10): the
-/// coast index reads TERRAIN ONLY. Placed objects are history-dependent state (island growth sets
-/// and clears them without any command), so an index that included them would differ between a
-/// world that ran continuously and the same world after a save and load, which breaks replay. The
-/// original builds its coarse map per island at placement and refreshes it only for coast and road
-/// objects (a flag the sim does not model yet); modelling that flag with hashed state is the path
-/// back to object blocking.
+/// The terrain options the ship mover and its tests use (docs/sim/ship-navigation.md 12.13): placed
+/// objects block per the evidenced predicate with the tile's own height byte. Objects are
+/// authoritative state (hashed, saved), and every change of one (command or island growth) is
+/// reported by the tile layer's route-dirty rectangle, which RouteCache::sync turns into a local
+/// index rebuild, so the index is a function of the authoritative state and not of the history that
+/// led to it.
 [[nodiscard]] inline RouteTerrainOptions ship_route_terrain_options() {
     RouteTerrainOptions o;
-    o.objects_block = false;
+    o.objects_block = true;
     return o;
 }
 

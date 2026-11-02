@@ -211,13 +211,15 @@ std::string build_island(const Spec::IslandSpec& is, std::size_t island_index, c
         if (ty == nullptr) {
             out.tiles.set_object(o.index, o.object);
             out.tiles.set_phase(o.index, o.phase);
+            out.tiles.set_item_height(o.index, o.height);
             continue;
         }
         const std::int32_t ox =
             out.tiles.x0() + static_cast<std::int32_t>(o.index % out.tiles.width());
         const std::int32_t oy =
             out.tiles.y0() + static_cast<std::int32_t>(o.index / out.tiles.width());
-        static_cast<void>(place_object_record(out.tiles, types, *ty, ox, oy, o.rotation, o.phase));
+        static_cast<void>(
+            place_object_record(out.tiles, types, *ty, ox, oy, o.rotation, o.phase, o.height));
     }
     out.deposits.reserve(is.deposits.size());
     for (const Spec::DepositSpec& d : is.deposits) {

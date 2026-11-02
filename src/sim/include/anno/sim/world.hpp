@@ -339,6 +339,7 @@ class World {
     friend struct Founding;
     friend struct ShipOrders;
     friend struct ShipMover;
+    friend class RouteCache;
 
     WorldClock clock_;
     WorldRng rng_;

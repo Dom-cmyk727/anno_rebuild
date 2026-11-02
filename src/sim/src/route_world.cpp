@@ -210,7 +210,8 @@ bool WorldTileSource::object_blocks(const Entry& e, std::int32_t x, std::int32_t
         return false;
     }
     const std::int64_t h = object_height_units(head_f32(object));
-    const std::uint32_t base = opt_.item_base ? opt_.item_base(*e.island, idx) : 0u;
+    const std::uint32_t base =
+        opt_.item_base ? opt_.item_base(*e.island, idx) : std::uint32_t{tiles.item_height(idx)};
     return object_tile_blocks(h, base);
 }
 
@@ -270,7 +271,8 @@ bool WorldTileSource::block_range(std::int32_t cx, std::int32_t cz, std::uint8_t
                 if (idx == kNoSlot || tiles.foot_anchor(idx) == 0 || tiles.object(idx) == 0) {
                     continue;
                 }
-                const std::uint32_t base = opt_.item_base ? opt_.item_base(*e.island, idx) : 0u;
+                const std::uint32_t base = opt_.item_base ? opt_.item_base(*e.island, idx)
+                                                          : std::uint32_t{tiles.item_height(idx)};
                 const std::int64_t top = (object_top_units(head_f32(tiles.object(idx))) +
                                           static_cast<std::int64_t>(base)) &
                                          0xff;

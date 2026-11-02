@@ -182,7 +182,11 @@ s7_g1_sp_end S7 123 8f205a2399dd394d
 # with slot 1 freed and the hint kept), the charges (4 x 300 gold, 12 t tools, 16 t wood)
 # and the rejection reasons independently of the hash. The log carries the stream version
 # in its initial save, so a stream bump re-records it.
-s10_g2_end S10 123 9c0cce6ee5ceb63e
+# Re-baselined inside version 123 (MAP-BUILD-1 C, no state-layout change): the BuildCmd placement rule now
+# reads the terrain, so g2_scenario gained a flat 0x30 plateau (the terrain digest is hashed) and the
+# build types the ordinary-land flag word 0x84 plus the three scenery types (the registry digest is
+# hashed); the recorded session's builds now store byte0f 0x30. The value before was 9c0cce6ee5ceb63e.
+s10_g2_end S10 123 671ac0c4d17f8031
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -378,4 +382,7 @@ p1_g7_create P1 123 145e75ea2a0662a9
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
-m2_found_session M2 123 359cf48e134bdcf1
+# Re-baselined inside version 123 (MAP-BUILD-1 C): the fixture registry's free workshop 9201 has the
+# ordinary-land flag word 0x84 (registry digest) and the session's ordinary Build stores the terrain
+# level 0x40 as byte0f. The value before was 359cf48e134bdcf1.
+m2_found_session M2 123 8ef1a259a83cde3a

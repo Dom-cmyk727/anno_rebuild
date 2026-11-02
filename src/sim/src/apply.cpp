@@ -269,8 +269,9 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         out.skip = true;
         return out;
     }
-    // byte0f of a command-created building is 0: the original overwrites rec[8] from the
-    // terrain height check (0x1007c790), so the client's byte8 is not used (§8.4).
+    // The wire bytes 7 and 8 are never read: byte0f of a command-created building is the height
+    // the placement rule derives from the terrain at execution time (docs/sim/ship-placement.md
+    // A1; the original, which trusts the wire byte on its apply path, lets a client build on sea).
     PlacementRecord rec{p.type, p.x, p.y, p.rotation, 0};
     const BuildingType* type = nullptr;
     // A rewrite by Seams::upgrade_rewrite (step 4) is validated again from step 1, once.
@@ -296,18 +297,12 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = r;
             return out;
         }
-        // 3. The placement rule (D 0x1007c790, O-27; default: the D17 stand-in).
-        const Reject placed =
-            env.seams.placement_rule.fn != nullptr
-                ? env.seams.placement_rule.fn(env.seams.placement_rule.ctx, is, *type, rec)
-                : stand_in_placement_rule(is, *type, rec);
-        if (placed != Reject::None) {
-            out.status = placed;
-            return out;
-        }
-        // create_building's own overlap check (F32), here so that a validated record
-        // cannot fail at its creation (a placement seam may ignore buildings), and in the
-        // atomic dry run the tiles of the earlier records of the command.
+        // Buildings first: a tile a building stands on (live) or an earlier record of the
+        // atomic dry run takes answers Occupied before any terrain verdict, so the dry run
+        // (which writes no tiles) and the live run (where the earlier building's type id is on
+        // its tiles) refuse the same record with the same status (ship-placement.md "Precedence").
+        // create_building repeats this check (F32), so a validated record cannot fail there even
+        // when a placement seam ignores buildings.
         bool taken = false;
         for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
             taken = taken || tile_has_building(is, idx) ||
@@ -317,6 +312,19 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = Reject::Occupied;
             return out;
         }
+        // 3. The placement rule for the EFFECTIVE type (D 0x1007c790, O-27): verdict and the
+        // authoritative item height. The default is placement_rule (terrain, class, overlap);
+        // the D17 stand-in is only an installed seam.
+        const PlacementResult placed =
+            env.seams.placement_rule.fn != nullptr
+                ? env.seams.placement_rule.fn(env.seams.placement_rule.ctx, is, env.types, *type,
+                                              rec)
+                : placement_rule(is, env.types, *type, rec);
+        if (placed.reject != Reject::None) {
+            out.status = placed.reject;
+            return out;
+        }
+        rec.byte0f = placed.height; // record byte 8, Building::byte0f, every footprint tile
         // 4. The upgrade rewrite (D 0x100276a0 for PRODTYPE 0x43 / 0x48, O-28; default
         // none).
         if (!rewritten && env.seams.upgrade_rewrite.fn != nullptr) {

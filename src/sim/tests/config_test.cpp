@@ -19,6 +19,7 @@
 #include <anno/sim/archive.hpp>
 #include <anno/sim/config.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/state_fields.hpp>

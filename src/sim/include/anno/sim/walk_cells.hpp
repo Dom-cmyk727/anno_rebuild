@@ -63,8 +63,9 @@ inline constexpr std::uint32_t kPlacementBlockEdge = 8;
 /// 0x10082494 ordinary) is stored in TileLayer::item_height of every tile written
 /// (MAP-NAV-3 N3); a tile the overlay skip leaves alone keeps its byte. The
 /// callers pass the loaded item's height (island file item `state >> 8`, a
-/// loaded building's byte0f, a founding's terrain byte); a command-built building
-/// and island growth pass 0 (docs/sim/ship-navigation.md 12.13).
+/// loaded building's byte0f, a founding's terrain byte, a command-built building's
+/// PlacementResult::height, docs/sim/ship-placement.md); island growth passes 0
+/// (docs/sim/ship-navigation.md 12.13).
 std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const BuildingType&,
                                   std::int32_t x0, std::int32_t y0, std::uint32_t rotation,
                                   std::uint8_t phase, std::uint8_t item_height = 0);

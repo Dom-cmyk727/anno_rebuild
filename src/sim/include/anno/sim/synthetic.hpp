@@ -103,6 +103,25 @@ WorldSettings synthetic_settings();
 ScenarioSpec::IslandSpec plain_island(std::uint32_t slot, std::int32_t x0, std::int32_t y0,
                                       std::uint32_t w, std::uint32_t h);
 
+/// The flag word of an ordinary land building as the shipped registry has it (0x0084), which the
+/// BuildCmd placement rule accepts on a flat level (docs/sim/ship-placement.md R3).
+[[nodiscard]] constexpr std::uint32_t ordinary_land_flags() {
+    return 0x0084;
+}
+
+/// The ids of the scenery make_build_types defines for basic_scenario's tile objects (1201, 1202,
+/// 1203): a fixed decoration nothing may be built over, a stone and a ripe growing object that a
+/// building replaces.
+inline constexpr TypeId kSceneryFixed{1201}, kSceneryStone{1202}, kSceneryGrowing{1203};
+
+/// Gives `island` a flat terrain of `level` (HEIGHT w x h bytes of `level`, GFX and FERTILITY
+/// zero): the real-terrain stand-in for scenarios whose BuildCmd tests need a legal site. A
+/// footprint that touches the island's last column or row still reads vertex 0 there (the
+/// original's grid).
+void give_flat_terrain(ScenarioSpec::IslandSpec& island, std::uint8_t level = 0x30);
+/// give_flat_terrain for every island of `spec` (returns the spec for chaining).
+ScenarioSpec& give_flat_terrain(ScenarioSpec& spec, std::uint8_t level = 0x30);
+
 /// A world with no player and no island (settings and seed only).
 ScenarioSpec empty_scenario(std::uint32_t seed = 1234);
 
@@ -140,7 +159,9 @@ ScenarioSpec g1_scenario(const SyntheticTypes& types, std::uint32_t seed = 1234)
 /// (1 200 gold, 5 t tools, 15 t wood), pioneer house 501 (3 t wood), kontor 1302 (350
 /// gold, 5 t tools, 12 t wood), market stall 1310 (50 gold, 1 t tools, 1 t wood); the
 /// bow maker and the road cost nothing. Footprints (own test data, not the
-/// original's): fur trapper 2 x 3, pioneer house and kontor 2 x 2, the others 1 x 1.
+/// original's): fur trapper 2 x 3, pioneer house and kontor 2 x 2, the others 1 x 1. Every
+/// building has the flag word ordinary_land_flags() (the placement rule's ordinary land class) and
+/// the registry defines the scenery kSceneryFixed / kSceneryStone / kSceneryGrowing.
 formats::Result<SyntheticTypes, std::string> make_build_types();
 
 /// The scenario of the golden G2 (docs/sim/state.md §14.3, stage S10): g1_scenario on

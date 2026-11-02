@@ -12,6 +12,7 @@
 #include <anno/sim/command.hpp>
 #include <anno/sim/field_count.hpp>
 #include <anno/sim/legacy_codec.hpp>
+#include <anno/sim/placement.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/tick.hpp>
 #include <anno/sim/types.hpp>
@@ -99,7 +100,8 @@ TEST_CASE("build charges gold and goods") {
     CHECK(b->type == r.t.weaver);
     CHECK(b->x == 112);
     CHECK(b->y == 115);
-    CHECK(b->byte0f == 0);
+    // The item height is the terrain's (flat 0x30), derived at execution (ship-placement.md A1).
+    CHECK(b->byte0f == 0x30);
     CHECK(std::get<sim::Workshop>(b->payload).last == 50);
     CHECK(r.w.building_at(kCity0, 112, 115) == b);
     CHECK(r.w.check_invariants() == "");
@@ -337,7 +339,11 @@ TEST_CASE("build footprint owner rules") {
     check_refused(w, build(0, kCity0, {at(trapper, 162, 120, 1)}), sim::Reject::OutOfIsland);
     check_refused(w, build(0, kCity0, {at(t.weaver, -0x7fffffff - 1, 0x7fffffff)}),
                   sim::Reject::OutOfIsland);
-    CHECK(w.apply(build(0, kCity0, {at(trapper, 162, 120, 0)})).ok());
+    // The last column of the island reads vertex 0 on its east side (the original's grid has
+    // stride W + 1 and a zero column W), so the plateau does not reach it: refused by the
+    // terrain, not by the bounds; one column in is fine.
+    check_refused(w, build(0, kCity0, {at(trapper, 162, 120, 0)}), sim::Reject::TerrainRefused);
+    CHECK(w.apply(build(0, kCity0, {at(trapper, 161, 120, 0)})).ok());
     // Rotation 1 at y = 129: 3 wide, 2 high, rows 129-130, all city 0.
     CHECK(w.apply(build(0, kCity0, {at(trapper, 140, 129, 1)})).ok());
     // Rotation 0 at the same place would reach row 131 and 132 (city 1).
@@ -402,12 +408,12 @@ TEST_CASE("build unknown type and rotation") {
         CHECK(r.w.apply(build(0, kCity0, {at(r.t.weaver, 112 + rot, 116, rot)})).ok());
         CHECK(r.w.building_at(kCity0, 112 + rot, 116)->rotation == rot);
     }
-    // A client's byte8 is not used: the building's byte0f is 0 (§8.4).
+    // A client's byte7 and byte8 are never read: the building's byte0f is the terrain's 0x30.
     sim::PlacementWire p = at(r.t.weaver, 120, 116);
     p.byte7 = 0x55;
     p.byte8 = 0xaa;
     CHECK(r.w.apply(build(0, kCity0, {p})).ok());
-    CHECK(r.w.building_at(kCity0, 120, 116)->byte0f == 0);
+    CHECK(r.w.building_at(kCity0, 120, 116)->byte0f == 0x30);
     CHECK(r.w.check_invariants() == "");
 }
 
@@ -481,7 +487,9 @@ TEST_CASE("demolish frees the slot and keeps the hint") {
     syn::SyntheticTypes t = ct::build_types();
     sim::Rules rules;
     rules.free_build_cheat = true;
-    sim::World w = ct::make_world(t, syn::g1_scenario(t), rules);
+    sim::ScenarioSpec spec = syn::g1_scenario(t);
+    syn::give_flat_terrain(spec); // a legal site for every weaver (ship-placement.md R4)
+    sim::World w = ct::make_world(t, spec, rules);
     auto list = [&]() -> const sim::BuildingList& { return ct::production_list(w, kCity0, t); };
     REQUIRE(list().slots.size() == 10);
     REQUIRE(list().hint == 1);
@@ -978,9 +986,9 @@ void on_removed(void* ctx, const sim::TickContext& tc, sim::Island&, sim::City&,
     log.removed_ticks.push_back(tc.tick);
 }
 
-sim::Reject placement_rule(void* ctx, const sim::Island&, const sim::BuildingType&,
-                           const sim::PlacementRecord&) {
-    return static_cast<SeamLog*>(ctx)->rule;
+sim::PlacementResult placement_rule(void* ctx, const sim::Island&, const sim::TypeRegistry&,
+                                    const sim::BuildingType&, const sim::PlacementRecord&) {
+    return {static_cast<SeamLog*>(ctx)->rule, 0};
 }
 
 void upgrade(void* ctx, const sim::BuildingType&, sim::PlacementRecord& rec) {

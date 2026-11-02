@@ -319,14 +319,39 @@ formats::Result<SyntheticTypes, std::string> make_build_types() {
             copy.width = c.w;
             copy.height = c.h;
         }
+        // The flag word of an ordinary land building (0x84 for the shipped PIONIER, workshops and
+        // farms): the BuildCmd terrain class the placement rule decides (ship-placement.md R3). The
+        // road is a tile object (no list) and stays as it was.
+        if (t.id != s.road) {
+            copy.flags_word = ordinary_land_flags();
+        }
         b.add(std::move(copy));
     }
+    // The tile objects of the g2 scenery (basic_scenario places 1201, 1202 and 1203): a fixed
+    // decoration (flag word 0: nothing may be built over it), a stone (0x3a) and a ripe growing
+    // object (0x29), both removable (flag 0x20; docs/re/ship-placement.md section 4).
+    b.add_plain(kSceneryFixed, 291).add_plain(kSceneryStone, 323).add_plain(kSceneryGrowing, 225);
+    b.flags_word(kSceneryStone, 0x3a).flags_word(kSceneryGrowing, 0x29);
     auto built = b.build();
     if (!built) {
         return built.error();
     }
     s.registry = std::move(built.value());
     return s;
+}
+
+void give_flat_terrain(ScenarioSpec::IslandSpec& island, std::uint8_t level) {
+    const std::size_t n = std::size_t{island.w} * island.h;
+    island.terrain =
+        make_terrain(std::vector<std::uint8_t>(n, level), std::vector<std::uint16_t>(n, 0),
+                     std::vector<std::uint8_t>(n, 0));
+}
+
+ScenarioSpec& give_flat_terrain(ScenarioSpec& spec, std::uint8_t level) {
+    for (ScenarioSpec::IslandSpec& island : spec.islands) {
+        give_flat_terrain(island, level);
+    }
+    return spec;
 }
 
 ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed) {
@@ -340,6 +365,9 @@ ScenarioSpec g2_scenario(const SyntheticTypes& types, std::uint32_t seed) {
         stock[*wood] = 30 * kTon;
     }
     spec.islands[0].cities[0].stock = std::move(stock);
+    // The BuildCmd placement rule reads the terrain: a flat plateau of level 0x30 (the level of
+    // the original's lowland, a multiple of 16 and above the threshold 32).
+    give_flat_terrain(spec.islands[0], 0x30);
     return spec;
 }
 
@@ -592,6 +620,9 @@ make_founding_types_with(std::vector<FigureType> extra_figures) {
     b.add_plain(kObstruction, 193);
     b.add_plain(kScenery, 193).flags_word(kScenery, 0x20);
     b.add_workshop(kWorkshop, "STOFFE", "WOLLE", 6, 11, 5, 0);
+    // An ordinary land building: the BuildCmd placement rule's class (docs/sim/ship-placement.md
+    // R3), so the fixtures' ordinary Build in the new city is decided by the terrain.
+    b.flags_word(kWorkshop, ordinary_land_flags());
     const auto fig = [](std::uint32_t id, std::uint32_t kind, std::uint32_t range,
                         std::optional<std::int64_t> hull) {
         FigureType t;

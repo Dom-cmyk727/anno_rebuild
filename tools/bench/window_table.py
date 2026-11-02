@@ -506,8 +506,8 @@ def main():
                      if "x" in d]
             displays_seen.update(run.get("displays", "").split(",") if shown else [])
             for d in drawables:
-                w, h = (int(v) for v in d.split("x"))
-                if shown and not any(w <= dw and h <= dh for dw, dh in shown):
+                dr_w, dr_h = (int(v) for v in d.split("x"))
+                if shown and not any(dr_w <= dw and dr_h <= dh for dw, dh in shown):
                     oversize.append(f"{name} ({d})")
             views = len({(f["view_x"], f["view_y"], f["view_w"], f["view_h"], f["group"],
                           f["scale"]) for f in frames})

@@ -98,9 +98,50 @@ struct LegacyRawCmd {
     friend bool operator==(const LegacyRawCmd&, const LegacyRawCmd&) = default;
 };
 
+/// 0xF070 (native, MAP-2): a ship founds its owner's first city on an island with a warehouse
+/// (docs/sim/ship-founding.md section 16). The payer, the owner and the city are derived from the
+/// authenticated issuer and the ship, never supplied. `placement.type` is the building type,
+/// `placement.rotation` the cursor's initial rotation, `placement.x/y` the origin, which must equal
+/// the origin derived from the click (centred on it, clamped at 0); `byte7/byte8` are ignored.
+struct FoundCmd {
+    FigureId ship;
+    PlacementWire placement;
+    std::int32_t click_x = 0, click_y = 0;
+    friend bool operator==(const FoundCmd&, const FoundCmd&) = default;
+};
+
+/// 0xF071 (native, MAP-NAV-2): a ship sails to a point (docs/sim/ship-navigation.md 2, 12.1). The
+/// target is a Q24.8 tile coordinate inside the world; the player is the authenticated issuer. An
+/// accepted command is not a routed one: the route is planned at the pick-up point and may end in a
+/// RouteFailed event. A target of (0, 0) is a valid corner, never a stop (StopCmd is separate).
+struct MoveCmd {
+    FigureId ship;
+    std::int32_t target_x_q8 = 0, target_y_q8 = 0;
+    friend bool operator==(const MoveCmd&, const MoveCmd&) = default;
+};
+
+/// 0xF072 (native, MAP-NAV-2): a ship stops (motion trim) and drops its order and ticket.
+struct StopCmd {
+    FigureId ship;
+    friend bool operator==(const StopCmd&, const StopCmd&) = default;
+};
+
+/// 0xF073 (native, MAP-CARGO-1): a ship unloads one hold, or part of it, into the city of the named
+/// warehouse (docs/sim/ship-cargo.md section 3). The issuer is the authenticated player; the
+/// command carries no payer, owner, city or credit. `tons` is a whole-ton request, 0 is refused.
+struct UnloadCmd {
+    FigureId ship;
+    BuildingId warehouse;   ///< stable (island << 32) + serial, never reused
+    std::uint32_t hold = 0; ///< index into Figure::holds (the original's rec[1])
+    GoodsId goods = 0;      ///< must equal the hold's goods (the original's rec[0])
+    std::uint32_t tons = 0; ///< requested whole tons (the original's rec[2..3], widened)
+    friend bool operator==(const UnloadCmd&, const UnloadCmd&) = default;
+};
+
 /// Alternative order = the codec's tag order and part of the replay format.
-using Body = std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd,
-                          SetTradeSlotCmd, SetSpeedCmd, LegacyRawCmd>;
+using Body =
+    std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd, SetTradeSlotCmd,
+                 SetSpeedCmd, LegacyRawCmd, FoundCmd, MoveCmd, StopCmd, UnloadCmd>;
 
 struct Command {
     /// Stamped by the host (single player: the local player), never read from a
@@ -116,15 +157,25 @@ enum WireType : std::uint16_t {
     kWireBuild = 0x64,
     kWireDemolish = 0x68,
     kWireSetTradeSlot = 0x73,
+    // Not an original value: the original's ship records carry the building type id in this word
+    // (docs/re/ship-founding.md 8.8) and its group commands are 0x64..0x8a, so a tag far above both
+    // cannot collide with a recorded original record.
+    kWireFound = 0xF070,
+    kWireMove = 0xF071, ///< MAP-NAV-2, same reasoning as kWireFound
+    kWireStop = 0xF072,
+    kWireUnload = 0xF073, ///< MAP-CARGO-1, same reasoning as kWireFound
     kWireSetProductionLine = 0x74,
     kWireSetSpeed = 0x7a,
     kWireSetTradeFlag = 0x7c
 };
 
-/// Whether `type` is one of the six native record types.
+/// Whether `type` is one of the ten native record types. (0xF070 became native with MAP-2; a log
+/// that holds a LegacyRawCmd of that type from before is no longer representable; no original
+/// record has that type and the replay fixtures hold none: docs/sim/ship-founding.md section 16.)
 [[nodiscard]] constexpr bool is_native_wire_type(std::uint16_t type) {
     return type == kWireBuild || type == kWireDemolish || type == kWireSetTradeSlot ||
-           type == kWireSetProductionLine || type == kWireSetSpeed || type == kWireSetTradeFlag;
+           type == kWireSetProductionLine || type == kWireSetSpeed || type == kWireSetTradeFlag ||
+           type == kWireFound || type == kWireMove || type == kWireStop || type == kWireUnload;
 }
 
 /// The record type a body is written with (LegacyRawCmd: its own type field).

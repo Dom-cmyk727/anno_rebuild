@@ -97,6 +97,9 @@ struct TileRect {
 /// World counters for ids assigned in the serial merge phase (hashed).
 struct IdCounters {
     std::uint64_t next_figure = 1, next_event_seq = 1;
+    /// MAP-NAV-2 (stream 122): the next move-order identity and fair-admission ticket (both start
+    /// at 1).
+    std::uint64_t next_order_id = 1, next_ticket = 1;
 };
 
 } // namespace anno::sim

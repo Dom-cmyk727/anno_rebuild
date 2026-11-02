@@ -88,6 +88,61 @@ struct Terrain {
 
 struct TileIO;
 
+/// The tile rectangle (world tiles, half-open) a TileLayer changed since the route cache last read
+/// it. DERIVED: never hashed, never saved. It records only changes of what the ship-route
+/// predicate reads (object id, foot anchor, item height byte), so an economic change that leaves
+/// the tiles alone leaves it empty. Copying a TileLayer copies the rectangle (the copy starts with
+/// the same pending change); ASSIGNING one over another marks the whole layer changed, because the
+/// target's readers saw different content.
+class RouteDirty {
+  public:
+    RouteDirty() = default;
+    RouteDirty(const RouteDirty&) = default;
+    RouteDirty(RouteDirty&&) noexcept = default;
+    RouteDirty& operator=(const RouteDirty&) {
+        all_ = true;
+        return *this;
+    }
+    RouteDirty& operator=(RouteDirty&&) noexcept {
+        all_ = true;
+        return *this;
+    }
+    ~RouteDirty() = default;
+
+    [[nodiscard]] bool any() const { return all_ || any_; }
+    /// The whole layer changed (a reset, an assignment): the rectangle is not meaningful.
+    [[nodiscard]] bool all() const { return all_; }
+    [[nodiscard]] std::int64_t x0() const { return x0_; }
+    [[nodiscard]] std::int64_t y0() const { return y0_; }
+    /// The exclusive upper edges are 64-bit: a changed tile at INT32_MAX has the edge 2^31.
+    [[nodiscard]] std::int64_t x1() const { return x1_; }
+    [[nodiscard]] std::int64_t y1() const { return y1_; }
+    void add(std::int64_t x, std::int64_t y) {
+        if (!any_) {
+            x0_ = x;
+            y0_ = y;
+            x1_ = x + 1;
+            y1_ = y + 1;
+            any_ = true;
+            return;
+        }
+        x0_ = x < x0_ ? x : x0_;
+        y0_ = y < y0_ ? y : y0_;
+        x1_ = x + 1 > x1_ ? x + 1 : x1_;
+        y1_ = y + 1 > y1_ ? y + 1 : y1_;
+    }
+    void mark_all() { all_ = true; }
+    void clear() {
+        all_ = false;
+        any_ = false;
+        x0_ = y0_ = x1_ = y1_ = 0;
+    }
+
+  private:
+    bool all_ = false, any_ = false;
+    std::int64_t x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
+};
+
 /// The tile columns of one island with their chunk digest cache.
 class TileLayer {
   public:
@@ -130,8 +185,15 @@ class TileLayer {
     [[nodiscard]] std::uint8_t phase(std::uint64_t idx) const;
     /// City number, or neutral_owner. A u32 (F3).
     [[nodiscard]] std::uint32_t owner(std::uint64_t idx) const;
-    /// The remaining record bits (flag 0x80 of byte +3, ...): O-11.
+    /// The remaining record bits (flag 0x80 of byte +3, ...): O-11. Byte 0 is the placed item's
+    /// height byte (item_height); bits 8..31 are 0 until a later stage models them, and
+    /// validate_island refuses a state that holds anything there (MAP-NAV-3 N3).
     [[nodiscard]] std::uint32_t aux(std::uint64_t idx) const;
+    /// The placed item's height byte: byte 0 of the original tile record's second dword
+    /// (docs/re/transport.md; written by AnnoWelt 0x10082260 / 0x10082494, kept by the clear arm
+    /// 0x10082f00). The base of the route predicate ((h + base) & 0xff) > 19. Stored in the low
+    /// byte of `aux`, so the stream layout is unchanged.
+    [[nodiscard]] std::uint8_t item_height(std::uint64_t idx) const;
     /// Walk code of the tile (the record's byte 8..15, high u16 of the cell).
     /// Reset value 2 (empty land); object tiles hold their type's code
     /// (HEAD pair through AnnoGame 0x100091f0 and the rotation getter).
@@ -166,6 +228,8 @@ class TileLayer {
     void set_phase(std::uint64_t idx, std::uint8_t v);
     void set_owner(std::uint64_t idx, std::uint32_t v);
     void set_aux(std::uint64_t idx, std::uint32_t v);
+    /// Replaces byte 0 of `aux`, keeps bits 8..31.
+    void set_item_height(std::uint64_t idx, std::uint8_t v);
     /// Set the walk code of the tile (task T33.4 fix-up F5).
     void set_walk_code(std::uint64_t idx, std::uint16_t v);
     /// Set the walk mask of the tile (task T33.4 fix-up F5).
@@ -178,6 +242,10 @@ class TileLayer {
     /// reset(); 0 in every correct run. A diagnostic, not state: never hashed or
     /// saved.
     [[nodiscard]] std::uint64_t ignored_writes() const { return ignored_writes_; }
+    /// The tiles whose object id, foot anchor or item height byte changed since the last
+    /// clear_route_dirty (see RouteDirty). Derived, never hashed or saved.
+    [[nodiscard]] const RouteDirty& route_dirty() const { return route_dirty_; }
+    void clear_route_dirty() { route_dirty_.clear(); }
 
     /// Index of the chunk a tile index is in (row-major chunk order);
     /// chunk_count() (one beyond the last chunk) for idx >= tile_count(), which
@@ -213,6 +281,7 @@ class TileLayer {
     friend struct TileIO;
 
     void mark(std::uint64_t idx);
+    void mark_route(std::uint64_t idx);
 
     std::int32_t x0_ = 0, y0_ = 0;
     std::uint32_t w_ = 0, h_ = 0, edge_ = 0, cx_ = 0, cy_ = 0;
@@ -242,6 +311,8 @@ class TileLayer {
     std::vector<std::uint8_t> dirty_;
     // Diagnostic, not state: writes dropped for an index beyond the layer.
     std::uint64_t ignored_writes_ = 0;
+    // Derived, never saved: the tiles the ship-route predicate must re-read.
+    RouteDirty route_dirty_;
 };
 
 /// D: island +0x9a (stamp = the world tick at island init, D 0x1008c2e6),
@@ -330,6 +401,23 @@ struct IslandIndexCache {
     std::vector<std::vector<std::uint32_t>> grids;
 };
 
+/// One ore object of an island (the figure of an OCCUR `ENTRY2`, 24 bytes: dword0 type id in bits
+/// 14..25, f32 X, Z, height ISLAND-LOCAL tiles (the loader adds the island origin), u16 amount, u16
+/// pad, u32 discovery mask). `discovered` is the original's mask (bit i = player i) as an ascending
+/// unique player set. A founding's claim stage 2 adds the founder to every ore object within its
+/// geometry (docs/re/ship-founding.md 16.2); the only readers of the mask found are presentation
+/// gates.
+struct OreObject {
+    /// The FigurenHeader id (a figure type whose BEWOHNTYPE is ERZSYMBOL).
+    std::uint32_t type = 0;
+    /// The ABSOLUTE world tile: the island origin plus trunc(local position).
+    std::int32_t x = 0, y = 0;
+    /// The u16 of the record (tons for ore).
+    std::uint32_t amount = 0;
+    std::vector<PlayerId> discovered;
+    friend bool operator==(const OreObject&, const OreObject&) = default;
+};
+
 struct Island {
     /// The slot in the world's island table.
     IslandId index;
@@ -339,8 +427,32 @@ struct Island {
     /// D: +0xc0 (property 7): 0 POLAR 1 TUNDRA 2 NORD 3 PRAERIE 4 DSCHUNGEL 5 STEPPE
     /// 6 WUESTE.
     std::uint32_t climate = 0;
+    /// D: +0xc4 (property 0x10), the island's persisted LOCKED record (AnnoWelt.dll serializer
+    /// 0x10089d80 writes it only when non-zero, loader 0x10089c0c reads the record's byte;
+    /// docs/re/ship-founding.md section 11.5). The raw byte is kept as the loader stores it; the
+    /// property getter is `!= 0` (locked()). Default 0 (reset and constructor store 0). Founding
+    /// refuses a locked island (validator 0x10048c32, ship predicate 0x100415f2); nothing else
+    /// here reads it, and no rule of this engine sets it at run time (the setter's callers that
+    /// target islands are unresolved, docs/re section 11.5).
+    std::uint8_t lock = 0;
+    /// D: the city ring's ALLOCATION cursor, ring+0x40 (island +0x78): the slot of the LAST city
+    /// added, -1 for a fresh island; set by every add, left alone by removal. Not the scheduler's
+    /// cursor (`ring`, ring+0x46). docs/sim/city-creation.md E1-E3, section 2.
+    std::int32_t city_cursor = -1;
+    /// D: island property 0x11, the word at +0xc6 (default 1, loaded from KONTORID): the next
+    /// Kontor id. ADAPT: u32 with a checked increment (the original wraps at 16 bits).
+    std::uint32_t kontor_counter = 1;
+    /// MAP-2 (stream 120): D island property 0xe (+0xa6), the players present, ascending unique
+    /// (the original's 16-bit word; saved in the DISCOVER record). The derived word +0xaa is
+    /// computed on demand (island_complete), not stored.
+    std::vector<PlayerId> players_present;
     /// Append-only (production.hpp): the ore objects of the island.
     std::vector<Deposit> deposits;
+    /// MAP-2 (stream 120): the island's ore objects (BEWOHNTYPE ERZSYMBOL figures of the OCCUR
+    /// record, AnnoWelt island object manager +0x28), ascending file order. Not `deposits`: those
+    /// are the BERGWERK2 stand-in (empty from files), a different datum
+    /// (docs/sim/ship-founding.md 17.6).
+    std::vector<OreObject> ore_objects;
     /// The building serial counter (stage S6); serial 0 means "none", so >= 1.
     std::uint32_t next_serial = 1;
     SweepState sweep;
@@ -363,6 +475,8 @@ struct Island {
     [[nodiscard]] Slot tile_index(std::int32_t x, std::int32_t y) const {
         return tiles.index_of(x, y);
     }
+    /// Island property 0x10: the LOCKED byte is non-zero.
+    [[nodiscard]] bool locked() const { return lock != 0; }
     /// The city in slot `no`, or nullptr (no such slot, or the slot is empty).
     [[nodiscard]] const City* city(CityNo no) const {
         return no.v < cities.size() && cities[no.v].has_value() ? &*cities[no.v] : nullptr;

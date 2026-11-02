@@ -32,6 +32,7 @@
 #include <anno/sim/player.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/route_cache.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/tick.hpp>
@@ -84,7 +85,44 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // House (tag 7: u16 last, i32 residents_64, u32 e, u64 count + u32 stock); the class table's
 // House row is tick House / payload House; the registry digest gains the group table
 // (u64 count, 0 when there is none). No PRNG site is drawn (the timeline stays 2).
-inline constexpr std::uint32_t kStateHashVersion = 115;
+// Stream at 116 (task MAP-2, the ship-start load): the figure record gains u8 dir16, u64
+// parent (invalid = max), an optional u32 crew slot and the ship's holds (u64 count, then u32
+// goods, u32 tons each; 117 widens the amount, below). A figure that no loader gave these keeps 0,
+// invalid, none and empty, so a world without ships changes hash only because its stream grew. No
+// PRNG site. Stream at 117 (task MAP-2, exact cargo): a ship hold's amount is a u64 count of 1/256
+// ton
+// (`amount_88`) instead of a u32 count of whole tons, so a hold is 12 bytes (u32 goods, u64
+// amount) on the wire. An earlier whole-ton stream is never reinterpreted: the version differs
+// and the state/save is refused. A world without ships changes hash only because its stream
+// version moved. No PRNG site.
+// Stream at 118 (task MAP-2, the island lock): each island gains `u8 lock` after its climate, the
+// persisted LOCKED byte (island +0xc4, property 0x10); 0 for an island that has no LOCKED record.
+// Every island stream is one byte longer; the lock itself is state. No PRNG site.
+// Stream at 119 (task MAP-2, city creation): each island gains `i32 city_cursor` (the ring's
+// allocation cursor, ring+0x40, -1 for a fresh island) and `u32 kontor_counter` (island +0xc6,
+// default 1) after its lock; each city gains `string name` (city property 0x12, empty) at the end
+// of its fields; each building gains `u32 kontor_id` (building +0x1e, 0 except for markets) after
+// byte0f. See docs/sim/city-creation.md. The PRNG timeline moves to 3 (CityName, CityNameLoad).
+// Stream at 120 (task MAP-2, ship founding): Rules gain `founding_types`; each Player gains its
+// relation rows and its discovery set; each City its player_mask; each Island its players_present
+// (all after the existing fields of the record); each Figure gains `u32 state_word` at the end; the
+// registry digest's figure types gain bewohntype, range_88, hull_half_88. See
+// docs/sim/ship-founding.md section 16.
+// Stream at 121 (task MAP-FOUND-3, docs/sim/shared-visibility.md): Rules gain `shared_visibility`
+// (groups of player ids: u64 group count, then per group u64 member count and u32 members), after
+// city_names. Every state hash moves through the Rules layout; sharing-off outcomes are unchanged.
+// Stream at 122 (task MAP-NAV-2, docs/sim/ship-navigation.md 12.5): Rules gain `nav` (NavRules,
+// after shared_visibility); IdCounters gain next_order_id and next_ticket; each Figure gains an
+// optional NavMotion at its end; the registry digest's figure types gain the optional NavFacts.
+// Stream at 123 (task MAP-NAV-3 N4, docs/sim/ship-navigation.md 12.14): each NavMotion gains an
+// optional `u32 health` (the current hit points, absent = explicitly unknown) after res24. Rules
+// and the registry digest are unchanged; every state hash moves through the version in the header,
+// and a world with a navigating ship also through the new bytes.
+// Stream at 124 (task MAP-CARGO-1, docs/sim/ship-cargo.md section 5): Rules gain `cargo`
+// (CargoRules: u64 count and u32 PRODTYPEs of the eligible warehouses, then u64 count and u32 dock
+// half-widths), after nav. Nothing else changes; every state hash moves through the version in the
+// header and the Rules bytes.
+inline constexpr std::uint32_t kStateHashVersion = 124;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -95,7 +133,9 @@ inline constexpr std::uint32_t kSaveVersion = 1;
 /// (D AnnoScene 0x10009550), and the unported load sites LinkOrePlace,
 /// LinkNativeName, LinkTreasureKind, LinkTreasurePlace (0x10008490) and
 /// ComputerName (0x100025a0) in the manifest.
-inline constexpr std::uint32_t kPrngTimelineVersion = 2;
+/// Version 3 (task MAP-2, city creation): the ported advance-phase site CityName (D AnnoWelt
+/// 0x10096910) and the unported load-phase site CityNameLoad in the manifest.
+inline constexpr std::uint32_t kPrngTimelineVersion = 3;
 
 struct StateIO;
 struct ScenarioSpec;
@@ -258,14 +298,14 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        // host_events_, out_ and transport_stats_ are host-facing or diagnostic,
-        // deliberately not in the field list (not state).
+        // host_events_, out_, transport_stats_ and route_cache_ are host-facing, diagnostic or
+        // derived, deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, types_member, ids_member,
                                       players_member, islands_member, figures_member, events_member,
                                       timers_member, monopoly_member, event750_acc_member,
                                       faulted_member, host_events_member, out_member,
-                                      transport_stats_member] = w;
+                                      transport_stats_member, route_cache_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -303,6 +343,12 @@ class World {
     friend struct WorldTestAccess;
     friend struct Scheduler;
     friend struct Commands;
+    friend struct CityCreation;
+    friend struct Founding;
+    friend struct ShipOrders;
+    friend struct ShipCargo;
+    friend struct ShipMover;
+    friend class RouteCache;
 
     WorldClock clock_;
     WorldRng rng_;
@@ -327,6 +373,10 @@ class World {
     // routes into every TickContext Scheduler::advance builds. Default null; nothing
     // in the sim writes it.
     TransportStats* transport_stats_ = nullptr;
+    // Not state (derived, never hashed or saved): the coast index the ship route queries read;
+    // built on first use, kept in step by RouteCache::sync from the tile layers' dirty rectangles
+    // (docs/sim/ship-navigation.md 12.13), emptied by copying or moving the World.
+    RouteCache route_cache_;
 };
 
 } // namespace anno::sim

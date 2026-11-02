@@ -3,11 +3,12 @@
 # anno_formats to read type data from the original files.
 add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
             src/goods_table.cpp src/synthetic.cpp src/player.cpp src/island.cpp src/scenario.cpp
-            src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp
+            src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
             src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/walk_cells.cpp src/walk_search.cpp
-            src/game_setup.cpp src/house_groups.cpp)
+            src/game_setup.cpp src/house_groups.cpp src/terrain_view.cpp src/site_checks.cpp src/territory.cpp src/founding_payment.cpp src/city_creation.cpp src/figure_veto.cpp src/founding.cpp
+            src/route_cache.cpp src/ship_orders.cpp src/ship_cargo.cpp src/ship_mover.cpp src/route_coast.cpp src/route_plan.cpp src/route_world.cpp src/route_stamps.cpp)
 target_include_directories(anno_sim PUBLIC include)
 target_link_libraries(anno_sim PUBLIC anno_formats)
 target_compile_features(anno_sim PUBLIC cxx_std_20)
@@ -27,14 +28,23 @@ if(ANNO_BUILD_TESTS)
                  tests/scenario_test.cpp tests/island_links_test.cpp
                  tests/fixed_map_load_test.cpp
                  tests/scenario_links_test.cpp tests/transport_test.cpp tests/walk_cells_test.cpp tests/walk_search_test.cpp
-                 tests/game_setup_test.cpp tests/house_test.cpp)
+                 tests/game_setup_test.cpp tests/house_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
+                 tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp tests/ship_step_test.cpp tests/ship_orders_test.cpp tests/ship_nav3_test.cpp tests/ship_health_test.cpp tests/route_objects_test.cpp tests/placement_rule_test.cpp tests/build_terrain_test.cpp
+                 tests/nav_scale_test.cpp
+                 tests/unload_test.cpp
+                 tests/evidence_out_test.cpp
+                 tests/route_fixture_test.cpp
+                 tests/route_unit_test.cpp
+                 tests/route_world_test.cpp
+                 tests/route_stamps_test.cpp)
   # anno_sim_load: the scenario corpus case reads the island templates of the game
   # directory for the link resolver (S14 stage 2).
   target_link_libraries(anno_sim_tests PRIVATE anno_sim anno_sim_load anno_test_support
                                                doctest::doctest)
   # The goldens (fixtures/synthetic/sim/goldens.txt, docs/sim/state.md §14.3).
   target_compile_definitions(anno_sim_tests PRIVATE
-    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic")
+    ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"
+    ANNO_REPO_DIR="${PROJECT_SOURCE_DIR}")
   anno_target_defaults(anno_sim_tests SANITIZE_NO_RECOVER)
   anno_stage_budget_coord(anno_sim_tests)
   # GCC 13 with -fsanitize=address treats a one-element initializer_list

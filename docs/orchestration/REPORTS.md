@@ -10400,3 +10400,1546 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 - **Open / limits:** headless CPU sessions say nothing about the GPU path; one short RTX canary, no Radeon window, native 4K, scale, latency or broad performance run (not assigned). Reports sent to `log_path=` files
   would not be seen (nothing sets it); UBSan stays recoverable in app targets. A window that forged a matching log would pass. The historical reclaimer occurrence stays an uncertainty; the submit-only
   and single-foreign-scene mutants were not added. W4-OPENING-1 is not started (it waits for the orchestrator's acceptance of the exact published Windows and Mac pins).
+## MAP.2 progress — measurements — 2026-10-31
+
+Remeasured the nine endless scenarios and the NORD/DSCHUNGEL 256² templates.
+Evidence is `docs/sim/map2-measured.json` and `docs/sim/fixed-map.md` §8.
+00 is 20 islands at 39.4% rectangle share, not 16 islands at 19%. The Nord
+folder has 13 numbered `.scp` files; 14 is the `*.scp` count including the
+dummy. No candidate-pool quintuple is within ±5% of its mean land. The only
+nord quintuple within ±10% is worst 79 permille. The closest dschungel
+quintuple is worst 52 permille. Ten 256² islands conflict with keeping both
+the 03 rectangle share and the proportional filler counts. Candidates are not
+in this commit.
+
+## MAP.2 progress — profile — 2026-10-31
+
+`tools/map2_profile.py` checks the five-player profile without changing
+`fixed_map.py` dump, check, or fairness. Profile id `map2-proposed-v1`.
+Limits 100 and 50 permille are proposals (OQ-515..OQ-520). `map2_selftest.py`
+passes, including the lan5 digest `c6af83f95104cd4f` and 1476 bytes.
+Negative controls are recorded in the final MAP.2 report.
+
+## MAP.2 progress — candidates — 2026-10-31
+
+`tools/map2_layout.py` wrote `data/maps/candidates/lan5-{a,b,c}.txt`.
+`data/maps/lan5.txt` is still sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes.
+A second run into a scratch directory matched the committed bytes.
+None of the three is a full pass of `map2-proposed-v1`. Structural rules
+pass. Home land fails at 79 permille and paired southern land at 52.
+Pair and centre distance pass ±5%. Rival distance and per-climate reach do
+not. Table in `docs/sim/fixed-map.md` §10.
+
+## MAP.2 progress — previews — 2026-10-31
+
+`tools/map2_preview.py` writes labelled top-down and isometric PNGs. They
+stay in the ignored cache. The six pictures were inspected; notes are in
+§10 and in the final report.
+
+## MAP.2 — candidate review — 2026-10-31 — status: QUESTION
+
+Three original-like five-player layouts are ready for selection. None is a
+full pass of profile `map2-proposed-v1`. The failed gates are reported below
+and were not widened. `data/maps/lan5.txt` is unchanged. This lane did not
+merge, push, or start an engine or GPU build.
+
+### Files
+
+| Path | Role |
+|---|---|
+| `tools/map2_shape.py` | Land masks, half-plane, integer tolerances |
+| `tools/map2_measure.py` | Remeasure of the nine endless maps and the 256² pools |
+| `docs/sim/map2-measured.json` | Counts and hashes from that run, no masks |
+| `tools/map2_profile.py` | Profile `map2-proposed-v1` only; generic check is untouched |
+| `tools/map2_selftest.py` | Synthetic checks, plus the lan5 dump |
+| `tools/map2_layout.py` | Offline generator; does not write `lan5.txt` |
+| `tools/map2_preview.py` | Labelled top-down and isometric PNGs |
+| `data/maps/candidates/lan5-a.txt` | 2442 bytes, sha256 `0ac467ca4f2f2beaec91362ed61482120c99fd8de952d8f0d28b540766abc846` |
+| `data/maps/candidates/lan5-b.txt` | 2442 bytes, sha256 `e391dbda37de3993040b8bdea3303dfaa71fb6f33e20cf49d655d57cfe084772` |
+| `data/maps/candidates/lan5-c.txt` | 3160 bytes, sha256 `bc9f70791cad62da2350e490841ee7bc807265d59d00e7e6c0dca15460086e02` |
+| `docs/sim/fixed-map.md` §8–§10 | Measurements, profile, comparison |
+| `docs/open-questions.md` OQ-515..OQ-520 | Open. OQ-521..OQ-524 unused |
+
+`data/maps/lan5.txt` remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476
+bytes. Dump digest `c6af83f95104cd4f`, 21 islands.
+
+### Commands and logs
+
+Worktree `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2`,
+branch `task/MAP-2-original-like`. Game files read from
+`/Users/dom/Dev/anno1503-worktrees/anno1503/game/app`. Logs under
+`cache/map2-parallel-2026-10-31/` (gitignored).
+
+- `python3 -I tools/map2_measure.py --game-dir <game/app> --out docs/sim/map2-measured.json`
+- `python3 -I tools/map2_layout.py --game-dir <game/app> --out-dir data/maps/candidates`
+- The same generator into `cache/map2-parallel-2026-10-31/scratch-maps` matched all three files byte for byte (`layout-repro-final.txt`). Tried lattice cells: A 364, B 483, C 2032. Large-island problems 0. Missed filler 0.
+- `python3 -I tools/map2_profile.py validate data/maps/candidates/lan5-{a,b,c}.txt --game-dir <game/app>` exits 1. Reports also in `preview-lan5-*.txt`.
+- `python3 -I tools/map2_selftest.py`: 47 checks, 0 failed (`selftest-final.txt`).
+- `python3 -I tools/map2_preview.py <candidate> --game-dir <game/app> --out-dir cache/map2-parallel-2026-10-31/previews`
+
+Host: Apple M5 Max, 18 logical CPUs, 48 GiB. Tools ran at `nice` 10, one
+Python process, stdlib only. No C++ build, ctest, renderer, sanitizer, or
+Wine was started by this lane. The runs took a few seconds and are not an
+isolated timing.
+
+### What was measured
+
+§8 is the authority. Short form: 00 is 20 islands at 39.4% rectangle share,
+not the board's 16 islands / 19%. Nord has 13 numbered `.scp` files; "14"
+includes the dummy. The candidate pool is 9 nord shapes and 10 dschungel
+shapes after dropping people markers and true copies. No quintuple is within
+±5% of its mean `HEIGHT >= 16` land. Best nord worst-permille is 79. Best
+dschungel is 52. Ten 256² islands cannot keep both the 03 rectangle share
+and the proportional filler counts (OQ-516).
+
+### The three layouts
+
+All three use the same two template sets, rotated per seat. Homes lie on a
+northern arc. Each southern island lies on the opposite ray, past the map
+centre. Filler follows 03's non-256 climate×size weights. A and B request 30
+filler islands (40 islands, 45.5% rectangle share). C requests 45 (55
+islands, 52.2%).
+
+| Gate (50 permille unless noted) | lan5-a | lan5-b | lan5-c |
+|---|---|---|---|
+| Large land ±10% (100) | pass 79 / 52 | pass 79 / 52 | pass 79 / 52 |
+| Home land | fail 79 | fail 79 | fail 79 |
+| Paired southern land | fail 52 | fail 52 | fail 52 |
+| Pair distance | pass 11 | pass 29 | pass 21 |
+| Centre distance | pass 9 | pass 41 | pass 43 |
+| Rival distance | fail 177 | fail 210 | fail 215 |
+| Reach, each climate | absent for a seat | absent for a seat | absent for a seat |
+
+Pair lengths are about 887–906, 804–851 and 861–893 tiles. The spread passes.
+The routes cross the map; they are not short hops. Both assignment modes
+agreed. On lan5-c they agree on a swap of south slots 12 and 13, which is
+not the authored opposite ray for seats 2 and 3. Structural rules pass on
+all three, including the half-plane, distinct shapes, coasts, bands, and no
+overlap.
+
+### Previews inspected
+
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-a-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-a-iso.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-b-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-b-iso.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-c-top.png`
+- `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-2/cache/map2-parallel-2026-10-31/previews/lan5-c-iso.png`
+
+Each top-down picture shows irregular land masks, not rectangles. Five large
+green northern islands sit in an arc above a dashed middle line. Five large
+dark-green southern islands sit below it. Seat marks are on the inner coasts.
+Coloured lines run from those marks through the centre cross to the paired
+southern island. The legend names polar, tundra, nord, praerie, dschungel
+and steppe, and all six colours appear as filler. North is the small-y side,
+labelled N. The isometric pictures keep north at the top, with +x down-right
+and +y down-left, and show the same coasts. lan5-b is a slightly tighter arc
+than lan5-a, with the same filler count and different coastlines because the
+template rotation differs. lan5-c is the crowded one: more small islands,
+especially around the centre, and seat 2's line is the swapped partner
+rather than a perfect opposite ray. Nothing in the pictures shows a shipping
+channel, fertility, or ores.
+
+### Tests and negative controls
+
+Final `map2_selftest.py`: 47 checks, 0 failed. The lan5 dump still exits 0
+with digest `c6af83f95104cd4f`.
+
+Each control was a one-line edit, a run, then an immediate restore. The
+clean run after the last restore is the 47/0 result.
+
+| Edit | Distinct failure |
+|---|---|
+| `CLIMATE_BAND_CHECK = False` | `FAIL polar y=0 on a 1024 edge is outside the band` |
+| `SHAPE_BY_MASK = False` | `FAIL two names with one land mask are refused` |
+| `ASSIGNMENT_MODE = 'seat-order'` | `FAIL chosen assignment must be the short cycle` |
+| `FAIRNESS_PERMILLE = 200` | `FAIL unfair home land must fail` |
+
+Logs: `mutation-band.txt`, `mutation-shape.txt`, `mutation-assign.txt`,
+`mutation-fair.txt`.
+
+### Decisions and reasoning
+
+- The five-player rules live in `map2_profile.py`, not in `fixed_map.py check`. A generic check that required ten large islands would reject lan5 and every ordinary map. The profile is opt-in and named.
+- Land is `HEIGHT >= 16` because that is the fixed-map count and the waterline. `HEIGHT > 0` and the average-19 classifier are different questions (OQ-519). The published permille figures use `>= 16` only.
+- Shape identity is the dihedral land mask. Filename suffixes and people-marked copies are not extra shapes. `N_0011` and `N_0019` share a mask and not a height hash; 0011 stays out because it is Mongolen.
+- The nord set is the only pool quintuple within ±10%. The south set is the closest, at 52 permille. Natives were not added. No search over placements can change those land totals.
+- Tolerances stayed at 100 and 50 permille. 52 is a failure of the ±5% proposal. Turning it into a pass would be a different proposal, which is OQ-515.
+- Assignment is `min-spread-sum-lex`, and every report also prints `min-spread-lex`. The constructed case in the selftest shows the baseline keeping a sum of 500 where the chosen rule takes 150. On these three files the two rules matched, so the printed pairing is not an artefact of the tie-break. The absolute lengths are still ~800–900 tiles (OQ-517, OQ-518).
+- Homes are on an arc and partners are on the opposite ray so that a Kontor facing the map centre also faces its partner. That is why pair distance and centre distance both pass ±5%. A vertical partner made the centre distances unequal once the Kontor sat on the inner coast, and a centre-facing Kontor made vertical pair distances unequal. The crossing length is the cost of holding both.
+- Rival distance still fails. Island centres on the arc are nearly evenly spaced; the coastal 4×4 chosen on each irregular shore is not. The gate stays failed.
+- Reach by nearest Kontor cannot give every seat every climate. Polar and tundra sit in the north, so a wing seat's Kontor is not the nearest to those islands. An absent bucket is not recorded as zero. The gate stays failed. Moving polar next to every seat would break the climate bands.
+- Filler density is a labelled choice, not a silent one. A and B aim at the coverage-matched ~45.5%. C aims at the denser ~52% reading. The split is largest-remainder of 03's weights, so the 64/80 counts are 6/14 rather than the pure size budget 7/13. The rectangle share is still 45.5% and 52.2%. The edge is still 1431.
+- Kontor rotation is 0. The door is unread (OQ-520). The footprint is a coastal 4×4. The tool's "toward the map centre" pick is not `World::create`.
+- The radial screen includes the wrap-around angle, so a northern arc is not reported as a regular ring. A full pentagon would be.
+- Board counts that disagreed with the files (00's island count, Nord's "14 usable") follow the files.
+
+### Not run
+
+These are not passes. No `src/` file changed, so the C++ gates were out of scope.
+
+- Loading a candidate through the fixed-map loader.
+- A 2–5 seat simulation and a five-minute hash.
+- Windows versus Linux hash.
+- A five-city tick.
+- MSVC, GCC, clang-format, and ctest.
+- `tools/agree.py` against `anno-dump`. The Python dump of lan5 is unchanged; no `anno-dump` binary was built.
+
+### Owner decision
+
+Pick a layout (`lan5-a`, `lan5-b`, or `lan5-c`) and the tolerances (OQ-515,
+OQ-516). Usable partials if none is accepted as-is: the three files already
+meet the half-plane, the distinct shapes, the ±10% large-land band, and the
+±5% pair and centre bands. They do not meet ±5% home land (79), ±5% southern
+land (52), ±5% rival distance, or per-climate reach. Start money and input
+bindings are not decided here. Natives and pirates stay out of the pool.
+
+## MAP.2 progress — ship-start specification — 2026-10-31
+
+Owner decisions of 2026-10-31 supersede assigned Kontors, southern pairing,
+nearest-Kontor ownership, and ±5%/±10% equality as acceptance. Geography
+stays. The boundary example in §8 was wrong: on edge 1431, `2 × 704 = 1408`,
+which fails `2 × y >= 1431`. The first 8-grid southern top is 720. Northern
+`y = 584` passes and `y = 592` fails. Active profile name:
+`map2-ship-start-v1` (`fixed-map.md` §11). OQ-515 and OQ-518 superseded.
+OQ-520 narrowed to founding orientation. Evidence copied to
+`docs/research/endless-start-conditions.md` (sha256
+`2d80f5581ce2e2b85a8c558c285594deee48e2af7f1def1ea6bc82707c0f60a5`, same as
+main's working file). Main was not modified.
+
+## MAP.2 progress — ship-start manifest — 2026-10-31
+
+`tools/map2_manifest.py` is a JSON proposal the fixed-map loader does not
+read. `map2_manifest_selftest.py`: 0 failed, including a hash round-trip,
+rejection of cities, reservations, a sixth spawn, a duplicate seat, a
+fractional coordinate, 51 t in one hold, unknown cargo, NaN, and a wrong
+hash. lan5 dump digest `c6af83f95104cd4f`, 1476 bytes. Schema notes:
+`fixed-map.md` §11.4.
+
+## MAP.2 progress — ship-start geometry checks — 2026-10-31
+
+Superseded as acceptance by the repair section at the end of this file. The
+PASS_TOOL_CHECKS line below is the version-1 rectangle model.
+
+`tools/map2_ship.py` is the offline checker for profile `map2-ship-start-v1`.
+It does not load a manifest into the engine. Route cost is grid steps times
+the cell size, an upper bound on a rectangle-blocked sea, not a sailing time.
+A founding site is a 4×4 of `HEIGHT >= 16` clear of obstacle origins.
+Obstacle graphics beyond that origin are not invented.
+
+Command, from the worktree, after the checker existed:
+
+```
+python3 -I tools/map2_ship_selftest.py
+python3 -I tools/map2_manifest_selftest.py
+```
+
+Both exited 0. The ship suite printed 34 `pass` lines and `0 failed`. The
+manifest suite printed 19 `pass` lines and `0 failed`. Combined wall time on
+the second run was under a second. Expected route lengths in the ship suite
+were counted on the grid before the assertions: seat 0 costs 1, seat 4 costs
+5, a 16-step route is a detour under a bound of 10, and a diagonal across
+blocked corners is not a step.
+
+The three mutants, flipped in process and restored, hide the check that is
+supposed to catch them:
+
+- `COUNT_OBSTACLES = False` hides `island 0 has no founding site`. Restoring
+  the flag prints it again.
+- `REQUIRE_DISTINCT = False` hides `distinct-island witness covers 1 of 5`
+  for five beaches on one island.
+- `REPORT_ABSENT_CLIMATES = False` hides `climate polar absent everywhere`.
+
+A closed ring is reported as `distinct-island witness covers 0 of 5`. Sharing
+on a second large island is `optional share island 5` and is not a second
+witness seat. Status of this suite: PASS_TOOL_CHECKS. Engine founding,
+navigation, and the loader: NOT_RUN_ENGINE. No candidate search in this step.
+lan5.txt remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, 1476 bytes,
+dump digest `c6af83f95104cd4f`.
+
+## MAP.2 progress — three ship-start proposals — 2026-10-31
+
+`tools/map2_ship_layout.py` writes three JSON manifests. Large-island
+origins are authored. Filler is the seeded first fit on the 8-tile lattice,
+kept out of the reserved lanes and the spawn boxes. Sharing is reported for
+an island side of at least 128. A 64-tile island is not called shared city
+space.
+
+Fresh regeneration into `/tmp/map2-ship-cmp` matched the files under
+`data/maps/candidates/ship-start-v1/` byte for byte (`cmp`). `map2_ship.py
+check` on those written files exited 0 for all three. Each report is
+PASS_TOOL_CHECKS, cities 0, NOT_RUN_ENGINE. Content hashes:
+
+- lan5-ship-a `2b291a2e0615688ad767f015250863d98f99047cdfa6ec140c04d3f6e217b010` (28 islands, seed 26031)
+- lan5-ship-b `ea471f5c723043dd44df8662f701c7174c1b360d4b4312fed341af75acc61f85` (38 islands, seed 26032)
+- lan5-ship-c `6156c56bf33c0e139a61732d1df313c49a368af6bb2da5fb4fcb833ea2e39096` (50 islands, seed 26033)
+
+The objects have no `cities` field. The words "player cities" and "island
+reservations" appear only in the `excluded` list. The historical
+`lan5-a.txt`, `lan5-b.txt`, and `lan5-c.txt` files are unchanged. lan5.txt
+is unchanged. The loader does not read the JSON.
+
+## MAP.2 — ship-start candidates for review — 2026-10-31 — status: READY FOR REVIEW
+
+Superseded as acceptance by the repair section at the end of this file. The
+PASS_TOOL_CHECKS line below is withdrawn. The placements and the version-1
+hashes stay as history.
+
+Tool status: PASS_TOOL_CHECKS on profile `map2-ship-start-v1` for all three
+written manifests. Engine load, sailing, founding, visibility, fertility, and
+save checksums: NOT_RUN_ENGINE. Those items stay QUESTION. Nothing is
+installed over `data/maps/lan5.txt`. Nothing is merged or pushed.
+
+Recommendation, not a selection: review `lan5-ship-b` first. Every seat has
+three to seven large islands inside the 400-tile opening bound, including one
+within 160 tiles, and seats 0–3 can all reach island 4 while each still has a
+closer island of its own. `lan5-ship-a` is the more open sea. `lan5-ship-c`
+is the denser archipelago. The owner chooses.
+
+### What was committed
+
+- `f64215e` specification, decision table, boundary correction, copied research note
+- `8f019f7` tool-only manifest parser
+- `dea2885` geometry checker and hand-counted tests
+- `e402190` three manifests and the layout tool
+- the preview tool is committed with this report
+
+`data/maps/lan5.txt` sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`,
+1476 bytes, dump digest `c6af83f95104cd4f`. The old `lan5-a.txt`,
+`lan5-b.txt`, and `lan5-c.txt` files stay as the retired Kontor-start
+measurements. Their ±5% failures were not turned into passes.
+
+### Commands
+
+From the worktree, single process:
+
+```
+python3 -I tools/map2_ship_selftest.py          # 34 pass, 0 failed, exit 0
+python3 -I tools/map2_manifest_selftest.py      # 19 pass, 0 failed, exit 0
+python3 -I tools/map2_ship_layout.py --game-dir <game/app> --out-dir data/maps/candidates/ship-start-v1
+python3 -I tools/map2_ship_layout.py --game-dir <game/app> --out-dir /tmp/map2-ship-cmp
+cmp of the three JSON files                       # identical, exit 0
+python3 -I tools/map2_ship.py check <each json> --game-dir <game/app>   # exit 0
+python3 -I tools/map2_ship_preview.py <each json> --game-dir <game/app> --out-dir cache/map2-ship-starts-2026-10-31/previews
+```
+
+The ship self-test and the manifest self-test together finished in under a
+second. Layout of all three finished in about 2 seconds. Checking the three
+written files finished in about 5 seconds. Each preview set finished in about
+2 seconds. Logs: `cache/map2-ship-starts-2026-10-31/logs/`. Previews are
+gitignored.
+
+Negative controls, flipped in process and restored: `COUNT_OBSTACLES` is the
+check that emits `island 0 has no founding site`; `REQUIRE_DISTINCT` emits
+`distinct-island witness covers 1 of 5` for five beaches on one island;
+`REPORT_ABSENT_CLIMATES` emits `climate polar absent everywhere`. With the
+flag off, that line disappears. A closed ring is `covers 0 of 5`.
+
+### Comparison
+
+World area is 1431² = 2,047,761. Rectangle share is the sum of template
+rectangles, not HEIGHT land. The useful-opening bound is 400 tiles on the
+coarse grid. A route past that bound is a detour and is not in the witness.
+Wueste is absent on every candidate and the report says so. The proposed
+loadout is the same 03 human baseline on all three and is not an economy
+approval. Spawn facings point toward the map centre. They are not warehouse
+doors.
+
+| | lan5-ship-a | lan5-ship-b | lan5-ship-c |
+|---|---|---|---|
+| Theme | open channels, dispersed large islands | linked channels, one island reached by four seats | denser fill, several corridors |
+| Seed / filler placements | 26031 / 18, tried 141, missed 0 | 26032 / 28, tried 13013, missed 0 | 26033 / 40, tried 1447, missed 0 |
+| Islands | 28 | 38 | 50 |
+| Climates present | polar 3, tundra 3, nord 7, praerie 3, dschungel 8, steppe 4 | polar 4, tundra 4, nord 9, praerie 5, dschungel 10, steppe 6 | polar 6, tundra 5, nord 10, praerie 7, dschungel 13, steppe 9 |
+| Wueste | absent everywhere | absent everywhere | absent everywhere |
+| Rectangle tiles (share) | 821,248 (40.1%) | 922,880 (45.1%) | 1,030,400 (50.3%) |
+| HEIGHT>=16 land | 394,249 | 441,671 | 491,331 |
+| Large-island land, nord then jungle | 26,213–49,399 and 22,527–39,912 | 26,304–49,399 and 23,124–29,033 | 26,304–39,526 and 22,527–39,912 |
+| Largest free component on those ten | 1,445–12,121 | 1,445–11,920 | 1,608–12,121 |
+| Large islands inside 400 tiles, by seat | 5, 7, 5, 3, 3 | 3, 4, 7, 7, 3 | 3, 5, 3, 4, 3 |
+| Witness costs | 72, 32, 72, 32, 16 | 32, 32, 64, 32, 32 | 24, 24, 16, 32, 56 |
+| Witness islands | 5, 101, 8, 3, 9 | 0, 1, 4, 117, 127 | 0, 123, 2, 106, 5 |
+| Optional share | all ten 256s, plus six 128s | all ten 256s, plus ten 128s | all ten 256s, plus fourteen 128s |
+| Content hash | `2b291a2e0615688ad767f015250863d98f99047cdfa6ec140c04d3f6e217b010` | `ea471f5c723043dd44df8662f701c7174c1b360d4b4312fed341af75acc61f85` | `6156c56bf33c0e139a61732d1df313c49a368af6bb2da5fb4fcb833ea2e39096` |
+| File sha256 | `4cd2f26864fb27b00aad304b7d33981bf752cf0d84a1adb1dfd7d2906654b89d` | `074505e86d534eeb7458682bfb8d24b4fc57de7b63544b84069e465f89ea4ddf` | `aeff629944d99d5af429060ffeab8f0e2d7dea7d08394067d0d63ca461a623b1` |
+
+Evaluated cells and founding sites: A 99,316, B 91,902, C 85,076. Profile
+`map2-ship-start-v1`. Checker defaults: grid step 8, clearance 8, bound 400,
+city estimate 256, share gap 32, share side 128.
+
+The witness is one possible matching. It is not a destination. On A, seat 1's
+witness is the small island 101 at cost 32, and that seat also has seven large
+islands inside the bound, the nearest at 64. On B, seats 3 and 4 witness a
+small island at cost 32 and still have seven and three large islands. On C,
+seats 1 and 3 do the same. Sharing is not required for the matching: each
+witness uses five different islands.
+
+Climate reach inside the bound is uneven, which is the accepted asymmetry.
+On A, polar is only seat 3, nord misses seat 4, and jungle misses seat 3.
+On B, nord and praerie reach every seat; jungle and steppe reach seats 2–4;
+polar reaches 0, 1, and 4. On C, jungle reaches seats 1, 3, and 4; seats 0
+and 2 stay with northern large islands unless they take a detour.
+
+### Why the numbers are not equal on purpose
+
+Template `NORD/N_256X256_0015_5B.SCP` has 49,399 tiles of HEIGHT>=16 and a
+largest obstacle-cleared component of 1,445. The same mask is island 4 on A
+and on B. The preview shows a full green silhouette because the picture is
+HEIGHT land. The city figure subtracts recorded obstacle origins only.
+Graphic extents beyond that origin are not in the 6-byte record and were not
+invented, so the 1,445 can still be high. Filename suffixes were not read as
+fertility. `raw` and `ore` are not applied.
+
+Island 0 on A (`N_256X256_0018`) shows a separate land patch inside one
+rectangle. The city figure is the largest component, 4,396, not the sum of
+the patches.
+
+### Previews inspected
+
+Opened and looked at:
+
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-a-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-a-iso.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-b-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-b-iso.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-c-top.png`
+- `cache/map2-ship-starts-2026-10-31/previews/lan5-ship-c-iso.png`
+
+Also the three `*-top-choices.png` overlays. The base pictures show sea,
+HEIGHT land inside a pale rectangle, island ids 0–9, ship seats, a climate
+legend, and a 100-tile bar. They do not draw a Kontor, a partner line, or an
+owner tint. The overlay adds one straight segment per seat to that seat's
+witness island, and an `S` on each large island that can hold two footholds.
+The legend says LINE CHOICE, S SHARE, and NO CLAIM. Those segments are not
+sailing routes.
+
+A is the open map: wide sea between a northern scatter and a southern scatter.
+B packs the large islands into linked gaps, with island 4 in the middle of
+several of those gaps. C fills more of the diamond and still leaves channels;
+the ships sit in those channels. Polar blobs are in the north and jungle
+masses are in the south. Ship 2 is drawn near-white, which matches its legend
+swatch and stays visible on the sea. No layout change followed the inspection.
+
+### Proven, provisional, and still open
+
+Proven here: the manifests parse, hash, and regenerate; the geometric checks
+accept the three files; five distinct islands are reachable inside the bound
+for a matching; a missing climate stays visible; lan5.txt and the fixed-map
+dump are unchanged.
+
+Provisional model: step-8 rectangle-blocked sea, no corner cutting, cost =
+steps × 8, founding = a 4×4 of HEIGHT>=16 clear of obstacle origins with one
+side on water. This is not the original movement rule and not a service area.
+
+Owner choices already settled: ship start, natural differences, optional
+sharing, the 1431 envelope, five plain nord 256s and five plain jungle 256s.
+Still open: OQ-521 clustered versus dispersed spawns (these files use
+separated authored positions), founding orientation (OQ-520), buildability
+versus HEIGHT>=16 (OQ-519), and what a tool route is worth (OQ-517).
+
+### Later engine work, not done here
+
+- A loader seam that spawns ships and does not create the whole-island
+  developer grant. Turning `developer_start` off does not create ships, and
+  `src/sim_load` still reads only `anno1503-fixed-map 1`.
+- A save checksum for this start. The manifest content hash is the proposal
+  hash, not that checksum.
+- The original movement rule, the founding predicate, the warehouse door, and
+  visibility. Until those exist, a tool route is not a certification.
+- A deterministic rule for two players founding on the same coast in one tick.
+- Engine tests and the target-host tests. They were not run.
+
+## MAP.2 — ship-start validation repair — 2026-10-31 — status: READY FOR REVIEW
+
+Exterior sea and full-file template hashes are corrected in the next section.
+The witnesses in this section did not change. In
+`cache/map2-ship-repair-2026-10-31/`, `template_sha256` is the land-shape
+digest, not the SCP file.
+
+The version-1 `PASS_TOOL_CHECKS` at `570bb97` is withdrawn. That checker
+joined a reachable island rectangle to any 4×4, blocked only obstacle
+origins, and credited the largest free component anywhere on the island.
+An independent review reproduced those false passes, and a false failure
+when one extra island had no site. This section is the corrected tool
+result. No map is selected or installed. The engine was not run.
+
+Checker `06c440b1b12a70d1bfa8b48a93f5008ea46195e7`. Version-2 manifests
+`e1bc8b2ba215d676cb707220730b12499436da4a`. Profile `map2-ship-start-v2`.
+Anlagen.dat sha256
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+Suites re-run at `e1bc8b2`, which contains that checker unchanged.
+
+### What the corrected model checks
+
+Movement is 4-connected on water tiles. Each step costs 1 tile
+(`manhattan-4`). A diagonal is not a step. Clearance is the Chebyshev gap
+at the spawn only. A founding site is a 4×4 of `HEIGHT >= 16` clear of the
+ANLAGEN `HEAD` footprint, axes swapped for an odd rotation. The route ends
+on a water cell beside that site, and the city figure is that site's own
+component. `min_city` stays 256. The useful-opening bound stays 400 tiles;
+the unit is now a tile step rather than a coarse step times 8. Sharing is
+reported and is not a matching edge. An island with no eligible site is a
+diagnostic. Blocking a whole `HEAD` footprint is conservative: removability
+and the original founding rule stay unresolved (OQ-517, OQ-519, OQ-520).
+
+Placements were not moved. The layout tool, run into `/tmp`, emitted the
+same three version-2 files byte for byte. `parse` then `emit` into
+`/tmp/map2-ship-v2-cmp` matched as well. Version-1 files in
+`data/maps/candidates/ship-start-v1/` are unchanged and `parse` rejects them.
+
+### Candidate results
+
+All three are `PASS_TOOL_CHECKS`, cities 0, `NOT_RUN_ENGINE`. Wueste is
+absent everywhere. The witness is one feasible matching, not a destination
+and not ownership.
+
+| | lan5-ship-a | lan5-ship-b | lan5-ship-c |
+|---|---|---|---|
+| Islands / filler | 28 / 18 | 38 / 28 | 50 / 40 |
+| Founding sites | 1,968 | 2,267 | 3,199 |
+| Islands inside 400, by seat | 4, 5, 4, 7, 3 | 6, 3, 9, 8, 11 | 6, 11, 9, 10, 8 |
+| Large islands inside 400, by seat | 2, 3, 3, 2, 3 | 2, 2, 4, 3, 2 | 2, 3, 3, 2, 3 |
+| Witness islands | 110, 101, 8, 106, 9 | 0, 111, 125, 103, 127 | 0, 123, 114, 3, 5 |
+| Witness costs | 267, 103, 125, 153, 49 | 86, 121, 143, 99, 44 | 61, 52, 130, 72, 101 |
+| Witness city, attached | 602, 1977, 1160, 1575, 1167 | 1991, 1045, 650, 707, 691 | 599, 575, 1575, 432, 1017 |
+| No eligible site | 108, 111, 112 | 113, 119, 120, 121, 126 | 118, 124, 126, 127, 128, 134, 136, 137 |
+| Content hash | `e001442a55b8ee0890ec5cd3d23e5a53f05d66fe3a29fdb1c1b47d19a3363d92` | `af5df648addf5152099db49300425830a39d3ad458d4b6090d5b9c6c3549f544` | `cfda244eed26321de5c10da864a82b11935dd044fd6700234c926e30a900b078` |
+| File sha256 | `20d948c97b1801946d71dfa86762e9b0fea5e6cd093314d83cb5b43658b2fd20` | `fbbf91ead70dde39bd6fbe1279f0c88d8a067f0efd9dde50f03d6c1bec56ce3c` | `79c66b46088715a2593b7821ff48dc00640005bb3b1e2af1655829ffb6e20882` |
+
+Seat 2 on A is the check that the city figure is local. Its site component
+is 1,160 and another component on island 8 is 1,885. The witness uses 1,160.
+The route to water `(1118, 791)` costs 125, four above the Manhattan length,
+so the path goes around land. On A and B, `NORD/N_256X256_0015_5B.SCP` is
+island 4. Its largest site component is 509 tiles, not the origin-only 1,445
+quoted in the withdrawn report. The HEIGHT silhouette is unchanged. Island 1
+on B reaches 287 on its best site, so it can host one foothold under the 256
+policy and is not reported as shared. Those differences stay.
+
+Climate reach inside the bound, unchanged in kind and recomputed on the new
+edges: A polar and tundra only from seat 3, nord misses seat 4, praerie is
+seats 0–1, jungle misses seat 3, steppe is seat 2. B nord reaches every seat,
+jungle only seats 2–3, and seat 1 has three islands inside the bound. C nord
+reaches every seat and jungle misses seats 0 and 2. The earlier suggestion
+to review B first used large-island counts from the rectangle model. Those
+counts do not survive. All three still match. The owner chooses. Nothing is
+installed over `data/maps/lan5.txt`.
+
+### Acceptance
+
+Red log, before the fix, at `570bb97`:
+`cache/map2-ship-repair-2026-10-31/contract-before-corrected.txt` (18 failed,
+including the footprint overlap). The earlier
+`contract-before.txt` let an inland site pass for the wrong reason and is
+kept, not used as the red result. Green log:
+`cache/map2-ship-repair-2026-10-31/final-tests.txt`.
+
+| Requirement | Test | Command | Exit | Evidence | Limitation |
+|---|---|---|---|---|---|
+| Enclosed lake is not ocean | `test_enclosed_lake` | `python3 -I tools/map2_ship_contract.py` | 0 | `final-tests.txt` | Tool water is `HEIGHT < 16`, not the original sea rule |
+| Route ends at the site, past the bound | `test_far_beach`, cost 17 | same | 0 | same | 17 is the east-gutter Manhattan path, counted on the grid |
+| 4×4 without 256 attached tiles fails | `test_tiny_city` | same | 0 | same | 256 is provisional policy |
+| Distant component is not credited | `test_distant_component` | same | 0 | same | |
+| HEAD footprint, odd rotation swaps | `test_footprint` | same | 0 | same | Removable objects are not distinguished |
+| Extra uncolonizable island is diagnostic | `test_extra_island` | same | 0 | same | |
+| Hall matching can still fail | `test_hall` | same | 0 | same | |
+| Sharing is not a second witness seat | `test_sharing` | same | 0 | same | |
+| Diagonal costs 2 | `test_diagonal_metric` | same | 0 | same | |
+| Strict JSON | `test_manifest_strict` | same | 0 | same | |
+| Each broken stub fails, then the restored code passes | `test_negative_controls` | same | 0 | same | Stubs are in-process, not public flags |
+| Legacy dump | manifest selftest and `fixed_map.py dump` | `python3 -I tools/map2_manifest_selftest.py` | 0 | same, digest `c6af83f95104cd4f` | Runtime v1 is unchanged |
+| Historical ship suite | `map2_ship_selftest.py` | that command | 0 | 30 pass | |
+| Version-1 upgrade keeps placements | `test_upgrade` | manifest selftest | 0 | 25 pass | |
+| A, then B and C, one each | `map2_ship.py check` | see below | 0 | `lan5-ship-a-inspect.json`, `lan5-ship-b.json`, `lan5-ship-c.json` | Not an engine sail |
+| Round-trip | `parse`/`emit` and layout rebuild | both matched the saved files | 0 | `/tmp/map2-ship-v2-cmp` | |
+| Previews | six top/iso plus three choice overlays | `map2_ship_preview.py` | 0 | `cache/map2-ship-repair-2026-10-31/previews/` | Straight line to the water cell, labelled `LINE TO SEA`, not a sailed polyline |
+
+`data/maps/lan5.txt` remains sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`,
+1476 bytes. The Kontor-start `lan5-a/b/c.txt` files were not retouched.
+
+### Previews
+
+Opened the six plain views and the three choice overlays under
+`cache/map2-ship-repair-2026-10-31/previews/`. Land is the filled climate
+colour, the pale box is the template rectangle, and the seats sit on sea.
+The choice overlay draws a straight segment from the spawn to the validated
+water cell and a marker on the 4×4. The legend reads `LINE TO SEA`, `SITE`,
+`S SHARE`, `NO CLAIM`. The segment is not a line to the island centre and
+is not the sailed path. A is the open pair of scatters, with island 0 split
+into two land masses. B packs the large islands closer. C fills more of the
+diamond and leaves the same small filler islands that cannot host a city.
+No placement changed after the inspection.
+
+### Still open
+
+OQ-516 filler density, OQ-517 what a tool route is worth, OQ-519 which height
+is land, OQ-520 the warehouse door, OQ-521 clustered versus dispersed spawns.
+Original movement, founding legality, removability, visibility, simultaneous
+founding, fertility, the save checksum, and the loader seam are
+`NOT_RUN_ENGINE`. The manifest remains tool-only.
+
+## MAP.2 — exterior sea and source hashes — 2026-10-31 — status: READY FOR REVIEW
+
+Two checker corrections on top of `6a043d4`. Placements, spawns, loadouts,
+and thresholds are unchanged. No candidate is selected or installed. Cities
+0. `NOT_RUN_ENGINE`. The five-island matching remains an existence proof that
+five seats can take five different islands at the start. It does not assign
+those islands and it does not promise the result after someone else settles.
+
+Checker `63ed9fbfaf2c39ca0a95e9b09fa4e277d7a19d8d`, dirty sources false.
+Candidate content hashes are the hashes from `e1bc8b2`. Manifest `parse`/`emit`
+matched the saved files. `data/maps/lan5.txt` is still 1476 bytes, sha256
+`1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357`, dump
+digest `c6af83f95104cd4f`.
+
+### Exterior sea
+
+At `6a043d4`, five ships sitting in five enclosed lakes still produced a
+witness of cost 7 and city proxy 768, with no problems. Reproducer
+`cache/orch-map-v2-review-2026-10-31/lake_spawn_probe.py`, saved again at
+`cache/map2-ship-sea-2026-10-31/lake-spawn-before.json`. The probe process
+exited 0 because it only prints; the result was a false pass. Production
+clearance 8, `min_city` 256, and route bound 400 were left in place. The
+layout envelope was off.
+
+Version 2 now treats sea as water that is 4-connected to the world boundary.
+A landlocked spawn is rejected and has no eligible route. A lake that touches
+the sea only at a corner stays landlocked. Opening one orthogonal channel
+makes that same lake reachable. Five bays with a real channel still match.
+The earlier ocean-spawn / enclosed-lake-site case still fails. The rule is
+fixed for this version. Putting `sea` in the manifest policy is rejected, so
+the content hashes did not change. Reports state `sea: exterior-4`.
+
+The same witnesses came back. A: islands 110, 101, 8, 106, 9 at costs
+267, 103, 125, 153, 49. B: 0, 111, 125, 103, 127 at 86, 121, 143, 99, 44.
+C: 0, 123, 114, 3, 5 at 61, 52, 130, 72, 101. Each set is five distinct
+islands. An independent audit, which does not call the checker's route or
+component code, reproduced every cost, clear 4×4, and attached component:
+`cache/map2-ship-sea-2026-10-31/witness-audit.json`. All three candidates
+are `PASS_TOOL_CHECKS`.
+
+`min_city` 256 remains a geometric proxy for attached free land. It is not a
+viable city and not proof of founding, warehouse service, fertility, or
+progression. Wueste is still absent everywhere. Sharing stays descriptive.
+
+### Source provenance
+
+`template_sha256` in the previous repair JSON is the thresholded land-shape
+digest. Current reports use `template_sha256` for the raw SCP file and
+`shape_sha256` for that mask. A missing file hash stays null. The contract
+fixture writes two SCP files with the same height mask and a different
+obstacle record: one shape digest, two file digests, and the serialized
+report keeps them apart. Direct SHA-256 of
+`NORD/N_256X256_0018_2B.SCP` is
+`69803774cf7072979735bca140bc3ad80aec039043e9bb569db30df5a43857e9`, matching
+A’s report. B’s `NORD/N_256X256_0019_2B.SCP` is
+`d0e8e847dda969907777bc640198842bb9b80ae20c456bda6f3b787490bec8a1`. C’s
+`NORD/N_256X256_0006_2B.SCP` is
+`cb0f99bcd2e23c7b9e131f5e5ba3c11e3842911003e4c10d83735b06ea024201`.
+Anlagen.dat remains
+`b2317a5c24b8c9fe796cf40f3fedaefcfa30ad3f185df9e69b2dca6a03d8dd75`.
+The checker block records commit `63ed9fb`, `dirty_sources` false, and the
+SHA-256 of the four checker modules. That block is not the manifest hash.
+
+### Acceptance
+
+Suites at `63ed9fb`, log `cache/map2-ship-sea-2026-10-31/final-tests.txt`:
+manifest 25 pass exit 0, ship 30 pass exit 0, contract 53 pass exit 0.
+Candidate checks exited 0. The independent audit exited 0. Previews were not
+redrawn: the witnesses and the manifest bytes are the same pictures as the
+previous round.
+
+| Claim | Where it is checked | Exit |
+|---|---|---|
+| Landlocked spawns are rejected and have no witness | `test_landlocked_spawns`; before-log had 5 witnesses, after-log has 0 | 0 |
+| Diagonal contact stays closed; an orthogonal channel opens | `test_diagonal_contact` | 0 |
+| A connected bay matches five seats | `test_connected_bay` | 0 |
+| Ocean spawn still cannot use an enclosed lake site | `test_enclosed_lake` | 0 |
+| A contradictory `sea` policy is refused | `test_sea_policy_rejected` | 0 |
+| Same land mask, different obstacle, different file hash | `test_source_file_hash` | 0 |
+| A’s reported file hash matches the raw SCP | revalidation note above | 0 |
+| Fifteen witnesses, five distinct islands each | `audit_witnesses.py` in the sea cache | 0 |
+| Manifest bytes and content hashes unchanged | `parse`/`emit` into `/tmp/map2-ship-sea-cmp` | 0 |
+| Active map unchanged | manifest selftest | 0 |
+
+Still unresolved: original movement, founding, removability, the warehouse
+door, fertility, visibility, simultaneous founding, the save checksum, and
+the loader. OQ-516 through OQ-521 stay open where they were open. Natural
+differences stay. No ±5% balance rule is in force.
+
+## MAP.2 — original-rule readiness for ship starts — 2026-10-31 — status: READY FOR REVIEW
+
+Preparation for W6.1. No ship was moved, no city was founded, and no
+candidate was installed. `data/maps/lan5.txt` and the version-2 manifests
+are unchanged. The exterior-sea investigation was not repeated.
+
+Code head: `03767a6669955f69479c80594c46bc4837b16dca` (opening audit).
+Documentation after that code: `6ff3388ed5f4127c94f105217e5334b33be4069b`
+(loader contract) and the commit that adds this section. Mechanics notes:
+`c1f4fdd3058b75bf5ef5394dfebb98a8207a092c`,
+`c8fedeb1ba402819d194cd623aefc608bd9b8548`. Started from reviewed
+documentation `220608fcf96dcda9cbaea124b6b62e1362a2ebf6` and reviewed checker
+`63ed9fbfaf2c39ca0a95e9b09fa4e277d7a19d8d`.
+
+Host: Apple M5 Max, 18 cores, 48 GiB RAM, about 89% free at the start of
+this pass, 1.6 TiB free. Python 3.14.6. `pefile` 2024.8.26 and `capstone`
+5.0.9 were imported for the disassembly. A two-hour `caffeinate -dimsu`
+covered this pass only. Persistent power settings were not changed.
+
+### Acceptance ledger
+
+| Claim | Evidence | Independent check | Status | Next |
+|---|---|---|---|---|
+| Kontor 1302 is 4×4, 350 gold, 12 t wood, 5 t tools, coast bit `0x2000` | `Anlagen.dat` HEAD | Byte read in `docs/re/ship-founding.md` §2 | FILE | Use as type data, not the whole rule |
+| Ship menu selects building 1302 | `View.dll` `0x10063ba0` | Scout callback pushes 1301 instead | STATIC_RE | Open the UI object's `+0x60` only if menu-enable is required |
+| Click test is `AnnoFrame.dll` `0x10046300` | Disassembly in §3.2 | A zero return skips the commit call | STATIC_RE | Name island `+0xec` and `+0x114` |
+| Affordability failure still calls `+0x78` with `0xA0000000` | `0x10046913` | Not an observed world mutation | STATIC_RE | Open `+0x78` or capture |
+| Exterior-4 is not original passage | `docs/re/ship-navigation.md` | Replan `0x1003de40` starts with float math `0x10030100` | STATIC_RE | Planner methods stay unread |
+| Version-2 facing 0..3 is cardinal, not `dir16` | Manifest parser and fire-and-ships §3.3 | Conversion table is not written into the files | FILE | Loader unit applies the table |
+| Five distinct islands remain at geometric, help-first, and record-presence levels on A, B and C | `tools/map2_opening.py` | Contract tests do not copy those counts | TOOL | Founding click stays unknown |
+| Original click outcomes | Capture steps in ship-founding §7 | No AnnoHarness on this Mac | NOT_RUN_ORIGINAL | One Windows harness session |
+| Engine load of a manifest | Contract only | No sim change in this packet | NOT_RUN_ENGINE | Implementation unit 1 |
+
+### Original behaviour established
+
+- Help: sail close, then place the warehouse on the coast near the ship.
+  Temperate or jungle is recommended for a first settlement. Polar help says
+  settlements are not possible there. Prairie, steppe and tundra help say
+  to settle there after another settlement exists. No desert page is in
+  this help set. Two players may share an island. Takeover gives a warehouse
+  service area, not the island.
+- Type 1302: 4×4, gold 350, wood 12, tools 5, bricks 0, marble 0, flags
+  `0x2087` including coast `0x2000`, action radius 24 (market search, not a
+  proven city radius), two entrance points at `(2.5, 13/6)` and `(11/6, 0.5)`.
+- `View.dll` `0x10063ba0` selects id `0x516`. `AnnoFrame.dll` `0x10046300`
+  rejects a click with no island, a non-uniform tile class, an all-`0x0f`
+  footprint, or no category-matching object in the 16×16 window of a 4×4
+  (origin six tiles before the footprint). Rotation 0..3 swaps axes.
+- When the goods check `0x10043d80` returns 0, the commit is still called,
+  with flag `0xA0000000`. Atomic rollback is not shown. The rebuild requires
+  it separately.
+
+### Unresolved predicates
+
+Blocking calls, not a request for a wider trace:
+
+- Island slot `+0xec`: what `0x0f` is on water, land and a real warehouse tile.
+- Island slot `+0x114`: the class of the 6-byte records in the window.
+- Build-tool field read at `AnnoFrame.dll` `0x100468ff`: who pays.
+- Commit slot `+0x78`: whether flag `0xA0000000` mutates the world.
+- Planner methods after `AnnoWelt.dll` `0x10030100`: diagonal passage and
+  hull clearance.
+- OQ-490 city radius, OQ-063 scenery under the footprint, OQ-520 the click's
+  rotation writer.
+
+### Opening comparison
+
+The audit does not change the v2 verdict. Geometric witnesses are the same
+islands as the sea revalidation. Help-first means that geometric island's
+`INFO` climate is nord or dschungel. Record-presence means help-first and
+the file contains `FRUCHTBAR`, `BERGWERK2`, `OCCUR` and `ANBAU`. Those
+records are counted, not decoded. Fertility bytes stay uninterpreted.
+`GELAENDE` removal stays unknown. Founding-click legality is unknown on
+every island and is not matched.
+
+| Level | A | B | C |
+|---|---|---|---|
+| Geometric v2 | 5 | 5 | 5 |
+| Help-first | 5 | 5 | 5 |
+| Records present | 5 | 5 | 5 |
+| Founding click | unknown | unknown | unknown |
+
+Wueste is absent on all three. No first-settlement help page depends on it.
+Desert goods are a later economy question. No desert island was added.
+
+The geometric witness is not five recommended large islands. A uses a small
+nord, a prairie, two jungle 256² and a polar. B uses a nord 256², a polar,
+a 64² jungle, a prairie and a steppe. C uses two nord 256², a small nord,
+a polar and a jungle 256². The help-first and record-presence matchings
+move seats onto other reachable islands; they are existence proofs, not
+assignments. A's and C's record-presence matching uses 256² islands. B's
+includes `NORD/N_080X080_0002_1B.SCP`, which meets the 256-tile geometric
+proxy on a small island. Several 64² and 80² templates have no `BERGWERK2`
+record, so they drop out of the record-presence matching without being
+called illegal. Sharing stays the optional description already in the v2
+reports. No candidate is selected.
+
+### Original runtime
+
+`NOT_RUN_ORIGINAL`. Capture steps are `docs/re/ship-founding.md` §7, using
+the existing `AnnoHarness` WSL runner. No emulator was installed.
+
+### Tests
+
+Log `cache/map2-opening-2026-10-31/final-tests.txt`. A first log,
+`final-tests-wrong-manifest-entry.txt`, called `map2_manifest.py selftest`
+and exited 2 because that entry point only checks a file. The corrected
+entry is `tools/map2_manifest_selftest.py`.
+
+| Suite | Cases | Failed | Exit |
+|---|---|---|---|
+| `map2_manifest_selftest.py` | 25 | 0 | 0 |
+| `map2_ship_selftest.py` | 30 | 0 | 0 |
+| `map2_ship_contract.py` | 53 | 0 | 0 |
+| `map2_opening_contract.py` | 7 | 0 | 0 |
+
+Candidate audits A, B and C exited 0
+(`cache/map2-opening-2026-10-31/lan5-ship-{a,b,c}.json`). C++ render,
+GPU and sanitizer gates were not run: this packet changes Python and
+documentation only. This is not project-wide acceptance.
+
+### Files
+
+- `docs/re/ship-founding.md`
+- `docs/re/ship-navigation.md`
+- `docs/sim/ship-start-integration.md`
+- `docs/sim/fixed-map.md` §11.5
+- `docs/open-questions.md` updates on OQ-490, OQ-517, OQ-520
+- `tools/map2_opening.py`, `tools/map2_opening_contract.py`
+
+Reproduce:
+
+```
+python3 -I -u tools/map2_manifest_selftest.py
+python3 -I -u tools/map2_ship_selftest.py
+python3 -I -u tools/map2_ship_contract.py
+python3 -I -u tools/map2_opening_contract.py
+python3 -I -u tools/map2_opening.py audit data/maps/candidates/ship-start-v2/lan5-ship-a.json --game-dir /Users/dom/Dev/anno1503-worktrees/anno1503/game/app
+```
+
+### Next implementation unit
+
+Load one version-2 manifest into a new headless world: five ships, nested
+scout and donkey, four holds, the proposed gold, zero cities, zero owner
+runs. No movement and no founding. Specified as unit 1 in
+`docs/sim/ship-start-integration.md` §7. Prerequisite: this review. No
+candidate has to be installed. Do not start it until then.
+
+### Owner decisions
+
+No decision is required to review this packet. Still open, and not taken
+here: which of A, B and C to install; filler density (OQ-516); clustered or
+dispersed spawns (OQ-521); whether the 03 comparison loadout is the
+approved economy. Recommendation: keep all three, and do not add desert
+islands to fill the missing climate. The 16-step facing field can wait for
+a later manifest version; the first loader uses the cardinal table without
+rewriting version 2.
+
+## MAP.2 — readiness repair — 2026-10-31 — status: READY FOR REVIEW
+
+Reviewed head `330dc7f0dce1a1181c8bff53c4401c26e59bb940`. The historical
+ledger above still says the warehouse click is `AnnoFrame.dll` `0x10046300`.
+That row is withdrawn by this section. The menu facts, the Kontor 1302 file
+facts, the help pages, and the exterior-4 distinction stay.
+
+No candidate was selected. `data/maps/lan5.txt` and the version-2 manifest
+bytes are unchanged. No ship was loaded into the simulation.
+
+Host: Python 3.14.6. `pefile` 2024.8.26 and `capstone` 5.0.7 were the
+modules imported for the disassembly. A task-scoped `caffeinate -dimsu`
+covered this pass. Persistent power settings were not changed. Original
+game files were read only.
+
+### Audit CLI
+
+`python3 -I` does not put the script directory on `sys.path`. Before the
+fix, the documented audit died at `import map2_ship` with
+`ModuleNotFoundError` and exit 1. The contract suite still passed because
+the test inserts that directory itself. `tools/map2_opening.py` now inserts
+the script directory before the sibling imports, the same way
+`tools/map2_ship.py` does. A subprocess test runs the script with `-I` and
+does not insert the path in the parent. It must reach the usage line and
+exit 2.
+
+After that fix, the four suites and the three audits:
+
+| Suite or audit | Result | Exit |
+|---|---|---|
+| `map2_manifest_selftest.py` | 25 pass | 0 |
+| `map2_ship_selftest.py` | 30 pass | 0 |
+| `map2_ship_contract.py` | 53 pass | 0 |
+| `map2_opening_contract.py` | 8 pass, including the isolated-interpreter test | 0 |
+| Audit A, B, C | geometric, help-first and record-presence each 5; founding click unknown | 0 |
+
+The new JSON is byte-identical to
+`cache/map2-opening-2026-10-31/lan5-ship-{a,b,c}.json`. The import fix did
+not change a count. Logs are in `cache/map2-opening-repair-2026-10-31/`.
+C++ render, GPU and sanitizer gates were not run.
+
+### Warehouse chain
+
+| Hop | Evidence | Class |
+|---|---|---|
+| Ship menu setup `View.dll` `0x1006330b` | `push 0x13; call [vtable+0x74]`; result stored at view `+0x648`. Null fails with `0x80004005` | The object at view `+0x62c` is **unknown** |
+| `tFrameGame` slot `+0x74` and `tFrameGameFull` slot `+0x74` | Both are `AnnoFrame.dll` `0x10007e50` | Those two classes only. Not yet tied to view `+0x62c` |
+| `0x10007e50` | Kind argument; cache at `this+kind*4+0x1834`; miss calls `0x10066330` | The frame object |
+| Factory kind `0x13` | `call 0x10049400` at `0x10066666` | Constructs `tCursorAnlageKontor` |
+| Published pointer | `lea eax, [edx+esi+4]` at `0x100666f5`, where the constructor writes vtable `0x100884bc` | Kontor subobject, locator offset `0x20c`, type descriptor `0x10096928` |
+| Button `View.dll` `0x10063ba0` | `+0x60(0, 0x516)` on view `+0x648` | 1302, when that pointer's vtable is `0x100884bc` |
+| Slot `+0x60` | `0x100495a0` jumps to `0x10049140`; property 0 stores the u16 at complete-object `+0x44` | Same subobject. Constructor first writes `0x515` |
+| Slot `+0x70` | `0x100495e0` jumps to handler `0x10048e60`, which calls `0x10049340` | Kontor handler. Does not call `0x10046300` |
+
+Unresolved: the class of view `+0x62c`, and the body of `0x10049340`.
+Kind `0x0e` constructs `tCursorAnlageBergwerk` (type descriptor
+`0x100968b0`, locator `0x1008fa58`, vtable `0x10088164`, slot `+0x70`
+`0x10046dc0` jumps to `0x10046830`, which calls `0x10046300`). That path
+is the mine cursor. Its corrected transcription is
+`docs/re/ship-founding.md` §3.3. It is not founding evidence.
+
+### Loader contract
+
+Ships, scouts and donkeys are figures in `World::figures()`. Ids come from
+`next_figure`, which starts at 1: ship, scout, donkey for each seat, so
+ids 1..15 and `next_figure` 16. Seat 0 is not a figure id.
+Manifest milli-tiles convert by `q = m * 32 / 125` only when that division
+is exact; otherwise the load fails. Facing 0..3 becomes `dir16` 12, 8, 4, 0
+in that same load. Holds stay an ordered list, including two tools entries.
+The first loader accepts only the proposed baseline, matching
+`baseline_ok`. Details: `docs/sim/ship-start-integration.md`.
+
+### Reproduce
+
+```
+python3 -I -u tools/map2_manifest_selftest.py
+python3 -I -u tools/map2_ship_selftest.py
+python3 -I -u tools/map2_ship_contract.py
+python3 -I -u tools/map2_opening_contract.py
+python3 -I -u tools/map2_opening.py audit \
+  data/maps/candidates/ship-start-v2/lan5-ship-a.json \
+  --game-dir /Users/dom/Dev/anno1503-worktrees/anno1503/game/app
+```
+
+Repeat the audit for `lan5-ship-b.json` and `lan5-ship-c.json`. Diff the
+JSON against `cache/map2-opening-2026-10-31/`.
+
+### Next unit
+
+Load the proposed baseline into a new headless world, as specified in
+`docs/sim/ship-start-integration.md` §5 and §7. Facing and the Q24.8
+conversion are part of that load. No movement, no founding, no renderer.
+`0x10049340` and the ship planner stay outside its claims. Do not start it
+until this repair is reviewed.
+
+## MAP.2 — ship-start load implementation — 2026-10-31 — status: READY FOR REVIEW (load only)
+
+Branch `task/MAP-2-original-like`, from `0ae9a51`. Implementation is on top of the corrected
+hierarchy; no further documentation-only approval was needed. Contract and status table:
+`docs/sim/ship-start-integration.md` §9.
+
+### Implementation versus specification
+
+Implemented: the typed manifest reader and canonical hash (`src/formats`), the figure state
+(`dir16`, `parent`, `crew_slot`, ordered whole-ton `holds`) with its validation and stream 116
+(`src/sim`), and the loader (`src/sim_load/ship_start.*`) that builds a new headless `World`.
+Not built, by design: sailing, founding, combat, rendering, GPU, developer input, a new economy.
+`developer_start` is off; no city, Kontor, island reservation or tile owner is created; nothing is
+drawn from the PRNG. The three candidates are loaded, not selected or installed; `data/maps/lan5.txt`
+is byte-identical (SHA-256 `1a471d9f…9357`) and `game/` is untouched.
+
+### Corrected hierarchy, as built
+
+Ship 1502 (no parent, no crew slot) → scout 717 (parent the ship, crew slot 0) → donkey 718
+(parent the scout). One owner per triple, `home` invalid, `cargo_goods`/`cargo_88` zero. Seat 0 has
+ids 1, 2, 3; seat 4 has 13, 14, 15; `next_figure` 16. A donkey parented to the ship passes the generic
+graph rules and fails `expedition_baseline_problem` (test "the baseline expectation fails a donkey
+parented to the ship").
+
+### Parser compatibility and rejection
+
+84 cross-check cases are written by `tools/map2_manifest_xcheck.py generate` from the Python
+reference and read by both `xcheck.py verify` (reference side) and the C++ test (engine side):
+escaped Unicode and surrogate pairs, reordered keys, duplicate keys at top level, nested, in a hold
+and in a spawn, booleans as integers, floats/exponents/leading zeros/plus/NaN/Infinity, unknown
+and missing fields, version and profile, seat count/order/duplicates, facing, bounds, exclusions,
+policy ranges, hold limits, stale/uppercase/non-string hash, BOM, non-ASCII, truncated input. The
+three unchanged candidates hash exactly as stated (`e001442a…`, `af5df648…`, `cfda244e…`) in both
+languages. Deliberately stricter in C++ (marked `ref=ok engine=reject`): integers beyond int64,
+island id -1, a lone surrogate escape, nesting beyond 64. `content_hash` absent/null is accepted as
+in the reference. Schema validity and loader support are separate: a valid gold-25000 manifest
+parses and is rejected by the loader.
+
+### State version and goldens
+
+`kStateHashVersion` 115 → 116; `Figure` 14 → 18 serialized fields. Re-baselined only after the
+semantic checks: the three event digests are identical to 115; `tools/sim_stream.py` (bumped to
+116, independent transcription) agrees with the C++ on g0, g1, s5, s6 (`--check`: goldens agree);
+`scenario_corpus.txt` differs only in `create_hash`, in all 50 files (every count unchanged);
+`g4.log` +36 bytes (2 figures × 18), the other logs keep their size. The empty-world hash in
+`sim_test.cpp` was taken from the Python oracle, not regenerated from C++.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| formats suite incl. json, sha256, manifest cross-check (macOS, Debug) | all pass |
+| sim suite, replay tests, scenario corpus (3 cases) with the original files | all pass; 843 of 870 registered, the other 27 are below |
+| new: 12 figure/expedition cases, 8 loader cases | pass (hand-derived ids, parents, positions, facing, holds, gold, rejections, unchanged existing world, save/load/save identity, derived `by_id`, stream version and corrupt-reference refusal, hostile hold count, 200 000-deep chain, idle 1000-step advance) |
+| three candidates loaded with the original registry and files | pass; hashes `a e471f6e1ff1164ec`, `b 0ffe696a2a07cc14`, `c 7ec33fd43149094b` identical in two fresh processes and on 1, 2 and 7 executor threads |
+| `tools/lint_sim.py` + self-test | ok, 70 cases |
+| `map2_manifest_selftest`, `xcheck verify` | pass, 0 problems |
+| ASan + UBSan (`build/mac-asan`, focused: formats json/sha256/manifest 12 cases; sim ship, figure, golden, G0-G7, state_hash, world-core, fixed-map 49 cases) | 0 findings; candidate hashes identical to the Debug build |
+| `clang-format` 23.1.3 on every changed C++ file | clean |
+
+### Failed, skipped and external gates
+
+- **NOT RUN:** Windows MSVC build and tests, Linux GCC/Clang `-Werror` (`tools/check_unix_warnings.sh`
+  needs WSL), Wine/original-binary differential, GPU and rendering suites (excluded by the task).
+- **27 `anno_test_support_tests` coordinator self-tests fail on macOS** (not run elsewhere here):
+  their harness (`tests/child_process.hpp` `sibling()`) reads `/proc/self/exe`. This is the test
+  harness of the coordinator itself, not the production path; porting it is outside this unit.
+- Platform prerequisites added so that memory-admitted tests can run on a Mac (commit `8002ae8`,
+  separate from the feature, admission control unchanged and ON): executable path
+  (`_NSGetExecutablePath`), Darwin `posix_spawn` rejects closing unopened descriptors, and a macOS
+  memory meter (free+speculative+inactive pages, `hw.memsize`, `phys_footprint`). Without the meter
+  the coordinator saw "unknown" memory and never admitted, so the corpus test waited until stopped.
+- Native configuration, not a product build: `build/mac-headless` (Debug, Ninja, Apple Clang 21,
+  `-DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF`) and `build/mac-asan` (same plus
+  `-DANNO_SANITIZE=ON`). `build/msvc` was not touched.
+
+### Remaining limitations
+
+Founding (`AnnoFrame.dll 0x10049340`, OQ-490, OQ-520) and the open-water planner are unread, so a
+ship does not move and cannot found. A later unit that removes a parent figure must first release its
+children (validation reports the orphan, it does not repair it). The loader repeats ~60 lines of the
+island placement of `fixed_map.cpp`; unifying them would touch the fixed-map path. Player names and
+colours are not part of the manifest and stay unset.
+
+### Reproduce
+
+```
+export PATH=$PWD/../../anno1503/cache/mac-tools/venv/bin:$PATH   # cmake, ninja, clang-format
+cmake -S . -B build/mac-headless -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DANNO_BUILD_VIEWER=OFF -DANNO_BUILD_GPU=OFF
+ninja -C build/mac-headless anno_formats_tests anno_sim_tests sim_replay anno_budget_coord
+ANNO1503_GAME_DIR=<game/app> ctest --test-dir build/mac-headless -R "anno_sim|anno_formats" -j 8
+python3 -I tools/map2_manifest_xcheck.py verify
+python3 -I tools/sim_stream.py --check
+```
+
+### Next unit
+
+Review. Then, separately: founding from the ship (needs `0x10049340`) and the navigator.
+
+## MAP.2 — review repair of the load-only unit — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. Reviewed head `5804da0`. **Code head `a08b0d7`**; every
+result below was produced at that code head. Commits after it change documentation only. Evidence
+(commands, logs, exit status, versions): `cache/map2-repair-evidence/` (git-ignored; the numbered
+files are named in the table).
+
+### Correction of the earlier report
+
+The earlier entry said the macOS coordinator problem was a test-harness matter ("27 coordinator
+self-tests ... harness reads /proc/self/exe ... not the production path"). That was wrong. Reproduced
+in review and again here: on macOS the **production** coordinator labelled processes as Linux and
+judged liveness from `/proc`, so a live owner counted as stopped and its reservation was released
+after a restart; and the coordinator a client starts kept the client's stdout pipe open. The
+harness executable lookup was a third, separate, genuinely harness-only problem. Those 27 cases
+were also not "outside this unit": they are the cases that detected the first defect.
+
+### Findings, fixes, regressions, results
+
+| # | Finding | Fix (commit) | Regression | Before | After (code head `a08b0d7`) |
+|---|---|---|---|---|---|
+| 1 | Live Mac owner treated as stopped after a coordinator restart (capacity 100, A holds 50, B's 80 admitted with `pending=0`) | Darwin namespace 3, `proc_pidinfo` identity, fail closed on unknown (`7be9a0b`) | existing C3, F3 crash handover, F4 E1 (x2) plus new O1-O5 in `budget_f5_test.cpp` | 4 recovery cases failed (`01-before-coordinator-suite.log`, C3: `fresh 80 beside the old holder: claim=1 pending=0 reason=admitted`); with the old behaviour restored O1, O4, O5 fail (`02-mutant-old-behaviour.txt`) | 79/79 coordinator cases pass; O1-O5 pass (`02-after-ownership-new.txt`, `05-after-coordinator-suite.log`) |
+| 2 | Detached coordinator keeps the client's stdin/stdout/stderr, so a captured client does not reach EOF until the coordinator idles out | `/dev/null` for 0-2, every spawn action checked (`c5923fc`) | S1 (EOF while the coordinator lives), S2 (foreground output kept), S3 (captured pipeline) | S1 and S3 fail: the client's pipe carried the coordinator's `LISTENING` line; hand pipeline 32.0 s for a 2 s client (`03-before-streams.txt`) | S1-S3 pass; same pipeline 2.0 s; a piped `ctest` of a 19.1 s test took 19.2 s (`03-after-streams.txt`, `04-pipeline-timing-after.txt`) |
+| 3 | A parsed `base` of `Scenes/base.sze\u0000does-not-exist`, absolute, `..` and symlink-escaping paths load | `resolve_content_path`, enforced in sim_load before opening (`a08b0d7`) | 3 cases, 22 refused rows through the real parser (NUL, leading NUL, control, absolute, rooted, `..` x3, `.`, `//`, trailing `/`, backslash, `C:/`, `C:\`, `C:rel`, UNC x2, stream `:`, directory, missing, file symlink out, directory symlink out), a valid relative path, a link that stays inside, a linked content root; `install_ship_start` leaves bytes and hash unchanged for every refusal | 9 of the 22 bases were accepted and built a world (`06-before-paths.txt`) | all 22 refused with `base:`; the three candidates load with unchanged hashes (`06-after-paths.txt`) |
+
+One more defect surfaced and is fixed separately (`6f6bc43`, test readiness only): the case
+`two file clients cannot reserve the same free bytes` failed when run cold because `try_reserve`
+makes a single attempt and the case relied on a coordinator left warm by an earlier run
+(`05-file-clients-cold.txt`, `05-file-clients-cold-after.txt`). It now starts the coordinator
+explicitly; its assertions are unchanged.
+
+### Functional correctness versus test-infrastructure readiness
+
+- **Functional (the unit's behaviour):** finding 3 and the candidate loads. No simulation, state
+  stream (116) or golden changed; `git diff 5804da0 -- fixtures src/sim` touches only
+  `ship_start_load_test.cpp`. Candidate state hashes: A `e471f6e1ff1164ec`, B `0ffe696a2a07cc14`,
+  C `7ec33fd43149094b`, identical in Debug, under ASan/UBSan and across executors.
+- **Test infrastructure (what lets the memory-admitted tests run on a Mac):** findings 1 and 2,
+  the harness lookup, the cold-start precondition. `8002ae8` is superseded by the reviewed MAC-1
+  sources (`4cc0a3a`, `870a527`, `837fb5f`) plus the Darwin namespace; that overlap will merge with
+  the W4.3 line (which carries MAC-1 with Darwin under namespace 2) as a small conflict in
+  `coord_wire.hpp` and `coord_server.cpp`, resolved by keeping namespace 3 and the legacy-stamp rule.
+
+### Decisions the reviewer should look at
+
+- Darwin is namespace 3, not 2. Old records: namespace 2 with a zero stamp (`8002ae8`) are kept
+  forever (unknown); namespace 2 with a microsecond Darwin stamp (MAC-1 coordinators) are judged by
+  Darwin because the journal under `~/.cache/anno1503` is shared by every executor on the host.
+  `kCompatVersion` stays 3 and why: `docs/perf/README.md` "MAP-2 repair".
+- The path contract rejects `.`/`..`, empty segments, backslash and `:` instead of normalising them.
+
+### Verification
+
+| Gate | Result |
+|---|---|
+| Focused new regressions, each shown failing on the defect first | O1-O5, S1-S3, 3 path cases |
+| Coordinator suite, native macOS (`-j 1`) | 79/79 |
+| Full gate: sim, replay, formats, coordinator (`ctest -j 8`, admission on, game dir set; 899 tests registered, 889 matched) | **889 executed, 889 passed, 0 failed** (`08-gate-summary.txt`); the asset-dependent cases ran: lan5, scenario corpus x3, the three candidates |
+| ASan + UBSan, affected tests (formats 12, sim 36 with the game dir, coordinator 34) | 0 findings (`09-asan-results.txt`) |
+| `clang-format` 23.1.3 on the 14 C++ files changed since `5804da0` | clean |
+| `map2_manifest_xcheck verify` (84), `sim_stream --check`, `lint_sim`, the three candidates in Python | pass |
+| `data/maps/lan5.txt` SHA-256 | `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357` (unchanged) |
+| Candidates, `data/`, `game/` | identical to the reviewed head |
+
+### Not run, skipped, remaining
+
+- **NOT_RUN:** Windows MSVC build and tests; Linux GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`); the Wine/original-binary comparison. A macOS pass does not substitute for them. In particular the Linux and Windows branches of the files edited in `src/test_support` were not compiled here.
+- **Capability-skipped, counted as not executed although ctest shows them passed:** `F3 (D2)` (real PowerShell meter), `F4 (N3)` and `F4 (N4)` (`/proc` descriptor listings). They need WSL.
+- The stream regressions S1 and S3 use a POSIX shell/pipe; S3 is skipped on Windows. The Windows detach path (`DETACHED_PROCESS`) is unchanged and unmeasured here.
+- Left running by design, not killed: coordinators this session started on ports 47850-47859 and 47632 idle out by themselves after 30 s; none was stopped by name. The caffeinate of this round (pid 21892) was stopped; the caffeinate of the previous round expires by its own timeout.
+- Remaining limits of the load-only unit are unchanged: no sailing, founding or navigation; the island-placement block is still duplicated from `fixed_map.cpp`.
+
+## MAP.2 — third repair: trustworthy gate, isolated path fixtures, coordinator transition — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `a71b07f`** (reviewed code was `a08b0d7`, reviewed documentation head `685c2aa`). The documentation commit that carries this entry follows the code head and changes no code. Evidence (git-ignored): `cache/map2-repair2-evidence/` (frozen binaries and hashes in `bin/SHA256.txt`). Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**; nothing here is substituted by a macOS result. The Mac tools profile (`cache/mac-tools/venv/bin`) was on PATH; the game directory was set explicitly; admission control was on; an owned `caffeinate -t 5400` (pid 40661) kept the screen awake and was stopped by pid afterwards. Free memory (≈6 GiB free pages, large inactive) and 1.6 TiB disk were checked before the expensive runs; the gate ran with 8 jobs and `ANNO_TEST_THREADS=4` (the recorded Mac calibration), no other job used the build directory or test ports.
+
+### Findings, reproducers, fixes
+
+| # | Finding | Reproducer (evidence) | Fix (commit) | Result |
+|---|---|---|---|---|
+| 1 | O1's name contains `;`: CTest registered two tests that each ran zero cases and passed; `test_names_are_selectable` detected it but the gate selector excluded it | `01-o1-names.txt`, `01-o1-zero-case.txt` (0 cases both), `01-o1-real-body.txt` (whole name: 1 case, 25 assertions), `01-checknames-before.txt` | `e85814d`: O1 renamed; `CheckTestNames.cmake` is the W4 version (`3d2fb9d`); `tools/test/run_selected.sh` + `ctest_verdict.py` (preflight, empty/skip/sanitizer/zero-selection accounting) | 79 coordinator cases select as 78 + preflight, 0 empty |
+| 1d | the wrapper itself | `03-negative-checks.txt`: unknown target → 2; zero selected → 8 (first version passed it, because the preflight counted as a selection; fixed); `;` in a name → 5; game dir unset → 6; synthetic empty child and sanitizer line → fail | `e85814d`; classifier fix `a71b07f` (an opt-in skip that also names the game directory was read as a missing asset and failed the real gate once) | gate verdict PASS only when all conditions hold |
+| 2 | content-path fixtures share one fixed directory and delete it on entry | three cases concurrently (`ctest -j3`) failed 15 of 15 repeats: `create_symlink: File exists`, `copy_file: No such file` (`04-path-before.txt`, `04-path-collision-msgs.txt`) | `c337931`: atomic unique `OwnedDir`, removes only its own, safe on partial construction; new case for distinctness/cleanup; symlink-less platforms say so | 4 cases concurrently ×5 Debug and ×3 ASan/UBSan: all pass, no leftover directories (`05-*`) |
+| 3 | an older coordinator keeps a dead namespace-3 owner's reservation | real W4 binary (`c869fb7`, `92c30840…`): accepts the compat-3 MAP client, successor keeps the record, 24 tries `claim=0 pending=50` (`06-mixed-old-successor.txt`); control with the pre-change MAP-2 successor admits (`06-mixed-map2-successor-control.txt`) | `7930598`: compat 4, versioned default journal, one-time read-only adoption; policy and rollout limits in `docs/perf/README.md` | real-binary old→new recovers (`09-mixed-old-to-new.txt`); busy older coordinator refuses a v4 client with a bounded diagnostic and keeps its holder; older coordinator started later leaves the v4 journal byte-identical (`10-mixed-rejected.txt`); T5 real binary steps aside (`10-t5-real-binary.txt`) |
+
+Transition coverage: **modeled** (this build with `--compat-version 3`): T1 idle/busy, T2 names, T3 live holder / exit / no second adoption / legacy file byte-identical, T4 CPU token, reused pid, unattributable record (memory and CPU, live, exited, reused, unknown). **Mixed-binary** (real older binary): the scripted runs above and T5. Mutation checks (`08-mutations.txt`): each of the three mechanisms reverted fails the matching cases (T2–T4; T3–T4; T1–T4 and the F3 pin).
+
+### Correction of the earlier count
+
+The saved gate of the previous round (`cache/map2-repair-evidence/08-gate-LastTest.log`) reports 889 results, and I wrote "889 executed/889 passed". It contained **two empty entries** (the two halves of O1: `test cases: 0`) and **four explicit skips** (F3 (D2), F4 (N3), F4 (N4) — WSL-only — and the opt-in transport-statistics case). At most 883 of those 889 executed a case. The "899 registered" figure of that report cannot be reconciled: the registered list was not saved. The previous gate also excluded `test_names_are_selectable`, which would have caught O1. The historical evidence is unchanged.
+
+### The final gate (code head `a71b07f` minus the classifier fix, which only changes the reader; the saved log was re-read with it)
+
+`tools/test/run_selected.sh build/mac-headless - 'anno_sim|anno_formats|anno_test_support' 900 12-gate.log 8` with `ANNO1503_GAME_DIR`, `ANNO_TEST_OLD_COORD` (frozen older binary) set, `ANNO_SIM_TRANSPORT_STATS` unset; preflight `test_names_are_selectable` passed first.
+
+| registered (selector) | selected | executed | passed (CTest) | failed | empty | skipped |
+|---|---|---|---|---|---|---|
+| 894 | 894 | 890 | 894 | 0 | 0 | 4: 3 platform (F3 (D2), F4 (N3), F4 (N4): WSL), 1 opt-in (`transport search statistics`) |
+
+Required-asset skips 0, sanitizer lines 0, verdict PASS (`12-gate.log`, `12-gate-verdict-after-classifier-fix.txt`; the first verdict line in `12-gate-stdout.txt` is FAIL for the classifier reason above, exit 6, and is kept). Registered tests of the whole build: 1071. ASan/UBSan (`build/mac-asan`, game dir set): 78 selected (ship start, manifest, JSON, SHA-256, figure state, coordinator O/S/T/F3-pin cases), 77 executed, 1 opt-in skip (T5, no older binary in that run), 0 failed, 0 empty, 0 sanitizer lines (`13-asan-verdict.txt`). Focused runs before the gate: coordinator suite 78/78 with 3 platform skips (`07-coord-suite-after-bump.log`).
+
+### Invariants (`14-final-checks.txt`)
+`clang-format` 23.1.3 clean on the 5 changed C++ files; active map sha256 `1a471d9f345163963edb2032e16a674156486bb8498d8946f379857676019357` unchanged; `git diff a08b0d7 HEAD` is empty for `data`, `game`, `fixtures`, `src/sim/src`, `src/sim/include`, `src/sim_load`, `src/formats` (candidates, simulation semantics, state version 116 and goldens unchanged); `map2_manifest_xcheck verify`: 84 cases, 0 problems; `sim_stream --check`: goldens agree; `lint_sim`: ok; `git status game`: empty. The candidate loading case ran in the gate (Debug) and under ASan.
+
+### Remaining external gates
+Windows MSVC build and test run; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (the Linux and Windows branches of `coord_server.cpp`, `budget_f5_test.cpp` T-cases and `ship_start_load_test.cpp` were not compiled here; T-cases and `Home` are `#if !defined(_WIN32)`); WSL-only cases F3 (D2), F4 (N3), F4 (N4); Wine comparison; a merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` will conflict: keep namespace 3, the legacy-stamp rule, compat 4 and the versioned journal name); a decision by the orchestrator on rolling compat 4 out while W4's compat-3 clients still use port 47631.
+
+I stopped here for review and began no movement, navigation, founding, candidate selection or installation.
+
+## MAP.2 — fourth repair: coordinator handoff safety and truthful gate verdicts — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `b0c84ca`** (reviewed code `a71b07f`, reviewed documentation `aa36bb3`); the documentation commit that carries this entry follows it and changes no code. Evidence (git-ignored): `cache/map2-repair3-evidence/`. **The shared-host compat-4 rollout stays on hold**: nothing was merged, pushed or installed, no other executor's coordinator was stopped and no journal of another executor was altered. Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**.
+
+### Finding 1 — compat-4 handoff lost a live reservation
+| | |
+|---|---|
+| Reproducer | v4 starts idle and exits; v3 starts and admits a live holder of 50; v3 exits, holder lives; v4 restarts; 80 against capacity 100 is **admitted**. Also the CPU token, repeated handoffs, and a v4 holder under a v3 start. Failing output saved **before** the change: `01-handoff-before-fix.txt` (H1, H2, H4, H5 fail; real W4 binary H7 fails; first-start control H3 and the unattributable-owner case H6 pass). |
+| Cause | two journals: v4 read only `coord-<port>-v4.journal` (adopting the unsuffixed one only if the v4 file did not exist), v3 read only the unsuffixed one. |
+| Fix (`d013af3`) | one `coord-<port>.journal` for every version, record format unchanged. Duplicate replay, hold-id collisions, releases naming the wrong record, CPU double counting and resurrection of released records cannot occur because nothing is copied (`02-transition-matrix.md` says what repairing the two-journal design would have required). |
+| After | H1–H6, H8, H9 pass modeled; **H7 passes with the real W4 binary** (`c869fb7`, sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4`): upgrade handoff for memory and CPU token, and the downgrade, `03-handoff-after-fix.txt`. T1/T2/T5 (handshake, single name, real binary steps aside) pass. |
+| Cost, stated | after a downgrade an older coordinator keeps a **dead** namespace-3 owner reserved while it runs (never a live one lost): real binaries, 24 tries `claim=0 pending=50`, `04-downgrade-real-binary.txt`; v4 releases it when it returns. A v4 coordinator does not control an unmodified older executable. |
+| Rollout | safety needs no lockstep; the procedure (journal report pre-flight, wait for idle, never stop a coordinator, how a rollback behaves) is prepared in `docs/perf/README.md`, not applied. `tools/test/journal_report.py` is a read-only helper. The `-v4` journals of the previous revision in `~/.cache/anno1503` hold no open promise (`14-stale-v4-journals.txt`) and were left in place. |
+
+### Finding 2 — the verdict reader missed "skipped"
+| | |
+|---|---|
+| Reproducer | the real Bigbrother corpus cases with `ANNO1503_GAME_DIR` absent print `ANNO1503_GAME_DIR not set: skipped`; through `run_selected.sh` the verdict was `executed=2`, exit 0 (`05-bigbrother-before.txt`). |
+| Fix (`87ead0e`) | a skip is a MESSAGE that names a missing prerequisite and says it skipped, in every phrasing in use (audit `08-skip-audit.txt`, 92 lines); item outcomes (`overlay-skip …`, `…: skipped as the original does`) and zero-assertion tests are not skips; doctest's `N skipped` is never read. |
+| After | end to end through the wrapper (`07-verdict-e2e-after.txt`): absent → **exit 6, executed=0, required-asset=2**; present → exit 0, executed=2, skipped=0. `test_verdict_contract` (14 cases, second mandatory preflight): real execution, each missing-asset form, platform/opt-in skips incl. the transport-statistics message, zero-case children, zero selection after a good preflight, sanitizer output; a mutation that ignores `skipped` fails 2 of them (`06-verifier-mutation.txt`). The previous round's gate log re-read gives the same 894/890/4. |
+
+### Counts (separately)
+| run | registered/selected | executed | failed | empty | skipped |
+|---|---|---|---|---|---|
+| final gate, Debug, `anno_sim\|anno_formats\|anno_test_support` (`13-gate.log`), game dir set, `ANNO_TEST_OLD_COORD` set, 8 jobs, `ANNO_TEST_THREADS=4`, preflights `test_names_are_selectable` and `test_verdict_contract` passed first | 901 / 901 | 897 | 0 | 0 | 4: 3 platform (F3 (D2), F4 (N3), F4 (N4), WSL), 1 opt-in (transport search statistics); required-asset 0; sanitizer lines 0; verdict PASS |
+| focused coordinator + verdict (`10-focused-verdict.txt`) | 91 / 91 | 88 | 0 | 0 | 3 platform |
+| ASan/UBSan selection, first run (`11-asan-first-run-3-failures.log`) | 109 / 109 | 106 | **3** (F3 (D1, handover / crash handover / silent): `BIND-FAILED` 47813/47814 — the Debug run's test-started coordinators still held the ports, they idle out after 30 s) | 0 | 0 |
+| ASan/UBSan selection, rerun after the ports were quiet (`11-asan-verdict.txt`) | 109 / 109 | 109 | 0 | 0 | 0; sanitizer lines 0 |
+
+The three failures passed alone (`11-asan-f3-isolated.txt`) and in the rerun; the log of the failing run is kept. No earlier count is corrected this round: the previous gate's 890 executed ran with the game directory set, so its Bigbrother cases executed.
+
+### Provenance
+Code head `b0c84ca`. Current binaries: `anno_budget_coord` sha256 `1fffb80baca59e2710a91021c31aeb29cd15a49fa27c2e872ba355686e371366`, `anno_budget_probe` `9942d6d774a523fa1f8035262439e6dc686a843d4a22c92fa3b5a06ce547c222` (identical to the downgrade run's, `12-final-binaries.txt`). Older W4 binary as above; the previous revision's (`a71b07f`) coordinator `d91571b0605626c7bc32dc21ee46a87682dfb868bfbff295c0a38a39e10891a9` is kept in `bin/` for the "before" runs. Free memory (≈4.5 GiB free pages plus inactive) and 1.6 TiB disk were checked first; an owned `caffeinate -t 5400` (pid 48929) kept the screen awake and ended with the gate. Invariants (`15-final-checks.txt`): clang-format clean, lan5 sha256 `1a471d9f…9357`, `git diff a71b07f b0c84ca` empty for `data game fixtures src/sim src/sim_load src/formats`, xcheck 84 cases / 0 problems, goldens agree, `lint_sim` ok.
+
+### Caveats and decisions for review
+- Running any gate with admission on starts a compat-4 coordinator on the shared port 47631 for the run's duration (it idles out after 30 s) and compacts the shared journal as any coordinator does; this happened here as in every earlier gate. The hold concerns rolling that out as the standing state; say if gates must instead use a private port and journal until the hold is lifted (the budget would then not be shared).
+- Reverting to one journal re-opens the leak the third round closed for the downgrade direction; I chose it because the alternative (two journals) cannot be made loss-free without the five mechanisms listed in the matrix. If a leak-free downgrade is required, Darwin owners would have to be journaled in the namespace-2 microsecond format a compat-3 coordinator judges correctly; that is a wire/journal semantics decision I did not make.
+- Remaining external gates: Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` + ASan/UBSan (the POSIX-only H cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts: keep namespace 3, the legacy-stamp rule, compat 4 and the single journal name); lifting the rollout hold.
+
+I stopped here for review and began no movement, founding or candidate work.
+
+## MAP.2 — fifth repair: the previously published compat-4 build's versioned journal — 2026-10-31 — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like`. **Code head `bb7f6b3`** (reviewed code `b0c84ca`, reviewed documentation `2ae2bf8`); the documentation commit that carries this entry follows it and changes no code. Evidence (git-ignored): `cache/map2-repair4-evidence/`. **The shared-host compat-4 rollout stays on hold.** Nothing was merged, pushed or installed; no shared coordinator or journal was touched (the three `-v4` journals of the host were only read, and copies of them were used in a private home); movement, founding, GPU and candidate work were not started. Windows MSVC, Linux GCC/Clang `-Werror` and the Wine comparison: **NOT_RUN**.
+
+### The defect
+The compat-4 build published at `a71b07f` kept its promises in `coord-<port>-v4.journal`; the repaired build never reads that file. Both advertise compat 4. With the real published binaries (coordinator `d91571b0…91a`, probe `1c2746c7…79e7`): the predecessor admitted a live holder of 50 (and, separately, a CPU token), its coordinator was stopped with the holder alive, the current coordinator started on the same home and port, printed `orphans=0`, and then admitted 80 (the second token). Failing output was saved with the production change stashed (`01-red-before-fix.txt`: V1, V2, V3, V3b fail; the control V4 passes); green after: `02-green-after-fix.txt`.
+
+### The repair (`bb7f6b3`)
+One canonical journal and namespace 3 are retained. Startup refuses, read-only, after the bind and before anything is announced, admitted or rewritten, when `coord-<port>-v4.journal` beside the journal in use holds outstanding promises or cannot be proved safe. No merge, migration or automatic release of dead owners.
+
+| Predecessor journal | Startup |
+|---|---|
+| absent / empty / all records released | normal (`LISTENING`, `orphans=0`) |
+| live memory holder, live CPU token | refused (V1, V2 with the real binaries; V3 modeled) |
+| known-dead owner, unknown or unattributable owner | refused |
+| unreadable (directory, mode 000) | refused |
+| malformed line, truncated record, last line without newline | refused |
+| canonical journal also present | canonical untouched when refused; honoured as before when allowed (V3b: `orphans=1`) |
+| repeated starts | same answer, no byte changes (three starts per refusal) |
+| another port's predecessor file | no block (V4) |
+
+A refusal prints `JOURNAL-REFUSED … Recovery: …`, exits 5, closes the socket, leaves every journal byte unchanged (the canonical journal is not created or compacted) and writes `<journal>.refused`. The client that started the process shows it: `ADMITTED 0 … infrastructure blocker: … did not start: startup refused: …`, after 0.06 s observed; bounded by the configured wait in every case (`03-refusal-sample.txt`, V1). `--journal` and the test override check the directory of the journal in use; there is no bypass variable. Clean predecessors do not block: the three real `-v4` journals of this host read as clean and copies of them start the coordinator (`07-…`, `08-…`).
+
+### Supported and unsupported transitions
+| | |
+|---|---|
+| legacy 3 → current | supported |
+| previous compat 4, clean file → current | supported |
+| previous compat 4, open/unreadable/malformed file → current | **refused**, recovery documented (operator confirms owners, moves the file aside; never delete) |
+| current → legacy 3 | live promises kept; **a dead namespace-3 owner stays reserved and the v3 coordinator does not idle out** |
+| current → previous compat 4 | **unsupported** (it ignores the canonical journal) |
+
+### Correction of the previous report
+"v4 releases it when it returns" and "wait for its 30 s idle exit" were incomplete: a coordinator with an outstanding orphan never takes the idle exit. The downgrade recovery needs an operator who owns that coordinator: identify the pid by port, check the namespace-3 owners with `journal_report.py` and `ps`, wait for live holders, stop that one pid, start the current build (it releases the dead owners and keeps the live ones). Prepared in `docs/perf/README.md`, **not applied**.
+
+### Counts (separately)
+| run | selected | executed | failed | empty | skipped |
+|---|---|---|---|---|---|
+| focused coordinator suite, Debug, real predecessor + older binaries set (`09-final-focused.log`) | 95 | 92 | 0 | 0 | 3 platform (F3 (D2), F4 (N3), F4 (N4): WSL); opt-in 0, required-asset 0 |
+| same, ASan/UBSan (`10-final-asan.log`) | 95 | 92 | 0 | 0 | 3 platform; sanitizer lines 0 |
+| earlier runs of the same selection before a comment-only edit (`04-`, `05-`) | 95 | 92 | 0 | 0 | 3 platform |
+
+Admission used a private port and journal (simulated budgets only). No broad gate was run and nothing was started on the shared port 47631. Ports were checked clear before each run (`lsof`, bounded 90 s; they were).
+**Pending, needs the hold lifted** (not run): `ANNO1503_GAME_DIR=$PWD/game/app ANNO_TEST_OLD_COORD=<frozen W4 binary> ANNO_TEST_V4_COORD=<published v4 coordinator> ANNO_TEST_V4_PROBE=<published v4 probe> ANNO_TEST_THREADS=4 tools/test/run_selected.sh build/mac-headless - 'anno_sim|anno_formats|anno_test_support' 900 <log> 8`, then the ASan selection.
+
+### Provenance
+Current `anno_budget_coord` sha256 `40d6b1eac26c592b12e938768cfdd58066e5d57df869299084d71cbc0d8fad21`, `anno_budget_probe` `e2ab7f419e1ce3cd792f79654156e7080aacfaca52380ec77453078c4482893e` (`06-binaries.txt`); predecessor and legacy hashes as above and `92c30840…6262f4` (legacy W4, `c869fb7`). Invariants (`11-invariants.txt`): clang-format clean, `git diff b0c84ca bb7f6b3` empty for `data game fixtures src/sim src/sim_load src/formats`, `git status game` empty, active map sha256 `1a471d9f…9357`; candidates, simulation behaviour, goldens and state version 116 unchanged.
+
+### Remaining
+Windows MSVC; Linux GCC 13 / Clang 18 `-Werror` and ASan/UBSan (new POSIX-only V cases and the edited `coord_server.cpp` were not compiled there); WSL-only F3 (D2), F4 (N3), F4 (N4); Wine; the broad gate above after the hold is lifted; the merge with the W4 line (`coord_wire.hpp`, `coord_server.cpp` conflicts); the orchestrator's decisions on the hold and on the downgrade cost.
+
+I stopped here for review.
+
+## MAP.2 — founding prerequisites: coordinates, exact cargo, payment preparation, island lock — 2026-11-01 — status: READY FOR REVIEW
+
+Scope: the four packages of the assignment; no `FoundCmd`, no sailing, no candidate installed, no change to `game/`, the manifests, the active map or another executor's files. Baseline `d5f0acef` (code `2b0c5b9`); final code head `9e059b2`; this report's commit is documentation only.
+
+### Packages (all with an independent read-only reviewer; a package was marked done only after its re-review)
+| Package | Commits | Reviewer record |
+|---|---|---|
+| A. coordinate repair (tiles addressed by local offset; ownership, occupancy, rectangle and disc claims on layers above INT32_MAX) | `c1ef387` | one reviewer, `c1ef387`, no findings; noted the same narrowing pattern in `walk_cells.cpp` (follow-up, out of scope) |
+| B. exact cargo (`ShipHold::amount_88`, u64 raw 1/256 ton), stream 116 -> 117 | `5c2b4df`, `b40544b`, `bc56953`, `91be8c1` | one reviewer, `b40544b`; two P3 documentation findings fixed |
+| C. pure payment preparation (`payment::prepare`) | `befec72` | one reviewer, `befec72`, no findings; material limit: the hold slot's notification call is not modelled |
+| D. island lock (`Island::lock`, LOCKED record), stream 117 -> 118 | `433d6cb`, `3d8a837` | one reviewer, `433d6cb`: CHANGES REQUIRED (docs not committed, a vacuous check, a missing template-refusal test); re-review of `3d8a837`: approved |
+| Canary | `9e059b2` | load, save, load, prepare payment with a locked island and fractional cargo; nothing in the world moves |
+Final integration review (fresh reviewer, code `9e059b2`, docs `e365026`): APPROVED, no P1/P2; one P3 (this line pointed to a missing section, and the territory-radius limit was missing from the list below), fixed in the next documentation commit. It checked schemas and goldens against Python, the loading paths, payment units end to end, the coordinate helper, scope, and the counts against the raw logs.
+
+### State representation, versions and goldens
+117: a hold is `u32 goods, u64 amount_88` (12 bytes; was `u32 tons`, 8 bytes). 118: each island gains `u8 lock` after its climate. Old streams and saves are refused by their version, never reinterpreted. Command encoding and the PRNG timeline (2) are unchanged. Goldens: at 117 the nine values of g0/g1/s5/s6 equal `tools/sim_stream.py`; the rest were justified by a control run with the version held at 116 and the new layout (every old golden, the corpus and the logs reproduced; `cache/map2-gates2/b-control-version116-layout117.log`). At 118 the same nine plus the new `s5_islands_locked_create` (locks 2 and 1) equal the Python values; the three event digests are identical to 117; `scenario_corpus.txt` changed only in the version header, the create hashes and the UnknownRecord count (down by one in exactly the eight LOCKED-bearing files, checked by the reviewer).
+
+### Counts (final revision `9e059b2`, macOS arm64 Apple clang, Debug, `-Werror`; each log records the tested source identity and an empty diff)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused new tests | 56 | 56 | 0 | 0 | 0 | `cache/map2-gates2/f1-focused.log` |
+| full sim | 751 | 750 | 0 | 0 | 1 (opt-in) | `f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `f3-formats.log` |
+| ASan+UBSan focused | 56 | 56 | 0 | 0 | 0 | `f4-asan-focused.log` |
+| ASan+UBSan full sim | 751 | 750 | 0 | 0 | 1 (opt-in) | `f5-asan-sim.log` |
+`tools/sim_stream.py --check`: goldens agree; `tools/lint_sim.py`: ok; both fixture generators `--check`: up to date (first attempt exit 2: the system Python lacks `pefile`; rerun with the evidence venv, `f0-fix-*.log`, `f0b-fix-*.log`). First failures kept: the Package D full run (5 hand-transcribed layout tests, `d-sim-all.log`), the 116-control run, `a1-first-failure.log`. NOT RUN: Windows/MSVC, Linux GCC/Clang, `check_unix_warnings.sh`.
+
+### Remaining founding prerequisites
+Evidence: figure-veto inputs (A1, A2), city registration, name draw, Kontor counter/KONTID, discovery/reveal/messages (A4, A5), virtual callees (A3), the hold slot's notification effect. Engine: figure classes/hull/range data, relations, city-ring allocation, registration data, the command with codec and `Reject` values, atomic application of a payment plan, a run-time lock setter, `walk_cells.cpp` narrowing. Owner decisions: C5, C8/C9, malformed LOCKED policy for modded data. Known widening: the territory claim equals the emulated original only for radius <= 126 (byte-wide spans wrap in the original from 127 on; documented in `territory.hpp`). Founding is not ready.
+
+## MAP.2 — version-test correction, city-creation prerequisites (allocation, registration, naming, Kontor ids), research ledger — 2026-11-01 — status: READY FOR REVIEW
+
+Scope: A–E of the assignment; no `FoundCmd`, sailing, UI or candidate; `game/`, the manifests, the active map, `TASKS.md` and other executors' files untouched. Baseline `302f95e` (code `9e059b2`); final code head `c28c958`; later commits of this report are documentation only. Streams: **119** (state), **PRNG timeline 3**. Review records: each review was a separate read-only review-agent subagent (general-purpose, no edits, no delegation); the reports are retained in the session transcript `/Users/dom/.claude/projects/-Users-dom-Dev-anno1503-worktrees-anno1503/8982de5f-71c9-45ee-8e2e-3ab88d2c851d.jsonl` (no separate review files exist; reviewer identities are internal session agents and are not named further).
+
+### Acceptance matrix and review ledger
+| Package | Result | Reviewed revision | Verdict | Findings | Resolution |
+|---|---|---|---|---|---|
+| A. version-test correction | the four "version" cases (ship_state ×3, scenario_formats ×1) used to patch a version byte without resealing and only showed the checksum diagnostic (`cache/map2-gates3/a1-actual-errors-before-fix.log`); `island_test::check_unsupported_versions` now edits the frame stream version and the state-header version with `reseal`, asserts the specific diagnostics and an unresealed contrast (`a2-actual-errors-after-fix.log`); doc nits (loop in AnnoWelt.dll, allocation wording, 116-control counts: selected 731, executed 729 passes, 1 failure, 1 skip) | `b1ba1ed` | APPROVED | none | — |
+| B. city contract (`docs/sim/city-creation.md`) | effect table E1–E15 from `0x100967e0`, `0x100861c0`, `0x100279a0`; allocation cursor (`ring+0x40`, ctor −1) ≠ scheduler cursor (`ring+0x46`); initialization; refusal order; stream 119 / timeline 3 | rev 1 `fb9d465`; rev 2 `d41542c` | rev 1 CHANGES REQUIRED; rev 2 APPROVED | rev 1: the original also draws the name at scenario load (E15), Kontor counter only for PRODTYPE `0x21` on the Create path, serializer flag, isolating test rows; rev 2: an invalid capacity/neutral pair in a test row | all applied (`d41542c`, `b23ac3b`) |
+| C. allocation and registration | `CityCreation::prepare/commit`; `Island::city_cursor`; neutral value never allocated; same player + same island refuses, anything else coexists; plan/commit with re-checks; loader cursor = last city in file order | `6cd619f`, re-review `330512b` | CHANGES REQUIRED → APPROVED | stale-plan rows did not isolate the commit re-checks; missing precedence pairs; scheduler-cursor precondition; hand-built plan naming the neutral slot | all fixed; mutants of every re-check caught (`d-mutants.txt`) |
+| D. naming, Kontor ids, persistence | `DrawSite::CityName` (ported) / `CityNameLoad` (unported); `Island::kontor_counter`, `City::name`, `Building::kontor_id`; loader reads `KONTORID` and keeps the market `KONTID`; goldens re-based with the Python reference | `6cd619f`, re-check `330512b` | APPROVED (both) | mutation evidence only for C; `commit_kontor` id/counter consistency; no byte-level name test | added (`d-mutants.txt`, forged-plan test, `city stream layout with a name`) |
+| E. research ledger (`docs/re/ship-founding.md` §13) | items 1–5; the author's claims verified by a separate reader who re-disassembled and recounted | `1446690`, `8ab0e12` | CHANGES REQUIRED → APPROVED | text corrections: the tile-bit routine's direction (CLEAR arm at founding) and gate, tile-dword wording, endless-evidence scope, property 5 | applied (`8ab0e12`, `0cc4e75`) |
+Final integration review (fresh reviewer, code `c28c958`, docs `48f331f`): APPROVED, no findings. It checked the stream 119 / timeline 3 schemas across code, Python and docs, the golden and corpus differences, the loader / operation / earlier-package interactions (lock, cargo, payment preparation), the canary, scope (no command, codec, `Reject`, candidate, `game/`, manifests or `TASKS.md` change) and the counts against the raw logs; it did not re-run the suites, the generators or the mutants.
+
+### Cause-specific evidence
+Tables: `docs/sim/city-creation.md` §6 (claim | valid control | intentional defect | earlier checks | expected | test). Real-code mutants, all caught: `cache/map2-gates3/c-mutants.txt` (allocation start, neutral skip, commit skips draw, no own-city check, cursor from highest slot [survived once → the gap-creation case was added]) and `d-mutants.txt` (each commit re-check in isolation, the neutral-plan guard, naming index, Kontor returns new value, no overflow guard, no stale check, KONTORID zero and length). First failures retained: `a1-actual-errors-before-fix.log`, `first-attempt-preflight-fail/`, `second-attempt-preflight-fail/` (the mandatory name preflight rejected a test name containing a semicolon, twice), the sim run with 16 hand-transcribed layout tests, the update run output.
+
+### State and PRNG compatibility
+Stream 119: `Island` + `i32 city_cursor`, `u32 kontor_counter` (after `lock`); `City` + `string name` (before the index scope); `Building` + `u32 kontor_id` (after `byte0f`). Timeline 3: `CityName` (ported, Advance), `CityNameLoad` (unported, Load, listed in the replay manifest). Older streams/saves are refused by version; command encoding unchanged. Goldens: the values of g0, g1, s5, s6 and the s5 variants `s5_islands_locked_create` and the new `s5_islands_city_created` (a city created by the operation, stamp 4242, name `Alpha` drawn at T[1235]) equal `tools/sim_stream.py`; the three event digests equal stream 118; `scenario_corpus.txt` differs from 118 only in the version header, `create_hash`, `UnknownRecord` (KONTORID known) and `MarketNumberNotKept` (KONTID kept); the remaining goldens are C++ values justified by that. Changed behaviour: a scenario's ring cursor is now the LAST city in file order (`create_remove_test` expects the cursor, not the hash, to follow the spec order).
+
+### Gate counts (macOS arm64 Apple clang, Debug, `-Werror`; each log records tested head `c28c958` with an empty diff)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused (new and affected cases) | 87 | 87 | 0 | 0 | 0 | `cache/map2-gates3/f1-focused.log` |
+| full sim (incl. replay and loader cases) | 769 | 768 | 0 | 0 | 1 (opt-in) | `f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `f3-formats.log` |
+| ASan+UBSan focused | 87 | 87 | 0 | 0 | 0 | `f4-asan-focused.log` |
+| ASan+UBSan full sim | 769 | 768 | 0 | 0 | 1 (opt-in) | `f5-asan-sim.log` |
+`anno-sim-replay run` on `g2.log`..`g6.log`: every checkpoint matched (`f3r-replay-*.log`). `tools/sim_stream.py --check`, `tools/lint_sim.py`, both fixture generators (`--check`, evidence venv) and clang-format: clean. Executor-count equality: `prepare_hash` with the serial executor equals the plain hash on a created-city world (`city creation: stamp and persistence`); the existing multi-executor hash tests ran unchanged. NOT RUN: Windows/MSVC, Linux GCC/Clang, `check_unix_warnings.sh`; a fresh-process comparison was not run beyond the replay CLI (each `run` is a separate process reproducing the recorded checkpoints).
+
+### Remaining founding dependencies
+Evidence (ledger §13.3): who stores 17 in player property `0x1c` and whether a run-time war makes veto path A true in an endless game (no endless scenario has WAR); run-time boarding and ship activity `0x13`; the `world+0x120` notifier and whether tile bit 31 is in the net checksum; who sets `[world+0xf8]`; the reveal's virtual calls; the AI arms; the `ship+0x3c` consumers. Engine: figure classes/hull data and the veto, the relation table (city mask, island `+0xaa`), the tile-bit-31 routine and the viewer pass, the further registration effects (city property 2, island property `0xb`), applying a payment plan atomically, the founding command with codec and `Reject` values, a run-time lock setter, `walk_cells.cpp` narrowing. Owner decisions: C5 initial diplomacy, C8/C9 discovery and messages, the malformed-LOCKED/KONTORID policy for modded data, whether a loader should reproduce the original's name draw (`CityNameLoad`). Founding is not ready.
+
+## MAP.2 — warehouse founding through the production command path (2026-11-01)
+Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baseline `c15f3d9`, **final code `96770ed`** (this report and §17.2 of the contract follow as docs-only commits). Nothing merged, pushed, rebased or pruned; `game/`, the manifests, candidates, the active map, `TASKS.md`, the coordinator and other executors' files untouched (the asset test only reads `lan5-ship-a.json` and compares its bytes). Windows, Linux and original-runtime: **NOT_RUN**.
+
+### 1. Implemented and tested
+- `figure_veto.hpp/.cpp`: the pure nearby-figure veto (explicit fact inputs, `MissingFact` instead of a permissive default, no 256 cap, the odd-rotation B×B scan extents, selected-ship bit test separate). 14 cases; 17 mutants caught; independent review CHANGES REQUIRED (P1: a hostile figure of owner property `0x11` is *skipped*, not sent to the point test; tests placed it outside the rectangle) → fixed, discriminating cases added, targeted re-review APPROVED.
+- Stream 120: `Rules::{founding_types, city_names}`, `Player::{relations, discovery}`, `City::player_mask`, `Island::players_present`, `Figure::state_word`, `FigureType::{bewohntype, range_88, hull_half_88}`; loaders: `DIPL`, the BEWOHNTYPE name table, `load_city_names` (STAEDTE of `Texte.dat`). Goldens equal the independent `tools/sim_stream.py`; scenario corpus changed through the version, hashes and the `DIPL` records no longer unknown.
+- `FoundCmd` (wire `0xF070`, outside every original value: the existing suite already used `0x70` as a legacy type and the original's `0x6f/0x70` are diplomacy/tribute), `Reject` values appended, `creation_problem` shared with `create_building`, `Founding::apply` (prepare on the const world, commit with the only fallible operation first on a local city), the reveal ported literally including its single-visit quirk.
+- Tests (`founding_test.cpp`, `founding_assets_test.cpp`, `command_codec_test.cpp`): control with hand-derived values (30000→29650 gold, wood 12800→9728, first tools hold 12800→11520, name `names[T[1235] mod 4]` = "Delta", 1,976 tiles rows 7..56, KONTID 1, byte0f 0x30); 27 refusal rows from one control, each leaving bytes, hash and PRNG cursor unchanged; valid controls; same site in both orders (second `SiteOwned`, uncharged); two distant sites both found in both orders; a nearby site (the reveal); reveal radius R+8, centre and accepted-rotation dimensions; non-square type; registration through MILIT; save/load, ordinary Build and 300 ticks afterwards; recorded session written to bytes, read, replayed in a fresh world on 1/2/4 executors; exact FoundCmd bytes, hostile payloads; on the original files a legal Kontor site is **found by the engine's predicates** on the islands of candidate A and applied through `World::apply`. Demonstration: `cache/map2-gates4/demo.txt` (`ANNO_FOUNDING_DEMO=1 anno_sim_tests -tc='founding demonstration*'`).
+- Adversarial: double charge, reduced territory, extra draw, charge-before-veto (bypassed late rejection), wrong KONTID/rotation, reveal radius/centre/early variants, rule checks removed — all caught (`cache/map2-gates4/mutants-found*.txt`, `mutants.txt`); one equivalent mutant (early-out) documented.
+
+### 2. Established from original evidence (pass 4, `docs/re/ship-founding.md` §14–15; the authors' claims, spot-checked by reviewers)
+Property `0x1c` is `Player::volk` and 17 cannot come from any loader; ship state bits; embarked scout not in a sector cell; usable/crew rule; path A/B instruction details and f32/x87 roundings; the odd-rotation B×B scan quirk (re-read by the editor); relations (`DIPL`: byte 0 other, byte 1 value; TRADE/MILIT/WAR = 0/1/2; veto uses WAR, registration MILIT==3); city slot `+0xbc` leaves the first warehouse's defaults unchanged; the reveal (`0x10080c10`) rectangle, samples, test and single-visit quirk; claim stage 2 radius R+6 and the treasure gold; tile bit 31 readers (chunk builder only, per-client); `ship+0x3c` derived cache; STAEDTE is attached after the scene, so the original draws no name at load.
+
+### 3. Proposed adaptations needing an owner decision
+**Q-kind:** may founding be limited to kind-8 players? The five-ship start creates kind 8; the humans of the shipped `0010SingleEndlos` scenarios are kind 11 with an AI object whose type-`0x19` handler may place a building and draw the world PRNG. (A) kind 8 only (implemented default; others get `Unsupported`); (B) allow kind 11 without the handler (replays can diverge from the original); (C) port the handler first. **Q1:** first-discovery effects of claim stage 2 (treasure gold and removal timer, mountain masks) are omitted because the engine has no island objects; default omitted and named. **C5:** the initial relations of the five-ship start (the loader creates players without `DIPL`; all zero). Also: island/city masks as sets (no 16/32-player limit), reveal on unbounded integers, atomic founding where the original can lose the payment at a full ring.
+
+### 4. Unresolved dependencies
+Mountain object masks and consumers; player property 7 consumers; the type-11 handler's PRNG path; whether campaign scripts read the `tEvent` log; x87 precision control; scout disembark; activity `0x13`; HEAD2 city masks and DISCOVER presence of loaded scenarios; `ship+0x3c` inputs (type slots `0x84/0x88/0x90`) for sailing; per-site classification of about 100 `[reg+7]` loads for the bit-31 inference. Open test gaps (P3): `SerialExhausted` row, the absent-player MILIT guard, a committed founding log replayed by the CLI.
+
+### 5. Gates (final code `96770ed`, clean tree, macOS arm64, Debug, `-Werror`, binary hashes in `cache/map2-gates4/final/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped | Log |
+|---|---|---|---|---|---|---|
+| focused | 118 | 118 | 0 | 0 | 0 | `final/f1-focused.log` |
+| sim all (incl. the real-asset founding case) | 802 | 801 | 0 | 0 | 1 (opt-in) | `final/f2-sim-all.log` |
+| formats | 82 | 82 | 0 | 0 | 0 | `final/f3-formats.log` |
+| ASan+UBSan focused | 118 | 118 | 0 | 0 | 0 | `final/f4-asan-focused.log` |
+| ASan+UBSan sim all | 802 | 801 | 0 | 0 | 1 (opt-in) | `final/f5-asan-sim.log` |
+`anno-sim-replay` on g2–g6: every checkpoint matched; lint_sim, sim_stream `--check`, fixture checks, clang-format clean. First failures kept: `cache/map2-gates4/p2-first-attempt-preflight-fail.log`, `p2-second-attempt-preflight-fail.log` (a test name with a semicolon, twice), `s120-first-full.log` (27 expected layout failures of the stream bump).
+
+### 6. Reviews
+Continuation gate (CHANGES REQUIRED: missing registration-time recount, undefined name-list origin, under-specified precheck set, owner questions, stale text → all applied in §16.7); packages 6–8 (APPROVED; four P2 test gaps — reveal radius, centre, per-rotation ownership, +4 wrap docs — closed with new cases that fail the reviewer's mutants); final integration review of `96770ed` (APPROVED; P2 NOT_RUN statement added in §17.2; three P3 test gaps open, section 4). Evidence reports are retained in the session transcript only.
+
+## MAP.2 — second packet: founding defects repaired, replay evidence, kind 11, discovery, flexibility (2026-11-01)
+Executor session (Claude Sonnet 5.5). Branch `task/MAP-2-original-like`, baseline `d3bfbd7` (code `96770ed`), **final code `4f22cf6`** (clean tree for the gate, `cache/map2-gates4/final3/`; an earlier full gate on `84b7f79` is `final2/`, same counts; documentation commits follow). No merge, push, rebase or prune; `game/`, candidates, the active map, `TASKS.md`, the coordinator and other executors untouched. Review ledger with findings and dispositions: `docs/orchestration/evidence/map2-founding-reviews.md`; contract `docs/sim/ship-founding.md` §17.3–17.8; evidence `docs/re/ship-founding.md` §16.
+
+### Packages
+| Package | Status | Review |
+|---|---|---|
+| A. crew occupancy, hull facts, draw accounting | done (`ad575e7`). Crew = a child with a crew slot; the hull is a signed exact length or absent (shipped type 391 holds `0xCCCCCCCC`, 343/1510 have no field); the CityName draw is reported in an advance exactly once; regressions failed for the intended reasons first (`cache/map2-gates4/pkgA-before-fix.txt`) | APPROVED (P3 notes applied) |
+| B. replay evidence | done. Byte round trip, in-process replay and 1/2/4/7-executor creation + hashing (executor asserted used) are separate cases; `m2_found.log` (success, refusals, a reveal, an ordinary Build, two advances, 4 checkpoints) and `m2_found_wrong.log` run by `anno-sim-replay` in a fresh process (ctest cases); SerialExhausted and absent-MILIT-peer rows | CHANGES REQUIRED → applied → fixtures verified by decoding |
+| C. kind 11 | done per the reviewed contract: humans of kind 8 and 11 found with identical effects; a wrapped city number is refused for kind 11 (over-approximation of a stale CompLogic island record); other kinds refused. Evidence: for a fresh city the type-11 handlers reach no scan, no draw, no building | contract CHANGES REQUIRED → corrected; implementation APPROVED |
+| D. discovery | done: `Island::ore_objects` from `OCCUR` (island-local positions + origin), claim stage 2 with the radius+6 table, row limit R and parity terms, loader restoration of HEAD2 masks, DISCOVER, registration and the recount for loaded cities. **Treasure gold/timer are unreachable from founding** (kind mask 1): the earlier "Q1 omission" is withdrawn | APPROVED after the coordinate P1 was fixed |
+| E. flexibility | done: type 9401 (5×3, gold 120, tools 2 t, wood 4 t, radius 10), player 3, city number 5, against the emulated original (349 tiles); undecoded class refused; extension boundary stated; founding cost measured | APPROVED |
+
+### Demonstrated behaviour
+Founding through `World::apply` for kind 8 and 11 players with registry-derived costs, footprints and radii; atomic refusals; same-site and distant-site conflicts in both orders; the reveal; ore discovery on a real island (6 ore objects, 1 in reach discovered by the founder, 5 untouched); loaded cities with HEAD2 masks interacting with a new founding; save/load; recorded replay in a fresh process; one founding costs a linear pass over the figure registry (`cache/map2-gates4/E3-bench.txt`: 449 µs at 6 figures, 125 µs at 1,000, 374 µs at 50,000).
+
+### Gates (final code `4f22cf6`; macOS arm64, Debug, `-Werror`; binary hashes in `cache/map2-gates4/final3/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---|---|---|---|---|
+| focused | 136 | 136 | 0 | 0 | 0 |
+| sim, all (incl. the real-asset founding case) | 819 | 818 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| ASan+UBSan focused | 136 | 136 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 819 | 818 | 0 | 0 | 1 (opt-in) |
+`anno-sim-replay` on `g2`–`g6` and `m2_found.log`: every checkpoint matched; `m2_found_wrong.log`: DIVERGED at entry 3, exit 1; ctest `anno_sim_replay_founding_run`/`_wrong_run` pass (the final3 ctest run had ANNO1503_GAME_DIR set). lint_sim, `sim_stream.py --check` (goldens agree), fixture checks and clang-format clean. First failures kept: `cache/map2-gates4/pkgA-before-fix.txt`, `p2-first-attempt-preflight-fail.log`, `p2-second-attempt-preflight-fail.log`, `pkgCD-sim-1.log`. Goldens that moved: G6 and the scenario corpus (figure-type digest, ore objects), the pin `m2_found_session` and the two fixtures; the Python reference covers the new island/player/city fields (not the figure-type digest, which is self-baselined).
+**NOT_RUN:** Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), the Linux sanitizer lane, any run of the original game.
+
+### Remaining fidelity gaps and consequences
+- The `tEvent` log post of an ore discovery is not modelled (consumers unknown; campaign scripts?). No simulation reader of the ore mask was found, mining needs none.
+- Ore objects come from `OCCUR`; `Island::deposits` (BERGWERK2 stand-in) stays empty from files; mines therefore still find no deposit from files.
+- Kind 11: a stale AI record (same island and city number) is approximated by refusing wrapped numbers; the COMP reader's pre-created records are UNKNOWN; kinds 9, 10, 12, 14–16 are refused.
+- Player `DISCO` (property 7?) is not loaded; the initial relations of the five-ship start are zero until a start specifies them (C5); runtime diplomacy, `ship+0x3c` (sailing), city slot `+0xbc` beyond the first warehouse, tile bit 31 and colours remain as in §17.
+- The distance limit 12, query margin, rotation order, coast rule and the reveal/object geometries are original rules in code, not data.
+### Next smallest task
+Load `DISCO` once its link to property 7 is read, and decide the five-ship start's initial relations (owner decision C5); then, if wanted, replace the kind-11 wrap over-approximation by porting the CompLogic island-record bookkeeping (messages 4, 0xe) so stale records are known exactly.
+
+### Final integration review
+Fresh reviewer on `84b7f79`: APPROVED, no P1/P2. P3 applied in `4f22cf6`: a non-finite or huge OCCUR position is refused (it would have been an undefined cast on a malformed file; new test), a mixed-parity stage-2 test (a swapped-term mutant is caught), supersession tags on the older contract lines (16.1 row 8, Q1, C8, Q-kind). The gate was re-run on `4f22cf6` (counts above). Unresolved owner decisions: C5 initial relations of the five-ship start; whether kind 11 should wait for a port of the CompLogic island-record bookkeeping; whether `tEvent` posts are needed for campaign scripts.
+
+## MAP.2 — MAP-FOUND-3: hull safety, replay status gate, digest oracle, peace/shared-visibility start, canary (2026-11-01) — status: READY FOR REVIEW
+
+Branch `task/MAP-2-original-like` (Mac, Apple Clang, `-Werror`). Baseline docs `f0812cd`, code `4f22cf6`; **code head `92d4e04`** (final gates), documentation/ledger head recorded in the last commit of the branch. No merge, rebase, push, cherry-pick or reset; nothing under `game/`, `data/`, candidates, the active map, `test_support`, the coordinator or W4's worktree was touched; no candidate selected or installed, no spawn moved, no island equalised, no territory granted.
+
+### Effective start policy (owner decision C5; an explicit ADAPTATION, not an original-Anno claim)
+The five-ship start is **at peace** (no `DIPL` row exists; TRADE/MILIT/WAR all 0), **with shared visibility** (`Rules::shared_visibility`, default one group of the five seats, participants explicit data via `ShipStartPolicy`) and **without alliances** (no relation byte is ever written; the original's MILIT==3 registration marking is untouched and separate). Sharing mirrors what a member's founding actually reveals (new city's mask, island presence, ore discovery, the reveal's visited city and the resulting contact) to the group; it reveals nothing at start and grants no land or right. Original loaded scenarios have sharing off. Contract/evidence/acceptance: `docs/sim/shared-visibility.md`.
+
+### Acceptance per package
+| Package | Result | Commit(s) | Independent review |
+|---|---|---|---|
+| A hull domain | done: one domain `|hull| < 2^39` raw units enforced at the registry seal (builder and file paths), veto saturates before arithmetic; absent/zero/positive/shipped negative (type 391) preserved. First UBSan failure retained (`14208 + INT64_MAX` at `figure_veto.cpp:93`; builder accepted INT64_MAX): `cache/map2-found3/A/` | `f4d0bbd` | APPROVED, no findings |
+| B replay status | done: all replay run cases use `RunToolExpectError.cmake` (exit status AND output); `CheckToolCheckContract.cmake` proves rejection of right-text/wrong-status (both ways), right-status/wrong-text, no output, failed launch; real `m2_found.log` (0) and `m2_found_wrong.log` (1); required in the gate with `--require-test` | `9654b19` | APPROVED (8 lenient mutants rejected) |
+| C digest oracle | done: `tools/figure_digest_ref.py` (independent, from the written contract 17.3a) + 15 vectors; field-count guard; hand-derived non-empty ore wire bytes; CTest `figure_digest_reference_agrees`. No persisted layout changed in C | `f48ac6d`, follow-up | APPROVED with minors applied |
+| D start policy | done: contract reviewed before implementation (CHANGES REQUIRED, applied), DISCO/relation evidence (player `DISCO` = property 7, AnnoWelt `0x1001d61d`; loader implemented), `Rules::shared_visibility`, world-level peace + membership invariant (create and load), founding mirror, `ShipStartPolicy`, stream **121** (distinct version, goldens re-baselined, Python transcription agrees), version guards `{…,120}` | `f971e3d`, `581e9e9`, `052be30`, `b904e78` | CHANGES REQUIRED (one missing test, two doc items) then corrected |
+| E canary + closeout | done: real-candidate canary (five ships/crews, no city; two founders, payments, ownership, mirrored sets, a refused conflict without leak, replay from the log's own save); ships relocated beside engine-validated sites **as fixture setup, not a sailed route** | `d53b143` | see final integration review |
+
+### Gates (final code `92d4e04`, clean tree; macOS arm64 Debug and ASan/UBSan; binary hashes `cache/map2-found3/final/binary-hashes.txt`)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---|---|---|---|---|
+| focused (sim) | 171 | 171 | 0 | 0 | 0 |
+| sim, all | 836 | 835 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| replay-contract + digest reference (`anno_sim_replay`, `figure_digest_reference`; required: check_contract, founding_run, founding_wrong_run, figure_digest_reference_agrees) | 37 | 37 | 0 | 0 | 0 |
+| ASan+UBSan focused | 171 | 171 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 836 | 835 | 0 | 0 | 1 (opt-in) |
+Also: `lint_sim`, `clang-format --dry-run`, `sim_stream.py --check` (goldens agree), `figure_digest_ref.py --check`, coast/territory fixture checks all 0; CLI replay `g2`–`g6` and `m2_found.log` exit 0 with every checkpoint matched, `m2_found_wrong.log` DIVERGED at entry 3, exit 1. Disclosure: the first headless gate invocations in the final script exited 5 with `build/mac-headless.run.lock: File exists` (a stale lock left by my own earlier killed attempt; no tests ran); the saved logs `hl-*.log` are the reruns after removing that lock. **NOT_RUN:** Windows MSVC, Linux/WSL GCC/Clang `-Werror`, the Linux sanitizer lane, any run of the original game. A local Mac result is not cross-platform acceptance.
+
+### Mutation evidence (scratch `cache/map2-found3/mutate_d.py`)
+8 of 9 policy mutants killed; the survivor removes the filter that skips a group member absent from the player table, which `check_invariants` already makes unreachable (equivalent mutant, defence in depth); a tenth (peer rule replaced by the group) was added after the review and is killed.
+
+### Identities
+Candidate geometry = manifest `content_hash` (unchanged, candidate files unchanged). Gameplay setup = the world's rules digest / state hash / replay header (stream 121; every hash moves through the Rules layout, sharing-off outcomes are unchanged — the independent Python transcription agrees for every golden it models).
+
+### Remaining fidelity/platform limits
+Original: kind-11 city-number reuse is refused conservatively, loaded COMP records uncertain, discovery-event consumers and the first-discovery event are not modelled, file-loaded ore objects are not mineable deposits. The shared state is headless information (contact/masks/discovered sets), **not** rendered fog; sailing, diplomacy commands, fog rendering and full-map visibility are not built. UNKNOWN: readers of property 7, relation values other than 0/3, whether the 46 shipped `0xcdcdcdcd` DISCO values survive at runtime. Disclosed behaviour change to ORIGINAL loaded scenarios: non-zero player `DISCO` records now restore contact bits for existing players (corpus re-baselined). Peace is checked at creation/load, not maintained (no diplomacy commands exist).
+
+## MAP.2 — MAP-NAV-1: ship navigation evidence, contract and fixtures (2026-11-01) — status: READY FOR CONTRACT REVIEW
+
+Branch `task/MAP-2-original-like` (Mac). Baseline docs `4480200` (MAP-FOUND-3 accepted), **code head unchanged `92d4e04`** (nothing under `src/`, no state or command version change, no candidate manifest, active map, original asset, coordinator, `test_support`, W4 or board file touched; no merge/rebase/push; the rendering lane untouched). Documentation/reference head: the last commit of the branch (`git log -1`; at writing `a13a49b`). Deliverables: `docs/re/ship-navigation.md` sections 6-12 (evidence), `docs/sim/ship-navigation.md` (contract), `docs/testing/ship-navigation-capture-card.md` (NOT_RUN), `docs/orchestration/evidence/map-nav1-evidence.md` (matrix and review ledger), `tools/ship_nav_ref.py` and `fixtures/synthetic/sim/nav/{movement_vectors,passage_cases,route_runs}.txt` with six CTest cases.
+
+### What was established (static analysis of the original modules; addresses and tags in the evidence note)
+- **Order path.** A player's right-click is net command `0x84` (client slot `+0xc0`, AnnoFrame `0x10050af7` -> selection ownership check -> stop + SetOrder), the host/script command is `0x6c`; SetOrder builds no plan; the integrator picks the order up at a segment end (idle cycle up to 500 ticks); a failed plan clears the order; arrival sets no flag, founding reads position, bit `0x02` and holds. The multiplayer player id is packet-claimed and unauthenticated (DERIVED).
+- **Route engine** (not the `0x1003de40` function the first pass named, which is the local detour): a two-level search, coarse 8 x 8-tile cells with 12-bit edge-connectivity masks and a FIFO Dijkstra without node cap, then a one-tile fine Dijkstra (order NW,NE,N,SW,SE,S,W,E; cost 10/14; no corner cutting) over the coarse corridor, up to 8 learned-mask retries, goal accepted within 6.0 tiles, run cap 10, statuses 0/2/-2. Land is the tile-corner average (<= 19 water), **no hull or shore dilation**; ship stamps only choose among goal candidates. Executed on the real engine bytes under unicorn (block edges: 5000 randomised cases, no deviation).
+- **Movement.** Registry visit cadence, 5-tick stepper unit, `d >= 3` turn rule (reversal turns -1), chunking, speed-factor integer formula, 16-direction facing function and its non-exact 11.25-degree boundary, persistence (a sailing ship stands idle after load), crew units neither moved nor copied, no PRNG on the sailing path, float versus fixed-point drift quantified.
+- **Corrections** to earlier notes: segment pointer vs list head, the speed factor reaches movement only at segment start, `now` is a 2 ms tick, the hook radius is 16.0 (not LOGIC 0x24), `0x8000` means no crew, stamps do not change costs.
+
+### Answer to the packet's headline questions
+Diagonal-only gaps are closed (agrees with exterior-4); one-tile channels and shore-hugging routes are open in the original (no clearance; shore cells only cost more); enclosed water is unreachable from outside but navigable inside; the land rule is the corner average, not `HEIGHT < 16`; a goal on land within 6 tiles of reachable water routes to the nearest water tile. **Consequence for the three candidates:** their geometric witnesses stay tool-only; a witness that depends on a one-tile channel, shore tiles or a coast tile whose corner average exceeds 19 must be re-evaluated under the original land rule once the route query exists. No placement, label or manifest was changed and no candidate was selected.
+
+### Decisions proposed to the orchestrator (contract section 11)
+Failed-plan behaviour (accepted command, failed plan, idle + `RouteFailed`), the exact-rational 2^-32 integrator with portable 128-bit products (Q24.8 velocity is 7.6-84 % off), deferral of the local detour and hostile avoidance, planning budget semantics (`-3 BudgetExceeded`, serial planning at the visit), persistence of motion state (new stream version >= 122), unauthenticated-MP-id replaced by the authenticated issuer, crew position slaving.
+
+### Verification and review dispositions
+Local gate (canonical `run_selected.py`, binary identity as in the log `cache/map2-nav1/gates/nav-refs-01.log`): selected 7, executed 7, failed 0, empty 0, skipped 0 (six `ship_*` reference tests plus `figure_digest_reference_agrees`). Reference negative controls: 11 + 5 + 2 deliberate mistakes caught by the shipped selftests; the reviewer ran 37 further mutants. No broad C++ gate was run (documentation/reference only). **NOT_RUN:** every original-runtime observation (capture card CAP-1..6c), Windows, Linux/WSL. Independent reviews (read-only, fresh subagents): evidence note CHANGES REQUIRED (9 findings + one demoted rule) -> applied; references CHANGES REQUIRED (6 vector gaps, label, card gaps) -> applied; final contract review CHANGES REQUIRED (13 findings) -> applied, which also prompted two further static research rounds (coarse build timing, vertex padding, window, unit query, stamp semantics, block edges, MP authentication, state bits); focused re-review of all corrections and the new claims: **APPROVED**, with five small amendments applied in `a13a49b`. Full ledger: `docs/orchestration/evidence/map-nav1-evidence.md`.
+
+### Remaining unknowns (none blocks contract review)
+Static: UI pick provider (tile centre versus raw sub-tile) and the group order body; object-top contribution to block extrema / tile type 9; setters of state bits `0x2000`/`0x4000`; the exact `Offer` tie rule between equal-score candidates of different density (the stamped route vectors are single-source emulation). Runtime only (capture card, queued, not required of the rendering executor): x87 control word, registry cursor at load, whether a land start tile may itself be the goal candidate, confirmation of per-island coarse builds at load, the plan-time position fraction.
+
+## MAP.2 — MAP-NAV-2: first sailing implementation, headless (2026-11-02) — status: READY FOR FINAL REVIEW (headless candidate; nothing merged or pushed)
+
+Branch `task/MAP-2-original-like` (Mac, Apple Clang). Pins: packet from fetched `origin/main` `3352ce5` (not merged), MAP-NAV-1 documentation head `a01c053`, package A approved at `7b0dcf3` (ledger `8107678`), **code head `eeb68b9`** (gates below), later commits are documentation only. No candidate manifest, active map, `game/`, `test_support`, coordinator, W4 or board file was changed; the rendering lane is untouched; no merge, rebase or push.
+
+### Delivered (what runs now)
+An unchanged lan5 candidate loads with five expeditions; authenticated-issuer `MoveCmd` (`0xF071`) and `StopCmd` (`0xF072`) go through `World::apply`, the codec and replay; the real stepper (segments, turns, chunks, speed factor, speed changes, stop trim, exact integer arithmetic with a portable 128-bit helper) sails the ships over the real terrain with the ported route engine (two-level search, shore band derived from block records, local-ship stamps, bounded work and memory), fair bounded planning admission, `ShipArrived` / `ShipRouteFailed{reason}` / `ShipStopped` events, crew positions through Effects; then the two participants found their cities through the existing `FoundCmd`. Stream version **122** (motion, order/ticket counters, NavRules, navigation facts all hashed and saved; independent Python transcription of the ids, rules and figure-type digest).
+
+### The sailed canary (real files, no relocation)
+Seat 0 sails 546 tiles and seat 2 884 tiles (35 311 Advances = 176 555 ticks; the log's final tick 176 805 includes the 500 ms after founding) from their ship starts to water tiles beside legal Kontor sites (found and verified on COPIES of the world; the real run never writes a ship), both report `ShipArrived`, then found: 2 cities, 350 gold each, discovery {0, 2} for all five, seats 1, 3, 4 untouched. Every position change is within what the ticks since the ship's last visit allow (largest single change 86 Q24.8 units because the registry visits a ship every n/k Advances). The crew rides with its ship. A mid-voyage save/load gives the identical arrival Advance and final hash; the recorded log (22.7 MB) replays in a fresh world, **and in a fresh process** (manual evidence, saved in `cache/map2-nav2/sail/`, NOT a CTest or gate case) with `anno-sim-replay` (now able to select the original registry by digest): `entries 35335, checkpoints 19/19, final tick 176805, reproduced`; a log with the first order's target changed by 3 tiles **DIVERGED at entry 2002, exit 1**; a one-tile different target gives a different state hash after 600 Advances; an order to an island interior (no water within 8 tiles) is accepted and ends `ShipRouteFailed{Unreachable}` with the ship idle in its tile.
+
+### Measurements (this Mac, Debug build, not a performance claim)
+Re-measured at code head `eeb68b9`: coast index build 246 ms (314 sectors; first plan only); seat 0 route: 58 runs, 18 249 coarse and 5 596 fine pops, 194 044 accounted bytes, 9.3 ms; seat 2: 101 runs, 24 932 / 21 371 pops, 208 848 bytes, 19.2 ms (defaults 600 000 / 4 000 000 pops, 64 MiB). Advance wall time p50 390 us, p95 436 us, p99 456 us, max 274 ms (the plan with the index build) while sailing, versus an idle baseline of the same world p50 389 us, p95 437 us, p99 455 us, max 500 us (run-to-run variation of a few percent; an independent run saw 384-469 us p50): ship movement is not visible in the per-Advance cost. Process peak resident set of the canary test binary 611 MB (610 926 592 bytes) (it holds several world copies). Stepper error against the exact-rational model: worst 34 units of 2^-32/500 tile on a 1200-tile voyage (about 1.6e-11 tile), bound derived per plan from the carry terms; arrival visit equals the model's in all 25 vectors.
+
+### Gates (canonical workflow, logs `cache/map2-nav2/gates/E2/`, source `eeb68b9`, clean tree)
+| Gate | Selected | Executed | Failed | Empty | Skipped |
+|---|---:|---:|---:|---:|---:|
+| focused (nav, stepper, route, canary, commands, admission, founding, golden ...) | 203 | 203 | 0 | 0 | 0 |
+| sim, all (with game files) | 935 | 934 | 0 | 0 | 1 (opt-in) |
+| formats | 82 | 82 | 0 | 0 | 0 |
+| replay contracts + reference tests (`anno_sim_replay`, `figure_digest_reference`, `ship_*`) | 51 | 51 | 0 | 0 | 0 |
+| ASan+UBSan focused | 203 | 203 | 0 | 0 | 0 |
+| ASan+UBSan sim, all | 935 | 934 | 0 | 0 | 1 (opt-in) |
+Also `lint_sim`, `clang-format --dry-run`, `sim_stream.py --check`, `figure_digest_ref.py --check` all 0. **NOT_RUN:** Windows MSVC, Linux/WSL GCC 13 / Clang 18 `-Werror` (`tools/check_unix_warnings.sh`) and the Linux sanitizer lane, every observation of the original runtime (capture card CAP-1..6c), a performance gate. A local Mac result is not cross-platform acceptance. Disclosures: an earlier gate run was killed by me after I edited a source file while it was running (its logs are not counted); stale-lock `rmdir` after my own killed run; the full sim run takes about 10 minutes here because of the two canary cases (75 s each, 5 s under the gate's parallelism).
+
+### Thread counts
+The executor is used by world creation and hashing only; the sailing path is serial. The 1/2/4/7-thread test therefore shows creation and hashing independent of the pool for a world that then sails; the route engine's own 1/2/4/7-thread reentrancy test is in package C (`route_unit_test`).
+
+### Review dispositions (details in `docs/orchestration/evidence/map-nav1-evidence.md`)
+B round 1 and 2 CHANGES REQUIRED (applied); C round 1 CHANGES REQUIRED, round 2 **APPROVED**; D CHANGES REQUIRED (applied); E CHANGES REQUIRED (applied); **final integration review (fresh, read-only, ran the canary, the fresh-process replay, the full sim and its own mutants on the B/D/E deltas): APPROVED as a headless candidate, no P1**, with recommended corrections, applied in the commit after it: refreshed measurements and counts above (the earlier numbers were from an earlier code state), the manual-evidence and thread-scope wording, a `run_cap + 1` node-shape test and the `kNavMaxNodes` comment (a comment and one test added after the gate at `eeb68b9`; the new case was run, the gate was not repeated).
+
+### Adaptations and limits that matter (all in `docs/sim/ship-navigation.md` 12.8-12.10 and `ship-route-*.md`)
+Exact-rational integer stepper (not original f32 noise; no runtime parity claimed); the speed factor is derived from the holds at every movement segment start (the original's stored multiplier and its reset by a stop are not modelled; health not modelled); the route cache reads terrain only (object blocking off: objects change without commands, which would make routes depend on save/load history); the placed items' height byte is not carried; the shore band exists for 8-aligned islands only (all three candidates); the world edge for sizes that are not a multiple of 64 differs (OQ-NAVC-1); local detours and hostile avoidance are deferred (ships may overlap); admission, stamps and the crew mirror scan the registry (O(registry) per attempt or moving-ship visit, a derived index is the improvement path); the planner is serial.
+
+
+## MAP.2 — MAP-NAV-3: finish navigation integration (2026-11-02) — status: READY FOR FINAL REVIEW (headless candidate; nothing merged or pushed)
+
+Branch `task/MAP-2-original-like`, start `4731d9a`, code/test head for the final gates `8ee8423bc6318a023ce4507db96e466d3f5547cb` (this report is documentation only on top of it). Mac, Apple Clang, `build/mac-headless` and `build/mac-asan`; Windows MSVC, Linux/WSL GCC and Clang `-Werror`, the Linux sanitizer lane, original-runtime captures and any performance gate are **NOT_RUN**.
+
+**Acceptance ledger (requirement -> evidence)**
+| Item | Result | Evidence |
+|---|---|---|
+| N0 three review findings reproduced before any fix | observed: stamp tile 46 against 22 by the velocity equation; carried navigating child: `check_invariants` and `save` fail with `Figure::pos does not equal floor(pos_u) on axis 0`; ninth-level descendant at x=5340 while the ship is at 5616 | `cache/map2-nav3/n0/n0-before.log`, commit `0a4dfff`; independent read-only review APPROVED |
+| N1 carried-motion invariant, derived children/ticket/ship-cell indexes, iterative subtree mirror | done; docs 12.12 | review CHANGES REQUIRED once (docs, locality-test strength, missing nested cases) -> fixed in `5f2dad7`; the fixes were not given a separate second review (the final integration review covers them) |
+| N2 stamp = position + 25 x segment velocity (2^-32 tile per stepper unit, captured factor) | done; docs 12.11 | review APPROVED, three P3 fixed; world-path endpoint (20,65) against (21,64) under a far look-ahead mutant |
+| N3 object-aware routing, item height byte (low byte of `aux`, layout unchanged), dirty rectangles + `RouteCache::sync`, objects block in production | done; docs 12.13; limitations OQ-NAVC-2 (growth height), OQ-NAVC-3 (command-built `byte0f`), OQ-NAVC-1 (unaligned edge) stay open | review CHANGES REQUIRED (4 P2) -> fixed (`58f80e2`, `22cae71`, `14b1e0f`) -> delta re-review APPROVED; mutants: `objects_block=false` fails 6 of 10 route-object cases, `sync` no-op fails 5; 15 witness routes unchanged |
+| N4 health input (`NavMotion::health`, unknown = full-health adaptation), stream **123**, populated byte oracle | done; docs 12.14 | review CHANGES REQUIRED (one stale doc line, wording) -> fixed in `19a078f`; full-health-only mutant fails 4 cases (damaged arrival 8505 ticks against 6955); `tools/nav_state_ref.py` bytes compared with production archive bytes |
+| N5.2 production-scale measurements | done; docs 12.15; `cache/map2-nav3/n5/measure/` (first run) and `measure-after-sync-fix/` | found an O(ships x islands) cost in `RouteCache::sync` (per ship visit) -> fixed with `sync_once` per tick (`19a078f`), re-measured |
+| N5.3 canary, fresh-process replay, changed target | done | `cache/map2-nav3/sail/`: seat 0 546 tiles and seat 2 882 tiles, 35,481 Advances (177,405 ticks) to the last arrival, both found with `FoundCmd`, no relocation; `anno-sim-replay run`: entries 35505, checkpoints 19/19, final tick 177655, reproduced, exit 0; changed first target: `DIVERGED at entry 2002`, exit 1 (manual evidence; the in-process equivalents are CHECKs of the canary test) |
+| N5.4 gates | below | `cache/map2-nav3/gates/F3` (F2 and F1 kept) |
+| N5.5 final integration review | fresh read-only reviewer: CHANGES REQUIRED, one P2 (below) and three P3 -> fixed in `8ee8423`; the fix then got a narrow re-review (see the closing section) | |
+
+**Failed and superseded runs (kept):** gate `F1` at `79ae02c` passed the five non-sanitizer lanes but its ASan/UBSan lanes FAILED (`island.hpp:123 signed integer overflow: 2147483647 + 1` in the N3 dirty rectangle, case `founding coordinates: occupancy sees an object on every tile, including above INT32_MAX`); fixed in `30db4da` (64-bit edges) and the whole set was re-run as `F2`. The first N5.2 run measured the sync cost above before the fix. The very first full-binary run during N1 (two `nav motion` cases) failed because the tests edited tickets in place without rebuilding the derived index; the tests were corrected (`f274aa2`).
+
+**Gates.** F2 (`30db4da`) passed all six lanes (266/265, 974/972, 82/82, 54/54, 266/265, 974/972; one and two opt-in skips). The final integration review then found a real P2 (`RouteCache::sync_once` keyed only on the tick, but two Advances can share a tick through `advance(0)` or odd millisecond steps while host commands and the AI change tiles between them: a continuous world could plan on a stale index that a reloaded one would not). Fixed in `8ee8423` (`begin_advance()` at the start of every Advance; the new test `route objects: two Advances that share a tick still see a change made between them` fails with a no-op `begin_advance`; also the dirty-cell counter underflow and the hidden 1280 fallback). Because scheduler code changed, the whole set was re-run:
+
+**Gate F3 (clean tree `8ee8423`, `ANNO1503_GAME_DIR` set, `tools/test/run_selected.py`):**
+| Gate | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 267 | 266 | 0 / 0 / 0 | 1 (opt-in `nav scale measurements`) |
+| sim all | 975 | 973 | 0 / 0 / 0 | 2 (opt-in: transport statistics, nav scale) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay and references (incl. `nav_state_reference_agrees`, `ship_speed_factor_reference_agrees`) | 54 | 54 | 0 / 0 / 0 | 0 |
+| ASan/UBSan focused | 267 | 266 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 975 | 973 | 0 / 0 / 0 | 2 |
+Test binary sha256 `4b03021b...` (headless); lint, `sim_stream.py --check`, figure-digest check and clang-format all 0. The fresh-process replay of the canary log was re-run with the F3 binaries (`cache/map2-nav3/sail/replay-*-8ee8423.out`): 35505 entries, 19/19 checkpoints, final tick 177655, reproduced, exit 0; changed target: `DIVERGED at entry 2002`, exit 1. The canary log itself was recorded at `79ae02c`-era code (before the 64-bit dirty-rectangle and `begin_advance` fixes, which do not change sailing behaviour on that voyage) and replays identically; the canary test case also ran inside F3.
+
+**Original rule versus approved adaptation (unchanged boundaries plus this packet):** original: stamp velocity, object predicate `((h + base) & 0xff) > 19`, health/cargo formula (RE 7.5). Adaptations: derived indexes and fair admission by tickets, any-object invalidation (the original refreshes only for coast/road objects), unknown health = full-health term, health in `NavMotion` with a new stream version 123, carried figures never sail on their own, `state_word & 1` rejected on carried figures (the port's own moving bit).
+
+**Residual limits:** growth and command-built building height bytes are not the original's (OQ-NAVC-2, -3); partial-sector edge (OQ-NAVC-1); no local detours or hostile avoidance; island phase is O(islands) base work; measurements are one host, open sea, 6-300 ships, F up to 10,000; the planner is serial; no importer for original ship health; sync halo evidence in 12.13.
+
+**Final status.** The narrow re-review of `8ee8423` (the P2 fix) returned APPROVED with three P3 notes (a visit counter assertion in the new test, a documented precondition instead of a silent radius 0, no test for the guarded counter case); the assumption "the figure phase changes no tile" is stated in the docs but not enforced in code - a future figure seam writing object/aux/anchor would reopen the hole. Stopped at the reviewed corrected headless candidate: nothing merged, rebased, pushed or pruned; TASKS.md, test_support, coordinator, W4, game/, candidate manifests and the active map untouched. Branch head: see `git log` (documentation-only commits follow `8ee8423`).
+
+## MAP-BUILD-1 — executor report (in progress)
+
+Starting point: branch `task/MAP-2-original-like` at `6ad66ac` (tested code `8ee8423`), origin/main read at `33c60f6` without merging.
+
+**A — evidence writer (code `A` commit below).** Reproduced the review's finding on the tested binary: `summary.csv` as a directory gave exit 0 and `wrote 32 runs`. Now `write_outputs` (`nav_scale_test.cpp`) and the two sail-log exports (`founding_assets_test.cpp`: `ANNO_SAIL_LOG`, `ANNO_SAIL_LOG_TAMPERED`) publish through `sim::test::write_evidence_file` (`src/sim/tests/evidence_out.hpp`): directory check, open, write, flush, close and rename are each checked; the data goes to `<target>.partial` and is renamed only after success; stale targets of the measurement are removed first; a failure names the path and operation and fails the case with no success message. Real case with `summary.csv` a directory: exit 1, `summary.csv: destination is a directory`. Cheap registered tests: `evidence writer: ...` (stream seam with a full-disk `streambuf` and a bad stream), `nav scale writer: ...` (the real `write_outputs`, valid control plus each of the three files as a directory), `sail log export: ...` (the real export helper: valid round trip, no request, directory target, missing parent). Negative control: with both consumers restored to the old ignore-the-error behavior, 2 of the 4 cases fail (9 assertions); with the fix, 4/4 pass (21 assertions). Evidence-path and `sync_once` description corrections: `docs/sim/ship-navigation.md` 12.13 (6) and 12.15 (location and provenance paragraph; `measure-after-sync-fix` identity marked INCOMPLETE, not manufactured).
+
+**A review (CHANGES REQUIRED, two P2) and correction.** P2-1 verdict wiring untested: both writer functions are now `[[nodiscard]]` (dropping the result fails under `-Werror`); deleting the consumer's `REQUIRE_MESSAGE` itself is not machine-checked (the consumers are the long opt-in cases) and remains a reading check. P2-2 stale file after a failed export: `write_evidence_file` now removes an existing target before the attempt (test: a taken `.partial` name makes the open fail and the old file is gone). P3: flush-failure seam test added (`FlushFails` streambuf); the close-failure branch is read-only evidence (it cannot be injected into a real `ofstream`); the stale "Cold versus hot" text is labelled HISTORICAL. The earlier "2 of 4 fail" negative control was a hand edit of the consumers; after the fix 5 cases and 25 assertions pass.
+
+**B — contract (independent review APPROVED, six P3 folded in `8ab7def`).** `docs/re/ship-placement.md` (trace, hashes, emulation: 43,221 compared random cases 0 mismatches, vectors 45 compared 0 mismatches, threshold-31 negative control 47 mismatches) and `docs/sim/ship-placement.md` (dependency table, R1-R6, result type, 50 vectors in `fixtures/synthetic/sim/placement_vectors.txt`, oracle `tools/placement_ref.py`, now ctest `placement_reference_agrees` / `_selftest`). Original facts: the apply call passes `0x1000000` (skips the height analysis, trusts the wire byte8); ordinary land is flag word `(F & ~0x80) == 4` (352 of 921 types, 254 reachable by BuildCmd), coast `(F & 0x7017) == 0x2007` (30 types); classes `0x3000`, flag bit `0x10`, the `0x400000` replacement, roads, walls, single-quad scenery, ruins stay **Unsupported**. Growth (OQ-NAVC-2): `0x1008b5f0` writes only tile bytes 0-3, the item height byte remains (bounded trace). A real build click in the running original: NOT_RUN.
+
+**C — engine (review APPROVED, one P2 + P3 fixed in `4fe3537`).** `placement_rule` (R1-R6, `PlacementParams` defaults with addresses), full original overlap table, `Seams::placement_rule` returns `PlacementResult` (default = the rule; stand-in only as `stand_in_placement_seam()`), `check_record` order: ownership, live and budget-tile occupancy, rule on the effective type after the upgrade rewrite, then affordability; the byte is server-derived, wire byte7/8 never read. State layout and `kStateHashVersion` (123) unchanged; behaviour-only change under the S14 policy: old BuildCmd replays recorded with the stand-in diverge. Goldens moved: `s10_g2_end`, `m2_found_session` (+ `g2.log`, `m2_found.log`, `m2_found_wrong.log`), reasons in the commit messages. Pre-existing tests were given real flat terrain (none switched to the stand-in). Causal controls (D2): stand-in at the call site fails `build_terrain_test.cpp:185` and `route_objects_test.cpp:782-797`; forced zero height fails `build_terrain_test.cpp:206/219` (about 14 cases), `command_build_test.cpp:104/416`.
+
+**D4/D5 (review CHANGES REQUIRED, README provenance + two P3; fixed).** Finding: a newly founded city holds NOTHING (stock 0, gold 30000 -> 29650, ship cargo stays aboard), so PIONIER/HANDWERK is `CannotAfford`; therefore the separate stocked scenario on real island terrain + original registry (stock/gold declared in `ScenarioSpec` before creation): sea-class site `TerrainRefused`, other player `NotCityOwner` despite shared information, PIONIER -3 t wood, HANDWERK -300 gold -4 t wood -3 t tools, demolition no refund, heights 0x30 on building and every tile before and after demolition, reload equal, fresh-process replay 20 entries 9/9 exit 0, changed command `DIVERGED at entry 6` exit 1. **The combined sail -> found -> build loop is BLOCKED on unloading (MAP-CARGO-1); this fixture is not an opening loop.** Evidence at the frozen head: `cache/map2-build1/d4-frozen/` (source root = the MAP worktree, artifact root = main checkout `cache/map2-build1/`).
+
+**E1 gate (clean tree `ab5e651`, `ANNO_TEST_BUDGET_COORD=local`, `tools/test/run_selected.py`; first two attempts aborted and kept: `gates/E0-aborted-format` (clang-format on one comment) and `gates/E0b-aborted-stale-lock` (stale run lock after my own kill)).**
+| Lane | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 312 | 311 | 0 / 0 / 0 | 1 (opt-in nav scale) |
+| sim all | 1006 | 1004 | 0 / 0 / 0 | 2 (opt-in nav scale, transport stats) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay + references | 56 | 56 | 0 / 0 / 0 | 0 |
+| ASan/UBSan focused | 312 | 311 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 1006 | 1004 | 0 / 0 / 0 | 2 |
+Binary sha256 (headless) `015b3cf6...`, (asan) `5f828d98...`. NOT_RUN: Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), Linux sanitizers, original-runtime captures, any renderer/GPU gate. Windows consumer delta: `Seams::PlacementRuleFn` (registry added, returns `PlacementResult`; app/render sources do not call it); `site::overlap_with_existing` no longer returns Unsupported (FoundCmd now decides rows it left open; golden `m2_found_session` moved); `BuildCmd` on a world without a readable HEIGHT column (including flat-state hash-only worlds) answers `Unsupported`; new helpers `site::type_replaceable`, `ordinary_land_flags()`, `give_flat_terrain`, synthetic scenery ids, `make_build_types` flag word 0x0084; `kStateHashVersion` stays 123, so BuildCmd replays recorded under the old stand-in report DIVERGED rather than a version refusal.
+
+**Final integration review (fresh reviewer): APPROVED, P3 only** (Windows-delta wording and stale predicate text in docs: corrected in the following docs-only commit; prose changes do not re-trigger the gate). **MAP-BUILD-1 acceptance pin: code `ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, gate E1 (clean), docs head recorded by `git log` after this commit.**
+
+## MAP-CARGO-1 — executor report (U1-U5)
+
+Start: MAP-BUILD-1 acceptance pin code `ab5e651`, docs `d9e3415`. Branch `task/MAP-2-original-like`; origin/main read at `92d78aea` without merging.
+
+**Placement checkpoint (separate from unloading):** unchanged, see the MAP-BUILD-1 entry. The orchestrator's placement P2 (fixed temporary-directory names in two writer tests) is fixed in `9b6c547f` (exclusive per-invocation directory; the review's 12-invocation/2-worker probe now passes 12 of 12).
+
+**U1 contract (independent review APPROVED with 1 P2 + 4 P3, all folded in).** `docs/re/ship-cargo.md`, `docs/sim/ship-cargo.md`, `tools/cargo_ref.py` + `fixtures/synthetic/sim/cargo_vectors.txt` (60 cases; ctest `cargo_reference_agrees/_selftest`). Original chain: ship view "Load/unload ship" tab `View 0x1005a7f0` -> `tNetClient` slot `+0x60` (`AnnoFrame 0x100591a0`) -> world slot `+0x100` (`AnnoWelt 0x100ac360`); multiplayer net type `0x6a` (`0x1005d0a0`); same-owner arm `0x100ac91f-0x100accde`: min(whole-ton request, hold amount, free space rounded up to a ton), hold take `0x1003b9a0` (clears the goods id when emptied), city add `0x1002da50`. Range is checked only in the view at click time (warehouse PRODTYPE 0x23 in a radius-5 digital disc, half-widths 5 5 5 4 3 2, own-city outline tile); the original checks neither ship state nor sender at execution. Original-versus-rebuild adaptations: debit == credit (the original destroys up to 255 units when free space is fractional), over-capacity stock -> `StockFull`, unknown goods refused; the named warehouse replaces "first qualifying". Unknown, non-blocking: OQ-CARGO-1 (tab enabling for a moving ship), -2 (consumers of stock words +6/+8), -3 (cannon/foreign/0x6b arms; excluded). No original-runtime capture (NOT_RUN).
+
+**U2/U3 (independent review APPROVED, P3 only).** `UnloadCmd{ship, warehouse, hold, goods, tons}`, variant alternative 10, wire tag `0xF073`, 28 bytes (hand-written bytes in `command_codec_test.cpp`); `Reject::{NotAWarehouse, HoldGoodsMismatch, UnsupportedGoods, StockFull}` appended; `RecordResult::transferred_88`; `ShipCargo::unload`, `CityStock::free_88/credit` (the existing `CityStock::add` is not used for transfers). `CargoRules` (`warehouse_prodtypes` default {35}, `dock_half_widths` default {5,5,5,4,3,2}) is hashed in `Rules`: **stream version 124**, independent Python bytes (`tools/sim_stream.py --write-cargo-rules`, `cargo_rules_bytes.txt`), version-negative reseal test 123 -> 124, 25 state-hash goldens moved through the version word and the Rules bytes (explanations in the commit and `goldens.txt`). Navigation untouched (the cargo factor is read at segment start: 92 for a segment started with cargo, still 92 for the running segment after an unload, 100 from the next segment). Mutants run on the real source: credit-without-debit fails 19 of 20 `unload*` cases (and also its credit-side checks, so it does not isolate the debit assertion); debit-the-request-despite-limited-credit fails 10 of 20 with the control step green. P3 left open: the ship class for unloading is the founding veto's `ship_kind` 113 default (not configurable, as in founding); `kCommandWireVersion` stays 1 (precedent: MoveCmd/StopCmd/FoundCmd; the state version and the rules digest already differ).
+
+**U4 (independent review CHANGES REQUIRED: stale evidence identity, duration, dead code -> fixed in `7e5529f4`).** Real files, unchanged candidate `lan5-ship-a` and loadout, seats 0 and 2, public commands only, no relocation, no grants: sail; found (Kontor: 350 gold, 12 t wood, 5 t tools; gold 29650); rival refusals (`NotCityOwner` x2, `NotShipOwner`); build before unloading `CannotAfford` and unchanged; unloads wood 9728, food 2560, tools 11520 (second tools hold limited by the 50 t per-goods store to 1280, 6400 stay aboard, repeat `StockFull`); then HANDWERK 1001 (300 gold, 3 t tools, 4 t wood) and PIONIER 501 (3 t wood) succeed with byte0f and every tile height 48; gold 30000 - 350 - 300 = 29350; wood store 7936, tools store 12032; ledger asserted for every goods and gold (observed simulation changes measured: 0). No move was needed to unload (the move path is not covered). Reload at three points equals the uninterrupted run; fresh-process replay `entries 35585, checkpoints 60/60, exit 0`; a changed unload (38 t -> 37 t) `DIVERGED at entry 35532`, exit 1. Evidence: `cache/map2-cargo1/u4/` (README names source `7e5529f4`, binary and log hashes; the superseded `08443e00` README is kept). The new case takes about 5.4 minutes alone; the canonical gate was run with a raised per-test timeout (see below).
+
+**Windows viewer handoff (API delta):** `UnloadCmd` (tag `0xF073`), the four new `Reject` values, `RecordResult::transferred_88`, `ShipCargo::{unload, amount_88, footprint_in_range}`, `CargoRules` in `Rules`, `CityStock::{free_88, credit}`, `friend struct ShipCargo` in `World`; stream version 124 (all saves/replays recorded under 123 are refused); founding keeps its terrain path; BuildCmd needs a readable HEIGHT column (MAP-BUILD-1).
+
+**U5 gate (clean tree `f0c8647f`, code head `7e5529f4`, `ANNO_TEST_BUDGET_COORD=local`, `tools/test/run_selected.py`; per-test timeout raised to 2400 s, ASan full lane 3600 s in the local wrapper `cache/map2-cargo1/run-gate.sh`, because the opening-loop case alone takes about 5.4 minutes; evidence `cache/map2-cargo1/gates/U5-1/`).**
+| Lane | Selected | Executed | Failed / empty / incomplete | Skipped |
+|---|---:|---:|---|---:|
+| focused | 335 | 334 | 0 / 0 / 0 | 1 (opt-in nav scale) |
+| sim all | 1029 | 1027 | 0 / 0 / 0 | 2 (opt-in nav scale, transport stats) |
+| formats | 82 | 82 | 0 / 0 / 0 | 0 |
+| replay + references | 60 | 60 | 0 / 0 / 0 | 0 (cargo_reference_agrees and the cargo-unload replays were required and selected) |
+| ASan/UBSan focused | 335 | 334 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 1029 | 1027 | 0 / 0 / 0 | 2 |
+Binary sha256: headless `3d330a7e...` (equal to the U4 evidence README), asan `fee9a3c1...`. NOT_RUN: Windows MSVC, Linux/WSL GCC and Clang `-Werror` (`tools/check_unix_warnings.sh`), Linux sanitizers, original-runtime captures, renderer/GPU/performance gates. Placement (MAP-BUILD-1 gate E1) results are reused for paths unchanged since `ab5e651` except where the cargo commit set re-ran them in these lanes (stream 124 moved every state-hash golden, so the whole sim selection was re-run).
+
+**Final integration review (fresh reviewer): APPROVED, P3 only.** Corrected in prose (no code or gate change): `docs/sim/ship-cargo.md` historical wording labelled; the opening case does not itself assert that shared visibility is on (the loader supplies the full set `{0..4}`, asserted in another test; B8 in `unload_test.cpp` does not set it) - so "shared knowledge grants the rival nothing" is demonstrated by the refusals but its precondition is not machine-checked in that case; the opening ledger term `observed` is MEASURED between commands and reported as 0 in the evidence, not asserted to be 0. **All MAP-CARGO-1 runs are local macOS arm64 (Apple Clang), headless, ASan/UBSan on `mac-asan`; nothing ran on Windows, Linux or against the original runtime.** **MAP-CARGO-1 acceptance pin: code `7e5529f4`, gate U5 clean tree `f0c8647f`, docs head recorded by `git log`.** Placement checkpoint (MAP-BUILD-1 `ab5e651`) and unloading completion are separate pins. W4-WIN-VERIFY was left to the Windows executor by owner decision; no W4 file or branch was touched.

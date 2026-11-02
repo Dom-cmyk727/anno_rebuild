@@ -13,6 +13,7 @@
 
 #include <anno/formats/result.hpp>
 #include <anno/sim/create.hpp>
+#include <anno/sim/ship.hpp>
 #include <anno/sim/world.hpp>
 
 namespace anno::sim {
@@ -32,6 +33,16 @@ struct WorldTestAccess {
     static EventQueue& events(World& w) { return w.events_; }
     static ScriptTimers& timers(World& w) { return w.timers_; }
     static MonopolyTable& monopoly(World& w) { return w.monopoly_; }
+    static RouteCache& route_cache(World& w) { return w.route_cache_; }
+    /// Test-setup relocation (not a sailed route): moves figure `id`, keeps the fine position of a
+    /// navigating figure and the registry's ship grid in step (the derived indexes cannot see an
+    /// in-place edit through Figure&).
+    static void relocate(World& w, FigureId id, FixedPos pos) {
+        Figure* f = find_figure(w.figures_, id);
+        const FixedPos before = f->pos;
+        nav_place(*f, pos);
+        note_ship_moved(w.figures_, *f, before);
+    }
     static std::uint32_t& event750_acc(World& w) { return w.event750_acc_; }
     static bool& faulted(World& w) { return w.faulted_; }
     static SimOutput& output(World& w) { return w.out_; }

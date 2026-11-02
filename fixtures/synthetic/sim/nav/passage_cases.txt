@@ -1,0 +1,36 @@
+# Passage cases (MAP-NAV-1 N2/N4). Synthetic tile maps, no original data. Expected values are
+# HAND-DERIVED from the evidenced passage rules (docs/re/ship-navigation.md sections 9.2-9.5):
+#   a tile is water or land; the ship's start tile is always enterable; moves are the 8 neighbours with no
+#   corner cutting; the goal point is accepted at the reachable WATER tile whose centre is nearest to it,
+#   only if that distance is < 6.0 (score 2304 - ftol(64 d^2) must exceed the best); status 0 = route,
+#   2 = the chosen tile is the start tile (no runs), -2 = no candidate.
+# Source column: `coarse-emulated` = the original coarse expansion, mask packer and start-nibble code were executed
+# under unicorn on the same map (evidence note section 11); the fine stage and the goal bookkeeping (score, radius,
+# status 2) in those runs are a composition of the documented rules, i.e. DERIVED, and the fine stage was verified under
+# original code for interior tiles only. `derived` = reasoning only (no emulation).
+# LIMITATIONS: these cases assert reachability, the chosen goal tile and its score and the status; there are NO route-run
+# (Trace) vectors, so the neighbour discovery order, the 10/14 costs and the run cap are covered by the evidence note only.
+# No case contains a tie between equal scores (the original breaks ties by ship congestion; the tool's lowest-tile
+# tie break is not evidence). Whether a LAND start tile may itself be offered as the goal candidate is UNKNOWN (capture
+# CAP-6c), so no case asserts it.
+# Format: passage <name> | <W> <H> | land <x0,z0,x1,z1> ... | start <x> <z> | goal <x> <z> | <exterior4> | <status> <cx> <cz> <score> | <source>
+# exterior4 = ok iff the goal tile is water and 4-connected to the start tile's component AND that component
+# touches the map border (the tool model); `no` otherwise. cx/cz/score are `-` when the status is -2.
+passage open_sea | 64 64 | land | start 4.5 4.5 | goal 40.5 12.5 | ok | 0 40 12 2304 | coarse-emulated
+passage single_wall_around_end | 64 64 | land 30,0,31,39 | start 10.5 20.5 | goal 50.5 20.5 | ok | 0 50 20 2304 | coarse-emulated
+passage one_tile_channel | 64 64 | land 30,0,31,19 30,21,31,63 | start 10.5 20.5 | goal 50.5 20.5 | ok | 0 50 20 2304 | coarse-emulated
+passage two_tile_channel | 64 64 | land 31,0,31,19 31,22,31,63 | start 10.5 20.5 | goal 50.5 20.5 | ok | 0 50 20 2304 | coarse-emulated
+passage diagonal_only_wall | 64 64 | land 0,63,0,63 1,62,1,62 2,61,2,61 3,60,3,60 4,59,4,59 5,58,5,58 6,57,6,57 7,56,7,56 8,55,8,55 9,54,9,54 10,53,10,53 11,52,11,52 12,51,12,51 13,50,13,50 14,49,14,49 15,48,15,48 16,47,16,47 17,46,17,46 18,45,18,45 19,44,19,44 20,43,20,43 21,42,21,42 22,41,22,41 23,40,23,40 24,39,24,39 25,38,25,38 26,37,26,37 27,36,27,36 28,35,28,35 29,34,29,34 30,33,30,33 31,32,31,32 32,31,32,31 33,30,33,30 34,29,34,29 35,28,35,28 36,27,36,27 37,26,37,26 38,25,38,25 39,24,39,24 40,23,40,23 41,22,41,22 42,21,42,21 43,20,43,20 44,19,44,19 45,18,45,18 46,17,46,17 47,16,47,16 48,15,48,15 49,14,49,14 50,13,50,13 51,12,51,12 52,11,52,11 53,10,53,10 54,9,54,9 55,8,55,8 56,7,56,7 57,6,57,6 58,5,58,5 59,4,59,4 60,3,60,3 61,2,61,2 62,1,62,1 63,0,63,0 | start 10.5 10.5 | goal 50.5 50.5 | no | -2 - - - | coarse-emulated
+passage staggered_gaps | 64 64 | land 31,0,31,9 31,12,31,63 32,0,32,12 32,15,32,63 | start 10.5 10.5 | goal 50.5 10.5 | no | -2 - - - | coarse-emulated
+passage lake_goal_outside | 64 64 | land 20,20,40,22 20,23,22,40 38,23,40,40 20,41,40,43 | start 10.5 30.5 | goal 30.5 30.5 | no | -2 - - - | coarse-emulated
+passage lake_start_and_goal_inside | 64 64 | land 20,20,40,22 20,23,22,40 38,23,40,40 20,41,40,43 | start 26.5 30.5 | goal 34.5 30.5 | no | 0 34 30 2304 | derived
+passage land_goal_4_inland | 64 64 | land 0,0,63,31 | start 30.5 50.5 | goal 30.5 28.5 | no | 0 30 32 1280 | coarse-emulated
+passage land_goal_5_9_inland | 64 64 | land 0,0,63,31 | start 30.5 50.5 | goal 30.5 26.6 | no | 0 30 32 77 | coarse-emulated
+passage land_goal_6_0_inland | 64 64 | land 0,0,63,31 | start 30.5 50.5 | goal 30.5 26.5 | no | -2 - - - | coarse-emulated
+passage land_goal_8_inland | 64 64 | land 0,0,63,31 | start 30.5 50.5 | goal 30.5 24.5 | no | -2 - - - | coarse-emulated
+passage start_on_land_next_to_water | 64 64 | land 0,0,63,31 | start 30.5 31.5 | goal 30.5 45.5 | no | 0 30 45 2304 | coarse-emulated
+passage start_walled_in | 64 64 | land 29,29,31,31 | start 30.5 30.5 | goal 50.5 30.5 | no | -2 - - - | coarse-emulated
+passage start_equals_goal | 64 64 | land | start 20.5 20.5 | goal 20.5 20.5 | ok | 2 20 20 2304 | coarse-emulated
+passage goal_two_tiles_away | 64 64 | land | start 20.5 20.5 | goal 22.5 20.5 | ok | 0 22 20 2304 | coarse-emulated
+passage start_cell_fraction | 64 64 | land | start 20.9 20.9 | goal 25.5 20.5 | ok | 0 25 20 2304 | derived
+passage goal_off_map_west | 64 64 | land | start 4.5 4.5 | goal -2.5 4.5 | no | 0 0 4 1728 | derived

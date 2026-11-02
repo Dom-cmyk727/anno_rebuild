@@ -1,5 +1,8 @@
-# Runs a command-line tool with arguments it must refuse and checks that it refused
-# them cleanly:
+# Runs a command-line tool and checks its exit status AND its output together (task
+# MAP-FOUND-3 package B). Used for refusals (EXPECT_RC non-zero) and for expected
+# successes (EXPECT_RC=0) and divergences alike, because CTest's PASS_REGULAR_EXPRESSION
+# ignores the exit status. The contract of this helper is itself tested:
+# cmake/CheckToolCheckContract.cmake (ctest anno_sim_replay_check_contract).
 #   cmake -DPROG=<exe> -DARGS=<a|b|c> -DEXPECT_RC=<n> -DEXPECT=<regex> -P RunToolExpectError.cmake
 # ARGS separates the arguments with '|' (a ';' would split the -D value). Passes only
 # when the tool exited with EXPECT_RC and its output matches EXPECT, so an uncaught
@@ -18,4 +21,4 @@ endif()
 if(NOT all MATCHES "${EXPECT}")
   message(FATAL_ERROR "the output does not match '${EXPECT}':\n${all}")
 endif()
-message(STATUS "refused as expected (exit ${rc})")
+message(STATUS "exit status ${rc} and output as expected")

@@ -2165,7 +2165,7 @@ TEST_CASE("counting draw counts per site, forwards every draw and reports the di
     CHECK(between[1].site == sim::DrawSite::Ai);
     CHECK(between[1].count == 2);
     CHECK(sim::draw_records_between(draw.counts, draw.counts).empty());
-    CHECK(sim::kDrawSiteCount == 17);
+    CHECK(sim::kDrawSiteCount == 19);
 }
 
 TEST_CASE("figure registry slot policy is the rules' slot policy") {
@@ -2318,6 +2318,8 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     island_test::Stream ids;
     ids.u64(3);
     ids.u64(2);
+    ids.u64(1); // next_order_id (stream 122)
+    ids.u64(1); // next_ticket
     ids.u32(100);
     ids.u32(100);
     ids.u8(0);
@@ -2357,6 +2359,12 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u64(sim::BuildingId{}.v); // transport.target: none
         figs.u32(0);                   // transport.reserved_88
         figs.u8(0);                    // expiry_stamp absent
+        figs.u8(0);                    // dir16 (stream 116)
+        figs.u64(sim::FigureId{}.v);   // parent: none
+        figs.u8(0);                    // crew_slot absent
+        figs.u64(0);                   // holds: none
+        figs.u32(0);                   // state_word (stream 120)
+        figs.u8(0);                    // nav absent (stream 122)
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
@@ -2369,9 +2377,12 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     CHECK(std::equal(figs.v.begin(), figs.v.end(),
                      bytes.begin() + static_cast<std::ptrdiff_t>(figures_at)));
     // A corrupt byte in the second figure (the presence byte of its expiry_stamp: 20
-    // bytes of list head, the 93 bytes of slot 0, then 92 bytes into slot 1) is reported
-    // with the scope path of that slot.
-    const std::size_t stamp_at = figures_at + 20 + 93 + 92;
+    // bytes of list head, the 115 bytes of slot 0 (93 until stream 116 added dir16, parent,
+    // crew_slot and the hold count: 18 bytes; 111 until stream 120 added the 4-byte state word),
+    // then 92 bytes into slot 1) is reported with the scope path of that slot.
+    const std::size_t stamp_at =
+        figures_at + 20 + 116 +
+        92; // slot 0: 115 bytes until stream 122 added the nav presence byte
     REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
     bad[stamp_at] = 2;
@@ -2658,12 +2669,27 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
         {"transport.reserved_88", [](sim::Figure& f) { f.transport.reserved_88 += 1; }},
         {"expiry_stamp present",
          [](sim::Figure& f) { f.expiry_stamp = std::optional<std::uint16_t>(std::uint16_t{0}); }},
+        // MAP-2 (stream 116): the facing, the parent link, the crew slot and the holds. The
+        // hold cases differ in count, goods, tons and ORDER (swapped entries are not equal).
+        {"dir16", [](sim::Figure& f) { f.dir16 = 12; }},
+        {"parent", [](sim::Figure& f) { f.parent = sim::FigureId{1}; }},
+        {"crew_slot present", [](sim::Figure& f) { f.crew_slot = std::uint32_t{0}; }},
+        {"holds one entry", [](sim::Figure& f) { f.holds = {sim::ShipHold{0, 0}}; }},
+        {"holds goods", [](sim::Figure& f) { f.holds = {sim::ShipHold{7, 0}}; }},
+        {"holds amount", [](sim::Figure& f) { f.holds = {sim::ShipHold{0, 9}}; }},
+        {"holds two entries",
+         [](sim::Figure& f) { f.holds = {sim::ShipHold{1, 2}, sim::ShipHold{3, 4}}; }},
+        {"holds swapped",
+         [](sim::Figure& f) { f.holds = {sim::ShipHold{3, 4}, sim::ShipHold{1, 2}}; }},
+        // MAP-2 (stream 120): the state word.
+        {"state_word", [](sim::Figure& f) { f.state_word = 0x02; }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 14);
+    static_assert(sim::field_count<sim::Figure>() == 20);
     static_assert(sim::field_count<sim::TransportState>() == 7);
-    // The 14 members, the position being two scalars and the transport state seven
-    // fields.
-    CHECK(figure.size() == 21);
+    static_assert(sim::field_count<sim::ShipHold>() == 2);
+    // The 18 members, the position being two scalars, the transport state seven fields and
+    // a hold two: 21 earlier cases and 8 for the four new members.
+    CHECK(figure.size() == 30);
     std::set<std::uint64_t> seen;
     for (const auto& [name, mutate] : figure) {
         INFO("figure " << name);

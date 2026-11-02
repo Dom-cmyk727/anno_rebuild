@@ -485,6 +485,16 @@ struct CityStock {
     /// The original remover has no goods-number check; refusing goods ≥
     /// stock.size() here is a bounds deviation.
     std::uint32_t remove(std::uint32_t g, std::uint32_t amount);
+
+    /// MAP-CARGO-1 (docs/sim/ship-cargo.md section 4): the room left for goods `g`, in 8.8 tons:
+    /// capacity - stock[g], and 0 when the stock is at or above the capacity or `g` is outside the
+    /// table. Wide (u64), never wraps; a stock above the capacity is not "negative room".
+    [[nodiscard]] std::uint64_t free_88(std::uint32_t g) const;
+    /// Credits exactly `amount` of goods `g` and returns true, or changes nothing and returns false
+    /// (`g` outside the table, or `amount` above free_88(g)). No clamping, no wrap, and a stock
+    /// above the capacity is never lowered, unlike add(): the caller moves a precomputed amount and
+    /// debits exactly what this accepted.
+    [[nodiscard]] bool credit(std::uint32_t g, std::uint64_t amount);
 };
 
 /// Warehouse goods in the original (numbers 0–0x37; D: 0x1002da50 refuses

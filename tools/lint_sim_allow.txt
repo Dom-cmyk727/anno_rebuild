@@ -52,8 +52,8 @@ src/sim/include/anno/sim/building.hpp:kByte0e(?:Default|House)  # initial value 
 # they become integers (sixths of a tile, 2^-24 tile per tick, ticks) when the
 # registry is built, and no state holds a float (docs/re/transport.md §4, §6).
 src/sim/src/types.cpp:bit_cast<float>  # load-time conversion: reads an f32 of Anlagen.dat / FigurenHeader.dat
-src/sim/src/types.cpp:const double (?:six|q24|ticks) = static_cast<double>  # load-time conversion in double precision to an integer of the registry
-src/sim/src/types.cpp:float (?:speed|wait) = f32\(  # load-time conversion: the f32 speed and load wait of a figure type
+src/sim/src/types.cpp:const double (?:six|q24|ticks|hull) = static_cast<double>  # load-time conversion in double precision to an integer of the registry
+src/sim/src/types.cpp:float (?:speed|wait|half) = f32\(  # load-time conversion: the f32 speed and load wait of a figure type
 
 # --- transport.hpp / transport.cpp (task T24)
 # Job codes (D: the unit job table) and a HEAD flag bit: discriminants, not counts.
@@ -80,3 +80,32 @@ src/sim/src/scenario_formats.cpp:kDefaultVkSlots = 4, kDefaultEkSlots = 6;  # th
 # at 0x1008262e and 0x1008260c). The edge is the block the writer walks, not a
 # cap on the footprint or the map.
 src/sim/include/anno/sim/walk_cells.hpp:kPlacementBlockEdge = 8;  # the original's 8-tile placement block (D 0x100820e6), not a limit
+
+# --- terrain_view.hpp (MAP-2 U1)
+src/sim/include/anno/sim/terrain_view.hpp:kBoundaryVertexHeight = 0;  # the value 0 of the original's zero-filled corner grid beyond the stored samples (docs/re/ship-founding.md 12.3): a datum of the file layout, not a count or a limit
+
+# --- figure.hpp (MAP-2 package B)
+src/sim/include/anno/sim/figure.hpp:kHoldUnitsPerTon = 256;  # the unit of the 8.8 cargo format (1/256 ton per raw unit, docs/re/ship-founding.md 10.7), a conversion factor like kTon in production.hpp, not a count or a limit
+
+# --- figure_veto.cpp (MAP-2 package 2)
+src/sim/src/figure_veto.cpp:kFar = std::int64_t\{1\} << 40;  # an overflow guard, not a game limit: coordinates are clamped to +-2^40 tiles before arithmetic because a FixedPos is below 2^23 tiles and a footprint or margin is a u32, so no comparison changes; documented at its definition
+
+# --- scenario_formats.cpp (MAP-2 package D)
+src/sim/src/scenario_formats.cpp:(?:const float local_[xz] = std::bit_cast<float>|std::trunc\(local_[xz]\))  # load-time conversion: the f32 world position of an OCCUR ore object to its integer tile (ftol, truncation toward zero, the original\'s object manager); the engine stores only the tile
+src/sim/include/anno/sim/types.hpp:inline constexpr std::int64_t kMaxHullHalf88  # arithmetic-safety domain of the signed hull fact (2^31 tiles, the file decoder's bound); a mod needing more raises it together with the veto saturation (MAP-FOUND-3 A)
+src/sim/src/figure_veto.cpp:constexpr std::int64_t kHullSat  # saturation limit that keeps position +- hull inside int64 for any caller-supplied hull; a numeric-safety bound, not game data (MAP-FOUND-3 A)
+
+# --- ship navigation state (MAP-NAV-2 package B; docs/sim/ship-navigation.md 12.4, 12.5)
+src/sim/include/anno/sim/figure.hpp:inline constexpr std::int64_t kNavPosUnitsPerQ8  # a unit conversion (position denominator 500 x 2^24 per Q24.8 step, derived in 12.4), not a count
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint32_t kNavIdleSpeedQ32  # the original's constant 0.01f as q32 (AnnoWelt 0x10043383), a fact of the arithmetic not a limit
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavUnitQ32  # 1.0 tile as q32, a unit of the fixed-point format
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavDiagStepQ32  # the diagonal step length 11863283 x 2^9 q32 (12.4), a derived constant of the arithmetic
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::size_t kNavMaxNodes  # allocation bound for a corrupt save, with the stated path to derive it from NavRules once routes exist (comment at its definition)
+src/sim/include/anno/sim/types.hpp:inline constexpr std::uint32_t kMaxNavSpeedQ32  # arithmetic-safety domain of the speed fact (budget d x speed x V stays below 2^51), the same kind as kMaxHullHalf88
+src/sim/src/types.cpp:std::optional<std::uint32_t> q32_of_f32\(float value\)  # load-time conversion of an f32 file field to an integer fact (round to nearest even on the exact value); no float reaches state
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavScale  # the integrator budget scale (one tick = 1/5 unit, V a percent: q32 x 500), a unit of the fixed-point format
+src/sim/src/ship_step.cpp:constexpr std::uint64_t kDiagNumerator  # the exact rational numerator of the original's f32 0x3F3504F3 (c = 11863283 / 2^24), a constant of the arithmetic (12.4)
+src/sim/src/ship_step.cpp:constexpr unsigned kDiagShift  # the denominator exponent of c
+src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavChunkLimitQ32  # the original constant 1.0 + f32(1e-4) of the chunk compare (12.9), derived from the f32 bit pattern
+src/sim/src/ship_step.cpp:constexpr std::uint32_t kMaxIterations  # termination guard of one visit on a corrupt state, not game data; every iteration leaves a valid state
+src/sim/src/ship_step.cpp:constexpr std::uint32_t kStateMoving  # state word bit 0 "moving" of the original (docs/re/ship-navigation.md 7.7)

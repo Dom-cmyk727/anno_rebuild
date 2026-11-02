@@ -469,6 +469,30 @@ std::string WorldSettings::validate() const {
 
 // ---- Rules
 
+std::string CargoRules::problem() const {
+    for (std::size_t i = 0; i < warehouse_prodtypes.size(); ++i) {
+        if (warehouse_prodtypes[i] == 0 ||
+            (i > 0 && warehouse_prodtypes[i - 1] >= warehouse_prodtypes[i])) {
+            return "warehouse_prodtypes: must be ascending, unique and non-zero";
+        }
+    }
+    if (dock_half_widths.empty()) {
+        return "dock_half_widths: is empty";
+    }
+    if (dock_half_widths.size() > std::size_t{kMaxDockRadius} + 1) {
+        return "dock_half_widths: more than " + std::to_string(kMaxDockRadius + 1) + " entries";
+    }
+    if (dock_half_widths[0] != dock_half_widths.size() - 1) {
+        return "dock_half_widths: entry 0 is not the radius (size - 1)";
+    }
+    for (std::size_t i = 1; i < dock_half_widths.size(); ++i) {
+        if (dock_half_widths[i] > dock_half_widths[i - 1]) {
+            return "dock_half_widths: increases at entry " + std::to_string(i);
+        }
+    }
+    return {};
+}
+
 std::string Rules::validate() const {
     constexpr const char* kOwner = "Rules";
     if (!valid_slot_policy(slot_policy)) {
@@ -489,6 +513,98 @@ std::string Rules::validate() const {
         return bad(kOwner, "prng_mode",
                    "is not an enumerator (" + std::to_string(static_cast<std::uint8_t>(prng_mode)) +
                        ")");
+    }
+    for (std::size_t i = 0; i < founding_types.size(); ++i) {
+        if (founding_types[i] == 0 || (i > 0 && founding_types[i - 1] >= founding_types[i])) {
+            return bad(kOwner, "founding_types", "must be ascending, unique and non-zero");
+        }
+    }
+    {
+        std::vector<std::uint32_t> all;
+        for (std::size_t g = 0; g < shared_visibility.size(); ++g) {
+            const std::vector<std::uint32_t>& group = shared_visibility[g];
+            if (group.size() < 2) {
+                return bad(kOwner, "shared_visibility",
+                           "group " + std::to_string(g) + " has fewer than two members");
+            }
+            for (std::size_t i = 1; i < group.size(); ++i) {
+                if (group[i - 1] >= group[i]) {
+                    return bad(kOwner, "shared_visibility",
+                               "group " + std::to_string(g) + " is not ascending and unique");
+                }
+            }
+            all.insert(all.end(), group.begin(), group.end());
+        }
+        std::sort(all.begin(), all.end());
+        if (std::adjacent_find(all.begin(), all.end()) != all.end()) {
+            return bad(kOwner, "shared_visibility", "a player is in more than one group");
+        }
+    }
+    {
+        const NavRules& n = nav;
+        const auto range = [&](const char* field, std::uint64_t v, std::uint64_t lo,
+                               std::uint64_t hi) {
+            return v < lo || v > hi ? bad("NavRules", field,
+                                          std::to_string(v) + " is not in " + std::to_string(lo) +
+                                              " .. " + std::to_string(hi))
+                                    : std::string();
+        };
+        // Reasons for the bounds (each is a validation limit, not game data; a mod needing more
+        // widens the bound together with the dependent width): run_cap and retry_cap fit the
+        // node count/u8 plan fields, goal_radius_tiles and window_radius_tiles keep the coarse
+        // window inside a 16-bit cell grid, unit_cap bounds a query's obstacle list, window_blocks
+        // bounds the coarse grid memory, the budgets and memory_bytes stay below 2^40 so the
+        // admission arithmetic in u64 cannot overflow.
+        for (const std::string& problem :
+             {range("plans_per_advance", n.plans_per_advance, 1, 65535),
+              range("run_cap", n.run_cap, 1, 255), range("retry_cap", n.retry_cap, 1, 64),
+              range("goal_radius_tiles", n.goal_radius_tiles, 1, 32),
+              range("unit_cap", n.unit_cap, 1, 1024),
+              range("window_radius_tiles", n.window_radius_tiles, 1, 8192),
+              range("window_blocks", n.window_blocks, 1, 256),
+              range("coarse_budget", n.coarse_budget, 1, std::uint64_t{1} << 40),
+              range("fine_budget", n.fine_budget, 1, std::uint64_t{1} << 40),
+              range("memory_bytes", n.memory_bytes, 1, std::uint64_t{1} << 40),
+              range("volk_number", n.volk_number, 0, 65535),
+              range("health_span_percent", n.health_span_percent, 0, 100),
+              range("health_floor_percent", n.health_floor_percent, 1, 100),
+              range("cargo_penalty_percent", n.cargo_penalty_percent, 0, 100)}) {
+            if (!problem.empty()) {
+                return problem;
+            }
+        }
+        // V must stay in 1 .. 100 for every hp: floor + span <= 100.
+        if (n.health_span_percent + n.health_floor_percent > 100) {
+            return bad("NavRules", "health_span_percent",
+                       "health_span_percent + health_floor_percent exceeds 100");
+        }
+        // The cargo factor L is at least 100 - cargo_penalty_percent, so V is at least
+        // trunc(floor * (100 - penalty) / 100): that must stay >= 1 (a zero speed budget).
+        if (n.health_floor_percent * (100 - n.cargo_penalty_percent) < 100) {
+            return bad("NavRules", "cargo_penalty_percent",
+                       "floor * (100 - penalty) / 100 is below 1: the speed factor could reach 0");
+        }
+        if (n.class_costs.empty() || n.class_costs.size() > 256) {
+            return bad("NavRules", "class_costs", "must hold 1 .. 256 classes");
+        }
+        for (std::size_t i = 0; i < n.class_costs.size(); ++i) {
+            const NavClassCost& k = n.class_costs[i];
+            if (k.open_orth == 0 || k.open_diag < k.open_orth || k.shore_orth == 0 ||
+                k.shore_diag < k.shore_orth) {
+                return bad("NavRules", "class_costs",
+                           "class " + std::to_string(i) +
+                               " needs positive costs with diagonal >= orthogonal");
+            }
+        }
+    }
+    if (const std::string c = cargo.problem(); !c.empty()) {
+        const std::size_t colon = c.find(':');
+        return bad("CargoRules", c.substr(0, colon).c_str(), c.substr(colon + 2));
+    }
+    for (const std::string& n : city_names) {
+        if (n.find('\0') != std::string::npos) {
+            return bad(kOwner, "city_names", "a name contains a NUL byte");
+        }
     }
     if (events_max_dispatch == 0) {
         return bad(kOwner, "events_max_dispatch", "must be at least 1");

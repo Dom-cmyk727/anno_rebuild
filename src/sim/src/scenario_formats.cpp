@@ -3,6 +3,7 @@
 // address), P = the corpus (the spec section that states it).
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -82,6 +83,8 @@ std::string_view warning_kind_name(ScenarioWarningKind kind) {
         return "LinkTreasuresCapped";
     case ScenarioWarningKind::LinkTemplatePlayers:
         return "LinkTemplatePlayers";
+    case ScenarioWarningKind::PlayerDiscoveryBitsDropped:
+        return "PlayerDiscoveryBitsDropped";
     case ScenarioWarningKind::MarketNumberNotKept:
         return "MarketNumberNotKept";
     case ScenarioWarningKind::BuildGoodsOutOfRange:
@@ -125,6 +128,7 @@ std::vector<ScenarioWarningKind> all_warning_kinds() {
             ScenarioWarningKind::LinkTreasureUnplaced,
             ScenarioWarningKind::LinkTreasuresCapped,
             ScenarioWarningKind::LinkTemplatePlayers,
+            ScenarioWarningKind::PlayerDiscoveryBitsDropped,
             ScenarioWarningKind::MarketNumberNotKept,
             ScenarioWarningKind::BuildGoodsOutOfRange,
             ScenarioWarningKind::TradeEntryBeyondSlots,
@@ -193,6 +197,16 @@ ScenarioCounts count(const LoadedScenario& s) {
     for (const ScenarioSpec::IslandSpec& is : s.spec.islands) {
         c.tile_objects += is.objects.size();
         c.deposits += is.deposits.size();
+        c.ore_objects += is.ore_objects.size();
+        for (const OreObject& o : is.ore_objects) {
+            const bool inside = o.x >= is.x0 && o.y >= is.y0 &&
+                                o.x < is.x0 + static_cast<std::int64_t>(is.w) &&
+                                o.y < is.y0 + static_cast<std::int64_t>(is.h);
+            c.ore_outside += inside ? 0 : 1;
+        }
+        for (const OreObject& o : is.ore_objects) {
+            c.ore_discovered += o.discovered.empty() ? 0 : 1;
+        }
         c.cities += is.cities.size();
         for (const ScenarioSpec::CitySpec& city : is.cities) {
             c.buildings += city.buildings.size();
@@ -616,18 +630,31 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
             // a non-default slot count [0x26]/[0x27]: no City field. One
             // Head2FieldNotMapped per city that carries one.
             const std::uint32_t mask30 = le32(&b[0x30]);
-            const std::uint32_t owner_bit =
-                city.owner.v < 32 ? (1U << city.owner.v) : 0U; // bit by player index
+            // D 0x1002ec4c (saver) / the HEAD2 reader: the dword is ORed into the city mask
+            // (city +0x61c). Bit i = player i; the registration bits (owner, MILIT peers) are added
+            // after all players are read (finalize_discovery below). A bit of a player at or
+            // beyond player_slots cannot be represented and is kept out of the set (reported once
+            // as Head2FieldNotMapped through `unmapped`).
+            if (k.name == "HEAD2") {
+                for (std::uint32_t bit = 0; bit < 32 && bit < config.player_slots; ++bit) {
+                    if ((mask30 >> bit & 1U) != 0) {
+                        city.player_mask.push_back(PlayerId{bit});
+                    }
+                }
+            }
             const bool unmapped =
                 slots_not_kept || le16(&b[0x2c]) != 0 ||
                 (k.name == "HEAD2" &&
-                 (le16(&b[0x34]) != 0 || le16(&b[0x36]) != 0 || (mask30 & ~owner_bit) != 0));
+                 (le16(&b[0x34]) != 0 || le16(&b[0x36]) != 0 ||
+                  (config.player_slots < 32 && (mask30 >> config.player_slots) != 0)));
             if (unmapped) {
-                warn.add(ScenarioWarningKind::Head2FieldNotMapped, kp, k.name, k.offset,
-                         "HEAD2 carries a field with no City target (property [0x2c], the research "
-                         "sub-object [0x34]/[0x36], a non-owner bit in the player mask [0x30], or "
-                         "a trade-list slot count [0x26]/[0x27] other than 4/6): not mapped (O-40, "
-                         "OQ-157)");
+                warn.add(
+                    ScenarioWarningKind::Head2FieldNotMapped, kp, k.name, k.offset,
+                    "HEAD2 carries a field with no City target (property [0x2c], the research "
+                    "sub-object [0x34]/[0x36], a bit of the player mask [0x30] for a player beyond "
+                    "player_slots, or "
+                    "a trade-list slot count [0x26]/[0x27] other than 4/6): not mapped (O-40, "
+                    "OQ-157)");
             }
         } else if (k.name == "BAUMAT") {
             // 0x1002e862–0x1002e8cd: length / 8 entries {u16 [0] goods (file numbering,
@@ -819,6 +846,7 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                 // deep flag of a mine (create_building step 2-3; the stamp of step 5 is
                 // 0 at tick 0, the default), then the Load's fields.
                 std::optional<Payload> payload;
+                std::uint32_t kontor_id = 0; // a market's KONTID (stream 119)
                 if (e.payload.size() > 4) {
                     const Bytes rec = e.payload.subspan(4);
                     if (type->cls == RuntimeClass::House) {
@@ -866,21 +894,17 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                     } else if (type->cls == RuntimeClass::Market ||
                                type->cls == RuntimeClass::MarketCombi) {
                         // The market record (0x1006be00): one nested KONTID u16 = the market's
-                        // number on its island. The Market payload has no number field and T26
-                        // adds none, so it is read but not kept (MarketNumberNotKept, OQ-158).
-                        std::string number = "?";
+                        // number on its island (building +0x1e). Kept since stream 119 as
+                        // Building::kontor_id (docs/sim/city-creation.md E14); the Market payload
+                        // itself still has no number field. Several KONTID records: the last wins,
+                        // as in the original's sequential reads.
                         if (auto subs = tagged::parse_records(rec, e.offset)) {
                             for (const tagged::Record& sub : subs.value()) {
                                 if (sub.name == "KONTID" && sub.payload.size() >= 2) {
-                                    number = std::to_string(formats::u16_le(sub.payload, 0));
+                                    kontor_id = formats::u16_le(sub.payload, 0);
                                 }
                             }
                         }
-                        warn.once(ScenarioWarningKind::MarketNumberNotKept, "cities", "market", ep,
-                                  e.name, e.offset,
-                                  "the market's KONTID (number " + number +
-                                      ") is read but not kept: the Market payload has no number "
-                                      "field (OQ-158); the record is consumed");
                     } else {
                         const ClassInfo& cls = types.class_info(type->cls);
                         payload = make_payload(*type, cls, config, types);
@@ -925,6 +949,7 @@ std::optional<std::string> read_city(const tagged::Record& r, const std::string&
                 bs.y = is.y0 + static_cast<std::int32_t>(bi->y);
                 bs.rotation = bi->rotation; // +0x68
                 bs.byte0f = bi->height;     // +0x70 stores +0x0f (0x10071c40)
+                bs.kontor_id = kontor_id;
                 bs.payload = std::move(payload);
                 city.buildings.push_back(std::move(bs));
             }
@@ -1076,6 +1101,127 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
         if (name == "INFO" || name == "HEIGHT" || name == "GFXID" || name == "FRUCHTBAR") {
             continue;
         }
+        if (name == "KONTORID") {
+            // D AnnoWelt 0x10089bb1–0x10089bf4: the record's u16 becomes island +0xc6, the Kontor
+            // counter (864 records in the data: all 2 bytes, values 1..; none 0). ADAPTATION: any
+            // other length, or 0 (the engine's counter is at least 1), is refused with the path.
+            if (rec.payload.size() != 2) {
+                return path + ".KONTORID: expected 2 bytes, got " +
+                       std::to_string(rec.payload.size());
+            }
+            const std::uint32_t counter = formats::u16_le(rec.payload, 0);
+            if (counter == 0) {
+                return path + ".KONTORID: 0 is not a usable Kontor counter (at least 1)";
+            }
+            is.kontor_counter = counter;
+            continue;
+        }
+        if (name == "LOCKED") {
+            // D AnnoWelt 0x10089c0c–0x10089c32: the loader copies the record's bytes to island
+            // +0xc4 (a 1-byte field; every shipped record, 128 of them, is one byte, value 0 or
+            // 1). A later record overwrites an earlier one, as there. ADAPTATION: any other
+            // length is refused (the original would write past the field).
+            if (rec.payload.size() != 1) {
+                return path + ".LOCKED: expected 1 byte, got " + std::to_string(rec.payload.size());
+            }
+            is.lock = rec.payload[0];
+            continue;
+        }
+        if (name == "DISCOVER") {
+            // D AnnoWelt 0x10089977 (loader), 0x1008a669 (saver): 4 bytes; the loader keeps the low
+            // u16 as island +0xa6, the players present (bit i = player i). Every shipped record is
+            // 4 bytes with a zero upper word (864 islands). ADAPTATION: any other length, or a bit
+            // of a player at or beyond player_slots, refuses the load with the path; the upper word
+            // is not kept (the original does not read it).
+            if (rec.payload.size() != 4) {
+                return path + ".DISCOVER: expected 4 bytes, got " +
+                       std::to_string(rec.payload.size());
+            }
+            const std::uint32_t word = formats::u16_le(rec.payload, 0);
+            is.players_present.clear();
+            for (std::uint32_t bit = 0; bit < 16; ++bit) {
+                if ((word >> bit & 1U) == 0) {
+                    continue;
+                }
+                if (bit >= config.player_slots) {
+                    return path + ".DISCOVER: player " + std::to_string(bit) +
+                           " is not below player_slots";
+                }
+                is.players_present.push_back(PlayerId{bit});
+            }
+            continue;
+        }
+        if (name == "OCCUR") {
+            // D AnnoWelt island object manager (+0x28) loader 0x10095eb0; the entries are `ENTRY2`
+            // records (6-byte name, u16 size, payload): 24 bytes (ore, treasure, volcano) or 42
+            // (whale symbol). Only the ore objects (the figure type's BEWOHNTYPE is ERZSYMBOL,
+            // 145) are kept: they are the objects claim stage 2 can discover (docs/re/
+            // ship-founding.md 16.2). 24-byte payload: dword0 (type id in bits 14..25), f32 X, Z,
+            // height (absolute world tiles), u16 amount, u16 pad, u32 discovery mask (bit i =
+            // player i). An entry whose type the registry has no figure type for is reported
+            // UnknownObject and skipped; an ore entry of another size is refused; a mask bit of a
+            // player at or beyond player_slots is refused. Without any figure type in the registry
+            // (synthetic registries) nothing can be classified and the record is skipped silently.
+            auto entries = tagged::parse_records(rec.payload, at + formats::chunk::kHeaderLen);
+            if (!entries) {
+                return path + ".OCCUR: " + entries.error();
+            }
+            if (types.figure_types().empty()) {
+                continue;
+            }
+            for (const tagged::Record& e : entries.value()) {
+                if (e.name != "ENTRY2" || e.payload.size() < 4) {
+                    warn.unknown_record(std::string(record_scope),
+                                        path + ".OCCUR." + std::string(e.name), e.name, e.offset);
+                    continue;
+                }
+                const std::uint32_t type = (formats::u32_le(e.payload, 0) >> 14) & 0xfffU;
+                const FigureType* ft = types.find_figure_type(type);
+                const std::string where = path + ".OCCUR." + std::string(e.name);
+                if (ft == nullptr) {
+                    warn.add(ScenarioWarningKind::UnknownObject, where, e.name, e.offset,
+                             "object type " + std::to_string(type) +
+                                 " has no figure type in the registry: skipped");
+                    continue;
+                }
+                if (ft->bewohntype != 145) {
+                    continue; // SCHATZ, WALSYMBOL, VULKANSYMBOL...: not ore, not stored
+                }
+                if (e.payload.size() != 24) {
+                    return where + ": an ore object is 24 bytes, got " +
+                           std::to_string(e.payload.size());
+                }
+                OreObject o;
+                o.type = type;
+                // The floats are ISLAND-LOCAL (all 1764 ore objects of the scenario islands lie
+                // inside [0, w) x [0, h) and only 60 inside the absolute rectangle, by chance):
+                // the island\'s origin is added, the tile is the truncation (ftol) of X, Z. A value
+                // that is not a finite number below 2^30 tiles in magnitude is refused (the cast
+                // would be undefined); no shipped entry is anywhere near.
+                const float local_x = std::bit_cast<float>(formats::u32_le(e.payload, 4));
+                const float local_z = std::bit_cast<float>(formats::u32_le(e.payload, 8));
+                if (!std::isfinite(local_x) || !std::isfinite(local_z) ||
+                    std::fabs(local_x) >= 1073741824.0F || std::fabs(local_z) >= 1073741824.0F) {
+                    return where + ": the position is not a tile coordinate";
+                }
+                o.x = is.x0 + static_cast<std::int32_t>(std::trunc(local_x));
+                o.y = is.y0 + static_cast<std::int32_t>(std::trunc(local_z));
+                o.amount = formats::u16_le(e.payload, 0x10);
+                const std::uint32_t mask = formats::u32_le(e.payload, 0x14);
+                for (std::uint32_t bit = 0; bit < 32; ++bit) {
+                    if ((mask >> bit & 1U) == 0) {
+                        continue;
+                    }
+                    if (bit >= config.player_slots) {
+                        return where + ": discovery mask names player " + std::to_string(bit) +
+                               ", not below player_slots";
+                    }
+                    o.discovered.push_back(PlayerId{bit});
+                }
+                is.ore_objects.push_back(std::move(o));
+            }
+            continue;
+        }
         if (name == "BERGWERK2") {
             warn.add(ScenarioWarningKind::UndecodedDeposits, path + ".BERGWERK2", name, at,
                      "BERGWERK2 is undecoded (OQ-024; deposit goods O-37): no deposit");
@@ -1175,7 +1321,8 @@ std::optional<std::string> island_from_insel(const insel::Island& isl, const std
             t.index = tile;
             t.object = o.anlage;
             t.rotation = static_cast<std::uint8_t>(o.rotation);
-            t.phase = o.phase(); // low 6 bits of state (D AnnoWelt 0x1007aa40)
+            t.phase = o.phase();   // low 6 bits of state (D AnnoWelt 0x1007aa40)
+            t.height = o.height(); // state >> 8 (insel.md), stored as the tile's height byte
             is.objects.push_back(t);
         }
     }
@@ -1278,7 +1425,8 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
         return "players: " + players.error();
     }
     const std::map<std::uint32_t, std::optional<GoodsId>> goods = goods_remap(scene, types);
-    std::map<std::uint32_t, std::size_t> by_index; // SPIELER index -> spec.players
+    std::map<std::uint32_t, std::size_t> by_index;      // SPIELER index -> spec.players
+    std::map<std::uint32_t, std::uint32_t> disco_masks; // SPIELER index -> DISCO dword
     std::size_t block_no = 0;
     for (const sze::Player& pl : players.value()) {
         const std::string path = "players[" + std::to_string(block_no++) + "]";
@@ -1334,6 +1482,65 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                                 p.colour = 0;
                             }
                         }
+                    }
+                } else if (r.name == "DISCO") {
+                    // D AnnoWelt 0x1001d61d: the record is read into [player+0xac] = player
+                    // property 7 (getter 0x1001bea0 / 0x1001bede), bit i = player i; the saver
+                    // writes 4 bytes (0x1001f1e3). All 373 shipped records have length 4. Strict:
+                    // another length refuses the load (the original copies the chunk length
+                    // unclamped). The bits are applied after all players are known (disco_masks
+                    // below).
+                    if (r.payload.size() != 4) {
+                        return path + ".DISCO: " + std::to_string(r.payload.size()) +
+                               " bytes, the record is a 4-byte player set";
+                    }
+                    disco_masks[pl.index] = le32(r.payload.data());
+                } else if (r.name == "DIPL") {
+                    // D AnnoWelt 0x1001d758: each sub-record is one dword, byte 0 the OTHER player
+                    // and byte 1 the value; TRADE, MILIT and WAR fill the three relation bytes of
+                    // this player's own row, CREDIT the u16 of bytes 1..2 (docs/re/ship-founding.md
+                    // section 15.1). The loader writes no reverse row. Strict: a sub-record shorter
+                    // than 2 bytes (4 for CREDIT), an unnamed one or a player not below
+                    // player_slots or equal to the player refuses the load.
+                    auto subs = tagged::parse_records(r.payload, r.offset + tagged::kHeaderLen);
+                    if (!subs) {
+                        return path + ".DIPL: " + subs.error();
+                    }
+                    std::map<std::uint32_t, Relation> rows;
+                    for (const tagged::Record& d : subs.value()) {
+                        const bool credit = d.name == "CREDIT";
+                        if (d.name != "TRADE" && d.name != "MILIT" && d.name != "WAR" && !credit) {
+                            warn.unknown_record("players", path + ".DIPL." + std::string(d.name),
+                                                d.name, d.offset);
+                            continue;
+                        }
+                        if (d.payload.size() < (credit ? 3U : 2U)) {
+                            return path + ".DIPL." + std::string(d.name) + ": " +
+                                   std::to_string(d.payload.size()) + " bytes, the reader needs " +
+                                   (credit ? "3" : "2");
+                        }
+                        const std::uint32_t other = d.payload[0];
+                        if (other >= config.player_slots || other == pl.index) {
+                            return path + ".DIPL." + std::string(d.name) + ": player " +
+                                   std::to_string(other) +
+                                   (other == pl.index ? " is the player itself"
+                                                      : " is not below player_slots");
+                        }
+                        Relation& row = rows[other];
+                        row.other = PlayerId{other};
+                        if (d.name == "TRADE") {
+                            row.trade = d.payload[1];
+                        } else if (d.name == "MILIT") {
+                            row.milit = d.payload[1];
+                        } else if (d.name == "WAR") {
+                            row.war = d.payload[1];
+                        } else {
+                            row.credit =
+                                static_cast<std::uint16_t>(d.payload[1] | d.payload[2] << 8);
+                        }
+                    }
+                    for (const auto& [other, row] : rows) {
+                        p.relations.push_back(row); // ascending by `other` (std::map order)
                     }
                 } else {
                     warn.unknown_record("players", path + "." + std::string(r.name), r.name,
@@ -1404,6 +1611,78 @@ formats::Result<LoadedScenario, std::string> load_scenario(Bytes file, const Typ
                 return *e;
             }
             is->cities.push_back(std::move(city));
+        }
+    }
+
+    // The players' DISCO sets (property 7): the bits of players that exist in the scenario and
+    // lie below player_slots are restored; the others are dropped with one warning. The
+    // registration and recount below then add to the restored set.
+    for (const auto& [index, mask] : disco_masks) {
+        ScenarioSpec::PlayerSpec& ps = spec.players[by_index.at(index)];
+        for (std::uint32_t bit = 0; bit < 32; ++bit) {
+            if ((mask >> bit & 1U) == 0) {
+                continue;
+            }
+            const auto at = std::find_if(
+                spec.players.begin(), spec.players.end(),
+                [&](const ScenarioSpec::PlayerSpec& o) { return o.id == PlayerId{bit}; });
+            if (bit < config.player_slots && at != spec.players.end()) {
+                if (!std::binary_search(ps.discovery.begin(), ps.discovery.end(), PlayerId{bit})) {
+                    ps.discovery.insert(
+                        std::lower_bound(ps.discovery.begin(), ps.discovery.end(), PlayerId{bit}),
+                        PlayerId{bit});
+                }
+            } else {
+                warn.once(ScenarioWarningKind::PlayerDiscoveryBitsDropped, "players", "DISCO",
+                          "players[" + std::to_string(index) + "].DISCO", "DISCO", 0,
+                          "DISCO names players that are not in the scenario or not below "
+                          "player_slots (e.g. the shipped 0xcdcdcdcd fill); those bits are not "
+                          "kept");
+            }
+        }
+    }
+
+    // Registration semantics of the loaded cities (AnnoWelt 0x100861c0 runs for every STADT2 city,
+    // docs/re/ship-founding.md 15.1): the owner's bit and the bits of the players whose MILIT
+    // relation to the owner is 3 join the HEAD2 mask already read; the owner joins the island's
+    // players present (after the DISCOVER word was read); then the island recount (0x134) lets
+    // every player in a city's mask learn that city's owner (player property 7). Players not in the
+    // world are not peers and learn nothing.
+    {
+        const auto add = [](std::vector<PlayerId>& set, PlayerId p) {
+            const auto at = std::lower_bound(set.begin(), set.end(), p);
+            if (at == set.end() || *at != p) {
+                set.insert(at, p);
+            }
+        };
+        const auto find_player = [&](PlayerId id) -> ScenarioSpec::PlayerSpec* {
+            for (ScenarioSpec::PlayerSpec& ps : spec.players) {
+                if (ps.id == id) {
+                    return &ps;
+                }
+            }
+            return nullptr;
+        };
+        for (ScenarioSpec::IslandSpec& isl : spec.islands) {
+            for (ScenarioSpec::CitySpec& c : isl.cities) {
+                std::sort(c.player_mask.begin(), c.player_mask.end());
+                add(c.player_mask, c.owner);
+                if (const ScenarioSpec::PlayerSpec* owner = find_player(c.owner)) {
+                    for (const Relation& rel : owner->relations) {
+                        if (rel.milit == 3 && find_player(rel.other) != nullptr) {
+                            add(c.player_mask, rel.other);
+                        }
+                    }
+                }
+                add(isl.players_present, c.owner);
+            }
+            for (const ScenarioSpec::CitySpec& c : isl.cities) {
+                for (const PlayerId known : c.player_mask) {
+                    if (ScenarioSpec::PlayerSpec* ps = find_player(known)) {
+                        add(ps->discovery, c.owner);
+                    }
+                }
+            }
         }
     }
 

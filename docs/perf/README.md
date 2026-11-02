@@ -1793,3 +1793,153 @@ off/on pair `overhead-(off|on)-1`, with release binaries frozen from `c2bdf91`
   saved-evidence section above).
 - **Not measured:** the same limits as round ec: one host, no genuine 2160p drawable, no target hosts,
   present-call return only.
+## MAP-2 repair — owners on macOS, detached coordinator streams (2026-10-31)
+
+Context: the first macOS support commit (`8002ae8`) made the coordinator start and measure memory on a Mac, but its process identity was Linux's. A review reproduced three defects; the first two are in the coordinator and are described here. (They are not "test harness only": the first changes what a production coordinator admits.)
+
+**Ownership of a journaled promise (`coord_wire.hpp`, `coord_server.cpp`).** A promise in the journal names its owner as `{namespace, pid, start stamp}`. On macOS the namespace was 2 (Linux), the stamp came from `/proc` and was 0, and `owner_alive` looked for `/proc/<pid>/stat`, which does not exist: a live owner counted as stopped. Observed: capacity 100, client A holds 50, the coordinator restarts on the same journal, client B asks for 80 and is admitted with `pending=0`. Now:
+- **Namespace 3 is Darwin** (`kNamespaceDarwin`); 1 is Windows, 2 is Linux. The stamp is the `proc_pidinfo` start time in microseconds, which with the pid names one process (a reused pid has another stamp). `ESRCH` and a zombie are stopped; any other error is unknown. This is the reviewed MAC-1 source (`4cc0a3a`, `870a527`, `837fb5f`), with namespace 3 added.
+- **Fail closed.** An owner whose stamp is 0 on either side, whose namespace this host cannot judge (Windows on a Mac, anything unknown), or whose liveness cannot be established is *unknown* and its promise is kept. A missing `/proc` is never evidence of death.
+- **Older records.** (a) `8002ae8` wrote namespace 2 with stamp 0: not reinterpreted, kept (it can only be removed by deleting the journal once its owners are known to be gone). (b) The MAC-1 coordinators (`4cc0a3a`) wrote namespace 2 with a microsecond Darwin stamp. On a Mac such a record (namespace 2, stamp ≥ 10^15 µs, i.e. after 2001-09-09, where a Linux `starttime` is about 10^7 clock ticks a day) is judged by Darwin; this keeps the journal under `~/.cache/anno1503`, which every executor on the host shares, from accumulating promises no coordinator will ever release. Any other namespace-2 record on a Mac is not touched.
+- **`kCompatVersion` stays 3.** Nothing changes for Linux or Windows peers (a coordinator that meets namespace 3 does not know it and keeps the orphan, which is the safe direction), and the macOS coordinators that existed before could not recover live owners at all, so there is no working older behaviour to be compatible with. A bump would also have refused every client of a coordinator that another executor on the same Mac may be running on the shared port. The pin test `F3 (D1, pin)` is unchanged.
+- CPU tokens are journaled with the same owner triple (`C`/`D` lines) and go through the same `owner_alive`; case O4 covers them.
+
+**Detached coordinator streams (`coord.cpp`).** `spawn_local` kept the starter's stdin, stdout and stderr. The coordinator outlives the client that starts it (it exits after 30 s idle), so whatever read the client's output waited for end-of-file until then: measured 32.0 s for a client that finished in 2 s; the coordinator's `LISTENING` line appeared in the client's output. The detached coordinator now gets `/dev/null` for 0, 1 and 2 (every file action is checked; a failed one means no start), on every POSIX host; descriptors above 2 are closed as before and Windows is unchanged (`DETACHED_PROCESS`, no handle inheritance). A coordinator that a test starts itself uses `Child::start` with its own pipes and keeps its output (case S2). After: the same pipeline takes 2.0 s; a piped `ctest` of a 19.1 s test takes 19.2 s.
+
+**Native harness on macOS.** `sibling()` and `module_directory()` use `proc_pidpath`; cases that need WSL or `/proc` (`wsl_available()` is false on Darwin) skip with their own message and are listed as capability skips, not passes. One case (`two file clients cannot reserve the same free bytes`) depended on a coordinator being warm because `try_reserve` makes a single attempt; it now brings the coordinator up explicitly.
+
+**Regressions** (`tests/budget_f5_test.cpp`, ports 47850–47858, journals under `temp_directory_path()/anno1503-f5`, bounded waits, every child owned by a `Child`, cleanup of a started coordinator by the step-aside handshake on its port, never by name): O1 live holder through a restart and release on exit, O2 reused pid, O3 unattributable records, O4 CPU tokens, O5 Darwin namespace and the earlier stamp format, S1 EOF while the coordinator lives, S2 foreground output, S3 the captured pipeline. With the old Darwin behaviour restored (every owner stopped) O1, O4 and O5 fail.
+
+## MAP-2 repair 2 — compatibility 4, the verification gate (2026-10-31)
+
+Amendment to the section above: its line "`kCompatVersion` stays 3" was wrong for the shared coordinator and is superseded here. The earlier text is kept as history.
+
+**Defect.** A compatibility-3 coordinator (W4/MAC-1, source `c869fb7`, `anno_budget_coord` sha256 `92c30840…6262f4`, built from the `abc1f8c` test_support tree) accepts a namespace-3 client under compatibility 3, replays the record `A <budget> 1 50 3 <pid> <µs stamp> 1` as an owner it cannot judge, and keeps it forever. Reproduced with real binaries, isolated ports and journals: holder killed, 24 tries for 80 all `claim=0 pending=50` (`cache/map2-repair2-evidence/06-mixed-old-successor.txt`; the same run with the pre-change MAP-2 successor admits on try 1, `06-mixed-map2-successor-control.txt`). The older coordinator also *rewrites* what it replays and drops every line it does not recognise, so a marker or new record type in a shared journal cannot protect it.
+
+**Policy (compat 4).**
+1. `kCompatVersion` is 4. A compat-3 coordinator and a compat-4 client refuse each other by the existing handshake: an idle coordinator steps aside; a busy one is waited for, bounded by `ANNO_TEST_ADMIT_WAIT_S`, and the client ends with `infrastructure blocker: … compatibility version 3 … compatibility version 4 … busy with N client(s) … incompatible compatibility version`. The busy coordinator's own holder is untouched (real binaries, `10-mixed-rejected.txt` (b)).
+2. The default journal of version 4 is `coord-<port>-v4.journal`; versions 3 and below keep `coord-<port>.journal`. An older coordinator never opens, replays or rewrites a file that holds namespace-3 owners. Verified: an older coordinator started on the same HOME leaves the v4 journal byte-identical (`10-mixed-rejected.txt` (d)).
+3. The first start of a version-4 default journal (it does not exist yet) adopts the open promises of the unsuffixed journal, read-only. A live owner of the previous coordinator keeps its reservation; a dead one, a reused pid, is released by the usual rules; a zero-stamp or foreign-OS record is kept. Later starts do not adopt again. An explicit `--journal` or `ANNO_TEST_BUDGET_JOURNAL` names the file and adopts nothing; a version-4 coordinator reading an older coordinator's explicit journal recovers it (real binaries, `09-mixed-old-to-new.txt`: `claim=1` on try 1).
+
+**Kept:** live-owner reservations, conservative treatment of unattributable/zero-stamp records, recovery of attributable legacy Darwin records, bounded waits and diagnostics, one shared admission budget (no second budget, no bypass, no coordinator stopped but an idle one that is asked to step aside by the existing handshake).
+
+**Rollout limits (not universal interoperability).**
+- Do not point an older coordinator at a version-4 journal with `--journal`: it keeps namespace-3 owners forever. The default names prevent it; nothing prevents an explicit path.
+- If a version-4 coordinator stops while a version-4 holder lives and an older coordinator then starts, the older one does not know that holder's reservation (it reads another file; `orphans=0`). Its own clients are not protected from that holder until a version-4 coordinator runs again. Version-4 clients are refused by it, so the exposure is the older clients only.
+- An older coordinator that is idle when a version-4 client arrives steps aside; one that is busy must finish. On the shared port 47631 the W4 executor's compat-3 clients meet a version-4 coordinator the same way (refused, or it steps aside when idle). Merging this to a tree that also contains compat-3 clients means one of the two waits for the other's idle exit (30 s) or its work.
+- Adoption removes nothing from the older journal, so records released after adoption stay in it; an older coordinator started later judges them by its own rules (dead owners are released by it too).
+
+**Tests** (`tests/budget_f5_test.cpp`, ports 47860–47867): T1 modeled compat-3 coordinator vs compat-4 client, idle and busy; T2 journal names; T3 adoption of a live memory holder, its exit, no second adoption, legacy file byte-identical; T4 CPU token, reused pid, unattributable record; T5 a real older binary steps aside (opt-in `ANNO_TEST_OLD_COORD=<path>`; skipped, and reported as an opt-in skip, otherwise). T1–T4 use this build started with `--compat-version 3` as the "older coordinator" (handshake and journal name modeled, not the older recovery code); the mixed-binary evidence is the real W4 binary through `tools/test/mixed_coordinator_check.sh` and T5. Mutation checks (`08-mutations.txt`): without the version in the journal name T2, T3, T4 fail; without adoption T3, T4 fail; with compat 3 T1–T4 and the F3 pin fail.
+
+**Verification gate.** `tools/test/run_selected.sh <build> <target|-> <regex> <timeout> <log> [jobs]` (adapted from the W4 runner, `3d2fb9d`) builds, runs `test_names_are_selectable` as a mandatory preflight, runs the selection, and `tools/test/ctest_verdict.py` reads the log per test. It fails (exit) on: a failed build (2), a failed preflight (5), a failed test (1), zero selected tests (8), a sanitizer report (4), a test that needs the original files and skipped for want of `ANNO1503_GAME_DIR` (6), a doctest child that executed zero cases (7). A doctest "N skipped" is the filter excluding the other cases of the binary and is never counted; a printed "skipping" is an early-return skip and is listed as required-asset, platform (WSL, Windows-only) or opt-in (an `ANNO_…=1` switch) and does not count as executed. Bounded negative checks (`03-negative-checks.txt`): unknown target 2; nothing selected 8 (the first version of the wrapper counted its preflight and passed an empty selection; fixed); a `;` in a name 5; game dir unset 6; synthetic logs with an empty child and a sanitizer line fail. The earlier name defect: the O1 name held a `;`, CTest registered it as two tests that ran zero cases each and passed (`01-o1-names.txt`, `01-o1-zero-case.txt`); selected whole, the body runs (`01-o1-real-body.txt`: 1 case, 25 assertions).
+
+## MAP-2 repair 3 — one journal for every version, truthful gate verdicts (2026-10-31)
+
+**Supersedes** items 2 and 3 of the policy in "MAP-2 repair 2" (the versioned journal name `coord-<port>-v4.journal` and the one-time adoption of the unsuffixed journal). Item 1 (compatibility 4, the handshake refuses to mix clients) stands. The earlier text is kept as history. **The shared-host compat-4 rollout stays ON HOLD** (orchestrator decision); nothing below was applied to the shared coordinators or their journals.
+
+### Finding 1 — the handoff lost a live reservation
+Sequence: a v4 coordinator starts idle and exits (its `-v4` journal now exists); a v3 coordinator starts and admits a live holder of 50 into the unsuffixed journal; v3 exits, the holder lives on; v4 restarts. v4 reads only its own journal (it adopts the unsuffixed one only when the v4 file does not exist), never sees the holder, and admits 80 against capacity 100. Same for a CPU token, and for a v4 holder under a v3 start (v3 reads another file). Reproduced before any production change, modeled and with the real W4 binary (`cache/map2-repair3-evidence/01-handoff-before-fix.txt`: H1, H2, H4, H5 and the real-binary H7 fail with `a request of the v4 client must not be admitted beside the live holder`; the first-start control H3 and the unattributable-owner case H6 pass).
+
+### Repair
+Remove the second journal. Every compatibility version uses `coord-<port>.journal`; the record format (A/R/C/D lines) is unchanged. The failure class the review listed does not arise because nothing is copied or replayed twice: no duplicate replay, hold ids come from one file's counter and `max_hold_id` (F4 E1) covers every version's lines, an `R` names a record of the same file, CPU tokens are counted once, nothing is resurrected. (Repairing the two-journal design instead would need all five of: duplicate suppression, ids unique across files, release records that name their file, one count per token, tombstones for released legacy records. `cache/map2-repair3-evidence/02-transition-matrix.md`.)
+
+### Transition matrix
+| Transition | Memory reservations | CPU tokens | Unknown / unattributable owners | Status |
+|---|---|---|---|---|
+| first upgrade v3 → v4 | v4 replays the same file; owner judged by its own OS; Darwin namespace-2 microsecond stamps by the legacy rule | same file, same C/D counting | kept | supported (H3, H9, real binary: H7) |
+| same-version restart | replay of one file | same | kept | supported (O1–O5) |
+| repeated v4/v3/v4/v3/v4 | each side replays one file; one promise, counted once | same | kept | supported (H4) |
+| downgrade v4 → v3 | v3 reads a namespace-3 record as the owner of another OS: kept, so a **live** reservation survives (H5, real binary H7) | same | kept | supported for safety; **cost**: a *dead* namespace-3 owner stays reserved while v3 runs (`04-downgrade-real-binary.txt`: 24 tries, `claim=0 pending=50`); a v4 coordinator releases it when it runs again, **but an older coordinator holding it does not idle out**: see "MAP-2 repair 4" for the recovery |
+| reused pid while v4 was away | released at the restart (stamp differs) | same | | supported (H8) |
+| a v3 client served by a v4 coordinator, or the reverse | refused by the handshake (idle one steps aside, busy one waited for, bounded, with a diagnostic naming both versions) | same | | supported (T1, T5, real binary) |
+
+Not claimed: v4 does not control an unmodified older executable. An older coordinator that starts keeps namespace-3 owners forever (it never releases them); it does not lose them. Two coordinators on one port cannot exist (bind). Windows and Linux coordinators write their own namespace in both versions, so their journals are identical across versions; only a Darwin host is affected.
+
+### What coordination the rollout needs (prepared, not applied)
+Safety does not require all executors to upgrade together: no transition loses a promise. Progress does need the handshake to settle: a v3 client meeting a busy v4 coordinator (or the reverse) waits up to `ANNO_TEST_ADMIT_WAIT_S` and ends with an infrastructure diagnostic; an idle coordinator steps aside for the other version. The supported launch path refuses unsafe use by that handshake and by the shared journal; it cannot stop an unmodified v3 executable from starting a coordinator when none listens (it then keeps v4 owners as unknown, which is safe).
+1. Orchestrator lifts the hold and tells every executor that runs the test-support suites on the host.
+2. Pre-flight, read-only: `python3 -I tools/test/journal_report.py ~/.cache/anno1503/coord-47631.journal ~/.cache/anno1503/coord-47632.journal` lists the open promises per namespace; `lsof -nP -iTCP:47631 -sTCP:LISTEN` shows whether a coordinator is busy. Never stop a coordinator; wait for its 30 s idle exit.
+3. The first test run of a compat-4 build starts a compat-4 coordinator on the same journal; its `LISTENING … compat=4 … orphans=N` line and every test log's `[anno-test memory] coordinator build=… compat=4` confirm it.
+4. Executors still on compat 3 meet it through the handshake until they update; their runs wait or end with the diagnostic and are re-run after the update.
+5. Rolling back: start a compat-3 build only when no compat-4 holder is live, and expect the leak above until a compat-4 coordinator runs once.
+6. The `-v4` journals that revision `a71b07f` left in `~/.cache/anno1503` (`coord-47631-v4`, `coord-47632-v4`, `coord-47826-v4`) hold no open promise (`14-stale-v4-journals.txt`), are no longer read and were not touched; their owner may delete them.
+
+### Finding 2 — the verdict reader missed the "skipped" phrasing
+The two Bigbrother corpus cases print `ANNO1503_GAME_DIR not set: skipped` and pass in CTest. The reader only knew `skipping`, so a run without the game directory reported `executed=2`, exit 0 (`05-bigbrother-before.txt`). A skip is now a doctest MESSAGE that names a missing prerequisite and says it skipped (`skipping:`, `…: skipping X`, `…: skipped`, `skipped: …`), classified as required-asset (`ANNO1503_GAME_DIR not set`; fails the gate), opt-in (`set ANNO_…=`), platform (WSL, Windows, POSIX shell) or other (a message that starts with the skip word). Per-item outcomes inside an executed test (`overlay-skip …`, `…: skipped as the original does`) and a zero-assertion test are not skips; doctest's `N skipped` filter count is never read. The audit of every `MESSAGE` with "skip" in `src/` is `08-skip-audit.txt` (92 lines). Last round's gate log re-read with the new reader gives the same 894 / 890 / 4 (`08-regression-prev-gate-log.txt`).
+
+`tools/test/ctest_verdict_test.py` (CTest `test_verdict_contract`, a second mandatory preflight of `run_selected.sh`; 14 cases): real execution; each missing-asset form; platform and opt-in skips including the transport-statistics message; zero-case children; zero selection after a good preflight; sanitizer output; item outcomes are not skips. Mutation (the reader ignores `skipped`): 2 cases fail (`06-verifier-mutation.txt`). End to end: `tools/test/verdict_e2e.sh <build> <out>` runs the real Bigbrother cases through `run_selected.sh`: game dir absent → exit 6, executed 0, required-asset 2; present → exit 0, executed 2 (`07-verdict-e2e-after.txt`).
+
+### Tests and provenance
+`tests/budget_f5_test.cpp` H1–H9 (ports 47880–47895; H9 is Darwin only): v3 is this build started with `--compat-version 3` (**modeled**: handshake and journal behaviour, not the older recovery code) except H7, which runs the **real older binary** named by `ANNO_TEST_OLD_COORD` (opt-in; skipped and reported as an opt-in skip otherwise). Older binary: W4 worktree `c869fb7` (test_support tree of `abc1f8c`), `anno_budget_coord` sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4`, `LISTENING … build=0919b5444a8c50cd compat=3`. Tested current binaries: coordinator `1fffb80baca59e2710a91021c31aeb29cd15a49fa27c2e872ba355686e371366`, probe `9942d6d774a523fa1f8035262439e6dc686a843d4a22c92fa3b5a06ce547c222` (`12-final-binaries.txt`). Test-started coordinators idle out after 30 s and hold their ports until then: wait for `lsof -iTCP:47810-47899` to be empty between runs of the same cases (a Debug run followed at once by an ASan run produced three `BIND-FAILED` failures, kept in `11-asan-first-run-3-failures.log`; they pass alone and in the rerun).
+
+## MAP-2 repair 4 — the previously published compat-4 build's versioned journal (2026-10-31)
+
+**The shared-host compat-4 rollout stays ON HOLD.** Nothing below was applied to a shared coordinator or journal.
+
+### Three implementations that must not be confused
+| Implementation | Compat | Journal it reads and writes | Where it is identified |
+|---|---|---|---|
+| legacy | 3 | `coord-<port>.journal` | W4 `c869fb7`, `anno_budget_coord` sha256 `92c30840ae35eed799326fe2415f94c088fd8ef92a947fbe9b19c3d6f56262f4` |
+| previously published compat 4 (revision `a71b07f`) | **4** | `coord-<port>-v4.journal` | `anno_budget_coord` `d91571b0605626c7bc32dc21ee46a87682dfb868bfbff295c0a38a39e10891a9`, probe `1c2746c782be52b9faf2144384ad4a544f72f21add27a5f264968ef02c6d79e7` |
+| current compat 4 | **4** | `coord-<port>.journal` | the build of this repair (hashes below) |
+
+Both compat-4 builds advertise the same number: the handshake cannot tell their persisted state apart, so the check is on the state.
+
+### Finding — the successor forgot the predecessor's live promise
+Reproduced with the real published binaries before any production change (`cache/map2-repair4-evidence/01-red-before-fix.txt`): the predecessor admits a live holder of 50 (memory) or a CPU token into `coord-<port>-v4.journal`; its coordinator is stopped, the holder lives; the current coordinator starts on the same home and port and prints `LISTENING … orphans=0`; a request of 80 (or a second CPU token) is then admitted. V1/V2 fail for that reason (the unrefused start); the control V4 (another port) passes.
+
+### Repair: refuse, never merge
+Retained: one canonical journal `coord-<port>.journal`, Darwin namespace 3, no new owner-identity scheme, no migration. In `run_budget_server`, after the bind and **before** the journal is opened (the open compacts, i.e. rewrites), the coordinator reads `coord-<port>-v4.journal` **read-only** from the storage root of the journal it is about to use and classifies it (`inspect_predecessor`, same record grammar as `Journal::open`):
+
+| State of the predecessor file | Startup |
+|---|---|
+| absent | normal |
+| present, empty (or blank lines only) | normal |
+| historical records, all released (`A` with its `R`, `C` with its `D`) | normal |
+| a memory hold or CPU token still recorded as promised (live owner, **known-dead owner**, unknown or unattributable owner alike) | **refused** |
+| unreadable (cannot be examined, cannot be opened, is a directory, a read fails) | **refused** |
+| a line that is not a journal record | **refused** |
+| a last line without its newline (a truncated file; even when it still parses, a pid or stamp may be cut) | **refused** |
+| canonical journal also present | its contents do not matter: the predecessor decides whether to refuse; the canonical file is read as always when the start is allowed |
+| repeated start attempts | the same answer every time; no byte changes |
+| a predecessor journal of **another port** | does not block (the file name carries the port) |
+
+Dead owners are **not** judged automatically: the established namespace/pid/stamp rules answer "is the process alive" for the owners of the canonical journal; applying them to a file this build never wrote would make this build the first writer of its release records, which is migration. A refusal with a recovery path is the smaller change.
+
+A refusal: prints one line `JOURNAL-REFUSED startup refused: … Recovery: …` on stdout and exits with status **5** (4 stays `JOURNAL-FAILED`), after closing the socket, so the port is free again and nothing was announced (`LISTENING` is never printed) or admitted. It leaves **every journal byte as it was** (the canonical journal is not created or compacted) and writes one new file `<canonical journal>.refused` with the same text, removed by the next start that is not refused. The line names the file, what it holds (counts, up to four owners as `ns:pid:stamp`) and the recovery.
+
+### What the caller receives
+A client that finds no coordinator starts one (stdio `/dev/null`, so the line above reaches nobody). On its next attempt it reads the notice, if its modification time is not older than that start, and ends **at once**, without waiting for `ANNO_TEST_ADMIT_WAIT_S`, with no admission (`ADMITTED 0`):
+`infrastructure blocker: the test budget coordinator on port <p> did not start: startup refused: the previous compatibility-4 coordinator's journal <path>/coord-<p>-v4.journal holds promises that are not released (1 memory hold(s) and 0 CPU token(s) are still recorded as promised; hold 7 of owner 3:999999:1). Nothing was changed. Recovery: …` (`03-refusal-sample.txt`; the V1 case measures it with a real predecessor holder, bounded at 20 s with an 8 s wait configured; observed 0.06 s). A stale notice from an earlier start is ignored. The CPU request uses the same connect step; the client path is exercised through a memory request only.
+
+### Override behaviour (`--journal`, `ANNO_TEST_BUDGET_JOURNAL`)
+The check runs for every start: it looks at `coord-<port>-v4.journal` **beside the journal in use**. For the default location that is the user's cache directory (`~/.cache/anno1503`, `%LOCALAPPDATA%\anno1503`). With `--journal <path>` or the test override the storage root is that path's directory, and the check covers that directory only. The previous build wrote a versioned file only for the default location (it used an override path as given), so an override path has no predecessor layout by construction; a normal launch uses neither. There is no environment variable that skips the check: the only way past a refusal is the recovery below, so no ordinary launch path bypasses it. A test that points the override at the default cache directory is protected like production.
+
+### Recovery from a refusal (operator action, never automatic)
+1. `python3 -I tools/test/journal_report.py <the named -v4 journal>` lists the open promises by owner namespace.
+2. Confirm with the owner of each listed process that it is gone (or finished): `ps -p <pid> -o lstart,command` for a Darwin or Linux owner on this host; a Windows or other namespace owner must be confirmed on its own machine. An unknown namespace is never assumed dead.
+3. Move the file aside (`mv coord-<port>-v4.journal coord-<port>-v4.journal.retired-<date>`); do not delete or edit it. Start again. A holder that is still alive when the file is moved is no longer protected: its reservation is forgotten (that is the original defect), so do not move the file while any owner may live.
+
+### Downgrade recovery — correction of "v4 releases it when it returns"
+A compat-3 coordinator keeps a namespace-3 owner as unknown, forever. Outstanding orphans keep a coordinator from taking its 30 s idle exit, so **waiting does not end the leak**: the v3 coordinator listens until someone stops it, and no v4 coordinator can start on its port meanwhile (bind). The procedure (prepared, **not applied**; it needs the orchestrator's go-ahead and the agreement of whoever owns that coordinator):
+1. `lsof -nP -iTCP:<port> -sTCP:LISTEN` names the pid; check with `ps -p <pid> -o lstart,command` that it is the coordinator in question and that its owner (the executor whose test run started it) agrees. Never stop a coordinator by name or one you did not start.
+2. `python3 -I tools/test/journal_report.py ~/.cache/anno1503/coord-<port>.journal`: namespace 3 records are the Darwin owners; for each, `ps -p <pid>`: a record whose process is gone is the leak, a live one is a holder that is protected and must stay.
+3. If live holders exist, wait for them; stopping a coordinator under live clients ends their sessions and is the owner's decision.
+4. When the owner agrees, send that one pid a plain termination (`kill <pid>`), wait for the port to clear, and start the current build; it replays the same file, releases the dead namespace-3 owners (H8, O1) and keeps the live ones (H5, H7).
+Waiting 30 s is not part of the procedure.
+
+### Rollout prerequisites (supersedes item 6 of repair 3)
+Before the hold is lifted, in this order: (1) every `coord-<port>-v4.journal` in `~/.cache/anno1503` must read as clean (`journal_report.py` says 0 holds and 0 tokens; on this host `coord-47631-v4`, `coord-47632-v4` and `coord-47826-v4` do, `07-shared-v4-journals-readonly.txt`, and copies of them start the current coordinator, `08-real-shared-v4-copies-start.txt`), because a dirty one now stops the first start with the refusal above; (2) the pre-flight and handshake steps of repair 3 (the procedure there stands unchanged); (3) the orchestrator's decision on the downgrade cost.
+
+### Transitions
+| Transition | Result |
+|---|---|
+| legacy compat 3 → current | supported (H1, H3, H7 with the real binary) |
+| previous compat 4 (versioned journal) → current, no open promise in its file | supported: starts normally (V3 absent/empty/released) |
+| previous compat 4 → current, with open, unreadable, malformed or truncated predecessor file | **deliberately refused**, nothing changed (V1, V2 real binaries; V3 matrix) |
+| current → legacy 3 | live promises kept; dead namespace-3 owners leak until the coordinator is stopped (recovery above) |
+| current → previous compat 4 | **unsupported**: that build ignores the canonical journal and writes its own versioned file; promises admitted by the current build in the canonical journal are not seen by it. Do not run it again on a shared host |
+| previous compat 4 running while the current starts | the port is taken (bind): no start |
+
+### Tests and provenance
+`tests/budget_f5_test.cpp`: V1/V2 (opt-in `ANNO_TEST_V4_COORD`, `ANNO_TEST_V4_PROBE`; the real published binaries; memory and CPU token; direct start, ordinary client start, recovery), V3 (11 journal states plus the unreadable directory and the unreadable mode-000 file, each start repeated three times for the refusals), V3b (both journals present; recovery by moving the file aside), V4 (another port). Ports 47900–47925, a private `HOME` per case. Red: `01-red-before-fix.txt` (the production change stashed; V1, V2, V3, V3b fail, V4 passes); green: `02-green-after-fix.txt`. Current binaries at the code head: see `06-binaries.txt` of the evidence directory.

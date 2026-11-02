@@ -128,8 +128,73 @@ if(ANNO_BUILD_TESTS)
   # test_names_are_selectable and picture_matrix_contract, as mandatory preflights.
   find_package(Python3 COMPONENTS Interpreter)
   if(Python3_FOUND)
+    add_test(NAME figure_digest_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/figure_digest_ref.py --check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/figure_digest_vectors.txt)
+    add_test(NAME ship_nav_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/movement_vectors.txt)
+    add_test(NAME ship_nav_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/movement_vectors.txt)
+    add_test(NAME ship_passage_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py passage-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/passage_cases.txt)
+    add_test(NAME ship_passage_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py passage-selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/passage_cases.txt)
+    add_test(NAME ship_route_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_runs.txt)
+    add_test(NAME ship_route_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_runs.txt
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_counterexamples.txt)
+    add_test(NAME ship_object_shore_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py object-selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/object_shore_cases.txt)
+    add_test(NAME ship_offer_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py offer-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/offer_cases.txt)
+    add_test(NAME ship_offer_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py offer-selftest
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/offer_cases.txt)
+    add_test(NAME ship_object_shore_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py object-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/object_shore_cases.txt)
+    add_test(NAME ship_route_counterexamples_rejected
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py route-reject
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/route_counterexamples.txt)
+    add_test(NAME ship_admission_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py admission-check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/admission_cases.txt)
+    add_test(NAME ship_step_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/stepper_vectors.txt)
+    add_test(NAME ship_speed_factor_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py check-factor
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/speed_factor_vectors.txt)
+    add_test(NAME nav_state_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/nav_state_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/nav_state_vectors.txt)
+    add_test(NAME nav_state_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/nav_state_ref.py selftest)
+    add_test(NAME placement_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/placement_vectors.txt)
+    add_test(NAME placement_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/placement_ref.py selftest)
+    add_test(NAME cargo_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/cargo_vectors.txt)
+    add_test(NAME cargo_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/cargo_ref.py selftest)
+    add_test(NAME ship_step_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
     add_test(NAME test_verdict_contract
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
+  else()
+    message(WARNING "Python3 not found: the figure-digest and ship-navigation reference tests are NOT registered (NOT_RUN)")
   endif()
   if(UNIX)
     add_test(NAME run_selected_contract

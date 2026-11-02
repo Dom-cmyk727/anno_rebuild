@@ -1,0 +1,21 @@
+# Saved geometric witness routes of the three ship-start-v2 candidates (MAP-NAV-2 package C, part d).
+# Source: python3 -I tools/map2_ship.py check data/maps/candidates/ship-start-v2/lan5-ship-<a|b|c>.json --game-dir <dir> --json <out> (the tool's
+# 'witness' list): a 4-connected exterior-sea walk (Manhattan cost, no hull) from the seat's spawn tile to the water tile of a founding site
+# of a distinct island. These are TOOL evidence, not the original's rules; src/sim/tests/route_world_test.cpp re-evaluates each under the original
+# route engine on the real terrain and reports the differences (docs/sim/ship-route-witnesses.md). Manifests are not changed.
+# Format: witness <candidate> | seat <n> | island <id> | tool cost <n> | spawn x z | site x z | water x z
+witness a | seat 0 | island 110 | cost 267 | spawn 312 680 | site 103 615 | water 107 618
+witness a | seat 1 | island 101 | cost 103 | spawn 652 680 | site 619 754 | water 623 754
+witness a | seat 2 | island 8 | cost 125 | spawn 1108 680 | site 1114 791 | water 1118 791
+witness a | seat 3 | island 106 | cost 153 | spawn 1100 240 | site 1032 148 | water 1036 151
+witness a | seat 4 | island 9 | cost 49 | spawn 180 1100 | site 180 1147 | water 183 1146
+witness b | seat 0 | island 0 | cost 86 | spawn 368 240 | site 281 243 | water 284 242
+witness b | seat 1 | island 111 | cost 121 | spawn 688 160 | site 787 136 | water 786 137
+witness b | seat 2 | island 125 | cost 143 | spawn 368 720 | site 224 719 | water 227 718
+witness b | seat 3 | island 103 | cost 99 | spawn 900 600 | site 811 614 | water 814 613
+witness b | seat 4 | island 127 | cost 44 | spawn 1200 500 | site 1199 452 | water 1200 456
+witness c | seat 0 | island 0 | cost 61 | spawn 304 120 | site 260 133 | water 262 137
+witness c | seat 1 | island 123 | cost 52 | spawn 816 600 | site 862 595 | water 861 595
+witness c | seat 2 | island 114 | cost 130 | spawn 900 160 | site 1006 132 | water 1006 136
+witness c | seat 3 | island 3 | cost 72 | spawn 1120 600 | site 1116 525 | water 1120 528
+witness c | seat 4 | island 5 | cost 101 | spawn 360 920 | site 269 934 | water 273 934

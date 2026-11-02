@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -79,6 +80,100 @@ struct TransportState {
     std::uint32_t reserved_88 = 0;
 };
 
+/// Raw units per ton in a ship hold: amounts are exact multiples of 1/256 ton (the original's 8.8
+/// cargo amounts, docs/re/ship-founding.md section 10.7).
+inline constexpr std::uint64_t kHoldUnitsPerTon = 256;
+
+/// Whole tons to raw hold units (x256), exact; nullopt when the product does not fit 64 bits.
+/// The one conversion at a whole-ton boundary (the version-2 map manifests are in whole tons).
+[[nodiscard]] constexpr std::optional<std::uint64_t> hold_units_from_tons(std::uint64_t tons) {
+    if (tons > UINT64_MAX / kHoldUnitsPerTon) {
+        return std::nullopt;
+    }
+    return tons * kHoldUnitsPerTon;
+}
+
+/// One hold of a ship: a goods identity and an exact amount in raw units of 1/256 ton (MAP-2,
+/// docs/sim/ship-start-integration.md §2; stream 117). u64, not the original's u16: every whole-ton
+/// u32 amount the earlier representation could hold (x256 < 2^40) still fits, and the original's
+/// capacity limit is not inherited. Holds are an ordered list; two holds of one goods stay two
+/// entries (the ship's four holds of the baseline are wood 50, food 10, tools 50, tools 30 t, i.e.
+/// 12800, 2560, 12800 and 7680 raw units). A sum of holds is computed with a checked add.
+struct ShipHold {
+    GoodsId goods = 0;
+    std::uint64_t amount_88 = 0;
+    friend constexpr auto operator<=>(const ShipHold&, const ShipHold&) = default;
+};
+
+/// The kind of a ship's current or pending motion segment (docs/sim/ship-navigation.md 12.4, 12.7).
+/// Idle: no order is being sailed (the idle or stop segment); Turn: a planner turn node in progress
+/// (the original's kind 3, state bit 0 clear); TurnPhase: the stepper's own 1/16 turn phase (state
+/// bit 0 set, the facing changed by one at its start); Move: a movement segment (a chunk of at most
+/// 1.0 length along a lattice direction).
+enum class NavSegKind : std::uint8_t { Idle = 0, Turn = 1, TurnPhase = 2, Move = 3 };
+
+/// A pending node of the plan (the original's list node): a movement of `length_q32` along `dir8`
+/// at `speed_q32`, or a planner turn node that sets `facing` and lasts turn_step at the turn speed.
+struct NavNode {
+    NavSegKind kind = NavSegKind::Move; // Move or Turn only
+    std::uint8_t dir8 = 0;              // Move: 0 W, 1 SW, 2 S, 3 SE, 4 E, 5 NE, 6 N, 7 NW
+    std::uint8_t facing = 0;            // Turn: the dir16 facing it sets when it starts
+    std::uint64_t length_q32 = 0;       // 2^-32 tile (a diagonal step is 6074000896)
+    std::uint32_t speed_q32 = 0;        // base speed before the factor, 2^-32 tile per stepper unit
+    friend constexpr bool operator==(const NavNode&, const NavNode&) = default;
+};
+
+/// The current segment (the original's +0x20..+0x34, +0x38): all integers.
+struct NavSegment {
+    NavSegKind kind = NavSegKind::Idle;
+    std::uint8_t dir8 = 0;              // Move only
+    std::uint32_t factor_percent = 100; // V applied to this segment, 1 .. 100
+    std::uint32_t speed_q32 = 0;        // base speed (before the factor)
+    /// Length still to sail in this segment, in q32/500 (= q32 * 500): the integrator's budget
+    /// scale, so a partial step leaves no sub-unit fraction behind
+    /// (docs/sim/ship-navigation.md 12.4).
+    std::uint64_t remaining_x500 = 0;
+    friend constexpr bool operator==(const NavSegment&, const NavSegment&) = default;
+};
+
+/// An accepted move order (docs/sim/ship-navigation.md 12.1). `routed` is the original's phase 1.
+struct NavOrder {
+    std::uint64_t order_id = 0; // a world counter, never reused
+    bool routed = false;
+    std::int32_t target_x_q8 = 0, target_y_q8 = 0;
+    friend constexpr bool operator==(const NavOrder&, const NavOrder&) = default;
+};
+
+/// The persisted motion state of a navigating ship (docs/sim/ship-navigation.md 12.5). Present
+/// exactly when the figure's type has navigation facts. `Figure::pos` is derived from `pos_u`
+/// (validated).
+struct NavMotion {
+    std::optional<NavOrder> order;
+    /// The fair admission ticket (12.2); present only with an order.
+    std::optional<std::uint64_t> ticket;
+    NavSegment seg;
+    std::vector<NavNode> nodes; // pending nodes, next first
+    /// The ship's own stepper stamp (the original's +0x42), distinct from Figure::stamp.
+    std::uint16_t last = 0;
+    /// Position per axis (x, y) in tile * 2^32 * 500, and the diagonal residue (< 2^24).
+    std::int64_t pos_u[2] = {0, 0};
+    std::uint32_t res24[2] = {0, 0};
+    /// MAP-NAV-3 N4 (stream 123): the current hit points in the unit of NavFacts::max_hp (the
+    /// original's signed 16-bit +0x6c, docs/re/ship-navigation.md 7.5); read only by the speed
+    /// factor at a movement segment start. nullopt = explicitly UNKNOWN (an import that does not
+    /// know it): the speed then uses the full-health term (an adaptation, docs/sim/
+    /// ship-navigation.md 12.14). 0 is a legal value; at most max_hp.
+    std::optional<std::uint32_t> health;
+    friend bool operator==(const NavMotion& a, const NavMotion& b) {
+        return a.order == b.order && a.ticket == b.ticket && a.seg == b.seg && a.nodes == b.nodes &&
+               a.last == b.last && a.pos_u[0] == b.pos_u[0] && a.pos_u[1] == b.pos_u[1] &&
+               a.res24[0] == b.res24[0] && a.res24[1] == b.res24[1] && a.health == b.health;
+    }
+};
+
+/// One Q24.8 unit in pos_u: 2^-8 tile * 2^32 * 500.
+inline constexpr std::int64_t kNavPosUnitsPerQ8 = std::int64_t{500} << 24;
+
 struct Figure {
     FigureId id;
     /// FigurenHeader id / world figure kind (small farm animals: base 106 + i).
@@ -114,6 +209,27 @@ struct Figure {
     /// registry"). Not the spawn tick: S12 named it created_stamp. The default spawn
     /// does not set it (O-8).
     std::optional<std::uint16_t> expiry_stamp;
+    /// MAP-2 (stream 116). The facing as one of 16 directions, 0..15 (the table of
+    /// docs/re/ship-navigation.md §4; display and a later mover read it, nothing here turns
+    /// a figure). 0 for every figure that no loader gave a facing: the neutral default.
+    std::uint8_t dir16 = 0;
+    /// The figure this one is carried by or belongs to (an embarked scout's ship, a donkey's
+    /// scout); invalid = none, the default. Not `home` (a building counter). A figure and
+    /// its parent have the same owner; the links never form a cycle (validate_figures).
+    FigureId parent;
+    /// The crew slot this figure fills in its parent (the original CREW/ENTRY index);
+    /// present only with a parent, unique among that parent's children.
+    std::optional<std::uint32_t> crew_slot;
+    /// The ship's holds, in order. Empty for every figure that is not a ship. Not
+    /// `cargo_goods` / `cargo_88`, which keep their one-load meaning (transport).
+    std::vector<ShipHold> holds;
+    /// MAP-2 (stream 120): D the figure's state word (slot +0x8c(0); a ship: u16 +0x40), widened.
+    /// Bit 0x02 rejects the selected ship, 0x0a excludes a figure from the nearby query, 0x200e
+    /// makes it unusable (figure_veto.hpp). 0 is the state of a scenario ship for every bit that
+    /// matters (docs/re/ship-founding.md section 14.1).
+    std::uint32_t state_word = 0;
+    /// MAP-NAV-2 (stream 122): the motion state of a navigating ship.
+    std::optional<NavMotion> nav;
 };
 
 /// D: the unit registry (world +0x114).
@@ -132,7 +248,32 @@ struct FigureRegistry {
     /// (rebuild_figure_index; World::check_invariants compares it with a
     /// recomputation).
     std::map<FigureId, Slot> by_id;
+    /// DERIVED, never saved or hashed (MAP-NAV-3 N1): the children of every figure that has any,
+    /// ascending by child id. Lets a carrier reach its whole subtree without scanning the registry.
+    std::map<FigureId, std::vector<FigureId>> children;
+    /// DERIVED, never saved or hashed (N1): the pending planning tickets of all ships, ascending.
+    /// A ticket is unique (ids.next_ticket), so the ticket alone identifies its ship's place in
+    /// the fair-admission order (docs/sim/ship-navigation.md 12.2).
+    std::set<std::uint64_t> tickets;
+    /// DERIVED, never saved or hashed (N1): the sailing ships (a navigating figure without a
+    /// parent) by 16 x 16-tile registry cell, key {cell z, cell x} (the order of the original's
+    /// scan: z rows outer, x columns inner), the ids of a cell ascending.
+    std::map<std::pair<std::int32_t, std::int32_t>, std::set<FigureId>> ship_cells;
 };
+
+/// The 16 x 16-tile cell index of a Q24.8 coordinate (negative = cell 0, the original's clip).
+[[nodiscard]] std::int32_t figure_cell_of(std::int32_t q8);
+
+/// Keeps the derived indexes in step with a mutation made through `Figure&` (the registry cannot
+/// see in-place edits). `note_ticket` after a ticket was assigned, consumed or cleared;
+/// `note_ship_moved` after a sailing ship's position changed (pass the position before).
+void note_ticket(FigureRegistry& registry, std::optional<std::uint64_t> before,
+                 std::optional<std::uint64_t> after);
+void note_ship_moved(FigureRegistry& registry, const Figure& ship, FixedPos before);
+
+/// The first difference between the derived indexes and a fresh reconstruction from the list,
+/// or empty.
+[[nodiscard]] std::string figure_index_problem(const FigureRegistry& registry);
 
 /// An empty registry: one list of SimConfig::list_initial_size null elements (A6,
 /// the group list's constructor makes one, A7), stamp 0.
@@ -187,7 +328,9 @@ void end_figure(FigureRegistry& registry, Figure& figure, std::uint32_t t, Effec
 /// of validate_figures). `had_stamp` is the flag before the call.
 void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp, Effects& fx);
 
-/// The structural facts of a figure registry (docs/sim/state.md §9.6): the list has
+/// The structural facts of a figure registry (docs/sim/state.md §9.6; MAP-2 added the
+/// dir16, parent and crew-slot facts, validated in one linear pass plus ordered lookups,
+/// no ancestor chain is walked twice): the list has
 /// at least one element with its hint in -1 .. n and its cursor below n, every
 /// figure has a valid id below `ids.next_figure` that no other figure has, the
 /// expiry list names figures of the registry once each, a figure is on the expiry

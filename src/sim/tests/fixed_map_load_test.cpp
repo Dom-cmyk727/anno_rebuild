@@ -153,15 +153,37 @@ TEST_CASE("fixed map: the loader builds the seated world from the base scenario"
     CHECK(second.value().check_invariants().empty());
     CHECK(first.value().state_hash() == second.value().state_hash());
 
-    auto builder = anno::sim::World::create(spec, types.value().registry);
+    // The fixture island's HEIGHT column is a flat 20 (not a level the placement rule accepts:
+    // not a multiple of 16), so the same command is a terrain refusal on it ...
+    const auto build_cmd = [&] {
+        anno::sim::Command cmd;
+        cmd.issuer = anno::sim::PlayerId{0};
+        cmd.body =
+            anno::sim::BuildCmd{anno::sim::CityRef{anno::sim::IslandId{0}, anno::sim::CityNo{0}},
+                                {anno::sim::PlacementWire{types.value().bow_maker, 10, 10, 0}}};
+        return cmd;
+    };
+    auto fixture_terrain = anno::sim::World::create(spec, types.value().registry);
+    REQUIRE(fixture_terrain);
+    const anno::sim::ApplyResult refused = fixture_terrain.value().apply(build_cmd());
+    CHECK(refused.status == anno::sim::Reject::TerrainRefused);
+    // ... and on the same island with a flat level-0x30 terrain the ownership, funds and site are
+    // fine and the building gets the level.
+    anno::sim::ScenarioSpec plateau = spec;
+    for (auto& island : plateau.islands) {
+        if (island.slot.v == 0) {
+            anno::sim::synthetic::give_flat_terrain(island, 0x30);
+        }
+    }
+    auto builder = anno::sim::World::create(plateau, types.value().registry);
     REQUIRE(builder);
-    anno::sim::Command cmd;
-    cmd.issuer = anno::sim::PlayerId{0};
-    cmd.body = anno::sim::BuildCmd{anno::sim::CityRef{anno::sim::IslandId{0}, anno::sim::CityNo{0}},
-                                   {anno::sim::PlacementWire{types.value().bow_maker, 10, 10, 0}}};
-    const anno::sim::ApplyResult built = builder.value().apply(cmd);
+    const anno::sim::ApplyResult built = builder.value().apply(build_cmd());
     CHECK(built.status != anno::sim::Reject::TileNotOwned);
-    CHECK(built.ok());
+    CHECK_MESSAGE(built.ok(), "status " << anno::sim::reject_name(built.status));
+    const anno::sim::Building* b = builder.value().building_at(
+        anno::sim::CityRef{anno::sim::IslandId{0}, anno::sim::CityNo{0}}, 10, 10);
+    REQUIRE(b != nullptr);
+    CHECK(b->byte0f == 0x30);
 }
 
 TEST_CASE("fixed map: money in the layout replaces the base scenario's") {

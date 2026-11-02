@@ -292,7 +292,7 @@ The world hash is the sim's hash of the loaded world after `resolve_island_links
 
 ## 12. Fairness floor
 
-The floor is the owner decision of 2026-10-22 (`PLAN.md` M4.1, OQ-100): every measure is at least 99% of that player's reference, compared in integers
+The floor is the owner decision of 2026-10-22 (`PLAN.md` M4.1, OQ-100) for the later generator: every measure is at least 99% of that player's reference, compared in integers. It is not the acceptance rule for the fixed-map ship starts. Those candidates allow natural differences and do not assign islands (`docs/sim/fixed-map.md` §11, owner 2026-10-31). The formula and the overall supply stay. Equal holdings after players choose where to settle are not promised.
 
 ```text
 measure · 100 >= reference · 99

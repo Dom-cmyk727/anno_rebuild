@@ -16,6 +16,8 @@
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/scheduler.hpp>
+#include <anno/sim/ship.hpp>
+#include <anno/sim/ship_mover.hpp>
 #include <anno/sim/tick.hpp>
 #include <anno/sim/timers.hpp>
 #include <anno/sim/transport.hpp>
@@ -139,6 +141,12 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         e.x = s.pos.x / 256;
         e.y = s.pos.y / 256;
         fx.ui.push_back(e);
+    }
+    // 1b. Crew positions written from their carrier ship (MAP-NAV-2).
+    for (const FigureMove& m : fx.figure_moves) {
+        if (Figure* f = find_figure(w.figures_, m.figure); f != nullptr) {
+            nav_place(*f, m.pos); // also keeps the fine position of a carried navigating figure
+        }
     }
     // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
     // unit's home +0x78 is set, which it then clears), so a figure releases once.
@@ -281,13 +289,24 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
         std::uint64_t cur = reg.list.cursor;
         const Seam<Seams::FigureTick>& seam = w.seams_.figure_tick;
         const std::uint32_t interim = w.rules_.interim_figure_return_ticks;
+        std::uint32_t plans_started = 0; // the planning quota of this Advance (12.2)
         for (std::uint64_t i = 0; i < count; ++i) {
             // The slot is looked up in every iteration (the original re-reads the vector
             // start, 0x1009aa93): a merge may have grown the list.
             const auto slot = static_cast<std::size_t>(cur);
             if (slot < reg.list.slots.size() && reg.list.slots[slot].has_value()) {
                 Figure& fig = *reg.list.slots[slot];
-                if (seam.fn != nullptr) {
+                if (fig.nav.has_value() && fig.parent.valid()) {
+                    // A carried navigating figure does not sail on its own: its position comes
+                    // from its carrier through the effects buffer (ship.hpp nav_place).
+                } else if (fig.nav.has_value()) {
+                    // Dispatch by figure kind (docs/sim/ship-navigation.md 4): a navigating ship
+                    // goes to the mover, with the same protocol as a seam (its own figure and its
+                    // Effects, merged right after the call, C2).
+                    Effects fx;
+                    ShipMover::visit(w, ctx, fig, fx, plans_started);
+                    merge(w, fx, ctx.tick, t);
+                } else if (seam.fn != nullptr) {
                     // The unit's slot +0x74 (0x1009aaa8) is the behaviour seam (O-8):
                     // it writes only its own figure and its Effects, merged right after
                     // it returns (C2).
@@ -396,6 +415,7 @@ void Scheduler::run_ai(void* raw) {
 }
 
 std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
+    w.route_cache_.begin_advance(); // derived index: compare again before the first plan
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.
     w.out_ = SimOutput{};

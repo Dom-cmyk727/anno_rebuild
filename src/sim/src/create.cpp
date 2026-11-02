@@ -136,11 +136,8 @@ City make_city(CityNo number, PlayerId owner, const SimConfig& cfg) {
     return c;
 }
 
-formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const Rules& rules,
-                                                     const TypeRegistry& types, Island& island,
-                                                     City& city, const PlacementRecord& rec,
-                                                     std::uint32_t now, const Payload* initial) {
-    // 1. Validation: no state is touched until it has passed.
+Reject creation_problem(const SimConfig& cfg, const TypeRegistry& types, const Island& island,
+                        std::size_t city_lists, const PlacementRecord& rec) {
     const BuildingType* ty = types.find(rec.type);
     if (ty == nullptr || rec.type.v == 0) {
         // Type id 0 is "no type" (Build skips it, §8.4); a building with id 0
@@ -151,7 +148,7 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
         return Reject::BadRotation;
     }
     const std::optional<ListId> list = cfg.layout.list_for(ty->prodtype);
-    if (!list.has_value() || *list >= city.index.lists.size()) {
+    if (!list.has_value() || *list >= city_lists) {
         return Reject::NotABuilding;
     }
     if (island.next_serial == 0 || island.next_serial == 0xffffffffU) {
@@ -168,6 +165,24 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     if (box_occupied(island.cache, tiles.width(), box)) {
         return Reject::Occupied;
     }
+    return Reject::None;
+}
+
+formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const Rules& rules,
+                                                     const TypeRegistry& types, Island& island,
+                                                     City& city, const PlacementRecord& rec,
+                                                     std::uint32_t now, const Payload* initial) {
+    // 1. Validation: no state is touched until it has passed.
+    if (const Reject problem = creation_problem(cfg, types, island, city.index.lists.size(), rec);
+        problem != Reject::None) {
+        return problem;
+    }
+    const BuildingType* ty = types.find(rec.type);
+    const std::optional<ListId> list = cfg.layout.list_for(ty->prodtype);
+    const auto [fw, fh] = footprint(*ty, rec.rotation);
+    const TileLayer& tiles = island.tiles;
+    const TileBox box =
+        clip_to_layer(tiles.x0(), tiles.y0(), tiles.width(), tiles.height(), rec.x, rec.y, fw, fh);
     const ClassInfo& cls = types.class_info(ty->cls);
     if (initial != nullptr && !payload_problem(*initial, *ty, cls, cfg, types).empty()) {
         return Reject::BadValue;
@@ -206,6 +221,7 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     b.rotation = rec.rotation;
     b.byte0e = ty->cls == RuntimeClass::House ? kByte0eHouse : kByte0eDefault;
     b.byte0f = rec.byte0f;
+    b.kontor_id = rec.kontor_id;
     // 5. The placement tick (D: property 0x23 -> 0x10073380 -> slot +0x120, F1).
     if (initial == nullptr) {
         stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now));
@@ -240,8 +256,8 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // the stored phase is 0, the reset of byte 3 (0x1008c81e). `b` was moved
     // into the slot; the placed copy still holds x, y and rotation.
     const Building& placed = *target.slots[slot];
-    static_cast<void>(
-        place_object_record(island.tiles, types, *ty, placed.x, placed.y, placed.rotation, 0));
+    static_cast<void>(place_object_record(island.tiles, types, *ty, placed.x, placed.y,
+                                          placed.rotation, 0, placed.byte0f));
     // 9. The shared tail (residents, running-cost statistics): no stored state yet
     // (O-9, O-23).
     return key;

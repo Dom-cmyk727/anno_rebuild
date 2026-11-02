@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include <anno/sim/building.hpp>
@@ -70,6 +71,13 @@ struct City {
     std::vector<BuildGoods> build_goods;
     /// Size SimConfig::trade_lists; the capacity of a list is open (O-14).
     std::vector<std::vector<TradeEntry>> trade_lists;
+    /// D: city property 0x12, the name drawn from the world's STAEDTE list at creation (empty when
+    /// there was none; not read from files yet). docs/sim/city-creation.md E6.
+    std::string name;
+    /// MAP-2 (stream 120): D city property 0 (+0x61c), the players that know this city, ascending
+    /// unique (the original's dword mask). Registration sets the owner and the peers whose MILIT
+    /// relation is 3; the reveal adds the discoverer.
+    std::vector<PlayerId> player_mask;
 
     // ---- island-level queries (const; Island and the World members of the same
     // names delegate here or are delegated to). All return the canonical order

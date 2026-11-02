@@ -1,0 +1,12 @@
+# Deliberately CORRUPT route-run records (MAP-NAV-2 A1): each keeps a VALID status and endpoint but the walk between is illegal; the
+# route oracle (ship_nav_ref.py route-reject) must reject it with the named reason. `expect accept` records are valid controls.
+# Format: as route_runs.txt plus `| stamps - | end x z | expect <reason substring or accept>`.
+# The review's counterexample: V7 with the wall crossed straight (same endpoint as the recorded detour).
+route C_wall_crossing | 64 64 | land 30,0,31,39 | start 10.5 20.5 | goal 50.5 20.5 | 0 | E10 E10 E10 E10 | stamps - | end 50 20 | expect enters land
+# Squeezing a diagonal between two diagonally touching land tiles (20,19) and (19,20).
+route C_corner_cut | 64 64 | land 20,19,20,19 19,20,19,20 | start 19.5 19.5 | goal 20.5 20.5 | 0 | SE1 | stamps - | end 20 20 | expect cuts a corner
+# Leaving the map and re-entering it: W3 from tile (2,5) goes to x = -1, then E10 E1 returns to the valid endpoint (10,5).
+route C_leave_and_reenter | 64 64 | land | start 2.5 5.5 | goal 10.5 5.5 | 0 | W3 E10 E1 | stamps - | end 10 5 | expect leaves the map
+# Valid controls: the recorded V7 detour, and the legal detour around the same two land tiles.
+route C_control_v7 | 64 64 | land 30,0,31,39 | start 10.5 20.5 | goal 50.5 20.5 | 0 | SE10 SE9 S1 E3 NE10 NE8 N2 | stamps - | end 50 20 | expect accept
+route C_control_around | 64 64 | land 20,19,20,19 19,20,19,20 | start 19.5 19.5 | goal 20.5 20.5 | 0 | N1 E2 S2 W1 | stamps - | end 20 20 | expect accept

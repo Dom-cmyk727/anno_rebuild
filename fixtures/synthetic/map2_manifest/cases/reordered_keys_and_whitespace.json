@@ -1,0 +1,16 @@
+{
+  "content_hash" : "0969579dbff0ee0222d4b1927f86f6bdcae73fe5d0bde3576aac0c6da8b61740",
+  "policy" : {"grid": "tile", "metric": "manhattan-4", "clearance": 8, "clearance_scope": "spawn", "max_route_tiles": 400, "min_city": 256, "share_gap": 32, "share_min_side": 128, "obstruction": "anlagen-head-conservative"},
+  "excluded" : ["base-scenario players", "base-scenario units", "player cities", "island reservations"],
+  "loadout" : {"status": "proposed-baseline", "source": "03_1024_med_256 human party", "gold": 30000, "ship_figure": 1502, "scout_figure": 717, "donkey_figure": 718, "holds": [{"goods": "wood", "tons": 50}, {"goods": "food", "tons": 10}, {"goods": "tools", "tons": 50}, {"goods": "tools", "tons": 30}]},
+  "spawns" : [{"seat": 0, "x": 10500, "y": 100500, "facing": 0}, {"seat": 1, "x": 30500, "y": 100500, "facing": 1}, {"seat": 2, "x": 50500, "y": 100500, "facing": 2}, {"seat": 3, "x": 70500, "y": 100500, "facing": 3}, {"seat": 4, "x": 90500, "y": 100500, "facing": 0}],
+  "islands" : [{"id": 0, "key": "NORD/A.SCP", "x": 8, "y": 8}, {"id": 100, "key": "POLAR/B.SCP", "x": 64, "y": 8}],
+  "generator" : {"tool": "xcheck", "config": "synthetic"},
+  "seed" : 7,
+  "base" : "Scenes/base.sze",
+  "edge" : [128, 128],
+  "name" : "synthetic",
+  "profile" : "map2-ship-start-v2",
+  "version" : 2,
+  "manifest" : "map2-ship-manifest"
+}

@@ -16,8 +16,10 @@
 #include <vector>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/figure.hpp>
 #include <anno/sim/ids.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/player.hpp>
 #include <anno/sim/production.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/settings.hpp>
@@ -45,6 +47,12 @@ struct ScenarioSpec {
         /// Research state bytes; empty = all zero, else exactly
         /// SimConfig::research_entries bytes.
         std::vector<std::uint8_t> research;
+        /// The relation rows (stream 120; the DIPL record): ascending by `other`, unique, never the
+        /// player itself, `other` below SimConfig::player_slots. Empty = the constructor's zero
+        /// fill.
+        std::vector<Relation> relations;
+        /// Player property 7 (stream 120): ascending unique players; empty by default.
+        std::vector<PlayerId> discovery;
     };
     /// BERGWERK2 stand-in (D18): an ore object at a world tile.
     struct DepositSpec {
@@ -62,6 +70,11 @@ struct ScenarioSpec {
         /// read at AnnoWelt 0x1008964e). Follows `phase` so a positional
         /// `{index, object, phase}` aggregate keeps its phase. Default 0.
         std::uint8_t rotation = 0;
+        /// The item's height byte (insel.md item `state >> 8`; the original's tile record
+        /// second dword byte 0, written at AnnoWelt 0x10082494): the base of the ship-route
+        /// object predicate (TileLayer::item_height). Follows `rotation` so the positional
+        /// aggregates keep their meaning. Default 0.
+        std::uint8_t height = 0;
     };
     /// A building placed at load (PROD2 record stand-in): created at tick 0
     /// through create_building, no cost charged.
@@ -69,6 +82,8 @@ struct ScenarioSpec {
         TypeId type;
         std::int32_t x = 0, y = 0;
         std::uint8_t rotation = 0, byte0f = 0;
+        /// A market's KONTID (stream 119; 0 = none), kept from the nested record.
+        std::uint32_t kontor_id = 0;
         /// nullopt = the make_* default of the type's class (a mine finds its
         /// deposit at attach); a given payload replaces it, keeps its stocks,
         /// switches and `last`, and must satisfy payload_problem for the type.
@@ -101,12 +116,23 @@ struct ScenarioSpec {
         /// From STADT2 VK (list 1) and EK (list 0) (T26).
         std::optional<std::vector<std::vector<TradeEntry>>> trade_lists;
         std::vector<BuildingSpec> buildings;
+        /// City property 0 (stream 120): ascending unique players; empty by default (the loaders do
+        /// not read HEAD2 [0x30] yet: docs/sim/ship-founding.md section 16).
+        std::vector<PlayerId> player_mask;
     };
     struct IslandSpec {
         /// The slot in the island table (INSELLNK order == slot order).
         IslandId slot;
         std::int32_t x0 = 0, y0 = 0;
         std::uint32_t w = 0, h = 0, climate = 0;
+        /// The island's LOCKED byte (stream 118): 0 when the island has no LOCKED record.
+        std::uint8_t lock = 0;
+        /// The island's Kontor counter (stream 119): the KONTORID record's u16, default 1.
+        std::uint32_t kontor_counter = 1;
+        /// Island property 0xe (stream 120): ascending unique players; empty by default.
+        std::vector<PlayerId> players_present;
+        /// The ore objects (stream 120; the OCCUR record), copied to Island::ore_objects.
+        std::vector<OreObject> ore_objects;
         std::shared_ptr<const Terrain> terrain;
         /// {owner, length}, row major from the top-left; the tiles after the last
         /// run are neutral (SimConfig::neutral_owner).
@@ -115,7 +141,38 @@ struct ScenarioSpec {
         std::vector<DepositSpec> deposits;
         std::vector<CitySpec> cities;
     };
+    /// A figure placed at load (MAP-2: a ship, the scout it carries and the scout's donkey).
+    /// The figures get the ids next_figure, next_figure + 1, ... in this order, with no draw
+    /// from the PRNG, so a spec fixes every id. A figure has no home building.
+    struct FigureSpec {
+        /// The FigurenHeader id; the type registry must have a figure type of it.
+        std::uint32_t kind = 0;
+        /// A player of `players`.
+        PlayerId owner;
+        FixedPos pos;
+        /// 0..15.
+        std::uint8_t dir16 = 0;
+        /// The index in `figures` of the figure carrying this one; it must be smaller than
+        /// this figure's own index (so the links cannot form a cycle) and name the same owner.
+        std::optional<std::uint32_t> parent;
+        /// With a parent only; unique among the parent's children.
+        std::optional<std::uint32_t> crew_slot;
+        /// Exact amounts in raw 1/256 ton (stream 117); each goods must be in the registry's goods
+        /// table.
+        std::vector<ShipHold> holds;
+        /// The state word (stream 120); 0 = a scenario ship.
+        std::uint32_t state_word = 0;
+        /// A navigating ship's current hit points (MAP-NAV-3 N4, stream 123), in the unit of the
+        /// type's max_hp, at most max_hp. Absent = full health (a new expedition). Not for a
+        /// figure that does not navigate.
+        std::optional<std::uint32_t> health;
+        /// True = the health is explicitly unknown (what an import without the field would
+        /// carry); exclusive with `health`. The speed then uses the full-health term.
+        bool health_unknown = false;
+    };
     std::vector<PlayerSpec> players;
+    /// Figures at tick 0, in id order. Default: none.
+    std::vector<FigureSpec> figures;
     /// The island table is as long as the highest slot + 1; unused slots stay null.
     std::vector<IslandSpec> islands;
 };

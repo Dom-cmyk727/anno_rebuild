@@ -392,7 +392,9 @@ TEST_CASE("draw sources forward the site and the world stream") {
     CHECK(static_cast<int>(sim::DrawSite::LinkRawMaterial) == 7);
     CHECK(static_cast<int>(sim::DrawSite::LinkTreasure) == 11);
     CHECK(static_cast<int>(sim::DrawSite::ComputerName) == 16);
-    CHECK(static_cast<int>(sim::DrawSite::Count_) == 17);
+    CHECK(static_cast<int>(sim::DrawSite::CityName) == 17);
+    CHECK(static_cast<int>(sim::DrawSite::CityNameLoad) == 18);
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 19);
     CHECK(sim::DrawRecord{}.count == 0);
 }
 
@@ -521,6 +523,8 @@ TEST_CASE("state_hash relational properties") {
     sim::StateHasher ids;
     ids.u64(1);
     ids.u64(1);
+    ids.u64(1); // next_order_id (stream 122)
+    ids.u64(1); // next_ticket
     ids.u32(0);
     ids.u32(0);
     ids.u8(0);
@@ -588,9 +592,9 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0xb19fa605834ad5aeULL);
-    CHECK(sim::kStateHashVersion == 115);
-    CHECK(sim::kPrngTimelineVersion == 2);
+    CHECK(sim::World().state_hash() == 0x2084357819816c0fULL); // empty_world at 124 (sim_stream.py)
+    CHECK(sim::kStateHashVersion == 124);
+    CHECK(sim::kPrngTimelineVersion == 3);
 }
 
 namespace {
@@ -793,7 +797,7 @@ TEST_CASE("field count canary") {
     // list fails here (and the static_assert fails the build).
     static_assert(sim::field_count<sim::WorldClock>() == 2);
     static_assert(sim::field_count<sim::StateHeader>() == 2);
-    static_assert(sim::field_count<sim::IdCounters>() == 2);
+    static_assert(sim::field_count<sim::IdCounters>() == 4);
     static_assert(sim::field_count<sim::TileXY>() == 2);
     static_assert(sim::field_count<sim::TileRect>() == 4);
     static_assert(sim::field_count<sim::DrawRecord>() == 2);
@@ -868,7 +872,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     // u64 0 (8 bytes); figures (31 bytes: no deferred list since T22), events (8 bytes) and
     // timers_monopoly (193 bytes), config_test.cpp. The clock_rng scope is found from the end.
     constexpr std::size_t kSettingsBytes = 38;
-    constexpr std::size_t kIdsBytes = 25;
+    constexpr std::size_t kIdsBytes = 25 + 16; // + next_order_id, next_ticket (stream 122)
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
     constexpr std::size_t kIslandsBytes = 8;
     constexpr std::size_t kTailBytes = 31 + 8 + 193;
@@ -877,7 +881,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{115, 0, 0, 0, 2, 0, 0, 0});
+          std::vector<std::uint8_t>{124, 0, 0, 0, 3, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -920,7 +924,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[4] = 3;
+        bad[4] = 4; // this build's timeline is 3
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

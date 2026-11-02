@@ -240,7 +240,12 @@ enum class SimEventKind : std::uint8_t {
     FigureSpawned,
     Event15a,
     TimerExpired,
-    CommandRejected
+    CommandRejected,
+    // MAP-NAV-2 (docs/sim/ship-navigation.md 12.1): {player = owner, figure = the ship, order_id}.
+    ShipArrived,
+    ShipRouteFailed, ///< code = NavFailReason (0 Unreachable, 1 BudgetExceeded, 2 OutsideWindow, 3
+                     ///< ShipBlocked)
+    ShipStopped
 };
 
 /// UI-facing output of the simulation; not state, never hashed. Which fields a
@@ -258,11 +263,20 @@ struct SimEvent {
     FigureId figure;
     std::uint32_t code = 0;
     std::int32_t x = 0, y = 0;
+    /// Ship events: the identity of the order the event is about (never reused).
+    std::uint64_t order_id = 0;
 };
 
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
 /// order inside one buffer: spawns, releases, money, goods_moves, reserves,
 /// deliveries, store_deltas, events, ui; each vector in order.
+/// A figure moved by its carrier (MAP-NAV-2): a ship's crew (children, grandchildren) is written
+/// from the ship's position by the world after the ship's visit, never by the ship's own call.
+struct FigureMove {
+    FigureId figure;
+    FixedPos pos;
+};
+
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
@@ -273,6 +287,8 @@ struct Effects {
     std::vector<StoreDelta> store_deltas;
     std::vector<EnqueueEvent> events;
     std::vector<SimEvent> ui;
+    /// Crew positions mirrored from a navigating ship (applied in order after the spawns).
+    std::vector<FigureMove> figure_moves;
     /// Telemetry: the draws the call made, per site (the world fills it).
     std::vector<DrawRecord> draws;
 };

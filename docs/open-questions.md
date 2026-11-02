@@ -428,11 +428,12 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
 - **Rules option:** `Seams::*` (named, hashed).
 
 ## OQ-052: Placement validity is a stand-in (spec D17, stand-in)
-- **Status:** open, owner decides
+- **Status:** resolved for the supported classes and implemented (MAP-BUILD-1 packages B and C, 2026-11-02): `placement_rule` is the default of `Seams::placement_rule`; the D17 stand-in is only the named seam `stand_in_placement_seam()`. Open: the unsupported classes below.
 - **Area:** simulation / building UX
-- **What:** the island placement check (terrain, water/coast/mountain via the type flag word, overlap rule) is unread (`0x1007c790` through island slot `+0x6c`, AnnoGame `0x10008920`, `0x10008f90`). The default rule is: inside the island, owner tiles, no overlap.
-- **Why it may change the feel:** Build can accept placements the original refuses (mines off mountains, fishers inland).
-- **Faithful default implemented:** the stand-in rule (the best available, not the original).
+- **What:** the island placement check is `0x1007c790` through island slot `+0x6c`, type slots `+0x6c` (`0x10008920`) and `+0x68` (`0x10008f90`). Now read and emulated (`docs/re/ship-placement.md`; contract `docs/sim/ship-placement.md`): for ordinary land (flag word `& 0x7017 == 0x0004`, 254 BuildCmd-reachable types) every vertex of the footprint window must be one multiple of 16 and at least 32, and that value is the height byte; the coast class (`& 0x7017 == 0x2007`, 19 reachable types) uses the shore rule of `ship-founding.md` 10.4. The apply path of the original skips the analysis and trusts the client's byte 8; the port derives it on the server.
+- **Still open (explicit `Unsupported`, never a default accept):** class `0x3000` (8 `MINE`, 4 `STEINBRUCH`; helper `0x10008a80` reads the type's `HIGHMAP` table at `+0x234`), flag bit `0x10` (per-chunk coverage test `0x1007c955`-`0x1007cb3d`), `0x400000` same-PRODTYPE replacement over a market/warehouse (`0x10027b62`), and an original-runtime capture of a real build click (NOT_RUN).
+- **Why it may change the feel:** mines and quarries cannot be built until the `0x3000` helper is read; building over a same-type market is refused.
+- **Faithful default implemented:** the rule above (`placement.cpp`, `docs/sim/ship-placement.md` section 6); the stand-in is an explicit seam.
 - **Rules option:** `Seams::placement_rule`.
 
 ## OQ-053: Deposit goods and amounts are placeholders (spec D18, stand-in)
@@ -846,7 +847,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Faithful default:** no look-and-feel stake; the original keeps all sprites in system memory.
 
 ## OQ-100: Up to 8 players: how the world grows above 4 players (new, owner decision 2026-10-22, PLAN §0.6 / M4.1)
-- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md` (to be written).
+- **Status:** **decided by the owner 2026-10-22** (all items: 1 as answered, 2-6 as recommended, 7 with a stricter floor of 99 %). Implementation: PLAN M4.1, spec `docs/sim/world-scaling.md`. The 99% floor is the later generator's rule. It is not the acceptance rule for the fixed-map ship starts (`fixed-map.md` §11, 2026-10-31).
 - **Area:** sim (world setup), net (handshake), UI (game setup)
 - **Evidence:**
   - The original has no world generator: an endless world is a scenario with a fixed size and fixed island links, and only the templates, raw materials, ores and treasures are drawn at start (`docs/re/annoscene.md` §3, §5).
@@ -2136,3 +2137,106 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
   - The developer tool's preview stands at the ground height under its origin tile (`make_preview`, `dev_feedback.hpp`). On lan5's developer island that is height 40 at the first city building's tile, so a placed building is drawn lower than its preview was.
   - Buildings loaded from a scenario keep their file's height byte.
 - **How to resolve:** trace where the original sets the height byte of a building it creates (AnnoGame.dll, the build command's apply). Then set it in the sim, under the rules config if it is not the original's, and make the preview use the same value. Until then the preview discloses that it stands on the ground (`docs/app/game-shell.md`).
+- **Update (2026-10-31 readiness):** Kontor 1302's action radius byte is 24, and that byte is the market-search radius (`docs/re/transport.md` §1.1). The help text says the warehouse service area marks city limits. The founding click's commit callee was not opened (`docs/re/ship-founding.md` §3.3), so 24 is still not the city-claim radius.
+- **Correction (2026-10-31):** the unread callee is the Kontor handler's `0x10049340` (`docs/re/ship-founding.md` §3.5). Section 3.3 is the mine cursor and is not the city-claim walk. Radius 24 remains the market-search radius.
+
+## OQ-515: Equal land and equal distance as map acceptance (MAP.2, 2026-10-31)
+- **Status:** superseded 2026-10-31. Natural asymmetry is the settled rule. This is not a request to pick a wider tolerance.
+- **Area:** simulation / fixed map.
+- **What was asked:** whether ±10% large-island land and ±5% fairness were gates for `map2-proposed-v1`.
+- **What stands:** that profile's measurements remain historical failures of those gates (nord land worst 79 permille, dschungel 52). They are not passes. The active profile `map2-ship-start-v2` does not use those gates (`docs/sim/fixed-map.md` §11).
+
+## OQ-516: Filler density against ten large islands (MAP.2, 2026-10-31)
+- **Status:** open. The edge stays 1431 and the ten 256² islands stay.
+- **Area:** simulation / fixed map.
+- **Question:** should filler follow the coverage-matched reading (~45.5% rectangle share) or the denser reading that keeps more of the scaled 64/80/128 counts (~52–53%)?
+- **What is known:** ten 256² islands are 32.0% of 1431². Four 256² islands are 25% of 1024². Scaling 03's mix gives eight 256² islands and 46.3% rectangle share. Adding the owner's two extra large islands on top of the proportional filler is 52.7%. Shrinking the filler to hold the share near 45.6% is 40 islands and 45.5%. `lan5-a` and `lan5-b` are the second of those, measured at 45.5% with a slightly different 64/80 split (6 and 14, not 7 and 13) because the generator splits by the 03 climate×size weights. `lan5-c` is the denser reading, measured at 52.2%. Rectangle share is not buildable land.
+- **How to resolve:** the owner picks a density. Both are generated. Neither enlarges the world.
+
+## OQ-517: What a tool route is worth (MAP.2, 2026-10-31)
+- **Status:** open. Equality of those lengths is no longer the question (OQ-515 superseded).
+- **Area:** simulation / fixed map.
+- **Question:** which original movement, founding, fertility and deposit rules would replace the tool's geometric sea grid?
+- **What is known:** `map2-proposed-v1` used straight-line Kontor distances and nearest-Kontor reach. Those are retired as acceptance. The version-1 ship checker (rectangle route, origin-only obstacles, island-wide maximum component) is also withdrawn. `map2-ship-start-v2` uses a 4-connected route on water that reaches the world boundary, ending beside one 4×4, blocks ANLAGEN `HEAD` footprints, and counts that site's own component. The 256-tile figure is a geometric proxy. `raw` and `ore` are still not applied. None of this is the original's movement or a legal warehouse.
+- **How to resolve:** trace founding and ship movement (W6.1) before treating a tool route as engine certification.
+- **Update (2026-10-31 readiness):** exterior-4 stays the tool model. The ship replan at `AnnoWelt.dll` `0x1003de40` begins with a float test (`0x10030100`); the open-water planner is still unread, so diagonal passage and hull clearance stay unknown (`docs/re/ship-navigation.md`). The founding click's traced predicates are in `docs/re/ship-founding.md`. Neither replaces this checker.
+
+## OQ-518: Pairing a seat with a southern island (MAP.2, 2026-10-31)
+- **Status:** superseded 2026-10-31. Ship starts have no compulsory southern partner and no home island.
+- **Area:** simulation / fixed map.
+- **What stands:** `min-spread-lex` can prefer five equal long routes (sum 500) over a short cycle (sum 150). That objective is retired. The historical `lan5-a/b/c` files still record the pairing they used. A diagnostic matching of seats to distinct islands in `map2-ship-start-v2` is a witness that independent settlement is possible. It is not an assignment.
+
+## OQ-519: Which height counts as land for fairness (MAP.2, 2026-10-31)
+- **Status:** open. The profile uses one threshold and records the others.
+- **Area:** simulation / fixed map.
+- **Question:** should large-island land be `HEIGHT >= 16`, `HEIGHT > 0`, or the original classifier (average above 19)?
+- **What is known:** `HEIGHT >= 16` is the fixed-map land count and `kWaterline`. `HEIGHT > 0` counts tiles that are not buildable. The classifier is documented in `docs/render/iso.md` and is not what this lane counted. The 79 and 52 permille figures are the `>= 16` counts.
+- **How to resolve:** if a different threshold is required, remeasure the pools before judging the quintuples. Do not treat the three definitions as the same number.
+
+## OQ-520: Which way a founded Kontor faces (MAP.2, 2026-10-31)
+- **Status:** open, and narrowed. There is no preplaced starting Kontor to orient.
+- **Area:** simulation / fixed map.
+- **Question:** when a player founds the first warehouse, which way does its door face, and does the square 4×4 footprint depend on that facing?
+- **What is known:** the historical candidates stored rotation 0 because the footprint is square. The original door is unread. Ship-start manifests store a ship facing, which is the figure's facing at sea, not a warehouse door.
+- **How to resolve:** read the founding placement (W6.1). Do not invent a door direction in the manifest.
+- **Update (2026-10-31 readiness):** the click test reads a rotation byte in 0..3 and swaps the footprint axes (`AnnoFrame.dll` `0x1004638d`). Kontor 1302's `ENTRANCE` stores two points, `(2.5, 13/6)` and `(11/6, 0.5)`. The writer that chooses the rotation for a click was not found, so the manifest still does not store a door. Ship facing 0..3 remains the figure's cardinal heading (`docs/re/ship-navigation.md` §4).
+- **Correction (2026-10-31):** `0x1004638d` is inside `tCursorAnlageBergwerk`, not the warehouse handler. The Kontor handler is `AnnoFrame.dll` `0x10048e60`, and it was not shown to read a rotation. The two entrance points remain file data for type 1302. The door a founding click writes is still unread (`docs/re/ship-founding.md` §3.5).
+
+## OQ-521: Clustered or dispersed ship spawns (MAP.2, 2026-10-31)
+- **Status:** open. The ship start itself does not choose this.
+- **Area:** simulation / fixed map.
+- **Question:** do the five human ships start in one cluster, or at separated authored positions?
+- **What is known:** original endless presets store party ship coordinates. On `03_1024_med_256` the pairwise straight-line gaps are about 126 to 447 tiles. Other presets differ (`01` about 39, `04` about 236). Those are stored coordinates, not sailing routes. The ship-start proposals use separated authored positions and a fixed seat order. That is a proposal, not this decision.
+- **How to resolve:** the owner chooses the spawn policy before a candidate is installed. OQ-522 through OQ-524 were reserved for MAP.2 and are unused.
+
+## OQ-NAVC-1: Ship routes near the east and south edge of a world that is not a multiple of 64 (MAP-NAV-2 package C, 2026-11-02)
+- **Status:** open. The port takes the conservative reading and pins it with a regression test.
+- **Area:** simulation / ship navigation (`docs/sim/ship-route-engine.md` deviation 3).
+- **Question:** what does the original's route engine do with the tiles and coarse cells that lie between the world edge and the end of the last 64-tile sector (a 1431-tile world ends 17 tiles into a sector)?
+- **What is known:** the coarse exporter fills a null sector with open water 0xfff and the kind-10 tile export of an empty region with water (8); both read past the world edge. The window is clipped to the world (`SetWindow` x1 = min(x1, width)) but the last coarse cell and block keep their full 8 and 64 tile extent. So the original MAY let a ship plan through water that exists only beyond the edge. Not run: no emulation with a world width that is not a multiple of 8.
+- **Port:** tiles outside the world are land and cells outside are mask 0; a cell that straddles the edge is packed with the outside as land (`route_unit_test.cpp`, "route partial cells": identical to the same world padded with explicit land). The 15 candidate witnesses end at x <= 1200, z <= 1146 of a 1431 world (more than 200 tiles from the edge), so none is in the affected zone; the seat ships start at least 100 tiles from it.
+- **How to resolve:** extend `tools/ship_nav_emulate.py` with a fake world of width 70 or 1431 and compare routes along the last column and row; or capture a ship route along the south coast of a 1431 map in the running game.
+
+## OQ-NAVC-2: Item height byte written by island growth (MAP-NAV-3 N3, 2026-11-02)
+
+- **Status:** resolved for the growth visit (D, bounded), MAP-BUILD-1 package B.
+- **Answer:** `AnnoWelt.dll 0x1008b5f0` replaces the object **in place** (`inc word [tile]`, `0x1008b6c6`), toggles bit 6 and rewrites the phase in tile byte 3 (`0x1008b681`, `0x1008b6a6`, `0x1008b6ca`) and notifies island slot `+0x188` (code `0xce`, `0x1008f2d0`: `inc byte [chunk_record + 5]`). Nothing stores to the second tile dword; **the item height byte remains**. No separate replacement callee exists. `grow_chunk` already behaves so.
+- **Residual:** only the visit and its notification were read; other tick passes (fauna sweep, drought) were not searched for tile `+4` stores. `docs/sim/ship-navigation.md` 12.13 limitation (1) should be restated by the owner of that file; see `docs/re/ship-placement.md` §6.
+
+## OQ-NAVC-3: Height byte of a command-built building (MAP-NAV-3 N3 review, 2026-11-02)
+
+- **Status:** resolved and implemented for the supported classes (MAP-BUILD-1 C): a command-built building stores the derived height in `byte0f` and every footprint tile; see `docs/sim/ship-placement.md` section 6 and `route_objects_test.cpp`.
+- **Answer:** the original's UI preview computes `rec[8]` (the height `v` of the footprint window) and sends it; the apply call (`flags | 0x1000000`) skips the analysis and stores the wire byte as the building's `byte0f` and the tile height. The port computes the same `v` on the server from validated terrain and never reads the client byte (so a client cannot build on sea, which the original allows). Ordinary land: `v` (all window vertices equal, multiple of 16, `>= 32`); coast: `max & 0xf0`.
+- **Open:** nothing for the supported classes; the unsupported classes are in OQ-052.
+
+
+## OQ-CARGO-1: Does the original disable the unload tab for a moving or otherwise busy ship? (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, **not a blocker**. The authoritative path has no such test, so the contract adds none.
+- **Area:** simulation / ship cargo (`docs/sim/ship-cargo.md` P3).
+- **Question:** the ship view's "Load/unload ship" tab (`View.dll`, builders at `0x1004ab80` and `0x1005e5xx`, refresh `0x1005d9e0`) may grey out the goods buttons while the ship moves, turns, is damaged, or no own warehouse is in range. Does it?
+- **What is known:** `AnnoWelt.dll 0x100ac360` (the transfer) and `0x1003f200` (the range test) read no state word, no hit points, no order and no parent (`docs/re/ship-cargo.md` section 8). The click handler `0x1005a7f0` passes the city from `0x1005d8c0` without testing it for null, which suggests the buttons are inert when no warehouse is found (shape only).
+- **Port:** a moving ship unloads at its apply-tick position if that position is in range; nothing else is checked. A rule such as "the ship must be stopped" would be a gameplay policy for the owner, not an original fact.
+- **How to resolve:** read the tab's enabling code (the property writers for the hold controls around `0x1005a650`), or watch the running original with a ship under way next to its warehouse.
+
+## OQ-CARGO-2: Consumers of the stock words `+6`/`+8` and of the foreign trade notifications (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, **not a blocker**.
+- **Area:** simulation / ship cargo and the balance sheet.
+- **Question:** city stock add/remove increment the u16 words `+6` ("added") and `+8` ("removed") of the 12-byte goods record (`0x1002da81`, `0x1002daaa`). Which code reads them (the balance sheet, a statistics page, an AI)? The foreign-owner arm of `0x100ac360` also posts `0xd` records to the property-`0x2c` listeners of the ship and the city (`0x100acc06`-`0x100accbc`); who listens?
+- **What is known:** the same-owner arm writes the words through add/remove and posts nothing. The rebuild's `CityStock` has no such words (`docs/sim/state.md` line 667 keeps them out of the stream). The words wrap at 65536 and are not part of stock.
+- **How to resolve:** list readers of `city + 0x334 + 12*g + 6/8` (and the `0x2c` property consumers) with the sweep used in `docs/re/ship-founding.md` 14.
+
+## OQ-CARGO-3: The cannon arm, the two-figure transfer `0x6b` and the foreign arm (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, excluded from MAP-CARGO-1 by the owner's scope.
+- **Area:** simulation / ship cargo.
+- **What is known:** the same function has an arm for `rec[6] == 1` (decrement a ship counter, add one ton of goods `rec[0]` to a city with no ownership test), an arm for owners that differ (relation 3, gold, notifications) and a load arm; multiplayer command `0x6b` is a different two-figure transfer (`docs/re/ship-cargo.md` sections 4, 7). None is reachable from the single-player view for the same-owner unload, except that a modified multiplayer client can set `rec[6]` and forge the city.
+- **Port:** none of them is accepted by the rebuild's `UnloadCmd`; the cannon arm in particular is a goods source without a ledger and must not be ported as written.
+- **How to resolve:** a separate package when loading, trading or cannons enter the scope.
+
+## OQ-CARGO-4: Where do the warehouse set and the dock disc live? (MAP-CARGO-1 U2, 2026-11-02) - CLOSED
+
+- **Status:** closed 2026-11-02 (coordinator decision).
+- **Area:** simulation / ship cargo / rules.
+- **Resolution:** `CargoRules { warehouse_prodtypes = {35}, dock_half_widths = {5,5,5,4,3,2} }` is a hashed, saved member of `Rules` from stream version 124, validated on create and load; the eligibility test uses it (no dependence on `founding_types`). See docs/sim/state.md (stream 124) and docs/sim/ship-cargo.md section 11.

@@ -204,10 +204,12 @@ def road_class(t):
             and f & 3 != 1 and t.w > 0 and t.h > 0)
 
 
-def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
+def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0, road_floor=True, road_preserve=True):
     """The BuildCmd contract (docs/sim/ship-placement.md, docs/sim/road-placement.md): place() for the supported terrain
     classes, UNSUPPORTED for every other flag word, so a class the trace did not cover never gets a default answer.
-    A road class type is the original rule (analysis requested: the server derives the byte) plus the level floor R-A2."""
+    A road class type is the original rule (analysis requested: the server derives the byte) plus, as separate enhanced
+    choices (Rules::road_require_land_level / road_preserve_nonroad_pieces), the level floor R-A2 for the class 0x4000
+    (the class 0x1000 threshold is the original's and never optional) and the ramp/pier refusal R-A3."""
     t = reg.get(tid)
     if t is not None and road_class(t):
         fw, fh = (t.w, t.h) if rot & 1 == 0 else (t.h, t.w)
@@ -223,10 +225,10 @@ def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
                         return UNSUPPORTED, 'object id %d not in the registry' % o, rec8_in
                     if compat(t, e, t.flags | flags) == 0:
                         return REJECT, 'OCCUPIED', rec8_in
-                    if e.group == 0xC1 and not road_class(e):                       # R-A3: ramp, pier (a bridge piece the original refuses itself)
+                    if road_preserve and e.group == 0xC1 and not road_class(e):     # R-A3: ramp, pier (a bridge piece the original refuses itself)
                         return REJECT, 'OCCUPIED', rec8_in
         v, why, b = place(isl, reg, tid, x, y, rot, flags, rec8_in)
-        if v == ACCEPT and b < ROAD_FLOOR:                                         # R-A2
+        if v == ACCEPT and road_floor and b < ROAD_FLOOR:                          # R-A2 (class 0x1000 has the original's own threshold in place())
             return REJECT, 'LOWLEVEL', b
         return v, why, b
     if t is not None:
@@ -309,9 +311,9 @@ def case_island(c):
     return Island(x0, y0, W, H, vertex, lambda tx, ty: c['objs'].get((tx, ty), 0))
 
 
-def run_case(reg, c):
+def run_case(reg, c, road_floor=True, road_preserve=True):
     tid, x, y, rot, flags, rec8 = c['place']
-    return engine_place(case_island(c), reg, tid, x, y, rot, flags, rec8)
+    return engine_place(case_island(c), reg, tid, x, y, rot, flags, rec8, road_floor, road_preserve)
 
 
 def check_vectors(path):
@@ -329,9 +331,21 @@ def check_vectors(path):
         if not ok:
             bad += 1
             print('MISMATCH %s (line %d): expected %s, got %s %s %d' % (c['name'], c['line'], ' '.join(e), verdict, reason, byte))
-        o = c['original']
-        if o is not None:                              # the transcription of the original must say the stated thing (an adaptation is a stated difference)
-            tid, x, y, rot, flags, rec8 = c['place']
+        # The faithful mode (both enhanced road choices off) answers the `original` line where the file gives one,
+        # else `expect`; and for a road it must equal the transcription of the original island function (place()).
+        fv, fr, fb = run_case(reg, c, False, False)
+        o = c['original'] or e
+        if o[0] == ACCEPT:
+            fok = fv == ACCEPT and fb == int(o[1])
+        elif o[0] == REJECT:
+            fok = fv == REJECT and fr == o[1]
+        else:
+            fok = fv == UNSUPPORTED
+        if not fok:
+            bad += 1
+            print('MISMATCH %s (line %d) faithful mode: expected %s, got %s %s %d' % (c['name'], c['line'], ' '.join(o), fv, fr, fb))
+        tid, x, y, rot, flags, rec8 = c['place']
+        if c['original'] is not None and reg[tid].prodtype == STRASSE:
             ov, orr, ob = place(case_island(c), reg, tid, x, y, rot, flags, rec8)
             ook = (ov == ACCEPT and o[0] == ACCEPT and ob == int(o[1])) or (ov == REJECT and o[0] == REJECT and orr == o[1])
             if not ook:
@@ -366,10 +380,25 @@ def selftest():
     eq('wide type pokes out at rotation 0', place(plain, reg, 4, 8, 2, 0, ANALYSIS)[:2], (REJECT, 'BOUNDS'))
     eq('the same type turned fits', place(plain, reg, 4, 8, 2, 1, ANALYSIS)[::2], (ACCEPT, 0x30))
     eq('trunc4', (trunc4(0x31 * 4 + 3), trunc4(0)), (0x31, 0))
+    # MAP-ROAD-CLOSE-1: the 2 x 2 table of the two enhanced road choices (floor, preserve), hand-derived:
+    # a road on flat 0x10 refuses only with the floor; a road over a ramp refuses only with preserve;
+    # both at once: preserve is the occupancy step and answers first; class 0x1000 keeps its own floor.
+    rr = {1: Type(1, 1, 193, 0x4186), 2: Type(1, 1, 194, 0x4186), 3: Type(1, 1, 193, 0x1186)}
+    low = Island(0, 0, 10, 10, flat(0x10, 10, 10), lambda x, y: 0)
+    low_ramp = Island(0, 0, 10, 10, flat(0x10, 10, 10), lambda x, y: 2 if (x, y) == (3, 3) else 0)
+    land_ramp = Island(0, 0, 10, 10, flat(0x30, 10, 10), lambda x, y: 2 if (x, y) == (3, 3) else 0)
+    for fl in (False, True):
+        for pr in (False, True):
+            tag = 'floor=%d preserve=%d ' % (fl, pr)
+            eq(tag + 'low road', engine_place(low, rr, 1, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2], (REJECT, 'LOWLEVEL') if fl else (ACCEPT, ''))
+            eq(tag + 'ramp on land', engine_place(land_ramp, rr, 1, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2], (REJECT, 'OCCUPIED') if pr else (ACCEPT, ''))
+            eq(tag + 'ramp on low land', engine_place(low_ramp, rr, 1, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2],
+               (REJECT, 'OCCUPIED') if pr else ((REJECT, 'LOWLEVEL') if fl else (ACCEPT, '')))
+            eq(tag + 'class 0x1000 keeps its floor', engine_place(low, rr, 3, 3, 3, 0, ANALYSIS, 0, fl, pr)[:2], (REJECT, 'LOWLEVEL'))
     if fails:
         print('\n'.join('FAIL ' + f for f in fails))
         return False
-    print('placement_ref selftest: 9 checks passed')
+    print('placement_ref selftest: %d checks passed' % (9 + 16))
     return True
 
 

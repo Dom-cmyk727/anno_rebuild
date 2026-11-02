@@ -1241,7 +1241,22 @@ TEST_CASE("unload session: a recorded transfer replays, a changed amount or targ
     CHECK(ship(good).holds[3] == sim::ShipHold{kTools, 6400});
     // Conservation over the whole replay: what the replay starts with is what it ends with.
     auto initial = sim::World::load(committed.value().initial_save, registry(), {});
-    REQUIRE(initial.ok());
+    REQUIRE(initial.ok()); // MAP-ROAD-CLOSE-1: the same valid recording with only the version word
+                           // of its initial save set
+    // to the previous stream (124) and the integrity seal recomputed is refused by VERSION, not as
+    // checksum damage; the unchanged control loads.
+    {
+        std::vector<std::uint8_t> old_save = committed.value().initial_save;
+        island_test::put32(old_save, 8, sim::kStateHashVersion - 1);
+        island_test::reseal(old_save);
+        const auto refused_old = sim::World::load(old_save, registry(), {});
+        REQUIRE_FALSE(refused_old.ok());
+        CHECK(refused_old.error().find(
+                  "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
+                  " is not supported (this build reads " + std::to_string(sim::kStateHashVersion) +
+                  ")") != std::string::npos);
+        CHECK(refused_old.error().find("checksum") == std::string::npos);
+    }
     CHECK(totals(initial.value()) == totals(good));
     // Retries create nothing: send every command of the session again to the end state.
     const Snap end = snap(good);

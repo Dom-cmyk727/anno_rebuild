@@ -1305,7 +1305,8 @@ std::int64_t gold_of(const sim::World& w, std::uint32_t p) {
 
 /// Every origin of the island where the placement rule accepts `type` (rotation 0), row-major.
 std::vector<Origin> legal_origins(const sim::Island& is, const sim::TypeRegistry& types,
-                                  const sim::BuildingType& type) {
+                                  const sim::BuildingType& type,
+                                  const sim::PlacementParams& params = {}) {
     std::vector<Origin> out;
     for (std::int32_t y = is.tiles.y0();
          y < is.tiles.y0() + static_cast<std::int32_t>(is.tiles.height()); ++y) {
@@ -1315,7 +1316,7 @@ std::vector<Origin> legal_origins(const sim::Island& is, const sim::TypeRegistry
             rec.type = type.id;
             rec.x = x;
             rec.y = y;
-            const sim::PlacementResult r = sim::placement_rule(is, types, type, rec);
+            const sim::PlacementResult r = sim::placement_rule(is, types, type, rec, params);
             if (r.reject == sim::Reject::None) {
                 out.push_back({x, y, r.height});
             }
@@ -2055,7 +2056,11 @@ std::optional<RoadSite> road_site(const sim::World& w, sim::CityRef ref,
                                   const sim::BuildingType& road, const sim::Building& wh) {
     const sim::Island& is = *w.islands()[ref.island.v];
     std::vector<Origin> legal;
-    for (const Origin& o : legal_origins(is, w.types(), road)) {
+    // The sites follow the world's own (enhanced) road choices, read from its Rules.
+    sim::PlacementParams params;
+    params.road_require_land_level = w.rules().road_require_land_level;
+    params.road_preserve_nonroad_pieces = w.rules().road_preserve_nonroad_pieces;
+    for (const Origin& o : legal_origins(is, w.types(), road, params)) {
         const sim::Slot idx = is.tile_index(o.x, o.y);
         if (idx != sim::kNoSlot && is.tiles.owner(idx) == ref.city.v) {
             legal.push_back(o);
@@ -2987,10 +2992,17 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
         return;
     }
     RealStart rs = real_start(*dir);
+    // The enhanced session of the road canary: both explicit road choices on (MAP-ROAD-CLOSE-1;
+    // the defaults of Rules are the faithful ones). They are hashed and saved, so the recording,
+    // the reloads and the fresh-process replay all carry them.
+    rs.rules.road_require_land_level = true;
+    rs.rules.road_preserve_nonroad_pieces = true;
     auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
     REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
     const sim::World pristine = std::move(loaded).value();
     REQUIRE(sl::expedition_baseline_problem(pristine).empty());
+    CHECK(pristine.rules().road_require_land_level);
+    CHECK(pristine.rules().road_preserve_nonroad_pieces);
     const std::uint64_t pristine_hash = pristine.state_hash();
 
     // ---- the registry facts the ledger is derived from ---------------------------------------

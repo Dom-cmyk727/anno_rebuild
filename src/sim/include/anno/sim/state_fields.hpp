@@ -295,7 +295,7 @@ template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
     ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Rules>() == 25, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 27, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -323,8 +323,10 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     ar::seq(a, s.shared_visibility, 8, [&](auto& group) {        // stream 121
         ar::seq(a, group, 4, [&](auto& x) { a.u32(x); });
     });
-    fields(a, s.nav);   // stream 122
-    fields(a, s.cargo); // stream 124
+    fields(a, s.nav);                          // stream 122
+    fields(a, s.cargo);                        // stream 124
+    a.boolean(s.road_require_land_level);      // stream 125
+    a.boolean(s.road_preserve_nonroad_pieces); // stream 125
 }
 
 // ---- settings scope

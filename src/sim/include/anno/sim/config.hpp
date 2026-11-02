@@ -598,6 +598,19 @@ struct Rules {
     NavRules nav;
     /// MAP-CARGO-1 (stream 124): the ship unloading rule's data.
     CargoRules cargo;
+    /// MAP-ROAD-CLOSE-1 (stream 125, docs/sim/road-placement.md section 3): an ENHANCED road
+    /// choice, not an original rule. Off: a class-0x4000 land road is accepted at any terrain
+    /// level, as the original island function does (AnnoWelt 0x1007cbc2: accepted at once). On: it
+    /// needs the level floor PlacementParams::min_level (R-A2). The class-0x1000 threshold and its
+    /// bit-4 gated slope test are original and never optional. The server derives the height either
+    /// way. Intended value in an enhanced session: true.
+    bool road_require_land_level = false;
+    /// MAP-ROAD-CLOSE-1 (stream 125): an ENHANCED road choice (R-A3). Off: a road may replace a
+    /// compatible ramp or pier piece (the original compat row for group 0xc1). On: a group-0xc1
+    /// piece that is not itself a land road is `Occupied`. Existing compatibility rows (a bridge
+    /// piece, buildings) and the unsupported-class gates apply either way. Intended value in an
+    /// enhanced session: true.
+    bool road_preserve_nonroad_pieces = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

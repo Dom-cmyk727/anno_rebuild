@@ -68,6 +68,11 @@ struct PlacementParams {
     std::uint32_t ignored_flag_bits = 0x0080;
     /// The flag bit whose coverage test is not decoded: always Unsupported (0x1007c955-0x1007cb3d).
     std::uint32_t coverage_flag = 0x10;
+    /// MAP-ROAD-CLOSE-1: the enhanced road choices (Rules::road_require_land_level and
+    /// Rules::road_preserve_nonroad_pieces), false = the original predicates. The world passes its
+    /// Rules values; a direct caller states them.
+    bool road_require_land_level = false;
+    bool road_preserve_nonroad_pieces = false;
 };
 
 /// The facts that make a type an ordinary land road (docs/sim/road-placement.md section 2). A

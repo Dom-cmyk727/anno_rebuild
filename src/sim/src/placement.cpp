@@ -72,7 +72,10 @@ PlacementResult road_window(const VertexGrid& grid, const BuildingType& t,
         mx - lo > road.slope_limit) {
         return {Reject::TerrainRefused, 0};
     }
-    if (result < params.min_level) {
+    // The original needs a byte >= min_level for the slope class (0x1007cbeb) but accepts the road
+    // class at once; the floor for the road class is the enhanced choice R-A2.
+    const bool slope_class = (t.flags_word & 0x7000U) == road.slope_class;
+    if (result < params.min_level && (slope_class || params.road_require_land_level)) {
         return {Reject::TerrainRefused, 0};
     }
     return {Reject::None, static_cast<std::uint8_t>(result)};
@@ -124,8 +127,8 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
             }
             // R-A3: a group-0xc1 piece that is not itself a land road (ramp, pier) is not replaced
             // by a road (the original accepts it; docs/sim/road-placement.md section 3).
-            if (cls == Class::Road && group_of(existing->prodtype) == 0xc1U &&
-                !is_land_road(*existing)) {
+            if (cls == Class::Road && params.road_preserve_nonroad_pieces &&
+                group_of(existing->prodtype) == 0xc1U && !is_land_road(*existing)) {
                 return {Reject::Occupied, 0};
             }
         }

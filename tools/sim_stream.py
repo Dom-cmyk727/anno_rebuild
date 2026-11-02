@@ -66,6 +66,9 @@ state word (the transcribed registries hold no figure).
 Stream 124 (task MAP-CARGO-1) adds Rules::cargo after nav: the eligible warehouse PRODTYPEs and the dock
 half-widths (two u64-counted u32 lists).
 
+Stream 125 (task MAP-ROAD-CLOSE-1) adds two Rules booleans after cargo: road_require_land_level and
+road_preserve_nonroad_pieces (one byte each, default 0).
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -86,7 +89,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 124
+STATE_HASH_VERSION = 125
 PRNG_TIMELINE_VERSION = 3
 
 
@@ -261,7 +264,7 @@ def cargo_rules_bytes(cargo=CARGO_DEFAULT):
     return u64(len(prodtypes)) + b''.join(u32(x) for x in prodtypes) + u64(len(widths)) + b''.join(u32(x) for x in widths)
 
 
-def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT):
+def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pieces=False):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
@@ -272,7 +275,8 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT):
     return (u8(0) + u8(0) + u8(0) + u64(1 << 20) + flags + u8(0) + u8(0) + u32(0) + u8(0)
             + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u8(0) + u64(1) + u32(1302) + u64(0)
             + u64(0) + nav_rules_bytes()  # city_names (120), shared_visibility (121): both empty; nav (122)
-            + cargo_rules_bytes(cargo))  # cargo (124)
+            + cargo_rules_bytes(cargo)  # cargo (124)
+            + u8(1 if road_level else 0) + u8(1 if road_pieces else 0))  # road_require_land_level, road_preserve_nonroad_pieces (125)
 
 
 def settings_bytes(width=0, height=0):
@@ -908,10 +912,12 @@ CARGO_CUSTOM = ([35, 36, 40], [3, 3, 3, 2])
 def cargo_rules_fixture_text():
     lines = ['# Rules bytes of stream version %d with the CargoRules of MAP-CARGO-1 (docs/sim/ship-cargo.md section 5).' % STATE_HASH_VERSION,
              '# Written by tools/sim_stream.py --write-cargo-rules from the spec alone (no C++). Columns: name hex.',
-             '# cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.']
+             '# cargo_* is the CargoRules part alone; rules_* is the whole Rules scope of a default world.',
+             '# Stream 125 (MAP-ROAD-CLOSE-1): the Rules scope ends with the two road booleans; rules_roads has both on.']
     for name, cargo in (('default', CARGO_DEFAULT), ('custom', CARGO_CUSTOM)):
         lines.append('cargo_%s %s' % (name, cargo_rules_bytes(cargo).hex()))
         lines.append('rules_%s %s' % (name, rules_bytes(False, cargo).hex()))
+    lines.append('rules_roads %s' % rules_bytes(False, CARGO_DEFAULT, True, True).hex())
     return '\n'.join(lines) + '\n'
 
 

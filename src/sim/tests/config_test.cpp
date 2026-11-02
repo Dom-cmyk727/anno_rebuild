@@ -227,6 +227,9 @@ void expected_config(Stream& s) {
     for (const std::uint32_t w : {5U, 5U, 5U, 4U, 3U, 2U}) {
         s.u32(w);
     }
+    // road options (stream 125): hand-written defaults, both off (docs/sim/road-placement.md 3)
+    s.boolean(false); // road_require_land_level
+    s.boolean(false); // road_preserve_nonroad_pieces
 }
 
 void expected_settings(Stream& s) {
@@ -392,6 +395,10 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
     m.emplace_back("shared_visibility", [](sim::Rules& r) { r.shared_visibility = {{0, 1}}; });
     m.emplace_back("nav", [](sim::Rules& r) { r.nav.plans_per_advance += 1; });
     m.emplace_back("cargo", [](sim::Rules& r) { r.cargo.dock_half_widths = {4, 4, 3, 2, 1}; });
+    m.emplace_back("road_require_land_level",
+                   [](sim::Rules& r) { r.road_require_land_level = true; });
+    m.emplace_back("road_preserve_nonroad_pieces",
+                   [](sim::Rules& r) { r.road_preserve_nonroad_pieces = true; });
     return m;
 }
 
@@ -598,10 +605,12 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.timer0_clamp);
     CHECK(r.island_candidate_order == sim::IslandCandidateOrder::Sorted);
     CHECK_FALSE(r.removal_clear_tile);
+    CHECK_FALSE(r.road_require_land_level); // the faithful convention: both road choices off
+    CHECK_FALSE(r.road_preserve_nonroad_pieces);
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
     CHECK(r.shared_visibility.empty());
-    static_assert(sim::field_count<sim::Rules>() == 25);
+    static_assert(sim::field_count<sim::Rules>() == 27);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1512,7 +1521,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 124);
+    CHECK(sim::kStateHashVersion == 125);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
@@ -1986,21 +1995,41 @@ TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcripti
             want[name] = hex;
         }
     }
-    REQUIRE(want.size() == 4);
+    REQUIRE(want.size() == 5);
     sim::Rules def;
     const std::string def_hex = hex_of(rules_stream(def));
     CHECK(def_hex == want["rules_default"]);
-    // The CargoRules bytes are the tail of the Rules scope.
-    CHECK(def_hex.size() >= want["cargo_default"].size());
-    CHECK(def_hex.substr(def_hex.size() - want["cargo_default"].size()) == want["cargo_default"]);
+    // The CargoRules bytes precede the two road booleans (stream 125) at the end of the Rules
+    // scope.
+    constexpr std::size_t kRoadHex = 4; // two bytes
+    CHECK(def_hex.size() >= want["cargo_default"].size() + kRoadHex);
+    CHECK(def_hex.substr(def_hex.size() - kRoadHex - want["cargo_default"].size(),
+                         want["cargo_default"].size()) == want["cargo_default"]);
+    CHECK(def_hex.substr(def_hex.size() - kRoadHex) == "0000"); // both road choices off
+    // Both on: the whole scope equals the independent transcription (a default and a flipped
+    // byte pair differ only in the last two bytes).
+    sim::Rules roads;
+    roads.road_require_land_level = true;
+    roads.road_preserve_nonroad_pieces = true;
+    const std::string roads_hex = hex_of(rules_stream(roads));
+    CHECK(roads_hex == want["rules_roads"]);
+    CHECK(roads_hex.substr(roads_hex.size() - kRoadHex) == "0101");
+    CHECK(roads_hex.substr(0, roads_hex.size() - kRoadHex) ==
+          def_hex.substr(0, def_hex.size() - kRoadHex));
+    sim::Rules only_floor;
+    only_floor.road_require_land_level = true;
+    CHECK(hex_of(rules_stream(only_floor)).substr(def_hex.size() - kRoadHex) == "0100");
+    sim::Rules only_pieces;
+    only_pieces.road_preserve_nonroad_pieces = true;
+    CHECK(hex_of(rules_stream(only_pieces)).substr(def_hex.size() - kRoadHex) == "0001");
     sim::Rules custom;
     custom.cargo.warehouse_prodtypes = {35, 36, 40};
     custom.cargo.dock_half_widths = {3, 3, 3, 2};
     REQUIRE(custom.validate().empty());
     const std::string custom_hex = hex_of(rules_stream(custom));
     CHECK(custom_hex == want["rules_custom"]);
-    CHECK(custom_hex.substr(custom_hex.size() - want["cargo_custom"].size()) ==
-          want["cargo_custom"]);
+    CHECK(custom_hex.substr(custom_hex.size() - kRoadHex - want["cargo_custom"].size(),
+                            want["cargo_custom"].size()) == want["cargo_custom"]);
     CHECK(def_hex != custom_hex);
     // The rules digest moves with each list, and the stream reads back.
     CHECK(def.digest() != custom.digest());

@@ -206,6 +206,15 @@ void run_building_seam(Env& env, const Seam<Seams::PlaceHook>& seam, Island& is,
 
 // ---- Build 0x64 (§8.4) -------------------------------------------------------------
 
+/// The placement rule's data for this world: the original constants and the world's enhanced road
+/// choices (Rules::road_require_land_level / road_preserve_nonroad_pieces, stream 125).
+PlacementParams placement_params(const Rules& rules) {
+    PlacementParams p;
+    p.road_require_land_level = rules.road_require_land_level;
+    p.road_preserve_nonroad_pieces = rules.road_preserve_nonroad_pieces;
+    return p;
+}
+
 /// Whether any building of the island (any city, any list) covers tile `idx`.
 bool tile_has_building(const Island& is, std::uint64_t idx) {
     for (const std::vector<std::uint32_t>& grid : is.cache.grids) {
@@ -348,7 +357,7 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             env.seams.placement_rule.fn != nullptr
                 ? env.seams.placement_rule.fn(env.seams.placement_rule.ctx, is, env.types, *type,
                                               rec)
-                : placement_rule(is, env.types, *type, rec);
+                : placement_rule(is, env.types, *type, rec, placement_params(env.rules));
         if (placed.reject != Reject::None) {
             out.status = placed.reject;
             return out;

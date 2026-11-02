@@ -122,7 +122,11 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // (CargoRules: u64 count and u32 PRODTYPEs of the eligible warehouses, then u64 count and u32 dock
 // half-widths), after nav. Nothing else changes; every state hash moves through the version in the
 // header and the Rules bytes.
-inline constexpr std::uint32_t kStateHashVersion = 124;
+// Stream at 125 (task MAP-ROAD-CLOSE-1, docs/sim/road-placement.md section 3): Rules gain two
+// booleans after `cargo`, road_require_land_level and road_preserve_nonroad_pieces (one byte
+// each, default false). Nothing else changes; every state hash moves through the version in the
+// header and the two Rules bytes.
+inline constexpr std::uint32_t kStateHashVersion = 125;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

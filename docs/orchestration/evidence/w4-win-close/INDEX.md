@@ -123,6 +123,32 @@ for a binary archive was available to this session, so it is retained at the pat
 (Windows-local, not a shared artifact). The orchestrator has not independently verified anything that
 depends on it.
 
-## C-final
+## C-final (frozen source head `07a7505201066a0522804527fd3abb4e8022fe8e`; documentation and evidence follow it)
 
-Filled at the end of the packet: C1-C4 results, new run ids, final heads, final archive hash.
+Final gates (canonical runner, Release; the `-06` runs; earlier attempts kept beside them in `cache/gates/`, with `first-04/` and
+`first-05/` copies): `msvc-cpu-06-final` 216/214/0/0/2 opt-in/0 PASS; `rtx4090-gpu-06-final` 106/106 PASS; `radeon-gpu-06-final` 106/106
+PASS; `unix-warnings-06-final` GCC 13.3 and Clang 18.1.3 `-Werror` 234 + 234 + 55 files clean; `wsl-asan-final-06` 86/86 PASS with
+`picture_matrix_contract` and `window_table_contract` passed separately. Superseded: `msvc-cpu-04-final` (1 failure: the verdict contract
+found a skip phrasing), `wsl-asan-final-05` (1 failure: a use-after-free in the new hold test, found by ASan). The WSL isolated diagnostic of
+the original timeout: `cache/c1/wsl-diag/` (passed alone in about 5 100-5 400 s). GPU window cases: `cache/c2/final5/`; mutation records:
+`cache/c1/mut/`, `cache/c2/mut/`, `cache/c4/mut-tools-2/`; matrix re-table: `cache/c4/matrix-retable.md`.
+
+Hashes at the final head (build `build/win-a29b079`, Release):
+
+| File | sha256 |
+|---|---|
+| `src/app/Release/anno1503.exe` | `3cd70cd1cd0b60471a2e264c7495ffc99c659dc132cb24a3ae8b0251bb39f8f0` |
+| `src/app/Release/anno_app_tests.exe` | `41ad411cb6346366d8efb3293053250a8f53b700dca837c4959c754dde4eb21d` |
+| `src/app/Release/anno_app_alloc_tests.exe` | `4e370b378716ad4aeb007488f0476f2b96134b1a161cce87e627b7a58eef2816` |
+| `src/app/Release/anno_app_input_tests.exe` | `6d2eb66a557b08886131a2dc4acacf46dd3fdc50170927ee410346fbf2e8e2c4` |
+| `src/render/Release/anno_render_gpu_tests.exe` | `2fc893c123514dc5c4eebe6abfc306b6ae121bbb44cc1664cc97a946df7236d0` |
+| `tools/bench/window_case.py` | `00858147c7c7f9d003195afca895d327dd582fc997e6dae1e2b5700e248787ef` |
+| `tools/bench/window_table.py` | `16f7045367a73de6a6ba2249c8f2a97615add86906149e426776af26da5858d1` |
+| `tools/bench/dev_session_capture.py` | `4cde3e5440dcf6e4eb43f4f6ae4123dba04f2cbf319e20410c3ecd28c3264a55` |
+| `tools/test/viewer_wiring.py` | `4f32a82ac0dff8f092a4bd02b6be7be311b07b0d6afe29a152d9446648fe6484` |
+| `tools/test/window_state_case.py` | `eef8844094aa0233eda2d294f3550f056f763129685278912105b3b37f7993cc` |
+| `tools/test/window_tools_contract_test.py` | `bf4b9a7b1460efda0f9b37459eeeab7a3fbdae4d638c580ddba4c8960a0d4dbe` |
+
+Final archive (logs, traces, mutation records, inventories; no source, game files or executables): `cache/archive/w4-win-close-evidence-final.zip`,
+24 459 568 bytes, 1114 files, sha256 `6e33790053fccf5f719b24efef36f88d64c7220df82a8256eb732db34a39638f`; manifest `MANIFEST-final.sha256` (committed
+beside this file). Windows-local, not a shared artifact; it holds screenshots of rendered original art and must not be published.

@@ -9959,6 +9959,7 @@ the sim's placement unit. No merge, push, rebase, prune or reset.
   board and the canonical gate (`tools/test/run_selected.py` from `E:\anno1503`, `--source-root` and `--build-dir` explicit).
 - **Heads:** code `fa94bf0` (the last commit touches `tools/bench/dev_session_capture.py` only; `src/` is as of `4ecea07`;
   the gates below name the head each ran at). This report's commit follows it; nothing under `src/` or `tools/` changes after.
+  **Superseded by W4-WIN-CLOSE below:** the last sentence holds for `9ba01f1` only; later `src/` and `tools/` changes are listed there.
 - **Evidence (ignored):** `cache/gates/` (every gate log, its inventory, failed attempts labelled `-FAILED-`/`-INVALID-`),
   `cache/win-ee/` (builds, mutation logs `mut-*`, intake, contention runs), `cache/win-ee/window/` (canaries, sessions,
   captures, `final/matrix`, `final/matrix.table.md`).
@@ -10013,7 +10014,7 @@ the sim's placement unit. No merge, push, rebase, prune or reset.
 | WSL GCC 13.3 + Clang 18.1.3 `-Werror`, `tools/check_unix_warnings.sh` | 70817ed (C++ as of 4ecea07) | 233 + 233 + 54 files | clean | | | | | PASS |
 | WSL GCC 13.3 ASan+UBSan, the 80 affected cases + `picture_matrix_contract` (213 s) + `window_table_contract` (19 s) required | 70817ed | 80 | 80 | 0 | 0 | 0 | 0 | PASS, 0 sanitizer lines |
 
-Notes on the table: the MSVC CPU gate ran at `381b3e3`; `381b3e3..HEAD` changes under `src/` only `src/render/tests/play_gpu_test.cpp`
+Notes on the table (true for `9ba01f1`; see W4-WIN-CLOSE for the final head): the MSVC CPU gate ran at `381b3e3`; `381b3e3..9ba01f1` changes under `src/` only `src/render/tests/play_gpu_test.cpp`
 (the GPU executable, run by the two GPU gates), and otherwise only Python tools, so that gate stands for the CPU suites.
 `unix-warnings-03-final.log` carries no head; it was started right after `git status` printed nothing at `70817ed` (the head then) and its C++ equals `4ecea07`'s; the
 log itself does not record that. The RTX-named case `play: GPU matches the CPU path on one scene` pins its adapter by name, so a Radeon gate
@@ -10117,3 +10118,172 @@ The note that the Radeon's 1920x1080 is a controller default is an inference: Wi
 
 Orchestrator review of `fa94bf0`; then either UI.2 on these interfaces or a decision on the open items above (a 4K display run, a
 viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, prune or reset was done.
+
+## W4-WIN-CLOSE: publication, consumer wiring, presentation boundaries, the two failures, tools — 2026-11-02 — status: REVIEW CANDIDATE (stopped at the packet's final review boundary) — OPEN: the attribution of failure B; failure A explained as test cost, its policy decision is the orchestrator's
+
+- **Executor / host:** the Windows executor (host as in the W4-WIN section above; unchanged hardware, one enumerated monitor
+  2560x1440 at 500 Hz, no 4K display). Dispatch read from `origin/main` `e37a99c` (`docs/orchestration/TASKS.md`, W4-WIN-CLOSE and
+  `reviews/2026-11-02-w4-win-handoff.md`) without merging main; the canonical gate ran from `E:\anno1503` (main `b57c6f0`) with
+  `--source-root`/`--build-dir` explicit. Keep-awake held for the session.
+- **C0 publication:** `task/W4-3-live-buildings` was pushed with an ordinary push after confirming the remote (`a29b079`) was an
+  ancestor: `a29b079..9ba01f1`, remote hash verified with `git ls-remote` (`9ba01f14aa1b512292410f3add480ba4f70ff0e0`). No force, no
+  main merge, no rebase. The evidence index is `docs/orchestration/evidence/w4-win-close/INDEX.md` (source/binary/tool hashes, gate
+  run ids and counts, failure extracts, the 499-file manifest `MANIFEST-c0.sha256`); the source-free archive of the logs is kept at
+  `E:\anno1503-worktrees\anno1503-W4-3\cache\archive\w4-win-close-evidence-c0.zip` (17 720 697 bytes, sha256
+  `d54b7296fe346e313d952f978a5e850c08872fcdd366d12fc059f1fd38f6603e`) and the final-state archive at the path/hash in the INDEX.
+  **Windows-local, not a shared artifact:** no authorised shared channel for a binary archive was available to this session, so the
+  orchestrator cannot open the logs; it can read the tables, hashes and extracts in git. The archive contains screenshots of
+  rendered original art and must not be published.
+- **Heads:** published review candidate and code/tools/report heads are in the final line of this section.
+- **Commits since the C0 checkpoint** (`4dc9a35`, the index; `git log --reverse 4dc9a35..07a7505`): `261c108` C1 seams and window cases;
+  `efc576d` C1 review fixes and C3 test changes (clang-format 23.1.3 applied to the candidate's C++); `220bf9f`, `43b3dbb` C2 stage holds,
+  cases and window-state driver; `e9cbc65`, `db7a70f` C4 tool contracts and their registration; `bb1975e`, `f9845d0` C2/C4 review
+  dispositions; `5db8838` stage-verb tests and INDEX corrections; `ebb1a73`, `bb0f67f`, `3217f2f` skip wording the verdict contract
+  caught; `07a7505` the hold test's use-after-free (found by ASan). Everything after `07a7505` is documentation and evidence.
+
+### C1 — R1 and R4 through the production window (independent review: APPROVE, nine non-blocking findings dispositioned)
+
+- **Seam:** `PublicationHold` (`publication_hold.hpp`): a scripted session (`ANNO_DEV_SCRIPT`) arms the runner's publish gate; the sim
+  thread then waits (condition variable, 20 s watchdog, released by `release`, the hold's and the window's destructors) at the first
+  publication that follows a newly recorded outcome, i.e. between the outcome record and the snapshot swap. The window keeps drawing
+  (frames and key events pass inside the interval). Created only for a scripted session; no sim state touched.
+- **Cases** (`tools/test/viewer_wiring.py`, headless real viewer: SDL dummy driver + CPU renderer; ctest
+  `viewer_wiring_r1_held_publication`, `viewer_wiring_r4_occupancy`, skip 77 without game files):
+  R1 holds a paid build and a refused build; inside the interval the title (rebuilt by the tool's own key events) and the script both
+  read `Queued`, money old, `expect published`; after release `Applied`/`Refused (Occupied)` and the paid money. R4 counts the
+  index's work (`rebuilds`, `deltas`, `tiles`, `foreign`, `off_batches`): tool off (local and another seat's build reach the picture,
+  not the index), reseed once on enable, another island's demolish = one comparison and zero tiles, local click build/demolish by tile
+  deltas without a rebuild, second off spell, reseed again. Counts, never microseconds. The foreign edit is a command of another
+  seat's city posted through the runner's normal queue (the sim applies its rules; a second city exists in `lan5`).
+- **Mutants (source diff, rebuilt target, exe sha256, run, expected assertion; `cache/c1/mut/`)**, all FAIL as intended, each with
+  the control rebuild passing (`cache/c1/control`, exe `19373b7d…`): `r1-title-raw-outcome` → line 33 `expect title-lacks Applied` (title
+  showed Applied beside money 9999980); `r1-script-raw-outcome` → line 29 `expect outcome Queued` (script saw Applied); `r4-no-observer` →
+  `off_batches >= 1` got 0; `r4-no-enable-gate` → `rebuilds == 0` got 1; `r4-observer-always-off` (shared adapter) → `foreign >= 1` got 0;
+  `r4-rescan` → `rebuilds == 1` got 2. One attempt did not compile (`r4-no-observer-ATTEMPT1-build-failed-C4551`, kept, not evidence).
+  The reviewer noted which later assertions (`tiles same` after the foreign edit) have no mutant of their own; stated limit.
+- **Review dispositions:** `PublicationHold` waits by release epoch (a release immediately followed by an arm no longer strands the
+  waiter); unit-test threads joined on every exit; `game-shell.md` documents the cases; the foreign-spot comment fixed. Not done:
+  budget-coordinator admission for the viewer cases (they run a CPU render of the full map under `PROCESSORS 4`); the Python3-missing
+  silent omission of the ctest registration (the inventory-based gate names them).
+- **Never covered:** the Lost outcome inside the window (unit level only), anything on a second island of the developer player.
+
+### C2 — R2 presentation boundaries in the native window (independent review: CHANGES REQUIRED → B1, B2 fixed, see the final review)
+
+- **Seams** (scripted GPU session only; normal play unchanged): `StageHold` as `ChunkWorkers`' test gate (`hold chunks`),
+  `GpuFrame::set_test_hold_uploads` (`hold uploads`), presents counted as failed to the consumers (`hold presents`: the frame is still
+  presented; the seam is the one a failing surface takes), `ANNO_VIEW_FADE_MS` (dissolve), `resize`, `wait visibility`, `wait blocked`,
+  `expect held`; checkpoints print ms, scene generation and surface count (the window trace's epoch = surface + 1).
+- **Cases on the RTX 4090 (Vulkan), real window**, `tools/test/viewer_wiring.py <exe> <case> <dir> --gpu [--trace]`, final exe
+  `3cd70cd1…` in `cache/c2/final5/`: `boundary_stages` (baseline Visible; chunks held → `ChunksStale` with 3-8 builders parked and a second
+  edit Applied meanwhile; uploads held → `NotOnGpu` with a second edit Applied; presents failing → `NotPresented`; each followed by a
+  successful present before `Visible`), trace off and on give the same sequence; `boundary_dissolve` (fade 3000 ms: released at
+  1498 ms, `NotOnGpu` at +20 frames, a second edit applied meanwhile, Visible at 4503 ms); `boundary_view` (published-late change
+  committed while the view is elsewhere = `Offscreen`, stays so on return; in view then left behind = `OutOfView`, `ChunksStale` on
+  return; resize while waiting = surface 0 → 1 with the change still `ChunksStale`; presents failing across a second resize;
+  a refused command and an empty demolish = `NoVisualChange`), trace off and on; `boundary_exit_in_hold` (review B1: a session
+  that ends while the builders are held exits in 3.4-4.6 s; with the fix removed it takes 24.4 s).
+- **Negative controls** (`cache/c2/mut/`): `r2-premature-object-list` (fresh/usable forced true at `frame_done`) → expected
+  `ChunksStale`, at `Visible`; `r2-ignore-present-failure` → `wait visibility NotPresented` times out at `Visible`;
+  `r2-no-release-before-join` → `boundary_exit_in_hold` takes 24.4 s > 15 s. Restored builds rerun the cases (PASS).
+- **Native window state** (`tools/test/window_state_case.py`, `cache/c2/final5/winstate`): with the builders held the driver minimised the
+  window for 2.5 s, restored it, and covered it with an opaque topmost window (checked: the window at the game window's centre was the
+  cover). Trace: `Outdated` acquire at the minimise, then **no frame attempt for 2.5 s** (the loop does not draw a minimised window),
+  `Outdated` again on restore (surface epoch 3), and no failed or skipped acquire or present while covered: **an obscured window kept
+  presenting with Success**; this is not physical visibility. The change stayed `ChunksStale` through all of it and became `Visible`
+  only after the release and a presented frame. Not done: releasing while minimised.
+- **Retained positive comparison:** the non-empty changed-region CPU/fresh/GPU comparisons are the earlier ones
+  (`visibility through the pipeline` — presented frame equals a fresh reference, changed region > 100 px; the play GPU-vs-CPU cases,
+  both adapters), re-run in the final gates below.
+- **Not exercised in the window:** `NothingToDraw` (unit cases `visibility_test`/`dev_visibility_test`), the Radeon in the real window
+  (a canary was not needed: the changed shared GPU file's cases ran on both adapters in the GPU gates), physical display latency,
+  releasing while minimised.
+
+### C3 — the two failures (finite investigation)
+
+- **A. Whole-app WSL ASan timeout** (`play: islands are the ones the sim placed`, 3400 s). Unchanged code and test: `play_test.cpp` was not
+  changed by this work except an opt-in progress line added for the diagnostic, and nothing under `loader`, `scene`, `render`, `sim` or
+  `formats` differs from the pin. Native Release: 109 s for 50 scenarios (2.2 s each); the sibling one-map case 2.15 s native vs 109 s in the
+  failed ASan run (about 50x); the same run's `play: tick 0 matches the viewer…` case took 2313 s. The one instrumented isolated run
+  (`cache/c1/wsl-diag/`, WSL ASan+UBSan binary `binary.sha256`, `ANNO_TEST_PROGRESS=1`, alone, 2 test threads, samples every 120/300 s):
+  completed alone (script exit 0 after 5 130 s by the script's clock; the case's own progress timer reads 5 398 s — the two disagree by
+  5 %, unexplained), **all 5 492 assertions passed**; 50 scenarios at about 105 s each and linear (scenario 4 at 421 s, 25 at about 2 600 s, 50 at 5 398 s);
+  the process showed 4 436 s of CPU time at its last sample and a load average of about 1 (one busy thread; the main thread was seen once in a
+  9p file read); RSS 0.7-1.3 GB; no stall and no wait state. The case has no picture, runner or reclaimer in it: no lifecycle component.
+  **Disposition:** explained, not a regression: alone it needs about 5.1-5.4 ks under ASan+UBSan, 1.5x the gate's per-test limit of 3 400 s, so it times out
+  whatever else runs; its code and everything it calls are identical to the pin (no pin baseline was run: 90 more minutes would add nothing the
+  unchanged-source diff does not already say). Proposed test-specific policy, **not applied by me**: put the corpus case (and
+  `play: tick 0 matches the viewer…`, 2 313 s in the failed run, the next one to cross) in the `heavy` suite with a sanitizer-scaled timeout
+  of at least 8 000 s, or run a scenario subset under sanitizers. **The whole-app WSL sanitizer gate still has no green run**: the 86 focused cases
+  below and this isolated pass do not replace it.
+- **B. `picture reclaim: a stalled process reclaimer…` (one occurrence, `scene_picture_recovery_test.cpp:692, 716, 717`).**
+  Mechanism found by reading: the case snapshots `before = SceneReclaimer::shared().stats()` and compares `waiting - before.waiting`
+  (unsigned) and `waiting == before.waiting`. The reclaimer is process-wide, so generations an earlier case in the same process
+  released and that were still waiting (a starved reclaimer thread under host load) are part of `before`; when they finish during the
+  case, `waiting - before.waiting` wraps to a huge number (line 692) and `waiting == before.waiting` fails with lower counts (716, 717):
+  exactly the three assertions seen. The canonical gate runs each case in its own process, so only a whole-binary run exposes it
+  (the original was a direct whole-binary run). **Fix and proof:** the case settles the shared reclaimer (`settle_reclaimer`, bounded)
+  before its baseline and compares signed; a gate-controlled regression (`picture reclaim: a baseline taken while foreign generations
+  wait is not one…`) reproduces the wrap without load (two foreign generations stuck behind the reclaimer's own gate: stale baseline 1,
+  after release the old expression wraps) and checks that settling waits for in-flight work. Focused repeats: 5 runs of the picture-recovery
+  suite under 16 busy processes, 18/18 each (`cache/c4/reclaimer-contended-5.log`); green repeats do not explain the old failure.
+  **Disposition: the defect is identified and fixed with a deterministic regression; that it was the cause of the original occurrence is
+  an inference that fits all three assertions, not an observation (no reclaimer statistics were logged, and the 24-process terminal
+  reproduction has no log). The attribution stays OPEN; the one observation that would close it is the failing CHECK's
+  `before`/`now` reclaimer stats from a whole-binary run under load, which the case does not print yet.**
+- The five `drain()` helpers and the two worker cases (W4-WIN-1) were reviewed again: each waits for the event it asserts, releases its
+  gates on every exit and keeps a watchdog; production scheduling is unchanged.
+
+### C4 — tools, provenance and the final acceptance matrix
+
+- **New contracts** (`tools/test/window_tools_contract_test.py`, ctest `window_tools_contract`, Windows; tiny fixtures; skip lines named):
+  watchdog termination (rc 124, `child_exit=killed`, diagnostic, bounded time), unreadable peak (rc 3 when the window itself ended 0,
+  its own failure kept when it did not; `child_exit` recorded apart; `window_table.peak_rss` refuses a peak of 0), refused capture
+  (minimised, client area off the desktop) with controls. Seven mutations, each fails its contract for the intended reason
+  (`cache/c4/mut-tools-2/`); one (`capture-minimised-allowed`) is caught only by the message because the off-desktop guard also
+  refuses a minimised window (defence in depth), and one (`capture-offdesktop-allowed`) fails by a Pillow crash, not by the message.
+  Not exercised: Win32 `GetProcessMemoryInfo` failing (the hook bypasses it).
+- **Matrix re-aggregation** with the final tools: `window_table.py` over the retained 13-case raw traces → byte-identical to the retained table
+  (`cache/c4/matrix-retable.md`). From the raw `frames.tsv`/`events.tsv`/`manifest.txt` of five cases the independent review and I recomputed
+  identical counts. **What the numbers mean:** "500 fps" is the frame-loop cadence (median frame-start interval 1.99-2.00 ms; the
+  acquire wait paces it, the present call returns in 0.04 ms); "failed 0" = no frame had an acquire or present API failure; "dropped 0" =
+  **trace-record loss** (manifest `dropped=0` against 2 000 000 / 200 000 / 200 000 bounds). None of them observes scanout or missed
+  refreshes; frame-start intervals above 3 ms occur (maxima 7-15 ms) and the raw files cannot say whether the display missed a refresh.
+  The attribution to the 500 Hz monitor is an inference (no present mode is recorded). The 3840x2160 cases keep the oversized-surface label
+  (displays 2560x1440). The matrix is the `4ecea07` binary (exe `58c60ad…`), not the final head.
+- **Final gates** (canonical runner, Release, original assets, at the frozen head; first attempt kept, see below):
+
+| Gate | Head | Sel | Pass | Fail | Empty | Skip | Incompl | Verdict |
+|---|---|---:|---:|---:|---:|---|---:|---|
+| MSVC CPU: app, alloc, input tests + `viewer_wiring_*` + `window_tools_contract` + preflights (`msvc-cpu-06-final`) | 07a7505 | 216 | 214 | 0 | 0 | 2 opt-in probes | 0 | PASS |
+| RTX 4090 GPU (`rtx4090-gpu-06-final`, `ANNO_REQUIRE_GPU=1`) | 07a7505 | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| Radeon GPU (`radeon-gpu-06-final`) | 07a7505 | 106 | 106 | 0 | 0 | 0 | 0 | PASS |
+| WSL GCC 13.3 + Clang 18.1.3 `-Werror`, viewer and GPU on, then Clang without GPU (`unix-warnings-06-final`) | 07a7505 | 234 + 234 + 55 files | clean | | | | | PASS |
+| WSL GCC 13.3 ASan+UBSan, 86 affected cases (`wsl-asan-final-06`); `picture_matrix_contract` (216 s) and `window_table_contract` (19 s) required and passed | 07a7505 | 86 | 86 | 0 | 0 | 0 | 0 | PASS, 0 sanitizer lines |
+  Failed/superseded attempts, kept: `msvc-cpu-04-final` at `5db8838` — 216/213/**1**/0/2/0: `test_verdict_contract` failed because
+  `src/render/tests/play_gpu_test.cpp` (my `4ecea07`) said `skipping: no ` + adapter, which the verdict classifies as a passing "other"
+  skip; the retained `msvc-cpu-03-final` predated that commit, so the defect was never seen. Fixed: the message now reads
+  `skipping: no GPU device (no adapter named …)`, a failing capability skip when `ANNO_REQUIRE_GPU` is unset. Also renamed the script
+  counter `skipped` → `off_batches` (the same contract scans for skip wording). `rtx4090-gpu-04-final` / `radeon-gpu-04-final` (106/106)
+  were at `5db8838`. The `-05` runs (`3217f2f`) passed, but the first WSL ASan run on that head (`wsl-asan-final-05`, 86/85/**1**) found a
+  use-after-free in my own new `publication hold` test (its thread-joiner kept a raw pointer to the hold that the case had already reset);
+  fixed in `07a7505` (test only) and every gate rerun: the `-06` rows are the final ones, the `-05` and `first-0*` copies are kept. `unix-warnings-04` (head `db7a70f`, dirty) was clean but is superseded.
+- **Reuse with rationale:** `msvc-cpu-03-final` (`381b3e3`) still stands for the formats, assets and CPU render suites, which this work does
+  not touch (`git diff 381b3e3..HEAD --stat -- src/formats src/assets src/render/src src/sim` shows only `src/render/src/gpu.cpp` and its
+  header, compiled into the GPU library); it is **not** valid for the app suites, and the retained `rtx4090-gpu-03-final` (`4ecea07`),
+  `radeon-gpu-03-final` (`70817ed`) and `wsl-asan-final-03` (`70817ed`) are valid only for those heads; the final head's own runs replace them.
+  The INDEX corrections: the Radeon gate did run the Radeon play case; `wsl-asan-final-03` ran at `70817ed`.
+- **Superseded statements in the W4-WIN section above:** "nothing under `src/` or `tools/` changes after" and "`381b3e3..HEAD` changes under
+  `src/` only `play_gpu_test.cpp`" are true for `9ba01f1` only; "0 drops" means trace-record loss; the 500 Hz attribution is an inference.
+
+### Open, unverified and not run (separately)
+
+- **Failure B attribution** (above): OPEN. **Failure A:** explained as cost; the whole-app sanitizer gate has no green run and the timeout policy is the orchestrator's decision.
+- No 4K display, no Radeon window matrix, no physical display latency, no late-game/multiplayer scaling, Metal timing, OQ-525, terrain,
+  height, roads or UI (all separately named follow-ups; none claimed).
+- The orchestrator cannot open the archive (Windows-local); independent verification of raw logs by the orchestrator is not possible
+  from git alone.
+- Review: C1 APPROVE; C2 and C4 reviews returned CHANGES REQUIRED, fixed here; the final integration review is recorded below.
+
+### Final integration review and heads
+
+(The final integration review is recorded here after it returns.)

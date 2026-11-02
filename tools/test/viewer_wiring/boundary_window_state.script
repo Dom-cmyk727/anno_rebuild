@@ -1,0 +1,22 @@
+# R2 on the GPU window (W4-WIN-CLOSE C2): the native window's own state while a change waits. The chunk
+# builders are held so the edit stays "not drawn yet" for a fixed time; tools/test/window_state_case.py
+# minimises the window, restores it and covers it with a topmost window meanwhile, and records what
+# the backend does. The change must become Visible only after the release and a presented frame.
+look 1052 444
+key b
+select 1307
+rotate 0
+wait frames 90
+hold chunks
+click 1068 444
+wait outcome
+wait blocked
+checkpoint pending_start
+wait ms 12000
+checkpoint pending_end
+expect visibility ChunksStale
+release chunks
+wait drawn
+expect visibility Visible
+checkpoint window_state_visible
+quit

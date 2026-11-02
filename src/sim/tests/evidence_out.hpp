@@ -36,7 +36,7 @@ namespace anno::sim::test {
 }
 
 /// Publishes `bytes` at `target`. Returns an empty string on success, else a message naming the
-/// failing path and operation. On failure `target` is untouched or absent, never partial.
+/// failing path and operation. On failure `target` is absent (an earlier file is removed first), never partial.
 [[nodiscard]] inline std::string write_evidence_file(const std::filesystem::path& target,
                                                      std::string_view bytes) {
     namespace fs = std::filesystem;

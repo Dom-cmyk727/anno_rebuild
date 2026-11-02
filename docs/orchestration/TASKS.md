@@ -11,13 +11,17 @@ round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
 package or accept unreviewed changes. Windows published W4-WIN-CLOSE at
 `f5a323d`, with source/tools at `07a7505`. The orchestrator's source review
 requires the bounded W4-WIN-FINAL packet below; no rendering merge is approved.
-MAP-FOUND-3 and the corrected MAP-NAV-3 mechanics are accepted for their local
-headless scope. One bounded artifact-write reporting fix remains; it is the
-first package of MAP-BUILD-1 below, followed immediately by terrain-aware
-building placement. Owner continuation, 2026-11-02: after the corrected placement
-integration review, continue with MAP-CARGO-1 below so the actual opening loop
-can sail, found, unload and build. Do not interrupt or restart current placement
-work to adopt this continuation. W4-WIN-FINAL remains the Windows executor's
+MAP-FOUND-3, corrected MAP-NAV-3 mechanics and MAP-BUILD-1 placement mechanics
+are accepted for their local headless scope. Placement code is
+`ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, documentation
+`d9e3415affa1224341c5336d81f38786fabe9f9b`; see the
+[direct placement review](reviews/2026-11-02-map-build1.md). Six saved E1 gate
+verdicts and fresh-process placement replay were independently checked.
+One bounded writer-test isolation correction remains; handle it at the next
+package checkpoint under MAP-CARGO-1 without interrupting U1's original-rule
+trace. MAP-CARGO-1 U1 is IN PROGRESS; no unloading implementation is accepted.
+Its reviewed contract still gates U2, and the real opening loop still requires
+unloading. W4-WIN-FINAL remains the Windows executor's
 current assignment without expansion. Owner continuation, 2026-11-02: after
 that closeout and the Mac gameplay candidate are reviewed and accepted at exact
 published pins, W4-OPENING-1 below integrates selection, sailing, founding,
@@ -27,7 +31,7 @@ future work, not permission to interrupt the current Windows corpus run.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL IN PROGRESS.** Finish the frozen acceptance chain and review publication. **W4-OPENING-1 is queued**, gated on accepted Windows and Mac pins; no interruption of current gates. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1, then MAP-CARGO-1 after placement review.** Complete terrain/height placement; after its corrected independent integration review, implement ship-to-own-warehouse unloading and prove the actual opening loop without stock grants. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 mechanics accepted locally; MAP-CARGO-1 U1 IN PROGRESS.** Continue the unloading trace and reviewed contract, then U2–U5. Close the isolated temporary-directory finding below before cargo acceptance gates; do not restart placement or interrupt U1. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · READY
 
@@ -936,7 +940,17 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-BUILD-1 — build on valid terrain after founding · READY
+### MAP-BUILD-1 — build on valid terrain after founding · REVIEWED LOCAL MECHANICS; TEST ISOLATION FOLLOW-UP
+
+**Review checkpoint, 2026-11-02:** mechanics accepted at code
+`ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, docs
+`d9e3415affa1224341c5336d81f38786fabe9f9b`, within the supported headless
+placement scope. Read the [orchestrator review](reviews/2026-11-02-map-build1.md).
+The two new writer tests share fixed temporary paths across processes; fix that
+under the bounded continuation below. It does not invalidate serial E1 or block
+the already-running cargo trace. Do not restart A–E. The original packet below
+is acceptance history; this checkpoint governs current status. Cross-platform
+and live-window acceptance remain pending.
 
 Continue the existing Mac `task/MAP-2-original-like` from reviewed head
 `6ad66ac7ccf2ada673a76dfc4dd0f923572d443d`, tested code
@@ -1168,7 +1182,38 @@ new UI, coordinator and shared-test-workflow work are outside this packet.
 Preserve other jobs and the owner's awake assertion. Do not wait for another
 orchestrator prompt between the authorized packages.
 
-### MAP-CARGO-1 — unload the starting ship and build from its supplies · AUTHORIZED AFTER MAP-BUILD-1 REVIEW
+### MAP-CARGO-1 — unload the starting ship and build from its supplies · U1 IN PROGRESS
+
+**Current checkpoint, 2026-11-02:** placement mechanics and E1 are accepted as
+described above. U1 is already running; preserve its work. Its corrected
+independent contract review must approve before U2. This checkpoint permits U1
+to continue despite the separate test-only correction below; it does not waive
+that finding or authorize an unreviewed unloading rule.
+
+**Bounded follow-up — isolate the two evidence-writer tests.** At the next
+package checkpoint, before cargo acceptance gates:
+
+1. Read the placement review's reproduction and
+   `src/sim/tests/founding_assets_test.cpp` (`sail log export: ...`) and
+   `src/sim/tests/nav_scale_test.cpp` (`nav scale writer: ...`). Both currently
+   remove a fixed name under the system temporary directory. Concurrent test
+   processes can delete each other's output.
+2. Give each test invocation an exclusively created temporary directory and
+   clean up only that owned directory. Prefer an existing portable helper if
+   available; otherwise keep the helper local to tests. Preserve the actual
+   writer calls and all positive/negative assertions. Do not serialize whole
+   suites or change the production writer, coordinator or shared runner.
+3. Use the tiny selectors from the review: positive serial control, then two
+   concurrent processes executing both cases, with a short bounded repetition.
+   Record selected/executed counts and each process's status. The pre-fix
+   reproduction is already recorded in the review; no new long voyage or
+   navigation/performance matrix is required. Check the focused cases under
+   ASan/UBSan and obtain one focused independent read-only re-review of the
+   directory ownership/cleanup and test execution. Stop this correction there.
+4. Commit the test-only correction separately and record its pin. Reuse E1 for
+   unchanged placement code; include the corrected cheap cases in U5's normal
+   final gates. Keep U1 research progressing. No separate owner approval or
+   full MAP-BUILD-1 review cycle is needed.
 
 **Owner instruction, 2026-11-02:** implement ship unloading after the placement
 work is reviewed, so players can sail, found a warehouse and start building

@@ -194,6 +194,8 @@ void make_waiting(sim::World& w, std::uint64_t id, std::uint64_t order, std::uin
     sim::NavMotion& m = *figure(w, id).nav;
     m.order = sim::NavOrder{order, false, 300, 400};
     m.ticket = ticket;
+    // The registry's derived ticket index cannot see this in-place edit.
+    sim::rebuild_figure_index(sim::WorldTestAccess::figures(w));
 }
 
 } // namespace
@@ -521,6 +523,7 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
         figure(w, 1).pos.x = 1 << 22; // exactly the world bound
         figure(w, 1).nav->pos_u[0] = (std::int64_t{1} << 22) * sim::kNavPosUnitsPerQ8;
+        sim::rebuild_figure_index(sim::WorldTestAccess::figures(w)); // the ship moved a cell
         CHECK_MESSAGE(w.check_invariants().empty(), w.check_invariants());
     }
 }
@@ -695,6 +698,7 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
         INFO(e.name);
         sim::World x = w;
         e.apply(x);
+        sim::rebuild_figure_index(sim::WorldTestAccess::figures(x)); // derived indexes
         CHECK_MESSAGE(x.check_invariants().empty(), x.check_invariants());
         const std::uint64_t h = x.state_hash();
         CHECK(h != base);

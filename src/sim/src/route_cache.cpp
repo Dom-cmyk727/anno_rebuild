@@ -120,8 +120,10 @@ void RouteCache::sync(World& world) {
             {});
         ++work.index_rect_rebuilds;
         // The cells whose mask is rebuilt (the type halo of one more cell is rebuild_rect's own).
-        work.index_cells_rebuilt += static_cast<std::uint64_t>((x1 - 1) / 8 - x0 / 8 + 1) *
-                                    static_cast<std::uint64_t>((y1 - 1) / 8 - y0 / 8 + 1);
+        if (x1 > x0 && y1 > y0) { // a dirty tile beyond the index counts no cells
+            work.index_cells_rebuilt += static_cast<std::uint64_t>((x1 - 1) / 8 - x0 / 8 + 1) *
+                                        static_cast<std::uint64_t>((y1 - 1) / 8 - y0 / 8 + 1);
+        }
         slot->tiles.clear_route_dirty();
     }
 }

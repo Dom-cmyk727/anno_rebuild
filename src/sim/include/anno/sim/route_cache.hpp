@@ -46,11 +46,16 @@ class RouteCache {
     /// when an island's fingerprint changed, else applies every pending tile-layer dirty rectangle
     /// (with a halo) and clears it. Call before planning; cheap when nothing changed.
     void sync(World& world);
-    /// sync() at most once per world tick: object changes happen in the island, event and command
-    /// phases that precede the figure phase of a tick (scheduler.cpp), and the figure phase changes
-    /// no tile, so one fingerprint comparison per tick sees every change a visit in that tick can
-    /// depend on. Keeps the per-visit cost independent of the island count (N5 finding).
+    /// sync() at most once per tick of one Advance: object changes happen in the island, event and
+    /// command phases that precede the figure phase of a tick (scheduler.cpp) and the figure phase
+    /// changes no tile, so one comparison per tick sees every change a visit in that tick can
+    /// depend on. Two Advances can share a tick (advance(0), odd millisecond steps) and commands
+    /// are applied between Advances (and by the AI after the figure phase), so begin_advance()
+    /// forgets the last sync at the start of every Advance. Keeps the per-visit cost independent of
+    /// the island count (N5 finding).
     void sync_once(World& world, std::uint64_t tick);
+    /// Called at the start of every Advance: the next sync_once always compares.
+    void begin_advance() { synced_ = false; }
     /// The index of `world`, built on first use. The reference stays valid until clear() or until
     /// the world is changed in a way that calls clear().
     [[nodiscard]] const CoastIndex& get(const World& world);

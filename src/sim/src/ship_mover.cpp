@@ -230,8 +230,9 @@ std::vector<RouteStamp> ShipMover::local_stamps(const World& w, const Figure& sh
     sq.x_q8 = ship.pos.x;
     sq.z_q8 = ship.pos.y;
     sq.self_id = ship.id.v;
-    sq.radius_q8 = static_cast<std::int32_t>(
-        type != nullptr && type->nav.has_value() ? type->nav->stamp_radius_88 : 1280U);
+    sq.radius_q8 = static_cast<std::int32_t>(type != nullptr && type->nav.has_value()
+                                                 ? type->nav->stamp_radius_88
+                                                 : 0U); // unreachable: only ships are queried
     sq.world_w = static_cast<std::int32_t>(w.settings().world_width);
     sq.world_h = static_cast<std::int32_t>(w.settings().world_height);
     return local_ship_stamps(RegistryShips(w.figures(), work), sq, limits_of(rules));

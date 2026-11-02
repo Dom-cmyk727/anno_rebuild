@@ -415,6 +415,7 @@ void Scheduler::run_ai(void* raw) {
 }
 
 std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
+    w.route_cache_.begin_advance(); // derived index: compare again before the first plan
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.
     w.out_ = SimOutput{};

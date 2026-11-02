@@ -711,3 +711,27 @@ TEST_CASE(
     CHECK(cache_of(w).work.index_builds == 1);
     CHECK(rebuilds >= 100);
 }
+
+TEST_CASE("route objects: two Advances that share a tick still see a change made between them") {
+    // advance(1) steps the clock by one millisecond and a tick is two of them, so consecutive
+    // Advances share a tick (as do advance(0) steps). The cache is warm, an object appears between
+    // two such Advances, and the very next ship visit must rebuild the changed rectangle.
+    for (const std::uint32_t parity : {0U, 1U}) {
+        sim::World w = make_world(channel_spec({}));
+        for (std::uint32_t i = 0; i < parity; ++i) {
+            w.advance(1);
+        }
+        w.advance(1); // a ship visit: builds the index
+        w.advance(0); // and one that shares its tick
+        REQUIRE(cache_of(w).work.index_builds == 1);
+        const std::uint64_t rects = cache_of(w).work.index_rect_rebuilds;
+        for (std::int32_t y = kChannelY0; y <= kChannelY1; ++y) {
+            island_of(w).tiles.set_object(idx_of(w, kWallX, y), kWall);
+        }
+        REQUIRE(island_of(w).tiles.route_dirty().any());
+        w.advance(0); // same tick as the previous visit: must still compare and rebuild
+        CHECK(cache_of(w).work.index_rect_rebuilds > rects);
+        CHECK_FALSE(island_of(w).tiles.route_dirty().any());
+        expect_history_independent(w);
+    }
+}

@@ -511,3 +511,48 @@ TEST_CASE("dev script: fail and pass a CPU delivery stage, expect failing (W4-WI
     auto [bad, act] = once("fail frobnicate\n", cpu);
     CHECK(bad.failed());
 }
+
+TEST_CASE("dev script: the log opens with the identity of the whole parsed script and a ran record "
+          "keeps every argument (W4-WIN-VERIFY V2)" *
+          doctest::test_suite("dev_script")) {
+    // The expected values are derived apart from the code: FNV-1a 64 (offset basis
+    // cbf29ce484222325, prime 100000001b3) over the canonical text, one `LINE VERB ARG...` line per
+    // step after comments and whitespace, wait steps included. tools/test/viewer_session.py
+    // computes the same value from the script file; viewer_wiring_contract_test.py holds the same
+    // constants.
+    const std::string base =
+        "# comment\nexpect title-lacks a  b # trailing\n\twait frames 3\nquit\n";
+    const auto parse = [](const std::string& text) {
+        auto script = app::DevScript::parse(text);
+        REQUIRE(script.ok());
+        return std::move(script).value();
+    };
+    const auto first = [](const app::DevScript& s) {
+        REQUIRE_FALSE(s.log().empty());
+        return s.log().front();
+    };
+    CHECK(first(parse(base)) == "script identity: steps=3 fnv1a64=8d702b850fad24d4");
+    // Whitespace and comments do not change it, a moved line does.
+    CHECK(first(parse("# other\nexpect   title-lacks a b\nwait\tframes 3  # x\nquit")) ==
+          "script identity: steps=3 fnv1a64=8d702b850fad24d4");
+    CHECK(first(parse("expect title-lacks a b\nwait frames 3\nquit\n")) !=
+          "script identity: steps=3 fnv1a64=8d702b850fad24d4");
+    // A later argument of an expectation, and a wait's value, each change it; so does a step
+    // removed.
+    CHECK(first(parse("# comment\nexpect title-lacks a c\nwait frames 3\nquit\n")) ==
+          "script identity: steps=3 fnv1a64=6d327550d5e6e183");
+    CHECK(first(parse("# comment\nexpect title-lacks a b\nwait frames 4\nquit\n")) ==
+          "script identity: steps=3 fnv1a64=7f40b977c080e275");
+    CHECK(first(parse("# comment\nexpect title-lacks a b\nquit\n")).find("steps=2") !=
+          std::string::npos);
+    // A run records every argument of every step it executes (a wait ends silently).
+    app::DevScript s = parse("expect title-lacks zz yy\nnote frames\nquit\n");
+    const app::DevScriptAction act = s.step(app::DevScriptState{});
+    CHECK(act.quit);
+    CHECK_FALSE(s.failed());
+    const auto& log = s.log();
+    REQUIRE(log.size() == 4);
+    CHECK(log[1] == "ran line 1: expect title-lacks zz yy");
+    CHECK(log[2] == "ran line 2: note frames");
+    CHECK(log[3] == "ran line 3: quit");
+}

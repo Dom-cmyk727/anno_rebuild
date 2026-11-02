@@ -570,8 +570,17 @@ applying commands:
 
 - **A viewer session passes on its record, not on the child's exit code** (`tools/test/viewer_wiring.py`,
   `viewer_session.py`): the window's `script.log` must exist, be non-empty and hold every non-wait step of
-  the invoked script in order up to its terminal `quit` (`ran line N: VERB ARG0`), with no `FAIL` line, plus
-  the window's `session.txt`. A zero-exit program that records nothing no longer passes. Contract:
+  the invoked script in order up to its terminal `quit`, with no `FAIL` line, plus the window's `session.txt`.
+  A zero-exit program that records nothing no longer passes. (Since W4-WIN-VERIFY V2 the log opens with
+  `script identity: steps=N fnv1a64=HEX`, written by `DevScript::parse` from what the window itself parsed
+  (every argument of every step, `wait` values included, comments and whitespace gone), and each record is
+  `ran line N: VERB ARG...` with all arguments. The wrapper requires the identity to equal the one computed
+  from the invoked script file. A log without the identity line is legacy evidence: the wrapper refuses it,
+  `viewer_session.py --revalidate` prints `LEGACY` and says only the first-argument trace was checked.)
+  Since W4-WIN-VERIFY V1 the window's stdout and stderr are kept (`<out>.stdout.txt`, `<out>.stderr.txt`) and
+  scanned with the canonical verdict reader's `SANITIZER` pattern: a report fails the wrapper although the
+  child exits 0 (UBSan recovers by default; the child also gets `UBSAN_OPTIONS=halt_on_error=1` unless set),
+  and the offending lines with their file and line number are printed where the gate sees them. Contract:
   `viewer_wiring_contract` (fixture program, positive control first, each broken record fails at its own
   check). `dev_session_capture.py` ends with a capture verdict apart from the window's status: exit 4 when a
   requested capture was refused, of the wrong size (kept as `*.invalid`, never as a picture), left

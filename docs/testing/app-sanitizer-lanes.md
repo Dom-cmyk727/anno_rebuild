@@ -45,3 +45,18 @@ cmake -S <src> -B ~/anno-build/w4-asan-viewer -G Ninja -DCMAKE_BUILD_TYPE=Debug 
 
 A headless CPU run says nothing about the GPU path actually rendering or about a display (the sanitizer build cannot create a GPU device here). `tools/check_unix_warnings.sh` also
 compiles the app sources without `ANNO_VIEWER_GPU` with GCC (it found an unused function there).
+
+## Child diagnostics and the viewer verdict (W4-WIN-VERIFY V1)
+
+The gate counts sanitizer lines in the test output it reads. A viewer case runs the window as a child of
+`tools/test/viewer_wiring.py`, so what the child writes is invisible to the gate unless the wrapper passes it on.
+The wrapper keeps both streams as `<out>.stdout.txt` and `<out>.stderr.txt`, scans them with
+`ctest_verdict.SANITIZER` (the one definition: AddressSanitizer, LeakSanitizer, ThreadSanitizer,
+UndefinedBehaviorSanitizer, `runtime error:`), prints the lines with their file and line number and fails the
+case, whatever the exit status and the session record say. The expected SDL delivery messages of the
+`cpu_delivery_failures` case are not sanitizer lines. App targets do not set `-fno-sanitize-recover`, so UBSan
+only prints; the wrapper therefore also sets `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1` for the child
+unless the caller has set it (defence in depth, not the contract). The earlier scan of `/tmp/viewer_wiring_*`
+stderr files found zero files and so provides no evidence; the three reruns with kept stderr
+(`docs/orchestration/evidence/w4-win-final/extracts/wsl-viewer-runs-summary.txt`) are the earlier evidence, and
+the W4-WIN-VERIFY gate runs are the first to scan child streams as part of the verdict.

@@ -18,10 +18,17 @@ renderer, so it needs no display and no GPU. --gpu: a real window on the GPU ren
 ANNO_GPU_ADAPTER given by --adapter, default 0, with ANNO_REQUIRE_GPU=1); --trace also records the
 window trace (<out>/trace). The original game files are required (ANNO1503_GAME_DIR).
 The script's expectations are the assertions: a failed one ends the window with a non-zero status
-and a `FAIL` line in the session's script.log. The case passes only when the window exits 0 and the
-session's script.log shows the script run: present, not empty, every non-wait step of the invoked script
-recorded in order up to its terminal `quit`, no FAIL line (tools/test/viewer_session.py). <case> may
-also be the path of a .script file (the contract tests). Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped (no game
+and a `FAIL` line in the session's script.log. The case passes only when the window exits 0, neither its
+stdout nor its stderr holds a sanitizer report, and the session's script.log shows the script run: present,
+not empty, the window's own identity of the whole script it parsed equal to the invoked script's, every
+non-wait step recorded in order with every argument up to its terminal `quit`, no FAIL line
+(tools/test/viewer_session.py). A sanitizer report is a line the canonical verdict reader would also count
+(tools/test/ctest_verdict.py SANITIZER: AddressSanitizer, LeakSanitizer, ThreadSanitizer,
+UndefinedBehaviorSanitizer, `runtime error:`); the lines and the file that holds them are printed, so the
+gate sees them, and the case fails even when the window exits 0 (UBSan recovers by default; the child also
+gets UBSAN_OPTIONS=halt_on_error=1 unless the caller set it, as defence in depth). The window's stdout and
+stderr are kept as <out>.stdout.txt and <out>.stderr.txt. <case> may also be the path of a .script file
+(the contract tests). Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped (no game
 files; ctest SKIP_RETURN_CODE)."""
 import os
 import subprocess
@@ -32,11 +39,26 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # -I leaves the script's directory off the path
+import ctest_verdict  # noqa: E402  (the one definition of what a sanitizer report looks like)
 import viewer_session  # noqa: E402
 
 # The window's watchdog; ANNO_VIEWER_WIRING_WATCHDOG_S shortens it for the contract tests (a test hook).
 WATCHDOG_S = int(os.environ.get("ANNO_VIEWER_WIRING_WATCHDOG_S", "300"))
 CASES = HERE / "tools" / "test" / "viewer_wiring"
+
+
+def sanitizer_reports(channels):
+    """[(channel, path, line number, line)] of the lines of the child's output files that the canonical verdict
+    reader counts as sanitizer reports (UBSan prints a `runtime error:` and carries on, so an exit status of 0
+    says nothing about them)."""
+    found = []
+    for channel, path in channels.items():
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            if ctest_verdict.SANITIZER.search(line):
+                found.append((channel, path, number, line))
+    return found
 
 
 def main(argv):
@@ -96,18 +118,34 @@ def main(argv):
         if flags["trace"]:
             print("viewer_wiring: --trace needs --gpu", file=sys.stderr)
             return 2
+    # UBSan only prints and carries on by default; make a report fatal as well (the scan below is the contract).
+    env.setdefault("UBSAN_OPTIONS", "halt_on_error=1:print_stacktrace=1")
     env.update(flags["env"])
     err_path = out.parent / f"{out.name}.stderr.txt"
+    out_path = out.parent / f"{out.name}.stdout.txt"
     started = time.monotonic()
-    with open(err_path, "wb") as se:
+    watchdog = False
+    with open(err_path, "wb") as se, open(out_path, "wb") as so:
         try:
             proc = subprocess.run([exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", renderer],
-                                  env=env, stdout=subprocess.DEVNULL, stderr=se, timeout=WATCHDOG_S)
+                                  env=env, stdout=so, stderr=se, timeout=WATCHDOG_S)
             rc = proc.returncode
         except subprocess.TimeoutExpired:
-            print(f"viewer_wiring: FAIL {case}: the window did not end within {WATCHDOG_S} s (watchdog)")
-            return 1
+            watchdog, rc = True, None
     elapsed = time.monotonic() - started
+    # Child diagnostics are part of the verdict: scan both streams before anything else decides.
+    reports = sanitizer_reports({"stdout": out_path, "stderr": err_path})
+    if reports:
+        print(f"viewer_wiring: FAIL {case}: the window wrote sanitizer diagnostics "
+              f"({len(reports)} line{'s' if len(reports) != 1 else ''}; window exit {'watchdog' if watchdog else rc}):")
+        for channel, path, number, line in reports[:10]:
+            print(f"  {channel} {path}:{number}: {line[:300]}")
+        if len(reports) > 10:
+            print(f"  ... {len(reports) - 10} more in the files above")
+        return 1
+    if watchdog:
+        print(f"viewer_wiring: FAIL {case}: the window did not end within {WATCHDOG_S} s (watchdog)")
+        return 1
     log_file = out / "script.log"
     log_text = log_file.read_text(encoding="utf-8", errors="replace") if log_file.is_file() else None
     for line in (log_text or "").splitlines():
@@ -124,7 +162,7 @@ def main(argv):
             print(f"viewer_wiring: FAIL {case}: the window's stderr lacks the expected diagnostic: {needle!r}")
             return 1
     # Exit 0 is not evidence that the script ran: the session record must show it (viewer_session.py).
-    found = viewer_session.problems(script.read_text(encoding="utf-8"), log_text)
+    found = viewer_session.problems(script.read_bytes(), log_text)
     session_txt = out / "session.txt"
     if not found and not (session_txt.is_file() and session_txt.stat().st_size > 0):
         found = ["no session.txt in the session directory: the window did not write its session record"]
@@ -133,7 +171,7 @@ def main(argv):
         for f in found:
             print("  - " + f)
         return 1
-    print(f"viewer_wiring: PASS {case}: window exit 0 after {elapsed:.1f} s, every step of the script recorded in order; session {out}")
+    print(f"viewer_wiring: PASS {case}: window exit 0 after {elapsed:.1f} s, every step of the script recorded in order with the whole script's identity; session {out}")
     return 0
 
 

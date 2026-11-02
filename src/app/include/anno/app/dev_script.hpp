@@ -184,8 +184,13 @@ struct DevScriptAction {
 
 class DevScript {
   public:
-    /// Parses `text`; an error names the line.
+    /// Parses `text`; an error names the line. The first line of log() is the identity of what was
+    /// parsed (identity_line): the window's own record of the whole script, every argument of every
+    /// step including the waits, for the session record's validator (tools/test/viewer_session.py).
     [[nodiscard]] static formats::Result<DevScript, std::string> parse(std::string_view text);
+
+    /// The identity line's first words.
+    static constexpr std::string_view kIdentityPrefix = "script identity:";
 
     /// The events and requests of the steps that are due in `state`, in order; a wait that is not
     /// over yet ends the call. The window pushes the events, then calls again on a later
@@ -222,6 +227,14 @@ class DevScript {
         std::vector<std::string> args;
         std::size_t line = 0;
     };
+
+    /// The identity of a parsed script: `script identity: steps=N fnv1a64=HEX`, the hash over
+    /// canonical_text.
+    [[nodiscard]] static std::string identity_line(const std::vector<Step>& steps);
+    /// One line per step, `LINE VERB ARG...` (arguments separated by one space, a title's text in
+    /// one piece as parsed), each ended by a newline: what the script says after its comments and
+    /// whitespace are gone, wait steps included.
+    [[nodiscard]] static std::string canonical_text(const std::vector<Step>& steps);
 
   private:
     void fail(const Step& s, const std::string& why);

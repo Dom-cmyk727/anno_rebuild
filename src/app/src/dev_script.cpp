@@ -1,5 +1,7 @@
 // A scripted developer-tool session in the live play window (see the header).
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <sstream>
 
@@ -161,7 +163,38 @@ int arity(const std::string& verb) {
     return -100;
 }
 
+/// FNV-1a, 64 bit, over `bytes`: the script identity's hash (an accidental-mismatch check, not a
+/// security measure; tools/test/viewer_session.py computes the same value from the script file).
+std::uint64_t fnv1a64(std::string_view bytes) {
+    std::uint64_t h = 14695981039346656037ULL;
+    for (const char c : bytes) {
+        h ^= static_cast<std::uint8_t>(c);
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
 } // namespace
+
+std::string DevScript::canonical_text(const std::vector<Step>& steps) {
+    std::string text;
+    for (const Step& s : steps) {
+        text += std::to_string(s.line) + " " + s.verb;
+        for (const std::string& a : s.args) {
+            text += " " + a;
+        }
+        text += '\n';
+    }
+    return text;
+}
+
+std::string DevScript::identity_line(const std::vector<Step>& steps) {
+    char hash[17];
+    std::snprintf(hash, sizeof hash, "%016llx",
+                  static_cast<unsigned long long>(fnv1a64(canonical_text(steps))));
+    return std::string(kIdentityPrefix) + " steps=" + std::to_string(steps.size()) +
+           " fnv1a64=" + hash;
+}
 
 bool foreign_input(const SDL_Event& e) {
     switch (e.type) {
@@ -216,6 +249,7 @@ formats::Result<DevScript, std::string> DevScript::parse(std::string_view text) 
         }
         script.steps_.push_back(std::move(s));
     }
+    script.log_.push_back(identity_line(script.steps_));
     return script;
 }
 
@@ -677,8 +711,11 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
         } else if (s.verb == "quit") {
             act.quit = true;
         }
-        log_.push_back("ran line " + std::to_string(s.line) + ": " + s.verb +
-                       (s.args.empty() ? "" : " " + s.args[0]));
+        std::string ran = "ran line " + std::to_string(s.line) + ": " + s.verb;
+        for (const std::string& a : s.args) {
+            ran += " " + a;
+        }
+        log_.push_back(std::move(ran));
         ++next_;
         if (act.quit) {
             break;

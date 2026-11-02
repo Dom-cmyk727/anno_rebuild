@@ -21,6 +21,7 @@
 #include <anno/app/command_outcome.hpp>
 #include <anno/app/commands_file.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/publication_hold.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -626,4 +627,94 @@ TEST_CASE("outcome feedback: a lost outcome is withheld until its snapshot is pu
     CHECK(runner.feedback(b).latest->state == State::Lost);
     CHECK(runner.feedback(c).latest->state == State::Applied);
     CHECK_FALSE(runner.feedback(a).latest->deferred);
+}
+
+// ---- The publication hold the window's script arms (W4-WIN-CLOSE C1) --------------------------
+
+TEST_CASE("publication hold: an armed hold waits at the first publication that follows a recorded "
+          "outcome, the reads inside it are the consistent ones, and release, the watchdog and "
+          "the hold's destruction each end it (W4-WIN-CLOSE C1, game files)" *
+          doctest::test_suite("command_outcome")) {
+    auto d = dev_world();
+    if (!d) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const DevWorld w = *d;
+    const auto paid = paid_type(w);
+    REQUIRE(paid.has_value());
+    const auto cost = static_cast<std::int64_t>(w.load.world.types().find(*paid)->cost_gold);
+    app::PlayRunner runner(std::move(d->load.world));
+    // Installed before the sim thread exists, like the window's. A first publication gives the
+    // developer's money, and a publication with no new outcome is never held.
+    auto hold = std::make_unique<app::PublicationHold>(runner);
+    runner.run_n(1);
+    hold->arm();
+    runner.run_n(3); // armed, but no outcome is recorded by these turns: nothing waits
+    CHECK(hold->holds() == 0);
+    CHECK_FALSE(hold->held());
+    hold->release();
+
+    // Armed, a paid build and a refusal: the publication of their turn waits on the sim thread.
+    const app::CommandId build_id = runner.post_command(build(w, 4, 4, paid));
+    const app::CommandId refused_id = runner.post_command(build(w, -500, -500, paid));
+    const std::int64_t before = runner.snapshot()->money;
+    REQUIRE(before > cost);
+    hold->arm();
+    std::thread sim([&runner] { runner.run_n(1); });
+    REQUIRE(eventually([&] { return hold->held(); }));
+    CHECK(hold->holds() == 1);
+    // Inside the interval: the raw log has both outcomes, the consistent read withholds both, and
+    // the snapshot is the old one.
+    CHECK(runner.outcome(build_id).state == State::Applied);
+    CHECK(runner.outcome(refused_id).state == State::Refused);
+    const app::PlayFeedback inside_paid = runner.feedback(build_id);
+    const app::PlayFeedback inside_refused = runner.feedback(refused_id);
+    REQUIRE(inside_paid.latest.has_value());
+    CHECK(inside_paid.latest->state == State::Queued);
+    CHECK(inside_paid.latest->deferred);
+    CHECK(inside_paid.snapshot->money == before);
+    REQUIRE(inside_refused.latest.has_value());
+    CHECK(inside_refused.latest->state == State::Queued);
+    CHECK(inside_refused.latest->deferred);
+    hold->release();
+    sim.join();
+    CHECK_FALSE(hold->held());
+    CHECK_FALSE(hold->expired());
+    const app::PlayFeedback after = runner.feedback(build_id);
+    CHECK(after.latest->state == State::Applied);
+    CHECK_FALSE(after.latest->deferred);
+    CHECK(after.snapshot->money == before - cost);
+    CHECK(runner.feedback(refused_id).latest->state == State::Refused);
+
+    // Disarmed again: the next outcome does not wait.
+    const app::CommandId free_id = runner.post_command(build(w, 12, 4, paid));
+    runner.run_n(1);
+    CHECK(hold->holds() == 1);
+    CHECK(runner.feedback(free_id).latest->state == State::Applied);
+
+    // The watchdog ends a wait nobody released, and says so.
+    {
+        auto od = dev_world();
+        REQUIRE(od.has_value());
+        const DevWorld ow = *od;
+        app::PlayRunner other(std::move(od->load.world));
+        app::PublicationHold short_hold(other, std::chrono::milliseconds(60));
+        other.run_n(1);
+        short_hold.arm();
+        static_cast<void>(other.post_command(build(ow, 4, 4, paid)));
+        other.run_n(1); // returns by the watchdog
+        CHECK(short_hold.expired());
+        CHECK(short_hold.holds() == 1);
+        CHECK_FALSE(short_hold.held());
+    }
+
+    // Destroying the hold while a publication waits frees the sim thread.
+    static_cast<void>(runner.post_command(build(w, 20, 4, paid)));
+    hold->arm();
+    std::thread again([&runner] { runner.run_n(1); });
+    REQUIRE(eventually([&] { return hold->held(); }));
+    hold.reset();
+    again.join(); // would hang if the destructor did not release
+    CHECK(runner.snapshot()->turn > 0);
 }

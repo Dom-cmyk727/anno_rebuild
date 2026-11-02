@@ -8,6 +8,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -294,4 +296,106 @@ TEST_CASE("dev script: wait drawn ends only when the change is settled on its wa
     st.visibility = V::Offscreen;
     static_cast<void>(script.value().step(st));
     CHECK(script.value().failed());
+}
+
+TEST_CASE("dev script: hold, release, note and the consistency expectations (W4-WIN-CLOSE C1)" *
+          doctest::test_suite("dev_script")) {
+    const auto step_once = [](const std::string& text, const app::DevScriptState& st) {
+        auto script = app::DevScript::parse(text);
+        REQUIRE(script.ok());
+        const app::DevScriptAction act = script.value().step(st);
+        return std::pair{std::move(script).value(), act.hold};
+    };
+    // hold/release need a hold in the session, and each asks the window for exactly one action.
+    app::DevScriptState with;
+    with.hold_available = true;
+    {
+        auto [s, hold] = step_once("hold publication\nrelease publication\n", with);
+        CHECK_FALSE(s.failed());
+        CHECK(hold == app::DevScriptAction::Hold::Arm); // one input step per call
+        CHECK_FALSE(s.done());
+    }
+    {
+        auto [s, hold] = step_once("release publication\n", with);
+        CHECK(hold == app::DevScriptAction::Hold::Release);
+    }
+    {
+        auto [s, hold] = step_once("hold publication\n", app::DevScriptState{});
+        CHECK(s.failed());
+        CHECK(hold == app::DevScriptAction::Hold::None);
+    }
+    // wait held: over only while a publication waits; a watchdog ending or no hold fails it.
+    {
+        auto [s, h] = step_once("wait held\n", with);
+        CHECK_FALSE(s.done());
+        app::DevScriptState held = with;
+        held.held = true;
+        auto [s2, h2] = step_once("wait held\n", held);
+        CHECK(s2.done());
+        CHECK_FALSE(s2.failed());
+        app::DevScriptState expired = with;
+        expired.hold_expired = true;
+        auto [s3, h3] = step_once("wait held\n", expired);
+        CHECK(s3.failed());
+    }
+    // expect published: an Applied or Refused outcome newer than the snapshot is the old,
+    // inconsistent view; a Queued (withheld) one and an older one pass.
+    const auto snap = [](std::uint64_t outcomes_next, std::int64_t money) {
+        auto s = std::make_shared<app::PlaySnapshot>();
+        s->outcomes_next = outcomes_next;
+        s->money = money;
+        return s;
+    };
+    const auto outcome = [](app::CommandOutcome::State state, std::uint64_t seq) {
+        app::CommandOutcome o;
+        o.id = {app::CommandOrigin::Window, 1};
+        o.state = state;
+        o.seq = seq;
+        return o;
+    };
+    using S = app::CommandOutcome::State;
+    for (const auto& [state, seq, next, passes] :
+         {std::tuple{S::Applied, 5ULL, 5ULL, false}, std::tuple{S::Refused, 6ULL, 5ULL, false},
+          std::tuple{S::Applied, 4ULL, 5ULL, true}, std::tuple{S::Queued, 9ULL, 5ULL, true}}) {
+        app::DevScriptState st;
+        st.snapshot = snap(next, 0);
+        st.latest = outcome(state, seq);
+        auto [s, h] = step_once("expect published\n", st);
+        CAPTURE(static_cast<int>(state));
+        CHECK(s.failed() == !passes);
+    }
+    // note money / expect money same|less: the note is taken, a wait lets the state move, and the
+    // expectation reads the later snapshot.
+    const auto money_script = [&](const std::string& expectation, std::int64_t later) {
+        auto script = app::DevScript::parse("note money\nwait frames 1\nexpect money " +
+                                            expectation + "\n");
+        REQUIRE(script.ok());
+        app::DevScriptState st;
+        st.snapshot = snap(1, 1000);
+        st.frames = 10;
+        static_cast<void>(script.value().step(st)); // notes 1000, then waits for a frame
+        st.snapshot = snap(1, later);
+        st.frames = 11;
+        static_cast<void>(script.value().step(st));
+        REQUIRE(script.value().done());
+        return !script.value().failed();
+    };
+    CHECK(money_script("same", 1000));
+    CHECK_FALSE(money_script("same", 900));
+    CHECK(money_script("less", 900));
+    CHECK_FALSE(money_script("less", 1000));
+    // title-lacks, and occupancy counters need the tool's index.
+    {
+        app::DevScriptState st;
+        st.title = "anno1503 - command #1: Queued";
+        auto [ok, h] = step_once("expect title-lacks Applied\n", st);
+        CHECK_FALSE(ok.failed());
+        auto [bad, h2] = step_once("expect title-lacks Queued\n", st);
+        CHECK(bad.failed());
+        auto [none, h3] = step_once("expect work rebuilds == 0\n", st);
+        CHECK(none.failed()); // no index to read
+    }
+    // A step that is not a step is named at parse time.
+    CHECK_FALSE(app::DevScript::parse("hold\n").ok());
+    CHECK_FALSE(app::DevScript::parse("note\n").ok());
 }

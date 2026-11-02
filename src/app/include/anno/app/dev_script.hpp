@@ -6,20 +6,44 @@
 // One step per line; '#' starts a comment. World tiles are absolute (the commands' coordinates).
 //   look X Y              centre the camera on world tile (X, Y) (setup, not input)
 //   key b|n|p|t|x|esc     press and release a key
-//   select ID             press N until the tool's type is ID (fails after one cycle)
+//   select ID             press N until the tool's type is ID (fails after one cycle); `select paid`:
+//                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)
 //   drag X0 Y0 X1 Y1      press over (X0, Y0), move in steps to (X1, Y1), release
 //   pan DX DY             a right-button drag by (DX, DY) window points from the window centre
 //   wheel N               N wheel notches at the window centre (positive: closer)
-//   wait frames N | wait turns N | wait outcome | wait drawn | wait ms N
+//   wait frames N | wait turns N | wait outcome | wait drawn | wait held | wait ms N
 //                         `wait drawn` ends when an applied command's change is settled on its way
 //                         to the screen: presented (Visible), or classified as not shown at all
 //                         (Offscreen, NothingToDraw, NoVisualChange). It does not end at the
 //                         earlier boundaries (not in the picture, object list not committed,
 //                         chunks not fresh, GPU copy not usable, no successful present, out of
 //                         view). Use `expect visibility Visible` to require that it was shown.
+//   hold publication      arm the publication hold (publication_hold.hpp): the sim thread waits at
+//                         the next publication that follows a recorded outcome, between the outcome
+//                         and the snapshot. `wait held` ends when it waits (fails if the watchdog
+//                         ended a wait). The window keeps drawing and handling input meanwhile.
+//   release publication   end the wait
+//   note money            remember the snapshot's money; `expect money same|less` compares to it
+//   note work NAME        remember an occupancy count (NAME as in `expect work`)
+//   local build TYPE X Y | local demolish X Y   post a command of the tool's own city through the
+//                         runner's queue at this moment (what the command file does at a turn),
+//                         whether the tool is on or off; no receipt, no title line
+//   foreign build|demolish   post a command of another player's city on another island (the tool's
+//                         ForeignSpot) through the runner's queue, as a second player's edit would
+//                         arrive; the window sees a building batch of an island that is not the
+//                         tool's. It is not the tool's command: no receipt, no title line.
 //   expect title TEXT     the window title contains TEXT
+//   expect title-lacks TEXT   the window title does not contain TEXT
+//   expect published      the latest outcome, when it is Applied or Refused, is not newer than the
+//                         snapshot the window holds (its sequence number is below the snapshot's
+//                         outcomes_next): the window never shows an outcome beside older resources
+//   expect money same|less    the snapshot's money equals / is below the noted money
+//   expect work NAME OP N     a count of the tool's occupancy index (PlacementKnowledge): NAME is
+//                         rebuilds, deltas, tiles, foreign or skipped; OP is ==, <= or >=
+//   expect work NAME same|grew   the count equals / is above the one noted with `note work NAME`
+//   expect occupied X Y yes|no   whether the index holds world tile (X, Y) as occupied
 //   expect visibility NAME  the latest command's change is at NAME (visibility_name: Visible,
 //                         Offscreen, NothingToDraw, NoVisualChange, or a waiting stage)
 //   expect outcome STATE [REASON]   the tool's latest command is STATE (Queued, Applied, Refused,
@@ -35,6 +59,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -42,6 +67,7 @@
 #include <vector>
 
 #include <anno/app/command_outcome.hpp>
+#include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/visibility.hpp>
@@ -68,6 +94,10 @@ struct DevScriptState {
     /// of its turn; NoVisualChange for a command that was not applied).
     Visibility visibility = Visibility::NoVisualChange;
     const DevTool* tool = nullptr;
+    /// The tool's occupancy index (null without the tool), and the publication hold's state: a
+    /// hold exists, a publication waits in it, a wait ended by the watchdog.
+    const PlacementKnowledge* knowledge = nullptr;
+    bool hold_available = false, held = false, hold_expired = false;
     /// The last drawn frame (none before the first).
     const PointerFrame* frame = nullptr;
     float density = 1.0F;
@@ -83,6 +113,18 @@ struct DevScriptAction {
     std::optional<sim::TileXY> look;
     /// Capture the window as this name (DevScript's screenshot step).
     std::optional<std::string> screenshot;
+    /// Arm or release the publication hold (hold publication, release publication).
+    enum class Hold : std::uint8_t { None, Arm, Release };
+    Hold hold = Hold::None;
+    /// Post the foreign build (1) or demolish (2) command (the `foreign` step).
+    enum class Foreign : std::uint8_t { None, Build, Demolish };
+    Foreign foreign = Foreign::None;
+    /// Post a command of the tool's own city (the `local` step): a build of `local_type` or a
+    /// demolish, at `local_at`.
+    enum class Local : std::uint8_t { None, Build, Demolish };
+    Local local = Local::None;
+    sim::TypeId local_type;
+    sim::TileXY local_at;
     bool quit = false;
 };
 
@@ -136,6 +178,8 @@ class DevScript {
     /// The state a wait started from, and how many key presses a select or rotate has made.
     std::optional<std::uint64_t> wait_frames_, wait_turn_;
     std::optional<double> wait_ms_;
+    std::optional<std::int64_t> noted_money_;
+    std::map<std::string, std::int64_t> noted_work_;
     std::size_t presses_ = 0;
     std::vector<std::string> log_;
 };

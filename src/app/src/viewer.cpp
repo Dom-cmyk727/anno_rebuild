@@ -291,6 +291,9 @@ gpu::ResampleFilter resample_filter(double s) {
 class Viewer {
   public:
     ~Viewer() {
+        if (hold_ != nullptr) {
+            hold_->release(); // a session that ends inside a held publication frees the sim thread
+        }
         if (dev_ != nullptr && play_ != nullptr) {
             play_->set_batch_observer({}); // it points into knowledge_
         }
@@ -305,7 +308,8 @@ class Viewer {
           frames_(threads), renderer_choice_(renderer), water_(water), hooks_(hooks),
           trace_(hooks != nullptr ? hooks->trace : nullptr),
           dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
-          script_(dev_ != nullptr ? hooks->script : nullptr) {
+          script_(dev_ != nullptr ? hooks->script : nullptr),
+          hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
             attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
@@ -482,6 +486,7 @@ class Viewer {
     std::optional<CommandId> latest_receipt_;
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
+    PublicationHold* hold_ = nullptr;
     std::uint64_t drawn_frames_ = 0;
     Clock::time_point started_ = Clock::now();
     void script_tick();
@@ -1351,6 +1356,12 @@ void Viewer::script_tick() {
     }
     st.visibility = command_visibility(st.latest);
     st.tool = dev_;
+    st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
+    if (hold_ != nullptr) {
+        st.hold_available = true;
+        st.held = hold_->held();
+        st.hold_expired = hold_->expired();
+    }
     st.frame = &*pointer_frame_;
     st.density = SDL_GetWindowPixelDensity(window_);
     if (!(st.density > 0.0F)) {
@@ -1361,6 +1372,42 @@ void Viewer::script_tick() {
         st.title = t;
     }
     DevScriptAction act = script_->step(st);
+    if (act.foreign != DevScriptAction::Foreign::None && dev_ != nullptr &&
+        dev_->setup().foreign) {
+        const ForeignSpot& f = *dev_->setup().foreign;
+        sim::Command c;
+        c.issuer = f.owner;
+        if (act.foreign == DevScriptAction::Foreign::Build) {
+            sim::BuildCmd b;
+            b.city = f.city;
+            b.placements.push_back(sim::PlacementWire{f.type, f.at.x, f.at.y, 0, 0, 0});
+            c.body = std::move(b);
+        } else {
+            c.body = sim::DemolishCmd{f.city, {f.at}};
+        }
+        static_cast<void>(play_->runner().post_command(std::move(c)));
+    }
+    if (act.local != DevScriptAction::Local::None && dev_ != nullptr && dev_->setup().city) {
+        sim::Command c;
+        c.issuer = dev_->setup().issuer;
+        if (act.local == DevScriptAction::Local::Build) {
+            sim::BuildCmd b;
+            b.city = *dev_->setup().city;
+            b.placements.push_back(
+                sim::PlacementWire{act.local_type, act.local_at.x, act.local_at.y, 0, 0, 0});
+            c.body = std::move(b);
+        } else {
+            c.body = sim::DemolishCmd{*dev_->setup().city, {act.local_at}};
+        }
+        static_cast<void>(play_->runner().post_command(std::move(c)));
+    }
+    if (hold_ != nullptr && act.hold != DevScriptAction::Hold::None) {
+        if (act.hold == DevScriptAction::Hold::Arm) {
+            hold_->arm();
+        } else {
+            hold_->release();
+        }
+    }
     for (SDL_Event& e : act.events) {
         e.common.timestamp = SDL_GetTicksNS();
         if (!SDL_PushEvent(&e)) {

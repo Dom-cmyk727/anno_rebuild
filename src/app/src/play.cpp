@@ -268,6 +268,41 @@ DevToolSetup dev_tool_setup(const PlayLoad& load) {
     if (s.registry) {
         s.types = buildable_types(*s.registry, world.config().layout);
     }
+    // A goods-free building of the tool's types and a free tile in another player's city, for the
+    // scripted session's `foreign` step: the first plain type, a free 4 x 4 block away from the
+    // island's edge (World::building_at is the sim's own lookup).
+    std::optional<sim::TypeId> plain;
+    for (const bool square : {true, false}) { // a 2 x 2 first, else any goods-free non-road type
+        for (const sim::TypeId id : s.types) {
+            const sim::BuildingType* type = s.registry ? s.registry->find(id) : nullptr;
+            if (!plain && type != nullptr && type->cost_goods.empty() &&
+                (type->flags_word & sim::kRoadFlag) == 0 &&
+                (!square || (type->width == 2 && type->height == 2))) {
+                plain = id;
+            }
+        }
+    }
+    for (const auto& island : world.islands()) {
+        if (!island || !plain || s.foreign || !s.city || island->index == s.city->island) {
+            continue;
+        }
+        for (const std::optional<sim::City>& city : island->cities) {
+            if (!city || city->owner == developer_player() || s.foreign) {
+                continue;
+            }
+            const sim::CityRef ref{island->index, city->number};
+            const auto w = static_cast<std::int32_t>(island->tiles.width());
+            const auto h = static_cast<std::int32_t>(island->tiles.height());
+            for (std::int32_t y = 2; y + 4 <= h && !s.foreign; ++y) {
+                for (std::int32_t x = 2; x + 4 <= w && !s.foreign; ++x) {
+                    const sim::TileXY at{island->tiles.x0() + x, island->tiles.y0() + y};
+                    if (world.building_at(ref, at.x, at.y) == nullptr) {
+                        s.foreign = ForeignSpot{ref, city->owner, at, *plain};
+                    }
+                }
+            }
+        }
+    }
     return s;
 }
 

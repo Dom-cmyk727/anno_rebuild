@@ -363,6 +363,7 @@ int run(const std::vector<std::string>& raw) {
     std::shared_ptr<const anno::render::Scene> shown = std::move(loaded.value().scene);
     std::unique_ptr<anno::app::ScenePicture> picture;
     std::unique_ptr<anno::app::PlayRunner> runner;
+    std::unique_ptr<anno::app::PublicationHold> hold;
     anno::app::ViewerHooks hooks;
     const anno::app::ViewerHooks* hooks_ptr = nullptr;
     std::unique_ptr<anno::app::PlayFollower> follow;
@@ -457,6 +458,10 @@ int run(const std::vector<std::string>& raw) {
         runner->set_record_hashes(!session_dir.empty());
         if (script) {
             hooks.script = &*script;
+            // The scripted session's hold on a publication (publication_hold.hpp): its gate is
+            // installed before the runner starts and does nothing until the script arms it.
+            hold = std::make_unique<anno::app::PublicationHold>(*runner);
+            hooks.hold = hold.get();
         }
         if (trace) {
             // The sim thread's record of every turn: its outcome, and the batch's publication.

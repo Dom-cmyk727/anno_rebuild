@@ -165,6 +165,7 @@ bool PlacementKnowledge::on_batches(
     bool enabled) {
     if (!enabled) {
         stale_ = true; // the batches are not followed while the tool is off; ensure() reseeds
+        batches_skipped_disabled_ += batches.size();
         return false;
     }
     if (!seeded_ || stale_) {
@@ -182,6 +183,7 @@ bool PlacementKnowledge::on_batches(
         }
         for (const BuildingDelta& d : batch->deltas) {
             if (d.building.island != *number_) {
+                ++foreign_deltas_;
                 continue; // another island: nothing to index (one comparison)
             }
             add_tiles(d.building, d.kind == BuildingDelta::Kind::Added ? +1 : -1);
@@ -223,6 +225,7 @@ void PlacementKnowledge::add_tiles(const SceneBuilding& b, int sign) {
             for (std::int64_t x = std::max<std::int64_t>(bx, setup_.island.x0); x < x1; ++x) {
                 const std::pair<std::int32_t, std::int32_t> key{static_cast<std::int32_t>(x),
                                                                 static_cast<std::int32_t>(y)};
+                ++tiles_enumerated_;
                 if (sign > 0) {
                     ++occupied_[key];
                 } else if (const auto it = occupied_.find(key); it != occupied_.end()) {

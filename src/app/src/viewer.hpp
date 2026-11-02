@@ -17,6 +17,7 @@
 #include <anno/app/dev_script.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/play_follow.hpp>
+#include <anno/app/publication_hold.hpp>
 #include <anno/app/window_trace.hpp>
 #include <anno/render/scene.hpp>
 
@@ -39,6 +40,10 @@ struct ViewerHooks {
     /// pushes the script's events into SDL's queue and closes when it ends or fails. The caller
     /// owns it and reads its log after run_viewer returns.
     DevScript* script = nullptr;
+    /// The publication hold a scripted session arms (publication_hold.hpp; installed in the
+    /// runner by the caller before it starts). Null leaves `hold publication` out: the script
+    /// then fails at that step. The caller owns it.
+    PublicationHold* hold = nullptr;
 };
 
 /// Opens the window and runs until it is closed; an empty string on

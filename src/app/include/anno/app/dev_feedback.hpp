@@ -97,6 +97,13 @@ class PlacementKnowledge {
     /// Deltas of the city's island applied incrementally, and batches reseeded (a test counts
     /// them next to rebuilds()).
     [[nodiscard]] std::size_t deltas_applied() const { return deltas_applied_; }
+    /// Work counts, for the viewer-wiring regressions (W4-WIN-CLOSE C1): the tiles written into
+    /// or erased from the index in all (a seed counts its own), the deltas of other islands that
+    /// cost one comparison, and the batches skipped because the tool was off. A count, unlike a
+    /// time, does not move with the host's load.
+    [[nodiscard]] std::size_t tiles_enumerated() const { return tiles_enumerated_; }
+    [[nodiscard]] std::size_t foreign_deltas() const { return foreign_deltas_; }
+    [[nodiscard]] std::size_t batches_skipped_disabled() const { return batches_skipped_disabled_; }
     struct Verdict {
         /// A known refusal (its basis is in `text`); false: unchecked or nothing to check.
         bool refused = false;
@@ -118,7 +125,8 @@ class PlacementKnowledge {
     std::map<std::pair<std::int32_t, std::int32_t>, std::uint32_t> occupied_;
     std::optional<std::uint32_t> number_;
     bool seeded_ = false, stale_ = true, changed_ = false;
-    std::size_t deltas_applied_ = 0;
+    std::size_t deltas_applied_ = 0, tiles_enumerated_ = 0, foreign_deltas_ = 0,
+                batches_skipped_disabled_ = 0;
     void add_tiles(const SceneBuilding& b, int sign);
     /// Whether the last update built the index (the city's island in the scene, a registry).
     bool indexed_ = false;

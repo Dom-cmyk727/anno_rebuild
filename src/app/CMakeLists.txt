@@ -17,6 +17,7 @@ add_library(anno_app_core
   src/play.cpp
   src/play_follow.cpp
   src/png.cpp
+  src/publication_hold.cpp
   src/scene_picture.cpp
   src/still.cpp
   src/visibility.cpp
@@ -91,6 +92,19 @@ if(ANNO_BUILD_TESTS)
     anno_target_defaults(anno_app_input_tests)
     anno_stage_budget_coord(anno_app_input_tests)
     anno_add_doctest(anno_app_input_tests)
+    # The production play window against a scripted session, headless (SDL's dummy video driver
+    # and the CPU renderer; W4-WIN-CLOSE C1): R1's title/script consistency inside a held
+    # publication and R4's occupancy wiring. They need the original game files and skip (77)
+    # without them. Reverting the window's call sites fails them (docs/app/game-shell.md).
+    if(Python3_FOUND)
+      foreach(case r1_held_publication r4_occupancy)
+        add_test(NAME viewer_wiring_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> ${case})
+        set_tests_properties(viewer_wiring_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
+    endif()
   endif()
   add_test(NAME anno1503_usage COMMAND anno1503 --view x.sze --group 3)
   set_tests_properties(anno1503_usage PROPERTIES PASS_REGULAR_EXPRESSION "usage:")

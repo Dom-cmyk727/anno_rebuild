@@ -1,0 +1,78 @@
+# R4 through the real play window (W4-WIN-CLOSE C1): the occupancy index follows the picture's takes
+# by their deltas, does nothing while the tool is off, ignores another island's edit (one
+# comparison), and is reseeded once when the tool comes back. The counts are PlacementKnowledge's
+# (rebuilds, deltas, tiles written, foreign deltas, batches skipped while off); no timing.
+# Run by tools/test/viewer_wiring.py; every `expect` fails the session if it is not met.
+look 1052 444
+# ---- the tool is off: edits of the city and of another island reach the picture, not the index -
+expect work rebuilds == 0
+expect work tiles == 0
+local build 1307 1060 444
+foreign build
+wait turns 6
+expect work rebuilds == 0
+expect work deltas == 0
+expect work tiles == 0
+expect work foreign == 0
+expect work skipped >= 1
+checkpoint off_edits_not_followed
+
+# ---- the tool comes on: one reseed from the picture's per-island list ---------------------------
+key b
+wait frames 4
+expect work rebuilds == 1
+expect occupied 1060 444 yes
+expect occupied 1068 444 no
+note work tiles
+note work rebuilds
+checkpoint reseeded_once
+
+# ---- an edit on another island: one comparison, no index work ----------------------------------
+foreign demolish
+wait turns 6
+expect work foreign >= 1
+expect work tiles same
+expect work rebuilds same
+expect work deltas == 0
+checkpoint foreign_edit_ignored
+
+# ---- a local build and demolish by the tool's own clicks: the tile deltas, no rebuild ----------
+select 1307
+rotate 0
+click 1068 444
+wait outcome
+wait drawn
+expect outcome Applied
+expect work deltas >= 1
+expect work rebuilds same
+expect work tiles grew
+expect occupied 1068 444 yes
+note work tiles
+checkpoint local_build_followed
+key x
+click 1068 444
+wait outcome
+wait drawn
+expect work rebuilds same
+expect work tiles grew
+expect occupied 1068 444 no
+checkpoint local_demolish_followed
+
+# ---- off again: a local demolish and build are not followed; on again: one reseed ---------------
+key b
+note work deltas
+note work tiles
+local demolish 1060 444
+local build 1307 1076 444
+wait turns 6
+expect work deltas same
+expect work tiles same
+expect work rebuilds same
+checkpoint second_off_spell
+key b
+wait frames 4
+expect work rebuilds grew
+expect occupied 1060 444 no
+expect occupied 1076 444 yes
+checkpoint reseeded_again
+quit

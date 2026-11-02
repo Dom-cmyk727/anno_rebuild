@@ -35,6 +35,18 @@ struct TileRect {
     }
 };
 
+/// A spot where another player's city could build, for the scripted session's `foreign` step
+/// (dev_script.hpp): a stand-in for a command of another player arriving through the runner's
+/// queue like any other, so the window sees an edit on an island that is not the tool's. Not used
+/// by the tool or by play without a script.
+struct ForeignSpot {
+    sim::CityRef city;
+    sim::PlayerId owner;
+    /// A free tile of that city's island, and a type to build there.
+    sim::TileXY at;
+    sim::TypeId type;
+};
+
 /// What the tool needs from the world, read once at load (PlayLoad, before the runner owns it).
 struct DevToolSetup {
     std::shared_ptr<const sim::TypeRegistry> registry;
@@ -45,6 +57,8 @@ struct DevToolSetup {
     std::optional<sim::CityRef> city;
     TileRect island;
     sim::PlayerId issuer;
+    /// Another player's city on another island (none when the world has no second city).
+    std::optional<ForeignSpot> foreign;
 };
 
 /// One drawn frame, as the pointer needs it: how drawable pixels map to its scene pixels, the

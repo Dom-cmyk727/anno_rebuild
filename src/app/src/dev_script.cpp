@@ -78,6 +78,43 @@ void push_button(std::vector<SDL_Event>& out, std::pair<float, float> at, std::u
     out.push_back(e);
 }
 
+/// A count of the occupancy index by name; none for an unknown name.
+std::optional<std::int64_t> work_count(const PlacementKnowledge& k, const std::string& name) {
+    if (name == "rebuilds") {
+        return static_cast<std::int64_t>(k.rebuilds());
+    }
+    if (name == "deltas") {
+        return static_cast<std::int64_t>(k.deltas_applied());
+    }
+    if (name == "tiles") {
+        return static_cast<std::int64_t>(k.tiles_enumerated());
+    }
+    if (name == "foreign") {
+        return static_cast<std::int64_t>(k.foreign_deltas());
+    }
+    if (name == "skipped") {
+        return static_cast<std::int64_t>(k.batches_skipped_disabled());
+    }
+    return std::nullopt;
+}
+
+/// The cheapest of the tool's types that costs gold and is not a road (the sim does
+/// not build roads yet: Unsupported); none when there is none.
+std::optional<std::int64_t> paid_type_id(const DevTool& tool) {
+    std::optional<std::int64_t> best;
+    std::uint64_t gold = 0;
+    for (const sim::TypeId id : tool.setup().types) {
+        const sim::BuildingType* type =
+            tool.setup().registry ? tool.setup().registry->find(id) : nullptr;
+        if (type != nullptr && type->cost_gold > 0 &&
+            (type->flags_word & sim::kRoadFlag) == 0 && (!best || type->cost_gold < gold)) {
+            best = static_cast<std::int64_t>(id.v);
+            gold = type->cost_gold;
+        }
+    }
+    return best;
+}
+
 std::string outcome_text(const std::optional<CommandOutcome>& o) {
     if (!o) {
         return "none";
@@ -96,11 +133,18 @@ int arity(const std::string& verb) {
         return 2;
     }
     if (verb == "key" || verb == "select" || verb == "rotate" || verb == "wheel" ||
-        verb == "checkpoint" || verb == "screenshot") {
+        verb == "checkpoint" || verb == "screenshot" || verb == "hold" || verb == "release" ||
+        verb == "foreign") {
         return 1;
+    }
+    if (verb == "note") {
+        return -1;
     }
     if (verb == "click") {
         return 2;
+    }
+    if (verb == "local") {
+        return -2;
     }
     if (verb == "drag") {
         return 4;
@@ -153,13 +197,14 @@ formats::Result<DevScript, std::string> DevScript::parse(std::string_view text) 
         while (words >> w) {
             s.args.push_back(w);
         }
-        if (s.verb == "expect" && s.args.size() >= 2 && s.args[0] == "title") {
+        if (s.verb == "expect" && s.args.size() >= 2 &&
+            (s.args[0] == "title" || s.args[0] == "title-lacks")) {
             // The rest of the line is the text (spaces kept as one).
             std::string rest;
             for (std::size_t i = 1; i < s.args.size(); ++i) {
                 rest += (i > 1 ? " " : "") + s.args[i];
             }
-            s.args = {"title", rest};
+            s.args = {s.args[0], rest};
         }
         const int n = arity(s.verb);
         const auto have = static_cast<int>(s.args.size());
@@ -218,7 +263,10 @@ std::optional<std::pair<float, float>> DevScript::window_point(const PointerFram
 DevScriptAction DevScript::step(const DevScriptState& st) {
     DevScriptAction act;
     while (!done()) {
-        if (!act.events.empty() || act.look || act.screenshot) {
+        if (!act.events.empty() || act.look || act.screenshot ||
+            act.hold != DevScriptAction::Hold::None ||
+            act.foreign != DevScriptAction::Foreign::None ||
+            act.local != DevScriptAction::Local::None) {
             // One input step per call: the window handles it before the next step (a wait or a
             // check included) looks at what it shows.
             break;
@@ -259,6 +307,13 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 over = st.latest && st.latest->state != CommandOutcome::State::Queued &&
                        (st.latest->state != CommandOutcome::State::Applied ||
                         !visibility_waiting(st.visibility));
+            } else if (what == "held") {
+                if (!st.hold_available || st.hold_expired) {
+                    fail(s, st.hold_available ? "the hold's watchdog ended a wait"
+                                              : "no publication hold in this session");
+                    break;
+                }
+                over = st.held;
             } else {
                 fail(s, "unknown wait");
                 break;
@@ -291,9 +346,12 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             }
             push_key(act.events, *k);
         } else if (s.verb == "select" || s.verb == "rotate") {
-            const auto want = arg(0);
+            auto want = arg(0);
+            if (s.verb == "select" && s.args[0] == "paid" && st.tool != nullptr) {
+                want = paid_type_id(*st.tool);
+            }
             if (!want || st.tool == nullptr) {
-                fail(s, "no number or no tool");
+                fail(s, "no number or no tool, or no paid type");
                 break;
             }
             const bool there = s.verb == "select" ? st.tool->input().selected() &&
@@ -360,10 +418,129 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             e.wheel.mouse_x = static_cast<float>(st.window_w) / 2.0F;
             e.wheel.mouse_y = static_cast<float>(st.window_h) / 2.0F;
             act.events.push_back(e);
+        } else if (s.verb == "hold" || s.verb == "release") {
+            if (s.args[0] != "publication" || !st.hold_available) {
+                fail(s, s.args[0] != "publication" ? "only 'publication' can be held"
+                                                   : "no publication hold in this session");
+                break;
+            }
+            act.hold = s.verb == "hold" ? DevScriptAction::Hold::Arm
+                                        : DevScriptAction::Hold::Release;
+        } else if (s.verb == "local") {
+            const bool build = s.args[0] == "build";
+            const std::size_t need = build ? 4 : 3;
+            const auto x = s.args.size() == need ? arg(need - 2) : std::nullopt;
+            const auto y = s.args.size() == need ? arg(need - 1) : std::nullopt;
+            const auto type = build && s.args.size() == need ? arg(1) : std::optional<std::int64_t>{0};
+            if ((!build && s.args[0] != "demolish") || !x || !y || !type || st.tool == nullptr ||
+                !st.tool->setup().city) {
+                fail(s, "'local build TYPE X Y' or 'local demolish X Y' for the tool's city");
+                break;
+            }
+            act.local = build ? DevScriptAction::Local::Build : DevScriptAction::Local::Demolish;
+            act.local_type = sim::TypeId{static_cast<std::uint32_t>(*type)};
+            act.local_at = sim::TileXY{static_cast<std::int32_t>(*x), static_cast<std::int32_t>(*y)};
+        } else if (s.verb == "foreign") {
+            if ((s.args[0] != "build" && s.args[0] != "demolish") || st.tool == nullptr ||
+                !st.tool->setup().foreign) {
+                fail(s, "'foreign build|demolish' needs another player's city on another island");
+                break;
+            }
+            act.foreign = s.args[0] == "build" ? DevScriptAction::Foreign::Build
+                                               : DevScriptAction::Foreign::Demolish;
+        } else if (s.verb == "note") {
+            if (s.args[0] == "money" && s.args.size() == 1 && st.snapshot) {
+                noted_money_ = st.snapshot->money;
+            } else if (s.args[0] == "work" && s.args.size() == 2 && st.knowledge != nullptr &&
+                       work_count(*st.knowledge, s.args[1])) {
+                noted_work_[s.args[1]] = *work_count(*st.knowledge, s.args[1]);
+            } else {
+                fail(s, "'note money' needs a snapshot, 'note work NAME' the tool's index");
+                break;
+            }
         } else if (s.verb == "expect") {
             if (s.args[0] == "title" && s.args.size() == 2) {
                 if (st.title.find(s.args[1]) == std::string::npos) {
                     fail(s, "the title is '" + st.title + "'");
+                    break;
+                }
+            } else if (s.args[0] == "title-lacks" && s.args.size() == 2) {
+                if (st.title.find(s.args[1]) != std::string::npos) {
+                    fail(s, "the title is '" + st.title + "'");
+                    break;
+                }
+            } else if (s.args[0] == "published" && s.args.size() == 1) {
+                const bool shown = st.latest &&
+                                   (st.latest->state == CommandOutcome::State::Applied ||
+                                    st.latest->state == CommandOutcome::State::Refused);
+                if (shown && (!st.snapshot || st.latest->seq >= st.snapshot->outcomes_next)) {
+                    fail(s, "the window shows " + outcome_text(st.latest) + " (sequence " +
+                                std::to_string(st.latest->seq) +
+                                ") beside a snapshot that follows outcomes below " +
+                                std::to_string(st.snapshot ? st.snapshot->outcomes_next : 0));
+                    break;
+                }
+            } else if (s.args[0] == "money" && s.args.size() == 2) {
+                if (!noted_money_ || !st.snapshot) {
+                    fail(s, "no noted money or no snapshot");
+                    break;
+                }
+                const std::int64_t now = st.snapshot->money;
+                const bool ok = s.args[1] == "same"   ? now == *noted_money_
+                                : s.args[1] == "less" ? now < *noted_money_
+                                                      : false;
+                if (!ok) {
+                    fail(s, "money is " + std::to_string(now) + ", noted " +
+                                std::to_string(*noted_money_));
+                    break;
+                }
+            } else if (s.args[0] == "work" && (s.args.size() == 3 || s.args.size() == 4)) {
+                if (st.knowledge == nullptr) {
+                    fail(s, "no occupancy index");
+                    break;
+                }
+                const std::string& name = s.args[1];
+                const auto have = work_count(*st.knowledge, name);
+                if (!have) {
+                    fail(s, "unknown count '" + name + "'");
+                    break;
+                }
+                bool ok = false;
+                std::string wanted;
+                if (s.args.size() == 3) {
+                    const auto noted = noted_work_.find(name);
+                    if (noted == noted_work_.end() || (s.args[2] != "same" && s.args[2] != "grew")) {
+                        fail(s, "'expect work NAME same|grew' needs 'note work NAME' first");
+                        break;
+                    }
+                    ok = s.args[2] == "same" ? *have == noted->second : *have > noted->second;
+                    wanted = s.args[2] + " (noted " + std::to_string(noted->second) + ")";
+                } else {
+                    const auto want = integer(s.args[3]);
+                    const std::string& op = s.args[2];
+                    if (!want || (op != "==" && op != "<=" && op != ">=")) {
+                        fail(s, "not a number or an unknown comparison");
+                        break;
+                    }
+                    ok = op == "==" ? *have == *want : op == "<=" ? *have <= *want : *have >= *want;
+                    wanted = op + " " + std::to_string(*want);
+                }
+                if (!ok) {
+                    fail(s, name + " is " + std::to_string(*have) + ", wanted " + wanted);
+                    break;
+                }
+            } else if (s.args[0] == "occupied" && s.args.size() == 4) {
+                const auto x = integer(s.args[1]), y = integer(s.args[2]);
+                if (st.knowledge == nullptr || !x || !y ||
+                    (s.args[3] != "yes" && s.args[3] != "no")) {
+                    fail(s, "no occupancy index, or not a tile and yes|no");
+                    break;
+                }
+                const bool occ = st.knowledge->occupied(
+                    sim::TileXY{static_cast<std::int32_t>(*x), static_cast<std::int32_t>(*y)});
+                if (occ != (s.args[3] == "yes")) {
+                    fail(s, std::string("tile ") + s.args[1] + "," + s.args[2] + " is " +
+                                (occ ? "occupied" : "free") + " in the index");
                     break;
                 }
             } else if (s.args[0] == "visibility" && s.args.size() == 2) {
@@ -396,6 +573,16 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                            std::to_string(st.snapshot ? st.snapshot->turn : 0) + ", frames " +
                            std::to_string(st.frames) + ", outcome " + outcome_text(st.latest) +
                            ", visibility " + visibility_name(st.visibility) +
+                           (st.knowledge != nullptr
+                                ? ", occupancy rebuilds " + std::to_string(st.knowledge->rebuilds()) +
+                                      " deltas " + std::to_string(st.knowledge->deltas_applied()) +
+                                      " tiles " + std::to_string(st.knowledge->tiles_enumerated()) +
+                                      " foreign " + std::to_string(st.knowledge->foreign_deltas()) +
+                                      " skipped " +
+                                      std::to_string(st.knowledge->batches_skipped_disabled())
+                                : std::string()) +
+                           (st.hold_available ? std::string(", hold ") + (st.held ? "held" : "free")
+                                              : std::string()) +
                            ", title: " + st.title);
         } else if (s.verb == "screenshot") {
             act.screenshot = s.args[0];

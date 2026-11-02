@@ -26,7 +26,10 @@ constexpr double kPx = 10.0; // pixels per tile of the fake projection
 class FlatProjection final : public app::ScreenProjection {
   public:
     std::set<std::pair<int, int>> land;
+    /// How much work the controls asked of the frame (a count, not a time).
+    mutable std::size_t picks = 0, boxes = 0;
     std::optional<app::PickedPoint> pick(double px, double py) const override {
+        ++picks;
         if (px < 0 || py < 0) {
             return std::nullopt;
         }
@@ -39,6 +42,7 @@ class FlatProjection final : public app::ScreenProjection {
         return p;
     }
     std::optional<app::ScreenBox> ship_box(const app::ShipView& s) const override {
+        ++boxes;
         const double cx = s.pos.x / 256.0 * kPx, cy = s.pos.y / 256.0 * kPx;
         app::ScreenBox b;
         b.x0 = cx - 8;
@@ -483,4 +487,31 @@ TEST_CASE("controls: tons are written exactly") {
     CHECK(app::tons_text(12800) == "50");
     CHECK(app::tons_text(128) == "0.50");
     CHECK(app::tons_text(256 + 64) == "1.25");
+}
+
+TEST_CASE("controls: a click's work is local to the ships of the view, and a move or a hover is "
+          "one pick") {
+    Fixture f;
+    // A view with many ships and no buildings anywhere in sight: a selecting click asks for one box
+    // per ship, once, and no ground pick; hovering and an order are one pick each.
+    f.view.ships.clear();
+    for (std::uint64_t i = 1; i <= 200; ++i) {
+        f.view.ships.push_back(
+            ship(i, i % 5, static_cast<double>(i % 40) * 3, static_cast<double>(i / 40) * 3));
+    }
+    f.proj.picks = f.proj.boxes = 0;
+    f.click(app::PointerButton::Left, 5, 5);
+    CHECK(f.proj.boxes == f.view.ships.size());
+    CHECK(f.proj.picks == 0);
+    f.proj.picks = f.proj.boxes = 0;
+    f.ui.pointer_move(50, 50, &f.proj, f.feed());
+    CHECK(f.proj.picks == 1);
+    CHECK(f.proj.boxes == 0);
+    // An order for an own selected ship: one pick, and no box is asked for.
+    f.view.ships = {ship(1, 0, 10, 10)};
+    f.click(app::PointerButton::Left, 100, 100);
+    f.proj.picks = f.proj.boxes = 0;
+    f.click(app::PointerButton::Right, 200, 150);
+    CHECK(f.proj.picks == 1);
+    CHECK(f.proj.boxes == 0);
 }

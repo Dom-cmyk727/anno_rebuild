@@ -39,7 +39,6 @@ struct ShipView {
     /// The order has a plan (the original's phase 1). false: accepted, not planned yet.
     bool routed = false;
     std::int32_t target_x_q8 = 0, target_y_q8 = 0;
-    friend bool operator==(const ShipView&, const ShipView&) = default;
 };
 
 enum class ShipEventKind : std::uint8_t { Arrived, RouteFailed, Stopped };
@@ -107,7 +106,6 @@ struct OpeningView {
     [[nodiscard]] const CityView* city(sim::CityRef ref) const;
     /// The event that ended `order_id` of `ship`, if it is in the view.
     [[nodiscard]] const ShipEventView* event_for(sim::FigureId ship, std::uint64_t order_id) const;
-    friend bool operator==(const OpeningView&, const OpeningView&) = default;
 };
 
 /// The events the runner keeps between turns: `since` numbers them. The runner appends what the

@@ -101,6 +101,24 @@ expect fact store.41 == 12032
 expect fact store.26 == 2560
 wait drawn
 screenshot 6-built
+# With a city on the island, a ship's voyage still rebuilds nothing: the picture's work does not move.
+wait fact pending_builds == 0 within 10000
+note fact generation
+note fact committed
+note fact discarded
+key b
+expect fact tool == off
+lookw 262 134
+wait frames 20
+pick-ship 1
+expect fact selected == 1
+sail 266 134
+wait fact latest_kind == move within 10000
+wait fact latest == arrived within 30000
+expect fact ship.1.x == 266
+expect fact generation same
+expect fact committed same
+expect fact discarded same
 key f5
 wait fact save contains saved within 30000
 quit

@@ -874,3 +874,24 @@ converge; the byte budget admits one over-budget island; 1, 2 and 4 workers conv
 build of each island from the desired state, with the loader's per-island function. Reclamation
 (`scene_reclaim`): the destruction runs on the reclaimer for the window's, a chunk worker's and the
 renderer's release, and the counters agree.
+
+### The ship-start opening (W4-OPENING-1)
+
+`anno1503 --ship-start <manifest.json> --seat N` runs the accepted MAP ship start in the play window; the whole
+contract is [`ship-opening.md`](ship-opening.md) and the owner's steps are in
+[`../testing/ship-opening-playtest.md`](../testing/ship-opening-playtest.md). What it changes in this shell:
+
+- `PlaySnapshot::opening` (an immutable `OpeningView`: ships, the local participant's cities, gold, ship events, the
+  order-id counter), published with every snapshot; `PlayRunner::set_local_player`, `set_opening`,
+  `request_capture` (a save at a turn boundary) and `outcome_at` (an outcome as of a snapshot). The runner wakes the
+  window every turn of an opening, and finds the participant's city again until one exists.
+- `CommandOutcome` carries what an accepted ship command produced (`order_id`, `transferred_88`, `created`).
+- Live ships are not part of any scene generation: `GpuFrame::render(..., live_units)` and `app::blend_units` draw a
+  per-frame list after the scene's objects in painter order, so a sailing tick commits and rebuilds nothing.
+- The building tool follows the founded city (`DevTool::retarget`); `Shift+N` / `Shift+P` step ten types.
+- The scripted session (`dev_script.hpp`) gained the opening's steps (`pick-ship`, `sail`, `click-land`, `rdown`,
+  `rup`, `lpan`, `focus-lost`, `lookw`, `lookship`, `wait|expect fact`), all real SDL events, and a Windows
+  `screenshot` (the CPU frame buffer, or a desktop copy of the window for a GPU window).
+- `tools/test/viewer_wiring.py --app-arg ...` launches another start than lan5; `tools/test/opening_session.py` runs
+  the whole opening through the window and replays it; `tools/test/opening_mutation_check.py` shows the window
+  scripts fail when the controls' wiring is broken.

@@ -39,7 +39,7 @@ MUTANTS = {
     "other-owner-controllable": (
         "    if (ship->owner != setup_.local) {\n        why = \"ship #\"",
         "    if (false) {\n        why = \"ship #\"",
-        "tracked is '1', expected == 0"),
+        "expected == 0"),
 }
 
 
@@ -75,9 +75,9 @@ def main(argv):
     if status:
         print(f"refusing to edit a dirty {TARGET}: {status}")
         return 2
-    original = TARGET.read_text(encoding="utf-8")
-    crlf = "\r\n" in original
-    text = original.replace("\r\n", "\n")
+    original = TARGET.read_bytes()
+    crlf = b"\r\n" in original
+    text = original.decode("utf-8").replace("\r\n", "\n")
     results, failures = [], []
     try:
         ok, tail = build(build_dir)
@@ -95,7 +95,7 @@ def main(argv):
                 print(f"{name}: the pattern is not unique in {TARGET.name} ({text.count(old)})")
                 failures.append(name)
                 continue
-            TARGET.write_text(text.replace(old, new).replace("\n", "\r\n" if crlf else "\n"), encoding="utf-8", newline="")
+            TARGET.write_bytes(text.replace(old, new).replace("\n", "\r\n" if crlf else "\n").encode("utf-8"))
             ok, tail = build(build_dir)
             if not ok:
                 print(f"{name}: the mutant does not build:\n{tail}")

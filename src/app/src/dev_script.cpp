@@ -549,8 +549,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 fail(s, "no such ship in the view");
                 break;
             }
-            act.look_world = std::pair{std::atof(x->second.c_str()) + 0.5,
-                                       std::atof(y->second.c_str()) + 0.5};
+            act.look_world =
+                std::pair{std::atof(x->second.c_str()) + 0.5, std::atof(y->second.c_str()) + 0.5};
         } else if (s.verb == "sail" || s.verb == "rdown" || s.verb == "rup" ||
                    s.verb == "click-land" || s.verb == "hover-land") {
             const auto t = tile_arg(0);
@@ -694,6 +694,13 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             }
             act.foreign = s.args[0] == "build" ? DevScriptAction::Foreign::Build
                                                : DevScriptAction::Foreign::Demolish;
+        } else if (s.verb == "note" && s.args[0] == "fact" && s.args.size() == 2) {
+            const auto it = st.facts.find(s.args[1]);
+            if (it == st.facts.end()) {
+                fail(s, "no such fact: " + s.args[1]);
+                break;
+            }
+            noted_facts_[s.args[1]] = it->second;
         } else if (s.verb == "note") {
             if (s.args[0] == "frames" && s.args.size() == 1) {
                 noted_frames_ = st.frames;
@@ -707,7 +714,20 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
         } else if (s.verb == "expect") {
-            if (s.args[0] == "fact" && s.args.size() == 4) {
+            if (s.args[0] == "fact" && s.args.size() == 3 && s.args[2] == "same") {
+                const auto noted = noted_facts_.find(s.args[1]);
+                const auto now = st.facts.find(s.args[1]);
+                if (noted == noted_facts_.end() || now == st.facts.end() ||
+                    noted->second != now->second) {
+                    fail(s, s.args[1] + " is '" +
+                                (now == st.facts.end() ? std::string("<none>") : now->second) +
+                                "', it was '" +
+                                (noted == noted_facts_.end() ? std::string("<not noted>")
+                                                             : noted->second) +
+                                "'");
+                    break;
+                }
+            } else if (s.args[0] == "fact" && s.args.size() == 4) {
                 std::string have;
                 if (!fact_holds(st, s.args[1], s.args[2], s.args[3], have)) {
                     fail(s,

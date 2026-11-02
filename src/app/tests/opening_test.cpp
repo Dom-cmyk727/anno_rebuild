@@ -4,8 +4,8 @@
 // view and the correlation of an order's id and events through the runner.
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -16,15 +16,18 @@
 #include <doctest/doctest.h>
 
 #include <anno/app/cli.hpp>
-#include <anno/app/loader.hpp>
 #include <anno/app/commands_file.hpp>
+#include <anno/app/loader.hpp>
 #include <anno/app/opening.hpp>
 #include <anno/app/opening_session.hpp>
+#include <anno/app/opening_ui.hpp>
 #include <anno/app/opening_view.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/ship_layer.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/route_world.hpp>
+#include <anno/sim/ship_step.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace app = anno::app;
@@ -384,14 +387,16 @@ TEST_CASE("opening, real files: an order's id comes from the sim's own result, e
     CHECK(stopped->kind == app::ShipEventKind::Stopped);
 }
 
-TEST_CASE("live ships on the CPU renderer: blend_units draws what the scene's own units draw, in painter "
-          "order (game files)") {
+TEST_CASE(
+    "live ships on the CPU renderer: blend_units draws what the scene's own units draw, in painter "
+    "order (game files)") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    auto loaded = app::load_scene(*dir, *dir / "Scenes" / "0200Single" / "Single_01.sze", {}, nullptr);
+    auto loaded =
+        app::load_scene(*dir, *dir / "Scenes" / "0200Single" / "Single_01.sze", {}, nullptr);
     REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
     anno::render::Scene& scene = *loaded.value().scene;
     std::vector<anno::render::UnitSprite> live;
@@ -422,7 +427,8 @@ TEST_CASE("live ships on the CPU renderer: blend_units draws what the scene's ow
         }
         INFO("group " << group);
         REQUIRE(ship_pixels > 200); // the compared region holds the ships
-        const auto max_diff = [&](const std::vector<std::uint32_t>& a, const std::vector<std::uint32_t>& b) {
+        const auto max_diff = [&](const std::vector<std::uint32_t>& a,
+                                  const std::vector<std::uint32_t>& b) {
             int m = 0;
             for (std::size_t i = 0; i < a.size(); ++i) {
                 for (int k = 0; k < 3; ++k) {
@@ -451,4 +457,154 @@ TEST_CASE("live ships on the CPU renderer: blend_units draws what the scene's ow
         app::blend_units(shifted, scene, group, view, wrong.data());
         CHECK(max_diff(wrong, baked) > 8);
     }
+}
+
+namespace {
+
+/// A linear map of 10 pixels a tile that calls every pixel open water: an order to land is then
+/// sent (the sim's route planner is what fails it), as a window that misjudged the ground would.
+class SeaProjection final : public app::ScreenProjection {
+  public:
+    std::optional<app::PickedPoint> pick(double px, double py) const override {
+        app::PickedPoint p;
+        p.x_q8 = static_cast<std::int32_t>(px / 10.0 * 256.0);
+        p.y_q8 = static_cast<std::int32_t>(py / 10.0 * 256.0);
+        p.tile =
+            sim::TileXY{static_cast<std::int32_t>(px / 10.0), static_cast<std::int32_t>(py / 10.0)};
+        return p;
+    }
+    std::optional<app::ScreenBox> ship_box(const app::ShipView& s) const override {
+        app::ScreenBox b;
+        b.cx = s.pos.x / 256.0 * 10.0;
+        b.cy = s.pos.y / 256.0 * 10.0;
+        b.x0 = b.cx - 8;
+        b.y0 = b.cy - 8;
+        b.x1 = b.cx + 8;
+        b.y1 = b.cy + 8;
+        return b;
+    }
+};
+
+} // namespace
+
+TEST_CASE("opening, real files: a route the sim cannot plan ends as its own 'route failed', the "
+          "ship stays") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    app::OpeningLoad& load = loaded.value();
+    // A land tile with no water within eight tiles (the sim's goal radius is six): the order is
+    // accepted (the target is inside the world) and its plan fails.
+    const sim::WorldTileSource src(load.play.world, sim::ship_route_terrain_options());
+    std::optional<std::pair<int, int>> inland;
+    for (const auto& island : load.play.world.islands()) {
+        if (!island || inland.has_value()) {
+            continue;
+        }
+        const int x0 = island->tiles.x0(), y0 = island->tiles.y0();
+        const int w = static_cast<int>(island->tiles.width()),
+                  h = static_cast<int>(island->tiles.height());
+        for (int y = y0 + 9; y < y0 + h - 9 && !inland; y += 2) {
+            for (int x = x0 + 9; x < x0 + w - 9 && !inland; x += 2) {
+                bool dry = true;
+                for (int dy = -8; dy <= 8 && dry; ++dy) {
+                    for (int dx = -8; dx <= 8 && dry; ++dx) {
+                        dry = !src.tile_is_water(x + dx, y + dy);
+                    }
+                }
+                if (dry) {
+                    inland = std::pair{x, y};
+                }
+            }
+        }
+    }
+    REQUIRE(inland.has_value());
+    app::OpeningUi ui(load.setup);
+    app::PlayRunner runner(std::move(load.play.world), 100);
+    runner.set_local_player(sim::PlayerId{0});
+    runner.set_opening(true);
+    runner.run_n(1);
+    SeaProjection proj;
+    const auto feed_of = [&runner](std::shared_ptr<const app::PlaySnapshot> snap) {
+        app::UiFeed feed;
+        feed.view = snap->opening.get();
+        feed.outcome = [&runner, snap](app::CommandId id) { return runner.outcome_at(id, *snap); };
+        return feed;
+    };
+    auto snap = runner.snapshot();
+    const app::ShipView* ship = snap->opening->ship(sim::FigureId{1});
+    REQUIRE(ship != nullptr);
+    const sim::FixedPos start = ship->pos;
+    // Select the ship with a click on its box, then order a click on the inland tile.
+    ui.pointer_down(app::PointerButton::Left, start.x / 256.0 * 10.0, start.y / 256.0 * 10.0);
+    static_cast<void>(ui.pointer_up(app::PointerButton::Left, start.x / 256.0 * 10.0,
+                                    start.y / 256.0 * 10.0, &proj, feed_of(snap)));
+    REQUIRE(ui.selected().has_value());
+    const double px = inland->first * 10.0 + 5, py = inland->second * 10.0 + 5;
+    ui.pointer_down(app::PointerButton::Right, px, py);
+    const app::UiResult sent =
+        ui.pointer_up(app::PointerButton::Right, px, py, &proj, feed_of(snap));
+    REQUIRE(sent.commands.size() == 1);
+    ui.submitted(0, runner.post_command(sent.commands[0]), snap->opening->tick);
+    bool failed = false;
+    for (int i = 0; i < 400 && !failed; ++i) {
+        runner.run_n(1);
+        snap = runner.snapshot();
+        failed = !snap->opening->events.empty();
+    }
+    REQUIRE(failed);
+    const app::UiFeed feed = feed_of(snap);
+    REQUIRE(ui.tracked().size() == 1);
+    CHECK(ui.state_of(ui.tracked()[0], feed) == app::TrackState::RouteFailed);
+    CHECK(snap->opening->events.front().kind == app::ShipEventKind::RouteFailed);
+    CHECK(snap->opening->events.front().reason ==
+          static_cast<std::uint32_t>(sim::NavFailReason::Unreachable));
+    const std::string line = ui.status_line(feed);
+    CHECK(line.find("route failed (unreachable)") != std::string::npos);
+    // Acceptance was not arrival and the ship never left its tile.
+    ship = snap->opening->ship(sim::FigureId{1});
+    REQUIRE(ship != nullptr);
+    CHECK(ship->pos.x / 256 == start.x / 256);
+    CHECK(ship->pos.y / 256 == start.y / 256);
+    CHECK_FALSE(ship->order_id.has_value());
+}
+
+TEST_CASE("opening, real files: the runner keeps only its newest view; a held one is released when "
+          "dropped") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    app::PlayRunner runner(std::move(loaded.value().play.world), 100);
+    runner.set_local_player(sim::PlayerId{0});
+    runner.set_opening(true);
+    runner.run_n(3);
+    // A window that holds a frame's snapshot while the sim goes on: the held view stays whole and
+    // unchanged (it is a value), and the runner has not kept a reference of its own to older ones.
+    std::shared_ptr<const app::PlaySnapshot> held = runner.snapshot();
+    std::weak_ptr<const app::OpeningView> weak = held->opening;
+    const std::uint64_t held_tick = held->opening->tick;
+    const std::int32_t held_x = held->opening->ships[0].pos.x,
+                       held_y = held->opening->ships[0].pos.y;
+    const std::size_t held_holds = held->opening->ships[0].holds.size();
+    runner.post_command(
+        sim::Command{sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, 80000, 170000}});
+    runner.run_n(60);
+    CHECK(runner.snapshot()->opening->tick > held_tick);
+    // What the held frame draws did not change under it.
+    CHECK(held->opening->tick == held_tick);
+    CHECK(held->opening->ships[0].pos.x == held_x);
+    CHECK(held->opening->ships[0].pos.y == held_y);
+    CHECK(held->opening->ships[0].holds.size() == held_holds);
+    CHECK(runner.snapshot()->opening->ships[0].pos.y != held_y); // the sim did sail on
+    CHECK_FALSE(weak.expired());
+    held.reset();
+    CHECK(weak.expired()); // nothing else retained the old view
 }

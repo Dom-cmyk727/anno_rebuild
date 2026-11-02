@@ -1199,16 +1199,17 @@ TEST_CASE("ships drawn by the compositor match the CPU path (game files)") {
     }
 }
 
-TEST_CASE("live ships: the overlay list draws what the same ships in the scene draw, in painter order "
-          "(game files)") {
+TEST_CASE(
+    "live ships: the overlay list draws what the same ships in the scene draw, in painter order "
+    "(game files)") {
     const auto dir = anno::test::game_dir();
     auto ctx = device_or_skip();
     if (!dir || !ctx) {
         return;
     }
     // W4-OPENING-1: ships that move every turn are handed to the frame as a list, not put in the
-    // scene. Two overlapping ships (the second in front) at every zoom group: the compositor with the
-    // list equals the CPU path with the same ships in the scene's own units.
+    // scene. Two overlapping ships (the second in front) at every zoom group: the compositor with
+    // the list equals the CPU path with the same ships in the scene's own units.
     Loaded loaded = load_scene(*dir, "Single_01.sze");
     render::Scene& scene = *loaded.scene;
     std::vector<render::UnitSprite> live;

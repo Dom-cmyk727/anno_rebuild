@@ -410,7 +410,8 @@ class Viewer {
     /// Moves the shown zoom towards the wanted one by the time since the last
     /// call (ease-out), keeps the anchor fixed and switches the zoom group when
     /// the zoom has moved closer to another group's tile width.
-    void zoom_tick();
+    /// Only the GPU path steps the continuous zoom; a viewer built without wgpu leaves it unused.
+    [[maybe_unused]] void zoom_tick();
     [[nodiscard]] bool zoom_animating() const { return continuous_ && zoom_now_ != zoom_target_; }
     /// Screen pixels per scene pixel of the group shown (1 when stepped).
     [[nodiscard]] double scale() const {

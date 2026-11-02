@@ -4,7 +4,7 @@
 # flags at -O3 and -Werror, compile only (no link), once with GCC 13 and once
 # with Clang 18, with the viewer and GPU code switched on (ANNO_WITH_VIEWER,
 # ANNO_VIEWER_GPU, ANNO_BENCH_GPU: every CI configuration builds them); then
-# the app sources once more with Clang without ANNO_VIEWER_GPU (a viewer built
+# the app sources once more with GCC and Clang without ANNO_VIEWER_GPU (a viewer built
 # without wgpu, -Wunused-private-field). MSVC reports most of these warnings
 # not at all, so a clean MSVC build says nothing about them.
 #
@@ -98,10 +98,13 @@ check() {
 
 status=0
 check "GCC, viewer and GPU on" "$gxx" "$common_defs $gpu_defs" "${all_files[@]}"
+# A viewer built without wgpu with GCC too (W4-WIN-FINAL F2: its viewer-enabled WSL sanitizer build has
+# no GPU, and GCC found an unused function there that Clang does not report).
+check "GCC, viewer without GPU" "$gxx" "$common_defs -DANNO_WITH_VIEWER" "${app_files[@]}"
 if [ -n "$clangxx" ]; then
     check "Clang, viewer and GPU on" "$clangxx" "$common_defs $gpu_defs" "${all_files[@]}"
     check "Clang, viewer without GPU" "$clangxx" "$common_defs -DANNO_WITH_VIEWER" "${app_files[@]}"
-else
+
     echo "== Clang: skipped (no clang++-18 on PATH, none in ~/clang18, CLANGXX unset)"
 fi
 exit $status

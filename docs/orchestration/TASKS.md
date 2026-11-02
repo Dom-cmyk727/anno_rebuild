@@ -2,15 +2,18 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Windows closeout then opening controls; MAP placement then unloading
+## Current dispatch — 2026-11-02: Windows verifier corrections then opening controls; MAP unloading
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package or accept unreviewed changes. Windows published W4-WIN-CLOSE at
-`f5a323d`, with source/tools at `07a7505`. The orchestrator's source review
-requires the bounded W4-WIN-FINAL packet below; no rendering merge is approved.
+package or accept unreviewed changes. Windows published W4-WIN-FINAL at
+`dad27da7ba0ee26abdd3b1de61adaddbfba05ec7`, with code tree at `8367dc0` and
+tested tools/source at `37da91b`. The [direct final review](reviews/2026-11-02-w4-win-final.md)
+retains the CPU delivery/reclaimer corrections, completed corpus and unaffected
+GPU results. Two verifier corrections remain in **W4-WIN-VERIFY** below;
+no new full corpus or adapter matrix is assigned, and no rendering merge is approved.
 MAP-FOUND-3, corrected MAP-NAV-3 mechanics and MAP-BUILD-1 placement mechanics
 are accepted for their local headless scope. Placement code is
 `ab5e6510952b0bbff6d1a2dbba1ab9f98f8034aa`, documentation
@@ -21,19 +24,25 @@ One bounded writer-test isolation correction remains; handle it at the next
 package checkpoint under MAP-CARGO-1 without interrupting U1's original-rule
 trace. MAP-CARGO-1 U1 is IN PROGRESS; no unloading implementation is accepted.
 Its reviewed contract still gates U2, and the real opening loop still requires
-unloading. W4-WIN-FINAL remains the Windows executor's
-current assignment without expansion. Owner continuation, 2026-11-02: after
+unloading. W4-WIN-VERIFY is the Windows executor's bounded
+current assignment. Owner continuation, 2026-11-02: after
 that closeout and the Mac gameplay candidate are reviewed and accepted at exact
 published pins, W4-OPENING-1 below integrates selection, sailing, founding,
 unloading and building in the live window for an owner playtest. It is conditional
-future work, not permission to interrupt the current Windows corpus run.
+future work, not permission to take an unreviewed Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL IN PROGRESS.** Finish the frozen acceptance chain and review publication. **W4-OPENING-1 is queued**, gated on accepted Windows and Mac pins; no interruption of current gates. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY READY.** Close sanitizer-output propagation and full script identity with focused checks; retain the completed corpus and unaffected adapter results. **W4-OPENING-1 stays queued**, gated on accepted Windows and Mac pins. |
 | MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 mechanics accepted locally; MAP-CARGO-1 U1 IN PROGRESS.** Continue the unloading trace and reviewed contract, then U2–U5. Close the isolated temporary-directory finding below before cargo acceptance gates; do not restart placement or interrupt U1. |
 
-### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · READY
+### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
+
+**Review checkpoint:** published `dad27da7`, tested head `37da91b`, code tree
+`8367dc0`. Read [the direct review](reviews/2026-11-02-w4-win-final.md).
+Retain the completed F2/F3 behavior and F4 corpus work, with the documented
+stderr-verdict and script-identity limitations. Do not restart F1–F4. The packet
+below is acceptance history; W4-WIN-VERIFY is the current instruction.
 
 Continue the existing Windows branch `task/W4-3-live-buildings` from its current
 head, preserving any newer work. Reviewed candidate:
@@ -247,6 +256,122 @@ for tests. Large-city/complex-economy/multiplayer scale and the named display,
 terrain, road and UI follow-ups remain separate work. MAP-NAV-3 and every Mac
 executor file/process remain untouched.
 
+### W4-WIN-VERIFY — finish the two verifier contracts · READY
+
+Continue the existing Windows branch `task/W4-3-live-buildings`, preserving
+newer owned work. Reviewed publication:
+`dad27da7ba0ee26abdd3b1de61adaddbfba05ec7`; C++ code tree
+`8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; tested tools/source
+`37da91b901a0ead4ee4c45205a909e9e4b1eae8c`.
+Read [the review and reproductions](reviews/2026-11-02-w4-win-final.md).
+
+**Outcome:** a successful viewer test proves that the intended complete script
+ran and that no child sanitizer diagnostic was hidden. This is a bounded
+correction to the existing evidence path. Keep the accepted CPU delivery and
+reclaimer mechanics, full corpus, timeout policy and unaffected GPU evidence.
+No renderer redesign, new generic evidence framework, coordinator work, MAP
+changes, gameplay integration or original-game capture campaign is assigned.
+
+#### Read and freeze
+
+1. Fetch `origin/main` and read the common instructions, evidence contract,
+   testing README, this packet and linked review without merging main into
+   the task branch. Read your W4-WIN-FINAL report and portable evidence
+   `SUMMARY.md`/`INDEX.md`; preserve the original Windows logs.
+2. Read `tools/test/{viewer_wiring,viewer_session,viewer_wiring_contract_test}.py`,
+   `src/app/src/{dev_script,main}.cpp` (parse, execution and session output),
+   `src/app/tests/dev_script_test.cpp`, the registered viewer scripts and
+   `docs/testing/app-sanitizer-lanes.md`. Inspect the canonical verdict reader's
+   sanitizer recognition before adding a conflicting definition.
+3. Reuse valid Windows/WSL calibration after checking current host capacity.
+   Keep admission and GPU serialization enabled; keep the screen awake for
+   owned work. Never stop another executor's jobs or awake assertion.
+   Record exact source/tool/binary identities; freeze before each focused gate.
+
+#### V1 — make child sanitizer output part of the verdict
+
+1. Use a tiny otherwise-successful child with the existing complete session
+   fixture. A clean control must pass. A recoverable UBSan `runtime error:`
+   written only to child stderr currently returns PASS; preserve that
+   reproduction. No actual undefined behavior or long game run is needed for
+   this public-command contract.
+2. Retain the child's diagnostic streams and make sanitizer reports fail the
+   public wrapper even when the child exits zero and the session is complete.
+   Send the relevant diagnostic and artifact path to the gate-visible output.
+   Cover the channels the child can use; do not discard stdout then claim it
+   was scanned. Preserve timeout/nonzero-child behavior and the expected SDL
+   failure diagnostics (those are positive evidence, not sanitizer failures).
+   Fatal UBSan configuration may be added as defense in depth; it does not
+   replace the zero-exit diagnostic contract.
+3. Extend the cheap public CLI contracts with a clean complete control,
+   stderr-only UBSan, representative sanitizer report, and diagnostic plus
+   expected SDL messages. Assert the intended sanitizer rejection and absence
+   of PASS. A focused mutation that drops propagation must fail these cases.
+   Do not broaden the shared runner or coordinator to solve a local wrapper bug.
+
+#### V2 — identify the complete script the viewer actually parsed
+
+1. Reproduce the review's ambiguity: the same legitimate-format session log
+   matches both `look 1 2` and `look 1 999`, because only the first argument
+   is recorded/compared. A changed `wait` is also absent from the comparison.
+2. Record a complete canonical script identity from the script parsed by the
+   viewer itself, including every argument and wait instruction, and compare
+   it with the invoked script in the wrapper. A canonical full-step record or
+   an appropriate content fingerprint plus the ordered completion trace is
+   sufficient. Do not record only a hash supplied by the wrapper of the file
+   it hoped the child used. Keep execution completion, FAIL, exit and
+   session-file checks. This is accidental-mismatch detection, not an attempt
+   to authenticate a malicious executable or invent signed evidence.
+3. Add hand-derived contracts: matching complete script passes; changing only
+   a second coordinate, an expectation's later argument, or a wait value fails
+   identity despite child exit zero and an otherwise complete trace. Check
+   the runtime producer as well as the Python consumer; deleting/weakening
+   the actual identity comparison must fail the specific contract.
+4. Treat old logs explicitly as legacy evidence lacking the new full identity.
+   Do not upgrade them to newly verified identities or discard their useful
+   historical results. Keep old-script provenance with existing pins; update
+   the CLI/revalidation wording to state exactly which checks ran.
+
+#### V3 — scoped verification, one correction review and publication
+
+1. Run the cheap tool contracts and affected DevScript/session tests first.
+   Obtain one independent read-only review of V1/V2's producer, consumer,
+   failure propagation and counterexamples. Correct findings and re-review
+   only changed paths. Do not impose a review/mutation quota.
+2. Freeze the corrected source/tools. Use the canonical runner for the three
+   actual CPU viewer cases (R1 publication, R4 occupancy, CPU delivery failures)
+   and affected input/DevScript tests on native MSVC and viewer-enabled WSL
+   ASan+UBSan. Require the corrected public tool contract. Retain complete
+   stdout/stderr and reconcile sanitizer counts from those files with the
+   gate verdict. The expected SDL failure messages must still appear.
+3. Run one short RTX real-window canary to exercise the updated runtime
+   session identity on that consumer. Check warnings for changed C++ scope.
+   Reuse the 106-case RTX/Radeon runs and F4's two completed corpus tests;
+   changes to diagnostic handling/session records do not require repeating
+   them. Expand only for a concrete changed dependency or newly observed
+   failure. No native-4K, scale or broad performance matrix is required here.
+4. Correct the WSL workflow identity record without rerunning old work: the
+   inherited `GIT_DIR`/`GIT_WORK_TREE` contaminated its displayed workflow
+   commit. Record the actual runner file hashes/revision from retained
+   evidence when recoverable, otherwise state the uncertainty. For new runs,
+   ensure workflow and source are independently identified with inherited Git
+   overrides cleared where appropriate; do not alter another worktree.
+5. Report the two findings, exact correction/review/gate pins, selected and
+   executed counts, diagnostic evidence, retained old results and remaining
+   limitations. Add a small text-only subset in the existing evidence area;
+   no original art, screenshots, binaries or large cache archive in git.
+   Ordinary-push the committed review candidate to
+   `origin/task/W4-3-live-buildings` after checking ancestry, then verify the
+   full remote hash. No force push, rebase, main merge/push or pruning.
+
+**Stop:** both counterexamples fail for their intended reasons, real clean
+viewer controls pass with complete diagnostic visibility and script identity,
+the focused independent review approves, and the candidate is published for
+orchestrator acceptance. The historical reclaimer occurrence stays a documented
+uncertainty; missing submit-only/in-flight-only mutants are not new blockers.
+W4-OPENING-1 stays conditional on the completed reviewed Mac cargo candidate.
+No extra owner permission is needed between V1–V3.
+
 ### W4-OPENING-1 — live ship-start opening for an owner playtest · CONDITIONAL, NOT STARTED
 
 **Owner instruction, 2026-11-02:** once the Mac gameplay work is reviewed, wire
@@ -256,17 +381,13 @@ building tool after founding; a headless command demo alone does not meet this
 outcome. This is a bounded developer playtest UI, not the full UI.2/game-menu,
 network multiplayer, trade-route, combat or renderer-optimization program.
 
-**Current Windows checkpoint (owner-supplied, not independently verified here):**
-F1–F3 correction reviews approved; an initial gate failed on a UTF-8/Windows
-code-page mismatch in `viewer_wiring.py` and was retained, then fixed. The update
-mentions frozen head `8367dc0` and later clean build/warnings at `37da91b`.
-The ordinary viewer-enabled sanitizer lane reports 217 selected, 215 executed,
-0 failed, 2 opt-in skips and no sanitizer reports; the RTX canary reports pass.
-The two corpus cases are still running serially. This is **IN PROGRESS**, not
-acceptance. Let them finish; do not edit tracked source or start this task during
-that gate. The final closeout must reconcile actual source/tool/binary pins per
-lane, the failed encoding run and the final corpus/native verdicts. Do not infer
-that differently pinned runs tested one identical final source.
+**Current Windows checkpoint:** W4-WIN-FINAL is published at `dad27da7`; its
+two corpus cases completed. The orchestrator reviewed the source and portable
+extracts, retaining the CPU/reclaimer corrections and completed corpus, while
+requiring the two bounded W4-WIN-VERIFY corrections above. This is not final
+Windows-candidate acceptance. Mac placement mechanics are accepted locally;
+MAP-CARGO-1 is still in progress. Do not start integration from either moving
+tip; the exact approved publication pins remain required below.
 
 #### Release conditions and ownership
 

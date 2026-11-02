@@ -2,25 +2,243 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Windows repair closeout; MAP navigation integration closeout
+## Current dispatch — 2026-11-02: bounded Windows final corrections; MAP navigation integration closeout
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package or accept unreviewed changes. Windows reports an R1–R4 repair candidate
-at `9ba01f1`, not yet published or accepted; W4-WIN-CLOSE below is its next
-assignment. MAP-FOUND-3 is accepted for its local
+package or accept unreviewed changes. Windows published W4-WIN-CLOSE at
+`f5a323d`, with source/tools at `07a7505`. The orchestrator's source review
+requires the bounded W4-WIN-FINAL packet below; no rendering merge is approved.
+MAP-FOUND-3 is accepted for its local
 headless scope. MAP-NAV-2 demonstrates real sailing and founding but needs
 three defect corrections and completion of required fidelity/scaling work.
 MAP's next assignment is MAP-NAV-3 below.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-CLOSE READY.** Publish the frozen review candidate, close the disclosed consumer/evidence gaps and diagnose the two unresolved failures. No main merge or restart of valid broad gates. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL READY.** Fix viewer verdict/present handling, close capture and reclaimer controls, and complete scoped sanitizer coverage under the approved corpus policy. Reuse unaffected GPU evidence; no main merge. |
 | MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-3 READY.** Correct live stamps and carried state; complete object/health inputs, production locality and persistence proof; preserve the sailed-founding canary. |
 
-### W4-WIN-CLOSE — publish for review and finish bounded repair acceptance · READY
+### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · READY
+
+Continue the existing Windows branch `task/W4-3-live-buildings` from its current
+head, preserving any newer work. Reviewed candidate:
+`f5a323d0ce9c6e58d2770e5ab821b98fb68aa16d`, source/tools
+`07a7505201066a0522804527fd3abb4e8022fe8e`. Read the
+[source review and decisions](reviews/2026-11-02-w4-win-close.md).
+This packet supersedes C0–C4 as the active assignment. Do not restart host
+migration, redo R1–R4, repeat valid GPU matrices, or wait for another approval
+between the packages below.
+
+**Goal:** correct the two concrete source findings and the capture-contract gap,
+prove the actual stalled-reclaimer test path, and finish the missing sanitizer
+coverage. Stop with a published review candidate and reconciled evidence.
+UI.2, gameplay, renderer optimization and a new broad performance campaign are
+outside this packet. The Mac executor continues MAP-NAV-3 independently.
+
+#### Read order, ownership and preflight
+
+1. Fetch `origin/main` and read its `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4,
+   `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this packet and
+   the linked review. Use `git show origin/main:<path>` or the established
+   read-only workflow checkout; **do not merge main into your task branch**.
+2. On your branch, read the final W4-WIN-CLOSE entry in
+   `docs/orchestration/REPORTS.md`, its review records and
+   `docs/orchestration/evidence/w4-win-close/INDEX.md`. Preserve all failed runs,
+   manifests and the Windows-local archives. Do not publish their original-art
+   screenshots, original assets, executables or a whole cache dump.
+3. Read `tools/test/viewer_wiring.py` and `tools/test/viewer_wiring/*.script`,
+   `tools/bench/dev_session_capture.py`, `tools/test/window_tools_contract_test.py`,
+   `src/app/src/{viewer,main,dev_script}.cpp`, the relevant headers and
+   `src/app/tests/{dev_script,dev_visibility,visibility}_test.cpp`.
+4. Read `src/app/tests/scene_picture_recovery_test.cpp`, its settling/baseline
+   callers, and the production reclaimer interface sufficiently to control its
+   state. Read `src/app/tests/play_test.cpp`, `src/app/CMakeLists.txt`, the root
+   `anno_add_doctest` registration, and existing sanitizer configurations.
+5. Confirm branch/source/workflow/binary identities and available RAM, disk,
+   CPU/GPU load and tool versions. Reuse valid host calibration; use current
+   capacity for new jobs. Keep admission control and GPU serialization enabled.
+   Use the existing workflow with explicit source/build roots. Do not alter
+   shared coordinator semantics, another lane's files or the owner's apps.
+   Keep the Windows screen awake during owned jobs and release only your own
+   assertion afterward. No rebase, force push, pruning or main merge/push.
+
+#### F1 — make viewer and capture verdicts discriminate
+
+1. Reproduce the viewer false pass cheaply before changing code: a zero-exit
+   fixture executable that creates no session/log currently passes
+   `viewer_wiring.py`. Keep the output. No original game run is needed for this
+   contract reproduction; provide the prerequisite environment explicitly.
+2. Validate actual script execution, not the last line of the input file.
+   Require the expected session evidence, complete ordered execution including
+   terminal `quit`, and correspondence to the invoked script. Reject absent,
+   empty, truncated, mismatched and failed records despite child exit 0.
+   Preserve nonzero child and watchdog failure handling. Use the existing log
+   format where sufficient; avoid an unrelated evidence-framework rewrite.
+3. Add tiny public-command contracts with an otherwise successful child:
+   complete matching log passes; each broken evidence condition fails at the
+   intended check. A mutation restoring the former absent-log acceptance must
+   fail the new contract. Register the contracts and require them in later
+   gates; required viewer cases must not silently disappear from the inventory.
+4. Give capture an explicit aggregate completion verdict: required capture
+   refusal, missing capture or size mismatch cannot return success when the
+   child exited 0. Record child status separately and preserve an already
+   nonzero child status. Do not publish a success marker or treat invalid/partial
+   images as valid captures. Update the CLI contract/documentation together.
+5. Run native Windows public-command controls using the same tiny window with
+   child exit 0: normal capture succeeds; minimised and off-desktop captures
+   fail for the named capture condition. Add a separate child-exit-9 control
+   proving status preservation. Test a size mismatch and an unfinished requested
+   capture at the narrow seam if the desktop cannot create them deterministically;
+   label mocked versus native coverage. Removing aggregate capture-failure
+   propagation must fail while the zero-exit normal control stays green.
+6. Revalidate saved C1/C2 session logs with the corrected execution validator.
+   Do not invent missing historical records. Rerun only sessions whose evidence
+   is incomplete or invalid; tool-only fixes do not require another GPU matrix.
+   Keep original and revalidated verdicts linked to their respective tools.
+
+**F1 complete:** both public tools distinguish successful execution from absent
+or incomplete evidence, valid controls execute, the targeted mutations fail,
+and retained viewer-session verdicts have been checked.
+
+#### F2 — honor CPU submission/present failures in the real viewer
+
+1. Follow `Viewer::draw_cpu` through texture update, render submission and SDL3
+   present. Check their actual return values. Promote visibility only when the
+   frame containing the current change was successfully delivered through that
+   chain. Failure must keep the command pending and produce a useful diagnostic;
+   use bounded retry/backoff rather than a busy loop or permanent pending state.
+2. Exercise each failure boundary through the production CPU viewer. A narrow
+   scripted/test seam may override the backend result, but the production
+   result-to-visibility path must remain the consumer under test. With an applied
+   command and otherwise fresh chunks, a failed update, submission or present
+   must not report `Visible`; release the failure and prove that the same command
+   becomes visible after a successful frame. Preserve normal positive delivery.
+3. Prove that forcing success at the actual viewer call site makes the targeted
+   regression fail. Testing `ChangeVisibility` alone with a supplied `false`
+   argument is insufficient. Keep the CPU/GPU readiness contract consistent;
+   do not alter simulation, assets, painter order or GPU algorithms to fix this.
+4. Configure a **viewer-enabled ASan+UBSan** WSL CPU/SDL-dummy build and verify
+   that `viewer.cpp`, the input executable and real viewer-script cases are
+   built/instrumented and registered. Resolve the existing SDL configuration
+   prerequisite using the smallest supported headless setup. If unavailable,
+   report the exact configuration failure while finishing independent work;
+   viewer-OFF tests cannot substitute for this coverage.
+5. Run the focused actual-viewer controls (R1, R4 and the new CPU failure cases)
+   and affected input tests under both the native Windows build and this WSL
+   sanitizer configuration. Freeze source before acceptance runs and use the
+   canonical runner with explicitly required contract/viewer test names.
+
+**F2 complete:** real CPU errors cannot falsely settle visibility, successful
+delivery still works, and the actual viewer/input paths have executed under
+ASan/UBSan without reports. A headless CPU run is not a GPU/display claim.
+
+#### F3 — prove the reclaimer baseline at its actual call site
+
+1. Preserve the old failed whole-binary run and the identified baseline defect.
+   Historical disposition is now approved: the missing counters prevent exact
+   attribution of that occurrence; retain this uncertainty, rather than trying
+   indefinitely to reproduce it under arbitrary load.
+2. Add diagnostic before/current waiting, in-flight, bytes and relevant lifecycle
+   counters at the stalled case's assertions. Capture consistent stats snapshots
+   so a future failure explains what changed. Do not relax the assertions.
+3. Arrange foreign generations with explicit gates and run the same baseline
+   path the stalled-reclaimer case uses. Factoring that case's body for a
+   controlled prelude is allowed. The valid path must settle before baselining;
+   removing the actual call must fail the intended invariant. An independent
+   helper/arithmetic test that stays green when the call is removed is not enough.
+4. Replace timing assumptions in the relevant regression with observed states
+   or handshakes, including the 50 ms opener assumption where it is used as
+   proof. Release every owned gate before joins on all exits, retain watchdogs,
+   and keep production scheduling/reclamation unchanged.
+5. Run the focused case, regression, relevant recovery/lifecycle suite and a
+   small ordered same-process selection that includes the foreign-work prelude.
+   Use at most ten focused repeats unless a new failure supplies a distinct
+   hypothesis. No CPU-saturating process farm, full-app retry loop or need to
+   reproduce the undocumented historical occurrence.
+
+**F3 complete:** the known defect mechanism is excluded by the actual-path test,
+diagnostics are present, affected controls pass, and old attribution is recorded
+as historical uncertainty. Any new unexplained lifecycle failure remains OPEN.
+
+#### F4 — apply the approved corpus policy and close once
+
+1. Put exactly these two complete cases in the existing `heavy` classification:
+   `play: islands are the ones the sim placed` and
+   `play: tick 0 matches the viewer except objects the sim did not place`.
+   Give them an **8,000-second per-test timeout in ASan/UBSan builds**. Preserve
+   all scenarios/assertions; do not replace them with a subset or raise unrelated
+   timeouts. Prefer target-local registration/metadata over shared infrastructure
+   changes. Record label/timeout changes in testing documentation.
+2. Inspect generated CTest inventory/metadata before the expensive run: both
+   stable names exist once, their heavy labels and sanitizer timeouts are effective,
+   all required viewer/input cases exist, and other cases are unchanged except
+   explicit new regressions. Test selection must reconcile the ordinary app lane
+   plus the dedicated two-case corpus lane to the complete required inventory.
+3. After F1–F3 fixes and their focused reviews, freeze source/tools. Run one
+   affected native MSVC gate; the viewer-enabled WSL non-heavy app/input/viewer
+   sanitizer lane; then the two full corpus cases serially with existing admission
+   and the approved timeout. Keep the existing shell contracts required. Avoid
+   overlapping the expensive corpus with your own builds or other heavy gates.
+   Save monotonic progress and host load so timeout and work cost remain distinct.
+4. Reuse already passed unaffected formats/assets/sim/render and RTX/Radeon
+   gates with an explicit changed-dependency rationale. Run warning checks on
+   changed C++ scope. Run one short RTX real-window/replay canary after shared
+   viewer/script changes; do not repeat 106-case adapter gates or the 13-case
+   performance matrix unless changed dependencies or a new failure require it.
+   Revalidate earlier raw session data with the final validator instead of
+   remeasuring tool-only changes. A new failure gets focused diagnosis, not an
+   automatic second full acceptance run.
+5. Commit a small **text-only** evidence subset under
+   `docs/orchestration/evidence/w4-win-final/`: exact commands, source/configuration/
+   binary/tool identities, selected inventories, verdict outputs, relevant raw
+   `script.log` records, target mutation diffs/failure excerpts and corpus progress/
+   result extracts. Tie extracts to retained originals by path and hash and label
+   extracts as extracts. Keep blob hashes versus Windows CRLF file hashes distinct.
+   Sanitize only sensitive values, explicitly recording redactions. No game data,
+   screenshots, binaries or large archive in git. Full logs stay preserved locally.
+6. A fresh final integration reviewer inspects F1–F4 against the final code and
+   evidence, reconciles selected/executed/failed/empty/skipped/incomplete, and
+   checks that negative controls fail for the intended reason. Fix findings and
+   re-review only the corrections/interactions. Record the exact code, tool,
+   gate and documentation heads. Later documentation corrections do not demand
+   another broad gate; later code/test changes need scoped coverage and explanation.
+7. Publish committed results with an ordinary push to
+   `origin/task/W4-3-live-buildings`, after verifying remote ancestry, and verify
+   the full remote hash. This remains authorized review publication only.
+   Preserve newer/divergent remote work and report it; never force or push main.
+
+#### Independent review and stopping criteria
+
+For each substantive package, deploy an independent **read-only review subagent**
+that did not author it. It reads the changed code, consumers, tests, controls and
+evidence; it must not delegate its review or rerun broad gates. Require a valid
+positive control before a negative test, and require the expected assertion/error,
+not merely any nonzero exit, timeout, skip, unrelated child failure or crash.
+Ask it explicitly what would still pass if the production call were removed or
+the artifact were absent. Fix actionable findings and obtain a narrow re-review
+before marking the package complete. Record acceptance against each numbered
+requirement, not a generic approval paragraph.
+
+Stop for orchestrator review when F1–F4 meet their stated criteria, the final
+integration review approves, and the candidate plus portable text evidence is
+published. If a required gate/configuration remains unavailable or a defect
+remains, publish the bounded work and report **OPEN / CHANGES REQUIRED** with the
+precise blocker. Do not declare acceptance, start UI/gameplay, or expand the
+assignment to obtain a fully green unrelated project.
+
+Keep robust, flexible, data-driven interfaces: original content and gameplay
+remain intact; no new hardcoded player/type/island limits or registry shortcuts
+for tests. Large-city/complex-economy/multiplayer scale and the named display,
+terrain, road and UI follow-ups remain separate work. MAP-NAV-3 and every Mac
+executor file/process remain untouched.
+
+### W4-WIN-CLOSE — publish for review and finish bounded repair acceptance · REVIEWED, SUPERSEDED BY W4-WIN-FINAL
+
+Historical packet below. Its unpublished-source description was true at dispatch;
+the published candidate and current findings are recorded in W4-WIN-FINAL above.
 
 Read the [handoff assessment](reviews/2026-11-02-w4-win-handoff.md).
 The orchestrator has reviewed the supplied report against the assignment, but

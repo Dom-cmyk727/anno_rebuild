@@ -133,7 +133,7 @@ found a skip phrasing), `wsl-asan-final-05` (1 failure: a use-after-free in the 
 the original timeout: `cache/c1/wsl-diag/` (passed alone in about 5 100-5 400 s). GPU window cases: `cache/c2/final5/`; mutation records:
 `cache/c1/mut/`, `cache/c2/mut/`, `cache/c4/mut-tools-2/`; matrix re-table: `cache/c4/matrix-retable.md`.
 
-Hashes at the final head (build `build/win-a29b079`, Release):
+Hashes at the final head (build `build/win-a29b079`, Release; the `.py` hashes are of the CRLF working-tree files, `core.autocrlf=true`, so they differ from `git show` bytes):
 
 | File | sha256 |
 |---|---|

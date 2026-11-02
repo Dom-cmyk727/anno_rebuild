@@ -10134,7 +10134,8 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
   **Windows-local, not a shared artifact:** no authorised shared channel for a binary archive was available to this session, so the
   orchestrator cannot open the logs; it can read the tables, hashes and extracts in git. The archive contains screenshots of
   rendered original art and must not be published.
-- **Heads:** published review candidate and code/tools/report heads are in the final line of this section.
+- **Heads:** source frozen at `07a7505`; the published review candidate and the report heads are in the last section. The remote task branch
+  was `9ba01f1` after C0 and `4dc9a35` (the index commit) after the second ordinary push; the final push is recorded below.
 - **Commits since the C0 checkpoint** (`4dc9a35`, the index; `git log --reverse 4dc9a35..07a7505`): `261c108` C1 seams and window cases;
   `efc576d` C1 review fixes and C3 test changes (clang-format 23.1.3 applied to the candidate's C++); `220bf9f`, `43b3dbb` C2 stage holds,
   cases and window-state driver; `e9cbc65`, `db7a70f` C4 tool contracts and their registration; `bb1975e`, `f9845d0` C2/C4 review
@@ -10155,14 +10156,17 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
   not the index), reseed once on enable, another island's demolish = one comparison and zero tiles, local click build/demolish by tile
   deltas without a rebuild, second off spell, reseed again. Counts, never microseconds. The foreign edit is a command of another
   seat's city posted through the runner's normal queue (the sim applies its rules; a second city exists in `lan5`).
-- **Mutants (source diff, rebuilt target, exe sha256, run, expected assertion; `cache/c1/mut/`)**, all FAIL as intended, each with
+- **Mutants (source diff, rebuilt target, exe sha256, run, expected assertion; `cache/c1/mut/`)**, all FAIL as intended (run on `261c108`; the mutated hunks of `viewer.cpp` and `dev_feedback.cpp` are textually identical at `07a7505`, the
+  run logs quote the pre-rename counter name `skipped` for `off_batches`; not re-run at the final head, where both cases pass in the gate), each with
   the control rebuild passing (`cache/c1/control`, exe `19373b7d…`): `r1-title-raw-outcome` → line 33 `expect title-lacks Applied` (title
   showed Applied beside money 9999980); `r1-script-raw-outcome` → line 29 `expect outcome Queued` (script saw Applied); `r4-no-observer` →
   `off_batches >= 1` got 0; `r4-no-enable-gate` → `rebuilds == 0` got 1; `r4-observer-always-off` (shared adapter) → `foreign >= 1` got 0;
   `r4-rescan` → `rebuilds == 1` got 2. One attempt did not compile (`r4-no-observer-ATTEMPT1-build-failed-C4551`, kept, not evidence).
   The reviewer noted which later assertions (`tiles same` after the foreign edit) have no mutant of their own; stated limit.
 - **Review dispositions:** `PublicationHold` waits by release epoch (a release immediately followed by an arm no longer strands the
-  waiter); unit-test threads joined on every exit; `game-shell.md` documents the cases; the foreign-spot comment fixed. Not done:
+  waiter); unit-test threads joined on every exit; `game-shell.md` documents the cases; the foreign-spot comment fixed. Not isolated by any mutant: the "local update still occurs" assertions (`deltas >= 1`, `tiles grew`, `occupied … yes`) — `r4-no-observer`
+  fails earlier, at `off_batches`; the mutants ran on commits whose mutated hunks equal the final head's (`220bf9f` for the two C2
+  controls that edit `frame_done`). Not done:
   budget-coordinator admission for the viewer cases (they run a CPU render of the full map under `PROCESSORS 4`); the Python3-missing
   silent omission of the ctest registration (the inventory-based gate names them).
 - **Never covered:** the Lost outcome inside the window (unit level only), anything on a second island of the developer player.
@@ -10177,11 +10181,12 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
   `3cd70cd1…` in `cache/c2/final5/`: `boundary_stages` (baseline Visible; chunks held → `ChunksStale` with 3-8 builders parked and a second
   edit Applied meanwhile; uploads held → `NotOnGpu` with a second edit Applied; presents failing → `NotPresented`; each followed by a
   successful present before `Visible`), trace off and on give the same sequence; `boundary_dissolve` (fade 3000 ms: released at
-  1498 ms, `NotOnGpu` at +20 frames, a second edit applied meanwhile, Visible at 4503 ms); `boundary_view` (published-late change
+  about 1490 ms, `NotOnGpu` at +20 frames, a second edit applied meanwhile, Visible at about 4493 ms in `final5`); `boundary_view` (published-late change
   committed while the view is elsewhere = `Offscreen`, stays so on return; in view then left behind = `OutOfView`, `ChunksStale` on
   return; resize while waiting = surface 0 → 1 with the change still `ChunksStale`; presents failing across a second resize;
   a refused command and an empty demolish = `NoVisualChange`), trace off and on; `boundary_exit_in_hold` (review B1: a session
-  that ends while the builders are held exits in 3.4-4.6 s; with the fix removed it takes 24.4 s).
+  that ends while the builders are held exits in 3.4 s in `cache/c2/final5` (4.0 s in the earlier `cache/c2/final`); with the fix removed it takes 24.4 s). All `boundary_*` cases and
+  `window_state_case.py` are manual GPU/desktop runs, not CTest cases or part of any gate; only `viewer_wiring_r1_held_publication` and `viewer_wiring_r4_occupancy` are.
 - **Negative controls** (`cache/c2/mut/`): `r2-premature-object-list` (fresh/usable forced true at `frame_done`) → expected
   `ChunksStale`, at `Visible`; `r2-ignore-present-failure` → `wait visibility NotPresented` times out at `Visible`;
   `r2-no-release-before-join` → `boundary_exit_in_hold` takes 24.4 s > 15 s. Restored builds rerun the cases (PASS).
@@ -10200,20 +10205,26 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 
 ### C3 — the two failures (finite investigation)
 
-- **A. Whole-app WSL ASan timeout** (`play: islands are the ones the sim placed`, 3400 s). Unchanged code and test: `play_test.cpp` was not
-  changed by this work except an opt-in progress line added for the diagnostic, and nothing under `loader`, `scene`, `render`, `sim` or
-  `formats` differs from the pin. Native Release: 109 s for 50 scenarios (2.2 s each); the sibling one-map case 2.15 s native vs 109 s in the
-  failed ASan run (about 50x); the same run's `play: tick 0 matches the viewer…` case took 2313 s. The one instrumented isolated run
-  (`cache/c1/wsl-diag/`, WSL ASan+UBSan binary `binary.sha256`, `ANNO_TEST_PROGRESS=1`, alone, 2 test threads, samples every 120/300 s):
-  completed alone (script exit 0 after 5 130 s by the script's clock; the case's own progress timer reads 5 398 s — the two disagree by
-  5 %, unexplained), **all 5 492 assertions passed**; 50 scenarios at about 105 s each and linear (scenario 4 at 421 s, 25 at about 2 600 s, 50 at 5 398 s);
-  the process showed 4 436 s of CPU time at its last sample and a load average of about 1 (one busy thread; the main thread was seen once in a
-  9p file read); RSS 0.7-1.3 GB; no stall and no wait state. The case has no picture, runner or reclaimer in it: no lifecycle component.
+- **A. Whole-app WSL ASan timeout** (`play: islands are the ones the sim placed`, 3400 s). The files on the test's call path
+  (loader, play loading, scene build, `src/render`, `src/sim`, `src/formats`, `src/assets`) are byte-identical to the pin; the files this work
+  changed (`play.cpp`'s `dev_tool_setup`/publish gate, `scene_picture.cpp` accessors, `gpu.*`, the app tests) are not on it, and `gpu.*` is not
+  in the ASan build. `play_test.cpp` gained only an opt-in progress line. Native Release: 126-148 s for the 50 scenarios in the canonical gate
+  logs (`msvc-cpu-01…-06`, about 2.5-3 s each) and 2.3 s for the one-map case, against 109 s for the one-map case in the failed ASan run
+  (about 40x). The same failed run's `play: tick 0 matches the viewer…` case took 2 313 s. Earlier observations of the same case: 2 670 s alone
+  in a Debug build (an earlier round of this report) and a timeout at 2 400 s under ASan in the first W4-WIN packet. The one instrumented isolated run
+  (`cache/c1/wsl-diag/`, WSL ASan+UBSan binary `binary.sha256` built from an uncommitted tree that already carried the progress line
+  (`start.txt` records no head: the WSL worktree path made `git` fail), `ANNO_TEST_PROGRESS=1`, 2 test threads, samples every 120/300 s; **other WSL
+  jobs of this packet (ASan builds and gates, the warnings gate) overlapped it at times, load average 5-9 in about a third of the samples**, and the
+  per-scenario rate stayed near 105 s, 120-140 s while load was 9):
+  completed alone (script exit 0 after 5 130 s by the WSL wall clock; the case's own steady-clock progress timer and `ps` elapsed time read about
+  5 400 s — the WSL wall clock stepped about 4.5 minutes against monotonic time during the run, visible in `ps` elapsed versus `start.txt`), **all 5 492 assertions passed**; 50 scenarios at about 105 s each and linear (scenario 4 at 421 s, 25 at about 2 600 s, 50 at 5 398 s);
+  the process showed 4 436 s of CPU time at its last sample and a load average of about 1 (one busy thread; the main thread was seen in a
+  9p file read, `p9_client_rpc`, in several samples: the corpus is read through `/mnt/e`); RSS 0.7-1.3 GB; no stall and no wait state. The case has no picture, runner or reclaimer in it: no lifecycle component.
   **Disposition:** explained, not a regression: alone it needs about 5.1-5.4 ks under ASan+UBSan, 1.5x the gate's per-test limit of 3 400 s, so it times out
   whatever else runs; its code and everything it calls are identical to the pin (no pin baseline was run: 90 more minutes would add nothing the
   unchanged-source diff does not already say). Proposed test-specific policy, **not applied by me**: put the corpus case (and
   `play: tick 0 matches the viewer…`, 2 313 s in the failed run, the next one to cross) in the `heavy` suite with a sanitizer-scaled timeout
-  of at least 8 000 s, or run a scenario subset under sanitizers. **The whole-app WSL sanitizer gate still has no green run**: the 86 focused cases
+  of at least 8 000 s, or run a scenario subset under sanitizers. **The whole-app WSL sanitizer gate still has no green run** (and the ASan build has the viewer OFF, so `viewer.cpp` and the `anno_app_input_tests` cases never ran under ASan/UBSan): the 86 focused cases
   below and this isolated pass do not replace it.
 - **B. `picture reclaim: a stalled process reclaimer…` (one occurrence, `scene_picture_recovery_test.cpp:692, 716, 717`).**
   Mechanism found by reading: the case snapshots `before = SceneReclaimer::shared().stats()` and compares `waiting - before.waiting`
@@ -10221,7 +10232,7 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
   released and that were still waiting (a starved reclaimer thread under host load) are part of `before`; when they finish during the
   case, `waiting - before.waiting` wraps to a huge number (line 692) and `waiting == before.waiting` fails with lower counts (716, 717):
   exactly the three assertions seen. The canonical gate runs each case in its own process, so only a whole-binary run exposes it
-  (the original was a direct whole-binary run). **Fix and proof:** the case settles the shared reclaimer (`settle_reclaimer`, bounded)
+  (the original was a direct whole-binary run). **Fix and proof** (the regression pins the helper and the arithmetic; the stalled case's own call sites of the helper are not mutation-tested, and removing them leaves the new case green): the case settles the shared reclaimer (`settle_reclaimer`, bounded)
   before its baseline and compares signed; a gate-controlled regression (`picture reclaim: a baseline taken while foreign generations
   wait is not one…`) reproduces the wrap without load (two foreign generations stuck behind the reclaimer's own gate: stale baseline 1,
   after release the old expression wraps) and checks that settling waits for in-flight work. Focused repeats: 5 runs of the picture-recovery

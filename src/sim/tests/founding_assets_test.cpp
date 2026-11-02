@@ -45,7 +45,8 @@ namespace {
 
 /// Exports a replay log to the operator-named path (ANNO_SAIL_LOG*). Returns "" when no path was
 /// requested or the file was published; otherwise the failing path and operation (MAP-BUILD-1 A).
-std::string export_log_if_requested(const char* path, const std::vector<std::uint8_t>& bytes) {
+[[nodiscard]] std::string export_log_if_requested(const char* path,
+                                                  const std::vector<std::uint8_t>& bytes) {
     if (path == nullptr || *path == '\0') {
         return {};
     }

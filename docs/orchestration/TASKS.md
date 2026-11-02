@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Windows live opening released; Mac cargo-bound correction
+## Current dispatch — 2026-11-02: Windows live opening; Mac ordinary roads
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -34,11 +34,17 @@ pending and are covered by the Windows integration packet where affected.
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
-[loading review](reviews/2026-11-02-map-cargo2.md). The next small Mac unit is
-**MAP-CARGO-3** below: correct the previously accepted unload's cargo hold bound,
-reuse the common range predicate and retain the earlier combined reload cut.
-Windows' integration input stays `0c401c8d`; loading and this correction do not
-expand its assigned playtest. Both opening inputs are now reviewed, accepted and
+[loading review](reviews/2026-11-02-map-cargo2.md). **MAP-CARGO-3 is now accepted
+locally** at clean code/gate source `3276a0bbef3381a348c8bd2e912fdc83b5ee8568`,
+docs `cf78d212f64b5a69633de70341e00e2b5a724e16`; see the
+[direct correction review](reviews/2026-11-02-map-cargo3.md). Its ordinary
+publication is remote-verified. F-L1, the duplicated outline predicate and the
+combined reload cut are closed. The next Mac unit is **MAP-ROAD-1**, below:
+ordinary-road construction/removal through the existing public commands, with
+a road-specific contract reviewed before engine changes. Correct the small
+CARGO-3 documentation wording in R0; do not restart cargo gates.
+Windows' integration input stays `0c401c8d`; loading, the cargo correction and
+roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
 reachable on GitHub. W4-OPENING-1 integrates selection, sailing, founding,
 unloading and building in the live window for an owner playtest. Use only the
 two exact accepted pins; this does not accept a newer Mac gameplay head.
@@ -46,7 +52,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-CARGO-2 ACCEPTED LOCALLY; MAP-CARGO-3 READY.** Close the bounded unload hold-group correction and associated predicate/reload tests. Windows continues to use exact `0c401c8d`; no new UI or integration dependency is imposed. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-CARGO-3 ACCEPTED LOCALLY; MAP-ROAD-1 READY.** Start R0–R5 below: road contract, public-command placement/removal, road-dependent transport and finite local verification. Windows continues to use exact `0c401c8d`; no new UI or integration dependency is imposed. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1086,7 +1092,179 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-CARGO-3 — align cargo hold bounds and retain regression coverage · READY
+### MAP-ROAD-1 — construct and remove ordinary land roads · READY
+
+**Start:** existing Mac worktree, `task/MAP-2-original-like`, accepted code/tests
+`3276a0bbef3381a348c8bd2e912fdc83b5ee8568`, documentation head
+`cf78d212f64b5a69633de70341e00e2b5a724e16`. Preserve newer owned work. Fetch/read
+main instructions without merging main. CARGO-3 is accepted for its local scope;
+no new cargo repair round is assigned.
+
+**Outcome:** an owned city can construct and remove an evidenced family of
+ordinary land roads through `BuildCmd`/`DemolishCmd`. Roads are tile objects,
+not buildings. New route searches and road-dependent market-cart delivery see
+those changes. This prepares authentic local logistics after the ship-start
+opening; it does not claim a new production chain or live-window integration.
+
+**Parallel boundary:** Windows owns W4-OPENING-1 and still consumes exact
+`0c401c8d084cfd9feb8aec846595291f87f22cce`. Do not touch app/render/W4 source,
+its worktree or processes, or request integration of this new Mac head. No
+coordinator, test-support or general test-runner work, candidate selection/install,
+main merge/rebase, source-branch push, pruning or original-file change is assigned.
+Original files remain read-only. No new `RoadsCmd`, fake `BuildingId`, full-road
+framework, bridge/water-road/wall/plaza/upgrade feature or new pathfinder belongs
+in this unit.
+
+#### Read order and preflight
+
+1. Read main `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4, the evidence contract,
+   testing README, this packet and the linked CARGO-3 review. Read
+   `docs/plan/{lan-mvp,lan-endless}.md` for direction; older status/start-mode
+   descriptions do not supersede the current ship-start decisions.
+2. Read `docs/sim/ship-placement.md`, `docs/re/ship-placement.md` §§1–3,
+   `docs/sim/state.md` §§5.9/8.4 and T33.4/T33.5, `docs/re/transport.md` §3.4
+   (especially §3.4.17), `docs/re/ui-and-placement.md` and
+   `docs/formats/anlagen.md`. The road flag/height branches already decoded
+   there are the starting point, not a reason to restart terrain research.
+3. Read `src/sim/include/anno/sim/{command,apply,placement,walk_cells,walk_search,
+   transport}.hpp`, `src/sim/src/{apply,placement,walk_cells,walk_search,transport,
+   create}.cpp`, tile-layer writers/clearers, registry classification and
+   `src/sim_load/src/original_registry.cpp`. Follow actual current filenames.
+   Inspect `check_record`, atomic scratch budgeting, `spend`, `place`, removal,
+   `place_object_record` and `clear_object_record` before proposing a new seam.
+4. Read `src/sim/tests/{command_build,command_apply,placement_rule,create_remove,
+   walk_cells,walk_search,transport,founding_assets}_test.cpp` and
+   `tools/{anlagen_roads,test_anlagen_roads,placement_ref,placement_emulate}.py`.
+   Existing road-aware cart tests
+   and loaded-road fixtures do not prove command construction or actual production.
+5. Record current Mac CPU/RAM/disk and contention; reuse valid calibration with
+   admission enabled. Keep the display awake for owned work. Give each helper
+   the exact-PID/session ownership rule; no pattern kills, coordinator changes,
+   overlapping heavy gates or interruption of another executor.
+
+#### R0 — finish the one documentation correction
+
+Correct `docs/sim/ship-cargo.md` §12.6: the `a=2,b=0` row with five records is
+bounded by `min(5,2)=2`, and cannot distinguish the mutant because `a+b == a`.
+Replace "bounds by records only" with this explanation. This is wording only;
+do not change cargo code, tests or versions or rerun cargo gates. Check the
+diff and include the disposition in the report.
+
+#### R1 — freeze a bounded road contract before implementation
+
+1. Inventory the real registry road families and select an ordinary land-road
+   family whose behavior can be established. Define eligibility from parsed
+   type/classification facts, not an ID/name/player switch or one test type.
+   Include all types covered by that predicate; explicitly refuse unsupported
+   classes. Retain a path for data-defined types without implementing mod loading.
+2. Follow the existing command and City::Place path and the relevant original
+   tile writer (`AnnoWelt.dll 0x10082040`), `RemoveAt` (`0x10028fd0`) and clear
+   path (`0x10082c30`). Pin terrain/height, overlap/duplicates/replacement, costs,
+   ownership, removal/refund and required neighboring-tile effects. The
+   `0x1000`/`0x4000` road branches are already partly decoded. Trace only the
+   remaining predicates required by the selected family.
+3. Write `docs/re/road-placement.md` and `docs/sim/road-placement.md`, linking
+   the existing placement evidence rather than copying it. Include addresses,
+   hand-derived examples and an independent reference where it adds useful proof;
+   reuse the existing inventory/placement tools where applicable. Separate
+   original rules, the established server-derived-height adaptation and unknowns.
+   Preserve existing stream-order/per-record behavior and `Rules::build_atomic`;
+   do not invent whole-drag atomicity or an arbitrary refund rule.
+4. An independent read-only reviewer checks the contract/reference and original
+   evidence before R2. Fix its actionable findings and obtain focused re-review.
+   Proceed after approval without another owner pause. If a required rule is
+   unresolved, identify the exact predicate/address and continue independent
+   preparation; do not silently substitute a guessed rule.
+
+#### R2 — authoritative road construction through BuildCmd
+
+1. Extend the existing checked-placement path to distinguish buildings from
+   supported tile objects. Use server terrain, parsed costs and normal ownership
+   checks. Tile roads must not allocate a building/list record, consume a building
+   serial or return a fabricated valid BuildingId. Define truthful result semantics.
+2. Preserve sequential and configured atomic policies, including mixed building/
+   road batches. The scratch budget must account for occupancy, gold/goods and
+   building serials according to actual record kind, in command order. A refused
+   record has no partial charge/state mutation; preserve the existing whole-batch
+   policy rather than changing it for the road implementation.
+3. Use existing tile/walk writers and local invalidation. Do not rebuild every
+   island, scan all cities or add a global connectivity cache per road tile.
+   Test a data-defined second road type and another owner without code changes.
+
+#### R3 — removal and routing across road changes
+
+1. Implement the reviewed ordinary-road removal through DemolishCmd. Preserve
+   ownership/refund rules, unrelated building records, terrain, neighboring tile
+   state and serials. Verify duplicate removals and building/road mixtures.
+2. A new search must observe construction, disconnection and reconstruction
+   through the normal production path. Examine an already travelling cart when
+   its road changes; prove the implemented safe behavior and label fidelity limits.
+   Do not claim immediate replanning from a static search or introduce the
+   deferred fine-route/retry subsystem to avoid stating a precise dependency.
+3. Keep movement-layer distinctions: road-dependent market carts and workshop
+   carriers that can cross open land must retain their respective original rules.
+
+#### R4 — causal behavioral proof and one real-file canary
+
+1. Through public encode/decode/apply paths, cover legal placement, authoritative
+   height, wrong terrain/owner, affordability, duplicates, partial/sequential and
+   atomic mixed batches, removal and save/reload. Pair failures with otherwise
+   legal controls and assert exact reasons and unchanged state where required.
+2. In a declared transport fixture, show a producer unreachable before road
+   construction, reachable afterward, and unreachable to a new search after a
+   road break. Assert entrance connectivity and actual goods movement, not just
+   a tile type. A producer pre-stocked by the fixture proves delivery, not production.
+3. Run one real-registry/real-terrain build/remove/rebuild canary after the accepted
+   ship opening/unloading, using original supplies and public commands without
+   grants or relocation. Resolve exact affordability/site constraints from data.
+   Keep this separate from the synthetic transport fixture. Record/reload/replay
+   the relevant changes in a fresh process and use a changed legal road command
+   as a divergence control. Do not multiply full sailing variants unnecessarily.
+4. Use focused negative controls for the important new boundaries: for example
+   bypass the terrain predicate, allocate a building serial for a road, fail to
+   update walk records, or omit payment. Derive an expected result by hand and
+   check that the intended assertion fails while its legal control still runs.
+   Do not create a new generic mutation framework or retest unrelated invariants.
+
+#### R5 — finite local gate, review and stop
+
+1. Run cheap references/contracts and focused regressions before the canary and
+   focused ASan/UBSan. Freeze source/tool/binary identities before each canonical
+   gate; retain exact inventories, first failures and honest executed counts.
+   Update serialization/version only if the actual state/stream contract requires
+   it, with independent positive and correctly sealed negative controls.
+2. Every substantive package receives independent read-only review of production
+   callers, test causality and raw evidence. Fix findings and obtain focused
+   re-review before completion. A final integration reviewer checks placement,
+   costs/ownership, removal, tile/walk lifetime, mixed atomic behavior and replay.
+   Reviewers must not implement their own fixes or duplicate long campaigns.
+3. Reuse unaffected evidence with a dependency explanation. No new full renderer
+   corpus, GPU matrix, broad sanitizer opening campaign or infrastructure repairs.
+   If a concrete regression requires broader checks, name that dependency first.
+4. Commit small concerns locally and report code/docs/gate pins, coverage, known
+   limits and the future Windows API delta. Do not push task code or change its
+   current integration input. Windows/Linux target-host and original-runtime
+   checks remain explicitly NOT_RUN when unavailable.
+
+**Stop:** a reviewed ordinary-road contract, working public-command placement/
+removal, road-dependent delivery and the real-file canary/replay are demonstrated
+locally, with no blocking finding. Stop earlier only for a specific required rule
+or defect, not unrelated historical unknowns. No renderer/UI integration, new
+production-chain feature, trade routes or further cargo work starts here. The
+subsequent candidate is MAP-ECON-1: actual production from real inputs/recipes
+and delivery, not delivery of pre-stocked fixture output; it is not assigned yet.
+
+### MAP-CARGO-3 — align cargo hold bounds and retain regression coverage · ACCEPTED LOCAL HEADLESS SCOPE
+
+**Completion checkpoint, 2026-11-02:** code/tests and clean gate source
+`3276a0bbef3381a348c8bd2e912fdc83b5ee8568`, documentation head
+`cf78d212f64b5a69633de70341e00e2b5a724e16`; ordinary publication remote-verified.
+Read the [direct correction review](reviews/2026-11-02-map-cargo3.md). Gates
+reconcile at 44/44, 62/62 and 63/63 with zero skips/failures; honest replay is
+89/89 and altered load diverges at entry 35594. F-L1 and the shared predicate/
+combined reload coverage are closed. R0 above handles the one wording correction.
+The packet below is acceptance history; do not repeat C1–C3. Windows' fixed
+input `0c401c8d` and W4-OPENING-1 assignment are unchanged.
 
 **Start:** existing Mac worktree/branch, accepted loading code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, documentation head

@@ -475,7 +475,7 @@ std::string expedition_baseline_problem(const sim::World& world) {
     }
     std::size_t live = 0;
     for (const auto& slot : registry.list.slots) {
-        live += slot.has_value() ? 1 : 0;
+        live += slot.has_value() ? 1U : 0U;
     }
     if (live != 15) {
         return std::to_string(live) + " figures, not 15";

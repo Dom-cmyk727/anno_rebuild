@@ -31,7 +31,10 @@ render::UnitFrame make_ring(std::size_t group, std::uint32_t rgb) {
             const double r = std::sqrt(dx * dx + dy * dy);
             const double inner = 1.0 - static_cast<double>(thick) / rx;
             if (r <= 1.0 && r >= inner) {
-                std::uint8_t* p = &image->pixels[(static_cast<std::size_t>(y) * w + x) * 4];
+                std::uint8_t* p =
+                    &image->pixels[(static_cast<std::size_t>(y) * static_cast<std::size_t>(w) +
+                                    static_cast<std::size_t>(x)) *
+                                   4];
                 p[0] = static_cast<std::uint8_t>(rgb >> 16);
                 p[1] = static_cast<std::uint8_t>(rgb >> 8);
                 p[2] = static_cast<std::uint8_t>(rgb);

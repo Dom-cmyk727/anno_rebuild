@@ -90,7 +90,7 @@ TEST_CASE(
         REQUIRE_MESSAGE(world.ok(), (world.ok() ? std::string() : world.error()));
         std::uint64_t in_world = 0;
         for (const auto& island : world.value().islands()) {
-            in_world += island.has_value() && island->locked() ? 1 : 0;
+            in_world += island.has_value() && island->locked() ? 1U : 0U;
         }
         CHECK(in_world == locked_in_file);
         auto reloaded = sim::World::load(world.value().save(), loaded_types.types);
@@ -128,7 +128,7 @@ TEST_CASE(
             if (const auto rec = isl.record("LOCKED")) {
                 REQUIRE(rec->size() == 1);
                 ++records;
-                locked += (*rec)[0] != 0 ? 1 : 0;
+                locked += (*rec)[0] != 0 ? 1U : 0U;
             }
         }
     }

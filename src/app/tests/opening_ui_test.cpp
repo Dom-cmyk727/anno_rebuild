@@ -496,8 +496,9 @@ TEST_CASE("controls: a click's work is local to the ships of the view, and a mov
     // per ship, once, and no ground pick; hovering and an order are one pick each.
     f.view.ships.clear();
     for (std::uint64_t i = 1; i <= 200; ++i) {
-        f.view.ships.push_back(
-            ship(i, i % 5, static_cast<double>(i % 40) * 3, static_cast<double>(i / 40) * 3));
+        f.view.ships.push_back(ship(i, static_cast<std::uint32_t>(i % 5),
+                                    static_cast<double>(i % 40) * 3,
+                                    static_cast<double>(i / 40) * 3));
     }
     f.proj.picks = f.proj.boxes = 0;
     f.click(app::PointerButton::Left, 5, 5);

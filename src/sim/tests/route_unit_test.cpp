@@ -840,7 +840,7 @@ TEST_CASE(
     }
     std::uint32_t planned = 0;
     for (const auto& s : serial) {
-        planned += s.rfind("0/", 0) == 0 ? 1 : 0;
+        planned += s.rfind("0/", 0) == 0 ? 1U : 0U;
     }
     CHECK(planned >= 5); // the scenario is not all failures
     for (const unsigned threads : {1u, 2u, 4u, 7u}) {

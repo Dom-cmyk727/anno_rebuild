@@ -189,8 +189,8 @@ TEST_CASE("territory: the emulated original's owner grids") {
         edge_clipped += (rect[0] - reach < isl[0] || rect[1] - reach < isl[1] ||
                          rect[0] + rect[2] + reach > isl[0] + isl[2] ||
                          rect[1] + rect[3] + reach > isl[1] + isl[3])
-                            ? 1
-                            : 0;
+                            ? 1U
+                            : 0U;
         total_claimed += r.claimed;
     }
     // The set exercises what the contract names.

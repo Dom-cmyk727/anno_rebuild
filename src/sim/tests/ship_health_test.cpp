@@ -67,9 +67,9 @@ struct ShipSpec {
     std::uint32_t kind = kShip;
     std::uint32_t owner = 0;
     int row = 64;
-    std::optional<std::uint32_t> health;
+    std::optional<std::uint32_t> health{};
     bool unknown = false;
-    std::vector<sim::ShipHold> holds;
+    std::vector<sim::ShipHold> holds{};
 };
 
 sim::ScenarioSpec spec_of(const std::vector<ShipSpec>& ships, std::uint32_t volk1 = 2) {

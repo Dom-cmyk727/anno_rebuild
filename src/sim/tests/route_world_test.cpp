@@ -438,9 +438,9 @@ TEST_CASE(
         std::uint64_t differing = 0, shortcut_cells = 0, differing_words = 0;
         for (std::int32_t cz = 0; cz < index.cells_z(); ++cz) {
             for (std::int32_t cx = 0; cx < index.cells_x(); ++cx) {
-                shortcut_cells += src.cell_uses_shortcut(cx, cz) ? 1 : 0;
-                differing += src.classify_cell(cx, cz) == scan_src.classify_cell(cx, cz) ? 0 : 1;
-                differing_words += index.mask(cx, cz) == scan_index.mask(cx, cz) ? 0 : 1;
+                shortcut_cells += src.cell_uses_shortcut(cx, cz) ? 1U : 0U;
+                differing += src.classify_cell(cx, cz) == scan_src.classify_cell(cx, cz) ? 0U : 1U;
+                differing_words += index.mask(cx, cz) == scan_index.mask(cx, cz) ? 0U : 1U;
             }
         }
         MESSAGE("candidate " << cand << ": " << shortcut_cells << " cells from the block shortcut, "

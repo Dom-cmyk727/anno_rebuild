@@ -755,8 +755,8 @@ TEST_CASE("build terrain: dry run and live run refuse the same record for the sa
                     CHECK(dry.records[i].status == sim::Reject::AtomicAbort);
                 } else {
                     CHECK(dry.records[i].status == live.records[i].status);
-                    occupied_first += live.records[i].status == sim::Reject::Occupied ? 1 : 0;
-                    terrain_seen += live.records[i].status == sim::Reject::TerrainRefused ? 1 : 0;
+                    occupied_first += live.records[i].status == sim::Reject::Occupied ? 1U : 0U;
+                    terrain_seen += live.records[i].status == sim::Reject::TerrainRefused ? 1U : 0U;
                 }
             }
         }

@@ -266,8 +266,8 @@ check_emulated_routes(const std::vector<std::string>& lines, std::uint32_t min_c
             ++failed;
         }
         learning += res.work.learned > 0 ? 1 : 0;
-        with_band += band.empty() ? 0 : 1;
-        big += std::stoi(dims[0]) > 64 ? 1 : 0;
+        with_band += band.empty() ? 0U : 1U;
+        big += std::stoi(dims[0]) > 64 ? 1U : 0U;
         ++executed;
     }
     CHECK(executed >= min_cases);

@@ -928,7 +928,7 @@ std::size_t occurrences(const std::string& hay, const std::string& needle) {
     for (std::size_t at = hay.find(needle); at != std::string::npos;
          at = hay.find(needle, at + 2)) {
         // a byte boundary only (even offset): hex digits of two adjacent bytes may look alike
-        n += (at % 2 == 0) ? 1 : 0;
+        n += (at % 2 == 0) ? 1U : 0U;
     }
     return n;
 }

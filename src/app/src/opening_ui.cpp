@@ -367,8 +367,8 @@ std::optional<sim::BuildingId> OpeningUi::default_target(const ShipView& ship,
         if (!c.warehouse) {
             continue;
         }
-        const std::int64_t cx = c.warehouse->tile.x + c.warehouse->w / 2;
-        const std::int64_t cy = c.warehouse->tile.y + c.warehouse->h / 2;
+        const std::int64_t cx = c.warehouse->tile.x + static_cast<std::int64_t>(c.warehouse->w / 2);
+        const std::int64_t cy = c.warehouse->tile.y + static_cast<std::int64_t>(c.warehouse->h / 2);
         const std::int64_t d = std::max(std::abs(cx - sx), std::abs(cy - sy));
         if (!best || d < best_d) {
             best = c.warehouse->id;

@@ -259,7 +259,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     cmd.click_y = found->click_y;
     const sim::Command command{sim::PlayerId{0}, cmd};
     bool placed = false;
-    for (const std::pair<int, int> d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
+    for (const std::pair<int, int>& d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
                                         std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
         sim::World trial = w;
         sim::Figure* s = sim::find_figure(sim::WorldTestAccess::figures(trial), sim::FigureId{1});
@@ -314,7 +314,7 @@ TEST_CASE("founding on the original files: a legal site found by the engine, app
     CHECK(after.kontor_counter == 2);
     std::uint64_t owned = 0;
     for (std::uint64_t i = 0; i < after.tiles.tile_count(); ++i) {
-        owned += after.tiles.owner(i) == 0 ? 1 : 0;
+        owned += after.tiles.owner(i) == 0 ? 1U : 0U;
     }
     CHECK(owned >= 16);
     CHECK(owned <= 1976); // the disc of radius 24, clipped by the island
@@ -417,7 +417,7 @@ std::optional<sim::Command> place_for_founding(sim::World& w, const Site& site,
     cmd.click_x = site.click_x;
     cmd.click_y = site.click_y;
     const sim::Command command{sim::PlayerId{seat}, cmd};
-    for (const std::pair<int, int> d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
+    for (const std::pair<int, int>& d : {std::pair{6, 0}, std::pair{-6, 0}, std::pair{0, 6},
                                         std::pair{0, -6}, std::pair{7, 7}, std::pair{-7, -7}}) {
         sim::World trial = w;
         sim::Figure* s = sim::find_figure(sim::WorldTestAccess::figures(trial), cmd.ship);
@@ -1061,7 +1061,7 @@ TEST_CASE(
     std::size_t cities = 0;
     for (const auto& island : w.islands()) {
         for (const auto& c : island ? island->cities : decltype(island->cities){}) {
-            cities += c.has_value() ? 1 : 0;
+            cities += c.has_value() ? 1U : 0U;
         }
     }
     CHECK(cities == 2);
@@ -1611,7 +1611,7 @@ std::uint64_t territory_of(const sim::World& w) {
     const sim::Island& is = *w.islands()[0];
     std::uint64_t n = 0;
     for (std::uint64_t i = 0; i < is.tiles.tile_count(); ++i) {
-        n += is.tiles.owner(i) == 0 ? 1 : 0;
+        n += is.tiles.owner(i) == 0 ? 1U : 0U;
     }
     return n;
 }
@@ -2000,7 +2000,7 @@ std::size_t city_count(const sim::World& w) {
     std::size_t n = 0;
     for (const auto& isl : w.islands()) {
         for (const auto& c : isl ? isl->cities : decltype(isl->cities){}) {
-            n += c.has_value() ? 1 : 0;
+            n += c.has_value() ? 1U : 0U;
         }
     }
     return n;

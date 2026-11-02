@@ -551,9 +551,18 @@ applying commands:
   a resize (new surface epoch) while it waits does not let the old epoch's frames count; a refused
   command and an empty demolish are `NoVisualChange`.
 - `tools/test/window_state_case.py` minimises, restores and covers the native window while a change
-  waits and records the backend's acquire and present statuses next to it. On the RTX 4090 (Vulkan)
-  minimising produced two `Outdated` acquires and a surface reconfigure, and a covered window kept
-  presenting with `Success`: an obscured window is not an API failure.
+  waits (the builders held for 12 s) and records the backend's statuses in trace time
+  (`timeline.txt`). On the RTX 4090 (Vulkan): minimising was an `Outdated` acquire, then no frame
+  attempt at all for 2.5 s (the window loop does not draw a minimised window), then an `Outdated`
+  acquire again on restore; the cover (an opaque topmost window, verified to be the window at the
+  game window's centre) caused no failed or skipped acquire or present in the 2.5 s it was up: an
+  obscured window still presents with `Success`, so obscuration is not an API failure and says nothing
+  about physical visibility. The change stayed `ChunksStale` through all of it and became `Visible`
+  only after the release and a presented frame.
+- `boundary_exit_in_hold` (with `--max-seconds 15`): a session that ends while the builders are held
+  exits at once (they are released before they are joined), not after the hold's 20 s watchdog.
+- The checkpoint's `surface N` counts surface reconfigurations since the window opened; the window
+  trace's `epoch` column is N + 1.
 - Not covered in the window: `NothingToDraw` (unit cases in `visibility_test`/`dev_visibility_test`),
   a physical display (present-call return is not display time), the Radeon window matrix.
 

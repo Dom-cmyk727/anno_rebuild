@@ -399,3 +399,80 @@ TEST_CASE("dev script: hold, release, note and the consistency expectations (W4-
     CHECK_FALSE(app::DevScript::parse("hold\n").ok());
     CHECK_FALSE(app::DevScript::parse("note\n").ok());
 }
+
+TEST_CASE(
+    "dev script: stage holds, wait visibility, wait blocked and expect held (W4-WIN-CLOSE C2)" *
+    doctest::test_suite("dev_script")) {
+    using Stage = app::DevScriptAction::Stage;
+    const auto once = [](const std::string& text, const app::DevScriptState& st) {
+        auto script = app::DevScript::parse(text);
+        REQUIRE(script.ok());
+        const app::DevScriptAction act = script.value().step(st);
+        return std::pair{std::move(script).value(), act};
+    };
+    app::DevScriptState gpu;
+    gpu.stage_holds_available = true;
+    // Each hold/release asks the window for exactly one stage action; without the GPU window the
+    // step fails.
+    for (const auto& [text, want] : {std::pair{"hold chunks\n", Stage::ArmChunks},
+                                     std::pair{"release chunks\n", Stage::ReleaseChunks},
+                                     std::pair{"hold uploads\n", Stage::ArmUploads},
+                                     std::pair{"release uploads\n", Stage::ReleaseUploads},
+                                     std::pair{"hold presents\n", Stage::FailPresents},
+                                     std::pair{"release presents\n", Stage::PassPresents}}) {
+        CAPTURE(text);
+        auto [s, act] = once(text, gpu);
+        CHECK_FALSE(s.failed());
+        CHECK(act.stage == want);
+        auto [s2, act2] = once(text, app::DevScriptState{});
+        CHECK(s2.failed());
+        CHECK(act2.stage == Stage::None);
+    }
+    // wait blocked: over only while a builder waits in the gate.
+    {
+        auto [s, act] = once("wait blocked\n", gpu);
+        CHECK_FALSE(s.done());
+        app::DevScriptState blocked = gpu;
+        blocked.chunks_blocked = 2;
+        auto [s2, act2] = once("wait blocked\n", blocked);
+        CHECK(s2.done());
+        CHECK_FALSE(s2.failed());
+    }
+    // expect held NAME: in effect, or the step fails and names it.
+    for (const char* name : {"chunks", "uploads", "presents", "publication"}) {
+        CAPTURE(name);
+        auto [none, a] = once(std::string("expect held ") + name + "\n", gpu);
+        CHECK(none.failed());
+        app::DevScriptState on = gpu;
+        on.chunks_armed = on.uploads_held = on.presents_failing = on.held = true;
+        auto [yes, b] = once(std::string("expect held ") + name + "\n", on);
+        CHECK_FALSE(yes.failed());
+    }
+    // wait visibility NAME: only for an applied command whose change is at NAME.
+    {
+        app::CommandOutcome o;
+        o.id = {app::CommandOrigin::Window, 1};
+        o.state = app::CommandOutcome::State::Applied;
+        app::DevScriptState st;
+        st.latest = o;
+        st.visibility = app::Visibility::ChunksStale;
+        auto [wrong, a] = once("wait visibility NotOnGpu\n", st);
+        CHECK_FALSE(wrong.done());
+        auto [right, b] = once("wait visibility ChunksStale\n", st);
+        CHECK(right.done());
+        CHECK_FALSE(right.failed());
+        st.latest->state = app::CommandOutcome::State::Queued;
+        auto [queued, c] = once("wait visibility ChunksStale\n", st);
+        CHECK_FALSE(queued.done());
+    }
+    // resize needs a size.
+    {
+        auto [s, act] = once("resize 1100 640\n", app::DevScriptState{});
+        REQUIRE(act.resize.has_value());
+        CHECK(act.resize->first == 1100);
+        CHECK(act.resize->second == 640);
+        CHECK_FALSE(app::DevScript::parse("resize 1100\n").ok());
+        auto [bad, none] = once("resize 0 640\n", app::DevScriptState{});
+        CHECK(bad.failed());
+    }
+}

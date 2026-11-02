@@ -71,11 +71,11 @@ Counts are the canonical runner's `COUNTS:` line: selected / executed / failed /
 | `rtx4090-gpu-03-final` | `4ecea073d9aff9d5fc8b86e1fda1921f9c812f4a` | 106/106/0/0/0/0 PASS | its `.out` ends with the old path `gates$name.log` (chain-script quoting slip; the log was renamed) |
 | `radeon-gpu-01-FAILED-source-changed` | started at `1fd82b8eaa5774ee7f331d7d1099cb8047fa86ea` | FAILED (tested source changed) | kept |
 | `radeon-gpu-02-final` | `381b3e369ebc21d02dda374a6b685ec2f7d7b88e` | 105/105 PASS | superseded by `-03-final` |
-| `radeon-gpu-03-final` | `70817eda019bbf9f3443d56b09ebf0511ed737d3` | 106/106/0/0/0/0 PASS | the retained Radeon gate. It ran at `70817ed`; `4ecea07` (the RTX gate's head) only added the Radeon variant of the play GPU case, so the Radeon gate does not include that variant's own run on the final binary (the variant is part of the 106 at `4ecea07` on RTX only). C4 records this |
+| `radeon-gpu-03-final` | `70817eda019bbf9f3443d56b09ebf0511ed737d3` | 106/106/0/0/0/0 PASS | the retained Radeon gate. `70817ed` contains `4ecea07`: the Radeon variant of the play GPU-vs-CPU case ran in it (`play: GPU matches the CPU path on one scene, on the Radeon iGPU`, delta 1); both GPU gates ran the same test executable (sha256 `2aa77781...`) |
 | `unix-warnings-01-FAILED-sign-conversion-shadow`, `-02`, `-03-final`, `-pin-baseline` | various | see logs | `-03-final` carries no head line |
 | `wsl-asan-app-01-FAILED-empty`, `-FAILED-git-worktree-path`, `wsl-asan-build-01-FAILED-sdl-no-x11` | - | infrastructure failures | kept |
 | `wsl-asan-app-02-FAILED-timeout-heavy-case` | `98d93298df415bb1abd64520b1ebbf5b12fdc8bb` | 178/175/1/0/2/0 **FAIL** | see failure A |
-| `wsl-asan-final-03` | `4ecea07` source (subset) | 80/80/0/0/0/0 PASS | 80 affected cases + both shell contracts; not a substitute for the whole-app gate |
+| `wsl-asan-final-03` | `70817eda019bbf9f3443d56b09ebf0511ed737d3` (subset) | 80/80/0/0/0/0 PASS | 80 affected cases + both shell contracts; not a substitute for the whole-app gate |
 
 ## The two failures (originals preserved; both OPEN until C3 closes them)
 

@@ -35,7 +35,9 @@ inline constexpr std::uint64_t kNavDiagStepQ32 = std::uint64_t{11863283} << 9;
 /// The most pending nodes a ship may hold. A route of the supported window has far fewer (8 turn
 /// nodes + runs of at most run_cap steps over a window of window_radius_tiles); the bound keeps a
 /// hostile or corrupt save from allocating without limit. Path to make it configurable: derive it
-/// from NavRules (2 * window_radius_tiles / 1 + 8) once routes are produced by package C.
+/// from NavRules (2 * window_radius_tiles + 8). Routes are produced since package C; the planner
+/// reports a route above this bound as BudgetExceeded, so the constant is only a corrupt-save
+/// allocation bound.
 inline constexpr std::size_t kNavMaxNodes = 1U << 16;
 
 /// The initial motion state of a navigating ship at `pos` (Q24.8): idle (the original's

@@ -461,6 +461,13 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
          [](sim::World& w) { figure(w, 1).nav->nodes[1].length_q32 = 11 * sim::kNavDiagStepQ32; }},
         {"nodes[1]: a movement node is out of range",
          [](sim::World& w) { figure(w, 1).nav->nodes[1].speed_q32 = 0; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) { figure(w, 1).nav->nodes[1].length_q32 = 11 * sim::kNavUnitQ32; }},
+        {"nodes[1]: a movement node is out of range",
+         [](sim::World& w) {
+             figure(w, 1).nav->nodes[1].dir8 = 5;
+             figure(w, 1).nav->nodes[1].length_q32 = 11 * sim::kNavDiagStepQ32;
+         }},
         {"nodes[1]: a node is a movement or a turn",
          [](sim::World& w) { figure(w, 1).nav->nodes[1].kind = sim::NavSegKind::Idle; }},
         {"65537 pending nodes exceed the bound",

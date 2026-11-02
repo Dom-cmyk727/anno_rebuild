@@ -1457,3 +1457,45 @@ TEST_CASE("unload data: another owner and a data-defined ship and warehouse type
         expect_refused(w, 1, cmd(2, bid(w, 1, 60, 10), 1, kFood, 3), sim::Reject::NotAWarehouse);
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// The conservation guard: written so that each of the two wrong behaviours fails ONE assertion
+// here while the credit side and the reported amount of the control stay green.
+// ---------------------------------------------------------------------------------------------
+
+TEST_CASE(
+    "unload conservation: ship plus city is invariant, debit equals credit equals the report") {
+    Setup s;
+    s.stock[kTools] = 11520; // 5 t of room for tools
+    sim::World w = make(s);
+    const sim::BuildingId wh = bid(w, 0, 15, 10);
+    struct Step {
+        const char* what;
+        sim::UnloadCmd c;
+        std::uint64_t amount; // the hand-derived transfer
+    };
+    const std::vector<Step> steps = {
+        // The positive control: a whole hold into an empty store, request >= hold.
+        {"control: wood 38 t, whole hold", cmd(1, wh, 0, kWood, 38), 9728},
+        {"request smaller than the hold", cmd(1, wh, 1, kFood, 4), 1024},
+        {"request larger than the hold", cmd(1, wh, 1, kFood, 100), 1536},
+        // The store takes 5 t of the 45 t tools hold: 1280 units, 40 t stay aboard.
+        {"limited by the room", cmd(1, wh, 2, kTools, 45), 1280},
+    };
+    for (const Step& st : steps) {
+        INFO(st.what);
+        const auto before = totals(w);
+        const sim::ShipHold hold_before = ship(w).holds[st.c.hold];
+        const std::uint32_t stock_before = city(w, 0).stock.stock[st.c.goods];
+        const Sent sent = send(w, 0, st.c);
+        // The control: the report and the credit side.
+        CHECK(sent.r.status == sim::Reject::None);
+        REQUIRE(sent.r.records.size() == 1);
+        CHECK(sent.r.records[0].transferred_88 == st.amount);
+        CHECK(city(w, 0).stock.stock[st.c.goods] - stock_before == st.amount);
+        // The debit side and the conservation: the two things a wrong consumer breaks.
+        CHECK(hold_before.amount_88 - ship(w).holds[st.c.hold].amount_88 == st.amount);
+        CHECK(totals(w) == before);
+    }
+    CHECK(ship(w).holds[2] == sim::ShipHold{kTools, 45 * kT - 1280});
+}

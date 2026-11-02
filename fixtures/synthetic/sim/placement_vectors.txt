@@ -3,7 +3,7 @@
 # Every grid is the RUNTIME corner grid of the original (stride W+1; column W and row H are 0, docs/re/ship-founding.md
 # 12.3). Rows not listed are all 0. `place <type> <x> <y> <rot> <flags> <rec8>`: flags 0x2000000 = analysis requested
 # (the server derives the byte; rec8 is the untrusted client byte and must not matter). Expected values were derived by
-# hand from docs/sim/ship-placement.md section 2 (rules R1-R6) before any program computed them; tools/placement_ref.py check and
+# hand from docs/sim/ship-placement.md section 2 (rules R1-R6) before any program computed them (two of the first 50 were wrong when first run and were re-derived, see section 4 of that document); tools/placement_ref.py check and
 # tools/placement_emulate.py vectors (the original code) both reproduce them.
 # Expected: `accept <byte>` | `reject <REASON>` | `unsupported`; REASON -> engine Reject: BOUNDS=OutOfIsland, OCCUPIED=Occupied,
 # TERRAIN and LOWLEVEL=TerrainRefused; `unsupported` = Reject::Unsupported (never an accept).

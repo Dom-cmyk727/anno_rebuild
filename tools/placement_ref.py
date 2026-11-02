@@ -210,7 +210,7 @@ def terrain_class(flags_word):
     """Classify a type's flag word for the BuildCmd terrain/height path.
     Returns (name, supported)."""
     f = flags_word & 0xFFFF
-    if f & 0x7017 == 0x0004:
+    if (f & ~0x0080) == 0x0004:
         return 'ordinary-land', True                    # no class, bit 4, mode 0, bit 0x10 clear
     if f & 0x7017 == 0x2007:
         return 'coast', True                            # the evidenced coast rule

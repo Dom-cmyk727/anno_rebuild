@@ -798,20 +798,12 @@ TEST_CASE(
     CHECK(cases >= 7);
 }
 
-TEST_CASE(
-    "route cache: it ignores placed objects (a continuous world and a reloaded one plan alike)") {
+TEST_CASE("route cache: a copied or moved world starts with an empty derived cache") {
     sim::World w = island_world({});
     sim::RouteCache& cache = sim::WorldTestAccess::route_cache(w);
-    const sim::CoastIndex& cached = cache.get(w);
+    cache.sync(w);
     CHECK(cache.built());
-    // An object appears on an island tile without any command (island growth does this).
-    sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
-    const sim::Slot idx = is.tiles.index_of(210, 110);
-    REQUIRE(idx != sim::kNoSlot);
-    is.tiles.set_object(idx, 1201);
-    const sim::WorldTileSource fresh_src(w, sim::ship_route_terrain_options());
-    CHECK(cached.same_words(sim::CoastIndex(fresh_src, {})));
-    // Copying the world drops the derived cache; a moved-from cache is empty too.
+    // The object-aware behaviour is route_objects_test.cpp; here only the lifetime rule.
     sim::World copy = w;
     CHECK_FALSE(sim::WorldTestAccess::route_cache(copy).built());
     sim::World moved = std::move(w);

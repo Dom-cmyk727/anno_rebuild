@@ -505,6 +505,12 @@ class Viewer {
     /// the compositor's upload hold (set on gpu_->frame), and presents counted as failed.
     std::unique_ptr<StageHold> chunk_hold_;
     bool uploads_held_ = false, presents_failing_ = false;
+    /// The CPU delivery seam's stages that report failure (script: fail update|submit|present;
+    /// bit 0 SDL_UpdateTexture, 1 SDL_RenderTexture, 2 SDL_RenderPresent) and how many frames
+    /// failed.
+    std::uint8_t cpu_fail_ = 0;
+    std::uint64_t cpu_delivery_failures_ = 0;
+    std::uint64_t cpu_stage_failures_[3] = {0, 0, 0}; // per stage, for the diagnostic's rate limit
     std::uint64_t surface_epoch_ = 0;
     std::uint64_t drawn_frames_ = 0;
     Clock::time_point started_ = Clock::now();
@@ -1402,6 +1408,8 @@ void Viewer::script_tick() {
     st.scene_generation =
         pointer_frame_ && pointer_frame_->scene ? pointer_frame_->scene->generation() : 0;
     st.surface_epoch = surface_epoch_;
+    st.cpu_fail_available = !on_gpu();
+    st.cpu_failing = cpu_fail_;
     if (hold_ != nullptr) {
         st.hold_available = true;
         st.held = hold_->held();
@@ -1471,6 +1479,10 @@ void Viewer::script_tick() {
         case Stage::None:
             break;
         }
+    }
+    if (act.cpu_fail_set != 0 || act.cpu_fail_clear != 0) {
+        cpu_fail_ = static_cast<std::uint8_t>((cpu_fail_ | act.cpu_fail_set) & ~act.cpu_fail_clear);
+        dirty_ = true;
     }
     if (act.resize) {
         SDL_SetWindowSize(window_, act.resize->first, act.resize->second);
@@ -1813,18 +1825,55 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     steps_.push_back({"sea", s.sea_ms});
     steps_.push_back({"objects", s.objects_ms});
     steps_.push_back({"render other", std::max(0.0, since_ms(render_start, rendered) - known)});
-    SDL_UpdateTexture(texture_, nullptr, buffer_.data(), w * 4);
-    SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
+    // The delivery chain: texture update, render submission, present. The frame counts as delivered
+    // only if every call succeeded (SDL3 returns bool); after a failed stage the later ones are not
+    // attempted, so an old texture is never presented as this frame. The script seam (fail STAGE)
+    // makes the window see a failure for a stage whose real call was made.
+    bool delivered = true;
+    const char* failed_at = nullptr;
+    std::size_t failed_idx = 0;
+    const auto stage = [&](std::uint8_t bit, const char* name, bool ok) {
+        const std::size_t idx = bit == 1 ? 0 : bit == 2 ? 1 : 2;
+        if ((cpu_fail_ & bit) != 0) {
+            ok = false;
+            SDL_SetError("forced to fail by the script seam");
+        }
+        if (!ok) {
+            delivered = false;
+            failed_at = name;
+            failed_idx = idx;
+        }
+    };
+    stage(1, "SDL_UpdateTexture", SDL_UpdateTexture(texture_, nullptr, buffer_.data(), w * 4));
+    if (delivered) {
+        stage(2, "SDL_RenderTexture", SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
+    }
     const auto present_start = Clock::now();
     steps_.push_back({"texture copy", since_ms(rendered, present_start)});
-    SDL_RenderPresent(renderer_);
+    if (delivered) {
+        stage(4, "SDL_RenderPresent", SDL_RenderPresent(renderer_));
+    }
     steps_end_ = Clock::now();
+    if (!delivered) {
+        // The change (if any) stays pending (frame_done below gets false); draw again shortly, at
+        // the usual 100 ms back-off, and say why: the first failure and every hundredth after it.
+        ++cpu_delivery_failures_;
+        std::uint64_t& at_stage = cpu_stage_failures_[failed_idx];
+        if (at_stage++ % 100 == 0) {
+            std::fprintf(
+                stderr,
+                "CPU frame delivery failed (%s: %s); the picture's pending changes wait for a "
+                "delivered frame, retrying (failure %llu of this stage)\n",
+                failed_at, SDL_GetError(), static_cast<unsigned long long>(at_stage));
+        }
+        back_off();
+    }
     if (play_ != nullptr) {
         // The CPU path has no GPU copy: a fresh chunk was drawn into this frame's buffer.
         auto fresh = [this](const render::ChunkKey& k) {
             return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
         };
-        play_->visibility().frame_done(true, fresh, fresh);
+        play_->visibility().frame_done(delivered, fresh, fresh);
         refresh_visibility_title();
     }
     // SDL's present waits for vsync.

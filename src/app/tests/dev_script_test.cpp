@@ -476,3 +476,38 @@ TEST_CASE(
         CHECK(bad.failed());
     }
 }
+
+TEST_CASE("dev script: fail and pass a CPU delivery stage, expect failing (W4-WIN-FINAL F2)" *
+          doctest::test_suite("dev_script")) {
+    const auto once = [](const std::string& text, const app::DevScriptState& st) {
+        auto script = app::DevScript::parse(text);
+        REQUIRE(script.ok());
+        const app::DevScriptAction act = script.value().step(st);
+        return std::pair{std::move(script).value(), act};
+    };
+    app::DevScriptState cpu;
+    cpu.cpu_fail_available = true;
+    for (const auto& [name, bit] :
+         {std::pair{"update", 1}, std::pair{"submit", 2}, std::pair{"present", 4}}) {
+        CAPTURE(name);
+        auto [s, act] = once(std::string("fail ") + name + "\n", cpu);
+        CHECK_FALSE(s.failed());
+        CHECK(act.cpu_fail_set == bit);
+        CHECK(act.cpu_fail_clear == 0);
+        auto [p, act2] = once(std::string("pass ") + name + "\n", cpu);
+        CHECK(act2.cpu_fail_clear == bit);
+        // Without the CPU seam (the GPU window) the step fails.
+        auto [g, act3] = once(std::string("fail ") + name + "\n", app::DevScriptState{});
+        CHECK(g.failed());
+        CHECK(act3.cpu_fail_set == 0);
+        // expect failing: only while the stage is in effect.
+        app::DevScriptState on = cpu;
+        on.cpu_failing = static_cast<std::uint8_t>(bit);
+        auto [yes, a4] = once(std::string("expect failing ") + name + "\n", on);
+        CHECK_FALSE(yes.failed());
+        auto [no, a5] = once(std::string("expect failing ") + name + "\n", cpu);
+        CHECK(no.failed());
+    }
+    auto [bad, act] = once("fail frobnicate\n", cpu);
+    CHECK(bad.failed());
+}

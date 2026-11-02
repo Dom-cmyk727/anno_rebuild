@@ -2,7 +2,7 @@
 """viewer_wiring.py: the production play window against a scripted session (W4-WIN-CLOSE C1, C2).
 
     python -I tools/test/viewer_wiring.py <anno1503 executable> <case> [<new out dir>]
-        [--gpu] [--trace] [--adapter N] [--env NAME=VALUE]...
+        [--gpu] [--trace] [--adapter N] [--env NAME=VALUE]... [--max-seconds S] [--expect-stderr TEXT]...
 
 <case> is one of the scripts under tools/test/viewer_wiring/ (without .script):
   r1_held_publication    R1: the title and the script read one consistent state while a publication
@@ -40,7 +40,7 @@ CASES = HERE / "tools" / "test" / "viewer_wiring"
 
 
 def main(argv):
-    flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None}
+    flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None, "stderr": []}
     pos = []
     it = iter(argv)
     for a in it:
@@ -52,6 +52,8 @@ def main(argv):
             flags["adapter"] = next(it, "0")
         elif a == "--max-seconds":
             flags["max_seconds"] = float(next(it, "0"))
+        elif a == "--expect-stderr":
+            flags["stderr"].append(next(it, ""))
         elif a == "--env":
             k, _, v = next(it, "=").partition("=")
             flags["env"][k] = v
@@ -112,6 +114,11 @@ def main(argv):
     if rc != 0:
         print(f"viewer_wiring: FAIL {case}: window exit {rc}; stderr {err_path}")
         return 1
+    stderr_text = err_path.read_text(encoding="utf-8", errors="replace") if err_path.is_file() else ""
+    for needle in flags["stderr"]:
+        if needle not in stderr_text:
+            print(f"viewer_wiring: FAIL {case}: the window's stderr lacks the expected diagnostic: {needle!r}")
+            return 1
     # Exit 0 is not evidence that the script ran: the session record must show it (viewer_session.py).
     found = viewer_session.problems(script.read_text(encoding="utf-8"), log_text)
     if found:

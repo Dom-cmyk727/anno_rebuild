@@ -134,7 +134,7 @@ int arity(const std::string& verb) {
     }
     if (verb == "key" || verb == "select" || verb == "rotate" || verb == "wheel" ||
         verb == "checkpoint" || verb == "screenshot" || verb == "hold" || verb == "release" ||
-        verb == "foreign") {
+        verb == "foreign" || verb == "fail" || verb == "pass") {
         return 1;
     }
     if (verb == "note") {
@@ -268,7 +268,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
     while (!done()) {
         if (!act.events.empty() || act.look || act.screenshot ||
             act.hold != DevScriptAction::Hold::None || act.stage != DevScriptAction::Stage::None ||
-            act.resize || act.foreign != DevScriptAction::Foreign::None ||
+            act.cpu_fail_set != 0 || act.cpu_fail_clear != 0 || act.resize ||
+            act.foreign != DevScriptAction::Foreign::None ||
             act.local != DevScriptAction::Local::None) {
             // One input step per call: the window handles it before the next step (a wait or a
             // check included) looks at what it shows.
@@ -430,6 +431,16 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             e.wheel.mouse_x = static_cast<float>(st.window_w) / 2.0F;
             e.wheel.mouse_y = static_cast<float>(st.window_h) / 2.0F;
             act.events.push_back(e);
+        } else if (s.verb == "fail" || s.verb == "pass") {
+            const std::string& n = s.args[0];
+            const std::uint8_t bit = n == "update" ? 1 : n == "submit" ? 2 : n == "present" ? 4 : 0;
+            if (bit == 0 || !st.cpu_fail_available) {
+                fail(s, bit == 0
+                            ? "only update, submit or present can fail"
+                            : "no CPU delivery seam in this session (it needs the CPU window)");
+                break;
+            }
+            (s.verb == "fail" ? act.cpu_fail_set : act.cpu_fail_clear) = bit;
         } else if (s.verb == "resize") {
             const auto rw = arg(0), rh = arg(1);
             if (!rw || !rh || *rw <= 0 || *rh <= 0) {
@@ -511,6 +522,16 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                                                             : false;
                 if (!in_effect) {
                     fail(s, "'" + n + "' is not held now");
+                    break;
+                }
+            } else if (s.args[0] == "failing" && s.args.size() == 2) {
+                const std::string& n = s.args[1];
+                const std::uint8_t bit = n == "update"    ? 1
+                                         : n == "submit"  ? 2
+                                         : n == "present" ? 4
+                                                          : 0;
+                if (bit == 0 || (st.cpu_failing & bit) == 0) {
+                    fail(s, "'" + n + "' is not failing now");
                     break;
                 }
             } else if (s.args[0] == "published" && s.args.size() == 1) {

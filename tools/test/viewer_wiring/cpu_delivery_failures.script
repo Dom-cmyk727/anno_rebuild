@@ -1,0 +1,68 @@
+# F2 (W4-WIN-FINAL): the CPU window settles a change as Visible only after the frame that holds it was
+# delivered through SDL_UpdateTexture, SDL_RenderTexture and SDL_RenderPresent. Each stage is made to report
+# failure in turn (the real call is made, its result overridden: `fail STAGE`); with fresh chunks the applied
+# command must stay pending (NotPresented), the window keeps drawing and handling input, and releasing the
+# failure lets the SAME command become Visible after a delivered frame. Run by tools/test/viewer_wiring.py
+# (CPU renderer, SDL dummy driver) with --expect-stderr for the diagnostic of each stage.
+look 1052 444
+key b
+select 1307
+rotate 0
+wait frames 60
+
+# ---- baseline: normal delivery settles the change -----------------------------------------------
+click 1052 444
+wait outcome
+wait drawn
+expect visibility Visible
+checkpoint baseline_visible
+
+# ---- SDL_UpdateTexture fails --------------------------------------------------------------------
+fail update
+click 1068 444
+wait outcome
+expect outcome Applied
+wait visibility NotPresented
+wait frames 20
+expect failing update
+expect visibility NotPresented
+# Input and the sim go on meanwhile: a second edit is applied, and it is pending too.
+click 1076 444
+wait outcome
+expect outcome Applied
+wait frames 20
+expect visibility NotPresented
+checkpoint update_failing
+pass update
+wait drawn
+expect visibility Visible
+checkpoint update_released
+
+# ---- SDL_RenderTexture fails --------------------------------------------------------------------
+fail submit
+click 1084 444
+wait outcome
+wait visibility NotPresented
+wait frames 20
+expect failing submit
+expect visibility NotPresented
+checkpoint submit_failing
+pass submit
+wait drawn
+expect visibility Visible
+checkpoint submit_released
+
+# ---- SDL_RenderPresent fails --------------------------------------------------------------------
+fail present
+click 1092 444
+wait outcome
+wait visibility NotPresented
+wait frames 20
+expect failing present
+expect visibility NotPresented
+checkpoint present_failing
+pass present
+wait drawn
+expect visibility Visible
+checkpoint present_released
+quit

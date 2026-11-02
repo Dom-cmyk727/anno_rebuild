@@ -31,6 +31,13 @@
 //                         the one a failing surface takes). `release ...` ends each. `wait blocked`
 //                         ends when a builder waits in the gate. `expect held NAME` (NAME as above
 //                         or `publication`) requires the hold to be in effect now.
+//   fail update | submit | present   (CPU window) make that stage of the CPU frame's delivery
+//   report failure
+//                         to the window: `update` SDL_UpdateTexture, `submit` SDL_RenderTexture,
+//                         `present` SDL_RenderPresent. The real call is made and its result
+//                         overridden (the SDL error text says so); the window's own
+//                         result-to-visibility path is the consumer under test. `pass STAGE` ends
+//                         it; `expect failing STAGE` requires it.
 //   resize W H            ask the window for a drawable of W x H points (a new surface epoch)
 //   wait visibility NAME  ends when the latest applied command's change is at NAME
 //   (visibility_name) hold publication      arm the publication hold (publication_hold.hpp): the
@@ -118,6 +125,10 @@ struct DevScriptState {
     std::size_t chunks_blocked = 0;
     bool chunks_armed = false, uploads_held = false, presents_failing = false;
     bool stage_holds_available = false;
+    /// The CPU delivery seam (fail|pass update|submit|present): available in a scripted CPU window,
+    /// and the stages (bit 0 update, 1 submit, 2 present) now failing.
+    bool cpu_fail_available = false;
+    std::uint8_t cpu_failing = 0;
     /// The scene generation of the last drawn frame and the surface epoch (the count of surface
     /// reconfigurations since the window opened, 0 on the CPU path; the window trace's epoch column
     /// is this plus 1), for the checkpoint line: the same command, scene generation, frame count
@@ -152,6 +163,9 @@ struct DevScriptAction {
         PassPresents
     };
     Stage stage = Stage::None;
+    /// Make a CPU delivery stage (bit 0 update, 1 submit, 2 present) report failure / stop doing
+    /// so.
+    std::uint8_t cpu_fail_set = 0, cpu_fail_clear = 0;
     std::optional<std::pair<int, int>> resize;
     /// Post the foreign build (1) or demolish (2) command (the `foreign` step).
     enum class Foreign : std::uint8_t { None, Build, Demolish };

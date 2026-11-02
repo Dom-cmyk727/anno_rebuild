@@ -7,6 +7,7 @@
 
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
+#include <anno/app/frame_projection.hpp>
 #include <anno/render/picking.hpp>
 #include <anno/sim/reject.hpp>
 
@@ -42,7 +43,83 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     if (name == "esc") {
         return SDLK_ESCAPE;
     }
+    if (name == "f") {
+        return SDLK_F;
+    }
+    if (name == "u") {
+        return SDLK_U;
+    }
+    if (name == "h") {
+        return SDLK_H;
+    }
+    if (name == "tab") {
+        return SDLK_TAB;
+    }
+    if (name == "enter") {
+        return SDLK_RETURN;
+    }
+    if (name == "lbracket") {
+        return SDLK_LEFTBRACKET;
+    }
+    if (name == "rbracket") {
+        return SDLK_RIGHTBRACKET;
+    }
+    if (name == "f5") {
+        return SDLK_F5;
+    }
     return std::nullopt;
+}
+
+/// Whether the fact `key` of `st` compares `op` to `want`; `have` is the fact's text ("<none>" when
+/// the window has no such fact, which compares unequal to everything but `!=`).
+bool fact_holds(const DevScriptState& st, const std::string& key, const std::string& op,
+                const std::string& want, std::string& have) {
+    const auto it = st.facts.find(key);
+    const bool present = it != st.facts.end();
+    have = present ? it->second : "<none>";
+    if (!present) {
+        return op == "!=";
+    }
+    const auto number = [](const std::string& s) -> std::optional<long long> {
+        char* end = nullptr;
+        const long long v = std::strtoll(s.c_str(), &end, 10);
+        if (end == s.c_str() || *end != '\0') {
+            return std::nullopt;
+        }
+        return v;
+    };
+    const auto a = number(have), b = number(want);
+    if (a && b) {
+        if (op == "==") {
+            return *a == *b;
+        }
+        if (op == "!=") {
+            return *a != *b;
+        }
+        if (op == ">=") {
+            return *a >= *b;
+        }
+        if (op == "<=") {
+            return *a <= *b;
+        }
+        if (op == ">") {
+            return *a > *b;
+        }
+        if (op == "<") {
+            return *a < *b;
+        }
+        return false;
+    }
+    if (op == "==") {
+        return have == want;
+    }
+    if (op == "!=") {
+        return have != want;
+    }
+    if (op == "contains") {
+        return have.find(want) != std::string::npos;
+    }
+    return false;
 }
 
 void push_key(std::vector<SDL_Event>& out, SDL_Keycode k) {
@@ -131,8 +208,15 @@ std::string outcome_text(const std::optional<CommandOutcome>& o) {
 
 /// The number of arguments each verb takes (a negative count: at least that many).
 int arity(const std::string& verb) {
-    if (verb == "look" || verb == "pan") {
+    if (verb == "look" || verb == "pan" || verb == "lookw" || verb == "sail" || verb == "rdown" ||
+        verb == "rup" || verb == "click-land" || verb == "hover-land" || verb == "lpan") {
         return 2;
+    }
+    if (verb == "pick-ship") {
+        return 1;
+    }
+    if (verb == "focus-lost") {
+        return 0;
     }
     if (verb == "key" || verb == "select" || verb == "rotate" || verb == "wheel" ||
         verb == "checkpoint" || verb == "screenshot" || verb == "hold" || verb == "release" ||
@@ -300,7 +384,7 @@ std::optional<std::pair<float, float>> DevScript::window_point(const PointerFram
 DevScriptAction DevScript::step(const DevScriptState& st) {
     DevScriptAction act;
     while (!done()) {
-        if (!act.events.empty() || act.look || act.screenshot ||
+        if (!act.events.empty() || act.look || act.look_world || act.screenshot ||
             act.hold != DevScriptAction::Hold::None || act.stage != DevScriptAction::Stage::None ||
             act.cpu_fail_set != 0 || act.cpu_fail_clear != 0 || act.resize ||
             act.foreign != DevScriptAction::Foreign::None ||
@@ -348,6 +432,9 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             } else if (what == "visibility" && s.args.size() == 2) {
                 over = st.latest && st.latest->state == CommandOutcome::State::Applied &&
                        s.args[1] == visibility_name(st.visibility);
+            } else if (what == "fact" && (s.args.size() == 4 || s.args.size() == 6)) {
+                std::string have;
+                over = fact_holds(st, s.args[1], s.args[2], s.args[3], have);
             } else if (what == "blocked") {
                 if (!st.stage_holds_available) {
                     fail(s, "no chunk gate in this session");
@@ -366,11 +453,23 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
             if (!over) {
-                if (what != "ms" && st.now_ms > *wait_ms_ + DevScript::kWaitLimitMs) {
-                    fail(s, "not over after " +
-                                std::to_string(static_cast<int>(DevScript::kWaitLimitMs)) +
+                // `wait fact K OP V within MS`: a longer limit for a voyage (the default 30 s is for
+                // a stalled session; a ship that sails five hundred tiles needs minutes).
+                double limit = DevScript::kWaitLimitMs;
+                if (what == "fact" && s.args.size() == 6 && s.args[4] == "within" && arg(5) &&
+                    *arg(5) > 0) {
+                    limit = static_cast<double>(*arg(5));
+                }
+                if (what != "ms" && st.now_ms > *wait_ms_ + limit) {
+                    std::string seen;
+                    if (what == "fact") {
+                        std::string have;
+                        fact_holds(st, s.args[1], s.args[2], s.args[3], have);
+                        seen = ", " + s.args[1] + " is '" + have + "'";
+                    }
+                    fail(s, "not over after " + std::to_string(static_cast<int>(limit)) +
                                 " ms (outcome " + outcome_text(st.latest) + ", visibility " +
-                                visibility_name(st.visibility) + ")");
+                                visibility_name(st.visibility) + seen + ")");
                 }
                 break;
             }
@@ -436,6 +535,66 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                     SDL_BUTTON_LMASK);
             }
             push_button(act.events, *b, SDL_BUTTON_LEFT, false);
+        } else if (s.verb == "lookw") {
+            const auto t = tile_arg(0);
+            if (!t) {
+                fail(s, "not a tile");
+                break;
+            }
+            act.look_world = std::pair{t->x + 0.5, t->y + 0.5};
+        } else if (s.verb == "sail" || s.verb == "rdown" || s.verb == "rup" ||
+                   s.verb == "click-land" || s.verb == "hover-land") {
+            const auto t = tile_arg(0);
+            std::optional<std::pair<double, double>> px;
+            if (t && st.frame != nullptr) {
+                px = (s.verb == "click-land" || s.verb == "hover-land")
+                         ? ground_pixel(*st.frame, *t)
+                         : sea_pixel(*st.frame, t->x + 0.5, t->y + 0.5);
+            }
+            if (!px || !(st.density > 0.0F)) {
+                fail(s, "the tile is not drawn in the window");
+                break;
+            }
+            const std::pair<float, float> at{static_cast<float>(px->first / st.density),
+                                             static_cast<float>(px->second / st.density)};
+            push_motion(act.events, at, 0);
+            const bool land = s.verb == "click-land";
+            const std::uint8_t button = land ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT;
+            if (s.verb == "sail" || land || s.verb == "rdown") {
+                push_button(act.events, at, button, true);
+            }
+            if (s.verb == "sail" || land || s.verb == "rup") {
+                push_button(act.events, at, button, false);
+            }
+        } else if (s.verb == "pick-ship") {
+            const auto id = arg(0);
+            const auto at = id && st.ship_point ? st.ship_point(static_cast<std::uint64_t>(*id))
+                                                : std::nullopt;
+            if (!at) {
+                fail(s, "that ship is not drawn in the window");
+                break;
+            }
+            push_motion(act.events, *at, 0);
+            push_button(act.events, *at, SDL_BUTTON_LEFT, true);
+            push_button(act.events, *at, SDL_BUTTON_LEFT, false);
+        } else if (s.verb == "lpan") {
+            const auto dx = arg(0), dy = arg(1);
+            if (!dx || !dy) {
+                fail(s, "not a distance");
+                break;
+            }
+            const std::pair<float, float> c{static_cast<float>(st.window_w) / 2.0F,
+                                            static_cast<float>(st.window_h) / 2.0F};
+            const std::pair<float, float> e{c.first + static_cast<float>(*dx),
+                                            c.second + static_cast<float>(*dy)};
+            push_motion(act.events, c, 0);
+            push_button(act.events, c, SDL_BUTTON_LEFT, true);
+            push_motion(act.events, e, SDL_BUTTON_LMASK);
+            push_button(act.events, e, SDL_BUTTON_LEFT, false);
+        } else if (s.verb == "focus-lost") {
+            SDL_Event e{};
+            e.type = SDL_EVENT_WINDOW_FOCUS_LOST;
+            act.events.push_back(e);
         } else if (s.verb == "pan") {
             const auto dx = arg(0), dy = arg(1);
             if (!dx || !dy) {
@@ -539,7 +698,14 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
         } else if (s.verb == "expect") {
-            if (s.args[0] == "title" && s.args.size() == 2) {
+            if (s.args[0] == "fact" && s.args.size() == 4) {
+                std::string have;
+                if (!fact_holds(st, s.args[1], s.args[2], s.args[3], have)) {
+                    fail(s, s.args[1] + " is '" + have + "', expected " + s.args[2] + " " +
+                                s.args[3]);
+                    break;
+                }
+            } else if (s.args[0] == "title" && s.args.size() == 2) {
                 if (st.title.find(s.args[1]) == std::string::npos) {
                     fail(s, "the title is '" + st.title + "'");
                     break;

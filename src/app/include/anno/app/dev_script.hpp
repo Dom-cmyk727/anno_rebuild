@@ -58,6 +58,27 @@
 //                         ForeignSpot) through the runner's queue, as a second player's edit would
 //                         arrive; the window sees a building batch of an island that is not the
 //                         tool's. It is not the tool's command: no receipt, no title line.
+//   The ship-start opening's steps (W4-OPENING-1, an --ship-start session; tile arguments are world
+//   tiles, the pointer aims at their drawn centre; all of them are real SDL events):
+//   lookw X Y             centre the camera on the sea point of tile (X, Y) (setup, not input)
+//   pick-ship ID          left click on the drawn centre of ship ID (the published view's position)
+//   sail X Y              right click on the sea surface over tile (X, Y)
+//   rdown X Y | rup X Y   the right button pressed / released over the sea tile (a gesture in two
+//                         steps: a focus loss or Esc between them cancels it)
+//   click-land X Y        left click on the ground of tile (X, Y); hover-land X Y moves the pointer
+//                         there without a button
+//   lpan DX DY            a left-button drag by (DX, DY) window points from the window centre
+//   focus-lost            the window loses focus (SDL_EVENT_WINDOW_FOCUS_LOST)
+//   key f|u|h|tab|enter|lbracket|rbracket|f5|t|esc|b|n|p|x   (the opening's keys, and the tool's)
+//   wait fact KEY OP VALUE | expect fact KEY OP VALUE   the window's named facts (the opening view,
+//                         the controls and the latest command's state): OP is ==, !=, >=, <=, >, <
+//                         (integers when both sides are) or `contains`. Facts: cities, gold, mode,
+//                         selected, tracked, latest (the controls' last command: queued, refused,
+//                         accepted, accepted-planning, sailing, arrived, route-failed, ...),
+//                         latest_kind, latest_reason, latest_moved (raw 1/256 ton of an unload),
+//                         ship.<id>.x|.y|.order|.hold<i>, store.<goods> (raw 8.8), tool, tick.
+//                         `wait fact KEY OP VALUE within MS` waits up to MS milliseconds instead of the 30 s
+//                         limit (a voyage of hundreds of tiles).
 //   expect title TEXT     the window title contains TEXT
 //   expect title-lacks TEXT   the window title does not contain TEXT
 //   expect published      the latest outcome, when it is Applied or Refused, is not newer than the
@@ -83,6 +104,7 @@
 
 #include <SDL3/SDL_events.h>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -143,6 +165,10 @@ struct DevScriptState {
     /// The window's size in window points.
     int window_w = 0, window_h = 0;
     std::string title;
+    /// The opening's named facts (see `wait fact`); empty in a session without an opening.
+    std::map<std::string, std::string> facts;
+    /// The window point of ship `id`'s drawn centre in the last frame, if it is drawn.
+    std::function<std::optional<std::pair<float, float>>(std::uint64_t)> ship_point;
 };
 
 /// What one call of DevScript::step asks of the window.
@@ -150,6 +176,8 @@ struct DevScriptAction {
     std::vector<SDL_Event> events;
     /// Centre the camera on this world tile.
     std::optional<sim::TileXY> look;
+    /// Centre the camera on this world point (tiles) at sea level (`lookw`).
+    std::optional<std::pair<double, double>> look_world;
     /// Capture the window as this name (DevScript's screenshot step).
     std::optional<std::string> screenshot;
     /// Arm or release the publication hold (hold publication, release publication).

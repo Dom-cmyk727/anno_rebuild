@@ -118,9 +118,17 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
             return rwhere + "the save belongs to seat " + std::to_string(s.identity.seat) +
                    ", not seat " + std::to_string(seat);
         }
-        if (s.identity.rules_digest != hex16(rules.digest())) {
+        // The rules a launch of this manifest gives are those of a freshly loaded start (the loader
+        // adds the shared-information policy to the defaults), so that is the reference.
+        auto reference =
+            sim_load::load_ship_start(manifest, game_dir, registry.types, {}, rules);
+        if (!reference.ok()) {
+            return rwhere + "load_ship_start (the reference of the rules): " + reference.error();
+        }
+        const std::string expected_rules = hex16(reference.value().rules().digest());
+        if (s.identity.rules_digest != expected_rules) {
             return rwhere + "the save was made with other rules (digest " + s.identity.rules_digest +
-                   ", these are " + hex16(rules.digest()) + ")";
+                   ", these are " + expected_rules + ")";
         }
         if (s.identity.registry_digest != hex16(registry.types->digest())) {
             return rwhere + "the save was made with other game data (registry digest " +
@@ -133,6 +141,9 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
         }
         if (loaded.value().state_hash() != s.state_hash) {
             return rwhere + "the saved world's hash is not the one the save states";
+        }
+        if (hex16(loaded.value().rules().digest()) != expected_rules) {
+            return rwhere + "the saved world carries other rules than its header names";
         }
         world.emplace(std::move(loaded).value());
         out.identity.resumed_from = to_utf8(*resume);

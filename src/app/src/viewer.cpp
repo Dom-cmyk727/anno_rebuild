@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -533,6 +534,8 @@ class Viewer {
     /// tool at a city that appeared, and builds the ships to draw. Frame boundary; window thread.
     void opening_refresh();
     [[nodiscard]] UiFeed opening_feed() const;
+    /// The named facts a scripted session waits on and expects (DevScriptState::facts).
+    [[nodiscard]] std::map<std::string, std::string> opening_facts() const;
     /// Applies a UiResult: posts the commands, records their receipts, asks for a save.
     void opening_apply(const UiResult& result);
     std::string save_note_;
@@ -1330,6 +1333,75 @@ bool Viewer::opening_handle(const SDL_Event& e) {
     }
 }
 
+std::map<std::string, std::string> Viewer::opening_facts() const {
+    std::map<std::string, std::string> f;
+    if (opening_ == nullptr || !opening_snapshot_ || !opening_snapshot_->opening) {
+        return f;
+    }
+    const OpeningView& v = *opening_snapshot_->opening;
+    const OpeningUi& ui = *opening_->ui;
+    const UiFeed feed = opening_feed();
+    f["tick"] = std::to_string(v.tick);
+    f["gold"] = std::to_string(v.gold);
+    f["cities"] = std::to_string(v.cities.size());
+    f["mode"] = ui.mode() == OpeningMode::Found    ? "found"
+                : ui.mode() == OpeningMode::Unload ? "unload"
+                                                   : "select";
+    f["selected"] = ui.selected() ? std::to_string(ui.selected()->v) : "none";
+    f["tracked"] = std::to_string(ui.tracked().size());
+    f["save"] = opening_->save_status ? opening_->save_status() : "";
+    if (f["save"].empty()) {
+        f["save"] = "none";
+    }
+    f["tool"] = dev_ != nullptr && dev_->enabled() ? "on" : "off";
+    f["tool_city"] = dev_ != nullptr && dev_->setup().city
+                         ? std::to_string(dev_->setup().city->island.v) + ":" +
+                               std::to_string(dev_->setup().city->city.v)
+                         : "none";
+    f["latest"] = "none";
+    f["latest_kind"] = "none";
+    f["latest_reason"] = "none";
+    f["latest_moved"] = "0";
+    if (!ui.tracked().empty()) {
+        const Tracked& t = ui.tracked().back();
+        std::string s = track_state_name(ui.state_of(t, feed));
+        for (char& c : s) {
+            if (c == ' ' || c == ',' || c == '(' || c == ')') {
+                c = '-';
+            }
+        }
+        f["latest"] = s;
+        f["latest_kind"] = t.kind == TrackKind::Move     ? "move"
+                           : t.kind == TrackKind::Stop   ? "stop"
+                           : t.kind == TrackKind::Found  ? "found"
+                                                         : "unload";
+        if (feed.outcome) {
+            const CommandOutcome out = feed.outcome(t.receipt);
+            if (out.state == CommandOutcome::State::Refused) {
+                f["latest_reason"] = std::string(sim::reject_name(out.status));
+            }
+            f["latest_moved"] = std::to_string(out.transferred_88);
+        }
+    }
+    for (const ShipView& s : v.ships) {
+        const std::string p = "ship." + std::to_string(s.id.v) + ".";
+        f[p + "x"] = std::to_string(s.pos.x >> 8);
+        f[p + "y"] = std::to_string(s.pos.y >> 8);
+        f[p + "order"] = std::to_string(s.order_id ? *s.order_id : 0);
+        f[p + "holds"] = std::to_string(s.holds.size());
+        for (std::size_t i = 0; i < s.holds.size(); ++i) {
+            f[p + "hold" + std::to_string(i)] = std::to_string(s.holds[i].amount_88);
+        }
+    }
+    if (!v.cities.empty()) {
+        const CityView& c = v.cities.front();
+        for (std::size_t g = 0; g < c.stock_88.size(); ++g) {
+            f["store." + std::to_string(g)] = std::to_string(c.stock_88[g]);
+        }
+    }
+    return f;
+}
+
 void Viewer::toggle_pause() {
     if (paused_at_) {
         clock_ = Clock::now() - *paused_at_;
@@ -1647,7 +1719,35 @@ void Viewer::script_tick() {
     if (const char* t = SDL_GetWindowTitle(window_); t != nullptr) {
         st.title = t;
     }
+    if (opening_ != nullptr) {
+        st.facts = opening_facts();
+        st.ship_point = [this](std::uint64_t id) -> std::optional<std::pair<float, float>> {
+            if (!opening_snapshot_ || !opening_snapshot_->opening || !pointer_frame_) {
+                return std::nullopt;
+            }
+            const ShipView* ship = opening_snapshot_->opening->ship(sim::FigureId{id});
+            const float density = SDL_GetWindowPixelDensity(window_);
+            if (ship == nullptr || !(density > 0.0F)) {
+                return std::nullopt;
+            }
+            const auto box = opening_->ships->box(*ship, *pointer_frame_);
+            if (!box) {
+                return std::nullopt;
+            }
+            return std::pair{static_cast<float>(box->cx / density),
+                             static_cast<float>(box->cy / density)};
+        };
+    }
     DevScriptAction act = script_->step(st);
+    if (act.look_world) {
+        const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+        const auto [sx, sy] = render::corner_point(act.look_world->first, act.look_world->second,
+                                                   static_cast<double>(render::kSeaLevel), g);
+        cam_x_ = sx;
+        cam_y_ = sy;
+        clamp();
+        dirty_ = true;
+    }
     if (act.foreign != DevScriptAction::Foreign::None && dev_ != nullptr && dev_->setup().foreign) {
         const ForeignSpot& f = *dev_->setup().foreign;
         sim::Command c;

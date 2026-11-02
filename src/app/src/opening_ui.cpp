@@ -1,0 +1,849 @@
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+#include <anno/app/opening_ui.hpp>
+#include <anno/sim/building.hpp>
+#include <anno/sim/ship_cargo.hpp>
+
+namespace anno::app {
+
+namespace {
+
+std::string fmt(const char* format, long long a = 0, long long b = 0, long long c = 0,
+                long long d = 0) {
+    char buf[256];
+    std::snprintf(buf, sizeof buf, format, a, b, c, d);
+    return buf;
+}
+
+/// Whole ship tile of a Q24.8 coordinate.
+std::int64_t tile_of(std::int32_t q8) {
+    return static_cast<std::int64_t>(q8) >> 8;
+}
+
+} // namespace
+
+std::string tons_text(std::uint64_t amount_88) {
+    const std::uint64_t whole = amount_88 / 256, rest = amount_88 % 256;
+    if (rest == 0) {
+        return std::to_string(whole);
+    }
+    // 1/256 ton is exact in at most 8 decimals; two decimals are enough to read.
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "%llu.%02llu", static_cast<unsigned long long>(whole),
+                  static_cast<unsigned long long>(rest * 100 / 256));
+    return buf;
+}
+
+const char* track_state_name(TrackState s) {
+    switch (s) {
+    case TrackState::Queued:
+        return "queued";
+    case TrackState::Refused:
+        return "refused";
+    case TrackState::Lost:
+        return "outcome lost";
+    case TrackState::Planning:
+        return "accepted, planning";
+    case TrackState::Sailing:
+        return "sailing";
+    case TrackState::Arrived:
+        return "arrived";
+    case TrackState::RouteFailed:
+        return "route failed";
+    case TrackState::Stopped:
+        return "stopped";
+    case TrackState::Superseded:
+        return "replaced by a newer order";
+    case TrackState::Ended:
+        return "ended (event no longer kept)";
+    case TrackState::Applied:
+        return "accepted";
+    case TrackState::ShipGone:
+        return "ship gone";
+    }
+    return "?";
+}
+
+OpeningUi::OpeningUi(OpeningSetup setup) : setup_(std::move(setup)) {}
+
+std::string OpeningUi::goods_name(sim::GoodsId g) const {
+    if (setup_.registry) {
+        if (const sim::GoodsInfo* info = setup_.registry->goods(g)) {
+            return info->name;
+        }
+    }
+    return "goods " + std::to_string(g);
+}
+
+bool OpeningUi::has_pending() const {
+    return left_.down || right_.down || mode_ != OpeningMode::Select || selected_.has_value();
+}
+
+void OpeningUi::leave_modes() {
+    mode_ = OpeningMode::Select;
+    unload_target_.reset();
+    hover_tile_.reset();
+}
+
+void OpeningUi::abort_gestures() {
+    // Every press in progress is cancelled: its release acts on nothing (a click after focus came
+    // back must not issue an order the user never finished).
+    if (left_.down) {
+        left_.cancelled = true;
+    }
+    if (right_.down) {
+        right_.cancelled = true;
+    }
+}
+
+const ShipView* OpeningUi::own_selected(const UiFeed& feed, std::string& why) const {
+    if (feed.view == nullptr) {
+        why = "no world state yet";
+        return nullptr;
+    }
+    if (!selected_) {
+        why = "select one of your ships first (left click)";
+        return nullptr;
+    }
+    const ShipView* ship = feed.view->ship(*selected_);
+    if (ship == nullptr) {
+        why = "the selected ship is gone";
+        return nullptr;
+    }
+    if (ship->owner != setup_.local) {
+        why = "ship #" + std::to_string(ship->id.v) + " belongs to seat " +
+              std::to_string(ship->owner.v) + ": inspect only";
+        return nullptr;
+    }
+    return ship;
+}
+
+const ShipView* OpeningUi::hit_ship(double px, double py, const ScreenProjection& frame,
+                                    const UiFeed& feed) const {
+    if (feed.view == nullptr) {
+        return nullptr;
+    }
+    const ShipView* best = nullptr;
+    double best_front = 0, best_dist = 0;
+    for (const ShipView& s : feed.view->ships) {
+        const auto box = frame.ship_box(s);
+        if (!box || !box->contains(px, py)) {
+            continue;
+        }
+        // The front-most ship wins (the painter's order is x + y), then the nearer centre, then the
+        // lower id: a click on overlapping ships is deterministic.
+        const double front = (static_cast<double>(s.pos.x) + s.pos.y) / 256.0;
+        const double dist = std::hypot(px - box->cx, py - box->cy);
+        if (best == nullptr || front > best_front + 1e-9 ||
+            (std::fabs(front - best_front) <= 1e-9 && dist < best_dist - 1e-9)) {
+            best = &s;
+            best_front = front;
+            best_dist = dist;
+        }
+    }
+    return best;
+}
+
+void OpeningUi::pointer_down(PointerButton button, double px, double py) {
+    Gesture& g = button == PointerButton::Left ? left_ : right_;
+    g = Gesture{true, false, px, py, 0.0};
+}
+
+void OpeningUi::pointer_move(double px, double py, const ScreenProjection* frame,
+                             const UiFeed& feed) {
+    for (Gesture* g : {&left_, &right_}) {
+        if (g->down) {
+            g->travel = std::max(g->travel, std::hypot(px - g->x, py - g->y));
+        }
+    }
+    hover_tile_.reset();
+    if (frame != nullptr && mode_ == OpeningMode::Found) {
+        if (const auto p = frame->pick(px, py)) {
+            hover_tile_ = p->tile;
+        }
+    }
+    static_cast<void>(feed);
+}
+
+UiResult OpeningUi::pointer_up(PointerButton button, double px, double py,
+                               const ScreenProjection* frame, const UiFeed& feed) {
+    Gesture& g = button == PointerButton::Left ? left_ : right_;
+    if (!g.down) {
+        return {}; // a release without a press of ours (focus returned mid-gesture)
+    }
+    g.travel = std::max(g.travel, std::hypot(px - g.x, py - g.y));
+    const bool click = !g.cancelled && g.travel < kClickSlop;
+    g.down = false;
+    g.cancelled = false;
+    if (!click || frame == nullptr) {
+        return {};
+    }
+    return button == PointerButton::Left ? click_left(px, py, frame, feed)
+                                         : click_right(px, py, frame, feed);
+}
+
+UiResult OpeningUi::click_right(double px, double py, const ScreenProjection* frame,
+                                const UiFeed& feed) {
+    UiResult out;
+    out.taken = true;
+    std::string why;
+    const ShipView* ship = own_selected(feed, why);
+    if (ship == nullptr) {
+        message_ = "no order: " + why;
+        return out;
+    }
+    const auto p = frame->pick(px, py);
+    if (!p) {
+        message_ = "no order: nothing under the pointer";
+        return out;
+    }
+    if (p->ground) {
+        message_ = "no order: that is land, click open water";
+        return out;
+    }
+    if (p->x_q8 < 0 || p->y_q8 < 0 ||
+        static_cast<std::int64_t>(p->x_q8) >= std::int64_t{setup_.world_w} * 256 ||
+        static_cast<std::int64_t>(p->y_q8) >= std::int64_t{setup_.world_h} * 256) {
+        message_ = "no order: outside the world";
+        return out;
+    }
+    sim::MoveCmd cmd;
+    cmd.ship = ship->id;
+    cmd.target_x_q8 = p->x_q8;
+    cmd.target_y_q8 = p->y_q8;
+    out.commands.push_back(sim::Command{setup_.local, cmd});
+    Tracked t;
+    t.kind = TrackKind::Move;
+    t.ship = ship->id;
+    t.target_x_q8 = p->x_q8;
+    t.target_y_q8 = p->y_q8;
+    pending_submit_.clear();
+    pending_submit_.push_back(t);
+    message_ = "move order sent to " + fmt("(%lld, %lld)", tile_of(p->x_q8), tile_of(p->y_q8));
+    return out;
+}
+
+std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::TileXY click) const {
+    if (setup_.founding_types.empty() || !setup_.registry) {
+        return std::nullopt;
+    }
+    const sim::TypeId type = setup_.founding_types[found_type_ % setup_.founding_types.size()];
+    const sim::BuildingType* bt = setup_.registry->find(type);
+    if (bt == nullptr) {
+        return std::nullopt;
+    }
+    FoundPreview p;
+    p.type = type;
+    p.rotation = found_rotation_;
+    p.click = click;
+    const auto [w, h] = sim::footprint(*bt, found_rotation_);
+    p.w = w;
+    p.h = h;
+    // docs/sim/ship-founding.md section 3: ox = max(0, cx - (w - 1) / 2), the same for y, with the
+    // footprint of the cursor's initial rotation. The sim derives it again and refuses a mismatch.
+    p.origin = sim::TileXY{static_cast<std::int32_t>(std::max<std::int64_t>(
+                               0, std::int64_t{click.x} - (std::int64_t{w} - 1) / 2)),
+                           static_cast<std::int32_t>(std::max<std::int64_t>(
+                               0, std::int64_t{click.y} - (std::int64_t{h} - 1) / 2))};
+    std::string a;
+    const auto add = [&a](const std::string& s) { a += (a.empty() ? "" : "; ") + s; };
+    // Reach: truncation toward zero of the click minus the ship position (Q24.8), dx^2 + dy^2.
+    const std::int64_t dx = (std::int64_t{click.x} * 256 - ship.pos.x) / 256;
+    const std::int64_t dy = (std::int64_t{click.y} * 256 - ship.pos.y) / 256;
+    if (dx * dx + dy * dy > setup_.founding_reach_sq) {
+        add("too far from the ship (" + fmt("%lld,%lld", dx, dy) + "; sail closer)");
+    }
+    const IslandRect* island = nullptr;
+    for (const IslandRect& r : setup_.islands) {
+        if (r.contains(click.x, click.y)) {
+            island = &r;
+        }
+    }
+    if (island == nullptr) {
+        add("the click is on no island");
+    } else if (!island->contains(p.origin.x, p.origin.y) ||
+               !island->contains(std::int64_t{p.origin.x} + w - 1,
+                                 std::int64_t{p.origin.y} + h - 1)) {
+        add("footprint leaves the island");
+    }
+    p.advisory = a;
+    return p;
+}
+
+UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* frame,
+                               const UiFeed& feed) {
+    UiResult out;
+    out.taken = true;
+    if (mode_ == OpeningMode::Found) {
+        std::string why;
+        const ShipView* ship = own_selected(feed, why);
+        if (ship == nullptr) {
+            message_ = "no founding: " + why;
+            mode_ = OpeningMode::Select;
+            return out;
+        }
+        const auto p = frame->pick(px, py);
+        if (!p) {
+            message_ = "no founding: nothing under the pointer";
+            return out;
+        }
+        const auto preview = make_found(*ship, p->tile);
+        if (!preview) {
+            message_ = "no founding: no building type is offered";
+            return out;
+        }
+        sim::FoundCmd cmd;
+        cmd.ship = ship->id;
+        cmd.placement.type = preview->type;
+        cmd.placement.rotation = preview->rotation;
+        cmd.placement.x = preview->origin.x;
+        cmd.placement.y = preview->origin.y;
+        cmd.click_x = p->tile.x;
+        cmd.click_y = p->tile.y;
+        out.commands.push_back(sim::Command{setup_.local, cmd});
+        Tracked t;
+        t.kind = TrackKind::Found;
+        t.ship = ship->id;
+        t.click = p->tile;
+        pending_submit_.clear();
+        pending_submit_.push_back(t);
+        message_ = "founding sent at " + fmt("(%lld, %lld)", p->tile.x, p->tile.y);
+        mode_ = OpeningMode::Select; // one click, one command
+        hover_tile_.reset();
+        return out;
+    }
+    if (mode_ == OpeningMode::Unload) {
+        const auto p = frame->pick(px, py);
+        if (p && feed.view != nullptr) {
+            for (const CityView& c : feed.view->cities) {
+                if (c.warehouse &&
+                    p->tile.x >= c.warehouse->tile.x &&
+                    p->tile.y >= c.warehouse->tile.y &&
+                    p->tile.x < c.warehouse->tile.x + static_cast<std::int64_t>(c.warehouse->w) &&
+                    p->tile.y < c.warehouse->tile.y + static_cast<std::int64_t>(c.warehouse->h)) {
+                    unload_target_ = c.warehouse->id;
+                    message_ = "unload target: your warehouse in " + c.name;
+                    return out;
+                }
+            }
+        }
+        message_ = "click one of your warehouses to choose it, or Enter for the nearest";
+        return out;
+    }
+    // Select mode.
+    if (const ShipView* hit = hit_ship(px, py, *frame, feed)) {
+        selected_ = hit->id;
+        selected_owner_ = hit->owner.v;
+        message_ = hit->owner == setup_.local ? "selected your ship #" + std::to_string(hit->id.v)
+                                              : "selected ship #" + std::to_string(hit->id.v) +
+                                                    " of seat " + std::to_string(hit->owner.v) +
+                                                    " (inspect only)";
+    } else {
+        selected_.reset();
+        selected_owner_.reset();
+        message_ = "nothing selected";
+    }
+    return out;
+}
+
+std::optional<sim::BuildingId> OpeningUi::default_target(const ShipView& ship,
+                                                         const OpeningView& view) const {
+    std::optional<sim::BuildingId> best;
+    std::int64_t best_d = 0;
+    const std::int64_t sx = tile_of(ship.pos.x), sy = tile_of(ship.pos.y);
+    for (const CityView& c : view.cities) {
+        if (!c.warehouse) {
+            continue;
+        }
+        const std::int64_t cx = c.warehouse->tile.x + c.warehouse->w / 2;
+        const std::int64_t cy = c.warehouse->tile.y + c.warehouse->h / 2;
+        const std::int64_t d = std::max(std::abs(cx - sx), std::abs(cy - sy));
+        if (!best || d < best_d) {
+            best = c.warehouse->id;
+            best_d = d;
+        }
+    }
+    return best;
+}
+
+void OpeningUi::clamp_unload(const ShipView& ship) {
+    if (ship.holds.empty()) {
+        unload_hold_ = 0;
+        unload_tons_ = 0;
+        return;
+    }
+    if (unload_hold_ >= ship.holds.size()) {
+        unload_hold_ = 0;
+    }
+    const std::uint64_t whole = ship.holds[unload_hold_].amount_88 / 256;
+    const std::uint32_t most = static_cast<std::uint32_t>(
+        std::max<std::uint64_t>(1, std::min<std::uint64_t>(whole + ((ship.holds[unload_hold_].amount_88 % 256) != 0), 0xFFFFFFFFu)));
+    unload_tons_ = std::clamp<std::uint32_t>(unload_tons_, 1, most);
+}
+
+std::optional<OpeningUi::UnloadPlan> OpeningUi::unload_plan(const UiFeed& feed) const {
+    if (feed.view == nullptr || !selected_) {
+        return std::nullopt;
+    }
+    const ShipView* ship = feed.view->ship(*selected_);
+    if (ship == nullptr || ship->holds.empty() || unload_hold_ >= ship->holds.size()) {
+        return std::nullopt;
+    }
+    UnloadPlan plan;
+    plan.hold = unload_hold_;
+    plan.tons = unload_tons_;
+    plan.goods = ship->holds[unload_hold_].goods;
+    std::optional<sim::BuildingId> target = unload_target_;
+    if (target) {
+        bool present = false;
+        for (const CityView& c : feed.view->cities) {
+            present = present || (c.warehouse && c.warehouse->id == *target);
+        }
+        if (!present) {
+            target.reset();
+        }
+    }
+    if (!target) {
+        target = default_target(*ship, *feed.view);
+    }
+    if (!target) {
+        plan.advisory = "you have no warehouse yet (found one first)";
+        return plan;
+    }
+    plan.warehouse = *target;
+    for (const CityView& c : feed.view->cities) {
+        if (!c.warehouse || c.warehouse->id != *target) {
+            continue;
+        }
+        const bool in_range = sim::ShipCargo::footprint_in_range(
+            tile_of(ship->pos.x), tile_of(ship->pos.y), c.warehouse->tile.x, c.warehouse->tile.y,
+            c.warehouse->w, c.warehouse->h, setup_.cargo);
+        const std::uint64_t stock =
+            plan.goods < c.stock_88.size() ? c.stock_88[plan.goods] : 0;
+        const std::uint64_t room = stock >= c.capacity_88 ? 0 : c.capacity_88 - stock;
+        const std::uint64_t move = sim::ShipCargo::amount_88(
+            plan.tons, ship->holds[plan.hold].amount_88, room);
+        plan.advisory = std::string(in_range ? "in range" : "OUT OF RANGE (sail closer)") +
+                        "; would move " + tons_text(move) + " t of " + goods_name(plan.goods) +
+                        ", store " + tons_text(stock) + "/" + tons_text(c.capacity_88) + " t";
+    }
+    return plan;
+}
+
+UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
+    UiResult out;
+    switch (key) {
+    case OpeningKey::Escape:
+        if (left_.down || right_.down) {
+            abort_gestures();
+            message_ = "gesture cancelled";
+            out.taken = true;
+        } else if (mode_ != OpeningMode::Select) {
+            leave_modes();
+            message_ = "mode cancelled";
+            out.taken = true;
+        } else if (selected_) {
+            selected_.reset();
+            selected_owner_.reset();
+            message_ = "selection cleared";
+            out.taken = true;
+        }
+        return out;
+    case OpeningKey::Save:
+        out.taken = true;
+        out.save = true;
+        message_ = "quick-save requested";
+        return out;
+    case OpeningKey::Halt: {
+        out.taken = true;
+        std::string why;
+        const ShipView* ship = own_selected(feed, why);
+        if (ship == nullptr) {
+            message_ = "no stop: " + why;
+            return out;
+        }
+        out.commands.push_back(sim::Command{setup_.local, sim::StopCmd{ship->id}});
+        Tracked t;
+        t.kind = TrackKind::Stop;
+        t.ship = ship->id;
+        pending_submit_.clear();
+        pending_submit_.push_back(t);
+        message_ = "stop sent";
+        return out;
+    }
+    case OpeningKey::Found: {
+        out.taken = true;
+        if (mode_ == OpeningMode::Found) {
+            leave_modes();
+            message_ = "founding cancelled";
+            return out;
+        }
+        std::string why;
+        if (own_selected(feed, why) == nullptr) {
+            message_ = "no founding: " + why;
+            return out;
+        }
+        leave_modes();
+        mode_ = OpeningMode::Found;
+        message_ = "founding: move the pointer over land within reach, T rotates, click sends";
+        return out;
+    }
+    case OpeningKey::Unload: {
+        out.taken = true;
+        if (mode_ == OpeningMode::Unload) {
+            leave_modes();
+            message_ = "unloading cancelled";
+            return out;
+        }
+        std::string why;
+        const ShipView* ship = own_selected(feed, why);
+        if (ship == nullptr) {
+            message_ = "no unloading: " + why;
+            return out;
+        }
+        leave_modes();
+        mode_ = OpeningMode::Unload;
+        unload_hold_ = 0;
+        for (std::uint32_t i = 0; i < ship->holds.size(); ++i) {
+            if (ship->holds[i].amount_88 != 0) {
+                unload_hold_ = i;
+                break;
+            }
+        }
+        unload_tons_ = ship->holds.empty() ? 0
+                                           : static_cast<std::uint32_t>(std::max<std::uint64_t>(
+                                                 1, ship->holds[unload_hold_].amount_88 / 256));
+        clamp_unload(*ship);
+        message_ = "unloading: Tab hold, [ ] quantity, Enter sends";
+        return out;
+    }
+    case OpeningKey::Rotate:
+        if (mode_ != OpeningMode::Found) {
+            return out; // T is the building tool's
+        }
+        out.taken = true;
+        found_rotation_ = static_cast<std::uint8_t>((found_rotation_ + 1) & 3);
+        message_ = "rotation " + std::to_string(found_rotation_);
+        return out;
+    case OpeningKey::NextHold: {
+        if (mode_ == OpeningMode::Found) {
+            out.taken = true;
+            found_type_ = setup_.founding_types.empty()
+                              ? 0
+                              : (found_type_ + 1) % setup_.founding_types.size();
+            return out;
+        }
+        if (mode_ != OpeningMode::Unload || feed.view == nullptr || !selected_) {
+            return out;
+        }
+        out.taken = true;
+        const ShipView* ship = feed.view->ship(*selected_);
+        if (ship == nullptr || ship->holds.empty()) {
+            return out;
+        }
+        for (std::size_t step = 1; step <= ship->holds.size(); ++step) {
+            const std::size_t i = (unload_hold_ + step) % ship->holds.size();
+            if (ship->holds[i].amount_88 != 0) {
+                unload_hold_ = static_cast<std::uint32_t>(i);
+                break;
+            }
+        }
+        unload_tons_ = static_cast<std::uint32_t>(
+            std::max<std::uint64_t>(1, ship->holds[unload_hold_].amount_88 / 256));
+        clamp_unload(*ship);
+        return out;
+    }
+    case OpeningKey::QtyDown:
+    case OpeningKey::QtyUp: {
+        if (mode_ != OpeningMode::Unload || feed.view == nullptr || !selected_) {
+            return out;
+        }
+        out.taken = true;
+        const ShipView* ship = feed.view->ship(*selected_);
+        if (ship == nullptr) {
+            return out;
+        }
+        const std::uint32_t step = shift ? 10 : 1;
+        if (key == OpeningKey::QtyUp) {
+            unload_tons_ += step;
+        } else {
+            unload_tons_ = unload_tons_ > step ? unload_tons_ - step : 1;
+        }
+        clamp_unload(*ship);
+        return out;
+    }
+    case OpeningKey::Send: {
+        if (mode_ != OpeningMode::Unload) {
+            return out;
+        }
+        out.taken = true;
+        std::string why;
+        const ShipView* ship = own_selected(feed, why);
+        if (ship == nullptr) {
+            message_ = "no unload: " + why;
+            return out;
+        }
+        const auto plan = unload_plan(feed);
+        if (!plan || !plan->warehouse.valid()) {
+            message_ = "no unload: " + (plan ? plan->advisory : std::string("the ship has no cargo"));
+            return out;
+        }
+        if (plan->tons == 0) {
+            message_ = "no unload: the quantity is zero";
+            return out;
+        }
+        sim::UnloadCmd cmd;
+        cmd.ship = ship->id;
+        cmd.warehouse = plan->warehouse;
+        cmd.hold = plan->hold;
+        cmd.goods = plan->goods;
+        cmd.tons = plan->tons;
+        out.commands.push_back(sim::Command{setup_.local, cmd});
+        Tracked t;
+        t.kind = TrackKind::Unload;
+        t.ship = ship->id;
+        t.warehouse = plan->warehouse;
+        t.hold = plan->hold;
+        t.tons = plan->tons;
+        t.goods = plan->goods;
+        t.hold_before_88 = ship->holds[plan->hold].amount_88;
+        pending_submit_.clear();
+        pending_submit_.push_back(t);
+        message_ = "unload sent: " + std::to_string(plan->tons) + " t of " + goods_name(plan->goods);
+        return out;
+    }
+    }
+    return out;
+}
+
+void OpeningUi::submitted(std::size_t index, CommandId receipt, std::uint64_t tick) {
+    if (index >= pending_submit_.size()) {
+        return;
+    }
+    Tracked t = pending_submit_[index];
+    t.receipt = receipt;
+    t.submitted_tick = tick;
+    add_tracked(std::move(t));
+}
+
+void OpeningUi::add_tracked(Tracked t) {
+    tracked_.push_back(std::move(t));
+    if (tracked_.size() > kMaxTracked) {
+        tracked_.erase(tracked_.begin());
+    }
+}
+
+void OpeningUi::on_view(const UiFeed& feed) {
+    if (feed.view == nullptr) {
+        return;
+    }
+    if (selected_ && feed.view->ship(*selected_) == nullptr) {
+        message_ = "the selected ship #" + std::to_string(selected_->v) + " is gone";
+        selected_.reset();
+        selected_owner_.reset();
+        if (mode_ != OpeningMode::Select) {
+            leave_modes();
+        }
+    }
+    if (unload_target_) {
+        bool present = false;
+        for (const CityView& c : feed.view->cities) {
+            present = present || (c.warehouse && c.warehouse->id == *unload_target_);
+        }
+        if (!present) {
+            unload_target_.reset();
+            message_ = "the chosen warehouse is gone";
+        }
+    }
+}
+
+TrackState OpeningUi::state_of(const Tracked& t, const UiFeed& feed) const {
+    if (!feed.outcome) {
+        return TrackState::Queued;
+    }
+    const CommandOutcome out = feed.outcome(t.receipt);
+    switch (out.state) {
+    case CommandOutcome::State::Queued:
+    case CommandOutcome::State::Unknown:
+        return TrackState::Queued;
+    case CommandOutcome::State::Refused:
+        return TrackState::Refused;
+    case CommandOutcome::State::Lost:
+        return TrackState::Lost;
+    case CommandOutcome::State::Applied:
+        break;
+    }
+    if (t.kind != TrackKind::Move) {
+        return TrackState::Applied;
+    }
+    if (!out.order_id || feed.view == nullptr) {
+        return TrackState::Planning;
+    }
+    if (const ShipEventView* e = feed.view->event_for(t.ship, *out.order_id)) {
+        switch (e->kind) {
+        case ShipEventKind::Arrived:
+            return TrackState::Arrived;
+        case ShipEventKind::RouteFailed:
+            return TrackState::RouteFailed;
+        case ShipEventKind::Stopped:
+            return TrackState::Stopped;
+        }
+    }
+    const ShipView* ship = feed.view->ship(t.ship);
+    if (ship == nullptr) {
+        return TrackState::ShipGone;
+    }
+    if (ship->order_id == out.order_id) {
+        return ship->routed ? TrackState::Sailing : TrackState::Planning;
+    }
+    if (ship->order_id && *ship->order_id > *out.order_id) {
+        return TrackState::Superseded;
+    }
+    return TrackState::Ended;
+}
+
+std::optional<FoundPreview> OpeningUi::found_preview(const UiFeed& feed) const {
+    if (mode_ != OpeningMode::Found || !hover_tile_ || feed.view == nullptr || !selected_) {
+        return std::nullopt;
+    }
+    const ShipView* ship = feed.view->ship(*selected_);
+    if (ship == nullptr) {
+        return std::nullopt;
+    }
+    return make_found(*ship, *hover_tile_);
+}
+
+std::string OpeningUi::status_line(const UiFeed& feed) const {
+    std::string line;
+    const auto add = [&line](const std::string& s) {
+        if (!s.empty()) {
+            line += (line.empty() ? "" : " | ") + s;
+        }
+    };
+    const char* mode = mode_ == OpeningMode::Found    ? "FOUND"
+                       : mode_ == OpeningMode::Unload ? "UNLOAD"
+                                                      : "select";
+    add(std::string("mode ") + mode);
+    const OpeningView* view = feed.view;
+    if (view != nullptr) {
+        add("gold " + std::to_string(view->gold));
+        if (selected_) {
+            if (const ShipView* ship = view->ship(*selected_)) {
+                std::string s = "ship #" + std::to_string(ship->id.v) + " seat " +
+                                std::to_string(ship->owner.v) +
+                                (ship->owner == setup_.local ? " (yours)" : " (inspect)") + " at " +
+                                fmt("(%lld,%lld)", tile_of(ship->pos.x), tile_of(ship->pos.y));
+                std::string cargo;
+                for (std::size_t i = 0; i < ship->holds.size(); ++i) {
+                    if (ship->holds[i].amount_88 == 0) {
+                        continue;
+                    }
+                    cargo += (cargo.empty() ? "" : ", ") + std::string("[") + std::to_string(i) +
+                             "] " + goods_name(ship->holds[i].goods) + " " +
+                             tons_text(ship->holds[i].amount_88);
+                }
+                s += " cargo: " + (cargo.empty() ? std::string("empty") : cargo);
+                add(s);
+            }
+        } else {
+            add("no ship selected");
+        }
+        if (!view->cities.empty()) {
+            std::string c;
+            for (const CityView& city : view->cities) {
+                c += (c.empty() ? "" : "; ") + std::string(city.name.empty() ? "city" : city.name);
+                std::string goods;
+                for (std::size_t g = 0; g < city.stock_88.size(); ++g) {
+                    if (city.stock_88[g] != 0) {
+                        goods += (goods.empty() ? " " : ", ") + goods_name(static_cast<sim::GoodsId>(g)) +
+                                 " " + tons_text(city.stock_88[g]);
+                    }
+                }
+                c += goods.empty() ? " (empty store)" : goods;
+            }
+            add(c);
+        }
+    }
+    if (mode_ == OpeningMode::Unload) {
+        if (const auto plan = unload_plan(feed)) {
+            add("hold [" + std::to_string(plan->hold) + "] " + goods_name(plan->goods) + " request " +
+                std::to_string(plan->tons) + " t: " + plan->advisory);
+        }
+    }
+    if (mode_ == OpeningMode::Found) {
+        if (const auto p = found_preview(feed)) {
+            const sim::BuildingType* bt = setup_.registry ? setup_.registry->find(p->type) : nullptr;
+            std::string cost = "type " + std::to_string(p->type.v) + " " + std::to_string(p->w) + "x" +
+                               std::to_string(p->h) + " rot " + std::to_string(p->rotation);
+            if (bt != nullptr) {
+                cost += " price " + std::to_string(bt->cost_gold) + " gold";
+                for (const sim::CostEntry& e : bt->cost_goods) {
+                    cost += ", " + tons_text(e.amount_88) + " t " + goods_name(e.goods);
+                }
+            }
+            add(cost + (p->advisory.empty() ? " (no problem known here)" : " (" + p->advisory + ")") +
+                " [advisory]");
+        }
+    }
+    if (!tracked_.empty()) {
+        const Tracked& t = tracked_.back();
+        std::string s;
+        switch (t.kind) {
+        case TrackKind::Move:
+            s = "move #" + std::to_string(t.receipt.n);
+            break;
+        case TrackKind::Stop:
+            s = "stop #" + std::to_string(t.receipt.n);
+            break;
+        case TrackKind::Found:
+            s = "found #" + std::to_string(t.receipt.n);
+            break;
+        case TrackKind::Unload:
+            s = "unload #" + std::to_string(t.receipt.n);
+            break;
+        }
+        const TrackState st = state_of(t, feed);
+        s += std::string(": ") + track_state_name(st);
+        if (feed.outcome) {
+            const CommandOutcome out = feed.outcome(t.receipt);
+            if (out.state == CommandOutcome::State::Refused) {
+                s += " (" + std::string(sim::reject_name(out.status)) + ")";
+            }
+            if (st == TrackState::RouteFailed && feed.view != nullptr && out.order_id) {
+                if (const ShipEventView* e = feed.view->event_for(t.ship, *out.order_id)) {
+                    static const char* const names[] = {"unreachable", "budget exceeded",
+                                                        "outside window", "ship blocked"};
+                    s += std::string(" (") + (e->reason < 4 ? names[e->reason] : "?") + ")";
+                }
+            }
+            if (t.kind == TrackKind::Unload && out.state == CommandOutcome::State::Applied) {
+                s += ": moved " + tons_text(out.transferred_88) + " t of " + std::to_string(t.tons) +
+                     " requested" + (out.transferred_88 < std::uint64_t{t.tons} * 256 ? " (limited)" : "");
+                if (feed.view != nullptr) {
+                    if (const ShipView* ship = feed.view->ship(t.ship)) {
+                        if (t.hold < ship->holds.size()) {
+                            s += "; hold " + tons_text(t.hold_before_88) + " -> " +
+                                 tons_text(ship->holds[t.hold].amount_88) + " t";
+                        }
+                    }
+                }
+            }
+            if (t.kind == TrackKind::Found && out.state == CommandOutcome::State::Applied) {
+                s += ": warehouse #" + std::to_string(out.created.v);
+            }
+            if (st == TrackState::Arrived && feed.shown_tick && feed.view != nullptr &&
+                out.order_id) {
+                if (const ShipEventView* e = feed.view->event_for(t.ship, *out.order_id)) {
+                    s += *feed.shown_tick >= e->tick ? " (shown)" : " (not drawn yet)";
+                }
+            }
+        }
+        add(s);
+    }
+    add(message_);
+    return line;
+}
+
+} // namespace anno::app

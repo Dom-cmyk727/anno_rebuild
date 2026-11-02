@@ -10,6 +10,7 @@
 #include <optional>
 #include <thread>
 #include <utility>
+#include <variant>
 
 #include <anno/app/cli.hpp>
 #include <anno/app/play.hpp>
@@ -590,6 +591,9 @@ void PlayRunner::one_turn() {
         turn_gate_(turn.index); // test seam: the turn is in flight from here
     }
     const auto started = schedule_->now();
+    // The order id a MoveCmd gets is the counter's value when it is applied: each accepted one
+    // takes the next (ShipOrders::move), so the ids are known from the results below.
+    std::uint64_t order_counter = world_.ids().next_order_id;
     // One execution path: the sim's own loop reports what each command did (round ee, A2).
     std::vector<sim::ApplyResult> results;
     sim::run_turn(world_, nullptr, turn, steps_, &results);
@@ -604,8 +608,13 @@ void PlayRunner::one_turn() {
         std::chrono::duration_cast<std::chrono::microseconds>(schedule_->now() - started).count();
     // The turn cost above is the sim's; the diff that publishes its changes is
     // timed separately (the bench reports both).
-    // The sim's host events are drained (their refusals are in `results`, per command).
-    static_cast<void>(world_.drain_events());
+    // The sim's host events are drained (their refusals are in `results`, per command); the ships'
+    // order events are kept for the opening's view.
+    for (const sim::SimEvent& event : world_.drain_events()) {
+        if (opening_) {
+            ship_events_.append(event);
+        }
+    }
     std::vector<CommandOutcome> ran;
     ran.reserve(results.size());
     for (std::size_t i = 0; i < results.size(); ++i) {
@@ -618,6 +627,15 @@ void PlayRunner::one_turn() {
         o.records.reserve(results[i].records.size());
         for (const sim::RecordResult& r : results[i].records) {
             o.records.push_back(r.status);
+            if (results[i].ok()) {
+                o.transferred_88 += r.transferred_88;
+                if (!o.created.valid() && r.building.valid()) {
+                    o.created = r.building;
+                }
+            }
+        }
+        if (results[i].ok() && std::holds_alternative<sim::MoveCmd>(turn.commands[i].body)) {
+            o.order_id = order_counter++;
         }
         ran.push_back(std::move(o));
     }
@@ -656,9 +674,27 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     next->behind_ms = behind_ms_;
     next->paused = paused_.load();
     next->turn = turn;
-    // The developer player's money and its city's goods (copied; the window never reads the World).
+    // The local participant's money and its city's goods (copied; the window never reads the
+    // World). The city is looked for again while there is none: a ship start founds it later.
+    if (!developer_city_) {
+        for (std::size_t i = 0; i < world_.islands().size() && !developer_city_; ++i) {
+            const auto& island = world_.islands()[i];
+            if (!island) {
+                continue;
+            }
+            for (const std::optional<sim::City>& city : island->cities) {
+                if (city && city->owner == local_player_ && !developer_city_) {
+                    developer_city_ = sim::CityRef{island->index, city->number};
+                }
+            }
+        }
+    }
+    if (opening_) {
+        next->opening = std::make_shared<const OpeningView>(
+            collect_opening_view(world_, local_player_, ship_events_, turn));
+    }
     if (developer_city_) {
-        if (const sim::Player* player = world_.players().find(developer_player())) {
+        if (const sim::Player* player = world_.players().find(local_player_)) {
             next->money = player->money;
             next->costs_waived = player->free_build || world_.rules().free_build_cheat;
         }

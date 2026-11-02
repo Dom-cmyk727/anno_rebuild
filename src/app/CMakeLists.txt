@@ -12,6 +12,9 @@ add_library(anno_app_core
   src/legal_workload.cpp
   src/cli.cpp
   src/loader.cpp
+  src/opening.cpp
+  src/opening_ui.cpp
+  src/opening_view.cpp
   src/picture_check.cpp
   src/picture_trace.cpp
   src/play.cpp

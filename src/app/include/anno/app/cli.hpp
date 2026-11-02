@@ -18,7 +18,8 @@
 namespace anno::app {
 
 inline constexpr const char* kUsage =
-    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> [--game-dir <dir>] [--speed "
+    "usage: anno1503 --view <file.sze|file.scp> | --play <file.sze> | --ship-start <manifest.json> "
+    "--seat <n> [--resume <save>] [--game-dir <dir>] [--speed "
     "50|100|200] [--group "
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
@@ -109,6 +110,12 @@ struct Args {
     /// --play: run the sim and build the scene from the islands it placed.
     /// --view stays the file and the stand-in rule.
     bool play = false;
+    /// --ship-start <manifest.json> --seat <n> [--resume <save>]: the ship-start opening
+    /// (docs/app/ship-opening.md). `file` is the manifest; it implies `play`. The seat is the
+    /// local participant and must be given.
+    bool ship_start = false;
+    std::optional<std::uint32_t> seat;
+    std::optional<std::filesystem::path> resume;
     /// Multiplayer rate: fixed real-time cadence, variable game ms per step.
     unsigned play_speed = 100;
     /// --play --commands <file>: scripted Build and Demolish lines (game-shell.md).

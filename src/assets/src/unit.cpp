@@ -94,7 +94,8 @@ struct Decoder {
 
     std::vector<std::optional<DecodedFrame>> frames(const fig::Entry& entry,
                                                     const std::vector<fig::FrameSet>& sets,
-                                                    const sze::Unit& unit, bool shadow,
+                                                    std::uint16_t figure, std::uint32_t attr,
+                                                    bool shadow,
                                                     std::optional<figure::Rgb> colour) {
         std::vector<std::optional<DecodedFrame>> out;
         if (sets.empty()) {
@@ -115,8 +116,8 @@ struct Decoder {
                 out.emplace_back();
                 continue;
             }
-            const std::size_t k = unit.attr % fs->frames.size();
-            const CacheKey key{unit.figure, shadow, g, k, colour};
+            const std::size_t k = attr % fs->frames.size();
+            const CacheKey key{figure, shadow, g, k, colour};
             auto it = cache.find(key);
             if (it == cache.end()) {
                 const fig::Frame& f = fs->frames[k];
@@ -180,14 +181,40 @@ Result<Units, std::string> units(const sze::Scene& scene, const fig::FigurenHead
                 const fig::GfxSet& set = entry->gfx.front();
                 const auto colour = figure::player_coloured(*entry) ? player_colour : std::nullopt;
                 UnitFrames u{kind, unit.figure, unit.x(), unit.y(), {}, {}};
-                u.frames = decoder.frames(*entry, set.frame_sets, unit, false, colour);
+                u.frames = decoder.frames(*entry, set.frame_sets, unit.figure, unit.attr, false, colour);
                 if (set.shadow) {
-                    u.shadows = decoder.frames(*entry, set.shadow->frame_sets, unit, true, colour);
+                    u.shadows = decoder.frames(*entry, set.shadow->frame_sets, unit.figure, unit.attr, true,
+                                           colour);
                 }
                 out.units.push_back(std::move(u));
             }
         }
     }
+    return out;
+}
+
+Result<FacingSprites, std::string> facing_sprites(const fig::FigurenHeader& header,
+                                                std::uint16_t figure, std::uint32_t facings,
+                                                std::optional<figure::Rgb> palette_colour,
+                                                const VolumeReader& read) {
+    const fig::Entry* entry = header.entry(figure);
+    if (entry == nullptr || entry->gfx.empty()) {
+        return "figure " + std::to_string(figure) + " has no sprite set in FigurenHeader.dat";
+    }
+    const fig::GfxSet& set = entry->gfx.front();
+    FacingSprites out;
+    out.figure = figure;
+    Decoder decoder{read, {}, out.stats};
+    const auto colour = figure::player_coloured(*entry) ? palette_colour : std::nullopt;
+    for (std::uint32_t k = 0; k < facings; ++k) {
+        UnitFrames u{UnitKind::Ship, figure, 0, 0, {}, {}};
+        u.frames = decoder.frames(*entry, set.frame_sets, figure, k, false, colour);
+        if (set.shadow) {
+            u.shadows = decoder.frames(*entry, set.shadow->frame_sets, figure, k, true, colour);
+        }
+        out.facings.push_back(std::move(u));
+    }
+    out.stats.units = facings;
     return out;
 }
 

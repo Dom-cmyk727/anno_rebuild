@@ -75,6 +75,19 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             out.file = utf8_path(v);
             out.play = a == "--play";
             have_file = true;
+        } else if (a == "--ship-start") {
+            out.file = utf8_path(v);
+            out.play = true;
+            out.ship_start = true;
+            have_file = true;
+        } else if (a == "--seat") {
+            const auto seat = number<std::uint32_t>(v);
+            if (!seat) {
+                return std::nullopt;
+            }
+            out.seat = *seat;
+        } else if (a == "--resume") {
+            out.resume = utf8_path(v);
         } else if (a == "--speed") {
             const auto speed = number<unsigned>(v);
             if (!speed || (*speed != 50 && *speed != 100 && *speed != 200)) {
@@ -231,6 +244,10 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
         }
     }
     if (!have_file) {
+        return std::nullopt;
+    }
+    // The opening needs its participant named; the seat and the save mean nothing without it.
+    if (out.ship_start ? !out.seat.has_value() : (out.seat || out.resume)) {
         return std::nullopt;
     }
     // The resampling options belong to the headless picture.

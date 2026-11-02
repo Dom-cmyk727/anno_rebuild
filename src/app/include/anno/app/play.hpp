@@ -23,6 +23,7 @@
 #include <anno/app/commands_file.hpp>
 #include <anno/app/dev_tool.hpp>
 #include <anno/app/loader.hpp>
+#include <anno/app/opening_view.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/sim/world.hpp>
 
@@ -120,6 +121,9 @@ struct PlaySnapshot {
     /// The next outcome sequence number after this turn (OutcomeLog): a reader that has read up
     /// to it has every outcome this snapshot follows.
     std::uint64_t outcomes_next = 1;
+    /// The ship-start opening's facts (opening_view.hpp), taken in the same turn as this snapshot;
+    /// null unless the runner was given a local participant for an opening (set_opening_player).
+    std::shared_ptr<const OpeningView> opening;
 };
 
 /// What the window reads for the developer tool's feedback (round ee review, R1): a snapshot and
@@ -210,6 +214,18 @@ class PlayRunner {
     /// refusal or an accepted command with no picture change wakes it too (round ee, A3).
     /// Thread-safe: once a call that clears it returns, the previous listener is not called again.
     void set_wake_listener(std::function<void()> listener);
+    /// The local participant (default: developer_player()): whose money, goods and first city the
+    /// snapshot reports, and, with `opening`, whose cities the OpeningView lists. The city is looked
+    /// up again each turn until one exists, so a participant that founds one later gets it. Call
+    /// before `start`.
+    void set_local_player(sim::PlayerId player) {
+        local_player_ = player;
+        developer_city_.reset(); // the constructor looked for the default player's
+    }
+    /// Publishes an OpeningView with every snapshot and keeps the ship events for it.
+    void set_opening(bool on) { opening_ = on; }
+    /// The sim's order-id counter at the start of the next turn (sim thread; tests, run_n).
+    [[nodiscard]] std::uint64_t next_order_id() const { return world_.ids().next_order_id; }
     /// Test seam: called on the sim thread inside every turn, after its commands are chosen and
     /// before the turn runs, with the turn index (a turn held in flight). Call before `start`.
     void set_turn_gate(std::function<void(std::uint64_t turn)> gate);
@@ -328,6 +344,9 @@ class PlayRunner {
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.
     std::optional<sim::CityRef> developer_city_;
+    sim::PlayerId local_player_ = developer_player();
+    bool opening_ = false;
+    ShipEventLog ship_events_;
     std::string last_reason_;
     std::uint64_t last_reason_turn_ = 0;
 };

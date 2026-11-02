@@ -9997,9 +9997,9 @@ the sim's placement unit. No merge, push, rebase, prune or reset.
 | Requirement | Positive proof | Counterexample / negative control | Evidence | Reviewer |
 |---|---|---|---|---|
 | R1: an outcome never stands beside resources from before it | paid build (money + goods), refusal, no-op, lost, an older published outcome, a reader thread; deferred then final with `before - cost` | `feedback()` ignoring the watermark: 3 of 3 cases fail | `command_outcome_test.cpp`; `cache/win-ee/mut-r1-negative-control.log` | APPROVED (64a3003), notes 1-3 fixed |
-| R2: drawn only when a presented frame draws all of it | synthetic stages incl. turn 0, newer-than-snapshot batch, older stuck take, offscreen newer commit, merge, bounds; lan5 with held `ChunkWorkers`: ChunksStale, failed present NotPresented, then Visible and the frame equals a fresh-renderer reference (changed region > 100 px) | accepting the object-list commit as shown fails 5 + 12 checks; the old rule said drawn exactly where the new answer waits; real window: removing `frame_done` or `begin_frame` from the GPU path fails `wait drawn` after 30 s (ChunksStale / AwaitingFrame) | `visibility_test.cpp`, `dev_visibility_test.cpp`, `dev_script_test.cpp`; `mut-r2-negative-control.log`, `window/mut-m1-*`, `mut-m2-*` | CHANGES REQUIRED twice, fixed (per-commit parts, per-take results, merge, back-off); third check is the integration review |
+| R2: drawn only when a presented frame draws all of it | synthetic stages incl. turn 0, newer-than-snapshot batch, older stuck take, offscreen newer commit, merge, bounds; lan5 with held `ChunkWorkers`: ChunksStale, failed present NotPresented, then Visible and the frame equals a fresh-renderer reference (changed region > 100 px) | accepting the object-list commit as shown fails 5 + 14 assertions (two logs); the old rule said drawn exactly where the new answer waits; real window: removing `frame_done` or `begin_frame` from the GPU path fails `wait drawn` after 30 s (ChunksStale / AwaitingFrame) | `visibility_test.cpp`, `dev_visibility_test.cpp`, `dev_script_test.cpp`; `mut-r2-negative-control.log`, `window/mut-m1-*`, `mut-m2-*` | CHANGES REQUIRED twice, fixed (per-commit parts, per-take results, merge, back-off); third check is the integration review |
 | R3: oversized footprints refused before enumeration | 1 000 000 x 1 and 4 294 967 295 squared refused in O(1) under a 64 KiB single-allocation limit; a 12 x 7 valid control; island edges both rotations; clamped index | enumerating first fails with `bad allocation` | `alloc_test.cpp`; `mut-r3-negative-control.log` | APPROVED (21fb122) |
-| R4: unrelated edits cost no occupancy work | lan5 through the real runner, picture and follower: other island 0 deltas, local build/demolish, disabled spell, resync (one resync batch, one reseed, no deltas), compared with a fresh scan after each step; overlap counts; unknown type | dropping the island filter and the enabled gate: 12 failures; deleting the resync branch: 6 failures | `dev_occupancy_test.cpp`; `mut-r4-negative-control.log`, `mut-r4-resync-negative-control.log` | CHANGES REQUIRED (minor), fixed in `28fcefe`, re-checked by the R2 review |
+| R4: unrelated edits cost no occupancy work | lan5 through the real runner, picture and follower: other island 0 deltas, local build/demolish, disabled spell, resync (one resync batch, one reseed, no deltas), compared with a fresh scan after each step; overlap counts; unknown type | dropping the island filter and the enabled gate: 21 failed assertions in 2 cases; deleting the resync branch: 6 | `dev_occupancy_test.cpp`; `mut-r4-negative-control.log`, `mut-r4-resync-negative-control.log` | CHANGES REQUIRED (minor), fixed in `28fcefe`, re-checked by the R2 review |
 | Continuous-zoom preview vs the CPU resample reference | RTX 4090 and Radeon: scale 0.8 and 1.3, max 1, 0 px over 2; 4 969 / 13 396 reference px changed | an overlay two tiles away: 7 820 / 20 897 px over 2 | `preview_gpu_test.cpp` | in the integration review |
 | Real native window | one-edit canary, scripted tool session (Applied+Visible, Refused Occupied+NoVisualChange, rotated, demolished), headless replay agrees, altered command diverges | altered command: `turn 60 differs ... (5 earlier checkpoints agreed)`, rc 1 | `window/final/` | integration review |
 
@@ -10013,7 +10013,10 @@ the sim's placement unit. No merge, push, rebase, prune or reset.
 | WSL GCC 13.3 + Clang 18.1.3 `-Werror`, `tools/check_unix_warnings.sh` | 70817ed (C++ as of 4ecea07) | 233 + 233 + 54 files | clean | | | | | PASS |
 | WSL GCC 13.3 ASan+UBSan, the 80 affected cases + `picture_matrix_contract` (213 s) + `window_table_contract` (19 s) required | 70817ed | 80 | 80 | 0 | 0 | 0 | 0 | PASS, 0 sanitizer lines |
 
-Notes on the table: the RTX-named case `play: GPU matches the CPU path on one scene` pins its adapter by name, so a Radeon gate
+Notes on the table: the MSVC CPU gate ran at `381b3e3`; `381b3e3..HEAD` changes under `src/` only `src/render/tests/play_gpu_test.cpp`
+(the GPU executable, run by the two GPU gates), and otherwise only Python tools, so that gate stands for the CPU suites.
+`unix-warnings-03-final.log` carries no head; it was started right after `git status` printed nothing at `70817ed` (the head then) and its C++ equals `4ecea07`'s; the
+log itself does not record that. The RTX-named case `play: GPU matches the CPU path on one scene` pins its adapter by name, so a Radeon gate
 only ran the RTX for it; a Radeon variant (`...on the Radeon iGPU`, max channel delta 1) was added (`4ecea07`) and runs on the Radeon.
 `msvc-cpu-03-final`'s 463 includes the SDL-free occupancy/visibility cases that now live in `anno_app_tests`
 (98d9329), so earlier inventories (`anno_app_input_tests.` prefixes) do not carry over.
@@ -10025,13 +10028,17 @@ only ran the RTX for it; a Radeon variant (`...on the Radeon iGPU`, max channel 
   `picture recovery: the same convergence ...` and `accounting: one, two and four workers ...`, also failing on the pin with the
   C4244 fix: `build/pin`); `cache/win-ee/app-tests-full-01.log`, `app-tests-full-03-first-failure-reclaimer-stall.log` (one
   `picture reclaim: a stalled process reclaimer ...` failure, not reproduced alone, 3 x contended, or in the full suite twice under
-  16-process contention: **unexplained, one occurrence**).
+  16-process contention: **unexplained, one occurrence**; it ran under the same host load as the starved-reaper failures, so it may be of that family).
 - `radeon-gpu-01-FAILED-source-changed.*` (105 passes, verdict FAIL: the tree changed during selection: invalid);
   `wsl-asan-build-01-FAILED-sdl-no-x11.log`; `wsl-asan-app-01-FAILED-git-worktree-path.out`;
   `wsl-asan-app-02-FAILED-timeout-heavy-case.log` (below); `unix-warnings-01-FAILED-sign-conversion-shadow.log` and
   `unix-warnings-pin-baseline.log` (GCC failed ten files of the pin, Clang one script omission); `mut-r4-negative-control-INVALID-unmutated-binary.log`
   and `mut-r4-resync-negative-control-INVALID-unmutated-binary.log` (a mutation that did not compile ran the unmutated binary).
-- `window/final/dev-session-REFUSED-frame-overhang` (the capture guard was too strict, fixed `fa94bf0`);
+- `cache/win-ee/contention/standins-1..3-INVALID-0-cases-selected.log` (a comma in the case name split the filter: 0 cases ran);
+  chain 2's first Radeon gate attempt failed with `rc=5 File exists ...gates$name.log` (a quoting slip in my chain script wrote the RTX
+  gate's log to `gates$name.log`, which I renamed to `rtx4090-gpu-03-final.log`; its `.out` ends with the old path; the Radeon gate was
+  rerun alone as `radeon-gpu-03-final`);
+  `window/final/dev-session-REFUSED-frame-overhang` (the capture guard was too strict, fixed `fa94bf0`);
   `window/matrix-01.table-FAILED-cp1252.stderr` (`window_table.py` died on an arrow in a legacy code page, fixed `f9a731b`); a first
   final-chain table run died on a shadowed name I introduced in `381b3e3` (fixed `70817ed`).
 
@@ -10046,16 +10053,20 @@ only ran the RTX for it; a Radeon variant (`...on the Radeon iGPU`, max channel 
   cadence (500.0 fps) is the 2560x1440 monitor's 500 Hz, measured from the 2-second window lines; present-call return is not display time.
 - **Edit latency (sustained, 60 edits, desired -> stage, ms p50 / p95 / max):** object-ready 18.0 / 18.1 / 18.1-18.2; visible CPU-ready
   42.6-44.3 / 52.4-52.5 / 54.4-66.3; present call returned 42.6-44.3 / 52.4-52.5 / 54.4-66.4, 0 unfinished, at both drawables;
-  one edit 32.4-32.5; 20-command burst (1 turn) 58.3-58.5. Window-thread busy per frame p50 0.36 ms (1080p), 0.54-0.59 ms (3840x2160).
+  one edit 32.4-32.5; 20-command burst (1 turn) 58.3-58.5. Window-thread busy per frame p50 0.34-0.36 ms (1080p), 0.50-0.59 ms (3840x2160).
   Peak working set 1.12-1.16 GiB (1080p), 1.41-1.47 GiB (3840x2160 drawable); trace on/off pairs show the same cadence and busy time (0.40 ms).
   The old Mac figures are not comparable and are not used.
-- **Per-frame cost of `ChangeVisibility` at its bound** (1 024 takes waiting, every part watched, Release): 28.7 us per
-  `begin_frame`+`frame_done` (about 1.4 % of a 2 ms frame), 0.26 us per `classify`. Synthetic: hand-driven boundaries.
-- **R4 measurement (synthetic hand-built batches, no sim):** at 1 000 / 5 000 / 16 000 local buildings with 0 / 100 000 unrelated: the
-  old rescan+rebuild per unrelated edit 0.27-5.3 ms; the unrelated edit now 0.04 us; a local delta 0.14-0.15 us; the one-off seed
-  0.25-4.3 ms. `ScenePicture::apply` for one unrelated delta (the picture's own sorted insert) remains on the window thread: about
+- **Per-frame cost of `ChangeVisibility` at its bound** (1 024 takes waiting, every part watched, Release): 29.1 us per
+  `begin_frame`+`frame_done` in the final MSVC gate log (28.7 us in the run that added the case; it varies run to run; about 1.4 %
+  of a 2 ms frame), 0.26 us per `classify`. Synthetic: hand-driven boundaries.
+- **R4 measurement (synthetic hand-built batches, no sim):** at 1 000 / 5 000 / 16 000 local buildings with 0 / 100 000 unrelated, in the
+  final MSVC gate log (`msvc-cpu-03-final`): the old rescan+rebuild per unrelated edit 0.33-8.27 ms; the unrelated edit now 0.039-0.060 us;
+  a local delta 0.13-0.27 us; the one-off seed 0.31-5.65 ms (the earlier runs, `msvc-cpu-01` and `-02`, gave 0.27-5.3 ms, 0.04 us, 0.14-0.15
+  us and 0.25-4.3 ms: the figures vary with the host's load). `ScenePicture::apply` for one unrelated delta (the picture's own sorted insert) remains on the window thread: about
   1 ms at 50 000 buildings; it is not occupancy work and is outside this repair.
-- **Contention:** the picture-worker cases pass 165 of 165 twice under 16 busy processes (`cache/win-ee/contend.py`), and the
+- **Contention:** the picture-worker cases pass 165 of 165 twice under 16 busy processes (`cache/win-ee/contend.py`; the output is
+  `cache/win-ee/contention/app-tests-contended-16-procs-165-of-165-twice.log`; the earlier `pending=6 commit_skipped=100
+  reclaim_completed=0` reproduction with 24 busy processes was read from the terminal and **no log of it was kept**), and the
   `picture_gpu` suite (12 cases, the corrected stand-ins/dissolve case included) passes 3 of 3 under 16 busy processes on the RTX
   with GPU work serialized; the `clock held: STALLED` diagnostic is the case's own (frames 2 165 / 7 552 / 3 418 over 22 / 70 / 34 s
   versus 4 952 in 1.3 s idle) and was recorded, not retried.
@@ -10084,6 +10095,10 @@ only ran the RTX for it; a Radeon variant (`...on the Radeon iGPU`, max channel 
 - Large-city, complex-economy and multiplayer scaling, the PLAN's four-core target; OQ-052 terrain, OQ-550 height, wide-id rendering,
   derived-level previews, the two Metal timing failures: untouched. No gameplay rule, map or founding behaviour was added.
 - The first-time-seen `picture reclaim: a stalled process reclaimer` failure is unexplained (above).
+
+**Never exercised:** `window_case.py`'s watchdog status (124), its peak-working-set-unreadable rule (3), and the final capture
+guard's refusal path (minimised window or a client area off the desktop); the only refusals seen came from the earlier, over-strict guard.
+The note that the Radeon's 1920x1080 is a controller default is an inference: Windows enumerates one monitor (`displays=2560x1440` in every run.txt).
 
 ### Decisions and reasoning
 

@@ -247,3 +247,22 @@ never edits a running one. The crew (children) are not touched.
 
 OQ-CARGO-1 (does the view disable the tab for a moving ship; the contract adds no state test), OQ-CARGO-2 (consumer of the stock words `+6`/`+8`
 and of the foreign arm's notification records), OQ-CARGO-3 (cannon, `0x6b` and foreign arms: separate packages). `docs/open-questions.md`.
+
+## 11. U2/U3 as implemented (2026-11-02)
+
+`UnloadCmd` is variant alternative 10, tag `0xF073` (`command.hpp`, `codec.cpp`), dispatched by `Commands::apply` to `ShipCargo::unload`
+(`ship_cargo.hpp/.cpp`, a friend of `World`). Validation is the order of section 3 against live state, resolving the ship with
+`find_figure` and the warehouse by the island its id names (`Island::find_building`, the `by_id` cache for its city): no scan and no clone.
+`CityStock::free_88` / `credit` implement section 4 (wide, no clamp, never lowers a stock). Behaviour only: no authoritative state,
+`kStateHashVersion` and `kCommandWireVersion` unchanged, no golden moved.
+
+* **Ship class** is the founding veto's BEWOHNTYPE 113 (`NotAShip` otherwise); the hold limit of step 9 is `min(holds.size(),
+  hold_count_a + hold_count_b)` when the type has navigation facts, else `holds.size()`.
+* **Interim of section 5's `CargoRules` (OQ-CARGO-4).** `warehouse_prodtypes` is not a Rules field yet: a warehouse is a building type listed in
+  `Rules::founding_types` whose PRODTYPE is 33..64; `dock_half_widths` is `CargoRules::original()` in code. Equal to the contract on the shipped data.
+* **Fractional requests** cannot be sent: the wire carries whole tons, so the "fractional request" case does not exist; fractional stored
+  amounts and remainders are exact (tests `unload fractions`).
+* **Acceptance table coverage** (`src/sim/tests/unload_test.cpp`): A rows: every vector of `cargo_vectors.txt` through the engine (34 cases, 15
+  range, 3 tile, 8 city-set rows); B1 `unload B1`; B2, B3, B4, B7, B8, B9, B10 `unload predicates`; B5, B6 `unload B5 B6`; B11 `unload B11`
+  and `unload sailing`; B12 `unload B12`; B13-B15 `unload B13 B14 B15`; B16 `unload B16` and `unload session`.
+

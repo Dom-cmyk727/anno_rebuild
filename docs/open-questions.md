@@ -2080,3 +2080,28 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Answer:** the original's UI preview computes `rec[8]` (the height `v` of the footprint window) and sends it; the apply call (`flags | 0x1000000`) skips the analysis and stores the wire byte as the building's `byte0f` and the tile height. The port computes the same `v` on the server from validated terrain and never reads the client byte (so a client cannot build on sea, which the original allows). Ordinary land: `v` (all window vertices equal, multiple of 16, `>= 32`); coast: `max & 0xf0`.
 - **Open:** nothing for the supported classes; the unsupported classes are in OQ-052.
 
+
+## OQ-CARGO-1: Does the original disable the unload tab for a moving or otherwise busy ship? (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, **not a blocker**. The authoritative path has no such test, so the contract adds none.
+- **Area:** simulation / ship cargo (`docs/sim/ship-cargo.md` P3).
+- **Question:** the ship view's "Load/unload ship" tab (`View.dll`, builders at `0x1004ab80` and `0x1005e5xx`, refresh `0x1005d9e0`) may grey out the goods buttons while the ship moves, turns, is damaged, or no own warehouse is in range. Does it?
+- **What is known:** `AnnoWelt.dll 0x100ac360` (the transfer) and `0x1003f200` (the range test) read no state word, no hit points, no order and no parent (`docs/re/ship-cargo.md` section 8). The click handler `0x1005a7f0` passes the city from `0x1005d8c0` without testing it for null, which suggests the buttons are inert when no warehouse is found (shape only).
+- **Port:** a moving ship unloads at its apply-tick position if that position is in range; nothing else is checked. A rule such as "the ship must be stopped" would be a gameplay policy for the owner, not an original fact.
+- **How to resolve:** read the tab's enabling code (the property writers for the hold controls around `0x1005a650`), or watch the running original with a ship under way next to its warehouse.
+
+## OQ-CARGO-2: Consumers of the stock words `+6`/`+8` and of the foreign trade notifications (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, **not a blocker**.
+- **Area:** simulation / ship cargo and the balance sheet.
+- **Question:** city stock add/remove increment the u16 words `+6` ("added") and `+8` ("removed") of the 12-byte goods record (`0x1002da81`, `0x1002daaa`). Which code reads them (the balance sheet, a statistics page, an AI)? The foreign-owner arm of `0x100ac360` also posts `0xd` records to the property-`0x2c` listeners of the ship and the city (`0x100acc06`-`0x100accbc`); who listens?
+- **What is known:** the same-owner arm writes the words through add/remove and posts nothing. The rebuild's `CityStock` has no such words (`docs/sim/state.md` line 667 keeps them out of the stream). The words wrap at 65536 and are not part of stock.
+- **How to resolve:** list readers of `city + 0x334 + 12*g + 6/8` (and the `0x2c` property consumers) with the sweep used in `docs/re/ship-founding.md` 14.
+
+## OQ-CARGO-3: The cannon arm, the two-figure transfer `0x6b` and the foreign arm (MAP-CARGO-1 U1, 2026-11-02)
+
+- **Status:** open, excluded from MAP-CARGO-1 by the owner's scope.
+- **Area:** simulation / ship cargo.
+- **What is known:** the same function has an arm for `rec[6] == 1` (decrement a ship counter, add one ton of goods `rec[0]` to a city with no ownership test), an arm for owners that differ (relation 3, gold, notifications) and a load arm; multiplayer command `0x6b` is a different two-figure transfer (`docs/re/ship-cargo.md` sections 4, 7). None is reachable from the single-player view for the same-owner unload, except that a modified multiplayer client can set `rec[6]` and forge the city.
+- **Port:** none of them is accepted by the rebuild's `UnloadCmd`; the cannon arm in particular is a goods source without a ledger and must not be ported as written.
+- **How to resolve:** a separate package when loading, trading or cannons enter the scope.

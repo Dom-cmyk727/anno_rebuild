@@ -518,8 +518,9 @@ TEST_CASE("dev script: the log opens with the identity of the whole parsed scrip
     // The expected values are derived apart from the code: FNV-1a 64 (offset basis
     // cbf29ce484222325, prime 100000001b3) over the canonical text, one `LINE VERB ARG...` line per
     // step after comments and whitespace, wait steps included. tools/test/viewer_session.py
-    // computes the same value from the script file; viewer_wiring_contract_test.py holds the same
-    // constants.
+    // computes the same value from the script file; viewer_wiring_contract_test.py asserts these
+    // same scripts and values (test_the_python_identity_agrees_with_the_cpp_vectors), so a change
+    // to either implementation alone fails a cheap test.
     const std::string base =
         "# comment\nexpect title-lacks a  b # trailing\n\twait frames 3\nquit\n";
     const auto parse = [](const std::string& text) {
@@ -545,6 +546,13 @@ TEST_CASE("dev script: the log opens with the identity of the whole parsed scrip
           "script identity: steps=3 fnv1a64=7f40b977c080e275");
     CHECK(first(parse("# comment\nexpect title-lacks a b\nquit\n")).find("steps=2") !=
           std::string::npos);
+    // tools/test/viewer_wiring_fixtures/tiny.script as the wrapper's contract uses it.
+    CHECK(first(parse("# a tiny script\nlook 1 2\nkey b\nwait frames 2\ncheckpoint a\nquit\n")) ==
+          "script identity: steps=5 fnv1a64=c0292a5964fabae3");
+    // Bytes that are not ASCII whitespace belong to an argument (U+0085 and U+2028 in UTF-8).
+    CHECK(first(parse("note a\xc2\x85"
+                      "b\nnote c\xe2\x80\xa8"
+                      "d\nquit\n")) == "script identity: steps=3 fnv1a64=7c2889893a0c95db");
     // A run records every argument of every step it executes (a wait ends silently).
     app::DevScript s = parse("expect title-lacks zz yy\nnote frames\nquit\n");
     const app::DevScriptAction act = s.step(app::DevScriptState{});

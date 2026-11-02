@@ -48,16 +48,19 @@ CASES = HERE / "tools" / "test" / "viewer_wiring"
 
 
 def sanitizer_reports(channels):
-    """[(channel, path, line number, line)] of the lines of the child's output files that the canonical verdict
+    """[(channel, path, line number, excerpt)] of the lines of the child's output files that the canonical verdict
     reader counts as sanitizer reports (UBSan prints a `runtime error:` and carries on, so an exit status of 0
-    says nothing about them)."""
+    says nothing about them). A long line is cut around the match, so the printed excerpt still matches the
+    reader's pattern when the gate counts the output."""
     found = []
     for channel, path in channels.items():
         if not path.is_file():
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
-            if ctest_verdict.SANITIZER.search(line):
-                found.append((channel, path, number, line))
+            m = ctest_verdict.SANITIZER.search(line)
+            if m:
+                excerpt = line if len(line) <= 300 else "..." + line[max(0, m.start() - 100):m.start() + 200]
+                found.append((channel, path, number, excerpt))
     return found
 
 
@@ -65,7 +68,7 @@ def main(argv):
     # The session log holds the window title (an em dash). A Windows pipe defaults to the ANSI code page, and the
     # gate reads this output back as UTF-8 (found by the first W4-WIN-FINAL gate run): say UTF-8.
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None, "stderr": []}
     pos = []
     it = iter(argv)
@@ -133,23 +136,23 @@ def main(argv):
         except subprocess.TimeoutExpired:
             watchdog, rc = True, None
     elapsed = time.monotonic() - started
+    log_file = out / "script.log"
+    log_text = viewer_session.read_log(log_file)
+    for line in (log_text or "").splitlines():
+        print(line)
     # Child diagnostics are part of the verdict: scan both streams before anything else decides.
     reports = sanitizer_reports({"stdout": out_path, "stderr": err_path})
     if reports:
         print(f"viewer_wiring: FAIL {case}: the window wrote sanitizer diagnostics "
               f"({len(reports)} line{'s' if len(reports) != 1 else ''}; window exit {'watchdog' if watchdog else rc}):")
         for channel, path, number, line in reports[:10]:
-            print(f"  {channel} {path}:{number}: {line[:300]}")
+            print(f"  {channel} {path}:{number}: {line}")
         if len(reports) > 10:
             print(f"  ... {len(reports) - 10} more in the files above")
         return 1
     if watchdog:
         print(f"viewer_wiring: FAIL {case}: the window did not end within {WATCHDOG_S} s (watchdog)")
         return 1
-    log_file = out / "script.log"
-    log_text = log_file.read_text(encoding="utf-8", errors="replace") if log_file.is_file() else None
-    for line in (log_text or "").splitlines():
-        print(line)
     if flags["max_seconds"] is not None and elapsed > flags["max_seconds"]:
         print(f"viewer_wiring: FAIL {case}: the window took {elapsed:.1f} s, more than {flags['max_seconds']} s")
         return 1

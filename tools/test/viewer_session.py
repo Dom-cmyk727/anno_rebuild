@@ -30,7 +30,6 @@ import sys
 from pathlib import Path
 
 IDENTITY_PREFIX = "script identity:"
-IDENTITY = re.compile(r"^script identity: steps=(\d+) fnv1a64=([0-9a-f]{16})$")
 RAN = re.compile(r"^ran line (\d+): (.*)$")
 
 
@@ -80,22 +79,23 @@ def problems(script, log_text, legacy_ok=False):
     legacy_ok: a log without the identity line is checked in its reduced legacy form instead of refused."""
     if log_text is None:
         return ["no script.log in the session directory: the window did not record a script run"]
-    lines = log_text.splitlines()
+    # The window writes LF-ended lines; an argument may hold any other byte, but never a CR (it is whitespace to the
+    # parser), so a CR before the LF is only a text-mode copy of the file.
+    lines = [line[:-1] if line.endswith("\r") else line for line in log_text.split("\n")]
     if not any(line.strip() for line in lines):
         return ["script.log is empty"]
     out = []
     identities = [line for line in lines if line.startswith(IDENTITY_PREFIX)]
     full = bool(identities)
     if not full and not legacy_ok:
-        out.append("no `script identity:` line in script.log: the record does not identify the whole script the "
-                   "window parsed (a legacy record, or a window without the full identity)")
-    elif full:
+        return [f"a step failed: {line[:200]}" for line in lines if line.startswith("FAIL")] + [
+            "no `script identity:` line in script.log: the record does not identify the whole script the window "
+            "parsed (a legacy record, or a window without the full identity)"]
+    if full:
         first = next(line for line in lines if line.strip())
         want_id = identity_line(script)
         if len(identities) != 1 or first != identities[0]:
             out.append(f"the record must open with exactly one `{IDENTITY_PREFIX}` line, found {len(identities)}")
-        elif IDENTITY.match(identities[0]) is None:
-            out.append(f"malformed identity line: {identities[0][:120]!r}")
         elif identities[0] != want_id:
             out.append(f"script identity mismatch: the window parsed [{identities[0][len(IDENTITY_PREFIX):].strip()}], "
                        f"the invoked script is [{want_id[len(IDENTITY_PREFIX):].strip()}] "
@@ -127,9 +127,14 @@ def problems(script, log_text, legacy_ok=False):
     return out
 
 
+def read_log(path):
+    """script.log as text that keeps every byte (surrogateescape), or None when the file is absent."""
+    return Path(path).read_bytes().decode("utf-8", errors="surrogateescape") if Path(path).is_file() else None
+
+
 def check_session(script_path, session_dir, legacy_ok=False):
     log = Path(session_dir) / "script.log"
-    text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else None
+    text = read_log(log)
     return problems(Path(script_path).read_bytes(), text, legacy_ok=legacy_ok)
 
 
@@ -138,14 +143,16 @@ def main(argv):
         scripts, bad = Path(argv[1]), 0
         for session in argv[2:]:
             log = Path(session) / "script.log"
-            text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else None
+            text = read_log(log)
             legacy = text is not None and not any(l.startswith(IDENTITY_PREFIX) for l in text.splitlines())
             match = [s for s in sorted(scripts.glob("*.script")) if not problems(s.read_bytes(), text, legacy_ok=True)]
+            names = ", ".join(s.name for s in match)
             if match and legacy:
-                print(f"LEGACY   {session}  = {match[0].name}  (checked: the ordered first-argument trace only; the "
-                      "record has no full script identity, so wait values and later arguments are not verified)")
+                ambiguous = "  [AMBIGUOUS: several scripts fit the reduced trace]" if len(match) > 1 else ""
+                print(f"LEGACY   {session}  = {names}{ambiguous}  (checked: the ordered first-argument trace only; "
+                      "the record has no full script identity, so wait values and later arguments are not verified)")
             elif match:
-                print(f"VALID    {session}  = {match[0].name}  (full script identity and ordered full-argument trace)")
+                print(f"VALID    {session}  = {names}  (full script identity and ordered full-argument trace)")
             else:
                 bad += 1
                 print(f"INVALID  {session}: no script in {scripts} matches this log")
@@ -154,7 +161,8 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     found = check_session(argv[0], argv[1])
-    print("PASS" if not found else "\n".join(found))
+    print("PASS (script identity equal, ordered full-argument trace complete to quit, no FAIL line)" if not found
+          else "\n".join(found))
     return 1 if found else 0
 
 

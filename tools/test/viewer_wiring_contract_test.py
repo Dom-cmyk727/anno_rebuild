@@ -52,6 +52,10 @@ MODES = {
 # What an earlier window recorded for tiny.script (W4-WIN-FINAL): no identity line, first argument only.
 LEGACY = ["ran line 2: look 1", "ran line 3: key b", GOOD[3], "ran line 5: checkpoint a", "ran line 6: quit"]
 
+sys.path.insert(0, str(HERE / "tools" / "test"))  # -I leaves the script's directory off the path
+import ctest_verdict  # noqa: E402
+import viewer_session  # noqa: E402
+
 UBSAN = "fixture.cpp:42:7: runtime error: signed integer overflow: 2147483647 + 1 cannot be represented in type 'int'"
 ASAN = "==4242==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010 at pc 0x0001 bp 0x0002"
 SDL = ["CPU frame delivery failed (SDL_UpdateTexture: Invalid texture) ...",
@@ -69,6 +73,10 @@ if mode == "hang":
     time.sleep(60)
 sys.stdout.write(os.environ.get("FIXTURE_STDOUT", ""))
 sys.stderr.write(os.environ.get("FIXTURE_STDERR", ""))
+sys.stdout.flush()
+sys.stderr.flush()
+if mode == "hang-late":
+    time.sleep(60)
 lines, code = eval(os.environ["FIXTURE_RECORD"])
 if mode != "absent":
     session.mkdir(parents=True)
@@ -218,6 +226,37 @@ class ViewerWiringContract(unittest.TestCase):
         isolated = [expect1[0], "ran line 2: look 1 2", "ran line 3: expect work rebuilds == 2", "ran line 4: quit"]
         self.expect_failure("complete", "script identity mismatch", script=expect2, record=isolated)
 
+    def test_a_later_argument_in_a_ran_record_is_compared_not_only_the_identity(self):
+        # The identity is the invoked script's own here; the trace claims another later argument / coordinate.
+        expect2 = self.variant("expect2", "# c\nlook 1 2\nexpect work rebuilds == 2\nquit\n")
+        self.expect_failure("complete", "record 2 is", script=expect2,
+                            record=["script identity: steps=3 fnv1a64=d87cd9b57110c259", "ran line 2: look 1 2",
+                                    "ran line 3: expect work rebuilds == 1", "ran line 4: quit"])
+        self.expect_failure("complete", "record 1 is", record=[ID_TINY, "ran line 2: look 1 999"] + GOOD[2:])
+
+    def test_the_python_identity_agrees_with_the_cpp_vectors(self):
+        # The same scripts and constants as the C++ case `the log opens with the identity` (dev_script_test.cpp),
+        # which hashes them with the window's own parser: both implementations are held to one value each.
+        vectors = [
+            (b"# comment\nexpect title-lacks a  b # trailing\n\twait frames 3\nquit\n", "8d702b850fad24d4", 3),
+            (b"# other\nexpect   title-lacks a b\nwait\tframes 3  # x\nquit", "8d702b850fad24d4", 3),
+            (b"# comment\nexpect title-lacks a c\nwait frames 3\nquit\n", "6d327550d5e6e183", 3),
+            (b"# comment\nexpect title-lacks a b\nwait frames 4\nquit\n", "7f40b977c080e275", 3),
+            (TINY.read_bytes(), "c0292a5964fabae3", 5),
+            (b"note a\xc2\x85b\nnote c\xe2\x80\xa8d\nquit\n", "7c2889893a0c95db", 3),
+        ]
+        for script, digest, steps in vectors:
+            with self.subTest(script=script[:40]):
+                self.assertEqual(viewer_session.identity_line(script),
+                                 f"script identity: steps={steps} fnv1a64={digest}")
+
+    def test_arguments_with_exotic_bytes_are_compared_byte_for_byte(self):
+        # U+0085 and U+2028 are not whitespace to the window's parser and are not line ends of its log.
+        script = self.variant("exotic", "note a\u0085b\nnote c d\nquit\n")
+        identity = viewer_session.identity_line(script.read_bytes())
+        self.expect_pass(script=script, record=[identity, "ran line 1: note a\u0085b", "ran line 2: note c d",
+                                                "ran line 3: quit"])
+
     def test_a_legacy_record_without_the_identity_line_does_not_pass(self):
         # An earlier window's log (first argument only) matches the old reduced comparison; it is not a verified
         # full identity, so the wrapper refuses it and says why.
@@ -266,6 +305,27 @@ class ViewerWiringContract(unittest.TestCase):
 
     def test_a_missing_expected_sdl_diagnostic_still_fails(self):
         self.expect_failure("complete", "lacks the expected diagnostic", stderr=SDL[0] + "\n", args=SDL_ARGS)
+
+    def test_a_long_line_is_cut_around_the_report_so_the_gate_still_counts_it(self):
+        long_line = "x" * 700 + " " + UBSAN + " " + "y" * 700
+        p, _ = self.expect_failure("complete", "sanitizer diagnostics", stderr=long_line + "\n")
+        printed = [line for line in p.stdout.splitlines() if "stderr.txt:1:" in line]
+        self.assertEqual(len(printed), 1, p.stdout)
+        self.assertIsNotNone(ctest_verdict.SANITIZER.search(printed[0]))  # what the canonical reader would count
+        self.assertLess(len(printed[0]), 800)
+
+    def test_a_sanitizer_report_beside_a_hung_window_names_the_watchdog_and_the_report(self):
+        p, _ = self.expect_failure("hang-late", "window exit watchdog", {"ANNO_VIEWER_WIRING_WATCHDOG_S": "2"},
+                                   stderr=UBSAN + "\n")
+        self.assertIn("runtime error: signed integer overflow", p.stdout)
+
+    def test_the_session_log_is_echoed_even_when_a_report_fails_the_case(self):
+        p, _ = self.expect_failure("complete", "sanitizer diagnostics", stderr=UBSAN + "\n")
+        self.assertIn("ran line 6: quit", p.stdout)
+
+    def test_a_caller_option_given_with_env_wins_over_the_ubsan_default(self):
+        _, out = self.expect_pass(args=("--env", "UBSAN_OPTIONS=print_stacktrace=0"))
+        self.assertEqual((out / "child_ubsan_options.txt").read_text(), "print_stacktrace=0")
 
     def test_ubsan_is_made_fatal_unless_the_caller_chose_its_options(self):
         _, out = self.expect_pass()

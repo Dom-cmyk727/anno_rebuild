@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Mac manual loading; Windows verifier corrections then live opening
+## Current dispatch — 2026-11-02: Mac cargo-bound correction; Windows verifier corrections then live opening
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -27,11 +27,14 @@ checked. The orchestrator published and remote-verified this exact Mac pin;
 executors do not choose a newer moving tip or merge it into main.
 Windows/MSVC, Linux gates and live-window validation of this Mac code remain
 pending. W4-WIN-VERIFY is the Windows executor's bounded
-current assignment. Following the owner's request for the next Mac assignment,
-**MAP-CARGO-2** below adds manual own-warehouse-to-ship loading. It continues
-from the accepted Mac checkpoint and does not change the Windows integration
-input `0c401c8d`. Its contract review gates implementation; no loading behavior
-or later Mac source is accepted in advance. Owner continuation, 2026-11-02: after
+current assignment. **MAP-CARGO-2** loading is now accepted locally at code/tests
+`80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
+`0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
+[loading review](reviews/2026-11-02-map-cargo2.md). The next small Mac unit is
+**MAP-CARGO-3** below: correct the previously accepted unload's cargo hold bound,
+reuse the common range predicate and retain the earlier combined reload cut.
+Windows' integration input stays `0c401c8d`; loading and this correction do not
+expand its assigned playtest. Owner continuation, 2026-11-02: after
 that closeout and the Mac gameplay candidate are reviewed and accepted at exact
 published pins, W4-OPENING-1 below integrates selection, sailing, founding,
 unloading and building in the live window for an owner playtest. It is conditional
@@ -40,7 +43,7 @@ future work, not permission to take an unreviewed Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY READY.** Close sanitizer-output propagation and full script identity with focused checks; retain the completed corpus and unaffected adapter results. **W4-OPENING-1 stays queued**, gated on accepted Windows and Mac pins. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-CARGO-2 READY.** Continue from accepted `0c401c8d` with the reviewed original loading contract, then the headless command, tests and canary. Preserve `0c401c8d` as Windows' fixed input; no new loading/UI dependency is imposed on its current assignment. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-CARGO-2 ACCEPTED LOCALLY; MAP-CARGO-3 READY.** Close the bounded unload hold-group correction and associated predicate/reload tests. Windows continues to use exact `0c401c8d`; no new UI or integration dependency is imposed. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1071,7 +1074,106 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-CARGO-2 — load supplies from an owned warehouse onto a ship · READY
+### MAP-CARGO-3 — align cargo hold bounds and retain regression coverage · READY
+
+**Start:** existing Mac worktree/branch, accepted loading code/tests
+`80f9eeacd1012cd58f3a010b8d5c6018810dedad`, documentation head
+`0aed8ec0334e9bfbdbb137d3662ac9e958c83887`. Preserve newer owned work.
+Read [the loading review](reviews/2026-11-02-map-cargo2.md) and current main
+instructions without merging main. This packet approves the original-evidence
+correction below; no additional owner decision is needed between its steps.
+It does not restart CARGO-1/2 or add work to W4-OPENING-1.
+
+**Outcome:** when navigation facts exist, both manual cargo commands address
+only the first `hold_count_a` cargo slots. The sailing factor's use of `a+b`
+does not establish transfer eligibility. Keep the established missing-nav
+unload fallback explicitly documented as an existing adaptation; changing that
+separate metadata policy or ship-class configuration is outside this packet.
+
+#### Read order and boundaries
+
+1. Read main `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4, the evidence contract,
+   testing README, this packet and linked review. Read the accepted CARGO-2
+   report, `docs/re/ship-cargo.md` §§11.3/11.8, and
+   `docs/sim/ship-cargo.md` unload step 9 and load steps 9–12.
+2. Read `src/sim/src/ship_cargo.cpp`, its header, `unload_test.cpp`'s data-defined
+   ship case, loading's boundary cases, the independent cargo vectors and the
+   `run_opening` reload masks in `founding_assets_test.cpp`.
+3. Keep Windows input `0c401c8d`, its work and all original files untouched.
+   Use current host capacity, admission and calibrated job ceilings. Keep the
+   display awake for owned work. Give every helper agent the ownership rule:
+   stop only an exact recorded owned PID/session, after checking its identity.
+   No `pkill -f`, `killall`, name/pattern kills or stopping another coordinator.
+   Use bounded commands; record any further incident immediately.
+
+#### C1 — fix the evidenced unload bound with a causal regression
+
+1. Preserve a cheap before-fix result: a data-defined ship with `a=2`, `b=1`
+   and at least three actual holds currently unloads index 2. The existing
+   `unload data` test even expects that success. From `0x100ac476`, original
+   valid cargo indices end at `a-1`. Construct otherwise-legal owner, goods,
+   range and stock so `BadIndex` is the only intended refusal.
+2. For types with nav facts, bound unload by `min(actual holds, hold_count_a)`.
+   Correct the old test expectation rather than preserving an implementation-
+   derived oracle. Pair legal index `a-1` with refused index `a`; assert exact
+   transfer/conservation for the former and unchanged state for the latter.
+   Cover actual holds shorter than `a`, extra records beyond `a+b`, and zero
+   `a` if valid under the registry contract. No guessed meaning for the second
+   group, new state field or change to sailing's denominator.
+3. A focused mutant restoring `a+b` must fail the extra-group refusal while
+   the legal control executes. Update the unload contract/F-L1 disposition
+   and any affected independent vectors. Preserve the no-nav fallback and
+   identify its limited original-parity claim; do not silently broaden it.
+
+#### C2 — share the identical range predicate and retain the old reload cut
+
+1. Now that unload is being touched, use the existing outline-ownership helper
+   for both load and unload; remove the duplicate 24-read implementation.
+   Keep range semantics, ownership, refusal order and all unrelated transfer
+   behavior unchanged. Existing positive/negative outline cases for both commands
+   must run through the shared production caller; do not test only the helper.
+2. Retain one real opening reload variant that reloads after founding AND after
+   unloading in the same run. Adjust the current masks without adding another
+   full replay variant: for example change mask 5 to 7 in `{5,10,17}`. Preserve
+   coverage of all resupply boundaries, ledger/hash/save comparisons and both
+   altered-command checks. This is restoring prior coverage, not a new matrix.
+3. Keep the disclosed ship-class limitation and open cargo arms as future work.
+   No result-schema, mod runtime, loading UI or further cargo feature belongs
+   in this correction.
+
+#### C3 — focused acceptance and stop
+
+1. Run cheap references/contracts and the affected unload/load/range/codec/
+   persistence cases in Debug and ASan/UBSan via the canonical workflow. Use
+   explicit selected/required inventories and fresh owned evidence paths.
+2. Run the changed real-file opening case once in the final Debug selection,
+   and replay the retained honest/changed-load recordings against the corrected
+   binary to show the normal four-hold opening is unchanged. Do not regenerate
+   a long recording unless that replay or another actual failure requires it.
+   Reuse CARGO-2 L5 for unchanged code, with the dependency explanation. No new
+   full-sim, full-ASan opening, renderer, GPU, coordinator or performance matrix
+   is required for this bounded change. Expand only for a concrete new failure
+   or changed dependency and explain why.
+3. One independent read-only correction review covers C1/C2, test causality,
+   shared callers, cleanup ownership and evidence. Correct findings and obtain
+   narrow re-review. Record exact code/docs/workflow/binary pins and the changed
+   behavior for earlier replays addressing second-group slots. Keep state and
+   wire identity decisions explicit under the existing policy.
+4. Commit the small correction locally, report in `REPORTS.md`, and stop for
+   orchestrator review. No main merge/rebase, task-code push, pruning, candidate
+   install, Windows edits or unrelated infrastructure changes. This later Mac
+   pin does not replace Windows' accepted `0c401c8d` input automatically.
+
+### MAP-CARGO-2 — load supplies from an owned warehouse onto a ship · ACCEPTED LOCAL HEADLESS SCOPE
+
+**Completion checkpoint, 2026-11-02:** accepted code/tests
+`80f9eeacd1012cd58f3a010b8d5c6018810dedad`, clean L5 gate source `abe568d6`,
+docs `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`. Read the
+[direct loading review](reviews/2026-11-02-map-cargo2.md). The docs-only P2
+handoff gap is corrected, the six L5 verdicts and real resupply replay were
+independently checked. Known prior unload finding F-L1 is assigned to
+MAP-CARGO-3 above. Do not repeat L1–L5. Windows continues with `0c401c8d`;
+this acceptance does not expand its live-opening task.
 
 **Orchestrator assignment, 2026-11-02, following the owner's request for the
 next Mac task.** The accepted opening already sails, founds, unloads and builds.

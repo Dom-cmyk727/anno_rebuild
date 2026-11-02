@@ -411,13 +411,23 @@ def stderr_intervals(case):
 
 
 def peak_rss(case):
+    """The case's peak memory, as text. A missing measurement is never zero: a time.txt without a
+    positive peak makes the case unusable (W4-WIN-CLOSE C4)."""
     for line in read(case / "time.txt").splitlines():
         if "maximum resident set size" in line:  # macOS /usr/bin/time -l: bytes
-            return f"{int(line.split()[0]) / 2**30:.2f} GiB"
-        if "Maximum resident set size (kbytes):" in line:  # GNU time -v: KiB
-            return f"{int(line.split(':')[1]) / 2**20:.2f} GiB"
-        if line.startswith("Peak working set size (bytes):"):  # window_case.py (Windows): bytes
-            return f"{int(line.split(':')[1]) / 2**30:.2f} GiB"
+            size = int(line.split()[0])
+            factor = 2**30
+        elif "Maximum resident set size (kbytes):" in line:  # GNU time -v: KiB
+            size = int(line.split(":")[1])
+            factor = 2**20
+        elif line.startswith("Peak working set size (bytes):"):  # window_case.py (Windows): bytes
+            size = int(line.split(":")[1])
+            factor = 2**30
+        else:
+            continue
+        if size <= 0:
+            raise Unusable("time.txt reports a peak resident set of 0: the measurement is missing")
+        return f"{size / factor:.2f} GiB"
     raise Unusable("time.txt has no maximum resident set size")
 
 

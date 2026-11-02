@@ -16,7 +16,12 @@ keys are the ones tools/bench/window_table.py reads. Differences from the shell 
   before the window starts and after it ended ("cpu_busy_pct");
 - the window runs natively on Windows (the SDL3/WebGPU build in the given binary); a WSLg window is
   not this tool and is never labelled native.
-Needs ANNO1503_GAME_DIR. Exit: the window's status, or 2 for bad arguments."""
+Needs ANNO1503_GAME_DIR. Exit: the window's status; 124 when the watchdog killed it (it gets
+<seconds> + ANNO_WINDOW_CASE_GRACE_S, default 120, to end); 3 when the peak working set could not
+be read (the case is then not usable, whatever the window's own status was: the status is kept in
+run.txt's window_exit); 2 for bad arguments. Test hooks, read only from the environment:
+ANNO_WINDOW_CASE_GRACE_S (the watchdog's margin, seconds) and ANNO_WINDOW_CASE_NO_PEAK=1 (the peak
+is reported as unreadable), for tools/test/window_tools_contract_test.py."""
 import ctypes
 import ctypes.wintypes as wt
 import hashlib
@@ -40,6 +45,8 @@ class PMC(ctypes.Structure):
 
 
 def peak_working_set(handle):
+    if os.environ.get("ANNO_WINDOW_CASE_NO_PEAK") == "1":
+        return None  # test hook: the measurement is unavailable
     pmc = PMC()
     pmc.cb = ctypes.sizeof(PMC)
     ok = ctypes.windll.psapi.GetProcessMemoryInfo(wt.HANDLE(int(handle)), ctypes.byref(pmc), pmc.cb)
@@ -156,7 +163,7 @@ def main(argv):
     if trace == "on":
         env["ANNO_VIEW_TRACE"] = str(out / "trace")
     env["ANNO_VIEW_SIZE"], env["ANNO_VIEW_AT"], env["ANNO_VIEW_QUIT_S"] = size, at, seconds
-    limit = int(float(seconds)) + 120
+    limit = int(float(seconds)) + int(os.environ.get("ANNO_WINDOW_CASE_GRACE_S", "120"))
     with open(out / "stdout.txt", "wb") as so, open(out / "stderr.txt", "wb") as se:
         proc = subprocess.Popen([app, "--play", str(amap), "--commands", commands, "--renderer", "gpu"],
                                 stdout=so, stderr=se, env=env)
@@ -173,6 +180,8 @@ def main(argv):
         rc = proc.wait()
         if killed:
             rc = 124  # the watchdog's status (as timeout(1)), never mistaken for the window's own exit 1
+            print(f"window_case: the window did not end within {limit} s and was killed (status 124)",
+                  file=sys.stderr)
         peak = max(peak, peak_working_set(proc._handle) or 0)
     if peak <= 0:
         print("window_case: the peak working set could not be read; the case is not usable", file=sys.stderr)

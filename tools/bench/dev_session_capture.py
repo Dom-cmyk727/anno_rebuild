@@ -18,6 +18,7 @@ and logged, never saved as a picture of the game. Being covered by another windo
 the window topmost for the capture, not detected. Exit: the window's status, or 2 for bad arguments."""
 import ctypes
 import ctypes.wintypes as wt
+import json
 import os
 import re
 import subprocess
@@ -116,9 +117,12 @@ def main(argv):
     env = dict(os.environ, ANNO_DEV_SCRIPT=script, ANNO_DEV_SESSION=str(out / "record"),
                ANNO_VIEW_TRACE=str(out / "trace"), ANNO_VIEW_SIZE=size, ANNO_VIEW_AT=at,
                ANNO_VIEW_QUIT_S="180")
+    # Test hook: ANNO_CAPTURE_APP_ARGS, a JSON list, replaces the play arguments, so a contract test can
+    # watch a tiny fixture window instead of the game (tools/test/window_tools_contract_test.py).
+    app_args = (json.loads(os.environ["ANNO_CAPTURE_APP_ARGS"]) if "ANNO_CAPTURE_APP_ARGS" in os.environ
+                else ["--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", "gpu"])
     with open(out / "stdout.txt", "wb") as so, open(out / "stderr.txt", "wb") as se:
-        proc = subprocess.Popen([app, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", "gpu"],
-                                stdout=so, stderr=se, env=env)
+        proc = subprocess.Popen([app, *app_args], stdout=so, stderr=se, env=env)
         log, seen, pending = [], set(), {}
         t0 = time.monotonic()
         while proc.poll() is None and time.monotonic() - t0 < 240:

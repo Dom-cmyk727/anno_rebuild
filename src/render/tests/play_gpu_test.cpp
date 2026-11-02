@@ -65,7 +65,8 @@ static void play_gpu_matches_cpu(const char* adapter_name) {
         if (std::getenv("ANNO_REQUIRE_GPU") != nullptr) {
             FAIL("no " << adapter_name << " (ANNO_REQUIRE_GPU is set): " << names);
         }
-        MESSAGE("skipping: no GPU adapter named " << adapter_name << " among: " << names);
+        MESSAGE("skipping: no GPU device (no adapter named " << adapter_name << ", among: " << names
+                                                             << ")");
         return;
     }
     const char* previous = std::getenv("ANNO_GPU_ADAPTER");

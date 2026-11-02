@@ -428,3 +428,15 @@ bump; this contract does not add one.
 * Save/load before and after a load; fresh-process replay of a log with the command; the real opening canary: found -> unload -> **load back** conserves the combined goods; the cargo factor of a segment started after the load uses
   the new holds, a segment under way keeps its factor.
 * Add `cargo_load_vectors.txt` to the CMake reference test (`cargo_reference_agrees` currently runs only the unload file; `cargo_reference_selftest` already runs the load file and the mutants).
+
+### 12.10 L2/L3 as implemented (MAP-CARGO-2, 2026-11-02)
+
+* **Code:** `LoadCmd` (`command.hpp`, variant alternative 11, `kWireLoad = 0xF074`, 28 bytes), `ShipCargo::load` and `ShipCargo::resolve_hold` (`ship_cargo.cpp`), `CityStock::debit`
+  (`production.cpp`; refuses unless `goods` is in the table and `amount <= stock[goods]`, no clamp, no wrap), `Reject::NoCargoFacts / HoldsFull / StockShort` appended after `StockFull`.
+  The validation order is the table of 12.4 (steps 0-14); the commit is `debit(goods, x)` then `holds[r] = {goods, amount + x}`, with `x` and `r` planned before any write and `amount + x <= capacity`.
+  The unload is untouched (finding F-L1 stays an open note); the 24-tile outline test of the unload is repeated in an anonymous helper of `ship_cargo.cpp` rather than extracted, to keep the accepted unload unchanged.
+* **State identity:** no hashed field was added; `kStateHashVersion` stays 124 and no golden moved (`tools/sim_stream.py --check`). The wire tag and the three enumerators are not state.
+* **Tests:** `src/sim/tests/load_test.cpp` (every command through `encode_turn_entry -> decode_turn_entry -> World::apply`), `command_codec_test.cpp` (hand-written `0xF074` bytes, wrong lengths, `0xF075` is now the legacy neighbour),
+  the 42 vectors of `cargo_load_vectors.txt` through the engine, `cargo_ref.py` (`check` reads both vector files, `selftest` fails when the load file is missing, six mutants including four hold-choice ones).
+  The fresh-process replay fixtures `cargo_load.log` / `cargo_load_wrong.log` use `synthetic::make_cargo_types()` (the founding registry plus the navigating cargo ship 9510: four holds of 50 t); `anno-sim-replay` knows that registry.
+* **Not covered here (L4/L5):** the real-file opening canary (found -> unload -> load back), the independent review, the Windows viewer.

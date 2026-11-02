@@ -270,7 +270,7 @@ authoritative state; `CargoRules` moves the stream to 124 (state.md), `kCommandW
 
 
 
-## 12. Loading: an owned warehouse's city -> the ship's hold (MAP-CARGO-2 L1, PROPOSED, 2026-11-02)
+## 12. Loading: an owned warehouse's city -> the ship's hold (MAP-CARGO-2 L1, contract, implemented in MAP-CARGO-2 (see 12.10), 2026-11-02)
 
 **Status:** a proposed contract, before any engine code; it needs the independent contract/reference review before L2. Evidence:
 [`docs/re/ship-cargo.md`](../re/ship-cargo.md) section 11 (the click, the wire, `AnnoWelt.dll 0x100ac360` flag 0). Independent reference:

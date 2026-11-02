@@ -32,12 +32,14 @@
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
+#include "command_helpers.hpp"
 #include "island_helpers.hpp"
 #include "ship_helpers.hpp"
 #include "world_access.hpp"
 
 namespace sim = anno::sim;
 namespace syn = anno::sim::synthetic;
+namespace ct = command_test;
 using ship_test::kDonkey;
 using ship_test::kScout;
 using ship_test::kShip;
@@ -91,7 +93,11 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     REQUIRE(proto != nullptr);
     for (const sim::BuildingType& t : base.value().registry->types()) {
         sim::BuildingType c = t;
-        if (c.id.v == kGrass) {
+        if (c.id == base.value().weaver) {
+            set_scalar(c, 0.13f); // h = 3: blocks only with a base of at least 17
+            c.width = 1;          // a 1 x 3 weaver fits across the channel
+            c.height = 3;
+        } else if (c.id.v == kGrass) {
             set_scalar(c, 0.0f);
         } else if (c.id.v == kRipeGrass) {
             set_scalar(c, 1.0f);
@@ -138,7 +144,8 @@ struct Item {
 
 /// The island is heights 30 (land) with a 3 tile wide channel from its west edge to x = 240.
 /// `vertex_water` carves extra water vertices (tests that need open water).
-sim::ScenarioSpec channel_spec(const std::vector<Item>& items, bool all_water = false) {
+sim::ScenarioSpec channel_spec(const std::vector<Item>& items, bool all_water = false,
+                               const std::vector<sim::ScenarioSpec::BuildingSpec>& buildings = {}) {
     sim::ScenarioSpec spec = syn::empty_scenario(11);
     sim::ScenarioSpec::PlayerSpec p;
     p.id = sim::PlayerId{0};
@@ -154,6 +161,7 @@ sim::ScenarioSpec channel_spec(const std::vector<Item>& items, bool all_water = 
         syn::plain_island(0, kIslandX, kIslandY, kIslandSize, kIslandSize);
     is.owner_runs = {{0, kIslandSize * kIslandSize}};
     is.cities.push_back(syn::plain_city(0, 0));
+    is.cities[0].buildings = buildings;
     std::vector<std::uint8_t> height(std::size_t{kIslandSize} * kIslandSize,
                                      all_water ? std::uint8_t{0} : std::uint8_t{30});
     if (!all_water) {
@@ -333,14 +341,50 @@ TEST_CASE("route objects: an unrelated command does not touch the index") {
     // no object.
     REQUIRE(w.apply(demolish(kIslandX + 60, kIslandY + 60)).ok());
     CHECK_FALSE(island_of(w).tiles.route_dirty().any());
-    static_cast<void>(probe(w));
-    CHECK(cache_of(w).work.index_builds == before.index_builds);
-    CHECK(cache_of(w).work.index_rect_rebuilds == before.index_rect_rebuilds);
     // Advancing without changing anything leaves the counters alone too.
     w.advance(500);
     static_cast<void>(probe(w));
     CHECK(cache_of(w).work.index_builds == before.index_builds);
     CHECK(cache_of(w).work.index_rect_rebuilds == before.index_rect_rebuilds);
+    CHECK(cache_of(w).work.index_cells_rebuilt == before.index_cells_rebuilt);
+}
+
+TEST_CASE("route objects: real economic commands rebuild nothing or only their own rectangle") {
+    // The g2 world of the command tests: one island with a city, tools and wood in stock.
+    const syn::SyntheticTypes t = ct::build_types();
+    sim::World w = ct::make_world(t, syn::g2_scenario(t));
+    sim::RouteCache& cache = cache_of(w);
+    cache.sync(w);
+    REQUIRE(cache.work.index_builds == 1);
+    const sim::NavWork warm = cache.work;
+    // Commands that touch no tile: trade settings (city level).
+    const sim::GoodsId wool = ct::goods(t, "WOLLE");
+    REQUIRE(
+        w.apply(ct::trade_slot(0, ct::kCity0, 0, sim::kAppendIndex, wool, 7 * sim::kTon, 40)).ok());
+    REQUIRE(w.apply(ct::trade_flag(0, ct::kCity0, 0, wool, 0)).ok());
+    cache.sync(w);
+    CHECK(cache.work == warm);
+    // A real build elsewhere through the production command path: only its own rectangle.
+    w.advance(100);
+    const sim::ApplyResult built = w.apply(ct::build(0, ct::kCity0, {ct::at(t.weaver, 112, 115)}));
+    REQUIRE(built.ok());
+    REQUIRE(w.find_building(built.records[0].building) != nullptr);
+    CHECK(w.islands()[0]->tiles.route_dirty().any());
+    cache.sync(w);
+    CHECK(cache.work.index_builds == warm.index_builds);
+    CHECK(cache.work.index_rect_rebuilds == warm.index_rect_rebuilds + 1);
+    // The footprint plus 8 tiles on every side: far fewer cells than the 8 x 8 of the island.
+    const std::uint64_t cells = cache.work.index_cells_rebuilt - warm.index_cells_rebuilt;
+    CHECK(cells >= 1);
+    CHECK(cells <= 16);
+    CHECK_FALSE(w.islands()[0]->tiles.route_dirty().any());
+    CHECK(cache.get(w).verify_against_clean_rebuild({}) == "");
+    // Demolishing it is local too.
+    REQUIRE(w.apply(ct::demolish(0, ct::kCity0, {{112, 115}})).ok());
+    cache.sync(w);
+    CHECK(cache.work.index_builds == warm.index_builds);
+    CHECK(cache.work.index_rect_rebuilds == warm.index_rect_rebuilds + 2);
+    CHECK(cache.get(w).verify_against_clean_rebuild({}) == "");
 }
 
 TEST_CASE("route objects: island growth closes the channel without any command") {
@@ -558,7 +602,7 @@ TEST_CASE("route objects: a world of unusual size and partial cells is bounded a
         q.goal_z_q8 = tile_c(30);
         routes.push_back(sim::plan_route(cache_of(w).get(w), q, sim::RouteLimits{},
                                          sim::RouteCostTable::original()));
-        // Objects at the world edge cells, a tower in a partial cell, and a move command.
+        // A tower in a partial cell, 300 ms of play, a clean-rebuild comparison (no order issued).
         const sim::BuildingType* tower = w.types().find(sim::TypeId{kTower});
         REQUIRE(tower != nullptr);
         static_cast<void>(
@@ -593,4 +637,77 @@ TEST_CASE("route objects: the height byte is validated and part of the state") {
     REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
     CHECK(loaded.value().state_hash() == changed.state_hash());
     CHECK(loaded.value().islands()[0]->tiles.item_height(idx_of(changed, kWallX, 127)) == 18);
+}
+
+TEST_CASE("route objects: a loaded building with byte0f 0x30 changes a route") {
+    // The weaver type has h = 3. A loaded building carries its byte0f as the height byte of its
+    // footprint tiles: 0 leaves the channel open, 0x30 (a coast level, as a founded warehouse has
+    // in the original) closes it. Command-built buildings have 0 (limitation 5 of 12.13).
+    auto types = syn::make_growth_types();
+    REQUIRE(types.ok());
+    sim::ScenarioSpec::BuildingSpec low;
+    low.type = types.value().weaver;
+    low.x = kWallX;
+    low.y = kChannelY0;
+    sim::ScenarioSpec::BuildingSpec high = low;
+    high.byte0f = 0x30;
+    sim::World open = make_world(channel_spec({}, false, {low}));
+    sim::World shut = make_world(channel_spec({}, false, {high}));
+    CHECK(open.check_invariants().empty());
+    CHECK(shut.check_invariants().empty());
+    CHECK(island_of(shut).tiles.item_height(idx_of(shut, kWallX, 127)) == 0x30);
+    CHECK(island_of(open).tiles.item_height(idx_of(open, kWallX, 127)) == 0);
+    CHECK(reaches_goal(probe(open)));
+    CHECK_FALSE(reaches_goal(probe(shut)));
+    expect_history_independent(shut);
+}
+
+TEST_CASE(
+    "route objects: many pseudo-random changes keep the incremental index equal to a clean one") {
+    // Deterministic LCG; tiles biased to cell edges (local x or z = 0, 7, 8, 15, ... 63) and island
+    // borders; object, anchor and height byte changes, batches of 6, a comparison after each batch.
+    sim::World w = make_world(channel_spec({}));
+    static_cast<void>(probe(w));
+    std::uint64_t state = 0x9e3779b97f4a7c15ULL;
+    const auto next = [&state]() {
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        return static_cast<std::uint32_t>(state >> 33);
+    };
+    const std::int32_t edges[] = {0,  1,  6,  7,  8,  9,  15, 16, 23, 24,
+                                  31, 32, 39, 40, 47, 48, 55, 56, 62, 63};
+    const std::uint32_t objects[] = {0,        kWall,    kLow,   kTower,
+                                     kWall1x3, kWall3x1, kGrass, kRipeGrass};
+    const std::uint8_t heights[] = {0, 1, 16, 17, 20, 100, 255};
+    sim::Island& is = island_of(w);
+    std::uint64_t rebuilds = 0;
+    for (int batch = 0; batch < 150; ++batch) {
+        for (int k = 0; k < 6; ++k) {
+            const bool edge_x = next() % 4 != 0;
+            const bool edge_z = next() % 4 != 0;
+            const std::int32_t lx =
+                edge_x ? edges[next() % 20] : static_cast<std::int32_t>(next() % 64);
+            const std::int32_t lz =
+                edge_z ? edges[next() % 20] : static_cast<std::int32_t>(next() % 64);
+            const sim::Slot idx = is.tiles.index_of(kIslandX + lx, kIslandY + lz);
+            REQUIRE(idx != sim::kNoSlot);
+            switch (next() % 3) {
+            case 0:
+                is.tiles.set_object(idx, objects[next() % 8]);
+                break;
+            case 1:
+                is.tiles.set_foot_anchor(idx, static_cast<std::uint8_t>(next() % 2));
+                break;
+            default:
+                is.tiles.set_item_height(idx, heights[next() % 7]);
+                break;
+            }
+        }
+        static_cast<void>(probe(w)); // sync
+        const std::string diff = cache_of(w).get(w).verify_against_clean_rebuild({});
+        INFO("batch " << batch);
+        REQUIRE(diff == "");
+        rebuilds = cache_of(w).work.index_rect_rebuilds;
+    }
+    CHECK(cache_of(w).work.index_builds == 1);
+    CHECK(rebuilds >= 100);
 }

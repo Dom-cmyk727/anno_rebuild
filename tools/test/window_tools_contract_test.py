@@ -108,24 +108,29 @@ class WindowCase(unittest.TestCase):
 
 FIXTURE_WINDOW = r'''
 import sys, tkinter
-mode = sys.argv[1]
+mode, code = sys.argv[1], int(sys.argv[2])
 root = tkinter.Tk()
-root.title("command #1: fixture")
 root.geometry("420x300+300+200")
 if mode == "offdesktop":
     root.geometry("420x300-6000+200")
+if mode != "silent":
+    root.title("command #1: fixture")  # the capture tool asks for a picture when a title shows a receipt
 root.update()
 if mode == "minimised":
     root.iconify()
     root.update()
-root.after(5000, root.quit)
+# "short": the window ends before the capture's 1.2 s delay is over; the others live 5 s.
+root.after(600 if mode == "short" else 5000, root.quit)
 root.mainloop()
-sys.exit(9)
+sys.exit(code)
 '''
 
 
 @unittest.skipUnless(sys.platform == "win32", "skipping: the native Windows capture needs Windows")
 class Capture(unittest.TestCase):
+    '''Native: a real tiny window, the real capture tool, GDI grabs. The child's own status is chosen apart
+    from the capture condition, so the aggregate verdict and the preserved child status are tested apart.'''
+
     @classmethod
     def setUpClass(cls):
         try:
@@ -137,32 +142,98 @@ class Capture(unittest.TestCase):
         cls.window = cls.tmp / "fixture_window.py"
         cls.window.write_text(FIXTURE_WINDOW)
 
-    def capture(self, mode):
-        out = self.tmp / f"cap_{mode}"
+    def capture(self, mode, code=0, require=None):
+        out = self.tmp / f"cap_{mode}_{code}_{require}"
         env = dict(os.environ, ANNO1503_GAME_DIR=str(self.tmp),
-                   ANNO_CAPTURE_APP_ARGS=f'["{str(self.window).replace(chr(92), "/")}", "{mode}"]')
-        p = subprocess.run([sys.executable, str(CAPTURE), sys.executable, "unused.script", str(out)],
+                   ANNO_CAPTURE_APP_ARGS=f'["{str(self.window).replace(chr(92), "/")}", "{mode}", "{code}"]')
+        flags = ["--require-captures", str(require)] if require is not None else []
+        p = subprocess.run([sys.executable, str(CAPTURE), *flags, sys.executable, "unused.script", str(out)],
                            env=env, capture_output=True, text=True, timeout=120)
         log = (out / "capture.log").read_text() if (out / "capture.log").is_file() else ""
         return p, out, log
 
-    def test_control_a_window_on_the_desktop_is_captured(self):
-        p, out, log = self.capture("normal")
-        self.assertEqual(p.returncode, 9, p.stderr + log)  # the fixture's own status
+    def test_control_a_window_on_the_desktop_is_captured_and_the_run_succeeds(self):
+        p, out, log = self.capture("normal", code=0)
+        self.assertEqual(p.returncode, 0, p.stderr + log)
         self.assertTrue((out / "shots" / "cmd1-client.png").is_file(), log)
+        self.assertIn("capture_verdict=complete", log)
+        self.assertIn("captures requested=1 completed=1 refused=0", log)
         self.assertNotIn("REFUSED", log)
 
-    def test_a_minimised_window_is_refused_and_no_picture_is_saved(self):
-        p, out, log = self.capture("minimised")
+    def test_the_child_status_is_preserved_when_the_captures_are_fine(self):
+        p, out, log = self.capture("normal", code=9)
         self.assertEqual(p.returncode, 9, p.stderr + log)
-        self.assertIn("REFUSED, the window is minimised", log)
+        self.assertIn("window_exit=9", log)
+        self.assertIn("capture_verdict=complete", log)
+
+    def test_a_minimised_window_is_refused_and_the_run_fails_though_the_child_exited_0(self):
+        p, out, log = self.capture("minimised", code=0)
+        self.assertEqual(p.returncode, 4, p.stderr + log)
+        self.assertIn("window_exit=0", log)
+        self.assertIn("capture_verdict=INCOMPLETE", log)
+        self.assertIn("refused=1", log)
         self.assertEqual(list((out / "shots").glob("*.png")), [])
 
-    def test_a_client_area_off_the_desktop_is_refused(self):
-        p, out, log = self.capture("offdesktop")
-        self.assertEqual(p.returncode, 9, p.stderr + log)
+    def test_a_client_area_off_the_desktop_is_refused_and_the_run_fails_though_the_child_exited_0(self):
+        p, out, log = self.capture("offdesktop", code=0)
+        self.assertEqual(p.returncode, 4, p.stderr + log)
         self.assertIn("is not inside the desktop", log)
+        self.assertIn("capture_verdict=INCOMPLETE", log)
         self.assertEqual(list((out / "shots").glob("*.png")), [])
+
+    def test_a_refusal_does_not_hide_a_failing_child(self):
+        p, out, log = self.capture("minimised", code=9)
+        self.assertEqual(p.returncode, 9, p.stderr + log)  # the child's own status stands
+        self.assertIn("capture_verdict=INCOMPLETE", log)  # and the incomplete set is still reported
+
+    def test_a_requested_capture_left_unfinished_when_the_window_ends_fails(self):
+        p, out, log = self.capture("short", code=0)
+        self.assertEqual(p.returncode, 4, p.stderr + log)
+        self.assertIn("unfinished=1", log)
+        self.assertEqual(list((out / "shots").glob("*.png")), [])
+
+    def test_a_missing_required_capture_fails(self):
+        p, out, log = self.capture("silent", code=0, require=1)
+        self.assertEqual(p.returncode, 4, p.stderr + log)
+        self.assertIn("requested=0 completed=0", log)
+        self.assertIn("required=1", log)
+        self.assertIn("capture_verdict=INCOMPLETE", log)
+
+
+class CaptureVerdict(unittest.TestCase):
+    '''The aggregate rule at its seam (no window, mocked results): the cases a desktop cannot make
+    deterministically, such as a grab of the wrong size and a watchdog kill. Not native coverage.'''
+
+    @classmethod
+    def setUpClass(cls):
+        if sys.platform != "win32":
+            raise unittest.SkipTest("skipping: the capture tool imports Win32 and Pillow (Windows only)")
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("skipping: Pillow is not installed (the capture tool imports it)")
+        spec = importlib.util.spec_from_file_location("dev_session_capture_under_test", CAPTURE)
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def test_all_requested_captures_done_is_success(self):
+        code, lines = self.mod.verdict(0, ["1", "2"], {"1": "ok", "2": "ok"}, 2)
+        self.assertEqual(code, 0)
+        self.assertIn("capture_verdict=complete", lines)
+
+    def test_a_size_mismatch_fails_with_a_clean_child(self):
+        code, lines = self.mod.verdict(0, ["1"], {"1": "mismatch"}, 0)
+        self.assertEqual(code, 4)
+        self.assertTrue(any("size_mismatch=1" in line for line in lines))
+
+    def test_an_unfinished_capture_and_too_few_captures_fail(self):
+        self.assertEqual(self.mod.verdict(0, ["1", "2"], {"1": "ok"}, 0)[0], 4)
+        self.assertEqual(self.mod.verdict(0, [], {}, 1)[0], 4)
+
+    def test_a_failing_child_status_is_kept_and_a_watchdog_is_named(self):
+        code, lines = self.mod.verdict(1, ["1"], {"1": "ok"}, 0, watchdog=True)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("watchdog" in line for line in lines))
 
 
 class SkipsAreNamed(unittest.TextTestResult):

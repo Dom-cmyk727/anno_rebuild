@@ -18,8 +18,10 @@ renderer, so it needs no display and no GPU. --gpu: a real window on the GPU ren
 ANNO_GPU_ADAPTER given by --adapter, default 0, with ANNO_REQUIRE_GPU=1); --trace also records the
 window trace (<out>/trace). The original game files are required (ANNO1503_GAME_DIR).
 The script's expectations are the assertions: a failed one ends the window with a non-zero status
-and a `FAIL` line in the session's script.log. The case passes only when the window exits 0, the
-log has no FAIL and its last step ran. Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped (no game
+and a `FAIL` line in the session's script.log. The case passes only when the window exits 0 and the
+session's script.log shows the script run: present, not empty, every non-wait step of the invoked script
+recorded in order up to its terminal `quit`, no FAIL line (tools/test/viewer_session.py). <case> may
+also be the path of a .script file (the contract tests). Exit: 0 pass, 1 fail, 2 bad arguments, 77 skipped (no game
 files; ctest SKIP_RETURN_CODE)."""
 import os
 import subprocess
@@ -29,6 +31,11 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # -I leaves the script's directory off the path
+import viewer_session  # noqa: E402
+
+# The window's watchdog; ANNO_VIEWER_WIRING_WATCHDOG_S shortens it for the contract tests (a test hook).
+WATCHDOG_S = int(os.environ.get("ANNO_VIEWER_WIRING_WATCHDOG_S", "300"))
 CASES = HERE / "tools" / "test" / "viewer_wiring"
 
 
@@ -54,7 +61,9 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         return 2
     exe, case = str(Path(pos[0]).resolve()), pos[1]
-    script = CASES / f"{case}.script"
+    # A case is a script of tools/test/viewer_wiring/, or (for the contract tests) the path of a script file.
+    script = Path(case) if case.endswith(".script") else CASES / f"{case}.script"
+    case = script.stem
     if not script.is_file() or not Path(exe).is_file():
         print(f"viewer_wiring: no such case or executable: {case} {exe}", file=sys.stderr)
         return 2
@@ -87,27 +96,30 @@ def main(argv):
     with open(err_path, "wb") as se:
         try:
             proc = subprocess.run([exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", renderer],
-                                  env=env, stdout=subprocess.PIPE, stderr=se, timeout=300)
+                                  env=env, stdout=subprocess.PIPE, stderr=se, timeout=WATCHDOG_S)
             rc = proc.returncode
         except subprocess.TimeoutExpired:
-            print("viewer_wiring: FAIL: the window did not end within 300 s (watchdog)")
+            print(f"viewer_wiring: FAIL {case}: the window did not end within {WATCHDOG_S} s (watchdog)")
             return 1
     elapsed = time.monotonic() - started
     log_file = out / "script.log"
-    log = log_file.read_text(encoding="utf-8").splitlines() if log_file.is_file() else []
-    fails = [line for line in log if "FAIL" in line]
-    steps = (CASES / f"{case}.script").read_text(encoding="utf-8")
-    last = [ln.strip() for ln in steps.splitlines() if ln.strip() and not ln.strip().startswith("#")][-1]
-    ran_to_end = last == "quit" and not fails and rc == 0
-    for line in log:
+    log_text = log_file.read_text(encoding="utf-8", errors="replace") if log_file.is_file() else None
+    for line in (log_text or "").splitlines():
         print(line)
     if flags["max_seconds"] is not None and elapsed > flags["max_seconds"]:
         print(f"viewer_wiring: FAIL {case}: the window took {elapsed:.1f} s, more than {flags['max_seconds']} s")
         return 1
-    if rc != 0 or fails or not ran_to_end:
-        print(f"viewer_wiring: FAIL {case}: window exit {rc}; {len(fails)} failed step(s); stderr {err_path}")
+    if rc != 0:
+        print(f"viewer_wiring: FAIL {case}: window exit {rc}; stderr {err_path}")
         return 1
-    print(f"viewer_wiring: PASS {case}: window exit 0 after {elapsed:.1f} s, no failed step; session {out}")
+    # Exit 0 is not evidence that the script ran: the session record must show it (viewer_session.py).
+    found = viewer_session.problems(script.read_text(encoding="utf-8"), log_text)
+    if found:
+        print(f"viewer_wiring: FAIL {case}: window exit 0 but the session record does not show the script run:")
+        for f in found:
+            print("  - " + f)
+        return 1
+    print(f"viewer_wiring: PASS {case}: window exit 0 after {elapsed:.1f} s, every step of the script recorded in order; session {out}")
     return 0
 
 

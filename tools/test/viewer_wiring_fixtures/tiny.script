@@ -1,0 +1,6 @@
+# a tiny script for the viewer_wiring contract (tools/test/viewer_wiring_contract_test.py)
+look 1 2
+key b
+wait frames 2
+checkpoint a
+quit

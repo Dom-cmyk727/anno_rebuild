@@ -24,3 +24,10 @@ if(ANNO_BUILD_TESTS AND WIN32 AND Python3_FOUND)
     COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/window_tools_contract_test.py)
   set_tests_properties(window_tools_contract PROPERTIES TIMEOUT 300)
 endif()
+if(ANNO_BUILD_TESTS AND Python3_FOUND)
+  # tools/test/viewer_wiring.py's verdict (W4-WIN-FINAL F1): a child that exits 0 passes only when the
+  # session record shows the invoked script ran. Tiny fixtures, no game files, every platform.
+  add_test(NAME viewer_wiring_contract
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring_contract_test.py)
+  set_tests_properties(viewer_wiring_contract PROPERTIES TIMEOUT 300)
+endif()

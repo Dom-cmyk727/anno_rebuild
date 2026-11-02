@@ -8489,7 +8489,7 @@ Exact-rational integer stepper (not original f32 noise; no runtime parity claime
 
 ## MAP.2 — MAP-NAV-3: finish navigation integration (2026-11-02) — status: READY FOR FINAL REVIEW (headless candidate; nothing merged or pushed)
 
-Branch `task/MAP-2-original-like`, start `4731d9a`, code/test head for the gates `30db4da797a6099857ee7849ad6ea40154b60dbb` (this report is documentation only on top of it). Mac, Apple Clang, `build/mac-headless` and `build/mac-asan`; Windows MSVC, Linux/WSL GCC and Clang `-Werror`, the Linux sanitizer lane, original-runtime captures and any performance gate are **NOT_RUN**.
+Branch `task/MAP-2-original-like`, start `4731d9a`, code/test head for the final gates `8ee8423bc6318a023ce4507db96e466d3f5547cb` (this report is documentation only on top of it). Mac, Apple Clang, `build/mac-headless` and `build/mac-asan`; Windows MSVC, Linux/WSL GCC and Clang `-Werror`, the Linux sanitizer lane, original-runtime captures and any performance gate are **NOT_RUN**.
 
 **Acceptance ledger (requirement -> evidence)**
 | Item | Result | Evidence |
@@ -8501,21 +8501,23 @@ Branch `task/MAP-2-original-like`, start `4731d9a`, code/test head for the gates
 | N4 health input (`NavMotion::health`, unknown = full-health adaptation), stream **123**, populated byte oracle | done; docs 12.14 | review CHANGES REQUIRED (one stale doc line, wording) -> fixed in `19a078f`; full-health-only mutant fails 4 cases (damaged arrival 8505 ticks against 6955); `tools/nav_state_ref.py` bytes compared with production archive bytes |
 | N5.2 production-scale measurements | done; docs 12.15; `cache/map2-nav3/n5/measure/` (first run) and `measure-after-sync-fix/` | found an O(ships x islands) cost in `RouteCache::sync` (per ship visit) -> fixed with `sync_once` per tick (`19a078f`), re-measured |
 | N5.3 canary, fresh-process replay, changed target | done | `cache/map2-nav3/sail/`: seat 0 546 tiles and seat 2 882 tiles, 35,481 Advances (177,405 ticks) to the last arrival, both found with `FoundCmd`, no relocation; `anno-sim-replay run`: entries 35505, checkpoints 19/19, final tick 177655, reproduced, exit 0; changed first target: `DIVERGED at entry 2002`, exit 1 (manual evidence; the in-process equivalents are CHECKs of the canary test) |
-| N5.4 gates | below | `cache/map2-nav3/gates/F2` |
-| N5.5 final integration review | see the closing section of this entry | |
+| N5.4 gates | below | `cache/map2-nav3/gates/F3` (F2 and F1 kept) |
+| N5.5 final integration review | fresh read-only reviewer: CHANGES REQUIRED, one P2 (below) and three P3 -> fixed in `8ee8423`; the fix then got a narrow re-review (see the closing section) | |
 
 **Failed and superseded runs (kept):** gate `F1` at `79ae02c` passed the five non-sanitizer lanes but its ASan/UBSan lanes FAILED (`island.hpp:123 signed integer overflow: 2147483647 + 1` in the N3 dirty rectangle, case `founding coordinates: occupancy sees an object on every tile, including above INT32_MAX`); fixed in `30db4da` (64-bit edges) and the whole set was re-run as `F2`. The first N5.2 run measured the sync cost above before the fix. The very first full-binary run during N1 (two `nav motion` cases) failed because the tests edited tickets in place without rebuilding the derived index; the tests were corrected (`f274aa2`).
 
-**Gate F2 (clean tree `30db4da`, `ANNO1503_GAME_DIR` set, `tools/test/run_selected.py`):**
+**Gates.** F2 (`30db4da`) passed all six lanes (266/265, 974/972, 82/82, 54/54, 266/265, 974/972; one and two opt-in skips). The final integration review then found a real P2 (`RouteCache::sync_once` keyed only on the tick, but two Advances can share a tick through `advance(0)` or odd millisecond steps while host commands and the AI change tiles between them: a continuous world could plan on a stale index that a reloaded one would not). Fixed in `8ee8423` (`begin_advance()` at the start of every Advance; the new test `route objects: two Advances that share a tick still see a change made between them` fails with a no-op `begin_advance`; also the dirty-cell counter underflow and the hidden 1280 fallback). Because scheduler code changed, the whole set was re-run:
+
+**Gate F3 (clean tree `8ee8423`, `ANNO1503_GAME_DIR` set, `tools/test/run_selected.py`):**
 | Gate | Selected | Executed | Failed / empty / incomplete | Skipped |
 |---|---:|---:|---|---:|
-| focused | 266 | 265 | 0 / 0 / 0 | 1 (opt-in `nav scale measurements`) |
-| sim all | 974 | 972 | 0 / 0 / 0 | 2 (opt-in: transport statistics, nav scale) |
+| focused | 267 | 266 | 0 / 0 / 0 | 1 (opt-in `nav scale measurements`) |
+| sim all | 975 | 973 | 0 / 0 / 0 | 2 (opt-in: transport statistics, nav scale) |
 | formats | 82 | 82 | 0 / 0 / 0 | 0 |
 | replay and references (incl. `nav_state_reference_agrees`, `ship_speed_factor_reference_agrees`) | 54 | 54 | 0 / 0 / 0 | 0 |
-| ASan/UBSan focused | 266 | 265 | 0 / 0 / 0 | 1 |
-| ASan/UBSan sim all | 974 | 972 | 0 / 0 / 0 | 2 |
-Pins: test binary sha256 `745f89ef...` (headless), `e0c7395d...` (asan); lint, `sim_stream.py --check`, figure-digest check and clang-format all 0. The older E2 logs (`eeb68b9`) remain valid history for MAP-NAV-2 only.
+| ASan/UBSan focused | 267 | 266 | 0 / 0 / 0 | 1 |
+| ASan/UBSan sim all | 975 | 973 | 0 / 0 / 0 | 2 |
+Test binary sha256 `4b03021b...` (headless); lint, `sim_stream.py --check`, figure-digest check and clang-format all 0. The fresh-process replay of the canary log was re-run with the F3 binaries (`cache/map2-nav3/sail/replay-*-8ee8423.out`): 35505 entries, 19/19 checkpoints, final tick 177655, reproduced, exit 0; changed target: `DIVERGED at entry 2002`, exit 1. The canary log itself was recorded at `79ae02c`-era code (before the 64-bit dirty-rectangle and `begin_advance` fixes, which do not change sailing behaviour on that voyage) and replays identically; the canary test case also ran inside F3.
 
 **Original rule versus approved adaptation (unchanged boundaries plus this packet):** original: stamp velocity, object predicate `((h + base) & 0xff) > 19`, health/cargo formula (RE 7.5). Adaptations: derived indexes and fair admission by tickets, any-object invalidation (the original refreshes only for coast/road objects), unknown health = full-health term, health in `NavMotion` with a new stream version 123, carried figures never sail on their own, `state_word & 1` rejected on carried figures (the port's own moving bit).
 

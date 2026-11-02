@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: bounded Windows final corrections; MAP building placement gameplay
+## Current dispatch — 2026-11-02: bounded Windows final corrections; MAP placement then ship unloading
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -14,13 +14,16 @@ requires the bounded W4-WIN-FINAL packet below; no rendering merge is approved.
 MAP-FOUND-3 and the corrected MAP-NAV-3 mechanics are accepted for their local
 headless scope. One bounded artifact-write reporting fix remains; it is the
 first package of MAP-BUILD-1 below, followed immediately by terrain-aware
-building placement. This dispatch changes only the Mac assignment; the entire
-Windows W4-WIN-FINAL packet remains in force without expansion.
+building placement. Owner continuation, 2026-11-02: after the corrected placement
+integration review, continue with MAP-CARGO-1 below so the actual opening loop
+can sail, found, unload and build. Do not interrupt or restart current placement
+work to adopt this continuation. This dispatch changes only the Mac assignment;
+the entire Windows W4-WIN-FINAL packet remains in force without expansion.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL READY.** Fix viewer verdict/present handling, close capture and reclaimer controls, and complete scoped sanitizer coverage under the approved corpus policy. Reuse unaffected GPU evidence; no main merge. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 READY.** Fix requested-artifact write verdicts, then implement and test evidenced terrain/height checks for ordinary building commands; preserve actual sailing/founding and expose any unloading dependency. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1, then MAP-CARGO-1 after placement review.** Complete terrain/height placement; after its corrected independent integration review, implement ship-to-own-warehouse unloading and prove the actual opening loop without stock grants. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · READY
 
@@ -904,15 +907,230 @@ does not implement fixes or delegate its review. The author fixes findings and
 obtains focused re-review before marking the package complete. No P1 alone is
 not acceptance: missing assigned behavior and actionable P2 defects still count.
 
-**Stop after E at one reviewed headless placement candidate.** The explicit
+**Checkpoint after E at one reviewed headless placement candidate.** The explicit
 two-canary alternative in D4 satisfies this packet's local acceptance, while
-the combined ship-start opening loop remains BLOCKED on unloading. Commit small
+the combined ship-start opening loop remains BLOCKED on unloading. Owner
+continuation (2026-11-02): once E's independent integration review approves the
+corrected placement work, preserve its exact acceptance pin and proceed directly
+to MAP-CARGO-1 below. No additional owner confirmation is required. If placement
+still has actionable findings or incomplete required behavior, finish it first;
+the continuation does not waive its acceptance. Commit small
 concerns on the existing MAP branch; no merge, rebase, prune, task-code push,
 TASKS edit, candidate selection/install, `game/` modification or Windows/W4 work.
 Road building, combat, hostile avoidance, mod runtime, economic-system expansion,
 new UI, coordinator and shared-test-workflow work are outside this packet.
 Preserve other jobs and the owner's awake assertion. Do not wait for another
 orchestrator prompt between the authorized packages.
+
+### MAP-CARGO-1 — unload the starting ship and build from its supplies · AUTHORIZED AFTER MAP-BUILD-1 REVIEW
+
+**Owner instruction, 2026-11-02:** implement ship unloading after the placement
+work is reviewed, so players can sail, found a warehouse and start building
+without test-only resource grants. This is a continuation on the same Mac
+`task/MAP-2-original-like` branch, starting from the corrected MAP-BUILD-1 E
+acceptance pin. No branch switch, main merge or restart of placement is needed.
+
+**Start condition:** MAP-BUILD-1's required placement behavior and gates are
+complete, its independent integration review and focused correction reviews
+approve, and its code/test/documentation pins are recorded. That review checkpoint
+unlocks U1; U1's corrected contract review unlocks U2. Continue U1–U5 without
+another owner prompt within the scope below. Unavailable external platform
+gates remain separately NOT_RUN; they do not become invented passes.
+
+**Outcome:** starting with an unchanged ship-start candidate and its real
+expedition loadout, players issue normal simulation commands to sail, found,
+unload their remaining materials into their own warehouse/city storage and build
+a supported ordinary building. Goods are conserved, refusals are unchanged-world
+operations, and replay/save/load preserve the result. No injected stock, modified
+loadout, altered building cost, relocation or direct commit bypass is permitted
+in this acceptance voyage. The stocked placement fixture remains useful for its
+own tests but cannot satisfy this outcome.
+
+**Scope:** manual ship-to-own-warehouse goods transfer through the headless
+command path. Excluded: loading city goods back aboard, automatic trade routes,
+buying/selling, foreign/allied warehouses, crew disembarkation, combat, new
+network transport, ship UI and rendering. Shared information is not ownership
+or trading permission. Peace and no alliances remain unchanged.
+
+#### Read order
+
+1. Re-read current main instructions, evidence contract and shared workflow at
+   the package boundary, this continuation and the accepted MAP-BUILD-1 report.
+   Preserve the existing host calibration, admission control and own-only awake
+   process discipline; do not replace a running gate or touch Windows/W4 jobs.
+2. Read MAP `docs/sim/{ship-start-integration,ship-founding,ship-navigation,
+   shared-visibility,state}.md`, `docs/re/{ship-founding,ship-navigation,
+   fire-and-ships,game-mechanics,production}.md` and relevant `docs/re/view.md`
+   command/menu evidence. Older fire-and-ships guesses lose precedence where
+   the later navigation/founding traces settled them. The manual's instruction
+   to unload after founding establishes the intended flow, not exact predicates.
+3. Read `src/sim/include/anno/sim/{command,figure,ship,city,production,types,
+   ids,world,replay,state_fields,config}.hpp`, the command/codec/apply/replay
+   implementation, `ship_orders.cpp`, `founding.cpp`, `founding_payment.cpp`,
+   `production.cpp` (`CityStock::add/remove`), `city_creation.cpp`, and the
+   original registry/ship-start loader. Follow the current paths if names moved.
+4. Read the ship-hold, command/refusal, founding-payment, city-stock,
+   navigation-health and replay tests plus the real sailed-founding canary.
+   Inspect existing original-file disassembly tooling/private environments;
+   do not repeat whole-home searches or install another toolchain needlessly.
+
+#### U1 — resolve the narrow unloading contract before implementation
+
+1. Trace the original manual-unload action from the ship/warehouse UI command
+   to the authoritative ship hold and city-stock changes. Record module hashes,
+   addresses, record fields, units and call boundaries in a focused
+   `docs/re/ship-cargo.md`; draft `docs/sim/ship-cargo.md` and an acceptance table.
+   Reuse existing cargo/stock readers and field evidence. Do not confuse a cart
+   or resident-walker unload with a ship unload, or infer manual transfer rules
+   solely from the automatic trade-route record.
+2. Resolve the predicates needed for the opening: eligible ship and warehouse,
+   owner, actual target instance/city, range/docking reference and rounding,
+   moving/embarked/disabled state, goods/hold selection, requested quantity and
+   allowed request granularity,
+   available cargo, stock capacity, zero/partial transfer and residual hold state.
+   Do not reuse founding's 12-tile click radius without unloading evidence, infer
+   permissions from shared visibility, or target a city anywhere on the island.
+3. Specify a minimal typed command and outcome: authenticated issuer; stable
+   ship/warehouse identity; explicit requested goods or hold and quantity; actual
+   transferred amount and refusal reason. Choose hold-versus-goods selection from
+   the evidence and document duplicate-hold behavior and stable deduction order.
+   Multiple commands may unload multiple holds; no unload-all feature is required.
+4. Pin exact units across widened `ShipHold::amount_88` and city storage (both
+   use 1/256-ton counts, with different integer widths). Specify checked arithmetic,
+   capacity and fractional remainders. The actual debit must equal the actual
+   credit; overflow, a full/over-capacity stock and an unsupported goods id cannot
+   erase cargo, reduce existing stock, mint goods or wrap. Inspect the existing
+   `CityStock::add` behavior before using its return value as a transfer amount.
+   Hardening/refusal of malformed states is an explicit rebuild adaptation;
+   preserve established ordinary-state behavior. A contradictory original rule
+   needing a new gameplay policy is a narrow question, not license to guess.
+5. Specify commit order, refusal atomicity, repeated/same-turn commands and
+   target demolition/replacement between submission and execution. Revalidate
+   live state when applying a command. Distinguish a second intentionally issued
+   unload from network retransmission; do not build a new deduplication subsystem.
+6. Independent read-only review must approve the exact contract and hand-derived
+   positive/negative examples before U2. If a required rule is still unread,
+   finish the bounded trace; if genuinely unavailable, record the exact blocker
+   and continue only independent authorized work. No always-reject command or
+   guessed radius can count as an unloading implementation.
+
+#### U2 — implement the command and conservative goods accounting
+
+1. Add the command through the existing public codec, dispatch, result and replay
+   paths. Keep current native tags/variant order stable; choose an unused tag and
+   handle version/compatibility according to the existing format contract. Do
+   not deserialize a client-supplied payer, owner or claimed credit as authority.
+2. Resolve current ship and target with existing indexes. Validate U1's predicates
+   and compute a transfer plan from current cargo and capacity before mutation.
+   Debit exactly what can be credited under the reviewed partial/exact policy;
+   leave the rest aboard. Preserve empty-hold normalization and crew, ownership,
+   territory and sharing state. No whole-world clone or per-request global scan
+   is needed for a targeted transfer.
+3. Commit the prepared hold and stock changes together through the appropriate
+   existing APIs; honor U1's associated accounting/callback effects. A refusal
+   changes no serialized bytes, PRNG, money, cargo, stock or simulation events.
+   Report the actual transfer through the established command outcome mechanism.
+   Never call a clamping or wrapping stock adder blindly and deduct the request.
+4. Ensure the existing cargo-dependent sailing factor observes the new hold
+   amounts at its documented segment boundary. Do not rewrite navigation health,
+   movement or change a running segment merely to make an unload test pass.
+5. Keep eligible content, hold counts, goods, capacities and range facts in the
+   registry/rules. Exercise another owner and data-defined ship/warehouse type;
+   no hardcoded player 0, four holds, type 1502/1302 or founding-material whitelist.
+   Preserve the faithful-rule/adaptation boundary; no mod runtime is required.
+6. Any new authoritative state or rules identity is serialized and hashed from
+   introduction, with a new unused version when required. If existing holds and
+   stock suffice, avoid gratuitous transfer state. Add independent command bytes
+   and any changed state vectors; version-negative tests reseal a valid control
+   and assert the version-specific reason. Review and correct U2 before U3.
+
+#### U3 — test transfers through the actual public command
+
+1. Start with legal owner, warehouse, distance and capacity so the positive
+   control transfers a known nonzero quantity permitted by U1's reviewed request
+   granularity. Separately test fractional stored balances and remainders with
+   exact conservation; fractional requests succeed or receive the specific
+   refusal required by that contract. Storage in 1/256-ton units does not by
+   itself authorize fractional manual requests. Assert both sides,
+   reported amount, unchanged unrelated goods and expected residual holds.
+   Vary one predicate at a time: wrong owner, distant ship, missing/replaced
+   warehouse, non-warehouse target, invalid hold/goods, zero/oversized request,
+   empty hold and full storage. For each refusal assert its intended reason and
+   unchanged world; earlier unrelated failures cannot satisfy the test.
+2. Cover duplicate goods in holds, near-full storage, stock already over capacity,
+   quantities near the two representations' bounds, and two ships unloading
+   into the same nearly full city in deterministic command order. Compare the
+   combined ship-plus-city quantity before/after in a wide checked accumulator.
+   A partial transfer is a documented outcome, not a successful loss of excess.
+3. Challenge the real consumer with two targeted wrong behaviors: crediting
+   without debiting, and debiting the requested amount despite limited credit.
+   Each must fail the intended conservation assertion with a valid positive
+   control. Use the normal codec/apply path, not only a transfer helper.
+4. Save/load immediately before and after a transfer, apply the next command,
+   and compare exact state/outcomes. Verify a recorded transfer in a fresh replay
+   process and a changed amount/target that diverges. Cover legitimate repeat
+   requests and stock contention; no cargo creation through replay or retries.
+5. Check changed cargo affects later sailing according to the existing speed
+   contract, and crew remain carried. Use cheap focused worlds for these checks;
+   no full voyage for every edge case. Independent review checks U3's causal
+   coverage and each actionable correction before the integrated canary.
+
+#### U4 — prove the real opening loop without fixture grants
+
+1. Extend the existing real-file canary on an unchanged candidate (a test input,
+   not candidate selection). Load the original start expedition and record all
+   starting holds, gold and empty city state. Exercise two participants with
+   different owners so the feature is not specific to the first seat.
+2. Through public commands only: sail, arrive, found the first warehouse, move
+   normally if U1's unloading position requires it, unload remaining wood/tools
+   or other required goods, then build a supported legal ordinary building under
+   MAP-BUILD-1. Identify a real affordable type from the registry. No altered
+   candidate loadout, synthetic free type, instant ship relocation, city-stock
+   injection or direct placement/transfer helper in the executed world.
+3. Keep an accounting ledger: starting cargo minus founding consumption minus
+   unloads equals remaining cargo; city credits minus building consumption and
+   separately observed simulation changes equal city stock; gold matches the
+   actual costs. Before unloading, show the same otherwise-valid build cannot
+   spend cargo still aboard. After unloading it succeeds and has the correct
+   terrain-derived height. Shared knowledge grants no access to a rival stock.
+4. Save/reload between founding and unloading and after unloading before build;
+   compare subsequent outcomes and final state with uninterrupted execution.
+   Replay one complete recorded opening in a fresh process with matched
+   checkpoints, then change an unload command and require divergence. Reuse the
+   voyage/recording where possible; do not multiply long runs for every assertion.
+5. Retain exact source, asset/candidate identities, commands, outcomes and log
+   hashes. Successful writes use A's corrected evidence writer. Independent
+   review checks the executed path contains no setup grants after initialization.
+
+#### U5 — final integration acceptance and stop
+
+1. Freeze source. Run cheap contracts/reference vectors, focused cargo/command/
+   placement/founding/navigation/replay cases and ASan/UBSan, then one affected
+   sim gate with the original files. Include formats/load only where changed.
+   Reuse valid placement results for unchanged paths with a dependency note;
+   do not repeat rendering, GPU, broad performance or coordinator suites.
+2. One fresh independent integration reviewer follows source holds -> authority/
+   range/capacity decision -> actual stock credit and cargo debit -> building
+   payment -> save/replay. It checks package corrections and the real opening
+   ledger. Fix actionable findings and narrowly re-review changed paths; prose
+   corrections do not trigger another broad gate campaign.
+3. Report the placement checkpoint separately from unloading completion, exact
+   source/tests/docs/workflow pins, selected/executed/failed/empty/skipped counts,
+   first failures, supported/unsupported rules, original facts versus adaptations
+   and external NOT_RUN lanes. Supply the small command/API handoff for later
+   Windows viewer integration, without editing that executor's files.
+
+**Final stop:** one independently reviewed headless sail -> found -> unload ->
+build candidate, with real conserved supplies and reproducible save/replay.
+Stocked placement fixtures alone do not satisfy this stop. If an essential
+unloading rule remains unresolved, report the precise partial status; never
+waive it by calling the command a stub or granting resources.
+
+The inherited independent read-only package review workflow applies throughout.
+Commit small concerns on the existing MAP branch. No main merge/rebase/prune,
+task-code push, TASKS edit, candidate installation/selection, original asset
+changes, Windows/W4 edits or unrelated infrastructure work. Stop only owned
+processes and the owned awake assertion when finished.
 
 ### MAP-NAV-3 — finish navigation integration and required scope · REVIEWED LOCAL MECHANICS; REPORTING FIX IN MAP-BUILD-1
 

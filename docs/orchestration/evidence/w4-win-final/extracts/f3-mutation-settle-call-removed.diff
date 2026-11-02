@@ -1,0 +1,13 @@
+diff --git a/src/app/tests/scene_picture_recovery_test.cpp b/src/app/tests/scene_picture_recovery_test.cpp
+index e508fbc..39889ac 100644
+--- a/src/app/tests/scene_picture_recovery_test.cpp
++++ b/src/app/tests/scene_picture_recovery_test.cpp
+@@ -217,7 +217,7 @@ void stalled_reclaimer_case(const ReclaimerPrelude& pre) {
+     }
+     // The call under test: without it a baseline can include foreign work that finishes during the
+     // case (W4-WIN-CLOSE C3: the unsigned difference wraps, the final equalities miss).
+-    REQUIRE(settle_reclaimer(reclaimer, std::chrono::seconds(30), pre.on_settle_poll));
++    // MUTANT: no settling before the baseline
+     reclaimer.set_test_gate([open] {
+         const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+         while (!open->load() && std::chrono::steady_clock::now() < give_up) {

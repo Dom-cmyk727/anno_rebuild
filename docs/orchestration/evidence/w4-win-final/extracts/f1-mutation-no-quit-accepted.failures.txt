@@ -1,0 +1,4 @@
+FAIL: test_a_script_without_a_terminal_quit_is_not_a_complete_run (__main__.ViewerWiringContract.test_a_script_without_a_terminal_quit_is_not_a_complete_run)
+AssertionError: 0 != 1 : ran line 1: look 1
+Ran 14 tests in 3.665s
+FAILED (failures=1)

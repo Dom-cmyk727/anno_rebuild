@@ -1,0 +1,13 @@
+diff --git a/tools/bench/dev_session_capture.py b/tools/bench/dev_session_capture.py
+index 3620a4e..26f34b0 100644
+--- a/tools/bench/dev_session_capture.py
++++ b/tools/bench/dev_session_capture.py
+@@ -121,7 +121,7 @@ def verdict(rc, requested, results, required, watchdog=False):
+     refused = sum(1 for r in results.values() if r == "refused")
+     mismatch = sum(1 for r in results.values() if r == "mismatch")
+     unfinished = sum(1 for n in requested if n not in results)
+-    complete = refused == 0 and mismatch == 0 and unfinished == 0 and done >= required
++    complete = refused == 0 and mismatch == 0 and done >= required
+     code = rc if rc != 0 else (0 if complete else 4)
+     lines = [f"captures requested={len(requested)} completed={done} refused={refused} size_mismatch={mismatch} "
+              f"unfinished={unfinished} required={required}",

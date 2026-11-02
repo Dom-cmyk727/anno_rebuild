@@ -1,0 +1,6 @@
+FAIL: test_a_requested_capture_left_unfinished_when_the_window_ends_fails (__main__.Capture.test_a_requested_capture_left_unfinished_when_the_window_ends_fails)
+AssertionError: 0 != 4 : captures requested=1 completed=0 refused=0 size_mismatch=0 unfinished=1 required=0
+FAIL: test_an_unfinished_capture_and_too_few_captures_fail (__main__.CaptureVerdict.test_an_unfinished_capture_and_too_few_captures_fail)
+AssertionError: 0 != 4
+Ran 19 tests in 47.510s
+FAILED (failures=2)

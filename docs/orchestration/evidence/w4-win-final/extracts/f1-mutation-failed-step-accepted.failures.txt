@@ -1,0 +1,4 @@
+FAIL: test_a_failed_step_does_not_pass_even_with_exit_0 (__main__.ViewerWiringContract.test_a_failed_step_does_not_pass_even_with_exit_0)
+AssertionError: 0 != 1 : ran line 2: look 1
+Ran 14 tests in 3.691s
+FAILED (failures=1)

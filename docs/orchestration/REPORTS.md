@@ -10316,3 +10316,39 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 - **Next smallest unit (not started):** the orchestrator's review; then (1) the timeout/heavy-suite policy for the two ASan-expensive corpus
   cases, (2) a `CAPTURE` of the reclaimer baseline in the stalled-reclaimer case so the next occurrence explains itself, (3) the named
   follow-ups (native 4K, Radeon window matrix, display latency, scaling).
+
+## W4-WIN-FINAL: verdict/capture contracts, CPU delivery, reclaimer path, complete sanitizer coverage — 2026-11-02 — status: REVIEW CANDIDATE
+
+- **Dispatch / identities:** `origin/main` `c30d830` (`TASKS.md` W4-WIN-FINAL and `reviews/2026-11-02-w4-win-close.md`, read without merging). Code frozen at
+  `8367dc0e02ba0d1a1e776ba4eaee7e55a5ef5db8`; `37da91b` adds a one-line `viewer_wiring.py` UTF-8 stdout fix (found by the first gate attempt); every
+  gate below records `37da91b` as its tested head. Documentation and the evidence subset follow. Commands, hashes, the numbered acceptance matrix and limits:
+  `docs/orchestration/evidence/w4-win-final/SUMMARY.md`; extracts and originals' hashes: `INDEX.md` there. Full logs stay local (`cache/`).
+- **F1** `tools/test/viewer_wiring.py` passes a session only when its record shows the script ran (`viewer_session.py`): reproduced false pass kept (zero-exit
+  fixture, no session), now FAIL; absent/empty/truncated/reordered/missing-step/wrong-script/extra/failed-step/no-quit/no-`session.txt` records fail at their own check,
+  the complete record passes first (`viewer_wiring_contract`, 14 tests; mutations over the whole file fail only their tests). `dev_session_capture.py` has an
+  aggregate verdict (exit 4 for refused/mismatched/unfinished/too few captures, a failing child's status preserved and logged apart; invalid grabs saved as `*.invalid`),
+  with native zero-exit and child-9 controls and mocked mismatch/watchdog cases (`window_tools_contract`, 19 tests). Retained C1/C2 sessions revalidate (VALID); superseded ones
+  fail only because the scripts changed. Independent review: CHANGES REQUIRED (green-run evidence, mismatch path, quit/session.txt cases, watchdog promptness) fixed; re-review APPROVE.
+- **F2** `Viewer::draw_cpu` checks `SDL_UpdateTexture`, `SDL_RenderTexture`, `SDL_RenderPresent`; a failed stage skips the later ones, keeps the command `NotPresented`,
+  names the call on stderr and retries at the 100 ms back-off; the same command becomes `Visible` after a delivered frame. Script seam `fail|pass update|submit|present`
+  hands the real call a null texture/renderer. Case `cpu_delivery_failures` (ctest, with `--expect-stderr`); mutants (forced success; real returns dropped on
+  update/submit, on present; no back-off) all fail at the intended step. A GCC pass for a viewer built without wgpu found an unused function and a damaged skip message
+  in `check_unix_warnings.sh` (both fixed). Review: CHANGES REQUIRED (seam masked real returns; back-off untested) fixed; re-review APPROVE.
+- **F3** the stalled-reclaimer body is `stalled_reclaimer_case`; the regression runs that body with gate-arranged foreign generations and a handshake from its own settling
+  poll; removing the settling call or making it return at once fails the final `waiting`/`bytes_waiting`/`in_flight` equalities with the counters in the message; the final waits use
+  a `waiting`+`in_flight` baseline predicate (a race the reviewer found). 5 + 5 focused repeats at the frozen head. Historical occurrence: documented uncertainty. Review: CHANGES
+  REQUIRED (racy wait; damaged script) fixed; re-review APPROVE.
+- **F4** the two full-corpus cases are `heavy`, with `TIMEOUT 8000` in sanitizer builds (a cmake script read after discovery; CTest's reader skips `if(TEST)`, found by
+  checking the generated metadata). Viewer-enabled ASan+UBSan WSL build (GPU library on, `SDL_UNIX_CONSOLE_BUILD=ON`; a GPU-off build fails `bench_picture` under GCC `-Werror`).
+- **Gates (canonical runner; selected / executed / failed / empty / skipped / incomplete):** native MSVC 220 / 218 / 0 / 0 / 2 opt-in / 0 PASS (first attempt kept:
+  workflow UTF-8 error); WSL warnings clean; WSL viewer-enabled ordinary lane 217 / 215 / 0 / 0 / 2 opt-in / 0, 0 sanitizer lines; **WSL corpus lane 2 / 2 / 0 / 0 / 0 / 0, 0 sanitizer
+  lines: `play: islands are the ones the sim placed` 5 303.65 s (5 492 assertions), `play: tick 0 matches the viewer…` 2 374.47 s (3 478 assertions)**, host load about 1, under the 8 000 s
+  timeout; RTX real-window canary PASS; 106-case RTX/Radeon gates reused from `07a7505` (no change to render/sim/formats/assets or `anno_app_core` sources since).
+- **Open / not done:** the whole-app sanitizer lane is now complete for the app, input and alloc suites in the viewer-enabled build, but not for other suites (render/formats/assets/sim under
+  sanitizers are outside this packet). Failure B's attribution stays historical. Not covered: a submit-only mutant; the `in_flight` leg of settling pinned by a single-foreign-scene
+  case; native 4K, Radeon real window, display latency, scale, OQ-525, terrain, roads, UI. W4-OPENING-1 is not started (queued behind the orchestrator's pin acceptance).
+- **Reviews:** F1, F2, F3 independent reviewers (read-only; each re-reviewed after fixes: APPROVE). The final integration review is recorded below.
+
+### Final integration review and heads
+
+(Recorded after the review returns.)

@@ -1,0 +1,3 @@
+exe sha256 ba5dd174b5fae2da171d5ff2baed3813651527b6734e380f4d85ec6c691e626e
+FAIL line 66 (expect): 152 frames since the note, at most 30 wanted
+viewer_wiring: FAIL cpu_delivery_failures: window exit 1; stderr E:\anno1503-worktrees\anno1503-W4-3\cache\f\mut\f2-no-backoff\session.stderr.txt

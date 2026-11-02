@@ -1,0 +1,4 @@
+FAIL: test_a_truncated_record_does_not_pass (__main__.ViewerWiringContract.test_a_truncated_record_does_not_pass)
+AssertionError: "truncated: 3 of the script's 4 non-wait steps" not found in 'ran line 2: look 1\nran line 3: key b\ncheckpoint a: turn 1, frames 2, outcome none, visibility NoVisualChange, title: x\nran line 5: checkpoint a\nviewer_wiring: FAIL tiny: window exit 0 but the session record does not show the script run:\n  - the last step of the script was not recorded\n' : ran line 2: look 1
+Ran 14 tests in 3.668s
+FAILED (failures=1)

@@ -1,0 +1,2 @@
+viewer_wiring: FAIL r1_held_publication: window exit 0 but the session record does not show the script run:
+  - no script.log in the session directory: the window did not record a script run

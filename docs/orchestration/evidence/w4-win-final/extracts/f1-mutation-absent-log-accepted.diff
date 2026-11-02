@@ -1,0 +1,12 @@
+diff --git a/tools/test/viewer_session.py b/tools/test/viewer_session.py
+index 57d1508..8aab605 100644
+--- a/tools/test/viewer_session.py
++++ b/tools/test/viewer_session.py
+@@ -37,6 +37,7 @@ def expected_records(text):
+ def problems(script_text, log_text):
+     """What is wrong with a session log (None: the file is absent) against the script that was invoked."""
+     if log_text is None:
++        return []  # MUTANT
+         return ["no script.log in the session directory: the window did not record a script run"]
+     lines = log_text.splitlines()
+     if not any(line.strip() for line in lines):

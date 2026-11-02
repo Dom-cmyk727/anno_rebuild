@@ -1,0 +1,4 @@
+FAIL: test_a_failing_child_fails_with_its_status (__main__.ViewerWiringContract.test_a_failing_child_fails_with_its_status)
+AssertionError: 0 != 1 : ran line 2: look 1
+Ran 14 tests in 3.771s
+FAILED (failures=1)

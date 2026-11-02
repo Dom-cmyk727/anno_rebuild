@@ -1,0 +1,4 @@
+head=37da91b901a0ead4ee4c45205a909e9e4b1eae8c clean=0
+build rc=0
+msvc-cpu-f2-final rc=0 COUNTS: selected=220 executed=218 failed=0 empty=0 skipped=2 (required-asset=0 platform=0 opt-in=2 gpu=0 other=0) incomplete=0 sanitizer_lines=0 VERDICT: PASS 
+done Mon Nov  2 09:29:22     2026

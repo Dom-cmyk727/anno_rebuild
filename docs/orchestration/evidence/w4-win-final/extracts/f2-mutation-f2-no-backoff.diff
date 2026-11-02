@@ -1,0 +1,13 @@
+diff --git a/src/app/src/viewer.cpp b/src/app/src/viewer.cpp
+index 9ff70b8..ada7051 100644
+--- a/src/app/src/viewer.cpp
++++ b/src/app/src/viewer.cpp
+@@ -1868,7 +1868,7 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
+                 "delivered frame, retrying (failure %llu of this stage)\n",
+                 failed_at, SDL_GetError(), static_cast<unsigned long long>(at_stage));
+         }
+-        back_off();
++        // MUTANT: no back_off()
+     } else {
+         cpu_stage_failures_[0] = cpu_stage_failures_[1] = cpu_stage_failures_[2] =
+             0; // a new episode says why again

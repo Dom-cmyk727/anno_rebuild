@@ -1,0 +1,3 @@
+exe sha256 ac15e6177e11b550260e2a3f067da4ff1d1f140b7f0022dbd4e4e9f413135ccc
+FAIL line 25 (wait): not over after 30000 ms (outcome #2 Applied turn 34, visibility Visible)
+viewer_wiring: FAIL cpu_delivery_failures: window exit 1; stderr E:\anno1503-worktrees\anno1503-W4-3\cache\f\mut\f2-drop-real-returns\session.stderr.txt

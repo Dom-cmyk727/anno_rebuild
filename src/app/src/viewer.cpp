@@ -18,7 +18,9 @@
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/frame_projection.hpp>
+#include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
 #ifdef ANNO_VIEWER_GPU
@@ -1383,6 +1385,19 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
             f["latest_moved"] = std::to_string(out.transferred_88);
         }
     }
+    // Every tracked command by its index (oldest first, the bounded list): its kind and its own state.
+    for (std::size_t i = 0; i < ui.tracked().size(); ++i) {
+        const Tracked& t = ui.tracked()[i];
+        std::string s = track_state_name(ui.state_of(t, feed));
+        for (char& c : s) {
+            if (c == ' ' || c == ',' || c == '(' || c == ')') {
+                c = '-';
+            }
+        }
+        f["tracked." + std::to_string(i) + ".state"] = s;
+        f["tracked." + std::to_string(i) + ".kind"] =
+            t.kind == TrackKind::Move ? "move" : t.kind == TrackKind::Stop ? "stop" : t.kind == TrackKind::Found ? "found" : "unload";
+    }
     for (const ShipView& s : v.ships) {
         const std::string p = "ship." + std::to_string(s.id.v) + ".";
         f[p + "x"] = std::to_string(s.pos.x >> 8);
@@ -1851,6 +1866,39 @@ void Viewer::script_tick() {
             script_->note("screenshot " + *act.screenshot + ": " + file + " (" + std::to_string(w) +
                           "x" + std::to_string(h) + " points at " + std::to_string(x) + "," +
                           std::to_string(y) + ", exit " + std::to_string(rc) + ")");
+        } else {
+            script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no ANNO_DEV_SESSION)");
+        }
+#elif defined(_WIN32)
+        // Windows: the CPU renderer's own frame buffer, else a copy of the window's client area from
+        // the desktop (the swapchain image of a GPU window). The size actually captured is logged.
+        if (dir != nullptr && *dir != 0) {
+            const std::filesystem::path file =
+                std::filesystem::path(dir) / (*act.screenshot + ".png");
+            std::string error, how;
+            int w = 0, h = 0;
+            if (!on_gpu() && !buffer_.empty() && tex_w_ > 0 && tex_h_ > 0) {
+                w = tex_w_;
+                h = tex_h_;
+                std::vector<std::uint8_t> rgba(static_cast<std::size_t>(w) * h * 4);
+                for (std::size_t i = 0; i < static_cast<std::size_t>(w) * h; ++i) {
+                    const std::uint32_t px = buffer_[i];
+                    rgba[i * 4] = static_cast<std::uint8_t>(px >> 16);
+                    rgba[i * 4 + 1] = static_cast<std::uint8_t>(px >> 8);
+                    rgba[i * 4 + 2] = static_cast<std::uint8_t>(px);
+                    rgba[i * 4 + 3] = 255;
+                }
+                error = write_png(file, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), rgba);
+                how = "CPU frame buffer";
+            } else {
+                error = capture_window_screen(window_, file, w, h);
+                how = "desktop copy of the window";
+            }
+            script_->note(error.empty()
+                              ? "screenshot " + *act.screenshot + ": " + file.string() + " (" +
+                                    std::to_string(w) + "x" + std::to_string(h) + " drawable px, " +
+                                    how + ")"
+                              : "screenshot " + *act.screenshot + ": NOT_RUN (" + error + ")");
         } else {
             script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no ANNO_DEV_SESSION)");
         }

@@ -1,0 +1,104 @@
+# W4-OPENING-1, stage 2 of the full opening: resumed at the coast of stage 1 (--resume <its save>), refused
+# foundings, the real founding, every hold unloaded from what the ship carries, a full store, and the first
+# two ordinary buildings, with the money and goods ledger. Launch:
+#   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200 --resume <save>
+wait frames 30
+expect fact ship.1.x == 257
+expect fact ship.1.y == 134
+expect fact cities == 0
+expect fact gold == 30000
+pick-ship 1
+expect fact selected == 1
+# A founding refused by the sim leaves everything as it was: a water tile of the island's rectangle...
+lookw 255 138
+wait frames 20
+key f
+click-land 257 134
+wait fact latest_kind == found within 10000
+wait fact latest == refused within 10000
+expect fact latest_reason != none
+expect fact cities == 0
+expect fact gold == 30000
+expect fact mode == select
+# ... and a coast far out of reach.
+lookw 150 250
+wait frames 20
+key f
+click-land 150 250
+wait fact tracked == 2 within 10000
+wait fact latest == refused within 10000
+expect fact cities == 0
+expect fact gold == 30000
+# The real founding, at the click whose origin the sim derives itself.
+lookw 255 138
+wait frames 20
+key f
+hover-land 255 138
+wait frames 10
+screenshot 3-founding-preview
+click-land 255 138
+wait fact tracked == 3 within 10000
+wait fact latest == accepted within 10000
+expect fact cities == 1
+expect fact gold == 29650
+expect fact ship.1.hold0 == 9728
+expect fact ship.1.hold2 == 11520
+screenshot 4-founded
+# Every hold of the ship into the warehouse, each by its own command.
+key u
+expect fact mode == unload
+key enter
+wait fact tracked == 4 within 10000
+wait fact latest == accepted within 10000
+expect fact store.42 == 9728
+expect fact ship.1.hold0 == 0
+key tab
+key enter
+wait fact tracked == 5 within 10000
+wait fact latest == accepted within 10000
+expect fact store.26 == 2560
+key tab
+key enter
+wait fact tracked == 6 within 10000
+wait fact latest == accepted within 10000
+expect fact store.41 == 11520
+key tab
+key enter
+wait fact tracked == 7 within 10000
+wait fact latest == accepted within 10000
+expect fact latest_moved == 1280
+expect fact store.41 == 12800
+expect fact ship.1.hold3 == 6400
+screenshot 5-unloaded
+# The store is full: the same hold again is refused and nothing moves.
+key enter
+wait fact tracked == 8 within 10000
+wait fact latest == refused within 10000
+expect fact latest_reason == StockFull
+expect fact ship.1.hold3 == 6400
+expect fact gold == 29650
+# The first two ordinary buildings, paid from the supplies the ship brought.
+key esc
+key esc
+expect fact selected == none
+key b
+wait frames 5
+select 1001
+click 251 137
+wait outcome
+expect outcome Applied
+wait fact gold == 29350 within 10000
+select 501
+click 250 141
+wait outcome
+expect outcome Applied
+wait turns 10
+expect fact gold == 29350
+expect fact store.42 == 7936
+expect fact store.41 == 12032
+expect fact store.26 == 2560
+wait drawn
+screenshot 6-built
+key f5
+wait fact save contains saved within 30000
+quit

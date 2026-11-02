@@ -47,7 +47,7 @@ anno_target_defaults(anno1503)
 if(ANNO_BUILD_VIEWER)
   # The play window's SDL mapping for the developer tool (round ee, B3): the window and its tests
   # link the same code.
-  add_library(anno_app_sdl src/sdl_input.cpp src/dev_script.cpp)
+  add_library(anno_app_sdl src/sdl_input.cpp src/dev_script.cpp src/window_capture.cpp)
   target_link_libraries(anno_app_sdl PUBLIC anno_app_core SDL3::SDL3)
   anno_target_defaults(anno_app_sdl)
   target_sources(anno1503 PRIVATE src/viewer.cpp)
@@ -129,6 +129,25 @@ if(ANNO_BUILD_TESTS)
                 --expect-stderr "CPU frame delivery failed (SDL_RenderPresent")
       set_tests_properties(viewer_wiring_cpu_delivery_failures PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      # W4-OPENING-1: the ship-start opening through the production window (CPU renderer, SDL's dummy
+      # driver). Controls: selection, the order gestures and their cancels, one short voyage. Session: the
+      # whole opening (launch, select, sail 550 tiles, save; resume, refused foundings, found, unload,
+      # build, ledger) and the replay of both recordings in fresh processes. They need the original files.
+      foreach(case opening_controls)
+        add_test(NAME viewer_wiring_${case}
+          COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/viewer_wiring.py
+                  $<TARGET_FILE:anno1503> ${case}
+                  --app-arg --ship-start
+                  --app-arg ${PROJECT_SOURCE_DIR}/data/maps/candidates/ship-start-v2/lan5-ship-a.json
+                  --app-arg --seat --app-arg 0 --app-arg --speed --app-arg 200)
+        set_tests_properties(viewer_wiring_${case} PROPERTIES
+          SKIP_RETURN_CODE 77 TIMEOUT 600 PROCESSORS 4)
+      endforeach()
+      add_test(NAME opening_session_replay
+        COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/opening_session.py
+                $<TARGET_FILE:anno1503>)
+      set_tests_properties(opening_session_replay PROPERTIES
+        SKIP_RETURN_CODE 77 TIMEOUT 1800 PROCESSORS 4)
     endif()
   endif()
   add_test(NAME anno1503_usage COMMAND anno1503 --view x.sze --group 3)

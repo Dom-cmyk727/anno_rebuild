@@ -1,0 +1,73 @@
+# W4-OPENING-1: the opening's controls through the production window (real SDL events), from the
+# ship-start launch: the adapter controls and one short voyage. Launch:
+#   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200
+# No command is made by anything but the pointer and the keys below.
+wait frames 20
+expect fact cities == 0
+expect fact gold == 30000
+expect fact selected == none
+expect fact tracked == 0
+expect fact tool == off
+# 1. Another participant's ship can be inspected, never ordered or stopped.
+lookw 652 680
+wait frames 20
+pick-ship 4
+expect fact selected == 4
+sail 652 664
+key h
+wait turns 3
+expect fact tracked == 0
+expect title inspect only
+# 2. Back to our own ship (seat 0, figure 1). A pan is not an order: a right drag and a left drag.
+lookw 312 680
+wait frames 20
+pick-ship 1
+expect fact selected == 1
+pan 80 0
+lpan 60 0
+wait turns 2
+expect fact tracked == 0
+expect fact selected == 1
+# 3. A cancelled press is not an order: focus lost, and Esc, between the press and the release.
+lookw 312 680
+wait frames 20
+rdown 312 664
+focus-lost
+rup 312 664
+rdown 312 664
+key esc
+rup 312 664
+wait turns 2
+expect fact tracked == 0
+expect fact selected == 1
+# 4. Land is not a target (the island's coast is far away: look there, order the land tile).
+lookw 255 138
+wait frames 20
+sail 255 138
+wait turns 2
+expect fact tracked == 0
+expect title land
+lookw 312 680
+wait frames 20
+# 5. A real order: acceptance, then arrival, each by its own order id.
+sail 312 664
+wait turns 2
+expect fact latest_kind == move
+wait fact latest == arrived within 60000
+expect fact ship.1.x == 312
+expect fact ship.1.y == 664
+expect fact tracked.0.state == arrived
+# 6. A second order replaces nothing that arrived: the first order's arrival is not its arrival.
+sail 312 640
+wait turns 3
+expect fact tracked == 2
+expect fact tracked.0.state == arrived
+expect fact latest != arrived
+expect fact latest_kind == move
+key h
+wait turns 3
+expect fact tracked == 3
+expect fact tracked.1.state == stopped
+expect fact tracked.2.kind == stop
+expect fact ship.1.order == 0
+quit

@@ -1,0 +1,26 @@
+# W4-OPENING-1, stage 1 of the full opening: from the ship-start launch, select the ship, sail to the
+# coast of the first island (about 550 tiles), arrive, and save. Launch:
+#   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200
+wait frames 20
+expect fact cities == 0
+expect fact gold == 30000
+screenshot 1-start
+pick-ship 1
+expect fact selected == 1
+lookw 257 134
+wait frames 20
+sail 257 134
+wait turns 3
+expect fact latest_kind == move
+lookw 312 600
+wait turns 20
+screenshot 2-underway
+wait fact latest == arrived within 600000
+wait turns 3
+expect fact ship.1.x == 257
+expect fact ship.1.y == 134
+expect fact cities == 0
+expect fact gold == 30000
+key f5
+wait fact save contains saved within 30000
+quit

@@ -83,6 +83,8 @@ if mode != "absent":
     # Bytes as the window writes them (LF, any argument byte); surrogate escapes stand for non-UTF-8 bytes.
     (session / "script.log").write_bytes(("\n".join(lines) + ("\n" if lines else "")).encode("utf-8", "surrogateescape"))
     (session / "child_ubsan_options.txt").write_text(os.environ.get("UBSAN_OPTIONS", "<unset>"), encoding="utf-8")
+    (session / "child_argv.txt").write_text("\n".join(sys.argv[1:]), encoding="utf-8")
+    (session / "child_env.txt").write_text(os.environ.get("ANNO_SAVE_DIR", "<unset>") + "|" + os.environ.get("ANNO_VIEW_AT", "<unset>"), encoding="utf-8")
     if mode != "no-session-txt":
         (session / "session.txt").write_text("map lan5\nspeed 100\n", encoding="utf-8")
 sys.exit(code)
@@ -96,10 +98,10 @@ class ViewerWiringContract(unittest.TestCase):
         (cls.tmp / "fixture.py").write_text(FIXTURE)
         if sys.platform == "win32":
             cls.exe = cls.tmp / "window.cmd"
-            cls.exe.write_text(f'@echo off\r\n"{sys.executable}" "{cls.tmp / "fixture.py"}"\r\nexit /b %ERRORLEVEL%\r\n')
+            cls.exe.write_text(f'@echo off\r\n"{sys.executable}" "{cls.tmp / "fixture.py"}" %*\r\nexit /b %ERRORLEVEL%\r\n')
         else:
             cls.exe = cls.tmp / "window.sh"
-            cls.exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{cls.tmp / "fixture.py"}"\n')
+            cls.exe.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{cls.tmp / "fixture.py"}" "$@"\n')
             cls.exe.chmod(cls.exe.stat().st_mode | stat.S_IXUSR)
         cls.n = 0
 
@@ -136,6 +138,24 @@ class ViewerWiringContract(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("PASS tiny" if kw.get("script", TINY) == TINY else "PASS", p.stdout)
         return p, out
+
+    # ---- W4-OPENING-1: another start than lan5 is launched with the caller's own arguments
+    def test_app_args_replace_the_default_command_line(self):
+        _, out = self.expect_pass(args=("--app-arg", "--ship-start", "--app-arg", "m.json", "--app-arg", "--seat",
+                                        "--app-arg", "0"))
+        argv = (out / "child_argv.txt").read_text(encoding="utf-8").split("\n")
+        self.assertEqual(argv, ["--ship-start", "m.json", "--seat", "0", "--renderer", "cpu"])
+        save_dir, view_at = (out / "child_env.txt").read_text(encoding="utf-8").split("|")
+        self.assertTrue(save_dir.endswith(f"{out.name}.saves"), save_dir)
+        self.assertEqual(view_at, "<unset>")  # the lan5 camera hook is not given to another start
+
+    def test_without_app_args_the_default_is_unchanged(self):
+        _, out = self.expect_pass()
+        argv = (out / "child_argv.txt").read_text(encoding="utf-8").split("\n")
+        self.assertEqual(argv[0], "--play")
+        self.assertTrue(argv[1].endswith("lan5.txt"), argv)
+        self.assertEqual(argv[2:], ["--renderer", "cpu"])
+        self.assertEqual((out / "child_env.txt").read_text(encoding="utf-8").split("|")[1], "1052,444")
 
     # ---- F1: the session record shows the invoked script ran
 

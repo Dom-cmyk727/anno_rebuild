@@ -3,6 +3,7 @@
 
     python -I tools/test/viewer_wiring.py <anno1503 executable> <case> [<new out dir>]
         [--gpu] [--trace] [--adapter N] [--env NAME=VALUE]... [--max-seconds S] [--expect-stderr TEXT]...
+        [--app-arg ARG]...
 
 <case> is one of the scripts under tools/test/viewer_wiring/ (without .script):
   r1_held_publication    R1: the title and the script read one consistent state while a publication
@@ -17,6 +18,9 @@ Default: the real viewer (src/app/src/viewer.cpp) with SDL's dummy video driver 
 renderer, so it needs no display and no GPU. --gpu: a real window on the GPU renderer (the
 ANNO_GPU_ADAPTER given by --adapter, default 0, with ANNO_REQUIRE_GPU=1); --trace also records the
 window trace (<out>/trace). The original game files are required (ANNO1503_GAME_DIR).
+--app-arg ARG (repeatable) replaces the default command line (`--play data/maps/lan5.txt`) with these
+arguments, in order: the ship-start opening cases launch `--ship-start <manifest> --seat 0 ...` (W4-OPENING-1);
+the savefiles go to <out dir>.saves (ANNO_SAVE_DIR). The renderer option is always added by this wrapper.
 The script's expectations are the assertions: a failed one ends the window with a non-zero status
 and a `FAIL` line in the session's script.log. The case passes only when the window exits 0, neither its
 stdout nor its stderr holds a sanitizer report, and the session's script.log shows the script run: present,
@@ -69,7 +73,8 @@ def main(argv):
     # gate reads this output back as UTF-8 (found by the first W4-WIN-FINAL gate run): say UTF-8.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
-    flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None, "stderr": []}
+    flags = {"gpu": False, "trace": False, "adapter": "0", "env": {}, "max_seconds": None, "stderr": [],
+             "app": []}
     pos = []
     it = iter(argv)
     for a in it:
@@ -83,6 +88,8 @@ def main(argv):
             flags["max_seconds"] = float(next(it, "0"))
         elif a == "--expect-stderr":
             flags["stderr"].append(next(it, ""))
+        elif a == "--app-arg":
+            flags["app"].append(next(it, ""))
         elif a == "--env":
             k, _, v = next(it, "=").partition("=")
             flags["env"][k] = v
@@ -108,6 +115,9 @@ def main(argv):
     out.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, ANNO_DEV_SCRIPT=str(script), ANNO_DEV_SESSION=str(out),
                ANNO_VIEW_SIZE="1280x720", ANNO_VIEW_AT="1052,444", ANNO_VIEW_QUIT_S="240")
+    if flags["app"]:
+        env.pop("ANNO_VIEW_AT")  # the lan5 centre means nothing for another start (the opening centres itself)
+        env["ANNO_SAVE_DIR"] = str(out.parent / f"{out.name}.saves")
     env.pop("ANNO_VIEW_TRACE", None)
     if flags["gpu"]:
         env.pop("SDL_VIDEODRIVER", None)
@@ -130,7 +140,8 @@ def main(argv):
     watchdog = False
     with open(err_path, "wb") as se, open(out_path, "wb") as so:
         try:
-            proc = subprocess.run([exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", renderer],
+            app_args = flags["app"] or ["--play", str(HERE / "data" / "maps" / "lan5.txt")]
+            proc = subprocess.run([exe, *app_args, "--renderer", renderer],
                                   env=env, stdout=so, stderr=se, timeout=WATCHDOG_S)
             rc = proc.returncode
         except subprocess.TimeoutExpired:

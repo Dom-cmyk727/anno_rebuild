@@ -493,7 +493,9 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             act.foreign = s.args[0] == "build" ? DevScriptAction::Foreign::Build
                                                : DevScriptAction::Foreign::Demolish;
         } else if (s.verb == "note") {
-            if (s.args[0] == "money" && s.args.size() == 1 && st.snapshot) {
+            if (s.args[0] == "frames" && s.args.size() == 1) {
+                noted_frames_ = st.frames;
+            } else if (s.args[0] == "money" && s.args.size() == 1 && st.snapshot) {
                 noted_money_ = st.snapshot->money;
             } else if (s.args[0] == "work" && s.args.size() == 2 && st.knowledge != nullptr &&
                        work_count(*st.knowledge, s.args[1])) {
@@ -522,6 +524,18 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                                                             : false;
                 if (!in_effect) {
                     fail(s, "'" + n + "' is not held now");
+                    break;
+                }
+            } else if (s.args[0] == "frames" && s.args.size() == 3 && s.args[1] == "at-most") {
+                const auto limit = integer(s.args[2]);
+                if (!noted_frames_ || !limit) {
+                    fail(s, "'expect frames at-most N' needs 'note frames' first and a number");
+                    break;
+                }
+                const auto drawn = static_cast<std::int64_t>(st.frames - *noted_frames_);
+                if (drawn > *limit) {
+                    fail(s, std::to_string(drawn) + " frames since the note, at most " +
+                                std::to_string(*limit) + " wanted");
                     break;
                 }
             } else if (s.args[0] == "failing" && s.args.size() == 2) {

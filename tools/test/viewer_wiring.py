@@ -98,7 +98,7 @@ def main(argv):
     with open(err_path, "wb") as se:
         try:
             proc = subprocess.run([exe, "--play", str(HERE / "data" / "maps" / "lan5.txt"), "--renderer", renderer],
-                                  env=env, stdout=subprocess.PIPE, stderr=se, timeout=WATCHDOG_S)
+                                  env=env, stdout=subprocess.DEVNULL, stderr=se, timeout=WATCHDOG_S)
             rc = proc.returncode
         except subprocess.TimeoutExpired:
             print(f"viewer_wiring: FAIL {case}: the window did not end within {WATCHDOG_S} s (watchdog)")
@@ -121,6 +121,9 @@ def main(argv):
             return 1
     # Exit 0 is not evidence that the script ran: the session record must show it (viewer_session.py).
     found = viewer_session.problems(script.read_text(encoding="utf-8"), log_text)
+    session_txt = out / "session.txt"
+    if not found and not (session_txt.is_file() and session_txt.stat().st_size > 0):
+        found = ["no session.txt in the session directory: the window did not write its session record"]
     if found:
         print(f"viewer_wiring: FAIL {case}: window exit 0 but the session record does not show the script run:")
         for f in found:

@@ -225,6 +225,12 @@ void stalled_reclaimer_case(const ReclaimerPrelude& pre) {
         }
     });
     const auto before = reclaimer.stats();
+    // Back at the baseline means nothing waits above it and nothing is still being destroyed above it
+    // (a scene leaves `waiting` when it is dequeued and `in_flight` when its destruction ends).
+    const auto back_at_baseline = [&] {
+        const auto s = reclaimer.stats();
+        return s.waiting <= before.waiting && s.in_flight <= before.in_flight;
+    };
     if (pre.after_baseline) {
         pre.after_baseline();
     }
@@ -260,8 +266,7 @@ void stalled_reclaimer_case(const ReclaimerPrelude& pre) {
         CHECK(picture.error().empty());
         open->store(true);
         const auto released = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (reclaimer.stats().waiting > before.waiting &&
-               std::chrono::steady_clock::now() < released) {
+        while (!back_at_baseline() && std::chrono::steady_clock::now() < released) {
             std::this_thread::yield();
         }
         CHECK(drain(picture, frames, 80));
@@ -272,8 +277,7 @@ void stalled_reclaimer_case(const ReclaimerPrelude& pre) {
     // The destruction of the picture releases what it still held; the reclaimer returns to its
     // baseline once it has destroyed them.
     const auto settled = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (reclaimer.stats().waiting > before.waiting &&
-           std::chrono::steady_clock::now() < settled) {
+    while (!back_at_baseline() && std::chrono::steady_clock::now() < settled) {
         std::this_thread::yield();
     }
     const auto end = reclaimer.stats();

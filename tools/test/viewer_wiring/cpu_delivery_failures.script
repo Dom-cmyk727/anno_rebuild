@@ -60,6 +60,10 @@ wait visibility NotPresented
 wait frames 20
 expect failing present
 expect visibility NotPresented
+# A failing delivery retries at the 100 ms back-off, not at the loop's rate: about ten frames a second.
+note frames
+wait ms 1000
+expect frames at-most 30
 checkpoint present_failing
 pass present
 wait drawn

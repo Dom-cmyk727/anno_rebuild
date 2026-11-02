@@ -104,7 +104,7 @@ check "GCC, viewer without GPU" "$gxx" "$common_defs -DANNO_WITH_VIEWER" "${app_
 if [ -n "$clangxx" ]; then
     check "Clang, viewer and GPU on" "$clangxx" "$common_defs $gpu_defs" "${all_files[@]}"
     check "Clang, viewer without GPU" "$clangxx" "$common_defs -DANNO_WITH_VIEWER" "${app_files[@]}"
-
+else
     echo "== Clang: skipped (no clang++-18 on PATH, none in ~/clang18, CLANGXX unset)"
 fi
 exit $status

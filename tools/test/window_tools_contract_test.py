@@ -200,6 +200,57 @@ class Capture(unittest.TestCase):
         self.assertIn("capture_verdict=INCOMPLETE", log)
 
 
+class CaptureMismatch(unittest.TestCase):
+    '''The size-mismatch path of capture() itself (the grab is replaced by one of the wrong size; the
+    window is a real tiny window of this process): no capture under a picture name, the invalid grab kept
+    under a name no picture glob matches, result "mismatch".'''
+
+    @classmethod
+    def setUpClass(cls):
+        if sys.platform != "win32":
+            raise unittest.SkipTest("skipping: the capture tool imports Win32 and Pillow (Windows only)")
+        try:
+            import PIL  # noqa: F401
+            import tkinter  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("skipping: Pillow or tkinter is not installed (the capture tool needs them)")
+        spec = importlib.util.spec_from_file_location("dev_session_capture_mismatch", CAPTURE)
+        cls.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.mod)
+
+    def run_capture(self, grab):
+        import tkinter
+        from PIL import Image
+
+        shots = Path(tempfile.mkdtemp(prefix="capture_mismatch_"))
+        root = tkinter.Tk()
+        root.geometry("420x300+300+200")
+        root.update()
+        self.addCleanup(root.destroy)
+        hwnd = self.mod.user32.GetAncestor(root.winfo_id(), 2)  # GA_ROOT
+        log = []
+        real = self.mod.ImageGrab.grab
+        self.mod.ImageGrab.grab = lambda bbox=None, all_screens=False: grab(bbox, Image)
+        try:
+            result = self.mod.capture(hwnd, "cmd1", shots, log)
+        finally:
+            self.mod.ImageGrab.grab = real
+        return result, shots, log
+
+    def test_control_a_grab_of_the_right_size_is_a_capture(self):
+        result, shots, log = self.run_capture(lambda bbox, Image: Image.new("RGB", (bbox[2] - bbox[0], bbox[3] - bbox[1])))
+        self.assertEqual(result, "ok", log)
+        self.assertTrue((shots / "cmd1-client.png").is_file())
+        self.assertEqual(list(shots.glob("*.invalid")), [])
+
+    def test_a_grab_of_the_wrong_size_is_never_saved_as_a_capture(self):
+        result, shots, log = self.run_capture(lambda bbox, Image: Image.new("RGB", (5, 5)))
+        self.assertEqual(result, "mismatch", log)
+        self.assertEqual(list(shots.glob("*.png")), [])
+        self.assertTrue((shots / "cmd1-client.invalid").is_file())
+        self.assertIn("GRAB SIZE MISMATCH", log[-1])
+
+
 class CaptureVerdict(unittest.TestCase):
     '''The aggregate rule at its seam (no window, mocked results): the cases a desktop cannot make
     deterministically, such as a grab of the wrong size and a watchdog kill. Not native coverage.'''

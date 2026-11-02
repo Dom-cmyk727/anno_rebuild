@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -37,6 +38,8 @@ MODES = {
     "extra-record": (GOOD + ["ran line 7: key n"], 0),
     "failed-step": (GOOD[:2] + ["FAIL line 3 (key): unknown key"] + GOOD[2:], 0),
     "child-fails": (GOOD, 7),
+    "no-session-txt": (GOOD, 0),
+    "noquit": (["ran line 1: look 1"], 0),
 }
 
 FIXTURE = r"""
@@ -50,6 +53,8 @@ lines, code = eval(os.environ["FIXTURE_RECORD"])
 if mode != "absent":
     session.mkdir(parents=True)
     (session / "script.log").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    if mode != "no-session-txt":
+        (session / "session.txt").write_text("map lan5\nspeed 100\n", encoding="utf-8")
 sys.exit(code)
 """
 
@@ -120,7 +125,24 @@ class ViewerWiringContract(unittest.TestCase):
         self.expect_failure("child-fails", "window exit 7")
 
     def test_a_hung_window_is_killed_by_the_watchdog(self):
+        started = time.monotonic()
         self.expect_failure("hang", "(watchdog)", {"ANNO_VIEWER_WIRING_WATCHDOG_S": "2"})
+        self.assertLess(time.monotonic() - started, 30.0)  # killed promptly, not when the fixture's 60 s sleep ends
+
+    def test_a_record_without_the_window_session_files_does_not_pass(self):
+        self.expect_failure("no-session-txt", "no session.txt in the session directory")
+
+    def test_a_script_without_a_terminal_quit_is_not_a_complete_run(self):
+        noquit = self.tmp / "noquit.script"
+        noquit.write_text("look 1 2\n")
+        type(self).n += 1
+        out = self.tmp / f"session{self.n}"
+        env = dict(os.environ, ANNO1503_GAME_DIR=str(self.tmp), FIXTURE_MODE="noquit",
+                   FIXTURE_RECORD=repr(MODES["noquit"]))
+        p = subprocess.run([sys.executable, "-I", str(WIRING), str(self.exe), str(noquit), str(out)],
+                           env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertIn("does not end with quit", p.stdout)
 
     def test_a_missing_game_dir_is_a_named_skip_not_a_pass(self):
         env = {k: v for k, v in os.environ.items() if k != "ANNO1503_GAME_DIR"}

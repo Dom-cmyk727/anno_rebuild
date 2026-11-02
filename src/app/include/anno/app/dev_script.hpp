@@ -32,12 +32,15 @@
 //                         ends when a builder waits in the gate. `expect held NAME` (NAME as above
 //                         or `publication`) requires the hold to be in effect now.
 //   fail update | submit | present   (CPU window) make that stage of the CPU frame's delivery
-//   report failure
-//                         to the window: `update` SDL_UpdateTexture, `submit` SDL_RenderTexture,
-//                         `present` SDL_RenderPresent. The real call is made and its result
-//                         overridden (the SDL error text says so); the window's own
-//                         result-to-visibility path is the consumer under test. `pass STAGE` ends
-//                         it; `expect failing STAGE` requires it.
+//   really
+//                         fail: `update` SDL_UpdateTexture, `submit` SDL_RenderTexture, `present`
+//                         SDL_RenderPresent are called with an invalid object (a null texture or
+//                         renderer), so SDL itself returns false and the window reads that result
+//                         as it would any other. `pass STAGE` ends it; `expect failing STAGE`
+//                         requires it.
+//   note frames           remember the frames drawn so far; `expect frames at-most N` requires at
+//   most N
+//                         frames since (a retry that backs off draws about ten a second)
 //   resize W H            ask the window for a drawable of W x H points (a new surface epoch)
 //   wait visibility NAME  ends when the latest applied command's change is at NAME
 //   (visibility_name) hold publication      arm the publication hold (publication_hold.hpp): the
@@ -230,6 +233,7 @@ class DevScript {
     std::optional<std::uint64_t> wait_frames_, wait_turn_;
     std::optional<double> wait_ms_;
     std::optional<std::int64_t> noted_money_;
+    std::optional<std::uint64_t> noted_frames_;
     std::map<std::string, std::int64_t> noted_work_;
     std::size_t presses_ = 0;
     std::vector<std::string> log_;

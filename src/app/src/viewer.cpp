@@ -510,7 +510,6 @@ class Viewer {
     /// bit 0 SDL_UpdateTexture, 1 SDL_RenderTexture, 2 SDL_RenderPresent) and how many frames
     /// failed.
     std::uint8_t cpu_fail_ = 0;
-    std::uint64_t cpu_delivery_failures_ = 0;
     std::uint64_t cpu_stage_failures_[3] = {0, 0, 0}; // per stage, for the diagnostic's rate limit
     std::uint64_t surface_epoch_ = 0;
     std::uint64_t drawn_frames_ = 0;
@@ -1835,30 +1834,32 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
     std::size_t failed_idx = 0;
     const auto stage = [&](std::uint8_t bit, const char* name, bool ok) {
         const std::size_t idx = bit == 1 ? 0 : bit == 2 ? 1 : 2;
-        if ((cpu_fail_ & bit) != 0) {
-            ok = false;
-            SDL_SetError("forced to fail by the script seam");
-        }
         if (!ok) {
             delivered = false;
             failed_at = name;
             failed_idx = idx;
         }
     };
-    stage(1, "SDL_UpdateTexture", SDL_UpdateTexture(texture_, nullptr, buffer_.data(), w * 4));
+    // The script seam (fail STAGE) hands the stage's real SDL call an invalid object (a null
+    // texture or renderer), so SDL itself reports the failure and the window reads it like any
+    // other.
+    const bool bad_update = (cpu_fail_ & 1) != 0, bad_submit = (cpu_fail_ & 2) != 0,
+               bad_present = (cpu_fail_ & 4) != 0;
+    stage(1, "SDL_UpdateTexture",
+          SDL_UpdateTexture(bad_update ? nullptr : texture_, nullptr, buffer_.data(), w * 4));
     if (delivered) {
-        stage(2, "SDL_RenderTexture", SDL_RenderTexture(renderer_, texture_, nullptr, nullptr));
+        stage(2, "SDL_RenderTexture",
+              SDL_RenderTexture(renderer_, bad_submit ? nullptr : texture_, nullptr, nullptr));
     }
     const auto present_start = Clock::now();
     steps_.push_back({"texture copy", since_ms(rendered, present_start)});
     if (delivered) {
-        stage(4, "SDL_RenderPresent", SDL_RenderPresent(renderer_));
+        stage(4, "SDL_RenderPresent", SDL_RenderPresent(bad_present ? nullptr : renderer_));
     }
     steps_end_ = Clock::now();
     if (!delivered) {
         // The change (if any) stays pending (frame_done below gets false); draw again shortly, at
         // the usual 100 ms back-off, and say why: the first failure and every hundredth after it.
-        ++cpu_delivery_failures_;
         std::uint64_t& at_stage = cpu_stage_failures_[failed_idx];
         if (at_stage++ % 100 == 0) {
             std::fprintf(
@@ -1868,6 +1869,9 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
                 failed_at, SDL_GetError(), static_cast<unsigned long long>(at_stage));
         }
         back_off();
+    } else {
+        cpu_stage_failures_[0] = cpu_stage_failures_[1] = cpu_stage_failures_[2] =
+            0; // a new episode says why again
     }
     if (play_ != nullptr) {
         // The CPU path has no GPU copy: a fresh chunk was drawn into this frame's buffer.

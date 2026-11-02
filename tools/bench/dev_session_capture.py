@@ -16,7 +16,7 @@ desktop compositor shows; the window is raised topmost for the capture):
 The log (<out>/capture.log) lists every capture with the window rectangle, the client rectangle and the
 DPI scale. A capture of a minimised window, or of one whose client area is not inside the virtual desktop, is refused
 and logged, never saved as a picture of the game; a grab whose size is not the rectangle's is saved only as
-<name>-<part>-INVALID.png, never under the name of a capture. Being covered by another window is handled by
+<name>-<part>.invalid, never under the name of a capture. Being covered by another window is handled by
 raising the window topmost for the capture, not detected.
 
 Verdict and exit status (W4-WIN-FINAL F1): a capture is requested for every command receipt the title shows
@@ -104,7 +104,8 @@ def capture(hwnd, name, shots, log):
         img = ImageGrab.grab(bbox=box, all_screens=True)
         valid = img.size == (box[2] - box[0], box[3] - box[1])
         ok = ok and valid
-        img.save(shots / (f"{name}-{suffix}.png" if valid else f"{name}-{suffix}-INVALID.png"))
+        # A grab of the wrong size is kept for inspection under a name no picture glob matches.
+        img.save(shots / (f"{name}-{suffix}.png" if valid else f"{name}-{suffix}.invalid"), format="PNG")
     (shots / f"{name}-title.txt").write_text(title + "\n", encoding="utf-8")
     user32.SetWindowPos(hwnd, wt.HWND(-2), 0, 0, 0, 0, 0x43)  # HWND_NOTOPMOST
     log.append(f"{name}: window {win} client {cl} ({cl[2]-cl[0]}x{cl[3]-cl[1]} px) title: {title}"

@@ -61,6 +61,19 @@ struct RouteTerrainOptions {
 /// negative h wraps and blocks).
 [[nodiscard]] bool object_tile_blocks(std::int64_t h, std::uint32_t base);
 
+/// The terrain options the ship mover and its tests use (docs/sim/ship-navigation.md 12.10): the
+/// coast index reads TERRAIN ONLY. Placed objects are history-dependent state (island growth sets
+/// and clears them without any command), so an index that included them would differ between a
+/// world that ran continuously and the same world after a save and load, which breaks replay. The
+/// original builds its coarse map per island at placement and refreshes it only for coast and road
+/// objects (a flag the sim does not model yet); modelling that flag with hashed state is the path
+/// back to object blocking.
+[[nodiscard]] inline RouteTerrainOptions ship_route_terrain_options() {
+    RouteTerrainOptions o;
+    o.objects_block = false;
+    return o;
+}
+
 class WorldTileSource final : public TileSource {
   public:
     /// The islands of a world in slot order, its type registry and its settings' width and height.

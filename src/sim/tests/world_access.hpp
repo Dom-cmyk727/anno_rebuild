@@ -32,6 +32,7 @@ struct WorldTestAccess {
     static EventQueue& events(World& w) { return w.events_; }
     static ScriptTimers& timers(World& w) { return w.timers_; }
     static MonopolyTable& monopoly(World& w) { return w.monopoly_; }
+    static RouteCache& route_cache(World& w) { return w.route_cache_; }
     static std::uint32_t& event750_acc(World& w) { return w.event750_acc_; }
     static bool& faulted(World& w) { return w.faulted_; }
     static SimOutput& output(World& w) { return w.out_; }

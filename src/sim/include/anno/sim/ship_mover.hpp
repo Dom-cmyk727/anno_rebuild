@@ -6,13 +6,20 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include <anno/sim/figure.hpp>
+#include <anno/sim/route.hpp>
 #include <anno/sim/tick.hpp>
 
 namespace anno::sim {
 
 class World;
+
+/// The node list of a route (12.7): turn nodes before the first run only, then one movement node
+/// per run, from the facing at plan time. Exposed for the `plannodes` vectors.
+[[nodiscard]] std::vector<NavNode> nav_nodes_of_runs(const std::vector<RouteRun>& runs,
+                                                     unsigned facing, const NavFacts& facts);
 
 struct ShipMover {
     /// One visit at the world tick `ctx.t`. `plans_started` counts the route plans admitted in the

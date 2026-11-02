@@ -5,7 +5,7 @@
 namespace anno::sim {
 
 struct RouteCache::Impl {
-    explicit Impl(const World& w) : source(w), index(source, {}) {}
+    explicit Impl(const World& w) : source(w, ship_route_terrain_options()), index(source, {}) {}
     WorldTileSource source;
     CoastIndex index;
 };
@@ -17,9 +17,12 @@ RouteCache& RouteCache::operator=(const RouteCache&) {
     impl_.reset();
     return *this;
 }
-RouteCache::RouteCache(RouteCache&&) noexcept {}
-RouteCache& RouteCache::operator=(RouteCache&&) noexcept {
+RouteCache::RouteCache(RouteCache&& other) noexcept {
+    other.impl_.reset(); // the source points into the old owner
+}
+RouteCache& RouteCache::operator=(RouteCache&& other) noexcept {
     impl_.reset();
+    other.impl_.reset();
     return *this;
 }
 

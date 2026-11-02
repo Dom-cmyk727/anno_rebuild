@@ -85,8 +85,8 @@ class RegistryShips final : public ShipSpatialView {
 
 /// The route nodes of the plan (12.7): turn nodes before the first run only, then one movement node
 /// per run. A diagonal run is `steps * L_d` long, an axis run `steps` units.
-std::vector<NavNode> nodes_of(const std::vector<RouteRun>& runs, unsigned facing,
-                              const NavFacts& facts) {
+std::vector<NavNode> nav_nodes_of_runs_impl(const std::vector<RouteRun>& runs, unsigned facing,
+                                            const NavFacts& facts) {
     std::vector<NavNode> nodes;
     const int want = 2 * runs.front().dir;
     int diff = (want - static_cast<int>(facing)) & 15;
@@ -168,7 +168,7 @@ class WorldPlanner final : public NavPlanner {
                 return out;
             }
             out.kind = NavPlanKind::Nodes;
-            out.nodes = nodes_of(r.runs, ship.dir16, facts_);
+            out.nodes = nav_nodes_of_runs(r.runs, ship.dir16, facts_);
             return out;
         case RouteStatus::Arrived:
             out.kind = NavPlanKind::Arrived;
@@ -211,6 +211,11 @@ SimEvent event_of(const NavEvent& e, const Figure& ship, std::uint64_t tick) {
 }
 
 } // namespace
+
+std::vector<NavNode> nav_nodes_of_runs(const std::vector<RouteRun>& runs, unsigned facing,
+                                       const NavFacts& facts) {
+    return nav_nodes_of_runs_impl(runs, facing, facts);
+}
 
 void ShipMover::visit(World& w, const TickContext& ctx, Figure& ship, Effects& fx,
                       std::uint32_t& plans_started) {

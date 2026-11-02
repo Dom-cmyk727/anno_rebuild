@@ -741,7 +741,8 @@ TEST_CASE("stepper: turn segments run at V = 100, a planner turn node ends on it
     CHECK(f.nav->seg.kind == sim::NavSegKind::Move);
     CHECK(f.nav->seg.factor_percent == 65); // movement reads V
     CHECK((f.state_word & 1U) == 1U);
-    CHECK(f.dir16 == 8); // from 7 the heading E (8) is one sixteenth away: no phase, the facing snaps
+    CHECK(f.dir16 ==
+          8); // from 7 the heading E (8) is one sixteenth away: no phase, the facing snaps
 }
 
 TEST_CASE("stepper: the stepper's own turn phase sets the moving bit") {

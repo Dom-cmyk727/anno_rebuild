@@ -12,22 +12,21 @@ ApplyResult refuse(Reject r) {
     return out;
 }
 
-/// The checks both commands share (1, 2, 3, 4, 6 of 12.1), in the documented order.
+/// The checks both commands share, in the order of the contract table (12.1): 1 the figure exists,
+/// 2 the issuer owns it, 3 it navigates, 4 its state allows an order. Check 5 (the target, MoveCmd
+/// only) and 6 (not a crew child) follow in the callers.
 Reject check_ship(const World& w, const TypeRegistry& types, const Rules& rules, PlayerId issuer,
                   FigureId id, const Figure*& out) {
     const Figure* ship = find_figure(w.figures(), id);
     if (ship == nullptr) {
         return Reject::UnknownFigure;
     }
-    const FigureType* type = types.find_figure_type(ship->kind);
-    if (type == nullptr || !type->nav.has_value() || !ship->nav.has_value()) {
-        return Reject::NotAShip;
-    }
     if (ship->owner != issuer) {
         return Reject::NotShipOwner;
     }
-    if (ship->parent.valid()) {
-        return Reject::ShipEmbarked;
+    const FigureType* type = types.find_figure_type(ship->kind);
+    if (type == nullptr || !type->nav.has_value() || !ship->nav.has_value()) {
+        return Reject::NotAShip;
     }
     if ((ship->state_word & rules.nav.move_blocked_mask) != 0) {
         return Reject::ShipDisabled;
@@ -52,6 +51,9 @@ ApplyResult ShipOrders::move(World& w, const Command& command, const MoveCmd& cm
         cmd.target_y_q8 >= height_q8) {
         return refuse(Reject::BadValue);
     }
+    if (checked->parent.valid()) {
+        return refuse(Reject::ShipEmbarked); // 6
+    }
     // The counters are spent only after every check; a counter at its maximum is refused.
     if (w.ids_.next_order_id == ~std::uint64_t{0} ||
         (!checked->nav->ticket.has_value() && w.ids_.next_ticket == ~std::uint64_t{0})) {
@@ -73,6 +75,9 @@ ApplyResult ShipOrders::stop(World& w, const Command& command, const StopCmd& cm
     if (const Reject r = check_ship(w, *w.types_, w.rules_, command.issuer, cmd.ship, checked);
         r != Reject::None) {
         return refuse(r);
+    }
+    if (checked->parent.valid()) {
+        return refuse(Reject::ShipEmbarked); // 6
     }
     Figure& ship = *find_figure(w.figures_, cmd.ship);
     nav_stop_motion(ship);

@@ -1,16 +1,24 @@
 // MoveCmd / StopCmd, the mover and the fair planning admission (task MAP-NAV-2 package E; contract
 // docs/sim/ship-navigation.md 2, 12.1, 12.2). Synthetic: an open 512 x 512 sea, no game files.
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include <doctest/doctest.h>
 
 #include <anno/sim/command.hpp>
+#include <anno/sim/island.hpp>
 #include <anno/sim/replay.hpp>
+#include <anno/sim/route.hpp>
+#include <anno/sim/route_world.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/ship.hpp>
+#include <anno/sim/ship_mover.hpp>
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/world.hpp>
@@ -37,7 +45,8 @@ struct Spec {
     std::uint32_t ships = 1;
     std::uint32_t scouts = 0; // plain figures after the ships (registry filler)
     std::uint32_t players = 2;
-    bool crew = false; // a scout and a donkey aboard ship 1
+    bool crew = false;                  // a scout and a donkey aboard ship 1
+    std::uint32_t first_four_owner = 0; // the owner of ships 1..4 (the others belong to player 0)
 };
 
 sim::ScenarioSpec spec_of(const Spec& s) {
@@ -51,7 +60,7 @@ sim::ScenarioSpec spec_of(const Spec& s) {
     for (std::uint32_t i = 0; i < s.ships; ++i) {
         sim::ScenarioSpec::FigureSpec f;
         f.kind = kShip;
-        f.owner = sim::PlayerId{0};
+        f.owner = sim::PlayerId{i < 4 ? s.first_four_owner : 0};
         f.pos = sim::FixedPos{tile_c(20), tile_c(64 + 3 * static_cast<int>(i))};
         f.dir16 = 8;
         spec.figures.push_back(f);
@@ -526,4 +535,285 @@ TEST_CASE(
     REQUIRE(sim::replay(fresh3, b).ok());
     CHECK(fresh3.state_hash() == hb);
     CHECK(fresh3.state_hash() != ha);
+}
+
+namespace {
+
+/// The admission adversary of 12.2: ships 1..4 are "greedy" (re-commanded on every Advance to stay
+/// where they are: the route answers Arrived at once, so they are ready at every visit and consume
+/// a quota unit each time), ship 5 is the victim (ordered once, or re-asked on every Advance).
+/// Returns the Advance at which the victim's order was routed (0 = never within `limit`) and the
+/// most plans any Advance started.
+struct Starvation {
+    int served_at = 0;
+    int max_plans_per_advance = 0;
+    int plans_total = 0;
+};
+
+Starvation starve(const Spec& spec, bool victim_reasks, int limit) {
+    sim::World w = make_world(spec);
+    const auto issuer = [&](std::uint64_t id) { return id <= 4 ? spec.first_four_owner : 0U; };
+    const auto stay = [&](std::uint64_t id) {
+        const sim::FixedPos p = ship(w, id).pos;
+        return sim::Command{sim::PlayerId{issuer(id)},
+                            sim::MoveCmd{sim::FigureId{id}, (p.x / kTile) * kTile + 128,
+                                         (p.y / kTile) * kTile + 128}};
+    };
+    for (std::uint64_t id = 1; id <= 4; ++id) {
+        REQUIRE(w.apply(stay(id)).ok());
+    }
+    REQUIRE(w.apply(move(0, 5, 220, 130)).ok()); // the youngest ticket
+    Starvation out;
+    for (int adv = 1; adv <= limit; ++adv) {
+        w.advance(10);
+        int plans = 0;
+        for (const sim::SimEvent& e : w.drain_events()) {
+            if (e.kind == sim::SimEventKind::ShipArrived) {
+                ++plans; // a greedy ship's plan (Arrived)
+            }
+        }
+        const sim::NavMotion& v = *ship(w, 5).nav;
+        if (out.served_at == 0 && v.order.has_value() && v.order->routed) {
+            out.served_at = adv;
+            ++plans;
+        }
+        out.max_plans_per_advance = std::max(out.max_plans_per_advance, plans);
+        out.plans_total += plans;
+        for (std::uint64_t id = 1; id <= 4; ++id) {
+            REQUIRE(w.apply(stay(id)).ok());
+        }
+        if (victim_reasks && out.served_at == 0) {
+            REQUIRE(w.apply(move(0, 5, 220 + adv % 3, 130)).ok());
+        }
+        REQUIRE(w.check_invariants().empty());
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE(
+    "admission: greedy ready ships cannot starve the oldest waiter (the first-come rule does)") {
+    // 100 slots, ten visited per Advance, quota four: whenever the window holds the four greedy
+    // ships and the victim, a first-come rule serves the greedy ones first and, because they are
+    // ready at every visit and re-commanded on every Advance, never reaches the victim. The fair
+    // rule keeps one unit for the older ticket: the fourth greedy ship is deferred and the victim
+    // planned. Bound: (p + 1) * C + R = 1 * 10 + 43 Advances for the oldest ticket (p = 0).
+    const Spec spec{.ships = 5, .scouts = 95, .players = 2};
+    const Starvation plain = starve(spec, false, 150);
+    CHECK(plain.served_at > 0);
+    CHECK(plain.served_at <= 1 * 10 + 43);
+    // The full quota is used (a rule that wastes a unit, e.g. counting its own ticket, serves
+    // fewer).
+    CHECK(plain.max_plans_per_advance == 4);
+    // The victim re-asked on every Advance keeps its ticket and so its place: also served.
+    const Starvation reasked = starve(spec, true, 150);
+    CHECK(reasked.served_at > 0);
+    CHECK(reasked.served_at <= 1 * 10 + 43);
+    // Tickets of another player's ships count too (the rule is global, not per owner).
+    Spec other = spec;
+    other.first_four_owner = 1;
+    const Starvation foreign = starve(other, false, 150);
+    CHECK(foreign.served_at > 0);
+    CHECK(foreign.served_at <= 1 * 10 + 43);
+    CHECK(foreign.max_plans_per_advance == 4);
+}
+
+TEST_CASE("admission: removing a waiting ship, and saving and loading while tickets wait") {
+    sim::World w = make_world(Spec{.ships = 5, .scouts = 95, .players = 1});
+    for (std::uint64_t id = 1; id <= 5; ++id) {
+        REQUIRE(w.apply(move(0, id, 200 + static_cast<int>(id), 100)).ok());
+    }
+    // Save and load with five tickets pending: the continuation is identical.
+    auto loaded = sim::World::load(w.save(), ship_test::nav_ship_registry());
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    sim::World copy = std::move(loaded).value();
+    CHECK(copy.state_hash() == w.state_hash());
+    for (int i = 0; i < 30; ++i) {
+        w.advance(10);
+        copy.advance(10);
+        REQUIRE(copy.state_hash() == w.state_hash());
+    }
+    // A ship removed while it waits takes its ticket with it; the others are still served.
+    sim::World v = make_world(Spec{.ships = 5, .scouts = 95, .players = 1});
+    for (std::uint64_t id = 1; id <= 5; ++id) {
+        REQUIRE(v.apply(move(0, id, 200 + static_cast<int>(id), 100)).ok());
+    }
+    REQUIRE(sim::remove_figure(sim::WorldTestAccess::figures(v), sim::FigureId{1}).has_value());
+    CHECK(v.check_invariants().empty());
+    bool all_routed = false;
+    for (int i = 0; i < 120 && !all_routed; ++i) {
+        v.advance(10);
+        all_routed = true;
+        for (std::uint64_t id = 2; id <= 5; ++id) {
+            all_routed =
+                all_routed && ship(v, id).nav->order.has_value() && ship(v, id).nav->order->routed;
+        }
+    }
+    CHECK(all_routed);
+    CHECK(v.check_invariants().empty());
+}
+
+namespace {
+
+/// An open-sea world with one flat island of land (heights 30, far above the water level 19) at
+/// (200, 100) of 64 x 64 tiles, ship 1 at (20, 64) of player 0.
+sim::World island_world(const sim::Rules& rules) {
+    sim::ScenarioSpec spec = spec_of(Spec{.ships = 1, .players = 1});
+    spec.islands.push_back(syn::plain_island(0, 200, 100, 64, 64));
+    auto created = sim::World::create(spec, ship_test::nav_ship_registry(), {}, rules, {},
+                                      sim::serial_executor());
+    REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));
+    sim::World w = std::move(created).value();
+    sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+    is.terrain = sim::make_terrain(std::vector<std::uint8_t>(std::size_t{64} * 64, 30), {}, {});
+    sim::WorldTestAccess::route_cache(w).clear();
+    return w;
+}
+
+sim::SimEvent failure_of(sim::World& w, int limit) {
+    for (int i = 0; i < limit; ++i) {
+        w.advance(10);
+        for (const sim::SimEvent& e : w.drain_events()) {
+            CHECK(e.kind != sim::SimEventKind::ShipArrived);
+            if (e.kind == sim::SimEventKind::ShipRouteFailed) {
+                return e;
+            }
+        }
+    }
+    FAIL("no RouteFailed event");
+    return {};
+}
+
+} // namespace
+
+TEST_CASE("route failures: unreachable, budget exceeded and outside the window are later events") {
+    // Unreachable: the goal is in the middle of the island, more than 6 tiles from any water; the
+    // order is accepted (the target is inside the world) and the plan fails.
+    {
+        sim::World w = island_world({});
+        REQUIRE(w.apply(move(0, 1, 232, 132)).ok());
+        const sim::FixedPos start = ship(w, 1).pos;
+        const sim::SimEvent e = failure_of(w, 200);
+        CHECK(e.order_id == 1);
+        CHECK(e.code == static_cast<std::uint32_t>(sim::NavFailReason::Unreachable));
+        CHECK_FALSE(ship(w, 1).nav->order.has_value());
+        CHECK_FALSE(ship(w, 1).nav->ticket.has_value());
+        CHECK(ship(w, 1).pos.x == start.x);
+        CHECK(ship(w, 1).pos.y == start.y);
+        CHECK(w.check_invariants().empty());
+        // The control: a goal in the sea of the same world is reached.
+        sim::World ok = island_world({});
+        REQUIRE(ok.apply(move(0, 1, 60, 70)).ok());
+        bool arrived = false;
+        for (int i = 0; i < 1800 && !arrived; ++i) {
+            ok.advance(10);
+            for (const sim::SimEvent& ev : ok.drain_events()) {
+                arrived = arrived || ev.kind == sim::SimEventKind::ShipArrived;
+            }
+        }
+        CHECK(arrived);
+    }
+    // BudgetExceeded: a coarse budget of one pop cannot plan a 50-tile route; the same world with
+    // the default budget plans it.
+    {
+        sim::Rules tight;
+        tight.nav.coarse_budget = 1;
+        sim::World w = island_world(tight);
+        REQUIRE(w.apply(move(0, 1, 70, 64)).ok());
+        const sim::SimEvent e = failure_of(w, 100);
+        CHECK(e.code == static_cast<std::uint32_t>(sim::NavFailReason::BudgetExceeded));
+        CHECK_FALSE(ship(w, 1).nav->order.has_value());
+        sim::World ok = island_world({});
+        REQUIRE(ok.apply(move(0, 1, 70, 64)).ok());
+        ok.advance(100);
+        CHECK(ok.drain_events().size() == 0);
+        CHECK(ok.check_invariants().empty());
+    }
+    // OutsideWindow: a window of one tile around the start cannot hold the goal disc.
+    {
+        sim::Rules small;
+        small.nav.window_radius_tiles = 1;
+        sim::World w = island_world(small);
+        REQUIRE(w.apply(move(0, 1, 70, 64)).ok());
+        const sim::SimEvent e = failure_of(w, 100);
+        CHECK(e.code == static_cast<std::uint32_t>(sim::NavFailReason::OutsideWindow));
+    }
+}
+
+TEST_CASE(
+    "plan nodes: the C++ conversion equals the plannodes vectors of the independent reference") {
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "nav" /
+                     "movement_vectors.txt");
+    REQUIRE(in.good());
+    const sim::NavFacts facts{154618816U, 472446400U, 6000U, 4U, 2U, 0U, 1280U};
+    const std::vector<std::string> names = {"W", "SW", "S", "SE", "E", "NE", "N", "NW"};
+    std::string line;
+    int cases = 0;
+    while (std::getline(in, line)) {
+        if (line.rfind("plannodes ", 0) != 0) {
+            continue;
+        }
+        std::istringstream ls(line.substr(10));
+        unsigned facing = 0;
+        ls >> facing;
+        std::vector<sim::RouteRun> runs;
+        std::string tok;
+        while (ls >> tok && tok != "|") {
+            std::size_t k = 0;
+            while (k < tok.size() && std::isalpha(static_cast<unsigned char>(tok[k]))) {
+                ++k;
+            }
+            const auto it = std::find(names.begin(), names.end(), tok.substr(0, k));
+            REQUIRE(it != names.end());
+            runs.push_back(sim::RouteRun{static_cast<std::uint8_t>(it - names.begin()),
+                                         static_cast<std::uint8_t>(std::stoi(tok.substr(k)))});
+        }
+        std::vector<std::string> want;
+        while (ls >> tok) {
+            want.push_back(tok);
+        }
+        const std::vector<sim::NavNode> got = sim::nav_nodes_of_runs(runs, facing, facts);
+        REQUIRE(got.size() == want.size());
+        for (std::size_t i = 0; i < got.size(); ++i) {
+            INFO(line << " node " << i);
+            if (want[i][0] == 'T') {
+                CHECK(got[i].kind == sim::NavSegKind::Turn);
+                CHECK(got[i].facing == std::stoi(want[i].substr(1)));
+                CHECK(got[i].length_q32 == facts.turn_step_q32);
+            } else {
+                const int comma = static_cast<int>(want[i].find(','));
+                const int dir = std::stoi(want[i].substr(1, static_cast<std::size_t>(comma) - 1));
+                const std::uint64_t steps =
+                    std::stoull(want[i].substr(static_cast<std::size_t>(comma) + 1));
+                CHECK(got[i].kind == sim::NavSegKind::Move);
+                CHECK(got[i].dir8 == dir);
+                CHECK(got[i].length_q32 ==
+                      steps * ((dir & 1) != 0 ? sim::kNavDiagStepQ32 : sim::kNavUnitQ32));
+                CHECK(got[i].speed_q32 == facts.speed_q32);
+            }
+        }
+        ++cases;
+    }
+    CHECK(cases >= 7);
+}
+
+TEST_CASE(
+    "route cache: it ignores placed objects (a continuous world and a reloaded one plan alike)") {
+    sim::World w = island_world({});
+    sim::RouteCache& cache = sim::WorldTestAccess::route_cache(w);
+    const sim::CoastIndex& cached = cache.get(w);
+    CHECK(cache.built());
+    // An object appears on an island tile without any command (island growth does this).
+    sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+    const sim::Slot idx = is.tiles.index_of(210, 110);
+    REQUIRE(idx != sim::kNoSlot);
+    is.tiles.set_object(idx, 1201);
+    const sim::WorldTileSource fresh_src(w, sim::ship_route_terrain_options());
+    CHECK(cached.same_words(sim::CoastIndex(fresh_src, {})));
+    // Copying the world drops the derived cache; a moved-from cache is empty too.
+    sim::World copy = w;
+    CHECK_FALSE(sim::WorldTestAccess::route_cache(copy).built());
+    sim::World moved = std::move(w);
+    CHECK_FALSE(sim::WorldTestAccess::route_cache(moved).built());
 }

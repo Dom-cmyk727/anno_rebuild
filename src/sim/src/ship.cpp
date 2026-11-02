@@ -101,13 +101,16 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             const NavNode& n = m.nodes[i];
             const std::string at = where + ".nav.nodes[" + std::to_string(i) + "]";
             if (n.kind == NavSegKind::Move) {
-                // A run of 1 .. run_cap whole steps: orthogonal steps are 1.0, diagonal L_d (12.4).
+                // A run of 1 .. run_cap whole steps; chunking (12.4) cuts whole 1.0 units off the
+                // front of the length, so an orthogonal length stays a whole number of units and a
+                // diagonal one only stays within the run bound.
                 const std::uint64_t step = (n.dir8 & 1U) != 0 ? kNavDiagStepQ32 : kNavUnitQ32;
                 if (n.dir8 > 7 || n.facing != 0 || n.speed_q32 == 0 ||
                     n.speed_q32 >= kMaxNavSpeedQ32 || n.length_q32 == 0 ||
-                    n.length_q32 % step != 0 || n.length_q32 / step > rules.nav.run_cap) {
-                    return at + ": a movement node is out of range (1 .. run_cap whole steps of "
-                                "its direction, facing 0)";
+                    ((n.dir8 & 1U) == 0 && n.length_q32 % kNavUnitQ32 != 0) ||
+                    n.length_q32 > step * rules.nav.run_cap) {
+                    return at + ": a movement node is out of range (1 .. run_cap steps of its "
+                                "direction, facing 0)";
                 }
             } else if (n.kind == NavSegKind::Turn) {
                 if (n.facing > 15 || n.dir8 != 0 || n.length_q32 != facts.turn_step_q32 ||

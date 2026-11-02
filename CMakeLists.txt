@@ -167,6 +167,11 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME ship_admission_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_nav_ref.py admission-check
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/admission_cases.txt)
+    add_test(NAME ship_step_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/stepper_vectors.txt)
+    add_test(NAME ship_step_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
     add_test(NAME test_verdict_contract
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/test/ctest_verdict_test.py)
   else()

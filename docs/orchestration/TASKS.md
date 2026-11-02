@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: bounded Windows final corrections; MAP navigation integration closeout
+## Current dispatch — 2026-11-02: bounded Windows final corrections; MAP building placement gameplay
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -11,15 +11,16 @@ round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
 package or accept unreviewed changes. Windows published W4-WIN-CLOSE at
 `f5a323d`, with source/tools at `07a7505`. The orchestrator's source review
 requires the bounded W4-WIN-FINAL packet below; no rendering merge is approved.
-MAP-FOUND-3 is accepted for its local
-headless scope. MAP-NAV-2 demonstrates real sailing and founding but needs
-three defect corrections and completion of required fidelity/scaling work.
-MAP's next assignment is MAP-NAV-3 below.
+MAP-FOUND-3 and the corrected MAP-NAV-3 mechanics are accepted for their local
+headless scope. One bounded artifact-write reporting fix remains; it is the
+first package of MAP-BUILD-1 below, followed immediately by terrain-aware
+building placement. This dispatch changes only the Mac assignment; the entire
+Windows W4-WIN-FINAL packet remains in force without expansion.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-FINAL READY.** Fix viewer verdict/present handling, close capture and reclaimer controls, and complete scoped sanitizer coverage under the approved corpus policy. Reuse unaffected GPU evidence; no main merge. |
-| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-NAV-3 READY.** Correct live stamps and carried state; complete object/health inputs, production locality and persistence proof; preserve the sailed-founding canary. |
+| MAP.2 / ship starts | Mac, existing MAP executor | **MAP-BUILD-1 READY.** Fix requested-artifact write verdicts, then implement and test evidenced terrain/height checks for ordinary building commands; preserve actual sailing/founding and expose any unloading dependency. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · READY
 
@@ -686,7 +687,234 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-NAV-3 — finish navigation integration and required scope · READY
+### MAP-BUILD-1 — build on valid terrain after founding · READY
+
+Continue the existing Mac `task/MAP-2-original-like` from reviewed head
+`6ad66ac7ccf2ada673a76dfc4dd0f923572d443d`, tested code
+`8ee8423bc6318a023ce4507db96e466d3f5547cb`. Preserve any newer owned work and
+report its relationship to those pins. Read the
+[MAP-NAV-3 review and decisions](reviews/2026-11-02-map-nav3.md).
+
+**Outcome:** an ordinary building can be built through `World::apply` on
+evidenced legal terrain with the correct placed height, while illegal terrain
+is refused without charging or changing the world. The same authoritative
+height reaches the building record, tiles, save/replay and object-aware navigation.
+Preserve the real sailed-founding canary. If its new city cannot fund a build
+without an unimplemented cargo transfer, prove building on a separately declared,
+stocked scenario as specified in D4; the combined opening loop remains blocked
+on unloading, not falsely complete. This is a headless gameplay unit; the
+Windows executor owns the live window and renderer.
+
+**Authorization:** finish A's bounded reporting correction, obtain its focused
+independent re-review, and continue B–E without another owner confirmation.
+B's corrected original-rule contract must be independently reviewed before its
+dependent engine edits in C. Do not stop the whole packet for an independently
+unresolved terrain class or unavailable Windows capture: identify the exact
+dependency and continue authorized work whose rule is established. Do not claim
+the whole outcome complete if a required ordinary-building path remains blocked.
+
+#### Read order and ownership
+
+1. Fetch `origin/main`; read its `AGENTS.md`, `CLAUDE.md`, PLAN §§0.1–0.4 and
+   §0.7, `docs/testing/evidence-contract.md`, `docs/testing/README.md`, this
+   packet and the linked review using `git show origin/main:<path>` or the
+   existing read-only workflow checkout. **Do not merge main into your branch.**
+2. Read your MAP-NAV-3 report and final review ledger,
+   `docs/sim/{ship-navigation,ship-route-engine,ship-founding,state}.md`,
+   `docs/re/{ship-founding,transport}.md` and OQ-052, OQ-NAVC-2/3 in
+   `docs/open-questions.md`. Follow their latest superseding sections; historical
+   statements that the whole founding terrain function is unread are obsolete.
+3. Read `src/sim/include/anno/sim/{placement,site_checks,terrain_view,building,
+   types,config,seams,walk_cells,island,route_cache}.hpp` where present, and
+   `src/sim/src/{apply,placement,site_checks,create,founding,walk_cells,island_tick,
+   route_cache,route_world,scenario_formats}.cpp`. Find the actual seam declaration
+   and callers if a header moved. Read the building/placement format contract
+   and original-registry loader; distinguish client bytes from server-derived data.
+4. Read affected tests: `nav_scale_test.cpp`, `founding_assets_test.cpp`,
+   `site_checks_test.cpp`, `terrain_view_test.cpp`, `create_remove_test.cpp`,
+   `route_objects_test.cpp`, and the existing command, build/atomic-batch,
+   replay and corpus tests. Inspect the independent terrain/placement fixtures
+   before deriving expected values from the implementation.
+5. Confirm clean source, build and workflow identities; inspect current Mac
+   CPU/memory/disk contention and reuse calibrated jobs (16 compile, 8 light
+   tests only while capacity permits). Keep memory admission on. Keep the screen
+   awake during owned work; release only your own assertion. Do not interrupt
+   someone else's process or alter coordinator/test-support semantics.
+
+#### A — close the one evidence-writer defect, without a new campaign
+
+1. Reproduce the review's `summary.csv`-is-a-directory false success. Preserve
+   the existing good F3 gates and measured samples; this is not a request to
+   rerun the navigation matrix or sailed voyage for every file-error test.
+2. Check opening, writing and final flushing/closing of all three requested
+   benchmark files, and both requested canary log exports. A requested failure
+   must fail the case and suppress its success message. Report the failing path
+   and operation. Prevent an old/partial output being presented as the current
+   completed run; use fresh run paths or the smallest appropriate publication
+   scheme. Do not build a general evidence framework.
+3. Exercise the same actual writer with a tiny nonempty payload: a valid output
+   round-trips; an unwritable/directory destination fails; a write/flush error
+   fails at the narrow stream seam if native reproduction is unavailable.
+   Check propagation to the caller's verdict, not only a helper's return value.
+   Restore the old ignored-error behavior once and require the negative control
+   to fail while the valid control remains green. Register these cheap tests.
+4. Repair evidence paths: N5 measurements are under the main checkout's
+   `cache/map2-nav3/n5/`, while gates/voyages are under the MAP checkout.
+   Name source root and artifact root explicitly. Recover the post-sync-fix
+   run's source/binary identity from existing records, or mark it incomplete;
+   never manufacture identity from a current binary. Reuse the independently
+   reconciled samples. Correct stale current descriptions of per-ship sync
+   versus `sync_once`/`begin_advance`; keep historical results labelled historical.
+5. Independent read-only reviewer checks only this delta, its controls and
+   evidence dispositions. After correction and focused re-review, continue B.
+
+**A complete:** requested file failures cannot report success through either
+writer's consumer, and existing evidence is accurately located and qualified.
+
+#### B — specify the normal-building terrain and height path
+
+1. Produce a concise dependency table for **normal `BuildCmd`**, separate from
+   `FoundCmd`: bounds, ownership, occupancy/removable scenery, terrain class,
+   rotation, height result, type rewrite, payment and commit. Keep original rules,
+   already approved adaptations and unknowns distinct. Do not transfer founding's
+   automatic rotation trials or ship predicates to normal building commands.
+2. Reuse the decoded vertex grid, coast branch and record-byte writer. Trace
+   only the unresolved ordinary-land branch/callers of `0x1007c790` and the
+   normal placement path needed for a non-coastal starter building. Pin module
+   hashes, addresses, input domains, comparison/rounding, resulting height byte
+   and refusal. Do not assume a uniform flat height or invent a sea threshold.
+3. Classify the registry's relevant flags into supported ordinary-land and
+   evidenced coastal cases versus unimplemented mountain, road/tile-object,
+   overlay or replacement cases. State exact support conditions; unsupported
+   input is explicit, never successful default validation. This packet does not
+   require all 286 building types or every special terrain class to become usable.
+4. Trace the narrow autonomous-growth store and immediate replacement callee
+   for OQ-NAVC-2: does the item height remain, get recomputed or get overwritten?
+   Record the actual store. If it remains unread, keep that limitation and block
+   only its dependent fidelity claim; the established ordinary-build path proceeds.
+5. Define a small read-only placement result that carries both the decision and
+   authoritative height, then its commit use. Preserve existing ownership,
+   charging and atomic-batch contracts. Specify missing/placeholder terrain,
+   ambiguous unsupported content, integer bounds and untrusted client byte8.
+   Reuse shared predicates where semantics agree; do not duplicate founding.
+6. Define synthetic positive/negative pairs from the evidence: identical legal
+   land versus sea, valid versus invalid coast, slopes/height boundaries, turned
+   nonsquare footprint, scenery/occupancy and an alternate registry type. Check
+   the contract and expectations independently before engine implementation.
+
+**B complete:** a reviewer can explain why at least one real ordinary-land
+building and the supported coast class pass or fail, and where their height
+comes from. An unavailable original-runtime capture stays NOT_RUN; an available
+but unread rule required by that supported path is remaining work, not permission
+to implement an always-reject stub or an invented rule.
+
+#### C — integrate authoritative placement into gameplay
+
+1. Implement B's approved result through the existing placement/command seam.
+   Validate the effective type after any upgrade rewrite, its requested rotation
+   and footprint at execution time. Apply only evidenced scenery replacement;
+   retain explicit refusal for unsupported branches. Keep permissions distinct
+   from visibility sharing and preserve command ordering/conflict behavior.
+2. Derive the accepted building's height once from validated world/content data;
+   carry it through `Checked`/creation and every tile written by that placement.
+   Never trust a client-provided height or silently use zero. Preserve founded
+   and loaded records. Fix the growth height writer only if B established its
+   rule; preserve the original clear-arm behavior where already evidenced.
+3. Preserve failure atomicity, including mixed-validity multi-record commands:
+   bytes/hash, PRNG, money, goods, buildings, ownership and simulation events
+   remain unchanged on an atomic refusal. Dry-run decisions must account for
+   earlier records in the same command. Do not introduce whole-world copying
+   per placement or a full registry/island scan for a local footprint.
+4. Feed the existing tile setters/dirty rectangles; retain history-independent
+   route results after build and demolition. Check the first plan after a change,
+   including two Advances sharing a tick. Reuse the existing invalidation design;
+   no navigation rewrite or new concurrency policy is authorized.
+5. Use registry facts and validated rules, with original defaults. Prove a second
+   data-defined type without engine edits. No special case for player 0, type
+   1302, five seats, one candidate or the fixture's height. Keep future mod policy
+   replaceable without implementing a plugin system. Explain any seam signature
+   migration for the Windows consumer; do not edit its app/render sources.
+6. If authoritative layout/rules identity changes, allocate a new unused stream
+   version and independent byte vectors at that point. If only behavior changes,
+   explain the existing version/identity policy and affected replay compatibility;
+   do not bump goldens blindly or reuse an incompatible committed layout.
+
+**C complete:** supported normal commands have terrain/height validation and
+commit effects consistent with B; unknown cases cannot bypass it.
+
+#### D — prove the real command path, cheaply first
+
+1. Run B's positive/negative pairs through `World::apply`, with adequate funds,
+   valid ownership and clear footprint so the terrain predicate is decisive.
+   Assert the exact outcome and resulting height. Check wrong height/client
+   bytes, alternate owner/type, rotated bounds, relevant integer extremes and
+   atomic batches. A terrain test must not pass because ownership or funds fail.
+2. At the production call site, restore the former terrain stand-in once: the
+   sea/terrain control must fail at its intended assertion. Separately force a
+   zero stored height: the nonzero-height building/tile/save/route check must
+   fail. These are two causal checks, not a mutation-count target. Keep controls
+   passing and verify each mutation is restored before any broader gate.
+3. Compare post-placement navigation with a clean rebuild and save/load at a
+   site where the evidenced height changes blocking. Keep a nearby legal route
+   as a control. Check demolition and any newly resolved growth write. Do not
+   require a blocked path that the original height predicate would leave open.
+4. First check whether a newly founded city can legitimately afford a supported
+   ordinary building; ship cargo is not city stock. If so, extend the real-file
+   sailed-founding canary with public build/demolish commands there. Otherwise
+   retain the actual sailed-founding canary and use a **separate scenario** with
+   real terrain/registry facts and declared city stock in `ScenarioSpec` before
+   its initial save, then execute public build/demolish commands. This is an
+   explicitly stocked placement fixture, not a completed ship-start opening loop.
+   Label the combined loop BLOCKED on unloading and hand off that exact dependency.
+   No post-founding grants, zero-cost type changes or transfer implementation.
+   Use existing canary/site-search facilities; searches may inspect world copies,
+   but the executed voyage must not relocate ships or bypass ownership/terrain.
+5. For each applicable canary, record charges, outcomes, territory/information
+   preservation, building/tile
+   heights and final state. Verify a reload after placement and fresh-process
+   replay of the recorded sequence, with one changed-command divergence. Reuse
+   one voyage across these checks where possible. No candidate selection, asset
+   edit, added transport feature or new long matrix is needed for this canary.
+
+#### E — one frozen acceptance pass and handoff
+
+1. Freeze the corrected source. Run cheap writer/reference contracts, focused
+   placement/build/founding/navigation/replay cases with original files and
+   ASan/UBSan. Run the full affected sim selection once because command/default
+   placement behavior changed; include formats/load only to the extent touched.
+   Use the canonical workflow, explicit source/build roots and skip policy.
+   Preserve first failures. An unchanged renderer needs no GPU/heavy-render gate.
+2. Synthetic legacy tests must state which contract they exercise. Give terrain
+   tests real terrain; retain an explicit test seam only for tests deliberately
+   isolating another subsystem. Never switch the entire suite back to the old
+   placement stand-in to make the new default green. Justify every changed golden
+   by layout or specified behavior and retain independent expected outcomes.
+3. One fresh integration reviewer traces input -> decision/height -> payment and
+   tiles -> routing -> save/replay. It inspects tests and actual evidence, challenges
+   the two wrong production behaviors above, and checks package-review corrections.
+   Fix actionable findings and narrowly re-review their deltas. Do not repeat
+   broad valid gates after prose-only changes or add a new review campaign.
+4. Report code/test/docs/workflow pins, selected/executed/failed/empty/skipped
+   counts, artifact identities, support table, failed attempts and remaining
+   external gates. List the exact API/behavior delta needed by the later Windows
+   integration. Do not borrow W4's host results or call a Mac candidate target-ready.
+
+Each substantive package uses an independent **read-only review subagent**; it
+does not implement fixes or delegate its review. The author fixes findings and
+obtains focused re-review before marking the package complete. No P1 alone is
+not acceptance: missing assigned behavior and actionable P2 defects still count.
+
+**Stop after E at one reviewed headless placement candidate.** The explicit
+two-canary alternative in D4 satisfies this packet's local acceptance, while
+the combined ship-start opening loop remains BLOCKED on unloading. Commit small
+concerns on the existing MAP branch; no merge, rebase, prune, task-code push,
+TASKS edit, candidate selection/install, `game/` modification or Windows/W4 work.
+Road building, combat, hostile avoidance, mod runtime, economic-system expansion,
+new UI, coordinator and shared-test-workflow work are outside this packet.
+Preserve other jobs and the owner's awake assertion. Do not wait for another
+orchestrator prompt between the authorized packages.
+
+### MAP-NAV-3 — finish navigation integration and required scope · REVIEWED LOCAL MECHANICS; REPORTING FIX IN MAP-BUILD-1
 
 **Start:** existing Mac `task/MAP-2-original-like` at
 `4731d9a510023f090aec409978eb02ff30921239`; last broad gates cover

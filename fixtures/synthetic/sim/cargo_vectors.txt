@@ -248,6 +248,33 @@ case other_goods_and_holds_unchanged
   endstock 26 5
   endstock 42 9728
 
+case hold_with_goods_id_and_amount_zero
+  stock 42 0
+  hold A 42 0
+  req A 0 42 1 -> reject HoldGoodsMismatch
+  endhold A 42:0
+  endstock 42 0
+
+case another_goods_at_capacity_does_not_limit_this_one
+  stock 41 12800
+  stock 26 12800
+  stock 42 0
+  hold A 42 9728
+  req A 0 42 38 -> ok 9728
+  endhold A 0:0
+  endstock 41 12800
+  endstock 26 12800
+  endstock 42 9728
+
+case another_goods_nearly_full_partial_is_by_own_goods_only
+  stock 41 12000
+  stock 42 12672
+  hold A 42 768
+  req A 0 42 3 -> ok 128
+  endhold A 42:640
+  endstock 41 12000
+  endstock 42 12800
+
 # ---- docking range (AnnoWelt.dll 0x1003f200 mode 0): ship tile (tx, ty), warehouse footprint x0 y0 w h.
 # dx/dy = 0 when the ship tile lies inside the footprint on that axis, else the distance to the nearer edge tile; the
 # warehouse is in range iff dy <= 5 and dx <= half-width[dy] with half-widths 5 5 5 4 3 2 (radius 5).
@@ -273,7 +300,7 @@ tile 2816 2560 -> 11 10
 tile 0 255 -> 0 0
 
 # ---- the city set (0x1003f2ae-0x1003f3b2): a city counts as near the ship only if it owns at least one of the 24
-# outline tiles (tx +- w[k], ty +- k), k = 0..5, w = 5 5 5 4 3 2. `owned` lists the tiles the city owns; all others are unowned.
+# outline reads (tx +- w[k], ty +- k), k = 0..5, w = 5 5 5 4 3 2: 24 reads, 22 distinct tiles. `owned` lists the tiles the city owns; all others are unowned.
 cityset outline_east ship 10 10 owned 15,10 -> in
 cityset east_off_outline ship 10 10 owned 16,10 -> out
 cityset interior_only ship 10 10 owned 10,10 11,10 12,10 -> out

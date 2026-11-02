@@ -25,14 +25,14 @@ around the ship's tile). Nothing at execution repeats that range test, checks th
 | P3 | Ship state (moving, turning, hit points, state word, carried) | **no test** in `0x100ac360` or `0x1003f200`; the view's enabling of the tab is UNKNOWN (OQ-CARGO-1) | **none**: a moving ship unloads at its position at the apply tick. `ShipDisabled` (founding's bit `0x02`) and `ShipEmbarked` (navigation) are **not** used | ORIGINAL; any restriction is an owner decision |
 | P4 | Eligible warehouse | building of PRODTYPE `0x23` (KONTOR) found by `0x1003f200` mode 0; the world function itself takes any city | the building named by `warehouse` exists (`NoBuildingAtTile`) and its type's PRODTYPE is in `CargoRules::warehouse_prodtypes` (default `{35}`; `NotAWarehouse`) | ORIGINAL type, data-defined |
 | P5 | Target | the **city of that warehouse** (`building slot +0x18`); MP wire names (island, city number) | the warehouse's own city, **derived** from the building; never a client city, never "a city on the island" | ORIGINAL |
-| P6 | Warehouse owner | view: `city owner == local player`; world: equal owners are free, relation 3 trades (excluded) | `city.owner == issuer` (`NotCityOwner`); every other owner is refused, allied or visible alike | ORIGINAL (same-owner arm only) |
+| P6 | Warehouse owner | view: `city owner == local player`; world: equal owners are free, relation 3 trades (excluded) | `city.owner == issuer` (`NotCityOwner`); every other owner is refused, allied or visible alike | SCOPE EXCLUSION: the original view also accepts a relation-3 (allied) owner; the rebuild's scope is own city only |
 | P7 | Range, reference | the ship's **tile** `trunc(pos)` (f32 `/ 1.0`) | tile = `pos_q8 >> 8` (non-negative) | ORIGINAL |
-| P8 | Range, test | at click time only: warehouse footprint inside the digital disc of radius 5 (`half-widths 5 5 5 4 3 2`, distance per axis to the nearer edge tile, 0 inside) **and** the warehouse's city owns one of the 24 outline tiles (section 5) | the same test **re-run at apply** against live state (`OutOfRange`) | ORIGINAL rule, ADAPTATION: revalidated |
+| P8 | Range, test | at click time only: warehouse footprint inside the digital disc of radius 5 (`half-widths 5 5 5 4 3 2`, distance per axis to the nearer edge tile, 0 inside) **and** the warehouse's city owns one of the 22 distinct outline tiles (24 reads, section 5) | the same test **re-run at apply** against live state (`OutOfRange`) | ORIGINAL rule, ADAPTATION: revalidated |
 | P9 | Which warehouse | the **first** qualifying one in discovery order; a rival's can hide the player's | the command **names** the warehouse; the first-found choice is a UI matter | ADAPTATION |
 | P10 | Hold selection | by **hold index** `rec[1]`; goods `rec[0]` must equal the hold's goods; index `< n0` | `hold` index plus `goods` echo: `BadIndex`, `HoldGoodsMismatch`; **no unload-all** | ORIGINAL |
 | P11 | Duplicate holds | no search; the named hold only | the same: two holds of one goods are two addresses; the index is the stable order | ORIGINAL |
 | P12 | Request unit | whole tons (u16) | `tons` (u32), `0` refused (`BadValue`); the stored unit stays 1/256 t | ORIGINAL unit, widened |
-| P13 | Amount moved | `min(request, hold amount, ceil_T(capacity - stock))`; credit `min(that, capacity - stock)`; **debit may exceed credit by up to 255 units (lost)** | `min(request, hold amount, free)` with `free = max(0, capacity - stock)`; **debit == credit** | ADAPTATION (conservation) |
+| P13 | Amount moved (deviation list: residue differs by up to 255 units when free space is fractional) | `min(request, hold amount, ceil_T(capacity - stock))`; credit `min(that, capacity - stock)`; **debit may exceed credit by up to 255 units (lost)** | `min(request, hold amount, free)` with `free = max(0, capacity - stock)`; **debit == credit** | ADAPTATION (conservation) |
 | P14 | Stock full, zero free | nothing moves (return 0) | `StockFull`, unchanged world | ORIGINAL effect, explicit reason |
 | P15 | Stock above capacity | `< 256` over: nothing; `>= 256` over: the hold gains 256 and the stock is lowered (defect) | `free = 0`: `StockFull`; **stock never lowered, hold never gains** | ADAPTATION (hardening) |
 | P16 | Goods id outside the city table | hold debited, credit refused: cargo destroyed (and an out-of-bounds read) | `UnsupportedGoods` before any write | ADAPTATION (hardening) |
@@ -84,11 +84,10 @@ that is never hashed):
 | 8 | range (section 5) | `OutOfRange` |
 | 9 | `hold < min(holds.size(), type cargo hold count)` | `BadIndex` |
 | 10 | `0 < goods < city stock goods count` | `UnsupportedGoods` |
-| 11 | `holds[hold].goods == goods` | `HoldGoodsMismatch` |
+| 11 | `holds[hold].goods == goods` and `holds[hold].amount_88 != 0` | `HoldGoodsMismatch` (a hold with a goods id and amount 0 is loadable from saves/manifests and is treated as emptied, as `founding_payment.cpp` does: it holds none of the goods; no new reject, no invariant is assumed) |
 | 12 | `free > 0` | `StockFull` |
 
-An empty hold (goods 0) fails step 11 for any supported goods and step 10 for goods 0. A hold with a goods id and amount 0 is not a legal
-state (`check_invariants` must refuse it; U2 adds the rule if absent) so step 12 is the only zero-transfer refusal.
+An empty hold (goods 0) fails step 11 for any supported goods and step 10 for goods 0. The refusal of step 11 for amount 0 is explicit (vector `hold_with_goods_id_and_amount_zero`); `plan_unload` returns it and relies on no invariant.
 
 ## 4. Units, arithmetic, capacity (all raw 1/256 ton)
 
@@ -108,7 +107,7 @@ stock[g]     = stock[g] + x                                          (<= capacit
 
 * **Fractions.** A request is whole tons; fractions come from the stored amounts. A hold with 1.5 t that receives a 1 t request gives 1 t and
   keeps 0.5 t; a second 1 t request takes the remaining 0.5 t and empties the hold. A fractional free space (`capacity - stock` not a multiple
-  of 256) is filled exactly and the **rest stays aboard** (ADAPTATION of P13: the original destroys up to 255 units here). The resulting
+  of 256) is filled exactly and the **rest stays aboard** (ADAPTATION of P13: the original destroys up to 255 units here; the residue left aboard differs from the original's by up to 255 units whenever the free space is fractional). The resulting
   stock equals the original's in every state the original produces (`tools/cargo_ref.py selftest` sweeps this); only the hold differs.
 * **Conservation.** For every accepted command `hold_before + stock_before == hold_after + stock_after` in a wide accumulator, and
   `debit == credit == transferred_88`. A refusal leaves both unchanged. No path mints, erases or wraps.
@@ -166,7 +165,7 @@ list is needed for a named building). The rule uses live state: a ship that move
 
 ## 7. Acceptance table (hand-derived before any engine code)
 
-Units are 1/256 t. "Ref" rows are executed by `tools/cargo_ref.py check` (57 cases at the time of writing); "Engine" rows need the world and
+Units are 1/256 t. "Ref" rows are executed by `tools/cargo_ref.py check` (60 cases at the time of writing); "Engine" rows need the world and
 belong to U3. `T` = 256. Default store: capacity 12800 (50 t), goods count 56. Goods: 26 food, 41 tools, 42 wood.
 
 ### A. Transfer arithmetic (Ref; vector names)
@@ -234,11 +233,12 @@ never edits a running one. The crew (children) are not touched.
 
 ## 9. Test obligations handed to U2/U3
 
+* `0xF073` is currently pinned as a legacy type in `src/sim/tests/command_codec_test.cpp:509-512`; U2 must edit that test (as `0xF071`/`0xF072` were removed from the list).
 * Codec, dispatch, `RecordResult::transferred_88`, the four rejects and independent command bytes; version-negative tests reseal a valid control.
 * Positive control B1 with a known non-zero amount; then one predicate at a time (B2-B12), each asserting its intended reason and an unchanged
   state hash. Conservation checked in a wide accumulator on every accepted case (A rows, contention rows, near-bound rows).
-* Two targeted mutants through the normal codec/apply path: credit without debit, and debit of the request despite a smaller credit; both must
-  fail the conservation assertion while the positive control passes.
+* Two ENGINE mutants, to be written in U3 (they do not exist yet; the Python reference already rejects the analogous mutants, and the mutant
+  `free = cap - sum(all goods)` fails the new per-goods vectors): credit without debit, and debit of the request despite a smaller credit, through the normal codec/apply path; both must fail the conservation assertion while the positive control passes.
 * Registry-driven: another owner and a data-defined ship type and warehouse type (no player 0, four holds, 1502/1302 or founding whitelist);
   `CargoRules` validation tests (empty table, `half_widths[0] != r`, increasing table).
 * Save/load before and after, fresh-process replay, and a changed amount or target that diverges.

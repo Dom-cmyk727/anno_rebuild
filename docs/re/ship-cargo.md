@@ -30,7 +30,7 @@ The manual unload is **one world function**, `AnnoWelt.dll 0x100ac360` (world vt
 **a hold index and a goods id and a request in whole tons**; the function moves goods from that one hold into the city stock.
 It has **no range test, no state test and (in multiplayer) no sender test**; the range is decided *before* the call, by the view,
 with `ship slot +0xc4` = `0x1003f200`: a warehouse (`PRODTYPE 0x23`, KONTOR) whose footprint is inside a digital disc of radius 5
-around the ship's truncated tile, in a city that owns one of 24 outline tiles of that disc. The target is the **city of that
+around the ship's truncated tile, in a city that owns one of the 22 distinct tiles on the outline of that disc (24 reads). The target is the **city of that
 warehouse** (never "a city on the island"). The arithmetic has three original quirks that lose or mint goods (section 6); the
 rebuild adapts them (contract section 4).
 
@@ -90,9 +90,9 @@ type slot `+0x50` (the `BEWOHNTYPE` class group) is `0x71` and mode 1 (= nothing
 
 1. **Tile** `(tx, ty) = (trunc(x / 1.0), trunc(z / 1.0))` (`0x1003f254`-`0x1003f274`).
 2. **Half-width table** `w[0..5]`, built at `0x1003f217`-`0x1003f24e` by a midpoint-circle recurrence from the literals 5, 0x19, 0x14, 0xa;
-   executed by hand and by `tools/cargo_ref.py selftest`: `w = 5, 5, 5, 4, 3, 2` (E, the recurrence is straight-line integer code).
+   executed by hand and by `tools/cargo_ref.py selftest`: `w = 5, 5, 5, 4, 3, 2` (the recurrence transcribed into Python and compared; not emulated from the binary).
 3. **City set** (`0x1003f297`-`0x1003f3b2`): for `k = 0..5`, the four tiles `(tx -/+ w[k], ty -/+ k)` and `(tx -/+ w[k], ty +/- k)`
-   (24 tile reads; the `k = 0` pair appears twice). For each: `island = world slot +0x8c(x, y)` (null = skip); `owner = island slot
+   (24 reads, 22 distinct tiles; the `k = 0` pair appears twice). For each: `island = world slot +0x8c(x, y)` (null = skip); `owner = island slot
    +0xec(x, y)`; if `owner != 0xf` (none) then `city = island slot +0xf8(owner)` is added to a duplicate-free list (`0x1003f5c0`,
    capacity 32 pointers, no bound check, unreachable with 24 reads). Only the **outline** is sampled, not the interior.
 4. **Rectangle** `{tx - 5, ty - 5, 11, 11}` (`0x1003f3d6`-`0x1003f3f4`).
@@ -227,7 +227,7 @@ the observable effect is the same. A transfer must therefore only change the hol
 | Hold clear on empty; hold gains on negative take | D | 5 |
 | City stock add/remove/clamp, goods bound, capacity source | D | 5 |
 | Range = digital disc of radius 5 on the ship's truncated tile, KONTOR only, city list from the outline | D | 3 |
-| Table `5 5 5 4 3 2` | E (recurrence executed) | 3 |
+| Table `5 5 5 4 3 2` | D + transcription compared in Python (not emulated) | 3 |
 | First qualifying warehouse decides the city | D | 3 |
 | No state, sender, range test at execution | D (absence in the two functions read) | 8 |
 | Which UI property is hold index / goods | S | 2 |

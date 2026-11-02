@@ -48,11 +48,13 @@ def plan_unload(holds, index, goods, tons, stock, cap, goods_count=DEFAULT_GOODS
     hg, ha = holds[index]
     if hg != goods:
         return ('reject', 'HoldGoodsMismatch')
+    if ha == 0:                            # goods id with amount 0 (loadable state): the hold holds none of the goods
+        return ('reject', 'HoldGoodsMismatch')
     free = max(0, cap - stock.get(goods, 0))
     if free == 0:
         return ('reject', 'StockFull')
     credit = min(tons * TON, ha, free)
-    assert credit > 0                      # ha > 0 for a hold with a goods id (invariant), tons > 0, free > 0
+    # credit > 0 here: tons > 0, ha > 0 and free > 0 were all checked above
     new_holds = list(holds)
     left = ha - credit
     new_holds[index] = (goods, left) if left else (0, 0)       # 0x1003b9a0: an emptied hold loses its goods id

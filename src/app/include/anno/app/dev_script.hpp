@@ -55,7 +55,7 @@
 //                         outcomes_next): the window never shows an outcome beside older resources
 //   expect money same|less    the snapshot's money equals / is below the noted money
 //   expect work NAME OP N     a count of the tool's occupancy index (PlacementKnowledge): NAME is
-//                         rebuilds, deltas, tiles, foreign or skipped; OP is ==, <= or >=
+//                         rebuilds, deltas, tiles, foreign or off_batches; OP is ==, <= or >=
 //   expect work NAME same|grew   the count equals / is above the one noted with `note work NAME`
 //   expect occupied X Y yes|no   whether the index holds world tile (X, Y) as occupied
 //   expect visibility NAME  the latest command's change is at NAME (visibility_name: Visible,

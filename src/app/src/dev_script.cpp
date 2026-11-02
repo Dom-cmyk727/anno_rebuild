@@ -92,7 +92,7 @@ std::optional<std::int64_t> work_count(const PlacementKnowledge& k, const std::s
     if (name == "foreign") {
         return static_cast<std::int64_t>(k.foreign_deltas());
     }
-    if (name == "skipped") {
+    if (name == "off_batches") {
         return static_cast<std::int64_t>(k.batches_skipped_disabled());
     }
     return std::nullopt;
@@ -631,7 +631,7 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                      ? ", occupancy rebuilds " + std::to_string(st.knowledge->rebuilds()) +
                            " deltas " + std::to_string(st.knowledge->deltas_applied()) + " tiles " +
                            std::to_string(st.knowledge->tiles_enumerated()) + " foreign " +
-                           std::to_string(st.knowledge->foreign_deltas()) + " skipped " +
+                           std::to_string(st.knowledge->foreign_deltas()) + " off_batches " +
                            std::to_string(st.knowledge->batches_skipped_disabled())
                      : std::string()) +
                 (st.hold_available ? std::string(", hold ") + (st.held ? "held" : "free")

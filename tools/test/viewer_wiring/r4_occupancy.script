@@ -1,7 +1,7 @@
 # R4 through the real play window (W4-WIN-CLOSE C1): the occupancy index follows the picture's takes
 # by their deltas, does nothing while the tool is off, ignores another island's edit (one
 # comparison), and is reseeded once when the tool comes back. The counts are PlacementKnowledge's
-# (rebuilds, deltas, tiles written, foreign deltas, batches skipped while off); no timing.
+# (rebuilds, deltas, tiles written, foreign deltas, batches seen while the tool was off); no timing.
 # Run by tools/test/viewer_wiring.py; every `expect` fails the session if it is not met.
 look 1052 444
 # ---- the tool is off: edits of the city and of another island reach the picture, not the index -
@@ -14,7 +14,7 @@ expect work rebuilds == 0
 expect work deltas == 0
 expect work tiles == 0
 expect work foreign == 0
-expect work skipped >= 1
+expect work off_batches >= 1
 checkpoint off_edits_not_followed
 
 # ---- the tool comes on: one reseed from the picture's per-island list ---------------------------

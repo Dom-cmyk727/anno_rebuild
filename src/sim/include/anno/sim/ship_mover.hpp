@@ -5,6 +5,7 @@
 // seam or the transport body (docs/sim/ship-navigation.md 4).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -22,6 +23,12 @@ class World;
                                                      unsigned facing, const NavFacts& facts);
 
 struct ShipMover {
+    /// The velocity of the current segment as the stamp consumes it (`unit +0x20`): direction *
+    /// speed * the segment's captured factor, in 2^-32 tile per stepper unit, {x, z}; {0, 0} for a
+    /// turn, idle or other non-movement segment. Truncated toward zero (error < 2^-32 tile, 25
+    /// times that in the stamp offset).
+    [[nodiscard]] static std::array<std::int32_t, 2> stamp_velocity_q32(const NavSegment& seg);
+
     /// The stamps the planner hands the route engine for `ship`: the look-ahead points of the
     /// other ships near it (route_stamps.hpp). Public so tests can read what a moving world
     /// really produces.

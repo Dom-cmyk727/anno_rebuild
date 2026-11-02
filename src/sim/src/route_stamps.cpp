@@ -69,14 +69,14 @@ std::vector<RouteStamp> local_ship_stamps(const ShipSpatialView& view, const Loc
         if (!s.has_direction || s.id == query.self_id) {
             continue;
         }
-        // (x + dir.x * 25.0, z + dir.z * 25.0) truncated toward zero (ftol), exactly, in 2^-24 tile
-        // units.
-        const std::int64_t px =
-            static_cast<std::int64_t>(s.x_q8) * 65536 + static_cast<std::int64_t>(s.dir_x_q24) * 25;
-        const std::int64_t pz =
-            static_cast<std::int64_t>(s.z_q8) * 65536 + static_cast<std::int64_t>(s.dir_z_q24) * 25;
-        stamps.push_back({static_cast<std::int32_t>(px / 16777216),
-                          static_cast<std::int32_t>(pz / 16777216), StampKernel::K5});
+        // (x + v.x * 25.0, z + v.z * 25.0) truncated toward zero (ftol), exactly, in 2^-32 tile
+        // units: x_q8 * 2^24 and v in 2^-32 tile are both exact, |px| < 2^55 + 25 * 2^28.
+        const std::int64_t px = static_cast<std::int64_t>(s.x_q8) * 16777216 +
+                                static_cast<std::int64_t>(s.vel_x_q32) * 25;
+        const std::int64_t pz = static_cast<std::int64_t>(s.z_q8) * 16777216 +
+                                static_cast<std::int64_t>(s.vel_z_q32) * 25;
+        stamps.push_back({static_cast<std::int32_t>(px / 4294967296),
+                          static_cast<std::int32_t>(pz / 4294967296), StampKernel::K5});
     }
     return stamps;
 }

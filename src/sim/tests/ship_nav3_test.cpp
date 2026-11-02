@@ -1,6 +1,7 @@
 // MAP-NAV-3 regressions: the three reproduced review findings (N0) and, with each correction, its
 // production-path proof (N1 carriage and indexes, N2 stamp units). Synthetic: an open 512 x 512
 // sea, no game files. Every test drives the public scenario / command / advance / save path.
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -165,4 +166,64 @@ TEST_CASE("N0 controls: a standalone ship and a scout with its donkey stay coher
     CHECK(fig_of(w, 1).pos.x != 5340);
     CHECK(fig_of(w, 3).pos.x == fig_of(w, 1).pos.x);
     CHECK(sim::World::load(w.save(), ship_test::nav_ship_registry()).ok());
+}
+
+TEST_CASE(
+    "N2 stamp: a moving neighbour's velocity stamp changes the endpoint the world planner picks") {
+    // Ship 1 sails east from x = 5340/256 = 20.86; ship 2 at (18, 64) is ordered to (21, 64). The
+    // velocity stamp lies at tile 21 (20.86 + 0.9 -> 21.76), the old unit-direction stamp at 45.
+    sim::ScenarioSpec spec = base_spec();
+    spec.figures.push_back(fig(kShip, sim::FixedPos{5340, tile_c(64)}));
+    spec.figures.push_back(fig(kShip, sim::FixedPos{tile_c(18), tile_c(64)}));
+    sim::World w = make(spec);
+    REQUIRE(w.apply(move(1, 90, 64)).ok());
+    bool moving = false;
+    for (int i = 0; i < 40 && !moving; ++i) {
+        w.advance(10);
+        moving = fig_of(w, 1).nav->seg.kind == sim::NavSegKind::Move;
+    }
+    REQUIRE(moving);
+    REQUIRE(w.apply(move(2, 21, 64)).ok());
+    for (int i = 0; i < 4000 && fig_of(w, 2).nav->order.has_value(); ++i) {
+        w.advance(10);
+    }
+    REQUIRE_FALSE(fig_of(w, 2).nav->order.has_value());
+    // Correct velocity stamp (tile 21,64 by the equation): the planner ends on (20,65). The old
+    // unit-direction adapter (stamp at 45) or any far look-ahead ends on (21,64).
+    CHECK(fig_of(w, 2).pos.x / kTile == 20);
+    CHECK(fig_of(w, 2).pos.y / kTile == 65);
+    MESSAGE("ship 2 ended at tile " << fig_of(w, 2).pos.x / kTile << ","
+                                    << fig_of(w, 2).pos.y / kTile);
+}
+
+TEST_CASE("N2 stamp velocity: axis, diagonal, factor, turn and idle segments") {
+    const auto seg = [](sim::NavSegKind k, std::uint8_t dir, std::uint32_t factor) {
+        sim::NavSegment s;
+        s.kind = k;
+        s.dir8 = dir;
+        s.factor_percent = factor;
+        s.speed_q32 = 154618816;
+        return s;
+    };
+    using V = std::array<std::int32_t, 2>;
+    // dir8: 0 -x, 1 (-x,+z), 2 +z, 3 (+x,+z), 4 +x, 5 (+x,-z), 6 -z, 7 (-x,-z).
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 4, 100)) ==
+          V{154618816, 0});
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 0, 100)) ==
+          V{-154618816, 0});
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 6, 100)) ==
+          V{0, -154618816});
+    // factor 69: 154618816 * 69 / 100 = 106686983.04 -> 106686983 (truncated).
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 2, 69)) == V{0, 106686983});
+    // diagonal: 154618816 * 11863283 / 2^24 = 109332011.x -> 109332011 on each axis, signs by dir.
+    const std::int32_t dg =
+        static_cast<std::int32_t>(std::int64_t{154618816} * 11863283 / 16777216);
+    CHECK(dg == 109332011);
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 5, 100)) == V{dg, -dg});
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 7, 100)) == V{-dg, -dg});
+    // diagonal at factor 69, one truncation: 154618816 * 11863283 * 69 / (100 * 2^24) = 75439087.
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Move, 3, 69)) ==
+          V{75439087, 75439087});
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Turn, 4, 100)) == V{0, 0});
+    CHECK(sim::ShipMover::stamp_velocity_q32(seg(sim::NavSegKind::Idle, 4, 100)) == V{0, 0});
 }

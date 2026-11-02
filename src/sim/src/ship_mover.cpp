@@ -62,10 +62,9 @@ class RegistryShips final : public ShipSpatialView {
             s.ship_group = true;
             s.has_direction = true;
             if (f.nav->seg.kind == NavSegKind::Move && f.nav->seg.dir8 < 8) {
-                const bool diag = (f.nav->seg.dir8 & 1U) != 0;
-                const std::int32_t unit = diag ? 11863283 : (1 << 24);
-                s.dir_x_q24 = kDirX[f.nav->seg.dir8] * unit;
-                s.dir_z_q24 = kDirZ[f.nav->seg.dir8] * unit;
+                const auto v = ShipMover::stamp_velocity_q32(f.nav->seg);
+                s.vel_x_q32 = v[0];
+                s.vel_z_q32 = v[1];
             }
             ships_.push_back(s);
         }
@@ -204,6 +203,19 @@ SimEvent event_of(const NavEvent& e, const Figure& ship, std::uint64_t tick) {
 }
 
 } // namespace
+
+std::array<std::int32_t, 2> ShipMover::stamp_velocity_q32(const NavSegment& seg) {
+    if (seg.kind != NavSegKind::Move || seg.dir8 >= 8) {
+        return {0, 0};
+    }
+    // unit (2^-24) * speed (2^-32 tile per stepper unit) * factor / 100 / 2^24: the product is
+    // < 2^24 * 2^28 * 100 < 2^59, a truncation toward zero loses < 2^-32 tile (x 25 in the stamp).
+    const std::int64_t unit = (seg.dir8 & 1U) != 0 ? 11863283 : (std::int64_t{1} << 24);
+    const std::int64_t mag = unit * static_cast<std::int64_t>(seg.speed_q32) *
+                             static_cast<std::int64_t>(seg.factor_percent) / (100 * 16777216);
+    return {static_cast<std::int32_t>(kDirX[seg.dir8] * mag),
+            static_cast<std::int32_t>(kDirZ[seg.dir8] * mag)};
+}
 
 std::vector<RouteStamp> ShipMover::local_stamps(const World& w, const Figure& ship) {
     const FigureType* type = w.types_->find_figure_type(ship.kind);

@@ -207,32 +207,49 @@ TEST_CASE("local stamps: the radius is inclusive, the filters are state 0xa, shi
     CHECK(count({ship(9998, 41, 41)}) == 1);
 }
 
-TEST_CASE("local stamps: the stamp point is pos + dir x 25 truncated toward zero, exactly") {
+TEST_CASE("local stamps: the stamp point is pos + 25 x velocity truncated toward zero, exactly") {
+    // The velocity is the segment direction times speed times factor, in tiles per stepper unit
+    // (2^-32): the type 1502 speed 0.036 is 154618816. The unit tests below pin the equation
+    // trunc(x + 25 * v) in exact rational arithmetic.
     const auto stamp_of = [](sim::LocalShip s) {
         const auto v = sim::local_ship_stamps(
             ListView({s}), query_at(s.x_q8 / 256.0, s.z_q8 / 256.0), sim::RouteLimits{});
         REQUIRE(v.size() == 1);
         return v[0];
     };
+    constexpr std::int32_t kV = 154618816; // 0.036 tile per stepper unit
     sim::LocalShip e = ship(1, 10.5, 20.5);
-    e.dir_x_q24 = 16777216; // east
-    CHECK(stamp_of(e).tile_x == 35);
+    e.vel_x_q32 = kV; // east
+    // 10.5 + 25 * 0.036 = 11.4; the old unit-direction reading would have said 35.
+    CHECK(stamp_of(e).tile_x == 11);
     CHECK(stamp_of(e).tile_z == 20);
+    sim::LocalShip near_edge = ship(1, 10.5 + 0.0625 * 12, 20.5); // 11.25 + 0.9 = 12.15
+    near_edge.vel_x_q32 = kV;
+    CHECK(stamp_of(near_edge).tile_x == 12);
+    sim::LocalShip fast = ship(1, 10.5, 20.5);
+    fast.vel_x_q32 = 1 << 28; // the supported maximum speed 1/16 tile per unit: +1.5625
+    CHECK(stamp_of(fast).tile_x == 12);
     sim::LocalShip d = ship(1, 10.5, 20.5);
-    d.dir_x_q24 = 11863283; // diagonal SE component
-    d.dir_z_q24 = 11863283;
-    // 10.5 + 25 * 0.70710677 = 28.1776; 20.5 + 17.6777 = 38.1776.
-    CHECK(stamp_of(d).tile_x == 28);
-    CHECK(stamp_of(d).tile_z == 38);
+    // A diagonal component of speed 0.036: 154618816 * 11863283 / 2^24 (exact, truncated).
+    const std::int32_t diag =
+        static_cast<std::int32_t>(std::int64_t{154618816} * 11863283 / 16777216);
+    d.vel_x_q32 = diag;
+    d.vel_z_q32 = diag;
+    // 10.5 + 25 * 0.0254558 = 11.136; 20.5 + 0.636 = 21.136.
+    CHECK(stamp_of(d).tile_x == 11);
+    CHECK(stamp_of(d).tile_z == 21);
     sim::LocalShip w = ship(1, 40.5, 40.5);
-    w.dir_x_q24 = -16777216;
-    CHECK(stamp_of(w).tile_x == 15);
+    w.vel_x_q32 = -kV;
+    CHECK(stamp_of(w).tile_x == 39); // 40.5 - 0.9 = 39.6
     // A ship near the origin heading west stamps at a negative point: truncation toward zero
-    // (ftol).
-    sim::LocalShip neg = ship(1, 3.5, 3.5);
-    neg.dir_x_q24 = -16777216;
-    CHECK(stamp_of(neg).tile_x == -21);
-    sim::LocalShip idle = ship(1, 12.75, 8.25);
+    // (ftol): 0.5 - 0.9 = -0.4 -> tile 0, where a floor would say -1.
+    sim::LocalShip neg = ship(1, 0.5, 3.5);
+    neg.vel_x_q32 = -kV;
+    CHECK(stamp_of(neg).tile_x == 0);
+    sim::LocalShip neg2 = ship(1, 0.5, 3.5);
+    neg2.vel_x_q32 = -(1 << 28); // -1/16 tile per unit: 0.5 - 1.5625 = -1.0625 -> -1
+    CHECK(stamp_of(neg2).tile_x == -1);
+    sim::LocalShip idle = ship(1, 12.75, 8.25); // turn / idle / stop: velocity 0
     CHECK(stamp_of(idle).tile_x == 12);
     CHECK(stamp_of(idle).tile_z == 8);
 }
@@ -241,11 +258,11 @@ TEST_CASE("local stamps feed the route query: a ship ahead of the goal moves the
           "hand-built stamp") {
     sim::TileMapSource m(64, 64);
     const sim::CoastIndex index(m, {});
-    // The ship is 3 tiles from the start and heads east: its look-ahead stamp lands on the goal
-    // tile (40, 20).
-    sim::LocalShip s = ship(5, 15.5, 20.5);
-    s.dir_x_q24 = 16777216;
-    sim::LocalStampQuery q = query_at(12.5, 20.5);
+    // The ship is 2 tiles from the start and heads east at the supported maximum speed (1/16 tile
+    // per unit): its look-ahead stamp (38.5 + 1.5625) lands on the goal tile (40, 20).
+    sim::LocalShip s = ship(5, 38.5, 20.5);
+    s.vel_x_q32 = 1 << 28;
+    sim::LocalStampQuery q = query_at(36.5, 20.5);
     q.world_w = 64;
     q.world_h = 64;
     const auto stamps = sim::local_ship_stamps(ListView({s}), q, sim::RouteLimits{});
@@ -253,7 +270,7 @@ TEST_CASE("local stamps feed the route query: a ship ahead of the goal moves the
     CHECK(stamps[0].tile_x == 40);
     CHECK(stamps[0].tile_z == 20);
     sim::RouteQuery rq;
-    rq.start_x = 12;
+    rq.start_x = 36;
     rq.start_z = 20;
     rq.goal_x_q8 = 40 * 256 + 128;
     rq.goal_z_q8 = 20 * 256 + 128;

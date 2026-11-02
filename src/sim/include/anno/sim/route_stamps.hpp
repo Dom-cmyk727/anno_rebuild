@@ -5,8 +5,10 @@
 // columns ascending (inner), keeps a unit if dx^2 + dz^2 <= r^2 (inclusive, r = 5.0 for ships),
 // (state & 0xa) == 0 and its class group is the ship group, and STOPS at `cap` hits (0x40; later
 // units are silently dropped). The consumer then skips a unit without a direction and the querying
-// ship itself (both still counted against the cap), and stamps (x + dir.x * 25.0, z + dir.z * 25.0)
-// with the 5 x 5 kernel.
+// ship itself (both still counted against the cap), and stamps (x + v.x * 25.0, z + v.z * 25.0)
+// with the 5 x 5 kernel, where v is the unit's VELOCITY: the segment direction already multiplied
+// by speed and the segment's factor (slot +0x60 returns unit +0x20; docs/re/ship-navigation.md
+// 7.2, 7.3, 9.4), in tiles per stepper unit (5 ticks). It is not a normalised heading.
 //
 // ADAPTATION (docs/sim/ship-navigation.md section 5): the sim has no cell lists, so the in-cell
 // order is ascending figure id instead of registry insertion order. The query touches only the
@@ -34,10 +36,11 @@ struct LocalShip {
     bool ship_group = true;
     /// False = the original's NULL direction pointer: the consumer skips the unit.
     bool has_direction = true;
-    /// The unit direction of the current segment in 2^-24 tile per tile: an axis step is +-2^24, a
-    /// diagonal component +-11863283 (0x3F3504F3 as an exact rational), 0 when the ship does not
-    /// move.
-    std::int32_t dir_x_q24 = 0, dir_z_q24 = 0;
+    /// The velocity of the current segment (`unit +0x20`): direction * speed * factor, in tiles per
+    /// stepper unit (5 ticks) as 2^-32 tile, signed. 0 when the segment does not move (turn, idle,
+    /// stop). Bounded by the type speed (<= 2^28) because the factor is <= 100 percent, so the
+    /// stamp arithmetic below cannot overflow.
+    std::int32_t vel_x_q32 = 0, vel_z_q32 = 0;
 };
 
 /// The minimal spatial interface: the ships whose position lies in one 16 x 16-tile cell. The cell

@@ -68,7 +68,7 @@ if the goal tile is unlabelled one connectivity bit of a path cell is cleared (`
 10. **Stamps.** `plan_route` takes stamp tiles (first `unit_cap` used). `local_ship_stamps` (`route_stamps.hpp`) builds them from a
     minimal `ShipSpatialView` (ships per 16 x 16-tile cell): cells overlapped by the radius only, z-cell then x-cell then ascending
     id (ADAPTATION of the registry's insertion order), `d^2 <= r^2` inclusive, `state & 0xa == 0`, ship group, stop at `unit_cap` hits
-    (the planning ship and direction-less ships count against the cap, as in the original), stamp = `pos + dir * 25` truncated
+    (the planning ship and direction-less ships count against the cap, as in the original), stamp = `pos + velocity * 25` truncated (velocity = unit +0x20 = direction x speed x the segment factor, tiles per stepper unit; NOT a normalised heading, MAP-NAV-3 N2)
     exactly in 2^-24 units. The f32 sum of the original can differ from the exact one by a tile only when the point lies within
     about 2^-14 tile of a tile border at positions above 1000 (not modelled).
 11. **Test hook in production code.** `route_detail::Perturbation` / `plan_route_perturbed` are compiled into the library (no

@@ -6,9 +6,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -571,8 +574,8 @@ TEST_CASE("nav motion: the wire bytes equal the hand transcription") {
     // order none 00 | ticket none 00 | seg: kind 00, dir8 00, factor u32 100, speed u32 42949672 =
     // 0x028F5C28, remaining u64 42949672*500 = 0x4FFFFFE20 | node count u64 1 | node: kind 03, dir8
     // 04, facing 00, length u64 11863283<<9 = 0x16A09E600, speed u32 0x09374BC0 | last u16 0x0102 |
-    // pos_u i64 1, i64 -1 | res24 two u32 0. (Python: tools/wide_ref.py style big-int
-    // transcription.)
+    // pos_u i64 1, i64 -1 | res24 two u32 0 | health 00 (absent; stream 123). (Python: tools/
+    // wide_ref.py style big-int transcription; populated states: tools/nav_state_ref.py.)
     sim::NavMotion m = sim::make_nav_motion(sim::FixedPos{0, 0}, 0x0102);
     m.nodes = {sim::NavNode{sim::NavSegKind::Move, 4, 0, sim::kNavDiagStepQ32, 154618816U}};
     m.pos_u[0] = 1;
@@ -582,7 +585,7 @@ TEST_CASE("nav motion: the wire bytes equal the hand transcription") {
         0xFF, 0xFF, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         0x03, 0x04, 0x00, 0x00, 0xE6, 0x09, 0x6A, 0x01, 0x00, 0x00, 0x00, 0xC0, 0x4B, 0x37,
         0x09, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     sim::WriteArchive w1;
     fields(w1, m);
     CHECK(w1.data() == want1);
@@ -595,8 +598,9 @@ TEST_CASE("nav motion: the wire bytes equal the hand transcription") {
     // Order and ticket present, a diagonal move, no nodes, the extreme stamp and residues:
     // order 01 | u64 7 | routed 01 | i32 -5 | i32 300 | ticket 01 | u64 9 | seg kind 03 dir8 03
     // factor 87 speed 154618816 remaining 2^32 | nodes 0 | last 0xFFFF | pos_u 500<<24,
-    // -(500<<24)*3 | res24 12345, 0xFFFFFF.
+    // -(500<<24)*3 | res24 12345, 0xFFFFFF | health 01 + u32 4321.
     sim::NavMotion m2;
+    m2.health = 4321;
     m2.order = sim::NavOrder{7, true, -5, 300};
     m2.ticket = 9;
     m2.seg = sim::NavSegment{sim::NavSegKind::Move, 3, 87, 154618816U, std::uint64_t{1} << 32};
@@ -611,7 +615,7 @@ TEST_CASE("nav motion: the wire bytes equal the hand transcription") {
         0x03, 0x57, 0x00, 0x00, 0x00, 0xC0, 0x4B, 0x37, 0x09, 0x00, 0x00, 0x00, 0x00, 0x01,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00,
         0x00, 0x00, 0xF4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0xFA, 0xFF, 0xFF,
-        0xFF, 0x39, 0x30, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00};
+        0xFF, 0x39, 0x30, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0x00, 0x01, 0xE1, 0x10, 0x00, 0x00};
     sim::WriteArchive w2;
     fields(w2, m2);
     CHECK(w2.data() == want2);
@@ -705,9 +709,11 @@ TEST_CASE("nav motion: save, load, save is byte-identical and every field reache
         CHECK(std::find(seen.begin(), seen.end(), h) == seen.end());
         seen.push_back(h);
     }
-    // The previous stream versions are refused with their own message, a stream-122 control loads.
-    island_test::check_unsupported_versions(bytes, types, {116, 117, 118, 119, 120, 121});
-    CHECK(sim::kStateHashVersion == 122);
+    // The previous stream versions are refused with their own message, a stream-123 control loads
+    // (122 is the layout before NavMotion::health; the control is this build's valid, checksummed
+    // save with only the number changed and re-sealed, and the 122 message names 122).
+    island_test::check_unsupported_versions(bytes, types, {116, 117, 118, 119, 120, 121, 122});
+    CHECK(sim::kStateHashVersion == 123);
 }
 
 TEST_CASE("nav motion: make_nav_motion is the documented idle state at any position") {
@@ -799,6 +805,196 @@ TEST_CASE("nav motion: real data - type 391 navigates with no holds, the factor 
             CHECK(err.empty());
         } else {
             CHECK(has(err, "cargo_penalty_percent"));
+        }
+    }
+}
+
+namespace {
+
+/// One state of nav_state_vectors.txt (written by tools/nav_state_ref.py).
+struct NavVector {
+    std::string name;
+    std::int32_t pos_x = 0, pos_y = 0;
+    std::uint8_t dir16 = 0;
+    sim::NavMotion motion;
+    std::string hex;
+};
+
+std::vector<NavVector> load_nav_vectors() {
+    std::ifstream in(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "nav" /
+                     "nav_state_vectors.txt");
+    REQUIRE(in.good());
+    std::vector<NavVector> out;
+    const auto kind_of = [](const std::string& k) {
+        if (k == "Idle") {
+            return sim::NavSegKind::Idle;
+        }
+        if (k == "Turn") {
+            return sim::NavSegKind::Turn;
+        }
+        if (k == "TurnPhase") {
+            return sim::NavSegKind::TurnPhase;
+        }
+        REQUIRE(k == "Move");
+        return sim::NavSegKind::Move;
+    };
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::istringstream ls(line);
+        std::string key;
+        ls >> key;
+        if (key == "state") {
+            out.emplace_back();
+            ls >> out.back().name;
+            continue;
+        }
+        REQUIRE_FALSE(out.empty());
+        NavVector& v = out.back();
+        sim::NavMotion& m = v.motion;
+        if (key == "pos") {
+            ls >> v.pos_x >> v.pos_y;
+        } else if (key == "dir16") {
+            unsigned d = 0;
+            ls >> d;
+            v.dir16 = static_cast<std::uint8_t>(d);
+        } else if (key == "order") {
+            std::string first;
+            ls >> first;
+            if (first != "none") {
+                sim::NavOrder o;
+                unsigned routed = 0;
+                o.order_id = std::stoull(first);
+                ls >> routed >> o.target_x_q8 >> o.target_y_q8;
+                o.routed = routed != 0;
+                m.order = o;
+            }
+        } else if (key == "ticket") {
+            std::string t;
+            ls >> t;
+            if (t != "none") {
+                m.ticket = std::stoull(t);
+            }
+        } else if (key == "seg") {
+            std::string k;
+            unsigned dir = 0;
+            ls >> k >> dir >> m.seg.factor_percent >> m.seg.speed_q32 >> m.seg.remaining_x500;
+            m.seg.kind = kind_of(k);
+            m.seg.dir8 = static_cast<std::uint8_t>(dir);
+        } else if (key == "node") {
+            std::string k;
+            unsigned dir = 0, facing = 0;
+            sim::NavNode n;
+            ls >> k >> dir >> facing >> n.length_q32 >> n.speed_q32;
+            n.kind = kind_of(k);
+            n.dir8 = static_cast<std::uint8_t>(dir);
+            n.facing = static_cast<std::uint8_t>(facing);
+            m.nodes.push_back(n);
+        } else if (key == "last") {
+            unsigned l = 0;
+            ls >> l;
+            m.last = static_cast<std::uint16_t>(l);
+        } else if (key == "pos_u") {
+            ls >> m.pos_u[0] >> m.pos_u[1];
+        } else if (key == "res24") {
+            ls >> m.res24[0] >> m.res24[1];
+        } else if (key == "health") {
+            std::string h;
+            ls >> h;
+            if (h != "unknown") {
+                m.health = static_cast<std::uint32_t>(std::stoul(h));
+            }
+        } else if (key == "hex") {
+            ls >> v.hex;
+        }
+    }
+    return out;
+}
+
+std::string hex_of(const std::vector<std::uint8_t>& bytes) {
+    static const char* d = "0123456789abcdef";
+    std::string s;
+    for (const std::uint8_t b : bytes) {
+        s.push_back(d[b >> 4]);
+        s.push_back(d[b & 15]);
+    }
+    return s;
+}
+
+std::size_t occurrences(const std::string& hay, const std::string& needle) {
+    std::size_t n = 0;
+    for (std::size_t at = hay.find(needle); at != std::string::npos;
+         at = hay.find(needle, at + 2)) {
+        // a byte boundary only (even offset): hex digits of two adjacent bytes may look alike
+        n += (at % 2 == 0) ? 1 : 0;
+    }
+    return n;
+}
+
+} // namespace
+
+TEST_CASE("nav state: populated states serialise to the independent byte vectors, then sail on") {
+    const std::vector<NavVector> vectors = load_nav_vectors();
+    REQUIRE(vectors.size() == 5);
+    const auto types = nav_registry();
+    for (const NavVector& v : vectors) {
+        INFO(v.name);
+        // 1. The production archive writes exactly the bytes of tools/nav_state_ref.py.
+        sim::WriteArchive wa;
+        sim::NavMotion copy = v.motion;
+        fields(wa, copy);
+        CHECK_MESSAGE(hex_of(wa.data()) == v.hex, "the writer differs from nav_state_vectors.txt");
+
+        // 2. The same state in a world: valid, and its save holds those bytes once, as the
+        // presence-prefixed optional of ship 1's Figure::nav.
+        sim::World w = nav_world(types);
+        sim::IdCounters& ids = sim::WorldTestAccess::ids(w);
+        ids.next_order_id = 100;
+        ids.next_ticket = 50;
+        sim::Figure& f = figure(w, 1);
+        f.pos = sim::FixedPos{v.pos_x, v.pos_y};
+        f.dir16 = v.dir16;
+        f.nav = v.motion;
+        sim::rebuild_figure_index(sim::WorldTestAccess::figures(w));
+        REQUIRE_MESSAGE(w.check_invariants().empty(), w.check_invariants());
+        const std::vector<std::uint8_t> saved = w.save();
+        CHECK(occurrences(hex_of(saved), "01" + v.hex) >= 1);
+        CHECK(occurrences(hex_of(saved), v.hex) >= 1);
+
+        // 3. The loaded world is the same state and sails on exactly like the continuous one.
+        auto loaded = sim::World::load(saved, types);
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        sim::World r = std::move(loaded).value();
+        REQUIRE(r.state_hash() == w.state_hash());
+        CHECK(*figure(r, 1).nav == v.motion);
+        const sim::FixedPos start = f.pos;
+        std::vector<std::uint32_t> later_factors;
+        for (int step = 0; step < 600; ++step) {
+            w.advance(10);
+            r.advance(10);
+            REQUIRE(r.state_hash() == w.state_hash());
+            if (step >= 3 && figure(w, 1).nav->seg.kind == sim::NavSegKind::Move) {
+                later_factors.push_back(figure(w, 1).nav->seg.factor_percent);
+            }
+        }
+        CHECK(w.check_invariants().empty());
+        CHECK(r.save() == w.save());
+        if (v.motion.order.has_value()) {
+            // The voyage really happened: the ship left its place, or arrived and the order is
+            // gone (a waiting order is planned by the fair admission, then sailed).
+            CHECK((figure(w, 1).pos.x != start.x || figure(w, 1).pos.y != start.y));
+        }
+        // The factor of the segments that START after the load follows the stored health
+        // (6000 of 6000: 100; 1500 of 6000: 65 + trunc(35 * 1500 / 6000) = 73; unknown: 100).
+        const std::uint32_t expect =
+            v.motion.health == std::optional<std::uint32_t>{1500} ? 73 : 100;
+        for (const std::uint32_t factor : later_factors) {
+            CHECK(factor == expect);
+        }
+        if (v.name == "diag_moving_full" || v.name == "diag_moving_partial") {
+            CHECK_FALSE(later_factors.empty());
         }
     }
 }

@@ -180,7 +180,8 @@ bool end_segment(Figure& f, const NavStepEnv& env, NavPlanner& planner,
 
 std::uint32_t nav_speed_factor(const NavFacts& facts, const NavRules& rules,
                                std::uint32_t capacity_88, std::span<const ShipHold> holds,
-                               std::uint32_t owner_volk_number) {
+                               std::uint32_t owner_volk_number,
+                               std::optional<std::uint32_t> health) {
     std::uint64_t cargo_loss = 0;
     if (owner_volk_number == rules.volk_number) {
         const std::uint64_t total_cap =
@@ -196,9 +197,14 @@ std::uint32_t nav_speed_factor(const NavFacts& facts, const NavRules& rules,
         }
     }
     const std::uint64_t level = 100 - cargo_loss;
-    // Health is not modelled: hp = max_hp, so trunc(span * hp / max_hp) = span.
-    const std::uint64_t v =
-        (std::uint64_t{rules.health_floor_percent} + rules.health_span_percent) * level / 100;
+    // trunc(span * hp / max_hp); an unknown health is the full-health term (12.14). max_hp of a
+    // loaded ship type is 1 .. 65535 (types.cpp), a zero is guarded like a missing divisor.
+    std::uint64_t health_term = rules.health_span_percent;
+    if (health.has_value() && facts.max_hp != 0) {
+        health_term = std::uint64_t{rules.health_span_percent} *
+                      std::min<std::uint64_t>(*health, facts.max_hp) / facts.max_hp;
+    }
+    const std::uint64_t v = (std::uint64_t{rules.health_floor_percent} + health_term) * level / 100;
     return static_cast<std::uint32_t>(std::clamp<std::uint64_t>(v, 1, 100));
 }
 

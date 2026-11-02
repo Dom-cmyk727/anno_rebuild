@@ -633,28 +633,33 @@ TEST_CASE("stepper: the speed factor follows the original formula with the state
         return h;
     };
     // Empty ship: L 100, V = (65 + 35) = 100.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({}), 1) == 100);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({}), 1, std::nullopt) == 100);
     // Four holds each full (n0 = 4): S = 4 * cap, divisor (4 + 2) * cap = 6 cap: loss = trunc(17 *
     // 4 / 6) = 11, L = 89, V = trunc(100 * 89 / 100) = 89.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap, cap, cap, cap}), 1) == 89);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap, cap, cap, cap}), 1, std::nullopt) ==
+          89);
     // Half of one hold: loss trunc(17 * 0.5 / 6) = 1: L 99, V 99.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap / 2}), 1) == 99);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap / 2}), 1, std::nullopt) == 99);
     // Only the first n0 = 4 holds count; a fifth is ignored.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap, cap, cap, cap, cap}), 1) == 89);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap, cap, cap, cap, cap}), 1,
+                                std::nullopt) == 89);
     // Amounts above the capacity are clamped (S stays within (n0 + n1) cap): V stays >= 83.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({~0ULL, ~0ULL, ~0ULL, ~0ULL}), 1) >= 83);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({~0ULL, ~0ULL, ~0ULL, ~0ULL}), 1,
+                                std::nullopt) >= 83);
     // Another Volk number: no cargo term. No capacity, or no holds counts: none either.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap, cap, cap, cap}), 2) == 100);
-    CHECK(sim::nav_speed_factor(facts, rules, 0, holds({cap}), 1) == 100);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, holds({cap, cap, cap, cap}), 2, std::nullopt) ==
+          100);
+    CHECK(sim::nav_speed_factor(facts, rules, 0, holds({cap}), 1, std::nullopt) == 100);
     sim::NavFacts none = facts;
     none.hold_count_a = none.hold_count_b = 0;
-    CHECK(sim::nav_speed_factor(none, rules, cap, holds({cap}), 1) == 100);
+    CHECK(sim::nav_speed_factor(none, rules, cap, holds({cap}), 1, std::nullopt) == 100);
     // Rules: floor 1, span 0, penalty 17: V = trunc(1 * 100 / 100) = 1; never 0.
     sim::NavRules low = rules;
     low.health_floor_percent = 1;
     low.health_span_percent = 0;
-    CHECK(sim::nav_speed_factor(facts, low, cap, holds({}), 1) == 1);
-    CHECK(sim::nav_speed_factor(facts, low, cap, holds({cap, cap, cap, cap}), 1) == 1);
+    CHECK(sim::nav_speed_factor(facts, low, cap, holds({}), 1, std::nullopt) == 1);
+    CHECK(sim::nav_speed_factor(facts, low, cap, holds({cap, cap, cap, cap}), 1, std::nullopt) ==
+          1);
 }
 
 TEST_CASE("stepper: saving and loading the motion state at any visit does not change the voyage") {
@@ -822,8 +827,8 @@ TEST_CASE("stepper: the speed factor truncates the cargo loss and the product") 
     const sim::NavFacts facts{kSpeed, kTurn, 6000, 4, 2, 0, 1280};
     // 17 * S / (6 cap) = 1.6 exactly at S = 144565.33: S = 144565 gives 1.59999: loss trunc 1 (a
     // rounding implementation would give 2), L 99, V 99.
-    CHECK(sim::nav_speed_factor(facts, rules, cap, std::vector<sim::ShipHold>{{1, 144565}}, 1) ==
-          99);
+    CHECK(sim::nav_speed_factor(facts, rules, cap, std::vector<sim::ShipHold>{{1, 144565}}, 1,
+                                std::nullopt) == 99);
     // V = trunc(98 * 75 / 100) = trunc(73.5) = 73 (a rounding implementation gives 74): span 33,
     // floor 65, penalty 25, four holds of four, all full: loss = 25 -> L 75.
     rules.health_span_percent = 33;
@@ -831,5 +836,5 @@ TEST_CASE("stepper: the speed factor truncates the cargo loss and the product") 
     rules.cargo_penalty_percent = 25;
     const sim::NavFacts four{kSpeed, kTurn, 6000, 4, 0, 0, 1280};
     const std::vector<sim::ShipHold> full = {{1, cap}, {2, cap}, {3, cap}, {4, cap}};
-    CHECK(sim::nav_speed_factor(four, rules, cap, full, 1) == 73);
+    CHECK(sim::nav_speed_factor(four, rules, cap, full, 1, std::nullopt) == 73);
 }

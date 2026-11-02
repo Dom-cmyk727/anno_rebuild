@@ -435,6 +435,19 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
                        " is not in the goods table";
             }
         }
+        {
+            const FigureType* ft = types->find_figure_type(fs.kind);
+            if (fs.health.has_value() && fs.health_unknown) {
+                return p + ".health: a value and health_unknown are exclusive";
+            }
+            if ((fs.health.has_value() || fs.health_unknown) && (ft == nullptr || !ft->nav)) {
+                return p + ".health: figure type " + std::to_string(fs.kind) + " does not navigate";
+            }
+            if (fs.health.has_value() && *fs.health > ft->nav->max_hp) {
+                return p + ".health: " + std::to_string(*fs.health) +
+                       " is above the type's max_hp " + std::to_string(ft->nav->max_hp);
+            }
+        }
     }
 
     // 2. Configuration, rules, settings, seams, the PRNG and the players.
@@ -494,6 +507,10 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
             // The position is inside the configured world (checked above), far below 2^22 Q8, so
             // pos * 500 * 2^24 stays inside i64.
             f.nav = make_nav_motion(f.pos, static_cast<std::uint16_t>(w.clock_.tick()));
+            // A new expedition starts at full health unless the spec says otherwise (N4).
+            if (!fs.health_unknown) {
+                f.nav->health = fs.health.value_or(ft->nav->max_hp);
+            }
         }
         if (add_figure(w.figures_, std::move(f), w.config_, w.rules_) == kNoSlot) {
             return idx_path("figures", i) + ": the figure registry cannot take it";

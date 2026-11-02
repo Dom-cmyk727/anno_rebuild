@@ -49,6 +49,10 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
         }
         const NavFacts& facts = *type->nav;
         const NavMotion& m = *f.nav;
+        if (m.health.has_value() && *m.health > facts.max_hp) {
+            return where + ".nav.health: " + std::to_string(*m.health) +
+                   " hit points exceed the type's max_hp " + std::to_string(facts.max_hp);
+        }
         if (facts.nav_class >= rules.nav.class_costs.size()) {
             return where + ".nav: figure type " + std::to_string(f.kind) + " has nav_class " +
                    std::to_string(facts.nav_class) + ", Rules.nav.class_costs holds " +

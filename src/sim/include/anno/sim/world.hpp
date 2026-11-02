@@ -114,7 +114,11 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // Stream at 122 (task MAP-NAV-2, docs/sim/ship-navigation.md 12.5): Rules gain `nav` (NavRules,
 // after shared_visibility); IdCounters gain next_order_id and next_ticket; each Figure gains an
 // optional NavMotion at its end; the registry digest's figure types gain the optional NavFacts.
-inline constexpr std::uint32_t kStateHashVersion = 122;
+// Stream at 123 (task MAP-NAV-3 N4, docs/sim/ship-navigation.md 12.14): each NavMotion gains an
+// optional `u32 health` (the current hit points, absent = explicitly unknown) after res24. Rules
+// and the registry digest are unchanged; every state hash moves through the version in the header,
+// and a world with a navigating ship also through the new bytes.
+inline constexpr std::uint32_t kStateHashVersion = 123;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

@@ -158,10 +158,16 @@ struct NavMotion {
     /// Position per axis (x, y) in tile * 2^32 * 500, and the diagonal residue (< 2^24).
     std::int64_t pos_u[2] = {0, 0};
     std::uint32_t res24[2] = {0, 0};
+    /// MAP-NAV-3 N4 (stream 123): the current hit points in the unit of NavFacts::max_hp (the
+    /// original's signed 16-bit +0x6c, docs/re/ship-navigation.md 7.5); read only by the speed
+    /// factor at a movement segment start. nullopt = explicitly UNKNOWN (an import that does not
+    /// know it): the speed then uses the full-health term (an adaptation, docs/sim/
+    /// ship-navigation.md 12.14). 0 is a legal value; at most max_hp.
+    std::optional<std::uint32_t> health;
     friend bool operator==(const NavMotion& a, const NavMotion& b) {
         return a.order == b.order && a.ticket == b.ticket && a.seg == b.seg && a.nodes == b.nodes &&
                a.last == b.last && a.pos_u[0] == b.pos_u[0] && a.pos_u[1] == b.pos_u[1] &&
-               a.res24[0] == b.res24[0] && a.res24[1] == b.res24[1];
+               a.res24[0] == b.res24[0] && a.res24[1] == b.res24[1] && a.health == b.health;
     }
 };
 

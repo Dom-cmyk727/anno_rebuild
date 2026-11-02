@@ -170,6 +170,14 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME ship_step_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py check
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/stepper_vectors.txt)
+    add_test(NAME ship_speed_factor_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py check-factor
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/speed_factor_vectors.txt)
+    add_test(NAME nav_state_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/nav_state_ref.py check
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/nav/nav_state_vectors.txt)
+    add_test(NAME nav_state_reference_selftest
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/nav_state_ref.py selftest)
     add_test(NAME ship_step_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
     add_test(NAME test_verdict_contract

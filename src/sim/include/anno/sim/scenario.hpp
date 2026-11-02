@@ -162,6 +162,13 @@ struct ScenarioSpec {
         std::vector<ShipHold> holds;
         /// The state word (stream 120); 0 = a scenario ship.
         std::uint32_t state_word = 0;
+        /// A navigating ship's current hit points (MAP-NAV-3 N4, stream 123), in the unit of the
+        /// type's max_hp, at most max_hp. Absent = full health (a new expedition). Not for a
+        /// figure that does not navigate.
+        std::optional<std::uint32_t> health;
+        /// True = the health is explicitly unknown (what an import without the field would
+        /// carry); exclusive with `health`. The speed then uses the full-health term.
+        bool health_unknown = false;
     };
     std::vector<PlayerSpec> players;
     /// Figures at tick 0, in id order. Default: none.

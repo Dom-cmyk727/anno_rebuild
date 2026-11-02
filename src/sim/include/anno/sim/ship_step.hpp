@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -66,12 +67,15 @@ struct NavStepEnv {
 /// docs/sim/ship-navigation.md 12.8): `L = 100 - trunc(penalty * S / ((n0 + n1) * cap))` when the
 /// owner's Volk number equals `rules.volk_number` (S = the first n0 holds' amounts, clamped to
 /// (n0 + n1) * cap; a zero divisor gives no cargo term), then
-/// `V = trunc((health_floor + trunc(span * hp / max_hp)) * L / 100)`. Health is not modelled yet,
-/// so hp = max_hp. The result is in 1 .. 100 for valid Rules.
+/// `V = trunc((health_floor + trunc(span * hp / max_hp)) * L / 100)`. `health` is the ship's
+/// current hit points (NavMotion::health, 0 .. max_hp); nullopt (unknown) uses hp = max_hp, an
+/// adaptation (docs/sim/ship-navigation.md 12.14); a value above max_hp is clamped to max_hp. The
+/// result is in 1 .. 100 for valid Rules.
 [[nodiscard]] std::uint32_t nav_speed_factor(const NavFacts& facts, const NavRules& rules,
                                              std::uint32_t capacity_88,
                                              std::span<const ShipHold> holds,
-                                             std::uint32_t owner_volk_number);
+                                             std::uint32_t owner_volk_number,
+                                             std::optional<std::uint32_t> health);
 
 /// One stepper visit at tick `now` (u16 wrap handled): consumes d = u16(now - last) ticks of
 /// movement along the segment list, carrying leftover time across segment boundaries inside the

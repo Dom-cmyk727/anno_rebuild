@@ -13,6 +13,8 @@ Usage:
   ship_step_ref.py check  <vectors.txt>    the fixture equals the model's output (exit 1 otherwise)
   ship_step_ref.py selftest                the model rejects deliberately wrong variants of its own
                                            hand-derived anchor cases
+  ship_step_ref.py write-factor <f.txt>    regenerate the speed-factor vectors (MAP-NAV-3 N4)
+  ship_step_ref.py check-factor <f.txt>    the factor fixture equals the model's output
 """
 import sys
 from fractions import Fraction as F
@@ -225,6 +227,8 @@ def anchors():
 
 def selftest():
     anchors()
+    if factor_selftest():
+        return 1
     base = {n: run_case(c) for n, c in ((c['name'], c) for c in cases())}
     wrong = 0
     for mut in ('dead_zone4', 'diag_unit'):
@@ -234,6 +238,107 @@ def selftest():
             return 1
         print('selftest: mutant', mut, 'detected by', len(changed), 'cases')
         wrong += 1
+    return 0
+
+
+# ---- the speed factor V (MAP-NAV-3 N4; docs/re/ship-navigation.md 7.5, docs/sim/ship-navigation.md
+# 12.8 and 12.14). Exact rationals, one explicit truncation per term of the original formula:
+#   L = 100 - trunc(penalty * S / ((n0 + n1) * cap))   when owner == volk (S = the first n0 holds,
+#                                                       each clamped, the sum clamped; a zero divisor
+#                                                       = no cargo term), else L = 100
+#   V = trunc((floor + trunc(span * hp / maxhp)) * L / 100), hp = maxhp when unknown, clamped to 1 .. 100
+def factor_model(c, mut=None):
+    total_cap = (c['n0'] + c['n1']) * c['cap']
+    loss = F(0)
+    if c['owner'] == c['volk'] and total_cap != 0:
+        s = F(0)
+        for a in c['holds'][:c['n0']]:
+            s = min(F(total_cap), s + min(F(a), F(total_cap)))
+        loss = F(floor(F(c['penalty']) * s / total_cap))
+    level = 100 - loss
+    hp = c['maxhp'] if (c['hp'] is None or mut == 'full_only') else min(c['hp'], c['maxhp'])
+    term = floor(F(c['span']) * hp / c['maxhp'])
+    if mut == 'round_term':
+        term = round(F(c['span']) * hp / c['maxhp'])
+    v = floor(F(c['floor'] + term) * level / 100)
+    return max(1, min(100, v))
+
+
+def factor_cases():
+    out = []
+    base = dict(floor=65, span=35, penalty=17, volk=1, maxhp=6000, n0=4, n1=2, cap=1000 * 256,
+                owner=1, hp=None, holds=[])
+
+    def add(name, note, **kw):
+        c = dict(base)
+        c.update(kw)
+        c['name'], c['note'] = name, note
+        out.append(c)
+
+    cap = 1000 * 256
+    full = [cap] * 4
+    add('full_empty', 'hp = max_hp: the term is the whole span', hp=6000)
+    add('unknown_equals_full', 'unknown health = the full-health term (adaptation 12.14)', hp=None)
+    add('half_empty', 'trunc(35 * 3000 / 6000) = 17', hp=3000)
+    add('zero_hp', 'hp 0 is legal: the term is 0, V is the floor', hp=0)
+    add('one_hp', 'trunc(35 / 6000) = 0', hp=1)
+    add('almost_full', 'trunc(35 * 5999 / 6000) = 34, not rounded to 35', hp=5999)
+    add('third', 'trunc(35 * 2000 / 6000) = 11 (11.67 truncates)', hp=2000)
+    add('full_cargo_full_hp', 'L 89, V 89', hp=6000, holds=full)
+    add('full_cargo_half_hp', 'V = trunc((65 + 17) * 89 / 100) = 72', hp=3000, holds=full)
+    add('full_cargo_zero_hp', 'V = trunc(65 * 89 / 100) = 57', hp=0, holds=full)
+    add('half_hold_third_hp', 'cargo loss 1, term 11', hp=2000, holds=[cap // 2])
+    add('cargo_unknown_hp', 'unknown health with cargo = full-health cargo', hp=None, holds=full)
+    add('other_owner_damaged', 'a non-Volk owner has no cargo term, the health term stays', hp=3000, owner=2, holds=full)
+    add('other_owner_zero_hp', 'floor only', hp=0, owner=2, holds=full)
+    add('type_200_half', 'another type: max_hp 200, trunc(35 * 100 / 200) = 17', maxhp=200, hp=100)
+    add('type_200_199', 'trunc(35 * 199 / 200) = 34', maxhp=200, hp=199)
+    add('type_65535_one_short', 'max_hp 65535: trunc(35 * 65534 / 65535) = 34', maxhp=65535, hp=65534)
+    add('type_1_zero', 'max_hp 1: hp 0 -> floor', maxhp=1, hp=0)
+    add('rules_33_65_25_damaged', 'span 33 floor 65 penalty 25, hp 4000/6000: trunc(33 * 2/3) = 22', span=33, penalty=25, hp=4000, holds=full)
+    add('rules_floor10_span90', 'floor 10 span 90, hp 1/3: term 30', floor=10, span=90, hp=2000)
+    add('rules_floor1_span0', 'floor 1 span 0: V = 1 whatever the health', floor=1, span=0, hp=3000, holds=full)
+    add('over_capacity_clamped', 'amounts above the capacity are clamped', hp=3000, holds=[2 ** 63] * 4)
+    add('no_capacity', 'zero capacity: no cargo term', hp=3000, cap=0, holds=full)
+    add('volk_rule_2', 'the Volk number is a rule: owner 2 pays when volk is 2', hp=3000, volk=2, owner=2, holds=full)
+    return out
+
+
+def factor_render():
+    lines = ['# MAP-NAV-3 N4: speed-factor vectors from tools/ship_step_ref.py (exact-rational model, written from the',
+             '# formula of docs/re/ship-navigation.md 7.5, not from the C++).',
+             '# factor NAME | floor F span S penalty P volk K | maxhp M n0 N n1 N cap C | owner O | hp H (or unknown) |',
+             '# holds A,B,... (raw 1/256 ton; "-" none) | expect V']
+    for c in factor_cases():
+        holds = ','.join(str(a) for a in c['holds']) or '-'
+        hp = 'unknown' if c['hp'] is None else str(c['hp'])
+        lines.append(f"# {c['note']}")
+        lines.append(f"factor {c['name']} floor {c['floor']} span {c['span']} penalty {c['penalty']} volk {c['volk']} "
+                     f"maxhp {c['maxhp']} n0 {c['n0']} n1 {c['n1']} cap {c['cap']} owner {c['owner']} hp {hp} "
+                     f"holds {holds} expect {factor_model(c)}")
+    return '\n'.join(lines) + '\n'
+
+
+def factor_anchors():
+    """Hand-derived (no model code): full health empty = floor + span = 100; half of 6000 hp = 65 + 17 = 82;
+    hp 0 = 65; full cargo (4 of 6 hold-capacities, penalty 17): loss trunc(17 * 4 / 6) = 11, L 89: 100 * 89 / 100 = 89."""
+    base = dict(floor=65, span=35, penalty=17, volk=1, maxhp=6000, n0=4, n1=2, cap=256000, owner=1, hp=6000, holds=[])
+    assert factor_model(base) == 100
+    assert factor_model(dict(base, hp=3000)) == 82
+    assert factor_model(dict(base, hp=0)) == 65
+    assert factor_model(dict(base, hp=None)) == 100
+    assert factor_model(dict(base, holds=[256000] * 4)) == 89
+    assert factor_model(dict(base, holds=[256000] * 4, hp=3000)) == 72
+
+
+def factor_selftest():
+    factor_anchors()
+    for mut in ('full_only', 'round_term'):
+        changed = [c['name'] for c in factor_cases() if factor_model(c, mut) != factor_model(c)]
+        if not changed:
+            print('selftest: factor mutant', mut, 'was not detected by any case')
+            return 1
+        print('selftest: factor mutant', mut, 'detected by', len(changed), 'cases')
     return 0
 
 
@@ -250,6 +355,16 @@ def main(argv):
             print('stepper vectors differ from the model output')
             return 1
         print('stepper vectors agree')
+        return 0
+    if len(argv) == 3 and argv[1] == 'write-factor':
+        open(argv[2], 'w').write(factor_render())
+        return 0
+    if len(argv) == 3 and argv[1] == 'check-factor':
+        factor_anchors()
+        if open(argv[2]).read() != factor_render():
+            print('speed-factor vectors differ from the model output')
+            return 1
+        print('speed-factor vectors agree')
         return 0
     print(__doc__)
     return 2

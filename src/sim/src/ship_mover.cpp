@@ -264,7 +264,7 @@ void ShipMover::visit(World& w, const TickContext& ctx, Figure& ship, Effects& f
     NavStepEnv env;
     env.facts = &facts;
     env.factor_percent = nav_speed_factor(facts, w.rules_.nav, type->capacity_88, ship.holds,
-                                          owner != nullptr ? owner->volk : 1);
+                                          owner != nullptr ? owner->volk : 1, m.health);
     // The derived coast index follows every object change since the last visit (a command or
     // island growth), so a plan reads the authoritative state and not the history of a cache.
     w.route_cache_.sync(w);

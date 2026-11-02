@@ -1061,7 +1061,7 @@ template <class A, Same<NavOrder> S> void fields(A& a, S& s) {
     a.i32(s.target_y_q8);
 }
 
-static_assert(field_count<NavMotion>() == 9,
+static_assert(field_count<NavMotion>() == 10,
               "a NavMotion member needs a line in fields(NavMotion)");
 template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
     ar::opt(a, s.order, [&](auto& o) { fields(a, o); });
@@ -1073,6 +1073,7 @@ template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
     a.i64(s.pos_u[1]);
     a.u32(s.res24[0]);
     a.u32(s.res24[1]);
+    ar::opt(a, s.health, [&](auto& h) { a.u32(h); }); // stream 123
 }
 
 static_assert(field_count<Figure>() == 20, "a Figure member needs a line in fields(Figure)");

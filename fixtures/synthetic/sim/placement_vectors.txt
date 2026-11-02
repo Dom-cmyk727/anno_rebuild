@@ -33,6 +33,8 @@ type 20 1 1 193 4185 0     # MAP-ROAD-1: STRASSE with F & 3 == 1 (single-quad av
 type 21 1 1 193 4187 0     # MAP-ROAD-1: data-defined STRASSE, mode 3 (window maximum & 0xf0)
 type 22 2 1 193 4186 0     # MAP-ROAD-1: data-defined 2x1 STRASSE, mode 2
 type 23 2 1 193 4184 0     # MAP-ROAD-1: data-defined 2x1 STRASSE, mode 0 (max of the cell minima)
+type 24 1 1 193 1180 0     # MAP-ROAD-1: data-defined STRASSE, class 0x1000 WITHOUT bit 4: the class test does not run
+type 25 2 1 193 4186 0     # MAP-ROAD-1: 2x1 land road for the occupancy order
 
 case land_flat_30   # R3 flat 0x30 -> byte 0x30
   island 0 0 10 10
@@ -1344,4 +1346,42 @@ case road_over_ramp_piece_on_bad_terrain
   place 16 3 3 0 2000000 0
   expect reject OCCUPIED
   original accept 16
+end
+
+# R-25: class 0x1000 without flag bit 4: the original runs the class test only for A & 0x1000004 == 4, so a 0x20 step is no refusal; mode 0 = max cell minimum = 0x30 -> accept 48 (the 0x1186 twin, bit 4 set, is R-09's refusal)
+case road_slope_class_without_bit4
+  island 0 0 10 10
+  v 0 5050505050505050505000
+  v 1 5050505050505050505000
+  v 2 5050505050505050505000
+  v 3 5050505050505050505000
+  v 4 3030303030303030303000
+  v 5 3030303030303030303000
+  v 6 3030303030303030303000
+  v 7 3030303030303030303000
+  v 8 3030303030303030303000
+  v 9 3030303030303030303000
+  v 10 0000000000000000000000
+  place 24 3 3 0 2000000 0
+  expect accept 48
+end
+
+# R-26: the occupancy step is row-major, the first deciding tile wins: tile (3,3) holds an unregistered object id (Unsupported) and tile (4,3) a ramp piece (Occupied by R-A3): the first one decides
+case road_occupancy_first_tile_decides
+  island 0 0 10 10
+  v 0 3030303030303030303000
+  v 1 3030303030303030303000
+  v 2 3030303030303030303000
+  v 3 3030303030303030303000
+  v 4 3030303030303030303000
+  v 5 3030303030303030303000
+  v 6 3030303030303030303000
+  v 7 3030303030303030303000
+  v 8 3030303030303030303000
+  v 9 3030303030303030303000
+  v 10 0000000000000000000000
+  obj 3 3 99
+  obj 4 3 19
+  place 25 3 3 0 2000000 0
+  expect unsupported
 end

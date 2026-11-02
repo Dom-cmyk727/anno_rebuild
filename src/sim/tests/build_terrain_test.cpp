@@ -12,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -64,7 +65,8 @@ struct Kit {
     sim::TypeId road4{9803};      // 0x4186, 5 gold, pair (4, 3) -> code 4
     sim::TypeId road_ext{9804};   // a second data-defined road: 0x4186, 7 gold, pair (0, 3)
     sim::TypeId bridge{9805};     // PRODTYPE 198 (BRUECKE), 0x4386: not a land road
-    sim::TypeId ramp{9806}; // PRODTYPE 194 (RAMPE), 0x4186: a group-0xc1 piece, not a land road
+    sim::TypeId ramp{9806};  // PRODTYPE 194 (RAMPE), 0x4186: a group-0xc1 piece, not a land road
+    sim::TypeId road2{9807}; // a data-defined land road, widened to 2 x 1 in its own test
 
     Kit() {
         sim::TypeRegistry::Builder b;
@@ -113,6 +115,7 @@ struct Kit {
         road_copy(road_ext, 193, 0x4186, 7, 0, 3);
         road_copy(bridge, 198, 0x4386, 5, 0, 3);
         road_copy(ramp, 194, 0x4186, 5, 0, 3);
+        road_copy(road2, 193, 0x4186, 8, 0, 3);
         b.add_plain(fixed, 291).add_plain(stone, 323).add_plain(tree, 225);
         b.flags_word(stone, 0x3a).flags_word(tree, 0x29);
         auto built = b.build();
@@ -1320,4 +1323,74 @@ TEST_CASE("road build: dry run and live run decide alike over random mixed batch
     CHECK(occupied >= 20);
     CHECK(terrain >= 20);
     CHECK(road_records >= 100);
+}
+
+TEST_CASE("road build: a two-tile road, also turned, is one object on two tiles") {
+    const Kit& k = kit();
+    // The kit registers road2 as 1 x 1; this case widens it to 2 x 1 (the footprint is the type's).
+    sim::TypeRegistry::Builder b;
+    b.walk_tables(sim::synthetic_walk_tables());
+    for (const sim::BuildingType& t : k.reg->types()) {
+        if (t.id == k.road2) {
+            sim::BuildingType w = t;
+            w.width = 2;
+            w.height = 1;
+            b.add(std::move(w));
+        } else {
+            b.add(t);
+        }
+    }
+    for (const sim::FigureType& f : k.reg->figure_types()) {
+        b.figure_type(f);
+    }
+    auto reg2 = b.build();
+    REQUIRE_MESSAGE(reg2.ok(), (reg2.ok() ? std::string() : reg2.error()));
+    const auto world_of = [&](const Site& s, sim::Rules rules = {}) {
+        auto w = sim::World::create(s.spec(), reg2.value(), {}, rules, {});
+        REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+        return std::move(w).value();
+    };
+    const auto tile = [&](const sim::World& w, std::int32_t lx, std::int32_t ly) {
+        return w.islands()[0]->tiles.index_of(kX0 + lx, kY0 + ly);
+    };
+    Site s;
+    sim::World w = world_of(s);
+    const std::int64_t gold = money_of(w);
+    REQUIRE(w.apply(build_at(k.road2, 3, 3, 0)).ok());
+    REQUIRE(w.apply(build_at(k.road2, 6, 6, 1)).ok()); // turned: (6, 6) and (6, 7)
+    CHECK(money_of(w) == gold - 16);
+    const sim::TileLayer& t = w.islands()[0]->tiles;
+    for (const auto& [lx, ly, dx, dy, rot] :
+         {std::tuple{3, 3, 0, 0, 0}, {4, 3, 1, 0, 0}, {6, 6, 0, 0, 1}, {6, 7, 0, 1, 1}}) {
+        INFO("tile " << lx << "," << ly);
+        const sim::Slot i = tile(w, lx, ly);
+        CHECK(t.object(i) == k.road2.v);
+        CHECK(t.foot_dx(i) == dx);
+        CHECK(t.foot_dy(i) == dy);
+        CHECK(t.foot_rotation(i) == rot);
+        CHECK(t.item_height(i) == 0x30);
+        CHECK(t.walk_code(i) == 0);
+    }
+    CHECK(t.object(tile(w, 5, 3)) == 0);
+    CHECK(w.check_invariants() == "");
+    // Removing the object by its second tile clears both tiles, nothing else.
+    REQUIRE(w.apply(demolish_at(4, 3)).ok());
+    CHECK(t.object(tile(w, 3, 3)) == 0);
+    CHECK(t.object(tile(w, 4, 3)) == 0);
+    CHECK(t.object(tile(w, 6, 6)) == k.road2.v);
+    CHECK(t.object(tile(w, 6, 7)) == k.road2.v);
+    // The atomic dry run covers both tiles of a road: a house over its SECOND tile is Occupied.
+    sim::Rules atomic;
+    atomic.build_atomic = true;
+    sim::World a = world_of(Site{}, atomic);
+    const sim::ApplyResult r = a.apply(
+        ct::build(0, kC0, {ct::at(k.road2, kX0 + 3, kY0 + 3), ct::at(k.house, kX0 + 4, kY0 + 3)}));
+    CHECK(r.status == sim::Reject::AtomicAbort);
+    CHECK(r.records[0].status == sim::Reject::AtomicAbort);
+    CHECK(r.records[1].status == sim::Reject::Occupied);
+    // The control: the house beside it is legal.
+    REQUIRE(
+        a.apply(ct::build(0, kC0,
+                          {ct::at(k.road2, kX0 + 3, kY0 + 3), ct::at(k.house, kX0 + 5, kY0 + 3)}))
+            .ok());
 }

@@ -151,7 +151,7 @@ sim::Reject reject_for(const std::string& reason) {
 
 TEST_CASE("placement rule: every vector of the oracle file") {
     const Vectors v = read_vectors();
-    REQUIRE(v.cases.size() == 75);
+    REQUIRE(v.cases.size() == 77);
     sim::TypeRegistry::Builder b;
     for (const sim::BuildingType& t : v.types) {
         b.add(t);
@@ -191,7 +191,7 @@ TEST_CASE("placement rule: every vector of the oracle file") {
         }
     }
     // The file's mix, so a parser that silently drops cases cannot pass.
-    CHECK(accepts + rejects + unsupported == 75);
+    CHECK(accepts + rejects + unsupported == 77);
     CHECK(accepts >= 15);
     CHECK(rejects >= 15);
     CHECK(unsupported >= 4);

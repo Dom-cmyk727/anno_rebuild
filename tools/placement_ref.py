@@ -212,11 +212,18 @@ def engine_place(isl, reg, tid, x, y, rot, flags, rec8_in=0):
     if t is not None and road_class(t):
         fw, fh = (t.w, t.h) if rot & 1 == 0 else (t.h, t.w)
         inside = isl.x0 <= x and x + fw <= isl.x0 + isl.W and isl.y0 <= y and y + fh <= isl.y0 + isl.H
-        if inside and rot in (0, 1, 2, 3):                                         # R-A3 sits with the occupancy step, before any terrain verdict
+        if inside and rot in (0, 1, 2, 3):                                         # the occupancy step, row-major: the first deciding tile wins
             for dy in range(fh):
                 for dx in range(fw):
-                    e = reg.get(isl.obj(x + dx, y + dy))
-                    if e is not None and e.group == 0xC1 and not road_class(e):     # ramp, pier (a bridge piece the original refuses itself)
+                    o = isl.obj(x + dx, y + dy)
+                    if o == 0:
+                        continue
+                    e = reg.get(o)
+                    if e is None:
+                        return UNSUPPORTED, 'object id %d not in the registry' % o, rec8_in
+                    if compat(t, e, t.flags | flags) == 0:
+                        return REJECT, 'OCCUPIED', rec8_in
+                    if e.group == 0xC1 and not road_class(e):                       # R-A3: ramp, pier (a bridge piece the original refuses itself)
                         return REJECT, 'OCCUPIED', rec8_in
         v, why, b = place(isl, reg, tid, x, y, rot, flags, rec8_in)
         if v == ACCEPT and b < ROAD_FLOOR:                                         # R-A2

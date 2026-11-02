@@ -367,8 +367,8 @@ TEST_CASE("dev script: hold, release, note and the consistency expectations (W4-
     // note money / expect money same|less: the note is taken, a wait lets the state move, and the
     // expectation reads the later snapshot.
     const auto money_script = [&](const std::string& expectation, std::int64_t later) {
-        auto script = app::DevScript::parse("note money\nwait frames 1\nexpect money " +
-                                            expectation + "\n");
+        auto script =
+            app::DevScript::parse("note money\nwait frames 1\nexpect money " + expectation + "\n");
         REQUIRE(script.ok());
         app::DevScriptState st;
         st.snapshot = snap(1, 1000);

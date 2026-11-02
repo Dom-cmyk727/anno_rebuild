@@ -269,8 +269,8 @@ DevToolSetup dev_tool_setup(const PlayLoad& load) {
         s.types = buildable_types(*s.registry, world.config().layout);
     }
     // A goods-free building of the tool's types and a free tile in another player's city, for the
-    // scripted session's `foreign` step: the first plain type, a free 4 x 4 block away from the
-    // island's edge (World::building_at is the sim's own lookup).
+    // scripted session's `foreign` step: the first plain type, the first tile away from the
+    // island's edge that holds no building (World::building_at is the sim's own lookup).
     std::optional<sim::TypeId> plain;
     for (const bool square : {true, false}) { // a 2 x 2 first, else any goods-free non-road type
         for (const sim::TypeId id : s.types) {

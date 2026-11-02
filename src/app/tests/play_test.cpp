@@ -4,6 +4,8 @@
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -119,6 +121,12 @@ TEST_CASE("play: islands are the ones the sim placed") {
         return;
     }
     bool any_link = false;
+    // ANNO_TEST_PROGRESS=1: one stderr line per scenario with the elapsed time, to tell a slow
+    // corpus (each scenario costs its own seconds, more under a sanitizer) from a stuck one
+    // (W4-WIN-CLOSE C3; nothing is asserted on it).
+    const bool progress = std::getenv("ANNO_TEST_PROGRESS") != nullptr;
+    const auto started = std::chrono::steady_clock::now();
+    std::size_t done = 0;
     for (const fs::path& file : files) {
         const std::string label = fs::relative(file, *dir / "Scenes").generic_string();
         auto opened = anno::app::load_play(*dir, file);
@@ -146,6 +154,12 @@ TEST_CASE("play: islands are the ones the sim placed") {
             CHECK_MESSAGE(noted, label);
         }
         expect_play_islands(label, scene.value(), opened.value().islands);
+        if (progress) {
+            std::fprintf(
+                stderr, "[progress] play islands %zu/%zu %s %.1f s\n", ++done, files.size(),
+                label.c_str(),
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
+        }
     }
     CHECK(any_link);
     MESSAGE(files.size() << " scenarios");

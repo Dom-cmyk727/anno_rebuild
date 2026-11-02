@@ -106,8 +106,8 @@ std::optional<std::int64_t> paid_type_id(const DevTool& tool) {
     for (const sim::TypeId id : tool.setup().types) {
         const sim::BuildingType* type =
             tool.setup().registry ? tool.setup().registry->find(id) : nullptr;
-        if (type != nullptr && type->cost_gold > 0 &&
-            (type->flags_word & sim::kRoadFlag) == 0 && (!best || type->cost_gold < gold)) {
+        if (type != nullptr && type->cost_gold > 0 && (type->flags_word & sim::kRoadFlag) == 0 &&
+            (!best || type->cost_gold < gold)) {
             best = static_cast<std::int64_t>(id.v);
             gold = type->cost_gold;
         }
@@ -424,14 +424,15 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                                                    : "no publication hold in this session");
                 break;
             }
-            act.hold = s.verb == "hold" ? DevScriptAction::Hold::Arm
-                                        : DevScriptAction::Hold::Release;
+            act.hold =
+                s.verb == "hold" ? DevScriptAction::Hold::Arm : DevScriptAction::Hold::Release;
         } else if (s.verb == "local") {
             const bool build = s.args[0] == "build";
             const std::size_t need = build ? 4 : 3;
             const auto x = s.args.size() == need ? arg(need - 2) : std::nullopt;
             const auto y = s.args.size() == need ? arg(need - 1) : std::nullopt;
-            const auto type = build && s.args.size() == need ? arg(1) : std::optional<std::int64_t>{0};
+            const auto type =
+                build && s.args.size() == need ? arg(1) : std::optional<std::int64_t>{0};
             if ((!build && s.args[0] != "demolish") || !x || !y || !type || st.tool == nullptr ||
                 !st.tool->setup().city) {
                 fail(s, "'local build TYPE X Y' or 'local demolish X Y' for the tool's city");
@@ -439,7 +440,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             }
             act.local = build ? DevScriptAction::Local::Build : DevScriptAction::Local::Demolish;
             act.local_type = sim::TypeId{static_cast<std::uint32_t>(*type)};
-            act.local_at = sim::TileXY{static_cast<std::int32_t>(*x), static_cast<std::int32_t>(*y)};
+            act.local_at =
+                sim::TileXY{static_cast<std::int32_t>(*x), static_cast<std::int32_t>(*y)};
         } else if (s.verb == "foreign") {
             if ((s.args[0] != "build" && s.args[0] != "demolish") || st.tool == nullptr ||
                 !st.tool->setup().foreign) {
@@ -470,9 +472,9 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                     break;
                 }
             } else if (s.args[0] == "published" && s.args.size() == 1) {
-                const bool shown = st.latest &&
-                                   (st.latest->state == CommandOutcome::State::Applied ||
-                                    st.latest->state == CommandOutcome::State::Refused);
+                const bool shown =
+                    st.latest && (st.latest->state == CommandOutcome::State::Applied ||
+                                  st.latest->state == CommandOutcome::State::Refused);
                 if (shown && (!st.snapshot || st.latest->seq >= st.snapshot->outcomes_next)) {
                     fail(s, "the window shows " + outcome_text(st.latest) + " (sequence " +
                                 std::to_string(st.latest->seq) +
@@ -509,7 +511,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 std::string wanted;
                 if (s.args.size() == 3) {
                     const auto noted = noted_work_.find(name);
-                    if (noted == noted_work_.end() || (s.args[2] != "same" && s.args[2] != "grew")) {
+                    if (noted == noted_work_.end() ||
+                        (s.args[2] != "same" && s.args[2] != "grew")) {
                         fail(s, "'expect work NAME same|grew' needs 'note work NAME' first");
                         break;
                     }
@@ -569,21 +572,21 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
         } else if (s.verb == "checkpoint") {
-            log_.push_back("checkpoint " + s.args[0] + ": turn " +
-                           std::to_string(st.snapshot ? st.snapshot->turn : 0) + ", frames " +
-                           std::to_string(st.frames) + ", outcome " + outcome_text(st.latest) +
-                           ", visibility " + visibility_name(st.visibility) +
-                           (st.knowledge != nullptr
-                                ? ", occupancy rebuilds " + std::to_string(st.knowledge->rebuilds()) +
-                                      " deltas " + std::to_string(st.knowledge->deltas_applied()) +
-                                      " tiles " + std::to_string(st.knowledge->tiles_enumerated()) +
-                                      " foreign " + std::to_string(st.knowledge->foreign_deltas()) +
-                                      " skipped " +
-                                      std::to_string(st.knowledge->batches_skipped_disabled())
-                                : std::string()) +
-                           (st.hold_available ? std::string(", hold ") + (st.held ? "held" : "free")
-                                              : std::string()) +
-                           ", title: " + st.title);
+            log_.push_back(
+                "checkpoint " + s.args[0] + ": turn " +
+                std::to_string(st.snapshot ? st.snapshot->turn : 0) + ", frames " +
+                std::to_string(st.frames) + ", outcome " + outcome_text(st.latest) +
+                ", visibility " + visibility_name(st.visibility) +
+                (st.knowledge != nullptr
+                     ? ", occupancy rebuilds " + std::to_string(st.knowledge->rebuilds()) +
+                           " deltas " + std::to_string(st.knowledge->deltas_applied()) + " tiles " +
+                           std::to_string(st.knowledge->tiles_enumerated()) + " foreign " +
+                           std::to_string(st.knowledge->foreign_deltas()) + " skipped " +
+                           std::to_string(st.knowledge->batches_skipped_disabled())
+                     : std::string()) +
+                (st.hold_available ? std::string(", hold ") + (st.held ? "held" : "free")
+                                   : std::string()) +
+                ", title: " + st.title);
         } else if (s.verb == "screenshot") {
             act.screenshot = s.args[0];
         } else if (s.verb == "quit") {

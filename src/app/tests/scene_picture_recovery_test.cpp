@@ -141,6 +141,32 @@ bool drain(app::ScenePicture& picture, render::FrameRenderer& frames, int rounds
     return picture.pending() == 0;
 }
 
+/// Waits (bounded) until the process reclaimer has nothing waiting and nothing in flight. The
+/// reclaimer is shared by the whole test process, so generations an earlier case released can
+/// still be on their way to it when the next case starts (a starved reclaimer thread under host
+/// load): a baseline taken before they are gone is not a baseline (W4-WIN-CLOSE C3).
+bool settle_reclaimer(render::SceneReclaimer& reclaimer,
+                      std::chrono::seconds limit = std::chrono::seconds(30)) {
+    const auto until = std::chrono::steady_clock::now() + limit;
+    for (;;) {
+        const auto s = reclaimer.stats();
+        if (s.waiting == 0 && s.in_flight == 0) {
+            return true;
+        }
+        if (std::chrono::steady_clock::now() > until) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+}
+
+/// How many more scenes wait now than at `before`; negative when some of those waiting at
+/// `before` were destroyed meanwhile (an unsigned difference wraps instead).
+std::int64_t waiting_since(const render::SceneReclaimer::Stats& now,
+                           const render::SceneReclaimer::Stats& before) {
+    return static_cast<std::int64_t>(now.waiting) - static_cast<std::int64_t>(before.waiting);
+}
+
 } // namespace
 
 TEST_CASE("picture recovery: a one-shot build failure is retried from the desired state with no "
@@ -664,6 +690,10 @@ TEST_CASE("picture reclaim: a stalled process reclaimer holds the commits back, 
     std::vector<app::SceneBuilding> none;
     auto open = std::make_shared<std::atomic<bool>>(false);
     auto& reclaimer = render::SceneReclaimer::shared();
+    // The baseline is taken when nothing of an earlier case is still on its way to the shared
+    // reclaimer (W4-WIN-CLOSE C3: a baseline with foreign work waiting made the checks below
+    // wrap or miss when that work finished during the case).
+    REQUIRE(settle_reclaimer(reclaimer));
     reclaimer.set_test_gate([open] {
         while (!open->load()) {
             std::this_thread::yield();
@@ -689,7 +719,8 @@ TEST_CASE("picture reclaim: a stalled process reclaimer holds the commits back, 
             }
             // A commit waits while the reclaimer holds more than the backlog limit: at most the
             // limit plus the generation of the commit before it.
-            CHECK(reclaimer.stats().waiting - before.waiting <= limits.max_reclaim_backlog + 1);
+            CHECK(waiting_since(reclaimer.stats(), before) <=
+                  static_cast<std::int64_t>(limits.max_reclaim_backlog) + 1);
         }
         CHECK(picture.stats().commit_skipped >= 1);
         CHECK(committed < 40);
@@ -716,6 +747,68 @@ TEST_CASE("picture reclaim: a stalled process reclaimer holds the commits back, 
     CHECK(reclaimer.stats().waiting == before.waiting);
     CHECK(reclaimer.stats().bytes_waiting == before.bytes_waiting);
     reclaimer.set_test_gate({});
+}
+
+TEST_CASE("picture reclaim: a baseline taken while foreign generations wait is not one, and "
+          "settling the shared reclaimer first makes it one (W4-WIN-CLOSE C3)" *
+          doctest::test_suite("scene_picture_recovery")) {
+    // The shape of the one failure seen in a whole-binary run under load: generations an earlier
+    // case released were still waiting in the process reclaimer when the stalled-reclaimer case
+    // took its baseline, finished during it, and `waiting - before.waiting` (unsigned) wrapped
+    // while `waiting == before.waiting` failed. Reproduced here with the reclaimer's own gate, no
+    // load: the order of events is fixed by the gate, not by timing.
+    auto& reclaimer = render::SceneReclaimer::shared();
+    REQUIRE(settle_reclaimer(reclaimer));
+    auto open = std::make_shared<std::atomic<bool>>(false);
+    struct Reset {
+        render::SceneReclaimer& r;
+        std::shared_ptr<std::atomic<bool>> open;
+        ~Reset() {
+            open->store(true); // never leaves a stalled reclaimer behind a failed check
+            r.set_test_gate({});
+        }
+    } reset{reclaimer, open};
+    reclaimer.set_test_gate([open] {
+        while (!open->load()) {
+            std::this_thread::yield();
+        }
+    });
+    // Two foreign generations: the first is dequeued and stuck in the gate, the second waits.
+    {
+        auto a = islands_scene(1);
+        auto b = islands_scene(1);
+    }
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (reclaimer.stats().waiting < 1 && std::chrono::steady_clock::now() < until) {
+        std::this_thread::yield();
+    }
+    const auto stale = reclaimer.stats(); // a baseline with foreign work waiting
+    REQUIRE(stale.waiting >= 1);
+    open->store(true);
+    REQUIRE(settle_reclaimer(reclaimer));
+    const auto now = reclaimer.stats();
+    // The old expression wraps to a huge number once the foreign work is gone; the signed one says
+    // what happened.
+    const std::size_t wrapped = now.waiting - stale.waiting;
+    CHECK(wrapped > 100);
+    CHECK(waiting_since(now, stale) == -static_cast<std::int64_t>(stale.waiting));
+    CHECK(now.bytes_waiting != stale.bytes_waiting); // and the byte baseline is off the same way
+
+    // Settling waits for work that is still in the gate, and returns only when it is gone.
+    open->store(false);
+    {
+        auto a = islands_scene(1);
+        auto b = islands_scene(1);
+    }
+    std::thread opener([open] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        open->store(true);
+    });
+    const bool settled = settle_reclaimer(reclaimer);
+    opener.join();
+    CHECK(settled);
+    CHECK(reclaimer.stats().waiting == 0);
+    CHECK(reclaimer.stats().in_flight == 0);
 }
 
 TEST_CASE("picture starts: a start copies only its island's buildings, and the result is the "

@@ -1372,8 +1372,7 @@ void Viewer::script_tick() {
         st.title = t;
     }
     DevScriptAction act = script_->step(st);
-    if (act.foreign != DevScriptAction::Foreign::None && dev_ != nullptr &&
-        dev_->setup().foreign) {
+    if (act.foreign != DevScriptAction::Foreign::None && dev_ != nullptr && dev_->setup().foreign) {
         const ForeignSpot& f = *dev_->setup().foreign;
         sim::Command c;
         c.issuer = f.owner;

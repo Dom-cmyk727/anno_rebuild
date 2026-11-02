@@ -52,6 +52,9 @@ class PublicationHold {
         std::atomic<bool> armed{false};
         std::uint64_t baseline = 0;
         bool held = false, expired = false, dead = false;
+        /// Counts releases: a waiter ends when it changes, so a release followed at once by a new
+        /// arm() still ends the wait that began before it.
+        std::uint64_t epoch = 0;
         std::uint64_t turn = 0, holds = 0;
         std::chrono::milliseconds watchdog;
     };

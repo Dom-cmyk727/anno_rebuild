@@ -6,7 +6,8 @@
 // One step per line; '#' starts a comment. World tiles are absolute (the commands' coordinates).
 //   look X Y              centre the camera on world tile (X, Y) (setup, not input)
 //   key b|n|p|t|x|esc     press and release a key
-//   select ID             press N until the tool's type is ID (fails after one cycle); `select paid`:
+//   select ID             press N until the tool's type is ID (fails after one cycle); `select
+//   paid`:
 //                         the cheapest of the tool's types that costs gold (not a road)
 //   rotate R              press T until the rotation is R
 //   click X Y             move to, press and release over the drawn centre of tile (X, Y)

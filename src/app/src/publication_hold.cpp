@@ -1,6 +1,6 @@
-#include <anno/app/publication_hold.hpp>
-
 #include <limits>
+
+#include <anno/app/publication_hold.hpp>
 
 namespace anno::app {
 
@@ -29,12 +29,13 @@ PublicationHold::PublicationHold(PlayRunner& runner, std::chrono::milliseconds w
         s->held = true;
         s->turn = turn;
         ++s->holds;
-        const bool released =
-            s->cv.wait_for(lock, s->watchdog, [&s] { return !s->armed.load() || s->dead; });
+        const std::uint64_t entered = s->epoch;
+        const bool released = s->cv.wait_for(
+            lock, s->watchdog, [&s, entered] { return s->epoch != entered || s->dead; });
         if (!released) {
             s->expired = true;
+            s->armed.store(false); // a release has disarmed already, and a new arm() must stand
         }
-        s->armed.store(false);
         s->held = false;
     });
 }
@@ -44,6 +45,7 @@ PublicationHold::~PublicationHold() {
         const std::lock_guard lock(state_->mu);
         state_->dead = true;
         state_->armed.store(false);
+        ++state_->epoch;
     }
     state_->cv.notify_all();
 }
@@ -60,6 +62,7 @@ void PublicationHold::release() {
     {
         const std::lock_guard lock(state_->mu);
         state_->armed.store(false);
+        ++state_->epoch;
     }
     state_->cv.notify_all();
 }

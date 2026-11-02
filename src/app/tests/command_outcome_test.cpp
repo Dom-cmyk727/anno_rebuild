@@ -661,7 +661,17 @@ TEST_CASE("publication hold: an armed hold waits at the first publication that f
     const std::int64_t before = runner.snapshot()->money;
     REQUIRE(before > cost);
     hold->arm();
-    std::thread sim([&runner] { runner.run_n(1); });
+    // A failed REQUIRE must not leave a joinable thread (terminate): release and join on exit.
+    struct Joiner {
+        std::thread t;
+        app::PublicationHold* hold;
+        ~Joiner() {
+            hold->release();
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+    } sim{std::thread([&runner] { runner.run_n(1); }), hold.get()};
     REQUIRE(eventually([&] { return hold->held(); }));
     CHECK(hold->holds() == 1);
     // Inside the interval: the raw log has both outcomes, the consistent read withholds both, and
@@ -678,7 +688,10 @@ TEST_CASE("publication hold: an armed hold waits at the first publication that f
     CHECK(inside_refused.latest->state == State::Queued);
     CHECK(inside_refused.latest->deferred);
     hold->release();
-    sim.join();
+    hold->arm(); // at once: the wait that began before the release still ends (epoch), and the new
+                 // arm stands for the next outcome
+    sim.t.join();
+    hold->release();
     CHECK_FALSE(hold->held());
     CHECK_FALSE(hold->expired());
     const app::PlayFeedback after = runner.feedback(build_id);
@@ -713,8 +726,9 @@ TEST_CASE("publication hold: an armed hold waits at the first publication that f
     static_cast<void>(runner.post_command(build(w, 20, 4, paid)));
     hold->arm();
     std::thread again([&runner] { runner.run_n(1); });
-    REQUIRE(eventually([&] { return hold->held(); }));
-    hold.reset();
-    again.join(); // would hang if the destructor did not release
+    const bool waiting = eventually([&] { return hold->held(); });
+    hold.reset(); // the destructor releases a waiting publication
+    again.join(); // would hang if it did not
+    REQUIRE(waiting);
     CHECK(runner.snapshot()->turn > 0);
 }

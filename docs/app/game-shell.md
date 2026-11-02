@@ -495,6 +495,42 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
   false agreement; only a drag over 4 095 tiles makes one. Recording hashes costs a full `state_hash` on those turns (about 0.17 s on lan5 in
   a debug build, visible in the turn p95).
 
+### The window's wiring, tested through the window (W4-WIN-CLOSE, C1)
+
+The R1 and R4 repairs live in helpers (`PlayRunner::feedback`, `PlacementKnowledge`), and a helper test
+cannot show that the window uses them. `tools/test/viewer_wiring.py` therefore runs the production
+`anno1503 --play` window against a scripted session, headless (SDL's dummy video driver, the CPU
+renderer, no GPU), and the session's `expect` steps are the assertions. Two cases are registered with
+CTest as `viewer_wiring_r1_held_publication` and `viewer_wiring_r4_occupancy`; they need the original
+game files and skip (exit 77, class required-asset) without them.
+
+- **The publication hold** (`publication_hold.hpp`): a session's `hold publication` arms a test seam in
+  the runner's publish gate; the sim thread then waits, on a condition variable, at the first
+  publication that follows a newly recorded outcome, which is between the outcome record and the
+  snapshot swap. `wait held` ends when it waits; `release publication`, a 20 s watchdog, the hold's
+  destruction and the window's destructor each end the wait. The window keeps drawing and handling input
+  meanwhile (frames and key events pass inside the interval). It is created only for a scripted session
+  and changes no sim state.
+- **R1 case:** inside the hold, the title (rebuilt by the tool's own key events) and the script's state
+  both read `PlayRunner::feedback`: the paid build's receipt is `Queued`, money is the old money, and
+  `expect published` (the shown outcome's sequence number is below the snapshot's `outcomes_next`) holds;
+  after release the same receipt is `Applied` and the money is lower. A refused build is held the same
+  way (`Refused (Occupied)`, money unchanged). Reverting `update_title` or `script_tick` to the raw
+  outcome log fails `expect title-lacks Applied` or `expect outcome Queued`.
+- **R4 case:** the tool's occupancy index counts its work (`rebuilds`, `deltas_applied`,
+  `tiles_enumerated`, `foreign_deltas`, `batches_skipped_disabled`). With the tool off, a local build and
+  another player's build (`foreign build`, a command of another seat's city through the runner's queue)
+  reach the picture and not the index; turning the tool on reseeds once; another island's demolish costs
+  one comparison and no tile; the tool's own build and demolish follow by tile deltas without a rebuild;
+  a second off spell is not followed and reseeds once on return. The assertions are counts, never
+  microseconds. Reverting the enable gate, the observer attach, the observer's gate or adding a rescan
+  fails the case at the count each one moves.
+- **Session steps added:** `hold|release publication`, `wait held`, `note money|work NAME`,
+  `expect published|money same|less|title-lacks TEXT|work NAME OP N|work NAME same|grew|occupied X Y
+  yes|no`, `local build TYPE X Y | local demolish X Y`, `foreign build|demolish`, `select paid`
+  (full list in `dev_script.hpp`). `local` and `foreign` post ordinary commands; the sim applies its
+  own rules to them.
+
 ### Immutable per-island object lists (W4.3, round du)
 
 Status: implemented in the Mac continuation of round du (`render::Scene::with_islands`,

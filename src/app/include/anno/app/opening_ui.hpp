@@ -201,6 +201,14 @@ class OpeningUi {
     [[nodiscard]] std::string status_line(const UiFeed& feed) const;
     /// Another mode (the building tool) took the controls: leave the founding and unload modes.
     void leave_modes();
+    /// The tile under the pointer at its last move (nullopt: none known or the pointer left), and
+    /// whether the title's pointer text changed since the last call (the window then refreshes the
+    /// title). The HUD shows the tile so a player can aim at a given place.
+    [[nodiscard]] bool take_hover_changed() {
+        const bool c = hover_changed_;
+        hover_changed_ = false;
+        return c;
+    }
 
     [[nodiscard]] const OpeningSetup& setup() const { return setup_; }
 
@@ -231,6 +239,9 @@ class OpeningUi {
     std::optional<std::uint32_t> selected_owner_;
     Gesture left_, right_;
     std::optional<sim::TileXY> hover_tile_;
+    /// The pointer's tile and whether it is over ground, in every mode (the HUD's pointer text).
+    std::optional<std::pair<sim::TileXY, bool>> hover_point_;
+    bool hover_changed_ = false;
     std::uint8_t found_rotation_ = 0;
     std::size_t found_type_ = 0;
     std::uint32_t unload_hold_ = 0, unload_tons_ = 0;

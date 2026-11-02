@@ -61,6 +61,7 @@
 //   The ship-start opening's steps (W4-OPENING-1, an --ship-start session; tile arguments are world
 //   tiles, the pointer aims at their drawn centre; all of them are real SDL events):
 //   lookw X Y             centre the camera on the sea point of tile (X, Y) (setup, not input)
+//   lookship ID          centre the camera on ship ID's tile (the published view; setup, not input)
 //   pick-ship ID          left click on the drawn centre of ship ID (the published view's position)
 //   sail X Y              right click on the sea surface over tile (X, Y)
 //   rdown X Y | rup X Y   the right button pressed / released over the sea tile (a gesture in two
@@ -76,7 +77,9 @@
 //                         selected, tracked, latest (the controls' last command: queued, refused,
 //                         accepted, accepted-planning, sailing, arrived, route-failed, ...),
 //                         latest_kind, latest_reason, latest_moved (raw 1/256 ton of an unload),
-//                         ship.<id>.x|.y|.order|.hold<i>, store.<goods> (raw 8.8), tool, tick.
+//                         ship.<id>.x|.y|.order|.hold<i>, store.<goods> (raw 8.8), tracked.<n>.state|.kind,
+//                         tool, tick, generation / committed / discarded / pending_builds (the picture's work),
+//                         save.
 //                         `wait fact KEY OP VALUE within MS` waits up to MS milliseconds instead of
 //                         the 30 s limit (a voyage of hundreds of tiles).
 //   expect title TEXT     the window title contains TEXT

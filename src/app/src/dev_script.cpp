@@ -212,7 +212,7 @@ int arity(const std::string& verb) {
         verb == "rup" || verb == "click-land" || verb == "hover-land" || verb == "lpan") {
         return 2;
     }
-    if (verb == "pick-ship") {
+    if (verb == "pick-ship" || verb == "lookship") {
         return 1;
     }
     if (verb == "focus-lost") {
@@ -542,6 +542,15 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
             act.look_world = std::pair{t->x + 0.5, t->y + 0.5};
+        } else if (s.verb == "lookship") {
+            const auto x = st.facts.find("ship." + s.args[0] + ".x");
+            const auto y = st.facts.find("ship." + s.args[0] + ".y");
+            if (x == st.facts.end() || y == st.facts.end()) {
+                fail(s, "no such ship in the view");
+                break;
+            }
+            act.look_world = std::pair{std::atof(x->second.c_str()) + 0.5,
+                                       std::atof(y->second.c_str()) + 0.5};
         } else if (s.verb == "sail" || s.verb == "rdown" || s.verb == "rup" ||
                    s.verb == "click-land" || s.verb == "hover-land") {
             const auto t = tile_arg(0);

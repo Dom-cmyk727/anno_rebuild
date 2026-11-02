@@ -4,6 +4,8 @@
 wait frames 20
 expect fact cities == 0
 expect fact gold == 30000
+expect fact generation == 0
+expect fact committed == 0
 screenshot 1-start
 pick-ship 1
 expect fact selected == 1
@@ -12,8 +14,9 @@ wait frames 20
 sail 257 134
 wait turns 3
 expect fact latest_kind == move
-lookw 312 600
-wait turns 20
+wait turns 12
+lookship 1
+wait frames 30
 screenshot 2-underway
 wait fact latest == arrived within 600000
 wait turns 3
@@ -21,6 +24,11 @@ expect fact ship.1.x == 257
 expect fact ship.1.y == 134
 expect fact cities == 0
 expect fact gold == 30000
+# 550 tiles of sailing rebuilt nothing of the picture.
+expect fact generation == 0
+expect fact committed == 0
+expect fact discarded == 0
+expect fact pending_builds == 0
 key f5
 wait fact save contains saved within 30000
 quit

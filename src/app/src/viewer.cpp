@@ -1320,6 +1320,8 @@ bool Viewer::opening_handle(const SDL_Event& e) {
                             static_cast<double>(e.motion.y) * d, frame, feed);
             if (ui.mode() == OpeningMode::Found) {
                 dirty_ = true;
+            }
+            if (ui.mode() == OpeningMode::Found || ui.take_hover_changed()) {
                 update_title();
             }
         }
@@ -1344,6 +1346,17 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
     const OpeningUi& ui = *opening_->ui;
     const UiFeed feed = opening_feed();
     f["tick"] = std::to_string(v.tick);
+    // The picture's work: the scene generation of the last drawn frame and the islands committed
+    // and results discarded since the start. A sailing ship changes none of them.
+    f["generation"] = pointer_frame_ && pointer_frame_->scene
+                          ? std::to_string(pointer_frame_->scene->generation())
+                          : "0";
+    if (play_ != nullptr) {
+        const ScenePicture::Stats ps = play_->picture().stats();
+        f["committed"] = std::to_string(ps.committed);
+        f["discarded"] = std::to_string(ps.discarded);
+        f["pending_builds"] = std::to_string(play_->picture().pending());
+    }
     f["gold"] = std::to_string(v.gold);
     f["cities"] = std::to_string(v.cities.size());
     f["mode"] = ui.mode() == OpeningMode::Found    ? "found"

@@ -1199,6 +1199,89 @@ TEST_CASE("ships drawn by the compositor match the CPU path (game files)") {
     }
 }
 
+TEST_CASE("live ships: the overlay list draws what the same ships in the scene draw, in painter order "
+          "(game files)") {
+    const auto dir = anno::test::game_dir();
+    auto ctx = device_or_skip();
+    if (!dir || !ctx) {
+        return;
+    }
+    // W4-OPENING-1: ships that move every turn are handed to the frame as a list, not put in the
+    // scene. Two overlapping ships (the second in front) at every zoom group: the compositor with the
+    // list equals the CPU path with the same ships in the scene's own units.
+    Loaded loaded = load_scene(*dir, "Single_01.sze");
+    render::Scene& scene = *loaded.scene;
+    std::vector<render::UnitSprite> live;
+    for (const auto& u : scene.units) {
+        if (!u.z && live.empty()) {
+            live.push_back(u);
+        }
+    }
+    REQUIRE(live.size() == 1);
+    live.push_back(live[0]);
+    live[1].x += 0.5F; // in front of the first (a larger x + y) and overlapping it
+    live[1].y += 0.4F;
+    auto shifted = live; // the wrong input: the same ships a whole tile away
+    for (auto& u : shifted) {
+        u.x += 1.0F;
+        u.y += 1.0F;
+    }
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    constexpr int kW = 640, kH = 400;
+    const auto target = g.offscreen_target(kW, kH);
+    std::size_t drawn_total = 0;
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+        const auto [ax, ay] = live[0].anchor(group, scene.lift);
+        const render::Rect view{ax - kW / 2, ay - kH / 2, kW, kH};
+        // The reference: the ships in the scene, baked into the CPU chunks.
+        scene.units = live;
+        render::FrameRenderer cpu(4);
+        std::vector<std::uint32_t> baked(std::size_t{kW} * kH);
+        cpu.render(scene, view, group, 300, render::WaterStyle::Original, baked.data());
+        // The same view without any ship: what the ships change must be present and non-empty.
+        scene.units.clear();
+        render::FrameRenderer bare(4);
+        std::vector<std::uint32_t> empty(std::size_t{kW} * kH);
+        bare.render(scene, view, group, 300, render::WaterStyle::Original, empty.data());
+        std::size_t ship_pixels = 0;
+        for (std::size_t i = 0; i < baked.size(); ++i) {
+            ship_pixels += baked[i] != empty[i] ? 1U : 0U;
+        }
+        INFO("group " << group);
+        CHECK(ship_pixels > 200);
+        // The compositor: the scene has no ships, the list is the frame's argument.
+        render::FrameRenderer on_gpu(4, false);
+        const auto st = g.render(on_gpu, scene, view, group, 300, render::WaterStyle::Original,
+                                 target.second.get(), nullptr, {}, live);
+        drawn_total += st.ships;
+        CHECK(st.ships >= 2); // two ships, each its shadow and its frame
+        const auto px = g.read_back(target.first.get(), kW, kH);
+        REQUIRE(px.size() == baked.size() * 4);
+        const auto [max, differ] = difference(baked, px);
+        INFO("max " << max << ", " << differ << " pixels > 2");
+        CHECK(max <= 1);
+        // A deliberately wrong list (a tile away) is told apart: the oracle can fail.
+        render::FrameRenderer wrong(4, false);
+        static_cast<void>(g.render(wrong, scene, view, group, 300, render::WaterStyle::Original,
+                                   target.second.get(), nullptr, {}, shifted));
+        const auto wpx = g.read_back(target.first.get(), kW, kH);
+        CHECK(difference(baked, wpx).first > 8);
+        // And with the chunks holding the scene's ships, the list is still drawn (once).
+        scene.units = {live[0]};
+        render::FrameRenderer both(4);
+        const auto st2 = g.render(both, scene, view, group, 300, render::WaterStyle::Original,
+                                  target.second.get(), nullptr, {}, {live.begin() + 1, live.end()});
+        CHECK(st2.ships >= 1);
+        scene.units.clear();
+    }
+    CHECK(drawn_total > 0);
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("enhanced water: ships sit in the water, only at the hull bottom (game files)") {
     const auto dir = anno::test::game_dir();
     auto ctx = device_or_skip();

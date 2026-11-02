@@ -41,6 +41,8 @@ wait fact tracked == 3 within 10000
 wait fact latest == accepted within 10000
 expect fact cities == 1
 expect fact gold == 29650
+# The warehouse is a building change: the picture commits it (the only commit so far).
+wait fact committed >= 1 within 10000
 expect fact ship.1.hold0 == 9728
 expect fact ship.1.hold2 == 11520
 screenshot 4-founded

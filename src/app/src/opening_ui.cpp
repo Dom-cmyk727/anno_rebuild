@@ -96,6 +96,10 @@ void OpeningUi::abort_gestures() {
     if (right_.down) {
         right_.cancelled = true;
     }
+    if (hover_point_) {
+        hover_point_.reset(); // the pointer left, or the window lost focus: its tile is not known
+        hover_changed_ = true;
+    }
 }
 
 const ShipView* OpeningUi::own_selected(const UiFeed& feed, std::string& why) const {
@@ -159,10 +163,18 @@ void OpeningUi::pointer_move(double px, double py, const ScreenProjection* frame
         }
     }
     hover_tile_.reset();
-    if (frame != nullptr && mode_ == OpeningMode::Found) {
+    std::optional<std::pair<sim::TileXY, bool>> point;
+    if (frame != nullptr) {
         if (const auto p = frame->pick(px, py)) {
-            hover_tile_ = p->tile;
+            point = std::pair{p->tile, p->ground};
+            if (mode_ == OpeningMode::Found) {
+                hover_tile_ = p->tile;
+            }
         }
+    }
+    if (point != hover_point_) {
+        hover_changed_ = true;
+        hover_point_ = point;
     }
     static_cast<void>(feed);
 }
@@ -846,6 +858,10 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
             }
         }
         add(s);
+    }
+    if (hover_point_) {
+        add("pointer (" + std::to_string(hover_point_->first.x) + "," +
+            std::to_string(hover_point_->first.y) + ") " + (hover_point_->second ? "land" : "sea"));
     }
     add(message_);
     return line;

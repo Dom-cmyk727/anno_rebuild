@@ -8,6 +8,8 @@ expect fact gold == 30000
 expect fact selected == none
 expect fact tracked == 0
 expect fact tool == off
+expect fact generation == 0
+expect fact committed == 0
 # 1. Another participant's ship can be inspected, never ordered or stopped.
 lookw 652 680
 wait frames 20
@@ -70,4 +72,9 @@ expect fact tracked == 3
 expect fact tracked.1.state == stopped
 expect fact tracked.2.kind == stop
 expect fact ship.1.order == 0
+# 7. Two orders and a stop moved a ship and rebuilt nothing: no scene generation, no commit, no pending build.
+expect fact generation == 0
+expect fact committed == 0
+expect fact discarded == 0
+expect fact pending_builds == 0
 quit

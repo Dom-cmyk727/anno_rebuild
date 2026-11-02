@@ -2,7 +2,9 @@
 // the command file's ship-start forms, the CLI, the quick-save writer, and, with the original game
 // files (ANNO1503_GAME_DIR; skipped with a message otherwise), the real loader, the published
 // view and the correlation of an order's id and events through the runner.
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -14,11 +16,14 @@
 #include <doctest/doctest.h>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/loader.hpp>
 #include <anno/app/commands_file.hpp>
 #include <anno/app/opening.hpp>
 #include <anno/app/opening_session.hpp>
 #include <anno/app/opening_view.hpp>
 #include <anno/app/play.hpp>
+#include <anno/app/ship_layer.hpp>
+#include <anno/render/frame.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -377,4 +382,73 @@ TEST_CASE("opening, real files: an order's id comes from the sim's own result, e
     const app::ShipEventView* stopped = after->opening->event_for(sim::FigureId{1}, *o4.order_id);
     REQUIRE(stopped != nullptr);
     CHECK(stopped->kind == app::ShipEventKind::Stopped);
+}
+
+TEST_CASE("live ships on the CPU renderer: blend_units draws what the scene's own units draw, in painter "
+          "order (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_scene(*dir, *dir / "Scenes" / "0200Single" / "Single_01.sze", {}, nullptr);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    anno::render::Scene& scene = *loaded.value().scene;
+    std::vector<anno::render::UnitSprite> live;
+    for (const auto& u : scene.units) {
+        if (!u.z && live.empty()) {
+            live.push_back(u);
+        }
+    }
+    REQUIRE(live.size() == 1);
+    live.push_back(live[0]);
+    live[1].x += 0.5F;
+    live[1].y += 0.4F; // in front of the first and overlapping it
+    constexpr int kW = 640, kH = 400;
+    for (const std::size_t group : {std::size_t{0}, std::size_t{1}, std::size_t{2}}) {
+        const auto [ax, ay] = live[0].anchor(group, scene.lift);
+        const anno::render::Rect view{ax - kW / 2, ay - kH / 2, kW, kH};
+        // The reference: the ships in the scene, baked into the chunks. Then the bare view.
+        scene.units = live;
+        anno::render::FrameRenderer cpu(4);
+        std::vector<std::uint32_t> baked(std::size_t{kW} * kH), bare(baked.size());
+        cpu.render(scene, view, group, 300, anno::render::WaterStyle::Original, baked.data());
+        scene.units.clear();
+        anno::render::FrameRenderer none(4);
+        none.render(scene, view, group, 300, anno::render::WaterStyle::Original, bare.data());
+        std::size_t ship_pixels = 0;
+        for (std::size_t i = 0; i < baked.size(); ++i) {
+            ship_pixels += baked[i] != bare[i] ? 1U : 0U;
+        }
+        INFO("group " << group);
+        REQUIRE(ship_pixels > 200); // the compared region holds the ships
+        const auto max_diff = [&](const std::vector<std::uint32_t>& a, const std::vector<std::uint32_t>& b) {
+            int m = 0;
+            for (std::size_t i = 0; i < a.size(); ++i) {
+                for (int k = 0; k < 3; ++k) {
+                    m = std::max(m, std::abs(static_cast<int>((a[i] >> (8 * k)) & 0xFF) -
+                                             static_cast<int>((b[i] >> (8 * k)) & 0xFF)));
+                }
+            }
+            return m;
+        };
+        // The overlay over the bare frame: the same picture (a level of rounding in the blend).
+        auto overlay = bare;
+        app::blend_units(live, scene, group, view, overlay.data());
+        CHECK(max_diff(overlay, baked) <= 2);
+        // The list's order does not matter: the painter's order (x + y) decides.
+        auto reversed = bare;
+        const std::vector<anno::render::UnitSprite> flipped{live[1], live[0]};
+        app::blend_units(flipped, scene, group, view, reversed.data());
+        CHECK(reversed == overlay);
+        // A wrong list is told apart: the ships a tile away give another picture.
+        auto shifted = live;
+        for (auto& u : shifted) {
+            u.x += 1.0F;
+            u.y += 1.0F;
+        }
+        auto wrong = bare;
+        app::blend_units(shifted, scene, group, view, wrong.data());
+        CHECK(max_diff(wrong, baked) > 8);
+    }
 }

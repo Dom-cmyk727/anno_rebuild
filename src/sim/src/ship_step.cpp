@@ -17,11 +17,6 @@ constexpr std::array<int, 8> kDy = {0, 1, 1, 1, 0, -1, -1, -1};
 constexpr std::uint64_t kDiagNumerator = 11863283;
 constexpr unsigned kDiagShift = 24;
 
-/// A chunk is cut when `1.0 + f32(1e-4) < node.length` (AnnoWelt 0x1003e930, 7.3). f32(1e-4) =
-/// 13421773 / 2^37 exactly, so with the sum formed exactly (x87 extended) the test is
-/// 32 * length_q32 > 2^37 + 13421773. A node of at most that is installed whole.
-constexpr std::uint64_t kChunkLimit32 = (std::uint64_t{1} << 37) + 13421773;
-
 /// Hard stop on the loop of one visit: every iteration either spends budget, pops a node or
 /// changes the segment, so it terminates; this only bounds a corrupt state's time (kept valid).
 constexpr std::uint32_t kMaxIterations = 1U << 20;
@@ -112,7 +107,7 @@ void start_node(Figure& f, const NavStepEnv& env) {
     }
     f.dir16 = static_cast<std::uint8_t>(want);
     std::uint64_t chunk = node.length_q32;
-    if (32 * node.length_q32 > kChunkLimit32) {
+    if (node.length_q32 > kNavChunkLimitQ32) { // 1.0 + f32(1e-4), see ship.hpp
         chunk = kNavUnitQ32;
         m.nodes.front().length_q32 -= kNavUnitQ32;
     } else {

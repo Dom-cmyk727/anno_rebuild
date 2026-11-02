@@ -17,6 +17,8 @@
 #include <anno/sim/ship_step.hpp>
 #include <anno/sim/state_fields.hpp>
 
+#include "ship_helpers.hpp"
+
 namespace sim = anno::sim;
 
 namespace {
@@ -142,6 +144,24 @@ class NoPlanner : public sim::NavPlanner {
     int calls = 0;
 };
 
+/// The navigation validator's verdict on one figure (the same check the world runs).
+std::string nav_problem(sim::Figure f) {
+    static const auto types = ship_test::nav_ship_registry();
+    const sim::SimConfig cfg;
+    const sim::Rules rules;
+    sim::FigureRegistry reg = sim::make_figure_registry(cfg);
+    f.id = sim::FigureId{1};
+    f.kind = ship_test::kShip;
+    sim::IdCounters ids;
+    ids.next_figure = 2;
+    ids.next_order_id = 1000;
+    ids.next_ticket = 1000;
+    if (sim::add_figure(reg, f, cfg, rules) == sim::kNoSlot) {
+        return "add_figure failed";
+    }
+    return sim::validate_navigation(reg, ids, *types, rules);
+}
+
 std::uint16_t now_of(std::uint16_t last, std::uint64_t cum) {
     return static_cast<std::uint16_t>((last + cum) & 0xFFFFU);
 }
@@ -198,6 +218,10 @@ TEST_CASE(
                                                      << it->second.second);
             }
             CHECK(f.nav->res24[0] < (1U << 24));
+            if (i % 11 == 0 || i == c.visits.size()) {
+                const std::string problem = nav_problem(f);
+                CHECK_MESSAGE(problem.empty(), "visit " << i << ": " << problem);
+            }
         }
         CHECK(arrived_count == 1);
         CHECK(arrived_at == c.arrive);
@@ -314,14 +338,15 @@ TEST_CASE(
         sim::nav_step(f, sim::NavStepEnv{&facts, v}, planner, 1, ev);
         return f;
     };
-    // 13421773 / 32 = 419430.40625 q32: 1.0 + that is the limit; a length of 2^32 + 419430 is
-    // whole, 2^32 + 419431 is cut into 1.0 and 419431.
-    const sim::Figure whole = first_segment(kUnit + 419430, 100);
+    // f32(1e-4) = 0xD1B717 * 2^-37 = 13743895 / 2^37 (struct-derived in tools/ship_step_ref.py) =
+    // 429496.72 q32: a length of 2^32 + 429496 is installed whole, 2^32 + 429497 is cut into 1.0
+    // and 429497.
+    const sim::Figure whole = first_segment(kUnit + 429496, 100);
     CHECK(whole.nav->nodes.empty());
     CHECK(whole.nav->seg.kind == sim::NavSegKind::Move);
-    const sim::Figure cut = first_segment(kUnit + 419431, 100);
+    const sim::Figure cut = first_segment(kUnit + 429497, 100);
     REQUIRE(cut.nav->nodes.size() == 1);
-    CHECK(cut.nav->nodes[0].length_q32 == 419431);
+    CHECK(cut.nav->nodes[0].length_q32 == 429497);
     // The factor V of the start is stored in the segment and the rate is speed * V.
     const sim::Figure slow = first_segment(5 * kUnit, 65);
     CHECK(slow.nav->seg.factor_percent == 65);
@@ -686,4 +711,124 @@ TEST_CASE("stepper: saving and loading the motion state at any visit does not ch
             }
         }
     }
+}
+
+TEST_CASE("stepper: turn segments run at V = 100, a planner turn node ends on its exact tick") {
+    // A planner turn node lasts turn_step * 500 / (0.01f * 100) = 55 ticks for 0.11 whatever the
+    // ship's speed factor (the original's turn speed is 0.01 and the factor is read for movement
+    // only). V = 65 is passed; the Move that follows starts at the 55th tick, not the 56th.
+    const sim::NavFacts facts = facts_with(kTurn);
+    NoPlanner planner;
+    Case c;
+    c.nodes = {sim::NavNode{sim::NavSegKind::Turn, 0, 7, kTurn, sim::kNavIdleSpeedQ32},
+               sim::NavNode{sim::NavSegKind::Move, 4, 0, 3 * kUnit, kSpeed}};
+    sim::Figure f = committed_ship(c);
+    f.dir16 = 8;
+    std::vector<sim::NavEvent> ev;
+    const auto at = [&](std::uint64_t tick) {
+        sim::nav_step(f, sim::NavStepEnv{&facts, 65}, planner, static_cast<std::uint16_t>(tick),
+                      ev);
+    };
+    at(1); // the zero-length first segment ends, the Turn node starts: facing 7, not moving
+    CHECK(f.nav->seg.kind == sim::NavSegKind::Turn);
+    CHECK(f.dir16 == 7);
+    CHECK((f.state_word & 1U) == 0);
+    at(54);
+    CHECK(f.nav->seg.kind == sim::NavSegKind::Turn);
+    at(55); // 54 ticks into the node's 55: still turning
+    CHECK(f.nav->seg.kind == sim::NavSegKind::Turn);
+    at(56); // the node started at tick 1 and lasts exactly 55 ticks: it ends at tick 56
+    CHECK(f.nav->seg.kind == sim::NavSegKind::Move);
+    CHECK(f.nav->seg.factor_percent == 65); // movement reads V
+    CHECK((f.state_word & 1U) == 1U);
+    CHECK(f.dir16 == 8); // from 7 the heading E (8) is one sixteenth away: no phase, the facing snaps
+}
+
+TEST_CASE("stepper: the stepper's own turn phase sets the moving bit") {
+    const sim::NavFacts facts = facts_with(kTurn);
+    NoPlanner planner;
+    Case c;
+    c.nodes = {sim::NavNode{sim::NavSegKind::Move, 0, 0, 2 * kUnit, kSpeed}};
+    sim::Figure f = committed_ship(c);
+    f.dir16 = 8;      // facing E, the node wants W: a reversal
+    f.state_word = 0; // not moving
+    f.nav->seg.remaining_x500 = 0;
+    std::vector<sim::NavEvent> ev;
+    // (committed_ship set the facing to the first movement; the reversal needs it back)
+    sim::nav_step(f, sim::NavStepEnv{&facts, 100}, planner, 1, ev);
+    CHECK(f.nav->seg.kind == sim::NavSegKind::TurnPhase);
+    CHECK((f.state_word & 1U) == 1U);
+    CHECK(f.dir16 == 7);
+}
+
+TEST_CASE(
+    "stepper: a deferral drops the visit's leftover and the planner sees the ship where it is") {
+    const sim::NavFacts facts = facts_with(kTurn);
+    struct Recording : sim::NavPlanner {
+        std::vector<sim::NavPlan> script;
+        std::size_t next = 0;
+        int calls = 0;
+        sim::FixedPos seen;
+        sim::NavPlan plan(const sim::Figure& ship) override {
+            ++calls;
+            seen = ship.pos;
+            return next < script.size() ? script[next++] : sim::NavPlan{};
+        }
+    };
+    {
+        // an 8-tick visit: the idle segment ends at tick 5 (0.01 at speed 0.01), 3 ticks are left;
+        // the planner defers: it is asked once, nothing moves, the 3 ticks are not carried.
+        sim::Figure f;
+        f.pos = sim::FixedPos{100, 200};
+        f.nav = sim::make_nav_motion(f.pos, 0);
+        f.nav->order = sim::NavOrder{5, false, 300, 400};
+        f.nav->ticket = 9;
+        Recording p;
+        p.script = {sim::NavPlan{sim::NavPlanKind::Deferred, {}, {}}};
+        std::vector<sim::NavEvent> ev;
+        sim::nav_step(f, sim::NavStepEnv{&facts, 100}, p, 8, ev);
+        CHECK(p.calls == 1);
+        CHECK(f.nav->last == 8);
+        CHECK(f.nav->seg.remaining_x500 == 0);
+        CHECK(f.pos.x == 100);
+    }
+    {
+        // A replaced order on a ship that is still sailing its trimmed remainder: the planner is
+        // asked at the segment end and must see the position already advanced by that remainder
+        // (half a tile east = 128 Q24.8 units), not the position of the visit's start.
+        sim::Figure f;
+        f.pos = sim::FixedPos{25600, 200};
+        f.dir16 = 8;
+        f.nav = sim::make_nav_motion(f.pos, 0);
+        f.nav->order = sim::NavOrder{6, false, 300, 400};
+        f.nav->ticket = 10;
+        f.nav->seg = sim::NavSegment{sim::NavSegKind::Move, 4, 100, kSpeed,
+                                     (std::uint64_t{1} << 31) * 500}; // 0.5 tile left
+        f.state_word |= 1;
+        Recording p;
+        p.script = {sim::NavPlan{sim::NavPlanKind::Deferred, {}, {}}};
+        std::vector<sim::NavEvent> ev;
+        sim::nav_step(f, sim::NavStepEnv{&facts, 100}, p, 60000, ev);
+        CHECK(p.calls == 1);
+        CHECK(p.seen.x == 25600 + 128);
+        CHECK(p.seen.y == 200);
+    }
+}
+
+TEST_CASE("stepper: the speed factor truncates the cargo loss and the product") {
+    sim::NavRules rules;
+    const std::uint32_t cap = 1000 * 256;
+    const sim::NavFacts facts{kSpeed, kTurn, 6000, 4, 2, 0, 1280};
+    // 17 * S / (6 cap) = 1.6 exactly at S = 144565.33: S = 144565 gives 1.59999: loss trunc 1 (a
+    // rounding implementation would give 2), L 99, V 99.
+    CHECK(sim::nav_speed_factor(facts, rules, cap, std::vector<sim::ShipHold>{{1, 144565}}, 1) ==
+          99);
+    // V = trunc(98 * 75 / 100) = trunc(73.5) = 73 (a rounding implementation gives 74): span 33,
+    // floor 65, penalty 25, four holds of four, all full: loss = 25 -> L 75.
+    rules.health_span_percent = 33;
+    rules.health_floor_percent = 65;
+    rules.cargo_penalty_percent = 25;
+    const sim::NavFacts four{kSpeed, kTurn, 6000, 4, 0, 0, 1280};
+    const std::vector<sim::ShipHold> full = {{1, cap}, {2, cap}, {3, cap}, {4, cap}};
+    CHECK(sim::nav_speed_factor(four, rules, cap, full, 1) == 73);
 }

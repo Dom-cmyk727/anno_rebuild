@@ -67,8 +67,9 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             if (g.speed_q32 == 0 || g.speed_q32 >= kMaxNavSpeedQ32) {
                 return where + ".nav.seg.speed_q32: outside the supported domain";
             }
-            if (g.remaining_x500 > kNavUnitQ32 * kNavScale) {
-                return where + ".nav.seg.remaining_x500: a movement chunk is at most 1.0 length";
+            if (g.remaining_x500 > kNavChunkLimitQ32 * kNavScale) {
+                return where +
+                       ".nav.seg.remaining_x500: a movement chunk is at most 1.0 + f32(1e-4)";
             }
             if (f.dir16 != 2 * g.dir8) {
                 return where + ".nav: a movement segment needs the facing 2 * dir8 (an odd or "
@@ -101,16 +102,23 @@ std::string validate_navigation(const FigureRegistry& registry, const IdCounters
             const NavNode& n = m.nodes[i];
             const std::string at = where + ".nav.nodes[" + std::to_string(i) + "]";
             if (n.kind == NavSegKind::Move) {
-                // A run of 1 .. run_cap whole steps; chunking (12.4) cuts whole 1.0 units off the
-                // front of the length, so an orthogonal length stays a whole number of units and a
-                // diagonal one only stays within the run bound.
+                // A run of 1 .. run_cap whole steps whose front may have been cut by whole 1.0
+                // chunks (12.4): an orthogonal length is a whole number of units; a diagonal one is
+                // steps * L_d minus j whole units for some j.
                 const std::uint64_t step = (n.dir8 & 1U) != 0 ? kNavDiagStepQ32 : kNavUnitQ32;
+                bool shaped = false;
+                if (n.dir8 <= 7 && n.length_q32 != 0) {
+                    for (std::uint64_t j = 0;
+                         j * kNavUnitQ32 < step * rules.nav.run_cap + kNavUnitQ32 && !shaped; ++j) {
+                        const std::uint64_t whole = n.length_q32 + j * kNavUnitQ32;
+                        shaped = whole % step == 0 && whole / step >= 1 &&
+                                 whole / step <= rules.nav.run_cap;
+                    }
+                }
                 if (n.dir8 > 7 || n.facing != 0 || n.speed_q32 == 0 ||
-                    n.speed_q32 >= kMaxNavSpeedQ32 || n.length_q32 == 0 ||
-                    ((n.dir8 & 1U) == 0 && n.length_q32 % kNavUnitQ32 != 0) ||
-                    n.length_q32 > step * rules.nav.run_cap) {
+                    n.speed_q32 >= kMaxNavSpeedQ32 || !shaped) {
                     return at + ": a movement node is out of range (1 .. run_cap steps of its "
-                                "direction, facing 0)";
+                                "direction, front cut by whole units, facing 0)";
                 }
             } else if (n.kind == NavSegKind::Turn) {
                 if (n.facing > 15 || n.dir8 != 0 || n.length_q32 != facts.turn_step_q32 ||

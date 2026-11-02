@@ -368,8 +368,10 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         {"nav.seg.dir8: 8", [](sim::World& w) { figure(w, 1).nav->seg.dir8 = 8; }},
         {"needs the facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 7; }},
         {"needs the facing 2 * dir8", [](sim::World& w) { figure(w, 1).dir16 = 4; }},
-        {"a movement chunk is at most 1.0",
-         [](sim::World& w) { figure(w, 1).nav->seg.remaining_x500 = (1ULL << 32) * 500 + 1; }},
+        {"a movement chunk is at most 1.0 + f32(1e-4)",
+         [](sim::World& w) {
+             figure(w, 1).nav->seg.remaining_x500 = sim::kNavChunkLimitQ32 * sim::kNavScale + 1;
+         }},
         {"nav.seg.speed_q32: outside", [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 0; }},
         {"nav.seg.speed_q32: outside",
          [](sim::World& w) { figure(w, 1).nav->seg.speed_q32 = 1U << 28; }},
@@ -469,7 +471,7 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
          }},
     };
     for (const Case& c : cases) {
-        INFO(c.needle);
+        INFO(std::string(c.needle));
         sim::World w = busy;
         c.edit(w);
         const std::string problem = w.check_invariants();
@@ -495,6 +497,8 @@ TEST_CASE("nav motion: invalid states are refused with a diagnostic, valid contr
         figure(w, 1).nav->seg.factor_percent = factor;
         figure(w, 1).nav->seg.remaining_x500 = (1ULL << 32) * 500;
         CHECK(w.check_invariants().empty());
+        figure(w, 1).nav->seg.remaining_x500 = sim::kNavChunkLimitQ32 * sim::kNavScale;
+        CHECK(w.check_invariants().empty()); // a node up to 1.0 + f32(1e-4) is installed whole
     }
     {
         sim::World w = busy;

@@ -22,7 +22,16 @@ IDLE_SPEED = 42949672                  # f32(0.01) * 2^32
 UNIT = 2 ** 32
 LD = 11863283 * 2 ** 9                 # diagonal step length, q32
 C = F(11863283, 2 ** 24)               # diagonal axis component per unit length
-CHUNK_LIMIT = F(2 ** 37 + 13421773, 32)  # a node longer than this is cut (1.0 + f32(1e-4), q32)
+def _chunk_limit():
+    # 1.0 + f32(1e-4) in q32, derived from the f32 bit pattern itself (not typed in): a node longer
+    # than this is cut into a 1.0 chunk and a rest
+    import struct
+    f = struct.unpack('<f', struct.pack('<f', 1e-4))[0]
+    return F(f) * UNIT + UNIT
+
+
+CHUNK_LIMIT = _chunk_limit()
+assert floor(CHUNK_LIMIT) == UNIT + 429496 and CHUNK_LIMIT > UNIT + 429496  # 2^32 + 429496.72
 DX = [-1, -1, 0, 1, 1, 1, 0, -1]
 DY = [0, 1, 1, 1, 0, -1, -1, -1]
 
@@ -35,7 +44,7 @@ def segments(nodes, turn_step, V, mut=None):
 
     def turn_seg(length):
         rate = F(IDLE_SPEED * 100, 500)        # q32 per tick
-        segs.append((F(length) / rate, F(0), F(0)))
+        segs.append((F(length) / rate, F(0), F(0), rate, False))
 
     for n in nodes:
         if n[0] == 'T':
@@ -58,14 +67,14 @@ def segments(nodes, turn_step, V, mut=None):
         else:
             k = F(1) if mut == 'diag_unit' else C
             vx, vy = DX[dir8] * rate * k, DY[dir8] * rate * k
-        segs.append((F(length) / rate, vx, vy))
+        segs.append((F(length) / rate, vx, vy, rate, dir8 % 2 == 1))
     return segs
 
 
 def position_at(segs, t):
     t = F(t)
     x = y = F(0)
-    for dur, vx, vy in segs:
+    for dur, vx, vy, _rate, _diag in segs:
         use = min(t, dur)
         x += vx * use
         y += vy * use
@@ -79,6 +88,21 @@ def total_ticks(segs):
     return sum((s[0] for s in segs), F(0))
 
 
+def tolerance(segs):
+    """The error bound of the integer stepper against this model, in units of q32/500 (derived from the
+    carry terms, not fitted). Entering segment i with a leftover converted at a rate change floors once:
+    the budget lost is under one unit of segment i's rate, i.e. under 1 / r_i ticks, and that shift of
+    time costs at most max(r_j, j >= i) per tick afterwards, so under 1 + max_j(r_j) / r_i units. A
+    diagonal segment end drops a residue fraction under one unit. The publication floor is outside the
+    comparison (it compares pos_u). One unit of slack covers the final partial step."""
+    total = F(1)
+    for i in range(1, len(segs)):
+        later = max(s[3] for s in segs[i:])
+        total += 1 + later / segs[i][3]
+    total += sum(1 for s in segs if s[4])
+    return floor(total) + 1
+
+
 def run_case(c, mut=None):
     segs = segments(c['nodes'], c['turn'], c['V'], mut)
     total = total_ticks(segs)
@@ -89,8 +113,7 @@ def run_case(c, mut=None):
         rows.append((i, floor(x * 500), floor(y * 500)))
         if arrive == 0 and cum >= total and d > 0:
             arrive = i
-    # every segment start can floor once, every diagonal segment end drops one residue
-    tol = 2 * len(segs) + 2
+    tol = tolerance(segs)
     return rows, arrive, tol, total
 
 
@@ -135,6 +158,8 @@ def cases():
     rev = [('T', f & 15) for f in range(8, 16)]
     add('planner_reversal_8_nodes', rev + [('M', 4, 4 * UNIT, S)], [50] * 20, note='facing 8 to 0 turned + by the planner, 8 nodes')
     add('speed_factor_87', [('M', 4, 5 * UNIT, S), ('M', 3, 3 * LD, S)], [29] * 60, V=87)
+    add('turn_phases_at_v65', [('M', 4, 2 * UNIT, S), ('M', 2, 2 * UNIT, S), ('M', 0, 2 * UNIT, S)], [5] * 200, V=65, note='turn segments run at the idle speed and V = 100 whatever the ship factor')
+    add('speed_ratio_extreme', [('M', 4, 2 * UNIT, 2 ** 27), ('M', 4, UNIT, 200000), ('M', 4, 2 * UNIT, 2 ** 26)], [1, 7, 40, 3, 90], note='a rate ratio of 671 between neighbours: the bound is derived from the rates')
     add('speed_factor_65', [('M', 6, 5 * UNIT, S), ('M', 7, 3 * LD, S)], [29] * 60, V=65)
     add('speed_change_fraction', [('M', 4, 2 * UNIT, S2), ('M', 4, 3 * UNIT, S3), ('M', 4, 2 * UNIT, S2)], [97] * 60)
     add('speed_change_mid_visit', [('M', 4, UNIT // 3 * 3, S2), ('M', 4, UNIT, 3 * S2), ('M', 3, LD, S)], [400, 77, 5000], cover=False)
@@ -142,8 +167,6 @@ def cases():
     add('negative_start', [('M', 7, 6 * LD, S), ('M', 0, 3 * UNIT, S)], [41] * 60, pos=(-100000, -50000))
     add('stamp_wrap', [('M', 4, 5 * UNIT, S)], [30] * 40, last=65500, note='visits cross the u16 tick wrap')
     add('stamp_wrap_big_visit', [('M', 2, 9 * UNIT, S)], [65535, 65535, 1000], last=40000, cover=False)
-    add('one_chunk_boundary', [('M', 4, UNIT + 419431, S)], [50] * 30, note='just above 1.0 + f32(1e-4): cut in two chunks')
-    add('below_chunk_limit', [('M', 4, UNIT + 419430, S)], [50] * 30, note='at most 1.0 + f32(1e-4): installed whole')
     add('diag_chunking', [('M', 5, 10 * LD, S)], [60] * 60)
     long_nodes = []
     for i in range(100):

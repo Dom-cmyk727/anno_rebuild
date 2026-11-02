@@ -23,6 +23,13 @@ inline constexpr std::uint64_t kNavUnitQ32 = std::uint64_t{1} << 32;
 /// unit and V is a percent, so no division is ever needed; 12.4).
 inline constexpr std::uint64_t kNavScale = 500;
 
+/// A movement node longer than this is cut into a 1.0 chunk and the rest (AnnoWelt 0x1003e930:
+/// `1.0 + f32(1e-4) < node.length`). f32(1e-4) has the mantissa 0xD1B717 and exponent -14, i.e.
+/// 13743895 / 2^37, so the sum is 2^32 + 429496.72 in q32 and the integer test is
+/// `length_q32 > 2^32 + 429496`. A segment may therefore be installed whole with up to this much
+/// more than 1.0 remaining.
+inline constexpr std::uint64_t kNavChunkLimitQ32 = (std::uint64_t{1} << 32) + 429496;
+
 inline constexpr std::uint64_t kNavDiagStepQ32 = std::uint64_t{11863283} << 9;
 
 /// The most pending nodes a ship may hold. A route of the supported window has far fewer (8 turn

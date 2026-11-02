@@ -66,8 +66,8 @@ PlacementResult road_window(const VertexGrid& grid, const BuildingType& t,
     }
     const std::uint32_t mode = t.flags_word & 3U;
     const unsigned result = mode == 0 ? hi : mode == 2 ? lo : (mx & 0xf0U); // mode 3
-    // The class test runs only with flag bit 4 (A & 0x1000004 == 4, AnnoGame 0x10009111); a data-defined
-    // slope-class road without that bit has no slope test, like the original.
+    // The class test runs only with flag bit 4 (A & 0x1000004 == 4, AnnoGame 0x10009111); a
+    // data-defined slope-class road without that bit has no slope test, like the original.
     if ((t.flags_word & 4U) != 0 && (t.flags_word & 0x7000U) == road.slope_class &&
         mx - lo > road.slope_limit) {
         return {Reject::TerrainRefused, 0};

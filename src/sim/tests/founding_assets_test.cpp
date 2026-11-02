@@ -1119,6 +1119,14 @@ TEST_CASE(
             }
         }
         REQUIRE(edited);
+        if (const char* bad_path = std::getenv("ANNO_SAIL_LOG_TAMPERED");
+            bad_path != nullptr && *bad_path) {
+            const auto bad_bytes = sim::write_log(tampered);
+            REQUIRE(bad_bytes.ok());
+            std::ofstream(bad_path, std::ios::binary)
+                .write(reinterpret_cast<const char*>(bad_bytes.value().data()),
+                       static_cast<std::streamsize>(bad_bytes.value().size()));
+        }
         auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
         REQUIRE(fresh2.ok());
         auto bad = sim::replay(fresh2.value(), tampered);

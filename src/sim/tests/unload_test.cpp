@@ -1389,7 +1389,7 @@ TEST_CASE("unload sailing: the cargo factor is read at the next segment start, a
             CHECK(ship(unloaded, 2).parent == crew_parent); // the scout is still carried
             CHECK(ship(unloaded, 2).parent == sim::FigureId{1});
             done = true;
-            b.starts.resize(1); // forget nothing after this point
+            b.starts.erase(b.starts.begin() + 1, b.starts.end()); // forget nothing after this point
         }
     }
     REQUIRE(done);

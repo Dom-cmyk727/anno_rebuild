@@ -648,7 +648,9 @@ Planner::FineOutcome Planner::fine_search() {
     }
     fheap_.clear();
     fseq_ = 0;
-    *fine_tile(start_tx_, start_tz_) = kFineStart;
+    if (std::uint8_t* const start_tile = fine_tile(start_tx_, start_tz_)) {
+        *start_tile = kFineStart; // the start tile is in a stored block by construction
+    }
     fheap_.push_back({0, fseq_++, start_tx_, start_tz_});
     const auto after = [this](const FineNode& a, const FineNode& b) { return fine_after(a, b); };
     std::array<std::uint8_t, 8> order = pert_.reverse_fine_order ? kFineOrderReversed : kFineOrder;
@@ -718,7 +720,11 @@ void Planner::finish_trace() {
     std::int32_t z = stored_tz_;
     const std::uint64_t guard = blocks_.size() + 1;
     for (std::uint64_t i = 0; i < guard; ++i) {
-        const std::uint8_t b = *fine_tile(x, z);
+        const std::uint8_t* const tile = fine_tile(x, z);
+        if (tile == nullptr) {
+            break; // a trace never leaves the stored blocks; a broken chain ends the walk
+        }
+        const std::uint8_t b = *tile;
         if (b == kFineStart) {
             break;
         }

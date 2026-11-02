@@ -373,7 +373,8 @@ TEST_CASE("controls: a vanished ship drops the selection and the mode, modes exc
     CHECK(f.ui.mode() == app::OpeningMode::Select);
     CHECK(f.ui.message().find("gone") != std::string::npos);
     // The building tool taking the pointer leaves the modes.
-    f.view.ships.insert(f.view.ships.begin(), ship(1, 0, 10, 10));
+    const app::ShipView other = f.view.ships.front();
+    f.view.ships = {ship(1, 0, 10, 10), other};
     f.click(app::PointerButton::Left, 100, 100);
     f.key(app::OpeningKey::Found);
     f.ui.leave_modes();

@@ -161,7 +161,7 @@ sim::ScenarioSpec channel_spec(const std::vector<Item>& items, bool all_water = 
     sim::ScenarioSpec::PlayerSpec p;
     p.id = sim::PlayerId{0};
     p.money = 1000;
-    spec.players.push_back(p);
+    spec.players.push_back(std::move(p));
     sim::ScenarioSpec::FigureSpec f;
     f.kind = kShip;
     f.owner = sim::PlayerId{0};
@@ -661,7 +661,11 @@ TEST_CASE("route objects: a loaded building with byte0f 0x30 changes a route") {
     low.type = types.value().weaver;
     low.x = kWallX;
     low.y = kChannelY0;
-    sim::ScenarioSpec::BuildingSpec high = low;
+    // Not a copy of `low`: GCC 13 -O3 reports the copied payload as maybe-uninitialized.
+    sim::ScenarioSpec::BuildingSpec high;
+    high.type = low.type;
+    high.x = low.x;
+    high.y = low.y;
     high.byte0f = 0x30;
     sim::World open = make_world(channel_spec({}, false, {low}));
     sim::World shut = make_world(channel_spec({}, false, {high}));

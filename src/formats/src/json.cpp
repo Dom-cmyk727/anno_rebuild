@@ -38,6 +38,13 @@ Value Value::make_array() {
     return out;
 }
 
+Value::Value() = default;
+Value::~Value() = default;
+Value::Value(const Value&) = default;
+Value::Value(Value&&) noexcept = default;
+Value& Value::operator=(const Value&) = default;
+Value& Value::operator=(Value&&) noexcept = default;
+
 Value Value::make_object() {
     Value out;
     out.kind = Kind::Object;

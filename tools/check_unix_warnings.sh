@@ -64,7 +64,7 @@ for d in "$repo"/src/*/include; do inc="$inc -I$d"; done
 inc="$inc -I$repo/src/test_support/src"
 inc="$inc -isystem $deps/wgpu_native-src/include -isystem $deps/sdl3-src/include"
 inc="$inc -isystem $deps/doctest-src"
-common_defs="-DDOCTEST_CONFIG_USE_STD_HEADERS -DANNO_FIXTURES_DIR=\"$repo/fixtures/synthetic\""
+common_defs="-DDOCTEST_CONFIG_USE_STD_HEADERS -DANNO_FIXTURES_DIR=\"$repo/fixtures/synthetic\" -DANNO_REPO_DIR=\"$repo\""
 gpu_defs="-DANNO_WITH_VIEWER -DANNO_VIEWER_GPU -DANNO_BENCH_GPU"
 
 mapfile -t all_files < <(find "$repo/src" -name '*.cpp' | sort)

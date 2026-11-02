@@ -15,3 +15,12 @@ if(ANNO_BUILD_TESTS AND UNIX)
   add_test(NAME window_table_contract
     COMMAND bash ${PROJECT_SOURCE_DIR}/tools/bench/window_table_test.sh $<TARGET_FILE:bench_picture>)
 endif()
+if(ANNO_BUILD_TESTS AND WIN32 AND Python3_FOUND)
+  # The native Windows window tools' public-command contracts (W4-WIN-CLOSE C4): watchdog, an
+  # unreadable peak and a refused capture, each with a control, against tiny fixtures (the UNIX
+  # window tools have the shell contracts above). The capture cases need Pillow and a desktop and
+  # report a skip without them.
+  add_test(NAME window_tools_contract
+    COMMAND ${Python3_EXECUTABLE} -I ${PROJECT_SOURCE_DIR}/tools/test/window_tools_contract_test.py)
+  set_tests_properties(window_tools_contract PROPERTIES TIMEOUT 300)
+endif()

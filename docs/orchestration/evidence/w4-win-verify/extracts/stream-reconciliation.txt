@@ -1,0 +1,26 @@
+# sanitizer-pattern counts in the retained viewer streams (the verdict reader's SANITIZER pattern)
+# lane  case  channel  lines  sanitizer  sdl_delivery_failed  script-identity-line
+native  viewer_wiring_cpu_delivery_failures  stderr  lines=364  sanitizer=0  sdl_delivery_failed=3  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+native  viewer_wiring_cpu_delivery_failures  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+native  viewer_wiring_cpu_delivery_failures  stderr  lines=364  sanitizer=0  sdl_delivery_failed=3  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+native  viewer_wiring_cpu_delivery_failures  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+native  viewer_wiring_r1_held_publication  stderr  lines=21  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+native  viewer_wiring_r1_held_publication  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+native  viewer_wiring_r1_held_publication  stderr  lines=24  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+native  viewer_wiring_r1_held_publication  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+native  viewer_wiring_r4_occupancy  stderr  lines=20  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+native  viewer_wiring_r4_occupancy  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+native  viewer_wiring_r4_occupancy  stderr  lines=20  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+native  viewer_wiring_r4_occupancy  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+wsl  viewer_wiring_cpu_delivery_failures  stderr  lines=1154  sanitizer=0  sdl_delivery_failed=3  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+wsl  viewer_wiring_cpu_delivery_failures  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+wsl  viewer_wiring_cpu_delivery_failures  stderr  lines=1138  sanitizer=0  sdl_delivery_failed=3  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+wsl  viewer_wiring_cpu_delivery_failures  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=3c8e11496d1fb911
+wsl  viewer_wiring_r1_held_publication  stderr  lines=1303  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+wsl  viewer_wiring_r1_held_publication  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+wsl  viewer_wiring_r1_held_publication  stderr  lines=1316  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+wsl  viewer_wiring_r1_held_publication  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=56 fnv1a64=7b7afefb90eb5526
+wsl  viewer_wiring_r4_occupancy  stderr  lines=874  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+wsl  viewer_wiring_r4_occupancy  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+wsl  viewer_wiring_r4_occupancy  stderr  lines=935  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42
+wsl  viewer_wiring_r4_occupancy  stdout  lines=0  sanitizer=0  sdl_delivery_failed=0  script identity: steps=64 fnv1a64=b8d092753445fa42

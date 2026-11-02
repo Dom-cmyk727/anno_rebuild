@@ -1,0 +1,56 @@
+COMMAND: ["cmake", "-DSOURCE_DIR=E:\\anno1503-worktrees\\anno1503-W4-3", "-P", "E:\\anno1503\\cmake\\CheckTestNames.cmake"]
+COMMAND: ["C:\\Users\\altin\\AppData\\Local\\Programs\\Python\\Python314\\python.exe", "-I", "E:\\anno1503\\tools\\test\\ctest_verdict_test.py"]
+COMMAND: ["ctest", "--test-dir", "E:\\anno1503-worktrees\\anno1503-W4-3\\build\\win-a29b079", "-C", "Release", "-R", "^viewer_wiring_contract$", "--no-tests=error", "--timeout", "3300", "-V"]
+1/1 Test #1326: viewer_wiring_contract ...........   Passed   10.07 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "E:\\anno1503-worktrees\\anno1503-W4-3\\build\\win-a29b079", "-C", "Release", "-R", "^viewer_wiring_cpu_delivery_failures$", "--no-tests=error", "--timeout", "3300", "-V"]
+1/1 Test #650: viewer_wiring_cpu_delivery_failures ...   Passed   17.30 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "E:\\anno1503-worktrees\\anno1503-W4-3\\build\\win-a29b079", "-C", "Release", "-R", "^viewer_wiring_r1_held_publication$", "--no-tests=error", "--timeout", "3300", "-V"]
+1/1 Test #648: viewer_wiring_r1_held_publication ...   Passed    8.97 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "E:\\anno1503-worktrees\\anno1503-W4-3\\build\\win-a29b079", "-C", "Release", "-R", "^viewer_wiring_r4_occupancy$", "--no-tests=error", "--timeout", "3300", "-V"]
+1/1 Test #649: viewer_wiring_r4_occupancy .......   Passed    6.70 sec
+The following tests passed:
+100% tests passed out of 1
+COMMAND: ["ctest", "--test-dir", "E:\\anno1503-worktrees\\anno1503-W4-3\\build\\win-a29b079", "-C", "Release", "-R", "^anno_app_input_tests\\.|^viewer_wiring_(contract|r1_held_publication|r4_occupancy|cpu_delivery_failures)$", "--no-tests=error", "-V", "--timeout", "3300", "-j", "6"]
+ 1/35 Test  #624: anno_app_input_tests.dev feedback: the developer start's resources are the fixed map's only, an original scenario keeps its own ..................................................................   Passed    3.74 sec
+ 2/35 Test  #643: anno_app_input_tests.dev tool: on lan5's developer island, with its heights, every sampled ground pixel picks the tile the renderer drew there ...................................................   Passed    3.09 sec
+ 3/35 Test  #628: anno_app_input_tests.dev session: the replay agrees with a recorded run, and a moved command or a changed refusal does not (game files) ..........................................................   Passed    8.49 sec
+ 4/35 Test  #617: anno_app_input_tests.dev tool at a picture barrier: input, turns and outcomes go on, an applied building is shown as not drawn yet, and the open gate draws it (game files) ......................   Passed    2.33 sec
+ 5/35 Test  #623: anno_app_input_tests.dev feedback: the composed title never lets an earlier command's refusal pass for the latest command's, and shows the money once ............................................   Passed    2.16 sec
+ 6/35 Test  #622: anno_app_input_tests.dev feedback: the line names the latest command's outcome by its receipt, not an earlier one's ..............................................................................   Passed    2.76 sec
+ 7/35 Test  #620: anno_app_input_tests.dev feedback: every buildable type of lan5 at every rotation has the registry's footprint in its Anlagen entry, and a preview or a reason for none ..........................   Passed    2.62 sec
+ 8/35 Test  #650: viewer_wiring_cpu_delivery_failures ..............................................................................................................................................................   Passed   17.36 sec
+ 9/35 Test  #637: anno_app_input_tests.dev tool data: pointer moves rebuild nothing, and an unpublished list is not re-indexed .....................................................................................   Passed    0.47 sec
+10/35 Test  #640: anno_app_input_tests.dev tool: a click over a known tile builds there through the window's SDL mapping, at every zoom group, a derived level and continuous scales, at pixel densities 1 and 2 ...   Passed    0.01 sec
+11/35 Test  #630: anno_app_input_tests.dev script: hold, release, note and the consistency expectations (W4-WIN-CLOSE C1) ..........................................................................................   Passed    0.01 sec
+12/35 Test  #639: anno_app_input_tests.dev tool data: another player's city on another island: its commands carry that issuer and city, and the index keys on that island ..........................................   Passed    0.01 sec
+13/35 Test  #634: anno_app_input_tests.dev tool data: the buildable list is the registry's list-backed and road types in id order, of any id width .................................................................   Passed    0.01 sec
+14/35 Test  #629: anno_app_input_tests.dev script: wait drawn ends only when the change is settled on its way to the screen (round ee review, R2) ..................................................................   Passed    0.01 sec
+15/35 Test  #644: anno_app_input_tests.dev tool: a resized window maps the same tile with its new frame ............................................................................................................   Passed    0.01 sec
+16/35 Test  #626: anno_app_input_tests.dev script: only the script's own input is taken ............................................................................................................................   Passed    0.01 sec
+17/35 Test  #636: anno_app_input_tests.dev tool data: an empty buildable list only demolishes, and a malformed definition sends nothing ............................................................................   Passed    0.01 sec
+18/35 Test  #625: anno_app_input_tests.dev script: the parser takes the steps and names a bad line .................................................................................................................   Passed    0.01 sec
+19/35 Test  #646: anno_app_input_tests.dev tool: press, move, cancel, release and focus-loss sequences make exactly the intended commands, and motion alone makes none .............................................   Passed    0.01 sec
+20/35 Test  #647: anno_app_input_tests.dev tool: a drag longer than one record is refused before its path is made, and a tool without a city stays off .............................................................   Passed    0.01 sec
+21/35 Test  #645: anno_app_input_tests.dev tool: off the city's island, outside the window and non-finite points make no command and say why .......................................................................   Passed    0.01 sec
+22/35 Test  #635: anno_app_input_tests.dev tool data: a second definition (another id, a non-square footprint, other costs, no sprite) is driven by its data alone .................................................   Passed    0.01 sec
+23/35 Test  #642: anno_app_input_tests.dev tool: an island whose origin has an odd x + y is drawn half a pixel high at group 1, and a point just inside a tile's edge still picks that tile ........................   Passed    0.01 sec
+24/35 Test  #641: anno_app_input_tests.dev tool: under continuous zoom a point just inside a tile's edge picks that tile: the view's sub-pixel offset counts .......................................................   Passed    0.01 sec
+25/35 Test  #627: anno_app_input_tests.dev script: a click step's events land on the tile it names, at density 1 and 2, and the waits end or fail ..................................................................   Passed    0.01 sec
+26/35 Test  #631: anno_app_input_tests.dev script: stage holds, wait visibility, wait blocked and expect held (W4-WIN-CLOSE C2) ....................................................................................   Passed    0.01 sec
+27/35 Test  #632: anno_app_input_tests.dev script: fail and pass a CPU delivery stage, expect failing (W4-WIN-FINAL F2) ............................................................................................   Passed    0.01 sec
+28/35 Test  #633: anno_app_input_tests.dev script: the log opens with the identity of the whole parsed script and a ran record keeps every argument (W4-WIN-VERIFY V2) .............................................   Passed    0.01 sec
+29/35 Test  #621: anno_app_input_tests.dev feedback: occupancy and costs are refusals only with a published basis, the rest is unchecked, and pointer moves never rebuild the index ................................   Passed    2.60 sec
+30/35 Test  #638: anno_app_input_tests.dev tool data: per-move work against growing unrelated content (a measurement) ..............................................................................................   Passed    2.01 sec
+31/35 Test  #619: anno_app_input_tests.dev feedback: on an original scenario, the preview sprites of placed objects' types and rotations are the scene's own drawing of them .......................................   Passed    2.50 sec
+32/35 Test #1326: viewer_wiring_contract ...........................................................................................................................................................................   Passed   11.39 sec
+33/35 Test  #618: anno_app_input_tests.dev feedback: the preview is the scene's own sprite of the type at the hovered tile, and another rotation or type is drawn differently ......................................   Passed    2.69 sec
+34/35 Test  #648: viewer_wiring_r1_held_publication ................................................................................................................................................................   Passed    8.97 sec
+35/35 Test  #649: viewer_wiring_r4_occupancy .......................................................................................................................................................................   Passed    7.48 sec
+The following tests passed:
+100% tests passed out of 35

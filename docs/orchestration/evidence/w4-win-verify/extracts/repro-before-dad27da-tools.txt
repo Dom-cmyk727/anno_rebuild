@@ -1,0 +1,13 @@
+== BEFORE dad27da tools: wrapper E:\anno1503-worktrees\anno1503-W4-3\cache\v\old\viewer_wiring.py
+PASS exit=0  clean complete record
+       viewer_wiring: PASS tiny: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_bj0wpsm6\session1
+PASS exit=0  stderr only: UBSan runtime error, child exit 0
+       viewer_wiring: PASS tiny: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_bj0wpsm6\session2
+PASS exit=0  stderr only: ASan report, child exit 0
+       viewer_wiring: PASS tiny: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_bj0wpsm6\session3
+PASS exit=0  stdout only: UBSan runtime error, child exit 0
+       viewer_wiring: PASS tiny: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_bj0wpsm6\session4
+PASS exit=0  invoked `look 1 999`, log of `look 1 2`
+       viewer_wiring: PASS look999: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_bj0wpsm6\session5
+PASS exit=0  invoked `wait frames 3`, log of `wait frames 2`
+       viewer_wiring: PASS wait3: window exit 0 after 0.1 s, every step of the script recorded in order; session C:\Users\altin\AppData\Local\Temp\viewer_wiring_contract_bj0wpsm6\session6

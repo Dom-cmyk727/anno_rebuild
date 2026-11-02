@@ -144,7 +144,7 @@ def main(argv):
         for session in argv[2:]:
             log = Path(session) / "script.log"
             text = read_log(log)
-            legacy = text is not None and not any(l.startswith(IDENTITY_PREFIX) for l in text.splitlines())
+            legacy = text is not None and not any(l.startswith(IDENTITY_PREFIX) for l in text.split("\n"))
             match = [s for s in sorted(scripts.glob("*.script")) if not problems(s.read_bytes(), text, legacy_ok=True)]
             names = ", ".join(s.name for s in match)
             if match and legacy:

@@ -1,0 +1,2 @@
+cc2a388e099acaa9c1f30584ccb8e73907dbc8956c2d53a1e04979a3a8549f57 *build/win-a29b079/src/app/Release/anno1503.exe
+head f047165c67bc26c1498c5201c014db83553c6f6f dirty 0

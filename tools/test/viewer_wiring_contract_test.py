@@ -80,7 +80,8 @@ if mode == "hang-late":
 lines, code = eval(os.environ["FIXTURE_RECORD"])
 if mode != "absent":
     session.mkdir(parents=True)
-    (session / "script.log").write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    # Bytes as the window writes them (LF, any argument byte); surrogate escapes stand for non-UTF-8 bytes.
+    (session / "script.log").write_bytes(("\n".join(lines) + ("\n" if lines else "")).encode("utf-8", "surrogateescape"))
     (session / "child_ubsan_options.txt").write_text(os.environ.get("UBSAN_OPTIONS", "<unset>"), encoding="utf-8")
     if mode != "no-session-txt":
         (session / "session.txt").write_text("map lan5\nspeed 100\n", encoding="utf-8")
@@ -256,6 +257,38 @@ class ViewerWiringContract(unittest.TestCase):
         identity = viewer_session.identity_line(script.read_bytes())
         self.expect_pass(script=script, record=[identity, "ran line 1: note a\u0085b", "ran line 2: note c d",
                                                 "ran line 3: quit"])
+
+    def test_a_non_utf8_argument_byte_is_compared_byte_for_byte_and_printed_safely(self):
+        path = self.tmp / "ff.script"
+        path.write_bytes(b"note a\xff\xfeb\nquit\n")
+        identity = viewer_session.identity_line(path.read_bytes())
+        p, _ = self.expect_pass(script=path, record=[identity, "ran line 1: note a\udcff\udcfeb", "ran line 2: quit"])
+        self.assertIn("\\udcff", p.stdout)  # the echoed record is printed with a backslash escape, not an exception
+
+    def test_a_log_copied_in_text_mode_with_crlf_is_the_same_record(self):
+        script = TINY.read_bytes()
+        text = "\r\n".join(GOOD) + "\r\n"
+        self.assertEqual(viewer_session.problems(script, text), [])
+
+    def test_a_missing_identity_still_reports_a_failed_step(self):
+        found = viewer_session.problems(TINY.read_bytes(), "\n".join(LEGACY[:1] + ["FAIL line 3 (key): boom"]) + "\n")
+        self.assertTrue(any(f.startswith("a step failed: FAIL line 3") for f in found), found)
+        self.assertTrue(any("no `script identity:` line" in f for f in found), found)
+
+    def test_revalidation_marks_a_legacy_log_that_several_scripts_fit_as_ambiguous(self):
+        scripts = self.tmp / "reval_ambiguous"
+        scripts.mkdir(exist_ok=True)
+        (scripts / "a.script").write_bytes(TINY.read_bytes())
+        (scripts / "b.script").write_bytes(TINY.read_bytes().replace(b"look 1 2", b"look 1 999"))
+        d = self.tmp / "reval_ambiguous_session"
+        d.mkdir(exist_ok=True)
+        (d / "script.log").write_text("\n".join(LEGACY) + "\n", encoding="utf-8")
+        p = subprocess.run([sys.executable, "-I", str(HERE / "tools" / "test" / "viewer_session.py"),
+                            "--revalidate", str(scripts), str(d)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stdout)  # a legacy log is not an error, even an ambiguous one
+        self.assertIn("a.script, b.script", p.stdout)
+        self.assertIn("AMBIGUOUS", p.stdout)
+        self.assertTrue(p.stdout.startswith("LEGACY"), p.stdout)
 
     def test_a_legacy_record_without_the_identity_line_does_not_pass(self):
         # An earlier window's log (first argument only) matches the old reduced comparison; it is not a verified

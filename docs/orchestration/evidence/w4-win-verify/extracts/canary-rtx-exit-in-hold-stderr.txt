@@ -1,0 +1,4 @@
+21 linked islands drawn from the templates the sim placed
+window: drawable 1280x720 px (asked for 1280x720, density 1.00)
+GPU renderer: NVIDIA GeForce RTX 4090 (Vulkan) (river shading: high)
+dev session: cache\v\canary\exit_in_hold

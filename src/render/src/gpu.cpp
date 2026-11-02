@@ -2284,8 +2284,8 @@ struct GpuFrame::Impl {
     /// Scene::draw_units order) and returns their number. Bit 17 marks a
     /// ship's frame, bits 18-31 hold its anchor row (the enhanced waterline,
     /// ship_in_water in gpu.wgsl).
-    std::uint32_t pack_ships(const Scene& scene, std::span<const UnitSprite> live,
-                             bool scene_units, Rect view, std::size_t group, Bytes& bytes) {
+    std::uint32_t pack_ships(const Scene& scene, std::span<const UnitSprite> live, bool scene_units,
+                             Rect view, std::size_t group, Bytes& bytes) {
         std::vector<const UnitSprite*> order;
         // Units have frames at the built levels only. At a derived level a ship is the
         // frame of its built ancestor reduced by 2^shift (a box mean over the R x R

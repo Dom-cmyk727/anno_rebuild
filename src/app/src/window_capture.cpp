@@ -9,11 +9,10 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <windows.h>
-
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include <windows.h>
 #endif
 
 namespace anno::app {
@@ -54,7 +53,8 @@ std::string capture_window_screen(SDL_Window* window, const std::filesystem::pat
         info.bmiHeader.biPlanes = 1;
         info.bmiHeader.biBitCount = 32;
         info.bmiHeader.biCompression = BI_RGB;
-        std::vector<std::uint8_t> bgra(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4);
+        std::vector<std::uint8_t> bgra(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) *
+                                       4);
         if (GetDIBits(mem, bitmap, 0, static_cast<UINT>(h), bgra.data(), &info, DIB_RGB_COLORS) ==
             0) {
             error = "the bitmap could not be read";
@@ -63,7 +63,8 @@ std::string capture_window_screen(SDL_Window* window, const std::filesystem::pat
                 std::swap(bgra[i], bgra[i + 2]);
                 bgra[i + 3] = 255;
             }
-            error = write_png(file, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), bgra);
+            error =
+                write_png(file, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), bgra);
         }
     }
     SelectObject(mem, old);

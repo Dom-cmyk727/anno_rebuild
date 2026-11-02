@@ -7,8 +7,7 @@
 
 namespace anno::app {
 
-OpeningSaver::OpeningSaver(PlayRunner& runner, OpeningIdentity identity,
-                           std::filesystem::path dir)
+OpeningSaver::OpeningSaver(PlayRunner& runner, OpeningIdentity identity, std::filesystem::path dir)
     : runner_(runner), identity_(std::move(identity)), dir_(std::move(dir)) {
     target_ = dir_ / ("quicksave-seat" + std::to_string(identity_.seat) + ".sav");
     worker_ = std::thread([this] { work(); });
@@ -107,11 +106,10 @@ void OpeningSaver::work() {
         const std::string error = write_file(target_, format_opening_save(save));
         char hash[32];
         std::snprintf(hash, sizeof hash, "%016llx", static_cast<unsigned long long>(capture.hash));
-        std::string line = error.empty()
-                               ? "saved " + to_utf8(target_) + " (turn " +
-                                     std::to_string(save.turn) + ", tick " +
-                                     std::to_string(save.tick) + ", hash " + hash + ")"
-                               : "SAVE FAILED: " + error + " (the session continues)";
+        std::string line = error.empty() ? "saved " + to_utf8(target_) + " (turn " +
+                                               std::to_string(save.turn) + ", tick " +
+                                               std::to_string(save.tick) + ", hash " + hash + ")"
+                                         : "SAVE FAILED: " + error + " (the session continues)";
         const std::lock_guard lock(mu_);
         status_ = std::move(line);
         pending_ = false;

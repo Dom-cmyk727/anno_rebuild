@@ -1373,10 +1373,10 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
             }
         }
         f["latest"] = s;
-        f["latest_kind"] = t.kind == TrackKind::Move     ? "move"
-                           : t.kind == TrackKind::Stop   ? "stop"
-                           : t.kind == TrackKind::Found  ? "found"
-                                                         : "unload";
+        f["latest_kind"] = t.kind == TrackKind::Move    ? "move"
+                           : t.kind == TrackKind::Stop  ? "stop"
+                           : t.kind == TrackKind::Found ? "found"
+                                                        : "unload";
         if (feed.outcome) {
             const CommandOutcome out = feed.outcome(t.receipt);
             if (out.state == CommandOutcome::State::Refused) {
@@ -1385,7 +1385,8 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
             f["latest_moved"] = std::to_string(out.transferred_88);
         }
     }
-    // Every tracked command by its index (oldest first, the bounded list): its kind and its own state.
+    // Every tracked command by its index (oldest first, the bounded list): its kind and its own
+    // state.
     for (std::size_t i = 0; i < ui.tracked().size(); ++i) {
         const Tracked& t = ui.tracked()[i];
         std::string s = track_state_name(ui.state_of(t, feed));
@@ -1395,8 +1396,10 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
             }
         }
         f["tracked." + std::to_string(i) + ".state"] = s;
-        f["tracked." + std::to_string(i) + ".kind"] =
-            t.kind == TrackKind::Move ? "move" : t.kind == TrackKind::Stop ? "stop" : t.kind == TrackKind::Found ? "found" : "unload";
+        f["tracked." + std::to_string(i) + ".kind"] = t.kind == TrackKind::Move    ? "move"
+                                                      : t.kind == TrackKind::Stop  ? "stop"
+                                                      : t.kind == TrackKind::Found ? "found"
+                                                                                   : "unload";
     }
     for (const ShipView& s : v.ships) {
         const std::string p = "ship." + std::to_string(s.id.v) + ".";
@@ -1870,8 +1873,9 @@ void Viewer::script_tick() {
             script_->note("screenshot " + *act.screenshot + ": NOT_RUN (no ANNO_DEV_SESSION)");
         }
 #elif defined(_WIN32)
-        // Windows: the CPU renderer's own frame buffer, else a copy of the window's client area from
-        // the desktop (the swapchain image of a GPU window). The size actually captured is logged.
+        // Windows: the CPU renderer's own frame buffer, else a copy of the window's client area
+        // from the desktop (the swapchain image of a GPU window). The size actually captured is
+        // logged.
         if (dir != nullptr && *dir != 0) {
             const std::filesystem::path file =
                 std::filesystem::path(dir) / (*act.screenshot + ".png");
@@ -1888,7 +1892,8 @@ void Viewer::script_tick() {
                     rgba[i * 4 + 2] = static_cast<std::uint8_t>(px);
                     rgba[i * 4 + 3] = 255;
                 }
-                error = write_png(file, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h), rgba);
+                error = write_png(file, static_cast<std::uint32_t>(w),
+                                  static_cast<std::uint32_t>(h), rgba);
                 how = "CPU frame buffer";
             } else {
                 error = capture_window_screen(window_, file, w, h);

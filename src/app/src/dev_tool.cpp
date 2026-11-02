@@ -173,7 +173,8 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
     case K::NextTypeFast:
     case K::PrevTypeFast:
         for (int i = 0; i < 10; ++i) {
-            forward(in.kind == K::NextTypeFast ? DevEvent::Kind::NextType : DevEvent::Kind::PrevType,
+            forward(in.kind == K::NextTypeFast ? DevEvent::Kind::NextType
+                                               : DevEvent::Kind::PrevType,
                     {}, out);
         }
         break;

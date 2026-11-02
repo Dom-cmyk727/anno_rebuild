@@ -86,7 +86,8 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
         return std::optional<ScriptedCommand>{};
     }
     if (tok.size() < 4 || tok[0] != "turn") {
-        return where + "expected `turn <n> build|demolish|buildc|demolishc|found|move|stop|unload ...`";
+        return where +
+               "expected `turn <n> build|demolish|buildc|demolishc|found|move|stop|unload ...`";
     }
     const auto turn = number<std::uint64_t>(tok[1]);
     if (!turn) {
@@ -108,7 +109,8 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
             // buildc <issuer> <island> <city> <type> <x> <y> <rot> ...
             const std::size_t rest = tok.size() >= 7 ? tok.size() - 7 : 1;
             if (tok.size() < 7 || rest % 3 != 0) {
-                return where + "buildc takes <issuer> <island> <city> <type> then <x> <y> <rotation> triples";
+                return where + "buildc takes <issuer> <island> <city> <type> then <x> <y> "
+                               "<rotation> triples";
             }
             const auto island = number<std::uint32_t>(tok[4]);
             const auto city = number<std::uint32_t>(tok[5]);
@@ -151,7 +153,8 @@ formats::Result<std::optional<ScriptedCommand>, std::string> parse_line(std::str
             out.command.body = std::move(demolish);
         } else if (tok[2] == "found") {
             if (tok.size() != 11) {
-                return where + "found takes <issuer> <ship> <type> <rotation> <x> <y> <click x> <click y>";
+                return where +
+                       "found takes <issuer> <ship> <type> <rotation> <x> <y> <click x> <click y>";
             }
             const auto ship = number<std::uint64_t>(tok[4]);
             const auto type = number<std::uint32_t>(tok[5]);
@@ -353,8 +356,8 @@ format_commands(const std::vector<ScriptedCommand>& commands, bool ship_start) {
                 out += turn + "found " + who + " " + std::to_string(f->ship.v) + " " +
                        std::to_string(f->placement.type.v) + " " +
                        std::to_string(f->placement.rotation) + " " +
-                       std::to_string(f->placement.x) + " " + std::to_string(f->placement.y) +
-                       " " + std::to_string(f->click_x) + " " + std::to_string(f->click_y) + "\n";
+                       std::to_string(f->placement.x) + " " + std::to_string(f->placement.y) + " " +
+                       std::to_string(f->click_x) + " " + std::to_string(f->click_y) + "\n";
                 continue;
             }
             if (const auto* m = std::get_if<sim::MoveCmd>(&scripted.command.body)) {

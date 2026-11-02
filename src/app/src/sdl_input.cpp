@@ -20,9 +20,11 @@ std::optional<ToolInput> tool_input_from_sdl(const SDL_Event& e, float density, 
         }
         switch (e.key.key) {
         case SDLK_N:
-            return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::NextTypeFast : K::NextType, 0, 0};
+            return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::NextTypeFast : K::NextType, 0,
+                             0};
         case SDLK_P:
-            return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::PrevTypeFast : K::PrevType, 0, 0};
+            return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::PrevTypeFast : K::PrevType, 0,
+                             0};
         case SDLK_T:
             return ToolInput{K::Rotate, 0, 0};
         case SDLK_X:

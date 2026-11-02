@@ -91,15 +91,16 @@ struct OpeningView {
     std::vector<ShipView> ships;
     /// The local participant's cities, in (island, city) order.
     std::vector<CityView> cities;
-    /// The newest ship events, oldest first, at most kMaxEvents (a reader that fell behind is told by
-    /// `events_next` jumping past what it had read).
+    /// The newest ship events, oldest first, at most kMaxEvents (a reader that fell behind is told
+    /// by `events_next` jumping past what it had read).
     std::vector<ShipEventView> events;
     std::uint64_t events_next = 1;
     /// The sim's order-id counter after the turn: an order accepted later gets at least this id.
     std::uint64_t next_order_id = 1;
 
     /// Events kept in a view. Reason: a window that stops drawing for ten seconds still finds the
-    /// ends of the orders it tracks (a few per turn at most); the bound keeps each turn's copy small.
+    /// ends of the orders it tracks (a few per turn at most); the bound keeps each turn's copy
+    /// small.
     static constexpr std::size_t kMaxEvents = 256;
 
     [[nodiscard]] const ShipView* ship(sim::FigureId id) const;

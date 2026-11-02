@@ -92,11 +92,9 @@ struct Decoder {
     FrameCache cache;
     UnitStats& stats;
 
-    std::vector<std::optional<DecodedFrame>> frames(const fig::Entry& entry,
-                                                    const std::vector<fig::FrameSet>& sets,
-                                                    std::uint16_t figure, std::uint32_t attr,
-                                                    bool shadow,
-                                                    std::optional<figure::Rgb> colour) {
+    std::vector<std::optional<DecodedFrame>>
+    frames(const fig::Entry& entry, const std::vector<fig::FrameSet>& sets, std::uint16_t figure,
+           std::uint32_t attr, bool shadow, std::optional<figure::Rgb> colour) {
         std::vector<std::optional<DecodedFrame>> out;
         if (sets.empty()) {
             return out;
@@ -181,10 +179,11 @@ Result<Units, std::string> units(const sze::Scene& scene, const fig::FigurenHead
                 const fig::GfxSet& set = entry->gfx.front();
                 const auto colour = figure::player_coloured(*entry) ? player_colour : std::nullopt;
                 UnitFrames u{kind, unit.figure, unit.x(), unit.y(), {}, {}};
-                u.frames = decoder.frames(*entry, set.frame_sets, unit.figure, unit.attr, false, colour);
+                u.frames =
+                    decoder.frames(*entry, set.frame_sets, unit.figure, unit.attr, false, colour);
                 if (set.shadow) {
-                    u.shadows = decoder.frames(*entry, set.shadow->frame_sets, unit.figure, unit.attr, true,
-                                           colour);
+                    u.shadows = decoder.frames(*entry, set.shadow->frame_sets, unit.figure,
+                                               unit.attr, true, colour);
                 }
                 out.units.push_back(std::move(u));
             }
@@ -194,9 +193,9 @@ Result<Units, std::string> units(const sze::Scene& scene, const fig::FigurenHead
 }
 
 Result<FacingSprites, std::string> facing_sprites(const fig::FigurenHeader& header,
-                                                std::uint16_t figure, std::uint32_t facings,
-                                                std::optional<figure::Rgb> palette_colour,
-                                                const VolumeReader& read) {
+                                                  std::uint16_t figure, std::uint32_t facings,
+                                                  std::optional<figure::Rgb> palette_colour,
+                                                  const VolumeReader& read) {
     const fig::Entry* entry = header.entry(figure);
     if (entry == nullptr || entry->gfx.empty()) {
         return "figure " + std::to_string(figure) + " has no sprite set in FigurenHeader.dat";

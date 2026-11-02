@@ -223,9 +223,9 @@ class PlayRunner {
     /// Thread-safe: once a call that clears it returns, the previous listener is not called again.
     void set_wake_listener(std::function<void()> listener);
     /// The local participant (default: developer_player()): whose money, goods and first city the
-    /// snapshot reports, and, with `opening`, whose cities the OpeningView lists. The city is looked
-    /// up again each turn until one exists, so a participant that founds one later gets it. Call
-    /// before `start`.
+    /// snapshot reports, and, with `opening`, whose cities the OpeningView lists. The city is
+    /// looked up again each turn until one exists, so a participant that founds one later gets it.
+    /// Call before `start`.
     void set_local_player(sim::PlayerId player) {
         local_player_ = player;
         developer_city_.reset(); // the constructor looked for the default player's

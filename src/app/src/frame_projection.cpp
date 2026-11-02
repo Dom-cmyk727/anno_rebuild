@@ -48,16 +48,17 @@ std::optional<PickedPoint> FrameProjection::pick(double px, double py) const {
         if (!ray) {
             continue;
         }
-        const double u_lo = std::min(ray->u0, ray->u1) - 1.0, u_hi = std::max(ray->u0, ray->u1) + 1.0;
-        const double v_lo = std::min(ray->v0, ray->v1) - 1.0, v_hi = std::max(ray->v0, ray->v1) + 1.0;
+        const double u_lo = std::min(ray->u0, ray->u1) - 1.0,
+                     u_hi = std::max(ray->u0, ray->u1) + 1.0;
+        const double v_lo = std::min(ray->v0, ray->v1) - 1.0,
+                     v_hi = std::max(ray->v0, ray->v1) + 1.0;
         if (island.x + static_cast<double>(island.width) < u_lo || island.x > u_hi ||
             island.y + static_cast<double>(island.height) < v_lo || island.y > v_hi) {
             continue;
         }
-        const auto tile =
-            render::pick_tile(sx, sy, frame.geometry, [&scene, k](float u, float v) {
-                return scene.island_ground_height(k, u, v);
-            });
+        const auto tile = render::pick_tile(sx, sy, frame.geometry, [&scene, k](float u, float v) {
+            return scene.island_ground_height(k, u, v);
+        });
         if (!tile) {
             continue;
         }
@@ -74,8 +75,8 @@ std::optional<PickedPoint> FrameProjection::pick(double px, double py) const {
 
 std::optional<std::pair<double, double>> sea_pixel(const PointerFrame& frame, double tile_x,
                                                    double tile_y) {
-    const auto [sx, sy] = render::corner_point(tile_x, tile_y, static_cast<double>(render::kSeaLevel),
-                                               frame.geometry);
+    const auto [sx, sy] = render::corner_point(
+        tile_x, tile_y, static_cast<double>(render::kSeaLevel), frame.geometry);
     const auto px = pixel_of(frame.map, sx, sy);
     if (!(px.first >= 0.0) || !(px.second >= 0.0) || !(px.first < frame.drawable_w) ||
         !(px.second < frame.drawable_h)) {
@@ -84,21 +85,22 @@ std::optional<std::pair<double, double>> sea_pixel(const PointerFrame& frame, do
     return px;
 }
 
-std::optional<std::pair<double, double>> ground_pixel(const PointerFrame& frame,
-                                                      sim::TileXY tile) {
+std::optional<std::pair<double, double>> ground_pixel(const PointerFrame& frame, sim::TileXY tile) {
     if (!frame.scene) {
         return std::nullopt;
     }
     const render::Scene& scene = *frame.scene;
     for (std::size_t k = 0; k < scene.islands.size(); ++k) {
         const auto& island = scene.islands[k];
-        if (tile.x < island.x || tile.y < island.y || tile.x >= island.x + static_cast<int>(island.width) ||
+        if (tile.x < island.x || tile.y < island.y ||
+            tile.x >= island.x + static_cast<int>(island.width) ||
             tile.y >= island.y + static_cast<int>(island.height)) {
             continue;
         }
         const auto rounding = placement_rounding(scene, k, frame.group, frame.geometry.tile_w);
-        const double h = scene.island_ground_height(k, static_cast<float>(tile.x) + 0.5F,
-                                                    static_cast<float>(tile.y) + 0.5F)
+        const double h = scene
+                             .island_ground_height(k, static_cast<float>(tile.x) + 0.5F,
+                                                   static_cast<float>(tile.y) + 0.5F)
                              .value_or(0.0F);
         const auto [sx, sy] = render::corner_point(tile.x + 0.5, tile.y + 0.5, h, frame.geometry);
         const auto px = pixel_of(frame.map, sx + rounding.first, sy + rounding.second);

@@ -28,13 +28,13 @@ class FrameProjection final : public ScreenProjection {
 /// The pixel (drawable) at which a world point on the sea surface is drawn in `frame`: the forward
 /// rule of the pick at sea level (the inverse of FrameProjection::pick's sea point). Tests and the
 /// scripted session use it to aim at a point of the sea.
-[[nodiscard]] std::optional<std::pair<double, double>>
-sea_pixel(const PointerFrame& frame, double tile_x, double tile_y);
+[[nodiscard]] std::optional<std::pair<double, double>> sea_pixel(const PointerFrame& frame,
+                                                                 double tile_x, double tile_y);
 
 /// The pixel at which the centre of ground tile (x, y) is drawn in `frame` (the island under it
 /// placed as the scene placed it, at the ground height there), or nullopt when no island of the
 /// scene holds the tile or the pixel is off the drawable.
-[[nodiscard]] std::optional<std::pair<double, double>>
-ground_pixel(const PointerFrame& frame, sim::TileXY tile);
+[[nodiscard]] std::optional<std::pair<double, double>> ground_pixel(const PointerFrame& frame,
+                                                                    sim::TileXY tile);
 
 } // namespace anno::app

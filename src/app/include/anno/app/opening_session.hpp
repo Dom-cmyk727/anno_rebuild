@@ -1,8 +1,8 @@
 // The opening session's quick-save (W4-OPENING-1; docs/app/ship-opening.md section 5): the sim
 // thread captures the world at a turn boundary (PlayRunner::request_capture) and a writer thread of
 // this class does the file I/O, so the window thread and the sim thread never touch the disk. The
-// result (written, or why not) is a line the window shows; a failed write leaves the session and any
-// earlier save intact (the file is written under a temporary name and renamed over the target).
+// result (written, or why not) is a line the window shows; a failed write leaves the session and
+// any earlier save intact (the file is written under a temporary name and renamed over the target).
 #pragma once
 
 #include <condition_variable>

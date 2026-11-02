@@ -453,8 +453,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 break;
             }
             if (!over) {
-                // `wait fact K OP V within MS`: a longer limit for a voyage (the default 30 s is for
-                // a stalled session; a ship that sails five hundred tiles needs minutes).
+                // `wait fact K OP V within MS`: a longer limit for a voyage (the default 30 s is
+                // for a stalled session; a ship that sails five hundred tiles needs minutes).
                 double limit = DevScript::kWaitLimitMs;
                 if (what == "fact" && s.args.size() == 6 && s.args[4] == "within" && arg(5) &&
                     *arg(5) > 0) {
@@ -568,8 +568,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             }
         } else if (s.verb == "pick-ship") {
             const auto id = arg(0);
-            const auto at = id && st.ship_point ? st.ship_point(static_cast<std::uint64_t>(*id))
-                                                : std::nullopt;
+            const auto at =
+                id && st.ship_point ? st.ship_point(static_cast<std::uint64_t>(*id)) : std::nullopt;
             if (!at) {
                 fail(s, "that ship is not drawn in the window");
                 break;
@@ -701,8 +701,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             if (s.args[0] == "fact" && s.args.size() == 4) {
                 std::string have;
                 if (!fact_holds(st, s.args[1], s.args[2], s.args[3], have)) {
-                    fail(s, s.args[1] + " is '" + have + "', expected " + s.args[2] + " " +
-                                s.args[3]);
+                    fail(s,
+                         s.args[1] + " is '" + have + "', expected " + s.args[2] + " " + s.args[3]);
                     break;
                 }
             } else if (s.args[0] == "title" && s.args.size() == 2) {

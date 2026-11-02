@@ -120,15 +120,14 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
         }
         // The rules a launch of this manifest gives are those of a freshly loaded start (the loader
         // adds the shared-information policy to the defaults), so that is the reference.
-        auto reference =
-            sim_load::load_ship_start(manifest, game_dir, registry.types, {}, rules);
+        auto reference = sim_load::load_ship_start(manifest, game_dir, registry.types, {}, rules);
         if (!reference.ok()) {
             return rwhere + "load_ship_start (the reference of the rules): " + reference.error();
         }
         const std::string expected_rules = hex16(reference.value().rules().digest());
         if (s.identity.rules_digest != expected_rules) {
-            return rwhere + "the save was made with other rules (digest " + s.identity.rules_digest +
-                   ", these are " + expected_rules + ")";
+            return rwhere + "the save was made with other rules (digest " +
+                   s.identity.rules_digest + ", these are " + expected_rules + ")";
         }
         if (s.identity.registry_digest != hex16(registry.types->digest())) {
             return rwhere + "the save was made with other game data (registry digest " +
@@ -149,8 +148,7 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
         out.identity.resumed_from = to_utf8(*resume);
         out.identity.resumed_hash = hex16(s.state_hash);
     } else {
-        auto loaded =
-            sim_load::load_ship_start(manifest, game_dir, registry.types, {}, rules);
+        auto loaded = sim_load::load_ship_start(manifest, game_dir, registry.types, {}, rules);
         if (!loaded.ok()) {
             return where + "load_ship_start: " + loaded.error();
         }
@@ -317,8 +315,9 @@ parse_opening_save(const std::vector<std::uint8_t>& bytes) {
     }
     const std::size_t body = split + 2;
     if (bytes.size() - body != declared) {
-        return "the save holds " + std::to_string(bytes.size() - body) + " bytes of world, the header says " +
-               std::to_string(declared) + " (truncated or extended)";
+        return "the save holds " + std::to_string(bytes.size() - body) +
+               " bytes of world, the header says " + std::to_string(declared) +
+               " (truncated or extended)";
     }
     save.world.assign(bytes.begin() + static_cast<std::ptrdiff_t>(body), bytes.end());
     return save;

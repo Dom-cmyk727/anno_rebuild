@@ -33,7 +33,8 @@ class FlatProjection final : public app::ScreenProjection {
         app::PickedPoint p;
         p.x_q8 = static_cast<std::int32_t>(px / kPx * 256.0);
         p.y_q8 = static_cast<std::int32_t>(py / kPx * 256.0);
-        p.tile = sim::TileXY{static_cast<std::int32_t>(px / kPx), static_cast<std::int32_t>(py / kPx)};
+        p.tile =
+            sim::TileXY{static_cast<std::int32_t>(px / kPx), static_cast<std::int32_t>(py / kPx)};
         p.ground = land.contains({p.tile.x, p.tile.y});
         return p;
     }
@@ -124,7 +125,8 @@ struct Fixture {
 
 } // namespace
 
-TEST_CASE("controls: a left click selects the ship under it by its stable id, and nothing deselects") {
+TEST_CASE(
+    "controls: a left click selects the ship under it by its stable id, and nothing deselects") {
     Fixture f;
     CHECK_FALSE(f.ui.selected().has_value());
     const auto r = f.click(app::PointerButton::Left, 100, 100); // ship 1 at (10, 10) tiles
@@ -185,7 +187,8 @@ TEST_CASE("controls: a right click orders the selected own ship to the exact sea
     CHECK(f.ui.message().find("select one of your ships") != std::string::npos);
 }
 
-TEST_CASE("controls: a pan is not an order, a cancelled press is not an order, a click after them is") {
+TEST_CASE(
+    "controls: a pan is not an order, a cancelled press is not an order, a click after them is") {
     Fixture f;
     f.click(app::PointerButton::Left, 100, 100);
     // A right-button drag of 20 pixels: a pan.
@@ -215,7 +218,8 @@ TEST_CASE("controls: a pan is not an order, a cancelled press is not an order, a
     CHECK(f.ui.selected().has_value());
 }
 
-TEST_CASE("controls: a stop is for the selected own ship; Esc cancels gesture, mode, selection, then nothing") {
+TEST_CASE("controls: a stop is for the selected own ship; Esc cancels gesture, mode, selection, "
+          "then nothing") {
     Fixture f;
     CHECK_FALSE(f.key(app::OpeningKey::Halt).taken == false); // taken: it answers with a message
     CHECK(f.key(app::OpeningKey::Halt).commands.empty());
@@ -372,7 +376,8 @@ TEST_CASE("controls: a vanished ship drops the selection and the mode; modes exc
     CHECK(f.ui.mode() == app::OpeningMode::Select);
 }
 
-TEST_CASE("controls: each command's own state: acceptance is not arrival, a replacement is not its predecessor") {
+TEST_CASE("controls: each command's own state: acceptance is not arrival, a replacement is not its "
+          "predecessor") {
     Fixture f;
     f.click(app::PointerButton::Left, 100, 100);
     f.click(app::PointerButton::Right, 200, 150);

@@ -97,19 +97,21 @@ TEST_CASE("opening save: a damaged frame is refused with its reason, never half 
         t.replace(at, from.size(), to);
         return std::vector<std::uint8_t>(t.begin(), t.end());
     };
-    CHECK(refused(edit("opening-save 1", "opening-save 2"), "another version")
-              .find("version") != std::string::npos);
-    CHECK(refused(edit("seat 2\n", "seat x\n"), "a seat that is no number")
-              .find("not a number") != std::string::npos);
-    CHECK(refused(edit("tick 4100\n", "tick 4100\ntick 1\n"), "a duplicate line")
-              .find("duplicate") != std::string::npos);
-    CHECK(refused(edit("tick 4100\n", "tick 4100\nbogus 1\n"), "an unknown line")
-              .find("unknown") != std::string::npos);
-    CHECK(refused(edit("manifest_hash ab12\n", ""), "a missing identity line")
-              .find("lacks") != std::string::npos);
+    CHECK(refused(edit("opening-save 1", "opening-save 2"), "another version").find("version") !=
+          std::string::npos);
+    CHECK(refused(edit("seat 2\n", "seat x\n"), "a seat that is no number").find("not a number") !=
+          std::string::npos);
+    CHECK(
+        refused(edit("tick 4100\n", "tick 4100\ntick 1\n"), "a duplicate line").find("duplicate") !=
+        std::string::npos);
+    CHECK(refused(edit("tick 4100\n", "tick 4100\nbogus 1\n"), "an unknown line").find("unknown") !=
+          std::string::npos);
+    CHECK(refused(edit("manifest_hash ab12\n", ""), "a missing identity line").find("lacks") !=
+          std::string::npos);
 }
 
-TEST_CASE("command file: the ship-start forms round-trip, with their issuer, and old lines still parse") {
+TEST_CASE(
+    "command file: the ship-start forms round-trip, with their issuer, and old lines still parse") {
     using sim::Command;
     std::vector<app::ScriptedCommand> in;
     sim::FoundCmd found;
@@ -140,13 +142,12 @@ TEST_CASE("command file: the ship-start forms round-trip, with their issuer, and
     in.push_back({15, Command{sim::PlayerId{0}, demolish}});
     const auto text = app::format_commands(in, true);
     REQUIRE_MESSAGE(text.ok(), (text.ok() ? std::string() : text.error().message));
-    CHECK(text.value() ==
-          "turn 8 found 0 1 1302 1 254 137 255 138\n"
-          "turn 9 move 2 7 79980 170105\n"
-          "turn 10 stop 2 7\n"
-          "turn 11 unload 0 1 1 3 41 30\n"
-          "turn 14 buildc 0 0 0 1001 251 137 0\n"
-          "turn 15 demolishc 0 0 0 251 137 252 137\n");
+    CHECK(text.value() == "turn 8 found 0 1 1302 1 254 137 255 138\n"
+                          "turn 9 move 2 7 79980 170105\n"
+                          "turn 10 stop 2 7\n"
+                          "turn 11 unload 0 1 1 3 41 30\n"
+                          "turn 14 buildc 0 0 0 1001 251 137 0\n"
+                          "turn 15 demolishc 0 0 0 251 137 252 137\n");
     // Parsing needs no world for these lines: the world argument is not consulted.
     const sim::World world;
     const auto back = app::parse_commands(text.value(), world, sim::PlayerId{9});
@@ -161,12 +162,14 @@ TEST_CASE("command file: the ship-start forms round-trip, with their issuer, and
     REQUIRE(old_form.ok());
     CHECK(old_form.value() == "turn 3 build 1001 251 137 0\n");
     // A command with no line form is refused, not dropped.
-    const auto speed = app::format_commands({{1, Command{sim::PlayerId{0}, sim::SetSpeedCmd{100}}}}, true);
+    const auto speed =
+        app::format_commands({{1, Command{sim::PlayerId{0}, sim::SetSpeedCmd{100}}}}, true);
     CHECK_FALSE(speed.ok());
     // Malformed lines name themselves.
-    for (const char* bad : {"turn 1 found 0 1 1302 1 254 137 255\n", "turn 1 move 0 1 5\n",
-                            "turn 1 unload 0 1 1 3 41\n", "turn 1 stop x 1\n",
-                            "turn 1 buildc 0 0 0 1001 251 137\n", "turn 1 found 0 1 1302 4 1 2 3 4\n"}) {
+    for (const char* bad :
+         {"turn 1 found 0 1 1302 1 254 137 255\n", "turn 1 move 0 1 5\n",
+          "turn 1 unload 0 1 1 3 41\n", "turn 1 stop x 1\n", "turn 1 buildc 0 0 0 1001 251 137\n",
+          "turn 1 found 0 1 1302 4 1 2 3 4\n"}) {
         CAPTURE(bad);
         CHECK_FALSE(app::parse_commands(bad, world, sim::PlayerId{0}).ok());
     }
@@ -178,8 +181,8 @@ TEST_CASE("cli: --ship-start needs its seat, and the seat and the save mean noth
     CHECK(good->ship_start);
     CHECK(good->play);
     CHECK(*good->seat == 2);
-    const auto resumed =
-        app::parse_args({"--ship-start", "m.json", "--seat", "0", "--resume", "s.sav", "--speed", "200"});
+    const auto resumed = app::parse_args(
+        {"--ship-start", "m.json", "--seat", "0", "--resume", "s.sav", "--speed", "200"});
     REQUIRE(resumed.has_value());
     CHECK(resumed->resume.has_value());
     CHECK(resumed->play_speed == 200);
@@ -189,7 +192,8 @@ TEST_CASE("cli: --ship-start needs its seat, and the seat and the save mean noth
     CHECK_FALSE(app::parse_args({"--ship-start", "m.json", "--seat", "x"}).has_value());
 }
 
-TEST_CASE("quick-save writer: a file is replaced whole, a failed write says so and leaves the old file") {
+TEST_CASE(
+    "quick-save writer: a file is replaced whole, a failed write says so and leaves the old file") {
     const fs::path dir = scratch("writer");
     const fs::path target = dir / "q.sav";
     CHECK(app::OpeningSaver::write_file(target, {1, 2, 3}).empty());
@@ -247,7 +251,8 @@ TEST_CASE("opening, real files: the launch loads the start, every id comes from 
 
     // The view: five ships and no city, the participant's gold, in FigureId order.
     app::ShipEventLog events;
-    const app::OpeningView view = app::collect_opening_view(load.play.world, sim::PlayerId{0}, events, 0);
+    const app::OpeningView view =
+        app::collect_opening_view(load.play.world, sim::PlayerId{0}, events, 0);
     REQUIRE(view.ships.size() == 5);
     CHECK(view.ships[0].id.v == 1);
     CHECK(view.ships[4].id.v == 13);
@@ -296,7 +301,8 @@ TEST_CASE("opening, real files: the launch loads the start, every id comes from 
     CHECK_FALSE(app::load_opening(*dir, manifest_path(), 0, file).ok());
 }
 
-TEST_CASE("opening, real files: an order's id comes from the sim's own result, events end exactly that order") {
+TEST_CASE("opening, real files: an order's id comes from the sim's own result, events end exactly "
+          "that order") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -310,22 +316,23 @@ TEST_CASE("opening, real files: an order's id comes from the sim's own result, e
     const std::uint64_t before = runner.next_order_id();
     // Two orders for the same ship in one turn, then a refused one (another participant's ship).
     const auto q8 = [](double tiles) { return static_cast<std::int32_t>(tiles * 256); };
-    const auto first = runner.post_command(sim::Command{
-        sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, q8(312.5), q8(668.5)}});
-    const auto second = runner.post_command(sim::Command{
-        sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, q8(312.5), q8(664.5)}});
-    const auto foreign = runner.post_command(sim::Command{
-        sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{4}, q8(652.5), q8(670.5)}});
+    const auto first = runner.post_command(
+        sim::Command{sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, q8(312.5), q8(668.5)}});
+    const auto second = runner.post_command(
+        sim::Command{sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, q8(312.5), q8(664.5)}});
+    const auto foreign = runner.post_command(
+        sim::Command{sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{4}, q8(652.5), q8(670.5)}});
     runner.run_n(1);
-    const auto o1 = runner.outcome(first), o2 = runner.outcome(second), o3 = runner.outcome(foreign);
+    const auto o1 = runner.outcome(first), o2 = runner.outcome(second),
+               o3 = runner.outcome(foreign);
     REQUIRE(o1.state == app::CommandOutcome::State::Applied);
     REQUIRE(o2.state == app::CommandOutcome::State::Applied);
     REQUIRE(o3.state == app::CommandOutcome::State::Refused);
     CHECK(o3.status == sim::Reject::NotShipOwner);
     REQUIRE(o1.order_id.has_value());
     REQUIRE(o2.order_id.has_value());
-    CHECK(*o1.order_id == before);       // the sim's counter when the first was applied
-    CHECK(*o2.order_id == before + 1);   // the second replaced it
+    CHECK(*o1.order_id == before);        // the sim's counter when the first was applied
+    CHECK(*o2.order_id == before + 1);    // the second replaced it
     CHECK_FALSE(o3.order_id.has_value()); // a refused command made no order
     CHECK(runner.next_order_id() == before + 2);
     auto snap = runner.snapshot();
@@ -352,17 +359,19 @@ TEST_CASE("opening, real files: an order's id comes from the sim's own result, e
     CHECK_FALSE(ship->order_id.has_value());
     // A stop of an idle ship is accepted and ends no order: no Stopped event is invented.
     const std::size_t events = snap->opening->events.size();
-    const auto stop = runner.post_command(sim::Command{sim::PlayerId{0}, sim::StopCmd{sim::FigureId{1}}});
+    const auto stop =
+        runner.post_command(sim::Command{sim::PlayerId{0}, sim::StopCmd{sim::FigureId{1}}});
     runner.run_n(1);
     CHECK(runner.outcome(stop).state == app::CommandOutcome::State::Applied);
     CHECK(runner.snapshot()->opening->events.size() == events);
     // A new order and a stop while it sails: the order ends with its own Stopped event.
-    const auto third = runner.post_command(sim::Command{
-        sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, q8(312.5), q8(650.5)}});
+    const auto third = runner.post_command(
+        sim::Command{sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, q8(312.5), q8(650.5)}});
     runner.run_n(3);
     const auto o4 = runner.outcome(third);
     REQUIRE(o4.order_id.has_value());
-    static_cast<void>(runner.post_command(sim::Command{sim::PlayerId{0}, sim::StopCmd{sim::FigureId{1}}}));
+    static_cast<void>(
+        runner.post_command(sim::Command{sim::PlayerId{0}, sim::StopCmd{sim::FigureId{1}}}));
     runner.run_n(1);
     const auto after = runner.snapshot();
     const app::ShipEventView* stopped = after->opening->event_for(sim::FigureId{1}, *o4.order_id);

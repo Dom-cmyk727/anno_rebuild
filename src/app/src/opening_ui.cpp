@@ -318,8 +318,7 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
         const auto p = frame->pick(px, py);
         if (p && feed.view != nullptr) {
             for (const CityView& c : feed.view->cities) {
-                if (c.warehouse &&
-                    p->tile.x >= c.warehouse->tile.x &&
+                if (c.warehouse && p->tile.x >= c.warehouse->tile.x &&
                     p->tile.y >= c.warehouse->tile.y &&
                     p->tile.x < c.warehouse->tile.x + static_cast<std::int64_t>(c.warehouse->w) &&
                     p->tile.y < c.warehouse->tile.y + static_cast<std::int64_t>(c.warehouse->h)) {
@@ -336,10 +335,10 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
     if (const ShipView* hit = hit_ship(px, py, *frame, feed)) {
         selected_ = hit->id;
         selected_owner_ = hit->owner.v;
-        message_ = hit->owner == setup_.local ? "selected your ship #" + std::to_string(hit->id.v)
-                                              : "selected ship #" + std::to_string(hit->id.v) +
-                                                    " of seat " + std::to_string(hit->owner.v) +
-                                                    " (inspect only)";
+        message_ = hit->owner == setup_.local
+                       ? "selected your ship #" + std::to_string(hit->id.v)
+                       : "selected ship #" + std::to_string(hit->id.v) + " of seat " +
+                             std::to_string(hit->owner.v) + " (inspect only)";
     } else {
         selected_.reset();
         selected_owner_.reset();
@@ -378,8 +377,9 @@ void OpeningUi::clamp_unload(const ShipView& ship) {
         unload_hold_ = 0;
     }
     const std::uint64_t whole = ship.holds[unload_hold_].amount_88 / 256;
-    const std::uint32_t most = static_cast<std::uint32_t>(
-        std::max<std::uint64_t>(1, std::min<std::uint64_t>(whole + ((ship.holds[unload_hold_].amount_88 % 256) != 0), 0xFFFFFFFFu)));
+    const std::uint32_t most = static_cast<std::uint32_t>(std::max<std::uint64_t>(
+        1, std::min<std::uint64_t>(whole + ((ship.holds[unload_hold_].amount_88 % 256) != 0),
+                                   0xFFFFFFFFu)));
     unload_tons_ = std::clamp<std::uint32_t>(unload_tons_, 1, most);
 }
 
@@ -420,11 +420,10 @@ std::optional<OpeningUi::UnloadPlan> OpeningUi::unload_plan(const UiFeed& feed) 
         const bool in_range = sim::ShipCargo::footprint_in_range(
             tile_of(ship->pos.x), tile_of(ship->pos.y), c.warehouse->tile.x, c.warehouse->tile.y,
             c.warehouse->w, c.warehouse->h, setup_.cargo);
-        const std::uint64_t stock =
-            plan.goods < c.stock_88.size() ? c.stock_88[plan.goods] : 0;
+        const std::uint64_t stock = plan.goods < c.stock_88.size() ? c.stock_88[plan.goods] : 0;
         const std::uint64_t room = stock >= c.capacity_88 ? 0 : c.capacity_88 - stock;
-        const std::uint64_t move = sim::ShipCargo::amount_88(
-            plan.tons, ship->holds[plan.hold].amount_88, room);
+        const std::uint64_t move =
+            sim::ShipCargo::amount_88(plan.tons, ship->holds[plan.hold].amount_88, room);
         plan.advisory = std::string(in_range ? "in range" : "OUT OF RANGE (sail closer)") +
                         "; would move " + tons_text(move) + " t of " + goods_name(plan.goods) +
                         ", store " + tons_text(stock) + "/" + tons_text(c.capacity_88) + " t";
@@ -587,7 +586,8 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
         }
         const auto plan = unload_plan(feed);
         if (!plan || !plan->warehouse.valid()) {
-            message_ = "no unload: " + (plan ? plan->advisory : std::string("the ship has no cargo"));
+            message_ =
+                "no unload: " + (plan ? plan->advisory : std::string("the ship has no cargo"));
             return out;
         }
         if (plan->tons == 0) {
@@ -611,7 +611,8 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
         t.hold_before_88 = ship->holds[plan->hold].amount_88;
         pending_submit_.clear();
         pending_submit_.push_back(t);
-        message_ = "unload sent: " + std::to_string(plan->tons) + " t of " + goods_name(plan->goods);
+        message_ =
+            "unload sent: " + std::to_string(plan->tons) + " t of " + goods_name(plan->goods);
         return out;
     }
     }
@@ -757,8 +758,9 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                 std::string goods;
                 for (std::size_t g = 0; g < city.stock_88.size(); ++g) {
                     if (city.stock_88[g] != 0) {
-                        goods += (goods.empty() ? " " : ", ") + goods_name(static_cast<sim::GoodsId>(g)) +
-                                 " " + tons_text(city.stock_88[g]);
+                        goods += (goods.empty() ? " " : ", ") +
+                                 goods_name(static_cast<sim::GoodsId>(g)) + " " +
+                                 tons_text(city.stock_88[g]);
                     }
                 }
                 c += goods.empty() ? " (empty store)" : goods;
@@ -768,22 +770,24 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
     }
     if (mode_ == OpeningMode::Unload) {
         if (const auto plan = unload_plan(feed)) {
-            add("hold [" + std::to_string(plan->hold) + "] " + goods_name(plan->goods) + " request " +
-                std::to_string(plan->tons) + " t: " + plan->advisory);
+            add("hold [" + std::to_string(plan->hold) + "] " + goods_name(plan->goods) +
+                " request " + std::to_string(plan->tons) + " t: " + plan->advisory);
         }
     }
     if (mode_ == OpeningMode::Found) {
         if (const auto p = found_preview(feed)) {
-            const sim::BuildingType* bt = setup_.registry ? setup_.registry->find(p->type) : nullptr;
-            std::string cost = "type " + std::to_string(p->type.v) + " " + std::to_string(p->w) + "x" +
-                               std::to_string(p->h) + " rot " + std::to_string(p->rotation);
+            const sim::BuildingType* bt =
+                setup_.registry ? setup_.registry->find(p->type) : nullptr;
+            std::string cost = "type " + std::to_string(p->type.v) + " " + std::to_string(p->w) +
+                               "x" + std::to_string(p->h) + " rot " + std::to_string(p->rotation);
             if (bt != nullptr) {
                 cost += " price " + std::to_string(bt->cost_gold) + " gold";
                 for (const sim::CostEntry& e : bt->cost_goods) {
                     cost += ", " + tons_text(e.amount_88) + " t " + goods_name(e.goods);
                 }
             }
-            add(cost + (p->advisory.empty() ? " (no problem known here)" : " (" + p->advisory + ")") +
+            add(cost +
+                (p->advisory.empty() ? " (no problem known here)" : " (" + p->advisory + ")") +
                 " [advisory]");
         }
     }
@@ -819,8 +823,9 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                 }
             }
             if (t.kind == TrackKind::Unload && out.state == CommandOutcome::State::Applied) {
-                s += ": moved " + tons_text(out.transferred_88) + " t of " + std::to_string(t.tons) +
-                     " requested" + (out.transferred_88 < std::uint64_t{t.tons} * 256 ? " (limited)" : "");
+                s += ": moved " + tons_text(out.transferred_88) + " t of " +
+                     std::to_string(t.tons) + " requested" +
+                     (out.transferred_88 < std::uint64_t{t.tons} * 256 ? " (limited)" : "");
                 if (feed.view != nullptr) {
                     if (const ShipView* ship = feed.view->ship(t.ship)) {
                         if (t.hold < ship->holds.size()) {

@@ -77,8 +77,8 @@
 //                         accepted, accepted-planning, sailing, arrived, route-failed, ...),
 //                         latest_kind, latest_reason, latest_moved (raw 1/256 ton of an unload),
 //                         ship.<id>.x|.y|.order|.hold<i>, store.<goods> (raw 8.8), tool, tick.
-//                         `wait fact KEY OP VALUE within MS` waits up to MS milliseconds instead of the 30 s
-//                         limit (a voyage of hundreds of tiles).
+//                         `wait fact KEY OP VALUE within MS` waits up to MS milliseconds instead of
+//                         the 30 s limit (a voyage of hundreds of tiles).
 //   expect title TEXT     the window title contains TEXT
 //   expect title-lacks TEXT   the window title does not contain TEXT
 //   expect published      the latest outcome, when it is Applied or Refused, is not newer than the

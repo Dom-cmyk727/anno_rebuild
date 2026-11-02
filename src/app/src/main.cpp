@@ -192,7 +192,8 @@ int replay_hashes(anno::sim::World world, unsigned speed,
         // never replayed against another world and still called agreement.
         const auto session = read(file.parent_path() / "session.txt");
         if (!session) {
-            std::fprintf(stderr, "--replay-hashes: no session.txt next to %s\n", file.string().c_str());
+            std::fprintf(stderr, "--replay-hashes: no session.txt next to %s\n",
+                         file.string().c_str());
             return 1;
         }
         const auto recorded = anno::app::parse_opening_identity(*session);
@@ -201,7 +202,8 @@ int replay_hashes(anno::sim::World world, unsigned speed,
             return 1;
         }
         const auto differs = [&](const char* what, const std::string& a, const std::string& b) {
-            std::fprintf(stderr, "--replay-hashes: the recording was made with another %s (%s, now %s)\n",
+            std::fprintf(stderr,
+                         "--replay-hashes: the recording was made with another %s (%s, now %s)\n",
                          what, a.c_str(), b.c_str());
             return 1;
         };
@@ -305,7 +307,8 @@ int run(const std::vector<std::string>& raw) {
     }
     if (args->play) {
         if (args->ship_start) {
-            auto started = anno::app::load_opening(dir.value(), args->file, *args->seat, args->resume);
+            auto started =
+                anno::app::load_opening(dir.value(), args->file, *args->seat, args->resume);
             if (!started) {
                 std::fprintf(stderr, "%s\n", started.error().c_str());
                 return 1;
@@ -322,9 +325,10 @@ int run(const std::vector<std::string>& raw) {
         }
         if (args->commands) {
             // Parsed against the loaded world, before the world moves into the runner.
-            auto parsed = anno::app::load_commands(
-                *args->commands, play->world,
-                opening ? anno::sim::PlayerId{opening->setup.local} : anno::app::developer_player());
+            auto parsed =
+                anno::app::load_commands(*args->commands, play->world,
+                                         opening ? anno::sim::PlayerId{opening->setup.local}
+                                                 : anno::app::developer_player());
             if (!parsed) {
                 std::fprintf(stderr, "%s: %s\n", name.c_str(), parsed.error().c_str());
                 return 1;
@@ -510,8 +514,9 @@ int run(const std::vector<std::string>& raw) {
         }
         picture = std::make_unique<anno::app::ScenePicture>(shown, buildings, objects.is_building,
                                                             2, std::move(limits));
-        dev.emplace(anno::app::dev_tool_setup(
-            *play, opening ? anno::sim::PlayerId{opening->setup.local} : anno::app::developer_player()));
+        dev.emplace(anno::app::dev_tool_setup(*play, opening
+                                                         ? anno::sim::PlayerId{opening->setup.local}
+                                                         : anno::app::developer_player()));
         hooks.dev = &*dev;
         runner = std::make_unique<anno::app::PlayRunner>(std::move(play->world), args->play_speed);
         runner->set_record_hashes(!session_dir.empty());
@@ -525,10 +530,10 @@ int run(const std::vector<std::string>& raw) {
             }
             opening_ui.emplace(opening->setup);
             const char* save_dir = std::getenv("ANNO_SAVE_DIR");
-            saver = std::make_unique<anno::app::OpeningSaver>(
-                *runner, opening->identity,
-                save_dir != nullptr && *save_dir != 0 ? anno::app::utf8_path(save_dir)
-                                                      : fs::path("saves"));
+            saver = std::make_unique<anno::app::OpeningSaver>(*runner, opening->identity,
+                                                              save_dir != nullptr && *save_dir != 0
+                                                                  ? anno::app::utf8_path(save_dir)
+                                                                  : fs::path("saves"));
             opening_hooks.ui = &*opening_ui;
             opening_hooks.ships = ships.value();
             opening_hooks.quick_save = [s = saver.get()] { return s->request(); };

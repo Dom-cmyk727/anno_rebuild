@@ -45,7 +45,8 @@ render::UnitFrame make_ring(std::size_t group, std::uint32_t rgb) {
     frame.anchor_x = static_cast<std::int16_t>(rx + 1);
     frame.anchor_y = static_cast<std::int16_t>(ry + 1);
     return render::UnitFrame{
-        frame, image, render::UnitFrameId{true, kRingFigure, static_cast<std::uint32_t>(group), rgb}};
+        frame, image,
+        render::UnitFrameId{true, kRingFigure, static_cast<std::uint32_t>(group), rgb}};
 }
 
 } // namespace

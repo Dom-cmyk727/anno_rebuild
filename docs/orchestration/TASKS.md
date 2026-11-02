@@ -2,18 +2,21 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-02: Mac cargo-bound correction; Windows verifier corrections then live opening
+## Current dispatch — 2026-11-02: Windows live opening released; Mac cargo-bound correction
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old
 round-dw CPU-only stop and GPU prohibition for W4. It does not restart an active
-package or accept unreviewed changes. Windows published W4-WIN-FINAL at
-`dad27da7ba0ee26abdd3b1de61adaddbfba05ec7`, with code tree at `8367dc0` and
-tested tools/source at `37da91b`. The [direct final review](reviews/2026-11-02-w4-win-final.md)
-retains the CPU delivery/reclaimer corrections, completed corpus and unaffected
-GPU results. Two verifier corrections remain in **W4-WIN-VERIFY** below;
-no new full corpus or adapter matrix is assigned, and no rendering merge is approved.
+package or accept unreviewed changes. **W4-WIN-VERIFY is accepted** at published
+`26107db089f558bc374208a4f414ca70f562e6f0`; runtime/C++ and full focused gate
+source `f047165c67bc26c1498c5201c014db83553c6f6f`, final tools/tests
+`3c808780c4e5e59d26375151c3ff8215c4c68602`. The
+[direct verifier review](reviews/2026-11-02-w4-win-verify.md) closes sanitizer-output
+propagation and complete runtime script identity. It retains the completed corpus
+and unaffected GPU evidence within their recorded limits. **W4-OPENING-1 below
+is released** at the exact Windows and Mac pins; no new full verifier campaign
+or merge into main is assigned.
 MAP-BUILD-1 and MAP-CARGO-1 are accepted for their local headless scope:
 the real ship-start opening sails, founds, unloads and builds for seats 0 and 2.
 Accepted Mac integration input is
@@ -26,23 +29,23 @@ The writer-test isolation finding is closed at `9b6c547f`; six U5 verdicts,
 checked. The orchestrator published and remote-verified this exact Mac pin;
 executors do not choose a newer moving tip or merge it into main.
 Windows/MSVC, Linux gates and live-window validation of this Mac code remain
-pending. W4-WIN-VERIFY is the Windows executor's bounded
-current assignment. **MAP-CARGO-2** loading is now accepted locally at code/tests
+pending and are covered by the Windows integration packet where affected.
+**W4-OPENING-1** is the Windows executor's current assignment.
+**MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
 [loading review](reviews/2026-11-02-map-cargo2.md). The next small Mac unit is
 **MAP-CARGO-3** below: correct the previously accepted unload's cargo hold bound,
 reuse the common range predicate and retain the earlier combined reload cut.
 Windows' integration input stays `0c401c8d`; loading and this correction do not
-expand its assigned playtest. Owner continuation, 2026-11-02: after
-that closeout and the Mac gameplay candidate are reviewed and accepted at exact
-published pins, W4-OPENING-1 below integrates selection, sailing, founding,
-unloading and building in the live window for an owner playtest. It is conditional
-future work, not permission to take an unreviewed Mac gameplay head.
+expand its assigned playtest. Both opening inputs are now reviewed, accepted and
+reachable on GitHub. W4-OPENING-1 integrates selection, sailing, founding,
+unloading and building in the live window for an owner playtest. Use only the
+two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY READY.** Close sanitizer-output propagation and full script identity with focused checks; retain the completed corpus and unaffected adapter results. **W4-OPENING-1 stays queued**, gated on accepted Windows and Mac pins. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / ship starts | Mac, existing MAP executor | **MAP-CARGO-2 ACCEPTED LOCALLY; MAP-CARGO-3 READY.** Close the bounded unload hold-group correction and associated predicate/reload tests. Windows continues to use exact `0c401c8d`; no new UI or integration dependency is imposed. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
@@ -51,7 +54,8 @@ future work, not permission to take an unreviewed Mac gameplay head.
 `8367dc0`. Read [the direct review](reviews/2026-11-02-w4-win-final.md).
 Retain the completed F2/F3 behavior and F4 corpus work, with the documented
 stderr-verdict and script-identity limitations. Do not restart F1–F4. The packet
-below is acceptance history; W4-WIN-VERIFY is the current instruction.
+below is acceptance history; W4-WIN-VERIFY is now accepted and W4-OPENING-1 is
+the current instruction.
 
 Continue the existing Windows branch `task/W4-3-live-buildings` from its current
 head, preserving any newer work. Reviewed candidate:
@@ -265,7 +269,15 @@ for tests. Large-city/complex-economy/multiplayer scale and the named display,
 terrain, road and UI follow-ups remain separate work. MAP-NAV-3 and every Mac
 executor file/process remain untouched.
 
-### W4-WIN-VERIFY — finish the two verifier contracts · READY
+### W4-WIN-VERIFY — finish the two verifier contracts · ACCEPTED, DO NOT RESTART
+
+**Acceptance, 2026-11-02:** published candidate
+`26107db089f558bc374208a4f414ca70f562e6f0`, runtime/full focused gate source
+`f047165c67bc26c1498c5201c014db83553c6f6f`, final tools/tests
+`3c808780c4e5e59d26375151c3ff8215c4c68602`. Read the
+[direct verifier review](reviews/2026-11-02-w4-win-verify.md) for exact coverage,
+reused results and remaining limits. The packet below is acceptance history.
+Proceed to W4-OPENING-1; do not repeat V1–V3 or the unchanged corpus/adapter matrix.
 
 Continue the existing Windows branch `task/W4-3-live-buildings`, preserving
 newer owned work. Reviewed publication:
@@ -378,10 +390,10 @@ viewer controls pass with complete diagnostic visibility and script identity,
 the focused independent review approves, and the candidate is published for
 orchestrator acceptance. The historical reclaimer occurrence stays a documented
 uncertainty; missing submit-only/in-flight-only mutants are not new blockers.
-W4-OPENING-1 stays conditional on the completed reviewed Mac cargo candidate.
+That boundary is now satisfied by the acceptance records above and below.
 No extra owner permission is needed between V1–V3.
 
-### W4-OPENING-1 — live ship-start opening for an owner playtest · CONDITIONAL, NOT STARTED
+### W4-OPENING-1 — live ship-start opening for an owner playtest · READY, RELEASED
 
 **Owner instruction, 2026-11-02:** once the Mac gameplay work is reviewed, wire
 ship selection, sailing, founding and unloading into the live Windows window so
@@ -390,26 +402,26 @@ building tool after founding; a headless command demo alone does not meet this
 outcome. This is a bounded developer playtest UI, not the full UI.2/game-menu,
 network multiplayer, trade-route, combat or renderer-optimization program.
 
-**Current Windows checkpoint:** W4-WIN-FINAL is published at `dad27da7`; its
-two corpus cases completed. The orchestrator reviewed the source and portable
-extracts, retaining the CPU/reclaimer corrections and completed corpus, while
-requiring the two bounded W4-WIN-VERIFY corrections above. This is not final
-Windows-candidate acceptance. The Mac opening candidate is now accepted at
+**Release checkpoint, 2026-11-02:** the orchestrator accepts Windows publication
+`26107db089f558bc374208a4f414ca70f562e6f0`, runtime/full focused gate source
+`f047165c67bc26c1498c5201c014db83553c6f6f`, final tools/tests
+`3c808780c4e5e59d26375151c3ff8215c4c68602`; see the
+[verifier review](reviews/2026-11-02-w4-win-verify.md). The Mac opening input is accepted at
 `0c401c8d084cfd9feb8aec846595291f87f22cce` with the scope and limits in the
 [cargo review](reviews/2026-11-02-map-cargo1.md). Its ordinary publication is
-remote-verified. Do not start integration from either moving tip; the
-accepted Windows correction pin is still required below.
+remote-verified, as is the Windows publication. **Start I1–I6 below.** These are
+fixed integration inputs; do not substitute either moving branch tip or add
+MAP-CARGO-2/3 to this playtest. No additional owner approval is needed between
+the assigned packages, subject to their review and conflict stop rules.
 
 #### Release conditions and ownership
 
-1. The orchestrator must record acceptance of both the final W4-WIN-FINAL
-   candidate and the corrected Mac MAP-BUILD-1 plus MAP-CARGO-1 candidate,
-   with full code/test/documentation commit ids and exact allowed limitations.
-   Independent package approvals alone do not fill in these future integration
-   pins. The Mac input is accepted at
-   `0c401c8d084cfd9feb8aec846595291f87f22cce`; Windows W4-WIN-VERIFY acceptance
-   is still pending. Until the Windows record and both publications exist,
-   finish the verifier lane and stop at its review boundary.
+1. Both acceptance records now exist. Windows input is
+   `26107db089f558bc374208a4f414ca70f562e6f0`; Mac MAP-BUILD-1 plus MAP-CARGO-1
+   input is `0c401c8d084cfd9feb8aec846595291f87f22cce`. Record these exact
+   parents, their source/tools/gate identities and the limitations in the linked
+   reviews. This release authorizes their integration for the assigned owner
+   playtest, not full multiplayer, physical-display, fidelity or scale acceptance.
 2. Both approved pins must be reachable from GitHub with their review/evidence
    summaries. The orchestrator arranges ordinary publication of the reviewed
    Mac task branch after its review; this packet does not tell the Mac executor

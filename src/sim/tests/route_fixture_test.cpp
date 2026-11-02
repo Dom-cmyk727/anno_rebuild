@@ -281,7 +281,7 @@ TEST_CASE("route fixtures: generated emulated-original routes (mixed cells, lear
     check_emulated_routes(fixture_lines("route_emulated.txt"), 150);
 }
 
-TEST_CASE("route fixtures: optional extra campaign file (ANNO_ROUTE_EXTRA, same format; skipped "
+TEST_CASE("route fixtures: optional extra campaign file (ANNO_ROUTE_EXTRA, same format, skipped "
           "when unset)") {
     const char* extra = std::getenv("ANNO_ROUTE_EXTRA");
     if (extra == nullptr || *extra == '\0') {

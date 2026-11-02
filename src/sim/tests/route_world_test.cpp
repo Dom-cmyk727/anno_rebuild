@@ -92,7 +92,7 @@ void put_object(sim::Island& is, std::int32_t x, std::int32_t y, std::uint32_t i
 
 } // namespace
 
-TEST_CASE("route world: object height math is exact (floor of f32 * 25, f32 / 0.04f)") {
+TEST_CASE("route world: object height math is exact (floor of f32 x 25, f32 / 0.04f)") {
     // {f32 bits, trunc(f * 25), trunc(f / 0.04f)} computed with exact rationals outside the code.
     const struct {
         std::uint32_t bits;
@@ -178,7 +178,7 @@ TEST_CASE("route world: terrain rule is the floor of the four-corner average, bo
 }
 
 TEST_CASE(
-    "route world: object tiles block iff ((h + base) & 0xff) > 19; footprints are not exempt") {
+    "route world: object tiles block iff ((h + base) & 0xff) > 19, footprints are not exempt") {
     const auto types = object_registry({{9001, 0.77f}, {9002, 0.8f}, {9003, 0.13f}, {9004, 0.17f}});
     sim::Island is = make_island(0, 0, 32, 32, 0);
     put_object(is, 3, 3, 9001, true);  // h 19

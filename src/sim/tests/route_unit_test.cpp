@@ -348,7 +348,7 @@ TEST_CASE("route coast index: shore band cells are typed 3 and survive rebuilds 
 }
 
 TEST_CASE(
-    "route coast index: incremental rebuilds equal a clean rebuild; the verifier is not vacuous") {
+    "route coast index: incremental rebuilds equal a clean rebuild, the verifier is not vacuous") {
     sim::TileMapSource m(192, 136);
     Lcg rng{12345};
     std::vector<sim::CellCoord> band;

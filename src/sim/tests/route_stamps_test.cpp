@@ -61,7 +61,7 @@ sim::LocalStampQuery query_at(double tx, double tz) {
 } // namespace
 
 TEST_CASE(
-    "local stamps: cell scan order z-cell, x-cell, ascending id; independent of the view's order") {
+    "local stamps: cell scan order z-cell, x-cell, ascending id, independent of the view's order") {
     // Query at (48, 48) radius 5: cells (2..3, 2..3). Ships in all four cells, ids not in scan
     // order.
     std::vector<sim::LocalShip> ships = {ship(4, 50.5, 50.5), ship(1, 50.5, 46.5),
@@ -98,7 +98,7 @@ TEST_CASE(
     CHECK(o[1].tile_x == 46);
 }
 
-TEST_CASE("local stamps: more units than unit_cap are truncated in scan order; self counts against "
+TEST_CASE("local stamps: more units than unit_cap are truncated in scan order, self counts against "
           "the cap") {
     std::vector<sim::LocalShip> ships;
     for (std::uint64_t i = 1; i <= 100; ++i) {
@@ -131,7 +131,7 @@ TEST_CASE("local stamps: more units than unit_cap are truncated in scan order; s
     CHECK(none.cells_scanned == 0);
 }
 
-TEST_CASE("local stamps: unrelated distant figures are not looked at; work is bounded by the cells "
+TEST_CASE("local stamps: unrelated distant figures are not looked at, work is bounded by the cells "
           "scanned") {
     std::vector<sim::LocalShip> ships = {ship(1, 100.5, 100.5)};
     for (std::uint64_t i = 0; i < 3000; ++i) {
@@ -207,7 +207,7 @@ TEST_CASE("local stamps: the radius is inclusive, the filters are state 0xa, shi
     CHECK(count({ship(9998, 41, 41)}) == 1);
 }
 
-TEST_CASE("local stamps: the stamp point is pos + dir * 25 truncated toward zero, exactly") {
+TEST_CASE("local stamps: the stamp point is pos + dir x 25 truncated toward zero, exactly") {
     const auto stamp_of = [](sim::LocalShip s) {
         const auto v = sim::local_ship_stamps(
             ListView({s}), query_at(s.x_q8 / 256.0, s.z_q8 / 256.0), sim::RouteLimits{});

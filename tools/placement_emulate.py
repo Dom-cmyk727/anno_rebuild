@@ -323,6 +323,9 @@ def run_vectors(h, path):
         tid, x, y, rot, flags, rec8 = c['place']
         rows = [c['rows'].get(r, bytes(W + 1)).ljust(W + 1, b'\0') for r in range(H + 2)]
         verdict, reason, rb = pr.run_case(reg, c)
+        if c.get('original') is not None:     # a documented adaptation: the original's own answer is what the emulation must reproduce
+            o = c['original']
+            verdict, reason, rb = (pr.ACCEPT, '', int(o[1])) if o[0] == 'accept' else (pr.REJECT, o[1], 0)
         try:
             got, gb = h.run(isl, rows, c['objs'], tid, x, y, rot, flags, rec8)
         except UcError as e:

@@ -207,7 +207,8 @@ TEST_CASE("local stamps: the radius is inclusive, the filters are state 0xa, shi
     CHECK(count({ship(9998, 41, 41)}) == 1);
 }
 
-TEST_CASE("local stamps: the stamp point is pos + 25 x velocity truncated toward zero, exactly") {
+TEST_CASE(
+    "local stamps: the stamp point is pos plus 25 times velocity truncated toward zero, exactly") {
     // The velocity is the segment direction times speed times factor, in tiles per stepper unit
     // (2^-32): the type 1502 speed 0.036 is 154618816. The unit tests below pin the equation
     // trunc(x + 25 * v) in exact rational arithmetic.

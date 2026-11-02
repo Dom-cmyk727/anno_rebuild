@@ -67,7 +67,7 @@ sim::Command move(std::uint64_t id, int tx, int ty) {
 
 } // namespace
 
-TEST_CASE("N0 stamp: a moving ship is stamped at position + 25 * its segment velocity") {
+TEST_CASE("N0 stamp: a moving ship is stamped at its position plus 25 times its segment velocity") {
     // Ship 1 sails east at the type speed 154618816 / 2^32 = 0.036 tile per stepper unit, factor
     // 100: its velocity is (0.036, 0), the stamp (x + 0.9, z) -> one tile ahead, not 25.
     sim::ScenarioSpec spec = base_spec();

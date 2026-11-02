@@ -428,11 +428,12 @@ Source: `docs/sim/state.md` §13 (rows D1..D18) and the decision-needed items of
 - **Rules option:** `Seams::*` (named, hashed).
 
 ## OQ-052: Placement validity is a stand-in (spec D17, stand-in)
-- **Status:** open, owner decides
+- **Status:** partly resolved by reading (MAP-BUILD-1 package B, 2026-11-02); the engine still uses the stand-in until package C. Open: the unsupported classes below.
 - **Area:** simulation / building UX
-- **What:** the island placement check (terrain, water/coast/mountain via the type flag word, overlap rule) is unread (`0x1007c790` through island slot `+0x6c`, AnnoGame `0x10008920`, `0x10008f90`). The default rule is: inside the island, owner tiles, no overlap.
-- **Why it may change the feel:** Build can accept placements the original refuses (mines off mountains, fishers inland).
-- **Faithful default implemented:** the stand-in rule (the best available, not the original).
+- **What:** the island placement check is `0x1007c790` through island slot `+0x6c`, type slots `+0x6c` (`0x10008920`) and `+0x68` (`0x10008f90`). Now read and emulated (`docs/re/ship-placement.md`; contract `docs/sim/ship-placement.md`): for ordinary land (flag word `& 0x7017 == 0x0004`, 254 BuildCmd-reachable types) every vertex of the footprint window must be one multiple of 16 and at least 32, and that value is the height byte; the coast class (`& 0x7017 == 0x2007`, 19 reachable types) uses the shore rule of `ship-founding.md` 10.4. The apply path of the original skips the analysis and trusts the client's byte 8; the port derives it on the server.
+- **Still open (explicit `Unsupported`, never a default accept):** class `0x3000` (8 `MINE`, 4 `STEINBRUCH`; helper `0x10008a80` reads the type's `HIGHMAP` table at `+0x234`), flag bit `0x10` (per-chunk coverage test `0x1007c955`-`0x1007cb3d`), `0x400000` same-PRODTYPE replacement over a market/warehouse (`0x10027b62`), and an original-runtime capture of a real build click (NOT_RUN).
+- **Why it may change the feel:** mines and quarries cannot be built until the `0x3000` helper is read; building over a same-type market is refused.
+- **Faithful default implemented:** until package C, the stand-in rule; afterwards the rule above.
 - **Rules option:** `Seams::placement_rule`.
 
 ## OQ-053: Deposit goods and amounts are placeholders (spec D18, stand-in)
@@ -2069,13 +2070,13 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 
 ## OQ-NAVC-2: Item height byte written by island growth (MAP-NAV-3 N3, 2026-11-02)
 
-- **Question:** when island growth replaces a tile's object id (`grow()` in `island_tick.cpp`, original AnnoWelt `0x1008b5f0`), what happens to the tile record's height byte (second dword byte 0)? The port leaves the existing byte untouched; a ripe object on a tile that never held a loaded item has base 0.
-- **Why it matters:** the byte is the base of the ship-route blocking predicate `((h + base) & 0xff) > 19`; a grown object may block or not depending on it.
-- **Evidence needed:** the store instructions of the growth visit (and of the object-replacement path it calls) with respect to second-dword byte 0. Nothing is stated as fact in code; the limitation is recorded in `docs/sim/ship-navigation.md` 12.13.
+- **Status:** resolved for the growth visit (D, bounded), MAP-BUILD-1 package B.
+- **Answer:** `AnnoWelt.dll 0x1008b5f0` replaces the object **in place** (`inc word [tile]`, `0x1008b6c6`), toggles bit 6 and rewrites the phase in tile byte 3 (`0x1008b681`, `0x1008b6a6`, `0x1008b6ca`) and notifies island slot `+0x188` (code `0xce`, `0x1008f2d0`: `inc byte [chunk_record + 5]`). Nothing stores to the second tile dword; **the item height byte remains**. No separate replacement callee exists. `grow_chunk` already behaves so.
+- **Residual:** only the visit and its notification were read; other tick passes (fauna sweep, drought) were not searched for tile `+4` stores. `docs/sim/ship-navigation.md` 12.13 limitation (1) should be restated by the owner of that file; see `docs/re/ship-placement.md` §6.
 
 ## OQ-NAVC-3: Height byte of a command-built building (MAP-NAV-3 N3 review, 2026-11-02)
 
-- **Question:** the original's terrain function `0x1007c790` writes a height level into the placement record (`rec[8]`, stored as `byte0f`; a founded warehouse has `0x30`, `docs/re/ship-founding.md`). `BuildCmd` passes `byte0f = 0` because the client's byte8 is not used and the function is not ported, so a command-built building has height byte 0 on its tiles.
-- **Why it matters:** the byte is the base of the ship-route blocking predicate; a built shore building may block or not differently from the original.
-- **Path:** the placement-rule seam (O-27) is where a ported terrain function would supply the level. No value is invented in code.
+- **Status:** rule read and specified (`docs/sim/ship-placement.md`); engine change is package C of MAP-BUILD-1.
+- **Answer:** the original's UI preview computes `rec[8]` (the height `v` of the footprint window) and sends it; the apply call (`flags | 0x1000000`) skips the analysis and stores the wire byte as the building's `byte0f` and the tile height. The port computes the same `v` on the server from validated terrain and never reads the client byte (so a client cannot build on sea, which the original allows). Ordinary land: `v` (all window vertices equal, multiple of 16, `>= 32`); coast: `max & 0xf0`.
+- **Open:** nothing for the supported classes; the unsupported classes are in OQ-052.
 

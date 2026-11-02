@@ -1,0 +1,89 @@
+# Normal `BuildCmd`: terrain, height and refusal contract
+
+**Status:** specification for MAP-BUILD-1 package C (no engine code here), 2026-11-02. Evidence: [`docs/re/ship-placement.md`](../re/ship-placement.md) (read it for addresses, emulation numbers and the unread parts).
+Oracle: `tools/placement_ref.py` with `fixtures/synthetic/sim/placement_vectors.txt` (checked against the original code by `tools/placement_emulate.py`).
+Resolves, for the supported classes: OQ-052 (the placement stand-in), OQ-NAVC-3 (height of a command-built building). OQ-NAVC-2 is closed by the growth trace (`re/ship-placement.md` §6).
+Pointer from `docs/sim/state.md` §8.4 and O-27. Related: [`ship-founding.md`](ship-founding.md) (P7-P11, the coast predicate), [`ship-navigation.md`](ship-navigation.md) 12.13 (tile height byte).
+Labels: **ORIGINAL** (address) read or emulated; **ADAPT** an approved deviation, with the reason; **UNKNOWN**.
+
+## 1. Dependency table (normal `BuildCmd`, not `FoundCmd`)
+
+| Concern | ORIGINAL | ADAPT (approved) | UNKNOWN |
+|---|---|---|---|
+| Bounds | `0x1007c790` step 2: `x >= x0`, `x + fw <= x0 + W`, same for y, footprint swapped for odd rotation (D, E) | Keep the existing `footprint_owner_rule` first (`OutOfIsland`); the placement rule re-checks with 64-bit arithmetic and answers the same reason | - |
+| Ownership | apply `0x10058890` (owner of the footprint is the commanded city); `City::Build` `0x100277c8`: every tile owner is `0xf` (nobody) or the city | Existing contract unchanged (`footprint_owner_rule`, `neutral_owner`); shared information grants no build permission | - |
+| Occupancy, removable scenery | island step 4: per non-zero object id under the footprint, type slot `+0x6c` (`0x10008920`) must answer 1; objects of flag `0x20` (trees, stones, ruins) answer 1; rows for groups 1, 0x21, 0x61, 0x81, 0xc1, 0x101, 0x141 (re §4). Building tiles carry the building's type id. `0x400000` (same-PRODTYPE replacement over the market/warehouse at the origin tile) skips the test | Scenery that answers 1 is overwritten by the creation (existing tile write); any building under the footprint is `Occupied` (existing F32 check); the `0x400000` replacement is **not implemented**: the building stays `Occupied` | the replacement commit (`0x10027b62`) |
+| Terrain class | `0x10008f90` by flag word (re §3) | Supported: ordinary land `(F & 0x7017) == 0x0004`, coast `(F & 0x7017) == 0x2007`. Every other flag word, and flag bit `0x10`: `Unsupported`, never a default | class `0x3000` helper `0x10008a80`; bit `0x10` coverage test |
+| Rotation | `rec[6]` byte; 0..3 meaningful, above 3 reads uninitialised footprint bytes (`0x1007c7ce`). The UI cursor retries up to four rotations for PRODTYPE `0x23, 6, 7, 0xf` (`0x1004741e`) | The command's rotation is validated as given (`BadRotation` above 3, existing). **No automatic rotation trials** (founding's `rotation_trials` are not used here) | - |
+| Height result | UI preview runs the analysis and writes `rec[8]`; the **apply** call passes `0x1000000`, skips the analysis and tests the **wire** byte (re §2, E) | **A1:** the server computes the byte itself from validated terrain and the effective type at execution time; the wire `PlacementWire::byte8` is never read (it is dropped when the record is built, as today); `PlacementRecord::byte0f` is set only from the result. Reason: the original lets a client with byte `0x40` build on sea (E) | - |
+| Type rewrite (upgrade) | `City::Build` `0x10027805`: PRODTYPE `0x43`/`0x48` records get `type = slot+0x40 + 1` **after** the island test, not re-tested | **A3:** the rewritten (effective) type goes through the whole check again, including the placement rule and the height (existing `upgrade_rewrite` loop). A rewritten type of an unsupported class is `Unsupported` | the original's behaviour when the rewritten type's footprint differs (it never re-tests) |
+| Payment | `City::Build` `0x1002787d` affordability; `Place` `0x100279a0` charges | Existing contract (read-only affordability per record against the dry-run budget, charge after creation). A terrain/occupancy refusal returns before affordability and the serial, so it charges nothing and changes nothing | - |
+| Commit | `Place` -> Create (`rec[8]` -> building `byte0f`), tile write `0x10082040` (`rec[8]` -> tile dword `+4` low byte) | `Checked::rec.byte0f = result.height`; `create_building` already copies `rec.byte0f` to `Building::byte0f` and, through `place_object_record`, to the aux low byte of **every footprint tile** | - |
+
+## 2. Rules (the oracle's rules R1-R6)
+
+Inputs: island `x0, y0, W, H`; the runtime vertex grid (`VertexGrid`: vertex `(W, y)` and `(x, H)` read 0); the tile object ids; the type registry; the effective type `T` (`w, h, prodtype, F`); the record `(x, y, rot)`, `rot <= 3`. Footprint `fw x fh` = `(w, h)` swapped for odd rotation. `group(p) = ((p-1) & ~0x1f) + 1` in 32-bit unsigned arithmetic.
+
+* **R1 bounds.** Refuse (`OutOfIsland`) unless `x >= x0`, `x + fw <= x0 + W`, `y >= y0`, `y + fh <= y0 + H`.
+* **R2 occupancy.** For each tile of the footprint with object id `o != 0`: `o` must be in the registry (else `Unsupported`); `compat(T, type(o))` (re §4) must be 1, else `Occupied`. Whether the tile also carries a building is the existing F32 check (`Occupied`).
+* **R3 class gate.** `(F & 0x7017) == 0x0004` ordinary land, `(F & 0x7017) == 0x2007` coast; anything else, or `F & 0x10`, or `fw == 0 || fh == 0`: `Unsupported`.
+* **R4 ordinary land.** Let `V` be the `(fw+1) x (fh+1)` vertices from `(x, y)`. All equal to one value `v`, `v % 16 == 0`, else `TerrainRefused`. Height = `v`. If `v < 32`: `TerrainRefused`.
+* **R5 coast.** `ship-founding.md` P11.4 / `site::coast_height_rule`: result `max(V) & 0xf0`, refused when the shore-edge/opposite-edge test fails; **no 32 threshold** for the coast class (`0x1007cbc8`-`0x1007cbd6`). Width or depth 1 skips the test (the type's unrotated `n = w+1 <= 2` or `m = h+1 <= 2`).
+* **R6 result.** Accepted iff R1-R5 pass; the height is the byte of R4 or R5.
+Everything is evaluated for the effective type, at execution time, from the state the command sees (earlier records of the same command are in it, see §4).
+
+## 3. The read-only result and its commit use (B5)
+
+```cpp
+/// Decision and authoritative item height of one record. Read-only, total, O(footprint + window).
+struct PlacementResult {
+    Reject reject = Reject::None;   // None = accepted
+    std::uint8_t height = 0;        // record byte 8 = Building::byte0f = aux low byte of every footprint tile; 0 unless accepted
+};
+[[nodiscard]] PlacementResult placement_rule(const Island&, const TypeRegistry&, const BuildingType& effective, const PlacementRecord&);
+```
+`Seams::placement_rule` keeps its slot with this return type; its **default is this rule**, not the stand-in. The stand-in stays available only as an explicit, named test seam (`stand_in_placement_rule`, height 0) for suites that isolate another subsystem; the default must not silently use it.
+
+| Situation | `reject` | Note |
+|---|---|---|
+| R1 fails | `OutOfIsland` | |
+| R2 incompatible object | `Occupied` | |
+| R4 / R5 test fails, or `v < 32` | `TerrainRefused` | existing enumerator (`Reject::TerrainRefused`); no new value needed |
+| flag word / bit `0x10` outside R3, unknown object id, `fw == 0`, `VertexGrid` status not `Ok` (`NoTerrain`, `HashOnlyPlaceholder`, `HeightColumnAbsent`, `HeightColumnWrongSize`), a window vertex that `VertexGrid::at` cannot read | `Unsupported` | never `None`, never a height of 0 |
+
+* **Missing or placeholder terrain** (a scenario without HEIGHT records, a world read from the flat state stream whose columns are digest-only): the footprint is in bounds but the decision needs heights -> `Unsupported`. Old tests that build on islands without terrain must give them terrain (the real-terrain contract) or select the stand-in seam by name.
+* **Untrusted client byte 8.** `PlacementWire::byte8` (and `byte7`) are carried for the legacy wire only and are dropped before the check (`apply.cpp` builds `PlacementRecord` with `byte0f = 0`). The only source of `byte0f` for a command-built building is `PlacementResult::height`; a test with `byte8 = 0x40` on a sea site must be refused, and one with `byte8 = 0` on legal land must get `0x30`.
+* **Integer bounds.** Coordinates are `int32` in the port (16-bit in the original): a negative or large coordinate is an ordinary R1 refusal. All sums in 64-bit; `x + fw` is not narrowed to 16 bits (the original compares 32-bit values of 16-bit fields, no wrap: vectors `u16_edge_*`). Vertex addresses go through `VertexGrid::at`/`runtime_index` (u64).
+* **Where the height goes.** `check_record` sets `out.rec.byte0f = result.height` for the **final** effective record (after the last rewrite iteration), `place()` -> `create_building(..., c.rec, ...)` -> `Building::byte0f` and `place_object_record(..., byte0f)` for every tile of the footprint. It must not be recomputed later; save, load, replay and the route code read the stored byte.
+* **Atomic batch (`Rules::build_atomic`).** Terrain does not change within a command, so a record's decision and height do not depend on earlier records, except through occupancy. The dry run must not write tiles; the existing `Budget::tiles` check (`Occupied` for a tile an earlier record takes) stays after the placement rule and gives the same status the live path gives when it sees the earlier building on the tile (the live rule answers `Occupied` through R2 or the F32 check). Required property: for every command, the dry run and the live run refuse the same record with the same status, and a refused command leaves bytes, hash, PRNG, money, goods, buildings, ownership and events unchanged.
+* **Payment.** A refusal returns before affordability, the serial and the creation: nothing is charged. Accepted records keep the existing order (validate all, then charge and create per record).
+* **Shared predicates.** `site::footprint_ownership`, `VertexGrid`, `coast_height_rule`, `coast_class_supported` are reused. The overlap table `overlap_with_existing` is extended to the full `compat` of re §4 (groups 0x41, 0xa1 and the others answer 0; the "bit 8 of slot +0xd0" row is `HEAD[0x2e] & 1`, loaded into `BuildingType`), which also removes its `Unsupported` for those groups; founding keeps calling it with its own flags. Nothing from founding's ship, distance, figure or rotation-trial code is called.
+* **Registry facts.** `F`, `w`, `h`, `prodtype`, `replaceable` come from `BuildingType`/the original loader, with the original values as defaults; a second data-defined type with flag word `0x0084` needs no engine edit. No special case for a player, type 1302, seat count, candidate or height. The thresholds `32`, the `0xf0` quantum and `16` of R3/R4 are data of the rule (`SimConfig`-level constants with the original defaults, with a comment naming `0x1007cbeb`, `0x10008f90`).
+* **State identity.** The state layout does not change (`byte0f` and the aux low byte exist and are hashed); behaviour changes (commands the stand-in accepted are refused, command-built buildings get a non-zero byte). Replays recorded with BuildCmds therefore diverge from the old stand-in; C must follow the existing rules-identity/version policy and say which goldens move and why. This note does not decide the constant (UNKNOWN here).
+
+## 4. Hand-derived vectors (B6)
+
+All in `fixtures/synthetic/sim/placement_vectors.txt` (grids are the runtime grid; island 10 x 10 at the origin unless stated; `type` ids are the file's). Expected outcomes were written by hand from §2 before any program ran. Of the first 50 hand-written expectations, two were wrong when first run (a vertex column mis-counted for a turned footprint; a coast opposite row written one row off) and were re-derived from §2, and two (road, wall) were right by design but exposed that the program had no class gate yet (`engine_place`). Result: `placement_ref.py check` 50/50; the original code agrees on all 45 supported cases (`placement_emulate.py vectors`: 48 executed, 45 compared, 0 mismatches; 3 unsupported cases executed and 2 faulted because the fake lacks a table).
+
+| Pair / edge | Cases | Expected (hand) | Why |
+|---|---|---|---|
+| Identical footprint, land vs sea | house 2x2 at (3,3): flat `0x30` / flat `0x10` / flat `0x00` | accept 48 / `TerrainRefused` / `TerrainRefused` | R4 |
+| Quantisation and threshold | flat `0x20` / `0x40` / `0x1f` / `0x2f` / `0x35` | accept 32 / accept 64 / refused / refused / refused | `v` multiple of 16; `32` is the smallest accepted level |
+| Wire byte | sea with wire `0x40`; plateau with wire `0` | refused; accept 48 | A1 |
+| Slope and dip | one vertex `0x31`, `0x40`, `0x2f` inside the window; `0x50` just outside it | refused x3; accept 48 | R4 equal vertices |
+| Island edge | house at x=8 (window column 10 is 0); x=7; y=8; x=9; origin (0,0) | refused; accept; refused; `OutOfIsland`; accept | R1, boundary vertices |
+| Turned non-square | market-like 4x3: (5,2) rot 0; (7,2) rot 0; (6,2) rot 1; vertex (9,2) spoiled with rot 0 at (5,2) / rot 1 at (5,2) | accept; `OutOfIsland`; accept; refused; accept | footprint swap, window follows the rotation |
+| Scenery and occupancy | tree / stone under footprint; building (same PRODTYPE, not replaceable); object just outside; market over market (replaceable); object id not in the registry | accept; accept; `Occupied`; accept; accept; `Unsupported` | R2 (the replaceable row is accepted by the *island rule*; the building still blocks through the F32 check, so a `BuildCmd` over it stays `Occupied`) |
+| Alternate registry type | farm 3x3; flag word `0x0004` on level `0x20`; flag `0x10`; class `0x3000`; road; wall | accept; accept 32; `Unsupported` x4 | R3 |
+| Coast valid / invalid | 4x4 coast: shore row `0x30` + opposite row water (rot 0); rot 2 with the shore at the bottom; rot 1 with the shore at the left column; same flat land; one wrong shore vertex; one water vertex of five; two of five; a `0x40` vertex; rot 0 with the shore at the bottom | accept 48 x3; refused; refused; refused; accept; refused; refused | R5 |
+| Coast shortcut and alternate | 1-wide coast type on open sea `0x10`; fisher 2x2 with one / zero water vertex | accept 16 (no 32 threshold); accept 48 / refused | R5, `n <= 2` |
+| Integer bounds | island at `x0 = 65530`, `W = 5`: house at 65532 / 65534 | accept 48 / `OutOfIsland` | no 16-bit wrap |
+
+Not covered by vectors, to be added with the engine tests (they need `World::apply`): ownership/payment precedence (a terrain refusal must not be hidden by an ownership or funds failure, and vice versa), multi-record batches mixing a legal and an illegal record, upgrade rewrites to an unsupported class, a world without terrain, and the real-file building canary of D4.
+
+## 5. Integration notes for C
+
+* `Checked` gains no field except the height inside `rec.byte0f`; the comment at `apply.cpp` "byte0f ... is 0" and `state.md` §8.4 ("a client-supplied byte8 is ignored") describe the intended server behaviour correctly but not the original: the original *trusts* the wire byte (re §2).
+* The seam signature change (`Reject` -> `PlacementResult`) is visible to the Windows consumer only through `Seams`; the app and render sources do not call it.
+* Founding keeps its own predicate path (`site::` + `found`), which already passes its terrain byte; unchanged.
+* Growth: nothing to write (re §6). Demolition and the clear arm are unchanged.

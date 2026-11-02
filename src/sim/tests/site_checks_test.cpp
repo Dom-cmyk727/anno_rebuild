@@ -195,7 +195,11 @@ TEST_CASE("site: ownership of the footprint, outside before owned") {
     CHECK(site::footprint_ownership(t, neutral, {1, 3}, 1, 1) == site::Ownership::OutsideIsland);
 }
 
-TEST_CASE("site: overlap compatibility decides only what the original's slot decides here") {
+TEST_CASE("site: overlap compatibility is the original's slot 0x6c table") {
+    // MAP-BUILD-1 C: the table is complete (docs/re/ship-placement.md section 4); the rows the
+    // founding path used to leave Unsupported (the same PRODTYPE over bit 8 of slot +0xd0, the
+    // groups 0x41, 0x81, 0xa1, ...) are decided. The full table and the oracle vectors are in
+    // placement_rule_test.cpp.
     const sim::BuildingType warehouse = type_of(1302, 33, 0x2087, 4, 4);
     // Flag 0x20 (growing/raw objects, ruins, stones): compatible whatever the placed type is.
     CHECK(site::overlap_with_existing(warehouse, type_of(2, 81, 0x20)) == site::Compat::Compatible);
@@ -203,29 +207,26 @@ TEST_CASE("site: overlap compatibility decides only what the original's slot dec
           site::Compat::Compatible);
     // Placed group 0x21 (market/warehouse): another PRODTYPE is incompatible ...
     CHECK(site::overlap_with_existing(warehouse, type_of(3, 1, 0)) == site::Compat::Incompatible);
-    // ... the same PRODTYPE needs bit 8 of the existing slot +0xd0, which is not read.
-    CHECK(site::overlap_with_existing(warehouse, type_of(4, 33, 0)) == site::Compat::Unsupported);
+    // ... the same PRODTYPE only over a type with bit 8 of slot +0xd0 (HEAD[0x2e] bit 0).
+    CHECK(site::overlap_with_existing(warehouse, type_of(4, 33, 0)) == site::Compat::Incompatible);
+    sim::BuildingType replaceable = type_of(4, 33, 0);
+    replaceable.head_raw.assign(56, 0);
+    replaceable.head_raw[0x2e] = 1;
+    CHECK(site::type_replaceable(replaceable));
+    CHECK_FALSE(site::type_replaceable(type_of(4, 33, 0)));
+    CHECK(site::overlap_with_existing(warehouse, replaceable) == site::Compat::Compatible);
     // Group 0x141 existing and a placed flag 0x10: compatible; without 0x10: incompatible.
     const sim::BuildingType g141 = type_of(5, 0x141, 0);
     CHECK(site::overlap_with_existing(type_of(6, 33, 0x2097), g141) == site::Compat::Compatible);
     CHECK(site::overlap_with_existing(warehouse, g141) == site::Compat::Incompatible);
-    // Group of prodtype 32 is 1, of 33..64 is 0x21, of 65..96 is 0x41: groups 1/0x21/0x61 decided.
-    CHECK(site::overlap_with_existing(type_of(7, 5, 0), type_of(3, 70, 0)) ==
-          site::Compat::Incompatible);
-    CHECK(site::overlap_with_existing(type_of(7, 97 + 32, 0), type_of(3, 70, 0)) ==
-          site::Compat::Unsupported);
-    // Group boundaries: 1..32 -> 1, 33..64 -> 0x21, 65..96 -> 0x41 (undecoded), 97..128 -> 0x61,
-    // 129.. -> 0x81 (undecoded). `other` is PRODTYPE 70, which is none of the placed ones.
+    // Group of prodtype 32 is 1, of 33..64 is 0x21, of 65..96 is 0x41, of 97..128 is 0x61, of
+    // 129..160 is 0x81, of 161..192 is 0xa1. `other` is PRODTYPE 70, which is none of the placed
+    // ones. The groups without a row (0x41, 0xa1, and PRODTYPE 0) answer 0 (the fall-through).
     const sim::BuildingType other = type_of(3, 70, 0);
-    for (const std::uint32_t decided : {1U, 32U, 33U, 64U, 97U, 128U}) {
-        INFO("placed prodtype " << decided);
-        CHECK(site::overlap_with_existing(type_of(7, decided, 0), other) ==
+    for (const std::uint32_t placed : {1U, 32U, 33U, 64U, 97U, 128U, 65U, 96U, 160U, 161U, 0U}) {
+        INFO("placed prodtype " << placed);
+        CHECK(site::overlap_with_existing(type_of(7, placed, 0), other) ==
               site::Compat::Incompatible);
-    }
-    for (const std::uint32_t undecided : {65U, 96U, 129U, 160U}) {
-        INFO("placed prodtype " << undecided);
-        CHECK(site::overlap_with_existing(type_of(7, undecided, 0), other) ==
-              site::Compat::Unsupported);
     }
     // The existing group 0x141 with a placed flag 0x10 (group 0x61 placed), and its neighbours.
     CHECK(site::overlap_with_existing(type_of(7, 100, 0x10), type_of(5, 0x141, 0)) ==
@@ -240,9 +241,6 @@ TEST_CASE("site: overlap compatibility decides only what the original's slot dec
     // The group 0x141 spans PRODTYPE 321..352: 0x160 (352) is inside it.
     CHECK(site::overlap_with_existing(type_of(7, 100, 0x10), type_of(5, 0x160, 0)) ==
           site::Compat::Compatible);
-    // PRODTYPE 0 (UNUSED) as the placed type is a group the original has no row for here.
-    CHECK(site::overlap_with_existing(type_of(8, 0, 0), type_of(3, 70, 0)) ==
-          site::Compat::Unsupported);
 }
 
 TEST_CASE("site: footprint occupancy takes the worst tile") {
@@ -251,7 +249,7 @@ TEST_CASE("site: footprint occupancy takes the worst tile") {
     b.add(warehouse);
     b.add(type_of(500, 81, 0x20)); // tree-like, overlappable
     b.add(type_of(501, 1, 0));     // production: not overlappable by a market type
-    b.add(type_of(502, 33, 0));    // same PRODTYPE: unsupported (slot +0xd0 not read)
+    b.add(type_of(502, 33, 0));    // same PRODTYPE, not replaceable: incompatible
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
     const sim::TypeRegistry& reg = *built.value();
@@ -261,8 +259,12 @@ TEST_CASE("site: footprint occupancy takes the worst tile") {
     CHECK(site::footprint_occupancy(t, reg, warehouse, {2, 2}, 4, 4) == site::Compat::Compatible);
     t.set_object(t.index_of(3, 3), 500);
     CHECK(site::footprint_occupancy(t, reg, warehouse, {2, 2}, 4, 4) == site::Compat::Compatible);
-    t.set_object(t.index_of(5, 5), 502);
+    // An id the registry does not know is Unsupported; an incompatible type outranks it.
+    t.set_object(t.index_of(5, 5), 9998);
     CHECK(site::footprint_occupancy(t, reg, warehouse, {2, 2}, 4, 4) == site::Compat::Unsupported);
+    t.set_object(t.index_of(5, 5), 502);
+    CHECK(site::footprint_occupancy(t, reg, warehouse, {2, 2}, 4, 4) == site::Compat::Incompatible);
+    t.set_object(t.index_of(5, 5), 9998);
     t.set_object(t.index_of(2, 5), 501);
     CHECK(site::footprint_occupancy(t, reg, warehouse, {2, 2}, 4, 4) == site::Compat::Incompatible);
     // Tiles outside the footprint are not looked at.

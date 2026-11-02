@@ -96,18 +96,29 @@ enum class Ownership : std::uint8_t {
 enum class Compat : std::uint8_t {
     Compatible,   ///< ORIGINAL: the placement-compatibility slot (type +0x6c) returns 1
     Incompatible, ///< ORIGINAL: it returns 0
-    Unsupported,  ///< the answer needs data this rebuild does not read (see overlap_with_existing)
+    Unsupported,  ///< footprint_occupancy: an object id the registry does not know, a tile outside
+                  ///< the layer
 };
 
-/// Type slot +0x6c (AnnoGame 0x10008920) for the founding call (its flags argument is
-/// 0x8000000 there: bits 0x10000000 and 0x10 clear). Decided:
+/// Bit 8 of the type word +0x14 = HEAD byte 0x2e bit 0 (slot +0xd0, AnnoGame 0x10009432): the
+/// existing type may be replaced by a placed type of the same PRODTYPE. Derived from
+/// BuildingType::head_raw (not a registry field, so the registry digest is unchanged); a record
+/// shorter than 0x2f bytes reads 0.
+[[nodiscard]] bool type_replaceable(const BuildingType& type);
+
+/// Type slot +0x6c (AnnoGame 0x10008920) for the calls that pass neither 0x10000000 nor 0x10 in
+/// their flags (founding 0x8000000, the BuildCmd apply 0x1000000), docs/re/ship-placement.md
+/// section 4. May `placed` stand on the object `existing`?
 ///  - existing flag word bit 0x20 (growing/raw objects, ruins, stones): Compatible;
-///  - placed PRODTYPE group 1, 0x21 or 0x61, existing PRODTYPE equal to the placed one:
-///    Unsupported (the answer is bit 8 of the existing type's slot +0xd0, not read);
-///  - placed flag word bit 0x10 and existing PRODTYPE group 0x141: Compatible;
-///  - otherwise, for those placed groups: Incompatible;
-///  - any other placed group has its own rows, not decoded: Unsupported.
-/// The group is ((prodtype - 1) & ~0x1f) + 1 in 32-bit unsigned arithmetic.
+///  - placed group 0x81: only PRODTYPE 0x81 over a group 0xc1 or 0x101 object;
+///  - placed group 1, 0x21 or 0x61: the same PRODTYPE over a replaceable existing type
+///    (type_replaceable); else, with the placed flag bit 0x10 clear, Incompatible; with it set,
+///    Compatible over group 0x141 only;
+///  - placed group 0xc1: over PRODTYPE 0xc6 only PRODTYPE 0xc6, else over group 0xc1;
+///  - placed group 0x101: over group 0xc1 or 0x101; group 0x141: over group 0x141;
+///  - any other group (0x41, 0xa1, 0, ...): Incompatible (the original's fall-through).
+/// The group is ((prodtype - 1) & ~0x1f) + 1 in 32-bit unsigned arithmetic. Never Unsupported
+/// (the enumerator is kept for footprint_occupancy: an object id the registry does not know).
 [[nodiscard]] Compat overlap_with_existing(const BuildingType& placed,
                                            const BuildingType& existing);
 

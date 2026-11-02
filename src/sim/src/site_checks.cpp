@@ -81,21 +81,50 @@ Ownership footprint_ownership(const TileLayer& tiles, std::uint32_t neutral_owne
     return Ownership::AllNeutral;
 }
 
+bool type_replaceable(const BuildingType& type) {
+    // HEAD byte 0x2e bit 0 is bit 8 of the type word +0x14 (0x10009432-0x10009449), read by slot
+    // +0xd0 (docs/re/ship-placement.md section 4). A record shorter than 0x2f bytes (a synthetic
+    // type, or a short file record) is zero-filled by the original's reader, so the bit is 0.
+    return type.head_raw.size() > 0x2e && (type.head_raw[0x2e] & 1U) != 0;
+}
+
 Compat overlap_with_existing(const BuildingType& placed, const BuildingType& existing) {
+    // Type slot +0x6c (AnnoGame 0x10008920) with the flags the founding and the apply call pass
+    // (bits 0x10000000 clear), docs/re/ship-placement.md section 4. The oracle is
+    // tools/placement_ref.py compat().
     if ((existing.flags_word & 0x20U) != 0) {
         return Compat::Compatible;
     }
     const std::uint32_t pg = group_of(placed.prodtype);
-    if (pg != 1U && pg != 0x21U && pg != 0x61U) {
-        return Compat::Unsupported;
+    const std::uint32_t pp = placed.prodtype;
+    const std::uint32_t ep = existing.prodtype;
+    const std::uint32_t eg = group_of(ep);
+    const auto yes = [](bool b) { return b ? Compat::Compatible : Compat::Incompatible; };
+    switch (pg) {
+    case 0x81U:
+        return yes((eg == 0xc1U || eg == 0x101U) && pp == 0x81U);
+    case 1U:
+    case 0x21U:
+    case 0x61U:
+        if (ep == pp && type_replaceable(existing)) {
+            return Compat::Compatible;
+        }
+        if ((placed.flags_word & 0x10U) == 0) {
+            return Compat::Incompatible;
+        }
+        return yes(eg == 0x141U);
+    case 0xc1U:
+        if (ep == 0xc6U) {
+            return yes(pp == 0xc6U);
+        }
+        return yes(eg == 0xc1U);
+    case 0x101U:
+        return yes(eg == 0xc1U || eg == 0x101U);
+    case 0x141U:
+        return yes(eg == 0x141U);
+    default:
+        return Compat::Incompatible;
     }
-    if (existing.prodtype == placed.prodtype) {
-        return Compat::Unsupported; // needs bit 8 of the existing type's slot +0xd0
-    }
-    if ((placed.flags_word & 0x10U) != 0 && group_of(existing.prodtype) == 0x141U) {
-        return Compat::Compatible;
-    }
-    return Compat::Incompatible;
 }
 
 Compat footprint_occupancy(const TileLayer& tiles, const TypeRegistry& types,

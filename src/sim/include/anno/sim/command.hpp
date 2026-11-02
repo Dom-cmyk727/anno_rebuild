@@ -110,9 +110,25 @@ struct FoundCmd {
     friend bool operator==(const FoundCmd&, const FoundCmd&) = default;
 };
 
+/// 0xF071 (native, MAP-NAV-2): a ship sails to a point (docs/sim/ship-navigation.md 2, 12.1). The
+/// target is a Q24.8 tile coordinate inside the world; the player is the authenticated issuer. An
+/// accepted command is not a routed one: the route is planned at the pick-up point and may end in a
+/// RouteFailed event. A target of (0, 0) is a valid corner, never a stop (StopCmd is separate).
+struct MoveCmd {
+    FigureId ship;
+    std::int32_t target_x_q8 = 0, target_y_q8 = 0;
+    friend bool operator==(const MoveCmd&, const MoveCmd&) = default;
+};
+
+/// 0xF072 (native, MAP-NAV-2): a ship stops (motion trim) and drops its order and ticket.
+struct StopCmd {
+    FigureId ship;
+    friend bool operator==(const StopCmd&, const StopCmd&) = default;
+};
+
 /// Alternative order = the codec's tag order and part of the replay format.
 using Body = std::variant<BuildCmd, DemolishCmd, SetProductionLineCmd, SetTradeFlagCmd,
-                          SetTradeSlotCmd, SetSpeedCmd, LegacyRawCmd, FoundCmd>;
+                          SetTradeSlotCmd, SetSpeedCmd, LegacyRawCmd, FoundCmd, MoveCmd, StopCmd>;
 
 struct Command {
     /// Stamped by the host (single player: the local player), never read from a
@@ -132,18 +148,20 @@ enum WireType : std::uint16_t {
     // (docs/re/ship-founding.md 8.8) and its group commands are 0x64..0x8a, so a tag far above both
     // cannot collide with a recorded original record.
     kWireFound = 0xF070,
+    kWireMove = 0xF071, ///< MAP-NAV-2, same reasoning as kWireFound
+    kWireStop = 0xF072,
     kWireSetProductionLine = 0x74,
     kWireSetSpeed = 0x7a,
     kWireSetTradeFlag = 0x7c
 };
 
-/// Whether `type` is one of the seven native record types. (0xF070 became native with MAP-2; a log
+/// Whether `type` is one of the nine native record types. (0xF070 became native with MAP-2; a log
 /// that holds a LegacyRawCmd of that type from before is no longer representable; no original
 /// record has that type and the replay fixtures hold none: docs/sim/ship-founding.md section 16.)
 [[nodiscard]] constexpr bool is_native_wire_type(std::uint16_t type) {
     return type == kWireBuild || type == kWireDemolish || type == kWireSetTradeSlot ||
            type == kWireSetProductionLine || type == kWireSetSpeed || type == kWireSetTradeFlag ||
-           type == kWireFound;
+           type == kWireFound || type == kWireMove || type == kWireStop;
 }
 
 /// The record type a body is written with (LegacyRawCmd: its own type field).

@@ -25,7 +25,9 @@ enum : std::size_t {
     kSetTradeFlagSize = 18,      // u32 island, u32 city, u16 mode, u32 goods, u32 value
     kSetTradeSlotSize = 28,      // 7 x u32
     kSetSpeedSize = 4,           // u32 percent
-    kFoundSize = 32              // u64 ship, 16-byte placement, i32 click x, i32 click y
+    kFoundSize = 32,             // u64 ship, 16-byte placement, i32 click x, i32 click y
+    kMoveSize = 16,              // u64 ship, i32 target x (Q24.8), i32 target y
+    kStopSize = 8                // u64 ship
 };
 
 std::string at(const char* what, std::size_t offset) {
@@ -153,6 +155,16 @@ struct PayloadWriter {
         put_i32(out, c.click_x);
         put_i32(out, c.click_y);
     }
+    void operator()(const MoveCmd& c) {
+        formats::put_u32_le(out, static_cast<std::uint32_t>(c.ship.v));
+        formats::put_u32_le(out, static_cast<std::uint32_t>(c.ship.v >> 32));
+        put_i32(out, c.target_x_q8);
+        put_i32(out, c.target_y_q8);
+    }
+    void operator()(const StopCmd& c) {
+        formats::put_u32_le(out, static_cast<std::uint32_t>(c.ship.v));
+        formats::put_u32_le(out, static_cast<std::uint32_t>(c.ship.v >> 32));
+    }
     void operator()(const LegacyRawCmd& c) { formats::put_bytes(out, c.payload); }
 };
 
@@ -172,6 +184,8 @@ std::uint64_t payload_size(const Body& body) {
         std::uint64_t operator()(const SetTradeSlotCmd&) const { return kSetTradeSlotSize; }
         std::uint64_t operator()(const SetSpeedCmd&) const { return kSetSpeedSize; }
         std::uint64_t operator()(const FoundCmd&) const { return kFoundSize; }
+        std::uint64_t operator()(const MoveCmd&) const { return kMoveSize; }
+        std::uint64_t operator()(const StopCmd&) const { return kStopSize; }
         std::uint64_t operator()(const LegacyRawCmd& c) const { return c.payload.size(); }
     };
     return std::visit(Size{}, body);
@@ -306,6 +320,32 @@ formats::Result<Body, std::string> decode_found(Bytes p) {
     return Body{c};
 }
 
+formats::Result<Body, std::string> decode_move(Bytes p) {
+    if (p.size() != kMoveSize) {
+        return at("Move: wrong payload length", p.size());
+    }
+    MoveCmd c;
+    In in(p);
+    const std::uint64_t lo = in.u32();
+    const std::uint64_t hi = in.u32();
+    c.ship = FigureId{lo | hi << 32};
+    c.target_x_q8 = in.i32();
+    c.target_y_q8 = in.i32();
+    return Body{c};
+}
+
+formats::Result<Body, std::string> decode_stop(Bytes p) {
+    if (p.size() != kStopSize) {
+        return at("Stop: wrong payload length", p.size());
+    }
+    StopCmd c;
+    In in(p);
+    const std::uint64_t lo = in.u32();
+    const std::uint64_t hi = in.u32();
+    c.ship = FigureId{lo | hi << 32};
+    return Body{c};
+}
+
 } // namespace
 
 std::uint16_t wire_type(const Body& body) {
@@ -319,6 +359,8 @@ std::uint16_t wire_type(const Body& body) {
         std::uint16_t operator()(const SetTradeSlotCmd&) const { return kWireSetTradeSlot; }
         std::uint16_t operator()(const SetSpeedCmd&) const { return kWireSetSpeed; }
         std::uint16_t operator()(const FoundCmd&) const { return kWireFound; }
+        std::uint16_t operator()(const MoveCmd&) const { return kWireMove; }
+        std::uint16_t operator()(const StopCmd&) const { return kWireStop; }
         std::uint16_t operator()(const LegacyRawCmd& c) const { return c.type; }
     };
     return std::visit(Type{}, body);
@@ -379,6 +421,10 @@ formats::Result<Body, std::string> decode_record(std::span<const std::uint8_t> b
         return decode_speed(payload);
     case kWireFound:
         return decode_found(payload);
+    case kWireMove:
+        return decode_move(payload);
+    case kWireStop:
+        return decode_stop(payload);
     default:
         break;
     }

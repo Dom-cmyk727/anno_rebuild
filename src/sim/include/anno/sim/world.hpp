@@ -32,6 +32,7 @@
 #include <anno/sim/player.hpp>
 #include <anno/sim/reject.hpp>
 #include <anno/sim/rng.hpp>
+#include <anno/sim/route_cache.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
 #include <anno/sim/tick.hpp>
@@ -289,14 +290,14 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        // host_events_, out_ and transport_stats_ are host-facing or diagnostic,
-        // deliberately not in the field list (not state).
+        // host_events_, out_, transport_stats_ and route_cache_ are host-facing, diagnostic or
+        // derived, deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, types_member, ids_member,
                                       players_member, islands_member, figures_member, events_member,
                                       timers_member, monopoly_member, event750_acc_member,
                                       faulted_member, host_events_member, out_member,
-                                      transport_stats_member] = w;
+                                      transport_stats_member, route_cache_member] = w;
     }
 
     /// Advances the world by `game_ms` (original order, D: AnnoWelt.dll
@@ -336,6 +337,8 @@ class World {
     friend struct Commands;
     friend struct CityCreation;
     friend struct Founding;
+    friend struct ShipOrders;
+    friend struct ShipMover;
 
     WorldClock clock_;
     WorldRng rng_;
@@ -360,6 +363,10 @@ class World {
     // routes into every TickContext Scheduler::advance builds. Default null; nothing
     // in the sim writes it.
     TransportStats* transport_stats_ = nullptr;
+    // Not state (derived, never hashed or saved): the coast index the ship route queries read;
+    // built on first use, dropped by every command that may change the islands and by copying the
+    // World.
+    RouteCache route_cache_;
 };
 
 } // namespace anno::sim

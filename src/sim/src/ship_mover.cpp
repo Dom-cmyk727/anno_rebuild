@@ -1,0 +1,261 @@
+#include <algorithm>
+
+#include <anno/sim/route.hpp>
+#include <anno/sim/route_cache.hpp>
+#include <anno/sim/route_stamps.hpp>
+#include <anno/sim/ship_mover.hpp>
+#include <anno/sim/ship_step.hpp>
+#include <anno/sim/world.hpp>
+
+namespace anno::sim {
+
+namespace {
+
+constexpr std::array<int, 8> kDirX = {-1, -1, 0, 1, 1, 1, 0, -1};
+constexpr std::array<int, 8> kDirZ = {0, 1, 1, 1, 0, -1, -1, -1};
+
+RouteLimits limits_of(const NavRules& n) {
+    RouteLimits l;
+    l.window_radius_tiles = static_cast<std::int32_t>(n.window_radius_tiles);
+    l.max_window_blocks = n.window_blocks;
+    l.goal_radius_tiles = static_cast<std::int32_t>(n.goal_radius_tiles);
+    l.run_cap = n.run_cap;
+    l.retry_cap = n.retry_cap;
+    l.unit_cap = n.unit_cap;
+    l.coarse_budget = n.coarse_budget;
+    l.fine_budget = n.fine_budget;
+    l.memory_bytes = n.memory_bytes;
+    return l;
+}
+
+RouteCostTable costs_of(const NavRules& n) {
+    RouteCostTable t;
+    for (std::size_t i = 0; i < n.class_costs.size(); ++i) {
+        const NavClassCost& c = n.class_costs[i];
+        RouteClassCosts k;
+        k.open_orth = c.open_orth;
+        k.open_diag = c.open_diag;
+        k.shore_orth = c.shore_orth;
+        k.shore_diag = c.shore_diag;
+        k.shore_enterable =
+            i != 3; // the original's class 3 has no shore mask (docs/sim/ship-route-engine.md)
+        t.classes.push_back(k);
+    }
+    return t;
+}
+
+/// The ships of a registry, collected in ONE pass for the stamp query (the view then answers any
+/// cell from the list). The pass is per admitted plan, not per tick.
+class RegistryShips final : public ShipSpatialView {
+  public:
+    explicit RegistryShips(const FigureRegistry& reg) {
+        for (const auto& slot : reg.list.slots) {
+            if (!slot.has_value() || !slot->nav.has_value() || slot->parent.valid()) {
+                continue;
+            }
+            const Figure& f = *slot;
+            LocalShip s;
+            s.id = f.id.v;
+            s.x_q8 = f.pos.x;
+            s.z_q8 = f.pos.y;
+            s.state_word = f.state_word;
+            s.ship_group = true;
+            s.has_direction = true;
+            if (f.nav->seg.kind == NavSegKind::Move && f.nav->seg.dir8 < 8) {
+                const bool diag = (f.nav->seg.dir8 & 1U) != 0;
+                const std::int32_t unit = diag ? 11863283 : (1 << 24);
+                s.dir_x_q24 = kDirX[f.nav->seg.dir8] * unit;
+                s.dir_z_q24 = kDirZ[f.nav->seg.dir8] * unit;
+            }
+            ships_.push_back(s);
+        }
+    }
+    void ships_in_cell(std::int32_t cell_x, std::int32_t cell_z,
+                       std::vector<LocalShip>& out) const override {
+        for (const LocalShip& s : ships_) {
+            if (ship_cell_of(s.x_q8) == cell_x && ship_cell_of(s.z_q8) == cell_z) {
+                out.push_back(s);
+            }
+        }
+    }
+
+  private:
+    std::vector<LocalShip> ships_;
+};
+
+/// The route nodes of the plan (12.7): turn nodes before the first run only, then one movement node
+/// per run. A diagonal run is `steps * L_d` long, an axis run `steps` units.
+std::vector<NavNode> nodes_of(const std::vector<RouteRun>& runs, unsigned facing,
+                              const NavFacts& facts) {
+    std::vector<NavNode> nodes;
+    const int want = 2 * runs.front().dir;
+    int diff = (want - static_cast<int>(facing)) & 15;
+    if (diff > 8) {
+        diff -= 16;
+    }
+    if (std::abs(diff) > 2) {
+        const int step = diff > 0 ? 1 : -1;
+        int f = static_cast<int>(facing);
+        for (int i = 0; i < std::abs(diff); ++i) {
+            NavNode t;
+            t.kind = NavSegKind::Turn;
+            t.facing = static_cast<std::uint8_t>(f & 15);
+            t.length_q32 = facts.turn_step_q32;
+            t.speed_q32 = kNavIdleSpeedQ32;
+            nodes.push_back(t);
+            f += step;
+        }
+    }
+    for (const RouteRun& r : runs) {
+        NavNode n;
+        n.kind = NavSegKind::Move;
+        n.dir8 = r.dir;
+        n.length_q32 = std::uint64_t{r.steps} * ((r.dir & 1U) != 0 ? kNavDiagStepQ32 : kNavUnitQ32);
+        n.speed_q32 = facts.speed_q32;
+        nodes.push_back(n);
+    }
+    return nodes;
+}
+
+class WorldPlanner final : public NavPlanner {
+  public:
+    WorldPlanner(const World& w, RouteCache& cache, const NavRules& rules, const NavFacts& facts,
+                 std::uint32_t& started)
+        : w_(w), cache_(cache), rules_(rules), facts_(facts), started_(started) {}
+
+    NavPlan plan(const Figure& ship) override {
+        const NavRules& rules = rules_;
+        // Fair admission (12.2 rule 2): admitted iff the pending tickets older than ours are fewer
+        // than the quota left in this Advance.
+        const std::uint64_t mine = ship.nav->ticket.value_or(0);
+        std::uint64_t older = 0;
+        for (const auto& slot : w_.figures().list.slots) {
+            if (slot.has_value() && slot->nav.has_value() && slot->nav->ticket.has_value() &&
+                *slot->nav->ticket < mine) {
+                ++older;
+            }
+        }
+        const std::uint64_t left =
+            rules.plans_per_advance > started_ ? rules.plans_per_advance - started_ : 0;
+        if (older >= left) {
+            return NavPlan{NavPlanKind::Deferred, {}, {}};
+        }
+        ++started_;
+
+        const CoastIndex& index = cache_.get(w_);
+        const RouteLimits limits = limits_of(rules);
+        RouteQuery q;
+        q.start_x = ship.pos.x >> 8;
+        q.start_z = ship.pos.y >> 8;
+        q.goal_x_q8 = ship.nav->order->target_x_q8;
+        q.goal_z_q8 = ship.nav->order->target_y_q8;
+        q.nav_class = facts_.nav_class;
+        LocalStampQuery sq;
+        sq.x_q8 = ship.pos.x;
+        sq.z_q8 = ship.pos.y;
+        sq.self_id = ship.id.v;
+        sq.radius_q8 = static_cast<std::int32_t>(facts_.stamp_radius_88);
+        sq.world_w = static_cast<std::int32_t>(w_.settings().world_width);
+        sq.world_h = static_cast<std::int32_t>(w_.settings().world_height);
+        q.stamps = local_ship_stamps(RegistryShips(w_.figures()), sq, limits);
+        const RouteResult r = plan_route(index, q, limits, costs_of(rules));
+        NavPlan out;
+        switch (r.status) {
+        case RouteStatus::Planned:
+            if (r.runs.empty() || r.runs.size() + 8 > kNavMaxNodes) {
+                out.kind = NavPlanKind::Failed;
+                out.reason = NavFailReason::BudgetExceeded;
+                return out;
+            }
+            out.kind = NavPlanKind::Nodes;
+            out.nodes = nodes_of(r.runs, ship.dir16, facts_);
+            return out;
+        case RouteStatus::Arrived:
+            out.kind = NavPlanKind::Arrived;
+            return out;
+        case RouteStatus::BudgetExceeded:
+            out.kind = NavPlanKind::Failed;
+            out.reason = NavFailReason::BudgetExceeded;
+            return out;
+        case RouteStatus::OutsideWindow:
+            out.kind = NavPlanKind::Failed;
+            out.reason = NavFailReason::OutsideWindow;
+            return out;
+        case RouteStatus::Unreachable:
+        case RouteStatus::InvalidQuery:
+            break;
+        }
+        out.kind = NavPlanKind::Failed;
+        out.reason = NavFailReason::Unreachable;
+        return out;
+    }
+
+  private:
+    const World& w_;
+    RouteCache& cache_;
+    const NavRules& rules_;
+    const NavFacts& facts_;
+    std::uint32_t& started_;
+};
+
+SimEvent event_of(const NavEvent& e, const Figure& ship, std::uint64_t tick) {
+    SimEvent s;
+    s.kind =
+        e.kind == NavEventKind::Arrived ? SimEventKind::ShipArrived : SimEventKind::ShipRouteFailed;
+    s.tick = tick;
+    s.player = ship.owner;
+    s.figure = ship.id;
+    s.code = static_cast<std::uint32_t>(e.reason);
+    s.order_id = e.order_id;
+    return s;
+}
+
+} // namespace
+
+void ShipMover::visit(World& w, const TickContext& ctx, Figure& ship, Effects& fx,
+                      std::uint32_t& plans_started) {
+    const FigureType* type = w.types_->find_figure_type(ship.kind);
+    if (type == nullptr || !type->nav.has_value() || !ship.nav.has_value()) {
+        return;
+    }
+    const NavFacts& facts = *type->nav;
+    NavMotion& m = *ship.nav;
+    std::vector<NavEvent> events;
+    // A ship that entered a blocked state drops its order and ticket (12.2 rule 1).
+    if (m.order.has_value() && (ship.state_word & w.rules_.nav.move_blocked_mask) != 0) {
+        events.push_back(
+            NavEvent{NavEventKind::RouteFailed, m.order->order_id, NavFailReason::ShipBlocked});
+        m.order.reset();
+        m.ticket.reset();
+        nav_stop_motion(ship);
+    }
+    const Player* owner = w.players_.find(ship.owner);
+    NavStepEnv env;
+    env.facts = &facts;
+    env.factor_percent = nav_speed_factor(facts, w.rules_.nav, type->capacity_88, ship.holds,
+                                          owner != nullptr ? owner->volk : 1);
+    WorldPlanner planner(w, w.route_cache_, w.rules_.nav, facts, plans_started);
+    const FixedPos before = ship.pos;
+    nav_step(ship, env, planner, static_cast<std::uint16_t>(ctx.t), events);
+    for (const NavEvent& e : events) {
+        fx.ui.push_back(event_of(e, ship, ctx.tick));
+    }
+    if (ship.pos.x != before.x || ship.pos.y != before.y) {
+        // The crew is written from the carrier: every figure whose parent chain reaches this ship
+        // (scouts aboard, the donkey of a scout) takes its position through the effects buffer.
+        for (const auto& slot : w.figures_.list.slots) {
+            if (!slot.has_value() || !slot->parent.valid()) {
+                continue;
+            }
+            const Figure* p = &*slot;
+            for (int depth = 0; depth < 8 && p != nullptr && p->parent.valid(); ++depth) {
+                p = find_figure(w.figures_, p->parent);
+            }
+            if (p != nullptr && p->id == ship.id) {
+                fx.figure_moves.push_back(FigureMove{slot->id, ship.pos});
+            }
+        }
+    }
+}
+
+} // namespace anno::sim

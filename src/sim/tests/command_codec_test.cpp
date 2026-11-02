@@ -99,7 +99,9 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     static_assert(std::is_same_v<std::variant_alternative_t<5, sim::Body>, sim::SetSpeedCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<6, sim::Body>, sim::LegacyRawCmd>);
     static_assert(std::is_same_v<std::variant_alternative_t<7, sim::Body>, sim::FoundCmd>);
-    static_assert(std::variant_size_v<sim::Body> == 8);
+    static_assert(std::is_same_v<std::variant_alternative_t<8, sim::Body>, sim::MoveCmd>);
+    static_assert(std::is_same_v<std::variant_alternative_t<9, sim::Body>, sim::StopCmd>);
+    static_assert(std::variant_size_v<sim::Body> == 10);
     CHECK(sim::kCommandWireVersion == 1);
     CHECK(sim::kWireBuild == 0x64);
     CHECK(sim::kWireDemolish == 0x68);
@@ -111,7 +113,7 @@ TEST_CASE("command wire: the alternative order and the native types are the form
     for (std::uint32_t t = 0; t <= 0xFFFF; ++t) {
         natives += sim::is_native_wire_type(static_cast<std::uint16_t>(t)) ? 1 : 0;
     }
-    CHECK(natives == 7);
+    CHECK(natives == 9);
     CHECK(sim::kWireFound == 0xF070);
     CHECK(sim::is_native_wire_type(0xF070));
     CHECK_FALSE(sim::is_native_wire_type(0x70)); // a legacy type, as before
@@ -504,9 +506,10 @@ TEST_CASE("command wire: FoundCmd bytes, round trip, hostile payloads and the ot
     // The other native encodings are unchanged by the new alternative (the exact bytes of the
     // existing test above are the proof; two are restated here).
     CHECK(encoded(sim::SetSpeedCmd{200}) == Bytes{0x7a, 0, 4, 0, 200, 0, 0, 0});
-    // Neighbouring types that stay legacy: 0x70 (the old candidate), 0xF06F and 0xF071.
+    // Neighbouring types that stay legacy: 0x70 (the old candidate), 0xF06F and 0xF073 (0xF071 and
+    // 0xF072 became native with MAP-NAV-2).
     for (const std::uint16_t t :
-         {std::uint16_t{0x70}, std::uint16_t{0xF06F}, std::uint16_t{0xF071}}) {
+         {std::uint16_t{0x70}, std::uint16_t{0xF06F}, std::uint16_t{0xF073}}) {
         auto r = sim::decode_record(
             Bytes{static_cast<std::uint8_t>(t & 0xff), static_cast<std::uint8_t>(t >> 8), 0, 0});
         REQUIRE(r.ok());

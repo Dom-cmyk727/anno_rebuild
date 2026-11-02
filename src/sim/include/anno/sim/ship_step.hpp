@@ -17,7 +17,12 @@
 namespace anno::sim {
 
 /// Why a routed order ended without arriving (docs/sim/ship-navigation.md 12.1).
-enum class NavFailReason : std::uint8_t { Unreachable = 0, BudgetExceeded = 1, OutsideWindow = 2 };
+enum class NavFailReason : std::uint8_t {
+    Unreachable = 0,
+    BudgetExceeded = 1,
+    OutsideWindow = 2,
+    ShipBlocked = 3 ///< the ship entered a blocked state (state_word & move_blocked_mask)
+};
 
 enum class NavPlanKind : std::uint8_t {
     Nodes,    ///< a plan: the nodes, installed as the route (status 1 with runs)

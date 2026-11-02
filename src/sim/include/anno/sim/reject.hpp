@@ -78,7 +78,10 @@ enum class Reject : std::uint16_t {
     /// The island is locked.
     IslandLocked,
     /// The island's city ring has no usable slot.
-    NoCitySlot
+    NoCitySlot,
+    // MAP-NAV-2 (MoveCmd / StopCmd, docs/sim/ship-navigation.md 12.1), appended in order.
+    /// The ship is a crew child (it has a parent) and takes no orders.
+    ShipEmbarked
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -176,6 +179,8 @@ struct ApplyResult {
         return "IslandLocked";
     case Reject::NoCitySlot:
         return "NoCitySlot";
+    case Reject::ShipEmbarked:
+        return "ShipEmbarked";
     }
     return "?";
 }

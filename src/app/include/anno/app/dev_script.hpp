@@ -21,7 +21,20 @@
 //                         earlier boundaries (not in the picture, object list not committed,
 //                         chunks not fresh, GPU copy not usable, no successful present, out of
 //                         view). Use `expect visibility Visible` to require that it was shown.
-//   hold publication      arm the publication hold (publication_hold.hpp): the sim thread waits at
+//   hold chunks | uploads | presents   (GPU window) hold a stage on the way to the screen while the
+//                         window keeps drawing and handling input: `chunks`: the chunk builders
+//                         wait before each build (ChunkWorkers' test gate), so a chunk an edit
+//                         needs stays stale on the CPU; `uploads`: the compositor uploads and
+//                         replaces no chunk (GpuFrame::set_test_hold_uploads), so a built chunk
+//                         stays off the GPU; `presents`: every present call counts as failed to the
+//                         window's consumers (the frame is still presented; the consumer seam is
+//                         the one a failing surface takes). `release ...` ends each. `wait blocked`
+//                         ends when a builder waits in the gate. `expect held NAME` (NAME as above
+//                         or `publication`) requires the hold to be in effect now.
+//   resize W H            ask the window for a drawable of W x H points (a new surface epoch)
+//   wait visibility NAME  ends when the latest applied command's change is at NAME
+//   (visibility_name) hold publication      arm the publication hold (publication_hold.hpp): the
+//   sim thread waits at
 //                         the next publication that follows a recorded outcome, between the outcome
 //                         and the snapshot. `wait held` ends when it waits (fails if the watchdog
 //                         ended a wait). The window keeps drawing and handling input meanwhile.
@@ -99,6 +112,16 @@ struct DevScriptState {
     /// hold exists, a publication waits in it, a wait ended by the watchdog.
     const PlacementKnowledge* knowledge = nullptr;
     bool hold_available = false, held = false, hold_expired = false;
+    /// The stage holds (hold chunks|uploads|presents): builders waiting in the gate now, whether
+    /// the chunk gate is armed, uploads held, presents counted as failed; and whether the window
+    /// has a GPU path and a chunk gate at all.
+    std::size_t chunks_blocked = 0;
+    bool chunks_armed = false, uploads_held = false, presents_failing = false;
+    bool stage_holds_available = false;
+    /// The scene generation of the last drawn frame and the surface epoch (the count of surface
+    /// configurations, 0 on the CPU path), for the checkpoint line: the same command, island
+    /// generation, frame and surface are named at every transition.
+    std::uint64_t scene_generation = 0, surface_epoch = 0;
     /// The last drawn frame (none before the first).
     const PointerFrame* frame = nullptr;
     float density = 1.0F;
@@ -117,6 +140,18 @@ struct DevScriptAction {
     /// Arm or release the publication hold (hold publication, release publication).
     enum class Hold : std::uint8_t { None, Arm, Release };
     Hold hold = Hold::None;
+    /// A stage hold to arm or release (hold|release chunks|uploads|presents), and a resize.
+    enum class Stage : std::uint8_t {
+        None,
+        ArmChunks,
+        ReleaseChunks,
+        ArmUploads,
+        ReleaseUploads,
+        FailPresents,
+        PassPresents
+    };
+    Stage stage = Stage::None;
+    std::optional<std::pair<int, int>> resize;
     /// Post the foreign build (1) or demolish (2) command (the `foreign` step).
     enum class Foreign : std::uint8_t { None, Build, Demolish };
     Foreign foreign = Foreign::None;

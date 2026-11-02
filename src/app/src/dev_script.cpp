@@ -146,6 +146,9 @@ int arity(const std::string& verb) {
     if (verb == "local") {
         return -2;
     }
+    if (verb == "resize") {
+        return 2;
+    }
     if (verb == "drag") {
         return 4;
     }
@@ -264,8 +267,8 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
     DevScriptAction act;
     while (!done()) {
         if (!act.events.empty() || act.look || act.screenshot ||
-            act.hold != DevScriptAction::Hold::None ||
-            act.foreign != DevScriptAction::Foreign::None ||
+            act.hold != DevScriptAction::Hold::None || act.stage != DevScriptAction::Stage::None ||
+            act.resize || act.foreign != DevScriptAction::Foreign::None ||
             act.local != DevScriptAction::Local::None) {
             // One input step per call: the window handles it before the next step (a wait or a
             // check included) looks at what it shows.
@@ -307,6 +310,15 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 over = st.latest && st.latest->state != CommandOutcome::State::Queued &&
                        (st.latest->state != CommandOutcome::State::Applied ||
                         !visibility_waiting(st.visibility));
+            } else if (what == "visibility" && s.args.size() == 2) {
+                over = st.latest && st.latest->state == CommandOutcome::State::Applied &&
+                       s.args[1] == visibility_name(st.visibility);
+            } else if (what == "blocked") {
+                if (!st.stage_holds_available) {
+                    fail(s, "no chunk gate in this session");
+                    break;
+                }
+                over = st.chunks_blocked > 0;
             } else if (what == "held") {
                 if (!st.hold_available || st.hold_expired) {
                     fail(s, st.hold_available ? "the hold's watchdog ended a wait"
@@ -418,6 +430,25 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             e.wheel.mouse_x = static_cast<float>(st.window_w) / 2.0F;
             e.wheel.mouse_y = static_cast<float>(st.window_h) / 2.0F;
             act.events.push_back(e);
+        } else if (s.verb == "resize") {
+            const auto rw = arg(0), rh = arg(1);
+            if (!rw || !rh || *rw <= 0 || *rh <= 0) {
+                fail(s, "not a size");
+                break;
+            }
+            act.resize = std::pair{static_cast<int>(*rw), static_cast<int>(*rh)};
+        } else if ((s.verb == "hold" || s.verb == "release") &&
+                   (s.args[0] == "chunks" || s.args[0] == "uploads" || s.args[0] == "presents")) {
+            if (!st.stage_holds_available) {
+                fail(s, "no stage holds in this session (they need the GPU window)");
+                break;
+            }
+            const bool arm = s.verb == "hold";
+            using Stage = DevScriptAction::Stage;
+            act.stage = s.args[0] == "chunks" ? (arm ? Stage::ArmChunks : Stage::ReleaseChunks)
+                        : s.args[0] == "uploads"
+                            ? (arm ? Stage::ArmUploads : Stage::ReleaseUploads)
+                            : (arm ? Stage::FailPresents : Stage::PassPresents);
         } else if (s.verb == "hold" || s.verb == "release") {
             if (s.args[0] != "publication" || !st.hold_available) {
                 fail(s, s.args[0] != "publication" ? "only 'publication' can be held"
@@ -469,6 +500,17 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
             } else if (s.args[0] == "title-lacks" && s.args.size() == 2) {
                 if (st.title.find(s.args[1]) != std::string::npos) {
                     fail(s, "the title is '" + st.title + "'");
+                    break;
+                }
+            } else if (s.args[0] == "held" && s.args.size() == 2) {
+                const std::string& n = s.args[1];
+                const bool in_effect = n == "chunks"        ? st.chunks_armed
+                                       : n == "uploads"     ? st.uploads_held
+                                       : n == "presents"    ? st.presents_failing
+                                       : n == "publication" ? st.held
+                                                            : false;
+                if (!in_effect) {
+                    fail(s, "'" + n + "' is not held now");
                     break;
                 }
             } else if (s.args[0] == "published" && s.args.size() == 1) {
@@ -576,7 +618,15 @@ DevScriptAction DevScript::step(const DevScriptState& st) {
                 "checkpoint " + s.args[0] + ": turn " +
                 std::to_string(st.snapshot ? st.snapshot->turn : 0) + ", frames " +
                 std::to_string(st.frames) + ", outcome " + outcome_text(st.latest) +
-                ", visibility " + visibility_name(st.visibility) +
+                ", visibility " + visibility_name(st.visibility) + ", ms " +
+                std::to_string(static_cast<long long>(st.now_ms)) + ", generation " +
+                std::to_string(st.scene_generation) + ", surface " +
+                std::to_string(st.surface_epoch) +
+                (st.stage_holds_available
+                     ? ", chunks_blocked " + std::to_string(st.chunks_blocked) +
+                           (st.uploads_held ? ", uploads held" : "") +
+                           (st.presents_failing ? ", presents failing" : "")
+                     : std::string()) +
                 (st.knowledge != nullptr
                      ? ", occupancy rebuilds " + std::to_string(st.knowledge->rebuilds()) +
                            " deltas " + std::to_string(st.knowledge->deltas_applied()) + " tiles " +

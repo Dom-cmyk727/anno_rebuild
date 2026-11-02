@@ -87,4 +87,73 @@ std::uint64_t PublicationHold::holds() const {
     return state_->holds;
 }
 
+void StageHold::State::pass() {
+    std::unique_lock lock(mu);
+    if (!armed || dead) {
+        return;
+    }
+    ++blocked;
+    const std::uint64_t entered = epoch;
+    const bool released =
+        cv.wait_for(lock, watchdog, [this, entered] { return epoch != entered || dead; });
+    --blocked;
+    if (!released) {
+        expired = true;
+        armed = false;
+        ++epoch; // the other waiters end with this one
+        cv.notify_all();
+    }
+}
+
+StageHold::StageHold(std::chrono::milliseconds watchdog) : state_(std::make_shared<State>()) {
+    state_->watchdog = watchdog;
+}
+
+StageHold::~StageHold() {
+    {
+        const std::lock_guard lock(state_->mu);
+        state_->dead = true;
+        state_->armed = false;
+        ++state_->epoch;
+    }
+    state_->cv.notify_all();
+}
+
+void StageHold::pass() {
+    state_->pass();
+}
+
+std::function<void()> StageHold::gate() {
+    return [s = state_] { s->pass(); };
+}
+
+void StageHold::arm() {
+    const std::lock_guard lock(state_->mu);
+    state_->armed = true;
+}
+
+void StageHold::release() {
+    {
+        const std::lock_guard lock(state_->mu);
+        state_->armed = false;
+        ++state_->epoch;
+    }
+    state_->cv.notify_all();
+}
+
+bool StageHold::armed() const {
+    const std::lock_guard lock(state_->mu);
+    return state_->armed;
+}
+
+std::size_t StageHold::blocked() const {
+    const std::lock_guard lock(state_->mu);
+    return state_->blocked;
+}
+
+bool StageHold::expired() const {
+    const std::lock_guard lock(state_->mu);
+    return state_->expired;
+}
+
 } // namespace anno::app

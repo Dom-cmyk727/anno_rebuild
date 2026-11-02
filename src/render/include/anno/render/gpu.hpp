@@ -522,6 +522,11 @@ class GpuFrame {
     /// dissolve in progress. A window that idles while paused keeps drawing while this is true
     /// (app::FrameDemand::gpu_work).
     [[nodiscard]] bool work_pending() const;
+    /// Test seam (W4-WIN-CLOSE C2; window thread only): while set, no chunk is uploaded or
+    /// replaced and no chunk is prefetched, so a chunk that is built on the CPU stays off the GPU,
+    /// and the visible chunks without a GPU copy keep their placeholder or stand-in. The window
+    /// keeps drawing. Cleared by passing false; never set by the library itself.
+    void set_test_hold_uploads(bool hold);
 
     /// Whether `group` can be shown without the window thread waiting for
     /// content: its sea pattern is rendered and fully on the GPU (render()

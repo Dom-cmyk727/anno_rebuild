@@ -239,6 +239,17 @@ formats::Result<std::unique_ptr<GpuBackend>, std::string> create_gpu(SDL_Window*
             std::fprintf(stderr, "ANNO_VIEW_PREWARM=%s not known (on, off)\n", s);
         }
     }
+    // Test hook: ANNO_VIEW_FADE_MS=<ms> sets the chunk dissolve (GpuLimits::chunk_fade_ms), so a
+    // scripted session can observe a change while its chunk is still dissolving in.
+    if (const char* s = std::getenv("ANNO_VIEW_FADE_MS"); s != nullptr && *s != 0) {
+        char* end = nullptr;
+        const unsigned long long ms = std::strtoull(s, &end, 10);
+        if (end != s && *end == 0) {
+            limits.chunk_fade_ms = ms;
+        } else {
+            std::fprintf(stderr, "ANNO_VIEW_FADE_MS=%s not understood (milliseconds)\n", s);
+        }
+    }
     b->prewarm_budget_mb = limits.prewarm_chunks > 0 ? limits.idle_plane_budget_mb : 0;
     // The cost tier of the river flow shading: automatic (High on a discrete GPU,
     // measured on others) unless ANNO_RIVER_QUALITY says low, medium or high.
@@ -293,6 +304,9 @@ class Viewer {
     ~Viewer() {
         if (hold_ != nullptr) {
             hold_->release(); // a session that ends inside a held publication frees the sim thread
+        }
+        if (chunk_hold_) {
+            chunk_hold_->release(); // and the builders (they are joined after this)
         }
         if (dev_ != nullptr && play_ != nullptr) {
             play_->set_batch_observer({}); // it points into knowledge_
@@ -487,6 +501,11 @@ class Viewer {
     /// The scripted session (ViewerHooks::script), the frames drawn and the loop's start for it.
     DevScript* script_ = nullptr;
     PublicationHold* hold_ = nullptr;
+    /// A scripted GPU session's stage holds (hold chunks|uploads|presents): the builders' gate,
+    /// the compositor's upload hold (set on gpu_->frame), and presents counted as failed.
+    std::unique_ptr<StageHold> chunk_hold_;
+    bool uploads_held_ = false, presents_failing_ = false;
+    std::uint64_t surface_epoch_ = 0;
     std::uint64_t drawn_frames_ = 0;
     Clock::time_point started_ = Clock::now();
     void script_tick();
@@ -784,7 +803,17 @@ std::string Viewer::run() {
     // (The flow builders hold the generation that asked: Scene::river_flow.)
     current()->prefetch_river_flow();
     // No default scene: every chunk job holds the generation of the frame that planned it.
-    frames_.set_workers(std::make_unique<render::ChunkWorkers>((hw + 1) / 2));
+    {
+        auto workers = std::make_unique<render::ChunkWorkers>((hw + 1) / 2);
+        if (script_ != nullptr && on_gpu()) {
+            // A scripted GPU session may hold the chunk builders (hold chunks): the gate does
+            // nothing until the script arms it.
+            chunk_hold_ = std::make_unique<StageHold>();
+            workers->set_test_gate(
+                [g = chunk_hold_->gate()](const render::ChunkKey&, std::uint64_t) { g(); });
+        }
+        frames_.set_workers(std::move(workers));
+    }
     while (running_) {
         SDL_Event e;
         if (quit_at_ && Clock::now() >= *quit_at_) {
@@ -1357,6 +1386,16 @@ void Viewer::script_tick() {
     st.visibility = command_visibility(st.latest);
     st.tool = dev_;
     st.knowledge = knowledge_ ? &*knowledge_ : nullptr;
+    if (chunk_hold_) {
+        st.stage_holds_available = true;
+        st.chunks_blocked = chunk_hold_->blocked();
+        st.chunks_armed = chunk_hold_->armed();
+        st.uploads_held = uploads_held_;
+        st.presents_failing = presents_failing_;
+    }
+    st.scene_generation =
+        pointer_frame_ && pointer_frame_->scene ? pointer_frame_->scene->generation() : 0;
+    st.surface_epoch = surface_epoch_;
     if (hold_ != nullptr) {
         st.hold_available = true;
         st.held = hold_->held();
@@ -1399,6 +1438,37 @@ void Viewer::script_tick() {
             c.body = sim::DemolishCmd{*dev_->setup().city, {act.local_at}};
         }
         static_cast<void>(play_->runner().post_command(std::move(c)));
+    }
+    if (act.stage != DevScriptAction::Stage::None && chunk_hold_) {
+        using Stage = DevScriptAction::Stage;
+        switch (act.stage) {
+        case Stage::ArmChunks:
+            chunk_hold_->arm();
+            break;
+        case Stage::ReleaseChunks:
+            chunk_hold_->release();
+            break;
+        case Stage::ArmUploads:
+        case Stage::ReleaseUploads:
+            uploads_held_ = act.stage == Stage::ArmUploads;
+#ifdef ANNO_VIEWER_GPU
+            if (gpu_) {
+                gpu_->frame->set_test_hold_uploads(uploads_held_);
+            }
+#endif
+            break;
+        case Stage::FailPresents:
+        case Stage::PassPresents:
+            presents_failing_ = act.stage == Stage::FailPresents;
+            dirty_ = true;
+            break;
+        case Stage::None:
+            break;
+        }
+    }
+    if (act.resize) {
+        SDL_SetWindowSize(window_, act.resize->first, act.resize->second);
+        dirty_ = true;
     }
     if (hold_ != nullptr && act.hold != DevScriptAction::Hold::None) {
         if (act.hold == DevScriptAction::Hold::Arm) {
@@ -1542,6 +1612,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
     };
     auto reconfigured = [this] {
+        ++surface_epoch_;
         if (tracer_) {
             tracer_->reconfigured();
         }
@@ -1640,7 +1711,12 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     // Locals of render() destroyed on the way out (command encoder, bind groups).
     steps_.push_back({"render exit", std::max(0.0, since_ms(render_start, p) - s.total_ms)});
     const auto present_start = Clock::now();
-    const WGPUStatus presented = wgpuSurfacePresent(g.surface.get());
+    WGPUStatus presented = wgpuSurfacePresent(g.surface.get());
+    if (presents_failing_) {
+        // Test seam (hold presents): the consumers see a failed present, the one a failing surface
+        // gives (the frame itself was presented).
+        presented = WGPUStatus_Error;
+    }
     if (presented != WGPUStatus_Success && !present_error_shown_) {
         std::fprintf(stderr, "presenting the frame failed\n");
         present_error_shown_ = true;

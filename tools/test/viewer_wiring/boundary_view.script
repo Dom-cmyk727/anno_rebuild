@@ -1,0 +1,76 @@
+# R2 on the GPU window (W4-WIN-CLOSE C2): the view and the surface. A change committed while the view
+# is elsewhere is Offscreen and is never waited for; a change that was in view and is left behind is
+# OutOfView and is not satisfied by frames that do not draw it; a new surface epoch (a resize) does
+# not let an earlier frame count. Run with --gpu. Every `expect` fails the session if not met.
+look 1052 444
+key b
+select 1307
+rotate 0
+wait frames 90
+
+# ---- committed while the view is elsewhere: Offscreen (the publication is held until it moved) -
+hold publication
+click 1052 444
+wait held
+look 1160 520
+wait frames 20
+release publication
+wait outcome
+wait drawn
+expect visibility Offscreen
+look 1052 444
+wait frames 40
+expect visibility Offscreen
+checkpoint offscreen_settled
+
+# ---- in view, then left behind: OutOfView, and back in view waits for the chunks again ---------
+hold chunks
+click 1068 444
+wait outcome
+wait blocked
+wait frames 20
+expect visibility ChunksStale
+look 1160 520
+wait frames 30
+expect visibility OutOfView
+checkpoint out_of_view
+look 1052 444
+wait frames 30
+expect visibility ChunksStale
+checkpoint back_in_view_stale
+release chunks
+wait drawn
+expect visibility Visible
+checkpoint view_visible
+
+# ---- a new surface epoch while the change waits: frames of the old epoch do not count -----------
+hold chunks
+click 1076 444
+wait outcome
+wait blocked
+wait frames 20
+expect visibility ChunksStale
+checkpoint before_resize
+resize 1100 640
+wait frames 40
+expect visibility ChunksStale
+checkpoint after_resize
+release chunks
+wait drawn
+expect visibility Visible
+checkpoint resized_visible
+
+# ---- no visual change: a refused command and a demolish of an empty tile ----------------------
+click 1076 444
+wait outcome
+expect outcome Refused Occupied
+wait drawn
+expect visibility NoVisualChange
+key x
+click 1100 444
+wait outcome
+expect outcome Applied
+wait drawn
+expect visibility NoVisualChange
+checkpoint no_visual_change
+quit

@@ -10,7 +10,9 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 
@@ -59,6 +61,43 @@ class PublicationHold {
         std::chrono::milliseconds watchdog;
     };
     PlayRunner& runner_;
+    std::shared_ptr<State> state_;
+};
+
+/// A stage hold for the chunk builders (W4-WIN-CLOSE C2): every call of `pass()` returns at once
+/// while the hold is not armed, and waits (a condition variable, with a watchdog) while it is. It
+/// is installed as ChunkWorkers' test gate by a scripted session, so a build that an applied edit
+/// needs stays unfinished for as long as the session says, while the window keeps drawing and
+/// handling input. Release, the watchdog and the destructor each end every wait; the shared state
+/// outlives the hold, so a worker still inside the gate after the hold is gone returns.
+class StageHold {
+  public:
+    explicit StageHold(std::chrono::milliseconds watchdog = PublicationHold::kDefaultWatchdog);
+    ~StageHold();
+    StageHold(const StageHold&) = delete;
+    StageHold& operator=(const StageHold&) = delete;
+
+    /// The gate itself: what the workers call before each build.
+    void pass();
+    /// A copy of the gate for ChunkWorkers::set_test_gate (shares the state).
+    [[nodiscard]] std::function<void()> gate();
+    void arm();
+    void release();
+    [[nodiscard]] bool armed() const;
+    /// Calls waiting in the gate now, and whether a wait ended by the watchdog.
+    [[nodiscard]] std::size_t blocked() const;
+    [[nodiscard]] bool expired() const;
+
+  private:
+    struct State {
+        mutable std::mutex mu;
+        std::condition_variable cv;
+        bool armed = false, expired = false, dead = false;
+        std::uint64_t epoch = 0;
+        std::size_t blocked = 0;
+        std::chrono::milliseconds watchdog;
+        void pass();
+    };
     std::shared_ptr<State> state_;
 };
 

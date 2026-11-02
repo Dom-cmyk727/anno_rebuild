@@ -713,6 +713,8 @@ struct GpuFrame::Impl {
     std::shared_ptr<const Scene> frame_scene;
     /// A visible key's CPU chunk was not GPU-usable at the end of the last chunk sync.
     bool uploads_pending = false;
+    /// GpuFrame::set_test_hold_uploads.
+    bool test_hold_uploads = false;
 
     WGPUDevice dev() const { return ref->device.get(); }
     WGPUQueue queue() const { return ref->queue.get(); }
@@ -1976,7 +1978,8 @@ struct GpuFrame::Impl {
             waiting = true;
             // Count and time budget: the first chunk always goes, so a
             // slow device still makes progress.
-            const bool room = !partial_spent && uploads < limits.uploads_per_frame &&
+            const bool room = !partial_spent && !test_hold_uploads &&
+                              uploads < limits.uploads_per_frame &&
                               (uploads == 0 || limits.upload_budget_ms <= 0.0 ||
                                ms_since(begin) < limits.upload_budget_ms);
             if (c != nullptr && room) {
@@ -2075,7 +2078,7 @@ struct GpuFrame::Impl {
         // step they are real chunks and the stand-ins have sources even for the
         // part of the view that was off screen before it). Bounded by
         // GpuLimits::prefetch_chunks of these resident at once.
-        if (!waiting && uploads == 0 && limits.prefetch_chunks > 0) {
+        if (!waiting && uploads == 0 && limits.prefetch_chunks > 0 && !test_hold_uploads) {
             const std::array<const std::vector<ChunkKey>*, 2> lists = {&margin, &adjacent};
             // Counted over the two lists (their length, not every GPU chunk).
             std::size_t resident = 0;
@@ -3510,6 +3513,10 @@ GpuFrame::ChunkGpuState GpuFrame::chunk_state(const ChunkKey& key) const {
     s.staging = impl_->staged.contains(key);
     s.fading = impl_->fading.contains(key);
     return s;
+}
+
+void GpuFrame::set_test_hold_uploads(bool hold) {
+    impl_->test_hold_uploads = hold;
 }
 
 bool GpuFrame::work_pending() const {

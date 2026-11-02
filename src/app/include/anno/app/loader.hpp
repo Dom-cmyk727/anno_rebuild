@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include <anno/assets/figure.hpp>
+#include <anno/assets/unit.hpp>
 #include <anno/formats/result.hpp>
 #include <anno/render/scene.hpp>
 
@@ -47,6 +49,13 @@ struct LoadedScene {
     /// left out of the scene (docs/app/game-shell.md). Empty for --view.
     std::vector<OmittedObject> omitted;
 };
+
+/// Every facing of FigurenHeader entry `figure` (sprite set 0 and its shadow, every zoom group) in
+/// `colour` (nullopt: uncoloured; ignored for a type that is not player-coloured). Reads the
+/// figure volumes of `dir`; W4-OPENING-1's live ships are drawn from these.
+[[nodiscard]] formats::Result<assets::unit::FacingSprites, std::string>
+load_figure_facings(const std::filesystem::path& dir, std::uint16_t figure, std::uint32_t facings,
+                    std::optional<assets::figure::Rgb> colour);
 
 /// One INSELLNK whose picture is a chosen template instead of the viewer's
 /// stand-in. `number` is the link head's u32 (the same value the scene island

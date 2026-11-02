@@ -485,10 +485,15 @@ class GpuFrame {
     /// composed on and `target` has the output's size: the grid is resampled
     /// onto it by one extra pass (see Resample). `overlay` (round ee, C1: a placement preview,
     /// Scene::preview_sprites) is drawn after everything else of the frame, ships included, with
-    /// no depth test: on top of the picture, not in its painter's order.
+    /// no depth test: on top of the picture, not in its painter's order. `live_units` (W4-OPENING-1:
+    /// ships that move every turn) are drawn as the scene's own units are, after all objects and in
+    /// the same painter's order among them (x + y), but are not part of the scene: handing a new
+    /// list each frame changes no chunk and no scene generation. They are packed even when the
+    /// chunks hold the scene's ships.
     GpuStats render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                     std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
-                    const Resample* resample = nullptr, std::span<const SpriteDraw> overlay = {});
+                    const Resample* resample = nullptr, std::span<const SpriteDraw> overlay = {},
+                    std::span<const UnitSprite> live_units = {});
     /// render for a scene generation that may be released while work started by the frame is
     /// still running (the play picture's generations; docs/app/gpu-handoff.md). The chunk jobs
     /// the frame plans and the wave simulation's background preparation (GpuLimits::
@@ -498,7 +503,8 @@ class GpuFrame {
     GpuStats render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene, Rect view,
                     std::size_t group, std::uint64_t time_ms, WaterStyle style,
                     WGPUTextureView target, const Resample* resample = nullptr,
-                    std::span<const SpriteDraw> overlay = {});
+                    std::span<const SpriteDraw> overlay = {},
+                    std::span<const UnitSprite> live_units = {});
 
     /// The compositor's copy of chunk `key` (round eb; docs/app/gpu-handoff.md, boundary 6). A
     /// CPU chunk that is cached and fresh is CPU-ready; it is GPU-usable once `serial` equals its

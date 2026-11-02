@@ -123,6 +123,25 @@ void DevTool::forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Co
     }
 }
 
+void DevTool::retarget(sim::CityRef city, TileRect island) {
+    // A new DevInput starts at the first type: keep the type and the rotation the player chose.
+    const std::optional<sim::TypeId> kept = input_.selected();
+    const std::uint8_t rotation = input_.rotation();
+    setup_.city = city;
+    setup_.island = island;
+    input_ = DevInput(setup_.registry, setup_.types, city, setup_.issuer);
+    if (kept) {
+        for (std::size_t i = 0; i < setup_.types.size() && input_.selected() != kept; ++i) {
+            static_cast<void>(input_.handle(DevEvent{DevEvent::Kind::NextType, {}}));
+        }
+    }
+    for (std::uint8_t r = 0; r < rotation; ++r) {
+        static_cast<void>(input_.handle(DevEvent{DevEvent::Kind::Rotate, {}}));
+    }
+    hover_.reset();
+    press_.reset();
+}
+
 std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFrame* frame) {
     std::vector<sim::Command> out;
     using K = ToolInput::Kind;
@@ -150,6 +169,13 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
         break;
     case K::PrevType:
         forward(DevEvent::Kind::PrevType, {}, out);
+        break;
+    case K::NextTypeFast:
+    case K::PrevTypeFast:
+        for (int i = 0; i < 10; ++i) {
+            forward(in.kind == K::NextTypeFast ? DevEvent::Kind::NextType : DevEvent::Kind::PrevType,
+                    {}, out);
+        }
         break;
     case K::Rotate:
         forward(DevEvent::Kind::Rotate, {}, out);

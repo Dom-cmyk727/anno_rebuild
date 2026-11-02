@@ -52,6 +52,14 @@ struct Preview {
 [[nodiscard]] std::optional<Preview> make_preview(const DevTool& tool, const render::Scene& scene,
                                                   std::size_t group, std::uint64_t time_ms);
 
+/// The preview of building type `type` standing at `origin` with `rotation` in `scene` (the
+/// founding cursor's warehouse; the same sprites the building tool previews with): the island of
+/// the scene that holds the tile, nullopt when none does, the type has no Anlagen entry or `group`
+/// is a derived level.
+[[nodiscard]] std::optional<Preview> make_type_preview(const render::Scene& scene, sim::TypeId type,
+                                                       std::uint8_t rotation, sim::TileXY origin,
+                                                       std::size_t group, std::uint64_t time_ms);
+
 /// The CPU renderer's preview: draws it (draw_prepared, the scene's sprite cache) and blends it
 /// onto `xrgb`, the frame of `view` (0x00RRGGBB, view.w x view.h), over what is there.
 void blend_preview(const render::Scene& scene, const Preview& preview, std::size_t group,
@@ -75,6 +83,16 @@ class PlacementKnowledge {
     /// ensure and on_batches).
     bool update(const std::vector<SceneBuilding>& buildings, std::uint64_t version,
                 const render::Scene& scene);
+    /// The tool builds in another city: the index is stale until the next ensure()/seed().
+    void retarget(const DevToolSetup& setup) {
+        setup_ = setup;
+        stale_ = true;
+        seeded_ = false;
+        version_.reset();
+        number_.reset();
+        occupied_.clear();
+        changed_ = true;
+    }
     /// Rebuilds the index from the city island's own buildings (`local`; others are ignored).
     /// O(local city). Counted by rebuilds().
     void seed(std::span<const SceneBuilding> local, const render::Scene& scene);

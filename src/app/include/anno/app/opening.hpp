@@ -55,6 +55,11 @@ load_opening(const std::filesystem::path& game_dir, const std::filesystem::path&
                                               std::shared_ptr<const sim::TypeRegistry> registry,
                                               sim::PlayerId local);
 
+/// The (figure kind, owner) pairs of the world's sailing ships, ascending: the ship sprites the
+/// window prepares.
+[[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint32_t>>
+opening_ship_kinds(const sim::World& world);
+
 /// A session save (docs/app/ship-opening.md section 5): the world's save bytes in a frame that
 /// names what they belong to. Text header lines, a blank line, then the bytes.
 struct OpeningSave {

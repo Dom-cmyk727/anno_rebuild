@@ -90,7 +90,8 @@ load_play(const std::filesystem::path& game_dir, const std::filesystem::path& fi
 /// The developer tool's setup (dev_tool.hpp), read from `load` before the runner takes its world:
 /// the registry, buildable_types under the world's layout, and the developer player's first city
 /// with its island's tiles (none: the tool stays off).
-[[nodiscard]] DevToolSetup dev_tool_setup(const PlayLoad& load);
+[[nodiscard]] DevToolSetup dev_tool_setup(const PlayLoad& load,
+                                          sim::PlayerId player = developer_player());
 
 /// What the window reads. Not a World.
 struct PlaySnapshot {
@@ -150,6 +151,13 @@ struct TurnObservation {
     bool batch = false;
     std::size_t deltas = 0;
     std::chrono::steady_clock::time_point published{};
+};
+
+/// The world as saved at a turn boundary (W4-OPENING-1): the save frame's bytes (World::save), the
+/// state hash, and the turn and tick it follows. Taken on the sim thread.
+struct WorldCapture {
+    std::vector<std::uint8_t> save;
+    std::uint64_t hash = 0, turn = 0, tick = 0;
 };
 
 /// Clock and sleep for the turn schedule. The app uses `steady_clock`. A test
@@ -224,6 +232,11 @@ class PlayRunner {
     }
     /// Publishes an OpeningView with every snapshot and keeps the ship events for it.
     void set_opening(bool on) { opening_ = on; }
+    /// Asks for the world to be captured at the end of the next turn, after that turn's
+    /// publication (so the capture and the newest snapshot are the same state). `done` runs once on
+    /// the sim thread; file I/O belongs to the caller's own thread. A second request before the
+    /// first ran replaces nothing and returns false. Thread-safe.
+    bool request_capture(std::function<void(WorldCapture)> done);
     /// The sim's order-id counter at the start of the next turn (sim thread; tests, run_n).
     [[nodiscard]] std::uint64_t next_order_id() const { return world_.ids().next_order_id; }
     /// Test seam: called on the sim thread inside every turn, after its commands are chosen and
@@ -241,6 +254,12 @@ class PlayRunner {
     /// log, which can be ahead of snapshot() by a publication. A reader that also shows the
     /// snapshot's money or goods must use feedback() (round ee review, R1).
     [[nodiscard]] CommandOutcome outcome(CommandId id) const { return outcomes_.find(id); }
+    /// What is known about `id` as of `snapshot`'s publication (OutcomeLog::find_published): an
+    /// outcome recorded after the snapshot's turn is answered Queued with `deferred`, so a view
+    /// and the outcome beside it are from the same publication (W4-OPENING-1).
+    [[nodiscard]] CommandOutcome outcome_at(CommandId id, const PlaySnapshot& snapshot) const {
+        return outcomes_.find_published(id, snapshot.outcomes_next);
+    }
     /// The snapshot and, when `receipt` is given, that command's outcome as of the snapshot's
     /// publication (PlayFeedback; OutcomeLog::find_published). The snapshot is read first and the
     /// outcome is answered against its watermark, so money and goods are never from before an
@@ -341,6 +360,8 @@ class PlayRunner {
     bool record_hashes_ = false;
     std::vector<TurnHash> hashes_;
     OutcomeLog outcomes_;
+    std::mutex capture_mu_;
+    std::function<void(WorldCapture)> capture_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.
     std::optional<sim::CityRef> developer_city_;

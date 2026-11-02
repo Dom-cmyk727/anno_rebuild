@@ -9,10 +9,12 @@ add_library(anno_app_core
   src/dev_session.cpp
   src/dev_input.cpp
   src/dev_tool.cpp
+  src/frame_projection.cpp
   src/legal_workload.cpp
   src/cli.cpp
   src/loader.cpp
   src/opening.cpp
+  src/opening_session.cpp
   src/opening_ui.cpp
   src/opening_view.cpp
   src/picture_check.cpp
@@ -22,6 +24,7 @@ add_library(anno_app_core
   src/png.cpp
   src/publication_hold.cpp
   src/scene_picture.cpp
+  src/ship_layer.cpp
   src/still.cpp
   src/visibility.cpp
   src/window_trace.cpp

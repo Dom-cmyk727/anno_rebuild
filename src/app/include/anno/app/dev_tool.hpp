@@ -87,6 +87,10 @@ struct ToolInput {
         Toggle,
         NextType,
         PrevType,
+        /// Ten types on (Shift+N / Shift+P, W4-OPENING-1): the registry has more types than a
+        /// player wants to step through one by one.
+        NextTypeFast,
+        PrevTypeFast,
         Rotate,
         ToggleDemolish,
         /// Esc: drop a press, leave the demolish mode.
@@ -126,6 +130,10 @@ class DevTool {
     [[nodiscard]] const std::string& message() const { return message_; }
     [[nodiscard]] const DevInput& input() const { return input_; }
     [[nodiscard]] const DevToolSetup& setup() const { return setup_; }
+    /// The tool now builds in another city (a ship start founds its first one after launch): the
+    /// city, its island's tiles; a press in progress and the hover are dropped, the selected type
+    /// and rotation stay. Window thread.
+    void retarget(sim::CityRef city, TileRect island);
 
   private:
     void forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Command>& out);

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <set>
 #include <tuple>
 
@@ -100,6 +101,34 @@ VolumeParts volume_parts(const fs::path& dir, std::uint32_t group) {
     return out;
 }
 
+/// Reads byte ranges of the figure volumes of `dir` (the parts of each zoom group are listed on
+/// first use). Not thread-safe: one reader per thread.
+assets::unit::VolumeReader make_volume_reader(const fs::path& dir) {
+    auto parts = std::make_shared<std::map<std::uint32_t, VolumeParts>>();
+    return [dir, parts](std::uint32_t group, std::uint64_t offset,
+                        std::uint64_t length) -> std::optional<std::vector<std::uint8_t>> {
+        auto it = parts->find(group);
+        if (it == parts->end()) {
+            it = parts->emplace(group, volume_parts(dir, group)).first;
+        }
+        const auto pieces = fig::locate(it->second.sizes, offset, length);
+        if (!pieces) {
+            return std::nullopt;
+        }
+        std::vector<std::uint8_t> data;
+        for (const auto& p : *pieces) {
+            std::ifstream in(it->second.paths[p.part], std::ios::binary);
+            in.seekg(static_cast<std::streamoff>(p.start));
+            std::vector<char> buf(static_cast<std::size_t>(p.end - p.start));
+            if (!in.read(buf.data(), static_cast<std::streamsize>(buf.size()))) {
+                return std::nullopt;
+            }
+            data.insert(data.end(), buf.begin(), buf.end());
+        }
+        return data;
+    };
+}
+
 /// The ships and soldiers of a scenario; soldiers stand on the ground height
 /// of `scene` at their position. Only the frames the units use are read.
 Result<std::vector<render::UnitSprite>, std::string> load_units(const fs::path& dir,
@@ -119,30 +148,7 @@ Result<std::vector<render::UnitSprite>, std::string> load_units(const fs::path& 
     if (!header) {
         return "FigurenHeader.dat: " + header.error();
     }
-    std::map<std::uint32_t, VolumeParts> parts;
-    const assets::unit::VolumeReader read =
-        [&](std::uint32_t group, std::uint64_t offset,
-            std::uint64_t length) -> std::optional<std::vector<std::uint8_t>> {
-        auto it = parts.find(group);
-        if (it == parts.end()) {
-            it = parts.emplace(group, volume_parts(dir, group)).first;
-        }
-        const auto pieces = fig::locate(it->second.sizes, offset, length);
-        if (!pieces) {
-            return std::nullopt;
-        }
-        std::vector<std::uint8_t> data;
-        for (const auto& p : *pieces) {
-            std::ifstream in(it->second.paths[p.part], std::ios::binary);
-            in.seekg(static_cast<std::streamoff>(p.start));
-            std::vector<char> buf(static_cast<std::size_t>(p.end - p.start));
-            if (!in.read(buf.data(), static_cast<std::streamsize>(buf.size()))) {
-                return std::nullopt;
-            }
-            data.insert(data.end(), buf.begin(), buf.end());
-        }
-        return data;
-    };
+    const assets::unit::VolumeReader read = make_volume_reader(dir);
     const std::array kinds = {assets::unit::UnitKind::Ship, assets::unit::UnitKind::Soldier};
     // Colours as at a new single-player game start (unit::start_colours).
     auto units = assets::unit::units(scenario.value(), header.value(), kinds,
@@ -189,6 +195,21 @@ Result<std::vector<render::UnitSprite>, std::string> load_units(const fs::path& 
 }
 
 } // namespace
+
+Result<assets::unit::FacingSprites, std::string>
+load_figure_facings(const fs::path& dir, std::uint16_t figure, std::uint32_t facings,
+                    std::optional<assets::figure::Rgb> colour) {
+    auto header_buf = read_all(dir / "FigurenHeader.dat");
+    if (!header_buf) {
+        return std::string("cannot read FigurenHeader.dat");
+    }
+    auto header = fig::FigurenHeader::parse(*header_buf);
+    if (!header) {
+        return "FigurenHeader.dat: " + header.error();
+    }
+    return assets::unit::facing_sprites(header.value(), figure, facings, colour,
+                                        make_volume_reader(dir));
+}
 
 Result<fs::path, std::string> find_game_dir(const std::optional<fs::path>& explicit_dir,
                                             const fs::path& file,

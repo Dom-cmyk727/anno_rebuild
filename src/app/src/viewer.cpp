@@ -16,6 +16,7 @@
 
 #include <anno/app/dev_feedback.hpp>
 #include <anno/app/dev_script.hpp>
+#include <anno/app/frame_projection.hpp>
 #include <anno/app/sdl_input.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
@@ -323,7 +324,8 @@ class Viewer {
           trace_(hooks != nullptr ? hooks->trace : nullptr),
           dev_(hooks != nullptr && play != nullptr ? hooks->dev : nullptr),
           script_(dev_ != nullptr ? hooks->script : nullptr),
-          hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr) {
+          hold_(dev_ != nullptr && hooks->script != nullptr ? hooks->hold : nullptr),
+          opening_(hooks != nullptr && play != nullptr ? hooks->opening : nullptr) {
         if (dev_ != nullptr) {
             knowledge_.emplace(dev_->setup());
             attach_occupancy(*play_, *knowledge_, *dev_); // follows the takes; ensure() seeds
@@ -515,6 +517,27 @@ class Viewer {
     std::uint64_t drawn_frames_ = 0;
     Clock::time_point started_ = Clock::now();
     void script_tick();
+    // ---- the ship-start opening (ViewerHooks::opening) ----
+    OpeningHooks* opening_ = nullptr;
+    /// The view of the newest snapshot the frame took, the ships drawn from it, and the tick of
+    /// the view the last DELIVERED frame (CPU: every stage returned true; GPU: the present
+    /// succeeded) was drawn from.
+    std::shared_ptr<const PlaySnapshot> opening_snapshot_;
+    std::vector<render::UnitSprite> live_units_;
+    std::uint64_t frame_view_tick_ = 0;
+    std::optional<std::uint64_t> shown_tick_;
+    std::size_t ships_missing_ = 0;
+    /// The founding cursor's preview of the frame being drawn.
+    std::optional<Preview> found_preview_;
+    /// Takes the newest snapshot, revalidates the controls against its view, retargets the building
+    /// tool at a city that appeared, and builds the ships to draw. Frame boundary; window thread.
+    void opening_refresh();
+    [[nodiscard]] UiFeed opening_feed() const;
+    /// Applies a UiResult: posts the commands, records their receipts, asks for a save.
+    void opening_apply(const UiResult& result);
+    std::string save_note_;
+    /// The opening's share of handle(): returns whether the event was taken.
+    bool opening_handle(const SDL_Event& e);
     /// Test hook (ANNO_VIEW_QUIT_S=<seconds>): the loop ends at this time.
     std::optional<Clock::time_point> quit_at_;
     /// Test hook (ANNO_VIEW_RESIZE=<seconds>:<w>x<h>): one resize at this time, to this drawable.
@@ -651,6 +674,15 @@ std::string Viewer::run() {
         } else {
             std::fprintf(stderr, "ANNO_VIEW_AT=%s not understood (<x>,<y>)\n", at);
         }
+    }
+    if (opening_ != nullptr) {
+        // The opening starts on the participant's ship (on the sea surface, as the ship is drawn).
+        const auto g = render::pick_geometry_of(levels().tile_w(group_), levels().tile_h(group_));
+        const auto [sx, sy] = render::corner_point(opening_->look_x, opening_->look_y,
+                                                   static_cast<double>(render::kSeaLevel), g);
+        cam_x_ = sx;
+        cam_y_ = sy;
+        clamp();
     }
     // Test hook: ANNO_VIEW_RESIZE=<seconds>:<w>x<h> resizes the window once, that long after the
     // start, to a drawable of that many pixels (the surface is reconfigured: a new epoch).
@@ -955,6 +987,9 @@ void Viewer::handle(const SDL_Event& e) {
         if (step.taken) {
             if (dev_->enabled() != was_on) {
                 drag_ = false; // a left drag that began as a pan ends with it
+                if (opening_ != nullptr && dev_->enabled()) {
+                    opening_->ui->leave_modes(); // the pointer is the building tool's now
+                }
             }
             // A motion within the same tile changes nothing shown: no redraw, no new title.
             if (e.type != SDL_EVENT_MOUSE_MOTION || dev_->hover() != hovered) {
@@ -974,6 +1009,11 @@ void Viewer::handle(const SDL_Event& e) {
                 return;
             }
         }
+    }
+    if (opening_ != nullptr && opening_->ui != nullptr && opening_handle(e)) {
+        update_title();
+        dirty_ = true;
+        return;
     }
     const float density = SDL_GetWindowPixelDensity(window_);
     switch (e.type) {
@@ -1119,6 +1159,175 @@ std::uint64_t Viewer::time_ms() const {
     const auto t = paused_at_ ? *paused_at_ : Clock::now() - clock_;
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(t).count());
+}
+
+UiFeed Viewer::opening_feed() const {
+    UiFeed feed;
+    if (opening_snapshot_ && opening_snapshot_->opening) {
+        feed.view = opening_snapshot_->opening.get();
+        feed.outcome = [snap = opening_snapshot_, this](CommandId id) {
+            return play_->runner().outcome_at(id, *snap);
+        };
+    }
+    feed.shown_tick = shown_tick_;
+    return feed;
+}
+
+void Viewer::opening_refresh() {
+    if (opening_ == nullptr || opening_->ui == nullptr || play_ == nullptr) {
+        return;
+    }
+    std::shared_ptr<const PlaySnapshot> snap = play_->runner().snapshot();
+    if (!snap || !snap->opening) {
+        live_units_.clear();
+        return;
+    }
+    const bool changed = !opening_snapshot_ || opening_snapshot_->opening != snap->opening;
+    opening_snapshot_ = std::move(snap);
+    const OpeningView& view = *opening_snapshot_->opening;
+    if (changed) {
+        opening_->ui->on_view(opening_feed());
+        // The participant's first city exists (founded after launch): the building tool builds
+        // there from now on (the city is derived from the published view, never assumed).
+        if (dev_ != nullptr && !view.cities.empty()) {
+            const CityView& city = view.cities.front();
+            if (!dev_->setup().city || *dev_->setup().city != city.ref) {
+                for (const IslandRect& r : opening_->ui->setup().islands) {
+                    if (r.slot == city.ref.island.v) {
+                        dev_->retarget(city.ref, TileRect{r.x0, r.y0, r.w, r.h});
+                        if (knowledge_) {
+                            knowledge_->retarget(dev_->setup());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        update_title();
+    }
+    const auto selected = opening_->ui->selected();
+    const ShipView* ship = selected ? view.ship(*selected) : nullptr;
+    ships_missing_ = 0;
+    live_units_ = opening_->ships->units(
+        view, selected, ship != nullptr && ship->owner == opening_->ui->setup().local,
+        &ships_missing_);
+    frame_view_tick_ = view.tick;
+}
+
+void Viewer::opening_apply(const UiResult& result) {
+    const std::uint64_t tick =
+        opening_snapshot_ && opening_snapshot_->opening ? opening_snapshot_->opening->tick : 0;
+    for (std::size_t i = 0; i < result.commands.size(); ++i) {
+        const CommandId id = play_->runner().post_command(result.commands[i]);
+        opening_->ui->submitted(i, id, tick);
+    }
+    if (result.save) {
+        save_note_ = opening_->quick_save ? opening_->quick_save() : "saving is not available";
+    }
+    update_title();
+    dirty_ = true;
+}
+
+bool Viewer::opening_handle(const SDL_Event& e) {
+    OpeningUi& ui = *opening_->ui;
+    const float density = SDL_GetWindowPixelDensity(window_);
+    const double d = density > 0.0F ? static_cast<double>(density) : 1.0;
+    const bool tool_on = dev_ != nullptr && dev_->enabled();
+    std::optional<FrameProjection> projection;
+    if (pointer_frame_) {
+        projection.emplace(*pointer_frame_, *opening_->ships);
+    }
+    const ScreenProjection* frame = projection ? &*projection : nullptr;
+    const UiFeed feed = opening_feed();
+    switch (e.type) {
+    case SDL_EVENT_KEY_DOWN: {
+        const bool shift = (e.key.mod & SDL_KMOD_SHIFT) != 0;
+        std::optional<OpeningKey> key;
+        switch (e.key.key) {
+        case SDLK_F:
+            key = OpeningKey::Found;
+            break;
+        case SDLK_U:
+            key = OpeningKey::Unload;
+            break;
+        case SDLK_H:
+            key = OpeningKey::Halt;
+            break;
+        case SDLK_T:
+            key = OpeningKey::Rotate;
+            break;
+        case SDLK_TAB:
+            key = OpeningKey::NextHold;
+            break;
+        case SDLK_LEFTBRACKET:
+            key = OpeningKey::QtyDown;
+            break;
+        case SDLK_RIGHTBRACKET:
+            key = OpeningKey::QtyUp;
+            break;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            key = OpeningKey::Send;
+            break;
+        case SDLK_F5:
+            key = OpeningKey::Save;
+            break;
+        case SDLK_ESCAPE:
+            key = ui.has_pending() ? std::optional<OpeningKey>(OpeningKey::Escape) : std::nullopt;
+            break;
+        default:
+            break;
+        }
+        if (!key) {
+            return false;
+        }
+        if (e.key.repeat && *key != OpeningKey::QtyDown && *key != OpeningKey::QtyUp) {
+            // A held key does nothing twice; a held Esc after a cancel must not quit either.
+            return *key == OpeningKey::Escape || ui.mode() != OpeningMode::Select;
+        }
+        if (tool_on && (*key == OpeningKey::Found || *key == OpeningKey::Unload)) {
+            return false; // the building tool owns the pointer: B turns it off first
+        }
+        const UiResult r = ui.key(*key, shift, feed);
+        opening_apply(r);
+        return r.taken;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP: {
+        if (tool_on ||
+            (e.button.button != SDL_BUTTON_LEFT && e.button.button != SDL_BUTTON_RIGHT)) {
+            return false;
+        }
+        const PointerButton button =
+            e.button.button == SDL_BUTTON_LEFT ? PointerButton::Left : PointerButton::Right;
+        const double px = static_cast<double>(e.button.x) * d,
+                     py = static_cast<double>(e.button.y) * d;
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            ui.pointer_down(button, px, py);
+            return false; // the window's own pan follows the same press
+        }
+        opening_apply(ui.pointer_up(button, px, py, frame, feed));
+        return false;
+    }
+    case SDL_EVENT_MOUSE_MOTION:
+        if (!tool_on) {
+            ui.pointer_move(static_cast<double>(e.motion.x) * d,
+                            static_cast<double>(e.motion.y) * d, frame, feed);
+            if (ui.mode() == OpeningMode::Found) {
+                dirty_ = true;
+                update_title();
+            }
+        }
+        return false;
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+    case SDL_EVENT_WINDOW_HIDDEN:
+    case SDL_EVENT_WINDOW_MINIMIZED:
+        ui.abort_gestures();
+        return false;
+    default:
+        return false;
+    }
 }
 
 void Viewer::toggle_pause() {
@@ -1303,6 +1512,20 @@ void Viewer::update_title() {
     title += " — CPU";
 #endif
     const bool dev_on = dev_ != nullptr && dev_->enabled() && knowledge_;
+    if (opening_ != nullptr && opening_->ui != nullptr) {
+        title += " — " + opening_->ui->status_line(opening_feed());
+        if (ships_missing_ > 0) {
+            title += " — " + std::to_string(ships_missing_) + " ship(s) without sprites";
+        }
+        if (!save_note_.empty()) {
+            title += " — " + save_note_;
+        }
+        if (opening_->save_status) {
+            if (const std::string s = opening_->save_status(); !s.empty()) {
+                title += " — " + s;
+            }
+        }
+    }
     if (hooks_ != nullptr && hooks_->title && !dev_on) {
         const std::string extra = hooks_->title();
         if (!extra.empty()) {
@@ -1550,6 +1773,7 @@ void Viewer::draw() {
     display_wait_ms_ = 0;
     // The frame boundary: the picture first, then the one scene handle of this frame.
     follow_picture();
+    opening_refresh(); // the ships of the newest snapshot (an opening only)
     const std::shared_ptr<const render::Scene> gen = current();
     if (knowledge_ && play_ != nullptr) {
         // The first seed, and the reseed after a spell with the tool off, from the picture's
@@ -1717,8 +1941,17 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             overlay = std::move(p->sprites);
         }
     }
+    if (opening_ != nullptr) {
+        // The founding cursor: the warehouse sprite at the pointer, over the picture.
+        if (const auto fp = opening_->ui->found_preview(opening_feed())) {
+            if (auto p = make_type_preview(*gen, fp->type, fp->rotation, fp->origin, group_,
+                                           time_ms())) {
+                overlay.insert(overlay.end(), p->sprites.begin(), p->sprites.end());
+            }
+        }
+    }
     const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
-                                   resample, overlay);
+                                   resample, overlay, live_units_);
     // What the pointer is over from now on: this frame's map, zoom level and scene.
     pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, out_w, out_h);
@@ -1765,6 +1998,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     };
     if (play_ != nullptr) {
         play_->visibility().frame_done(presented == WGPUStatus_Success, fresh, usable);
+        if (presented == WGPUStatus_Success && opening_ != nullptr) {
+            shown_tick_ = frame_view_tick_;
+        }
         refresh_visibility_title();
     }
     if (tracer_) {
@@ -1810,6 +2046,17 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         play_->visibility().begin_frame(view, group_); // the CPU path's frame, as draw_gpu's
     }
     const auto s = frames_.render(gen, view, group_, time_ms(), water_, buffer_.data());
+    if (opening_ != nullptr) {
+        // The live ships after every object of the scene (the scene's own units are drawn last
+        // too), then the founding cursor over them.
+        blend_units(live_units_, *gen, group_, view, buffer_.data());
+        if (const auto fp = opening_->ui->found_preview(opening_feed())) {
+            if (const auto p = make_type_preview(*gen, fp->type, fp->rotation, fp->origin, group_,
+                                                 time_ms())) {
+                blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
+            }
+        }
+    }
     if (dev_ != nullptr) {
         if (const auto p = make_preview(*dev_, *gen, group_, time_ms())) {
             blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());
@@ -1879,6 +2126,9 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
             return frames_.chunk(k) != nullptr && frames_.stale_generation(k) == 0;
         };
         play_->visibility().frame_done(delivered, fresh, fresh);
+        if (delivered && opening_ != nullptr) {
+            shown_tick_ = frame_view_tick_;
+        }
         refresh_visibility_title();
     }
     // SDL's present waits for vsync.

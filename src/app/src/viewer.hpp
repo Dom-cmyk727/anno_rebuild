@@ -16,16 +16,35 @@
 #include <anno/app/cli.hpp>
 #include <anno/app/dev_script.hpp>
 #include <anno/app/dev_tool.hpp>
+#include <anno/app/opening_ui.hpp>
 #include <anno/app/play_follow.hpp>
 #include <anno/app/publication_hold.hpp>
+#include <anno/app/ship_layer.hpp>
 #include <anno/app/window_trace.hpp>
 #include <anno/render/scene.hpp>
 
 namespace anno::app {
 
+/// The ship-start opening in the window (W4-OPENING-1; docs/app/ship-opening.md). The window
+/// feeds `ui` its input and the published OpeningView, posts the commands it makes to the runner
+/// and draws `ships`; the caller owns all three and outlives run_viewer.
+struct OpeningHooks {
+    OpeningUi* ui = nullptr;
+    std::shared_ptr<const ShipLayer> ships;
+    /// Asks the session for a quick-save at the next turn boundary; the text is shown (a request
+    /// that could not be made says why). Called on the window thread; must not block.
+    std::function<std::string()> quick_save;
+    /// The newest save result line ("" when there is none), polled for the title.
+    std::function<std::string()> save_status;
+    /// The tile the camera opens on (the local participant's ship).
+    double look_x = 0, look_y = 0;
+};
+
 /// Read by the window thread. The functions must not touch the sim; they
 /// read the published snapshot (docs/app/game-shell.md).
 struct ViewerHooks {
+    /// The ship-start opening (null: an ordinary --play window).
+    OpeningHooks* opening = nullptr;
     std::function<std::string()> title;
     std::function<void(bool paused)> on_pause;
     /// The window trace (docs/app/window-trace.md; opt-in, GPU renderer only): every attempted GPU

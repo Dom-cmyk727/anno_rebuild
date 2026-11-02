@@ -249,17 +249,17 @@ std::vector<sim::TypeId> buildable_types(const sim::TypeRegistry& registry,
     return out;
 }
 
-DevToolSetup dev_tool_setup(const PlayLoad& load) {
+DevToolSetup dev_tool_setup(const PlayLoad& load, sim::PlayerId player) {
     DevToolSetup s;
     s.registry = load.registry;
-    s.issuer = developer_player();
+    s.issuer = player;
     const sim::World& world = load.world;
     for (const auto& island : world.islands()) {
         if (!island || s.city) {
             continue;
         }
         for (const std::optional<sim::City>& city : island->cities) {
-            if (city && city->owner == developer_player() && !s.city) {
+            if (city && city->owner == player && !s.city) {
                 s.city = sim::CityRef{island->index, city->number};
                 s.island = TileRect{island->tiles.x0(), island->tiles.y0(), island->tiles.width(),
                                     island->tiles.height()};
@@ -288,7 +288,7 @@ DevToolSetup dev_tool_setup(const PlayLoad& load) {
             continue;
         }
         for (const std::optional<sim::City>& city : island->cities) {
-            if (!city || city->owner == developer_player() || s.foreign) {
+            if (!city || city->owner == player || s.foreign) {
                 continue;
             }
             const sim::CityRef ref{island->index, city->number};
@@ -641,6 +641,29 @@ void PlayRunner::one_turn() {
     }
     publish(static_cast<std::uint64_t>(us < 0 ? 0 : us), turn.index, turn.commands.size(),
             building_batch(turn.index), std::move(ran));
+    std::function<void(WorldCapture)> capture;
+    {
+        const std::lock_guard lock(capture_mu_);
+        capture = std::exchange(capture_, {});
+    }
+    if (capture) {
+        // After the publication: the capture is the state the newest snapshot describes.
+        WorldCapture c;
+        c.save = world_.save();
+        c.hash = world_.state_hash();
+        c.turn = turn.index;
+        c.tick = world_.clock().tick();
+        capture(std::move(c));
+    }
+}
+
+bool PlayRunner::request_capture(std::function<void(WorldCapture)> done) {
+    const std::lock_guard lock(capture_mu_);
+    if (capture_) {
+        return false;
+    }
+    capture_ = std::move(done);
+    return true;
 }
 
 std::shared_ptr<const BuildingBatch> PlayRunner::building_batch(std::uint64_t turn) {
@@ -773,8 +796,9 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
         }
         snap_ = std::move(next);
     }
-    if (pushed || !ran.empty()) {
-        // The window's wake-up, after the publication (outside the snapshot lock).
+    if (pushed || !ran.empty() || opening_) {
+        // The window's wake-up, after the publication (outside the snapshot lock). With an
+        // opening every turn moves the ships.
         const std::lock_guard lock(listener_mu_);
         if (listener_) {
             listener_();

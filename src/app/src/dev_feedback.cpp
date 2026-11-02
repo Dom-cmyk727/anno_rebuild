@@ -78,6 +78,46 @@ std::optional<Preview> make_preview(const DevTool& tool, const render::Scene& sc
     return p;
 }
 
+std::optional<Preview> make_type_preview(const render::Scene& scene, sim::TypeId type,
+                                         std::uint8_t rotation, sim::TileXY origin,
+                                         std::size_t group, std::uint64_t time_ms) {
+    if (type.v >= kPictureAnlageIds || scene.anlagen.entry(type.v) == nullptr ||
+        group >= render::kGroups) {
+        return std::nullopt;
+    }
+    std::optional<std::size_t> index;
+    for (std::size_t k = 0; k < scene.islands.size() && !index; ++k) {
+        const auto& i = scene.islands[k];
+        if (origin.x >= i.x && origin.y >= i.y && origin.x < i.x + static_cast<int>(i.width) &&
+            origin.y < i.y + static_cast<int>(i.height)) {
+            index = k;
+        }
+    }
+    if (!index) {
+        return std::nullopt;
+    }
+    const auto& island = scene.islands[*index];
+    const auto lx = static_cast<std::uint16_t>(origin.x - island.x);
+    const auto ly = static_cast<std::uint16_t>(origin.y - island.y);
+    const float h = scene.ground_height(static_cast<float>(origin.x), static_cast<float>(origin.y))
+                        .value_or(0.0F);
+    const auto height = static_cast<std::uint8_t>(std::clamp(std::lround(h), 0L, 255L));
+    Preview p;
+    p.island = *index;
+    p.sprites = scene.preview_sprites(*index, static_cast<std::uint16_t>(type.v), rotation, lx, ly,
+                                      height, group, time_ms);
+    formats::insel::PlacedObject o;
+    o.anlage = static_cast<std::uint16_t>(type.v);
+    o.rotation = rotation;
+    o.state = static_cast<std::uint16_t>(std::uint16_t{height} << 8);
+    o.x = lx;
+    o.y = ly;
+    const auto fp =
+        scene.anlagen.footprint(o.anlage).value_or(std::pair{std::uint8_t{1}, std::uint8_t{1}});
+    p.object = render::Prepared{o, o.footprint(fp.first, fp.second)};
+    return p;
+}
+
 void blend_preview(const render::Scene& scene, const Preview& preview, std::size_t group,
                    std::uint64_t time_ms, render::Rect view, std::uint32_t* xrgb) {
     const auto bounds = scene.object_bounds(preview.island, preview.object, group);

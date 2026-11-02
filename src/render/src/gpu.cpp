@@ -2284,7 +2284,8 @@ struct GpuFrame::Impl {
     /// Scene::draw_units order) and returns their number. Bit 17 marks a
     /// ship's frame, bits 18-31 hold its anchor row (the enhanced waterline,
     /// ship_in_water in gpu.wgsl).
-    std::uint32_t pack_ships(const Scene& scene, Rect view, std::size_t group, Bytes& bytes) {
+    std::uint32_t pack_ships(const Scene& scene, std::span<const UnitSprite> live,
+                             bool scene_units, Rect view, std::size_t group, Bytes& bytes) {
         std::vector<const UnitSprite*> order;
         // Units have frames at the built levels only. At a derived level a ship is the
         // frame of its built ancestor reduced by 2^shift (a box mean over the R x R
@@ -2298,7 +2299,14 @@ struct GpuFrame::Impl {
         if (derived && shift > kMaxShipShift) {
             return 0;
         }
-        for (const auto& u : scene.units) {
+        if (scene_units) {
+            for (const auto& u : scene.units) {
+                if (!u.z && base < kGroups) {
+                    order.push_back(&u);
+                }
+            }
+        }
+        for (const auto& u : live) {
             if (!u.z && base < kGroups) {
                 order.push_back(&u);
             }
@@ -3012,14 +3020,17 @@ std::uint64_t GpuFrame::errors() const {
 GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene,
                           Rect view, std::size_t group, std::uint64_t time_ms, WaterStyle style,
                           WGPUTextureView target, const Resample* resample,
-                          std::span<const SpriteDraw> overlay) {
+                          std::span<const SpriteDraw> overlay,
+                          std::span<const UnitSprite> live_units) {
     impl_->frame_scene = scene;
-    return render(frames, *scene, view, group, time_ms, style, target, resample, overlay);
+    return render(frames, *scene, view, group, time_ms, style, target, resample, overlay,
+                  live_units);
 }
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, std::size_t group,
                           std::uint64_t time_ms, WaterStyle style, WGPUTextureView target,
-                          const Resample* resample, std::span<const SpriteDraw> overlay) {
+                          const Resample* resample, std::span<const SpriteDraw> overlay,
+                          std::span<const UnitSprite> live_units) {
     Impl& m = *impl_;
     // Nothing of the scene stays referenced once the frame is recorded and submitted: the frame
     // table pointer and the owning handle (if any) are dropped on every way out. Uploads copy the
@@ -3125,7 +3136,9 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     // Ships are drawn here, after the cached objects, unless the chunks
     // already hold them (a FrameRenderer with ships in its chunks).
     const std::uint32_t n_ships =
-        frames.ships_in_chunks() ? 0 : m.pack_ships(scene, view, group, bytes);
+        frames.ships_in_chunks() && live_units.empty()
+            ? 0
+            : m.pack_ships(scene, live_units, !frames.ships_in_chunks(), view, group, bytes);
     // The overlay last (a placement preview): no depth test, on top of everything.
     const std::uint32_t n_overlay =
         overlay.empty()

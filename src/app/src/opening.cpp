@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <set>
 #include <sstream>
 
 #include <anno/app/cli.hpp>
@@ -214,6 +215,17 @@ formats::Result<OpeningLoad, std::string> load_opening(const fs::path& game_dir,
     out.identity.start_hash = hex16(world->state_hash());
     play.world = std::move(*world);
     return out;
+}
+
+std::vector<std::pair<std::uint32_t, std::uint32_t>> opening_ship_kinds(const sim::World& world) {
+    std::set<std::pair<std::uint32_t, std::uint32_t>> kinds;
+    for (const auto& entry : world.figures().by_id) {
+        const sim::Figure* f = sim::find_figure(world.figures(), entry.first);
+        if (f != nullptr && f->nav.has_value() && !f->parent.valid()) {
+            kinds.emplace(f->kind, f->owner.v);
+        }
+    }
+    return std::vector<std::pair<std::uint32_t, std::uint32_t>>(kinds.begin(), kinds.end());
 }
 
 std::vector<std::uint8_t> format_opening_save(const OpeningSave& save) {

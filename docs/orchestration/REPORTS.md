@@ -10206,22 +10206,22 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
 ### C3 — the two failures (finite investigation)
 
 - **A. Whole-app WSL ASan timeout** (`play: islands are the ones the sim placed`, 3400 s). The files on the test's call path
-  (loader, play loading, scene build, `src/render`, `src/sim`, `src/formats`, `src/assets`) are byte-identical to the pin; the files this work
+  (the files it executes in the loader, play loading, scene build, `src/render`, `src/sim`, `src/formats` and `src/assets`) are byte-identical to the pin; the files this work
   changed (`play.cpp`'s `dev_tool_setup`/publish gate, `scene_picture.cpp` accessors, `gpu.*`, the app tests) are not on it, and `gpu.*` is not
   in the ASan build. `play_test.cpp` gained only an opt-in progress line. Native Release: 126-148 s for the 50 scenarios in the canonical gate
   logs (`msvc-cpu-01…-06`, about 2.5-3 s each) and 2.3 s for the one-map case, against 109 s for the one-map case in the failed ASan run
-  (about 40x). The same failed run's `play: tick 0 matches the viewer…` case took 2 313 s. Earlier observations of the same case: 2 670 s alone
+  (about 40-50x). The same failed run's `play: tick 0 matches the viewer…` case took 2 313 s. Earlier observations of the same case: 2 670 s alone
   in a Debug build (an earlier round of this report) and a timeout at 2 400 s under ASan in the first W4-WIN packet. The one instrumented isolated run
   (`cache/c1/wsl-diag/`, WSL ASan+UBSan binary `binary.sha256` built from an uncommitted tree that already carried the progress line
   (`start.txt` records no head: the WSL worktree path made `git` fail), `ANNO_TEST_PROGRESS=1`, 2 test threads, samples every 120/300 s; **other WSL
   jobs of this packet (ASan builds and gates, the warnings gate) overlapped it at times, load average 5-9 in about a third of the samples**, and the
   per-scenario rate stayed near 105 s, 120-140 s while load was 9):
-  completed alone (script exit 0 after 5 130 s by the WSL wall clock; the case's own steady-clock progress timer and `ps` elapsed time read about
+  completed when run by itself as a test process (script exit 0 after 5 130 s by the WSL wall clock; the case's own steady-clock progress timer and `ps` elapsed time read about
   5 400 s — the WSL wall clock stepped about 4.5 minutes against monotonic time during the run, visible in `ps` elapsed versus `start.txt`), **all 5 492 assertions passed**; 50 scenarios at about 105 s each and linear (scenario 4 at 421 s, 25 at about 2 600 s, 50 at 5 398 s);
-  the process showed 4 436 s of CPU time at its last sample and a load average of about 1 (one busy thread; the main thread was seen in a
+  the process showed 4 436 s of CPU time at its last sample and a load average of 1.4 at its last sample (one busy thread then; see the load note above; the main thread was seen in a
   9p file read, `p9_client_rpc`, in several samples: the corpus is read through `/mnt/e`); RSS 0.7-1.3 GB; no stall and no wait state. The case has no picture, runner or reclaimer in it: no lifecycle component.
-  **Disposition:** explained, not a regression: alone it needs about 5.1-5.4 ks under ASan+UBSan, 1.5x the gate's per-test limit of 3 400 s, so it times out
-  whatever else runs; its code and everything it calls are identical to the pin (no pin baseline was run: 90 more minutes would add nothing the
+  **Disposition:** explained, not a regression: run by itself it needs about 5.1-5.4 ks under ASan+UBSan, 1.5x the gate's per-test limit of 3 400 s, so it times out
+  whatever else runs; its call path is byte-identical to the pin (no pin baseline was run: 90 more minutes would add nothing the
   unchanged-source diff does not already say). Proposed test-specific policy, **not applied by me**: put the corpus case (and
   `play: tick 0 matches the viewer…`, 2 313 s in the failed run, the next one to cross) in the `heavy` suite with a sanitizer-scaled timeout
   of at least 8 000 s, or run a scenario subset under sanitizers. **The whole-app WSL sanitizer gate still has no green run** (and the ASan build has the viewer OFF, so `viewer.cpp` and the `anno_app_input_tests` cases never ran under ASan/UBSan): the 86 focused cases

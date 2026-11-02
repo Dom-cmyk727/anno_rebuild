@@ -71,6 +71,13 @@ if(ANNO_BUILD_TESTS)
   anno_target_defaults(anno_app_tests)
   anno_stage_budget_coord(anno_app_tests)
   anno_add_doctest(anno_app_tests)
+  # The two full-corpus cases (every scenario file, every assertion) are "heavy" (the suite name in
+  # play_test.cpp); in a sanitizer build they also get an 8000 s per-test timeout, set after the cases
+  # are discovered (AnnoAppSanitizerTimeouts.cmake; docs/testing/README.md).
+  if(ANNO_SANITIZE)
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+                 "${CMAKE_CURRENT_SOURCE_DIR}/AnnoAppSanitizerTimeouts.cmake")
+  endif()
   # Bad arguments print the usage. CTest's output match ignores the exit
   # code; app_test checks that parse_args rejects the input, and main maps a
   # rejection to exit 2 (not tested automatically).

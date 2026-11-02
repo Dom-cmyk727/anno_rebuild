@@ -109,7 +109,7 @@ TEST_CASE("play: --play parses and --view does not") {
     CHECK_FALSE(anno::app::parse_args({"--play", "x.sze", "--speed", "75"}));
 }
 
-TEST_CASE("play: islands are the ones the sim placed") {
+TEST_CASE("play: islands are the ones the sim placed" * doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -461,7 +461,8 @@ std::size_t diffs_outside(const anno::render::Canvas& play, const anno::render::
 
 } // namespace
 
-TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place") {
+TEST_CASE("play: tick 0 matches the viewer except objects the sim did not place" *
+          doctest::test_suite("heavy")) {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

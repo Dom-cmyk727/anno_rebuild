@@ -10363,3 +10363,40 @@ viewer-wiring test, the unexplained reclaimer failure). No merge, rebase, push, 
   returns after the ordinary push recorded in the session; remote before it: `f5a323d`.
 - **Stopping criteria:** F1-F4 meet their stated criteria; the final integration review approves; the candidate and the portable text evidence are published for the orchestrator. Not accepted by
   me: acceptance is the orchestrator's. W4-OPENING-1 is not started (it waits for the orchestrator to record acceptance of the exact published Windows and Mac gameplay pins).
+
+## W4-WIN-VERIFY: child sanitizer diagnostics and the complete parsed script in the viewer verdict — 2026-11-02 — status: REVIEW CANDIDATE
+
+- **Dispatch / identities:** `origin/main` `92d78ae` (`TASKS.md` W4-WIN-VERIFY and `reviews/2026-11-02-w4-win-final.md`, read without merging). Parent: the published W4-WIN-FINAL `dad27da7`.
+  Correction `beb36d89` (V1, V2), review fixes `f047165c` (the commit both viewer gates and the RTX canary ran at), re-review test additions `3c808780` (final tools head; native focused lane
+  and the WSL public contract rerun there). Later commits change only `docs/`. Commands, hashes, tables: `docs/orchestration/evidence/w4-win-verify/SUMMARY.md`; extracts and the originals' sha256:
+  `INDEX.md` there. Full logs and every retained session folder stay local (`cache/`). Retained and not repeated: the two corpus cases (5 303.65 s and 2 374.47 s), the W4-WIN-FINAL lanes
+  (217/215 and 220/218) and the 106-case RTX/Radeon gates (this package changes no `render`, `sim`, `formats`, `assets` or `anno_app_core` source, no timeout or `heavy` classification).
+- **Finding 1 (V1), child sanitizer output was invisible to the verdict.** Reproduced through the public wrapper at `dad27da`: a complete matching record with the child exiting 0 returned PASS with
+  a UBSan `runtime error:` on stderr, an ASan report on stderr, or a UBSan line on stdout (stdout was discarded). Now `viewer_wiring.py` keeps both streams (`<out>.stdout.txt`, `<out>.stderr.txt`), scans
+  them with `ctest_verdict.SANITIZER` (no second definition), prints `channel path:line: excerpt` (cut around the match) after echoing the session log, and fails first, before the watchdog, exit-status,
+  expected-stderr and session checks; `UBSAN_OPTIONS=halt_on_error=1` is set unless the caller or `--env` chose options (defence in depth). The expected `CPU frame delivery failed (SDL_…)`
+  lines still pass `--expect-stderr` and are not sanitizer lines. Contract cases: clean control, SDL diagnostics alone, stderr UBSan, stderr ASan, stdout, the other kinds, a report beside the expected SDL
+  messages, a report with a failing child and with the watchdog, long line, `--env` precedence.
+- **Finding 2 (V2), the record did not identify the whole script.** Reproduced: the log of `look 1 2` passed for an invoked `look 1 999`, and a changed `wait` value was invisible. Now `DevScript::parse`
+  records `script identity: steps=N fnv1a64=HEX` as the log's first line (FNV-1a 64 over `LINE VERB ARG...` for every parsed step, waits and all arguments), `ran line` records carry every argument, and
+  `viewer_session.py` recomputes the identity from the invoked script's bytes with the parser's own rules and requires it to be the one identity line that opens the record, plus the ordered full-argument
+  trace. The log is read byte for byte. Legacy logs (no identity line) are refused by the wrapper; `--revalidate` prints `LEGACY` (with an AMBIGUOUS marker when several scripts fit) and says only the
+  first-argument trace was checked; the three committed W4-WIN-FINAL traces print `LEGACY` and keep their existing pins. Accidental-mismatch detection only.
+- **Checks:** contract 41 tests (was 14); DevScript suite 9 cases / 297 assertions native; the same five scripts and constants are asserted by the C++ case and the Python contract (constants derived apart
+  from the code). Python mutants: 23 killed by the intended tests; C++ producer mutants (identity not pushed, waits/later arguments/line numbers dropped, ran records first-argument-only): each fails the
+  new case, tree restored and clean. **Gates (selected / executed passes / failed / empty / skipped / incomplete):** native MSVC `anno_app_input_tests` + `viewer_wiring_contract` + the three CPU viewer
+  cases 35 / 35 / 0 / 0 / 0 / 0, 0 sanitizer lines, PASS (at `f047165` and again at `3c80878`); WSL viewer-enabled ASan+UBSan, same selection, 35 / 35 / 0 / 0 / 0 / 0, 0 sanitizer lines, PASS (at `f047165`;
+  the contract alone at `3c80878`: 1 / 1 / 0 / 0 / 0 / 0, PASS); WSL warnings GCC 13.3 and Clang 18.1.3 `-O3 -Werror` with and without the viewer GPU definition: clean; RTX 4090 real window
+  `boundary_exit_in_hold --gpu` PASS in 3.9 s through the corrected wrapper (window-recorded identity `steps=11`). **Stream reconciliation** from the retained files, not from the summary: all
+  real-window sessions of both lanes have sanitizer-pattern count 0 on stdout and stderr, exactly 3 expected delivery-failure lines per `cpu_delivery_failures` session, and an identity line that
+  validates against its script. The old zero-file stderr scan of `/tmp/viewer_wiring_*` provides no evidence and is recorded as such.
+- **WSL workflow identity:** the W4-WIN-FINAL WSL logs' `workflow` block was contaminated by the exported `GIT_DIR`/`GIT_WORK_TREE`. Recovered from retained evidence: the runner checkout was `b57c6f0`
+  from 2026-11-01 20:27 through those runs, its `tools/test` equals `origin/main`; runner file hashes are recorded. New WSL runs record the workflow revision and hashes with the overrides cleared; the
+  shared runner was not changed, so its own log block still repeats the source head (stated in the summary). No old work was rerun.
+- **Reviews:** independent read-only reviewer on `beb36d8`: no blocking finding; should-fix: no cross-language vector (S1) and later arguments of `ran` records unpinned (S2); notes on byte-exact log reading,
+  the 300-character cut of sanitizer lines, the echo order, untested `--env` precedence and watchdog-with-report paths, the ambiguous legacy match; all fixed in `f047165`. Narrow re-review of that diff: no
+  blocking finding; its three small should-fixes (ambiguity test, non-UTF-8 byte test, `split("\n")` in `--revalidate`) are in `3c80878` with mutation proofs; this last increment (two test additions and
+  one line) has no further reviewer.
+- **Open / limits:** headless CPU sessions say nothing about the GPU path; one short RTX canary, no Radeon window, native 4K, scale, latency or broad performance run (not assigned). Reports sent to `log_path=` files
+  would not be seen (nothing sets it); UBSan stays recoverable in app targets. A window that forged a matching log would pass. The historical reclaimer occurrence stays an uncertainty; the submit-only
+  and single-foreign-scene mutants were not added. W4-OPENING-1 is not started (it waits for the orchestrator's acceptance of the exact published Windows and Mac pins).

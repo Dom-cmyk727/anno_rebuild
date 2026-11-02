@@ -1,5 +1,5 @@
-control                            exit=0 Ran 37 tests in 9.956s / OK
-no-sanitizer-scan                  exit=1 Ran 37 tests in 9.941s / FAILED (failures=11)
+control                            exit=0 Ran 41 tests in 10.584s / OK
+no-sanitizer-scan                  exit=1 Ran 41 tests in 10.519s / FAILED (failures=11)
       test_a_long_line_is_cut_around_the_report_so_the_gate_still_counts_it
       test_a_sanitizer_report_and_a_failing_child_are_both_reported
       test_a_sanitizer_report_beside_a_hung_window_names_the_watchdog_and_the_report
@@ -9,25 +9,27 @@ no-sanitizer-scan                  exit=1 Ran 37 tests in 9.941s / FAILED (failu
       test_an_asan_report_on_stderr_fails_although_the_child_exits_zero
       test_each_remaining_sanitizer_kind_fails
       test_the_session_log_is_echoed_even_when_a_report_fails_the_case
-stdout-not-scanned                 exit=1 Ran 37 tests in 9.883s / FAILED (failures=1)
+stdout-not-scanned                 exit=1 Ran 41 tests in 10.642s / FAILED (failures=1)
       test_a_sanitizer_report_on_stdout_fails_too
-stdout-discarded                   exit=1 Ran 37 tests in 9.864s / FAILED (failures=1)
+stdout-discarded                   exit=1 Ran 41 tests in 10.535s / FAILED (failures=1)
       test_a_sanitizer_report_on_stdout_fails_too
-own-sanitizer-pattern              exit=1 Ran 37 tests in 9.902s / FAILED (failures=4)
+own-sanitizer-pattern              exit=1 Ran 41 tests in 10.589s / FAILED (failures=4)
       test_an_asan_report_on_stderr_fails_although_the_child_exits_zero
       test_each_remaining_sanitizer_kind_fails
-scan-after-expect-stderr           exit=1 Ran 37 tests in 10.209s / FAILED (failures=1)
+scan-after-expect-stderr           exit=1 Ran 41 tests in 10.635s / FAILED (failures=1)
       test_a_sanitizer_report_beside_the_expected_sdl_diagnostics_still_fails
-no-ubsan-default                   exit=1 Ran 37 tests in 10.020s / FAILED (failures=1)
+no-ubsan-default                   exit=1 Ran 41 tests in 10.486s / FAILED (failures=1)
       test_ubsan_is_made_fatal_unless_the_caller_chose_its_options
-ubsan-default-overrides-caller     exit=1 Ran 37 tests in 10.175s / FAILED (failures=1)
+ubsan-default-overrides-caller     exit=1 Ran 41 tests in 10.609s / FAILED (failures=1)
       test_ubsan_is_made_fatal_unless_the_caller_chose_its_options
-identity-compare-removed           exit=1 Ran 37 tests in 9.932s / FAILED (failures=3)
+identity-compare-removed           exit=1 Ran 41 tests in 10.191s / FAILED (failures=3)
       test_a_changed_later_argument_of_an_expectation_does_not_pass
       test_a_changed_second_coordinate_does_not_pass
       test_a_changed_wait_value_does_not_pass
-identity-first-argument-only       exit=1 Ran 37 tests in 9.821s / FAILED (failures=12)
+identity-first-argument-only       exit=1 Ran 41 tests in 10.026s / FAILED (failures=13, errors=1)
       test_a_caller_option_given_with_env_wins_over_the_ubsan_default
+      test_a_log_copied_in_text_mode_with_crlf_is_the_same_record
+      test_a_non_utf8_argument_byte_is_compared_byte_for_byte_and_printed_safely
       test_a_record_without_the_window_session_files_does_not_pass
       test_control_a_complete_matching_record_passes
       test_control_a_variant_script_with_its_own_complete_record_passes
@@ -35,8 +37,9 @@ identity-first-argument-only       exit=1 Ran 37 tests in 9.821s / FAILED (failu
       test_revalidation_names_a_legacy_log_and_does_not_verify_its_full_identity
       test_the_python_identity_agrees_with_the_cpp_vectors
       test_ubsan_is_made_fatal_unless_the_caller_chose_its_options
-identity-waits-dropped             exit=1 Ran 37 tests in 9.557s / FAILED (failures=12)
+identity-waits-dropped             exit=1 Ran 41 tests in 10.176s / FAILED (failures=13)
       test_a_caller_option_given_with_env_wins_over_the_ubsan_default
+      test_a_log_copied_in_text_mode_with_crlf_is_the_same_record
       test_a_record_without_the_window_session_files_does_not_pass
       test_control_a_complete_matching_record_passes
       test_control_a_variant_script_with_its_own_complete_record_passes
@@ -44,16 +47,19 @@ identity-waits-dropped             exit=1 Ran 37 tests in 9.557s / FAILED (failu
       test_revalidation_names_a_legacy_log_and_does_not_verify_its_full_identity
       test_the_python_identity_agrees_with_the_cpp_vectors
       test_ubsan_is_made_fatal_unless_the_caller_chose_its_options
-identity-not-required              exit=1 Ran 37 tests in 10.036s / FAILED (failures=1)
+identity-not-required              exit=1 Ran 41 tests in 10.517s / FAILED (failures=2)
       test_a_legacy_record_without_the_identity_line_does_not_pass
-legacy-accepted-by-wrapper         exit=1 Ran 37 tests in 10.021s / FAILED (failures=1)
+      test_a_missing_identity_still_reports_a_failed_step
+legacy-accepted-by-wrapper         exit=1 Ran 41 tests in 10.728s / FAILED (failures=1)
       test_a_legacy_record_without_the_identity_line_does_not_pass
-legacy-reported-valid              exit=1 Ran 37 tests in 9.690s / FAILED (failures=1)
+legacy-reported-valid              exit=1 Ran 41 tests in 10.222s / FAILED (failures=2)
+      test_revalidation_marks_a_legacy_log_that_several_scripts_fit_as_ambiguous
       test_revalidation_names_a_legacy_log_and_does_not_verify_its_full_identity
-trace-first-argument-only          exit=1 Ran 37 tests in 9.137s / FAILED (failures=11)
+trace-first-argument-only          exit=1 Ran 41 tests in 9.484s / FAILED (failures=12)
       test_a_caller_option_given_with_env_wins_over_the_ubsan_default
       test_a_changed_wait_value_does_not_pass
       test_a_later_argument_in_a_ran_record_is_compared_not_only_the_identity
+      test_a_log_copied_in_text_mode_with_crlf_is_the_same_record
       test_a_record_without_the_window_session_files_does_not_pass
       test_a_truncated_record_does_not_pass
       test_control_a_complete_matching_record_passes
@@ -62,13 +68,26 @@ trace-first-argument-only          exit=1 Ran 37 tests in 9.137s / FAILED (failu
       test_extra_records_do_not_pass
       test_revalidation_names_a_legacy_log_and_does_not_verify_its_full_identity
       test_ubsan_is_made_fatal_unless_the_caller_chose_its_options
-ran-records-compare-first-argument-only exit=1 Ran 37 tests in 9.601s / FAILED (failures=1)
+ran-records-compare-first-argument-only exit=1 Ran 41 tests in 9.896s / FAILED (failures=1)
       test_a_later_argument_in_a_ran_record_is_compared_not_only_the_identity
-log-read-with-splitlines           exit=1 Ran 37 tests in 9.682s / FAILED (failures=1)
+log-read-with-splitlines           exit=1 Ran 41 tests in 11.701s / FAILED (failures=1)
       test_arguments_with_exotic_bytes_are_compared_byte_for_byte
-long-line-cut-before-match         exit=1 Ran 37 tests in 9.634s / FAILED (failures=1)
+long-line-cut-before-match         exit=1 Ran 41 tests in 10.110s / FAILED (failures=1)
       test_a_long_line_is_cut_around_the_report_so_the_gate_still_counts_it
-log-echo-after-scan                exit=1 Ran 37 tests in 9.656s / FAILED (failures=1)
+log-echo-after-scan                exit=1 Ran 41 tests in 10.141s / FAILED (failures=2)
+      test_a_non_utf8_argument_byte_is_compared_byte_for_byte_and_printed_safely
       test_the_session_log_is_echoed_even_when_a_report_fails_the_case
-identity-line-anywhere             exit=1 Ran 37 tests in 9.517s / FAILED (failures=1)
+ambiguous-tag-dropped              exit=1 Ran 41 tests in 10.151s / FAILED (failures=1)
+      test_revalidation_marks_a_legacy_log_that_several_scripts_fit_as_ambiguous
+only-first-match-printed           exit=1 Ran 41 tests in 10.140s / FAILED (failures=1)
+      test_revalidation_marks_a_legacy_log_that_several_scripts_fit_as_ambiguous
+cr-not-stripped                    exit=1 Ran 41 tests in 10.099s / FAILED (failures=3)
+      test_a_log_copied_in_text_mode_with_crlf_is_the_same_record
+      test_revalidation_marks_a_legacy_log_that_several_scripts_fit_as_ambiguous
+      test_revalidation_names_a_legacy_log_and_does_not_verify_its_full_identity
+early-return-drops-fail-lines      exit=1 Ran 41 tests in 10.132s / FAILED (failures=1)
+      test_a_missing_identity_still_reports_a_failed_step
+log-decoded-with-replace           exit=1 Ran 41 tests in 10.106s / FAILED (failures=1)
+      test_a_non_utf8_argument_byte_is_compared_byte_for_byte_and_printed_safely
+identity-line-anywhere             exit=1 Ran 41 tests in 9.963s / FAILED (failures=1)
       test_the_identity_line_must_open_the_record_once

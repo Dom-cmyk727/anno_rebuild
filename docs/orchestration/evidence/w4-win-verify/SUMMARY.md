@@ -6,7 +6,10 @@ Text-only. `INDEX.md` lists every extract with the sha256 of its git-ignored ori
 
 - Branch `task/W4-3-live-buildings`. Published parent: `dad27da7ba0ee26abdd3b1de61adaddbfba05ec7` (code tree `8367dc0`, tools `37da91b`).
 - Correction commits: `beb36d89b607dc835cf01406fe9189f4c7721ebb` (V1, V2) and `f047165c67bc26c1498c5201c014db83553c6f6f` (review fixes). **Both focused gates and the canary ran
-  at `f047165`, clean tree** (`dirty 0` in `gate-native-identities.txt`, `gate-wsl-identities.txt`, `canary-rtx-identity.txt`). Commits after `f047165` change only `docs/`.
+  at `f047165`, clean tree** (`dirty 0` in `gate-native-identities.txt`, `gate-wsl-identities.txt`, `canary-rtx-identity.txt`). The final tools head is `3c808780c4e5e59d26375151c3ff8215c4c68602`: after the narrow re-review it adds only tests to
+  `viewer_wiring_contract_test.py` and one line in `viewer_session.py --revalidate` (`git diff --stat f047165..3c80878 -- . ':!docs'`: those two files). At `3c80878` the
+  native focused lane was rerun in full (35 / 35 / 0 / 0 / 0 / 0, PASS, `gate-native-b-*`) and the public contract was rerun in the WSL ASan+UBSan tree (1 / 1 / 0 / 0 / 0 / 0, PASS,
+  `gate-wsl-b-contract-*`); the WSL viewer lane and the RTX canary are not repeated for it (no C++, no wrapper path used by the real cases changed). Commits after `3c80878` change only `docs/`.
 - Workflow: the canonical runner of `E:\anno1503` at `b57c6f0d0c747ecc41755b438d9377df38d2b7ac`, clean. `git diff b57c6f0 origin/main` is empty for `tools/test`, `cmake`, `CMakeLists.txt`
   (`origin/main` is `92d78ae`). Runner file hashes, native and WSL identical: `run_selected.py` `f87fc882…`, `ctest_verdict.py` `b10bfc37…`, `ctest_verdict_test.py` `7fc05a93…`,
   `CheckTestNames.cmake` `6b27d264…`.

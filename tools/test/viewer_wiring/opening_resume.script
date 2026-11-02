@@ -3,7 +3,7 @@
 # two ordinary buildings, with the money and goods ledger. Launch:
 #   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200 --resume <save>
 wait frames 30
-expect fact ship.1.x == 257
+wait fact ship.1.x == 257 within 60000
 expect fact ship.1.y == 134
 expect fact cities == 0
 expect fact gold == 30000

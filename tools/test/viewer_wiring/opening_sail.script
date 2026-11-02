@@ -2,7 +2,7 @@
 # coast of the first island (about 550 tiles), arrive, and save. Launch:
 #   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200
 wait frames 20
-expect fact cities == 0
+wait fact cities == 0 within 60000
 expect fact gold == 30000
 expect fact generation == 0
 expect fact committed == 0

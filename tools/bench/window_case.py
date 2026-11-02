@@ -63,6 +63,28 @@ def cpu_busy_pct(seconds=1.0):
     return 100.0 * (total - (i1 - i0)) / total if total else 0.0
 
 
+def displays():
+    """The monitors' pixel sizes (MONITORINFO rcMonitor) as "WxH,WxH": what a drawable is compared with."""
+    ctypes.windll.user32.SetProcessDPIAware()
+    found = []
+
+    class MI(ctypes.Structure):
+        _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+
+    proc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HMONITOR, wt.HDC, ctypes.POINTER(wt.RECT), wt.LPARAM)
+
+    def cb(mon, _dc, _rc, _lp):
+        mi = MI()
+        mi.cbSize = ctypes.sizeof(MI)
+        ctypes.windll.user32.GetMonitorInfoW(mon, ctypes.byref(mi))
+        r = mi.rcMonitor
+        found.append(f"{r.right - r.left}x{r.bottom - r.top}")
+        return True
+
+    ctypes.windll.user32.EnumDisplayMonitors(None, None, proc(cb), 0)
+    return ",".join(found)
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -123,6 +145,7 @@ def main(argv):
         f"map={amap} sha256={sha256(amap)}",
         f"commands={commands} sha256={sha256(commands)} lines={nlines}",
         f"drawable_asked={size} seconds={seconds} at={at} trace={trace}",
+        f"displays={displays()}",
         "env ANNO_VIEW_LIMITS={} ANNO_VIEW_GPU_CHUNKS={} ANNO_GPU_ADAPTER={} ANNO_VIEW_RESIZE={}".format(
             os.environ.get("ANNO_VIEW_LIMITS", "interactive"), os.environ.get("ANNO_VIEW_GPU_CHUNKS", "off"),
             os.environ.get("ANNO_GPU_ADAPTER", "default"), os.environ.get("ANNO_VIEW_RESIZE", "none")),
@@ -138,15 +161,22 @@ def main(argv):
         proc = subprocess.Popen([app, "--play", str(amap), "--commands", commands, "--renderer", "gpu"],
                                 stdout=so, stderr=se, env=env)
         peak = 0
+        killed = False
         started = time.monotonic()
         while proc.poll() is None:
             peak = max(peak, peak_working_set(proc._handle) or 0)
             if time.monotonic() - started > limit:
                 proc.kill()  # a hung window is bounded, as the shell runner's alarm does
+                killed = True
                 break
             time.sleep(0.1)
         rc = proc.wait()
+        if killed:
+            rc = 124  # the watchdog's status (as timeout(1)), never mistaken for the window's own exit 1
         peak = max(peak, peak_working_set(proc._handle) or 0)
+    if peak <= 0:
+        print("window_case: the peak working set could not be read; the case is not usable", file=sys.stderr)
+        rc = rc or 3
     (out / "time.txt").write_text(f"Peak working set size (bytes): {peak}\n"
                                   f"Elapsed (wall clock) seconds: {time.monotonic() - started:.2f}\n")
     with open(out / "run.txt", "a") as f:

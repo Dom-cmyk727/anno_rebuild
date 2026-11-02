@@ -3,6 +3,7 @@
 // outcomes that are not "shown" (offscreen, nothing to draw, no change), coalesced and independent
 // islands, and the memory bounds. Synthetic: the boundaries are driven by hand (takes, commits,
 // frame observations); the lan5 cases with real chunks are in dev_visibility_test.cpp.
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -354,4 +355,43 @@ TEST_CASE(
         CHECK(v.classify(1) == V::Visible);
         CHECK(v.classify(2) == V::Offscreen);
     }
+}
+
+TEST_CASE("visibility: the per-frame cost with the most takes waiting (a measurement)" *
+          doctest::test_suite("visibility")) {
+    // The bound is real, so the cost at the bound is stated: kMaxTakes takes, each on its own
+    // island, each with a part watched and never fresh (the worst case: every frame observes them
+    // all), then the title's classify. Synthetic: no pipeline, hand-driven boundaries.
+    using clock = std::chrono::steady_clock;
+    app::ChangeVisibility v;
+    const std::size_t n = app::ChangeVisibility::kMaxTakes;
+    for (std::size_t i = 0; i < n; ++i) {
+        std::vector<std::uint64_t> before(i + 1, 0), after(i + 1, 0);
+        after[i] = 1;
+        v.taken(i, batch_at(i), before, after);
+        v.committed(commit_of(i, 1, {kHere}));
+    }
+    frame(v, kViewHere, true, kNo, kNo); // every part is now watched
+    REQUIRE(v.waiting() == n);
+    constexpr int kFrames = 2000;
+    const auto f0 = clock::now();
+    for (int i = 0; i < kFrames; ++i) {
+        v.begin_frame(kViewHere, 1);
+        v.frame_done(true, kNo, kNo);
+    }
+    const auto f1 = clock::now();
+    constexpr int kAsks = 20000;
+    std::size_t sink = 0;
+    const auto c0 = clock::now();
+    for (int i = 0; i < kAsks; ++i) {
+        sink += static_cast<std::size_t>(v.classify(static_cast<std::uint64_t>(i) % n));
+    }
+    const auto c1 = clock::now();
+    CHECK(sink > 0);
+    CHECK(v.waiting() == n); // nothing settled: the work stayed at the bound
+    MESSAGE(n << " takes waiting: "
+              << std::chrono::duration<double, std::micro>(f1 - f0).count() / kFrames
+              << " us per frame (begin_frame + frame_done), "
+              << std::chrono::duration<double, std::micro>(c1 - c0).count() / kAsks
+              << " us per classify");
 }

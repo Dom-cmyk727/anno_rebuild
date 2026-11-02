@@ -446,6 +446,7 @@ def main():
     print(f"Aggregate: {binary} sha256 {digest} (every trace aggregated now).")
     print()
     identity, timing, edits, control = [], [], [], []
+    oversize, displays_seen = [], set()
     unusable, failed, stale, other_bench = [], [], [], []
     for name in names:
         case = matrix / name
@@ -499,6 +500,15 @@ def main():
             drawables = sorted({f["drawable"] for f in frames})
             # Distinct views (position, group, scale): one, unless the session was resized or input
             # reached the window (a test run must not be moved by the host's pointer).
+            # A drawable larger than every display of the host (window_case.py records them): a surface
+            # bigger than the screen, not a result on a display of that size (round W4-WIN).
+            shown = [tuple(int(v) for v in d.split("x")) for d in run.get("displays", "").split(",")
+                     if "x" in d]
+            displays_seen.update(run.get("displays", "").split(",") if shown else [])
+            for d in drawables:
+                w, h = (int(v) for v in d.split("x"))
+                if shown and not any(w <= dw and h <= dh for dw, dh in shown):
+                    oversize.append(f"{name} ({d})")
             views = len({(f["view_x"], f["view_y"], f["view_w"], f["view_h"], f["group"],
                           f["scale"]) for f in frames})
             identity.append(f"| {name} | {run.get('drawable_asked', '?')} | {', '.join(drawables)} | "
@@ -548,6 +558,11 @@ def main():
     print("|---|---|---|---:|---|---|---:|---|")
     print("\n".join(identity))
     print()
+    if oversize:
+        print(f"NOTE: the drawable of {', '.join(oversize)} is larger than every display of the host "
+              f"(displays: {', '.join(sorted(displays_seen))}): an oversized-surface result, not a "
+              f"result on a display of that size; the cadence is the host display's.")
+        print()
     print("Per attempted frame, ms, n / p50 / p95 / p99 / max:")
     print()
     print("| case | frame-start interval | acquire (the wait for a surface texture) | present call "

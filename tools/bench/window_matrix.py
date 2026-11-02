@@ -6,7 +6,8 @@ tools/bench/window_case.py).
     python -I tools/bench/window_matrix.py <anno1503.exe> <bench_picture.exe> <new out dir> \
         [<large drawable> [<cases regex>]]
 
-The large drawable defaults to 3840x2160. <cases> is a regular expression that must match a whole
+The large drawable defaults to 3840x2160: on a host without a display of that size it is an oversized
+surface (window_table.py says so from the displays window_case.py records), never a 4K-display result. <cases> is a regular expression that must match a whole
 case name (default all). plan.tsv, written before the first window, lists every case and whether it
 was selected, so window_table.py can tell a subset from the full matrix. Then:
 python -I tools/bench/window_table.py <bench_picture.exe> <out dir>. Needs ANNO1503_GAME_DIR."""

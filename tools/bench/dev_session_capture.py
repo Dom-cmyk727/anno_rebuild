@@ -13,8 +13,9 @@ desktop compositor shows; the window is raised topmost for the capture):
   <out>/shots/cmdN-window.png   the whole window with its title bar (the DWM frame bounds)
   <out>/shots/cmdN-title.txt    the title text at the capture (GetWindowTextW)
 The log (<out>/capture.log) lists every capture with the window rectangle, the client rectangle and the
-DPI scale. A capture of a window that is minimised, off screen or not on top is refused and logged,
-never saved as a picture of the game. Exit: the window's status, or 2 for bad arguments."""
+DPI scale. A capture of a minimised window, or of one whose frame is not inside the virtual desktop, is refused
+and logged, never saved as a picture of the game. Being covered by another window is handled by raising
+the window topmost for the capture, not detected. Exit: the window's status, or 2 for bad arguments."""
 import ctypes
 import ctypes.wintypes as wt
 import os
@@ -72,6 +73,12 @@ def client_rect(hwnd):
 def capture(hwnd, name, shots, log):
     if user32.IsIconic(hwnd):
         log.append(f"{name}: REFUSED, the window is minimised")
+        return False
+    vx, vy = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)  # SM_X/YVIRTUALSCREEN
+    vw, vh = user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)  # SM_CX/CYVIRTUALSCREEN
+    fx0, fy0, fx1, fy1 = frame_rect(hwnd)
+    if fx0 < vx or fy0 < vy or fx1 > vx + vw or fy1 > vy + vh:
+        log.append(f"{name}: REFUSED, the window frame {(fx0, fy0, fx1, fy1)} is not inside the desktop")
         return False
     # Topmost for the capture (HWND_TOPMOST = -1; SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW = 0x43), then released.
     user32.SetWindowPos(hwnd, wt.HWND(-1), 0, 0, 0, 0, 0x43)

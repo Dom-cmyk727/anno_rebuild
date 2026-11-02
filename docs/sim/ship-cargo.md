@@ -1,6 +1,6 @@
 # Ship cargo: unload a ship's hold into the owner's warehouse (contract)
 
-**Status:** MAP-CARGO-1 U1, 2026-11-02. A **specification and an independent reference, before any engine code**. Evidence:
+**Status:** MAP-CARGO-1 U1, 2026-11-02. A **specification and an independent reference, before any engine code (HISTORICAL wording of the U1 draft; section 11 records what was implemented)**. Evidence:
 [`docs/re/ship-cargo.md`](../re/ship-cargo.md) (every address below is explained there). Independent reference and vectors:
 `tools/cargo_ref.py`, `fixtures/synthetic/sim/cargo_vectors.txt`. Labels: **ORIGINAL** a traced rule kept; **ADAPTATION** a deliberate
 change of the rebuild; **UNKNOWN** unread, with a bounded blocker in `docs/open-questions.md` (OQ-CARGO-*).
@@ -237,7 +237,7 @@ never edits a running one. The crew (children) are not touched.
 * Codec, dispatch, `RecordResult::transferred_88`, the four rejects and independent command bytes; version-negative tests reseal a valid control.
 * Positive control B1 with a known non-zero amount; then one predicate at a time (B2-B12), each asserting its intended reason and an unchanged
   state hash. Conservation checked in a wide accumulator on every accepted case (A rows, contention rows, near-bound rows).
-* Two ENGINE mutants, to be written in U3 (they do not exist yet; the Python reference already rejects the analogous mutants, and the mutant
+* Two ENGINE mutants, to be written in U3 (they do not exist yet [HISTORICAL: superseded by section 11; the tag test was edited and the engine mutants were run in U3]; the Python reference already rejects the analogous mutants, and the mutant
   `free = cap - sum(all goods)` fails the new per-goods vectors): credit without debit, and debit of the request despite a smaller credit, through the normal codec/apply path; both must fail the conservation assertion while the positive control passes.
 * Registry-driven: another owner and a data-defined ship type and warehouse type (no player 0, four holds, 1502/1302 or founding whitelist);
   `CargoRules` validation tests (empty table, `half_widths[0] != r`, increasing table).

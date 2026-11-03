@@ -128,11 +128,12 @@ TEST_CASE("picking: hand-derived tile centres from tile_top and the lift pick th
           "point past an edge picks the neighbour" *
           doctest::test_suite("picking")) {
     // A literal case first: group 0, tile (10, 5), flat ground at height 0. tile_top is
-    // ((10 - 5) * 42, (10 + 5) * 21) = (210, 315); the centre is 21 px below it.
+    // ((5 - 10) * 42, (10 + 5) * 21) = (-210, 315) (the original's handedness, iso.md
+    // "Handedness"); the centre is 21 px below it.
     {
         const auto g = anno::render::pick_geometry(0);
         const auto flat = [](float, float) { return std::optional<float>(0.0F); };
-        const auto picked = anno::render::pick_tile(210.0, 336.0, g, flat);
+        const auto picked = anno::render::pick_tile(-210.0, 336.0, g, flat);
         REQUIRE(picked.has_value());
         CHECK(picked->first == 10);
         CHECK(picked->second == 5);
@@ -175,7 +176,7 @@ TEST_CASE("picking: hand-derived tile centres from tile_top and the lift pick th
     const auto g = anno::render::pick_geometry_of(10.0, 5.0);
     const auto flat = [](float, float) { return std::optional<float>(50.0F); };
     const double lift = 50.0 * 2.059 * 10.0 / 84.0;
-    const auto picked = anno::render::pick_tile((7 - 2) * 5.0, (7 + 2) * 2.5 + 2.5 - lift, g, flat);
+    const auto picked = anno::render::pick_tile((2 - 7) * 5.0, (7 + 2) * 2.5 + 2.5 - lift, g, flat);
     REQUIRE(picked.has_value());
     CHECK(*picked == std::pair{7, 2});
 }

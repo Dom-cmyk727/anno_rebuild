@@ -1407,12 +1407,11 @@ TEST_CASE("road build: a two-tile road, also turned, is one object on two tiles"
 TEST_CASE("road policy: the two enhanced choices are separate, hashed, saved and wired") {
     const Kit& k = kit();
     // Four sessions: (floor, preserve). Each outcome follows from exactly one option.
-    //  A: a road on a flat 0x10 tile (low level)      refused only with the floor
-    //  B: a road over a ramp piece on flat 0x30       refused only with preserve
-    //  C: a road over a ramp piece on flat 0x10       preserve answers first (occupancy), else
-    //  floor D: a class-0x1000 road on flat 0x10            refused under every setting (original
-    //  threshold) E: a class-0x4000 road on flat 0x30            built under every setting
-    //  (control)
+    //  A: a road on a flat 0x10 tile            refused only with the floor
+    //  B: a road over a ramp piece on flat 0x30 refused only with preserve
+    //  C: a road over a ramp piece on flat 0x10 preserve answers first (occupancy), else the floor
+    //  D: a class-0x1000 road on flat 0x10      refused under every setting (original threshold)
+    //  E: a class-0x4000 road on flat 0x30      built under every setting (control)
     const auto session = [](bool floor, bool preserve) {
         sim::Rules r;
         r.road_require_land_level = floor;

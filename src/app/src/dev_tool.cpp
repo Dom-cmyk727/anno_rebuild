@@ -152,7 +152,7 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
             enabled_ = false;
             message_.clear();
         } else if (!setup_.city) {
-            message_ = "no city of the developer player: the tool is off";
+            message_ = "no city yet: found one first (F with a ship selected), then B";
         } else {
             enabled_ = true;
             message_.clear();

@@ -41,9 +41,10 @@ the tests check:
 ## 3. Commands and each command's own state
 
 `PlayRunner` reads the sim's order-id counter before a turn and gives each accepted `MoveCmd`, in order, the
-next id; it is recorded on the command's outcome (`CommandOutcome::order_id`), with `transferred_88` of an
-`UnloadCmd` and the building a `FoundCmd` created (`created`) from the sim's own `RecordResult`s. Nothing is
-inferred from a later snapshot. `OpeningUi::state_of` then derives, per tracked command and only from the outcome
+next id (the sim's `ApplyResult` carries none; `ShipOrders::move` is the only increment and a test checks the id
+against the one the ship carries); it is recorded on the command's outcome (`CommandOutcome::order_id`). The
+`transferred_88` of an `UnloadCmd` and the building a `FoundCmd` created (`created`) come from the sim's own
+`RecordResult`s. Nothing is inferred from a later snapshot. `OpeningUi::state_of` then derives, per tracked command and only from the outcome
 as of the snapshot it holds (`PlayRunner::outcome_at`, never newer than the view):
 
 `queued → accepted, planning → sailing → arrived | route failed | stopped`, or `replaced by a newer order` (the ship
@@ -98,14 +99,14 @@ checkpoint. The recorded hashes are the state hash after each turn that ran comm
 
 | Requirement | Positive proof | Counterexample / negative control | Evidence |
 |---|---|---|---|
-| Live ships drawn from the sim, no scene rebuild | the ship at the published position in the CPU frame and the RTX window; GPU equals CPU for the overlay | picture counters unchanged while sailing; a building change commits a generation | `opening_session.py` screenshots, `live_units` parity test, `opening_workload` counters |
+| Live ships drawn from the sim, no scene rebuild | GPU equals CPU for the overlay (`live_units` parity test, 23 assertions, with a deliberately wrong input that fails); the ship at its published tile is inspected in the screenshots of `opening_session.py` (by eye: no test asserts the sprite's position, facing or colour, and the hit test shares the layer's projection) | `expect fact generation / committed / discarded same` while sailing; a building change commits a generation | `gpu_test.cpp`, `opening_test.cpp` (CPU blend), `opening_sail.script`, `opening_gpu_window.script` |
 | Selection by stable id, other owners inspect only | own ship ordered | seat 1's ship: no command; vanished ship dropped; overlapping ships deterministic | `opening_ui_test.cpp`, `opening_controls.script` |
 | One gesture, one action; pan never orders | click orders once | right/left drag, focus loss and Esc between press and release: no command | `opening_ui_test.cpp`, `opening_controls.script` |
-| Move/stop through the same queue and codec | `commands.txt`, replay agrees | the replacement does not inherit the first order's arrival; refusal shows its reason | `opening_test.cpp` (order ids, events, route failure), `opening_session.py` |
+| Move/stop through the same queue and codec | `commands.txt`, replay agrees | the replacement does not inherit the first order's arrival; refusal shows its reason; a recording of another manifest, seat, rules or start state, or without `session.txt`, is refused before it runs | `opening_test.cpp` (order ids, events, route failure), `opening_session.py` (`the replay refuses a recording ...`) |
 | Found, unload, build with the original supplies | gold 30 000 → 29 350, store and hold ledger | water tile and out-of-reach founding refused unchanged; full store `StockFull` | `opening_resume.script` (CPU and RTX) |
-| Replay of the window's own commands | 36 / 13 checkpoints, 1 / 10 outcomes agree in fresh processes | one ton fewer, or another goods, diverges | `opening_session.py` |
-| Save / resume | resumed world equals the saved one | corrupt, truncated, other manifest / seat / rules / hash refused with the reason | `opening_test.cpp` |
-| The window's wiring is the code under test | mutated retarget / premature success / pan-issues-move fail their scripted checks | see the report | mutation record |
+| Replay of the window's own commands | 36 / 13 checkpoints, 1 / 11 outcomes agree in fresh processes | one ton fewer, or another goods, diverges (turn 13) | `opening_session.py` |
+| Save / resume | resumed world equals the saved one; stage 3 resumes the save written after founding, unloading and building (stores, hold, ship, building tool) | corrupt, truncated, other manifest / seat / rules / hash refused with the reason. Not tested: a registry-digest mismatch, a tick mismatch and a differing island list (they are checked in `load_opening`); the island comparison covers rectangles and index only, not the terrain | `opening_test.cpp`, `opening_session.py` stage 3 (`opening_resume2.script`) |
+| The controls' logic is the code under test | mutated retarget / premature success / pan-issues-move / suppressed move / other-owner-controllable fail their scripted checks | `tools/test/opening_mutation_check.py` mutates `opening_ui.cpp` only: the window adapter (`viewer.cpp`) is not mutated | `docs/orchestration/evidence/w4-opening-1/` |
 
 ## 7. Limits
 

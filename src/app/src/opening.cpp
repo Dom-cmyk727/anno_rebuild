@@ -413,6 +413,9 @@ std::optional<OpeningInvocation> parse_opening_identity(const std::string& text)
     std::istringstream in(text);
     std::string line;
     while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back(); // a session.txt that went through a CRLF editor or transfer
+        }
         const std::size_t sp = line.find(' ');
         if (sp == std::string::npos) {
             continue;

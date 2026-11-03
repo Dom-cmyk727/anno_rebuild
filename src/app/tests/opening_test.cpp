@@ -648,3 +648,36 @@ TEST_CASE("cli: --ship-start followed by --view is neither") {
     CHECK_FALSE(
         app::parse_args({"--ship-start", "m.json", "--seat", "0", "--view", "x.sze"}).has_value());
 }
+
+TEST_CASE("session identity: the lines read back as written, also with CRLF line ends, and name "
+          "what is read") {
+    app::OpeningIdentity id;
+    id.manifest_path = "data/maps/m.json";
+    id.manifest_hash = "abc123";
+    id.seat = 3;
+    id.rules_digest = "00ff00ff00ff00ff";
+    id.registry_digest = "1111222233334444";
+    id.start_hash = "deadbeefdeadbeef";
+    const std::string text = app::format_opening_identity(id);
+    const auto lf = app::parse_opening_identity(text);
+    REQUIRE(lf.has_value());
+    CHECK(lf->manifest_path == "data/maps/m.json");
+    CHECK(lf->manifest_hash == "abc123");
+    CHECK(lf->seat == 3);
+    CHECK(lf->rules_digest == "00ff00ff00ff00ff");
+    CHECK(lf->start_hash == "deadbeefdeadbeef");
+    std::string crlf;
+    for (const char c : text) {
+        if (c == '\n') {
+            crlf += '\r';
+        }
+        crlf += c;
+    }
+    const auto cr = app::parse_opening_identity(crlf);
+    REQUIRE(cr.has_value());
+    CHECK(cr->manifest_hash == lf->manifest_hash);
+    CHECK(cr->rules_digest == lf->rules_digest);
+    CHECK(cr->start_hash == lf->start_hash);
+    // A session that is not a ship-start one names no identity.
+    CHECK_FALSE(app::parse_opening_identity("map x.txt\nspeed 200\n").has_value());
+}

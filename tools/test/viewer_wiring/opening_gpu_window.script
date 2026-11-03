@@ -3,6 +3,7 @@
 # stops neither the turns nor the input; the arrival is "not drawn yet" until a delivered frame shows it.
 # Launch (--gpu, RTX 4090): --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200
 wait frames 40
+wait fact cities == 0 within 60000
 pick-ship 1
 expect fact selected == 1
 # The ship turns toward each target and moves: north (-y, dir16 12), then east (+x, dir16 8).

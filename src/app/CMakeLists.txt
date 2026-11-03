@@ -149,10 +149,10 @@ if(ANNO_BUILD_TESTS)
       set_tests_properties(opening_session_replay PROPERTIES
         SKIP_RETURN_CODE 77 TIMEOUT 1800 PROCESSORS 4)
       if(ANNO_SANITIZE)
-        # Every process of the session (two windows, five replays) loads the game files, about 170 s
+        # Every process of the session (three windows, thirteen replays) loads the game files, about 170 s
         # each under ASan/UBSan; the voyage of stage 1 adds its 90 s of game time to that.
         set_tests_properties(opening_session_replay PROPERTIES
-          TIMEOUT 3300 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500")
+          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500")
       endif()
     endif()
   endif()

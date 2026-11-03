@@ -17,7 +17,7 @@
   The ship-start map (default: candidate A, data\maps\candidates\ship-start-v2\lan5-ship-a.json).
 .PARAMETER GameDir
   The original game's folder (the one with Anlagen.dat). Default: $env:ANNO1503_GAME_DIR, else a
-  game\app folder found above this script.
+  game\app folder found above this script (a git worktree has none: pass -GameDir).
 .PARAMETER Exe
   The anno1503.exe to run (default: the Release build of this checkout).
 .PARAMETER Renderer
@@ -61,6 +61,7 @@ if ($Resume) {
     $arguments += @("--resume", $Resume)
 }
 Write-Host "anno1503 ship-start opening: seat $Seat, speed $Speed, map $Manifest"
-Write-Host "Controls: docs/testing/ship-opening-playtest.md. Saves go to $((Get-Location).Path)\saves (set ANNO_SAVE_DIR to change)."
+if (-not $env:ANNO_SAVE_DIR) { $env:ANNO_SAVE_DIR = Join-Path $root "saves" }
+Write-Host "Controls: docs/testing/ship-opening-playtest.md. Saves (F5) go to $($env:ANNO_SAVE_DIR); -Resume <file> continues from one."
 & $Exe @arguments
 exit $LASTEXITCODE

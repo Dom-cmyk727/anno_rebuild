@@ -1264,10 +1264,19 @@ bool Viewer::opening_handle(const SDL_Event& e) {
         case SDLK_TAB:
             key = OpeningKey::NextHold;
             break;
+        // [ ] are AltGr+8 / AltGr+9 on a German keyboard: minus / plus and Page Down / Page Up do
+        // the same, with the same Shift for ten tons.
         case SDLK_LEFTBRACKET:
+        case SDLK_MINUS:
+        case SDLK_KP_MINUS:
+        case SDLK_PAGEDOWN:
             key = OpeningKey::QtyDown;
             break;
         case SDLK_RIGHTBRACKET:
+        case SDLK_PLUS:
+        case SDLK_EQUALS: // the + key of a US layout, unshifted
+        case SDLK_KP_PLUS:
+        case SDLK_PAGEUP:
             key = OpeningKey::QtyUp;
             break;
         case SDLK_RETURN:
@@ -1367,6 +1376,11 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
                 : ui.mode() == OpeningMode::Unload ? "unload"
                                                    : "select";
     f["selected"] = ui.selected() ? std::to_string(ui.selected()->v) : "none";
+    {
+        const auto plan =
+            ui.mode() == OpeningMode::Unload ? ui.unload_plan(opening_feed()) : std::nullopt;
+        f["request"] = plan ? std::to_string(plan->tons) : "none";
+    }
     f["tracked"] = std::to_string(ui.tracked().size());
     f["save"] = opening_->save_status ? opening_->save_status() : "";
     if (f["save"].empty()) {
@@ -1638,18 +1652,21 @@ void Viewer::update_title() {
 #endif
     const bool dev_on = dev_ != nullptr && dev_->enabled() && knowledge_;
     if (opening_ != nullptr && opening_->ui != nullptr) {
-        title += " — " + opening_->ui->status_line(opening_feed());
-        if (ships_missing_ > 0) {
-            title += " — " + std::to_string(ships_missing_) + " ship(s) without sprites";
-        }
+        // The opening's own line comes first: a caption shows about 150 characters of a 1280 px
+        // window, and the command state, the advisory and the pointer are what the owner reads.
+        std::string lead = opening_->ui->status_line(opening_feed());
         if (!save_note_.empty()) {
-            title += " — " + save_note_;
+            lead += " | " + save_note_;
         }
         if (opening_->save_status) {
             if (const std::string s = opening_->save_status(); !s.empty()) {
-                title += " — " + s;
+                lead += " | " + s;
             }
         }
+        if (ships_missing_ > 0) {
+            lead += " | " + std::to_string(ships_missing_) + " ship(s) without sprites";
+        }
+        title = lead + " — " + title;
     }
     if (hooks_ != nullptr && hooks_->title && !dev_on) {
         const std::string extra = hooks_->title();

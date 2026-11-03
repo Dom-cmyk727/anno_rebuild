@@ -745,19 +745,17 @@ std::optional<FoundPreview> OpeningUi::found_preview(const UiFeed& feed) const {
 }
 
 std::string OpeningUi::status_line(const UiFeed& feed) const {
-    std::string line;
-    const auto add = [&line](const std::string& s) {
-        if (!s.empty()) {
-            line += (line.empty() ? "" : " | ") + s;
-        }
-    };
+    // What the owner reads first is what a window caption shows first: the mode, the message, the
+    // latest command's state, the advisory and the pointer; then gold, the ship, the stores (a
+    // caption of a 1280 px window shows about 150 characters, the rest is cut off).
+    std::string gold_s, ship_s, city_s, adv_s, cmd_s, ptr_s;
     const char* mode = mode_ == OpeningMode::Found    ? "FOUND"
                        : mode_ == OpeningMode::Unload ? "UNLOAD"
                                                       : "select";
-    add(std::string("mode ") + mode);
+    const std::string mode_s = std::string("mode ") + mode;
     const OpeningView* view = feed.view;
     if (view != nullptr) {
-        add("gold " + std::to_string(view->gold));
+        gold_s = "gold " + std::to_string(view->gold);
         if (selected_) {
             if (const ShipView* ship = view->ship(*selected_)) {
                 std::string s = "ship #" + std::to_string(ship->id.v) + " seat " +
@@ -774,10 +772,10 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                              tons_text(ship->holds[i].amount_88);
                 }
                 s += " cargo: " + (cargo.empty() ? std::string("empty") : cargo);
-                add(s);
+                ship_s = s;
             }
         } else {
-            add("no ship selected");
+            ship_s = "no ship selected";
         }
         if (!view->cities.empty()) {
             std::string c;
@@ -793,13 +791,13 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                 }
                 c += goods.empty() ? " (empty store)" : goods;
             }
-            add(c);
+            city_s = c;
         }
     }
     if (mode_ == OpeningMode::Unload) {
         if (const auto plan = unload_plan(feed)) {
-            add("hold [" + std::to_string(plan->hold) + "] " + goods_name(plan->goods) +
-                " request " + std::to_string(plan->tons) + " t: " + plan->advisory);
+            adv_s = "hold [" + std::to_string(plan->hold) + "] " + goods_name(plan->goods) +
+                    " request " + std::to_string(plan->tons) + " t: " + plan->advisory;
         }
     }
     if (mode_ == OpeningMode::Found) {
@@ -814,9 +812,9 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                     cost += ", " + tons_text(e.amount_88) + " t " + goods_name(e.goods);
                 }
             }
-            add(cost +
-                (p->advisory.empty() ? " (no problem known here)" : " (" + p->advisory + ")") +
-                " [advisory]");
+            adv_s = cost +
+                    (p->advisory.empty() ? " (no problem known here)" : " (" + p->advisory + ")") +
+                    " [advisory]";
         }
     }
     if (!tracked_.empty()) {
@@ -873,13 +871,21 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
                 }
             }
         }
-        add(s);
+        cmd_s = s;
     }
     if (hover_point_) {
-        add("pointer (" + std::to_string(hover_point_->first.x) + "," +
-            std::to_string(hover_point_->first.y) + ") " + (hover_point_->second ? "land" : "sea"));
+        ptr_s = "pointer (" + std::to_string(hover_point_->first.x) + "," +
+                std::to_string(hover_point_->first.y) + ") " +
+                (hover_point_->second ? "land" : "sea");
     }
-    add(message_);
+    std::string line;
+    const std::string* const parts[] = {&mode_s, &message_, &cmd_s,  &adv_s,
+                                        &ptr_s,  &gold_s,   &ship_s, &city_s};
+    for (const std::string* s : parts) {
+        if (!s->empty()) {
+            line += (line.empty() ? "" : " | ") + *s;
+        }
+    }
     return line;
 }
 

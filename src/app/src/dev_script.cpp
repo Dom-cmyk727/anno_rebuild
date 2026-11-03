@@ -64,6 +64,18 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     if (name == "rbracket") {
         return SDLK_RIGHTBRACKET;
     }
+    if (name == "minus") {
+        return SDLK_MINUS;
+    }
+    if (name == "plus") {
+        return SDLK_PLUS;
+    }
+    if (name == "pageup") {
+        return SDLK_PAGEUP;
+    }
+    if (name == "pagedown") {
+        return SDLK_PAGEDOWN;
+    }
     if (name == "f5") {
         return SDLK_F5;
     }

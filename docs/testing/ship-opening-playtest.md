@@ -39,14 +39,16 @@ and `R` water, `B` the building tool, `Esc` / `Q` quit (Esc first cancels what i
 | right click open sea | order the selected ship there (one order per click; land and outside the world are refused locally) |
 | right drag / left drag | pan; a drag never selects and never orders |
 | `H` | stop the selected ship |
-| `F` | founding mode: the warehouse sprite follows the pointer; `T` rotates; left click sends the founding (one click, one command) |
-| `U` | unload mode: `Tab` next hold, `[` `]` quantity −1 / +1 ton (`Shift`: 10), `Enter` sends exactly that hold and quantity to your nearest warehouse (left click one of your warehouses to choose it) |
+| `F` | founding mode: the warehouse sprite follows the pointer; `T` or `Tab` rotates / cycles the type; left click sends the founding (one click, one command) |
+| `U` | unload mode: `Tab` next hold, `-` / `+` (or `Page Down` / `Page Up`, or `[` `]`) quantity −1 / +1 ton (`Shift`: 10), `Enter` sends exactly that hold and quantity to your nearest warehouse (left click one of your warehouses to choose it) |
 | `B` | building tool: `N` / `P` type (`Shift+N` / `Shift+P`: ten at a time), `T` rotate, `X` demolish, left click place; it follows your founded city |
 | `F5` | quick-save (written off the window thread to `saves\quicksave-seat<N>.sav`) |
 | `Esc` | cancel the gesture, then the mode, then the selection, then quit |
 
-The title shows: the mode, your gold, the selected ship (id, seat, tile, cargo by hold), your city and its
-store, the pointer's tile (sea/land, to aim), the **latest command's own state** and the real refusal. A
+The title (the window's caption: it is cut off at the window's width, so what you need comes first) shows, in this order:
+the mode, the last message, the **latest command's own state** and the real refusal, the unload / founding advisory, the
+pointer's tile (sea/land, to aim), then your gold, the selected ship (id, seat, tile, cargo by hold), your city and its store,
+and last the window's own name and renderer. A
 move reads `queued → accepted, planning → sailing → arrived (shown)`; acceptance is not arrival, and "shown"
 only after a frame with that tick was delivered. A refusal names the sim's reason (`StockFull`, `OutOfRange`, ...).
 The founding and unload numbers are advisory ("would move 5 t"): the sim decides when the command runs.

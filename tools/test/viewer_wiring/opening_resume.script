@@ -16,7 +16,7 @@ key f
 click-land 257 134
 wait fact latest_kind == found within 10000
 wait fact latest == refused within 10000
-expect fact latest_reason != none
+expect fact latest_reason == NoRotationFits
 expect fact cities == 0
 expect fact gold == 30000
 expect fact mode == select
@@ -27,6 +27,7 @@ key f
 click-land 150 250
 wait fact tracked == 2 within 10000
 wait fact latest == refused within 10000
+expect fact latest_reason == OutOfRange
 expect fact cities == 0
 expect fact gold == 30000
 # The real founding, at the click whose origin the sim derives itself.
@@ -49,6 +50,15 @@ screenshot 4-founded
 # Every hold of the ship into the warehouse, each by its own command.
 key u
 expect fact mode == unload
+# The quantity keys: [ ] and the keys of a layout without them (minus / plus, Page Down / Page Up).
+wait fact request == 38 within 5000
+key pagedown
+wait fact request == 37 within 5000
+key minus
+wait fact request == 36 within 5000
+key pageup
+key plus
+wait fact request == 38 within 5000
 key enter
 wait fact tracked == 4 within 10000
 wait fact latest == accepted within 10000

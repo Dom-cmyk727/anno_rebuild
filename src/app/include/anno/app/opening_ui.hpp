@@ -196,8 +196,9 @@ class OpeningUi {
         std::string advisory;
     };
     [[nodiscard]] std::optional<UnloadPlan> unload_plan(const UiFeed& feed) const;
-    /// The HUD line (the window title's tail): mode, selection, cargo, the latest command's own
-    /// state and the last message.
+    /// The HUD line (the window title's lead): the mode, the last message, the latest command's own
+    /// state, the unload / founding advisory and the pointer first (a caption shows about 150
+    /// characters), then gold, the selected ship with its cargo and the stores.
     [[nodiscard]] std::string status_line(const UiFeed& feed) const;
     /// Another mode (the building tool) took the controls: leave the founding and unload modes.
     void leave_modes();

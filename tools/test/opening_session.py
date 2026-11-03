@@ -11,6 +11,7 @@ founds the warehouse, unloads every hold of the ship (the last one limited by th
 for it), and builds HANDWERK and PIONIER with the building tool, checking the money and goods ledger at each
 step (tools/test/viewer_wiring/opening_sail.script, opening_resume.script; no grant, no relocation).
 Each window runs through tools/test/viewer_wiring.py, so a successful exit alone is not a pass.
+Stage 3 resumes the save stage 2 wrote after its builds (opening_resume2.script: stores, hold, ship and building tool).
 Then each recording (session/commands.txt, hashes.txt, outcomes.txt, session.txt) is replayed in a fresh
 process with the same manifest, seat, rules and start state (`--replay-hashes`): every checkpoint and every
 outcome must agree; the same recording with one unload's quantity changed (and another's goods) must
@@ -98,6 +99,20 @@ def main(argv):
         print(out[-3000:])
         return 1
 
+    # ---- stage 3: the save stage 2 wrote after founding, unloading and building ---------------------
+    save2 = b.parent / "run.saves" / "quicksave-seat0.sav"
+    if not check(save2.is_file() and save2.stat().st_size > 1000, f"stage 2 wrote its save ({save2})"):
+        return 1
+    kept2 = work / "stage2" / "built.sav"
+    shutil.copy(save2, kept2)
+    c = work / "stage3" / "run"
+    rc, out, err = wiring(exe, "opening_resume2", c, flags, ("--resume", str(kept2)))
+    print(out.strip().splitlines()[-1] if out.strip() else err)
+    if not check(rc == 0 and "PASS opening_resume2" in out,
+                 "stage 3 (resume the built city: stores, hold, ship, building tool) passed the wrapper"):
+        print(out[-3000:])
+        return 1
+
     # ---- the recordings: what the window issued, replayed in a fresh process -------------------
     for name, session, resume in (("stage 1", a, None), ("stage 2", b, kept)):
         commands = (session / "commands.txt").read_text(encoding="utf-8")
@@ -131,6 +146,38 @@ def main(argv):
         (tampered / "commands.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
         rc, out, err = replay(exe, tampered, kept)
         check(changed and rc == 1 and "differs" in err, f"the recording with {label} diverges ({err.strip().splitlines()[-1] if err.strip() else rc})")
+
+    # ---- a recording is only replayed against what it was made from -------------------------------
+    def broken(label, mutate, expect):
+        d = work / "refused" / label.replace(" ", "_")
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir(parents=True)
+        for name in ("commands.txt", "hashes.txt", "outcomes.txt", "session.txt"):
+            shutil.copy(b / name, d / name)
+        mutate(d)
+        rc, out, err = replay(exe, d, kept)
+        check(rc == 1 and expect in err, f"the replay refuses a recording {label} ({err.strip().splitlines()[-1] if err.strip() else rc})")
+
+    def edit_session(prefix, new):
+        def run(d):
+            lines = (d / "session.txt").read_text(encoding="utf-8").splitlines()
+            hit = [i for i, line in enumerate(lines) if line.startswith(prefix + " ")]
+            assert len(hit) == 1, (prefix, hit)
+            lines[hit[0]] = prefix + " " + new
+            with open(d / "session.txt", "w", encoding="utf-8", newline="\n") as out:
+                out.write("\n".join(lines) + "\n")
+        return run
+
+    manifest_hash = re.search(r"^manifest-hash (\S+)$", (b / "session.txt").read_text(encoding="utf-8"), re.M).group(1)
+    broken("of another manifest", edit_session("manifest-hash", manifest_hash[:-1] + ("0" if manifest_hash[-1] != "0" else "1")),
+           "another manifest")
+    broken("of another seat", edit_session("seat", "1"), "another seat")
+    broken("of other rules", edit_session("rules-digest", "0000000000000000"), "another rules")
+    broken("of another start state", edit_session("start-hash", "0000000000000000"), "another start state")
+    broken("without its session.txt", lambda d: (d / "session.txt").unlink(), "no session.txt")
+    broken("that names no ship-start session",
+           lambda d: (d / "session.txt").write_text("map something.txt\nspeed 200\n", encoding="utf-8"),
+           "names no ship-start session")
     print(f"session: {work}")
     if failures:
         print(f"opening_session: FAIL ({len(failures)}): " + "; ".join(failures))

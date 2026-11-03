@@ -1,0 +1,25 @@
+# W4-OPENING-1, stage 3 of the full opening: the save that stage 2 wrote after founding, unloading and building
+# (--resume <that save>): a city, its stores and the ship's remaining hold come back as they were, the ship is where
+# it stopped, and the building tool follows the resumed city. Launch:
+#   --ship-start data/maps/candidates/ship-start-v2/lan5-ship-a.json --seat 0 --speed 200 --resume <save>
+wait frames 30
+wait fact cities == 1 within 60000
+expect fact gold == 29350
+expect fact store.42 == 7936
+expect fact store.41 == 12032
+expect fact store.26 == 2560
+expect fact ship.1.hold0 == 0
+expect fact ship.1.hold3 == 6400
+expect fact ship.1.x == 266
+expect fact tool == off
+expect fact mode == select
+lookw 262 134
+wait frames 20
+# The tool turns on at the resumed city (an occupied tile of the city is known to it).
+key b
+expect fact tool == on
+wait frames 10
+screenshot 7-resumed
+key b
+expect fact tool == off
+quit

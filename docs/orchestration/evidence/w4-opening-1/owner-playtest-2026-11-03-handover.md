@@ -149,7 +149,7 @@ Wine check for H2, wait for the zoom log").
   throw-away worktree `E:\anno1503-worktrees\anno1503-W4-h1exp`). Our viewer opens the original's quicksave, so the same
   island renders on both sides:
   - `sheet_start_g1.png`: the original's start view against ours now and with H1, at the original's zoom;
-  - `sheet_kontors.png`: the four `S01_02_01.sze` Kontors (4,286 / 495 / 1,746 / 856 pixels change; rotation 0 gains water
+  - `sheet_kontors.png`: the four `S01_02_01.sze` Kontors (4,286 / 495 / 1,794 / 856 pixels change; rotation 0 gains water
     under its piles);
   - `sheet_coast.png`: the start island's coast at group 1 (481 pixels change: the 16-high shelves).
   Finding: H1 moves the waterline the way the original draws it but closes only part of the gap at the start Kontor: in the
@@ -180,10 +180,13 @@ Wine check for H2, wait for the zoom log").
   `BSH_RGBAZ` with per-pixel offsets −70 … +54, roads `BSH_RGBAH` decals tested but never written). This renderer draws
   sprites whole on top of the terrain and depth-tests only the sea and the rivers. H1 cannot close that; it is a renderer
   task of its own (OQ-026 c), not started.
-- **Package review** (independent, read-only, of `a150c11d..6793191d`): no P1; two P2, seven P3. Dispositions:
+- **Package review** of `a150c11d..6793191d`: a fresh read-only Claude subagent (Opus 5.5) started by this executor session
+  for the review only, with the commits and the project rules as its brief, not this session's conclusions; it built and ran
+  nothing. No P1; two P2, seven P3. Dispositions:
   - P2 the water-object split stays at 16 while the experiment moved it to 16.5: measured, the shipped default renders the
-    six H1 views (`cache/o1/h1/render.sh`) pixel for pixel as the experiment's H1 build, and `--shore 16` as its base
-    (`cache/o1/h1now/`, 0 differing pixels each). Kept at 16 (it also decides which river pieces form the river surface),
+    seven H1 views (the six of `cache/o1/h1/render.sh` and `start_g1`) pixel for pixel as the experiment's H1 build, and
+    `--shore 16` as its base (`cache/o1/h1now/`, 0 differing pixels each; heads, flags and counts in its
+    `PROVENANCE.txt`). Kept at 16 (it also decides which river pieces form the river surface),
     the reason in `iso.hpp` and `docs/render/iso.md`; which side an object at exactly 16 belongs to stays open (OQ-026 b).
   - P2 the empty-cell proof in `docs/render/iso.md` was written for a shore of 16: restated for the island's shore S
     (31.6 at the default; the corners are whole numbers, so the marked tiles are the same), and the perf note.
@@ -194,4 +197,10 @@ Wine check for H2, wait for the zoom log").
     `Scene::shore_height` is a plain field "set before the first render" (an island's water keeps the shore it was
     built with); the wave-depth test covers the open sea only; the corpus at the default shore is the frames test's
     third pass (the scene and legacy-river tables run at 16), recorded on MSVC, no Linux run with the game files.
+- **Focused re-review** of the fixes `6793191d..99437681` (another fresh read-only subagent, the same brief style): no P1/P2;
+  it re-measured the six views and the proof's arithmetic. Its P3s: the seventh view (`start_g1`) measured as well (0 pixels,
+  above); `PROVENANCE.txt` added to `cache/o1/h1now/`; the k2 count corrected (1,794, RGB and RGBA alike); the reviewers
+  named here; `docs/re/ship-founding.md` still calls `0x10049340` unread (lines 13, 166, §3.5) while its §8.2 has the `+0x46`
+  return and the setter `0x10049166` is only in the orchestrator's review and OQ-520: the Mac MAP lane's RE note, not edited
+  here, for the orchestrator.
 - **Gates of the final head:** REPORTS.

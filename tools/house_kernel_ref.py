@@ -63,7 +63,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import group_derived_ref as gd  # noqa: E402  (derive() only)
 
-GOODS = 143
 RESULT_KEYS = {'s0', 'avg', 'lowi', 'status', 'last', 'e', 'stock', 'lowest', 'spawn', 'mood', 'res', 'csub', 'cadd',
                'capsub', 'b64', 'arm', 'effects', 'reason', 'cap'}
 
@@ -121,7 +120,11 @@ def kernel(g, bau, roles, inp):
     else:
         if not needs:
             return dict(r, status='not_evaluated', reason='missing_first_need')
-        dv = gd.derive([(w, bool(f)) for w, f, _ in needs], g['id_sec'], GOODS, roles)
+        # Only the endpoints are consumed below. Infer a sufficient goods-id domain from all
+        # referenced ids, including configured roles; an original table size is not a limit.
+        domain = 1 + max(*roles, *(w for w, _, _ in needs), *bau,
+                         *g['id_sec'], *g['id_sec'].values())
+        dv = gd.derive([(w, bool(f)) for w, f, _ in needs], g['id_sec'], domain, roles)
         first, last, tavern, _alias = roles
 
         def score(j, cap):

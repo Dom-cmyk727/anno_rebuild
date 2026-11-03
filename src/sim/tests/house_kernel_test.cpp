@@ -218,6 +218,18 @@ TEST_CASE("house kernel: every hand-derived vector") {
                     static_cast<sim::GoodsId>(r[2]), static_cast<sim::GoodsId>(r[3])};
             }
             std::vector<sim::GoodsInfo> goods = sim::original_goods();
+            std::size_t domain = static_cast<std::size_t>(
+                                     std::max({g.roles.infra_first, g.roles.infra_last,
+                                               g.roles.tavern_goods, g.roles.tavern_alias_goods})) +
+                                 1;
+            for (const auto& need : g.group.needs) {
+                domain = std::max(domain, static_cast<std::size_t>(need.ware) + 1);
+            }
+            for (const auto& [ware, stage] : g.bau) {
+                (void)stage;
+                domain = std::max(domain, static_cast<std::size_t>(ware) + 1);
+            }
+            goods.resize(std::max(domain, goods.size()));
             for (const auto& [ware, stage] : g.bau) {
                 goods[ware].bau_first = stage;
             }

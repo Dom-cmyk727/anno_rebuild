@@ -22,6 +22,7 @@ group Q wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 n
 # U: an UNFORCED tavern must not feed the average
 group U wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:1:16,76:0:16
 group R wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=TI needs=26:0:16,11:1:16 roles=10,12,11,5
+group RW wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=5:0:16,200:1:16 roles=200,240,200,10
 
 # --- D1 / D1b gate: unsigned u16 difference, one step per call. Body B0 (zero stocks): E'=128, mood -2,
 # --- downgrade arm, below-64 correction -> res 64.
@@ -95,6 +96,9 @@ vec O-ctrl group=B now=2500 last=0 period=2500 mask=1 e=0 res=2147483000 stock=3
 
 # --- bound roles (infra 10..12, tavern 11): a hard-coded 0x4c would treat need 1 as a consumer need
 vec R-roles group=R now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=400,200 prev=8 => status=evaluated e=128 stock=396,198 lowest=148 mood=1 res=72
+# Same score arithmetic with goods/role ids beyond the original 143-entry table: E'=128,
+# score(0)=128, tavern score=128, minimum infra=148 -> table scores 2,2,2 -> mood2, res80.
+vec R-wide group=RW now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=400,200 prev=8 => status=evaluated e=128 stock=396,198 lowest=148 mood=2 res=80
 
 # --- mood score loops (diagnostics s0 avg lowi); every wrong loop range / force test / cap moves one of them
 # Q1: s0 = min(225,128)=128; goods loop slots 1..3: slot1 180->128, slot2 unforced, slot3 30 -> sum 158 cnt 2;

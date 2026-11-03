@@ -201,6 +201,8 @@ class ChunkWorkers {
                 ChunkBuilder builder = ChunkBuilder::Cpu, std::uint32_t bin_px = kDefaultBinPx);
     /// Finished chunks since the last call.
     std::vector<std::pair<ChunkKey, Chunk>> take_done();
+    /// Whether the build of one of `jobs`' chunks failed: it is not requested again.
+    [[nodiscard]] bool any_failed(const std::vector<ChunkJob>& jobs);
     /// Blocks until nothing is queued or being built. `update_chunks` does not
     /// call this: the window thread returns while workers are still running.
     /// A test waits here instead of sleeping and retrying.
@@ -219,6 +221,10 @@ class ChunkWorkers {
     /// Test seam: a build whose key it returns true for fails as a throwing build does (the
     /// chunk stays missing and is not requested again). Null by default.
     void set_test_failure(std::function<bool(const ChunkKey& key)> fail);
+    /// Test seam: called at the start of every submit, on the caller's thread and outside the
+    /// lock, so a test can let a build finish between update_chunks' take_done and its submit.
+    /// Set it between two updates, not while one runs. Null by default.
+    void set_test_before_submit(std::function<void()> hook);
 
   private:
     void run();
@@ -243,6 +249,7 @@ class ChunkWorkers {
     std::uint32_t bin_px_ = kDefaultBinPx;
     std::function<void(const ChunkKey&, std::uint64_t)> gate_;
     std::function<bool(const ChunkKey&)> fail_;
+    std::function<void()> before_submit_;
     std::vector<std::thread> threads_;
 };
 
@@ -470,9 +477,12 @@ class FrameRenderer {
     /// The resident derived chunk being built for prewarm_far_levels, until it is cached.
     std::optional<ChunkKey> prewarm_target_;
     /// Resident chunks the prewarm gave up on: nothing was queued or running for the target after
-    /// a request (its build or a child's failed, ChunkWorkers::failed_, never retried). The rest
-    /// of the overview is still prewarmed; a skipped chunk is built when it is shown.
+    /// a request and a build it needs had failed (prewarm_blocked). The rest of the overview is
+    /// still prewarmed; a skipped chunk is built when it is shown.
     std::set<ChunkKey> prewarm_skipped_;
+    /// Whether a job of `target`'s plan failed (ChunkWorkers::any_failed): the workers never retry
+    /// it, so the target cannot be built.
+    [[nodiscard]] bool prewarm_blocked(const Scene& scene, const ChunkKey& target);
     /// The first resident derived chunk of the scene that is not cached or is marked stale (the
     /// farthest level first).
     [[nodiscard]] std::optional<ChunkKey> next_prewarm_key(const Scene& scene) const;

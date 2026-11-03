@@ -6,9 +6,12 @@
 // state).
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -406,6 +409,111 @@ TEST_CASE("prewarm: a resident chunk that cannot be built does not stop the rest
     }
     CHECK(frames.chunk(broken) == nullptr);
     CHECK(built == overview.size() - 1);
+}
+
+// Review 2026-11-03 (P2): the prewarm gave its target up whenever the last submit left nothing
+// queued or running. A job that finishes between update_chunks' take_done and its submit is skipped
+// by that submit (done, not taken yet), so the target's last missing child arrived one frame after
+// the target was given up, and the chunk was never prewarmed again. The gate holds that child's
+// build; the before-submit seam lets it finish inside the gap.
+TEST_CASE("prewarm: a child finished between take_done and submit does not give the target up "
+          "(game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    const std::size_t first_derived = scene->levels().built_count();
+    std::vector<render::ChunkKey> overview;
+    for (std::size_t g = first_derived; g < scene->levels().size(); ++g) {
+        const auto b = scene->bounds(g);
+        REQUIRE(b.has_value());
+        const auto keys = render::chunk_keys_touching(*scene, *b, g);
+        overview.insert(overview.end(), keys.begin(), keys.end());
+    }
+    // The target: an overview chunk of the first derived level; the child: one of its children
+    // with land (a real build).
+    const auto built_bounds = scene->bounds(first_derived - 1);
+    REQUIRE(built_bounds.has_value());
+    std::optional<render::ChunkKey> target, child;
+    for (const render::ChunkKey& k : overview) {
+        if (std::get<0>(k) != first_derived) {
+            continue;
+        }
+        for (const render::ChunkKey& kid : render::derived_children(k, scene->levels())) {
+            if (render::chunk_rect(std::get<1>(kid), std::get<2>(kid)).intersect(*built_bounds)) {
+                target = k;
+                child = kid;
+                break;
+            }
+        }
+        if (target) {
+            break;
+        }
+    }
+    REQUIRE(target.has_value());
+    const render::Rect away{-200000, -200000, 64, 64};
+    render::FrameRenderer frames(2);
+    auto workers = std::make_unique<render::ChunkWorkers>(4);
+    render::ChunkWorkers* w = workers.get();
+    frames.set_workers(std::move(workers));
+    frames.prewarm_far_levels = true;
+    frames.resident_level_chunks = 64;
+    frames.spare_chunks = 100000; // the children stay cached: the rebuild needs only `child`
+    const auto settle = [&](const std::shared_ptr<const render::Scene>& s) {
+        for (int round = 0; round < 400; ++round) {
+            frames.update_chunks(s, away, 2);
+            w->wait_idle();
+        }
+    };
+    settle(scene);
+    REQUIRE(frames.chunk(*target) != nullptr);
+    REQUIRE(frames.chunk(*child) != nullptr);
+    const std::size_t rebuilds_before = frames.chunk_rebuilds(*target);
+    // The child's rebuild for the next generation waits in the gate until it is opened.
+    const auto next = scene->with_islands({});
+    std::mutex mu;
+    std::condition_variable cv;
+    bool held = false, open = false;
+    w->set_test_gate([&](const render::ChunkKey& k, std::uint64_t generation) {
+        if (k != *child || generation != next->generation()) {
+            return;
+        }
+        std::unique_lock lock(mu);
+        held = true;
+        cv.notify_all();
+        cv.wait(lock, [&] { return open; });
+    });
+    frames.invalidate({*target, *child}, next->generation());
+    // Frame 1: the stale target is the prewarm's; its plan is the child, which the gate holds.
+    frames.update_chunks(next, away, 2);
+    {
+        std::unique_lock lock(mu);
+        REQUIRE(cv.wait_for(lock, std::chrono::seconds(60), [&] { return held; }));
+    }
+    // Frame 2: take_done finds nothing; then, before the submit, the child finishes. The submit
+    // skips it as done and queues nothing: no work pending.
+    w->set_test_before_submit([&] {
+        {
+            const std::lock_guard lock(mu);
+            open = true;
+        }
+        cv.notify_all();
+        w->wait_idle();
+    });
+    frames.update_chunks(next, away, 2);
+    w->set_test_before_submit(nullptr);
+    CHECK_FALSE(frames.busy());
+    CHECK(frames.stale_generation(*target) != 0);
+    // Frame 3 on: the child arrives and the target is reduced from it, in the background.
+    settle(next);
+    CHECK(frames.stale_generation(*child) == 0);
+    CHECK(frames.stale_generation(*target) == 0);
+    REQUIRE(frames.chunk(*target) != nullptr);
+    CHECK(frames.chunk(*target)->generation == next->generation());
+    CHECK(frames.chunk_rebuilds(*target) - rebuilds_before == 1); // once, no loop
 }
 
 namespace {

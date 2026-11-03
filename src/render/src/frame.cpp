@@ -532,6 +532,9 @@ bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, bool ships, Chunk
 
 bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<const Scene> scene,
                           bool ships, ChunkBuilder builder, std::uint32_t bin_px) {
+    if (before_submit_) {
+        before_submit_();
+    }
     const std::lock_guard lock(mutex_);
     ships_ = ships;
     builder_ = builder;
@@ -554,6 +557,16 @@ bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<c
     }
     ready_.notify_all();
     return !jobs_.empty() || !busy_.empty();
+}
+
+bool ChunkWorkers::any_failed(const std::vector<ChunkJob>& jobs) {
+    const std::lock_guard lock(mutex_);
+    return std::any_of(jobs.begin(), jobs.end(),
+                       [&](const ChunkJob& j) { return failed_.contains(j.key); });
+}
+
+void ChunkWorkers::set_test_before_submit(std::function<void()> hook) {
+    before_submit_ = std::move(hook);
 }
 
 void ChunkWorkers::set_test_failure(std::function<bool(const ChunkKey&)> fail) {
@@ -967,9 +980,12 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         if (prewarm_target_ && cache_.contains(*prewarm_target_) &&
             !dirty_.contains(*prewarm_target_)) {
             prewarm_target_.reset();
-        } else if (prewarm_target_ && !pending_) {
-            // The last request left nothing queued or running and the target is still not
-            // there: a build it needs failed and is never retried. Give it up, not the overview.
+        } else if (prewarm_target_ && !pending_ && prewarm_blocked(scene, *prewarm_target_)) {
+            // The last request left nothing queued or running, the target is still not there and a
+            // build it needs failed, which the workers never retry: give it up, not the overview.
+            // Nothing pending alone is no failure (review 2026-11-03, P2): a job that finished
+            // between take_done and submit was skipped by the submit and arrives with this
+            // frame's take_done, so the target can be built now.
             prewarm_skipped_.insert(*prewarm_target_);
             prewarm_target_.reset();
         }
@@ -988,6 +1004,11 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     const std::set<ChunkKey> retain = stand_in_retain(group, visible);
     trim(group, view, keep, retain);
     return received;
+}
+
+bool FrameRenderer::prewarm_blocked(const Scene& scene, const ChunkKey& target) {
+    std::set<ChunkKey> keep_unused;
+    return workers_->any_failed(plan_jobs(scene, {target}, keep_unused));
 }
 
 std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene) const {

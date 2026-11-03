@@ -182,7 +182,10 @@ TEST_CASE(
     // status 1, nothing made; 0 < 2 workers and 384/14 = 27 >= 0/32 -> send (E-2). The send draws
     // once before it (D 0x1006edf3) and spawns the worker with job = route 0x2a, cargo goods = the
     // farm's input 0 (BAUM, D 0x1006ee06) and the harvest state Start with the 5 ticks owed.
+    // Two trees keep both workers out (E3: a treeless worker would return at once, E-20).
     Rig r = make_rig();
+    r.object(115, 111, kTree);
+    r.object(111, 115, kTree);
     r.place(kForester, 110, 110, sim::Farm{});
     sim::World w = create(r, registry());
     const std::uint32_t cursor0 = w.rng().cursor();
@@ -205,7 +208,8 @@ TEST_CASE(
     // The second step (500 ticks later) is eligible too (1 < 2 out): one more draw and worker.
     const std::uint32_t draws2 = advance_until(w, [&] { return farm.workers_out == 2; });
     CHECK(draws2 == 1);
-    // With two out, no further step is eligible: no draw for a while (E-17's (0,0,2)).
+    // With two out, no further step is eligible: no draw for a while (E-17's (0,0,2)); both are
+    // busy for far longer (walk + 6500 ticks).
     std::uint32_t later = 0;
     for (int i = 0; i < 600; ++i) { // 3000 ticks: six farm steps
         w.advance(10);
@@ -591,4 +595,31 @@ TEST_CASE("harvest state: validators refuse impossible states and never repair v
         is.claims.clear();
         CHECK(w.check_invariants() == "");
     }
+}
+
+TEST_CASE("farm dispatch: a treeless forester sends, draws and releases at every step (E-20)") {
+    // No tree in the square: the worker's first job run (5 ticks after its spawn) finds no
+    // candidate, goes to step C inside the footprint (no walk), delivers 0 and ends; its end
+    // releases the counter (D 0x1003af00 -> 0x1003b6e0), long before the next farm step 500 ticks
+    // later, which is therefore eligible again: one draw and one send per step.
+    Rig r = make_rig();
+    r.place(kForester, 110, 110, sim::Farm{});
+    sim::World w = create(r, registry());
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    sim::Farm& farm = farm_at(w, 0, kForester);
+    std::uint32_t steps = 0, draws = 0;
+    for (int i = 0; i < 1000; ++i) { // 5000 ticks: about ten farm steps
+        const std::uint16_t last = farm.last;
+        w.advance(10);
+        steps += farm.last != last ? 1U : 0U;
+        draws += draws_at(w.last_output(), sim::DrawSite::FarmWorkerDispatch);
+        REQUIRE(w.check_invariants() == "");
+    }
+    CHECK(steps >= 9);
+    CHECK(draws == steps);
+    CHECK(stats.forestry.searches_failed >= steps - 1); // the last one may still owe its delay
+    CHECK(stats.forestry.cuts == 0);
+    CHECK(farm.raw == 0);
+    CHECK(farm.workers_out <= 1);
 }

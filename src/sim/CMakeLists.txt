@@ -6,7 +6,7 @@ add_library(anno_sim src/sim.cpp src/production.cpp src/config.cpp src/types.cpp
             src/save.cpp src/building.cpp src/create.cpp src/invariants.cpp src/figure.cpp src/ship.cpp src/ship_step.cpp
             src/driver.cpp src/scheduler.cpp src/codec.cpp src/apply.cpp src/replay.cpp
             src/placement.cpp src/legacy_codec.cpp src/events.cpp src/timers.cpp
-            src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/walk_cells.cpp src/walk_search.cpp
+            src/island_tick.cpp src/scenario_formats.cpp src/island_links.cpp src/transport.cpp src/harvest.cpp src/walk_cells.cpp src/walk_search.cpp
             src/game_setup.cpp src/house_groups.cpp src/terrain_view.cpp src/site_checks.cpp src/territory.cpp src/founding_payment.cpp src/city_creation.cpp src/figure_veto.cpp src/founding.cpp
             src/route_cache.cpp src/ship_orders.cpp src/ship_cargo.cpp src/ship_mover.cpp src/route_coast.cpp src/route_plan.cpp src/route_world.cpp src/route_stamps.cpp)
 target_include_directories(anno_sim PUBLIC include)
@@ -31,7 +31,7 @@ if(ANNO_BUILD_TESTS)
                  tests/game_setup_test.cpp tests/house_test.cpp tests/ship_state_test.cpp tests/ship_start_load_test.cpp
                  tests/terrain_view_test.cpp tests/site_checks_test.cpp tests/territory_test.cpp tests/founding_coords_test.cpp tests/founding_payment_test.cpp tests/island_lock_corpus_test.cpp tests/city_creation_test.cpp tests/figure_veto_test.cpp tests/founding_test.cpp tests/founding_assets_test.cpp tests/figure_facts_test.cpp tests/wide_test.cpp tests/ship_nav_state_test.cpp tests/ship_step_test.cpp tests/ship_orders_test.cpp tests/ship_nav3_test.cpp tests/ship_health_test.cpp tests/route_objects_test.cpp tests/placement_rule_test.cpp tests/build_terrain_test.cpp
                  tests/nav_scale_test.cpp
-                 tests/unload_test.cpp tests/harvest_state_test.cpp
+                 tests/unload_test.cpp tests/harvest_state_test.cpp tests/harvest_lifecycle_test.cpp
                  tests/load_test.cpp
                  tests/evidence_out_test.cpp
                  tests/route_fixture_test.cpp

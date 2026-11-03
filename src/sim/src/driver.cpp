@@ -266,7 +266,15 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             return;
         }
         f->status.shows_icons = icons;
+        const std::uint32_t raw_before = f->raw;
+        const std::uint32_t out_before = f->out;
         r = farm_step(*f, type->prod, ctx.t);
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-ECON-1 E4 ledger (diagnostic): what this step consumed and made.
+            ForestryStats::FarmLedger& l = ctx.transport_stats->forestry.farms[b.id];
+            l.consumed_88 += raw_before - f->raw;
+            l.made_88 += f->out - out_before;
+        }
         // MAP-ECON-1 E2: one world draw per ELIGIBLE dispatch attempt, before the send and whatever
         // the send then does (D 0x1006edf3-0x1006ee06: city +0x18, island +0x18, world +0xb4 =
         // 0x100a1740, the result discarded; docs/sim/forestry.md 3.1). farm_step's send_figure is

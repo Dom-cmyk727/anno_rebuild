@@ -256,8 +256,10 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // the stored phase is 0, the reset of byte 3 (0x1008c81e). `b` was moved
     // into the slot; the placed copy still holds x, y and rotation.
     const Building& placed = *target.slots[slot];
+    std::vector<std::uint64_t> written;
     static_cast<void>(place_object_record(island.tiles, types, *ty, placed.x, placed.y,
-                                          placed.rotation, 0, placed.byte0f));
+                                          placed.rotation, 0, placed.byte0f, &written));
+    invalidate_claims(island, rules, written); // enhanced only (docs/sim/forestry.md 3.5)
     // 9. The shared tail (residents, running-cost statistics): no stored state yet
     // (O-9, O-23).
     return key;
@@ -309,7 +311,9 @@ bool remove_building(const SimConfig& cfg, const Rules& rules, const TypeRegistr
         const std::int32_t named_y = named.has_value() ? named->y : b.y;
         const auto [clear_x, clear_y] = removal_clear_xy(
             island.tiles, *ty, b.x, b.y, b.rotation, named_x, named_y, rules.removal_clear_tile);
-        clear_object_record(island.tiles, types, clear_x, clear_y);
+        std::vector<std::uint64_t> cleared;
+        clear_object_record(island.tiles, types, clear_x, clear_y, &cleared);
+        invalidate_claims(island, rules, cleared); // enhanced only (docs/sim/forestry.md 3.5)
     }
     island.cache.by_id.erase(b.id);
     list.remove(key.slot);

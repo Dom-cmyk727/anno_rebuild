@@ -13,6 +13,7 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/harvest.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/scheduler.hpp>
@@ -253,6 +254,40 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         *store = static_cast<std::uint32_t>(
             std::clamp<std::int64_t>(v, 0, std::numeric_limits<std::uint32_t>::max()));
     }
+    // 6c. The harvest body's tile writes (MAP-ECON-1 E3, docs/sim/forestry.md 3.2), in issue
+    // order. The planned cut is re-checked against the tile (it cannot differ: nothing writes the
+    // island between the body and this merge); a mismatch is a defect counter, never repaired.
+    for (const TileEdit& e : fx.tile_edits) {
+        Island* is = island_of_id(w, e.island);
+        const Slot idx = is != nullptr ? is->tile_index(e.tile.x, e.tile.y) : kNoSlot;
+        if (idx == kNoSlot) {
+            continue;
+        }
+        switch (e.kind) {
+        case TileEdit::Kind::Claim:
+            is->tiles.set_aux(idx, is->tiles.aux(idx) | kTileClaim);
+            if (w.rules_.forestry_claim_hygiene) {
+                is->claims[e.tile] = e.actor;
+            }
+            break;
+        case TileEdit::Kind::Unclaim:
+            is->tiles.set_aux(idx, is->tiles.aux(idx) & ~kTileClaim);
+            if (w.rules_.forestry_claim_hygiene) {
+                is->claims.erase(e.tile);
+            }
+            break;
+        case TileEdit::Kind::Cut: {
+            const std::uint32_t id = is->tiles.object(idx);
+            if (harvest_cuttable(*w.types_, id)) {
+                is->tiles.set_object(idx, id - 1);
+                is->tiles.set_phase(idx, static_cast<std::uint8_t>(is->tiles.phase(idx) & 0x80U));
+            } else if (w.transport_stats_ != nullptr) {
+                ++w.transport_stats_->forestry.cut_mismatches;
+            }
+            break;
+        }
+        }
+    }
     // 7. Timed events.
     for (const EnqueueEvent& e : fx.events) {
         w.events_.enqueue(w.ids_, tick, e.delay, e.e);
@@ -331,7 +366,21 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                     // docs/sim/state.md §5.9): the same protocol as a seam (its own figure
                     // and its Effects, merged right after the call, C2). It draws nothing.
                     bool ran = false;
-                    if (transport_runs_job(fig.job)) {
+                    if (fig.harvest.has_value()) {
+                        // MAP-ECON-1 E3: the harvest job (docs/sim/forestry.md 3.2), chosen by the
+                        // state the spawn created, never by the job id alone (0x2a is also the
+                        // small farm's worker job). The same protocol as the transport.
+                        const bool had_stamp = fig.expiry_stamp.has_value();
+                        Effects fx;
+                        {
+                            SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                            ran = harvest_tick(ctx, serial, fig);
+                        }
+                        if (ran) {
+                            sync_figure_lists(reg, fig, had_stamp, fx);
+                            merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
+                        }
+                    } else if (transport_runs_job(fig.job)) {
                         const bool had_stamp = fig.expiry_stamp.has_value();
                         Effects fx;
                         {
@@ -343,7 +392,10 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                             merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
                         }
                     }
-                    if (!ran && interim > 0 && !fig.expiry_stamp.has_value() &&
+                    // A harvest worker never takes the D12 stand-in: its own body ends it (and
+                    // releases its claims), E2 review.
+                    if (!ran && interim > 0 && !fig.harvest.has_value() &&
+                        !fig.expiry_stamp.has_value() &&
                         static_cast<std::uint32_t>(t - fig.born) >= interim) {
                         // D12 (OQ-047, off by default): a figure returns after N ticks. It
                         // ends as the original's do (end_figure: the counter back now, the

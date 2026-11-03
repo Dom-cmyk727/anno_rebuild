@@ -281,6 +281,19 @@ struct FigureMove {
     FixedPos pos;
 };
 
+/// MAP-ECON-1 E3 (docs/sim/forestry.md 3.2): one tile write of the harvest body, applied at the
+/// merge in issue order after the store deltas. Claim sets bit 29 (kTileClaim; under
+/// Rules::forestry_claim_hygiene also Island::claims[tile] = actor), Unclaim clears it (and the
+/// entry), Cut turns the tile object `id` into `id - 1` with phase `& 0x80` when the type `id - 1`
+/// is ROHSTWACHS (AnnoWelt 0x10087340; the merge re-applies that predicate).
+struct TileEdit {
+    enum class Kind : std::uint8_t { Claim, Unclaim, Cut };
+    Kind kind = Kind::Claim;
+    IslandId island;
+    TileXY tile;
+    FigureId actor;
+};
+
 struct Effects {
     std::vector<SpawnRequest> spawns;
     std::vector<ReleaseCounter> releases;
@@ -295,6 +308,8 @@ struct Effects {
     std::vector<FigureMove> figure_moves;
     /// Telemetry: the draws the call made, per site (the world fills it).
     std::vector<DrawRecord> draws;
+    /// MAP-ECON-1 E3: the harvest body's tile writes, in issue order.
+    std::vector<TileEdit> tile_edits;
 };
 
 /// The world as a serial-phase seam sees it (event handlers, figure behaviour,

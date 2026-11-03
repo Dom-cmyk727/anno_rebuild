@@ -628,16 +628,7 @@ namespace {
 /// the first (the path starts on the figure's own or its home's tile).
 void set_route(Figure& fig, const std::vector<TileXY>& path) {
     TransportState& tr = fig.transport;
-    tr.route.clear();
-    tr.route.push_back(fig.pos);
-    for (std::size_t i = 0; i < path.size(); ++i) {
-        if (i == 0 && path.size() > 1) {
-            continue; // the start tile: the walk starts from the figure's spot
-        }
-        tr.route.push_back(centre(path[i]));
-    }
-    tr.next = 1;
-    tr.along = 0;
+    start_walk(fig.pos, path, WalkRef{tr.route, tr.next, tr.along});
 }
 
 /// Walks `ticks` along the route at `speed` (2^-24 tile per tick); the ticks left after
@@ -646,6 +637,47 @@ void set_route(Figure& fig, const std::vector<TileXY>& path) {
 /// the walk goes on.
 std::optional<std::uint64_t> walk(Figure& fig, std::uint64_t ticks, std::uint32_t speed) {
     TransportState& tr = fig.transport;
+    return walk_ticks(fig.pos, WalkRef{tr.route, tr.next, tr.along}, ticks, speed);
+}
+
+} // namespace
+
+std::int32_t tile_of_q8(std::int32_t q) {
+    return tile_of(q);
+}
+
+WalkPoint walk_point_of(FixedPos p) {
+    return walk_point(p);
+}
+
+std::vector<WalkPoint> entrance_walk_points(const Building& b, const BuildingType& type) {
+    return entrance_points(b, type);
+}
+
+FixedPos tile_centre(TileXY t) {
+    return centre(t);
+}
+
+bool tile_in_footprint(const Building& b, const BuildingType& type, std::int32_t x,
+                       std::int32_t y) {
+    return in_footprint(b, type, x, y);
+}
+
+void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w) {
+    w.route.clear();
+    w.route.push_back(pos);
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        if (i == 0 && path.size() > 1) {
+            continue; // the start tile: the walk starts from the figure's spot
+        }
+        w.route.push_back(centre(path[i]));
+    }
+    w.next = 1;
+    w.along = 0;
+}
+
+std::optional<std::uint64_t> walk_ticks(FixedPos& pos, WalkRef tr, std::uint64_t ticks,
+                                        std::uint32_t speed) {
     if (tr.route.empty() || tr.next >= tr.route.size()) {
         tr.route.clear();
         tr.next = 0;
@@ -665,13 +697,13 @@ std::optional<std::uint64_t> walk(Figure& fig, std::uint64_t ticks, std::uint32_
             tr.along = static_cast<std::uint32_t>(tr.along + dist);
             const std::int64_t num = tr.along;
             const auto den = static_cast<std::int64_t>(seg);
-            fig.pos = FixedPos{clamp32(a.x + (std::int64_t{b.x} - a.x) * num / den),
-                               clamp32(a.y + (std::int64_t{b.y} - a.y) * num / den)};
+            pos = FixedPos{clamp32(a.x + (std::int64_t{b.x} - a.x) * num / den),
+                           clamp32(a.y + (std::int64_t{b.y} - a.y) * num / den)};
             return std::nullopt;
         }
         dist -= left;
         tr.along = 0;
-        fig.pos = b;
+        pos = b;
         ++tr.next;
     }
     tr.route.clear();
@@ -679,6 +711,8 @@ std::optional<std::uint64_t> walk(Figure& fig, std::uint64_t ticks, std::uint32_
     tr.along = 0;
     return dist / speed;
 }
+
+namespace {
 
 struct Job {
     const TickContext& ctx;

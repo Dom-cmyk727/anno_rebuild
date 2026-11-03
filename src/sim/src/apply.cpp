@@ -471,8 +471,10 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
     RecordResult r;
     if (c.tile_object) {
         // A land road: the tile writer only (0x10082040), no building record, serial or seam.
+        std::vector<std::uint64_t> written;
         static_cast<void>(place_object_record(is.tiles, env.types, *c.type, c.rec.x, c.rec.y,
-                                              c.rec.rotation, 0, c.rec.byte0f));
+                                              c.rec.rotation, 0, c.rec.byte0f, &written));
+        invalidate_claims(is, env.rules, written); // enhanced only (docs/sim/forestry.md 3.5)
         if (!c.free) {
             owner.money -= std::int64_t{c.type->cost_gold};
             for (const CostEntry& cost : c.type->cost_goods) {
@@ -654,7 +656,9 @@ ApplyResult demolish(Env& env, const Command& c, const DemolishCmd& cmd) {
             // This branch uses the building clear arm (0x10082c30) as a stand-in.
             // The named tile may be any tile of the object. A building of another
             // city on this city's tile is left alone (the branch above).
-            clear_object_record(is.tiles, env.types, tile.x, tile.y);
+            std::vector<std::uint64_t> cleared;
+            clear_object_record(is.tiles, env.types, tile.x, tile.y, &cleared);
+            invalidate_claims(is, env.rules, cleared); // enhanced only (forestry.md 3.5)
         } else {
             r.status = Reject::NoBuildingAtTile;
         }

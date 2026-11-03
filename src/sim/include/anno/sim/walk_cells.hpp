@@ -66,9 +66,12 @@ inline constexpr std::uint32_t kPlacementBlockEdge = 8;
 /// loaded building's byte0f, a founding's terrain byte, a command-built building's
 /// PlacementResult::height, docs/sim/ship-placement.md); island growth passes 0
 /// (docs/sim/ship-navigation.md 12.13).
+/// `written`, when given, receives the index of every tile whose object id was written (MAP-ECON-1
+/// E3: the enhanced claim invalidation, Rules::forestry_claim_hygiene).
 std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const BuildingType&,
                                   std::int32_t x0, std::int32_t y0, std::uint32_t rotation,
-                                  std::uint8_t phase, std::uint8_t item_height = 0);
+                                  std::uint8_t phase, std::uint8_t item_height = 0,
+                                  std::vector<std::uint64_t>* written = nullptr);
 /// The clear arm of AnnoWelt 0x10082c30 (`0x10082f00..0x10082f1f`). An id of 0
 /// writes nothing (`0x10082c6a`). Otherwise the origin is `(x − foot_dx, y −
 /// foot_dy)` and the rotation is the tile's `foot_rotation`
@@ -80,7 +83,13 @@ std::uint32_t place_object_record(TileLayer&, const TypeRegistry&, const Buildin
 /// is not modelled (OQ-201). The arm also keeps the height byte (TileLayer::item_height
 /// is left alone, faithful) and second-dword bits 25–31; the latter are not columns
 /// (OQ-204, OQ-205).
-void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y);
+/// `cleared`, when given, receives the index of every tile it cleared (MAP-ECON-1 E3).
+void clear_object_record(TileLayer&, const TypeRegistry&, std::int32_t x, std::int32_t y,
+                         std::vector<std::uint64_t>* cleared = nullptr);
+/// MAP-ECON-1 E3, enhanced only (docs/sim/forestry.md 3.5): with Rules::forestry_claim_hygiene
+/// every tile of `tiles` loses the claim bit and its owner entry; with the rule off (the original:
+/// placement and clearing keep bit 29) nothing changes.
+void invalidate_claims(Island& island, const Rules& rules, const std::vector<std::uint64_t>& tiles);
 /// The tile `remove_building` passes to `clear_object_record` (F37).
 /// `holding_id` false: `(named_x, named_y)`, the coordinates RemoveAt was given
 /// (AnnoWelt `0x100292d8..0x100292ef`). `holding_id` true: that tile when its

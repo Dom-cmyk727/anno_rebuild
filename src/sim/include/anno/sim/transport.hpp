@@ -33,6 +33,8 @@
 
 namespace anno::sim {
 
+struct WalkPoint; // walk_search.hpp (which includes walk_cells.hpp, which needs SearchArea)
+
 /// The job code of the market cart (D 0x1006b6d0, docs/re/transport.md §1.5).
 inline constexpr std::uint32_t kJobMarketCart = 0x34;
 /// The job code of the workshop carrier (D 0x100680b0, docs/re/production.md §4.1).
@@ -103,6 +105,28 @@ struct SourceChoice {
     std::vector<TileXY> path;
 };
 
+/// MAP-ECON-1 E3/E4: a diagnostic tally of the harvest workers and their farms (measurement and
+/// test ledger only; not sim state, never hashed or saved, never drawn). Filled through the
+/// TransportStats sink when a host or test installs one (World::set_transport_stats).
+struct ForestryStats {
+    std::uint64_t searches = 0;         ///< step A starts with a home
+    std::uint64_t searches_failed = 0;  ///< no candidate or no route: straight to step C
+    std::uint64_t cuts = 0;             ///< successful planned cuts (each credited capacity_88...)
+    std::uint64_t cuts_failed = 0;      ///< a cut whose predicate failed (no credit)
+    std::uint64_t raw_credited_88 = 0;  ///< cargo credited by successful cuts
+    std::uint64_t raw_delivered_88 = 0; ///< cargo handed to a home's raw store (StoreDelta::Input)
+    std::uint64_t raw_lost_88 = 0;      ///< cargo of workers that ended without a delivery
+    std::uint64_t aborts = 0;           ///< home gone at an arrival
+    std::uint64_t drops = 0;            ///< enhanced revalidation dropped a target
+    std::uint64_t cut_mismatches = 0;   ///< merge-time re-check of a planned cut failed (must be 0)
+    /// Per farm building: raw consumed and output made by its production steps (the tick's own
+    /// arithmetic, docs/sim/forestry.md 7), for the E4 ledger.
+    struct FarmLedger {
+        std::uint64_t consumed_88 = 0, made_88 = 0;
+    };
+    std::map<BuildingId, FarmLedger> farms;
+};
+
 /// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
 /// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn).
 /// Exactly one outcome counter is bumped per call that reaches the candidate stage.
@@ -142,6 +166,8 @@ struct TransportStats {
     /// Starts whose position lies outside the search rectangle and are silently skipped
     /// (T33.4 F1 diagnostic). Counted once per skipped start.
     std::uint64_t start_outside_rect = 0;
+    /// MAP-ECON-1: the harvest workers' tally (same sink, same rules: diagnostic only).
+    ForestryStats forestry;
 };
 
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback
@@ -162,6 +188,37 @@ choose_source(const SerialWorld& world, const TypeRegistry& types, std::uint32_t
 [[nodiscard]] std::optional<std::vector<TileXY>>
 path_home(const Island& island, const TypeRegistry& types, const Building& home,
           const BuildingType& home_type, FixedPos from, std::uint32_t layer);
+
+// ---- shared walk helpers (the transport body's own, exported for the harvest body, MAP-ECON-1 E3)
+
+/// The tile of a Q24.8 coordinate (floor division by 256).
+[[nodiscard]] std::int32_t tile_of_q8(std::int32_t q);
+/// The searcher's start/goal point of a Q24.8 position: its tile and the sub-cell
+/// floor(3 * fraction) per axis.
+[[nodiscard]] WalkPoint walk_point_of(FixedPos p);
+/// The walk points of a building's entrance points (rotated, docs/re/transport.md 1.6).
+[[nodiscard]] std::vector<WalkPoint> entrance_walk_points(const Building& b,
+                                                          const BuildingType& type);
+/// The centre of a tile in Q24.8.
+[[nodiscard]] FixedPos tile_centre(TileXY t);
+/// Whether the world tile (x, y) is inside the building's footprint at its rotation.
+[[nodiscard]] bool tile_in_footprint(const Building& b, const BuildingType& type, std::int32_t x,
+                                     std::int32_t y);
+/// A walk's state: the waypoints, the next one and the distance along the segment
+/// (TransportState's and HarvestState's fields).
+struct WalkRef {
+    std::vector<FixedPos>& route;
+    std::uint32_t& next;
+    std::uint32_t& along;
+};
+/// Starts a walk from `pos` along the decoded tile path: the figure's spot, then the centres of the
+/// path's tiles after the first (the path starts on the figure's own tile).
+void start_walk(FixedPos pos, const std::vector<TileXY>& path, WalkRef w);
+/// Walks `ticks` at `speed` (2^-24 tile per tick), moving `pos`; the ticks left after the arrival
+/// (the route is then cleared), nullopt while the walk goes on. A figure without speed never
+/// arrives.
+[[nodiscard]] std::optional<std::uint64_t> walk_ticks(FixedPos& pos, WalkRef w, std::uint64_t ticks,
+                                                      std::uint32_t speed);
 
 /// The length of a straight walk segment in 2^-24 tile: |d| on an axis, |d| · √2 on a
 /// diagonal (the segment builder 0x1002fde0 multiplies by 1.41421354f: 23726566 per

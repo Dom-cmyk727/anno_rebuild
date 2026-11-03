@@ -215,7 +215,7 @@ std::int32_t placement_block_origin(std::int32_t v) {
 std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
                                   const BuildingType& type, std::int32_t x0, std::int32_t y0,
                                   std::uint32_t rotation, std::uint8_t phase,
-                                  std::uint8_t item_height) {
+                                  std::uint8_t item_height, std::vector<std::uint64_t>* written) {
     // D AnnoWelt 0x10082040..0x10082637. Y blocks outer (0x1008262e), X blocks
     // inner (0x1008260c); inside a block, rows outer and columns inner.
     // Ordinary stores: id 0x1008244a, dx 0x1008245c, dy 0x10082474, rotation
@@ -259,6 +259,9 @@ std::uint32_t place_object_record(TileLayer& layer, const TypeRegistry& types,
                         }
                     }
                     layer.set_object(i, type.id.v);
+                    if (written != nullptr) {
+                        written->push_back(i);
+                    }
                     layer.set_foot_dx(i, static_cast<std::uint16_t>(x - x0));
                     layer.set_foot_dy(i, static_cast<std::uint16_t>(y - y0));
                     layer.set_foot_rotation(i, static_cast<std::uint8_t>(rotation));
@@ -320,7 +323,7 @@ std::pair<std::int32_t, std::int32_t> removal_clear_xy(const TileLayer& layer,
     return {named_x, named_y};
 }
 void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32_t x,
-                         std::int32_t y) {
+                         std::int32_t y, std::vector<std::uint64_t>* cleared) {
     // D AnnoWelt 0x10082c30, the clear arm 0x10082f00..0x10082f1f. deviation:
     // the replacement arm (island +0x18 high nibble, 0x10082e43..0x10082efc)
     // is not modelled (OQ-201). The arm keeps the height byte and bits 25–31;
@@ -340,6 +343,9 @@ void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32
         // the catalogue does not hold (0x10089619). A spec that still names one
         // is written on that tile only, so the clear undoes that one tile.
         layer.set_object(clicked, 0);
+        if (cleared != nullptr) {
+            cleared->push_back(clicked);
+        }
         layer.set_foot_dx(clicked, 0);
         layer.set_foot_dy(clicked, 0);
         layer.set_foot_rotation(clicked, 0);
@@ -372,6 +378,9 @@ void clear_object_record(TileLayer& layer, const TypeRegistry& types, std::int32
                 continue;
             }
             layer.set_object(i, 0);
+            if (cleared != nullptr) {
+                cleared->push_back(i);
+            }
             layer.set_foot_dx(i, 0);
             layer.set_foot_dy(i, 0);
             layer.set_foot_rotation(i, 0);
@@ -459,4 +468,23 @@ bool WalkCells::set(TileXY p, WalkCell value) {
     (*c)[std::size_t{y} * std::min(edge_, rect_.w) + x] = value;
     return true;
 }
+void invalidate_claims(Island& island, const Rules& rules,
+                       const std::vector<std::uint64_t>& tiles) {
+    if (!rules.forestry_claim_hygiene) {
+        return; // faithful: placement and clearing keep bit 29 (0x100824a7, 0x10082f05)
+    }
+    const TileLayer& layer = island.tiles;
+    for (const std::uint64_t i : tiles) {
+        if (i >= layer.tile_count()) {
+            continue;
+        }
+        if (layer.claimed(i)) {
+            island.tiles.set_aux(i, layer.aux(i) & ~kTileClaim);
+        }
+        const TileXY xy{layer.x0() + static_cast<std::int32_t>(i % layer.width()),
+                        layer.y0() + static_cast<std::int32_t>(i / layer.width())};
+        island.claims.erase(xy);
+    }
+}
+
 } // namespace anno::sim

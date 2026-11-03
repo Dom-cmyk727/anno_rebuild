@@ -1,0 +1,105 @@
+# House kernel vectors (MAP-POP-IMPL-1 D). Every expected value below was derived by hand from the
+# instruction spans of AnnoWelt.dll (tick 0x10076230-0x100765b9, mood 0x10075fd0-0x10076224) and
+# docs/sim/population-readiness.md section 7 (rows D1-D14) BEFORE any C++ kernel existed; the grammar
+# and the formula/units contract are in tools/house_kernel_ref.py. Both the reference and the C++
+# kernel are checked against these expectations. Roles default to 76,90,76,29 (0x4c,0x5a,0x4c,0x1d).
+table T1 -2,-2,-2,-1,-1,-1,0,0,0,0,1,1,1,1,2,2,2,2,2,2,2
+table TI -2,-2,-2,-1,-1,-1,0,0,0,0,1,1,1,1,2,2,2,2,2,0,2
+table T2 -2,-1,0,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+table T3 3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3
+# A: NAHRUNG, LEDER F, SALZ F, WIRTSHAUS F, KAPELLE; stages SALZ 3, WIRTSHAUS 2, KAPELLE 3
+group A wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:0:16,27:1:16,28:1:16,76:1:16,82:0:16 bau=28:3,76:2,82:3
+group AN wohnmax=8 nodown=1 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:0:16,27:1:16,28:1:16,76:1:16,82:0:16 bau=28:3,76:2,82:3
+group A24 wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:0:16,27:1:16,28:1:16,76:1:16,82:0:16 bau=28:24,76:2,82:3
+group B wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:0:12
+group B2 wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T2 bedarf=T2 infra=T2 needs=26:0:12
+group B3 wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T3 bedarf=T3 infra=T3 needs=26:0:12
+group Z wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=
+group R wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=TI needs=26:0:16,11:1:16 roles=10,12,11,5
+
+# --- D1 / D1b gate: unsigned u16 difference, one step per call. Body B0 (zero stocks): E'=128, mood -2,
+# --- downgrade arm, below-64 correction -> res 64.
+vec G-2499 group=A now=2499 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=skipped last=0
+vec G-2500 group=A now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=evaluated last=2500 e=128 stock=0,0,0,0,0 lowest=0 mood=-2 res=64 csub=1 cadd=0 b64=-64 arm=downgrade effects=downgrade
+vec G-65535 group=A now=65535 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=evaluated last=2500 e=128 mood=-2 res=64
+vec G-65536 group=A now=65536 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=skipped last=0
+vec G-68036 group=A now=68036 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=evaluated last=2500 e=128 mood=-2 res=64
+vec G-wrap group=A now=66500 last=64000 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=evaluated last=964 e=128 mood=-2 res=64
+vec G-t0 group=A now=0 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=skipped last=0
+vec G-t1 group=A now=1 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=skipped last=0
+vec P-first group=A now=5000 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=evaluated last=2500 e=128 mood=-2 res=64
+vec P-second group=A now=5000 last=2500 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=evaluated last=5000 e=128 mood=-2 res=64
+vec P-third group=A now=5000 last=5000 period=2500 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=skipped last=5000
+vec P-zero group=A now=5000 last=0 period=0 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=not_evaluated reason=gate_period_out_of_domain
+vec P-big group=A now=5000 last=0 period=65536 mask=1 e=128 res=64 stock=0,0,0,0,0 prev=8 => status=not_evaluated reason=gate_period_out_of_domain
+
+# --- D2 / D3 smoothing toward zero
+vec S-63 group=A now=2500 last=0 period=2500 mask=1 e=100 res=63 stock=0,0,0,0,0 prev=8 => status=evaluated e=99 mood=-2 res=64 csub=0 cadd=0 b64=-64
+vec S-neg65 group=A now=2500 last=0 period=2500 mask=1 e=128 res=-65 stock=0,0,0,0,0 prev=8 => status=evaluated e=126 mood=-2 res=64 csub=-1 cadd=-1 b64=-65
+vec S-neg10 group=A now=2500 last=0 period=2500 mask=1 e=128 res=-10 stock=0,0,0,0,0 prev=8 => status=evaluated e=127 mood=-2 res=64 csub=0 cadd=0 b64=-64
+vec S-640 group=A now=2500 last=0 period=2500 mask=1 e=640 res=320 stock=0,0,0,0,0 prev=8 => status=evaluated e=640 mood=-2 res=304 csub=5 cadd=4 arm=downgrade b64=<absent>
+vec S-negsum group=A now=2500 last=0 period=2500 mask=1 e=0 res=-65 stock=0,0,0,0,0 prev=8 => status=not_evaluated reason=negative_smoothed_e
+
+# --- D4 / D5 only stage-enabled needs decay; the full 32-bit mask is tested
+vec D4-off group=A now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=0,0,200,0,0 prev=8 => status=evaluated e=128 stock=0,0,200,0,0 lowest=0 mood=-2 res=64
+vec D4-on group=A now=2500 last=0 period=2500 mask=9 e=128 res=64 stock=0,0,200,0,0 prev=8 => status=evaluated e=128 stock=0,0,198,0,0 lowest=0 mood=-2 res=64
+vec D5-high-on group=A24 now=2500 last=0 period=2500 mask=0x01000001 e=128 res=64 stock=0,0,200,0,0 prev=8 => status=evaluated e=128 stock=0,0,198,0,0 mood=-2 res=64
+vec D5-high-off group=A24 now=2500 last=0 period=2500 mask=0x00ffffff e=128 res=64 stock=0,0,200,0,0 prev=8 => status=evaluated e=128 stock=0,0,200,0,0 mood=-2 res=64
+
+# --- D6 product wider than 32 bits: 2818221 decays to 2796203, 1536*2796203 = 2^32 + 512
+vec D6-wide group=B now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=2818221 prev=8 => status=evaluated e=128 stock=2796203 lowest=160 mood=2 res=80 csub=1 cadd=1 arm=none cap=0
+
+# --- D7 spawn threshold: lowest < 102 and type maximum > walker count (only with walker facts)
+vec D7-101 group=B now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=102 walkers=1/2 prev=8 => status=evaluated stock=101 lowest=101 spawn=1 mood=2 res=80 e=128
+vec D7-102 group=B now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=103 walkers=1/2 prev=8 => status=evaluated stock=102 lowest=102 spawn=0 mood=2 res=80 e=128
+vec D7-full group=B now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=102 walkers=2/2 prev=8 => status=evaluated lowest=101 spawn=0 mood=2 res=80 e=128
+vec D7-nofacts group=B now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=102 prev=8 => status=evaluated lowest=101 spawn=<absent> mood=2 res=80 e=128
+
+# --- D8 cap crossed: signed, strict, residents 1/64; Wohnmax 8 -> 512
+vec D8-512 group=B now=2500 last=0 period=2500 mask=1 e=640 res=496 stock=650 prev=8 => status=evaluated e=642 lowest=128 mood=2 csub=7 cadd=8 cap=0 res=512 effects=none
+vec D8-513 group=B now=2500 last=0 period=2500 mask=1 e=640 res=497 stock=650 prev=8 => status=evaluated e=642 mood=2 csub=7 cadd=8 cap=1 capsub=0 res=512 effects=upgrade_check
+vec D8-576 group=B now=2500 last=0 period=2500 mask=1 e=640 res=560 stock=650 prev=8 => status=evaluated e=643 mood=2 csub=8 cadd=9 cap=1 capsub=1 res=512 effects=upgrade_check
+
+# --- D9 / D10 floor and arms; the removal arm bypasses the below-64 correction
+vec F-384 group=A now=2500 last=0 period=2500 mask=1 e=128 res=400 stock=0,0,0,0,0 prev=8 => status=evaluated e=133 mood=-2 csub=6 cadd=6 res=384 arm=none
+vec F-383 group=A now=2500 last=0 period=2500 mask=1 e=128 res=399 stock=0,0,0,0,0 prev=8 => status=evaluated e=133 mood=-2 csub=6 cadd=5 res=383 arm=downgrade effects=downgrade b64=<absent>
+vec F-nodown-64 group=AN now=2500 last=0 period=2500 mask=1 e=128 res=80 stock=0,0,0,0,0 prev=8 => status=evaluated e=128 mood=-2 csub=1 cadd=1 res=64 arm=none
+vec F-nodown-63 group=AN now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 prev=8 => status=evaluated e=128 mood=-2 csub=1 cadd=0 res=63 arm=remove effects=remove b64=<absent>
+vec F-same63-down group=A now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 prev=8 => status=evaluated e=128 mood=-2 csub=1 cadd=0 res=64 arm=downgrade effects=downgrade b64=-64
+vec F-signed group=A now=2500 last=0 period=2500 mask=1 e=128 res=-54 stock=0,0,0,0,0 prev=8 => status=evaluated e=127 mood=-2 csub=0 cadd=-1 res=64 arm=downgrade b64=-65
+vec F-flag10 group=A now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 flags=0x10 prev=8 => status=evaluated e=128 mood=-2 res=63 arm=remove effects=remove
+vec F-noprev group=A now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 => status=not_evaluated reason=previous_capacity_unavailable
+vec F-prev0 group=A now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 prev=0 => status=evaluated e=128 mood=-2 csub=1 cadd=0 res=63 arm=none
+vec F-nodown-noprev group=AN now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 => status=evaluated e=128 mood=-2 res=63 arm=remove
+
+# --- D11 domain: E' = 0 and the divide, slot 0 positional, mood table range
+vec Z-e0-nomask group=B now=2500 last=0 period=2500 mask=0 e=0 res=0 stock=0 flags=0x10 prev=8 => status=evaluated e=0 stock=0 lowest=2147483647 mood=0 res=0 arm=none
+vec Z-e0-div group=B now=2500 last=0 period=2500 mask=1 e=0 res=0 stock=0 prev=8 => status=not_evaluated reason=zero_divisor
+vec Z-empty-e group=Z now=2500 last=0 period=2500 mask=1 e=128 res=64 stock= prev=8 => status=not_evaluated reason=missing_first_need
+vec Z-empty-e0 group=Z now=2500 last=0 period=2500 mask=1 e=0 res=0 stock= prev=8 => status=evaluated e=0 lowest=2147483647 mood=0 res=0
+vec M-range group=B3 now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=300 prev=8 => status=not_evaluated mood=3 reason=mood_out_of_range
+
+# --- D13 index trunc((s+4)/8): s 3 -> 0, s 4 -> 1 (table T2: -2, -1, ...)
+vec X-s3 group=B2 now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=4 prev=8 => status=evaluated e=128 stock=3 lowest=3 mood=-2 res=64
+vec X-s4 group=B2 now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=5 prev=8 => status=evaluated e=128 stock=4 lowest=4 mood=-1 res=64
+
+# --- resident overflow is typed, not wrapped (stock 34,000,000 gives score 128 -> mood 2)
+vec O-over group=B now=2500 last=0 period=2500 mask=1 e=0 res=2147483632 stock=34000000 prev=8 => status=not_evaluated mood=2 reason=overflow
+vec O-ctrl group=B now=2500 last=0 period=2500 mask=1 e=0 res=2147483000 stock=34000000 prev=8 => status=evaluated e=33554421 mood=2 csub=33554421 cadd=33554422 cap=1 capsub=33554414 res=512 effects=upgrade_check
+
+# --- bound roles (infra 10..12, tavern 11): a hard-coded 0x4c would treat need 1 as a consumer need
+vec R-roles group=R now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=400,200 prev=8 => status=evaluated e=128 stock=396,198 lowest=148 mood=1 res=72
+
+# --- D12 mood combination precedence
+mood C1 f=-1 b=5 i=5 flags=0 => status=evaluated mood=-1
+mood C2 f=-1 b=5 i=5 flags=16 => status=evaluated mood=-1
+mood C3 f=-4 b=-4 i=0 flags=16 => status=evaluated mood=-4
+mood C4 f=1 b=1 i=1 flags=16 => status=evaluated mood=-1
+mood C5 f=1 b=1 i=1 flags=32 => status=evaluated mood=-2
+mood C6 f=1 b=1 i=1 flags=48 => status=evaluated mood=-2
+mood C7 f=-1 b=5 i=5 flags=32 => status=evaluated mood=-2
+mood C8 f=0 b=0 i=0 flags=0 => status=evaluated mood=0
+mood C9 f=2 b=2 i=2 flags=0 => status=evaluated mood=2
+mood C10 f=1 b=0 i=2 flags=0 => status=evaluated mood=1
+mood C11 f=3 b=3 i=3 flags=0 => status=evaluated mood=3
+mood C12 f=2 b=-1 i=2 flags=16 => status=evaluated mood=-1

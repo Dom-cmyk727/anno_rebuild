@@ -903,7 +903,8 @@ std::string OpeningUi::status_line(const UiFeed& feed) const {
             const sim::BuildingType* bt =
                 setup_.registry ? setup_.registry->find(p->type) : nullptr;
             std::string cost = "type " + std::to_string(p->type.v) + " " + std::to_string(p->w) +
-                               "x" + std::to_string(p->h) + " rot " + std::to_string(p->rotation);
+                               "x" + std::to_string(p->h) + " rot " + std::to_string(p->rotation) +
+                               " (turn " + std::to_string(p->cursor_rotation) + ")";
             if (bt != nullptr) {
                 cost += " price " + std::to_string(bt->cost_gold) + " gold";
                 for (const sim::CostEntry& e : bt->cost_goods) {

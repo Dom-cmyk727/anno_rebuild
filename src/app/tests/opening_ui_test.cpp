@@ -354,6 +354,9 @@ TEST_CASE("controls: on a corner where two turns fit, the founding cursor's turn
         CHECK(p->cmd.placement.rotation == turn);
         CHECK(p->coast_ok);
         CHECK(p->rotation == want[turn]);
+        // The status line shows the cursor's turn next to the rotation the warehouse takes.
+        CHECK(f.ui.status_line(feed).find("rot " + std::to_string(want[turn]) + " (turn " +
+                                          std::to_string(turn) + ")") != std::string::npos);
         f.key(app::OpeningKey::Rotate);
     }
 }

@@ -245,6 +245,8 @@ TEST_CASE("command line") {
     REQUIRE(sh);
     CHECK(sh->shore == 16.0F);
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "-1"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "256"}));
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "nan"}));
     // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);

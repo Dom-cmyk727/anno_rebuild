@@ -280,7 +280,9 @@ class OpeningUi {
     bool hover_changed_ = false;
     std::size_t found_type_ = 0;
     /// The founding cursor's turn (0..3): the first of the sim's rotation trials. Kept between
-    /// foundings, as the original's cursor object keeps its byte.
+    /// foundings: our choice; whether the original keeps or recreates its Kontor cursor, the
+    /// byte's first value and whether it shares the ordinary cursor's turn are not traced
+    /// (OQ-520).
     std::uint8_t found_rotation_ = kFoundingCursorRotation;
     std::uint32_t unload_hold_ = 0, unload_tons_ = 0;
     std::optional<sim::BuildingId> unload_target_;

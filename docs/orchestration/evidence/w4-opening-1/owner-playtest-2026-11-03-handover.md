@@ -146,7 +146,7 @@ Wine check for H2, wait for the zoom log").
   picture; ours draws them as sand.
 - **H1 before/after** (`cache/o1/h1/`, not committed): the projection fix `d73c58b9` built as is and with the shore at 16.5
   (`h1exp.py` in the session scratchpad: `kShore` in the field, the wave depth, the object test and the shore distance;
-  throw-away worktree `E:nno1503-worktreesnno1503-W4-h1exp`). Our viewer opens the original's quicksave, so the same
+  throw-away worktree `E:\anno1503-worktrees\anno1503-W4-h1exp`). Our viewer opens the original's quicksave, so the same
   island renders on both sides:
   - `sheet_start_g1.png`: the original's start view against ours now and with H1, at the original's zoom;
   - `sheet_kontors.png`: the four `S01_02_01.sze` Kontors (4,286 / 495 / 1,746 / 856 pixels change; rotation 0 gains water
@@ -159,3 +159,25 @@ Wine check for H2, wait for the zoom log").
   32; ours draws the water area at 32), and the ground texture under the piles.
 - **Owner decisions** asked now: (a) the projection merge, (b) H1 as the default, (c) the rotate key as the founding start
   rotation. Window tests and the WSL sanitizer lane run when the owner is away from the PC.
+
+### 4.1 The owner's answers and what followed (2026-11-03, late evening)
+
+- **(a) yes:** the orchestrator merged `task/iso-handedness-W4` into the task branch (`a150c11d`). Its two open failures
+  stay open (river Q5 on `D_256x256_0045_5B`, 48.5 % against 55 %; the lan5 dev-tool pick, 1 of 8,486 pixels).
+- **(b) yes, H1 is the default** (``53101c96`, `--shore` `38af87b2``): terrain below `kShoreHeight` = 16.5 is water (the original water's test,
+  the enhanced water's zero, the shore distance, the empty-cell bound, the wave depth), per scene
+  (`render::Scene::shore_height`, the viewer's `--shore 16` for the earlier look). The water objects' split under and over
+  the sea stays at 16 (`kWaterline`). The recorded corpus tables (the scene digests, the legacy river digests, the frames)
+  stay at the shore of 16, their recording; the frames test adds a third pass at the default shore (10 of 18 frames move:
+  Single_01's group 2 enhanced view and every Single_24 view), recorded on this PC. Nine mutants of the shore setting
+  (five in `sea.cpp`, one in `iso.cpp`, three in `scene.cpp`) are killed.
+- **(c) restore it:** `ee6a12e0`. `T` or `.` turns the founding cursor on, `,` back; the command carries the turn and the
+  trials start there. That the original's `.`/`,` reach its Kontor cursor while founding is supported (the review's
+  trace), not yet checked in the Wine runner. Five mutants of the key handler and the preview are killed.
+- **The owner on the H1 pictures:** the original's Kontor is embedded in the ground; ours floats, its road floats, grass is
+  drawn over the Kontor, its piles are not in the water. Cause (D, `docs/re/annodisplay.md`): the original depth-tests
+  every sprite pixel against the terrain triangles and the water (u16 depth buffer; the Kontor's 12 frames are
+  `BSH_RGBAZ` with per-pixel offsets −70 … +54, roads `BSH_RGBAH` decals tested but never written). This renderer draws
+  sprites whole on top of the terrain and depth-tests only the sea and the rivers. H1 cannot close that; it is a renderer
+  task of its own (OQ-026 c), not started.
+- **Gates of the final head:** REPORTS.

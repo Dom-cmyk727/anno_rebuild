@@ -174,7 +174,12 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
 - *No manual turn.* The owner, from the original: a Kontor has no manual rotation, it aligns with the coastline by itself. `T` no
   longer turns the founding cursor; every `FoundCmd` carries `kFoundingCursorRotation` (0) and the sim's rotation trials turn the
   warehouse to the shore (the first of 0, 1, 2, 3 whose land edge is the beach and whose opposite edge is in the water). Which
-  rotation the original's own command carries is not traced (`docs/sim/ship-founding.md` §3.5).
+  rotation the original's own command carries is not traced (`docs/sim/ship-founding.md` §3.5). *Superseded the same evening:*
+  the orchestrator's review traced it (the original's Kontor cursor starts the trials at its own turn byte, set by the turn keys),
+  and the owner restored it: `T` or `.` turns the founding cursor on, `,` back, the command carries that turn and the sim's
+  trials start there (`kFoundingCursorRotation` is the turn before any press). The warehouse still turns to the coast by itself;
+  the cursor decides only where two turns fit (8 of 115 shipped sites). Test `controls: on a corner where two turns fit, the
+  founding cursor's turn decides`.
 - *Turned and placed wrong: the picture, not the sim.* Every Kontor of the original's scenario files (62) passes the sim's coast
   rule at its stored rotation and origin (test `the original's own warehouses pass the coast rule as stored`), and the session's
   coast at (255,138) has land at −x and water at +x, where only rotation 1 passes. What looked wrong is the renderer: its
@@ -276,5 +281,9 @@ Each fix has a test that fails without it (mutation checks: the fix reverted, th
   (ADR 0001).
 - *Round 7's waterline (H1/H2), after the review.* The original does not reshape the ground when it places buildings (Wine
   runner: the runtime height grids unchanged over 17 placements); it draws corners at 16 as water at a Kontor's piles. With
-  16 as water our Kontors gain water at their water edge, but not all the way to the piles the original shows in water: an
-  owner decision with before/after pictures (hand-over note, section 4), not changed here.
+  16 as water our Kontors gain water at their water edge, but not all the way to the piles the original shows in water
+  (hand-over note, section 4). The owner chose it as the default (2026-11-03): terrain below `kShoreHeight` = 16.5 is water
+  (the field, the wave depth, the shore distance, the empty-cell bound; the water objects' split under and over the sea stays at
+  16), per scene (`Scene::shore_height`), and `--shore 16` draws corners at 16 as land again. Why the Kontor still floats (its
+  sprite is drawn whole over the terrain and the water, where the original depth-tests every pixel against them) is a renderer
+  task of its own (OQ-026 c).

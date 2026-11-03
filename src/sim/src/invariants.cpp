@@ -44,6 +44,94 @@ void World::rect_query(CityRef city, const TileRect& rect, std::uint32_t list_ma
     islands_[city.island.v]->rect_query(config_.layout, city.city, rect, list_mask, out);
 }
 
+std::string World::resident_problem() const {
+    // MAP-POP-LIVE-1 L1 (docs/sim/population-live.md section 3 "Ownership"): a house's walker slot
+    // names a live figure that holds exactly that slot; a figure that holds a house slot is named
+    // by it; a resident job has SimConfig::resident_cargo_slots cargo slots of known goods, and an
+    // empty slot (goods 0) carries no amount. Refused, never repaired.
+    const auto island_ptr = [&](IslandId id) -> const Island* {
+        return id.valid() && id.v < islands_.size() && islands_[id.v].has_value() ? &*islands_[id.v]
+                                                                                  : nullptr;
+    };
+    for (std::size_t s = 0; s < figures_.list.slots.size(); ++s) {
+        if (!figures_.list.slots[s].has_value()) {
+            continue;
+        }
+        const Figure& f = *figures_.list.slots[s];
+        const std::string where = "figures.list.slots[" + std::to_string(s) + "]";
+        if (f.resident.has_value()) {
+            const ResidentState& r = *f.resident;
+            if (r.cargo.size() != config_.resident_cargo_slots) {
+                return where + ".resident.cargo: " + std::to_string(r.cargo.size()) +
+                       " slots, SimConfig.resident_cargo_slots is " +
+                       std::to_string(config_.resident_cargo_slots);
+            }
+            for (std::size_t k = 0; k < r.cargo.size(); ++k) {
+                const ResidentCargo& c = r.cargo[k];
+                if (c.goods >= config_.warehouse_goods) {
+                    return where + ".resident.cargo[" + std::to_string(k) +
+                           "].goods: " + std::to_string(c.goods) +
+                           " is not below SimConfig.warehouse_goods";
+                }
+                if (c.goods == 0 && c.amount_88 != 0) {
+                    return where + ".resident.cargo[" + std::to_string(k) +
+                           "]: an empty slot (goods 0) carries an amount";
+                }
+            }
+            if (r.next > r.route.size() + 1) {
+                return where + ".resident.next: " + std::to_string(r.next) +
+                       " is beyond the route (" + std::to_string(r.route.size()) + " waypoints)";
+            }
+        }
+        if (f.home.valid()) {
+            const Island* is = island_ptr(island_of(f.home));
+            const Building* b = is != nullptr ? is->find_building(f.home) : nullptr;
+            const House* h = b != nullptr ? std::get_if<House>(&b->payload) : nullptr;
+            if (h != nullptr &&
+                (f.home_counter >= h->walkers.size() || h->walkers[f.home_counter] != f.id)) {
+                return where + ": it holds walker slot " + std::to_string(f.home_counter) +
+                       " of house " + std::to_string(f.home.v) + " which does not name it";
+            }
+            if (f.resident.has_value() && b != nullptr && h == nullptr) {
+                return where + ".resident: the home " + std::to_string(f.home.v) +
+                       " is not a House-payload building";
+            }
+        }
+    }
+    for (std::size_t i = 0; i < islands_.size(); ++i) {
+        if (!islands_[i].has_value()) {
+            continue;
+        }
+        for (std::size_t c = 0; c < islands_[i]->cities.size(); ++c) {
+            if (!islands_[i]->cities[c].has_value()) {
+                continue;
+            }
+            for (const BuildingList& list : islands_[i]->cities[c]->index.lists) {
+                for (const std::optional<Building>& b : list.slots) {
+                    const House* h = b.has_value() ? std::get_if<House>(&b->payload) : nullptr;
+                    if (h == nullptr) {
+                        continue;
+                    }
+                    for (std::size_t k = 0; k < h->walkers.size(); ++k) {
+                        if (!h->walkers[k].valid()) {
+                            continue;
+                        }
+                        const Figure* f = find_figure(figures_, h->walkers[k]);
+                        if (f == nullptr || f->home != b->id || f->home_counter != k) {
+                            return "islands[" + std::to_string(i) + "].cities[" +
+                                   std::to_string(c) + "] house " + std::to_string(b->id.v) +
+                                   ".walkers[" + std::to_string(k) + "]: figure " +
+                                   std::to_string(h->walkers[k].v) +
+                                   " is not a live figure holding that slot";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return {};
+}
+
 std::string World::harvest_problem() const {
     // MAP-ECON-1 E2 (docs/sim/forestry.md 2, 2.1): the harvest facts that need the buildings, the
     // tiles or the rules. Refused, never repaired. No fact requires a currently existing home: a
@@ -211,6 +299,10 @@ std::string World::check_invariants() const {
         }
     }
     problem = harvest_problem();
+    if (!problem.empty()) {
+        return problem;
+    }
+    problem = resident_problem();
     if (!problem.empty()) {
         return problem;
     }

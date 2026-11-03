@@ -73,7 +73,9 @@ std::vector<std::uint8_t> StateIO::save(const World& w) {
         ids_section(s, w.ids_, w.event750_acc_, w.monopoly_.acc, w.faulted_);
     });
     section([&](WriteArchive& s) { players_section(s, w.players_, w.config_); });
-    section([&](WriteArchive& s) { islands_section(s, w, w.islands_, w.config_, w.settings_); });
+    section([&](WriteArchive& s) {
+        islands_section(s, w, w.islands_, w.config_, w.settings_, w.rules_);
+    });
     section([&](WriteArchive& s) { figures_section(s, w.figures_, w.ids_); });
     section([&](WriteArchive& s) { events_section(s, w.events_, w.ids_); });
     section(
@@ -228,7 +230,7 @@ formats::Result<World, std::string> StateIO::load(std::span<const std::uint8_t> 
     }
     if (problem.empty()) {
         problem = section("islands", [&](ReadArchive& s) {
-            islands_section(s, w, w.islands_, w.config_, w.settings_);
+            islands_section(s, w, w.islands_, w.config_, w.settings_, w.rules_);
         });
     }
     if (problem.empty()) {

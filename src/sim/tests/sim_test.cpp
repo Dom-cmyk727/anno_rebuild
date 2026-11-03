@@ -395,7 +395,10 @@ TEST_CASE("draw sources forward the site and the world stream") {
     CHECK(static_cast<int>(sim::DrawSite::CityName) == 17);
     CHECK(static_cast<int>(sim::DrawSite::CityNameLoad) == 18);
     CHECK(static_cast<int>(sim::DrawSite::FarmWorkerDispatch) == 19); // MAP-ECON-1 E2, appended
-    CHECK(static_cast<int>(sim::DrawSite::Count_) == 20);
+    CHECK(static_cast<int>(sim::DrawSite::HouseWalkerTarget) == 20);  // MAP-POP-LIVE-1 L1, declared
+    CHECK(static_cast<int>(sim::DrawSite::HouseVariant) == 21);
+    CHECK(static_cast<int>(sim::DrawSite::HouseFirstAssignment) == 22);
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 23);
     CHECK(sim::draw_site_ported(sim::DrawSite::FarmWorkerDispatch));
     CHECK(sim::draw_site_phase(sim::DrawSite::FarmWorkerDispatch) == sim::DrawPhase::Advance);
     CHECK(std::string(sim::draw_site_name(sim::DrawSite::FarmWorkerDispatch)) ==
@@ -597,9 +600,9 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x2a6a20e2b3b55a26ULL); // empty_world at 127 (sim_stream.py)
-    CHECK(sim::kStateHashVersion == 127);
-    CHECK(sim::kPrngTimelineVersion == 4);
+    CHECK(sim::World().state_hash() == 0xe244af201a643837ULL); // empty_world at 128 (sim_stream.py)
+    CHECK(sim::kStateHashVersion == 128);
+    CHECK(sim::kPrngTimelineVersion == 5);
 }
 
 namespace {

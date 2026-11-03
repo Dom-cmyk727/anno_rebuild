@@ -678,6 +678,15 @@ std::string check_consistency(std::span<const BuildingType> types,
         if (index >= classes.size()) {
             return who + "class " + std::to_string(index) + " is outside the class table";
         }
+        if (t.cls == RuntimeClass::House) {
+            // MAP-POP-LIVE-1 L1 (population-live.md 10a, P): a house that may send walkers needs a
+            // figure type to send; the facts are registry data (PROD3 0x28/0x29/0x32), hashed with
+            // the production data.
+            const std::string problem = house_walker_problem(t);
+            if (!problem.empty()) {
+                return problem;
+            }
+        }
         const auto kind = production_kind_for_tick(classes[index].tick);
         if (!kind) {
             continue; // the class does not tick (or its tick is unported): no data needed

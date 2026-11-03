@@ -1,6 +1,7 @@
 // The resident/supplier transactions (resident.hpp; docs/sim/population-live.md section 2).
 #include <algorithm>
 #include <limits>
+#include <string>
 
 #include <anno/sim/resident.hpp>
 
@@ -66,6 +67,35 @@ bool urgency(const HouseFacts& h, std::size_t slot, std::int64_t& out) {
 }
 
 } // namespace
+
+HouseWalkerFacts house_walker_facts(const BuildingType& type) {
+    HouseWalkerFacts f;
+    if (!type.has_prod) {
+        return f;
+    }
+    if (!type.prod.max_figures.empty()) {
+        f.walker_max = type.prod.max_figures[0];
+    }
+    if (!type.prod.figure_type_count.empty()) {
+        f.variants = type.prod.figure_type_count[0] & 0xffU; // D: masked to a byte (10a)
+    }
+    const std::size_t listed = std::min<std::size_t>(f.variants, type.prod.figure_ids.size());
+    f.figure_ids = std::span<const std::uint32_t>(type.prod.figure_ids.data(), listed);
+    return f;
+}
+
+std::string house_walker_problem(const BuildingType& type) {
+    const HouseWalkerFacts f = house_walker_facts(type);
+    if (f.walker_max > 0 && f.variants == 0) {
+        return "house type " + std::to_string(type.id.v) + ": walker maximum " +
+               std::to_string(f.walker_max) + " with no figure type (population-live.md 10a)";
+    }
+    if (f.figure_ids.size() < f.variants) {
+        return "house type " + std::to_string(type.id.v) + ": " + std::to_string(f.variants) +
+               " figure types, only " + std::to_string(f.figure_ids.size()) + " ids listed";
+    }
+    return {};
+}
 
 const char* resident_fault_name(ResidentFault f) {
     switch (f) {

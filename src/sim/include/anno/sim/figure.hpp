@@ -27,6 +27,7 @@
 
 #include <anno/sim/config.hpp>
 #include <anno/sim/ids.hpp>
+#include <anno/sim/resident.hpp>
 #include <anno/sim/slot_list.hpp>
 
 namespace anno::sim {
@@ -115,6 +116,30 @@ struct HarvestState {
     std::uint32_t next = 0;
     std::uint32_t along = 0;
     friend bool operator==(const HarvestState&, const HarvestState&) = default;
+};
+
+/// The step of a resident job (job 0x35; docs/sim/population-live.md section 3): A = Start (the
+/// search from the house and the choice of a stand; ToStall the walk), B = Wait (the fixed wait,
+/// then the purchase at the stand: P-8, the stall wait/attach state is simplified), C = ToHome (the
+/// walk home and the delivery of every cargo slot), then Done (the figure ends).
+enum class ResidentStep : std::uint8_t { Start = 0, ToStall = 1, Wait = 2, ToHome = 3, Done = 4 };
+
+/// What a resident job keeps between calls (MAP-POP-LIVE-1 L1, stream 128; the job itself is L2).
+/// Present on a figure exactly when a House spawned it (never chosen by the job id alone). The
+/// walk is TransportState's: waypoints, the next one and the distance along the segment.
+struct ResidentState {
+    ResidentStep step = ResidentStep::Start;
+    /// Ticks left of the current wait (Wait).
+    std::uint32_t wait = 0;
+    std::vector<FixedPos> route;
+    std::uint32_t next = 0;
+    std::uint32_t along = 0;
+    /// The chosen stand or public building (invalid until step A chose one).
+    BuildingId target;
+    /// The walker's cargo slots, SimConfig::resident_cargo_slots of them (the original's 3,
+    /// D 0x10057d70): goods 0 = empty; a slot holding goods with amount 0 is not empty.
+    std::vector<ResidentCargo> cargo;
+    friend bool operator==(const ResidentState&, const ResidentState&) = default;
 };
 
 /// Raw units per ton in a ship hold: amounts are exact multiples of 1/256 ton (the original's 8.8
@@ -269,6 +294,9 @@ struct Figure {
     std::optional<NavMotion> nav;
     /// MAP-ECON-1 E2 (stream 126): the harvest job of a farm worker (docs/sim/forestry.md 2).
     std::optional<HarvestState> harvest;
+    /// MAP-POP-LIVE-1 L1 (stream 128): the resident job of a house walker (docs/sim/
+    /// population-live.md section 3).
+    std::optional<ResidentState> resident;
 };
 
 /// D: the unit registry (world +0x114).

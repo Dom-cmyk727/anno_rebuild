@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <anno/sim/building.hpp>
+#include <anno/sim/resident.hpp>
 
 namespace anno::sim {
 
@@ -85,6 +86,7 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
         // residents and E of the struct, every stock 0, `last` 0 (P1 decision 8).
         House h;
         h.stock.assign(house_need_count(type, cfg, types), 0);
+        h.walkers.assign(house_walker_facts(type).walker_max, FigureId{});
         return h;
     }
     case PayloadTag::Inert:
@@ -190,6 +192,9 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         const auto& r = std::get<House>(ref);
         if (h->stock.size() != r.stock.size()) {
             return sizes("stock", h->stock.size(), r.stock.size());
+        }
+        if (h->walkers.size() != r.walkers.size()) {
+            return sizes("walkers", h->walkers.size(), r.walkers.size());
         }
     } else if (std::holds_alternative<Mine>(payload)) {
         if (type.prod.outputs.empty()) {

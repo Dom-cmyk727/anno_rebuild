@@ -73,6 +73,7 @@
 #include <anno/sim/figure.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/player.hpp>
+#include <anno/sim/resident.hpp>
 #include <anno/sim/rng.hpp>
 #include <anno/sim/seams.hpp>
 #include <anno/sim/settings.hpp>
@@ -203,7 +204,7 @@ template <class A, Same<LinkTables> S> void fields(A& a, S& s) {
     u32_list(a, s.ore_rank_score);
 }
 
-static_assert(field_count<SimConfig>() == 56,
+static_assert(field_count<SimConfig>() == 59,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -263,6 +264,9 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     a.u32(s.population_infra_last);         // stream 127
     a.u32(s.population_tavern_goods);       // stream 127
     a.u32(s.population_tavern_alias_goods); // stream 127
+    a.u32(s.billed_goods_first);            // stream 128
+    a.u32(s.billed_goods_last);             // stream 128
+    a.u32(s.resident_cargo_slots);          // stream 128
 }
 
 static_assert(field_count<NavClassCost>() == 4, "a NavClassCost member needs a line in fields");
@@ -299,7 +303,7 @@ template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
     ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Rules>() == 29, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 31, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -333,6 +337,8 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.boolean(s.road_preserve_nonroad_pieces); // stream 125
     a.boolean(s.forestry_claim_hygiene);       // stream 126
     a.boolean(s.forestry_skip_uncuttable);     // stream 126
+    a.boolean(s.house_updates);                // stream 128
+    a.boolean(s.save_billed_goods);            // stream 128
 }
 
 // ---- settings scope
@@ -730,13 +736,14 @@ template <class A, Same<Market> S> void fields(A& a, S& s) {
     a.u32(s.carts_out);
 }
 
-static_assert(field_count<House>() == 4, "a House member needs a line in fields(House)");
+static_assert(field_count<House>() == 5, "a House member needs a line in fields(House)");
 
 template <class A, Same<House> S> void fields(A& a, S& s) {
     a.u16(s.last);
     a.i32(s.residents_64);
     a.u32(s.e);
     ar::seq(a, s.stock, 4, [&](auto& x) { a.u32(x); });
+    ar::seq(a, s.walkers, 8, [&](auto& id) { a.u64(id.v); }); // stream 128
 }
 
 static_assert(field_count<Building>() == 9, "a Building member needs a line in fields(Building)");
@@ -867,13 +874,21 @@ template <class A, Same<TradeEntry> S> void fields(A& a, S& s) {
     a.u32(s.price);
 }
 
-static_assert(field_count<City>() == 10, "a City member needs a line in fields(City)");
+static_assert(field_count<City>() == 13, "a City member needs a line in fields(City)");
 
 /// One city (docs/sim/state.md §9.3): `u32 number, u32 owner, u16 tick_stamp`, the
 /// stock (`u32 capacity`, u32 list), the goods settings, the build goods, the trade
 /// lists (a list of lists), then the scope `index`. The sizes of the config-sized
 /// containers are checked against the configuration by validate_cities.
-template <class A, Same<City> S> void fields(A& a, S& s) {
+/// What the city's field list needs from outside the city (MAP-POP-LIVE-1 L1): whether the billed
+/// counters are in the stream (Rules::save_billed_goods) and how many entries a city that did not
+/// save them starts with (SimConfig::warehouse_goods).
+struct CityStream {
+    bool save_billed = true;
+    std::size_t warehouse_goods = 0;
+};
+
+template <class A, Same<City> S> void fields(A& a, S& s, const CityStream& ctx = CityStream{}) {
     a.u32(s.number.v);
     a.u32(s.owner.v);
     a.u16(s.tick_stamp);
@@ -884,6 +899,13 @@ template <class A, Same<City> S> void fields(A& a, S& s) {
             [&](auto& list) { ar::seq(a, list, 12, [&](auto& e) { fields(a, e); }); });
     a.str(s.name);                                              // stream 119: city property 0x12
     ar::seq(a, s.player_mask, 4, [&](auto& p) { a.u32(p.v); }); // stream 120: city property 0
+    a.u32(s.stage_mask);                                        // stream 128: city +0x618
+    a.u16(s.stage_stamp);                                       // stream 128: city +0x10
+    if (ctx.save_billed) {
+        ar::seq(a, s.billed, 4, [&](auto& x) { a.u32(x); }); // stream 128: the billed counters
+    } else if constexpr (A::kReading) {
+        s.billed.assign(ctx.warehouse_goods, 0); // not in the stream: starts at zero
+    }
     fields(a, s.index);
 }
 
@@ -892,7 +914,7 @@ template <class A, Same<City> S> void fields(A& a, S& s) {
 /// kSlotTableBound before any slot is made (an absent slot is one byte on the wire
 /// but a whole optional<City> in memory, F29); validate_cities then compares it with
 /// SimConfig::city_slots.
-template <class A, class V> void cities_io(A& a, V& cities) {
+template <class A, class V> void cities_io(A& a, V& cities, const CityStream& ctx) {
     std::uint64_t n = cities.size();
     a.count(n, 1);
     if constexpr (A::kReading) {
@@ -905,12 +927,12 @@ template <class A, class V> void cities_io(A& a, V& cities) {
         for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
             cities.emplace_back();
             a.scope("city", static_cast<std::uint32_t>(i),
-                    [&] { ar::opt(a, cities.back(), [&](auto& c) { fields(a, c); }); });
+                    [&] { ar::opt(a, cities.back(), [&](auto& c) { fields(a, c, ctx); }); });
         }
     } else {
         for (std::size_t i = 0; i < cities.size(); ++i) {
             a.scope("city", static_cast<std::uint32_t>(i),
-                    [&] { ar::opt(a, cities[i], [&](auto& c) { fields(a, c); }); });
+                    [&] { ar::opt(a, cities[i], [&](auto& c) { fields(a, c, ctx); }); });
         }
     }
 }
@@ -940,7 +962,7 @@ static_assert(field_count<Island>() == 20,
 /// `tiles`, scope `cities` (stage S6). The terrain itself is not in the stream (its blobs travel in
 /// the save frame, §9.5): reading leaves a placeholder that carries the digest, and the frame
 /// replaces it by the verified blobs.
-template <class A, Same<Island> S> void fields(A& a, S& s) {
+template <class A, Same<Island> S> void fields(A& a, S& s, const CityStream& ctx = CityStream{}) {
     a.u32(s.index.v);
     std::int32_t x0 = s.tiles.x0();
     std::int32_t y0 = s.tiles.y0();
@@ -986,7 +1008,7 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
         },
         [&](auto& v) { a.u64(v.v); });
     a.scope("tiles", [&] { tiles_io(a, s.tiles, x0, y0, w, h); });
-    a.scope("cities", [&] { cities_io(a, s.cities); });
+    a.scope("cities", [&] { cities_io(a, s.cities, ctx); });
 }
 
 /// The island table: `u64 slot count`, then per slot (scope `island`, ordinal =
@@ -994,7 +1016,8 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
 /// SimConfig::island_slots (already read and validated) before any slot is made,
 /// because an absent slot is one byte on the wire but a whole optional<Island> in
 /// memory; validate_islands then checks the structure (StateIO::islands_section).
-template <class A, class V> void islands_io(A& a, V& islands, const SimConfig& cfg) {
+template <class A, class V>
+void islands_io(A& a, V& islands, const SimConfig& cfg, const CityStream& ctx) {
     std::uint64_t n = islands.size();
     a.count(n, 1);
     if constexpr (A::kReading) {
@@ -1007,12 +1030,12 @@ template <class A, class V> void islands_io(A& a, V& islands, const SimConfig& c
         for (std::uint64_t i = 0; i < n && !a.failed(); ++i) {
             islands.emplace_back();
             a.scope("island", static_cast<std::uint32_t>(i),
-                    [&] { ar::opt(a, islands.back(), [&](auto& is) { fields(a, is); }); });
+                    [&] { ar::opt(a, islands.back(), [&](auto& is) { fields(a, is, ctx); }); });
         }
     } else {
         for (std::size_t i = 0; i < islands.size(); ++i) {
             a.scope("island", static_cast<std::uint32_t>(i),
-                    [&] { ar::opt(a, islands[i], [&](auto& is) { fields(a, is); }); });
+                    [&] { ar::opt(a, islands[i], [&](auto& is) { fields(a, is, ctx); }); });
         }
     }
 }
@@ -1121,7 +1144,36 @@ template <class A, Same<HarvestState> S> void fields(A& a, S& s) {
     a.u32(s.along);
 }
 
-static_assert(field_count<Figure>() == 21, "a Figure member needs a line in fields(Figure)");
+template <> struct EnumInfo<ResidentStep> : ContiguousEnum<5> {};
+
+static_assert(field_count<ResidentCargo>() == 2,
+              "a ResidentCargo member needs a line in fields(ResidentCargo)");
+
+template <class A, Same<ResidentCargo> S> void fields(A& a, S& s) {
+    a.u32(s.goods);
+    a.u32(s.amount_88);
+}
+
+static_assert(field_count<ResidentState>() == 7,
+              "a ResidentState member needs a line in fields(ResidentState)");
+
+/// MAP-POP-LIVE-1 L1 (stream 128, docs/sim/population-live.md section 3): u8 step, u32 wait, the
+/// route (u64 count, i32 x and y each), u32 next, u32 along, u64 target, the cargo (u64 count, then
+/// u32 goods and u32 amount_88 each).
+template <class A, Same<ResidentState> S> void fields(A& a, S& s) {
+    a.enumv(s.step);
+    a.u32(s.wait);
+    ar::seq(a, s.route, 8, [&](auto& p) {
+        a.i32(p.x);
+        a.i32(p.y);
+    });
+    a.u32(s.next);
+    a.u32(s.along);
+    a.u64(s.target.v);
+    ar::seq(a, s.cargo, 8, [&](auto& c) { fields(a, c); });
+}
+
+static_assert(field_count<Figure>() == 22, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -1146,9 +1198,10 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.parent.v);
     ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
     ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
-    a.u32(s.state_word);                                   // stream 120
-    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); });     // stream 122
-    ar::opt(a, s.harvest, [&](auto& h) { fields(a, h); }); // stream 126
+    a.u32(s.state_word);                                    // stream 120
+    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); });      // stream 122
+    ar::opt(a, s.harvest, [&](auto& h) { fields(a, h); });  // stream 126
+    ar::opt(a, s.resident, [&](auto& r) { fields(a, r); }); // stream 128
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64
@@ -1414,11 +1467,12 @@ struct StateIO {
 
     /// Section 6. Reading validates the table against the configuration, the
     /// settings and the registry just read (validate_islands).
-    template <class A, class W, class Islands, class Config, class Settings>
+    template <class A, class W, class Islands, class Config, class Settings, class RulesT>
     static void islands_section(A& a, W& w, Islands& islands, const Config& config,
-                                const Settings& settings) {
+                                const Settings& settings, const RulesT& rules) {
         a.scope("islands", [&] {
-            islands_io(a, islands, config);
+            islands_io(a, islands, config,
+                       CityStream{rules.save_billed_goods, config.warehouse_goods});
             if constexpr (A::kReading) {
                 if (!a.failed()) {
                     const std::string problem =
@@ -1509,7 +1563,7 @@ struct StateIO {
         settings_section(a, settings);
         ids_section(a, ids, event750_acc, monopoly.acc, faulted);
         players_section(a, players, config);
-        islands_section(a, w, islands, config, settings);
+        islands_section(a, w, islands, config, settings, rules);
         figures_section(a, figures, ids);
         events_section(a, events, ids);
         timers_monopoly_section(a, timers, monopoly, config);

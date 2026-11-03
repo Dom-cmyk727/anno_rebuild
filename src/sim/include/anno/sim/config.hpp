@@ -443,6 +443,19 @@ struct SimConfig {
     std::uint32_t population_infra_last = 0x5a;
     std::uint32_t population_tavern_goods = 0x4c;
     std::uint32_t population_tavern_alias_goods = 0x1d;
+    /// MAP-POP-LIVE-1 L1 (stream 128, docs/sim/population-live.md section 2 "Billing"): the goods
+    /// range whose bill() is recorded and taken: the consumer goods ids. D: the range test
+    /// `goods < 0x1a || goods > 0x28` of the city billing slot 0x1002dac0. Data with the original
+    /// values as defaults; validate() checks the order only (the goods-domain check is the
+    /// ledger's: a goods beyond City::billed is a typed refusal, never a wrap).
+    std::uint32_t billed_goods_first = 0x1a;
+    std::uint32_t billed_goods_last = 0x28;
+    /// MAP-POP-LIVE-1 L1 (stream 128): the number of cargo slots of a resident walker's job
+    /// (ResidentState::cargo). D: the arrival 0x10057d70 delivers the cargo slots 0..2 and the
+    /// purchase loop 0x10056480 fills at most two of them; the slot count is not in the parsed
+    /// figure data (FigureType), so it is configuration with the original 3 as its default.
+    /// validate() requires at least 1.
+    std::uint32_t resident_cargo_slots = 3;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").
@@ -637,6 +650,16 @@ struct Rules {
     /// `id - 1` exists and its PRODTYPE is ROHSTWACHS, 0x10087340), so a tile the cut cannot change
     /// is never chosen. Derived from the registry; no literal id. Intended enhanced value: true.
     bool forestry_skip_uncuttable = false;
+    /// MAP-POP-LIVE-1 L1 (stream 128, docs/sim/population-live.md section 8, P-7): the House tick
+    /// applies the kernel's effects (walker spawn, growth, upgrade, downgrade, removal). Off (the
+    /// default) keeps the dispatch an exact no-op, so every accepted golden and replay is
+    /// unchanged. Intended value in a game with living houses: true (an owner decision).
+    bool house_updates = false;
+    /// MAP-POP-LIVE-1 L1 (stream 128, owner 2026-10-25, section 2 "Billed counters"): true saves,
+    /// hashes and restores City::billed; false leaves it out of the stream, so a loaded city starts
+    /// with zero billed counters (the original drops this scratch at a save). Either way the live
+    /// tick writes it.
+    bool save_billed_goods = true;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

@@ -80,6 +80,19 @@ enum class DrawSite : std::uint8_t {
     /// creates a figure; the result is discarded (docs/sim/forestry.md 3.1). The fur trapper's own
     /// tick is not read for it (U-13).
     FarmWorkerDispatch,
+    // MAP-POP-LIVE-1 L1 (PRNG timeline 5): the House tick's three sites, declared now and drawn
+    // only
+    // with Rules::house_updates on (L2-L4). All draw inside World::advance.
+    /// D: AnnoWelt 0x10076397: the walker target variant, one draw per taken House tick with
+    /// `lowest < 102` and fewer walkers than the type allows, BEFORE the send and whatever the send
+    /// does (docs/sim/population-live.md section 1, step 3, X14).
+    HouseWalkerTarget,
+    /// D: the upgrade/downgrade variant draw (property 0x32 count c, idx = r mod c; section 5).
+    HouseVariant,
+    /// D: SetGroup's first assignment (the old group is null): one draw per forced need,
+    /// satisfaction
+    /// `128 - (r & 31)` (section 5, X21).
+    HouseFirstAssignment,
     /// Number of sites (not a site).
     Count_
 };
@@ -132,6 +145,12 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
         return "CityNameLoad";
     case DrawSite::FarmWorkerDispatch:
         return "FarmWorkerDispatch";
+    case DrawSite::HouseWalkerTarget:
+        return "HouseWalkerTarget";
+    case DrawSite::HouseVariant:
+        return "HouseVariant";
+    case DrawSite::HouseFirstAssignment:
+        return "HouseFirstAssignment";
     case DrawSite::Count_:
         break;
     }
@@ -157,6 +176,9 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
         return DrawPhase::Load;
     case DrawSite::CityName:
     case DrawSite::FarmWorkerDispatch:
+    case DrawSite::HouseWalkerTarget:
+    case DrawSite::HouseVariant:
+    case DrawSite::HouseFirstAssignment:
     case DrawSite::SmallFarmAnimal:
     case DrawSite::Event300:
     case DrawSite::Event750Gate:

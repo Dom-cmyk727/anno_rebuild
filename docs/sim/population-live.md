@@ -136,3 +136,11 @@ Each is implemented behind `Rules::house_updates` (default **false**), so none c
 ## 13. Limits
 
 Taxes, upkeep booking, fire/plague, military and win/loss are outside this task; billed counters are accumulated but not consumed. No UI. Windows/MSVC, Linux/WSL, original-runtime, GPU and multiplayer scale remain NOT_RUN. The stall wait and stall attach state are simplified (section 3) until their edges are read.
+
+## 14. L1 delivered (resident/supplier transactions and the state schema; MAP-POP-LIVE-1)
+
+Identity: `kStateHashVersion` 128, `kPrngTimelineVersion` 5 (start 127 / 4). Pure module `resident.hpp/.cpp` (reference `tools/resident_ref.py`, hand-derived vectors `fixtures/synthetic/sim/resident_vectors.txt`, 116 vectors). The House dispatch is still `return;`.
+
+State added: `SimConfig::{billed_goods_first 0x1a, billed_goods_last 0x28, resident_cargo_slots 3}`; `Rules::{house_updates false, save_billed_goods true}`; `City::{stage_mask, stage_stamp, billed}` (billed only in the stream with `save_billed_goods`; a loaded city otherwise starts at zero); `House::walkers`; `Figure::resident` (`ResidentState`: step, wait, route/next/along, target, cargo); the draw sites `HouseWalkerTarget`, `HouseVariant`, `HouseFirstAssignment` (declared, advance phase, unported). `City::build_goods[k].{setting, spent}` are the contract's `build_reserve` (dword `+0x5d4`) and `build_spent` (`+0x5d8`): they already existed, were saved and hashed, and are not duplicated. House walker facts (`type +0xb8/+0xbc/+0xb4`) are the existing production data PROD3 `0x29`, `0x28`, `0x32`; they were already in the registry digest; `house_walker_problem` adds the registry error of 10a.
+
+Readings where the text allowed two (all P, none changes a vector the contract states): (1) the skip rule tests goods `== A` and `== B` independently (an `A == B` offer is zeroed once); (2) the IdSec replay of a delivery happens only when the delivered goods itself has a need slot, once, and only if the substitute has a slot; (3) the Inn's bill records the requested amount of its input good; (4) a stall offers only its two WARE goods (the `ALL 0x8e` flag arm is not modelled: the choice asks A and B only); (5) the walker's cargo slot count is configuration (`resident_cargo_slots`), because `FigureType` does not carry it.

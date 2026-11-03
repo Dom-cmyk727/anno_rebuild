@@ -442,6 +442,10 @@ std::string validate_cities(const Island& is, std::size_t slot, const SimConfig&
             return cp + ".goods: " + std::to_string(city.goods.size()) +
                    " settings, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
         }
+        if (city.billed.size() != cfg.warehouse_goods) {
+            return cp + ".billed: " + std::to_string(city.billed.size()) +
+                   " counters, SimConfig.warehouse_goods is " + std::to_string(cfg.warehouse_goods);
+        }
         if (city.build_goods.size() != cfg.build_goods_count) {
             return cp + ".build_goods: " + std::to_string(city.build_goods.size()) +
                    " records, SimConfig.build_goods_count is " +

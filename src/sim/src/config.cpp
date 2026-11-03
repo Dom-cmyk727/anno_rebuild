@@ -393,6 +393,14 @@ std::string SimConfig::validate() const {
                    "must lie outside the infrastructure range, is " +
                        std::to_string(population_tavern_alias_goods));
     }
+    if (billed_goods_first > billed_goods_last) {
+        return bad(kOwner, "billed_goods_first",
+                   "must not exceed billed_goods_last, is " + std::to_string(billed_goods_first) +
+                       " > " + std::to_string(billed_goods_last));
+    }
+    if (resident_cargo_slots < 1) {
+        return bad(kOwner, "resident_cargo_slots", "must be at least 1");
+    }
     if (std::uint64_t{build_goods_first} + build_goods_count > warehouse_goods) {
         return bad(kOwner, "build_goods_count",
                    "build_goods_first + build_goods_count must not exceed warehouse_goods");

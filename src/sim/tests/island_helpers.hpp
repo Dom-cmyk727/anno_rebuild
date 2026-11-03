@@ -87,7 +87,13 @@ inline void append_empty_city(Stream& s, std::uint32_t number, std::uint32_t own
     for (const char c : name) {
         s.u8(static_cast<std::uint8_t>(c));
     }
-    s.u64(0); // the player mask (stream 120): an empty set, a u64 count
+    s.u64(0);  // the player mask (stream 120): an empty set, a u64 count
+    s.u32(0);  // the stage mask (stream 128)
+    s.u16(0);  // the stage stamp (stream 128)
+    s.u64(56); // the billed counters (stream 128, Rules::save_billed_goods default): 56 goods of 0
+    for (int i = 0; i < 56; ++i) {
+        s.u32(0);
+    }
     s.u16(0);
     s.u64(6);
     for (int i = 0; i < 6; ++i) {

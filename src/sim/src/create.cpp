@@ -132,6 +132,7 @@ City make_city(CityNo number, PlayerId owner, const SimConfig& cfg) {
     c.index = make_building_index(cfg);
     c.goods.assign(cfg.warehouse_goods, GoodsSetting{});
     c.build_goods.assign(cfg.build_goods_count, BuildGoods{});
+    c.billed.assign(cfg.warehouse_goods, 0);
     c.trade_lists.assign(cfg.trade_lists, std::vector<TradeEntry>{});
     return c;
 }

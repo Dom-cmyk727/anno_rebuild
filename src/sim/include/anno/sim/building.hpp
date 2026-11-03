@@ -64,6 +64,11 @@ struct House {
     /// widened, 16 slots; here one entry per need of the group, as the group table
     /// says).
     std::vector<std::uint32_t> stock;
+    /// MAP-POP-LIVE-1 L1 (stream 128): +0x18..+0x24, the walker slots (D: 4 in the original; here
+    /// one per walker the TYPE allows, the type's +0xb8(0), validated against the registry). An
+    /// invalid id is an empty slot; a figure that holds slot k has `home` = this building and
+    /// `home_counter` = k (World::check_invariants).
+    std::vector<FigureId> walkers;
 };
 
 /// Alternative order = the save tag order of PayloadTag (types.hpp), append-only.

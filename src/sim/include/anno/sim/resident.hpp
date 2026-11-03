@@ -19,6 +19,7 @@
 #include <compare>
 #include <cstdint>
 #include <span>
+#include <string>
 
 #include <anno/sim/house_groups.hpp>
 #include <anno/sim/ids.hpp>
@@ -69,6 +70,22 @@ inline constexpr std::uint64_t kStockPerDelivered = 16;
 /// 256; FireBrigade 512), 8.8 tons.
 inline constexpr std::uint64_t kServiceAvailability = 256;
 inline constexpr std::uint64_t kFireBrigadeAvailability = 512;
+
+/// The walker facts of a house TYPE (docs/sim/population-live.md section 1 step 3 and 10a): the
+/// maximum number of walkers out at once (type +0xb8(0) = PROD3 byte 0x29), the number of figure
+/// types of group 0 (+0xbc(0) = PROD3 byte 0x28, masked to a byte) and their FigurenHeader ids
+/// (+0xb4(0, k) = the first `variants` of the nine u16 ids at PROD3 0x32; group 0 starts at the
+/// list's start). All zero for a type without production data. A count of 0 means the house never
+/// spawns; a maximum above 0 with no figure type is a registry error (house_walker_problem).
+struct HouseWalkerFacts {
+    std::uint32_t walker_max = 0;
+    std::uint32_t variants = 0;
+    std::span<const std::uint32_t> figure_ids;
+};
+[[nodiscard]] HouseWalkerFacts house_walker_facts(const BuildingType& type);
+/// Empty when the facts of a House type are usable, else the reason (contract 10a, P): a nonzero
+/// maximum with zero figure types, or more figure types than the type lists ids for.
+[[nodiscard]] std::string house_walker_problem(const BuildingType& type);
 
 /// D 0x100765c0, signed, in delivered units.
 [[nodiscard]] std::int64_t house_demand(std::uint32_t menge, std::uint32_t e, std::uint32_t stock);

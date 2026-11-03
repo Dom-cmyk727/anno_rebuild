@@ -83,6 +83,15 @@ word moves their hashes. Package B appends the four population goods roles to th
 (u32 each, defaults 0x4c 0x5a 0x4c 0x1d) and `bau_first`, `id_sec` (u32 each, 0 in the transcribed
 original_goods()) to every goods entry of the registry digest.
 
+Stream 128 (task MAP-POP-LIVE-1 L1, docs/sim/population-live.md section 8) is one combined increment
+for L1-L4. The config scope appends billed_goods_first, billed_goods_last, resident_cargo_slots (u32
+each, defaults 0x1a 0x28 3); Rules append house_updates (default 0) and save_billed_goods (default 1)
+after forestry_skip_uncuttable; each city appends u32 stage_mask, u16 stage_stamp and, because
+save_billed_goods is 1, the billed counters (u64 count = warehouse goods, u32 each, 0) after its
+player mask; each house gains its walker slots (u64 count, u64 ids) and each figure an optional
+resident state (the transcribed worlds hold no house and no figure). PRNG timeline 5 declares the
+House sites; nothing draws them here.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -103,8 +112,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 127
-PRNG_TIMELINE_VERSION = 4
+STATE_HASH_VERSION = 128
+PRNG_TIMELINE_VERSION = 5
 
 
 def fnv(data, h=0xCBF29CE484222325):
@@ -235,6 +244,8 @@ def config_bytes():
     b += link_tables_bytes()
     # stream 127: population_infra_first/last, population_tavern_goods, population_tavern_alias_goods
     b += b''.join(u32(x) for x in [0x4C, 0x5A, 0x4C, 0x1D])
+    # stream 128: billed_goods_first, billed_goods_last, resident_cargo_slots
+    b += b''.join(u32(x) for x in [0x1A, 0x28, 3])
     return b
 
 
@@ -281,7 +292,7 @@ def cargo_rules_bytes(cargo=CARGO_DEFAULT):
 
 
 def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pieces=False,
-                hygiene=False, skip_uncuttable=False):
+                hygiene=False, skip_uncuttable=False, house_updates=False, save_billed=True):
     # slot_policy, spatial_order, events_drain_new, events_max_dispatch, six flags (flush,
     # monopoly_every_30s, player_table_full_tick, drought centre, atomic, empty city),
     # event750_keep_overshoot, prng_mode, interim_figure_return_ticks, free_build_cheat,
@@ -294,7 +305,8 @@ def rules_bytes(full_tick=False, cargo=CARGO_DEFAULT, road_level=False, road_pie
             + u64(0) + nav_rules_bytes()  # city_names (120), shared_visibility (121): both empty; nav (122)
             + cargo_rules_bytes(cargo)  # cargo (124)
             + u8(1 if road_level else 0) + u8(1 if road_pieces else 0)  # road_require_land_level, road_preserve_nonroad_pieces (125)
-            + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0))  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
+            + u8(1 if hygiene else 0) + u8(1 if skip_uncuttable else 0)  # forestry_claim_hygiene, forestry_skip_uncuttable (126)
+            + u8(1 if house_updates else 0) + u8(1 if save_billed else 0))  # house_updates, save_billed_goods (128)
 
 
 def settings_bytes(width=0, height=0):
@@ -466,7 +478,7 @@ def index_digest(stamp, lists):
 
 
 def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
-                index_stamp=0, cursors=None, name=b''):
+                index_stamp=0, cursors=None, name=b'', save_billed=True):
     """One present city. buildings_by_list: {list id: (hint, [bytes or None, ...])};
     a list that is not given is a fresh one (hint -1, cursor 0, one empty slot).
     cursors: {list id: scheduler cursor}; index_stamp: the index's shared stamp."""
@@ -485,6 +497,9 @@ def city_digest(number, owner, buildings_by_list=None, tick_stamp=0, stock=None,
     b += u64(TRADE_LISTS) + b''.join(u64(0) for _ in range(TRADE_LISTS))
     b += u64(len(name)) + name  # stream 119: city property 0x12 (u64 length, bytes)
     b += u64(0)  # player_mask (stream 120): empty set
+    b += u32(0) + u16(0)  # stage_mask, stage_stamp (stream 128)
+    if save_billed:  # Rules::save_billed_goods (stream 128): u64 count, u32 each
+        b += u64(WAREHOUSE_GOODS) + b''.join(u32(0) for _ in range(WAREHOUSE_GOODS))
     b += u64(index_digest(index_stamp, lists))
     return fnv(u8(1) + b)
 
@@ -939,6 +954,10 @@ def cargo_rules_fixture_text():
         lines.append('rules_%s %s' % (name, rules_bytes(False, cargo).hex()))
     lines.append('rules_roads %s' % rules_bytes(False, CARGO_DEFAULT, True, True).hex())
     lines.append('rules_forestry %s' % rules_bytes(False, CARGO_DEFAULT, False, False, True, True).hex())
+    lines.append('# Stream 128 (MAP-POP-LIVE-1 L1): then house_updates (default 0) and save_billed_goods (default 1);')
+    lines.append('# rules_house has house_updates on, rules_nobilled has save_billed_goods off.')
+    lines.append('rules_house %s' % rules_bytes(False, CARGO_DEFAULT, False, False, False, False, True, True).hex())
+    lines.append('rules_nobilled %s' % rules_bytes(False, CARGO_DEFAULT, False, False, False, False, False, False).hex())
     return '\n'.join(lines) + '\n'
 
 

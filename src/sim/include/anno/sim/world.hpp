@@ -138,7 +138,17 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // full player stage mask, so a created player of an original scenario may hash with a mask other
 // than 1 (no layout change). Packages B and C add to this same version: four SimConfig population
 // roles in the config scope and the goods BauFirst/IdSec in the registry digest.
-inline constexpr std::uint32_t kStateHashVersion = 127;
+// Stream at 128 (task MAP-POP-LIVE-1 L1, docs/sim/population-live.md section 8): one combined,
+// unpublished increment for the population live effects (L1-L4). SimConfig gains
+// billed_goods_first, billed_goods_last and resident_cargo_slots; Rules gain house_updates and
+// save_billed_goods (after forestry_skip_uncuttable); each City gains u32 stage_mask, u16
+// stage_stamp and (only with Rules::save_billed_goods) the billed counters (u64 count, u32 each)
+// after player_mask; each House gains its walker slots (u64 count, u64 id each, invalid = max)
+// after the stock; each Figure gains an optional ResidentState at its end. The registry digest is
+// unchanged in layout (the house walker facts are the existing production data, PROD3 0x28/0x29/
+// 0x32). With Rules::house_updates off (the default) the tick is unchanged: only the version, the
+// config and rules bytes and the new fields move every hash.
+inline constexpr std::uint32_t kStateHashVersion = 128;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -154,7 +164,10 @@ inline constexpr std::uint32_t kSaveVersion = 1;
 /// Version 4 (task MAP-ECON-1 E2, docs/sim/forestry.md 3.1, 3.7): the ported advance-phase site
 /// FarmWorkerDispatch (D AnnoWelt 0x1006edf3-0x1006ee06), one draw per eligible farm dispatch
 /// attempt.
-inline constexpr std::uint32_t kPrngTimelineVersion = 4;
+/// Version 5 (task MAP-POP-LIVE-1 L1, docs/sim/population-live.md section 8): the House tick's draw
+/// sites HouseWalkerTarget, HouseVariant and HouseFirstAssignment are declared (advance phase,
+/// unported until L2-L4: they draw only with Rules::house_updates on).
+inline constexpr std::uint32_t kPrngTimelineVersion = 5;
 
 struct StateIO;
 struct ScenarioSpec;
@@ -313,6 +326,9 @@ class World {
     /// The harvest facts that need buildings, tiles and rules (docs/sim/forestry.md 2.1); part of
     /// check_invariants. Empty when they hold.
     [[nodiscard]] std::string harvest_problem() const;
+    /// MAP-POP-LIVE-1 L1 (stream 128): the resident/walker facts that need the figures, the
+    /// buildings or the config; empty when they hold (resident_problem in invariants.cpp).
+    [[nodiscard]] std::string resident_problem() const;
 
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,

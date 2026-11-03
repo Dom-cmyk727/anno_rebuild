@@ -320,8 +320,51 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
             }
         } else if (decided) {
             add("not on a coast: the shore must be a beach with water on the opposite side (the "
-                "sim "
-                "answers NoRotationFits)");
+                "sim answers NoRotationFits)");
+        }
+    }
+    p.cmd.ship = ship.id;
+    p.cmd.placement.type = type;
+    p.cmd.placement.rotation = found_rotation_;
+    p.cmd.placement.x = p.origin.x;
+    p.cmd.placement.y = p.origin.y;
+    p.cmd.click_x = click.x;
+    p.cmd.click_y = click.y;
+    // The sim's own answer for this very command, when the runner has published one: it also knows
+    // the tiles' owners and what stands on them (owner playtest 2026-11-03: a quarter of the coast
+    // sites the terrain allows are taken by rocks or trees, and the preview said "ok" there).
+    if (feed.view != nullptr && feed.view->found_probe && feed.view->found_probe->cmd == p.cmd) {
+        const FoundingProbeView& probe = *feed.view->found_probe;
+        p.sim_answer = probe.reason;
+        a.clear();
+        if (probe.reason == sim::Reject::None && probe.rotation) {
+            p.rotation = *probe.rotation;
+            p.coast_ok = true;
+            add(*probe.rotation != found_rotation_
+                    ? "the sim accepts it here, turned to face the shore"
+                    : "the sim accepts it here");
+        } else {
+            p.coast_ok = false;
+            switch (probe.reason) {
+            case sim::Reject::NoRotationFits:
+                add("not here: the warehouse must stand at the water's edge (beach on one side, "
+                    "water on "
+                    "the other) on free ground, in one of its four turns (NoRotationFits)");
+                break;
+            case sim::Reject::OutOfRange:
+                add("too far from the ship: sail closer (OutOfRange)");
+                break;
+            case sim::Reject::OutOfIsland:
+                add("the warehouse would leave the island (OutOfIsland)");
+                break;
+            case sim::Reject::UnknownIsland:
+                add("not on an island (UnknownIsland)");
+                break;
+            default:
+                add(std::string("the sim refuses it here: ") +
+                    std::string(sim::reject_name(probe.reason)));
+                break;
+            }
         }
     }
     p.advisory = a;
@@ -787,6 +830,14 @@ std::optional<FoundPreview> OpeningUi::found_preview(const UiFeed& feed) const {
         return std::nullopt;
     }
     return make_found(*ship, *hover_tile_, feed);
+}
+
+std::optional<sim::FoundCmd> OpeningUi::probe_wanted(const UiFeed& feed) const {
+    const auto p = found_preview(feed);
+    if (!p) {
+        return std::nullopt;
+    }
+    return p->cmd;
 }
 
 std::string OpeningUi::status_line(const UiFeed& feed) const {

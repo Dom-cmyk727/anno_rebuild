@@ -17,6 +17,8 @@ key f
 hover-land 257 134
 wait frames 10
 wait fact found.coast == no within 5000
+# The sim's own answer to this very click arrives a turn later (probe_founding).
+wait fact found.sim == NoRotationFits within 5000
 click-land 257 134
 wait fact latest_kind == found within 10000
 wait fact latest == refused within 10000
@@ -42,6 +44,7 @@ hover-land 255 138
 wait frames 10
 # Here the sim accepts a rotation: the preview shows the rotation that faces the shore.
 wait fact found.coast == yes within 5000
+wait fact found.sim == None within 5000
 screenshot 3-founding-preview
 click-land 255 138
 wait fact tracked == 3 within 10000

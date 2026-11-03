@@ -652,6 +652,8 @@ struct GpuFrame::Impl {
     std::vector<fluid::ShipWake> wakes;
     /// The window serial the cross-fade has seen, and the fade-clock time (ms) it changed.
     std::uint64_t fluid_seen_serial = 0, fluid_arrival = 0;
+    /// The carried-over switches (FluidGpu::resamples) the cross-fade has seen.
+    std::uint64_t fluid_seen_resamples = 0;
 
     /// u32 words of one GPU frame-table entry (frame_table.hpp): layer, atlas x,
     /// atlas y, image w, image h, anchor_y (i32), keel offset (u32), resident.
@@ -2450,8 +2452,15 @@ struct GpuFrame::Impl {
                 const std::uint64_t now = fade_clock();
                 if (fluid->window_serial() != fluid_seen_serial) {
                     fluid_seen_serial = fluid->window_serial();
-                    fluid_arrival = now;
+                    // A window that carried the old waves over starts where they were: no fade
+                    // from the analytic waves (owner playtest 2026-11-03: with several zoom notches
+                    // the waves blinked off and on, one fade per switch).
+                    const bool carried = fluid->resamples() != fluid_seen_resamples;
+                    fluid_arrival =
+                        carried ? (now >= limits.wave_fade_ms ? now - limits.wave_fade_ms : 0)
+                                : now;
                 }
+                fluid_seen_resamples = fluid->resamples();
                 f.fluid_fade =
                     limits.wave_fade_ms == 0 || now >= fluid_arrival + limits.wave_fade_ms
                         ? 1.0F

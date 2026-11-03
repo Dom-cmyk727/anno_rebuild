@@ -10,8 +10,10 @@
 #include <string>
 #include <vector>
 
+#include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/ids.hpp>
+#include <anno/sim/reject.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
 
@@ -82,6 +84,17 @@ struct CityView {
     friend bool operator==(const CityView&, const CityView&) = default;
 };
 
+/// The sim thread's answer to the founding preview's question (PlayRunner::request_found_probe):
+/// what the sim would answer to `cmd` on the world of the turn this view was published with,
+/// without applying it: the reason it would refuse it, or the rotation it would build at
+/// (probe_founding).
+struct FoundingProbeView {
+    sim::FoundCmd cmd;
+    sim::Reject reason = sim::Reject::None;
+    std::optional<std::uint8_t> rotation;
+    friend bool operator==(const FoundingProbeView&, const FoundingProbeView&) = default;
+};
+
 struct OpeningView {
     std::uint64_t turn = 0, tick = 0;
     sim::PlayerId local;
@@ -94,6 +107,8 @@ struct OpeningView {
     /// by `events_next` jumping past what it had read).
     std::vector<ShipEventView> events;
     std::uint64_t events_next = 1;
+    /// The answer to the founding preview's latest question, if one was asked.
+    std::optional<FoundingProbeView> found_probe;
     /// The sim's order-id counter after the turn: an order accepted later gets at least this id.
     std::uint64_t next_order_id = 1;
 

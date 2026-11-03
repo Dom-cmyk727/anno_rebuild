@@ -109,11 +109,12 @@ struct FluidConfig {
     std::uint32_t recentre_cells = 64;
     /// Ships as moving sources (ShipWake; not in the original, tuning): the elevation source per
     /// tile/s of speed (HEIGHT units per second, scaled by the hull's gaussian). Tuned by eye on
-    /// screenshots of a ship at 6 tiles/s (2026-11-03): 3 shows nothing, 10 (a bow wave of about 4
-    /// HEIGHT units) was too faint for the owner, 30 a visible V (about 13 units). The source fades
-    /// with the depth (ship_depth_factor) so that the bow wave stays below 0.55 of the depth and
-    /// never reaches the breaking limit (break_ratio 0.8): no foam, the owner does not want a
-    /// trail.
+    /// screenshots of a ship at 6 tiles/s (2026-11-03): with the gaussian hull, 10 (a bow wave of
+    /// about 4 HEIGHT units) was too faint for the owner and 30 visible (about 13 units); the
+    /// compact hull profile peaks 1.8 times higher for the same gain, but 17 (the same peak) was
+    /// faint on screen because the compact source is shorter; 30 kept. The source fades with the
+    /// depth (ship_depth_factor) so that the bow wave stays well under the breaking limit
+    /// (break_ratio 0.8): no foam, the owner does not want a trail.
     float ship_wave_gain = 30.0F;
 
     /// Cells per side for a view spanning span_tiles tiles (screen width /
@@ -163,17 +164,21 @@ Forcing forcing(const FluidConfig& cfg, const Swell& comps, std::pair<float, flo
 
 /// A ship moving through the water (W4-OPENING-1, owner playtest 2026-11-03: a ship must act on the
 /// water as a moving body). Render-side only, like the rest of the simulation: it never reaches the
-/// game state. The hull displaces water ahead of it and lets it fall back behind it: the elevation
-/// source is -d/dt of a gaussian hull profile, S = gain * |v| * (2 a / half_length^2) * exp(-(a^2 /
-/// half_length^2 + b^2 / half_width^2)) with a along and b across the heading, so the shallow-water
-/// equations carry the bow wave and the V-shaped wake (a ship faster than the wave speed leaves a
-/// Mach cone) away on their own.
+/// game state. The hull piles the water up at its bow and lets it fall back at its stern: with
+/// u = a / half_length along and w = b / half_width across the heading, the elevation source is
+/// S = gain * |v| / half_length * 4 u (1 - u^2) * exp(-w^2), times kShipSternShare behind the
+/// middle, and nothing outside the hull's length (|u| >= 1). Owner playtest 2026-11-03: the
+/// gaussian of the first version reached ahead of the stem, so the water rose in front of the ship;
+/// the waves are to build up at the bow and run off to the sides, which the shallow-water equations
+/// then do (a ship faster than the wave speed leaves a V).
 struct ShipWake {
     float x = 0.0F, y = 0.0F;                    // tile position
     float vx = 0.0F, vy = 0.0F;                  // tiles per second
     float half_length = 1.3F, half_width = 0.5F; // tiles
     bool operator==(const ShipWake&) const = default;
 };
+/// The stern's trough against the bow's crest (a ship's stern wave is the weaker; tuning).
+inline constexpr float kShipSternShare = 0.6F;
 /// At most this many ships act on the water at once (the shader's uniform array has this size).
 inline constexpr std::size_t kMaxShipWakes = 16;
 /// Slower than this (tiles per second) a ship leaves no wake.
@@ -183,9 +188,9 @@ inline constexpr float kShipWakeMinSpeed = 0.05F;
 float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, float px, float py);
 /// The share of that rate that acts over still water of depth `h` (HEIGHT units): none on a beach,
 /// proportional to the depth in the shallows (a ship's wave would only break there and churn foam),
-/// all from 32 deep, so the bow wave is never more than about half the depth.
+/// all from 40 deep, so the bow wave is never more than about half the depth.
 inline float ship_depth_factor(float h) {
-    return h <= 0.0F ? 0.0F : (h >= 32.0F ? 1.0F : h / 32.0F);
+    return h <= 0.0F ? 0.0F : (h >= 40.0F ? 1.0F : h / 40.0F);
 }
 
 /// A rectangle of world cells [x0, x1) × [y0, y1).

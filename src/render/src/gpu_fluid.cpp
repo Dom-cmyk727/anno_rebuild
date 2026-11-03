@@ -173,7 +173,7 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     const std::uint64_t align_bytes =
         std::max<std::uint64_t>(limits.minUniformBufferOffsetAlignment, kStepBytes);
     // One slot more than the most steps of a frame: the pass that carries the old state over.
-    const std::uint64_t ring = align_bytes * (std::max(cfg.max_steps, 1U) + 1U);
+    const std::uint64_t ring = align_bytes * (std::uint64_t{std::max(cfg.max_steps, 1U)} + 1U);
     if (ring > limits.maxBufferSize || ring > UINT32_MAX) {
         return "fluid max_steps " + std::to_string(cfg.max_steps) + " too large for the device";
     }

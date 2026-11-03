@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <string>
 #include <thread>
 #include <variant>
@@ -25,9 +26,13 @@
 #include <anno/app/play.hpp>
 #include <anno/app/ship_layer.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/sim/clock.hpp>
 #include <anno/sim/command.hpp>
+#include <anno/sim/replay.hpp>
 #include <anno/sim/route_world.hpp>
 #include <anno/sim/ship_step.hpp>
+#include <anno/sim/site_checks.hpp>
+#include <anno/sim/terrain_view.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace app = anno::app;
@@ -680,4 +685,178 @@ TEST_CASE("session identity: the lines read back as written, also with CRLF line
     CHECK(cr->start_hash == lf->start_hash);
     // A session that is not a ship-start one names no identity.
     CHECK_FALSE(app::parse_opening_identity("map x.txt\nspeed 200\n").has_value());
+}
+
+// Owner playtest 2026-11-03: "I could not place the Kontor at all". What decides it, island by
+// island of the real start: the sim's coast rule on its own vertex grid, the same rule on the
+// heights the window's preview reads (the scene clamps at the island's far edge where the sim reads
+// 0), and the sim's other checks of a rotation trial (bounds, ownership, occupancy).
+TEST_CASE(
+    "founding sites, real files: the preview's coast verdict against the sim's rotation trial") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE(loaded.ok());
+    const sim::World& world = loaded.value().play.world;
+    REQUIRE(!loaded.value().setup.founding_types.empty());
+    const sim::BuildingType* type = world.types().find(loaded.value().setup.founding_types.front());
+    REQUIRE(type != nullptr);
+    std::size_t sites = 0, coast_sim = 0, coast_preview = 0, verdict_differs = 0, occupied = 0,
+                full = 0;
+    for (const auto& isl : world.islands()) {
+        if (!isl || !isl->terrain) {
+            continue;
+        }
+        const sim::VertexGrid grid = sim::VertexGrid::of(*isl);
+        const auto& tiles = isl->tiles;
+        const std::int64_t x0 = tiles.x0(), y0 = tiles.y0();
+        const std::int64_t w = tiles.width(), h = tiles.height();
+        const auto& hb = isl->terrain->height;
+        for (std::int64_t y = y0; y < y0 + h; ++y) {
+            for (std::int64_t x = x0; x < x0 + w; ++x) {
+                const sim::site::Origin o{x, y};
+                bool any_sim = false, any_prev = false, any_full = false, coast_but_occ = false;
+                for (std::uint8_t rot = 0; rot < 4; ++rot) {
+                    const auto [fw, fh] = sim::footprint(*type, rot);
+                    if (!sim::site::footprint_inside(tiles, o, fw, fh)) {
+                        continue;
+                    }
+                    const auto s = sim::site::coast_height_check(grid, *type, rot, o);
+                    const auto p = sim::site::coast_height_rule(
+                        type->width, type->height, rot,
+                        [&](std::uint64_t dx, std::uint64_t dy) -> std::optional<std::uint8_t> {
+                            const std::int64_t lx = std::min<std::int64_t>(
+                                x - x0 + static_cast<std::int64_t>(dx), w - 1);
+                            const std::int64_t ly = std::min<std::int64_t>(
+                                y - y0 + static_cast<std::int64_t>(dy), h - 1);
+                            return hb[static_cast<std::size_t>(ly * w + lx)];
+                        });
+                    const bool sa = s.result == sim::site::TerrainResult::Accepted;
+                    const bool pa = p.result == sim::site::TerrainResult::Accepted;
+                    any_sim = any_sim || sa;
+                    any_prev = any_prev || pa;
+                    verdict_differs += sa != pa ? 1U : 0U;
+                    const bool neutral =
+                        sim::site::footprint_ownership(tiles, world.config().neutral_owner, o, fw,
+                                                       fh) == sim::site::Ownership::AllNeutral;
+                    const bool fits =
+                        sim::site::footprint_occupancy(tiles, world.types(), *type, o, fw, fh) ==
+                        sim::site::Compat::Compatible;
+                    coast_but_occ = coast_but_occ || (sa && !fits);
+                    any_full = any_full || (sa && fits && neutral);
+                }
+                ++sites;
+                coast_sim += any_sim ? 1U : 0U;
+                coast_preview += any_prev ? 1U : 0U;
+                occupied += (coast_but_occ && !any_full) ? 1U : 0U;
+                full += any_full ? 1U : 0U;
+            }
+        }
+    }
+    MESSAGE("origins " << sites << ": coast rule passes (sim) " << coast_sim
+                       << ", (preview heights) " << coast_preview
+                       << "; per-rotation verdicts that differ " << verdict_differs
+                       << "; coast ok but occupied in every passing rotation " << occupied
+                       << "; a rotation passes every check " << full);
+    CHECK(full > 0);
+}
+
+// The founding preview asks the sim thread what Founding::apply would answer (probe_founding). Its
+// answer must be apply's: the same reason, and on acceptance the rotation the warehouse is built
+// at. Checked on the real start with the ship at the coast of the first island, for every click of
+// the ring of tiles within its reach.
+TEST_CASE("founding probe, real files: the preview's answer is what the sim does with the click") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE(loaded.ok());
+    sim::World world = std::move(loaded.value().play.world);
+    const sim::TypeId type = loaded.value().setup.founding_types.front();
+    const sim::BuildingType* bt = world.types().find(type);
+    REQUIRE(bt != nullptr);
+    // Sail ship 1 to the coast the session founds at (opening_sail.script).
+    const sim::Timing timing;
+    sim::Turn turn;
+    turn.step_ms = 10;
+    turn.commands.push_back(sim::Command{
+        sim::PlayerId{0}, sim::MoveCmd{sim::FigureId{1}, 257 * 256 + 128, 134 * 256 + 128}});
+    sim::run_turn(world, nullptr, turn, timing.mp_steps_per_turn);
+    for (int k = 0; k < 3000; ++k) {
+        const sim::Figure* ship = sim::find_figure(world.figures(), sim::FigureId{1});
+        REQUIRE(ship != nullptr);
+        if (ship->pos.x / 256 == 257 && ship->pos.y / 256 == 134) {
+            break;
+        }
+        sim::Turn idle;
+        idle.index = static_cast<std::uint64_t>(k + 1);
+        idle.step_ms = 10;
+        sim::run_turn(world, nullptr, idle, timing.mp_steps_per_turn);
+    }
+    const sim::Figure* ship = sim::find_figure(world.figures(), sim::FigureId{1});
+    REQUIRE(ship != nullptr);
+    REQUIRE(ship->pos.x / 256 == 257);
+    std::size_t clicks = 0, agree = 0, accepted = 0, vetoed = 0;
+    std::map<std::string, std::size_t> reasons;
+    for (std::int32_t dy = -13; dy <= 13; ++dy) {
+        for (std::int32_t dx = -13; dx <= 13; ++dx) {
+            for (std::uint8_t rot = 0; rot < 4; rot += 3) {
+                sim::FoundCmd f;
+                f.ship = sim::FigureId{1};
+                f.placement.type = type;
+                f.placement.rotation = rot;
+                f.click_x = 257 + dx;
+                f.click_y = 134 + dy;
+                const auto [w, h] = sim::footprint(*bt, rot);
+                f.placement.x =
+                    std::max<std::int32_t>(0, f.click_x - (static_cast<std::int32_t>(w) - 1) / 2);
+                f.placement.y =
+                    std::max<std::int32_t>(0, f.click_y - (static_cast<std::int32_t>(h) - 1) / 2);
+                const app::FoundingProbeView probe =
+                    app::probe_founding(world, sim::PlayerId{0}, f);
+                sim::World copy = world;
+                const sim::ApplyResult r = copy.apply(sim::Command{sim::PlayerId{0}, f});
+                ++clicks;
+                bool same = probe.reason == r.status;
+                if (same && r.ok()) {
+                    ++accepted;
+                    // The warehouse stands at the probe's rotation.
+                    std::optional<std::uint8_t> built;
+                    for (const sim::RecordResult& rr : r.records) {
+                        if (const sim::Building* b = copy.find_building(rr.building)) {
+                            built = b->rotation;
+                        }
+                    }
+                    same = built.has_value() && probe.rotation == built;
+                }
+                // The figure veto after the trials is not part of the probe (its doc): a ship lying
+                // on the site is the sim's to refuse.
+                const bool veto_only = !same && probe.reason == sim::Reject::None &&
+                                       r.status == sim::Reject::FigureInTheWay;
+                vetoed += veto_only ? 1U : 0U;
+                same = same || veto_only;
+                agree += same ? 1U : 0U;
+                ++reasons[std::string(sim::reject_name(r.status))];
+                if (!same) {
+                    MESSAGE("click (" << f.click_x << "," << f.click_y << ") rot " << int(rot)
+                                      << ": probe " << sim::reject_name(probe.reason) << ", sim "
+                                      << sim::reject_name(r.status));
+                }
+            }
+        }
+    }
+    std::string summary;
+    for (const auto& [k, v] : reasons) {
+        summary += k + " " + std::to_string(v) + "; ";
+    }
+    MESSAGE(clicks << " clicks: " << summary
+                   << "the probe said yes and the figure veto no: " << vetoed);
+    CHECK(accepted > 0);
+    CHECK(agree == clicks);
+    CHECK(vetoed <= 4);
 }

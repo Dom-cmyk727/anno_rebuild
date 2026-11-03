@@ -151,3 +151,16 @@ window from the old one, bilinear in the tile plane, where the old one had cells
 window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, on by default; `GpuStats::fluid_resamples`, fact
 `fluid.resamples`). Test: `the GPU waves carry over a window switch` (the wake keeps 97 % of its mean elevation over a change from
 4 to 2 cells per tile; the control without it keeps 0). Screenshots of the wake at six successive zoom-out notches show it in all.
+
+**Third round** (owner playtest 2026-11-03).
+- *Founding.* Of the 1458 clicks within the ship's reach at the session's coast, the sim accepts 84; 1050 are `NoRotationFits`. A
+  quarter of the coast sites the terrain allows are taken by objects (measured over every origin of the real start: 25205 pass the
+  coast rule, 6346 of them are occupied in every passing rotation), and the preview checked the terrain only, so it said yes where
+  the sim said no. The preview now asks the sim thread (`PlayRunner::request_found_probe`, `probe_founding`: Founding::apply's checks
+  up to the rotation trials, read-only) and shows its answer a turn later: the warehouse is drawn only where the sim would build it,
+  turned the way the sim would turn it, and the title names the reason otherwise (fact `found.sim`). Test: `founding probe, real files`
+  (probe and apply agree on all 1458 clicks but 2, where the figure veto after the trials refuses; the veto is not probed).
+- *Wake shape.* The gaussian hull reached ahead of the stem, so the water rose in front of the ship. The source is now confined to
+  the hull's length: it piles the water up at the bow and lets it fall back at the stern (`kShipSternShare` 0.6), nothing outside.
+- *Waves blinking on repeated zooms.* Every window switch restarted the 250 ms cross-fade from the analytic waves, also when the old
+  waves were carried over; a carried switch no longer fades.

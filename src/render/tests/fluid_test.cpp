@@ -356,10 +356,15 @@ TEST_CASE("fluid ship term: bow wave ahead, trough behind, nothing when still") 
     const float ahead = fluid::ship_term(cfg, ships, 10.8F, 10.0F);
     const float behind = fluid::ship_term(cfg, ships, 9.2F, 10.0F);
     const float beam = fluid::ship_term(cfg, ships, 10.0F, 10.0F);
-    CHECK(ahead > 0.0F);
-    CHECK(behind < 0.0F);
-    CHECK(ahead == doctest::Approx(-behind).epsilon(1e-4)); // the dipole is antisymmetric
-    CHECK(std::abs(beam) < 1e-4F);                          // at the hull's middle
+    CHECK(ahead > 0.0F);  // the bow piles the water up
+    CHECK(behind < 0.0F); // the stern lets it fall back, less
+    CHECK(-behind == doctest::Approx(fluid::kShipSternShare * ahead).epsilon(1e-4));
+    CHECK(std::abs(beam) < 1e-4F); // at the hull's middle
+    // Nothing ahead of the stem (half_length 1.3 tiles ahead of the middle) or behind the stern:
+    // the water does not rise in front of the ship (owner playtest 2026-11-03).
+    CHECK(fluid::ship_term(cfg, ships, 11.35F, 10.0F) == 0.0F);
+    CHECK(fluid::ship_term(cfg, ships, 12.0F, 10.0F) == 0.0F);
+    CHECK(fluid::ship_term(cfg, ships, 8.65F, 10.0F) == 0.0F);
     CHECK(fluid::ship_term(cfg, ships, 10.8F, 10.4F) ==
           doctest::Approx(fluid::ship_term(cfg, ships, 10.8F, 9.6F)).epsilon(1e-4));
     CHECK(fluid::ship_term(cfg, ships, 20.0F, 10.0F) ==
@@ -409,6 +414,6 @@ TEST_CASE(
     // Over a beach or the shallows the ships act on nothing.
     CHECK(fluid::ship_depth_factor(-1.0F) == 0.0F);
     CHECK(fluid::ship_depth_factor(0.0F) == 0.0F);
-    CHECK(fluid::ship_depth_factor(16.0F) == doctest::Approx(0.5F));
-    CHECK(fluid::ship_depth_factor(40.0F) == 1.0F);
+    CHECK(fluid::ship_depth_factor(20.0F) == doctest::Approx(0.5F));
+    CHECK(fluid::ship_depth_factor(50.0F) == 1.0F);
 }

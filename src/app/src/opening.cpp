@@ -12,6 +12,8 @@
 #include <anno/app/opening.hpp>
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/executor.hpp>
+#include <anno/sim/site_checks.hpp>
+#include <anno/sim/terrain_view.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/scenario_load.hpp>
 #include <anno/sim_load/ship_start.hpp>
@@ -441,6 +443,95 @@ std::optional<OpeningInvocation> parse_opening_identity(const std::string& text)
         return std::nullopt;
     }
     return inv;
+}
+
+FoundingProbeView probe_founding(const sim::World& world, sim::PlayerId issuer,
+                                 const sim::FoundCmd& f) {
+    FoundingProbeView out;
+    out.cmd = f;
+    const auto refuse = [&out](sim::Reject r) {
+        out.reason = r;
+        return out;
+    };
+    const sim::TypeRegistry& types = world.types();
+    const sim::Figure* ship = sim::find_figure(world.figures(), f.ship);
+    if (ship == nullptr) {
+        return refuse(sim::Reject::UnknownFigure);
+    }
+    if (ship->owner != issuer) {
+        return refuse(sim::Reject::NotShipOwner);
+    }
+    const sim::PlacementWire& pw = f.placement;
+    const sim::BuildingType* type = pw.type.v == 0 ? nullptr : types.find(pw.type);
+    if (type == nullptr) {
+        return refuse(sim::Reject::UnknownType);
+    }
+    if (pw.rotation > 3) {
+        return refuse(sim::Reject::BadRotation);
+    }
+    const auto [first_w, first_h] = sim::footprint(*type, pw.rotation);
+    const sim::site::Origin origin =
+        sim::site::centred_origin(f.click_x, f.click_y, first_w, first_h);
+    if (origin.x != pw.x || origin.y != pw.y) {
+        return refuse(sim::Reject::BadValue);
+    }
+    if (origin.x > INT32_MAX || origin.y > INT32_MAX) {
+        return refuse(sim::Reject::UnknownIsland);
+    }
+    const sim::Island* island =
+        world.island_at(static_cast<std::int32_t>(origin.x), static_cast<std::int32_t>(origin.y));
+    if (island == nullptr) {
+        return refuse(sim::Reject::UnknownIsland);
+    }
+    if (island->locked()) {
+        return refuse(sim::Reject::IslandLocked);
+    }
+    const sim::TileLayer& tiles = island->tiles;
+    if (!sim::site::footprint_inside(tiles, origin, first_w, first_h)) {
+        return refuse(sim::Reject::OutOfIsland);
+    }
+    if (!sim::site::within_range(f.click_x, f.click_y, ship->pos)) {
+        return refuse(sim::Reject::OutOfRange);
+    }
+    const std::uint32_t neutral = world.config().neutral_owner;
+    if (sim::site::footprint_ownership(tiles, neutral, origin, 1, 1) !=
+        sim::site::Ownership::AllNeutral) {
+        return refuse(sim::Reject::SiteOwned);
+    }
+    for (const std::optional<sim::City>& c : island->cities) {
+        if (c.has_value() && c->owner == issuer) {
+            return refuse(sim::Reject::OwnCityOnIsland);
+        }
+    }
+    const sim::VertexGrid grid = sim::VertexGrid::of(*island);
+    for (const std::uint8_t rot : sim::site::rotation_trials(pw.rotation)) {
+        const auto [fw, fh] = sim::footprint(*type, rot);
+        if (!sim::site::footprint_inside(tiles, origin, fw, fh) ||
+            sim::site::footprint_ownership(tiles, neutral, origin, fw, fh) !=
+                sim::site::Ownership::AllNeutral) {
+            continue;
+        }
+        const sim::site::Compat compat =
+            sim::site::footprint_occupancy(tiles, types, *type, origin, fw, fh);
+        if (compat == sim::site::Compat::Unsupported) {
+            return refuse(sim::Reject::Unsupported);
+        }
+        if (compat == sim::site::Compat::Incompatible) {
+            continue;
+        }
+        const sim::site::TerrainVerdict tv =
+            sim::site::coast_height_check(grid, *type, rot, origin);
+        if (tv.result == sim::site::TerrainResult::Unsupported ||
+            tv.result == sim::site::TerrainResult::Unreadable) {
+            return refuse(sim::Reject::Unsupported);
+        }
+        if (tv.result == sim::site::TerrainResult::Rejected) {
+            continue;
+        }
+        out.rotation = rot;
+        return out;
+    }
+    return refuse(sim::Reject::NoRotationFits);
 }
 
 } // namespace anno::app

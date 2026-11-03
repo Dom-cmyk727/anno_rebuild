@@ -115,8 +115,16 @@ fn ship_term(p: vec2<f32>) -> f32 {
         let b = -rel.x * dir.y + rel.y * dir.x;
         let la = a1.x;
         let wb = a1.y;
-        let gh = exp(-(a * a / (la * la) + b * b / (wb * wb)));
-        r += SH.head.y * speed * (2.0 * a / (la * la)) * gh;
+        let u = a / la;
+        if u <= -1.0 || u >= 1.0 {
+            continue; // nothing ahead of the stem or behind the stern
+        }
+        let w = b / wb;
+        var lengthwise = 4.0 * u * (1.0 - u * u);
+        if u <= 0.0 {
+            lengthwise *= 0.6; // fluid::kShipSternShare
+        }
+        r += SH.head.y * speed / la * lengthwise * exp(-w * w);
     }
     return r;
 }
@@ -233,7 +241,7 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
         eta -= dt * P.d.z;
     }
     if SH.head.x > 0.5 && h > WET {
-        eta += dt * clamp(h / 32.0, 0.0, 1.0) * ship_term(cell_centre(x, y));
+        eta += dt * clamp(h / 40.0, 0.0, 1.0) * ship_term(cell_centre(x, y));
     }
     eta = max(eta, -h);
     let d = eta + h;

@@ -55,6 +55,15 @@ load_opening(const std::filesystem::path& game_dir, const std::filesystem::path&
                                               std::shared_ptr<const sim::TypeRegistry> registry,
                                               sim::PlayerId local);
 
+/// What Founding::apply would answer to `f` from `issuer` on `world`, without applying it: the same
+/// checks in the same order up to the rotation trials (the ship, the type, the centred origin, the
+/// island, its lock, the first footprint, the reach, the origin's owner, an own city on the island,
+/// then each rotation's bounds, ownership, occupancy and coast rule). Not checked: the player's
+/// kind, the ship's state word, the founding-type list and the figure veto after the trials. The
+/// founding preview asks this on the sim thread; a test compares it with apply on the real start.
+[[nodiscard]] FoundingProbeView probe_founding(const sim::World& world, sim::PlayerId issuer,
+                                               const sim::FoundCmd& f);
+
 /// The (figure kind, owner) pairs of the world's sailing ships, ascending: the ship sprites the
 /// window prepares.
 [[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint32_t>>

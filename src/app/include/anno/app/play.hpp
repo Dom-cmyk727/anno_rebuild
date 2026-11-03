@@ -236,6 +236,12 @@ class PlayRunner {
         developer_city_.reset(); // the constructor looked for the default player's
         has_city_.store(false);
     }
+    /// The founding preview's question (probe_founding): answered on the sim thread in every view
+    /// published from now on, until another one replaces it. Thread-safe.
+    void request_found_probe(const sim::FoundCmd& f) {
+        const std::lock_guard lock(probe_mu_);
+        probe_ = f;
+    }
     /// Ends a capture that was asked for and has not run (the requester is going away).
     /// Thread-safe.
     void cancel_capture() {
@@ -373,6 +379,8 @@ class PlayRunner {
     std::vector<TurnHash> hashes_;
     OutcomeLog outcomes_;
     std::mutex capture_mu_;
+    std::mutex probe_mu_;
+    std::optional<sim::FoundCmd> probe_;
     std::function<void(WorldCapture)> capture_;
     // The developer player's city (sim thread, found at construction) and the last refusal
     // shown in the title.

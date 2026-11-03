@@ -255,8 +255,13 @@ float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, floa
         const float a = rx * dx + ry * dy;
         const float b = -rx * dy + ry * dx;
         const float la = s.half_length, wb = s.half_width;
-        const float gh = std::exp(-(a * a / (la * la) + b * b / (wb * wb)));
-        eta += cfg.ship_wave_gain * speed * (2.0F * a / (la * la)) * gh;
+        const float u = a / la;
+        if (u <= -1.0F || u >= 1.0F) {
+            continue; // nothing ahead of the stem or behind the stern
+        }
+        const float w = b / wb;
+        const float lengthwise = 4.0F * u * (1.0F - u * u) * (u > 0.0F ? 1.0F : kShipSternShare);
+        eta += cfg.ship_wave_gain * speed / la * lengthwise * std::exp(-w * w);
     }
     return eta;
 }

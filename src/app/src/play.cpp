@@ -13,6 +13,7 @@
 #include <variant>
 
 #include <anno/app/cli.hpp>
+#include <anno/app/opening.hpp>
 #include <anno/app/play.hpp>
 #include <anno/formats/fixed_map.hpp>
 #include <anno/sim/clock.hpp>
@@ -718,8 +719,16 @@ void PlayRunner::publish(std::uint64_t turn_us, std::uint64_t turn, std::size_t 
     // The local participant's money and its city's goods (copied; the window never reads the
     // World). The city is looked for again while there is none: a ship start founds it later.
     if (opening_) {
-        next->opening = std::make_shared<const OpeningView>(
-            collect_opening_view(world_, local_player_, ship_events_, turn));
+        OpeningView view = collect_opening_view(world_, local_player_, ship_events_, turn);
+        std::optional<sim::FoundCmd> probe;
+        {
+            const std::lock_guard lock(probe_mu_);
+            probe = probe_;
+        }
+        if (probe) {
+            view.found_probe = probe_founding(world_, local_player_, *probe);
+        }
+        next->opening = std::make_shared<const OpeningView>(std::move(view));
         // The participant's city is the first of its cities in (island, city) order, every turn:
         // the same one the window's building tool follows (OpeningView::cities.front()).
         if (next->opening && !next->opening->cities.empty()) {

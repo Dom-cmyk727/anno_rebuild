@@ -111,6 +111,12 @@ struct FoundPreview {
     std::uint8_t cursor_rotation = 0;
     /// The coast rule accepted `rotation` (false: not decided here, or no rotation fits).
     bool coast_ok = false;
+    /// The command a click here sends.
+    sim::FoundCmd cmd;
+    /// The sim thread's answer for exactly this command (FoundingProbeView), once it is published:
+    /// None and the rotation it would build at, or the reason it would refuse. Without it the
+    /// preview knows the coast rule only (occupancy and ownership are the sim's).
+    std::optional<sim::Reject> sim_answer;
     std::uint32_t w = 0, h = 0;
     sim::TileXY click;
     /// The sim's own reason, as far as the controls can tell without the world (advisory); empty
@@ -199,6 +205,8 @@ class OpeningUi {
     [[nodiscard]] TrackState state_of(const Tracked& t, const UiFeed& feed) const;
     /// The founding cursor (mode Found with a hovered tile), else nullopt.
     [[nodiscard]] std::optional<FoundPreview> found_preview(const UiFeed& feed) const;
+    /// The command the founding cursor would send now (the preview's question to the sim), if any.
+    [[nodiscard]] std::optional<sim::FoundCmd> probe_wanted(const UiFeed& feed) const;
     /// The selected hold, quantity and target of the unload mode.
     struct UnloadPlan {
         std::uint32_t hold = 0, tons = 0;

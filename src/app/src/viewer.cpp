@@ -535,6 +535,8 @@ class Viewer {
     /// The opening on the GPU starts with enhanced water (ships stir the simulated waves); E
     /// toggles.
     bool opening_water_set_ = false;
+    /// The founding question last asked of the sim (PlayRunner::request_found_probe).
+    std::optional<sim::FoundCmd> asked_probe_;
     /// The wave simulation's windows so far (GpuStats::fluid_windows), for the scripts.
     std::uint64_t fluid_windows_ = 0, fluid_resamples_ = 0;
     [[nodiscard]] static double wall_seconds() {
@@ -1275,6 +1277,12 @@ void Viewer::opening_refresh() {
     if (motion_.animating(now)) {
         dirty_ = true; // the next frame draws the ships a little further along
     }
+    // The founding cursor asks the sim what it would answer (a turn later, in the view).
+    if (const auto want = opening_->ui->probe_wanted(opening_feed());
+        want && want != asked_probe_) {
+        play_->runner().request_found_probe(*want);
+        asked_probe_ = want;
+    }
 }
 
 void Viewer::opening_apply(const UiResult& result) {
@@ -1445,6 +1453,9 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
         f["found.coast"] = fp ? (fp->coast_ok ? "yes" : "no") : "none";
         f["found.rotation"] = fp ? std::to_string(fp->rotation) : "none";
         f["found.cursor"] = fp ? std::to_string(fp->cursor_rotation) : "none";
+        f["found.sim"] = !fp               ? "none"
+                         : !fp->sim_answer ? "pending"
+                                           : std::string(sim::reject_name(*fp->sim_answer));
     }
     f["fluid.windows"] = std::to_string(fluid_windows_);
     f["fluid.resamples"] = std::to_string(fluid_resamples_);
@@ -2236,7 +2247,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     }
     if (opening_ != nullptr) {
         // The founding cursor: the warehouse sprite at the pointer, over the picture.
-        if (const auto fp = opening_->ui->found_preview(opening_feed())) {
+        // Drawn where the warehouse can stand: the sim's answer, or the coast rule until it comes.
+        if (const auto fp = opening_->ui->found_preview(opening_feed());
+            fp && (fp->sim_answer ? *fp->sim_answer == sim::Reject::None : fp->coast_ok)) {
             if (auto p = make_type_preview(*gen, fp->type, fp->rotation, fp->origin, group_,
                                            time_ms())) {
                 overlay.insert(overlay.end(), p->sprites.begin(), p->sprites.end());
@@ -2348,7 +2361,8 @@ void Viewer::draw_cpu(const std::shared_ptr<const render::Scene>& gen, render::R
         // The live ships after every object of the scene (the scene's own units are drawn last
         // too), then the founding cursor over them.
         blend_units(live_units_, *gen, group_, view, buffer_.data());
-        if (const auto fp = opening_->ui->found_preview(opening_feed())) {
+        if (const auto fp = opening_->ui->found_preview(opening_feed());
+            fp && (fp->sim_answer ? *fp->sim_answer == sim::Reject::None : fp->coast_ok)) {
             if (const auto p = make_type_preview(*gen, fp->type, fp->rotation, fp->origin, group_,
                                                  time_ms())) {
                 blend_preview(*gen, *p, group_, time_ms(), view, buffer_.data());

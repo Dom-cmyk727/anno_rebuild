@@ -1128,7 +1128,13 @@ TEST_CASE("a full sprite atlas drops new sprites without errors (game files)") {
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    const render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    // 120 px below the digest view: since the handedness fix of 2026-11-03 the
+    // river there ends at the digest view's lower edge, and the two pieces
+    // the full atlas drops (the last in draw order, 9 of their 65 rows inside
+    // that view) showed no pixel, so the check that dropping shows had nothing
+    // to see. Here the river's end is inside the view.
+    render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    view.y += 120;
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
     const auto st =

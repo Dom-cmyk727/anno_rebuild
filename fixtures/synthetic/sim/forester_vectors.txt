@@ -74,3 +74,53 @@ walkcode 0 0 -> 4
 goalfree 0x010 -> 0x1ef
 goalfree 0x0ba -> 0x145
 goalfree 0x000 -> 0x1ff
+#
+# ===== E1-FINAL additions (every "->" value derived on paper first; see docs-sim-forestry.md section 5, E-13..E-19) =====
+# drain terminals. Full output ends the drain WITHOUT changing the step arithmetic: cap 1280, rate 14, need 32.
+#   92 steps make 14*92 = 1288 (step 92 starts at out 1274 < 1280); raw 4096 - 92*32 = 1152; step 93 is status 2.
+drain 4096 -> 1152 1288
+#   raw exactly 92*32 = 2944: raw 0 and full output together; the full-output check (cap <= out) precedes the ratio, status 2.
+drain 2944 -> 0 1288
+#   2976 - 2944 = 32 left when output fills.
+drain 2976 -> 32 1288
+#   starving first: 91 steps (2912 raw) make 1274 < 1280; step 92 has raw 0 -> ratio 0 < 64 -> status 1.
+drain 2912 -> 0 1274
+#
+# enhanced candidate list (forestry_skip_uncuttable): cand minus tiles whose id-1 is not ROHSTWACHS (derived from the types).
+# E-8's island: 261 (260 is ROHSTOFF) drops out; 259 stays (258 is ROHSTWACHS: cuttable, a stump afterwards); 107 stays (106).
+type 106 ROHSTWACHS
+type 260 ROHSTOFF UNUSED
+candskip BAUM 0 0 8 8 | 1 1 4 4 | 1,1,105,0 2,1,104,0 3,1,105,1 4,1,105,0 1,2,259,0 2,3,261,0 3,3,713,0 4,4,107,0 | 1,1 4,1 1,2 4,4
+#
+# draws steps(raw,out,workers) -> number of eligible dispatch attempts (= world draws). Full output (64,1280,0) is eligible.
+#   (0,0,0) send; (0,0,1) send; (0,0,2) 2 workers out -> no; (928,0,0) raw 896/32 = 28 > 27 -> no; (64,1280,0) status 2 yet send.
+draws 0,0,0 0,0,1 0,0,2 928,0,0 64,1280,0 -> 3
+#
+# visit cap wait ticks | tree positions -> cargo step left claimed cuts      (ONE call of the harvest body; walk = 500 ticks per
+#   position from the home at 0; cargo credited only for a successful planned cut; left = wait/walk ticks still owed, or unused
+#   ticks for Done). Two trees at 3 and 7, capacity 768 (3 t, data-defined, > 256).
+#   t=1500 arrive 3, t=8000 cut 3 (cargo 256); search sees 3 dead -> 7: walk 2000 -> 10000, wait -> 16500 cut 7 (512);
+#   512 < 768 -> search: none -> home 7*500 = 3500 -> 20000. Done, 40000 - 20000 unused.
+visit 768 6500 40000 | 3 7 -> 512 Done 20000 - 3,7
+#   same, 12000 ticks: cut 3 at 8000; claim 7; at 7 at 10000; 2000 ticks of the 6500 wait used -> 4500 left; 7 still claimed.
+visit 768 6500 12000 | 3 7 -> 256 Cut 4500 7 3
+#   3000 ticks: 1500 walk, 1500 of the wait -> 5000 left; 3 claimed; nothing cut.
+visit 768 6500 3000 | 3 7 -> 0 Cut 5000 3 -
+#   18000 ticks: cut 7 at 16500; 1500 of the 3500 home walk used -> 2000 left, carrying 512.
+visit 768 6500 18000 | 3 7 -> 512 ToHome 2000 - 3,7
+#   capacity 256 (figure 102): one cut fills it, no repeat: 8000 + home 3*500 = 1500 -> 9500; 30500 unused.
+visit 256 6500 40000 | 3 7 -> 256 Done 30500 - 3
+#   THE DEFECT (stale reads: edits queued to the end of the call): the second search sees tree 3 alive and unclaimed (distance 0),
+#   cuts it again at 14500 and a third time at 21000: cargo 768 from ONE tree; home 3*500 = 1500 -> 22500; 17500 unused.
+visitstale 768 6500 40000 | 3 7 -> 768 Done 17500 - 3,3,3
+#
+# claims faithful|enhanced ops...  -> bit owner     (W+ select-and-claim, refused when set; W- unclaim; P placement clears the bit)
+#   faithful stores only the bit, every clear is unconditional (D 0x100545c0 / 0x10054530 / 0x100824a7): A's late abort erases B's claim.
+claims faithful A+ P B+ A- -> 0 -
+#   enhanced: owner-keyed; A's late unclaim is a no-op, B keeps the tile.
+claims enhanced A+ P B+ A- -> 1 B
+#   B cannot select a claimed tile (candidate filter): refused, A keeps it.
+claims faithful A+ B+ -> 1 -
+claims enhanced A+ A- B+ -> 1 B
+#   after B releases its own claim, A may claim again.
+claims enhanced A+ P B+ B- A+ -> 1 A

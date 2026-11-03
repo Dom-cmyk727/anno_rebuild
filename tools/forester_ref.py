@@ -2,6 +2,8 @@
 """Independent transcription of the forester chain's pure rules (draft for tools/forester_ref.py).
 
   forester_ref.py [vectors.txt]      runs every vector line and prints PASS/FAIL per line
+Exit status: 0 = at least one vector ran and none failed; 1 = a vector failed; 2 = usage error, unreadable file,
+or ZERO vectors executed (an empty file or a file with only `type` directives is not a pass).
 
 Evidence for each rule: docs/re/forestry.md (addresses). Nothing here reads a game file.
 Rules transcribed (D = disassembly of AnnoWelt.dll / AnnoGame.dll, GOG 2.0.0.5):
@@ -11,6 +13,11 @@ Rules transcribed (D = disassembly of AnnoWelt.dll / AnnoGame.dll, GOG 2.0.0.5):
   harvest  AnnoWelt 0x10087340 (island slot +0x110)
   cand     AnnoWelt 0x10092320 mode 0 (island slot +0x10c)
   grow     AnnoWelt 0x1008b5f0
+  candskip A: the candidate list of the enhanced rule forestry_skip_uncuttable (cand + the cut's own id-1 test)
+  visit    A: ONE figure call of the harvest body (overlay semantics, section 3.2 of docs/sim/forestry.md); the
+           walk is an abstract line (500 ticks per tile) standing in for the existing tile walker
+  claims   A/D: one tile's claim bit under the faithful (bit only) and enhanced (owner-keyed) rules
+  draws    D: eligible dispatch attempts (= world draws) over a list of farm steps
 """
 import sys
 
@@ -112,71 +119,192 @@ def grow_first_change(S, k, P, tid, phase, v0, vstep, vend):
 
 
 def drain(raw):
+    """Run production steps from out = 0 until a step makes nothing: starved (status 1) or full output
+    (status 2, out >= cap). The step arithmetic is unchanged; only the loop's exit is defined here.
+    Returns (raw_left, made_total)."""
     made_total = 0
     out = 0
     while True:
         r2, o2, status, _ = step(raw, out, 2, max_w=MAX_W)   # workers=2: only production matters
-        if status == 1:
+        if status != 0 or (r2, o2) == (raw, out):
             return raw, made_total
         made_total += o2 - out
         raw, out = r2, o2
 
 
+def visit(cap, wait, ticks, trees, stale=False, per_tile=500):
+    """ONE harvest-body call (docs/sim/forestry.md 3.2). Home and start at position 0; a walk costs
+    per_tile ticks per position; the nearest unclaimed live tree wins (ties: lower position).
+    stale=False: the local overlay (claim/cut edits visible to later transitions of the call).
+    stale=True : the DEFECT the review found (edits queued until the call ends, reads see the island only).
+    Returns (cargo, step, left, claimed, cuts, edits)."""
+    island_alive = {p: True for p in trees}
+    island_claim = {p: False for p in trees}
+    ov_alive, ov_claim = {}, {}
+    edits = []
+
+    def alive(p):
+        return island_alive[p] if stale else ov_alive.get(p, island_alive[p])
+
+    def claimed(p):
+        return island_claim[p] if stale else ov_claim.get(p, island_claim[p])
+
+    cargo, pos, left, cuts = 0, 0, ticks, []
+    step_name, need, tgt = "Start", 0, None
+    while True:
+        if step_name == "Start":
+            cands = [p for p in sorted(trees) if alive(p) and not claimed(p)]
+            if not cands:
+                step_name, need = "ToHome", abs(pos) * per_tile
+                continue
+            tgt = min(cands, key=lambda p: (abs(p - pos), p))
+            edits.append("claim%d" % tgt)
+            ov_claim[tgt] = True
+            step_name, need = "ToTree", abs(tgt - pos) * per_tile
+        elif step_name == "ToTree":
+            if left < need:
+                need -= left
+                return _visit_result(cargo, step_name, need, ov_claim, cuts, edits, stale)
+            left -= need
+            pos = tgt
+            step_name, need = "Cut", wait
+        elif step_name == "Cut":
+            if left < need:
+                need -= left
+                return _visit_result(cargo, step_name, need, ov_claim, cuts, edits, stale)
+            left -= need
+            ok = alive(tgt)                         # the planned consumption's own validity test
+            edits.append("unclaim%d" % tgt)
+            ov_claim[tgt] = False
+            edits.append("cut%d" % tgt)
+            ov_alive[tgt] = False
+            cuts.append(tgt)
+            if ok:
+                cargo += 256
+            step_name = "Start" if cap > cargo else "ToHome"
+            need = abs(pos) * per_tile
+        elif step_name == "ToHome":
+            if left < need:
+                need -= left
+                return _visit_result(cargo, step_name, need, ov_claim, cuts, edits, stale)
+            left -= need
+            return _visit_result(cargo, "Done", left, ov_claim, cuts, edits, stale)
+
+
+def _visit_result(cargo, step_name, left, claim, cuts, edits, stale):
+    held = ",".join(str(p) for p in sorted(p for p, v in claim.items() if v)) or "-"
+    return (cargo, step_name, left, held, ",".join(map(str, cuts)) or "-", edits)
+
+
+def claims(mode, ops):
+    """One tile's claim under the two rule sets. ops: `W+` select-and-claim (refused when the bit is set),
+    `W-` unclaim, `P` placement (clears the bit: D 0x100824a7). faithful: only the bit exists, every clear is
+    unconditional (D 0x100545c0, 0x10054530). enhanced: the bit is mirrored by an owner (the worker's figure id);
+    a worker clears only its own claim. Returns (bit, owner)."""
+    bit, owner = 0, None
+    for op in ops:
+        if op == "P":
+            bit, owner = 0, None
+        elif op.endswith("+"):
+            if bit == 0:
+                bit, owner = 1, op[:-1]
+        elif op.endswith("-"):
+            if mode == "faithful" or owner == op[:-1]:
+                bit, owner = 0, None
+        else:
+            raise ValueError("bad claim op " + op)
+    return bit, ("-" if (mode == "faithful" or owner is None) else owner)
+
+
+def draws(steps):
+    """Eligible dispatch attempts = world draws (D 0x1006edf3..0x1006ee06): the steps whose send test passes.
+    A refused send (0x10072d20 answers 0) is still a draw; success is not required."""
+    n = 0
+    for raw, out, workers in steps:
+        if step(raw, out, workers)[3]:
+            n += 1
+    return n
+
+
+def run_line(line, types):
+    """Returns (got, exp) lists of strings for one vector line."""
+    left, _, right = line.partition("->")
+    cmd, *args = left.split()
+    exp = right.split()
+    if cmd == "conv":
+        got = list(map(str, conv(float(args[0]), float(args[1]))))
+    elif cmd == "step":
+        got = list(map(str, step(int(args[0]), int(args[1]), int(args[2]))))
+    elif cmd == "area":
+        got = list(map(str, area(*map(int, args))))
+    elif cmd == "harvest":
+        r = harvest(types, int(args[0]), int(args[1], 0))
+        got = [str(r[0]), "0x%02X" % r[1], str(r[2])]
+        exp = [exp[0], "0x%02X" % int(exp[1], 0)] + exp[2:]
+    elif cmd in ("cand", "candskip"):
+        goods = args[0]
+        parts = " ".join(args[1:]).split("|")
+        isl = tuple(map(int, parts[0].split()))
+        rect = tuple(map(int, parts[1].split()))
+        tiles = {}
+        for tok in parts[2].split():
+            x, y, i, c = map(int, tok.split(","))
+            tiles[(x, y)] = (i, c)
+        lst = cand(types, goods, isl, rect, tiles)
+        if cmd == "candskip":
+            lst = [p for p in lst if harvest(types, tiles[p][0], 0)[2]]   # the cut's own id-1 test
+        got = ["%d,%d" % p for p in lst]
+        exp = parts[3].split()      # the expected list is the text after the third '|'
+    elif cmd == "grow":
+        S, k, P, tid = int(args[0]), int(args[1]), int(args[2]), int(args[3])
+        phase = int(args[4], 0)
+        t, obj = grow_first_change(S, k, P, tid, phase, int(args[5]), int(args[6]), int(args[7]))
+        got = [str(t), str(obj)]
+    elif cmd == "drain":
+        got = list(map(str, drain(int(args[0]))))
+    elif cmd in ("visit", "visitstale"):
+        cap, wait, ticks = int(args[0]), int(args[1]), int(args[2])
+        trees = [int(a) for a in " ".join(args[3:]).split("|")[1].split()]
+        r = visit(cap, wait, ticks, trees, stale=(cmd == "visitstale"))
+        got = [str(r[0]), r[1], str(r[2]), r[3], r[4]]
+    elif cmd == "claims":
+        bit, owner = claims(args[0], args[1:])
+        got = [str(bit), owner]
+    elif cmd == "draws":
+        steps = [tuple(map(int, a.split(","))) for a in args]
+        got = [str(draws(steps))]
+    elif cmd == "walkcode":
+        f, s2 = int(args[0]), int(args[1])
+        got = [str(4 if (f == 0 and s2 == 0) else f)]
+    elif cmd == "goalfree":
+        got = ["0x%03x" % (0x1FF - int(args[0], 0))]
+    else:
+        raise ValueError("UNKNOWN command " + cmd)
+    return got, exp
+
+
 def main(path):
+    try:
+        text = open(path).read().splitlines()
+    except OSError as e:
+        print("ERROR: cannot read %s: %s" % (path, e))
+        return 2
     types = {}
     fails = 0
     n = 0
-    for line in open(path):
+    for line in text:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        n += 1
         if line.startswith("type "):
             p = line.split()
             types[int(p[1])] = (p[2], p[3] if len(p) > 3 else "UNUSED")
-            n -= 1
             continue
-        left, _, right = line.partition("->")
-        cmd, *args = left.split()
-        exp = right.split()
-        ok = False
-        got = None
-        if cmd == "conv":
-            got = list(map(str, conv(float(args[0]), float(args[1]))))
-        elif cmd == "step":
-            got = list(map(str, step(int(args[0]), int(args[1]), int(args[2]))))
-        elif cmd == "area":
-            got = list(map(str, area(*map(int, args))))
-        elif cmd == "harvest":
-            r = harvest(types, int(args[0]), int(args[1], 0))
-            got = [str(r[0]), "0x%02X" % r[1], str(r[2])]
-            exp = [exp[0], "0x%02X" % int(exp[1], 0), exp[2]]
-        elif cmd == "cand":
-            goods = args[0]
-            parts = " ".join(args[1:]).split("|")
-            isl = tuple(map(int, parts[0].split()))
-            rect = tuple(map(int, parts[1].split()))
-            tiles = {}
-            for tok in parts[2].split():
-                x, y, i, c = map(int, tok.split(","))
-                tiles[(x, y)] = (i, c)
-            got = ["%d,%d" % p for p in cand(types, goods, isl, rect, tiles)]
-            # the expected list is the text after the third '|'
-            exp = parts[3].split()
-        elif cmd == "grow":
-            S, k, P, tid = int(args[0]), int(args[1]), int(args[2]), int(args[3])
-            phase = int(args[4], 0)
-            t, obj = grow_first_change(S, k, P, tid, phase, int(args[5]), int(args[6]), int(args[7]))
-            got = [str(t), str(obj)]
-        elif cmd == "drain":
-            got = list(map(str, drain(int(args[0]))))
-        elif cmd == "walkcode":
-            f, s2 = int(args[0]), int(args[1])
-            got = [str(4 if (f == 0 and s2 == 0) else f)]
-        elif cmd == "goalfree":
-            got = ["0x%03x" % (0x1FF - int(args[0], 0))]
-        else:
-            print("UNKNOWN", line)
+        n += 1
+        try:
+            got, exp = run_line(line, types)
+        except Exception as e:      # a malformed line is a failed vector, never a silent skip
+            print("FAIL " + line + "   error=%s: %s" % (type(e).__name__, e))
             fails += 1
             continue
         ok = got == exp
@@ -184,6 +312,10 @@ def main(path):
             fails += 1
         print(("PASS " if ok else "FAIL ") + line + ("" if ok else "   got=" + " ".join(got)))
     print("%d vectors, %d failures" % (n, fails))
+    if n == 0:
+        print("ERROR: 0 vectors executed in %s (an empty file or a file with only type directives "
+              "is not a pass)" % path)
+        return 2
     return 1 if fails else 0
 
 

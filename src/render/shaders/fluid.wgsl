@@ -44,6 +44,15 @@ struct Ships {
 }
 @group(0) @binding(5) var<uniform> SH: Ships;
 
+// The window being replaced (resample_state only): its origin, size and cells per tile, and its state.
+struct Old {
+    origin: vec2<i32>,
+    size: i32,
+    cpt: f32,
+}
+@group(0) @binding(6) var<uniform> OLD: Old;
+@group(0) @binding(7) var prev: texture_2d<f32>;
+
 // Euclidean remainder (n > 0) with non-negative operands only: WGSL defines
 // % for negative operands, but backends that translate to GLSL (wgpu's GL
 // backend) inherit GLSL's undefined result, which llvmpipe got wrong for all
@@ -247,4 +256,38 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
         eta += (max(fe, -h) - eta) * f;
     }
     textureStore(dst, vec2<i32>(id.xy), vec4<f32>(eta, s.y, s.z, foam));
+}
+
+fn prev_at(x: i32, y: i32) -> vec4<f32> {
+    return textureLoad(prev, vec2<i32>(wrapi(x, OLD.size), wrapi(y, OLD.size)), 0);
+}
+
+// A window replaced by one of other cells per tile or size (a zoom): the new window starts from the
+// state of the old one, bilinear in the tile plane, where the old one has cells (two cells in from its
+// edge); elsewhere, and on land, from the new window's own initial state (`src`, a copy of what the
+// host uploaded). Without this every zoom restarted the waves at rest and a ship's wake vanished.
+@compute @workgroup_size(8, 8)
+fn resample_state(@builtin(global_invocation_id) id: vec3<u32>) {
+    if i32(id.x) >= S.size || i32(id.y) >= S.size {
+        return;
+    }
+    let w = world_cell(id.xy);
+    var out = textureLoad(src, vec2<i32>(id.xy), 0);
+    let h = depth_at(w.x, w.y);
+    if h > WET {
+        let q = (vec2<f32>(f32(w.x), f32(w.y)) + 0.5) / S.cpt * OLD.cpt - vec2<f32>(0.5);
+        let i0 = vec2<i32>(floor(q));
+        let f = q - vec2<f32>(i0);
+        let lo = OLD.origin + vec2<i32>(2);
+        let hi = OLD.origin + vec2<i32>(OLD.size - 3);
+        if i0.x >= lo.x && i0.y >= lo.y && i0.x <= hi.x && i0.y <= hi.y {
+            let a = prev_at(i0.x, i0.y);
+            let b = prev_at(i0.x + 1, i0.y);
+            let c = prev_at(i0.x, i0.y + 1);
+            let d = prev_at(i0.x + 1, i0.y + 1);
+            let m = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            out = vec4<f32>(max(m.x, -h), m.y, m.z, max(m.w, 0.0));
+        }
+    }
+    textureStore(dst, vec2<i32>(id.xy), out);
 }

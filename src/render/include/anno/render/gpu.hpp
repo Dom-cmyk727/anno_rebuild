@@ -139,6 +139,8 @@ struct GpuStats {
     /// The windows the wave simulation has switched to since it started (FluidGpu::window_serial):
     /// a switch restarts the waves at rest, so a zoom should cost few of them.
     std::uint64_t fluid_windows = 0;
+    /// Of those, the switches that carried the old waves over (FluidGpu::resamples).
+    std::uint64_t fluid_resamples = 0;
     std::uint64_t fluid_cells = 0;
     std::uint32_t fluid_cells_per_tile = 0;
     /// Visible chunks drawn from another zoom group's chunks because their own

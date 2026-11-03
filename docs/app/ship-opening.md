@@ -142,3 +142,12 @@ the CPU renderer (SDL's dummy driver) and on the RTX 4090 (Vulkan); native 4K, a
 latency, five-seat load and original-runtime fidelity of the ship facings are not claimed. The sprite for a
 facing is frame `(12 - dir16) mod 16` of the figure's first sprite set (measured, section 1); the opening's
 colours are a stand-in. Reporting a ship's arrival as "shown" is the delivery of a frame, not the display.
+
+**Waves through a zoom, second round** (owner playtest 2026-11-03). The window-size hysteresis was not enough: the wave
+simulation was also off on every derived zoom level (the third group and farther), and a window of other cells per tile (a zoom
+across a detail level) still started at rest. The simulation now runs on the derived levels too (the coarsest built group's cells,
+halved by the cells-per-pixel bound), and a window switch carries the old waves over: `fluid.wgsl` `resample_state` fills the new
+window from the old one, bilinear in the tile plane, where the old one had cells (two cells in from its edge), and from the new
+window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, on by default; `GpuStats::fluid_resamples`, fact
+`fluid.resamples`). Test: `the GPU waves carry over a window switch` (the wake keeps 97 % of its mean elevation over a change from
+4 to 2 cells per tile; the control without it keeps 0). Screenshots of the wake at six successive zoom-out notches show it in all.

@@ -2512,15 +2512,20 @@ struct GpuFrame::Impl {
         const float span = static_cast<float>(view.w) / tw + static_cast<float>(view.h) / th;
         const auto current = fluid->window();
         const double tile_px = levels->tile_w(group) * scale;
+        // A derived zoom level (a group past the built ones) has no cells of its own: the coarsest
+        // built group's, halved by the same bound (owner playtest 2026-11-03: the waves of a ship
+        // vanished as the zoom passed the third level).
+        const std::size_t cells_group = std::min(group, kGroups - 1);
         std::uint32_t cpt =
-            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px, fluid_cells_cap,
+            fluid::bounded_cells_per_tile(fluid->config(), cells_group, tile_px, fluid_cells_cap,
                                           current ? current->cells_per_tile : 0U);
         // Off (even one cell per tile is above the bound) and back on: on again only with
         // the hysteresis' room to spare (the bound checked on tiles kCellsHysteresis as
         // wide), so a zoom resting at the threshold does not flip; and with a new window,
         // so the waves fade in again instead of resuming a stale state.
         if (fluid_off && cpt != 0 &&
-            fluid::bounded_cells_per_tile(fluid->config(), group, tile_px * fluid::kCellsHysteresis,
+            fluid::bounded_cells_per_tile(fluid->config(), cells_group,
+                                          tile_px * fluid::kCellsHysteresis,
                                           fluid_cells_cap) == 0) {
             cpt = 0;
         }
@@ -2533,7 +2538,7 @@ struct GpuFrame::Impl {
             fluid->drop_window();
         }
         fluid->set_ships(wakes);
-        if (fluid->update(enc, group, centre, span, time_ms, depth, threads, cpt, stamps) &&
+        if (fluid->update(enc, cells_group, centre, span, time_ms, depth, threads, cpt, stamps) &&
             stamps != nullptr) {
             ts_mark(TimedPass::Fluid);
         }
@@ -3173,7 +3178,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     }
     // Coastal wave simulation (enhanced water only).
     const bool fluid_on =
-        style == WaterStyle::Enhanced && m.limits.wave_simulation && group < kGroups &&
+        style == WaterStyle::Enhanced && m.limits.wave_simulation &&
         m.update_fluid(enc.get(), scene, view, group, time_ms, resampling ? resample->scale : 1.0,
                        timed ? m.ts_writes(TimedPass::Fluid) : nullptr);
     stats.fluid_ms = lap();
@@ -3181,6 +3186,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     if (fluid_on && m.fluid) {
         stats.fluid_steps = m.fluid->last_steps();
         stats.fluid_windows = m.fluid->window_serial();
+        stats.fluid_resamples = m.fluid->resamples();
         if (const auto win = m.fluid->window()) {
             stats.fluid_cells = static_cast<std::uint64_t>(win->size * win->size);
             stats.fluid_cells_per_tile = win->cells_per_tile;

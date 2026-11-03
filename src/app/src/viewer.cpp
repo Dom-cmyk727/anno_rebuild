@@ -536,7 +536,7 @@ class Viewer {
     /// toggles.
     bool opening_water_set_ = false;
     /// The wave simulation's windows so far (GpuStats::fluid_windows), for the scripts.
-    std::uint64_t fluid_windows_ = 0;
+    std::uint64_t fluid_windows_ = 0, fluid_resamples_ = 0;
     [[nodiscard]] static double wall_seconds() {
         static const Clock::time_point epoch = Clock::now();
         return std::chrono::duration<double>(Clock::now() - epoch).count();
@@ -1447,6 +1447,7 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
         f["found.cursor"] = fp ? std::to_string(fp->cursor_rotation) : "none";
     }
     f["fluid.windows"] = std::to_string(fluid_windows_);
+    f["fluid.resamples"] = std::to_string(fluid_resamples_);
     f["chunks.cached"] = std::to_string(frames_.cached());
     {
         // The chunks the whole scene covers at each derived level (what prewarm and the resident
@@ -2248,6 +2249,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
     const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
                                    resample, overlay, live_units_);
     fluid_windows_ = s.fluid_windows;
+    fluid_resamples_ = s.fluid_resamples;
     // What the pointer is over from now on: this frame's map, zoom level and scene.
     pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, out_w, out_h);

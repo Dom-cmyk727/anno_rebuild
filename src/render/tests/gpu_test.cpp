@@ -1440,6 +1440,7 @@ TEST_CASE("the wave solver sets its window up in the background without blocking
     REQUIRE(made);
     gpu::FluidGpu& g = made.value();
     g.set_background(true);
+    g.carry_waves_over = false; // this test compares with fresh fills of the CPU reference
     // A tiny budget: the window arrives over several frames.
     g.upload_bytes_per_frame = 64 * 1024;
     const FluidRun run{*ctx, g, depth};
@@ -1481,6 +1482,7 @@ TEST_CASE("the wave solver sets its window up in the background without blocking
     fluid::FluidGrid cpu1(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
     const auto [max1, flow1] = compare_state(*ctx, g, cpu1, 128);
     MESSAGE("after the group change: max " << max1);
+    CHECK(g.resamples() == 0);
     CHECK(max1 < 1e-4F);
     // A recentre writes strips of new cells into the grid in use.
     const fluid::FluidWindow before = *g.window();
@@ -5603,4 +5605,96 @@ TEST_CASE("the GPU wave solver with a ship matches the CPU reference") {
     MESSAGE("ship wake: GPU vs CPU max " << max << ", ship moved the water by " << moved);
     CHECK(max < 1e-2F);
     CHECK(ctx->errors->load() == 0);
+}
+
+// A window switch (a zoom across a detail level) used to restart the waves at rest, so a moving
+// ship's wake vanished while zooming and came back after (owner playtest 2026-11-03). The new
+// window now starts from the old one's state (resample_state).
+TEST_CASE("the GPU waves carry over a window switch: a ship's wake survives a change of cells per "
+          "tile") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 128;
+    cfg.cells_per_tile = {4, 2, 4};
+    cfg.recentre_cells = 8;
+    cfg.sponge_cells = 8;
+    cfg.swell_amplitude = 0.0F; // a calm sea: everything on the surface is the ship's
+    // Deep enough for waves, shallow enough that the swell relaxation (10..15) is weak.
+    const fluid::DepthFn depth = [](float, float) { return 12.0F; };
+    // The mean |eta| before and after a switch to another cells per tile, over the tiles the old
+    // window covered and farther than 2.5 tiles from the ship: its wake.
+    const auto scenario = [&](bool carry) -> std::pair<double, double> {
+        auto made = gpu::FluidGpu::create(*ctx, cfg);
+        REQUIRE(made);
+        gpu::FluidGpu& g = made.value();
+        g.set_background(true);
+        g.carry_waves_over = carry;
+        const FluidRun run{*ctx, g, depth};
+        std::uint64_t time_ms = 2000;
+        REQUIRE(poll_until([&] { run(0, {8.0F, 8.0F}, 20.0F, time_ms); },
+                           [&] { return g.window().has_value() && !g.setting_up(); }, 20.0));
+        REQUIRE(g.window()->cells_per_tile == 4);
+        fluid::ShipWake ship;
+        ship.x = 4.0F;
+        ship.y = 8.0F;
+        ship.vx = 6.0F;
+        for (int frame = 0; frame < 30; ++frame) { // the ship sails +x for a second
+            g.set_ships({ship});
+            time_ms += 33;
+            run(0, {8.0F, 8.0F}, 20.0F, time_ms);
+            ship.x += ship.vx * 0.033F;
+        }
+        auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+        REQUIRE(frame);
+        const auto wake = [&](const fluid::FluidWindow& w) {
+            const auto n = static_cast<std::uint32_t>(w.size);
+            const auto bytes = frame.value()->read_back(g.state_texture(), n, n, 16);
+            double sum = 0.0;
+            std::size_t cells = 0;
+            const fluid::CellRect r = w.rect();
+            for (std::int64_t y = r.y0; y < r.y1; ++y) {
+                for (std::int64_t x = r.x0; x < r.x1; ++x) {
+                    const auto [px, py] = w.cell_centre(x, y);
+                    // Only the tiles the old window covered (the new one covers four times the
+                    // area).
+                    if (std::hypot(px - ship.x, py - ship.y) < 2.5F || px < -4.0F || px > 20.0F ||
+                        py < -4.0F || py > 20.0F) {
+                        continue;
+                    }
+                    const auto [cx, cy] = w.storage(x, y);
+                    float eta = 0.0F;
+                    std::memcpy(&eta, bytes.data() + 16 * (cy * n + cx), 4);
+                    sum += std::abs(eta);
+                    ++cells;
+                }
+            }
+            return sum / static_cast<double>(std::max<std::size_t>(cells, 1));
+        };
+        const double before = wake(*g.window());
+        // The ship stops, and the zoom asks for other cells per tile.
+        g.set_ships({});
+        REQUIRE(poll_until(
+            [&] {
+                time_ms += 5;
+                run(1, {8.0F, 8.0F}, 20.0F, time_ms);
+            },
+            [&] { return g.window() && g.window()->cells_per_tile == 2 && !g.setting_up(); },
+            20.0));
+        run(1, {8.0F, 8.0F}, 20.0F,
+            time_ms); // records the pass if the switch was the poll's last call
+        CHECK(g.resamples() == (carry ? 1U : 0U));
+        CHECK(ctx->errors->load() == 0);
+        return {before, wake(*g.window())};
+    };
+    const auto [before_on, after_on] = scenario(true);
+    const auto [before_off, after_off] = scenario(false);
+    MESSAGE("wake (mean |eta|): carried " << before_on << " -> " << after_on << ", restarted "
+                                          << before_off << " -> " << after_off);
+    REQUIRE(before_on > 0.01);           // the ship made a wake
+    CHECK(after_on > 0.5 * before_on);   // carried over
+    CHECK(after_off < 0.2 * before_off); // the control: a restart at rest leaves almost nothing
 }

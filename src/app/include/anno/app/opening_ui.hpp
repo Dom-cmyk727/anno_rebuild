@@ -92,7 +92,8 @@ enum class OpeningMode : std::uint8_t { Select, Found, Unload };
 /// The rotation every founding command carries. The warehouse turns to the coast by itself (owner
 /// 2026-11-03, from the original: "there is no manual rotation of Kontors since they align with the
 /// coastline automatically"): the sim tries the four rotations from this one and builds at the
-/// first whose shore edge is the beach (Founding::apply, site::rotation_trials). The original's
+/// first whose footprint is on the island, neutral and free and whose land edge is the beach with
+/// water opposite (Founding::apply, site::rotation_trials). The original's
 /// Kontor cursor (AnnoFrame 0x10048e60) was not shown to read a rotation
 /// (docs/sim/ship-founding.md 3.5); which rotation its command carries is not traced, so where two
 /// rotations fit the sim's first in 0, 1, 2, 3 order wins.

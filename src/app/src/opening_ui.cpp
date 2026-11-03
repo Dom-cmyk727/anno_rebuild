@@ -299,10 +299,10 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
                 continue;
             }
             const auto verdict = sim::site::coast_height_rule(
-                bt->width, bt->height, rot, [&](std::uint64_t dx, std::uint64_t dy) {
+                bt->width, bt->height, rot, [&](std::uint64_t vx, std::uint64_t vy) {
                     return feed.vertex_height(
-                        std::int64_t{p.origin.x} + static_cast<std::int64_t>(dx),
-                        std::int64_t{p.origin.y} + static_cast<std::int64_t>(dy));
+                        std::int64_t{p.origin.x} + static_cast<std::int64_t>(vx),
+                        std::int64_t{p.origin.y} + static_cast<std::int64_t>(vy));
                 });
             if (verdict.result == sim::site::TerrainResult::Accepted) {
                 accepted = rot;

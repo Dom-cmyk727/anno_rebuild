@@ -243,7 +243,8 @@ TEST_CASE("controls: a stop is for the selected own ship, Esc cancels gesture, m
     CHECK_FALSE(f.ui.has_pending());
 }
 
-TEST_CASE("controls: founding derives the sim's origin from the click, rotates, and is one click") {
+TEST_CASE("controls: founding derives the sim's origin from the click, has no manual turn, and is "
+          "one click") {
     Fixture f;
     auto s = setup();
     s.registry = kontor_registry();

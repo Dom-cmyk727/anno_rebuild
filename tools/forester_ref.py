@@ -16,8 +16,8 @@ Rules transcribed (D = disassembly of AnnoWelt.dll / AnnoGame.dll, GOG 2.0.0.5):
   candskip A: the candidate list of the enhanced rule forestry_skip_uncuttable (cand + the cut's own id-1 test)
   visit    A: ONE figure call of the harvest body (overlay semantics, section 3.2 of docs/sim/forestry.md); the
            walk is an abstract line (500 ticks per tile) standing in for the existing tile walker
-  claims   A/D: one tile's claim bit under the faithful (bit only) and enhanced (owner derived from the target)
-           rules. E2.0: placement and clearing KEEP bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff`, clear arm 0x10082f05)
+  claims   A/D: one tile's claim bit under the faithful (bit only) and enhanced (owner-keyed) rules. E2.0: faithful
+           placement and clearing KEEP bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff`, clear arm 0x10082f05)
   draws    D: eligible dispatch attempts (= world draws) over a list of farm steps
   visits   A (E2.0): several calls of the harvest body with the saved first-delay remainder (5 ticks, consumed once
            across visits, surplus carried on, never re-armed); `S` between visits saves and reloads the state through
@@ -205,26 +205,23 @@ def claims(mode, ops):
       `W+` W selects and claims (refused while the bit is set: candidate filter, D 0x10092320)
       `W-` W's own cut arrival or abort: faithful clears unconditionally (D 0x10054530, 0x100545c0);
            enhanced clears only when W is the owner (the worker that targets the tile)
-      `P`  placement over the tile, `C` clearing of the tile: the bit is KEPT under both rule sets
-           (D 0x100824a7 `and 0x3fffffff` clears bits 30-31 only; clear arm 0x10082f05 keeps bits 25-31)
-      `W~` enhanced only: the owner's revalidation found the tile no longer a candidate and releases it
+      `P`  placement over the tile, `C` clearing of the tile: faithful KEEPS the bit (D 0x100824a7
+           `and 0x3fffffff` clears bits 30-31 only; clear arm 0x10082f05 keeps bits 25-31); enhanced: the
+           hygiene-only invalidation clears the bit and the owner entry (A, as specified in E1-FINAL)
     Returns (bit, owner); the owner prints `-` in faithful mode (the original stores none)."""
     if mode not in ("faithful", "enhanced"):
         raise ValueError("bad claim mode " + mode)
     bit, owner = 0, None
     for op in ops:
         if op in ("P", "C"):
-            pass                                    # placement / clearing keep bit 29 (E2.0)
+            if mode == "enhanced":
+                bit, owner = 0, None                # enhanced invalidation (A, hygiene only)
+            # faithful: placement / clearing keep bit 29 (E2.0)
         elif op.endswith("+"):
             if bit == 0:
                 bit, owner = 1, op[:-1]
         elif op.endswith("-"):
             if mode == "faithful" or owner == op[:-1]:
-                bit, owner = 0, None
-        elif op.endswith("~"):
-            if mode != "enhanced":
-                raise ValueError("revalidation op %s needs enhanced mode" % op)
-            if owner == op[:-1]:
                 bit, owner = 0, None
         else:
             raise ValueError("bad claim op " + op)

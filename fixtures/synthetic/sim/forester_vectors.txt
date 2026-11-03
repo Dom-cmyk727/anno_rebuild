@@ -114,32 +114,32 @@ visit 256 6500 40000 | 3 7 -> 256 Done 30500 - 3
 #   cuts it again at 14500 and a third time at 21000: cargo 768 from ONE tree; home 3*500 = 1500 -> 22500; 17500 unused.
 visitstale 768 6500 40000 | 3 7 -> 768 Done 17500 - 3,3,3
 #
-# claims faithful|enhanced ops... -> bit owner   (E2.0 rewrite, docs/sim/forestry.md E-16; derived by hand from the D facts)
+# claims faithful|enhanced ops... -> bit owner   (E2.0, docs/sim/forestry.md E-16; derived by hand from the D facts)
 #   W+ select-and-claim (refused while the bit is set); W- W's own cut arrival/abort (faithful: unconditional clear;
-#   enhanced: only the owner); P placement and C clearing KEEP bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff` clears
-#   bits 30-31 only; the clear arm 0x10082f05 keeps bits 25-31); W~ enhanced owner revalidation releases its tile.
+#   enhanced: only the owner); P placement, C clearing: faithful KEEPS bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff`
+#   clears bits 30-31 only; the clear arm 0x10082f05 keeps bits 25-31); enhanced: the hygiene-only invalidation (A)
+#   clears bit and owner entry (as specified in E1-FINAL).
 #   THE DISCRIMINATING CASE: claim then placement leaves the faithful claim set (the withdrawn mask reading gives 0).
 claims faithful A+ P -> 1 -
 #   clearing keeps it too; the legal worker unclaim clears it (the control that must stay green under the mutant).
 claims faithful A+ C -> 1 -
 claims faithful A+ A- -> 0 -
-#   placement does not free the tile for a second worker: B is refused, A still holds it.
+#   regressions only: these two do NOT discriminate (the second ends at 0 under both mask readings; the first cannot show
+#   that B was refused, because faithful mode prints no owner).
 claims faithful A+ P B+ -> 1 -
-#   regression only: ends at 0 under BOTH mask readings (does not discriminate on its own).
 claims faithful A+ P B+ A- -> 0 -
 claims faithful A+ B+ -> 1 -
 #   faithful one-bit model: a clear by another worker at the tile is unconditional (an accepted loaded state only).
 claims faithful A+ B- -> 0 -
-#   enhanced: the same writer keeps the bit at placement/clearing; the owner A is unchanged.
-claims enhanced A+ P -> 1 A
-claims enhanced A+ C -> 1 A
-#   enhanced: the owner's revalidation after a placement releases the tile (lazy invalidation).
-claims enhanced A+ P A~ -> 0 -
-#   enhanced: a non-owner's clear is refused; the owner's own clear works; then B may claim.
+#   enhanced (owner-keyed, hygiene only): placement/clearing invalidate bit and entry.
+claims enhanced A+ P -> 0 -
+claims enhanced A+ C -> 0 -
+#   enhanced: B claims after the invalidation; A's late clear is refused because the owner is B.
+claims enhanced A+ P B+ A- -> 1 B
+#   enhanced: a non-owner's clear is refused; the owner's own clear works; then B may claim; after B releases, A again.
 claims enhanced A+ B- -> 1 A
-claims enhanced A+ P B+ A- -> 0 -
 claims enhanced A+ A- B+ -> 1 B
-claims enhanced A+ A~ B+ B- A+ -> 1 A
+claims enhanced A+ P B+ B- A+ -> 1 A
 #
 # visits cap wait start_delay | trees | elapsed ticks per visit (S = save and reload) -> start_delay cargo step owed claimed cuts
 #   (E2.0, docs/sim/forestry.md E-21; the first micro-step is a saved remainder of 5 ticks consumed once across visits,

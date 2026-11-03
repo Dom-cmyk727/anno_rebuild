@@ -1727,7 +1727,7 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** open. Not marked unused: the clear arm keeps them.
 - **Area:** simulation / tile record.
 - **What was read.** Placement's ordinary path clears **bits 30–31 and keeps bit 29** (`and 0x3fffffff` at `0x100824a7`; corrected in MAP-ECON-1 E2.0, this line earlier said it clears all three); the overlay path does the same at `0x1008227b`. Bit 29 is answered: it is the harvest claim (`0x10087880` mode 0, `docs/re/forestry.md` §2.7); the question stays open for bits 30–31. The reset dword `0x1e000200` leaves them 0. The clear arm of `0x10082c30` keeps them (`0xfe0002ff` at `0x10082f05`). T33.5 F1 found one nonzero store: `or dword [record+4], 0x80000000` at `0x10082a46` sets bit 31 on an anchor tile whose id and byte-2 origin match the placement record, after compares with `0x45` and `0x46` (`0x1008299d`, `0x100829a6`) and a nonzero return from `[island+0x20]` slot `+0x74` with argument 5 (`0x100829b6`). No reader of the bit was found in that pass.
-- **How to resolve:** read `0x10087880`, the earlier sweep's candidate for bit 29 (`transport.md` §3.4.13), then any other store into those three bits.
+- **How to resolve:** bit 29 is resolved (`0x10087880`, `docs/re/forestry.md` §2.7). For bits 30–31: find any store of a nonzero value besides the bit-31 store at `0x10082a46`, and its readers.
 
 ## OQ-205: Who supplies the 4-bit field in bits 25–28, and who reads it (T33.5 stage 1, 2026-10-26)
 - **Status:** open. The field itself is read: reset writes 15 (`0x1e000200` at `0x1008c80d..0x1008c821`), and `0x100854ca` replaces it when the current value is 15. The sim's name "owner" is not proved by this pass.

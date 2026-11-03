@@ -39,9 +39,9 @@ MIN_VECTORS = 75
 
 # E2.0 mutation targets in tools/forester_ref.py and their wrong replacements (each target must occur exactly once).
 PLACEMENT_KEEPS = ('        if op in ("P", "C"):\n'
-                   '            pass                                    # placement / clearing keep bit 29 (E2.0)\n')
+                   '            if mode == "enhanced":\n')
 PLACEMENT_CLEARS = ('        if op in ("P", "C"):\n'
-                    '            bit, owner = 0, None\n')
+                    '            if True:\n')
 DELAY_OWED = ('                    if st["delay"] > 0:\n'
               '                        return None\n')
 DELAY_BURNED = ('                    if st["delay"] > 0:\n'

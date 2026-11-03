@@ -32,7 +32,11 @@ commands and the HUD tile stay on the sim's positions.
 **Facing frame.** Frame k of the figure's 16 facing frames shows its bow towards screen compass 45 + 22.5 k degrees (measured on
 screenshots of one ship sailing the eight directions, 2026-11-03). In the original's handedness (`docs/render/iso.md`,
 "Handedness") `dir16` d heads the same way, so `dir16` d is frame d (`ShipLayer::facing_frame`), as the original draws a scenario
-ship's facing `attr`. Measured in the mirrored picture before the handedness fix, the same frames gave `(12 - d) mod 16`.
+ship's facing `attr`. Measured in the mirrored picture before the handedness fix, the same frames gave `(12 - d) mod 16`. Re-checked
+2026-11-03 in the corrected projection: for `dir16` 0, 2, …, 14, frame `facing_frame(d)` of figure 1505 (group 1) beside the
+heading's screen direction (`((vy − vx) · tw/2, (vx + vy) · th/2)`); every bow follows its heading (frame 10's bowsprit points
+west, frames 0/4/8/12 north-east/south-east/south-west/north-west). A contact sheet of the frames the viewer draws, not a live
+recording of a sailing ship; the owner's playtest is the live check.
 
 **The water.** The opening starts with enhanced water on the GPU (`E` toggles). Each moving ship is a source in the wave
 simulation (`fluid::ShipWake`, `FluidGpu::set_ships`, `GpuFrame::set_wakes`; render-only): the hull raises the water ahead of it and

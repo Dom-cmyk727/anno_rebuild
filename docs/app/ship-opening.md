@@ -202,7 +202,8 @@ zoom out and back in; GPU frames of the same path; a synthetic beach for the wav
   original's, `0x1008218f`); an item anchored outside stays whole (OQ-551). The island's covered tiles are marked once per
   rewrite: a test per item and building took 63 s on `endless02.sze`'s island 1 (1,854 buildings, 84,486 scenery items),
   509 s over the 226 shipped islands with buildings; now at most 10 ms, 148 ms in all (review). Over those islands 14
-  scenery items are dropped and 123 kept by the flag-0x10 exception (test `the shipped scenarios' islands drop exactly the
+  scenery items are dropped and 123 anchored under a building are kept (by the flag-0x10 exception, or for a type without a
+  flag word; the test does not tell the two apart) (test `the shipped scenarios' islands drop exactly the
   covered scenery`).
 - *Open sea built over and over.* 39,000 chunk builds in two seconds at the farthest zoom were open sea around the map: a far
   chunk was reduced from its 4^n children wherever it lay. A chunk outside the scene is now open sea at once (the first 12 s of
@@ -219,3 +220,5 @@ zoom out and back in; GPU frames of the same path; a synthetic beach for the wav
   (`chunk_fade_ms`); the old wave window draws the finer view for the 10-40 ms its successor takes to prepare; surf over the
   offshore shoals is our simulation's (the original shows lighter water there), a look the owner decides; the mirrored
   projection (the Kontor's turn) is its own task.
+- Known, from the reviews (low): `sync_scene` in the compositor is set and reset by hand around the chunk sync (no scope
+  guard); the GPU path ignores `build_outside_chunks`; a malformed item outside its island is kept by the tile mask.

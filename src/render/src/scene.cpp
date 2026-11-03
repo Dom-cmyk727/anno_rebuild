@@ -637,8 +637,9 @@ Scene::Scene(const Scene& base, std::vector<IslandUpdate>&& updates)
     : assets_(base.assets_), caches_(base.caches_), name(base.name), islands(base.islands),
       textures(base.textures), anlagen(base.anlagen), layouts(base.layouts), sprites(base.sprites),
       frame_table(base.frame_table), lift(base.lift), units(base.units), river_cfg(base.river_cfg),
-      flow_build_fault(base.flow_build_fault), island_storage_(base.island_storage_),
-      objects_(base.objects_), levels_(base.levels_), generation_(base.generation_ + 1) {
+      shore_height(base.shore_height), flow_build_fault(base.flow_build_fault),
+      island_storage_(base.island_storage_), objects_(base.objects_), levels_(base.levels_),
+      generation_(base.generation_ + 1) {
     island_storage_.resize(islands.size());
     for (IslandUpdate& u : updates) {
         assert(u.index < objects_.size() && u.lists);
@@ -929,8 +930,8 @@ const sea::IslandWater* Scene::island_water(std::size_t i) const {
     IslandData& d = objects_[i];
     std::call_once(d.water->once, [&] {
         const profile::Scope stage(profile::Stage::island_water);
-        d.water->water =
-            sea::IslandWater::build(islands[i], d.lists->rivers, river_cfg.gap_patch_tiles);
+        d.water->water = sea::IslandWater::build(islands[i], d.lists->rivers,
+                                                 river_cfg.gap_patch_tiles, shore_height);
     });
     return d.water->water ? &*d.water->water : nullptr;
 }
@@ -1509,7 +1510,7 @@ Canvas Scene::river_sprites(Rect rect, const sea::SceneProbe& probe, std::size_t
 }
 
 float Scene::fluid_depth(float x, float y) const {
-    const float waterline = static_cast<float>(kWaterline);
+    const float waterline = shore_height;
     for (std::size_t k = 0; k < islands.size(); ++k) {
         const auto& isl = islands[k];
         const float lx = x - static_cast<float>(isl.x), ly = y - static_cast<float>(isl.y);

@@ -513,6 +513,45 @@ TEST_CASE("chunk profile: off without a sink, nested stages counted exclusively"
     CHECK(t[profile::Stage::objects] == before);
 }
 
+// The shore (owner 2026-11-03: corners at 16 are water, as the original draws them at a Kontor's
+// water edge; docs/render/iso.md "Water"). A plateau at exactly 16: water by default, land with
+// the shore at 16 (the renderer's choice until then); 17 is land either way.
+TEST_CASE("the shore: terrain at 16 is water by default, land with the shore at 16") {
+    namespace sea = render::sea;
+    const auto plateau = [](std::uint8_t height) {
+        sea::IslandWater iw;
+        iw.w = 16;
+        iw.h = 16;
+        iw.heights.assign(iw.w * iw.h, height);
+        iw.sea_chunk.assign(4, true);
+        iw.river.assign(iw.w * iw.h, std::numeric_limits<float>::quiet_NaN());
+        return iw;
+    };
+    CHECK(render::kShoreHeight == 16.5F);
+    sea::IslandWater at16 = plateau(16);
+    CHECK(at16.shore_height == render::kShoreHeight);
+    const sea::TileGround g = sea::tile_ground(at16, 8.5F, 8.5F);
+    CHECK(g.original_water);
+    at16.shore_height = 16.0F;
+    const sea::TileGround g16 = sea::tile_ground(at16, 8.5F, 8.5F);
+    CHECK_FALSE(g16.original_water);
+    // The enhanced water's zero moves with the shore (its shore noise is the same at both).
+    CHECK(g.sd - g16.sd == doctest::Approx(0.5F));
+    const sea::IslandWater at17 = plateau(17);
+    CHECK_FALSE(sea::tile_ground(at17, 8.5F, 8.5F).original_water);
+    // The shore distance: a corner at 16 is water (distance > 0) by default, land at 16.
+    const std::vector<std::uint8_t> row{15, 16, 17};
+    const auto d = render::shore_distance(row, 3, 1);
+    CHECK(d[0] > 0.0F);
+    CHECK(d[1] > 0.0F);
+    CHECK(d[2] == 0.0F);
+    const auto d16 = render::shore_distance(row, 3, 1, 16.0F);
+    CHECK(d16[0] > 0.0F);
+    CHECK(d16[1] == 0.0F);
+    // The empty-cell bound follows the shore.
+    CHECK(sea::empty_land_height(16.0F) == doctest::Approx(sea::kEmptyLandHeight - 0.5F));
+}
+
 TEST_CASE("water field: every position in an empty cell gets the empty texel") {
     namespace sea = render::sea;
     // A synthetic island: a ridge whose corners run through the waterline and
@@ -633,12 +672,49 @@ TEST_CASE("SmoothSampler equals smooth_height and height_noise, bit for bit") {
     CHECK(n > 30000);
     CHECK(differ == 0);
 }
+// The same proof at the default shore (16.5) and a much higher one (40: the bound follows the
+// island's shore; the default's bound, 31.6, would mark wet ridge cells empty there, and its
+// margin over the dry-land threshold, kSlopeBand against shore_edge + run_max, hides a smaller
+// shore): the empty-cell shortcut leaves every byte of the synthetic scene's field as the full
+// evaluation has it.
+TEST_CASE("water field: at the default shore and a higher one the empty cells leave the field as "
+          "it is") {
+    namespace sea = render::sea;
+    for (const float shore : {render::kShoreHeight, 40.0F}) {
+        CAPTURE(shore);
+        auto s = render::test::field_scene();
+        auto water = [&](std::size_t i) -> const sea::IslandWater* {
+            return i < s.islands.size() ? &s.islands[i] : nullptr;
+        };
+        for (auto& iw : s.islands) {
+            CHECK(iw.shore_height == render::kShoreHeight);
+            iw.shore_height = shore;
+        }
+        const std::uint64_t full =
+            render::test::field_digest(sea::water_field(s.rect, s.probe, water));
+        std::size_t empty = 0;
+        for (auto& iw : s.islands) {
+            iw.classify_cells();
+            empty +=
+                static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
+        }
+        CHECK(empty > 0);
+        CHECK(render::test::field_digest(sea::water_field(s.rect, s.probe, water)) == full);
+        CHECK(full != 0x51aadd2b3bf2a795ULL); // another field than at the shore of 16
+    }
+}
+
 TEST_CASE("water field: the synthetic scene's digest is the one before the T1f speedups") {
     // Recorded with the sources of 7479a2a (tests/water_field_fixture.hpp): every
     // shortcut must leave every byte as it was, classified or not.
     constexpr std::uint64_t kGolden = 0x51aadd2b3bf2a795ULL;
     namespace sea = render::sea;
     auto s = render::test::field_scene();
+    // Recorded with the shore at 16, the renderer's until 2026-11-03 (still selectable); the
+    // default shore's field is checked against its own unclassified field below.
+    for (auto& iw : s.islands) {
+        iw.shore_height = 16.0F;
+    }
     auto water = [&](std::size_t i) -> const sea::IslandWater* {
         return i < s.islands.size() ? &s.islands[i] : nullptr;
     };
@@ -689,7 +765,7 @@ TEST_CASE("water field: a tile is empty exactly when its 16 spline corners clear
     auto marked = [](const sea::IslandWater& iw) {
         return static_cast<std::size_t>(std::count(iw.empty_cell.begin(), iw.empty_cell.end(), 1));
     };
-    // The threshold: 31 < kEmptyLandHeight = 31.1 <= 32.
+    // The threshold: 31 < kEmptyLandHeight = 31.6 <= 32.
     auto low = plateau(31);
     low.classify_cells();
     CHECK(marked(low) == 0);

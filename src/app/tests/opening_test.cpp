@@ -722,6 +722,29 @@ TEST_CASE("founding preview heights: the island's far column and row read the si
     CHECK_FALSE(app::scene_vertex_height(*scene, 110, 61).has_value());
 }
 
+// Scene::shore_height reaches the wave depth (open sea away from every island is the shore's
+// depth) and a new generation keeps it (the scene's own setting, set by the viewer's --shore).
+TEST_CASE("the scene's shore: the wave depth of open sea and the next generation") {
+    auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    bytes->push_back(std::vector<std::uint8_t>(64, 0));
+    anno::formats::insel::Island island;
+    island.head = (*bytes)[0];
+    island.number = 0;
+    island.x = 100;
+    island.y = 40;
+    island.width = 30;
+    island.height = 20;
+    const auto scene =
+        render::Scene::create("shore", {island}, anno::assets::island::GroundTextures{},
+                              anno::formats::anlagen::AnlagenFile{}, render::kHeightLift, bytes);
+    CHECK(scene->shore_height == render::kShoreHeight);
+    CHECK(scene->fluid_depth(10.0F, 10.0F) == render::kShoreHeight);
+    scene->shore_height = 16.0F;
+    CHECK(scene->fluid_depth(10.0F, 10.0F) == 16.0F);
+    const auto next = scene->with_islands({});
+    CHECK(next->shore_height == 16.0F);
+}
+
 // Owner playtest 2026-11-03: "I could not place the Kontor at all". What decides it, island by
 // island of the real start: the sim's coast rule on its own vertex grid, the same rule on the
 // heights the window's preview reads (scene_vertex_height on the picture's scene, as the viewer's

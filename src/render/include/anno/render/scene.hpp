@@ -468,6 +468,10 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// the first render or river_flow call; not to be changed while chunks
     /// are being built.
     river::RiverConfig river_cfg;
+    /// Terrain below this many HEIGHT units is water (kShoreHeight; 16 draws corners at 16 as
+    /// land, as this renderer did until 2026-11-03). Set before the first render: each island's
+    /// water is built once with it.
+    float shore_height = kShoreHeight;
 
     /// The flow of island `index` (rivers.md 3.1: the raster, phase A, and
     /// the solve, phase B): null for an island without rivers, when

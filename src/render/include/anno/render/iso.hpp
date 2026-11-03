@@ -193,10 +193,18 @@ inline constexpr std::uint32_t kSeaAnlage = 2801;
 /// Sea level in HEIGHT units: 1.28 world units / 0.04 (D: AnnoWelt.dll
 /// 0x100E3A20, set at 0x1009d010).
 inline constexpr std::int64_t kSeaLevel = 32;
-/// Waterline in HEIGHT units: terrain below it is under water (P: painted
-/// ground textures put the shore at 16.5; D: land classifier 0x100900c0;
-/// docs/render/iso.md, "Water"; OQ-026 b).
+/// Waterline in HEIGHT units of the water objects: a water object (sea, river, surf) below it is
+/// drawn under the sea plane, one at or above it over the sea (prepare_objects; surf items lie at
+/// 0 or 16, P). Where the terrain is water is kShoreHeight's (docs/render/iso.md, "Water"; OQ-026
+/// b).
 inline constexpr std::int64_t kWaterline = 16;
+/// The shore by default: terrain below this many HEIGHT units is water, so a corner at 16 is
+/// water and one at 17 is land. P: the painted ground textures show water at every height <= 16
+/// and sand from 17 on; the original draws a Kontor's water-edge corners at 16 as water (Wine
+/// runner, docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md
+/// section 4). This renderer drew corners at 16 as land until 2026-11-03; Scene::shore_height
+/// keeps that selectable (16, the viewer's --shore); the owner chose 16.5 as the default.
+inline constexpr float kShoreHeight = 16.5F;
 /// A tile counts as land when the average of its corner heights exceeds this
 /// (D: AnnoWelt.dll classifier 0x100900c0).
 inline constexpr std::int64_t kLandAverage = 19;
@@ -398,9 +406,9 @@ enum class WaterStyle {
 };
 
 /// Distance in tiles from each height corner to the nearest corner at or
-/// above the waterline (two-pass chamfer, 1 / √2 steps). Enhanced water.
+/// above the shore `shore_height` (two-pass chamfer, 1 / √2 steps). Enhanced water.
 std::vector<float> shore_distance(std::span<const std::uint8_t> heights, std::size_t w,
-                                  std::size_t h);
+                                  std::size_t h, float shore_height = kShoreHeight);
 
 /// Tuning of the enhanced water. Not derived from the original; tuned by eye
 /// (2026-10-17). gpu.wgsl mirrors these values.

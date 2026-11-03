@@ -278,6 +278,10 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
                 }
                 scene = std::make_unique<render::Scene>("", std::move(islands), std::move(textures),
                                                         std::move(anlagen), render::kHeightLift);
+                // The tables were recorded with the shore at 16, the renderer's until 2026-11-03
+                // (and the Rust reference's); the default shore (kShoreHeight) is the frames
+                // test's third pass.
+                scene->shore_height = 16.0F;
                 if (auto s = anno::formats::sze::Scene::parse(buf)) {
                     const anno::assets::unit::VolumeReader read =
                         [&](std::uint32_t g, std::uint64_t o,
@@ -610,10 +614,34 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     std::vector<std::string> expected_legacy = expected;
     expected_legacy[11] = "Single_24.sze g2 t900 Enhanced 4e7455cc16c48e90";
     expected_legacy[14] = "Single_24.sze g1 t900 Enhanced e987dc93660249e4";
+    // Both tables are at the shore of 16, the renderer's until 2026-11-03 (still selectable,
+    // Scene::shore_height). At the default shore (kShoreHeight 16.5, owner 2026-11-03) corners at
+    // 16 are water: the frames with such corners in view move (Single_01's group 2 view in the
+    // enhanced water only, every Single_24 view), the others stay. Recorded on Windows 11 with
+    // MSVC (UCRT) on 2026-11-03, the flow shading.
+    std::vector<std::string> expected_default = expected;
+    expected_default[2] = "Single_01.sze g2 t900 Enhanced 722717aef0870f20";
+    expected_default[9] = "Single_24.sze g2 t0 Original fbcd064eea92be92";
+    expected_default[10] = "Single_24.sze g2 t900 Original 8be1ac7dfa1de66c";
+    expected_default[11] = "Single_24.sze g2 t900 Enhanced 6324918fcfed5a13";
+    expected_default[12] = "Single_24.sze g1 t0 Original 8b3fe1f74847557a";
+    expected_default[13] = "Single_24.sze g1 t900 Original 51f8992c7c377d04";
+    expected_default[14] = "Single_24.sze g1 t900 Enhanced 141ccd32e8a400ca";
+    expected_default[15] = "Single_24.sze g0 t0 Original 5da2142143058342";
+    expected_default[16] = "Single_24.sze g0 t900 Original 1d080bd7a484b179";
+    expected_default[17] = "Single_24.sze g0 t900 Enhanced 69fdf2b6a961c9d3";
+    struct Pass {
+        render::RiverFlowMode mode;
+        float shore;
+        const std::vector<std::string>* want;
+    };
     const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
-    for (const render::RiverFlowMode mode :
-         {render::RiverFlowMode::Flow, render::RiverFlowMode::Legacy}) {
+    for (const Pass& pass :
+         {Pass{render::RiverFlowMode::Flow, 16.0F, &expected},
+          Pass{render::RiverFlowMode::Legacy, 16.0F, &expected_legacy},
+          Pass{render::RiverFlowMode::Flow, render::kShoreHeight, &expected_default}}) {
+        CAPTURE(pass.shore);
         std::vector<std::string> lines;
         for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
             const auto buf = anno::test::read_file(*dir / "Scenes" / "0200Single" / name);
@@ -623,10 +651,11 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
             if (const auto c = render::water_colour(anlagen)) {
                 textures.set_water(*c);
             }
-            const render::Scene scene("", anno::formats::insel::islands(buf).value(),
-                                      std::move(textures), std::move(anlagen), render::kHeightLift);
+            render::Scene scene("", anno::formats::insel::islands(buf).value(), std::move(textures),
+                                std::move(anlagen), render::kHeightLift);
+            scene.shore_height = pass.shore;
             render::FrameRenderer fr(4);
-            fr.river_flow = mode;
+            fr.river_flow = pass.mode;
             for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
                 const auto b = *scene.bounds(group);
                 // Single_24's centre at group 0 is all land: move to a coast (to the
@@ -652,7 +681,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
                 }
             }
         }
-        const auto& want = mode == render::RiverFlowMode::Flow ? expected : expected_legacy;
+        const auto& want = *pass.want;
         REQUIRE(lines.size() == want.size());
         for (std::size_t i = 0; i < lines.size(); ++i) {
             CHECK(lines[i] == want[i]);

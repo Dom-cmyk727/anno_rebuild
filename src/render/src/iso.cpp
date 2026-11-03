@@ -476,12 +476,13 @@ std::optional<Px> water_colour(const formats::anlagen::AnlagenFile& anlagen) {
 }
 
 std::vector<float> shore_distance(std::span<const std::uint8_t> heights, std::size_t w,
-                                  std::size_t h) {
+                                  std::size_t h, float shore_height) {
     const float diag = std::sqrt(2.0F);
     std::vector<float> d;
     d.reserve(heights.size());
     for (const std::uint8_t z : heights) {
-        d.push_back(std::int64_t{z} >= kWaterline ? 0.0F : std::numeric_limits<float>::infinity());
+        d.push_back(static_cast<float>(z) >= shore_height ? 0.0F
+                                                          : std::numeric_limits<float>::infinity());
     }
     auto at = [w](std::size_t x, std::size_t y) { return y * w + x; };
     for (std::size_t y = 0; y < h; ++y) {

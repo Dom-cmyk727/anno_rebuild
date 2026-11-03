@@ -155,9 +155,11 @@ class IslandWater {
     /// gap_patch_tiles > 0 joins river pieces whose footprints are at most that
     /// many tiles apart (OQ-068): the corners between them get a river level and a
     /// shallow carved bed in this copy of the heights (never in the island).
+    /// Terrain below `shore_height` is water (kShoreHeight, Scene::shore_height).
     static std::optional<IslandWater> build(const formats::insel::Island& island,
                                             std::span<const RiverPiece> rivers,
-                                            float gap_patch_tiles = 0.0F);
+                                            float gap_patch_tiles = 0.0F,
+                                            float shore_height = kShoreHeight);
     /// River surface level at tile (tx, ty) + (fx, fy), nullopt away from
     /// rivers.
     [[nodiscard]] std::optional<float> river_level(std::size_t tx, std::size_t ty, float fx,
@@ -169,6 +171,9 @@ class IslandWater {
 
     std::size_t w = 0, h = 0;
     std::vector<std::uint8_t> heights;
+    /// Terrain below this many HEIGHT units is water (the original waterline and the enhanced
+    /// one's zero).
+    float shore_height = kShoreHeight;
     /// Per 8 × 8 tile chunk: contains a non-land tile (OQ-026 b).
     std::vector<bool> sea_chunk;
     /// Openness per height corner (approximation, OQ-026 b).
@@ -192,13 +197,16 @@ inline constexpr float kSlopeBand = 12.0F;
 inline constexpr float kNoiseCoarseWeight = 2.0F;
 inline constexpr float kNoiseFineWeight = 0.6F;
 /// Lowest of the 16 corner heights under a tile's smooth_height at which the
-/// tile is provably dry land far from the waterline (sd ≤ −kSlopeBand): the
-/// spline is at least its lowest corner, the noise at least −(coarse + fine) /
+/// tile is provably dry land far from the shore `shore_height` (sd ≤ −kSlopeBand):
+/// the spline is at least its lowest corner, the noise at least −(coarse + fine) /
 /// 2 · shore_noise (−2.6), plus 0.5 for rounding (docs/render/iso.md "Water
 /// field: empty cells").
-inline constexpr float kEmptyLandHeight =
-    static_cast<float>(kWaterline) + kSlopeBand +
-    0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
+constexpr float empty_land_height(float shore_height) {
+    return shore_height + kSlopeBand +
+           0.5F * (kNoiseCoarseWeight + kNoiseFineWeight) * kWaves.shore_noise + 0.5F;
+}
+/// empty_land_height at the default shore (31.6).
+inline constexpr float kEmptyLandHeight = empty_land_height(kShoreHeight);
 
 /// One texel of the water field (WaterField's four planes at one pixel).
 struct FieldTexel {

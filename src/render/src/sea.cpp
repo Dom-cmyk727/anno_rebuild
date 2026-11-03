@@ -17,9 +17,9 @@ namespace {
 /// follow it, so it is smoothed strongly (radius ≈ 3 tiles). Land stays 0.
 constexpr std::size_t kShoreSmoothing = 10;
 
-std::vector<float> smooth_shore(std::span<const std::uint8_t> heights, std::size_t w,
-                                std::size_t h) {
-    std::vector<float> d = shore_distance(heights, w, h);
+std::vector<float> smooth_shore(std::span<const std::uint8_t> heights, std::size_t w, std::size_t h,
+                                float shore_height) {
+    std::vector<float> d = shore_distance(heights, w, h, shore_height);
     for (std::size_t pass = 0; pass < kShoreSmoothing; ++pass) {
         const std::vector<float> prev = d;
         for (std::size_t y = 0; y < h; ++y) {
@@ -410,7 +410,7 @@ void patch_river_gaps(std::span<const RiverPiece> rivers, std::size_t w, std::si
 
 std::optional<IslandWater> IslandWater::build(const insel::Island& island,
                                               std::span<const RiverPiece> rivers,
-                                              float gap_patch_tiles) {
+                                              float gap_patch_tiles, float shore_height) {
     auto hr = island.heights();
     auto gr = island.gfx_ids();
     if (!hr || !gr) {
@@ -418,6 +418,7 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
     }
     IslandWater out;
     out.heights = std::move(hr).value();
+    out.shore_height = shore_height;
     const std::vector<std::uint16_t> gfx = std::move(gr).value();
     const std::size_t iw_w = island.width, iw_h = island.height;
     out.w = iw_w;
@@ -499,7 +500,7 @@ std::optional<IslandWater> IslandWater::build(const insel::Island& island,
             }
         }
     }
-    out.shore = smooth_shore(out.heights, iw_w, iw_h);
+    out.shore = smooth_shore(out.heights, iw_w, iw_h, shore_height);
     out.classify_cells();
     return out;
 }
@@ -515,7 +516,7 @@ void IslandWater::classify_cells() {
     // Empty cells (docs/render/iso.md "Water field: empty cells"): no river
     // level at the four corners river_level reads, and either no sea in the
     // tile's 8 x 8 block or all 16 corners of smooth_height at least
-    // kEmptyLandHeight. Every position in such a tile gets the empty texel.
+    // empty_land_height(shore_height). Every position in such a tile gets the empty texel.
     empty_cell.assign(w * h, 0);
     const std::size_t cw = (w + 7) / 8;
     auto corner = [&](std::ptrdiff_t x, std::ptrdiff_t y) {
@@ -541,7 +542,7 @@ void IslandWater::classify_cells() {
                         lo = std::min(lo, heights[corner(xi + dx, yi + dy)]);
                     }
                 }
-                empty = static_cast<float>(lo) >= kEmptyLandHeight;
+                empty = static_cast<float>(lo) >= empty_land_height(shore_height);
             }
             empty_cell[y * w + x] = empty ? 1 : 0;
         }
@@ -645,9 +646,9 @@ template <class S> TileGround tile_ground_with(const IslandWater& iw, float x, f
     g.fx = clampf(x - static_cast<float>(g.tx), 0.0F, 1.0F);
     g.fy = clampf(y - static_cast<float>(g.ty), 0.0F, 1.0F);
     g.sea_chunk = iw.sea_chunk[(g.ty / 8) * ((iw.w + 7) / 8) + g.tx / 8];
-    g.original_water = g.under < static_cast<float>(kWaterline) && g.sea_chunk;
+    g.original_water = g.under < iw.shore_height && g.sea_chunk;
     g.smooth = s.smooth(x, y);
-    g.sd = static_cast<float>(kWaterline) - g.smooth;
+    g.sd = iw.shore_height - g.smooth;
     return g;
 }
 

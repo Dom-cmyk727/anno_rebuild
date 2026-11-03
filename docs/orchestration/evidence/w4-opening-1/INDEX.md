@@ -3,7 +3,8 @@
 Branch `task/W4-opening-1`, created from the Windows publication `26107db089f558bc374208a4f414ca70f562e6f0`;
 the accepted Mac pin `0c401c8d084cfd9feb8aec846595291f87f22cce` is merged by the ordinary merge `870fc83` (both are
 ancestors of the head; neither source branch was touched). **Code head of every gate below: `d129bba6b4daf64cde72f84c37ec52ce918cde03`.**
-Commits after it add only documentation and this evidence (no source, script, CMake or test change).
+Commits after it add documentation, this evidence and one change to the owner launcher `tools/play_ship_opening.ps1` (it restores
+`ANNO_SAVE_DIR` when the game exits; parse-checked, and run once by hand after the change: the window opened on the RTX 4090 with the seat's ship, the variable was not left set; no gate runs it); no source, test, CMake or test-script change.
 
 Everything under `extracts/` is a copy or an **EXTRACT** (marked in `extract-table.md`) of a git-ignored original under
 `cache/gates/` of the Windows checkout `E:\anno1503-worktrees\anno1503-W4-opening-1`; the sha256 is of the original file as

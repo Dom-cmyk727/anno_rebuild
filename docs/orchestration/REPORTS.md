@@ -11974,3 +11974,37 @@ After the orchestrator's review (`reviews/2026-11-03-w4-opening1-playtest.md`): 
 dispositioned, an independent re-review (no P1/P2), H2 settled in the Wine runner (placement does not reshape the ground: the
 runtime height grids of all 20 islands unchanged over 17 placements), H1 shown against the GOG original (corners at 16 are
 water there; H1 closes part of the gap at a Kontor, not all), the three owner decisions asked. Same hand-over note, section 4.
+The owner's answers (2026-11-03, late evening), hand-over note section 4.1. All local, nothing pushed:
+- (a) projection merge: done by the orchestrator (`a150c11d`).
+- (b) H1 as the default: `53101c96` (render: terrain below `kShoreHeight` 16.5 is water, per scene) and `38af87b2`
+  (`--shore`). The recorded corpus tables stay at 16; the frames test adds the default shore.
+- (c) the founding turn restored: `ee6a12e0`; the status line shows it, `9173fc6e`.
+- Docs: `6793191d`, `99437681`, `d9704b98`.
+- Mutation checks: 14 mutants killed (5 key/preview, 9 shore).
+- Reviews: an independent package review (no P1, two P2 fixed or dispositioned with a measurement) and a focused
+  re-review of the fixes (no P1/P2).
+- Gates:
+  - native app at `99437681`: 257 executed, 1 failed (the merged projection branch's lan5 dev-tool pick, 1 wrong
+    pixel, unchanged), 2 opt-in skips (`native-n25a`);
+  - GPU 115/115 (`native-n25g`);
+  - render at `d9704b98`: 194 selected, 193 passed, 1 failed (river Q5, 0.4857 against 0.55, as before), the scene and frame digests included (`native-n28r`);
+  - window tests on the RTX 4090 at `d9704b98`: `opening_gpu_window` and `opening_controls` PASS (`gpuwin-n26-*`);
+  - WSL warnings at `d9704b98`: GCC 13 / Clang 18, four variants clean (`unix-warnings-n27.log`);
+  - WSL ASan+UBSan at `a150c11d` (the merged head before these commits): app 261 executed, 1 failed (the same lan5
+    pick), 2 opt-in skips; sim 81/81; render P1/P2 3/3; 0 sanitizer lines (`wsl-w13*.txt`). The later commits are
+    covered by the native gates and the warnings only, not by a sanitizer run.
+- Open:
+  - river Q5 on `D_256x256_0045_5B` (48.6 % against 55 %, unchanged by the shore) and the lan5 pick, both from the
+    projection branch;
+  - why the Kontor still floats: the original depth-tests every sprite pixel (`docs/re/annodisplay.md`), this renderer
+    draws sprites whole on top. A renderer task of its own (OQ-026 c), how to take it on is the owner's call;
+  - the zoom-artifact console log (waiting for the owner);
+  - the owner's playtest of this head.
+- NOT_RUN:
+  - a Linux corpus run with the game files at the new shore;
+  - the Wine check that the original's `.`/`,` reach the Kontor cursor while founding.
+- For the orchestrator:
+  - `docs/re/ship-founding.md` (Mac MAP lane) still calls `0x10049340` unread (lines 13, 166, §3.5);
+  - `tools/map2_shape.py` / `map2_measure.py` describe land as HEIGHT >= 16 "as the renderer", which no longer holds;
+  - `docs/PLAN.md` (4 places) and this file (line 2690) hold BEL characters where a `\a` escape ate a backslash
+    (`src\app\...`, `C:\anno1503-original`), from older commits.

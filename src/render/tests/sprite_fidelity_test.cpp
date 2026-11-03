@@ -405,7 +405,7 @@ TEST_CASE("ground texels: the edge-colour error selects GroundCell::texel among 
             e /= static_cast<double>(pairs);
         }
         const double best = *std::min_element(error.begin() + 1, error.end());
-        MESSAGE(climate << ": " << pairs << " edges, GroundCell::texel " << error[0]
+        MESSAGE(std::string(climate) << ": " << pairs << " edges, GroundCell::texel " << error[0]
                         << ", best other " << best);
         CHECK(error[0] < best);
     }

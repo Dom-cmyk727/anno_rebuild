@@ -1,0 +1,178 @@
+# Resident/supplier transaction vectors (MAP-POP-LIVE-1 L1). Every expected value was derived by hand
+# from docs/sim/population-live.md section 2 and section 10 (cases X1-X8, X17, X18) BEFORE any C++ existed;
+# the grammar and the formula/units contract are in tools/resident_ref.py. The reference and the C++
+# module (src/sim/src/resident.cpp) are both checked against these expectations.
+# Units: amounts are 8.8 tons (256 = 1 t); a delivery adds amount*16 to a house stock, so stock/16 is in
+# delivered units. Goods 26 and 27 are consumer goods (billing range 26..40), 76 and 77 are outside it.
+goods G0 count=96
+goods GS count=96 sec=26:27
+goods GC count=96 sec=26:27,27:26
+goods GD count=96 sec=26:27,27:28
+goods GL count=96 sec=26:26
+goods GX count=96 sec=40:27
+house H1 needs=26:16,27:16,28:16 lookup=26:0,27:1,28:2
+house H2 needs=26:16,27:16 lookup=26:0,27:1
+house H26 needs=26:16 lookup=26:0
+house H00 needs=26:16 lookup=26:0,27:0
+house H41 needs=26:41 lookup=26:0
+house H77 needs=26:16,77:16 lookup=26:0,77:1
+house H79 needs=26:16,79:16 lookup=26:0,79:1
+house H0 needs=26:0 lookup=26:0
+house H20 needs=26:16,27:0 lookup=26:0,27:1
+
+# --- demand: trunc(menge*E*256/44236) - trunc(stock/16). 16*128*256 = 524288 = 11*44236 + 37692.
+demand D-zero menge=16 e=128 stock=0 => demand=11
+demand D-trunc-stock menge=16 e=128 stock=15 => demand=11
+demand D-stock-1 menge=16 e=128 stock=31 => demand=10
+demand D-stock-10 menge=16 e=128 stock=160 => demand=1
+demand D-negative menge=16 e=128 stock=4096 => demand=-245
+demand D-big menge=100 e=640 stock=0 => demand=370
+demand D-e0 menge=16 e=0 stock=32 => demand=-2
+
+# --- amount = signed min(avail, demand, capacity)
+amt A-demand avail=100 demand=50 cap=768 => amount=50
+amt A-cap avail=100 demand=50 cap=30 => amount=30
+amt A-negative avail=100 demand=-3 cap=768 => amount=-3
+
+# --- X1 threshold trunc(R*Menge*256/4096), strict. R=10, Menge=41: 104960/4096 = 25.6 -> 25.
+choice X1-rej goods=G0 house=H41 e=128 res=640 stock=0 out=26,0 avail=25,0 => status=none score=-1 goods=0
+choice X1-acc goods=G0 house=H41 e=128 res=640 stock=0 out=26,0 avail=26,0 => status=chosen score=128 goods=26
+# residents 630/64 truncates to 9: 9*41*256/4096 = 94464/4096 = 23.06 -> 23
+choice X1-r23 goods=G0 house=H41 e=128 res=630 stock=0 out=26,0 avail=23,0 => status=none score=-1 goods=0
+choice X1-r24 goods=G0 house=H41 e=128 res=630 stock=0 out=26,0 avail=24,0 => status=chosen score=128 goods=26
+# the wrong reading "stock > residents*Menge" (410) would refuse an offer of 100
+choice X1-hundred goods=G0 house=H41 e=128 res=640 stock=0 out=26,0 avail=100,0 => status=chosen score=128 goods=26
+# zero residents: thr 0, an offer of 0 is not strictly greater
+choice X1-zero goods=G0 house=H41 e=128 res=0 stock=0 out=26,0 avail=0,0 => status=none score=-1 goods=0
+choice X1-one goods=G0 house=H41 e=128 res=0 stock=0 out=26,0 avail=1,0 => status=chosen score=128 goods=26
+
+# --- X2 tie order: s = trunc(1536*38/2048) = 28 for stock 38, urg 100; stock 30 gives s 22, urg 106.
+choice X2-tie goods=G0 house=H2 e=128 res=0 stock=38,38 out=26,27 avail=300,300 => status=chosen score=100 goods=26
+choice X2-b-wins goods=G0 house=H2 e=128 res=0 stock=38,30 out=26,27 avail=300,300 => status=chosen score=106 goods=27
+choice X2-a-wins goods=G0 house=H2 e=128 res=0 stock=30,38 out=26,27 avail=300,300 => status=chosen score=106 goods=26
+choice X2-a-rejected goods=G0 house=H2 e=128 res=0 stock=38,38 out=26,27 avail=0,300 => status=chosen score=100 goods=27
+choice X2-a-disabled goods=G0 house=H2 e=128 res=0 stock=38,38 out=26,27 avail=300,300 enabled=0,1 => status=chosen score=100 goods=27
+choice X2-both-disabled goods=G0 house=H2 e=128 res=0 stock=38,38 out=26,27 avail=300,300 enabled=0,0 => status=none score=-1 goods=0
+choice X2-not-needed goods=G0 house=H2 e=128 res=0 stock=0,0 out=40,0 avail=300,0 => status=none score=-1 goods=0
+
+# --- X3 skip rule: carried cargo with a non-zero amount zeroes its goods.
+choice X3-a-carried goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=26:256 => status=chosen score=128 goods=27
+choice X3-b-carried goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=27:256 => status=chosen score=128 goods=26
+choice X3-both goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=26:256,27:1 => status=none score=-1 goods=0
+choice X3-other-goods goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=28:256 => status=chosen score=128 goods=26
+# X17 side: a slot with the goods and amount 0 does not exclude it (the skip is by amount)
+choice X17-zero-amount goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=26:0 => status=chosen score=128 goods=26
+choice X17-zero-amount-b goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=26:256,27:0 => status=chosen score=128 goods=27
+# duplicate offers: A == B, both zeroed by one carried slot; without it A wins the tie
+choice dup-free goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,26 avail=300,300 => status=chosen score=128 goods=26
+choice dup-carried goods=G0 house=H2 e=128 res=0 stock=0,0 out=26,26 avail=300,300 carried=26:5 => status=none score=-1 goods=0
+
+# --- urgency s = min(trunc(1536*stock/2048), 160), urg = 128 - s, accepted when >= 0
+choice U-170 goods=G0 house=H2 e=128 res=0 stock=170,0 out=26,0 avail=300,0 => status=chosen score=1 goods=26
+choice U-171 goods=G0 house=H2 e=128 res=0 stock=171,0 out=26,0 avail=300,0 => status=chosen score=0 goods=26
+choice U-172 goods=G0 house=H2 e=128 res=0 stock=172,0 out=26,0 avail=300,0 => status=none score=-1 goods=0
+choice U-saturated goods=G0 house=H2 e=128 res=0 stock=10000,0 out=26,0 avail=300,0 => status=none score=-1 goods=0
+
+# --- IdSec chain: the urgency of a good is the maximum along its substitution chain.
+choice S-boost goods=GS house=H2 e=128 res=0 stock=300,0 out=26,0 avail=300,0 => status=chosen score=128 goods=26
+choice S-noboost goods=G0 house=H2 e=128 res=0 stock=300,0 out=26,0 avail=300,0 => status=none score=-1 goods=0
+choice S-cycle-both-full goods=GC house=H2 e=128 res=0 stock=300,300 out=26,0 avail=300,0 => status=none score=-1 goods=0
+choice S-cycle-one-empty goods=GC house=H2 e=128 res=0 stock=300,0 out=26,0 avail=300,0 => status=chosen score=128 goods=26
+choice S-depth-2 goods=GD house=H1 e=128 res=0 stock=300,300,0 out=26,0 avail=300,0 => status=chosen score=128 goods=26
+choice S-depth-2-full goods=GD house=H1 e=128 res=0 stock=300,300,300 out=26,0 avail=300,0 => status=none score=-1 goods=0
+choice S-selfloop-full goods=GL house=H2 e=128 res=0 stock=300,0 out=26,0 avail=300,0 => status=none score=-1 goods=0
+choice S-selfloop-empty goods=GL house=H2 e=128 res=0 stock=0,0 out=26,0 avail=300,0 => status=chosen score=128 goods=26
+
+# --- faults (P-3): a zero divisor is never "not chosen"
+choice F-e0 goods=G0 house=H2 e=0 res=0 stock=0,0 out=26,0 avail=300,0 => status=fault fault=choice_divisor score=-1 goods=0
+choice F-menge0 goods=G0 house=H0 e=128 res=0 stock=0 out=26,0 avail=300,0 => status=fault fault=choice_divisor
+choice F-b-candidate goods=G0 house=H20 e=128 res=0 stock=0,0 out=26,27 avail=300,300 => status=fault fault=choice_divisor
+choice F-b-skipped goods=G0 house=H20 e=128 res=0 stock=0,0 out=26,27 avail=300,300 carried=27:256 => status=chosen score=128 goods=26
+choice F-before-avail goods=G0 house=H20 e=128 res=0 stock=0,0 out=27,0 avail=0,0 => status=fault fault=choice_divisor
+choice F-chain goods=GS house=H20 e=128 res=0 stock=0,0 out=26,0 avail=300,0 => status=fault fault=choice_divisor
+choice F-a-skipped-no-fault goods=G0 house=H0 e=128 res=0 stock=0 out=26,27 avail=300,300 carried=26:256 => status=none score=-1 goods=0
+
+# --- supplier availability (8.8) and enabled
+avail V-stall goods=26 cls=MarketStall city=26:777 out=26,27 => avail=777 enabled=1
+avail V-stall-outside-range goods=76 cls=MarketStall city=76:5 out=76,0 => avail=5 enabled=1
+avail V-stall-flag0 goods=26 cls=MarketStall city=26:50 out=26,27 flags=0,1 => avail=50 enabled=0
+avail V-stall-flag1 goods=27 cls=MarketStall city=27:50 out=26,27 flags=0,1 => avail=50 enabled=1
+avail V-stall-not-output goods=28 cls=MarketStall city=28:50 out=26,27 => avail=50 enabled=0
+avail V-stall-no-table goods=200 cls=MarketStall city=26:1 out=26,27 => fault=goods_out_of_table
+avail V-public goods=77 cls=PublicService => avail=256 enabled=1
+avail V-school goods=77 cls=School => avail=256 enabled=1
+avail V-doctor goods=79 cls=Doctor => avail=256 enabled=1
+avail V-fire goods=80 cls=FireBrigade => avail=512 enabled=1
+avail V-inn goods=77 cls=Inn tavern=300 => avail=300 enabled=1
+avail V-plain goods=26 cls=Plain city=26:9 => avail=0 enabled=1
+avail V-market goods=26 cls=Market city=26:9 => avail=0 enabled=1
+avail V-house goods=26 cls=House city=26:9 => avail=0 enabled=1
+avail V-castle goods=26 cls=Castle city=26:9 => avail=0 enabled=1
+
+# --- X6 / X7 billing. Outside 26..40 nothing is billed and nothing taken, even with take.
+bill X6 goods=76 amount=300 take=1 store=76:100 billed=none => status=ok returned=300 store=76:100 billed=none
+bill X7 goods=26 amount=300 take=1 store=26:100 billed=none => status=ok returned=100 store=none billed=26:300
+# units: 512 = 2 t requested, 256 = 1 t in store
+bill U-two-tons goods=26 amount=512 take=1 store=26:256 billed=none => status=ok returned=256 store=none billed=26:512
+bill U-partial goods=26 amount=600 take=1 store=26:1000 billed=26:50 => status=ok returned=600 store=26:400 billed=26:650
+bill U-take0 goods=27 amount=300 take=0 store=27:1000 billed=none => status=ok returned=300 store=27:1000 billed=27:300
+bill U-take0-outside goods=76 amount=300 take=0 store=76:1000 billed=none => status=ok returned=300 store=76:1000 billed=none
+bill R-below goods=25 amount=10 take=1 store=25:5 billed=none => status=ok returned=10 store=25:5 billed=none
+bill R-first goods=26 amount=10 take=1 store=26:5 billed=none => status=ok returned=5 store=none billed=26:10
+bill R-last goods=40 amount=10 take=1 store=40:5 billed=none => status=ok returned=5 store=none billed=40:10
+bill R-above goods=41 amount=10 take=1 store=41:5 billed=none => status=ok returned=10 store=41:5 billed=none
+bill R-custom goods=76 amount=10 take=1 store=76:5 billed=none range=76,90 => status=ok returned=5 store=none billed=76:10
+bill R-custom-old goods=26 amount=10 take=1 store=26:5 billed=none range=76,90 => status=ok returned=10 store=26:5 billed=none
+# duplicate offers: the second bill sees an empty store but still bills the requested amount
+bill dup-second goods=26 amount=300 take=1 store=none billed=26:300 => status=ok returned=0 store=none billed=26:600
+bill zero-amount goods=26 amount=0 take=1 store=26:7 billed=none => status=ok returned=0 store=26:7 billed=none
+bill O-fits goods=26 amount=300 take=1 store=26:1000 billed=26:4294966995 => status=ok returned=300 store=26:700 billed=26:4294967295
+bill O-overflow goods=26 amount=300 take=1 store=26:1000 billed=26:4294966996 => status=billed_overflow returned=0 store=26:1000 billed=26:4294966996
+bill O-table goods=100 amount=10 take=1 store=none billed=none range=26,120 => status=out_of_table returned=0 store=none billed=none
+
+# --- house delivery: stock += amount*16, IdSec replayed once, checked u32.
+deliver L-one-ton goods=G0 house=H1 goods_id=26 amount=256 stock=0,0,0 => status=ok stock=4096,0,0 touched=1
+deliver L-100 goods=G0 house=H1 goods_id=27 amount=100 stock=1,2,3 => status=ok stock=1,1602,3 touched=1
+deliver L-replay goods=GS house=H2 goods_id=26 amount=100 stock=5,7 => status=ok stock=1605,1607 touched=2
+deliver L-replay-once goods=GD house=H1 goods_id=26 amount=100 stock=0,0,0 => status=ok stock=1600,1600,0 touched=2
+deliver L-replay-not-needed goods=GS house=H26 goods_id=26 amount=100 stock=0 => status=ok stock=1600 touched=1
+deliver L-not-needed goods=G0 house=H1 goods_id=40 amount=100 stock=1,2,3 => status=ok stock=1,2,3 touched=0
+deliver L-first-not-needed goods=GX house=H2 goods_id=40 amount=100 stock=0,0 => status=ok stock=0,0 touched=0
+deliver L-secondary-only goods=GS house=H2 goods_id=27 amount=100 stock=0,0 => status=ok stock=0,1600 touched=1
+deliver L-fits goods=G0 house=H1 goods_id=26 amount=256 stock=4294963199,0,0 => status=ok stock=4294967295,0,0 touched=1
+deliver L-overflow goods=G0 house=H1 goods_id=26 amount=256 stock=4294963200,0,0 => status=refused stock=4294963200,0,0 touched=0
+deliver L-replay-overflow goods=GS house=H2 goods_id=26 amount=100 stock=0,4294967000 => status=refused stock=0,4294967000 touched=0
+deliver L-same-slot goods=GS house=H00 goods_id=26 amount=100 stock=1000 => status=ok stock=4200 touched=2
+deliver L-same-slot-overflow goods=GS house=H00 goods_id=26 amount=100 stock=4294965000 => status=refused stock=4294965000 touched=0
+deliver L-zero goods=G0 house=H1 goods_id=26 amount=0 stock=7,7,7 => status=ok stock=7,7,7 touched=1
+
+# --- walker purchase (step B arrival): at most two purchases, score >= 12, min(avail, demand, cap).
+# X4: two goods bought, the second after the first is carried; the third slot stays empty.
+buy X4-two goods=G0 house=H1 e=128 res=0 stock=0,0,0 cls=MarketStall out=26,27 city=26:1000,27:1000 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=26:11,27:11,0:0 city=26:989,27:989 billed=26:11,27:11 purchases=2
+# X18: the choice takes A (urgency 128 through the chain) but A's demand is -7: nothing bought, and the
+# same slot is retried with the same result; B is not tried
+buy X18-no-advance goods=GS house=H2 e=128 res=0 stock=300,0 cls=MarketStall out=26,27 city=26:1000,27:1000 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=0:0,0:0,0:0 city=26:1000,27:1000 billed=none purchases=0
+# X17: a Doctor's bill returns 0, the goods is set with amount 0, the slot is not empty and its goods is
+# not excluded; two slots filled, no third pass
+buy X17-doctor goods=G0 house=H79 e=128 res=0 stock=0,0 cls=Doctor out=79,0 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=79:0,79:0,0:0 city=none billed=none purchases=2
+# X8: a public service supplies min(256, demand, cap) and touches neither the store nor billed
+buy X8-chapel goods=G0 house=H77 e=128 res=0 stock=0,0 cls=PublicService out=77,0 city=26:500 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=77:11,0:0,0:0 city=26:500 billed=none purchases=1
+buy X8-constant-256 goods=G0 house=H77 e=3000 res=0 stock=0,0 cls=PublicService out=77,0 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=77:256,0:0,0:0 city=none billed=none purchases=1
+buy X8-cap goods=G0 house=H77 e=128 res=0 stock=0,0 cls=PublicService out=77,0 cargo=0:0,0:0,0:0 cap=5 => status=ok cargo=77:5,0:0,0:0 city=none billed=none purchases=1
+# a (modded) service offering a consumer good bills the requested amount but never takes from the store
+buy X8-in-range goods=G0 house=H2 e=128 res=0 stock=0,0 cls=PublicService out=26,0 city=26:500 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=26:11,0:0,0:0 city=26:500 billed=26:11 purchases=1
+# X5: the cargo gets the returned amount (the store holds 5, the house wants 11)
+buy X5-small-store goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:5 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=26:5,0:0,0:0 city=none billed=26:5 purchases=1
+# two competing buyers: the first takes the whole store of 8, the second sees an empty store
+buy W-first goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:8 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=26:8,0:0,0:0 city=none billed=26:8 purchases=1
+buy W-second goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,0 city=none billed=26:8 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=0:0,0:0,0:0 city=none billed=26:8 purchases=0
+buy W-capacity goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:1000 cargo=0:0,0:0,0:0 cap=3 => status=ok cargo=26:3,0:0,0:0 city=26:997 billed=26:3 purchases=1
+# the score gate: stock 156 gives s 117, urgency 11 < 12 (nothing); stock 155 gives s 116, urgency 12
+buy G-11 goods=G0 house=H2 e=128 res=0 stock=156,0 cls=MarketStall out=26,0 city=26:1000 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=0:0,0:0,0:0 city=26:1000 billed=none purchases=0
+buy G-12 goods=G0 house=H2 e=128 res=0 stock=155,0 cls=MarketStall out=26,0 city=26:1000 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=26:2,0:0,0:0 city=26:998 billed=26:2 purchases=1
+buy full-cargo goods=G0 house=H1 e=128 res=0 stock=0,0,0 cls=MarketStall out=26,27 city=26:1000,27:1000 cargo=26:1,27:1,28:1 cap=768 => status=ok cargo=26:1,27:1,28:1 city=26:1000,27:1000 billed=none purchases=0
+buy start-at-slot-1 goods=G0 house=H1 e=128 res=0 stock=0,0,0 cls=MarketStall out=26,27 city=26:1000,27:1000 cargo=28:4,0:0,0:0 cap=768 => status=ok cargo=28:4,26:11,27:11 city=26:989,27:989 billed=26:11,27:11 purchases=2
+buy others-fetching goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,27 city=26:1000,27:1000 cargo=0:0,0:0,0:0 others=26:256 cap=768 => status=ok cargo=27:11,0:0,0:0 city=26:1000,27:989 billed=27:11 purchases=1
+buy inn goods=G0 house=H77 e=128 res=0 stock=0,0 cls=Inn out=77,0 tavern=100 input=27 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=77:11,0:0,0:0 city=none billed=27:11 purchases=1 tavern=89
+buy billed-overflow goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:100 billed=26:4294967290 cargo=0:0,0:0,0:0 cap=768 => status=fault cargo=0:0,0:0,0:0 city=26:100 billed=26:4294967290 purchases=0 fault=billed_overflow
+buy fault-divisor goods=G0 house=H2 e=0 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:100 cargo=0:0,0:0,0:0 cap=768 => status=fault cargo=0:0,0:0,0:0 city=26:100 billed=none purchases=0 fault=choice_divisor

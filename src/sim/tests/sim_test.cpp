@@ -597,7 +597,7 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0x2a6a20e2b3b55a26ULL); // empty_world at 127+B (sim_stream.py)
+    CHECK(sim::World().state_hash() == 0x2a6a20e2b3b55a26ULL); // empty_world at 127 (sim_stream.py)
     CHECK(sim::kStateHashVersion == 127);
     CHECK(sim::kPrngTimelineVersion == 4);
 }

@@ -7,13 +7,16 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include <doctest/doctest.h>
 
+#include <anno/sim/archive.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/island.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/world.hpp>
@@ -641,4 +644,131 @@ TEST_CASE("farm dispatch: a treeless forester sends, draws and releases at every
     CHECK(stats.forestry.cuts == 0);
     CHECK(farm.raw == 0);
     CHECK(farm.workers_out <= 1);
+}
+
+TEST_CASE("harvest state: hand-written bytes of a populated job and an ordered owner map") {
+    // MAP-ECON-1-CLOSE-1 C2: the stream-126 layout of docs/sim/forestry.md 2 and docs/sim/state.md,
+    // transcribed here byte by byte, independently of fields(): little-endian fixed widths, an enum
+    // one byte, a sequence/map count u64, an optional one presence byte (archive.hpp's rules). The
+    // values are nonzero and pairwise distinct so that a swapped, omitted or narrowed field moves
+    // the bytes; they are a layout probe, not a valid job (a wait and a route never coexist).
+    using Bytes = std::vector<std::uint8_t>;
+    sim::HarvestState h;
+    h.step = sim::HarvestStep::Cut; // 2
+    h.start_delay = 0x01020304U;
+    h.wait = 0x0A0B0C0DU;
+    h.target = sim::TileXY{-3, 0x00112233};
+    h.route = {sim::FixedPos{0x180, -0x102}, sim::FixedPos{0x7F000001, 0x5A00}};
+    h.next = 1;
+    h.along = 0x55667788U;
+    const Bytes job = {
+        0x02,                                           // step: Cut, u8
+        0x04, 0x03, 0x02, 0x01,                         // start_delay u32 0x01020304
+        0x0D, 0x0C, 0x0B, 0x0A,                         // wait u32 0x0A0B0C0D
+        0xFD, 0xFF, 0xFF, 0xFF,                         // target.x i32 -3
+        0x33, 0x22, 0x11, 0x00,                         // target.y i32 0x00112233
+        0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // route: count u64 2
+        0x80, 0x01, 0x00, 0x00,                         //   [0].x i32 0x180
+        0xFE, 0xFE, 0xFF, 0xFF,                         //   [0].y i32 -0x102
+        0x01, 0x00, 0x00, 0x7F,                         //   [1].x i32 0x7F000001
+        0x00, 0x5A, 0x00, 0x00,                         //   [1].y i32 0x5A00
+        0x01, 0x00, 0x00, 0x00,                         // next u32 1
+        0x88, 0x77, 0x66, 0x55,                         // along u32 0x55667788
+    };
+    REQUIRE(job.size() == 1 + 4 + 4 + 8 + 8 + 2 * 8 + 4 + 4);
+    sim::WriteArchive wa;
+    fields(wa, std::as_const(h));
+    CHECK(wa.data() == job);
+    // The wrong transcriptions the assertion must reject: start_delay and wait swapped, `along`
+    // omitted, the route count as a u32.
+    Bytes swapped = job;
+    std::swap_ranges(swapped.begin() + 1, swapped.begin() + 5, swapped.begin() + 5);
+    const Bytes omitted(job.begin(), job.end() - 4);
+    Bytes narrow = job;
+    narrow.erase(narrow.begin() + 21, narrow.begin() + 25);
+    CHECK(wa.data() != swapped);
+    CHECK(wa.data() != omitted);
+    CHECK(wa.data() != narrow);
+    // The hand bytes read back to the same job, consuming exactly them.
+    sim::HarvestState back;
+    sim::ReadArchive r(job);
+    fields(r, back);
+    REQUIRE_MESSAGE(!r.failed(), r.error());
+    CHECK(r.remaining() == 0);
+    CHECK(back == h);
+    // In a Figure: the optional is the last field, a presence byte 0 without the job and 1 then the
+    // job's bytes with it (everything before it unchanged).
+    sim::Figure fig;
+    fig.id = sim::FigureId{0x21};
+    fig.kind = kWorker;
+    fig.job = 0x2a;
+    fig.cargo_88 = 0x100;
+    sim::WriteArchive without;
+    fields(without, std::as_const(fig));
+    fig.harvest = h;
+    sim::WriteArchive with;
+    fields(with, std::as_const(fig));
+    Bytes expect = without.data();
+    REQUIRE(expect.back() == 0x00);
+    expect.back() = 0x01;
+    expect.insert(expect.end(), job.begin(), job.end());
+    CHECK(with.data() == expect);
+
+    // Island::claims (enhanced owners): u64 count, then per entry i32 x, i32 y, u64 worker id, in
+    // ascending TileXY order (x, then y). The keys are chosen so that y-first order differs.
+    Rig rig = make_rig();
+    rig.place(kForester, 110, 110, sim::Farm{});
+    const sim::World w = create(rig, registry());
+    sim::Island is = *w.islands()[0];
+    REQUIRE(is.claims.empty());
+    // Where the map sits in the island's stream: just before the scope "tiles" (the empty map is
+    // its 8-byte count 0 there). The trace locates it; the bytes under test are hand-written.
+    sim::TraceArchive tr;
+    fields(tr, std::as_const(is));
+    std::uint64_t off = 0;
+    const sim::TraceEntry* prev = nullptr;
+    bool found = false;
+    for (const sim::TraceEntry& e : tr.entries()) {
+        if (e.kind == sim::Prim::ScopeOpen && e.name == "tiles") {
+            found = true;
+            break;
+        }
+        off += e.width;
+        prev = &e;
+    }
+    REQUIRE(found);
+    REQUIRE(prev != nullptr);
+    REQUIRE(prev->kind == sim::Prim::Count);
+    REQUIRE(prev->value == 0);
+    const Bytes empty = tr.bytes_written();
+    REQUIRE(off >= 8);
+    is.claims[sim::TileXY{4, 3}] = sim::FigureId{0x0A};
+    is.claims[sim::TileXY{-2, 7}] = sim::FigureId{0x1112131415161718ULL};
+    is.claims[sim::TileXY{4, -6}] = sim::FigureId{0x0000000200000001ULL};
+    const Bytes owners = {
+        0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // count u64 3
+        0xFE, 0xFF, 0xFF, 0xFF, 0x07, 0x00, 0x00, 0x00, // (-2, 7)
+        0x18, 0x17, 0x16, 0x15, 0x14, 0x13, 0x12, 0x11, //   worker 0x1112131415161718
+        0x04, 0x00, 0x00, 0x00, 0xFA, 0xFF, 0xFF, 0xFF, // (4, -6)
+        0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, //   worker 0x0000000200000001
+        0x04, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, // (4, 3)
+        0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, //   worker 0x0A
+    };
+    const auto splice = [&](const Bytes& middle) {
+        Bytes out(empty.begin(), empty.begin() + static_cast<std::ptrdiff_t>(off - 8));
+        out.insert(out.end(), middle.begin(), middle.end());
+        out.insert(out.end(), empty.begin() + static_cast<std::ptrdiff_t>(off), empty.end());
+        return out;
+    };
+    sim::WriteArchive full;
+    fields(full, std::as_const(is));
+    CHECK(full.data() == splice(owners));
+    // Rejected transcriptions: y-first order (4, -6), (4, 3), (-2, 7); the id as a u32.
+    Bytes y_first(owners.begin(), owners.begin() + 8);
+    y_first.insert(y_first.end(), owners.begin() + 24, owners.end());
+    y_first.insert(y_first.end(), owners.begin() + 8, owners.begin() + 24);
+    Bytes id32 = owners;
+    id32.erase(id32.begin() + 20, id32.begin() + 24);
+    CHECK(full.data() != splice(y_first));
+    CHECK(full.data() != splice(id32));
 }

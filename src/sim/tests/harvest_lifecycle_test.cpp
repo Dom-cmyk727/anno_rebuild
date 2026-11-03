@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -861,4 +862,50 @@ TEST_CASE("harvest end: a non-harvest figure's end is unchanged by the shared he
     sim::sync_figure_lists(reg, carrier, true, s2);
     CHECK(s2.releases.empty());
     CHECK(reg.expiry.size() == 1);
+}
+
+TEST_CASE("harvest walk: exact and fractional arrival boundaries keep whole ticks") {
+    // MAP-ECON-1-CLOSE-1 C2 (docs/sim/forestry.md 3.2, the accepted quantization): the shared walk
+    // charges ceil(distance / speed) whole ticks and returns the rest; the difference from a
+    // fractional arrival is below one tick per completed walk, and whole ticks are never dropped.
+    // One tile east: 256 in 1/256 tile = 2^24 in 2^-24 tile (an axis segment).
+    const sim::FixedPos a{100 * 256 + 128, 50 * 256 + 128};
+    const sim::FixedPos b{101 * 256 + 128, 50 * 256 + 128};
+    const auto walk = [&](std::uint64_t ticks, std::uint32_t speed) {
+        std::vector<sim::FixedPos> route{a, b};
+        std::uint32_t next = 1, along = 0;
+        sim::FixedPos pos = a;
+        const auto rest = sim::walk_ticks(pos, sim::WalkRef{route, next, along}, ticks, speed);
+        return std::tuple{rest, pos, along};
+    };
+    REQUIRE(sim::segment_length_q24(a, b) == (1ULL << 24));
+    // Exact: speed 2^22 (a quarter tile per tick) arrives after exactly 4 ticks.
+    {
+        const auto [r3, p3, along3] = walk(3, 1U << 22);
+        CHECK_FALSE(r3.has_value());
+        CHECK(along3 == 3U << 22);
+        const auto [r4, p4, along4] = walk(4, 1U << 22);
+        REQUIRE(r4.has_value());
+        CHECK(*r4 == 0);
+        CHECK(p4 == b);
+        const auto [r10, p10, along10] = walk(10, 1U << 22);
+        REQUIRE(r10.has_value());
+        CHECK(*r10 == 6); // 10 - 4, every surplus tick carried
+    }
+    // Fractional: the worker's speed 33554: 2^24 = 500 * 33554 + 216, so the true arrival is at
+    // 500.0064 ticks. 500 ticks do not arrive; 501 arrive with 0 left (ceil); 600 leave 99, where a
+    // fractional carry would be 99.9936: the loss is below one tick.
+    {
+        REQUIRE((1ULL << 24) == 500ULL * 33554 + 216);
+        const auto [r500, p500, along500] = walk(500, 33554);
+        CHECK_FALSE(r500.has_value());
+        CHECK(along500 == 500U * 33554U);
+        const auto [r501, p501, along501] = walk(501, 33554);
+        REQUIRE(r501.has_value());
+        CHECK(*r501 == 0);
+        CHECK(p501 == b);
+        const auto [r600, p600, along600] = walk(600, 33554);
+        REQUIRE(r600.has_value());
+        CHECK(*r600 == 99);
+    }
 }

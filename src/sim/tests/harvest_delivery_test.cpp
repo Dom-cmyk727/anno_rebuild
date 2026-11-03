@@ -284,3 +284,80 @@ TEST_CASE("forester chain controls: no tree, unreachable trees, no road, a full 
         CHECK(std::int64_t(l.delivered) - std::int64_t(l.consumed) - std::int64_t(l.raw) == 0);
     }
 }
+
+TEST_CASE(
+    "harvest delivery: another goods and owner: each worker's resource reaches its own home") {
+    // MAP-ECON-1-CLOSE-1 C2 (the shared job is data-driven, docs/sim/forestry.md 8): the existing
+    // alternate fixture's grain farm (player 1, island 1, KORN from GETREIDE, one reaper of
+    // capacity 3 t, ROUTETYPE ERNTE 0x29, radius 3) beside the forester (player 0, island 0, HOLZ
+    // from BAUM). Each island holds one resource of each goods inside its farm's radius, so a
+    // worker that took the other goods, or a delivery to the other home, moves the counts below.
+    // Expected (derived from the rules, not read back): the reaper cuts the two ripe fields (2 *
+    // 256 = 512 < 768 capacity, so it searches again, finds no GETREIDE, and walks home with 512);
+    // the forester's worker cuts its one tree (256 = capacity). Each delivery enters its own home's
+    // Farm.raw (StoreDelta::Input index 0): consumed + raw = 512 at the grain farm, 256 at the
+    // forester. The tree on island 1 and the field on island 0 stay as they are.
+    Rig r = make_rig();
+    r.object(205, 103, kGrain, 1);
+    r.object(203, 106, kGrain, 1);
+    r.object(201, 104, kTree, 1);
+    r.object(115, 111, kTree);
+    r.object(112, 114, kGrain);
+    r.place(kGrainFarm, 203, 103, sim::Farm{}, 1);
+    r.place(kForester, 110, 110, sim::Farm{});
+    const auto types = registry();
+    sim::World w = create(r, types);
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    const sim::BuildingId forester_id = sim::make_building_id(sim::IslandId{0}, 1);
+    const sim::BuildingId grain_id = sim::make_building_id(sim::IslandId{1}, 1);
+    const auto farm = [&](sim::BuildingId id) -> const sim::Farm& {
+        const sim::Building* b = w.islands()[sim::island_of(id).v]->find_building(id);
+        REQUIRE(b != nullptr);
+        REQUIRE(b->type == (id == grain_id ? kGrainFarm : kForester));
+        return std::get<sim::Farm>(b->payload);
+    };
+    REQUIRE(farm(grain_id).raw == 0);
+    REQUIRE(farm(forester_id).raw == 0);
+    const auto object = [&](std::size_t island, std::int32_t x, std::int32_t y) {
+        const sim::Island& is = *w.islands()[island];
+        return is.tiles.object(is.tile_index(x, y));
+    };
+    bool saw_reaper_cargo = false;
+    for (int k = 0; k < 3000; ++k) { // 30 000 ticks: both walks, two 6 500-tick cuts, the walk home
+        w.advance(20);
+        for (const sim::Figure* f : figures(w)) {
+            if (f->kind == kReaper && !f->expiry_stamp.has_value()) {
+                CHECK(f->owner == sim::PlayerId{1});
+                CHECK(f->cargo_goods == goods_id("GETREIDE"));
+                CHECK(sim::island_of(f->home) == sim::IslandId{1});
+                saw_reaper_cargo = saw_reaper_cargo || f->cargo_88 > 0;
+            }
+        }
+        if (k % 500 == 499) {
+            REQUIRE(w.check_invariants() == "");
+        }
+    }
+    CHECK(saw_reaper_cargo);
+    // The resources: both ripe fields became their young stage, the forester's tree its sapling;
+    // the other goods' resource on each island is untouched.
+    CHECK(object(1, 205, 103) == kStalks.v);
+    CHECK(object(1, 203, 106) == kStalks.v);
+    CHECK(object(1, 201, 104) == kTree.v);
+    CHECK(object(0, 115, 111) == kSapling.v);
+    CHECK(object(0, 112, 114) == kGrain.v);
+    // Credit follows the three cuts, all delivered, none lost.
+    CHECK(stats.forestry.cuts == 3);
+    CHECK(stats.forestry.raw_credited_88 == 3 * 256);
+    CHECK(stats.forestry.raw_delivered_88 == 3 * 256);
+    CHECK(stats.forestry.raw_lost_88 == 0);
+    // Each home received its own worker's cargo: Farm.raw plus what its steps consumed.
+    const auto consumed = [&](sim::BuildingId id) {
+        const auto it = stats.forestry.farms.find(id);
+        return it != stats.forestry.farms.end() ? it->second.consumed_88 : std::uint64_t{0};
+    };
+    CHECK(consumed(grain_id) + farm(grain_id).raw == 512);
+    CHECK(consumed(forester_id) + farm(forester_id).raw == 256);
+    CHECK(consumed(grain_id) > 0); // the grain farm's recipe ran on the delivered GETREIDE
+    CHECK(w.check_invariants() == "");
+}

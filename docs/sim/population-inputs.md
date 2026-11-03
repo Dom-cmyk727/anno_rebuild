@@ -43,7 +43,7 @@ Each card: source and ownership / width, sign, units / default, absent, explicit
 * **Width:** u8 goods id in the original; engine `GoodsId` (u32), "none" = 0.
 * **Default / absent / zero:** absent = 0 = none. In the post-pass `lookup[0]` is the sentinel (no need has ware 0, section 2.5), so IdSec 0 never copies.
 * **Validation (A):** the name must resolve in the goods table; the id must be below the goods count. Shipped values: `KLEIDUNG→SEIDESTOFFE`, `KIRCHE→KAPELLE`, `HOCHSCHULE→SCHULE`, `KATHETRALE→KIRCHE` (**P**, 4 of 56 goods rows).
-* **Consumer:** the group post-pass substitution only reads ids in the infrastructure range; `KLEIDUNG`'s IdSec is outside it, so its first reader is not the group pass (delivery/trade: P5 or later, unread). Mood and decay do not use the lookup.
+* **Consumers (confirmed, `population.md` §5):** house delivery `+0xc0` (`0x10076610`) delivers the same amount again for the `IdSec` good (P5); the choice slot `+0xd4` (`0x10076670`) walks the `IdSec` chain for urgency (`0x10076960`, `0x100769f0`) (P5); `SetGroup` (`0x10076b90`) also gives a carried satisfaction ≥ 102 to the `IdSec` chain (P3). The group post-pass reads only ids in the infrastructure range, so `KLEIDUNG`'s `IdSec` (outside it) is read by delivery/choice/`SetGroup`, not by the group pass. Mood and decay do not use it; **it is not an input of the kernel**.
 * **Digest / persistence:** as 2.2. **Unsupported:** chains deeper than the one pass handles (section 3, example C9).
 
 ### 2.4 Configuration of infrastructure goods — configuration; package B/C (OD-6)
@@ -83,7 +83,7 @@ Each card: source and ownership / width, sign, units / default, absent, explicit
 
 * **Rule (**D** `0x10014afc`-`0x10014b76`):** `lookup` has one entry per goods id, initialised to the sentinel `n`; for need slots `j = 0 … n−1` in order `lookup[ware(j)] = j` (a repeated ware overwrites: the **last** slot wins, both slots stay in the vector and `n` counts both). If `ware(j) == tavern_goods` and `lookup[tavern_alias_goods]` is still the sentinel, `lookup[tavern_alias_goods] = j` (the first tavern wins; a real alias-goods need blocks it).
 * **Width / sentinel:** slot index u32, sentinel = `n`; `lookup` sized by the registry's goods count (the original: a 96-byte table).
-* **Consumer:** delivery (`0x1007664c`, P5). Mood recognises a tavern by the need's ware, not by `lookup[alias]`; decay does not use the lookup. So the lookup is **not** an input of the kernel; it is built in package C because it comes out of the same pass.
+* **Consumers:** delivery (`0x1007664c`, P5) and `UpgradeCheck` (`0x10075dd0`, through the current lookup, P3, `population.md` §5). Mood recognises a tavern by the need's ware, not by `lookup[alias]`; decay does not use the lookup. So the lookup is **not** an input of the kernel; it is built in package C because it comes out of the same pass.
 
 ### 2.10 One-pass `IdSec` substitution — post-pass; package C
 
@@ -103,13 +103,13 @@ Each card: source and ownership / width, sign, units / default, absent, explicit
 3. Per group: initialise `lookup` to the sentinel (the vector length `n`, value `n`); walk the needs: set `lookup[ware] = slot`, update `infra_end` (2.7) and the forced bit (2.8), apply the tavern alias (2.9).
 4. Per group: the one-pass `IdSec` substitution over the infrastructure range (2.10).
 5. Per group: `infra_end = max(infra_end, goods_end)`.
-6. Groups are processed independently; an unnamed hole between named slots is the cleared, empty group (n = 0) and processes to `goods_end = infra_end = 0`.
+6. Groups are processed independently. (The original also processes an unnamed hole between named slots as a cleared, empty group; the current parser rejects skipped slots, so that case never reaches the registry and applies only to a future change.)
 
 The result is a pure function of (needs, goods `id_sec`, config). Because it is derived it needs no digest of its own and cannot drift from its inputs; a test recomputes it twice and against a separate transcription.
 
 ## 4. The corrected endpoint-versus-Force distinction
 
-The earlier round-cy note said both endpoints were post-pass products decided by Force. Re-read:
+The first T32.6 note (round cy, `cfd85ec59d38f986bf1f0bde7d2ddcc5e6e2db88`, replaced by `075ede70`) said both endpoints were post-pass products decided by Force. Re-read:
 
 | Value | Written by | Decided by | Force? |
 |---|---|---|---|
@@ -140,7 +140,7 @@ Shipped rows come from an independent script over the raw `BGruppen.dat` (it rep
 | C6 | Second tavern: `lookup[tavern]` takes the later slot, the alias stays on the first (`0x10014b65`-`0x10014b6d`) | alias follows the last | [WIRTSHAUS, WIRTSHAUS] → `goods_end` 0, `infra_end` 2, `lookup[WIRTSHAUS] = 1`, `lookup[ALKOHOL] = 0` | |
 | C7 | A real alias-goods need blocks the alias | alias overwritten | [ALKOHOL, WIRTSHAUS] → `lookup[ALKOHOL] = 0` | |
 | C8 | One-pass substitution, ascending: KIRCHE (83) is processed before KATHETRALE (84) (`0x10014b78`-`0x10014bab`) | direct needs only, or descending | PIONIER: KIRCHE→KAPELLE slot 5, KATHETRALE→that same slot 5 (shipped); a descending or single-lookup pass leaves KATHETRALE at the sentinel | |
-| C9 | A substitute with a higher id is **not** followed | two passes | modded `IdSec`: HOCHSCHULE(81)→KIRCHE(83), KIRCHE→KAPELLE, need [KAPELLE] only → `lookup[81]` stays the sentinel; `lookup[83] = lookup[84] = 0` | synthetic, not a file row |
+| C9 | A substitute with a higher id is **not** followed | two passes | modded `IdSec`: HOCHSCHULE(81)→KIRCHE(83) (KIRCHE→KAPELLE and KATHETRALE→KIRCHE inherited from the shipped data), need [KAPELLE] only → `lookup[81]` stays the sentinel; `lookup[83] = lookup[84] = 0` | synthetic, not a file row |
 | C10 | `Ware` naming goods 0 | accepted | refused at registry build (adaptation: `lookup[0]` is the IdSec-none sentinel) | refusal test |
 | C11 | Empty group | crash or garbage | no needs → n 0, `goods_end` 0, `infra_end` 0, empty lookup | |
 | C12 | `ware > infra_last` arm | n unconditional | with `goods_end` 0 → `n`; with `goods_end` non-zero → unchanged (instruction fact; no shipped example) | synthetic only |

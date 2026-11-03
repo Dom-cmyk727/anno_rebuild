@@ -31,6 +31,7 @@ FORMULA AND UNITS CONTRACT (all integers; "/" below is division truncating towar
        any of f, b, i < 0: flag 0x20 -> -2, else min(f, b, i).   (flag 0x10 is not read here)
        else flags & 0x30: -2 if flag 0x20 else -1; else trunc((f + b + i + 1) / 3).
      mood outside -2..2 -> NotEvaluated(MoodOutOfRange).
+     A need whose stage index is >= 32 -> NotEvaluated(StageIndexOutOfDomain) (not a mask bit).
   6. growth: sub1 = trunc(res/64); res1 = res + vermehr[mood]; add1 = trunc(res1/64);
        res1 outside i32 -> NotEvaluated(Overflow).
      mood >= 0: if res1 > wohnmax*64: cap_sub = trunc(res1/64) - wohnmax, res_final = wohnmax*64,
@@ -49,6 +50,8 @@ Vector file grammar (one record per line, '#' comments):
         => key=value ...   (status= is required; every named key is checked)
   mood NAME f= b= i= flags= => mood=N
   Result keys: status last e stock lowest spawn mood res csub cadd capsub b64 arm effects reason cap
+  and the mood diagnostics s0 (slot-0 score, cap 128), avg (average of the goods/tavern scores, 128 when
+  none) and lowi (lowest forced infrastructure score, start 160), present when E' != 0.
   An 'evaluated' vector must name at least mood, res and e (a nominal-success check). Exit codes: 0 all
   vectors agree; 1 a vector disagrees; 2 malformed input or zero vectors.
 """
@@ -61,7 +64,7 @@ sys.path.insert(0, HERE)
 import group_derived_ref as gd  # noqa: E402  (derive() only)
 
 GOODS = 143
-RESULT_KEYS = {'status', 'last', 'e', 'stock', 'lowest', 'spawn', 'mood', 'res', 'csub', 'cadd',
+RESULT_KEYS = {'s0', 'avg', 'lowi', 'status', 'last', 'e', 'stock', 'lowest', 'spawn', 'mood', 'res', 'csub', 'cadd',
                'capsub', 'b64', 'arm', 'effects', 'reason', 'cap'}
 
 
@@ -101,6 +104,8 @@ def kernel(g, bau, roles, inp):
     stock = list(inp['stock'])
     lowest = 0x7FFFFFFF
     for j, (ware, force, menge) in enumerate(needs):
+        if bau.get(ware, 0) >= 32:
+            return dict(r, status='not_evaluated', reason='stage_index_out_of_domain')
         if (inp['mask'] >> bau.get(ware, 0)) & 1:
             stock[j] = tdiv(127 * stock[j], 128)
             d = e1 * menge
@@ -136,6 +141,7 @@ def kernel(g, bau, roles, inp):
         avg = 128 if cnt == 0 else tdiv(total, cnt)
         b = g['bedarf'][tdiv(avg + 4, 8)]
         i = g['infra'][tdiv(low_i + 4, 8)]
+        r['s0'], r['avg'], r['lowi'] = score(0, 128), avg, low_i
         mood = combine(f, b, i, inp['flags'])
     r['mood'] = mood
     if not -2 <= mood <= 2:

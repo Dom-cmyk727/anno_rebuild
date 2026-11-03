@@ -65,6 +65,8 @@ struct VectorGroup {
     std::shared_ptr<const sim::TypeRegistry> registry;
     sim::SimConfig cfg;
     std::optional<sim::PopulationView> view;
+    std::vector<sim::GoodsInfo> goods;
+    sim::HouseGroupDerived derived;
 };
 
 std::string absent() {
@@ -124,6 +126,9 @@ std::map<std::string, std::string> render(const sim::HouseKernelResult& r) {
     }
     m["lowest"] = num(r.lowest);
     m["spawn"] = r.spawn_condition.has_value() ? (*r.spawn_condition ? "1" : "0") : absent();
+    m["s0"] = num(r.food_score);
+    m["avg"] = num(r.average_score);
+    m["lowi"] = num(r.infra_score);
     m["mood"] = num(r.mood);
     m["res"] = num(r.residents_64);
     m["csub"] = num(r.counter_sub);
@@ -221,15 +226,36 @@ TEST_CASE("house kernel: every hand-derived vector") {
             g.cfg.population_infra_last = g.roles.infra_last;
             g.cfg.population_tavern_goods = g.roles.tavern_goods;
             g.cfg.population_tavern_alias_goods = g.roles.tavern_alias_goods;
-            sim::TypeRegistry::Builder b;
-            b.goods(goods).house_groups({g.group}).config(g.cfg);
-            auto built = b.build();
-            REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
-            g.registry = built.value();
-            auto view = g.registry->population_view(0, g.cfg);
-            REQUIRE(view.ok());
-            g.view = view.value();
+            const bool beyond_mask = std::any_of(g.bau.begin(), g.bau.end(),
+                                                 [](const auto& kvp) { return kvp.second >= 32; });
+            if (beyond_mask) {
+                // The registry refuses a stage index outside the mask; the kernel's own domain
+                // check is reached through a hand-assembled view.
+                g.goods = goods;
+                REQUIRE(sim::derive_group(g.group, g.goods, g.roles, g.derived).empty());
+                sim::PopulationView v;
+                v.group = &g.group;
+                v.derived = &g.derived;
+                v.goods = g.goods;
+                v.roles = g.roles;
+                g.view = v;
+            } else {
+                sim::TypeRegistry::Builder b;
+                b.goods(goods).house_groups({g.group}).config(g.cfg);
+                auto built = b.build();
+                REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+                g.registry = built.value();
+                auto view = g.registry->population_view(0, g.cfg);
+                REQUIRE(view.ok());
+                g.view = view.value();
+            }
             groups[t[1]] = std::move(g);
+            VectorGroup& placed = groups[t[1]];
+            if (!placed.registry) { // the hand-assembled view must point into the stored group
+                placed.view->group = &placed.group;
+                placed.view->derived = &placed.derived;
+                placed.view->goods = placed.goods;
+            }
         } else if (t[0] == "mood") {
             const auto arrow =
                 static_cast<std::size_t>(std::find(t.begin(), t.end(), "=>") - t.begin());
@@ -285,10 +311,46 @@ TEST_CASE("house kernel: every hand-derived vector") {
         }
     }
     // The file really exercised every status (a function that returned one status for all fails).
-    CHECK(vectors >= 60);
+    CHECK(vectors >= 70);
     CHECK(evaluated >= 30);
     CHECK(skipped >= 5);
     CHECK(refused >= 8);
+}
+
+TEST_CASE("house kernel: missing inputs are typed, not successful") {
+    sim::HouseKernelInputs in;
+    in.now = 2500;
+    in.gate_period = 2500;
+    // No population view on a taken gate.
+    auto r = sim::house_kernel(in);
+    CHECK(r.status == sim::HouseKernelStatus::NotEvaluated);
+    CHECK(r.reason == sim::NotEvaluatedReason::MissingGroup);
+    // A skipped gate needs no view: it is unchanged, not an error.
+    in.now = 100;
+    CHECK(sim::house_kernel(in).status == sim::HouseKernelStatus::Skipped);
+    // A stock list of the wrong length.
+    sim::HouseGroup g;
+    g.wohnmax = 8;
+    g.needs = {sim::HouseNeed{26, false, 16}, sim::HouseNeed{27, false, 16}};
+    sim::SimConfig cfg;
+    cfg.house_groups = 1;
+    sim::TypeRegistry::Builder b;
+    b.goods(sim::original_goods()).house_groups({g}).config(cfg);
+    auto built = b.build();
+    REQUIRE(built.ok());
+    auto view = built.value()->population_view(0, cfg);
+    REQUIRE(view.ok());
+    in.now = 2500;
+    in.view = &view.value();
+    std::vector<std::uint32_t> one{0};
+    in.stock = one;
+    r = sim::house_kernel(in);
+    CHECK(r.reason == sim::NotEvaluatedReason::StockSizeMismatch);
+    std::vector<std::uint32_t> two{0, 0};
+    in.stock = two;
+    in.residents_64 = 64;
+    in.e = 128;
+    CHECK(sim::house_kernel(in).reason != sim::NotEvaluatedReason::StockSizeMismatch);
 }
 
 TEST_CASE("house kernel: a partition of calls and a saved partial last") {

@@ -54,8 +54,8 @@ def check(cmd, vectors=None, timeout=20.0, min_vectors=40):
     expect('correct vector', code, 0)
     code, out = run(cmd, HEAD + GOOD + 'status=evaluated last=2500 e=999 mood=0 res=64\n', timeout)
     expect('wrong expectation', code, 1)
-    if 'e' not in out:
-        bad.append('wrong expectation: no key named in the output')
+    if 'expected 999' not in out:
+        bad.append('wrong expectation: the output does not name the expected value')
     expect('evaluated without result keys',
            run(cmd, HEAD + GOOD + 'status=evaluated last=2500\n', timeout)[0], 2)
     if vectors:

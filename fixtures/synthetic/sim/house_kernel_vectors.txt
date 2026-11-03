@@ -15,6 +15,12 @@ group B wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 n
 group B2 wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T2 bedarf=T2 infra=T2 needs=26:0:12
 group B3 wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T3 bedarf=T3 infra=T3 needs=26:0:12
 group Z wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=
+group A32 wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:0:16,27:1:16,28:1:16,76:1:16,82:0:16 bau=28:32
+# Q: slot 0 forced (positional, force never read), goods LEDER F, SALZ unforced, ALKOHOL F, then the
+# infrastructure WIRTSHAUS F (tavern), BADEHAUS F, 78 unforced. Mask 0 keeps stocks undecayed: score = trunc(3*stock/4).
+group Q wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:1:16,27:1:16,28:0:16,29:1:16,76:1:16,77:1:16,78:0:16
+# U: an UNFORCED tavern must not feed the average
+group U wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=T1 needs=26:1:16,76:0:16
 group R wohnmax=8 nodown=0 vermehr=-16,-8,0,8,16 nahrung=T1 bedarf=T1 infra=TI needs=26:0:16,11:1:16 roles=10,12,11,5
 
 # --- D1 / D1b gate: unsigned u16 difference, one step per call. Body B0 (zero stocks): E'=128, mood -2,
@@ -89,6 +95,23 @@ vec O-ctrl group=B now=2500 last=0 period=2500 mask=1 e=0 res=2147483000 stock=3
 
 # --- bound roles (infra 10..12, tavern 11): a hard-coded 0x4c would treat need 1 as a consumer need
 vec R-roles group=R now=2500 last=0 period=2500 mask=1 e=128 res=64 stock=400,200 prev=8 => status=evaluated e=128 stock=396,198 lowest=148 mood=1 res=72
+
+# --- mood score loops (diagnostics s0 avg lowi); every wrong loop range / force test / cap moves one of them
+# Q1: s0 = min(225,128)=128; goods loop slots 1..3: slot1 180->128, slot2 unforced, slot3 30 -> sum 158 cnt 2;
+#     tavern slot4 45 -> sum 203 cnt 3, avg trunc(203/3)=67; infra forced min(45,150)=45 (slot6 unforced = 0 ignored).
+#     idx: f 16 -> 2, avg 8 -> 0, lowi 6 -> 0 => mood trunc((2+0+0+1)/3)=1, res 64+8=72.
+vec Q1 group=Q now=2500 last=0 period=2500 mask=0 e=128 res=64 stock=300,240,0,40,60,200,0 prev=8 => status=evaluated e=128 stock=300,240,0,40,60,200,0 lowest=2147483647 s0=128 avg=67 lowi=45 mood=1 res=72 csub=1 cadd=1 cap=0
+# Q2: infra scores above 128 (150, 165->160) and tavern 150 -> fed as 128: sum 0+0+128, cnt 3, avg 42; lowi 150.
+#     f idx 0 -> -2 => negative path: min(-2, T1[5]=-1, T1[19]=2) = -2; downgrade arm, 48 < 64 -> res 64.
+vec Q2 group=Q now=2500 last=0 period=2500 mask=0 e=128 res=64 stock=0,0,0,0,200,220,0 prev=8 => status=evaluated e=128 s0=0 avg=42 lowi=150 mood=-2 res=64 csub=1 cadd=0 arm=downgrade
+# U1: the unforced tavern (score 75) does not feed: cnt 0 -> avg 128, lowi stays 160.
+vec U1 group=U now=2500 last=0 period=2500 mask=0 e=128 res=64 stock=0,100 prev=8 => status=evaluated e=128 s0=0 avg=128 lowi=160 mood=-2 res=64 csub=1 cadd=0
+# --- boundaries of the correction and the flag bits of the floor
+vec F-64 group=A now=2500 last=0 period=2500 mask=1 e=128 res=80 stock=0,0,0,0,0 prev=8 => status=evaluated e=128 mood=-2 csub=1 cadd=1 res=64 arm=downgrade effects=downgrade b64=<absent>
+vec F-65 group=A now=2500 last=0 period=2500 mask=1 e=128 res=81 stock=0,0,0,0,0 prev=8 => status=evaluated e=128 mood=-2 csub=1 cadd=1 res=65 arm=downgrade b64=<absent>
+vec F-flag20 group=A now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 flags=0x20 prev=8 => status=evaluated e=128 mood=-2 res=63 arm=remove effects=remove
+vec F-flag30 group=A now=2500 last=0 period=2500 mask=1 e=128 res=79 stock=0,0,0,0,0 flags=0x30 prev=8 => status=evaluated e=128 mood=-2 res=63 arm=remove effects=remove
+vec X-stage32 group=A32 now=2500 last=0 period=2500 mask=0xffffffff e=128 res=64 stock=0,0,0,0,0 prev=8 => status=not_evaluated reason=stage_index_out_of_domain
 
 # --- D12 mood combination precedence
 mood C1 f=-1 b=5 i=5 flags=0 => status=evaluated mood=-1

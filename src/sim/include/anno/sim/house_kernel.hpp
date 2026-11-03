@@ -70,6 +70,10 @@ struct HouseKernelResult {
     std::vector<std::uint32_t> stock;    // after the decay; empty until the loop ran
     std::optional<std::int64_t> lowest;  // 0x7fffffff when no need was stage-enabled
     std::optional<bool> spawn_condition; // only with walker facts; a condition, never a spawn
+    /// Mood diagnostics (present when E' != 0): the slot-0 score (cap 128), the average of the
+    /// goods and tavern scores (128 when none) and the lowest forced infrastructure score (start
+    /// 160).
+    std::optional<std::int64_t> food_score, average_score, infra_score;
     std::optional<int> mood;
     std::optional<std::int64_t> counter_sub, counter_add; // trunc(res/64) before / after growth
     std::optional<bool> cap_crossed;                      // mood >= 0 paths only

@@ -122,6 +122,9 @@ HouseKernelResult house_kernel(const HouseKernelInputs& in) {
         const int f = group.nahrung[static_cast<std::size_t>((s0 + 4) / 8)];
         const int b = group.bedarf[static_cast<std::size_t>((avg + 4) / 8)];
         const int i = group.infra[static_cast<std::size_t>((low_i + 4) / 8)];
+        r.food_score = s0;
+        r.average_score = avg;
+        r.infra_score = low_i;
         mood = house_mood_combine(f, b, i, in.mood_flags);
     }
     r.mood = mood;

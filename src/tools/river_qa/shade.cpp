@@ -139,10 +139,9 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
                         render::river_flow_shade(px, py, f, sd, slope, t, detail, params, rv).light;
                 } else {
                     const float pyw = py + raise_px;
-                    light = render::river_shade(
-                                {px / static_cast<float>(tw) + pyw / static_cast<float>(th),
-                                 pyw / static_cast<float>(th) - px / static_cast<float>(tw)},
-                                sd, slope, t)
+                    light = render::river_shade(render::screen_tile(px, pyw, static_cast<float>(tw),
+                                                                    static_cast<float>(th)),
+                                                sd, slope, t)
                                 .light;
                     legacy = true;
                 }
@@ -174,7 +173,7 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
             p[0] = 255, p[1] = 0, p[2] = 255;
             continue;
         }
-        const float sx = (f.vx - f.vy) * static_cast<float>(tw) * 0.5F;
+        const float sx = (f.vy - f.vx) * static_cast<float>(tw) * 0.5F;
         const float sy = (f.vx + f.vy) * static_cast<float>(th) * 0.5F;
         const float speed = std::hypot(f.vx, f.vy);
         const float hue = (std::atan2(sy, sx) / 6.2831853F) + 0.5F;
@@ -196,7 +195,7 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
                 continue;
             }
             const render::FlowSample& f = flows[o];
-            const float sx = (f.vx - f.vy) * static_cast<float>(tw) * 0.5F;
+            const float sx = (f.vy - f.vx) * static_cast<float>(tw) * 0.5F;
             const float sy = (f.vx + f.vy) * static_cast<float>(th) * 0.5F;
             const float len = std::hypot(sx, sy);
             if (len < 1e-3F) {

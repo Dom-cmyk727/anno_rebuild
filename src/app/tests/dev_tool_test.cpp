@@ -108,7 +108,7 @@ struct Window {
     /// resampled_view settled on (its own definition). Drawable pixel = (scene - edge) * scale,
     /// less half a pixel for the pixel's centre.
     [[nodiscard]] std::pair<float, float> point_at(int x, int y) const {
-        const double sx = (x - y) * tw / 2.0, sy = (x + y) * th / 2.0 + th / 2.0;
+        const double sx = (y - x) * tw / 2.0, sy = (x + y) * th / 2.0 + th / 2.0;
         double edge_x = 0, edge_y = 0, s = 1.0;
         if (scale == 0) {
             edge_x = static_cast<double>(std::lround(cx - w / 2.0));
@@ -205,7 +205,7 @@ TEST_CASE("dev tool: a click over a known tile builds there through the window's
                 // leave it), so the target is on screen at every level.
                 const double off = 1.0 / std::max(lv.scale, 1.0);
                 Window win{sc,
-                           (t.x - t.y) * lv.tw / 2.0 - 230.3 * off,
+                           (t.y - t.x) * lv.tw / 2.0 - 230.3 * off,
                            (t.x + t.y) * lv.th / 2.0 + 170.7 * off,
                            lv.scale,
                            lv.tw,
@@ -246,7 +246,7 @@ TEST_CASE("dev tool: under continuous zoom a point just inside a tile's edge pic
         CAPTURE(tw);
         const int w = 1600, h = 1000;
         const double u = t.x + 0.05, v = t.y + 0.5;
-        const double sx = (u - v) * tw / 2.0, sy = (u + v) * th / 2.0;
+        const double sx = (v - u) * tw / 2.0, sy = (u + v) * th / 2.0;
         // cx - w / (2 s) = floor(sx) - 300 + 0.9, and likewise in y.
         const double cx = std::floor(sx) - 300.0 + 0.9 + w / (2.0 * scale);
         const double cy = std::floor(sy) - 200.0 + 0.9 + h / (2.0 * scale);
@@ -271,7 +271,7 @@ TEST_CASE(
     doctest::test_suite("dev_tool")) {
     // Review of package B (P2-1): the scene places an island at the integer iso::tile_top of its
     // origin, (x + y) * 21 / 2 at group 1, so an odd sum is drawn 0.5 px above the continuous
-    // rule. The pointer is a whole pixel whose centre lies 0.25 px below tile T's upper-right
+    // rule. The pointer is a whole pixel whose centre lies 0.25 px below tile T's upper-left
     // edge (v = T.y, from corner (T.x, T.y) to (T.x + 1, T.y)) as the island was drawn: the
     // integer offset plus the continuous local position. The continuous rule alone puts that
     // edge 0.5 px lower, above the pixel: tile T.y - 1.
@@ -286,7 +286,7 @@ TEST_CASE(
         const auto top = render::tile_top(x0, y0, group);
         // The edge's midpoint as drawn, and a window around it.
         const double lu = t.x - x0 + 0.5, lv = t.y - y0;
-        const double xe = top.first + (lu - lv) * tw / 2.0;
+        const double xe = top.first + (lv - lu) * tw / 2.0;
         const double ye = top.second + (lu + lv) * th / 2.0;
         Window win{sc,   xe + 100.3, ye - 80.6, 0, static_cast<double>(tw), static_cast<double>(th),
                    1600, 1000,       1.0F};
@@ -298,7 +298,7 @@ TEST_CASE(
         for (int dx = 0; dx < 2 && !at; ++dx) {
             const double px = std::floor(xe - edge_x) + dx;
             const double xc = edge_x + px + 0.5;
-            const double y_edge = ye + (xc - xe) * th / tw;
+            const double y_edge = ye - (xc - xe) * th / tw;
             const double py = std::floor(y_edge - edge_y - 0.5) + 1.0; // first centre below
             const double d = edge_y + py + 0.5 - y_edge;
             if (d > 0.0 && d < 0.5) {
@@ -447,7 +447,7 @@ TEST_CASE("dev tool: a resized window maps the same tile with its new frame" *
     for (const auto& [w, h] :
          std::vector<std::pair<int, int>>{{1920, 1080}, {801, 333}, {3456, 1944}}) {
         CAPTURE(w);
-        Window win{sc, (mx - my) * 21.0, (mx + my) * 10.5, 0, 42, 21, w, h, 2.0F};
+        Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, w, h, 2.0F};
         const auto at = win.point_at(t.x, t.y);
         if (!tool.enabled()) {
             feed(tool, win, {key(SDLK_B)});
@@ -463,7 +463,7 @@ TEST_CASE("dev tool: off the city's island, outside the window and non-finite po
           doctest::test_suite("dev_tool")) {
     const auto sc = scene();
     const double mx = kX0 + 15, my = kY0 + 15;
-    Window win{sc, (mx - my) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
+    Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
     app::DevTool tool(setup());
     feed(tool, win, {key(SDLK_B)});
     // Open sea next to the island, and the tile just outside its far corner.
@@ -495,7 +495,7 @@ TEST_CASE("dev tool: press, move, cancel, release and focus-loss sequences make 
           doctest::test_suite("dev_tool")) {
     const auto sc = scene();
     const double mx = kX0 + 15, my = kY0 + 15;
-    const Window win{sc, (mx - my) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
+    const Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
     const auto at = [&win](int dx, int dy) { return win.point_at(kX0 + dx, kY0 + dy); };
     SUBCASE("the tool off: the window keeps its events") {
         app::DevTool tool(setup());

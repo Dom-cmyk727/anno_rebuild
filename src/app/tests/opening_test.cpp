@@ -942,8 +942,8 @@ TEST_CASE("the opening map's far levels down to level 4 stay built (game files)"
 // stands where the sim's coast rule accepts it, at its stored rotation and origin: the rule's
 // rotation (the shore edge per rotation) is the files' rotation. Measured 2026-11-03: 62
 // warehouses, each accepted at its stored rotation (a few also at a second one, at corners). What
-// looked wrong was the picture: the renderer's projection is the mirror of the original's
-// (docs/testing/ship-opening-playtest.md).
+// looked wrong was the picture: the renderer's projection was the mirror of the original's
+// (docs/testing/ship-opening-playtest.md; fixed 2026-11-03, docs/render/iso.md "Handedness").
 TEST_CASE(
     "founding sites, real files: the original's own warehouses pass the coast rule as stored") {
     const auto dir = anno::test::game_dir();

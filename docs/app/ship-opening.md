@@ -29,9 +29,14 @@ shown at once). The facing follows the direction of that segment and turns by at
 a ship that does not move shows the sim's own `dir16`. The hit test uses the drawn position (`FrameProjection`); the facts, the
 commands and the HUD tile stay on the sim's positions.
 
-**Facing frame.** The figure's 16 facing frames run the other way round from `dir16` (measured on screenshots of one ship sailing
-the eight directions, and by the owner's report that a ship sailing to the right showed its bow to the left): `dir16` d is frame
-`(12 - d) mod 16` (`ShipLayer::facing_frame`; the original's own mapping is still untraced, `docs/render/iso.md`).
+**Facing frame.** Frame k of the figure's 16 facing frames shows its bow towards screen compass 45 + 22.5 k degrees (measured on
+screenshots of one ship sailing the eight directions, 2026-11-03). In the original's handedness (`docs/render/iso.md`,
+"Handedness") `dir16` d heads the same way, so `dir16` d is frame d (`ShipLayer::facing_frame`), as the original draws a scenario
+ship's facing `attr`. Measured in the mirrored picture before the handedness fix, the same frames gave `(12 - d) mod 16`. Re-checked
+2026-11-03 in the corrected projection: for `dir16` 0, 2, …, 14, frame `facing_frame(d)` of figure 1505 (group 1) beside the
+heading's screen direction (`((vy − vx) · tw/2, (vx + vy) · th/2)`); every bow follows its heading (frame 10's bowsprit points
+west, frames 0/4/8/12 north-east/south-east/south-west/north-west). A contact sheet of the frames the viewer draws, not a live
+recording of a sailing ship; the owner's playtest is the live check.
 
 **The water.** The opening starts with enhanced water on the GPU (`E` toggles). Each moving ship is a source in the wave
 simulation (`fluid::ShipWake`, `FluidGpu::set_ships`, `GpuFrame::set_wakes`; render-only): the hull raises the water ahead of it and
@@ -140,7 +145,7 @@ checkpoint. The recorded hashes are the state hash after each turn that ran comm
 See the playtest card. Additionally: the controls and the publication are tested through the production window on
 the CPU renderer (SDL's dummy driver) and on the RTX 4090 (Vulkan); native 4K, a Radeon window, physical display
 latency, five-seat load and original-runtime fidelity of the ship facings are not claimed. The sprite for a
-facing is frame `(12 - dir16) mod 16` of the figure's first sprite set (measured, section 1); the opening's
+facing is frame `dir16` of the figure's first sprite set (measured, section 1; `(12 - dir16) mod 16` in the mirrored picture before 2026-11-03); the opening's
 colours are a stand-in. Reporting a ship's arrival as "shown" is the delivery of a frame, not the display.
 
 **Waves through a zoom, second round** (owner playtest 2026-11-03). The window-size hysteresis was not enough: the wave
@@ -178,9 +183,9 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
   puts world +x to the lower left and +y to the lower right at every view rotation; `tile_top` puts +x to the lower right. In 68
   of the 69 non-square buildings every sprite rotation block fits the transposed footprint on our screen, original towns show
   their fences and hedges as combs, and the Kontor's piles stand along the shore. Drawn in the original's handedness (an
-  experiment, not committed) the same tiles show continuous fences and the Kontor's piles in the water. The fix is the renderer's
-  projection everywhere (CPU, GPU, picking, ground texels, ship facing frames) and is a task of its own; nothing is patched per
-  sprite here.
+  experiment, not committed) the same tiles show continuous fences and the Kontor's piles in the water. Fixed 2026-11-03 on
+  `task/iso-handedness-W4` (from `main`'s `claude/fervent-booth-e22bf1`): the projection everywhere (CPU, GPU, picking, ship facing
+  frames; the ground texel orientation re-run is unchanged), `docs/render/iso.md` "Handedness"; nothing is patched per sprite.
 - *The overview after a founding.* A founding or a building marks the chunks over its island stale at every zoom level; a stale
   chunk keeps drawing until its replacement arrives, and the background prewarm built missing overview chunks only, so the next
   zoom out rebuilt the island's whole overview stack on demand. The prewarm now also rebuilds a stale resident chunk (test

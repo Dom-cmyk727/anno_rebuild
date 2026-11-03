@@ -78,7 +78,8 @@ std::optional<SeaPattern> SeaPattern::build(const formats::anlagen::AnlagenFile&
     out.step_ms = anim.second;
     const int raise = lift.scaled(kSeaLevel, 1, group);
     // Lattice points whose sprites can reach the pattern rectangle: its tile
-    // range (x ∈ [0, 2p], y ∈ [−p, p]) plus a margin of 8 tiles.
+    // range (x ∈ [−p, p], y ∈ [0, 2p]; screen x = (y − x) · tw/2) plus a
+    // margin of 8 tiles.
     const int p = kPeriodTiles;
     const auto npx = static_cast<std::size_t>(out.width * out.height);
     for (std::size_t step = 0; step < steps; ++step) {
@@ -95,12 +96,12 @@ std::optional<SeaPattern> SeaPattern::build(const formats::anlagen::AnlagenFile&
             return cv;
         };
         Canvas sprite = blank({0, 0, 0, 0}), filled = blank(water);
-        for (int y = -p - 8; y < p + 8; ++y) {
+        for (int y = -8; y < 2 * p + 8; ++y) {
             if (rem_euclid(y, 2) != 0) {
                 continue;
             }
             const int x0 = 2 * rem_euclid(y / 2, 2);
-            for (int x = -8; x < 2 * p + 8; ++x) {
+            for (int x = -p - 8; x < p + 8; ++x) {
                 if (rem_euclid(x - x0, 4) != 0) {
                     continue;
                 }

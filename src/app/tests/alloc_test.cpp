@@ -388,7 +388,7 @@ app::DevTool hovering(const std::shared_ptr<const render::Scene>& scene, sim::Ty
         static_cast<void>(tool.handle({app::ToolInput::Kind::Rotate, 0, 0}, nullptr));
     }
     const auto [tw, th] = render::kTile[1];
-    const int cx = (x - y) * tw / 2, cy = (x + y) * th / 2 + th / 2;
+    const int cx = (y - x) * tw / 2, cy = (x + y) * th / 2 + th / 2;
     const render::Rect view{cx - 800, cy - 500, 1600, 1000};
     const app::PointerFrame frame = app::pointer_frame(view, nullptr, 1, tw, th, scene, 1600, 1000);
     static_cast<void>(tool.handle({app::ToolInput::Kind::Move, 800, 500}, &frame));

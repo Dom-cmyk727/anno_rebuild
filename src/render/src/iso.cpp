@@ -36,8 +36,9 @@ void over(std::uint8_t* dst, const std::uint8_t* src) {
 Canvas Canvas::for_island(const insel::Island& island, std::size_t group, int margin) {
     const auto [tw, th] = kTile[group];
     const int w = island.width, h = island.height;
-    const int left = -h * tw / 2;
-    const int right = w * tw / 2;
+    // Corner (w, 0) is the leftmost point, corner (0, h) the rightmost.
+    const int left = -w * tw / 2;
+    const int right = h * tw / 2;
     const int bottom = (w + h) * th / 2;
     Canvas c;
     c.width = static_cast<std::size_t>(right - left);
@@ -81,7 +82,7 @@ std::optional<Rgba> Canvas::to_rgba() const {
 
 std::pair<int, int> tile_top(int x, int y, std::size_t group) {
     const auto [tw, th] = kTile[group];
-    return {(x - y) * tw / 2, (x + y) * th / 2};
+    return {(y - x) * tw / 2, (x + y) * th / 2};
 }
 
 int Lift::scaled(std::int64_t h_num, std::int64_t h_den, std::size_t group) const {
@@ -190,7 +191,7 @@ void draw_ground_grids(Canvas& canvas, std::size_t w, std::size_t hgt,
     const float tw0 = static_cast<float>(kTile[0].w);
     const float px_per_unit =
         static_cast<float>(lift.num) / static_cast<float>(lift.den) * tw / tw0;
-    // Tile (x, y) with u = x − y, v = x + y covers screen x in
+    // Tile (x, y) with u = y − x, v = x + y covers screen x in
     // [(u − 1)·tw/2, (u + 1)·tw/2] and y in [v·th/2 − raise, (v + 2)·th/2].
     const std::uint8_t top =
         heights.empty() ? std::uint8_t{0} : *std::max_element(heights.begin(), heights.end());
@@ -206,10 +207,11 @@ void draw_ground_grids(Canvas& canvas, std::size_t w, std::size_t hgt,
     const auto wi = static_cast<std::int64_t>(w), hi = static_cast<std::int64_t>(hgt);
     std::vector<std::size_t> order;
     for (std::int64_t v = std::max<std::int64_t>(vmin, 0); v <= std::min(vmax, wi + hi - 2); ++v) {
+        // u = v − 2x ∈ [umin, umax]: x ∈ [ceil((v − umax) / 2), floor((v − umin) / 2)].
         const std::int64_t xa = std::max<std::int64_t>(
-            std::max(div_euclid<std::int64_t>(v + umin + 1, 2), v - hi + 1), 0);
+            std::max(div_euclid<std::int64_t>(v - umax + 1, 2), v - hi + 1), 0);
         const std::int64_t xb =
-            std::min(std::min(div_euclid<std::int64_t>(v + umax, 2), v), wi - 1);
+            std::min(std::min(div_euclid<std::int64_t>(v - umin, 2), v), wi - 1);
         for (std::int64_t x = xa; x <= xb; ++x) {
             order.push_back(static_cast<std::size_t>((v - x) * wi + x));
         }
@@ -221,7 +223,7 @@ void draw_ground_grids(Canvas& canvas, std::size_t w, std::size_t hgt,
         const auto c = corners(heights, w, hgt, t % w, t / w);
         const float x = static_cast<float>(t % w), y = static_cast<float>(t / w);
         auto screen = [&](float cx, float cy, std::int64_t h) {
-            return Vec2{(cx - cy) * tw / 2.0F,
+            return Vec2{(cy - cx) * tw / 2.0F,
                         (cx + cy) * th / 2.0F - static_cast<float>(h) * px_per_unit};
         };
         // Corners A (x, y), C (x+1, y), B (x, y+1), D (x+1, y+1).
@@ -772,9 +774,11 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
     // E19: the pattern lives on the river's own water plane, not on the sea
     // plane: the pixel's tile position at the height of the river surface.
     const float pyw = py + view.lambda * f.level;
-    const std::array<float, 2> x{px / view.tw + pyw / view.th, pyw / view.th - px / view.tw};
+    const auto [tx, ty] = screen_tile(px, pyw, view.tw, view.th);
+    const std::array<float, 2> x{tx, ty};
     const std::array<float, 2> u{f.vx, f.vy};
-    // Light direction: the tile x axis (as fluid_shade), probe offset e.
+    // Light direction: the tile −x axis (as fluid_shade; the screen's top
+    // right since the handedness fix, docs/render/iso.md), probe offset e.
     constexpr float kProbe = 0.15F;
     const std::array<float, 2> x2{x[0] - kProbe, x[1]};
     const float psi = flow_psi(x);

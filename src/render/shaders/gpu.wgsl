@@ -140,6 +140,13 @@ fn floor_div(a: i32, b: i32) -> i32 {
     return select(q, q - 1, q * b > a);
 }
 
+// iso::screen_tile: the tile position on the height-0 plane shown at scene
+// point p (screen x = (y - x) tile_w / 2, y = (x + y) tile_h / 2; the
+// original's handedness), same operations in the same order.
+fn tile_pos(p: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(p.y / frame.tile_h - p.x / frame.tile_w, p.y / frame.tile_h + p.x / frame.tile_w);
+}
+
 // The texel of the chunk's textures that scene pixel `px` shows.
 fn chunk_local(px: vec2<i32>) -> vec2<i32> {
     if piece.kind == 0u {
@@ -523,8 +530,9 @@ fn flow_layer_field(x: vec2<f32>, u: vec2<f32>, t: f32, layer: RiverLayer, psi: 
 // river's own water plane (E19). `px` is the scene pixel.
 fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32, detail: f32) -> vec3<f32> {
     let pyw = px.y + frame.river_lambda * f.level;
-    let x = vec2<f32>(px.x / frame.tile_w + pyw / frame.tile_h, pyw / frame.tile_h - px.x / frame.tile_w);
+    let x = tile_pos(vec2<f32>(px.x, pyw));
     let u = f.v;
+    // Light direction: the -x tile axis (as fluid_shade).
     let probe = 0.15;
     let x2 = vec2<f32>(x.x - probe, x.y);
     let psi = flow_psi(x);
@@ -664,7 +672,8 @@ fn fluid_sample(w: vec2<f32>) -> FluidSample {
 }
 
 // Shading (light, foam, tint) from the simulated surface: relief lit from
-// the screen's top left (the -x tile axis), elevation brightens crests,
+// the -x tile axis (the screen's top right since the handedness fix, top left
+// before), elevation brightens crests,
 // foam from breaking, a foam edge where the swash runs up, depth tint.
 fn fluid_shade(fl: vec4<f32>, depth: f32, run: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
     let s1 = noise3(w.x * 0.22 + t * 0.00011, w.y * 0.22 - t * 0.00004, t * 0.00006);
@@ -771,7 +780,7 @@ fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     let sd = (f32(depth) - DEPTH_BIAS) / DEPTH_SCALE;
     var alpha = 1.0;
     let pw = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
-    let wpos = vec2<f32>(pw.x / frame.tile_w + pw.y / frame.tile_h, pw.y / frame.tile_h - pw.x / frame.tile_w);
+    let wpos = tile_pos(pw);
     let use_fluid = allow_fluid && enhanced && (flags & 2u) == 0u && fluid_inside(wpos);
     var fl = vec4<f32>(0.0);
     var run = 0.0;
@@ -815,7 +824,7 @@ fn sea_shade(pos: vec4<f32>, allow_fluid: bool) -> vec4<f32> {
     }
     if enhanced {
         let p = vec2<f32>(f32(px.x), f32(px.y) + frame.raise);
-        let w = vec2<f32>(p.x / frame.tile_w + p.y / frame.tile_h, p.y / frame.tile_h - p.x / frame.tile_w);
+        let w = tile_pos(p);
         let detail = sstep(24.0, 64.0, frame.tile_w);
         if (flags & 2u) != 0u {
             // Near the sea (shore = distance / kRiverBlend · 254) the river
@@ -922,8 +931,7 @@ fn ship_keel(src: vec2<i32>, layer: u32, x: i32, y: i32, h: i32) -> i32 {
 // Surface elevation (pixels, up) at scene pixel p: the simulated surface
 // where the wave window covers it, else 0.
 fn surface_px(p: vec2<f32>) -> f32 {
-    let w = vec2<f32>(p.x / frame.tile_w + (p.y + frame.raise) / frame.tile_h,
-                      (p.y + frame.raise) / frame.tile_h - p.x / frame.tile_w);
+    let w = tile_pos(vec2<f32>(p.x, p.y + frame.raise));
     if !fluid_inside(w) {
         return 0.0;
     }

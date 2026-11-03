@@ -115,14 +115,14 @@ struct Frame {
     render::Rect view;
     [[nodiscard]] std::pair<double, double> at(std::int32_t x, std::int32_t y) const {
         const auto [tw, th] = render::kTile[1];
-        const double sx = (x - y) * tw / 2.0, sy = (x + y) * th / 2.0 + th / 2.0;
+        const double sx = (y - x) * tw / 2.0, sy = (x + y) * th / 2.0 + th / 2.0;
         return {sx - view.x, sy - view.y};
     }
 };
 
 Frame frame_over(std::shared_ptr<const render::Scene> s, std::int32_t cx, std::int32_t cy) {
     const auto [tw, th] = render::kTile[1];
-    const int sx = (cx - cy) * tw / 2, sy = (cx + cy) * th / 2 + th / 2;
+    const int sx = (cy - cx) * tw / 2, sy = (cx + cy) * th / 2 + th / 2;
     Frame f;
     f.view = render::Rect{sx - 800, sy - 500, 1600, 1000};
     f.frame = app::pointer_frame(f.view, nullptr, 1, tw, th, std::move(s), 1600, 1000);

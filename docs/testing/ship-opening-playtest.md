@@ -52,7 +52,7 @@ here, facing the shore` or, where it would refuse, `not here: ...` / `too far fr
 (`NoRotationFits`, `OutOfRange`, ...); until the sim's answer arrives (a turn) it shows the terrain-only check (`it faces the shore`,
 `not on a coast: ...`).
 
-**Known picture fault (2026-11-03, not fixed on this branch):** our renderer draws the whole world as the mirror image of the original
+**Picture fault fixed (2026-11-03, `task/iso-handedness-W4`; still present on `task/W4-opening-1` until that merges):** our renderer drew the whole world as the mirror image of the original
 (the original's camera puts world +x to the lower left, ours to the lower right; found from the original's camera code and checked on
 original towns). Until that renderer fix lands, every turned building looks wrong, the Kontor included: its piles stand along the shore
 and its land-side wall faces the water, although the sim placed and turned it by the coast rule that every Kontor of the original's

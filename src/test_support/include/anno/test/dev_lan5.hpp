@@ -98,7 +98,7 @@ inline std::pair<int, int> tile_centre(const Lan5& l, sim::TileXY tile) {
         l.scene->ground_height(static_cast<float>(tile.x) + 0.5F, static_cast<float>(tile.y) + 0.5F)
             .value_or(0.0F);
     const double lift = h * 2.059 * tw / 84.0;
-    return {placed.offset.first + (lx - ly) * tw / 2,
+    return {placed.offset.first + (ly - lx) * tw / 2,
             placed.offset.second + (lx + ly) * th / 2 + th / 2 - static_cast<int>(lift)};
 }
 

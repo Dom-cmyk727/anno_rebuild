@@ -179,7 +179,8 @@ std::optional<gpu::Context> device_or_skip() {
 render::Rect digest_view(const render::Scene& scene, const char* name, std::size_t group, int w,
                          int h) {
     const auto b = *scene.bounds(group);
-    const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
+    // The same coast as the CPU digests (to the left since the handedness fix).
+    const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? -2000 : 0;
     return {b.x + b.w / 2 - w / 2 + dx, b.y + b.h / 2 - h / 2, w, h};
 }
 
@@ -1127,7 +1128,13 @@ TEST_CASE("a full sprite atlas drops new sprites without errors (game files)") {
     constexpr int kW = 1280, kH = 720;
     const auto target = g.offscreen_target(kW, kH);
     render::FrameRenderer cpu(4), on_gpu(4, false);
-    const render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    // 120 px below the digest view: since the handedness fix of 2026-11-03 the
+    // river there ends at the digest view's lower edge, and the two pieces
+    // the full atlas drops (the last in draw order, 9 of their 65 rows inside
+    // that view) showed no pixel, so the check that dropping shows had nothing
+    // to see. Here the river's end is inside the view.
+    render::Rect view = digest_view(*scene, name, 1, kW, kH);
+    view.y += 120;
     std::vector<std::uint32_t> out(std::size_t{kW} * kH);
     cpu.render(*scene, view, 1, 0, render::WaterStyle::Original, out.data());
     const auto st =
@@ -1840,7 +1847,7 @@ render::Px expected_river_pixel(const render::Scene& scene, const render::Chunk&
                 thf = static_cast<float>(render::kTile[group].h);
     const int raise = scene.lift.scaled(render::kSeaLevel, 1, group);
     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-    const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+    const std::pair<float, float> pos = render::screen_tile(px, py, twf, thf);
     render::FlowSample fs = render::river::flow_at(chunk.flow, sx, sy);
     if (flip) {
         fs.vx = -fs.vx;

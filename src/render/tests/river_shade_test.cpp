@@ -248,8 +248,9 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
         const render::FlowSample f = uniform(c.u, c.level);
         const std::uint64_t dt = 100;
         const float dts = static_cast<float>(dt) * 0.001F;
-        // Screen displacement of a point carried with u (tile axes -> screen).
-        const float sx = (c.u[0] - c.u[1]) * tw * 0.5F * dts;
+        // Screen displacement of a point carried with u (tile axes -> screen:
+        // iso::tile_top, +x to the lower left).
+        const float sx = (c.u[1] - c.u[0]) * tw * 0.5F * dts;
         const float sy = (c.u[0] + c.u[1]) * th * 0.5F * dts;
         auto cost = [&](float dx, float dy) {
             double sum = 0;
@@ -293,7 +294,7 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
 
 TEST_CASE("river flow shading: the pattern lives on the river's own water plane") {
     // A point of the river surface at tile (tx, ty) and height Z appears at
-    // pixel ((tx - ty) tw/2, (tx + ty) th/2 - lambda Z): its light must not
+    // pixel ((ty - tx) tw/2, (tx + ty) th/2 - lambda Z): its light must not
     // depend on Z (E19). On the sea plane (the legacy shimmer) a tier 48 units
     // higher is offset by 48 * 2.059 = ~99 px against the geometry.
     const render::RiverParams p = one_layer(1);
@@ -304,7 +305,7 @@ TEST_CASE("river flow shading: the pattern lives on the river's own water plane"
             std::array<float, 3> values{};
             std::size_t k = 0;
             for (const float z : {32.0F, 64.0F, 80.0F}) {
-                const float px = (tx - ty) * v.tw * 0.5F;
+                const float px = (ty - tx) * v.tw * 0.5F;
                 const float py = (tx + ty) * v.th * 0.5F - v.lambda * z;
                 values[k++] = light_at(p, uniform({0.6F, 0.1F}, z), px, py, 777);
             }
@@ -899,7 +900,8 @@ TEST_CASE("thin rivers: a one-tile river at every zoom group stays calm, the she
         const render::RiverView v{tw, th, 2.059F * tw / 84.0F};
         river::FlowPlane plane;
         plane.stride_px = stride;
-        plane.x0 = -static_cast<std::int32_t>(tw);
+        // The river runs along tile x, which goes to the screen's lower left.
+        plane.x0 = -17 * static_cast<std::int32_t>(tw);
         plane.y0 = 0;
         plane.nx = static_cast<std::uint32_t>(18.0F * tw / static_cast<float>(stride)) + 2;
         plane.ny = static_cast<std::uint32_t>(18.0F * th / static_cast<float>(stride)) + 2;
@@ -910,7 +912,7 @@ TEST_CASE("thin rivers: a one-tile river at every zoom group stays calm, the she
         plane.shear.assign(std::size_t{plane.nx} * plane.ny, 0);
         auto tile_of = [&](float x, float y) {
             const float yw = y + v.lambda * 32.0F;
-            return std::array<float, 2>{x / tw + yw / th, yw / th - x / tw};
+            return std::array<float, 2>{yw / th - x / tw, yw / th + x / tw};
         };
         for (std::uint32_t j = 0; j < plane.ny; ++j) {
             for (std::uint32_t i = 0; i < plane.nx; ++i) {
@@ -1012,7 +1014,8 @@ std::array<float, 2> noise_coord(const render::RiverLayer& layer, const render::
                                  float px, float py, std::uint64_t t) {
     const render::RiverView v = view0();
     const float pyw = py + v.lambda * f.level;
-    const std::array<float, 2> x{px / v.tw + pyw / v.th, pyw / v.th - px / v.tw};
+    const auto [tx, ty] = render::screen_tile(px, pyw, v.tw, v.th);
+    const std::array<float, 2> x{tx, ty};
     return render::flow_phases(x, {f.vx, f.vy}, t, layer, render::flow_psi(x)).c[0];
 }
 
@@ -1467,4 +1470,52 @@ TEST_CASE("river quality: Low takes one noise tap per phase and keeps the light 
             CHECK(std::fabs(v) < 0.2);
         }
     }
+}
+
+TEST_CASE("river flow shading: the emboss is lit along the -x tile axis") {
+    // The light of a ripple layer is its noise field's difference towards the light,
+    // (N(x) - N(x - e L)) / e (rivers.md 2.8), L = -x in tile space: the screen's top right
+    // since the handedness fix (iso.md, "Handedness"; tile (-1, 0) lies up-right of (0, 0)).
+    // Moving L to -y (the screen's top left) was tried and dropped: it weakened the flow's
+    // visible motion on real rivers (Q5). The light computed here with L = -x must be
+    // river_flow_shade's, and the one with L = -y must not.
+    const auto [ux, uy] = render::tile_top(-1, 0, 0);
+    CHECK(ux > 0);
+    CHECK(uy < 0);
+    render::RiverParams p;
+    p.count = 1;
+    p.quality = render::RiverQuality::High;
+    p.layers[0] = render::RiverLayer{1.3F, 2000.0F, 0.05F, 0.0F, 0.0F};
+    const render::FlowSample f = uniform({0.3F, -0.2F});
+    const render::RiverView v = view0();
+    const std::uint64_t t = 1234;
+    auto field = [](const render::FlowPhases& ph) {
+        const float m0 = render::noise3(ph.c[0][0], ph.c[0][1], 0.5F) - 0.5F;
+        const float m1 = render::noise3(ph.c[1][0], ph.c[1][1], 0.5F) - 0.5F;
+        const float norm = std::sqrt(ph.w[0] * ph.w[0] + ph.w[1] * ph.w[1]);
+        return (ph.w[0] * m0 + ph.w[1] * m1) / norm;
+    };
+    constexpr float kProbe = 0.15F;
+    int differs = 0, n = 0;
+    for (int j = 0; j < 12; ++j) {
+        for (int i = 0; i < 12; ++i) {
+            const float px = 300.0F + 7.0F * static_cast<float>(i);
+            const float py = 500.0F + 5.0F * static_cast<float>(j);
+            const auto [tx, ty] = render::screen_tile(px, py + v.lambda * f.level, v.tw, v.th);
+            const std::array<float, 2> x{tx, ty};
+            const std::array<float, 2> u{f.vx, f.vy};
+            const float psi = render::flow_psi(x);
+            const float na = field(render::flow_phases(x, u, t, p.layers[0], psi));
+            const float ny =
+                field(render::flow_phases({x[0], x[1] - kProbe}, u, t, p.layers[0], psi));
+            const float nx =
+                field(render::flow_phases({x[0] - kProbe, x[1]}, u, t, p.layers[0], psi));
+            const float light = light_at(p, f, px, py, t);
+            CHECK(light == doctest::Approx(p.layers[0].amp * (na - nx) / kProbe).epsilon(1e-5));
+            differs += std::fabs(light - p.layers[0].amp * (na - ny) / kProbe) > 1e-4F ? 1 : 0;
+            ++n;
+        }
+    }
+    // The other axis gives another light at nearly every pixel (the check discriminates).
+    CHECK(differs > n * 9 / 10);
 }

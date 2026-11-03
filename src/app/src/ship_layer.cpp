@@ -14,18 +14,16 @@ constexpr std::uint32_t kRingFigure = 0xFFFFU; // no FigurenHeader entry has thi
 
 } // namespace
 
-/// The sprite frame of a ship's facing (sim::Figure::dir16: 0 is -x, 4 is +y, 8 is +x, 12 is -y, so
-/// the step grows counter-clockwise on the screen, tile x running right-down and y left-down).
-/// MEASURED 2026-11-03 (owner playtest: a ship sailing to the right showed its bow to the left;
-/// frames of one ship captured sailing the eight directions): the figure's 16 facing frames run the
-/// other way round, frame k shows its bow towards compass 45 + 22.5 k degrees (frame 0 north-east,
-/// 4 south-east, 8 south-west, 12 north-west), so dir16 d is frame (12 - d) mod 16. The original's
-/// own mapping is not traced (docs/render/iso.md: "assumed"); a set that does not have 16 frames
-/// keeps the plain index.
+/// The sprite frame of a ship's facing (sim::Figure::dir16: 0 is -x, 4 is +y, 8 is +x, 12 is -y).
+/// MEASURED 2026-11-03 (owner playtest, frames of one ship captured sailing the eight directions):
+/// frame k shows its bow towards screen compass 45 + 22.5 k degrees (frame 0 north-east, 4
+/// south-east, 8 south-west, 12 north-west). In the original's handedness (docs/render/iso.md,
+/// "Handedness": tile x runs left-down, y right-down) those are the directions -x, +y, +x, -y,
+/// i.e. dir16 0, 4, 8, 12, both turning clockwise on the screen: frame = dir16, the frame the
+/// original shows for a scenario ship's facing `attr` too (docs/render/assets.md). Before the
+/// handedness fix the same measurement, taken in the mirrored picture, gave (12 - d) mod 16. A set
+/// that does not have 16 frames keeps the plain index.
 std::size_t ShipLayer::facing_frame(std::uint8_t dir16, std::size_t count) {
-    if (count == 16) {
-        return static_cast<std::size_t>((12 + 16 - (dir16 & 15U)) & 15U);
-    }
     return static_cast<std::size_t>(dir16) % count;
 }
 

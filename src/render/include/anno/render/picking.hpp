@@ -72,7 +72,7 @@ struct ScreenMap {
 /// (the test checks that).
 [[nodiscard]] inline std::pair<double, double> corner_point(double u, double v, double h,
                                                             const PickGeometry& g) {
-    const double x = (u - v) * g.tile_w / 2.0;
+    const double x = (v - u) * g.tile_w / 2.0;
     const double y = (u + v) * g.tile_h / 2.0 - g.lift * h;
     return {x, y};
 }
@@ -96,8 +96,8 @@ struct PickRay {
     }
     auto at = [&](double h) {
         const double yflat = sy + g.lift * h;
-        return std::pair{(yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0,
-                         (yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0};
+        return std::pair{(yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0,
+                         (yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0};
     };
     const auto [u0, v0] = at(0.0);
     const auto [u1, v1] = at(max_height);
@@ -108,7 +108,7 @@ struct PickRay {
 /// HEIGHT units at the world point (u, v), nullopt over open sea (height 0).
 ///
 /// The screen point is a ray through the heights: the world point drawn there at height h is
-/// at u + v = (sy + lift h) / (tile_h / 2), u - v = sx / (tile_w / 2), so a higher h is further
+/// at u + v = (sy + lift h) / (tile_h / 2), v - u = sx / (tile_w / 2), so a higher h is further
 /// forward in the painter's order (x + y). The visible ground is the ray's frontmost meeting with
 /// it (round ee, B2: an earlier fixed-point iteration from height 0 settled on the ground behind a
 /// raised tile): the ray is marched from kMaxGroundHeight down in steps of one HEIGHT unit (a
@@ -132,8 +132,8 @@ pick_tile(double sx, double sy, const PickGeometry& g,
     // The world point on the ray at height h.
     auto at = [&](double h) {
         const double yflat = sy + g.lift * h;
-        return std::pair{(yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0,
-                         (yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0};
+        return std::pair{(yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0,
+                         (yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0};
     };
     // Whether the ray at height h is at or below the ground there.
     auto meets = [&](double h) {

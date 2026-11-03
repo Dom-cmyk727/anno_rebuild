@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-03: Windows live opening; Mac forester termination closeout
+## Current dispatch — 2026-11-03: Windows live opening; Mac forestry accepted, population readiness
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -47,22 +47,24 @@ and valid evidence are retained. **MAP-ROAD-CLOSE-1's two-policy correction is
 fixed**, with clean gate source `eae9f4aeff6030c1886970fe3271160c538f15af` and
 comment/doc increment `aad1735bc00612695eb49ce356a4e0a42eb17d5d`. The combined
 local candidate/forester draft is `c82608bd22a8a86ff50dddc039143b46e658467c`.
-The atomic latest-object correction and E2.0 claim-bit/initial-delay repairs
-are accepted. **MAP-ECON-1 E2–E6 has been reviewed** at candidate
-`78a77625962017ff7784e2849e762193bf4c8c29`, clean gate source
-`a4982f5198f433b5e9dc631dbe86d6bade50e86f`. The real headless opening harvests
-existing trees, produces new wood and delivers **448 raw 8.8 units = 1.75 t**
-to the warehouse. Gates reconcile at Debug 1089/1091 and ASan/UBSan 236/237,
-with only declared opt-in skips, no failures and zero sanitizer reports. The
-ASan selection includes the real forestry and earlier sailed openings.
-The [direct forestry review](reviews/2026-11-03-map-econ1.md) retains that proof
-but reproduces **one P2**: ending an active harvest worker through the existing
-public end helper leaves invalid/unreloadable job state and, in enhanced mode,
-an orphan claim. **MAP-ECON-1-CLOSE-1 below is READY.** Fix the shared end path,
-add the specified small layout/alternate-content checks, and apply the explicit
-route-table, walk-quantization and shared-job decisions. No new production
-chain, broad repeated gate or change to Windows' input is assigned. The old
-E2.0–E6 packet is history; do not restart it.
+**MAP-ECON-1 and CLOSE-1 are ACCEPTED for the local headless scope** at
+`f40a76022c609092156c457509f0c49e7905f96e`; termination code/tests
+`1e9c770e6f0a44d84aa40fb5b04bad1818875a92`, small proof tests
+`44096b840bde4760e9b0520d1a9afaa1b0ec7288`, clean gate/contract source
+`e6b1083c4a967bb4b1f792e557929e271d0602ad`. The
+[direct closeout acceptance](reviews/2026-11-03-map-econ1-close1.md) closes the
+public-end P2: the original independent counterexample now passes 42/42
+assertions; Debug and ASan/UBSan each execute 202/202 without failures, skips
+or sanitizer reports. The previous real opening delivered **448 raw 8.8 wood
+units = 1.75 t** of new wood, with 28/28 fresh-process replay checkpoints;
+that valid evidence is retained at its original pin. Stream 126 and PRNG timeline
+4 remain the accepted Mac identity, unchanged by CLOSE-1. No further forestry
+correction or broad test round is assigned.
+**MAP-POP-READY-1 below is READY** on the existing Mac branch: reconcile the
+existing population audits/prerequisites against this accepted baseline and
+produce the bounded next immutable-input/house-calculation contract. This is
+preparation for gameplay, not authorization for a live House tick or merging old
+prerequisite branches. Windows' fixed input and assignment are unchanged.
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
@@ -73,7 +75,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ECON-1-CLOSE-1 READY.** Preserve the proven forestry opening; fix public end-path state/claim cleanup and complete the small persistence/content controls. Focused Debug/ASan and independent closeout review; reuse unaffected long evidence. Windows keeps exact `0c401c8d`. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ECON-1/CLOSE-1 ACCEPTED; MAP-POP-READY-1 READY.** Reconcile existing population prerequisites and draft the bounded next input/calculation contract with independent review. Documentation/evidence only; no new engine work or old branch integration. Windows keeps exact `0c401c8d`. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1113,7 +1115,118 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-ECON-1-CLOSE-1 — public termination and bounded acceptance checks · READY
+### MAP-POP-READY-1 — population prerequisites and next implementation contract · READY
+
+**Owner:** existing Mac gameplay executor, `task/MAP-2-original-like`, preserving
+newer owned work. Accepted baseline:
+`f40a76022c609092156c457509f0c49e7905f96e` (stream 126, PRNG timeline 4).
+Read the [forestry acceptance](reviews/2026-11-03-map-econ1-close1.md).
+
+**Goal:** turn the existing population research into one current, decision-ready
+implementation packet. W6.2 / MVP-B identify population, needs and taxes as the
+next critical gameplay line. Reuse the existing audits; do not restart broad RE
+or mistake a historical READY label for present authorization.
+
+**Scope:** documentation and bounded read-only evidence checks. Allowed tracked
+writes: `docs/sim/population-readiness.md` (create/update),
+`docs/sim/population-inputs.md` (create/update) and an appended REPORTS entry.
+Read other files and old refs without editing or integrating them. No `src/`,
+state/command version, golden, original asset, candidate, active-map, app/render,
+W4, coordinator, runner, TASKS or AGENTS change. No merge/rebase/task-code push.
+
+#### R0 — current baseline and prior evidence
+
+1. Fetch `origin/main` and read its AGENTS/CLAUDE, PLAN §§0.1–0.6, evidence
+   contract, testing README, current dispatch and linked forestry acceptance
+   without merging main. Reuse current host calibration; this packet requires
+   no build or broad test gate. Preserve others' processes and keep-awake.
+2. Read `docs/plan/lan-endless.md` W6.2 and `docs/plan/lan-mvp.md` MVP-B,
+   `docs/re/population.md`, `docs/sim/state.md` §4.7c, historical TASKS
+   T32.5/T32.6/P2.1–P2.3, applicable reports and the original-issues inventory.
+3. Recover the existing T32.6 audit read-only from
+   `075ede70166cc1272fd0fff9b4f2ac17d831a5d6` and its
+   `docs/sim/house-tick-readiness.md`. That file is absent from current main/MAP;
+   use `git show <ref>:<path>` rather than assuming it was integrated. Read the
+   P2.1 report/diff at `0964729c0c9a7d51977da3a1c27a577a695a703f` and the P1
+   baseline `b173d02217b378256a7aa04a614567c19232a4ce`. These are evidence inputs,
+   not automatically accepted source for this branch.
+4. Read the current scenario/player import, registry goods/groups, House payload,
+   class dispatch/no-op, save/digest and relevant tests. Produce one table:
+   prerequisite -> actual current producer/caller -> exact code/evidence pin ->
+   present/partial/missing -> accepted/author-reported/unreviewed. Check actual
+   behavior/code presence, not ancestry or a prior completion sentence alone.
+
+#### R1 — reconcile only the remaining population dependencies
+
+1. Reconcile the full player-mask import, corrected stage-mask evidence, house
+   construction/load/live paths and the T32.6 lifecycle/side-effect inventory.
+   Identify what is already present in the accepted MAP baseline and the minimum
+   absent prerequisites. Do not copy older stream versions or reset current
+   format identities to match old reports.
+2. Distinguish inputs first read by P2 calculations from transitions/unlocks/
+   walkers or deliveries first required by P3–P5. Keep direct effects separate
+   from transitive effects and PRNG draws. A pure partial kernel and a live House
+   tick are different deliverables; neither can silently stand in for the other.
+3. Use existing original-file/address evidence first. Read only a specific
+   unresolved producer/caller needed to resolve a contradiction in this inventory;
+   record exact source identity and result. Do not expand into a new complete
+   house/combat/economy RE campaign or require the Windows executor to run captures.
+4. Reconcile OQ-450/452/473 and related audit questions against existing decisions.
+   Mark established facts, approved adaptations, proposals and still-open points
+   separately. For an owner decision, state the exact affected behavior, available
+   evidence and bounded options. Do not choose new population policy implicitly.
+
+#### R2 — bounded input contract and discriminating examples
+
+1. Draft `population-inputs.md` for the audited first-reader immutable inputs:
+   goods BauFirst/IdSec, group lookup/endpoints/forced infrastructure and only the
+   other fields actually needed by the proposed slice. Distinguish loader values,
+   post-pass substitutions and derived values; do not treat endpoint derivation
+   as an unexplained Force side effect. Use the corrected prior audit.
+2. Specify data ownership, integer widths/signedness/units, configurable domains,
+   validation, default/absent/explicit-zero behavior, digest and future persistence
+   impact. Preserve data-driven/mod support without fixed player/type/group caps
+   or a new scripting framework. This packet changes no layout or version.
+3. Hand-derive a few smallest distinguishing cases from primary evidence for the
+   decisive masks, signed comparisons, substitutions, endpoints and boundaries.
+   Explain which plausible wrong interpretation each case rejects. For any timed
+   calculation proposed, identify the actual caller's supported cadence and
+   partial-state requirements. Add examples to the existing acceptance table;
+   no new testing framework, broad mutant campaign or copied C++ expected values.
+4. Propose three to five manageable implementation packages with exact files,
+   dependencies, proof cases and stopping criteria. Name the smallest implementable
+   first unit and its supported/excluded paths. Identify whether an OQ blocks
+   immutable metadata, a partial kernel, or only live effects. Do not self-release
+   P2.2/P2.3 or integrate an unreviewed prerequisite to make the table green.
+
+#### R3 — one independent review and stop
+
+1. An independent read-only reviewer checks the current/prior distinction,
+   first-reader inventory, source-derived examples, effect boundaries, owner
+   decisions and proposed implementation scope. It must verify decisive facts
+   independently rather than accept agreement among inherited notes. Fix findings
+   and obtain focused re-review; no duplicate broad audit or expensive gate.
+2. Check links/addresses/ref availability and `git diff --check`. Run an existing
+   cheap read-only reference only if it answers a named remaining question. No
+   C++ build, sailing opening, sanitizer matrix or unrelated gate is needed.
+3. Commit locally and report exact inspected/current/docs pins, reviewer identity,
+   scope/disposition, known missing prerequisites and the proposed first code unit.
+   If earlier CLOSE-1 reviewer identifiers are readily available, append them as
+   ordinary metadata; otherwise state the limit without reconstructing archives.
+4. Stop with a decision-ready population packet. Actual House ticks, taxes,
+   stage changes, unlocks, walkers, other production chains and prerequisite
+   integration await an explicit next task. Windows stays on exact
+   `0c401c8d084cfd9feb8aec846595291f87f22cce` throughout.
+
+### MAP-ECON-1-CLOSE-1 — ACCEPTED; POPULATION READINESS ABOVE IS CURRENT
+
+**Acceptance, 2026-11-03:** final candidate `f40a7602`, code `1e9c770e`,
+proof tests `44096b84`, clean gate/contract `e6b1083c`. Read the
+[direct acceptance](reviews/2026-11-03-map-econ1-close1.md). The original probe
+passes 42/42; Debug/ASan each execute 202/202. The following packet is history.
+Do not restart this closeout, redo the long opening or fix unrelated metadata
+as another source/test round.
+
 
 **Start:** existing Mac branch/worktree at reviewed candidate
 `78a77625962017ff7784e2849e762193bf4c8c29`; preserve newer owned work. Gate

@@ -81,7 +81,7 @@ order's arrival; `(shown)` is added only when a frame that was delivered (CPU: e
 present succeeded) was drawn from a view at or after the event's tick, otherwise `(not drawn yet)`.
 
 **Founding.** `F` with an own ship selected; the origin is derived with the sim's rule
-(`ox = max(0, cx − (w − 1)/2)`, the footprint of the cursor's rotation) and the advisory states reach
+(`ox = max(0, cx − (w − 1)/2)`, the footprint of the command's rotation) and the advisory states reach
 (`dx² + dy² ≤ 168`), island and footprint-in-island, the price and the ship's goods. Terrain, occupancy and
 ownership are not checked: the sim refuses with its reason and the world is unchanged. One click is one command;
 the mode ends.
@@ -164,3 +164,27 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
   the hull's length: it piles the water up at the bow and lets it fall back at the stern (`kShipSternShare` 0.6), nothing outside.
 - *Waves blinking on repeated zooms.* Every window switch restarted the 250 ms cross-fade from the analytic waves, also when the old
   waves were carried over; a carried switch no longer fades.
+
+**Fourth round** (owner playtest 2026-11-03, with screenshots of the original's Kontor placement).
+- *No manual turn.* The owner, from the original: a Kontor has no manual rotation, it aligns with the coastline by itself. `T` no
+  longer turns the founding cursor; every `FoundCmd` carries `kFoundingCursorRotation` (0) and the sim's rotation trials turn the
+  warehouse to the shore (the first of 0, 1, 2, 3 whose land edge is the beach and whose opposite edge is in the water). Which
+  rotation the original's own command carries is not traced (`docs/sim/ship-founding.md` §3.5).
+- *Turned and placed wrong: the picture, not the sim.* Every Kontor of the original's scenario files (62) passes the sim's coast
+  rule at its stored rotation and origin (test `the original's own warehouses pass the coast rule as stored`), and the session's
+  coast at (255,138) has land at −x and water at +x, where only rotation 1 passes. What looked wrong is the renderer: its
+  projection is the mirror image of the original's. The original's camera (AnnoFrame `0x100712c0`, Ry =
+  [[c,0,−s],[0,1,0],[s,0,c]], a = 135° + 90° per view rotation; AnnoDisplay `0x10011e60` projects with column 0 as a row vector)
+  puts world +x to the lower left and +y to the lower right at every view rotation; `tile_top` puts +x to the lower right. In 68
+  of the 69 non-square buildings every sprite rotation block fits the transposed footprint on our screen, original towns show
+  their fences and hedges as combs, and the Kontor's piles stand along the shore. Drawn in the original's handedness (an
+  experiment, not committed) the same tiles show continuous fences and the Kontor's piles in the water. The fix is the renderer's
+  projection everywhere (CPU, GPU, picking, ground texels, ship facing frames) and is a task of its own; nothing is patched per
+  sprite here.
+- *The overview after a founding.* A founding or a building marks the chunks over its island stale at every zoom level; a stale
+  chunk keeps drawing until its replacement arrives, and the background prewarm built missing overview chunks only, so the next
+  zoom out rebuilt the island's whole overview stack on demand. The prewarm now also rebuilds a stale resident chunk (test
+  `prewarm: a resident overview chunk marked stale is rebuilt in the background`; it fails without the change). Whether that is
+  all of "water and islands need a moment, islands flicker at the farthest zoom" is not known: the report line of the window
+  now says how many frames drew a visible chunk not built yet (and at which level) and how many wave windows were made or
+  carried over, so the next log can tell.

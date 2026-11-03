@@ -39,16 +39,21 @@ and `R` water, `B` the building tool, `Esc` / `Q` quit (Esc first cancels what i
 | right click open sea | order the selected ship there (one order per click; land and outside the world are refused locally) |
 | right drag / left drag | pan; a drag never selects and never orders |
 | `H` | stop the selected ship |
-| `F` | founding mode: the warehouse sprite follows the pointer; `T` or `Tab` rotates / cycles the type; left click sends the founding (one click, one command) |
+| `F` | founding mode: the warehouse sprite follows the pointer; `Tab` cycles the type; there is no manual turn (as in the original, the warehouse turns to the coast by itself; `T` does nothing here); left click sends the founding (one click, one command) |
 | `U` | unload mode: `Tab` next hold, `-` / `+` (or `Page Down` / `Page Up`, or `[` `]`; in this mode `-` / `+` set the quantity instead of zooming, the wheel still zooms) quantity −1 / +1 ton (`Shift`: 10), `Enter` sends exactly that hold and quantity to your nearest warehouse (left click one of your warehouses to choose it) |
 | `B` | building tool: `N` / `P` type (`Shift+N` / `Shift+P`: ten at a time), `T` rotate, `X` demolish, left click place; it follows your founded city |
 | `F5` | quick-save (written off the window thread to `saves\quicksave-seat<N>.sav`) |
 | `Esc` | cancel the gesture, then the mode, then the selection, then quit |
 
-Founding (`F`): the warehouse is drawn where you would found it. It must stand on a coast and the preview applies the sim's own
-coast rule to the terrain, trying the four rotations in the sim's order from the one you set with `T`: it turns until the building and
-its landing stage face the shore. The title says `turned to face the shore` or, where no rotation fits, `not on a coast` (the sim would
-answer `NoRotationFits`). Occupancy and ownership are still only checked by the sim.
+Founding (`F`): the warehouse is drawn where you would found it, and only where the sim would build it. It must stand on a coast:
+the sim tries the four turns and builds at the first whose land edge is the beach and whose opposite edge is in the water, so the
+building and its landing stage face the shore by themselves (no manual turn, as in the original). The title says `facing the shore`
+or, where no turn fits, `not here` with the sim's reason (`NoRotationFits`, `OutOfRange`, ...).
+
+**Known picture fault (2026-11-03, not fixed on this branch):** our renderer draws the whole world as the mirror image of the original
+(the original's camera puts world +x to the lower left, ours to the lower right; found from the original's camera code and checked on
+original towns). Until that renderer fix lands, every turned building looks wrong, the Kontor included: its piles stand along the shore
+and its land-side wall faces the water, although the sim placed and turned it exactly as the original's own scenario Kontors are.
 
 `Space` pauses the sim and the water; the title then starts with `PAUSED (Space resumes)`.
 

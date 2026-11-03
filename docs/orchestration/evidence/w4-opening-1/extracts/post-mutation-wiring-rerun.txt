@@ -1,0 +1,9 @@
+Test project E:/anno1503-worktrees/anno1503-W4-opening-1/build/msvc
+    Start  715: viewer_wiring_opening_controls
+1/2 Test  #715: viewer_wiring_opening_controls ...   Passed    9.69 sec
+    Start 1752: viewer_wiring_contract
+2/2 Test #1752: viewer_wiring_contract ...........   Passed   10.30 sec
+
+100% tests passed out of 2
+
+Total Test time (real) =  20.04 sec

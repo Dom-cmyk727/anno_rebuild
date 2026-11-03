@@ -11956,6 +11956,8 @@ Branch `task/W4-opening-1` from the Windows publication `26107db0`, the accepted
 
 **Reviews.** Package reviews I1–I4/I5 (three reviewers) and a fresh final integration review (14 findings; 3 blockers fixed: sanitizer evidence, caption order, replay-refusal tests; the rest fixed or stated). Details and dispositions in the INDEX. Focused re-review of the fixes: see the INDEX.
 
+**Open item for the orchestrator.** With the building tool on, the tool's own line is the last part of the window caption (about 300 characters in); the card tells the owner to maximise the window for the build step. Moving it forward is a small code change that would rerun every gate; not done. The focused re-review of the fixes (1 blocker = this item, 11 notes) is dispositioned in the INDEX.
+
 **Not claimed.** The owner's playtest, native 4K, a Radeon window, display latency, five-seat load, original-runtime fidelity of ship facings; no test asserts sprite placement/facing/colour (looked at, not asserted); caption order read once in the real window; resume mismatches of registry digest, tick and island list untested; replay does not check speed.
 
 **Outside this package, for the Mac lane.** The Mac pin already failed `tools/check_unix_warnings.sh` (GCC 13 `-O3 -Werror`: `route_plan.cpp`, `figure.cpp`, four sim tests; Clang 18: `json::Value`). Fixed here by behaviour-preserving guards (`ae7dfcc`) — please take them or restate them upstream. The merged MAP-BUILD-1 terrain rule refuses the old island-relative lan5 test tiles; the lan5 test worlds now install the named stand-in placement seam through the opt-in `FixedPlayOptions::stand_in_placement` (never the default; the lan5 viewer scripts use legal tiles and the real rule).

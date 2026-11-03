@@ -1,0 +1,3 @@
+Read with Get-Process MainWindowTitle after 25 s from a real RTX window (anno1503.exe --ship-start lan5-ship-a.json --seat 0 --speed 50 --renderer gpu), head d129bba, nothing selected, building tool off. Transcribed from the tool output of that run (it was not written to a file by the run itself); length 191 characters:
+
+mode select | gold 30000 | no ship selected — anno1503 — lan5-ship-a — zoom group 2 — GPU NVIDIA GeForce RTX 4090 (Vulkan) — tick 5550, game 11100 ms, turn p95 5.8 ms — 500 fps (0.3 ms/frame)

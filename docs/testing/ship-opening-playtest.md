@@ -40,7 +40,7 @@ and `R` water, `B` the building tool, `Esc` / `Q` quit (Esc first cancels what i
 | right drag / left drag | pan; a drag never selects and never orders |
 | `H` | stop the selected ship |
 | `F` | founding mode: the warehouse sprite follows the pointer; `T` or `Tab` rotates / cycles the type; left click sends the founding (one click, one command) |
-| `U` | unload mode: `Tab` next hold, `-` / `+` (or `Page Down` / `Page Up`, or `[` `]`) quantity −1 / +1 ton (`Shift`: 10), `Enter` sends exactly that hold and quantity to your nearest warehouse (left click one of your warehouses to choose it) |
+| `U` | unload mode: `Tab` next hold, `-` / `+` (or `Page Down` / `Page Up`, or `[` `]`; in this mode `-` / `+` set the quantity instead of zooming, the wheel still zooms) quantity −1 / +1 ton (`Shift`: 10), `Enter` sends exactly that hold and quantity to your nearest warehouse (left click one of your warehouses to choose it) |
 | `B` | building tool: `N` / `P` type (`Shift+N` / `Shift+P`: ten at a time), `T` rotate, `X` demolish, left click place; it follows your founded city |
 | `F5` | quick-save (written off the window thread to `saves\quicksave-seat<N>.sav`) |
 | `Esc` | cancel the gesture, then the mode, then the selection, then quit |
@@ -81,7 +81,9 @@ The founding and unload numbers are advisory ("would move 5 t"): the sim decides
 - Sailing the first 550 tiles takes minutes; this is the sim's pace, not a rendering limit.
 - The title bar is the HUD and a window caption is cut off at the window's width (about 190 characters were
   there with nothing selected): the command state, the advisory and the pointer come first, so a long cargo
-  line is what gets cut. Widen the window if you want to read the stores.
+  line is what gets cut. **With the building tool on (`B`), the tool's own line (`build 1001 (3x3, 300 gold)`,
+  the placement verdict, `command #n`) comes last, after about 300 characters: maximise the window
+  (double-click its caption) before step 5 or you will not see it.** Widen the window to read the stores.
 - You see every ship of the world, whatever the map's visibility policy says (candidate A shares information; a
   map that hides ships is not honoured by this window yet).
 - The window uses the GPU the system picks (the RTX 4090 on this PC); there is no switch for another adapter.

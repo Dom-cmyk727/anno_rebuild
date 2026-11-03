@@ -61,7 +61,13 @@ if ($Resume) {
     $arguments += @("--resume", $Resume)
 }
 Write-Host "anno1503 ship-start opening: seat $Seat, speed $Speed, map $Manifest"
+$previousSaveDir = $env:ANNO_SAVE_DIR
 if (-not $env:ANNO_SAVE_DIR) { $env:ANNO_SAVE_DIR = Join-Path $root "saves" }
 Write-Host "Controls: docs/testing/ship-opening-playtest.md. Saves (F5) go to $($env:ANNO_SAVE_DIR); -Resume <file> continues from one."
-& $Exe @arguments
-exit $LASTEXITCODE
+try {
+    & $Exe @arguments
+    $code = $LASTEXITCODE
+} finally {
+    $env:ANNO_SAVE_DIR = $previousSaveDir   # the variable must not outlive this run in your PowerShell session
+}
+exit $code

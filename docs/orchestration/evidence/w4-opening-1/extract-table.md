@@ -16,3 +16,6 @@
 | `extracts/mutation-check.txt` | `mutation-final.log` | `41a60fa06f51fcb48ab0fe718b09e6f1412ba5a1edae12d4fc6cc40787f5a8c2` | whole file |
 | `extracts/exe-identity-gated.txt` | `exe-sha-d129bba.txt` | `67feb0d03e43c7d25a9508024c3a89c4210d214ce978504998126aa8a435c62d` | whole file |
 | `extracts/exe-identity-before-mutation.txt` | `mut-exe-before.txt` | `1efdf1baa53db1d4e2df301ae3533fe78cf12aeee92cf9970c8637f8d707681d` | whole file |
+| `extracts/wsl-build-config.txt` | `wsl-w12-cmake-cache-lines.txt` | `4711a7d57f1aee9053014917f3cc080e59a4143e72a10ad73b4d3f7d5f10080c` | whole file |
+| `extracts/caption-check.txt` | `caption-check.txt` | `78e8b9ebbcd8c342e34762a65bfd479ee9f7df4f7d065ea70034d213e294eaf4` | whole file |
+| `extracts/post-mutation-wiring-rerun.txt` | `post-mutation-ctest.log` | `08897fc5f297e8f36d261088047206c8a020cf605cf99b303d776ce28f71b7d9` | whole file |

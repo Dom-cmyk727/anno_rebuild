@@ -715,6 +715,9 @@ struct GpuFrame::Impl {
     /// The generation the render() in progress draws, when its caller passed an owning handle
     /// (null otherwise, and between frames): what render() starts that outlives it holds this.
     std::shared_ptr<const Scene> frame_scene;
+    /// The scene of the chunk sync in progress (null between syncs): a derived GpuList key outside
+    /// it is open sea, uploaded as the CPU chunk is (build_derived_gpu).
+    const Scene* sync_scene = nullptr;
     /// A visible key's CPU chunk was not GPU-usable at the end of the last chunk sync.
     bool uploads_pending = false;
     /// GpuFrame::set_test_hold_uploads.
@@ -1123,6 +1126,12 @@ struct GpuFrame::Impl {
     /// the serial rule still replaces the stand-in. nullopt keeps the stand-in.
     std::optional<Chunk> build_derived_gpu(const ChunkKey& key, const render::Chunk& derived_cpu,
                                            const FrameRenderer& frames) {
+        if (const auto [g, kx, ky] = key;
+            sync_scene != nullptr && chunk_outside_scene(*sync_scene, g, kx, ky)) {
+            // Outside the scene the CPU chunk is the open sea already (render_chunk), with no
+            // children to reduce (the planner builds none there).
+            return upload_chunk(key, &derived_cpu);
+        }
         if (!cb_init()) {
             return std::nullopt;
         }
@@ -3131,8 +3140,10 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.visible_ms = lap();
     const std::size_t warm_before = m.planes_warm_taken;
     const std::uint64_t fade_now = m.fade_clock();
+    m.sync_scene = &scene;
     stats.chunks_uploaded = m.sync_chunks(frames, group, visible, frames.margin_keys(),
                                           frames.adjacent_keys(), fade_now, stats);
+    m.sync_scene = nullptr;
     frames.release(std::exchange(m.released_holds, {}));
     stats.planes_warm = m.planes_warm_taken - warm_before;
     stats.gpu_built_chunks = m.cb.built;

@@ -1108,7 +1108,7 @@ std::vector<ChunkJob> FrameRenderer::plan_jobs(const Scene& scene,
         const auto [group, kx, ky] = key;
         // Outside the scene: open sea without its children (render_chunk returns it at once).
         if (group < levels_.built_count() || group >= levels_.size() || !derive_from_cache ||
-            outside(group, kx, ky)) {
+            (!build_outside_chunks && outside(group, kx, ky))) {
             jobs.push_back({key, {}, nullptr});
             return;
         }

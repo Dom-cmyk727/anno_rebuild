@@ -368,6 +368,10 @@ class FrameRenderer {
     /// build's way, every derived chunk builds its descendants from nothing and drops
     /// them (render_chunk): kept as the reference of the fill-time measurement.
     bool derive_from_cache = true;
+    /// true: a derived key outside the scene is reduced from its children like any other (the
+    /// planner before 2026-11-03), so a scene with no islands still exercises the derivation
+    /// chain (the synthetic freshness tests). false: it is open sea at once (chunk_outside_scene).
+    bool build_outside_chunks = false;
     /// Worker threads per stage.
     std::size_t threads;
     /// Chunks kept besides the visible ones.

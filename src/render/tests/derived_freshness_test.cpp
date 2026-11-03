@@ -61,6 +61,8 @@ struct Reference {
 
 Reference fresh_reference(const std::shared_ptr<render::Scene>& scene) {
     render::FrameRenderer fresh(1);
+    // The scene has no islands: every key lies outside it; the chain is built as for one inside.
+    fresh.build_outside_chunks = true;
     // Asking for the grandparent builds its children and its parent first (derived chunks are
     // reduced from cached children; the planner builds the missing ones before it).
     for (int round = 0; round < 4; ++round) {
@@ -92,6 +94,7 @@ TEST_CASE("derived freshness: a warm parent is refreshed from its changed child,
     const auto scene = empty_scene();
     const Reference ref = fresh_reference(scene);
     render::FrameRenderer frames(1);
+    frames.build_outside_chunks = true; // the derivation chain of a scene without islands
     warm(frames);
     // The child changes (generation 1): its ancestors are marked by the same box.
     frames.invalidate({kChild, kParent, kGrand}, 1);
@@ -136,6 +139,7 @@ TEST_CASE("derived freshness: a warm parent is refreshed through the workers (as
     const auto scene = empty_scene();
     const Reference ref = fresh_reference(scene);
     render::FrameRenderer frames(2);
+    frames.build_outside_chunks = true; // the derivation chain of a scene without islands
     warm(frames);
     auto owned = std::make_unique<render::ChunkWorkers>(*scene, 2);
     render::ChunkWorkers* workers = owned.get();

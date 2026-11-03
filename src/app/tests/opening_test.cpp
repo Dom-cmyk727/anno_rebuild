@@ -901,6 +901,7 @@ TEST_CASE(
                             continue;
                         }
                         const sim::BuildingType* t = world.types().find(b->type);
+                        REQUIRE(t != nullptr);
                         ++seen;
                         std::string key = "stored rot " + std::to_string(b->rotation) + ": ";
                         for (std::uint8_t r = 0; r < 4; ++r) {

@@ -6,6 +6,7 @@
 #include <exception>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 
 #include <anno/render/chunk_reduce.hpp>
 #include <anno/render/frame.hpp>
@@ -454,9 +455,17 @@ void ChunkWorkers::run() {
         if (gate) {
             gate(key, scene.generation());
         }
+        std::function<bool(const ChunkKey&)> fail;
+        {
+            const std::lock_guard lock(mutex_);
+            fail = fail_;
+        }
         std::optional<Chunk> chunk;
         const auto built_at = Clock::now();
         try {
+            if (fail && fail(key)) {
+                throw std::runtime_error("test failure");
+            }
             if (group >= scene.levels().built_count() && group < scene.levels().size() &&
                 job.kids[0]) {
                 // Reduced from the cached children the job carries (shared, not copied).
@@ -529,6 +538,11 @@ bool ChunkWorkers::submit(const std::vector<ChunkJob>& wanted, std::shared_ptr<c
     }
     ready_.notify_all();
     return !jobs_.empty() || !busy_.empty();
+}
+
+void ChunkWorkers::set_test_failure(std::function<bool(const ChunkKey&)> fail) {
+    const std::lock_guard lock(mutex_);
+    fail_ = std::move(fail);
 }
 
 void ChunkWorkers::set_test_gate(std::function<void(const ChunkKey&, std::uint64_t)> gate) {
@@ -937,6 +951,11 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         if (prewarm_target_ && cache_.contains(*prewarm_target_) &&
             !dirty_.contains(*prewarm_target_)) {
             prewarm_target_.reset();
+        } else if (prewarm_target_ && !pending_) {
+            // The last request left nothing queued or running and the target is still not
+            // there: a build it needs failed and is never retried. Give it up, not the overview.
+            prewarm_skipped_.insert(*prewarm_target_);
+            prewarm_target_.reset();
         }
         if (!prewarm_target_ && todo.empty()) {
             prewarm_target_ = next_prewarm_key(scene);
@@ -966,6 +985,9 @@ std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene) cons
             continue;
         }
         for (const auto& [cx, cy] : visible_chunks(*bounds)) {
+            if (prewarm_skipped_.contains({g, cx, cy})) {
+                continue;
+            }
             if (!cache_.contains({g, cx, cy}) || dirty_.contains({g, cx, cy})) {
                 return ChunkKey{g, cx, cy};
             }

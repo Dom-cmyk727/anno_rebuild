@@ -185,7 +185,11 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
 - *The overview after a founding.* A founding or a building marks the chunks over its island stale at every zoom level; a stale
   chunk keeps drawing until its replacement arrives, and the background prewarm built missing overview chunks only, so the next
   zoom out rebuilt the island's whole overview stack on demand. The prewarm now also rebuilds a stale resident chunk (test
-  `prewarm: a resident overview chunk marked stale is rebuilt in the background`; it fails without the change). Whether that is
+  `prewarm: a resident overview chunk marked stale is rebuilt in the background`; it fails without the change, and each stale
+  chunk is rebuilt once). This is the same work the next zoom out did, done earlier and only while the view needs nothing; it
+  reaches down to the island's full-detail chunks. Its cost on the opening map was not measured (the test prints the time for one
+  original island). A target whose build fails is given up instead of stopping the prewarm (test `prewarm: a resident chunk that
+  cannot be built does not stop the rest`). Whether that is
   all of "water and islands need a moment, islands flicker at the farthest zoom" is not known: the report line of the window
   now says how many frames drew a visible chunk not built yet (and at which level) and how many wave windows were made or
   carried over, so the next log can tell.

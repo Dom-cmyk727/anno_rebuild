@@ -575,7 +575,13 @@ class Viewer {
     /// 2026-11-03, round 5: the overview "needs a moment" and islands flicker at the farthest
     /// zoom).
     std::size_t missing_frames_ = 0, missing_most_ = 0, missing_most_group_ = 0;
-    std::uint64_t windows_reported_ = 0, resamples_reported_ = 0;
+    /// The wave windows made and carried over since the last report.
+    std::uint64_t windows_new_ = 0, resamples_new_ = 0;
+#ifdef ANNO_VIEWER_GPU
+    /// The compositor's counters as last seen while the simulation ran (they read 0 while it is
+    /// off and restart with a new compositor).
+    std::uint64_t windows_seen_ = 0, resamples_seen_ = 0;
+#endif
     void back_off() {
         retry_at_ = Clock::now() + std::chrono::milliseconds(100);
         dirty_ = true;
@@ -2270,6 +2276,15 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
                                    resample, overlay, live_units_);
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
+    if (s.wave_simulation) {
+        const auto grown = [](std::uint64_t now, std::uint64_t seen) {
+            return now >= seen ? now - seen : now; // smaller: a new compositor's count
+        };
+        windows_new_ += grown(s.fluid_windows, windows_seen_);
+        resamples_new_ += grown(s.fluid_resamples, resamples_seen_);
+        windows_seen_ = s.fluid_windows;
+        resamples_seen_ = s.fluid_resamples;
+    }
     if (s.chunks_missing > 0) {
         ++missing_frames_;
         if (s.chunks_missing > missing_most_) {
@@ -2550,11 +2565,10 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
             "  not ready: %zu of %zu frames drew a visible chunk not built yet (at most %zu "
             "at once, zoom group %zu); wave windows %llu new, %llu carried over\n",
             missing_frames_, frames_n_, missing_most_, missing_most_group_,
-            static_cast<unsigned long long>(fluid_windows_ - windows_reported_),
-            static_cast<unsigned long long>(fluid_resamples_ - resamples_reported_));
+            static_cast<unsigned long long>(windows_new_),
+            static_cast<unsigned long long>(resamples_new_));
         missing_frames_ = missing_most_ = missing_most_group_ = 0;
-        windows_reported_ = fluid_windows_;
-        resamples_reported_ = fluid_resamples_;
+        windows_new_ = resamples_new_ = 0;
     }
     if (play_ != nullptr) {
         const std::string failed = play_->picture().error();

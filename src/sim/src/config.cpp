@@ -398,6 +398,9 @@ std::string SimConfig::validate() const {
                    "must not exceed billed_goods_last, is " + std::to_string(billed_goods_first) +
                        " > " + std::to_string(billed_goods_last));
     }
+    if (house_type_stride < 1) {
+        return bad(kOwner, "house_type_stride", "must be at least 1");
+    }
     if (resident_cargo_slots < 1) {
         return bad(kOwner, "resident_cargo_slots", "must be at least 1");
     }

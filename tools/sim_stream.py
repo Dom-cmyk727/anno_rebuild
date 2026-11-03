@@ -194,6 +194,7 @@ def registry_digest(names):
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
     d += u64(0)  # no figure types (T24)
     d += u64(0)  # no group table (P1)
+    d += u64(0)  # no stage table (stream 128, L3)
     return fnv(d)
 
 
@@ -244,8 +245,8 @@ def config_bytes():
     b += link_tables_bytes()
     # stream 127: population_infra_first/last, population_tavern_goods, population_tavern_alias_goods
     b += b''.join(u32(x) for x in [0x4C, 0x5A, 0x4C, 0x1D])
-    # stream 128: billed_goods_first, billed_goods_last, resident_cargo_slots
-    b += b''.join(u32(x) for x in [0x1A, 0x28, 3])
+    # stream 128: billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride (L3)
+    b += b''.join(u32(x) for x in [0x1A, 0x28, 3, 20])
     return b
 
 

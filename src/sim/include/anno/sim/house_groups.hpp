@@ -55,6 +55,21 @@ struct HouseGroup {
     bool operator==(const HouseGroup&) const = default;
 };
 
+/// One record of Data/BGruppen.dat [BAUSTUFEN] (MAP-POP-LIVE-1 L3; docs/re/population.md 1 "Stage
+/// record", 15.5): the stage `stage` (a bit index of the 32-bit stage mask, INFRA_EVER 0 ..
+/// INFRA_STUFE_FORSCH 31) unlocks once the city has `count` residents in `group` and all higher
+/// groups; `wissen` is the `Wissen:` byte (use not traced). The original stores group and wissen as
+/// bytes and count as a u16 at slot `stage`; the engine keeps them widened (shipped values fit).
+/// Only stages the file names have a record; the table is ascending by stage.
+struct StageRecord {
+    std::uint32_t stage = 0;
+    std::uint32_t group = 0;
+    std::uint32_t wissen = 0;
+    std::uint32_t count = 0;
+
+    bool operator==(const StageRecord&) const = default;
+};
+
 /// The goods roles the population rules read (SimConfig::population_*; docs/sim/
 /// population-contract.md section 3). A derived group table is bound to exactly these.
 struct PopulationRoles {

@@ -34,4 +34,12 @@ inline constexpr std::uint32_t kStageIndexCount = 32;
 /// nothing. `goods` is the table the registry will be built with.
 [[nodiscard]] std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> goods);
 
+/// Reads the [BAUSTUFEN] section: `Stufe: <stage name>, <group>, <count>` lines and `Wissen:
+/// <stage name>, <n>` lines (a Wissen line needs an earlier Stufe line of its stage). Returns the
+/// records ascending by stage. A stage name that is not INFRA_* (stage_index_of), a repeated
+/// Stufe/Wissen, a field that is not a non-negative integer that fits u32, a Stufe without group
+/// and count are errors naming the line. A missing section gives an empty table.
+[[nodiscard]] formats::Result<std::vector<StageRecord>, std::string>
+parse_stage_table(formats::Bytes file);
+
 } // namespace anno::sim

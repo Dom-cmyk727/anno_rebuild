@@ -331,7 +331,8 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
 std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
                               std::span<const ClassInfo> classes,
                               std::span<const FigureType> figures,
-                              std::span<const HouseGroup> groups) {
+                              std::span<const HouseGroup> groups,
+                              std::span<const StageRecord> stages) {
     HashArchive a(HashOptions{nullptr, 0, true});
     ar::seq(a, types, 1, [&](const BuildingType& t) { digest_type(a, t); });
     ar::seq(a, goods, 20, [&](const GoodsInfo& g) {
@@ -390,6 +391,14 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         for (const std::int8_t v : g.vermehr) {
             a.u8(static_cast<std::uint8_t>(v));
         }
+    });
+    // The [BAUSTUFEN] stage table (MAP-POP-LIVE-1 L3, stream 128): u64 count, then four u32 per
+    // record (stage, group, wissen, count).
+    ar::seq(a, stages, 16, [&](const StageRecord& r) {
+        a.u32(r.stage);
+        a.u32(r.group);
+        a.u32(r.wissen);
+        a.u32(r.count);
     });
     return a.finish();
 }
@@ -954,10 +963,29 @@ std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
 
 } // namespace
 
-formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::finish(
-    std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
-    std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
-    std::shared_ptr<const formats::annowelt::WalkTables> tables, std::vector<HouseGroup> groups) {
+formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
+TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
+                     std::vector<ClassInfo> classes, const SimConfig& cfg,
+                     std::vector<FigureType> figures,
+                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
+                     std::vector<HouseGroup> groups, std::vector<StageRecord> stages) {
+    for (std::size_t i = 0; i < stages.size(); ++i) {
+        // The stage mask is 32 bits wide (Player::flags / City::stage_mask: a stage index is a
+        // shift count); the table is ascending and unique; a group beyond the group table is a
+        // content error.
+        if (stages[i].stage >= 32) {
+            return "stage table record " + std::to_string(i) + ": stage " +
+                   std::to_string(stages[i].stage) + " is not a bit of the 32-bit stage mask";
+        }
+        if (i > 0 && stages[i - 1].stage >= stages[i].stage) {
+            return "stage table record " + std::to_string(i) +
+                   ": stages must be ascending and unique";
+        }
+        if (!groups.empty() && stages[i].group >= groups.size()) {
+            return "stage table record " + std::to_string(i) + ": group " +
+                   std::to_string(stages[i].group) + " is not in the group table";
+        }
+    }
     if (!groups.empty() && groups.size() != cfg.house_groups) {
         return "the group table has " + std::to_string(groups.size()) +
                " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
@@ -1035,10 +1063,11 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     }
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
-    r.digest_ = digest_registry(types, goods_in, classes, figures, groups);
+    r.digest_ = digest_registry(types, goods_in, classes, figures, groups, stages);
     r.derived_groups_ = std::move(derived);
     r.population_roles_ = TypeRegistry::roles_of(cfg);
     r.house_groups_ = std::move(groups);
+    r.stages_ = std::move(stages);
     r.walk_tables_ = std::move(tables);
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
@@ -1048,12 +1077,11 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     return std::shared_ptr<const TypeRegistry>(std::move(sealed));
 }
 
-std::uint64_t TypeRegistry::digest_of(std::span<const BuildingType> types,
-                                      std::span<const GoodsInfo> goods,
-                                      std::span<const ClassInfo> classes,
-                                      std::span<const FigureType> figures,
-                                      std::span<const HouseGroup> groups) {
-    return digest_registry(types, goods, classes, figures, groups);
+std::uint64_t
+TypeRegistry::digest_of(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
+                        std::span<const ClassInfo> classes, std::span<const FigureType> figures,
+                        std::span<const HouseGroup> groups, std::span<const StageRecord> stages) {
+    return digest_registry(types, goods, classes, figures, groups, stages);
 }
 
 const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
@@ -1134,7 +1162,7 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> goods_in,
                     const SimConfig& cfg, std::span<const fig::Entry> figure_entries,
                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
-                    std::vector<HouseGroup> groups) {
+                    std::vector<HouseGroup> groups, std::vector<StageRecord> stages) {
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
@@ -1154,7 +1182,7 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
         figures.push_back(f.value());
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
-                  std::move(figures), std::move(tables), std::move(groups));
+                  std::move(figures), std::move(tables), std::move(groups), std::move(stages));
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -1175,6 +1203,11 @@ TypeRegistry::Builder::walk_tables(std::shared_ptr<const formats::annowelt::Walk
 
 TypeRegistry::Builder& TypeRegistry::Builder::house_groups(std::vector<HouseGroup> groups) {
     house_groups_ = std::move(groups);
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::stage_table(std::vector<StageRecord> stages) {
+    stages_ = std::move(stages);
     return *this;
 }
 
@@ -1435,7 +1468,7 @@ TypeRegistry::Builder::build() const {
         return error_;
     }
     return TypeRegistry::finish(types_, goods_, classes_, cfg_, figures_, walk_tables_,
-                                house_groups_);
+                                house_groups_, stages_);
 }
 
 } // namespace anno::sim

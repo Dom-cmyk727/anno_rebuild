@@ -344,6 +344,9 @@ class TypeRegistry {
     /// house has no stocks); a non-empty table has exactly SimConfig::house_groups
     /// groups. Immutable, part of digest().
     [[nodiscard]] std::span<const HouseGroup> house_groups() const { return house_groups_; }
+    /// The [BAUSTUFEN] stage table (MAP-POP-LIVE-1 L3): ascending by stage, empty for a registry
+    /// without one. Immutable, part of digest(); the stage pass that reads it is L4.
+    [[nodiscard]] std::span<const StageRecord> stage_table() const { return stages_; }
     /// The derived table of each group (same order), built once with the roles of the SimConfig
     /// the registry was built with; empty when there are no groups. Not hashed (a pure function of
     /// the hashed groups and goods).
@@ -367,11 +370,10 @@ class TypeRegistry {
     /// which build() sorts by id first), without checking or sealing them: for
     /// tests that perturb one field at a time, including combinations that
     /// build() refuses.
-    [[nodiscard]] static std::uint64_t digest_of(std::span<const BuildingType> types,
-                                                 std::span<const GoodsInfo> goods,
-                                                 std::span<const ClassInfo> classes,
-                                                 std::span<const FigureType> figures = {},
-                                                 std::span<const HouseGroup> groups = {});
+    [[nodiscard]] static std::uint64_t
+    digest_of(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
+              std::span<const ClassInfo> classes, std::span<const FigureType> figures = {},
+              std::span<const HouseGroup> groups = {}, std::span<const StageRecord> stages = {});
     /// Whether the registry fits a configuration (docs/sim/state.md §4.4, §9.6):
     /// the checks of build() that depend on `cfg` (the build cost goods lie in
     /// SimConfig::build_goods_first .. + build_goods_count, service masks fit
@@ -408,7 +410,7 @@ class TypeRegistry {
     build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
           const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries,
           std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
-          std::vector<HouseGroup> groups = {});
+          std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {});
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.
@@ -424,13 +426,14 @@ class TypeRegistry {
            std::vector<ClassInfo> classes, const SimConfig& cfg,
            std::vector<FigureType> figures = {},
            std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
-           std::vector<HouseGroup> groups = {});
+           std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {});
 
     std::vector<BuildingType> types_;      // ascending id; lookup by binary search
     std::vector<FigureType> figure_types_; // ascending id
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;
+    std::vector<StageRecord> stages_;
     std::vector<HouseGroupDerived> derived_groups_;
     PopulationRoles population_roles_;
     std::uint32_t max_footprint_ = 1;
@@ -479,6 +482,8 @@ class TypeRegistry::Builder {
     Builder& walk_tables(std::shared_ptr<const formats::annowelt::WalkTables> tables);
     /// The group table (tests build two small groups in code).
     Builder& house_groups(std::vector<HouseGroup> groups);
+    /// The [BAUSTUFEN] stage table.
+    Builder& stage_table(std::vector<StageRecord> stages);
     Builder& goods(std::vector<GoodsInfo> table);
     Builder& classes(std::vector<ClassInfo> table);
     Builder& config(const SimConfig& cfg);
@@ -554,6 +559,7 @@ class TypeRegistry::Builder {
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;
+    std::vector<StageRecord> stages_;
     SimConfig cfg_;
     std::string error_;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;

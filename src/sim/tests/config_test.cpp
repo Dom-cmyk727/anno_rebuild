@@ -180,8 +180,8 @@ void expected_config(Stream& s) {
     }
     // MAP-POP-LIVE-1 L1 (stream 128): the billed consumer-goods range 0x1a..0x28 (D 0x1002dac0)
     // and the resident cargo slot count 3 (D 0x10057d70), hand-written defaults
-    for (const std::uint32_t x : {0x1aU, 0x28U, 3U}) {
-        s.u32(x); // billed_goods_first, billed_goods_last, resident_cargo_slots
+    for (const std::uint32_t x : {0x1aU, 0x28U, 3U, 20U}) {
+        s.u32(x); // billed_goods_first, billed_goods_last, resident_cargo_slots, house_type_stride
     }
     // Rules
     s.u8(0); // slot_policy
@@ -381,6 +381,7 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
     m.emplace_back("billed_goods_first", [](sim::SimConfig& c) { c.billed_goods_first += 1; });
     m.emplace_back("billed_goods_last", [](sim::SimConfig& c) { c.billed_goods_last += 1; });
     m.emplace_back("resident_cargo_slots", [](sim::SimConfig& c) { c.resident_cargo_slots += 1; });
+    m.emplace_back("house_type_stride", [](sim::SimConfig& c) { c.house_type_stride += 1; });
     return m;
 }
 
@@ -710,6 +711,7 @@ TEST_CASE("sim config defaults are the originals") {
     CHECK(c.billed_goods_first == 0x1a); // D 0x1002dac0: the billed consumer-goods range
     CHECK(c.billed_goods_last == 0x28);
     CHECK(c.resident_cargo_slots == 3); // D 0x10057d70: cargo slots 0..2
+    CHECK(c.house_type_stride == 20);   // D 0x1002cc22: div 0x14
     CHECK(c.validate().empty());
     // kOriginalWarehouseGoods and the city pass count the Seams default uses.
     CHECK(sim::kOriginalCityPassCount == 8);
@@ -717,7 +719,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 59);
+    static_assert(sim::field_count<sim::SimConfig>() == 60);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -1014,6 +1016,7 @@ TEST_CASE("config validate rejects each bad field") {
                         c.billed_goods_first = 0x29; // above billed_goods_last 0x28
                     }});
     rows.push_back({"resident_cargo_slots", [](sim::SimConfig& c) { c.resident_cargo_slots = 0; }});
+    rows.push_back({"house_type_stride", [](sim::SimConfig& c) { c.house_type_stride = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.raw_kinds = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_mask_bit[0] = 32; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_kinds = 0; }});

@@ -262,3 +262,78 @@ TEST_CASE("population B: the digest layout of nonzero metadata, hand-written") {
     straight.u32(33);
     CHECK(swapped.value() != straight.value());
 }
+
+TEST_CASE(
+    "population L3: shipped [BAUSTUFEN] equals the independent oracle and is in the registry") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/baustufen_table.txt");
+    REQUIRE(in.good());
+    std::vector<sim::StageRecord> want;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        std::istringstream ss(line);
+        std::string kind, idx, name, g, w, c;
+        ss >> kind >> idx >> name >> g >> w >> c;
+        REQUIRE(kind == "stage");
+        CHECK(sim::stage_index_of(name) == std::stoul(idx));
+        want.push_back(sim::StageRecord{static_cast<std::uint32_t>(std::stoul(idx)),
+                                        static_cast<std::uint32_t>(std::stoul(g.substr(6))),
+                                        static_cast<std::uint32_t>(std::stoul(w.substr(7))),
+                                        static_cast<std::uint32_t>(std::stoul(c.substr(6)))});
+    }
+    CHECK(want.size() == 31);
+    const auto loaded =
+        anno::sim_load::load_original_registry(*dir, anno::sim_load::FigureEntries::Required);
+    REQUIRE_MESSAGE(loaded.error.empty(), loaded.error);
+    const auto got = loaded.types->stage_table();
+    REQUIRE(got.size() == want.size());
+    for (std::size_t i = 0; i < want.size(); ++i) {
+        CHECK(got[i] == want[i]);
+    }
+    CHECK(got[5].wissen == 20); // INFRA_STUFE_2B
+}
+
+TEST_CASE("population L3: the stage table parser names its errors") {
+    const auto parse = [](const char* text) {
+        const std::string s = text;
+        return sim::parse_stage_table(
+            anno::formats::Bytes(reinterpret_cast<const std::uint8_t*>(s.data()), s.size()));
+    };
+    CHECK(parse("[BAUSTUFEN]\n Stufe: INFRA_EVER, 0, 0\n Stufe: INFRA_STUFE_1A, 1, 30\n Wissen: "
+                "INFRA_STUFE_1A, 7\n[END]\n")
+              .value() == std::vector<sim::StageRecord>{{0, 0, 0, 0}, {1, 1, 7, 30}});
+    CHECK(parse("[WAREN]\n").value().empty());
+    CHECK_FALSE(parse("[BAUSTUFEN]\n Stufe: GOTT, 0, 0\n").ok());
+    CHECK_FALSE(parse("[BAUSTUFEN]\n Stufe: INFRA_EVER, 0\n").ok());
+    CHECK_FALSE(parse("[BAUSTUFEN]\n Stufe: INFRA_EVER, -1, 0\n").ok());
+    CHECK_FALSE(parse("[BAUSTUFEN]\n Stufe: INFRA_EVER, 0, 0\n Stufe: INFRA_EVER, 0, 1\n").ok());
+    CHECK_FALSE(parse("[BAUSTUFEN]\n Wissen: INFRA_EVER, 3\n").ok());
+    CHECK_FALSE(parse("[BAUSTUFEN]\n Stufe: INFRA_EVER, 0, 0\n Wissen: INFRA_EVER, 3\n Wissen: "
+                      "INFRA_EVER, 4\n")
+                    .ok());
+}
+
+TEST_CASE("population L3: the registry checks and hashes the stage table") {
+    const auto build = [](std::vector<sim::StageRecord> t) {
+        return sim::TypeRegistry::Builder().stage_table(std::move(t)).build();
+    };
+    const auto none = build({});
+    REQUIRE(none.ok());
+    const auto one = build({{1, 0, 0, 30}});
+    REQUIRE(one.ok());
+    CHECK(one.value()->digest() != none.value()->digest());
+    CHECK(build({{1, 0, 0, 31}}).value()->digest() != one.value()->digest());
+    CHECK(build({{1, 0, 5, 30}}).value()->digest() != one.value()->digest());
+    CHECK(build({{2, 0, 0, 30}}).value()->digest() != one.value()->digest());
+    CHECK(build({{1, 0, 0, 30}, {31, 0, 0, 5}}).ok());
+    CHECK_FALSE(build({{32, 0, 0, 1}}).ok());              // not a bit of the 32-bit mask
+    CHECK_FALSE(build({{3, 0, 0, 1}, {3, 0, 0, 2}}).ok()); // repeated
+    CHECK_FALSE(build({{4, 0, 0, 1}, {3, 0, 0, 2}}).ok()); // not ascending
+}

@@ -456,6 +456,12 @@ struct SimConfig {
     /// figure data (FigureType), so it is configuration with the original 3 as its default.
     /// validate() requires at least 1.
     std::uint32_t resident_cargo_slots = 3;
+    /// MAP-POP-LIVE-1 L3 (stream 128, docs/sim/population-live.md section 5): the type-id spacing
+    /// between house levels. D: UpgradeCheck/Upgrade/Downgrade (AnnoWelt 0x10075dd0, 0x1002cbe0,
+    /// 0x1002cdd0) use `id - id % 20 + 20` for the next type and `id - id % 20 - 20` (else `+ 1`)
+    /// for the previous one (`div 0x14` at 0x1002cc22). Data with the original 20 as default;
+    /// validate() requires at least 1.
+    std::uint32_t house_type_stride = 20;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").

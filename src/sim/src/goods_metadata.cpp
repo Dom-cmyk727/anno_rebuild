@@ -1,4 +1,5 @@
 // The [WAREN] metadata reader (header: goods_metadata.hpp).
+#include <algorithm>
 #include <array>
 #include <optional>
 
@@ -77,6 +78,73 @@ std::string apply_goods_metadata(formats::Bytes file, std::span<GoodsInfo> goods
         }
     }
     return {};
+}
+
+formats::Result<std::vector<StageRecord>, std::string> parse_stage_table(formats::Bytes file) {
+    const auto where = [](const text::Entry& e) {
+        return "BGruppen.dat [BAUSTUFEN] line " + std::to_string(e.line) + ": ";
+    };
+    const auto number = [](formats::Bytes field) -> std::optional<std::uint32_t> {
+        const auto v = text::to_int(field);
+        if (!v || *v < 0 || *v > 0xffffffffLL) {
+            return std::nullopt;
+        }
+        return static_cast<std::uint32_t>(*v);
+    };
+    std::vector<StageRecord> out;
+    std::vector<bool> have_wissen;
+    const auto find = [&](std::uint32_t stage) -> std::optional<std::size_t> {
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            if (out[i].stage == stage) {
+                return i;
+            }
+        }
+        return std::nullopt;
+    };
+    for (const text::Entry& e : text::section_entries(file, "BAUSTUFEN")) {
+        const bool stufe = text::equals(e.key, "Stufe");
+        const bool wissen = text::equals(e.key, "Wissen");
+        if (!stufe && !wissen) {
+            continue;
+        }
+        const auto f = text::fields(e.value);
+        if (f.size() != (stufe ? 3U : 2U)) {
+            return where(e) +
+                   (stufe ? "Stufe needs <name>, <group>, <count>" : "Wissen needs <name>, <n>");
+        }
+        const std::optional<std::uint32_t> stage = stage_index_of(str(f[0]));
+        if (!stage) {
+            return where(e) + "'" + str(f[0]) + "' is not a stage name";
+        }
+        const auto a = number(f[1]);
+        if (!a) {
+            return where(e) + "'" + str(f[1]) + "' is not an unsigned 32-bit integer";
+        }
+        if (stufe) {
+            const auto c = number(f[2]);
+            if (!c) {
+                return where(e) + "'" + str(f[2]) + "' is not an unsigned 32-bit integer";
+            }
+            if (find(*stage)) {
+                return where(e) + "stage " + str(f[0]) + " is listed twice";
+            }
+            out.push_back(StageRecord{*stage, *a, 0, *c});
+            have_wissen.push_back(false);
+        } else {
+            const auto i = find(*stage);
+            if (!i) {
+                return where(e) + "Wissen for " + str(f[0]) + " has no Stufe line before it";
+            }
+            if (have_wissen[*i]) {
+                return where(e) + "Wissen for " + str(f[0]) + " is given twice";
+            }
+            have_wissen[*i] = true;
+            out[*i].wissen = *a;
+        }
+    }
+    std::sort(out.begin(), out.end(),
+              [](const StageRecord& x, const StageRecord& y) { return x.stage < y.stage; });
+    return out;
 }
 
 } // namespace anno::sim

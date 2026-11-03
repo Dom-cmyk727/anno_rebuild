@@ -205,6 +205,9 @@ class ChunkWorkers {
     /// job's key and the generation it reads; a test blocks in it to order completions without
     /// sleeping. It must return (be opened) before the workers are destroyed. Null by default.
     void set_test_gate(std::function<void(const ChunkKey& key, std::uint64_t generation)> gate);
+    /// Test seam: a build whose key it returns true for fails as a throwing build does (the
+    /// chunk stays missing and is not requested again). Null by default.
+    void set_test_failure(std::function<bool(const ChunkKey& key)> fail);
 
   private:
     void run();
@@ -228,6 +231,7 @@ class ChunkWorkers {
     ChunkBuilder builder_ = ChunkBuilder::Cpu;
     std::uint32_t bin_px_ = kDefaultBinPx;
     std::function<void(const ChunkKey&, std::uint64_t)> gate_;
+    std::function<bool(const ChunkKey&)> fail_;
     std::vector<std::thread> threads_;
 };
 
@@ -450,6 +454,10 @@ class FrameRenderer {
 
     /// The resident derived chunk being built for prewarm_far_levels, until it is cached.
     std::optional<ChunkKey> prewarm_target_;
+    /// Resident chunks the prewarm gave up on: nothing was queued or running for the target after
+    /// a request (its build or a child's failed, ChunkWorkers::failed_, never retried). The rest
+    /// of the overview is still prewarmed; a skipped chunk is built when it is shown.
+    std::set<ChunkKey> prewarm_skipped_;
     /// The first resident derived chunk of the scene that is not cached or is marked stale (the
     /// farthest level first).
     [[nodiscard]] std::optional<ChunkKey> next_prewarm_key(const Scene& scene) const;

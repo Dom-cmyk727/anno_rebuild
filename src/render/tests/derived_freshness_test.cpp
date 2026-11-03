@@ -5,6 +5,7 @@
 // pixels are compared with a fresh renderer's output (a CPU reference that never saw the warm
 // state).
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -331,8 +332,23 @@ TEST_CASE(
     // picture's commit does (SceneLoader: with_islands, then invalidate with its generation).
     const auto next = scene->with_islands({});
     REQUIRE(next->generation() > scene->generation());
+    std::size_t builds_before = 0;
+    for (const render::ChunkKey& k : overview) {
+        builds_before += frames.chunk_builds(k) + frames.chunk_rebuilds(k);
+    }
     frames.invalidate(overview, next->generation());
+    const auto t0 = std::chrono::steady_clock::now();
     settle(next);
+    MESSAGE(
+        "background rebuild of "
+        << overview.size() << " stale overview chunks: "
+        << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count()
+        << " ms with 4 workers (400 idle rounds included)");
+    std::size_t builds_after = 0;
+    for (const render::ChunkKey& k : overview) {
+        builds_after += frames.chunk_builds(k) + frames.chunk_rebuilds(k);
+    }
+    CHECK(builds_after - builds_before == overview.size()); // each stale chunk once, no loop
     std::size_t fresh = 0, rebuilt = 0;
     for (const render::ChunkKey& k : overview) {
         const auto chunk = frames.chunk(k);
@@ -344,4 +360,44 @@ TEST_CASE(
     }
     CHECK(fresh == overview.size());
     CHECK(rebuilt == overview.size());
+}
+
+// Review 2026-11-03: a prewarm target whose build fails is never retried by the workers; the
+// prewarm waited for it forever and built nothing after it. It now gives that chunk up and goes on.
+TEST_CASE("prewarm: a resident chunk that cannot be built does not stop the rest (game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    std::vector<render::ChunkKey> overview;
+    for (std::size_t g = scene->levels().built_count(); g < scene->levels().size(); ++g) {
+        const auto b = scene->bounds(g);
+        REQUIRE(b.has_value());
+        const auto keys = render::chunk_keys_touching(*scene, *b, g);
+        overview.insert(overview.end(), keys.begin(), keys.end());
+    }
+    REQUIRE(overview.size() > 1);
+    // The prewarm starts at the farthest level: its first chunk fails.
+    const render::ChunkKey broken = overview.back();
+    const render::Rect away{-200000, -200000, 64, 64};
+    render::FrameRenderer frames(2);
+    auto workers = std::make_unique<render::ChunkWorkers>(4);
+    render::ChunkWorkers* w = workers.get();
+    w->set_test_failure([broken](const render::ChunkKey& k) { return k == broken; });
+    frames.set_workers(std::move(workers));
+    frames.prewarm_far_levels = true;
+    frames.resident_level_chunks = 64;
+    for (int round = 0; round < 400; ++round) {
+        frames.update_chunks(scene, away, 2);
+        w->wait_idle();
+    }
+    std::size_t built = 0;
+    for (const render::ChunkKey& k : overview) {
+        built += frames.chunk(k) != nullptr ? 1U : 0U;
+    }
+    CHECK(frames.chunk(broken) == nullptr);
+    CHECK(built == overview.size() - 1);
 }

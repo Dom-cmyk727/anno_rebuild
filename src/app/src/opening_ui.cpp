@@ -249,14 +249,14 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
     }
     FoundPreview p;
     p.type = type;
-    p.rotation = found_rotation_;
-    p.cursor_rotation = found_rotation_;
+    p.rotation = kFoundingCursorRotation;
+    p.cursor_rotation = kFoundingCursorRotation;
     p.click = click;
-    const auto [w, h] = sim::footprint(*bt, found_rotation_);
+    const auto [w, h] = sim::footprint(*bt, kFoundingCursorRotation);
     p.w = w;
     p.h = h;
     // docs/sim/ship-founding.md section 3: ox = max(0, cx - (w - 1) / 2), the same for y, with the
-    // footprint of the cursor's initial rotation. The sim derives it again and refuses a mismatch.
+    // footprint of the command's rotation. The sim derives it again and refuses a mismatch.
     p.origin = sim::TileXY{static_cast<std::int32_t>(std::max<std::int64_t>(
                                0, std::int64_t{click.x} - (std::int64_t{w} - 1) / 2)),
                            static_cast<std::int32_t>(std::max<std::int64_t>(
@@ -284,14 +284,14 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
     }
     // The coast rule (docs/sim/ship-founding.md P11.4, site::coast_height_rule: the sim's own pure
     // function) over the terrain's height bytes, for each rotation the sim tries in turn from the
-    // cursor's: the origin stays, the first rotation whose footprint is on the island and whose
+    // command's: the origin stays, the first rotation whose footprint is on the island and whose
     // shore edge is the beach (0x30) with water opposite is the one the sim builds. This is where
     // the warehouse turns to the coast. Occupancy and ownership are still not checked.
     if (island != nullptr && feed.vertex_height &&
         sim::site::coast_class_supported(bt->flags_word)) {
         bool decided = true;
         std::optional<std::uint8_t> accepted;
-        for (const std::uint8_t rot : sim::site::rotation_trials(found_rotation_)) {
+        for (const std::uint8_t rot : sim::site::rotation_trials(kFoundingCursorRotation)) {
             const auto [fw, fh] = sim::footprint(*bt, rot);
             if (!island->contains(p.origin.x, p.origin.y) ||
                 !island->contains(std::int64_t{p.origin.x} + fw - 1,
@@ -315,9 +315,7 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
         if (accepted) {
             p.rotation = *accepted;
             p.coast_ok = true;
-            if (*accepted != found_rotation_) {
-                add("turned to face the shore");
-            }
+            add("it faces the shore");
         } else if (decided) {
             add("not on a coast: the shore must be a beach with water on the opposite side (the "
                 "sim answers NoRotationFits)");
@@ -325,7 +323,7 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
     }
     p.cmd.ship = ship.id;
     p.cmd.placement.type = type;
-    p.cmd.placement.rotation = found_rotation_;
+    p.cmd.placement.rotation = kFoundingCursorRotation;
     p.cmd.placement.x = p.origin.x;
     p.cmd.placement.y = p.origin.y;
     p.cmd.click_x = click.x;
@@ -340,9 +338,7 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
         if (probe.reason == sim::Reject::None && probe.rotation) {
             p.rotation = *probe.rotation;
             p.coast_ok = true;
-            add(*probe.rotation != found_rotation_
-                    ? "the sim accepts it here, turned to face the shore"
-                    : "the sim accepts it here");
+            add("the sim accepts it here, facing the shore");
         } else {
             p.coast_ok = false;
             switch (probe.reason) {
@@ -585,7 +581,8 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
         }
         leave_modes();
         mode_ = OpeningMode::Found;
-        message_ = "founding: move the pointer over land within reach, T rotates, click sends";
+        message_ = "founding: move the pointer to a coast within reach (the warehouse turns to the "
+                   "shore by itself), click sends";
         return out;
     }
     case OpeningKey::Unload: {
@@ -622,8 +619,7 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
             return out; // T is the building tool's
         }
         out.taken = true;
-        found_rotation_ = static_cast<std::uint8_t>((found_rotation_ + 1) & 3);
-        message_ = "rotation " + std::to_string(found_rotation_);
+        message_ = "the warehouse has no manual turn: it turns to the shore by itself";
         return out;
     case OpeningKey::NextHold: {
         if (mode_ == OpeningMode::Found) {

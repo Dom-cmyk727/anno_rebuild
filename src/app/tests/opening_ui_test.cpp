@@ -276,8 +276,9 @@ TEST_CASE("controls: founding derives the sim's origin from the click, rotates, 
     // One click, one command: the mode ended; the next click selects instead of founding.
     CHECK(f.ui.mode() == app::OpeningMode::Select);
     CHECK(f.click(app::PointerButton::Left, 500, 500).commands.empty());
-    // T rotates only inside the mode; the rotation is the command's initial rotation; the origin
-    // is clamped at 0.
+    // The warehouse has no manual turn (owner 2026-11-03): T is taken inside the mode but the
+    // command keeps kFoundingCursorRotation, the sim turns it to the coast; the origin is clamped
+    // at 0.
     f.click(app::PointerButton::Left, 100, 100);
     f.key(app::OpeningKey::Found);
     CHECK(f.key(app::OpeningKey::Rotate).taken);
@@ -285,7 +286,7 @@ TEST_CASE("controls: founding derives the sim's origin from the click, rotates, 
     REQUIRE(rotated.commands.size() == 1);
     const auto* edge = std::get_if<sim::FoundCmd>(&rotated.commands[0].body);
     REQUIRE(edge != nullptr);
-    CHECK(edge->placement.rotation == 1);
+    CHECK(edge->placement.rotation == app::kFoundingCursorRotation);
     CHECK(edge->placement.x == 0);
     CHECK(edge->placement.y == 0);
     // Esc cancels the mode without a command.
@@ -518,8 +519,9 @@ TEST_CASE("controls: a click's work is local to the ships of the view, and a mov
     CHECK(f.proj.boxes == 0);
 }
 
-TEST_CASE("controls: founding derives the origin per axis and rotation for a footprint that is not "
-          "square") {
+TEST_CASE(
+    "controls: founding derives the origin per axis for a footprint that is not square, and T "
+    "does not turn it") {
     sim::TypeRegistry::Builder b;
     sim::BuildingType wide;
     wide.id = sim::TypeId{1302};
@@ -532,9 +534,10 @@ TEST_CASE("controls: founding derives the origin per axis and rotation for a foo
     auto s = setup();
     s.registry = built.value();
     s.islands = {app::IslandRect{0, 0, 0, 200, 200}};
-    // ox = max(0, cx - (w - 1) / 2), oy likewise, with the footprint of the cursor's rotation:
-    // rotation 0 and 2: 3 x 5 -> half 1, 2; rotation 1 and 3: 5 x 3 -> half 2, 1.
-    const int expect_dx[4] = {1, 2, 1, 2}, expect_dy[4] = {2, 1, 2, 1};
+    // ox = max(0, cx - (w - 1) / 2), oy likewise, with the footprint of the command's rotation
+    // (kFoundingCursorRotation 0: 3 x 5 -> half 1, 2), however often T was pressed.
+    static_assert(app::kFoundingCursorRotation == 0);
+    const int expect_dx = 1, expect_dy = 2;
     for (int rot = 0; rot < 4; ++rot) {
         Fixture f;
         f.ui = app::OpeningUi(s);
@@ -548,9 +551,9 @@ TEST_CASE("controls: founding derives the origin per axis and rotation for a foo
         const auto* found = std::get_if<sim::FoundCmd>(&r.commands[0].body);
         REQUIRE(found != nullptr);
         CAPTURE(rot);
-        CHECK(found->placement.rotation == rot);
-        CHECK(found->placement.x == 50 - expect_dx[rot]);
-        CHECK(found->placement.y == 70 - expect_dy[rot]);
+        CHECK(found->placement.rotation == app::kFoundingCursorRotation);
+        CHECK(found->placement.x == 50 - expect_dx);
+        CHECK(found->placement.y == 70 - expect_dy);
         // Near the edge the origin is clamped at 0 on each axis separately.
         Fixture g;
         g.ui = app::OpeningUi(s);
@@ -562,8 +565,8 @@ TEST_CASE("controls: founding derives the origin per axis and rotation for a foo
         const auto edge = g.click(app::PointerButton::Left, 15, 500); // tile (1, 50)
         const auto* e = std::get_if<sim::FoundCmd>(&edge.commands[0].body);
         REQUIRE(e != nullptr);
-        CHECK(e->placement.x == std::max(0, 1 - expect_dx[rot]));
-        CHECK(e->placement.y == 50 - expect_dy[rot]);
+        CHECK(e->placement.x == std::max(0, 1 - expect_dx));
+        CHECK(e->placement.y == 50 - expect_dy);
     }
 }
 

@@ -860,3 +860,75 @@ TEST_CASE("founding probe, real files: the preview's answer is what the sim does
     CHECK(agree == clicks);
     CHECK(vetoed <= 4);
 }
+
+// The original's own Kontors (owner playtest 2026-11-03: the founded warehouse looked turned and
+// placed wrong). Every warehouse of the founding type that the original's scenario files place
+// stands where the sim's coast rule accepts it, at its stored rotation and origin: the rule's
+// rotation (the shore edge per rotation) is the files' rotation. Measured 2026-11-03: 62
+// warehouses, each accepted at its stored rotation (a few also at a second one, at corners). What
+// looked wrong was the picture: the renderer's projection is the mirror of the original's
+// (docs/testing/ship-opening-playtest.md).
+TEST_CASE(
+    "founding sites, real files: the original's own warehouses pass the coast rule as stored") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::map<std::string, std::size_t> tally;
+    std::size_t seen = 0, as_stored = 0;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(*dir / "Scenes")) {
+        if (entry.path().extension() != ".sze" || seen > 400) {
+            continue;
+        }
+        auto play = app::load_play(*dir, entry.path());
+        if (!play.ok()) {
+            continue;
+        }
+        const sim::World& world = play.value().world;
+        for (const auto& isl : world.islands()) {
+            if (!isl || !isl->terrain) {
+                continue;
+            }
+            const sim::VertexGrid grid = sim::VertexGrid::of(*isl);
+            for (const auto& city : isl->cities) {
+                if (!city) {
+                    continue;
+                }
+                for (const sim::BuildingList& list : city->index.lists) {
+                    for (const auto& b : list.slots) {
+                        if (!b || b->type.v != 1302) {
+                            continue;
+                        }
+                        const sim::BuildingType* t = world.types().find(b->type);
+                        ++seen;
+                        std::string key = "stored rot " + std::to_string(b->rotation) + ": ";
+                        for (std::uint8_t r = 0; r < 4; ++r) {
+                            const auto v = sim::site::coast_height_check(
+                                grid, *t, r, sim::site::Origin{b->x, b->y});
+                            key += v.result == sim::site::TerrainResult::Accepted ? "A" : "-";
+                        }
+                        ++tally[key];
+                        const bool ok = sim::site::coast_height_check(grid, *t, b->rotation,
+                                                                      sim::site::Origin{b->x, b->y})
+                                            .result == sim::site::TerrainResult::Accepted;
+                        as_stored += ok ? 1U : 0U;
+                        if (!ok) {
+                            MESSAGE(entry.path().filename().string()
+                                    << ": warehouse at (" << b->x << "," << b->y << ") rot "
+                                    << int(b->rotation) << " is not accepted as stored");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    std::string s;
+    for (const auto& [k, v] : tally) {
+        s += k + " x" + std::to_string(v) + "; ";
+    }
+    MESSAGE(seen << " warehouses 1302 (coast rule at rotations 0123 from the stored origin): "
+                 << s);
+    CHECK(seen >= 62);
+    CHECK(as_stored == seen);
+}

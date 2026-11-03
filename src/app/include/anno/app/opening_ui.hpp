@@ -78,7 +78,7 @@ enum class OpeningKey : std::uint8_t {
     Found,    ///< F
     Unload,   ///< U
     Halt,     ///< H
-    Rotate,   ///< T (in the founding mode)
+    Rotate,   ///< T (in the founding mode: taken, the warehouse has no manual turn)
     NextHold, ///< Tab
     QtyDown,  ///< [
     QtyUp,    ///< ]
@@ -88,6 +88,15 @@ enum class OpeningKey : std::uint8_t {
 };
 
 enum class OpeningMode : std::uint8_t { Select, Found, Unload };
+
+/// The rotation every founding command carries. The warehouse turns to the coast by itself (owner
+/// 2026-11-03, from the original: "there is no manual rotation of Kontors since they align with the
+/// coastline automatically"): the sim tries the four rotations from this one and builds at the
+/// first whose shore edge is the beach (Founding::apply, site::rotation_trials). The original's
+/// Kontor cursor (AnnoFrame 0x10048e60) was not shown to read a rotation
+/// (docs/sim/ship-founding.md 3.5); which rotation its command carries is not traced, so where two
+/// rotations fit the sim's first in 0, 1, 2, 3 order wins.
+inline constexpr std::uint8_t kFoundingCursorRotation = 0;
 enum class PointerButton : std::uint8_t { Left, Right };
 
 /// What an input made. Commands are posted by the caller in order; `submitted` then names each
@@ -106,8 +115,8 @@ struct FoundPreview {
     /// rotation, then the next three) that the coast rule accepts, so the building and its landing
     /// stage turn to face the shore; the cursor's own when the terrain is not known or none fits.
     std::uint8_t rotation = 0;
-    /// The cursor's rotation (key T): what the command carries, the sim derives the origin and the
-    /// trials from it.
+    /// The rotation the command carries (always kFoundingCursorRotation: a warehouse has no manual
+    /// turn, owner 2026-11-03); the sim derives the origin and the trials from it.
     std::uint8_t cursor_rotation = 0;
     /// The coast rule accepted `rotation` (false: not decided here, or no rotation fits).
     bool coast_ok = false;
@@ -262,7 +271,6 @@ class OpeningUi {
     /// The pointer's tile and whether it is over ground, in every mode (the HUD's pointer text).
     std::optional<std::pair<sim::TileXY, bool>> hover_point_;
     bool hover_changed_ = false;
-    std::uint8_t found_rotation_ = 0;
     std::size_t found_type_ = 0;
     std::uint32_t unload_hold_ = 0, unload_tons_ = 0;
     std::optional<sim::BuildingId> unload_target_;

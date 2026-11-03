@@ -447,7 +447,7 @@ TEST_CASE("dev tool: a resized window maps the same tile with its new frame" *
     for (const auto& [w, h] :
          std::vector<std::pair<int, int>>{{1920, 1080}, {801, 333}, {3456, 1944}}) {
         CAPTURE(w);
-        Window win{sc, (mx - my) * 21.0, (mx + my) * 10.5, 0, 42, 21, w, h, 2.0F};
+        Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, w, h, 2.0F};
         const auto at = win.point_at(t.x, t.y);
         if (!tool.enabled()) {
             feed(tool, win, {key(SDLK_B)});
@@ -463,7 +463,7 @@ TEST_CASE("dev tool: off the city's island, outside the window and non-finite po
           doctest::test_suite("dev_tool")) {
     const auto sc = scene();
     const double mx = kX0 + 15, my = kY0 + 15;
-    Window win{sc, (mx - my) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
+    Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
     app::DevTool tool(setup());
     feed(tool, win, {key(SDLK_B)});
     // Open sea next to the island, and the tile just outside its far corner.
@@ -495,7 +495,7 @@ TEST_CASE("dev tool: press, move, cancel, release and focus-loss sequences make 
           doctest::test_suite("dev_tool")) {
     const auto sc = scene();
     const double mx = kX0 + 15, my = kY0 + 15;
-    const Window win{sc, (mx - my) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
+    const Window win{sc, (my - mx) * 21.0, (mx + my) * 10.5, 0, 42, 21, 1600, 1000, 1.0F};
     const auto at = [&win](int dx, int dy) { return win.point_at(kX0 + dx, kY0 + dy); };
     SUBCASE("the tool off: the window keeps its events") {
         app::DevTool tool(setup());

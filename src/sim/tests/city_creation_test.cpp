@@ -490,7 +490,7 @@ TEST_CASE("city creation: draw sites") {
     CHECK(sim::draw_site_phase(DrawSite::CityNameLoad) == sim::DrawPhase::Load);
     CHECK(std::string(sim::draw_site_name(DrawSite::CityName)) == "CityName");
     CHECK(std::string(sim::draw_site_name(DrawSite::CityNameLoad)) == "CityNameLoad");
-    CHECK(sim::kPrngTimelineVersion == 3);
+    CHECK(sim::kPrngTimelineVersion == 4); // 4: FarmWorkerDispatch (MAP-ECON-1 E2)
 }
 
 TEST_CASE("kontor ids") {

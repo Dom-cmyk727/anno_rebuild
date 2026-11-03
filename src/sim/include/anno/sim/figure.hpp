@@ -39,6 +39,7 @@ struct Effects; // tick.hpp
 /// Path to raise both: widen the members to i64, or lower the fraction bits.
 struct FixedPos {
     std::int32_t x = 0, y = 0;
+    friend constexpr bool operator==(const FixedPos&, const FixedPos&) = default;
 };
 static_assert(kWorldEdgeBound <= (1U << 23),
               "FixedPos (Q24.8 in an i32) cannot hold a tile coordinate of this world edge");
@@ -78,6 +79,42 @@ struct TransportState {
     BuildingId target;
     /// The amount the target reserved for this figure (the cargo's +0x1c, D 0x1005aef1).
     std::uint32_t reserved_88 = 0;
+};
+
+/// The step of a harvest job (docs/sim/forestry.md 2, 3.2; D AnnoWelt job factory 0x1003b0e0,
+/// jobs 0x29/0x2a -> 0x1003b255): step A (Start: search and claim a tile; ToTree: the walk), step B
+/// (Cut: the wait, then the cut), step C (ToHome: the walk home and the delivery), then the end.
+enum class HarvestStep : std::uint8_t { Start = 0, ToTree = 1, Cut = 2, ToHome = 3, Done = 4 };
+
+/// The first micro-step of a figure's life in ticks: the constructor's remaining 0.001 at rate
+/// 0.001 (D 0x10035ce0) is 1.0 time unit, 5 ticks at the figure tick's 0.2 scale (0x10034760). The
+/// integer model of docs/sim/forestry.md 2 (E2.0): saved, consumed once across visits. A fact of
+/// the original's figure constructor, not a limit.
+inline constexpr std::uint32_t kHarvestStartDelay = 5;
+
+/// The jobs whose figures run the harvest body: the job factory gives 0x29 (ERNTE) and 0x2a
+/// (MAEHER) the same constructor (D 0x1003b480 byte table -> 0x1003b255).
+[[nodiscard]] constexpr bool harvest_job(std::uint32_t job) {
+    return job == 0x29 || job == 0x2a;
+}
+
+/// What a harvest job keeps between calls (docs/sim/forestry.md 2). Present on a figure exactly
+/// when the spawn of a Farm-payload home created it (never chosen by the job id alone: 0x2a is
+/// also the small farm's worker job).
+struct HarvestState {
+    HarvestStep step = HarvestStep::Start;
+    /// Ticks of the first micro-step still owed (kHarvestStartDelay at the spawn, 0 afterwards,
+    /// never re-armed; docs/sim/forestry.md 3.2).
+    std::uint32_t start_delay = kHarvestStartDelay;
+    /// Ticks left of the cut wait (Cut).
+    std::uint32_t wait = 0;
+    /// The claimed tile in world coordinates (step +4/+6); meaningful in ToTree and Cut only.
+    TileXY target;
+    /// The walk, as TransportState's: waypoints, the next one and the distance along the segment.
+    std::vector<FixedPos> route;
+    std::uint32_t next = 0;
+    std::uint32_t along = 0;
+    friend bool operator==(const HarvestState&, const HarvestState&) = default;
 };
 
 /// Raw units per ton in a ship hold: amounts are exact multiples of 1/256 ton (the original's 8.8
@@ -230,6 +267,8 @@ struct Figure {
     std::uint32_t state_word = 0;
     /// MAP-NAV-2 (stream 122): the motion state of a navigating ship.
     std::optional<NavMotion> nav;
+    /// MAP-ECON-1 E2 (stream 126): the harvest job of a farm worker (docs/sim/forestry.md 2).
+    std::optional<HarvestState> harvest;
 };
 
 /// D: the unit registry (world +0x114).

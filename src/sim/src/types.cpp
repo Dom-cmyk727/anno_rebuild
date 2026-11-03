@@ -87,6 +87,22 @@ constexpr std::array kProdtypeNames = {
     Named{324, "ROHSTSPEZ"}, Named{325, "TIERHOEHLE"},    Named{353, "FLUSS"},
     Named{354, "MEER"},      Named{355, "WASSERFALL"},    Named{385, "RUINE"}};
 
+/// ROUTETYPE names (D: AnnoGame.dll the table of 80 string pointers at 0x10024fb8, matched by the
+/// FigurenHeader loader 0x1000fe00 through game slot +0x48 kind 0x3b = 0x10013b40; the index is the
+/// figure type's +0xc, slot +0x54). Read from AnnoGame.dll sha256 ac721220...7bc for MAP-ECON-1 E2:
+/// the 24 non-null entries, every other index holds no name. MARKTLER 52 = 0x34 and TRAEGER 51 =
+/// 0x33 are the market cart's and the workshop carrier's job codes (transport.hpp), MAEHER 42 =
+/// 0x2a the farm worker's (docs/re/forestry.md 2.2).
+constexpr std::array kRoutetypeNames = {
+    Named{1, "WALKDEST"},   Named{2, "WALKFOLLOW"}, Named{3, "WALKANLAGE"},
+    Named{11, "ATTACK"},    Named{12, "JAEGER"},    Named{21, "FLIGHT"},
+    Named{31, "HELP"},      Named{32, "LOESCH"},    Named{33, "SEUCHE"},
+    Named{41, "ERNTE"},     Named{42, "MAEHER"},    Named{43, "MAEHER_SPEZ"},
+    Named{44, "STEINMETZ"}, Named{45, "FISCHER"},   Named{46, "WEIDETIER"},
+    Named{51, "TRAEGER"},   Named{52, "MARKTLER"},  Named{53, "EINKAUF"},
+    Named{54, "PARK"},      Named{61, "SPECIAL"},   Named{62, "HIRSCH"},
+    Named{63, "RAUBTIER"},  Named{64, "HASE"},      Named{65, "TAENZER"}};
+
 /// FORSCHTYPE names (D: AnnoGame.dll 0x10013cf0, numbers 1..0x40; Appendix B).
 // clang-format off
 constexpr std::array kResearchNames = {
@@ -252,7 +268,7 @@ static_assert(field_count<BuildingType>() == 23,
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
-static_assert(field_count<FigureType>() == 9, "a FigureType member needs a line in the digest");
+static_assert(field_count<FigureType>() == 10, "a FigureType member needs a line in the digest");
 static_assert(field_count<GoodsInfo>() == 2, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
@@ -328,7 +344,7 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.enumv(c.payload);
         a.u32(c.gate_period);
     });
-    ar::seq(a, figures, 20 + 1 + 28, [&](const FigureType& f) {
+    ar::seq(a, figures, 20 + 1 + 28 + 4, [&](const FigureType& f) {
         a.u32(f.id);
         a.u32(f.speed_q24);
         a.u32(f.capacity_88);
@@ -349,6 +365,7 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
         a.u32(nf.hold_count_b);
         a.u32(nf.nav_class);
         a.u32(nf.stamp_radius_88);
+        a.u32(f.route); // stream 126
     });
     // The group table (P1, stream 115): u64 count, then per group the slot, the two
     // flags, Wohnmax, the needs (u64 count; goods id, forced flag, Menge) and the
@@ -479,6 +496,16 @@ formats::Result<FigureType, std::string> figure_type_from_entry(const fig::Entry
                 t.bewohntype = number;
             }
         }
+    }
+    // MAP-ECON-1 E2 (stream 126): the ROUTETYPE index (loader 0x1000fe00, branch 0x10010029-
+    // 0x100100d9, store 0x100100cf). A name the original's table does not hold is a load error, as
+    // an unknown PRODTYPE is (P: every shipped entry names a table entry, UNUSED or none).
+    if (const auto name = e.record_str("ROUTETYPE")) {
+        const auto route = routetype_by_name(*name);
+        if (!route) {
+            return who + "unknown ROUTETYPE '" + std::string(*name) + "'";
+        }
+        t.route = *route;
     }
     // LOGIC[0x25] * 0.125 tile (type slot 0x68(4)), 7 tiles when 0 (constant 0x40e00000).
     t.range_88 = logic[0x25] == 0 ? 7U * 256U : std::uint32_t{logic[0x25]} * 32U;
@@ -676,6 +703,10 @@ struct Sealed : TypeRegistry {
 
 std::optional<std::uint32_t> prodtype_by_name(std::string_view name) {
     return number_of(kProdtypeNames, name);
+}
+
+std::optional<std::uint32_t> routetype_by_name(std::string_view name) {
+    return number_of(kRoutetypeNames, name);
 }
 
 std::string_view prodtype_name(std::uint32_t number) {

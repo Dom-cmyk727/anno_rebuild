@@ -2165,7 +2165,7 @@ TEST_CASE("counting draw counts per site, forwards every draw and reports the di
     CHECK(between[1].site == sim::DrawSite::Ai);
     CHECK(between[1].count == 2);
     CHECK(sim::draw_records_between(draw.counts, draw.counts).empty());
-    CHECK(sim::kDrawSiteCount == 19);
+    CHECK(sim::kDrawSiteCount == 20);
 }
 
 TEST_CASE("figure registry slot policy is the rules' slot policy") {
@@ -2365,6 +2365,7 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
         figs.u64(0);                   // holds: none
         figs.u32(0);                   // state_word (stream 120)
         figs.u8(0);                    // nav absent (stream 122)
+        figs.u8(0);                    // harvest absent (stream 126)
     };
     figure(1, 11, 0, bid(0, 1).v, 7);
     figure(2, 22, 1, bid(0, 2).v, 0);
@@ -2381,8 +2382,8 @@ TEST_CASE("ids figures and events scopes have the documented byte layout") {
     // crew_slot and the hold count: 18 bytes; 111 until stream 120 added the 4-byte state word),
     // then 92 bytes into slot 1) is reported with the scope path of that slot.
     const std::size_t stamp_at =
-        figures_at + 20 + 116 +
-        92; // slot 0: 115 bytes until stream 122 added the nav presence byte
+        figures_at + 20 + 117 +
+        92; // slot 0: 115 bytes until stream 122 (nav presence), 116 until 126 (harvest presence)
     REQUIRE(bytes[stamp_at] == 0);
     std::vector<std::uint8_t> bad = bytes;
     bad[stamp_at] = 2;
@@ -2683,13 +2684,57 @@ TEST_CASE("every field of the figure registry and the event queue moves the hash
          [](sim::Figure& f) { f.holds = {sim::ShipHold{3, 4}, sim::ShipHold{1, 2}}; }},
         // MAP-2 (stream 120): the state word.
         {"state_word", [](sim::Figure& f) { f.state_word = 0x02; }},
+        // MAP-ECON-1 E2 (stream 126): the harvest state, present and field by field.
+        {"harvest present", [](sim::Figure& f) { f.harvest = sim::HarvestState{}; }},
+        {"harvest.step",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->step = sim::HarvestStep::ToHome;
+         }},
+        {"harvest.start_delay",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->start_delay = 3;
+         }},
+        {"harvest.wait",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->wait = 9;
+         }},
+        {"harvest.target.x",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->target.x = 1;
+         }},
+        {"harvest.target.y",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->target.y = 1;
+         }},
+        {"harvest.route",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->route = {sim::FixedPos{1, 2}};
+         }},
+        {"harvest.next",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->next = 1;
+         }},
+        {"harvest.along",
+         [](sim::Figure& f) {
+             f.harvest = sim::HarvestState{};
+             f.harvest->along = 1;
+         }},
     };
-    static_assert(sim::field_count<sim::Figure>() == 20);
+    static_assert(sim::field_count<sim::Figure>() == 21);
+    static_assert(sim::field_count<sim::HarvestState>() == 7);
     static_assert(sim::field_count<sim::TransportState>() == 7);
     static_assert(sim::field_count<sim::ShipHold>() == 2);
     // The 18 members, the position being two scalars, the transport state seven fields and
     // a hold two: 21 earlier cases and 8 for the four new members.
-    CHECK(figure.size() == 30);
+    // MAP-ECON-1 E2: 9 harvest cases (presence and the 7 members, the target being two scalars).
+    CHECK(figure.size() == 39);
     std::set<std::uint64_t> seen;
     for (const auto& [name, mutate] : figure) {
         INFO("figure " << name);
@@ -2943,7 +2988,11 @@ TEST_CASE("G1 weaver and farm produce at the F2 and F6 rates through the real sc
     }
     CHECK(blocked == 2);
     CHECK(spawned == 2);
-    CHECK(w.rng().cursor() == 1234); // no draw was made: no 300 s gate before tick 150000
+    // One draw: the farm's single eligible dispatch attempt (MAP-ECON-1 E2, DrawSite::
+    // FarmWorkerDispatch, D 0x1006edf3) at the step that sent its worker; afterwards its one
+    // worker is out (max_figures 1, the job-0 figure never returns) and no step is eligible. No
+    // other site draws: no 300 s gate before tick 150000.
+    CHECK(w.rng().cursor() == 1235);
     // Goldens (made by the C++; the semantic asserts above do not depend on them).
     check_golden_line("s7_g1_mp_checkpoints", checkpoints.value());
     check_golden_line("s7_g1_mp_end", w.state_hash());

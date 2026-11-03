@@ -74,6 +74,12 @@ enum class DrawSite : std::uint8_t {
     /// The same draw reached from the scenario loader (STADT2 -> island +0xf4, 0x1001e339): the
     /// engine's loader creates cities directly and does not draw (docs/sim/city-creation.md E15).
     CityNameLoad,
+    /// D: AnnoWelt 0x1006edf3-0x1006ee06 (the farm tick 0x1006ea90): once per ELIGIBLE dispatch
+    /// attempt of a farm (the step passed its gate, is switched on and not suspended, the
+    /// worker-count and the raw-rate tests passed), before the send, whether or not the send then
+    /// creates a figure; the result is discarded (docs/sim/forestry.md 3.1). The fur trapper's own
+    /// tick is not read for it (U-13).
+    FarmWorkerDispatch,
     /// Number of sites (not a site).
     Count_
 };
@@ -124,6 +130,8 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
         return "CityName";
     case DrawSite::CityNameLoad:
         return "CityNameLoad";
+    case DrawSite::FarmWorkerDispatch:
+        return "FarmWorkerDispatch";
     case DrawSite::Count_:
         break;
     }
@@ -148,6 +156,7 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
     case DrawSite::CityNameLoad:
         return DrawPhase::Load;
     case DrawSite::CityName:
+    case DrawSite::FarmWorkerDispatch:
     case DrawSite::SmallFarmAnimal:
     case DrawSite::Event300:
     case DrawSite::Event750Gate:
@@ -178,7 +187,8 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
            site == DrawSite::Event750Gate || site == DrawSite::Event750Island ||
            site == DrawSite::LinkRawMaterial || site == DrawSite::LinkOre ||
            site == DrawSite::LinkTemplatePick || site == DrawSite::LinkSpecialMark ||
-           site == DrawSite::LinkTreasure || site == DrawSite::CityName;
+           site == DrawSite::LinkTreasure || site == DrawSite::CityName ||
+           site == DrawSite::FarmWorkerDispatch;
 }
 
 /// A source of world draws. The world PRNG behind it is consumed in the

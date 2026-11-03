@@ -394,7 +394,12 @@ TEST_CASE("draw sources forward the site and the world stream") {
     CHECK(static_cast<int>(sim::DrawSite::ComputerName) == 16);
     CHECK(static_cast<int>(sim::DrawSite::CityName) == 17);
     CHECK(static_cast<int>(sim::DrawSite::CityNameLoad) == 18);
-    CHECK(static_cast<int>(sim::DrawSite::Count_) == 19);
+    CHECK(static_cast<int>(sim::DrawSite::FarmWorkerDispatch) == 19); // MAP-ECON-1 E2, appended
+    CHECK(static_cast<int>(sim::DrawSite::Count_) == 20);
+    CHECK(sim::draw_site_ported(sim::DrawSite::FarmWorkerDispatch));
+    CHECK(sim::draw_site_phase(sim::DrawSite::FarmWorkerDispatch) == sim::DrawPhase::Advance);
+    CHECK(std::string(sim::draw_site_name(sim::DrawSite::FarmWorkerDispatch)) ==
+          "FarmWorkerDispatch");
     CHECK(sim::DrawRecord{}.count == 0);
 }
 
@@ -592,9 +597,9 @@ TEST_CASE("state_hash relational properties") {
     // (tools/sim_stream.py: header with SimConfig, Rules, registry digest and seam
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
-    CHECK(sim::World().state_hash() == 0xab4a2bbd54c8d560ULL); // empty_world at 125 (sim_stream.py)
-    CHECK(sim::kStateHashVersion == 125);
-    CHECK(sim::kPrngTimelineVersion == 3);
+    CHECK(sim::World().state_hash() == 0x034a446b1301bee1ULL); // empty_world at 126 (sim_stream.py)
+    CHECK(sim::kStateHashVersion == 126);
+    CHECK(sim::kPrngTimelineVersion == 4);
 }
 
 namespace {
@@ -881,7 +886,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 8) ==
-          std::vector<std::uint8_t>{125, 0, 0, 0, 3, 0, 0, 0});
+          std::vector<std::uint8_t>{126, 0, 0, 0, 4, 0, 0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8
     CHECK(bytes[at + 16] == 0);
@@ -924,7 +929,7 @@ TEST_CASE("world core stream layout round trip and rejects") {
     }
     SUBCASE("another PRNG timeline version is refused") {
         auto bad = bytes;
-        bad[4] = 4; // this build's timeline is 3
+        bad[4] = 3; // this build's timeline is 4 (3 is the one before FarmWorkerDispatch)
         sim::World other;
         const std::string err = read_into(other, bad);
         CHECK(err.find("header") == 0);

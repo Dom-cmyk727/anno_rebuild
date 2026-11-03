@@ -14,7 +14,9 @@ serializer:
     One figure = u32 id, u32 speed_q24, u32 capacity_88, u32 layer, u32 load_ticks,
                  u32 bewohntype, u32 range_88, u8 hull_present (0/1), i64 hull (0 when absent),
                  u8 nav_present (0/1) and seven u32 (speed_q32, turn_step_q32, max_hp, hold_count_a,
-                 hold_count_b, nav_class, stamp_radius_88; all 0 when absent)  [stream 122].
+                 hold_count_b, nav_class, stamp_radius_88; all 0 when absent)  [stream 122],
+                 u32 route (the ROUTETYPE index, 0 = none; MAP-ECON-1 E2, docs/sim/forestry.md 4)
+                 [stream 126].
     Figures are listed in ASCENDING id (the registry seal sorts them; ids are unique).
 
 The vectors cover only figures (types, goods, classes, groups empty: the C++ test calls
@@ -38,12 +40,14 @@ def fnv(data):
 def figure_bytes(f):
     id_, speed, cap, layer, load, bew, rng, hull = f[:8]
     nav = f[8] if len(f) > 8 else None
+    route = f[9] if len(f) > 9 else 0
     present = hull is not None
     return (struct.pack('<7I', id_, speed, cap, layer, load, bew, rng)
             + struct.pack('<B', 1 if present else 0)
             + struct.pack('<q', hull if present else 0)
             + struct.pack('<B', 1 if nav is not None else 0)
-            + struct.pack('<7I', *(nav if nav is not None else (0,) * 7)))
+            + struct.pack('<7I', *(nav if nav is not None else (0,) * 7))
+            + struct.pack('<I', route))
 
 
 def digest(figures):
@@ -87,6 +91,9 @@ CASES = [
     ('nav_changed_hold_b', [BASE + ((154618822, 472446402, 6000, 4, 3, 0, 1280),)]),
     ('nav_changed_class', [BASE + ((154618822, 472446402, 6000, 4, 2, 1, 1280),)]),
     ('nav_changed_stamp', [BASE + ((154618822, 472446402, 6000, 4, 2, 0, 1281),)]),
+    # stream 126: the route (figure 102's MAEHER = 42 = 0x2a, and one value more)
+    ('route_maeher', [(102, 33554, 256, 2, 6500, 0, 1792, None, None, 42)]),
+    ('route_changed', [(102, 33554, 256, 2, 6500, 0, 1792, None, None, 43)]),
     ('two_ascending', [(391, 0x0400, 0, 2, 0, 113, 4096, -27487789056), BASE]),
     ('three_ascending', [(391, 0x0400, 0, 2, 0, 113, 4096, -27487789056),
                          (717, 0x0200, 0, 1, 0, 97, 1792, None), BASE]),
@@ -102,8 +109,9 @@ def render():
         out.append('case %s %016x' % (name, digest(figs)))
         for f in figs:
             base = ' '.join('-' if v is None else str(v) for v in f[:8])
-            nav = (' nav ' + ' '.join(str(v) for v in f[8])) if len(f) > 8 else ''
-            out.append('fig ' + base + nav)
+            nav = (' nav ' + ' '.join(str(v) for v in f[8])) if len(f) > 8 and f[8] is not None else ''
+            route = (' route %d' % f[9]) if len(f) > 9 and f[9] else ''
+            out.append('fig ' + base + nav + route)
     return '\n'.join(out) + '\n'
 
 

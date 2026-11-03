@@ -163,6 +163,10 @@ struct SpawnRequest {
     std::uint32_t figure_kind = 0;
     PlayerId owner;
     FixedPos pos;
+    /// MAP-ECON-1 E2: the new figure's cargo goods (a farm worker carries its home's input 0, D
+    /// 0x1006ee06) and whether it gets the harvest state (docs/sim/forestry.md 2).
+    GoodsId cargo_goods = 0;
+    bool harvest = false;
 };
 
 /// A counter of figures out goes down by one (if the building still exists and the

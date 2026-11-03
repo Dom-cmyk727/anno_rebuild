@@ -1,10 +1,12 @@
 // World::check_invariants and the world-level queries (docs/sim/state.md §9.6,
 // §4.14, stage S6).
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <map>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <anno/sim/create.hpp>
@@ -40,6 +42,91 @@ void World::rect_query(CityRef city, const TileRect& rect, std::uint32_t list_ma
         return;
     }
     islands_[city.island.v]->rect_query(config_.layout, city.city, rect, list_mask, out);
+}
+
+std::string World::harvest_problem() const {
+    // MAP-ECON-1 E2 (docs/sim/forestry.md 2, 2.1): the harvest facts that need the buildings, the
+    // tiles or the rules. Refused, never repaired. No fact requires a currently existing home: a
+    // worker whose Farm was demolished keeps the unresolved id until its next arrival.
+    const auto island_ptr = [&](IslandId id) -> const Island* {
+        return id.valid() && id.v < islands_.size() && islands_[id.v].has_value() ? &*islands_[id.v]
+                                                                                  : nullptr;
+    };
+    // The worker of every claim target in ToTree/Cut, for the enhanced facts.
+    std::map<std::pair<IslandId, TileXY>, std::vector<FigureId>> targeting;
+    for (std::size_t s = 0; s < figures_.list.slots.size(); ++s) {
+        if (!figures_.list.slots[s].has_value() || !figures_.list.slots[s]->harvest.has_value()) {
+            continue;
+        }
+        const Figure& f = *figures_.list.slots[s];
+        const HarvestState& h = *f.harvest;
+        const std::string where = "figures.list.slots[" + std::to_string(s) + "].harvest";
+        if (f.home.valid()) {
+            const Island* is = island_ptr(island_of(f.home));
+            const Building* b = is != nullptr ? is->find_building(f.home) : nullptr;
+            if (b != nullptr && !std::holds_alternative<Farm>(b->payload)) {
+                return where + ": the home " + std::to_string(f.home.v) +
+                       " is not a Farm-payload building";
+            }
+        }
+        if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {
+            const Island* is = f.home.valid() ? island_ptr(island_of(f.home)) : nullptr;
+            if (is == nullptr || !is->tiles.contains(h.target.x, h.target.y)) {
+                return where + ".target: (" + std::to_string(h.target.x) + ", " +
+                       std::to_string(h.target.y) + ") is not a tile of the home's island";
+            }
+            if (!f.expiry_stamp.has_value()) {
+                targeting[{island_of(f.home), h.target}].push_back(f.id);
+            }
+        }
+    }
+    for (std::size_t i = 0; i < islands_.size(); ++i) {
+        if (!islands_[i].has_value()) {
+            continue;
+        }
+        const Island& is = *islands_[i];
+        const std::string p = "islands[" + std::to_string(i) + "].claims";
+        if (!rules_.forestry_claim_hygiene) {
+            if (!is.claims.empty()) {
+                return p + ": " + std::to_string(is.claims.size()) +
+                       " owner entries under the faithful rules (the original stores no owner)";
+            }
+            continue;
+        }
+        // Enhanced (E-i): every entry names an existing worker in ToTree/Cut that targets the
+        // tile, and the tile's bit is set. (E-iv: a map holds one entry per tile.)
+        for (const auto& [tile, worker] : is.claims) {
+            const std::string e =
+                p + "[(" + std::to_string(tile.x) + ", " + std::to_string(tile.y) + ")]";
+            const Slot idx = is.tile_index(tile.x, tile.y);
+            if (idx == kNoSlot) {
+                return e + ": not a tile of the island";
+            }
+            if (!is.tiles.claimed(idx)) {
+                return e + ": an owner entry without the claim bit";
+            }
+            const auto it = targeting.find({IslandId{static_cast<std::uint32_t>(i)}, tile});
+            if (it == targeting.end() ||
+                std::find(it->second.begin(), it->second.end(), worker) == it->second.end()) {
+                return e + ": owner " + std::to_string(worker.v) +
+                       " is no live harvest worker in ToTree/Cut targeting the tile";
+            }
+        }
+        // Enhanced (E-ii): no stray bit. (E-iii, a worker without an entry, is a valid
+        // transitional state after an invalidation.)
+        for (std::uint64_t t = 0; t < is.tiles.tile_count(); ++t) {
+            if (!is.tiles.claimed(t)) {
+                continue;
+            }
+            const TileXY xy{is.tiles.x0() + static_cast<std::int32_t>(t % is.tiles.width()),
+                            is.tiles.y0() + static_cast<std::int32_t>(t / is.tiles.width())};
+            if (!is.claims.contains(xy)) {
+                return p + ": the claim bit of tile (" + std::to_string(xy.x) + ", " +
+                       std::to_string(xy.y) + ") has no owner entry (a stray claim)";
+            }
+        }
+    }
+    return {};
 }
 
 std::string World::check_invariants() const {
@@ -122,6 +209,10 @@ std::string World::check_invariants() const {
                        "].goods: " + std::to_string(holds[h].goods) + " is not in the goods table";
             }
         }
+    }
+    problem = harvest_problem();
+    if (!problem.empty()) {
+        return problem;
     }
     for (const auto& entry : events_.q) {
         if (entry.first.second >= ids_.next_event_seq) {

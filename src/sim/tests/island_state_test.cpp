@@ -580,7 +580,7 @@ TEST_CASE("world create does not depend on the executor") {
 TEST_CASE("island fields are counted") {
     // The canaries of state_fields.hpp, restated: a member added to a persistent
     // island type without a line in its fields() function fails the build there.
-    CHECK(sim::field_count<sim::Island>() == 19);
+    CHECK(sim::field_count<sim::Island>() == 20);
     CHECK(sim::field_count<sim::Drought>() == 10);
     CHECK(sim::field_count<sim::SweepState>() == 5);
     CHECK(sim::field_count<sim::CityRing>() == 2);
@@ -607,7 +607,8 @@ TEST_CASE("island fields are counted") {
     // word, stream 108), deposits count + goods length + goods bytes + x + y + remaining + reserve
     // (7), reserved (1), tiles: 3 dims + 6 x 10 columns, cities: the slot count (no slot in this
     // island).
-    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1); // + the ore-object count
+    // + the ore-object count, + the claims count (stream 126, an empty map: one primitive)
+    CHECK(prims == 11 + 1 + 5 + 1 + 2 + 2 + 12 + 7 + 1 + 1 + 3 + 60 + 1 + 1);
 }
 
 TEST_CASE("islands scope stream layout") {
@@ -654,7 +655,8 @@ TEST_CASE("islands scope stream layout") {
             want.boolean(d.reserve);
         }
         want.u64(0); // no ore objects (stream 120)
-        want.u64(0);
+        want.u64(0); // reserved_object_count
+        want.u64(0); // claims: no enhanced owner (stream 126)
         want.u32(wd);
         want.u32(ht);
         want.u32(8);
@@ -835,6 +837,10 @@ TEST_CASE("island perturbation moves the hash") {
         {"deposit removed", [](sim::Island& i) { i.deposits.pop_back(); }},
         {"deposits swapped", [](sim::Island& i) { std::swap(i.deposits[0], i.deposits[1]); }},
         {"reserved_object_count", [](sim::Island& i) { i.reserved_object_count = 1; }},
+        // stream 126: the enhanced claim owners, an entry, its tile and its worker.
+        {"claims entry", [](sim::Island& i) { i.claims[sim::TileXY{0, 0}] = sim::FigureId{1}; }},
+        {"claims tile", [](sim::Island& i) { i.claims[sim::TileXY{0, 1}] = sim::FigureId{1}; }},
+        {"claims worker", [](sim::Island& i) { i.claims[sim::TileXY{0, 0}] = sim::FigureId{2}; }},
         {"first tile object", [](sim::Island& i) { i.tiles.set_object(0, 1); }},
         {"first tile phase", [](sim::Island& i) { i.tiles.set_phase(0, 1); }},
         {"first tile owner", [](sim::Island& i) { i.tiles.set_owner(0, 1); }},
@@ -1879,17 +1885,18 @@ TEST_CASE("load refuses a damaged frame") {
         CHECK(contains(err, "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
                                 " is not supported"));
     }
-    SUBCASE("a valid stream 124 control: the old version is refused with its own text, 125 loads") {
-        // The stream before MAP-ROAD-CLOSE-1 (Rules without the two road options) is version 124.
-        // The control is a valid save of this build; only the version word is changed and the
-        // frame resealed, so the refusal is the version text and not checksum damage.
-        static_assert(sim::kStateHashVersion == 125, "update this test with the next stream bump");
+    SUBCASE("a valid stream 125 control: the old version is refused with its own text, 126 loads") {
+        // The stream before MAP-ECON-1 E2 (no forestry Rules, harvest state, claim owners or
+        // figure-type route) is version 125. The control is a valid save of this build; only the
+        // version word is changed and the frame resealed, so the refusal is the version text and
+        // not checksum damage.
+        static_assert(sim::kStateHashVersion == 126, "update this test with the next stream bump");
         CHECK(island_test::load_error(good).empty()); // the control loads
         std::vector<std::uint8_t> old = good;
-        island_test::put32(old, 8, 124);
+        island_test::put32(old, 8, 125);
         island_test::reseal(old);
         const std::string err = island_test::load_error(old);
-        CHECK(contains(err, "state stream version 124 is not supported (this build reads 125)"));
+        CHECK(contains(err, "state stream version 125 is not supported (this build reads 126)"));
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;

@@ -295,7 +295,7 @@ template <class A, Same<CargoRules> S> void fields(A& a, S& s) {
     ar::seq(a, s.dock_half_widths, 4, [&](auto& x) { a.u32(x); });
 }
 
-static_assert(field_count<Rules>() == 27, "a Rules member needs a line in fields(Rules)");
+static_assert(field_count<Rules>() == 29, "a Rules member needs a line in fields(Rules)");
 
 template <class A, Same<Rules> S> void fields(A& a, S& s) {
     a.enumv(s.slot_policy);
@@ -327,6 +327,8 @@ template <class A, Same<Rules> S> void fields(A& a, S& s) {
     fields(a, s.cargo);                        // stream 124
     a.boolean(s.road_require_land_level);      // stream 125
     a.boolean(s.road_preserve_nonroad_pieces); // stream 125
+    a.boolean(s.forestry_claim_hygiene);       // stream 126
+    a.boolean(s.forestry_skip_uncuttable);     // stream 126
 }
 
 // ---- settings scope
@@ -924,7 +926,7 @@ template <class A, Same<OreObject> S> void fields(A& a, S& s) {
     ar::seq(a, s.discovered, 4, [&](auto& p) { a.u32(p.v); });
 }
 
-static_assert(field_count<Island>() == 19,
+static_assert(field_count<Island>() == 20,
               "an Island member needs a line in fields(Island) or a derived note");
 
 /// One island (docs/sim/state.md §9.3): `u32 index`, the rectangle `i32 x0, i32 y0,
@@ -970,6 +972,15 @@ template <class A, Same<Island> S> void fields(A& a, S& s) {
     ar::seq(a, s.deposits, 21, [&](auto& d) { fields(a, d); });
     ar::seq(a, s.ore_objects, 24, [&](auto& o) { fields(a, o); }); // stream 120
     a.u64(s.reserved_object_count);
+    // stream 126 (MAP-ECON-1 E2): the enhanced claim owners, u64 count, then per entry the world
+    // tile (i32 x, i32 y) and the worker id (u64), ascending tile (x, then y, TileXY's order).
+    ar::map(
+        a, s.claims, 16,
+        [&](auto& k) {
+            a.i32(k.x);
+            a.i32(k.y);
+        },
+        [&](auto& v) { a.u64(v.v); });
     a.scope("tiles", [&] { tiles_io(a, s.tiles, x0, y0, w, h); });
     a.scope("cities", [&] { cities_io(a, s.cities); });
 }
@@ -1085,7 +1096,28 @@ template <class A, Same<NavMotion> S> void fields(A& a, S& s) {
     ar::opt(a, s.health, [&](auto& h) { a.u32(h); }); // stream 123
 }
 
-static_assert(field_count<Figure>() == 20, "a Figure member needs a line in fields(Figure)");
+template <> struct EnumInfo<HarvestStep> : ContiguousEnum<5> {};
+
+static_assert(field_count<HarvestState>() == 7,
+              "a HarvestState member needs a line in fields(HarvestState)");
+
+/// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 2): u8 step, u32 start_delay, u32 wait, i32
+/// target x, i32 target y, the route (u64 count, i32 x and y each), u32 next, u32 along.
+template <class A, Same<HarvestState> S> void fields(A& a, S& s) {
+    a.enumv(s.step);
+    a.u32(s.start_delay);
+    a.u32(s.wait);
+    a.i32(s.target.x);
+    a.i32(s.target.y);
+    ar::seq(a, s.route, 8, [&](auto& p) {
+        a.i32(p.x);
+        a.i32(p.y);
+    });
+    a.u32(s.next);
+    a.u32(s.along);
+}
+
+static_assert(field_count<Figure>() == 21, "a Figure member needs a line in fields(Figure)");
 
 template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.id.v);
@@ -1110,8 +1142,9 @@ template <class A, Same<Figure> S> void fields(A& a, S& s) {
     a.u64(s.parent.v);
     ar::opt(a, s.crew_slot, [&](auto& v) { a.u32(v); });
     ar::seq(a, s.holds, 12, [&](auto& hold) { fields(a, hold); });
-    a.u32(s.state_word);                               // stream 120
-    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); }); // stream 122
+    a.u32(s.state_word);                                   // stream 120
+    ar::opt(a, s.nav, [&](auto& m) { fields(a, m); });     // stream 122
+    ar::opt(a, s.harvest, [&](auto& h) { fields(a, h); }); // stream 126
 }
 
 /// The registry's slot list, like a building list: `i64 hint, u32 cursor, u64

@@ -769,15 +769,18 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     rec.checkpoint();
     sim::StateHasher checkpoints;
     std::optional<sim::BuildingId> first_target, second_target;
-    std::uint32_t other_draws = 0;
+    std::uint32_t other_draws = 0, dispatch_draws = 0;
     for (int i = 1; i <= 6000; ++i) {
         rec.advance(100);
         for (const sim::DrawRecord& r : w.last_output().draws) {
             // The world's own draws: the 300 s event (once per 150 000 ticks for the one
-            // island) and the 7.5 minute event's gate (once per 225 000 ticks).
+            // island) and the 7.5 minute event's gate (once per 225 000 ticks); since MAP-ECON-1
+            // E2 also the farm's eligible dispatch attempts (FarmWorkerDispatch), counted apart.
+            dispatch_draws += r.site == sim::DrawSite::FarmWorkerDispatch ? r.count : 0U;
             other_draws += r.site != sim::DrawSite::Event300 &&
                                    r.site != sim::DrawSite::Event750Gate &&
-                                   r.site != sim::DrawSite::Event750Island
+                                   r.site != sim::DrawSite::Event750Island &&
+                                   r.site != sim::DrawSite::FarmWorkerDispatch
                                ? r.count
                                : 0U;
         }
@@ -798,6 +801,28 @@ TEST_CASE("G6 a market cart and a workshop carrier through 300000 ticks equal go
     }
     REQUIRE(w.clock().tick() == 300000);
     CHECK(other_draws == 0); // the transport draws nothing
+    // The farm's worker counter rose once per eligible attempt (its workers never return here),
+    // and each attempt drew once.
+    std::uint32_t farm_workers = 0;
+    for (const auto& is : w.islands()) {
+        if (!is) {
+            continue;
+        }
+        for (const auto& c : is->cities) {
+            if (!c) {
+                continue;
+            }
+            for (const auto& list : c->index.lists) {
+                for (const auto& b : list.slots) {
+                    if (b && std::holds_alternative<sim::Farm>(b->payload)) {
+                        farm_workers += std::get<sim::Farm>(b->payload).workers_out;
+                    }
+                }
+            }
+        }
+    }
+    CHECK(dispatch_draws >= 1);
+    CHECK(dispatch_draws == farm_workers);
     // The first cart takes the weaver's cloth: reached at cost 15 with the score
     // 1280 · 128 / 1280 = 128 (not a raw goods: the early stop, 0x1005aa83), before the
     // farm (cost 30). The next takes the farm's corn: KORN is raw (13), q = 960, score

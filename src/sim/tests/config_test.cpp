@@ -230,6 +230,9 @@ void expected_config(Stream& s) {
     // road options (stream 125): hand-written defaults, both off (docs/sim/road-placement.md 3)
     s.boolean(false); // road_require_land_level
     s.boolean(false); // road_preserve_nonroad_pieces
+    // forestry options (stream 126): hand-written defaults, both off (docs/sim/forestry.md 3.6)
+    s.boolean(false); // forestry_claim_hygiene
+    s.boolean(false); // forestry_skip_uncuttable
 }
 
 void expected_settings(Stream& s) {
@@ -399,6 +402,10 @@ std::vector<std::pair<const char*, RulesMut>> rules_mutations() {
                    [](sim::Rules& r) { r.road_require_land_level = true; });
     m.emplace_back("road_preserve_nonroad_pieces",
                    [](sim::Rules& r) { r.road_preserve_nonroad_pieces = true; });
+    m.emplace_back("forestry_claim_hygiene",
+                   [](sim::Rules& r) { r.forestry_claim_hygiene = true; });
+    m.emplace_back("forestry_skip_uncuttable",
+                   [](sim::Rules& r) { r.forestry_skip_uncuttable = true; });
     return m;
 }
 
@@ -607,10 +614,12 @@ TEST_CASE("rules defaults are faithful") {
     CHECK_FALSE(r.removal_clear_tile);
     CHECK_FALSE(r.road_require_land_level); // the faithful convention: both road choices off
     CHECK_FALSE(r.road_preserve_nonroad_pieces);
+    CHECK_FALSE(r.forestry_claim_hygiene); // the faithful convention: both forestry choices off
+    CHECK_FALSE(r.forestry_skip_uncuttable);
     CHECK(r.validate().empty());
     CHECK(r.founding_types == std::vector<std::uint32_t>{1302});
     CHECK(r.shared_visibility.empty());
-    static_assert(sim::field_count<sim::Rules>() == 27);
+    static_assert(sim::field_count<sim::Rules>() == 29);
 }
 
 TEST_CASE("sim config defaults are the originals") {
@@ -1521,7 +1530,7 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 125);
+    CHECK(sim::kStateHashVersion == 126);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
@@ -1995,40 +2004,53 @@ TEST_CASE("cargo rules: the Rules bytes equal the independent Python transcripti
             want[name] = hex;
         }
     }
-    REQUIRE(want.size() == 5);
+    REQUIRE(want.size() == 6);
     sim::Rules def;
     const std::string def_hex = hex_of(rules_stream(def));
     CHECK(def_hex == want["rules_default"]);
-    // The CargoRules bytes precede the two road booleans (stream 125) at the end of the Rules
-    // scope.
-    constexpr std::size_t kRoadHex = 4; // two bytes
-    CHECK(def_hex.size() >= want["cargo_default"].size() + kRoadHex);
-    CHECK(def_hex.substr(def_hex.size() - kRoadHex - want["cargo_default"].size(),
+    // The CargoRules bytes precede the two road booleans (stream 125) and the two forestry booleans
+    // (stream 126) at the end of the Rules scope.
+    constexpr std::size_t kTailHex = 8; // four bytes: road level, road pieces, hygiene, skip
+    CHECK(def_hex.size() >= want["cargo_default"].size() + kTailHex);
+    CHECK(def_hex.substr(def_hex.size() - kTailHex - want["cargo_default"].size(),
                          want["cargo_default"].size()) == want["cargo_default"]);
-    CHECK(def_hex.substr(def_hex.size() - kRoadHex) == "0000"); // both road choices off
-    // Both on: the whole scope equals the independent transcription (a default and a flipped
-    // byte pair differ only in the last two bytes).
+    CHECK(def_hex.substr(def_hex.size() - kTailHex) == "00000000"); // all four choices off
+    // Both road choices on: the whole scope equals the independent transcription (a default and a
+    // flipped byte pair differ only in those two bytes).
     sim::Rules roads;
     roads.road_require_land_level = true;
     roads.road_preserve_nonroad_pieces = true;
     const std::string roads_hex = hex_of(rules_stream(roads));
     CHECK(roads_hex == want["rules_roads"]);
-    CHECK(roads_hex.substr(roads_hex.size() - kRoadHex) == "0101");
-    CHECK(roads_hex.substr(0, roads_hex.size() - kRoadHex) ==
-          def_hex.substr(0, def_hex.size() - kRoadHex));
+    CHECK(roads_hex.substr(roads_hex.size() - kTailHex) == "01010000");
+    CHECK(roads_hex.substr(0, roads_hex.size() - kTailHex) ==
+          def_hex.substr(0, def_hex.size() - kTailHex));
     sim::Rules only_floor;
     only_floor.road_require_land_level = true;
-    CHECK(hex_of(rules_stream(only_floor)).substr(def_hex.size() - kRoadHex) == "0100");
+    CHECK(hex_of(rules_stream(only_floor)).substr(def_hex.size() - kTailHex) == "01000000");
     sim::Rules only_pieces;
     only_pieces.road_preserve_nonroad_pieces = true;
-    CHECK(hex_of(rules_stream(only_pieces)).substr(def_hex.size() - kRoadHex) == "0001");
+    CHECK(hex_of(rules_stream(only_pieces)).substr(def_hex.size() - kTailHex) == "00010000");
+    // Both forestry choices on (stream 126): the independent transcription, and each alone.
+    sim::Rules forestry;
+    forestry.forestry_claim_hygiene = true;
+    forestry.forestry_skip_uncuttable = true;
+    const std::string forestry_hex = hex_of(rules_stream(forestry));
+    CHECK(forestry_hex == want["rules_forestry"]);
+    CHECK(forestry_hex.substr(forestry_hex.size() - kTailHex) == "00000101");
+    sim::Rules only_hygiene;
+    only_hygiene.forestry_claim_hygiene = true;
+    CHECK(hex_of(rules_stream(only_hygiene)).substr(def_hex.size() - kTailHex) == "00000100");
+    sim::Rules only_skip;
+    only_skip.forestry_skip_uncuttable = true;
+    CHECK(hex_of(rules_stream(only_skip)).substr(def_hex.size() - kTailHex) == "00000001");
     sim::Rules custom;
     custom.cargo.warehouse_prodtypes = {35, 36, 40};
     custom.cargo.dock_half_widths = {3, 3, 3, 2};
     REQUIRE(custom.validate().empty());
     const std::string custom_hex = hex_of(rules_stream(custom));
     CHECK(custom_hex == want["rules_custom"]);
-    CHECK(custom_hex.substr(custom_hex.size() - kRoadHex - want["cargo_custom"].size(),
+    CHECK(custom_hex.substr(custom_hex.size() - kTailHex - want["cargo_custom"].size(),
                             want["cargo_custom"].size()) == want["cargo_custom"]);
     CHECK(def_hex != custom_hex);
     // The rules digest moves with each list, and the stream reads back.

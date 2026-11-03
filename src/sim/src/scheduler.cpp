@@ -121,6 +121,10 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         f.home_counter = s.home_counter;
         f.job = s.job;
         f.pos = s.pos;
+        f.cargo_goods = s.cargo_goods;
+        if (s.harvest) {
+            f.harvest = HarvestState{}; // Start, the first delay owed (docs/sim/forestry.md 2)
+        }
         f.born = t;
         f.stamp = static_cast<std::uint16_t>(t); // the unit's +8 from its creation
         if (add_figure(w.figures_, f, w.config_, w.rules_) == kNoSlot) {

@@ -214,7 +214,7 @@ The first slice reuses the existing deterministic tile-level walker. The omitted
 
 | Existing | Change |
 |---|---|
-| `types.cpp` `figure_type_from_entry` | add `route` (ROUTETYPE index through the table at `AnnoGame 0x10024fb8`, 80 entries read from the DLL at load, or an equivalent config table; never a compiled-in list: moddable) |
+| `types.cpp` `figure_type_from_entry` | add `route` (ROUTETYPE index through the table at `AnnoGame 0x10024fb8`). *E2 (done):* the 24 named entries of that table are transcribed as `kRoutetypeNames`, the same pattern as the PRODTYPE (`0x100138e0`) and FORSCHTYPE name tables: the names are the original's route vocabulary, while which figure type uses which route stays data (a mod's FigurenHeader entry with ROUTETYPE `MAEHER` gets job `0x2a` without engine changes); an unknown name is a load error. P: all 368 shipped entries name a table entry, `UNUSED` (206) or none (7) |
 | `driver.cpp` `send_figure_job`, `spawn_request`, `consume` | job from the first figure type's `route` for the farm family; cargo goods `inputs[0]`; the dispatch draw per eligible attempt (§3.1, §3.7) |
 | `draw.hpp` | new `DrawSite`, name/phase/ported entries |
 | `world.hpp` | `kPrngTimelineVersion`, `kStateHashVersion` (next free) |
@@ -228,6 +228,8 @@ The first slice reuses the existing deterministic tile-level walker. The omitted
 | `transport.cpp` / new `harvest.cpp` | `harvest_tick`; reuse `search()`/`walk()`; tile goals (U-1) |
 | `scheduler.cpp` | default figure body: `harvest.has_value()` -> `harvest_tick`, else existing (small-farm workers keep their handling) |
 | tests | below |
+
+**E2 implementation status (MAP-ECON-1 E2, stream 126, PRNG timeline 4).** Implemented: `FigureType::route` (digest), `HarvestStep`/`HarvestState` incl. `start_delay` and `Figure::harvest` (field list, hash, save), `kTileClaim` (aux bit 29 admitted), `Island::claims` (saved/hashed, empty under faithful rules), `Rules::forestry_claim_hygiene`/`forestry_skip_uncuttable` (two bytes after the road options), `DrawSite::FarmWorkerDispatch` (one draw per eligible attempt in `tick_building`'s Farm case, before the send), the farm family's send (job = route, cargo goods = input 0, `harvest` for a 0x29/0x2a route of a Farm-payload home), and the validators of §2.1 (local facts in `validate_figures`, building/tile/rule facts in `World::harvest_problem`). Not yet implemented (E3): the `harvest_tick` body, the overlay, `tile_edits`, the hygiene-only placement/clearing invalidation and the revalidation; until E3 a spawned harvest worker stays in `Start`.
 
 ## 5. Hand-derived examples (derived on paper before `forester_ref.py` ran; reproduced by it; E-13..E-20 are the E1-FINAL additions)
 

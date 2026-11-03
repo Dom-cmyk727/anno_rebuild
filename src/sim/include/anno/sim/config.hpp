@@ -611,6 +611,19 @@ struct Rules {
     /// piece, buildings) and the unsupported-class gates apply either way. Intended value in an
     /// enhanced session: true.
     bool road_preserve_nonroad_pieces = false;
+    /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 3.5, 3.6): an ENHANCED harvest choice, not
+    /// an original rule. Off (the original): the claim is one tile bit with no owner; a worker's
+    /// cut arrival and abort clear it unconditionally; placement and clearing keep it. On: the
+    /// island keeps the claim's owner (Island::claims), a worker clears only its own claim,
+    /// placement and clearing invalidate the bit and the entry, and a worker revalidates its target
+    /// at each visit. Intended value in an enhanced session: true.
+    bool forestry_claim_hygiene = false;
+    /// MAP-ECON-1 E2 (stream 126, docs/sim/forestry.md 3.6): an ENHANCED harvest choice. Off (the
+    /// original candidate list, AnnoWelt 0x10092320 mode 0): a tile whose type's WARE[0] is the
+    /// cargo goods and whose claim bit is clear. On: additionally the cut's own predicate (the type
+    /// `id - 1` exists and its PRODTYPE is ROHSTWACHS, 0x10087340), so a tile the cut cannot change
+    /// is never chosen. Derived from the registry; no literal id. Intended enhanced value: true.
+    bool forestry_skip_uncuttable = false;
 
     /// docs/sim/state.md §3.1. Rejects every reserved value (prng_mode ==
     /// PerIsland: no per-island stream state exists, so it could not be hashed

@@ -325,6 +325,52 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
             return where + ".transport: no route, but next " + std::to_string(tr.next) +
                    " and along " + std::to_string(tr.along);
         }
+        // MAP-ECON-1 E2: the harvest job's own facts (docs/sim/forestry.md 2, 2.1). The facts that
+        // need the buildings or the tiles (the home's payload, the target's island, the claims) are
+        // World::check_invariants'. Nothing here requires an existing home: a demolished home is a
+        // valid state until the worker's next arrival.
+        if (f.harvest.has_value()) {
+            const HarvestState& h = *f.harvest;
+            const std::string hw = where + ".harvest";
+            if (!harvest_job(f.job)) {
+                return hw + ": present on a figure of job " + std::to_string(f.job) +
+                       " (only the harvest jobs 0x29 and 0x2a have one)";
+            }
+            if (static_cast<std::uint8_t>(h.step) > static_cast<std::uint8_t>(HarvestStep::Done)) {
+                return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +
+                       " is no step";
+            }
+            if (h.start_delay > kHarvestStartDelay) {
+                return hw + ".start_delay: " + std::to_string(h.start_delay) + " is above " +
+                       std::to_string(kHarvestStartDelay);
+            }
+            if (h.start_delay > 0 &&
+                (h.step != HarvestStep::Start || !h.route.empty() || f.cargo_88 != 0)) {
+                return hw + ".start_delay: " + std::to_string(h.start_delay) +
+                       " ticks still owed, but the job has started (a step, a route or cargo)";
+            }
+            if ((h.step == HarvestStep::Cut) != (h.wait > 0)) {
+                return hw + ".wait: " + std::to_string(h.wait) + " in step " +
+                       std::to_string(static_cast<unsigned>(h.step)) +
+                       " (a wait is owed exactly in Cut, and a finished wait is resolved at once)";
+            }
+            if (!h.route.empty() && (h.next == 0 || h.next > h.route.size())) {
+                return hw + ".next: " + std::to_string(h.next) + " is not in 1 .. " +
+                       std::to_string(h.route.size());
+            }
+            if (h.route.empty() && (h.next != 0 || h.along != 0)) {
+                return hw + ": no route, but next " + std::to_string(h.next) + " and along " +
+                       std::to_string(h.along);
+            }
+            if (!h.route.empty() && h.step != HarvestStep::ToTree &&
+                h.step != HarvestStep::ToHome) {
+                return hw + ".route: a walk outside the walking steps ToTree and ToHome";
+            }
+            if (h.step == HarvestStep::Done && !f.expiry_stamp.has_value()) {
+                return hw + ".step: Done, but the figure has not ended (Done is resolved in the "
+                            "same call by its end)";
+            }
+        }
     }
     // MAP-2: the facing, the parent links and the crew slots. Every figure of the registry
     // is in `seen` (ordered), so a parent is looked up, never searched for. The chain check

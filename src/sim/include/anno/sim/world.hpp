@@ -126,7 +126,14 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // booleans after `cargo`, road_require_land_level and road_preserve_nonroad_pieces (one byte
 // each, default false). Nothing else changes; every state hash moves through the version in the
 // header and the two Rules bytes.
-inline constexpr std::uint32_t kStateHashVersion = 125;
+// Stream at 126 (task MAP-ECON-1 E2, docs/sim/forestry.md 2): Rules gain two booleans after the
+// road ones, forestry_claim_hygiene and forestry_skip_uncuttable (one byte each, default false);
+// each Figure gains an optional HarvestState at its end; each Island gains the enhanced claim
+// owners (u64 count, then i32 x, i32 y, u64 worker) after reserved_object_count; the registry
+// digest's figure types gain `route` (u32) after the navigation facts. The tile aux admits bit 29
+// (the claim). A world without harvest workers moves only through the version and the Rules and
+// Island bytes (two Rules bytes, one u64 count 0 per island).
+inline constexpr std::uint32_t kStateHashVersion = 126;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;
@@ -139,7 +146,10 @@ inline constexpr std::uint32_t kSaveVersion = 1;
 /// ComputerName (0x100025a0) in the manifest.
 /// Version 3 (task MAP-2, city creation): the ported advance-phase site CityName (D AnnoWelt
 /// 0x10096910) and the unported load-phase site CityNameLoad in the manifest.
-inline constexpr std::uint32_t kPrngTimelineVersion = 3;
+/// Version 4 (task MAP-ECON-1 E2, docs/sim/forestry.md 3.1, 3.7): the ported advance-phase site
+/// FarmWorkerDispatch (D AnnoWelt 0x1006edf3-0x1006ee06), one draw per eligible farm dispatch
+/// attempt.
+inline constexpr std::uint32_t kPrngTimelineVersion = 4;
 
 struct StateIO;
 struct ScenarioSpec;
@@ -295,6 +305,9 @@ class World {
     /// table, the islands and their cities and buildings (validate_islands), the
     /// city owners, then the footprints and the derived indexes.
     [[nodiscard]] std::string check_invariants() const;
+    /// The harvest facts that need buildings, tiles and rules (docs/sim/forestry.md 2.1); part of
+    /// check_invariants. Empty when they hold.
+    [[nodiscard]] std::string harvest_problem() const;
 
     /// Compile-time canary (never called): binds every data member of World.
     /// A member added without extending this line fails to compile here,

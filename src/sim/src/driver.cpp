@@ -267,6 +267,13 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         }
         f->status.shows_icons = icons;
         r = farm_step(*f, type->prod, ctx.t);
+        // MAP-ECON-1 E2: one world draw per ELIGIBLE dispatch attempt, before the send and whatever
+        // the send then does (D 0x1006edf3-0x1006ee06: city +0x18, island +0x18, world +0xb4 =
+        // 0x100a1740, the result discarded; docs/sim/forestry.md 3.1). farm_step's send_figure is
+        // exactly that eligibility (gate, switched on, not suspended, the count and rate tests).
+        if (r.send_figure) {
+            static_cast<void>(ctx.draw.next(DrawSite::FarmWorkerDispatch));
+        }
         break;
     }
     case TickKind::FurTrapper: {
@@ -333,8 +340,8 @@ namespace {
 ///  - 0x2a the small farm's line-0 worker (D 0x1006f660: `this+0x118(job 0x2a, ...)`,
 ///    §4.5);
 ///  - 0x2e the small farm's animal (D 0x1006f660, §4.5).
-/// The farm's worker takes its job from the figure type's slot +0x54 (§4.2), which is
-/// not read: 0 (unknown, O-8).
+/// The farm family's worker takes its job from the figure type's slot +0x54 = its ROUTETYPE
+/// (FigureType::route, MAP-ECON-1 E2, docs/re/forestry.md 2.1, 2.2), see consume.
 /// The carrier's 0x33 is kJobWorkshopCarrier and the market cart's 0x34 (D 0x1006b6d0:
 /// `this+0x118(0x34, figure list[0], t)`, docs/re/transport.md §1.5) kJobMarketCart,
 /// both in transport.hpp.
@@ -355,7 +362,7 @@ std::uint32_t send_figure_job(RuntimeClass cls) {
     case RuntimeClass::Market:
         return kJobMarketCart;
     default:
-        return 0; // the farm family: unknown (O-8); other classes send no figure here
+        return 0; // the farm family: the figure type's route (consume); others send no figure here
     }
 }
 
@@ -408,8 +415,20 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
         if (counter != nullptr) {
             ++*counter;
             const std::uint32_t kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
-            fx.spawns.push_back(
-                spawn_request(island, city, b, type, 0, send_figure_job(type.cls), kind));
+            SpawnRequest s =
+                spawn_request(island, city, b, type, 0, send_figure_job(type.cls), kind);
+            if (type.cls == RuntimeClass::Farm) {
+                // MAP-ECON-1 E2 (D 0x1006ee06-0x1006ee56): the job is the figure type's slot +0x54
+                // (its ROUTETYPE), and the new figure's cargo carries the farm's input 0. A harvest
+                // job (0x29/0x2a) of a Farm-payload home gets the harvest state
+                // (docs/sim/forestry.md 2: chosen by the spawn, never by the job alone). An unknown
+                // figure type has no route: job 0, as before.
+                const FigureType* ft = ctx.types.find_figure_type(kind);
+                s.job = ft != nullptr ? ft->route : 0;
+                s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
+                s.harvest = harvest_job(s.job) && std::holds_alternative<Farm>(b.payload);
+            }
+            fx.spawns.push_back(s);
         }
     }
     if (r.send_animal) {

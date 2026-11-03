@@ -210,7 +210,16 @@ struct FigureType {
     std::optional<std::int64_t> hull_half_88 = std::nullopt;
     /// MAP-NAV-2 (stream 122): present for a navigating ship type.
     std::optional<NavFacts> nav = std::nullopt;
+    /// MAP-ECON-1 E2 (stream 126): the ROUTETYPE record's index in the original's route-name table
+    /// (AnnoGame 0x10024fb8, read by the loader 0x1000fe00 into type +0xc; figure-type slot +0x54 =
+    /// 0x1000fae0 returns it). A farm-family building sends its worker with this job (AnnoWelt
+    /// 0x1006ea90, docs/re/forestry.md 2.1, 2.2); 0 = no ROUTETYPE or UNUSED. 102's MAEHER = 0x2a.
+    std::uint32_t route = 0;
 };
+
+/// The ROUTETYPE number of a route name (AnnoGame 0x10024fb8, the loader's name lookup); 0 for an
+/// empty name or UNUSED, nullopt for a name the original's table does not hold.
+[[nodiscard]] std::optional<std::uint32_t> routetype_by_name(std::string_view name);
 
 /// The supported domain of FigureType::hull_half_88: |value| < 2^31 tiles, i.e. strictly below
 /// kMaxHullHalf88 in 1/256 tile (2^39). The original-file decoder keeps exactly this range; the

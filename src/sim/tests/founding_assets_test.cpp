@@ -15,9 +15,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -25,6 +28,7 @@
 #include <anno/formats/ship_manifest.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/harvest.hpp>
 #include <anno/sim/placement.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/route.hpp>
@@ -36,6 +40,7 @@
 #include <anno/sim/site_checks.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/terrain_view.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/sim_load/ship_start.hpp>
@@ -3184,4 +3189,482 @@ TEST_CASE("sailed founding canary: the opening loop unloads the unchanged loadou
         auto bad = sim::replay(fresh2.value(), tampered);
         CHECK((!bad.ok() || !bad.value().reproduced()));
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// MAP-ECON-1 E5: the forester opening (docs/sim/forestry.md 7, TASKS E5)
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+constexpr std::uint32_t kForester801 = 801; // a fixture identifier: the engine reads its data
+
+/// A forester site, the road tiles that join it to the warehouse, and its tree count.
+struct ForestPlan {
+    Origin site;
+    std::vector<Origin> road;
+    std::uint32_t trees = 0;
+};
+
+/// The cuttable mature trees (the registry rule: WARE[0] is the worker's cargo goods and the cut's
+/// predicate holds) in the forester's candidate square (search_area), outside its footprint.
+std::uint32_t trees_in_square(const sim::World& w, const sim::Island& is,
+                              const sim::BuildingType& f, const Origin& o, sim::GoodsId cargo) {
+    sim::Building b;
+    b.type = f.id;
+    b.x = o.x;
+    b.y = o.y;
+    const sim::TileRect sq = sim::search_area(b, f).square();
+    std::uint32_t n = 0;
+    for (std::int32_t y = sq.y0; y < sq.y0 + static_cast<std::int32_t>(sq.h); ++y) {
+        for (std::int32_t x = sq.x0; x < sq.x0 + static_cast<std::int32_t>(sq.w); ++x) {
+            const sim::Slot idx = is.tile_index(x, y);
+            if (idx == sim::kNoSlot || (x >= o.x && x < o.x + 3 && y >= o.y && y < o.y + 3)) {
+                continue;
+            }
+            n +=
+                sim::harvest_candidate_type(w.types(), is.tiles.object(idx), cargo, true) ? 1U : 0U;
+        }
+    }
+    return n;
+}
+
+/// A 4-connected path of legal own road tiles from beside the warehouse to beside `site` (both
+/// footprints are walk code 4, which the cart's layer admits; the road tiles have code 0). Breadth
+/// first in row-major order: the shortest such path, deterministic.
+std::optional<std::vector<Origin>> road_path(const sim::World& w, sim::CityRef ref,
+                                             const sim::BuildingType& road, const sim::Building& wh,
+                                             const sim::BuildingType& kontor, const Origin& site) {
+    const sim::Island& is = *w.islands()[ref.island.v];
+    std::map<std::pair<std::int32_t, std::int32_t>, Origin> legal;
+    for (const Origin& o : legal_origins(is, w.types(), road)) {
+        const sim::Slot idx = is.tile_index(o.x, o.y);
+        const bool in_site = o.x >= site.x && o.x < site.x + 3 && o.y >= site.y && o.y < site.y + 3;
+        if (idx != sim::kNoSlot && is.tiles.owner(idx) == ref.city.v && !in_site) {
+            legal[{o.x, o.y}] = o;
+        }
+    }
+    const auto [kw, kh] = sim::footprint(kontor, wh.rotation);
+    const auto touches = [](std::int32_t x, std::int32_t y, std::int32_t bx, std::int32_t by,
+                            std::int32_t bw, std::int32_t bh) {
+        const bool inside_x = x >= bx && x < bx + bw, inside_y = y >= by && y < by + bh;
+        return (inside_x && (y == by - 1 || y == by + bh)) ||
+               (inside_y && (x == bx - 1 || x == bx + bw));
+    };
+    std::map<std::pair<std::int32_t, std::int32_t>, std::pair<std::int32_t, std::int32_t>> from;
+    std::vector<std::pair<std::int32_t, std::int32_t>> queue;
+    for (const auto& [xy, o] : legal) {
+        if (touches(xy.first, xy.second, wh.x, wh.y, static_cast<std::int32_t>(kw),
+                    static_cast<std::int32_t>(kh))) {
+            from[xy] = xy;
+            queue.push_back(xy);
+        }
+    }
+    for (std::size_t q = 0; q < queue.size(); ++q) {
+        const auto cur = queue[q];
+        if (touches(cur.first, cur.second, site.x, site.y, 3, 3)) {
+            std::vector<Origin> path;
+            for (auto at = cur;; at = from[at]) {
+                path.push_back(legal.at(at));
+                if (from[at] == at) {
+                    break;
+                }
+            }
+            return path;
+        }
+        for (const auto& [dx, dy] : {std::pair{0, -1}, {-1, 0}, {1, 0}, {0, 1}}) {
+            const std::pair<std::int32_t, std::int32_t> nb{cur.first + dx, cur.second + dy};
+            if (legal.contains(nb) && !from.contains(nb)) {
+                from[nb] = cur;
+                queue.push_back(nb);
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+sim::Command road_drag(std::uint32_t player, sim::CityRef city, const std::vector<Origin>& path) {
+    std::vector<sim::PlacementWire> ps;
+    for (const Origin& o : path) {
+        ps.push_back(command_test::at(sim::TypeId{kRoadDirt}, o.x, o.y));
+    }
+    return command_test::build(player, city, std::move(ps));
+}
+
+} // namespace
+
+TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a forester and roads, "
+          "harvests existing trees and delivers new wood; reload and replay") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set (a required-asset skip, not a pass)");
+        return;
+    }
+    namespace ct = command_test;
+    RealStart rs =
+        real_start(*dir); // the unchanged candidate, the original loadout, faithful Rules
+    auto loaded = sl::load_ship_start(rs.manifest, *dir, rs.types, {}, rs.rules);
+    REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+    const sim::World pristine = std::move(loaded).value();
+    REQUIRE(sl::expedition_baseline_problem(pristine).empty());
+    CHECK_FALSE(pristine.rules().forestry_claim_hygiene);
+    CHECK_FALSE(pristine.rules().forestry_skip_uncuttable);
+    const sim::BuildingType& kontor = *rs.types->find(sim::TypeId{1302});
+    const sim::BuildingType& forester = *rs.types->find(sim::TypeId{kForester801});
+    const sim::BuildingType& road = *rs.types->find(sim::TypeId{kRoadDirt});
+    const sim::GoodsId wood = *rs.types->goods_by_name("HOLZ");
+    const sim::GoodsId baum = *rs.types->goods_by_name("BAUM");
+    // The registry facts the ledger uses (docs/re/forestry.md 1.1): no wood in either cost.
+    for (const auto& cg : forester.cost_goods) {
+        CHECK(cg.goods != wood);
+    }
+    CHECK(road.cost_goods.empty());
+    REQUIRE(forester.input_goods == std::vector<sim::GoodsId>{baum});
+
+    // ---- the recorded run: seat 0 sails, founds, unloads every hold --------------------------
+    std::vector<SailLeg> legs = plan_opening_legs(rs, pristine);
+    legs.resize(1); // one seat: seat 0's ship 1
+    const std::uint64_t ship_id = legs[0].ship;
+    const std::uint32_t player = legs[0].player;
+    sim::World w = pristine;
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    sim::Recorder rec = std::move(started).value();
+    Driver d{&w, &rec};
+    const SailOutcome voyage = sail_phase(d, w, legs, false);
+    REQUIRE(voyage.all_arrived);
+    const Holds start_holds = ship_of(w, ship_id).holds;
+    const auto aboard_wood = [&](const sim::World& world) {
+        return aboard_of(ship_of(world, ship_id).holds, wood);
+    };
+    const std::int64_t ship_wood_start = aboard_wood(w);
+    CHECK(ship_wood_start == 12800); // 50 t of wood aboard (the manifest, docs/sim/ship-cargo.md)
+    const sim::ApplyResult found = d.apply(found_command(legs[0]));
+    REQUIRE_MESSAGE(found.status == sim::Reject::None, sim::reject_name(found.status));
+    d.checkpoint();
+    const sim::BuildingId warehouse = found.records.at(0).building;
+    const auto city_ref = city_of_player(w, player);
+    REQUIRE(city_ref.has_value());
+    std::int64_t found_wood = 0;
+    for (const auto& cg : kontor.cost_goods) {
+        found_wood += cg.goods == wood ? cg.amount_88 : 0;
+    }
+    CHECK(ship_wood_start - aboard_wood(w) == found_wood); // 3072 (12 t) taken from the hold
+    std::int64_t unloaded_wood = 0;
+    for (std::uint32_t h = 0; h < ship_of(w, ship_id).holds.size(); ++h) {
+        const sim::ShipHold hold = ship_of(w, ship_id).holds[h];
+        if (hold.goods == 0 || hold.amount_88 == 0) {
+            continue;
+        }
+        const auto tons = static_cast<std::uint32_t>((hold.amount_88 + 255) / 256);
+        const sim::ApplyResult r = d.apply(
+            sim::Command{sim::PlayerId{player},
+                         sim::UnloadCmd{sim::FigureId{ship_id}, warehouse, h, hold.goods, tons}});
+        if (r.status == sim::Reject::None) {
+            unloaded_wood +=
+                hold.goods == wood ? static_cast<std::int64_t>(r.records.at(0).transferred_88) : 0;
+        }
+        d.advance(100);
+        d.checkpoint();
+    }
+    const auto city_wood = [&](const sim::World& world) {
+        return static_cast<std::int64_t>(ct::city(world, *city_ref).stock.stock.at(wood));
+    };
+    CHECK(unloaded_wood == ship_wood_start - found_wood - aboard_wood(w));
+    CHECK(city_wood(w) == unloaded_wood); // the city's wood is exactly the unloaded wood
+
+    // ---- sites, searched on copies: the forester, its road, a real wood receipt --------------
+    const sim::Island& home_island = *w.islands()[city_ref->island.v];
+    const sim::Building& wh = *w.find_building(warehouse);
+    std::vector<ForestPlan> plans;
+    for (const Origin& o : legal_origins(home_island, w.types(), forester)) {
+        bool mine = true;
+        for (std::int32_t dy = 0; dy < 3 && mine; ++dy) {
+            for (std::int32_t dx = 0; dx < 3 && mine; ++dx) {
+                const sim::Slot idx = home_island.tile_index(o.x + dx, o.y + dy);
+                mine = idx != sim::kNoSlot && home_island.tiles.owner(idx) == city_ref->city.v;
+            }
+        }
+        if (!mine || std::max(std::abs(o.x - wh.x), std::abs(o.y - wh.y)) > 16) {
+            continue;
+        }
+        const std::uint32_t trees = trees_in_square(w, home_island, forester, o, baum);
+        if (trees >= 6) {
+            plans.push_back(ForestPlan{o, {}, trees});
+        }
+    }
+    std::stable_sort(plans.begin(), plans.end(),
+                     [](const ForestPlan& a, const ForestPlan& b) { return a.trees > b.trees; });
+    REQUIRE_MESSAGE(!plans.empty(), "no forester site with trees near the warehouse");
+    const auto try_plan = [&](ForestPlan& p, std::uint32_t max_ticks) -> bool {
+        sim::World trial = w; // a copy: the recorded world is never touched by the search
+        if (trial.apply(ct::build(player, *city_ref, {ct::at(forester.id, p.site.x, p.site.y)}))
+                .status != sim::Reject::None) {
+            return false;
+        }
+        const auto path =
+            road_path(trial, *city_ref, road, *trial.find_building(warehouse), kontor, p.site);
+        if (!path || path->empty()) {
+            return false;
+        }
+        p.road = *path;
+        if (trial.apply(road_drag(player, *city_ref, p.road)).status != sim::Reject::None) {
+            return false;
+        }
+        const std::int64_t w0 = city_wood(trial);
+        for (std::uint32_t t = 0; t < max_ticks; t += 50) {
+            trial.advance(100);
+            if (city_wood(trial) > w0) {
+                return true;
+            }
+        }
+        return false;
+    };
+    std::optional<ForestPlan> chosen, alternative;
+    for (std::size_t i = 0; i < plans.size() && i < 8 && (!chosen || !alternative); ++i) {
+        ForestPlan p = plans[i];
+        if (!chosen) {
+            if (try_plan(p, 120000)) {
+                chosen = p;
+            }
+        } else if (std::abs(p.site.x - chosen->site.x) + std::abs(p.site.y - chosen->site.y) > 0) {
+            alternative = p; // another legal site: the changed-command control below
+        }
+    }
+    REQUIRE_MESSAGE(chosen.has_value(), "no candidate site delivered wood on a copy");
+    REQUIRE(alternative.has_value());
+    MESSAGE("forester site (" << chosen->site.x << ", " << chosen->site.y << "), " << chosen->trees
+                              << " cuttable trees in its square, road of " << chosen->road.size()
+                              << " tiles; alternative (" << alternative->site.x << ", "
+                              << alternative->site.y << ")");
+
+    // ---- the real run: build the forester and the road through public commands --------------
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats); // diagnostic only, not state
+    const sim::Command build_forester =
+        ct::build(player, *city_ref, {ct::at(forester.id, chosen->site.x, chosen->site.y)});
+    {
+        sim::World probe = w; // the changed command (another legal site) executes too
+        probe.set_transport_stats(nullptr);
+        CHECK(probe
+                  .apply(ct::build(player, *city_ref,
+                                   {ct::at(forester.id, alternative->site.x, alternative->site.y)}))
+                  .status == sim::Reject::None);
+    }
+    const std::int64_t wood_before_build = city_wood(w);
+    const sim::ApplyResult bf = d.apply(build_forester);
+    REQUIRE(bf.status == sim::Reject::None);
+    const sim::BuildingId forester_id = bf.records.at(0).building;
+    const sim::ApplyResult br = d.apply(road_drag(player, *city_ref, chosen->road));
+    REQUIRE(br.status == sim::Reject::None);
+    d.checkpoint();
+    const std::int64_t construction_wood = wood_before_build - city_wood(w);
+    CHECK(construction_wood == 0); // forester 150 gold + 2 tools, roads gold only
+    const auto farm = [&](const sim::World& world) -> const sim::Farm& {
+        return std::get<sim::Farm>(world.find_building(forester_id)->payload);
+    };
+    CHECK(farm(w).raw == 0); // nothing seeded
+    CHECK(farm(w).out == 0);
+    // The tree ledger region: the forester's square, without its footprint and the road.
+    sim::Building fb;
+    fb.type = forester.id;
+    fb.x = chosen->site.x;
+    fb.y = chosen->site.y;
+    const sim::TileRect square = sim::search_area(fb, forester).square();
+    std::set<std::pair<int, int>> skip;
+    for (std::int32_t dy = 0; dy < 3; ++dy) {
+        for (std::int32_t dx = 0; dx < 3; ++dx) {
+            skip.insert({chosen->site.x + dx, chosen->site.y + dy});
+        }
+    }
+    for (const Origin& o : chosen->road) {
+        skip.insert({o.x, o.y});
+    }
+    // Every tile change in the square, classified per advance (docs/sim/forestry.md 7): a cut
+    // turns a cuttable N into N - 1; the growth sweep turns a growing M into M + 1 (pre-existing
+    // young trees mature: measured, not assumed 0); nothing else may change there.
+    std::map<std::pair<int, int>, std::uint32_t> last_obj;
+    const auto snapshot = [&] {
+        const sim::Island& is = *w.islands()[city_ref->island.v];
+        for (std::int32_t y = square.y0; y < square.y0 + static_cast<std::int32_t>(square.h); ++y) {
+            for (std::int32_t x = square.x0; x < square.x0 + static_cast<std::int32_t>(square.w);
+                 ++x) {
+                const sim::Slot idx = is.tile_index(x, y);
+                if (idx != sim::kNoSlot && !skip.contains({x, y})) {
+                    last_obj[{x, y}] = is.tiles.object(idx);
+                }
+            }
+        }
+    };
+    snapshot();
+    std::map<std::uint32_t, std::int64_t> cuts_by_type, growth_by_type;
+    std::int64_t unexplained_tile_changes = 0;
+    const auto classify = [&] {
+        const sim::Island& is = *w.islands()[city_ref->island.v];
+        for (auto& [xy, before] : last_obj) {
+            const std::uint32_t now = is.tiles.object(is.tile_index(xy.first, xy.second));
+            if (now == before) {
+                continue;
+            }
+            if (now + 1 == before && sim::harvest_cuttable(w.types(), before)) {
+                ++cuts_by_type[before];
+            } else if (now == before + 1 && w.types().find_growing(before) != nullptr) {
+                ++growth_by_type[before];
+            } else {
+                ++unexplained_tile_changes;
+            }
+            before = now;
+        }
+    };
+
+    // ---- ordinary advances until new wood arrives, then a little longer ----------------------
+    bool reloaded = false;
+    std::uint32_t ticks = 0;
+    std::uint32_t settle_after = 0;
+    for (; ticks < 200000; ticks += 50) {
+        d.advance(100);
+        classify();
+        if (ticks % 5000 == 0) {
+            d.checkpoint();
+        }
+        if (!reloaded) {
+            // One save/reload while a worker carries wood home: resumed == uninterrupted.
+            for (const auto& f : w.figures().list.slots) {
+                if (f && f->harvest && f->harvest->step == sim::HarvestStep::ToHome &&
+                    f->cargo_88 > 0 && !f->expiry_stamp) {
+                    sim::World copy = w;
+                    copy.set_transport_stats(nullptr); // a copy carries the sink: detach it
+                    auto back = sim::World::load(w.save(), rs.types);
+                    REQUIRE(back.ok());
+                    sim::World resumed = std::move(back).value();
+                    for (int k = 0; k < 100; ++k) { // 5000 ticks: through the delivery
+                        copy.advance(100);
+                        resumed.advance(100);
+                    }
+                    CHECK(resumed.state_hash() == copy.state_hash());
+                    reloaded = true;
+                    break;
+                }
+            }
+        }
+        if (settle_after == 0 && city_wood(w) > wood_before_build) {
+            settle_after = ticks + 20000;
+        }
+        if (settle_after != 0 && ticks >= settle_after) {
+            break;
+        }
+    }
+    d.checkpoint();
+    CHECK(reloaded);
+    REQUIRE_MESSAGE(settle_after != 0, "no new wood reached the warehouse within 200 000 ticks");
+    MESSAGE("first new wood at the warehouse after about " << (settle_after - 20000)
+                                                           << " ticks; ran " << ticks);
+
+    // ---- the ledger (docs/sim/forestry.md 7): every unexplained term is zero ------------------
+    const sim::ForestryStats& fs = stats.forestry;
+    const auto lf = stats.loaded_from.find(forester_id);
+    const std::int64_t cart_loaded = lf != stats.loaded_from.end() ? std::int64_t(lf->second) : 0;
+    const auto at = [](const std::map<sim::GoodsId, std::uint64_t>& m, sim::GoodsId g) {
+        const auto i = m.find(g);
+        return i != m.end() ? std::int64_t(i->second) : std::int64_t{0};
+    };
+    const std::int64_t offered = at(stats.unload_offered, wood);
+    const std::int64_t cart_lost = at(stats.cart_lost, wood);
+    std::int64_t worker_active = 0, cart_active = 0;
+    for (const auto& f : w.figures().list.slots) {
+        if (!f || f->expiry_stamp) {
+            continue;
+        }
+        if (f->harvest) {
+            worker_active += f->cargo_88;
+        } else if (f->job == sim::kJobMarketCart && f->cargo_goods == wood) {
+            cart_active += f->cargo_88;
+        }
+    }
+    const auto fl = fs.farms.find(forester_id);
+    REQUIRE(fl != fs.farms.end());
+    const std::int64_t consumed = std::int64_t(fl->second.consumed_88);
+    const std::int64_t made = std::int64_t(fl->second.made_88);
+    const std::int64_t received = city_wood(w) - wood_before_build;
+    MESSAGE("ledger: cuts " << fs.cuts << ", credited " << fs.raw_credited_88 << ", delivered raw "
+                            << fs.raw_delivered_88 << ", consumed " << consumed << ", made " << made
+                            << ", out " << farm(w).out << ", loaded " << cart_loaded << ", offered "
+                            << offered << ", received " << received);
+    // ship and city
+    CHECK(aboard_wood(w) == ship_wood_start - found_wood - unloaded_wood);
+    CHECK(city_wood(w) - (unloaded_wood - construction_wood + received) == 0);
+    CHECK(received > 0); // newly produced wood reached the warehouse
+    // harvest -> raw -> production -> output -> carts -> receipt
+    CHECK(std::int64_t(fs.raw_credited_88) == 256 * std::int64_t(fs.cuts));
+    CHECK(std::int64_t(fs.raw_credited_88) - worker_active - std::int64_t(fs.raw_delivered_88) -
+              std::int64_t(fs.raw_lost_88) ==
+          0);
+    CHECK(std::int64_t(fs.raw_delivered_88) - consumed - std::int64_t(farm(w).raw) == 0);
+    CHECK(consumed * 14 == made * 32); // every step full: raw arrives in 256s, consumed in 32s
+    CHECK(made - std::int64_t(farm(w).out) - cart_loaded == 0);
+    CHECK(cart_loaded - cart_active - offered - cart_lost == 0);
+    CHECK(offered - received == 0);       // below the capacity: no clip
+    CHECK(stats.loaded_from.size() == 1); // the forester is the only source any cart loaded from
+    CHECK(fs.cut_mismatches == 0);
+    CHECK(fs.raw_lost_88 == 0);
+    // the trees: every tile change of the square explained; the cuts seen on the tiles are exactly
+    // the successful cuts the workers were credited for
+    CHECK(unexplained_tile_changes == 0);
+    std::int64_t cut_seen = 0;
+    for (const auto& [id, n] : cuts_by_type) {
+        CHECK(sim::harvest_cuttable(w.types(), id));
+        cut_seen += n;
+    }
+    std::int64_t grown = 0;
+    for (const auto& [id, n] : growth_by_type) {
+        grown += n;
+    }
+    MESSAGE("tiles: " << cut_seen << " cuts over " << cuts_by_type.size() << " tree types, "
+                      << grown << " growth steps of pre-existing young objects");
+    CHECK(cut_seen == std::int64_t(fs.cuts));
+    REQUIRE(w.check_invariants() == "");
+    const std::uint64_t final_hash = w.state_hash();
+    const std::vector<std::uint8_t> final_save = w.save();
+
+    // ---- replay: in process, through bytes; a changed legal command diverges ----------------
+    auto bytes = sim::write_log(rec.log());
+    REQUIRE(bytes.ok());
+    {
+        const std::string e =
+            export_log_if_requested(std::getenv("ANNO_FORESTER_LOG"), bytes.value());
+        REQUIRE_MESSAGE(e.empty(), e);
+    }
+    auto read = sim::read_log(bytes.value());
+    REQUIRE(read.ok());
+    auto fresh = sim::World::load(read.value().initial_save, rs.types, {});
+    REQUIRE(fresh.ok());
+    auto outcome = sim::replay(fresh.value(), read.value());
+    REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+    CHECK(outcome.value().reproduced());
+    CHECK(fresh.value().state_hash() == final_hash);
+    CHECK(fresh.value().save() == final_save);
+    sim::ReplayLog tampered = read.value();
+    bool moved = false;
+    for (sim::ReplayEntry& e : tampered.entries) {
+        for (sim::Command& c : e.commands) {
+            auto* b = std::get_if<sim::BuildCmd>(&c.body);
+            if (b != nullptr && !moved && b->placements.size() == 1 &&
+                b->placements[0].type == forester.id) {
+                b->placements[0].x = alternative->site.x; // legal there too (probed above)
+                b->placements[0].y = alternative->site.y;
+                moved = true;
+            }
+        }
+    }
+    REQUIRE(moved);
+    {
+        const auto tb = sim::write_log(tampered);
+        REQUIRE(tb.ok());
+        const std::string e =
+            export_log_if_requested(std::getenv("ANNO_FORESTER_LOG_TAMPERED"), tb.value());
+        REQUIRE_MESSAGE(e.empty(), e);
+    }
+    auto fresh2 = sim::World::load(tampered.initial_save, rs.types, {});
+    REQUIRE(fresh2.ok());
+    auto bad = sim::replay(fresh2.value(), tampered);
+    CHECK((!bad.ok() || !bad.value().reproduced()));
 }

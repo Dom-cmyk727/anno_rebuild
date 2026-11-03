@@ -220,7 +220,7 @@ TEST_CASE(
     CHECK(figures(w).size() == 2);
 }
 
-TEST_CASE("farm dispatch: ineligible steps draw nothing; a full store and a refused send draw") {
+TEST_CASE("farm dispatch: ineligible steps draw nothing, a full store and a refused send draw") {
     const auto types = registry();
     struct Case {
         const char* name;

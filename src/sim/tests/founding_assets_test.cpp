@@ -3293,7 +3293,7 @@ sim::Command road_drag(std::uint32_t player, sim::CityRef city, const std::vecto
 } // namespace
 
 TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a forester and roads, "
-          "harvests existing trees and delivers new wood; reload and replay") {
+          "harvests existing trees and delivers new wood, reload and replay") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set (a required-asset skip, not a pass)");

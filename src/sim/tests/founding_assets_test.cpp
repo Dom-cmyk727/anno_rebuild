@@ -3427,7 +3427,17 @@ TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a fo
                 chosen = p;
             }
         } else if (std::abs(p.site.x - chosen->site.x) + std::abs(p.site.y - chosen->site.y) > 0) {
-            alternative = p; // another legal site: the changed-command control below
+            // Another site for the changed-command control: on a copy, the moved forester AND the
+            // recorded road drag that follows it both execute (so the replay's divergence comes
+            // from an executed placement, not from a refused road).
+            sim::World probe = w;
+            const bool forester_ok =
+                probe.apply(ct::build(player, *city_ref, {ct::at(forester.id, p.site.x, p.site.y)}))
+                    .status == sim::Reject::None;
+            if (forester_ok && probe.apply(road_drag(player, *city_ref, chosen->road)).status ==
+                                   sim::Reject::None) {
+                alternative = p;
+            }
         }
     }
     REQUIRE_MESSAGE(chosen.has_value(), "no candidate site delivered wood on a copy");
@@ -3443,12 +3453,15 @@ TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a fo
     const sim::Command build_forester =
         ct::build(player, *city_ref, {ct::at(forester.id, chosen->site.x, chosen->site.y)});
     {
-        sim::World probe = w; // the changed command (another legal site) executes too
+        // The changed commands (the forester at the alternative site, then the same road drag) both
+        // execute on a copy of this very state.
+        sim::World probe = w;
         probe.set_transport_stats(nullptr);
         CHECK(probe
                   .apply(ct::build(player, *city_ref,
                                    {ct::at(forester.id, alternative->site.x, alternative->site.y)}))
                   .status == sim::Reject::None);
+        CHECK(probe.apply(road_drag(player, *city_ref, chosen->road)).status == sim::Reject::None);
     }
     const std::int64_t wood_before_build = city_wood(w);
     const sim::ApplyResult bf = d.apply(build_forester);
@@ -3517,6 +3530,36 @@ TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a fo
     };
 
     // ---- ordinary advances until new wood arrives, then a little longer ----------------------
+    // The raw, production and cart equations of docs/sim/forestry.md 7 at a boundary.
+    const auto boundary_balanced = [&] {
+        const sim::ForestryStats& bs = stats.forestry;
+        std::int64_t active = 0, carts = 0;
+        for (const auto& f : w.figures().list.slots) {
+            if (!f || f->expiry_stamp) {
+                continue;
+            }
+            if (f->harvest) {
+                active += f->cargo_88;
+            } else if (f->job == sim::kJobMarketCart && f->cargo_goods == wood) {
+                carts += f->cargo_88;
+            }
+        }
+        const auto lit = stats.loaded_from.find(forester_id);
+        const std::int64_t ld = lit != stats.loaded_from.end() ? std::int64_t(lit->second) : 0;
+        const auto fit = bs.farms.find(forester_id);
+        const std::int64_t cons = fit != bs.farms.end() ? std::int64_t(fit->second.consumed_88) : 0;
+        const std::int64_t mk = fit != bs.farms.end() ? std::int64_t(fit->second.made_88) : 0;
+        const auto off = stats.unload_offered.find(wood);
+        const std::int64_t of = off != stats.unload_offered.end() ? std::int64_t(off->second) : 0;
+        CHECK(std::int64_t(bs.raw_credited_88) == 256 * std::int64_t(bs.cuts));
+        CHECK(std::int64_t(bs.raw_credited_88) - active - std::int64_t(bs.raw_delivered_88) -
+                  std::int64_t(bs.raw_lost_88) ==
+              0);
+        CHECK(std::int64_t(bs.raw_delivered_88) - cons - std::int64_t(farm(w).raw) == 0);
+        CHECK(mk - std::int64_t(farm(w).out) - ld == 0);
+        CHECK(ld - carts - of == 0);
+        CHECK(of - (city_wood(w) - wood_before_build) == 0);
+    };
     bool reloaded = false;
     std::uint32_t ticks = 0;
     std::uint32_t settle_after = 0;
@@ -3525,12 +3568,14 @@ TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a fo
         classify();
         if (ticks % 5000 == 0) {
             d.checkpoint();
+            boundary_balanced();
         }
         if (!reloaded) {
             // One save/reload while a worker carries wood home: resumed == uninterrupted.
             for (const auto& f : w.figures().list.slots) {
                 if (f && f->harvest && f->harvest->step == sim::HarvestStep::ToHome &&
                     f->cargo_88 > 0 && !f->expiry_stamp) {
+                    const sim::FigureId carrier = f->id;
                     sim::World copy = w;
                     copy.set_transport_stats(nullptr); // a copy carries the sink: detach it
                     auto back = sim::World::load(w.save(), rs.types);
@@ -3541,6 +3586,12 @@ TEST_CASE("forester opening canary: one seat sails, founds, unloads, builds a fo
                         resumed.advance(100);
                     }
                     CHECK(resumed.state_hash() == copy.state_hash());
+                    CHECK(resumed.save() == copy.save());
+                    // The carried wood was delivered in both within the window (the worker ended).
+                    for (const sim::World* run : {&copy, &resumed}) {
+                        const sim::Figure* g = sim::find_figure(run->figures(), carrier);
+                        CHECK((g == nullptr || g->expiry_stamp.has_value()));
+                    }
                     reloaded = true;
                     break;
                 }

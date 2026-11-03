@@ -58,9 +58,12 @@ load_opening(const std::filesystem::path& game_dir, const std::filesystem::path&
 /// What Founding::apply would answer to `f` from `issuer` on `world`, without applying it: the same
 /// checks in the same order up to the rotation trials (the ship, the type, the centred origin, the
 /// island, its lock, the first footprint, the reach, the origin's owner, an own city on the island,
-/// then each rotation's bounds, ownership, occupancy and coast rule). Not checked: the player's
-/// kind, the ship's state word, the founding-type list and the figure veto after the trials. The
-/// founding preview asks this on the sim thread; a test compares it with apply on the real start.
+/// then each rotation's bounds, ownership, occupancy and coast rule). Not checked: the issuer's
+/// player record and kind, whether the figure is a ship (NotAShip), the ship's state word, the
+/// founding-type list and the figure veto after the trials: where one of them refuses, the
+/// preview says yes and apply's answer comes with the tracked command. The founding preview
+/// asks this on the sim thread; a test compares it with apply on the real start (a copy of apply's
+/// order: one const probe in sim that apply calls is the fix, the sim lane's, review 2026-11-03).
 [[nodiscard]] FoundingProbeView probe_founding(const sim::World& world, sim::PlayerId issuer,
                                                const sim::FoundCmd& f);
 

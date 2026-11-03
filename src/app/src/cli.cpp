@@ -149,6 +149,7 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
             }
             out.size = *s;
         } else if (a == "--water") {
+            out.water_given = true;
             if (v == "original") {
                 out.water = render::WaterStyle::Original;
             } else if (v == "enhanced") {

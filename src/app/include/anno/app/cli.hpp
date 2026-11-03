@@ -137,6 +137,9 @@ struct Args {
     std::optional<std::pair<int, int>> at;
     std::pair<int, int> size{1600, 900};
     render::WaterStyle water = render::WaterStyle::Original;
+    /// --water was given: the ship-start opening keeps `water` instead of switching to enhanced
+    /// water on the GPU (review 2026-11-03: an explicit --water original was overridden).
+    bool water_given = false;
     /// Enhanced water only: how rivers are shaded (docs/render/rivers.md). The
     /// flow shading is the default; legacy keeps the shimmer that slides
     /// along fixed axes. Key R in the viewer toggles it.

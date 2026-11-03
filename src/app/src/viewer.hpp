@@ -38,6 +38,9 @@ struct OpeningHooks {
     std::function<std::string()> save_status;
     /// The tile the camera opens on (the local participant's ship).
     double look_x = 0, look_y = 0;
+    /// On the GPU the opening switches to enhanced water at its first view (ships stir the
+    /// simulated waves); false keeps the window's water (an explicit --water, Args::water_given).
+    bool enhanced_water = true;
 };
 
 /// Read by the window thread. The functions must not touch the sim; they

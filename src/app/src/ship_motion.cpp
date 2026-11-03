@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 
 #include <anno/app/ship_motion.hpp>
 
@@ -77,8 +78,11 @@ void ShipMotion::observe(const OpeningView& view, double now) {
                 // Not moving at all: the sim's own facing (a ship that was turned in place).
                 t.target = sim_dir;
             }
-            if (t.target != asked) {
-                t.last_turn = now; // the turning clock starts when the ship is asked to turn
+            // The turning clock starts when a ship that shows its facing is asked to turn. A new
+            // target in the middle of a turn keeps the clock running: restarting it on every
+            // change held the facing back while the targets kept changing (review 2026-11-03).
+            if (t.target != asked && t.shown == asked) {
+                t.last_turn = now;
             }
         }
         next.emplace(ship.id.v, t);
@@ -121,22 +125,34 @@ OpeningView ShipMotion::display(const OpeningView& newest, double now) {
     return out;
 }
 
-std::vector<render::fluid::ShipWake> ShipMotion::wakes(double now) const {
-    std::vector<render::fluid::ShipWake> out;
+std::vector<render::fluid::ShipWake> ShipMotion::wakes(double now,
+                                                       std::pair<double, double> centre) const {
+    // (squared distance to the centre, figure id): the order the wakes are kept in.
+    std::vector<std::pair<std::pair<double, std::uint64_t>, render::fluid::ShipWake>> moving;
     for (const auto& [id, t] : tracks_) {
         const double a = progress(t, now);
         if (a >= 1.0 || !(t.dt > 0.0)) {
             continue; // arrived: it leaves no wake from here on
+        }
+        if (t.x1 == t.x0 && t.y1 == t.y0) {
+            continue; // not moving: it would take a wake's place for nothing
         }
         render::fluid::ShipWake w;
         w.x = static_cast<float>(t.x0 + (t.x1 - t.x0) * a);
         w.y = static_cast<float>(t.y0 + (t.y1 - t.y0) * a);
         w.vx = static_cast<float>((t.x1 - t.x0) / t.dt);
         w.vy = static_cast<float>((t.y1 - t.y0) / t.dt);
-        out.push_back(w);
-        if (out.size() >= render::fluid::kMaxShipWakes) {
-            break;
-        }
+        const double ex = static_cast<double>(w.x) - centre.first;
+        const double ey = static_cast<double>(w.y) - centre.second;
+        moving.push_back({{ex * ex + ey * ey, id}, w});
+    }
+    const std::size_t n = std::min(moving.size(), render::fluid::kMaxShipWakes);
+    std::partial_sort(moving.begin(), moving.begin() + static_cast<std::ptrdiff_t>(n), moving.end(),
+                      [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<render::fluid::ShipWake> out;
+    out.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        out.push_back(moving[i].second);
     }
     return out;
 }

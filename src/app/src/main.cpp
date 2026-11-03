@@ -540,6 +540,7 @@ int run(const std::vector<std::string>& raw) {
             opening_hooks.save_status = [s = saver.get()] { return s->status(); };
             opening_hooks.look_x = opening->camera_x;
             opening_hooks.look_y = opening->camera_y;
+            opening_hooks.enhanced_water = !args->water_given;
             hooks.opening = &opening_hooks;
             std::fprintf(stderr, "opening: %s seat %u, manifest %s, start state %s%s\n",
                          opening->identity.manifest_name.c_str(), opening->identity.seat,

@@ -137,3 +137,71 @@ TEST_CASE("ship motion: a ship that does not move shows the sim's facing") {
     }
     CHECK(d == 6);
 }
+
+// Review 2026-11-03: the turning clock restarted on every new target, also in the middle of a turn.
+// Targets that change on every publication (here 12 and 13 in turn, every 0.05 s, less than one
+// step's 0.06 s) then held the facing at its start for good; the clock now runs on through a turn.
+TEST_CASE(
+    "ship motion: a target that changes in the middle of a turn does not hold the turn back") {
+    app::ShipMotion m;
+    app::OpeningView v = view_of(0, 0, 8);
+    m.observe(v, 0.0);
+    std::uint8_t shown = 8;
+    for (int k = 1; k <= 12; ++k) {
+        const double now = 0.05 * k;
+        const app::OpeningView drawn = m.display(v, now);
+        const double x = static_cast<double>(drawn.ships[0].pos.x) / 256.0;
+        const double y = static_cast<double>(drawn.ships[0].pos.y) / 256.0;
+        // dir16 d heads (-cos(22.5 d), sin(22.5 d)): 12 is -y, 13 is 22.5 degrees on from it.
+        const double a = (k % 2 == 1 ? 12 : 13) * 22.5 * 3.14159265358979323846 / 180.0;
+        v = view_of(x - 0.3 * std::cos(a), y + 0.3 * std::sin(a), 8);
+        m.observe(v, now);
+        shown = m.display(v, now + 0.025).ships[0].dir16;
+    }
+    CHECK((shown == 12 || shown == 13)); // 4 steps from 8 within 0.6 s
+}
+
+// The ships that stir the waves (ShipMotion::wakes; review 2026-11-03: no test covered it): a ship
+// sailing a segment acts with its drawn position and the segment's velocity, a ship that arrived or
+// does not move leaves none, and of more ships than the waves take the nearest to the centre act.
+TEST_CASE("ship motion: the wakes are the moving ships as drawn, the nearest ones first") {
+    namespace fluid = anno::render::fluid;
+    app::ShipMotion m;
+    m.observe(view_of(10, 20, 8), 0.0);
+    CHECK(m.wakes(0.0).empty()); // not moving
+    const app::OpeningView second = view_of(11, 20, 8);
+    m.observe(second, 0.1); // one tile in the publication interval (0.1 s)
+    const auto w = m.wakes(0.15);
+    REQUIRE(w.size() == 1);
+    CHECK(w[0].x == doctest::Approx(10.5).epsilon(0.01));
+    CHECK(w[0].y == doctest::Approx(20.0));
+    CHECK(w[0].vx == doctest::Approx(10.0).epsilon(0.01)); // tiles per second
+    CHECK(w[0].vy == doctest::Approx(0.0));
+    CHECK(m.wakes(0.5).empty()); // arrived
+    // More ships than the waves take: the nearest to the centre, ties by id.
+    app::ShipMotion many;
+    app::OpeningView a, b;
+    const std::size_t n = fluid::kMaxShipWakes + 4;
+    for (std::size_t i = 0; i < n; ++i) {
+        app::ShipView s;
+        s.id = sim::FigureId{i + 1};
+        s.pos.x = static_cast<std::int32_t>(std::lround((100.0 + 10.0 * i) * 256.0));
+        s.pos.y = 0;
+        a.ships.push_back(s);
+        s.pos.y = 256; // one tile on
+        b.ships.push_back(s);
+    }
+    many.observe(a, 0.0);
+    many.observe(b, 0.1);
+    const auto kept = many.wakes(0.15, {300.0, 0.0});
+    REQUIRE(kept.size() == fluid::kMaxShipWakes);
+    std::set<long> xs;
+    for (const fluid::ShipWake& k : kept) {
+        xs.insert(std::lround(k.x));
+    }
+    // The ships stand at x = 100, 110, ..., 290; the 16 nearest to 300 are 140 .. 290.
+    CHECK(*xs.begin() == 140);
+    CHECK(*xs.rbegin() == 290);
+    CHECK(many.wakes(0.15).size() == fluid::kMaxShipWakes); // at (0, 0): 100 .. 250
+    CHECK(std::lround(many.wakes(0.15).back().x) == 250);
+}

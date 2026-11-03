@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <string>
 #include <thread>
 #include <variant>
@@ -18,6 +19,7 @@
 
 #include <anno/app/cli.hpp>
 #include <anno/app/commands_file.hpp>
+#include <anno/app/frame_projection.hpp>
 #include <anno/app/loader.hpp>
 #include <anno/app/opening.hpp>
 #include <anno/app/opening_session.hpp>
@@ -26,7 +28,11 @@
 #include <anno/app/play.hpp>
 #include <anno/app/ship_layer.hpp>
 #include <anno/app/zoom.hpp>
+#include <anno/assets/island.hpp>
+#include <anno/formats/anlagen.hpp>
+#include <anno/formats/insel.hpp>
 #include <anno/render/frame.hpp>
+#include <anno/render/scene.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/command.hpp>
 #include <anno/sim/replay.hpp>
@@ -689,10 +695,39 @@ TEST_CASE("session identity: the lines read back as written, also with CRLF line
     CHECK_FALSE(app::parse_opening_identity("map x.txt\nspeed 200\n").has_value());
 }
 
+// The founding preview's heights at an island's far column and row are the sim's boundary height
+// (sim::VertexGrid::at reads kBoundaryVertexHeight there; review 2026-11-03: the window had none,
+// so a warehouse whose water edge is the island's far edge stayed undecided in the preview). The
+// island here has no HEIGHT grid: its inner vertices have no height, its far edge the boundary's,
+// and a vertex off every island none.
+TEST_CASE("founding preview heights: the island's far column and row read the sim's boundary") {
+    auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    bytes->push_back(std::vector<std::uint8_t>(64, 0));
+    anno::formats::insel::Island island;
+    island.head = (*bytes)[0];
+    island.number = 0;
+    island.x = 100;
+    island.y = 40;
+    island.width = 30;
+    island.height = 20;
+    const auto scene =
+        render::Scene::create("heights", {island}, anno::assets::island::GroundTextures{},
+                              anno::formats::anlagen::AnlagenFile{}, render::kHeightLift, bytes);
+    CHECK_FALSE(app::scene_vertex_height(*scene, 110, 50).has_value()); // inside, no grid
+    CHECK(app::scene_vertex_height(*scene, 130, 50) == sim::kBoundaryVertexHeight); // x0 + W
+    CHECK(app::scene_vertex_height(*scene, 110, 60) == sim::kBoundaryVertexHeight); // y0 + H
+    CHECK(app::scene_vertex_height(*scene, 130, 60) == sim::kBoundaryVertexHeight);
+    CHECK_FALSE(app::scene_vertex_height(*scene, 131, 50).has_value()); // off the island
+    CHECK_FALSE(app::scene_vertex_height(*scene, 99, 50).has_value());
+    CHECK_FALSE(app::scene_vertex_height(*scene, 110, 61).has_value());
+}
+
 // Owner playtest 2026-11-03: "I could not place the Kontor at all". What decides it, island by
 // island of the real start: the sim's coast rule on its own vertex grid, the same rule on the
-// heights the window's preview reads (the scene clamps at the island's far edge where the sim reads
-// 0), and the sim's other checks of a rotation trial (bounds, ownership, occupancy).
+// heights the window's preview reads (scene_vertex_height on the picture's scene, as the viewer's
+// feed), and the sim's other checks of a rotation trial (bounds, ownership, occupancy). Review
+// 2026-11-03: the preview's side clamped at the island's far edge, where the window had no height
+// (now the sim's boundary height); both verdicts must now agree at every origin and rotation.
 TEST_CASE(
     "founding sites, real files: the preview's coast verdict against the sim's rotation trial") {
     const auto dir = anno::test::game_dir();
@@ -706,6 +741,10 @@ TEST_CASE(
     REQUIRE(!loaded.value().setup.founding_types.empty());
     const sim::BuildingType* type = world.types().find(loaded.value().setup.founding_types.front());
     REQUIRE(type != nullptr);
+    auto picture =
+        app::load_placed_scene(*dir, loaded.value().play.name, loaded.value().play.placed, nullptr);
+    REQUIRE(picture.ok());
+    const render::Scene& scene = *picture.value().scene;
     std::size_t sites = 0, coast_sim = 0, coast_preview = 0, verdict_differs = 0, occupied = 0,
                 full = 0;
     for (const auto& isl : world.islands()) {
@@ -716,7 +755,6 @@ TEST_CASE(
         const auto& tiles = isl->tiles;
         const std::int64_t x0 = tiles.x0(), y0 = tiles.y0();
         const std::int64_t w = tiles.width(), h = tiles.height();
-        const auto& hb = isl->terrain->height;
         for (std::int64_t y = y0; y < y0 + h; ++y) {
             for (std::int64_t x = x0; x < x0 + w; ++x) {
                 const sim::site::Origin o{x, y};
@@ -728,13 +766,10 @@ TEST_CASE(
                     }
                     const auto s = sim::site::coast_height_check(grid, *type, rot, o);
                     const auto p = sim::site::coast_height_rule(
-                        type->width, type->height, rot,
-                        [&](std::uint64_t dx, std::uint64_t dy) -> std::optional<std::uint8_t> {
-                            const std::int64_t lx = std::min<std::int64_t>(
-                                x - x0 + static_cast<std::int64_t>(dx), w - 1);
-                            const std::int64_t ly = std::min<std::int64_t>(
-                                y - y0 + static_cast<std::int64_t>(dy), h - 1);
-                            return hb[static_cast<std::size_t>(ly * w + lx)];
+                        type->width, type->height, rot, [&](std::uint64_t dx, std::uint64_t dy) {
+                            return app::scene_vertex_height(scene,
+                                                            x + static_cast<std::int64_t>(dx),
+                                                            y + static_cast<std::int64_t>(dy));
                         });
                     const bool sa = s.result == sim::site::TerrainResult::Accepted;
                     const bool pa = p.result == sim::site::TerrainResult::Accepted;
@@ -764,6 +799,9 @@ TEST_CASE(
                        << "; coast ok but occupied in every passing rotation " << occupied
                        << "; a rotation passes every check " << full);
     CHECK(full > 0);
+    CHECK(coast_sim > 0);
+    CHECK(verdict_differs == 0);
+    CHECK(coast_preview == coast_sim);
 }
 
 // The founding preview asks the sim thread what Founding::apply would answer (probe_founding). Its

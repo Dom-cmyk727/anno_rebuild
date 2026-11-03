@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include <anno/app/opening_view.hpp>
@@ -42,8 +43,11 @@ class ShipMotion {
     [[nodiscard]] bool animating(double now) const;
 
     /// The ships acting on the waves at `now`: position as drawn and the velocity of the segment
-    /// (tiles per second), only the ships that are moving (render::fluid::ShipWake).
-    [[nodiscard]] std::vector<render::fluid::ShipWake> wakes(double now) const;
+    /// (tiles per second), only the ships that are moving (render::fluid::ShipWake), at most
+    /// render::fluid::kMaxShipWakes of them: the nearest to `centre` (tile position, the wave
+    /// window's centre), ties by figure id.
+    [[nodiscard]] std::vector<render::fluid::ShipWake>
+    wakes(double now, std::pair<double, double> centre = {0.0, 0.0}) const;
 
     /// The seconds between the last publications (smoothed): what the drawing lags by.
     [[nodiscard]] double interval() const { return interval_; }

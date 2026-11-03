@@ -235,6 +235,11 @@ TEST_CASE("command line") {
     CHECK_FALSE(d->group);
     CHECK(d->size == std::pair{1600, 900});
     CHECK(d->water == anno::render::WaterStyle::Original);
+    CHECK_FALSE(d->water_given); // the opening may switch to enhanced water
+    const auto wo = parse_args({"--view", "x.scp", "--water", "original"});
+    REQUIRE(wo);
+    CHECK(wo->water == anno::render::WaterStyle::Original);
+    CHECK(wo->water_given); // an explicit choice the opening keeps (review 2026-11-03)
     // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);

@@ -4,6 +4,8 @@
 #include <anno/app/frame_projection.hpp>
 #include <anno/render/iso.hpp>
 #include <anno/render/picking.hpp>
+#include <anno/render/scene.hpp>
+#include <anno/sim/terrain_view.hpp>
 
 namespace anno::app {
 
@@ -120,6 +122,38 @@ std::optional<std::pair<double, double>> ground_pixel(const PointerFrame& frame,
             return std::nullopt;
         }
         return px;
+    }
+    return std::nullopt;
+}
+
+std::optional<std::uint8_t> scene_vertex_height(const render::Scene& scene, std::int64_t x,
+                                                std::int64_t y) {
+    // A vertex inside an island reads its byte; one on an island's far column or row reads the
+    // sim's boundary height (review 2026-11-03: the preview had no height there, so a warehouse
+    // whose water edge is the island's far edge was left undecided where the sim accepts it). Two
+    // islands that touch differ from the sim at the shared vertices: the sim reads the island under
+    // the origin, this the island that holds the vertex inside it.
+    bool boundary = false;
+    for (std::size_t k = 0; k < scene.islands.size(); ++k) {
+        const auto& island = scene.islands[k];
+        const std::int64_t lx = x - static_cast<std::int64_t>(island.x);
+        const std::int64_t ly = y - static_cast<std::int64_t>(island.y);
+        const auto w = static_cast<std::int64_t>(island.width);
+        const auto h = static_cast<std::int64_t>(island.height);
+        if (lx < 0 || ly < 0 || lx > w || ly > h) {
+            continue;
+        }
+        if (lx == w || ly == h) {
+            boundary = true;
+            continue;
+        }
+        if (const auto v =
+                scene.island_ground_height(k, static_cast<float>(x), static_cast<float>(y))) {
+            return static_cast<std::uint8_t>(std::clamp(std::lround(*v), 0L, 255L));
+        }
+    }
+    if (boundary) {
+        return sim::kBoundaryVertexHeight;
     }
     return std::nullopt;
 }

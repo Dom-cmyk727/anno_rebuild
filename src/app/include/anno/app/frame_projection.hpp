@@ -45,4 +45,12 @@ class FrameProjection final : public ScreenProjection {
 [[nodiscard]] std::optional<std::pair<double, double>> ground_pixel(const PointerFrame& frame,
                                                                     sim::TileXY tile);
 
+/// The terrain height byte at vertex (x, y) (a tile corner, world tiles) as the sim's coast rule
+/// reads it (sim::VertexGrid::at): the island's HEIGHT byte, kBoundaryVertexHeight on the island's
+/// far column and row (x = island x + width, y = island y + height), nullopt where no island of the
+/// scene has the vertex. What the founding preview applies the coast rule to
+/// (UiFeed::vertex_height).
+[[nodiscard]] std::optional<std::uint8_t> scene_vertex_height(const render::Scene& scene,
+                                                              std::int64_t x, std::int64_t y);
+
 } // namespace anno::app

@@ -532,13 +532,16 @@ class Viewer {
     /// steps) and the wall clock it is drawn at; the sim's own positions stay in opening_snapshot_.
     ShipMotion motion_;
     OpeningView display_view_;
-    /// The opening on the GPU starts with enhanced water (ships stir the simulated waves); E
-    /// toggles.
+    /// The opening on the GPU starts with enhanced water (ships stir the simulated waves) unless
+    /// --water chose the water (OpeningHooks::enhanced_water); E toggles.
     bool opening_water_set_ = false;
     /// The founding question last asked of the sim (PlayRunner::request_found_probe).
     std::optional<sim::FoundCmd> asked_probe_;
     /// The wave simulation's windows so far (GpuStats::fluid_windows), for the scripts.
     std::uint64_t fluid_windows_ = 0, fluid_resamples_ = 0;
+    /// The tile the last frame's wave window was centred on (GpuStats::fluid_centre): the ships
+    /// nearest to it stir the waves when there are more than fluid::kMaxShipWakes.
+    std::pair<double, double> wave_centre_{0.0, 0.0};
     [[nodiscard]] static double wall_seconds() {
         static const Clock::time_point epoch = Clock::now();
         return std::chrono::duration<double>(Clock::now() - epoch).count();
@@ -1221,23 +1224,7 @@ UiFeed Viewer::opening_feed() const {
     // own HEIGHT grids, what the sim's coast rule reads), for the founding preview.
     feed.vertex_height = [scene = current()](std::int64_t x,
                                              std::int64_t y) -> std::optional<std::uint8_t> {
-        if (!scene) {
-            return std::nullopt;
-        }
-        for (std::size_t k = 0; k < scene->islands.size(); ++k) {
-            const auto& island = scene->islands[k];
-            if (x < island.x || y < island.y ||
-                x > island.x + static_cast<std::int64_t>(island.width) ||
-                y > island.y + static_cast<std::int64_t>(island.height)) {
-                continue;
-            }
-            if (const auto h =
-                    scene->island_ground_height(k, static_cast<float>(x), static_cast<float>(y))) {
-                const long v = std::lround(*h);
-                return static_cast<std::uint8_t>(std::clamp(v, 0L, 255L));
-            }
-        }
-        return std::nullopt;
+        return scene ? scene_vertex_height(*scene, x, y) : std::nullopt;
     };
     return feed;
 }
@@ -1257,8 +1244,10 @@ void Viewer::opening_refresh() {
     const double now = wall_seconds();
     if (!opening_water_set_ && on_gpu()) {
         opening_water_set_ = true;
-        water_ = render::WaterStyle::Enhanced;
-        update_title();
+        if (opening_->enhanced_water) {
+            water_ = render::WaterStyle::Enhanced;
+            update_title();
+        }
     }
     if (changed) {
         motion_.observe(view, now);
@@ -1477,15 +1466,14 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
     f["chunks.cached"] = std::to_string(frames_.cached());
     {
         // The chunks the whole scene covers at each derived level (what prewarm and the resident
-        // rule count), "3:12 4:6 ...".
+        // rule count), "3:12 4:6 ...", counted as the renderer does (render::visible_chunks: a
+        // negative x or y rounds down; the division here truncated, review 2026-11-03).
         std::string levels;
         const auto gen = current();
         for (std::size_t g = gen->levels().built_count(); g < gen->levels().size(); ++g) {
             if (const auto b = gen->bounds(g)) {
-                const auto cx = (b->x + b->w - 1) / 512 - b->x / 512 + 1;
-                const auto cy = (b->y + b->h - 1) / 512 - b->y / 512 + 1;
-                levels +=
-                    (levels.empty() ? "" : " ") + std::to_string(g) + ":" + std::to_string(cx * cy);
+                levels += (levels.empty() ? "" : " ") + std::to_string(g) + ":" +
+                          std::to_string(render::visible_chunks(*b).size());
             }
         }
         f["levels.chunks"] = levels;
@@ -2272,13 +2260,14 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         }
     }
     // The ships stir the simulated waves (enhanced water): a bow wave and a wake.
-    g.frame->set_wakes(opening_ != nullptr ? motion_.wakes(wall_seconds())
+    g.frame->set_wakes(opening_ != nullptr ? motion_.wakes(wall_seconds(), wave_centre_)
                                            : std::vector<render::fluid::ShipWake>{});
     const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
                                    resample, overlay, live_units_);
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
     if (s.wave_simulation) {
+        wave_centre_ = {s.fluid_centre.first, s.fluid_centre.second};
         const auto grown = [](std::uint64_t now, std::uint64_t seen) {
             return now >= seen ? now - seen : now; // smaller: a new compositor's count
         };

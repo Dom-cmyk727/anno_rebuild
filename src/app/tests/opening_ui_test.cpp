@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
+#include <string>
+#include <utility>
 #include <variant>
 
 #include <doctest/doctest.h>
@@ -296,6 +299,110 @@ TEST_CASE("controls: founding derives the sim's origin from the click, has no ma
     f.key(app::OpeningKey::Escape);
     CHECK(f.ui.mode() == app::OpeningMode::Select);
     CHECK(f.key(app::OpeningKey::Rotate).taken == false); // T is the building tool's again
+}
+
+// The founding preview's branches (OpeningUi::make_found; review 2026-11-03: only the window script
+// reached them): the island and footprint advisories, the coast rule turning the warehouse to the
+// shore or finding no coast, and the sim thread's answer for exactly this command replacing the
+// local guess. The click (60, 60) puts a 4 x 4 warehouse at (59, 59) on the island (40..89).
+TEST_CASE("controls: the founding preview's advisories, the coast rule and the sim's answer") {
+    Fixture f;
+    auto s = setup();
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType kontor;
+    kontor.id = sim::TypeId{1302};
+    kontor.prodtype = 35;
+    kontor.width = 4;
+    kontor.height = 4;
+    kontor.flags_word = 0x2007; // the coast class (site::coast_class_supported)
+    b.add(kontor);
+    auto built = b.build();
+    REQUIRE(built.ok());
+    s.registry = built.value();
+    f.ui = app::OpeningUi(s);
+    f.click(app::PointerButton::Left, 100, 100); // ship 1
+    f.key(app::OpeningKey::Found);
+    REQUIRE(f.ui.mode() == app::OpeningMode::Found);
+    const auto preview_at = [&](int tx, int ty, const app::UiFeed& feed) {
+        f.ui.pointer_move(tx * kPx + 5, ty * kPx + 5, &f.proj, feed);
+        return f.ui.found_preview(feed);
+    };
+    const auto with_heights =
+        [&](std::function<std::optional<std::uint8_t>(std::int64_t, std::int64_t)> h) {
+            app::UiFeed feed = f.feed();
+            feed.vertex_height = std::move(h);
+            return feed;
+        };
+    const auto has = [](const app::FoundPreview& p, const char* text) {
+        return p.advisory.find(text) != std::string::npos;
+    };
+    // Where the click is.
+    auto p = preview_at(20, 20, f.feed());
+    REQUIRE(p);
+    CHECK(has(*p, "on no island"));
+    p = preview_at(89, 60, f.feed()); // origin (88, 59): the footprint reaches x = 91
+    REQUIRE(p);
+    CHECK(has(*p, "footprint leaves the island"));
+    // The coast rule: the shore edge 0x30, water (0x10) on the opposite edge.
+    p = preview_at(60, 60, with_heights([](std::int64_t, std::int64_t y) {
+                       return std::optional<std::uint8_t>(y <= 61 ? 0x30 : 0x10);
+                   }));
+    REQUIRE(p);
+    CHECK(p->coast_ok);
+    CHECK(p->rotation == 0); // water at +y: rotation 0
+    CHECK(has(*p, "it faces the shore"));
+    p = preview_at(60, 60, with_heights([](std::int64_t x, std::int64_t) {
+                       return std::optional<std::uint8_t>(x <= 61 ? 0x30 : 0x10);
+                   }));
+    REQUIRE(p);
+    CHECK(p->coast_ok);
+    CHECK(p->rotation == 1); // water at +x: the second trial
+    CHECK(p->cmd.placement.rotation == app::kFoundingCursorRotation); // the command keeps its own
+    p = preview_at(60, 60, with_heights([](std::int64_t, std::int64_t) {
+                       return std::optional<std::uint8_t>(0x30);
+                   }));
+    REQUIRE(p);
+    CHECK_FALSE(p->coast_ok);
+    CHECK(has(*p, "not on a coast"));
+    p = preview_at(60, 60, with_heights([](std::int64_t, std::int64_t) {
+                       return std::optional<std::uint8_t>{};
+                   }));
+    REQUIRE(p);
+    CHECK_FALSE(p->coast_ok);
+    CHECK_FALSE(has(*p, "coast")); // unreadable: no verdict
+    // The sim's answer for this very command replaces the local guess; one for another is ignored.
+    p = preview_at(60, 60, f.feed());
+    REQUIRE(p);
+    CHECK_FALSE(p->sim_answer.has_value());
+    const sim::FoundCmd cmd = p->cmd;
+    const auto answered = [&](sim::Reject reason, std::optional<std::uint8_t> rotation) {
+        f.view.found_probe = app::FoundingProbeView{cmd, reason, rotation};
+        return preview_at(60, 60, f.feed());
+    };
+    p = answered(sim::Reject::None, 2);
+    REQUIRE(p);
+    CHECK(p->sim_answer == sim::Reject::None);
+    CHECK(p->coast_ok);
+    CHECK(p->rotation == 2);
+    CHECK(has(*p, "the sim accepts it here"));
+    CHECK_FALSE(has(*p, "too far")); // the local guesses are replaced
+    for (const auto& [reason, text] :
+         {std::pair{sim::Reject::NoRotationFits, "(NoRotationFits)"},
+          std::pair{sim::Reject::OutOfRange, "(OutOfRange)"},
+          std::pair{sim::Reject::OutOfIsland, "(OutOfIsland)"},
+          std::pair{sim::Reject::UnknownIsland, "(UnknownIsland)"},
+          std::pair{sim::Reject::SiteOwned, "the sim refuses it here: SiteOwned"}}) {
+        p = answered(reason, std::nullopt);
+        REQUIRE(p);
+        CHECK(p->sim_answer == reason);
+        CHECK_FALSE(p->coast_ok);
+        CHECK_MESSAGE(has(*p, text), p->advisory);
+    }
+    // An answer for another click: the preview at (61, 60) does not take it.
+    f.view.found_probe = app::FoundingProbeView{cmd, sim::Reject::None, 2};
+    p = preview_at(61, 60, f.feed());
+    REQUIRE(p);
+    CHECK_FALSE(p->sim_answer.has_value());
 }
 
 TEST_CASE("controls: unloading asks for one hold and a quantity, from the stable ids of the view") {

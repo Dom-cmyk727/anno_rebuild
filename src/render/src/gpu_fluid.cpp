@@ -284,7 +284,20 @@ bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
                       const WGPUPassTimestampWrites* timestamps) {
     const double target = static_cast<double>(time_ms) / 1000.0;
     const std::uint32_t cpt = cells_per_tile != 0 ? cells_per_tile : cfg_.cells_per_tile.at(group);
-    const std::uint32_t size = cfg_.window_size_for(cpt, span_tiles);
+    std::uint32_t size = cfg_.window_size_for(cpt, span_tiles);
+    if (window_ && window_->cells_per_tile == cpt) {
+        // A zoom changes the span the window must cover continuously, and a window of another size
+        // is a new one that starts at rest (owner playtest 2026-11-03: the waves vanished while the
+        // view zoomed and came back after). The window in use stays while it covers the view
+        // without being more than 1.6 times too wide; a zoom-out asks for a quarter more than
+        // needed, so the next notches fit as well.
+        const auto have = static_cast<std::uint32_t>(window_->size);
+        if (size <= have && have <= size + size * 3U / 5U) {
+            size = have;
+        } else if (size > have) {
+            size = cfg_.window_size_for(cpt, span_tiles * 1.25F);
+        }
+    }
     last_steps_ = 0;
     if (background_) {
         prepare_window(cpt, centre, size, target, depth, threads);

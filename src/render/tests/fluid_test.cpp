@@ -403,12 +403,12 @@ TEST_CASE(
         max_diff = std::max(max_diff, std::abs(sail.state[i][0] - still.state[i][0]));
         foam_diff = std::max(foam_diff, std::abs(sail.state[i][3] - still.state[i][3]));
     }
-    CHECK(max_diff > 0.05F);  // the ship moved the water
-    CHECK(foam_diff == 0.0F); // and left no foam: the bow wave stays under the breaking limit
-    CHECK(max_diff < 0.5F * 16.0F);
+    CHECK(max_diff > 0.05F);        // the ship moved the water
+    CHECK(foam_diff == 0.0F);       // and left no foam: the bow wave stays under the breaking limit
+    CHECK(max_diff < 0.6F * 16.0F); // the bow wave stays under the depth's breaking limit (0.8)
     // Over a beach or the shallows the ships act on nothing.
     CHECK(fluid::ship_depth_factor(-1.0F) == 0.0F);
     CHECK(fluid::ship_depth_factor(0.0F) == 0.0F);
-    CHECK(fluid::ship_depth_factor(4.0F) == doctest::Approx(0.5F));
-    CHECK(fluid::ship_depth_factor(30.0F) == 1.0F);
+    CHECK(fluid::ship_depth_factor(16.0F) == doctest::Approx(0.5F));
+    CHECK(fluid::ship_depth_factor(40.0F) == 1.0F);
 }

@@ -930,6 +930,20 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
             todo.push_back(k);
         }
     }
+    if (prewarm_far_levels) {
+        // The resident overview levels, one chunk at a time and only when the view needs nothing:
+        // appended last, so every job of the view comes first (the job list is replaced each
+        // frame).
+        if (prewarm_target_ && cache_.contains(*prewarm_target_)) {
+            prewarm_target_.reset();
+        }
+        if (!prewarm_target_ && todo.empty()) {
+            prewarm_target_ = next_prewarm_key(scene);
+        }
+        if (prewarm_target_) {
+            todo.push_back(*prewarm_target_);
+        }
+    }
     // A derived chunk is reduced from its four children as the cache holds them; the
     // missing ones are jobs before it (and kept, with it, past the trim below).
     const std::vector<ChunkJob> jobs = plan_jobs(todo, keep);
@@ -938,6 +952,25 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     const std::set<ChunkKey> retain = stand_in_retain(group, visible);
     trim(group, view, keep, retain);
     return received;
+}
+
+std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene) const {
+    for (std::size_t g = levels_.size(); g-- > levels_.built_count();) {
+        if (g >= level_chunks_.size() || level_chunks_[g] == 0 ||
+            level_chunks_[g] > resident_level_chunks) {
+            continue; // not resident: it would be evicted again
+        }
+        const auto bounds = scene.bounds(g);
+        if (!bounds) {
+            continue;
+        }
+        for (const auto& [cx, cy] : visible_chunks(*bounds)) {
+            if (!cache_.contains({g, cx, cy})) {
+                return ChunkKey{g, cx, cy};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 std::set<ChunkKey>

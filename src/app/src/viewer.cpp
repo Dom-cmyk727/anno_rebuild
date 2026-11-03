@@ -535,6 +535,8 @@ class Viewer {
     /// The opening on the GPU starts with enhanced water (ships stir the simulated waves); E
     /// toggles.
     bool opening_water_set_ = false;
+    /// The wave simulation's windows so far (GpuStats::fluid_windows), for the scripts.
+    std::uint64_t fluid_windows_ = 0;
     [[nodiscard]] static double wall_seconds() {
         static const Clock::time_point epoch = Clock::now();
         return std::chrono::duration<double>(Clock::now() - epoch).count();
@@ -859,7 +861,9 @@ std::string Viewer::run() {
     current()->prefetch_river_flow();
     // No default scene: every chunk job holds the generation of the frame that planned it.
     {
-        auto workers = std::make_unique<render::ChunkWorkers>((hw + 1) / 2);
+        // Three quarters of the cores (they run below normal priority): a zoom out to the whole map
+        // asks for thousands of chunks and was waiting on half of them.
+        auto workers = std::make_unique<render::ChunkWorkers>(std::max<std::size_t>(1, hw * 3 / 4));
         if (script_ != nullptr && on_gpu()) {
             // A scripted GPU session may hold the chunk builders (hold chunks): the gate does
             // nothing until the script arms it.
@@ -868,6 +872,15 @@ std::string Viewer::run() {
                 [g = chunk_hold_->gate()](const render::ChunkKey&, std::uint64_t) { g(); });
         }
         frames_.set_workers(std::move(workers));
+        // The ship-start opening sails over the whole map and zooms out to see it: its overview
+        // levels are built while the player is busy with something else.
+        frames_.prewarm_far_levels = opening_ != nullptr;
+        if (opening_ != nullptr) {
+            // The levels from the whole map down to ~100 chunks stay built (a few hundred MB at
+            // most; the map is mostly sea): the lan5 map has 91 / 28 / 6 chunks at levels 4 / 5
+            // / 6.
+            frames_.resident_level_chunks = 96;
+        }
     }
     while (running_) {
         SDL_Event e;
@@ -1432,6 +1445,23 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
         f["found.coast"] = fp ? (fp->coast_ok ? "yes" : "no") : "none";
         f["found.rotation"] = fp ? std::to_string(fp->rotation) : "none";
         f["found.cursor"] = fp ? std::to_string(fp->cursor_rotation) : "none";
+    }
+    f["fluid.windows"] = std::to_string(fluid_windows_);
+    f["chunks.cached"] = std::to_string(frames_.cached());
+    {
+        // The chunks the whole scene covers at each derived level (what prewarm and the resident
+        // rule count), "3:12 4:6 ...".
+        std::string levels;
+        const auto gen = current();
+        for (std::size_t g = gen->levels().built_count(); g < gen->levels().size(); ++g) {
+            if (const auto b = gen->bounds(g)) {
+                const auto cx = (b->x + b->w - 1) / 512 - b->x / 512 + 1;
+                const auto cy = (b->y + b->h - 1) / 512 - b->y / 512 + 1;
+                levels +=
+                    (levels.empty() ? "" : " ") + std::to_string(g) + ":" + std::to_string(cx * cy);
+            }
+        }
+        f["levels.chunks"] = levels;
     }
     f["tracked"] = std::to_string(ui.tracked().size());
     f["save"] = opening_->save_status ? opening_->save_status() : "";
@@ -2217,6 +2247,7 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
                                            : std::vector<render::fluid::ShipWake>{});
     const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
                                    resample, overlay, live_units_);
+    fluid_windows_ = s.fluid_windows;
     // What the pointer is over from now on: this frame's map, zoom level and scene.
     pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, out_w, out_h);

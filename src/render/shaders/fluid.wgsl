@@ -224,7 +224,7 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
         eta -= dt * P.d.z;
     }
     if SH.head.x > 0.5 && h > WET {
-        eta += dt * clamp(h / 8.0, 0.0, 1.0) * ship_term(cell_centre(x, y));
+        eta += dt * clamp(h / 32.0, 0.0, 1.0) * ship_term(cell_centre(x, y));
     }
     eta = max(eta, -h);
     let d = eta + h;

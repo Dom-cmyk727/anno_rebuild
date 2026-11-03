@@ -1,0 +1,27 @@
+wait frames 30
+wait fact cities == 0 within 60000
+pick-ship 1
+sail 312 664
+wait fact latest == arrived within 60000
+wait frames 120
+note fact fluid.windows
+sail 330 646
+wait turns 4
+wheel -1
+wait frames 20
+wheel -1
+wait frames 20
+wheel -1
+wait frames 20
+wheel 1
+wait frames 20
+wheel 1
+wait frames 20
+wheel 1
+wait frames 20
+wheel 2
+wait frames 20
+wheel -2
+wait frames 60
+expect fact fluid.windows == 999
+quit

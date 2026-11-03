@@ -243,3 +243,48 @@ TEST_CASE("derived freshness: a warm chain over a real island refreshes to the f
     CHECK(frames.chunk(parent)->ground == ref_parent);
     CHECK(frames.chunk(grand)->ground == ref_grand);
 }
+
+// Owner playtest 2026-11-03: the first zoom out to the whole map waited for thousands of chunks and
+// showed islands cut off; the overview levels are now built in the background while the view needs
+// nothing (FrameRenderer::prewarm_far_levels). Without it nothing asks for them.
+TEST_CASE("prewarm: the resident overview levels are built in the background, and only on request "
+          "(game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    // The island's whole area at each derived level: few chunks, so they are resident.
+    std::vector<render::ChunkKey> overview;
+    for (std::size_t g = scene->levels().built_count(); g < scene->levels().size(); ++g) {
+        const auto b = scene->bounds(g);
+        REQUIRE(b.has_value());
+        const auto keys = render::chunk_keys_touching(*scene, *b, g);
+        REQUIRE(keys.size() <= 64);
+        overview.insert(overview.end(), keys.begin(), keys.end());
+    }
+    REQUIRE(!overview.empty());
+    // A view far from the island: nothing visible to build but open sea.
+    const render::Rect away{-200000, -200000, 64, 64};
+    const auto run = [&](bool prewarm) {
+        render::FrameRenderer frames(2);
+        auto workers = std::make_unique<render::ChunkWorkers>(4);
+        render::ChunkWorkers* w = workers.get();
+        frames.set_workers(std::move(workers));
+        frames.prewarm_far_levels = prewarm;
+        frames.resident_level_chunks = 64; // the island's levels 3 and 4 are 24 and 8 chunks
+        for (int round = 0; round < 400; ++round) {
+            frames.update_chunks(scene, away, 2);
+            w->wait_idle();
+        }
+        std::size_t built = 0;
+        for (const render::ChunkKey& k : overview) {
+            built += frames.chunk(k) != nullptr ? 1U : 0U;
+        }
+        return built;
+    };
+    CHECK(run(false) < overview.size()); // nothing asked for them
+    CHECK(run(true) == overview.size()); // every chunk of every overview level is cached
+}

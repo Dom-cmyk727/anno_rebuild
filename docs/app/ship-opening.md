@@ -36,7 +36,19 @@ the eight directions, and by the owner's report that a ship sailing to the right
 **The water.** The opening starts with enhanced water on the GPU (`E` toggles). Each moving ship is a source in the wave
 simulation (`fluid::ShipWake`, `FluidGpu::set_ships`, `GpuFrame::set_wakes`; render-only): the hull raises the water ahead of it and
 lets it fall behind it, the shallow-water equations carry the bow wave and the wake away (a ship faster than the wave speed
-leaves a V). No foam trail (owner). The source fades out over shallow water. Original water and the CPU renderer show no wake.
+leaves a V). No foam trail (owner). The source is 30 HEIGHT units per second per tile/s of speed (3 shows nothing, 10 was too
+faint) and fades with the depth (none on a beach, full from 32 deep) so the bow wave stays under the breaking limit. Original water
+and the CPU renderer show no wake.
+
+**Zooming** (owner playtest 2026-11-03). (1) The wave window used to be replaced whenever the view's span crossed a 64-cell step, and
+a new window starts at rest, so a zoom with a moving ship kept restarting the waves (7 windows over a short zoom sweep): the window in
+use now stays while it covers the view without being more than 1.6 times too wide, and a zoom out asks for a quarter more than needed
+(2 windows over the same sweep; fact `fluid.windows`). (2) The first zoom out to the whole map waited for the chunks of the far
+levels, built from thousands of full-detail chunks, and showed islands cut off meanwhile. In the opening the levels with at most 96
+chunks (levels 4-8 of the lan5 map) stay built, and `FrameRenderer::prewarm_far_levels` builds them in the background, one chunk at a
+time, whenever the view needs nothing; the chunk workers use three quarters of the cores (they run below normal priority). Measured
+on the RTX PC: a zoom out right after the start differs from the settled picture by about 3100 pixels one second later, with a
+minute's head start by about 300 (the water's own animation).
 
 ## 2. Controls
 

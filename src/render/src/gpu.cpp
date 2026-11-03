@@ -3180,6 +3180,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     stats.wave_simulation = fluid_on;
     if (fluid_on && m.fluid) {
         stats.fluid_steps = m.fluid->last_steps();
+        stats.fluid_windows = m.fluid->window_serial();
         if (const auto win = m.fluid->window()) {
             stats.fluid_cells = static_cast<std::uint64_t>(win->size * win->size);
             stats.fluid_cells_per_tile = win->cells_per_tile;

@@ -109,10 +109,12 @@ struct FluidConfig {
     std::uint32_t recentre_cells = 64;
     /// Ships as moving sources (ShipWake; not in the original, tuning): the elevation source per
     /// tile/s of speed (HEIGHT units per second, scaled by the hull's gaussian). Tuned by eye on
-    /// screenshots of a ship at 6 tiles/s (2026-11-03): 3 shows nothing, 30 a visible V at the bow
-    /// but a bow wave of 16 HEIGHT units that breaks (foam), so 10 (about 5 units, under the
-    /// breaking limit of deep water). There is no foam trail: the owner does not want one.
-    float ship_wave_gain = 10.0F;
+    /// screenshots of a ship at 6 tiles/s (2026-11-03): 3 shows nothing, 10 (a bow wave of about 4
+    /// HEIGHT units) was too faint for the owner, 30 a visible V (about 13 units). The source fades
+    /// with the depth (ship_depth_factor) so that the bow wave stays below 0.55 of the depth and
+    /// never reaches the breaking limit (break_ratio 0.8): no foam, the owner does not want a
+    /// trail.
+    float ship_wave_gain = 30.0F;
 
     /// Cells per side for a view spanning span_tiles tiles (screen width /
     /// tile width + screen height / tile height) at zoom `group` (<
@@ -179,10 +181,11 @@ inline constexpr float kShipWakeMinSpeed = 0.05F;
 
 /// Elevation rate (HEIGHT units per second) of the ships at tile position (px, py).
 float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, float px, float py);
-/// The share of that rate that acts over still water of depth `h` (HEIGHT units): none on a beach
-/// or in the shallows (a ship's wave would only break there and churn foam), all from 8 deep.
+/// The share of that rate that acts over still water of depth `h` (HEIGHT units): none on a beach,
+/// proportional to the depth in the shallows (a ship's wave would only break there and churn foam),
+/// all from 32 deep, so the bow wave is never more than about half the depth.
 inline float ship_depth_factor(float h) {
-    return h <= 0.0F ? 0.0F : (h >= 8.0F ? 1.0F : h / 8.0F);
+    return h <= 0.0F ? 0.0F : (h >= 32.0F ? 1.0F : h / 32.0F);
 }
 
 /// A rectangle of world cells [x0, x1) × [y0, y1).

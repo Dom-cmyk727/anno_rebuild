@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-03: Windows live opening; Mac forester loop after finite contract corrections
+## Current dispatch — 2026-11-03: Windows live opening; Mac forester termination closeout
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -47,25 +47,22 @@ and valid evidence are retained. **MAP-ROAD-CLOSE-1's two-policy correction is
 fixed**, with clean gate source `eae9f4aeff6030c1886970fe3271160c538f15af` and
 comment/doc increment `aad1735bc00612695eb49ce356a4e0a42eb17d5d`. The combined
 local candidate/forester draft is `c82608bd22a8a86ff50dddc039143b46e658467c`.
-The [earlier full review](reviews/2026-11-03-roadclose-forestry.md) is
-superseded for the corrected paths by the
-[direct correction review](reviews/2026-11-03-roadclose2-forestry.md).
-**The atomic latest-object fix and reference-runner robustness are accepted:**
-code/tests `d9a056823ad1aedfb7c41bf8d07b4dc6c965e39f`, clean gate source
-`d0e4ae601da7281388d2e26d10fb9ae54ee6751a`, reviewed candidate
-`362f99ab65e5b4bac8a45f64f778bab0ec299365`. Gates are 47/47 references,
-121/121 focused Debug and 121/121 ASan/UBSan, without failures or skips.
-**The forestry contract is not accepted unamended.** Direct original-byte review
-shows placement's `0x3fffffff` mask preserves claim bit 29; the current notes
-and pure reference say it clears it. The first five-tick delay also needs a
-persisted remainder for supported short visits. The linked review supplies the
-binding corrections and small lifecycle/ledger clarifications.
-**MAP-ECON-1 E2.0 below is READY**, docs/reference/controls only. After one narrow
-independent approval of those exact corrections, the Mac executor is authorized
-to continue E2–E6: implement and test harvesting -> wood production -> warehouse
-delivery. Record the correction pin and approval in the report; no further
-owner/orchestrator permission turn is required for this specified continuation.
-Do not restart road/cargo gates or another general research/review campaign.
+The atomic latest-object correction and E2.0 claim-bit/initial-delay repairs
+are accepted. **MAP-ECON-1 E2–E6 has been reviewed** at candidate
+`78a77625962017ff7784e2849e762193bf4c8c29`, clean gate source
+`a4982f5198f433b5e9dc631dbe86d6bade50e86f`. The real headless opening harvests
+existing trees, produces new wood and delivers **448 raw 8.8 units = 1.75 t**
+to the warehouse. Gates reconcile at Debug 1089/1091 and ASan/UBSan 236/237,
+with only declared opt-in skips, no failures and zero sanitizer reports. The
+ASan selection includes the real forestry and earlier sailed openings.
+The [direct forestry review](reviews/2026-11-03-map-econ1.md) retains that proof
+but reproduces **one P2**: ending an active harvest worker through the existing
+public end helper leaves invalid/unreloadable job state and, in enhanced mode,
+an orphan claim. **MAP-ECON-1-CLOSE-1 below is READY.** Fix the shared end path,
+add the specified small layout/alternate-content checks, and apply the explicit
+route-table, walk-quantization and shared-job decisions. No new production
+chain, broad repeated gate or change to Windows' input is assigned. The old
+E2.0–E6 packet is history; do not restart it.
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
@@ -76,7 +73,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **Atomic fix and runner ACCEPTED; MAP-ECON-1 E2.0 READY, then conditional E2–E6 continuation.** Apply the binding claim-bit/timing contract corrections and their small controls, obtain narrow independent approval, then implement the full headless harvest/wood/delivery loop with package reviews. Windows keeps exact `0c401c8d`; its assignment is unchanged. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ECON-1-CLOSE-1 READY.** Preserve the proven forestry opening; fix public end-path state/claim cleanup and complete the small persistence/content controls. Focused Debug/ASan and independent closeout review; reuse unaffected long evidence. Windows keeps exact `0c401c8d`. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1116,7 +1113,113 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-ROAD-CLOSE-2 / MAP-ECON-1 E1-FINAL — REVIEWED; E2.0 BELOW IS CURRENT
+### MAP-ECON-1-CLOSE-1 — public termination and bounded acceptance checks · READY
+
+**Start:** existing Mac branch/worktree at reviewed candidate
+`78a77625962017ff7784e2849e762193bf4c8c29`; preserve newer owned work. Gate
+source `a4982f5198f433b5e9dc631dbe86d6bade50e86f` differs only by the later
+report/contract commit. Read the entire
+[direct review and decisions](reviews/2026-11-03-map-econ1.md).
+
+**Goal:** close the one reproduced public end-path defect and the specific small
+proof gaps, preserving the authentic forestry opening. E2.0's corrections and
+valid E2–E6 evidence stand. This is a finite correction packet, not a restart.
+
+#### C0 — read, reproduce and preserve evidence
+
+1. Fetch `origin/main` and read its AGENTS/CLAUDE, PLAN §§0.1–0.4, evidence
+   contract, testing README, this dispatch and linked review without merging
+   main. On your branch read the latest REPORTS entry and forestry contract.
+2. Read `figure.cpp` end/sync helpers, `tick.hpp::SerialWorld::end_figure`,
+   `scheduler.cpp` dispatch/merge/expiry, `harvest.cpp`, harvest validators,
+   state field lists and the related figure-removal/harvest tests. No coordinator,
+   runner, app/render/W4, asset, candidate-install or Windows integration work.
+3. Reproduce the valid active-worker -> public end -> invalid harvest state
+   transition in a committed regression, in both faithful and enhanced modes.
+   The root exploratory probe is in main's ignored
+   `cache/review-map-econ1-e2-e6/harvest_review_probe.cpp`, with the corrected
+   run `end-probe-correct-seams.out`. Its original compile/load-seam mistakes
+   are not acceptance evidence. Save/load controls must use matching seam names.
+   Before-end validity/load succeeds; after-end failure reaches the harvest
+   diagnostic. Enhanced bit/map remain owned by the ended worker.
+
+#### C1 — shared termination, exactly once
+
+1. Normalize active harvest state through the supported public end path before
+   losing its home/island association. The resulting world must satisfy invariants
+   and reload immediately. Enhanced mode releases only this worker's own claim;
+   a newer worker's claim survives. Faithful generic end retains its specified
+   no-extra-claim-clear policy; an explicit cut/abort is a separate transition.
+2. Preserve exactly-once home-counter release, expiry behavior and historical
+   cargo. Repeated end is harmless. Preserve normal Done state bytes/behavior
+   where possible so existing real-opening evidence remains applicable. Do not
+   merely weaken validators, clear every claim, repair on load, or add a whole-
+   world search, new cancel command or combat subsystem.
+3. Cover ending during the initial delay, ToTree, Cut and carrying ToHome,
+   repeated end, expiry and same-seam save/reload. Include an ordinary completion
+   control and an old-worker late-end/new-owner control. If a shared helper
+   changes, include the affected non-harvest end/counter cases too.
+4. The old behavior or a reverted cleanup must fail the intended state/claim
+   assertions with the valid before-end and normal-completion controls green.
+   Obtain independent read-only review; fix findings and focused re-review.
+
+#### C2 — small persistence and data-driven behavior proofs
+
+1. Add independent hand-written expected bytes for a populated HarvestState
+   and a non-empty ordered claim-owner map: nonzero distinct values, correct
+   widths/order, optional presence and sequence/map counts, route points and
+   indices. Use an independent little-endian transcription, not production
+   `fields()` to generate the expected answer. Shared serializer round-trip
+   and hash movement alone cannot establish this layout. A swapped/omitted
+   field must fail the byte assertion while the valid control passes.
+2. With the existing synthetic alternate-goods/other-owner fixture, exercise
+   actual resource consumption, worker cargo and delivery to Farm.raw. The
+   current alternate-content case checks spawning only. Prove the right goods
+   and home receive the material. No new original-crop chain, planting system,
+   registry-wide matrix or second expensive opening.
+3. Apply the linked orchestrator decisions: the exact compiled route-name
+   mapping is accepted as a supported-behavior mapping; the inherited less-than-
+   one-tick walk-arrival quantization is accepted for this slice; generic shared
+   dispatch remains, including 19 shipped types counting the forester. State
+   their limits accurately. Other production chains are not declared verified.
+   Remove the contradictory absolute lossless-time wording. Add a tiny exact/
+   fractional arrival-boundary helper check; no walker rewrite or format change
+   is assigned. Preserve the initial five-tick remainder and whole-tick carry.
+4. Independently review the hand-derived answers and these controls within the
+   same package review. Update documentation alongside the corrections.
+
+#### C3 — finite gates, independent closeout and stop
+
+1. Run name/verdict preflight and cheap new proof cases first. Freeze source,
+   tools and helper writes, then use the canonical gate for affected end,
+   figure-removal, harvest lifecycle/persistence, and small delivery cases in
+   Debug and ASan/UBSan. Require the existing forestry reference contracts.
+   Inspect the selection explicitly so the long opening is not included
+   accidentally; record selected/executed/failed/empty/skipped/incomplete counts.
+2. Retain D1/A1, the 28-checkpoint fresh replay and first failures at their pins.
+   If normal Done bytes/behavior remain unchanged, give the source-dependency
+   explanation and reuse the real opening/replay. If a real affected dependency
+   changes, rerun that canary once and explain why. No blanket 1091-case rerun,
+   full-ASan sailing campaign, corpus regeneration or infrastructure repairs.
+3. A fresh independent read-only closeout reviewer inspects the frozen combined
+   correction, actual callers, raw evidence and the new layout controls. It
+   verifies the pre-end positive reaches the intended path, cleanup cannot erase
+   another owner, and reused evidence has unchanged dependencies. Record reviewer
+   identity, exact revision, scope and dispositions in the existing REPORTS entry;
+   no reconstruction of missing old reviewer archives. Fix actionable findings
+   and obtain focused re-review without duplicating the long gates.
+4. Commit locally and stop for orchestrator acceptance. Report exact code/test/
+   docs/gate pins, retained failures, remaining limits and future Windows delta.
+   No merge/rebase/task-code push, TASKS edit or new feature starts in this packet.
+   Windows stays on exact `0c401c8d084cfd9feb8aec846595291f87f22cce`.
+
+**Stop:** the supported end path leaves harvest state valid and reloadable in
+both modes, enhanced ownership is safely released, the small persistence/content
+proofs pass, and the correction has independent approval. The existing opening
+remains the gameplay achievement; this does not claim original-runtime, full
+plantation-chain, cross-platform or late-game performance acceptance.
+
+### MAP-ROAD-CLOSE-2 / MAP-ECON-1 E1-FINAL — HISTORY; CURRENT TASK ABOVE
 
 **Disposition, 2026-11-03:** atomic code/tests `d9a05682`, clean focused gate
 `d0e4ae60`, final candidate `362f99ab`. Atomic and runner fixes are accepted.
@@ -1411,7 +1514,13 @@ reviewed forester research packet or a precise research dependency. No harvest
 engine until the conditional continuation below is released; no sustainable-
 economy, UI/render integration or new Windows dependency.
 
-### MAP-ECON-1 E2.0 → E2–E6 — harvest trees, produce wood and deliver it · E2.0 READY; CONDITIONAL CONTINUATION
+### MAP-ECON-1 E2.0 → E2–E6 — REVIEWED; CLOSE-1 ABOVE IS CURRENT
+
+**Disposition, 2026-11-03:** candidate `78a77625`, clean gate `a4982f51`.
+E2.0 is accepted; the real forestry opening and valid gate evidence are retained.
+The direct review requires the bounded public-termination correction and small
+proof checks in CLOSE-1 above. The following release/stop wording is assignment
+history. Do not restart E2.0 or E2–E6.
 
 **Owner authorization, 2026-11-03:** once the road correction and forester
 contract are approved, the Mac executor may implement and test the complete

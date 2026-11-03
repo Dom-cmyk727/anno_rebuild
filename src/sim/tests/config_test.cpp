@@ -174,6 +174,10 @@ void expected_config(Stream& s) {
            {10, {64, 80, 128, 256}}}); // ore_width_rank
     s.u32s({4, 3, 2, 1});              // raw_rank_score
     s.u32s({116, 6, 3, 1});            // ore_rank_score
+    // MAP-POP-IMPL-1 B (stream 127): the population goods roles, hand-written defaults
+    for (const std::uint32_t x : {0x4cU, 0x5aU, 0x4cU, 0x1dU}) {
+        s.u32(x); // infra_first, infra_last, tavern_goods, tavern_alias_goods
+    }
     // Rules
     s.u8(0); // slot_policy
     s.u8(0); // spatial_order
@@ -358,6 +362,14 @@ std::vector<std::pair<const char*, ConfigMut>> config_mutations() {
                    [](sim::SimConfig& c) { c.small_farm_animals.kind_by_draw[0] += 1; });
     m.emplace_back("layout", [](sim::SimConfig& c) { c.layout.schedule.pop_back(); });
     m.emplace_back("links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] += 1; });
+    m.emplace_back("population_infra_first",
+                   [](sim::SimConfig& c) { c.population_infra_first += 1; });
+    m.emplace_back("population_infra_last",
+                   [](sim::SimConfig& c) { c.population_infra_last += 1; });
+    m.emplace_back("population_tavern_goods",
+                   [](sim::SimConfig& c) { c.population_tavern_goods += 1; });
+    m.emplace_back("population_tavern_alias_goods",
+                   [](sim::SimConfig& c) { c.population_tavern_alias_goods += 1; });
     return m;
 }
 
@@ -687,7 +699,7 @@ TEST_CASE("sim config defaults are the originals") {
 }
 
 TEST_CASE("config digest changes with every field") {
-    static_assert(sim::field_count<sim::SimConfig>() == 52);
+    static_assert(sim::field_count<sim::SimConfig>() == 56);
     const sim::SimConfig base;
     const std::uint64_t base_digest = base.digest();
     CHECK(sim::SimConfig{}.digest() == base_digest);
@@ -966,6 +978,19 @@ TEST_CASE("config validate rejects each bad field") {
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_rank_score[0] = 254; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.best_list_cap = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.pick_list_cap = 0; }});
+    // The population roles (MAP-POP-IMPL-1 B): the order only; the goods domain is the registry's.
+    rows.push_back({"population_infra_first", [](sim::SimConfig& c) {
+                        c.population_infra_first = 0x5b; // above infra_last 0x5a
+                    }});
+    rows.push_back({"population_tavern_goods", [](sim::SimConfig& c) {
+                        c.population_tavern_goods = 0x4b; // below the range
+                    }});
+    rows.push_back({"population_tavern_goods", [](sim::SimConfig& c) {
+                        c.population_tavern_goods = 0x5b; // above the range
+                    }});
+    rows.push_back({"population_tavern_alias_goods", [](sim::SimConfig& c) {
+                        c.population_tavern_alias_goods = 0x50; // inside the range
+                    }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.raw_kinds = 0; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_mask_bit[0] = 32; }});
     rows.push_back({"links", [](sim::SimConfig& c) { c.links.ore_kinds = 0; }});

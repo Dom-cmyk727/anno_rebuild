@@ -1543,6 +1543,8 @@ TEST_CASE("registry digest stable") {
             h.u8(static_cast<std::uint8_t>(c));
         }
         h.u32(g.forsch);
+        h.u32(0); // bau_first (stream 127)
+        h.u32(0); // id_sec (stream 127)
     }
     const std::vector<sim::ClassInfo> classes = sim::original_class_table();
     h.u64(classes.size());
@@ -1557,7 +1559,7 @@ TEST_CASE("registry digest stable") {
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x57bf8db1367ab475ULL);
+    CHECK(h.value() == 0x49dc036993c42b95ULL);
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1571,13 +1573,13 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0x20bd3120bcf7e4f2ULL);
+    CHECK(a.value().registry->digest() == 0x12dfd17e5c5ed932ULL);
 }
 
 TEST_CASE("registry digest changes with every field") {
     // 22 since T27: the derived walk_class is the 22nd member. It is NOT in the digest,
     // so it is deliberately absent from the mutation list below ("registry digest
-    // stable" pins the synthetic digest 0x20bd3120bcf7e4f2, unchanged by T27).
+    // stable" pins the synthetic digest 0x12dfd17e5c5ed932, unchanged by T27).
     // T33.2 adds un-hashed walk_mask input; header/digest changes belong to T33.4.
     static_assert(sim::field_count<sim::BuildingType>() == 23);
     static_assert(sim::field_count<sim::ProductionType>() == 18);
@@ -1909,7 +1911,7 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     REQUIRE(again);
     CHECK(again.value()->digest() == r.digest());
     // T24: the digest covers the ENTRANCE points and the figure types (none here).
-    CHECK(r.digest() == 0xe5165c06384996edULL);
+    CHECK(r.digest() == 0xe6757197ed6fb18dULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);

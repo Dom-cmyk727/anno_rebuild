@@ -1098,7 +1098,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0x20bd3120bcf7e4f2ULL);
+    CHECK(types.value().registry->digest() == 0x12dfd17e5c5ed932ULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

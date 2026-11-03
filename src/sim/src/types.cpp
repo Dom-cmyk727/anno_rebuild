@@ -269,7 +269,7 @@ static_assert(field_count<BuildingType>() == 23,
 static_assert(field_count<EntrancePoint>() == 2,
               "an EntrancePoint member needs a line in digest_type");
 static_assert(field_count<FigureType>() == 10, "a FigureType member needs a line in the digest");
-static_assert(field_count<GoodsInfo>() == 2, "a GoodsInfo member needs a line in the digest");
+static_assert(field_count<GoodsInfo>() == 4, "a GoodsInfo member needs a line in the digest");
 static_assert(field_count<ClassInfo>() == 4, "a ClassInfo member needs a line in the digest");
 static_assert(field_count<CostEntry>() == 2, "a CostEntry member needs a line in the digest");
 
@@ -334,9 +334,11 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
                               std::span<const HouseGroup> groups) {
     HashArchive a(HashOptions{nullptr, 0, true});
     ar::seq(a, types, 1, [&](const BuildingType& t) { digest_type(a, t); });
-    ar::seq(a, goods, 12, [&](const GoodsInfo& g) {
+    ar::seq(a, goods, 20, [&](const GoodsInfo& g) {
         a.str(g.name);
         a.u32(g.forsch);
+        a.u32(g.bau_first); // stream 127
+        a.u32(g.id_sec);    // stream 127
     });
     ar::seq(a, classes, 7, [&](const ClassInfo& c) {
         a.enumv(c.cls);
@@ -898,6 +900,42 @@ const BuildingType* TypeRegistry::find_growing(std::uint32_t object) const {
     return t != nullptr && t->has_prod && t->prod.kind == BuildingClass::GrowingItem ? t : nullptr;
 }
 
+namespace {
+
+/// The goods-domain checks of the population roles (docs/sim/population-contract.md section 3):
+/// they need a goods table and run only for a registry that has house groups, so a registry without
+/// groups never depends on the original default ids. SimConfig::validate() checked the order.
+std::string population_roles_problem(const SimConfig& cfg, std::size_t goods_count) {
+    if (cfg.population_infra_last >= goods_count) {
+        return "SimConfig.population_infra_last " + std::to_string(cfg.population_infra_last) +
+               " is not a goods id (the table has " + std::to_string(goods_count) + " goods)";
+    }
+    if (cfg.population_tavern_alias_goods >= goods_count) {
+        return "SimConfig.population_tavern_alias_goods " +
+               std::to_string(cfg.population_tavern_alias_goods) +
+               " is not a goods id (the table has " + std::to_string(goods_count) + " goods)";
+    }
+    return {};
+}
+
+/// The population metadata of the goods: a stage index is a shift count into the u32 mask, a
+/// substitute is a goods id.
+std::string goods_metadata_problem(std::span<const GoodsInfo> goods) {
+    for (std::size_t i = 0; i < goods.size(); ++i) {
+        if (goods[i].bau_first >= 32) {
+            return "goods " + std::to_string(i) + " (" + goods[i].name + "): bau_first " +
+                   std::to_string(goods[i].bau_first) + " is not a stage index 0..31";
+        }
+        if (goods[i].id_sec >= goods.size()) {
+            return "goods " + std::to_string(i) + " (" + goods[i].name + "): id_sec " +
+                   std::to_string(goods[i].id_sec) + " is not a goods id";
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::finish(
     std::vector<BuildingType> types, std::vector<GoodsInfo> goods_in,
     std::vector<ClassInfo> classes, const SimConfig& cfg, std::vector<FigureType> figures,
@@ -905,6 +943,15 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     if (!groups.empty() && groups.size() != cfg.house_groups) {
         return "the group table has " + std::to_string(groups.size()) +
                " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);
+    }
+    if (std::string problem = goods_metadata_problem(goods_in); !problem.empty()) {
+        return problem;
+    }
+    if (!groups.empty()) {
+        if (std::string problem = population_roles_problem(cfg, goods_in.size());
+            !problem.empty()) {
+            return problem;
+        }
     }
     if (classes.size() != static_cast<std::size_t>(RuntimeClass::Count_)) {
         return "class table has " + std::to_string(classes.size()) + " entries, RuntimeClass has " +
@@ -959,9 +1006,20 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
                    " in 1/256 tile)";
         }
     }
+    // The derived group tables, once, under the roles of this config (MAP-POP-IMPL-1 C).
+    std::vector<HouseGroupDerived> derived(groups.size());
+    for (std::size_t i = 0; i < groups.size(); ++i) {
+        if (std::string problem =
+                derive_group(groups[i], goods_in, TypeRegistry::roles_of(cfg), derived[i]);
+            !problem.empty()) {
+            return "house group " + std::to_string(i) + ": " + problem;
+        }
+    }
     auto sealed = std::make_shared<Sealed>();
     TypeRegistry& r = *sealed;
     r.digest_ = digest_registry(types, goods_in, classes, figures, groups);
+    r.derived_groups_ = std::move(derived);
+    r.population_roles_ = TypeRegistry::roles_of(cfg);
     r.house_groups_ = std::move(groups);
     r.walk_tables_ = std::move(tables);
     r.types_ = std::move(types);
@@ -986,7 +1044,52 @@ const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {
     return it != figure_types_.end() && it->id == id ? &*it : nullptr;
 }
 
+PopulationRoles TypeRegistry::roles_of(const SimConfig& cfg) {
+    return PopulationRoles{cfg.population_infra_first, cfg.population_infra_last,
+                           cfg.population_tavern_goods, cfg.population_tavern_alias_goods};
+}
+
+formats::Result<PopulationView, std::string>
+TypeRegistry::population_view(std::uint32_t group_index, const SimConfig& cfg) const {
+    if (group_index >= house_groups_.size()) {
+        return "population view: no group " + std::to_string(group_index) + " (the registry has " +
+               std::to_string(house_groups_.size()) + ")";
+    }
+    if (roles_of(cfg) != population_roles_) {
+        return std::string("population view: the SimConfig population roles differ from the roles "
+                           "the group tables were derived under");
+    }
+    PopulationView v;
+    v.group = &house_groups_[group_index];
+    v.derived = &derived_groups_[group_index];
+    v.goods = goods_;
+    v.roles = population_roles_;
+    v.group_index = group_index;
+    if (group_index > 0) {
+        v.previous_wohnmax = house_groups_[group_index - 1].wohnmax;
+    }
+    return v;
+}
+
 std::string TypeRegistry::validate_against(const SimConfig& cfg) const {
+    if (!house_groups_.empty()) {
+        if (std::string problem = population_roles_problem(cfg, goods_.size()); !problem.empty()) {
+            return problem;
+        }
+        if (roles_of(cfg) != population_roles_) {
+            return "SimConfig population roles (infra " +
+                   std::to_string(cfg.population_infra_first) + ".." +
+                   std::to_string(cfg.population_infra_last) + ", tavern " +
+                   std::to_string(cfg.population_tavern_goods) + ", alias " +
+                   std::to_string(cfg.population_tavern_alias_goods) +
+                   ") differ from the roles the registry's group tables were derived under "
+                   "(infra " +
+                   std::to_string(population_roles_.infra_first) + ".." +
+                   std::to_string(population_roles_.infra_last) + ", tavern " +
+                   std::to_string(population_roles_.tavern_goods) + ", alias " +
+                   std::to_string(population_roles_.tavern_alias_goods) + ")";
+        }
+    }
     if (!house_groups_.empty() && house_groups_.size() != cfg.house_groups) {
         return "the group table has " + std::to_string(house_groups_.size()) +
                " groups, SimConfig::house_groups is " + std::to_string(cfg.house_groups);

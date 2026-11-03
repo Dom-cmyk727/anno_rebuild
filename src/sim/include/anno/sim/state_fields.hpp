@@ -203,7 +203,7 @@ template <class A, Same<LinkTables> S> void fields(A& a, S& s) {
     u32_list(a, s.ore_rank_score);
 }
 
-static_assert(field_count<SimConfig>() == 52,
+static_assert(field_count<SimConfig>() == 56,
               "a SimConfig member needs a line in fields(SimConfig)");
 
 template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
@@ -259,6 +259,10 @@ template <class A, Same<SimConfig> S> void fields(A& a, S& s) {
     fields(a, s.small_farm_animals);
     fields(a, s.layout);
     fields(a, s.links);
+    a.u32(s.population_infra_first);        // stream 127
+    a.u32(s.population_infra_last);         // stream 127
+    a.u32(s.population_tavern_goods);       // stream 127
+    a.u32(s.population_tavern_alias_goods); // stream 127
 }
 
 static_assert(field_count<NavClassCost>() == 4, "a NavClassCost member needs a line in fields");

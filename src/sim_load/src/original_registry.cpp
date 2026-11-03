@@ -8,6 +8,7 @@
 #include <anno/formats/annowelt.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/text.hpp>
+#include <anno/sim/goods_metadata.hpp>
 #include <anno/sim/house_groups.hpp>
 #include <anno/sim_load/original_registry.hpp>
 
@@ -56,7 +57,12 @@ OriginalRegistryLoad load_original_registry(const fs::path& game_dir, FigureEntr
     }
 
     const std::vector<std::uint8_t> group_bytes = read_all(game_dir / "Data" / "BGruppen.dat");
-    const std::vector<sim::GoodsInfo> goods = sim::original_goods();
+    std::vector<sim::GoodsInfo> goods = sim::original_goods();
+    if (const std::string problem = sim::apply_goods_metadata(group_bytes, goods);
+        !problem.empty()) {
+        out.error = problem;
+        return out;
+    }
     auto groups = sim::parse_house_groups(group_bytes, goods);
     if (!groups) {
         out.error = "BGruppen.dat: " + groups.error();

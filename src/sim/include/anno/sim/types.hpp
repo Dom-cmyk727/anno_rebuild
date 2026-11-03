@@ -115,6 +115,12 @@ struct GoodsInfo {
     std::string name;
     /// BGruppen [WAREN] research id (Appendix B), 0 = none (OQ-034).
     std::uint32_t forsch = 0;
+    /// MAP-POP-IMPL-1 B (stream 127): BGruppen [WAREN] BauFirst, the stage index (0..31) whose
+    /// bit in the owner's stage mask enables the need (D: goods record +2, read by the house tick
+    /// AnnoWelt 0x100762c2-0x100762e2). Absent = INFRA_EVER = 0.
+    std::uint32_t bau_first = 0;
+    /// [WAREN] IdSec, the substitute goods id; 0 = none (D: goods record +1). Absent = 0.
+    GoodsId id_sec = 0;
 };
 
 /// A build cost in goods: the amount in 8.8 tons.
@@ -289,6 +295,22 @@ struct BuildingType {
 };
 
 /// The immutable type data of a world.
+/// The immutable inputs of one population calculation: a group, its derived tables, the goods table
+/// and the roles they were derived under (MAP-POP-IMPL-1 C, docs/sim/population-contract.md
+/// section 3). Obtained only from TypeRegistry::population_view, which refuses a config whose
+/// roles differ from the registry's binding, so a table never meets other roles. Valid while the
+/// registry lives.
+struct PopulationView {
+    const HouseGroup* group = nullptr;
+    const HouseGroupDerived* derived = nullptr;
+    std::span<const GoodsInfo> goods;
+    PopulationRoles roles;
+    std::uint32_t group_index = 0;
+    /// The preceding group's Wohnmax; nullopt for group 0 (the original reads layout-adjacent bytes
+    /// there, OD-5 - never replicated). A caller may supply any value explicitly instead.
+    std::optional<std::uint32_t> previous_wohnmax;
+};
+
 class TypeRegistry {
   public:
     class Builder;
@@ -322,6 +344,20 @@ class TypeRegistry {
     /// house has no stocks); a non-empty table has exactly SimConfig::house_groups
     /// groups. Immutable, part of digest().
     [[nodiscard]] std::span<const HouseGroup> house_groups() const { return house_groups_; }
+    /// The derived table of each group (same order), built once with the roles of the SimConfig
+    /// the registry was built with; empty when there are no groups. Not hashed (a pure function of
+    /// the hashed groups and goods).
+    [[nodiscard]] std::span<const HouseGroupDerived> derived_groups() const {
+        return derived_groups_;
+    }
+    /// The roles the derived tables are bound to (the defaults for a registry without groups).
+    [[nodiscard]] const PopulationRoles& population_roles() const { return population_roles_; }
+    /// The roles of a config.
+    [[nodiscard]] static PopulationRoles roles_of(const SimConfig& cfg);
+    /// One group with its derived data, or an error naming the mismatch: no such group, or `cfg`'s
+    /// roles differ from the binding.
+    [[nodiscard]] formats::Result<PopulationView, std::string>
+    population_view(std::uint32_t group_index, const SimConfig& cfg) const;
     /// Immutable side input; its separate digest is in the state/replay headers.
     [[nodiscard]] const std::shared_ptr<const formats::annowelt::WalkTables>& walk_tables() const {
         return walk_tables_;
@@ -395,6 +431,8 @@ class TypeRegistry {
     std::vector<GoodsInfo> goods_;
     std::vector<ClassInfo> classes_;
     std::vector<HouseGroup> house_groups_;
+    std::vector<HouseGroupDerived> derived_groups_;
+    PopulationRoles population_roles_;
     std::uint32_t max_footprint_ = 1;
     std::uint64_t digest_ = 0;
     std::shared_ptr<const formats::annowelt::WalkTables> walk_tables_;

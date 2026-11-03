@@ -430,6 +430,19 @@ struct SimConfig {
     /// before the world exists, hashed with the configuration so a world records the
     /// tables its links were drawn with.
     LinkTables links;
+    /// MAP-POP-IMPL-1 B (stream 127, docs/sim/population-contract.md section 3): which goods ids
+    /// the population rules treat as infrastructure and as the tavern. They are properties of the
+    /// original goods table, so they are configuration with the original values as defaults, never
+    /// engine constants. D: first/last infrastructure id AnnoGame 0x1001487e-0x10014889 and
+    /// 0x10014b25-0x10014b2a (0x4c WIRTSHAUS .. 0x5a); tavern 0x10014b60 and AnnoWelt 0x100760d9
+    /// (0x4c); the lookup slot the first tavern may take 0x10014b65-0x10014b6d (0x1d ALKOHOL).
+    /// validate() checks the order only; the goods-domain checks run where a goods table and house
+    /// groups exist (TypeRegistry::build / validate_against), so a registry without groups never
+    /// needs these ids.
+    std::uint32_t population_infra_first = 0x4c;
+    std::uint32_t population_infra_last = 0x5a;
+    std::uint32_t population_tavern_goods = 0x4c;
+    std::uint32_t population_tavern_alias_goods = 0x1d;
 
     /// docs/sim/state.md §3.1. Empty when valid, else one message naming the
     /// first offending field ("SimConfig.building_div: must be non-zero").

@@ -373,6 +373,26 @@ std::string SimConfig::validate() const {
         // The city scans run over the slots 0..neutral_owner-1 (A5).
         return bad(kOwner, "neutral_owner", "must be at most city_slots");
     }
+    // The population roles (stream 127): the order only; the goods domain is checked with the
+    // registry. A tavern outside the infrastructure range is refused on purpose.
+    if (population_infra_first > population_infra_last) {
+        return bad(kOwner, "population_infra_first",
+                   "must not exceed population_infra_last, is " +
+                       std::to_string(population_infra_first) + " > " +
+                       std::to_string(population_infra_last));
+    }
+    if (population_tavern_goods < population_infra_first ||
+        population_tavern_goods > population_infra_last) {
+        return bad(kOwner, "population_tavern_goods",
+                   "must lie in population_infra_first..population_infra_last, is " +
+                       std::to_string(population_tavern_goods));
+    }
+    if (population_tavern_alias_goods >= population_infra_first &&
+        population_tavern_alias_goods <= population_infra_last) {
+        return bad(kOwner, "population_tavern_alias_goods",
+                   "must lie outside the infrastructure range, is " +
+                       std::to_string(population_tavern_alias_goods));
+    }
     if (std::uint64_t{build_goods_first} + build_goods_count > warehouse_goods) {
         return bad(kOwner, "build_goods_count",
                    "build_goods_first + build_goods_count must not exceed warehouse_goods");

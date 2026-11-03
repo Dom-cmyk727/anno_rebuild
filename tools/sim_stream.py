@@ -79,7 +79,9 @@ the transcribed goldens' production gate stays closed, so no farm step and no su
 Stream 127 (task MAP-POP-IMPL-1, docs/sim/population-contract.md) is one combined increment for
 packages A-C. Package A changes no layout: an original scenario's created players carry the imported
 stage mask (flags), which the transcribed goldens (no SPIELER head) never hold, so only the version
-word moves their hashes.
+word moves their hashes. Package B appends the four population goods roles to the config scope
+(u32 each, defaults 0x4c 0x5a 0x4c 0x1d) and `bau_first`, `id_sec` (u32 each, 0 in the transcribed
+original_goods()) to every goods entry of the registry digest.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -177,7 +179,7 @@ def registry_digest(names):
     d = u64(0)  # no types
     d += u64(len(names))
     for i, n in enumerate(names):
-        d += string(n) + u32(FORSCH.get(i, 0))
+        d += string(n) + u32(FORSCH.get(i, 0)) + u32(0) + u32(0)  # + bau_first, id_sec (127)
     d += u64(len(CLASSES))
     for cls, tick, payload, gate in CLASSES:
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
@@ -231,6 +233,8 @@ def config_bytes():
     b += u32(1) + u32(32) + u32(4)
     b += b''.join(u32(x) for x in [5, 3, 1, 2, 4, 0])
     b += link_tables_bytes()
+    # stream 127: population_infra_first/last, population_tavern_goods, population_tavern_alias_goods
+    b += b''.join(u32(x) for x in [0x4C, 0x5A, 0x4C, 0x1D])
     return b
 
 
@@ -687,7 +691,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x20BD3120BCF7E4F2
+SYNTHETIC_REGISTRY = 0x12DFD17E5C5ED932
 
 
 def g1_scenario(steps=0, step_ms=10):

@@ -24,7 +24,8 @@ inline constexpr const char* kUsage =
     "<n>] [--png "
     "<out.png> [--time <ms>] [--at <x>,<y> [--size <w>x<h>]]] [--water original|enhanced] "
     "[--river-flow legacy|flow] [--river-gain <x>] [--river-speed median|fastest] "
-    "[--river-gap-patch <tiles>] [--renderer auto|gpu|cpu] [--lookahead-chunks <n>] "
+    "[--river-gap-patch <tiles>] [--shore <height>] [--renderer auto|gpu|cpu] [--lookahead-chunks "
+    "<n>] "
     "[--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>] "
     "[--min-zoom <tile width>] [--max-derived-levels <n>] [--zoom-max-upscale <factor>] "
     "[--commands <file> [--replay-hashes <file>]] (--play)\n"
@@ -155,6 +156,9 @@ struct Args {
     /// River pieces at most this many tiles apart are joined (OQ-068; 0 = the
     /// gaps of the original data). The viewer joins gaps up to 8 tiles.
     float river_gap_patch = 8.0F;
+    /// --shore: terrain below this many HEIGHT units is water (render::Scene::shore_height; 16
+    /// draws corners at 16 as land, the renderer's choice until 2026-11-03).
+    float shore = render::kShoreHeight;
     Renderer renderer = Renderer::Auto;
     /// FrameRenderer::max_lookahead_chunks: how far (in chunks) the margin of
     /// built chunks grows ahead of a moving view. 3 is the library default;

@@ -177,6 +177,12 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.river_gap_patch = *g;
+        } else if (a == "--shore") {
+            const auto s = number<float>(v);
+            if (!s || !(*s >= 0.0F) || *s > 255.0F) {
+                return std::nullopt;
+            }
+            out.shore = *s;
         } else if (a == "--river-speed") {
             if (v == "median") {
                 out.river_speed = render::river::RiverConfig::Reference::MedianCell;

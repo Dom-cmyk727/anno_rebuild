@@ -240,6 +240,11 @@ TEST_CASE("command line") {
     REQUIRE(wo);
     CHECK(wo->water == anno::render::WaterStyle::Original);
     CHECK(wo->water_given); // an explicit choice the opening keeps (review 2026-11-03)
+    CHECK(d->shore == anno::render::kShoreHeight); // corners at 16 are water by default
+    const auto sh = parse_args({"--view", "x.scp", "--shore", "16"});
+    REQUIRE(sh);
+    CHECK(sh->shore == 16.0F);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "-1"}));
     // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);

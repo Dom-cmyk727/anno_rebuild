@@ -197,6 +197,15 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/forester_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/forester_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/forester_vectors.txt)
+    add_test(NAME house_kernel_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_kernel_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_kernel_vectors.txt)
+    add_test(NAME house_kernel_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_kernel_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/house_kernel_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_kernel_vectors.txt)
+    add_test(NAME population_oracles_agree
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_stream.py --check)
     add_test(NAME ship_step_reference_selftest
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/ship_step_ref.py selftest)
     add_test(NAME test_verdict_contract

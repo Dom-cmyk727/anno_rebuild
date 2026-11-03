@@ -196,6 +196,9 @@ def fmt(key, val):
 
 
 def run(path):
+    if not os.path.isfile(path):
+        print('cannot read', path)
+        return 2
     tables, groups, nvec, bad = {}, {}, 0, 0
     for n, raw in enumerate(open(path).read().split('\n'), 1):
         line = raw.split('#', 1)[0].strip()

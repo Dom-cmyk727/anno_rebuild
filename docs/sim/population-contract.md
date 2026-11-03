@@ -12,10 +12,13 @@ Evidence labels as in the inputs document: **D** disassembly, **P** parsed from 
 | Branch use of 127 | `git grep kStateHashVersion` shows 126 as the last value; no other owned work on this branch uses 127. **Stream 127 is reserved for A+B+C together.** |
 | PRNG timeline | stays 4 (no draw site is added) |
 | Command wire | unchanged |
-| Increment point | the constant moves 126 -> 127 in the first commit that changes created-world bytes (package A). B and C change the canonical bytes of version 127 again (config fields, registry digest). That is deliberate: version 127 is unpublished until the orchestrator accepts the bundle, and **no recording or golden is produced by a binary that holds an intermediate 127 layout** except the final one. |
+| Increment point | The constant moves 126 -> 127 in the first commit that changes created-world bytes (package A). Package B changes the canonical bytes of 127 again (four config fields in the config scope, `GoodsInfo::{bau_first, id_sec}` in the registry digest); **package C changes none** (derived tables are not hashed). Version 127 is unpublished until the orchestrator accepts the bundle. |
+| Re-baselining | Every package that moves bytes regenerates, with the independent `tools/sim_stream.py` as oracle where it can: `goldens.txt`, `ship_holds.txt`, `cargo_rules_bytes.txt`, the recorded logs `g2`-`g6.log` (by `ANNO_UPDATE_GOLDEN=1`, delta = version word and hashes only, sizes unchanged), `scenario_corpus.txt` (version header and hash column; counts unchanged) and the hard-coded version assertions (`sim_test`, `config_test`, `island_state_test`, `ship_nav_state_test`, `ship_state_test`). Gates of A, B and C are therefore green at their own package; the **final** F gate runs on the last layout. Recordings made at stream 126 stay at their original pins and are not claimed to replay on this build. |
 | Derived caches, the pure kernel | no further bump |
 
 ## 2. The nine decisions as rules of this branch
+
+Labels: **[D]** original instruction fact, **[A]** approved safe-domain adaptation (not a fidelity claim). Decisions 3, 4, 5 and 7 are [A]; decision 8's slot-0 read is [D] and the empty-group refusal [A]; the lookup sized by `goods_count` (the original's table has 96 entries, AnnoGame `0x10014afc`) is [D] for the rule and [A] for the size.
 
 1. **Own saves and resync are exact (OD-1).** `House::last` is saved, hashed and restored as is. No reset option and no load-kind split. The original-format import keeps `last = 0` (Load never writes it, E).
 2. **Create's timing stays evidence-only (OD-2).** Construction stamps are unchanged (`stamp_placement` still skips `House`). Package E reads the callers of `0x10024010`; nothing live depends on the answer.
@@ -37,6 +40,10 @@ Evidence labels as in the inputs document: **D** disassembly, **P** parsed from 
 | `population_infra_last` | `0x5a` | last infrastructure goods id, `0x10014889`, `0x10014b2a` |
 | `population_tavern_goods` | `0x4c` | the tavern need that earns the alias, `0x10014b60`; also mood's tavern test `0x100760d9` |
 | `population_tavern_alias_goods` | `0x1d` | ALKOHOL, the lookup slot the first tavern may take, `0x10014b65`-`0x10014b6d` |
+
+**Forced-infrastructure set.** `HouseGroupDerived::forced` is a dynamic bit vector of `infra_last - infra_first + 1` bits (bit `ware - infra_first`), not a u32; the original's u32 at `+0xc4` (`1 << (ware - 0x4c)`, AnnoGame `0x10014b49`-`0x10014b5a`) is the shipped special case. Only the player stage mask is a 32-bit domain. The kernel reads each need's own `force` flag (as mood does), not this set.
+
+**No-tavern mods.** A tavern role outside `[first, last]` is intentionally refused by `SimConfig::validate()` (the roles describe one original mechanism); a mod without a tavern keeps the roles and simply has no need on that goods id.
 
 Validation lives in `SimConfig::validate()` only for the **ordering that never needs a goods table** (`first <= last`, `tavern_goods` inside `[first, last]`). The checks against the goods domain (`last < goods count`, `alias < goods count`, `alias` outside the range) run where a goods table exists: `TypeRegistry::build` and `validate_against(cfg)`, and **only for a registry that has house groups**. A registry without groups (every synthetic non-population registry, the empty registry) accepts any config, so original default ids that its small goods table does not contain never make it fail.
 
@@ -81,8 +88,16 @@ Format: rule -> primary evidence -> smallest wrong reading -> distinguishing inp
 | P-D6 | Cap and floor signed strict; below-64 only on the downgrade arm | D `0x10076468`, `0x10076540`-`0x1007654f`, remove-arm bypass `0x10076547`-`0x10076551` | `>=`; correction on the remove arm; unsigned word | D8-D11, plus two inputs with the **same** below-64 residents and different arm (NoDowngrade vs not) | reference |
 | P-D7 | Smallest caller cadence | readiness F-8 | gate consumes time | `d = 0` call, partial `last`, partition 5000/5000/skip, save/reload of `last` | hand vectors; save/reload test |
 | P-D8 | Nominal-success function | evidence contract | returns success without calculating | each reference vector must equal a nontrivial expected; a "success-only" mutant fails it | tiny public-command contract of the CLI |
+| P-D9 | Overflow is typed, not wrapped (decision 3) | A | product or sum that does not fit `u32`/`i32` | stock 0xFFFFFFFF with a taken gate; residents near `INT32_MAX` + growth -> `NotEvaluated(Overflow)`; the same inputs one step smaller evaluate | hand vectors |
+| P-D10 | `E'` = 0 paths (decision 4) | D `AnnoWelt 0x10075fe9` (mood), `0x10076305`-`0x10076318` (divide) | blanket error for E'=0 | E' 0 with a selected need -> `NotEvaluated(ZeroDivisor)`; E' 0 with every need unselected -> evaluated, mood 0; E 0 for mood alone -> 0 before any table read | hand vectors |
+| P-D11 | Previous capacity explicit (decision 5) | D `AnnoWelt 0x1007651d`-`0x10076533` | adjacent memory read; silent 0 | floor path with `nullopt` -> `NotEvaluated(PreviousCapacityUnavailable)`; explicit 0 -> floor 0; `NoDowngrade` or flags `0x30` -> floor 64 and the input unused; group index 0 via the registry view -> `nullopt` | hand vectors; floor value 64 vs `48*prev` asserted |
+| P-D12 | Slot 0 positional (decision 8) | D `AnnoWelt 0x10076113` | NAHRUNG-id branch; reordering; Force test on slot 0 | a group whose slot 0 is LEDER (not NAHRUNG) is read at slot 0; slot 0 unforced is still read, slots >= 1 only when forced; empty group with `E <> 0` -> `NotEvaluated(MissingFirstNeed)`, with `E = 0` -> mood 0 | hand vectors |
+| P-D13 | Bound roles in the kernel | D `AnnoWelt 0x100760d9` | literal `0x4c`/`0x1d`/`0x5a` | a registry with `population_tavern_goods`, `infra_first`/`infra_last`, alias set to non-default ids: mood's tavern test, infra range and alias follow them; the same needs under default roles differ | synthetic registry |
+| P-X1 | Construction stamps unchanged (decision 2) | board | stamping `House` | `stamp_placement` still leaves `House::last` 0 for a created house | existing create test, asserted explicitly |
 | P-E1 | Real-input canary | task E.2 | unchanged world hash taken as proof | calculations counted, domain outcomes counted, at least one skipped and one taken gate, nontrivial mask | independent reference run on extracted inputs |
 | P-E2 | Dispatch stays a no-op | board | kernel called from the tick | one focused test: a taken-gate house in a ticked world keeps `last`, residents, `e`, stock | existing G7 case + one new case |
+
+**Independence of the numeric rows (D).** `fixtures/synthetic/sim/house_kernel_vectors.txt` is seeded from the hand-derived rows D1-D14 of `population-readiness.md` section 7 and the rows above, and is committed **before** `house_kernel.cpp` exists. `tools/house_kernel_ref.py` is written from the instruction spans and that file without reading the C++, and runs standalone. Its CLI exits non-zero for: a vector file with zero vectors, a vector whose expected value is wrong, and malformed input; child time is bounded. A contract test registered in CTest runs a reference that merely echoes the expected result and requires it to fail. Evidence cells name the module: addresses `0x1001d3xx` and `0x1007xxxx` are `AnnoWelt.dll`; `0x10014xxx` and `0x10024bd0` are `AnnoGame.dll`.
 
 ## 6. Partition and ownership
 

@@ -122,15 +122,15 @@
 # digests are byte-identical to stream 118. scenario_corpus.txt differs from 118 only in the version
 # header, create_hash, UnknownRecord (the KONTORID record is known now) and MarketNumberNotKept (the
 # market KONTID is kept now, so the warning is gone). Other lines are the C++ values at 119.
-g0_step1 S1 127 95d231c9ced8a3e5
-g0_step100 S1 127 2107a851f892e44c
-g0_step1000 S1 127 a84daa2080bc7af3
-g1_players_step100 S4 127 03458c0321b99199
-g1_players_step700 S4 127 60c5939a23b2f265
-s5_islands_create S5 127 f4680c15c388ced7
-s5_islands_step100 S5 127 181a46bd8b17e355
-s5_islands_locked_create S5 127 f18fc953771565d4
-s5_islands_city_created S5 127 91345762ae4a0284
+g0_step1 S1 128 0c28389752bf5180
+g0_step100 S1 128 fbdbffab61218f45
+g0_step1000 S1 128 bb5211d5c33511e2
+g1_players_step100 S4 128 ee101ae4c12e6e03
+g1_players_step700 S4 128 041943e8464cabb3
+s5_islands_create S5 128 f359b7e2938056d4
+s5_islands_step100 S5 128 f99baa8ea9ade51f
+s5_islands_locked_create S5 128 775f915fe1a534d7
+s5_islands_city_created S5 128 eac7e4f43f8d930c
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -138,8 +138,8 @@ s5_islands_city_created S5 127 91345762ae4a0284
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 127 d509a50867715a7c
-s6_g1_step100 S6 127 406bd85285315fac
+s6_g1_create S6 128 1c3d243cf6f25888
+s6_g1_step100 S6 128 677b3561e42263f7
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
@@ -167,10 +167,10 @@ s6_g1_step100 S6 127 406bd85285315fac
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 127 5800124b26388cae
-s7_g1_mp_end S7 127 c91a13e41867c5f5
-s7_g1_events S7 127 d705f409820828d2
-s7_g1_sp_end S7 127 8ab33000b9380df8
+s7_g1_mp_checkpoints S7 128 25611e897a567dae
+s7_g1_mp_end S7 128 04f2d50fe40575f9
+s7_g1_events S7 128 d705f409820828d2
+s7_g1_sp_end S7 128 ae9b776981277d55
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -186,7 +186,7 @@ s7_g1_sp_end S7 127 8ab33000b9380df8
 # reads the terrain, so g2_scenario gained a flat 0x30 plateau (the terrain digest is hashed) and the
 # build types the ordinary-land flag word 0x84 plus the three scenery types (the registry digest is
 # hashed); the recorded session's builds now store byte0f 0x30. The value before was 9c0cce6ee5ceb63e.
-s10_g2_end S10 127 274966023985cf57
+s10_g2_end S10 128 61cf681c4cc1f2e6
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -200,9 +200,9 @@ s10_g2_end S10 127 274966023985cf57
 # every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
 # farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
 # on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
-s11_g3_checkpoints S11 127 682500a77e0f4fb4
-s11_g3_end S11 127 a6cdcd0d4c0405e5
-s11_g3_events S11 127 3140bd8e1eb7db86
+s11_g3_checkpoints S11 128 a427a79b8470404f
+s11_g3_end S11 128 11b69fcc31ba894f
+s11_g3_events S11 128 3140bd8e1eb7db86
 #
 # S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
 # 2 and 4 with five cities, a weaver and a grain farm) with the state a scenario cannot
@@ -222,9 +222,9 @@ s11_g3_events S11 127 3140bd8e1eb7db86
 # bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
 # draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
 # to values derived by hand.
-s12_g4_checkpoints S12 127 c60abed8cde489bd
-s12_g4_end S12 127 8f4d899928a3525c
-s12_g4_events S12 127 39c10f583d4b7cc8
+s12_g4_checkpoints S12 128 f1ae7a98e3ffed5f
+s12_g4_end S12 128 da1f164648707127
+s12_g4_events S12 128 39c10f583d4b7cc8
 #
 # Re-baselined at stream version 107 (stage S12 fix-up: Rules gained timer0_clamp, owner
 # decision on OQ-133, one more byte of the header scope; and G4 runs timer 0 the original's
@@ -299,8 +299,8 @@ s12_g4_events S12 127 39c10f583d4b7cc8
 # g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
 # out from the PRNG table for seed 514), the drought starts, states and city mask to values
 # derived by hand.
-s13_g5_checkpoints S13 127 ed52cb6713d324d4
-s13_g5_end S13 127 6b49746755e7986c
+s13_g5_checkpoints S13 128 c25c9ef820c8f604
+s13_g5_end S13 128 2005b8d0b04c78c1
 # Re-baselined at stream version 111 (task T24, transport stage 1: the header's registry
 # digest gains the types' entrance points and the figure types, the market class ticks
 # (Market payload, tag 6), the payloads gain the cart reservations and the figure record its
@@ -325,8 +325,8 @@ s13_g5_end S13 127 6b49746755e7986c
 # before the first and after every 300th advance, t24_g6_end the hash at tick 300 000. SELF-BASELINED like the
 # S7 .. S13 goldens (ANNO_UPDATE_GOLDEN also rewrites g6.log); transport_test.cpp holds
 # the cart's and the carrier's trips tick by tick to values derived by hand.
-t24_g6_checkpoints T24 127 016f5916fa669cf2
-t24_g6_end T24 127 e35d64cb218cc5a7
+t24_g6_checkpoints T24 128 659981b4451544e2
+t24_g6_end T24 128 ec873257cdefb510
 
 # Re-baselined at stream version 112 (T33.4 F5, 2026-10-26). The code has hashed
 # version 112, including the walk-table digest in the header, since bd336ce; this
@@ -378,17 +378,26 @@ t24_g6_end T24 127 e35d64cb218cc5a7
 # that holds a navigating ship (m2_found_session) also through the new bytes. The `*_events`
 # goldens hash the UI event stream, which does not contain the version, and keep their values.
 # tools/sim_stream.py agrees on g0, g1, s5 and s6. g2.log-g6.log and m2_found*.log are rewritten.
-p1_g7_create P1 127 60b9c2472cf562e5
+p1_g7_create P1 128 42b664bdd7e3c526
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
 # Re-baselined inside version 123 (MAP-BUILD-1 C): the fixture registry's free workshop 9201 has the
 # ordinary-land flag word 0x84 (registry digest) and the session's ordinary Build stores the terrain
 # level 0x40 as byte0f. The value before was 359cf48e134bdcf1.
-m2_found_session M2 127 29c0a3ee147d473d
+m2_found_session M2 128 7df7d311ba42afee
 
 # Re-baselined at stream version 124 (task MAP-CARGO-1): Rules gained `cargo` (CargoRules: the
 # eligible warehouse PRODTYPEs and the dock half-widths, two u64-counted u32 lists) after nav. Every
 # state hash moves through the version number in the header and the Rules bytes. The *_events goldens
 # hash the UI event stream, which holds neither, and keep their values. tools/sim_stream.py agrees on
 # g0, g1, s5 and s6. g2.log-g6.log, m2_found*.log, scenario_corpus.txt and ship_holds.txt are rewritten.
+#
+# Re-baselined at stream version 128 (task MAP-POP-LIVE-1 L1, PRNG timeline 5): SimConfig gained
+# billed_goods_first/last and resident_cargo_slots, Rules gained house_updates and save_billed_goods,
+# each city gained stage_mask, stage_stamp and the billed counters, each house its walker slots and
+# each figure an optional resident state. Rules::house_updates is off and the House dispatch is
+# unchanged, so only the version number and these bytes move the hashes (the *_events goldens keep
+# their values). tools/sim_stream.py agrees on g0, g1, s5 and s6. g2.log-g6.log, cargo_*.log,
+# m2_found*.log, scenario_corpus.txt (header and create_hash column only), ship_holds.txt and
+# cargo_rules_bytes.txt are rewritten.

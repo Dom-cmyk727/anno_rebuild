@@ -292,12 +292,14 @@ std::vector<LayoutRow> layout_rows() {
         rows.push_back({"Market", common(p), s, 8 + 3 + 3 + 1});
     }
     {
-        // The House (P1): u16 last, i32 residents_64, u32 e, u64 count, count x u32 stock.
+        // The House (P1): u16 last, i32 residents_64, u32 e, u64 count, count x u32 stock, then
+        // (stream 128) the walker slots: u64 count, count x u64 figure id (invalid = max).
         sim::House p;
         p.last = 0x3132;
         p.residents_64 = 0x0102'0304;
         p.e = 0x0a0b'0c0d;
         p.stock = {0x11, 0x2233};
+        p.walkers = {sim::FigureId{5}, sim::FigureId{}};
         Stream s = common_bytes(7);
         s.u16(0x3132);
         s.u32(0x0102'0304);
@@ -305,7 +307,10 @@ std::vector<LayoutRow> layout_rows() {
         s.u64(2);
         s.u32(0x11);
         s.u32(0x2233);
-        rows.push_back({"House", common(p), s, 8 + 4 + 2});
+        s.u64(2);
+        s.u64(5);
+        s.u64(0xffffffffffffffffULL);
+        rows.push_back({"House", common(p), s, 8 + 4 + 2 + 3});
     }
     for (LayoutRow& row : rows) {
         row.primitives += 1; // the kontor_id scalar (stream 119)
@@ -326,10 +331,10 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::SmallFarm>() == 10);
     CHECK(sim::field_count<sim::Mine>() == 9);
     CHECK(sim::field_count<sim::Market>() == 5);
-    CHECK(sim::field_count<sim::House>() == 4); // last, residents_64, e, stock
+    CHECK(sim::field_count<sim::House>() == 5); // last, residents_64, e, stock, walkers
     CHECK(sim::field_count<sim::Building>() == 9);
     CHECK(sim::field_count<sim::BuildingIndex>() == 4); // service_counters*, house_counts*
-    CHECK(sim::field_count<sim::City>() == 10);
+    CHECK(sim::field_count<sim::City>() == 13);         // + stage_mask, stage_stamp, billed (128)
     CHECK(sim::field_count<sim::CityStock>() == 2);
     CHECK(sim::field_count<sim::GoodsSetting>() == 2);
     CHECK(sim::field_count<sim::BuildGoods>() == 2);

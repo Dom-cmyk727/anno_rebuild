@@ -349,6 +349,7 @@ TEST_CASE("house payload: the stream layout") {
     h.residents_64 = -2;
     h.e = 0x0a0b0c0d;
     h.stock = {7, 0x11223344};
+    h.walkers = {sim::FigureId{3}};
     sim::WriteArchive w;
     fields(w, h);
     const std::vector<std::uint8_t> expect = {
@@ -357,6 +358,8 @@ TEST_CASE("house payload: the stream layout") {
         0x0d, 0x0c, 0x0b, 0x0a,                         // e
         2,    0,    0,    0,    0,    0,    0,    0,    // stock count
         7,    0,    0,    0,    0x44, 0x33, 0x22, 0x11, // stock
+        1,    0,    0,    0,    0,    0,    0,    0,    // walkers count (stream 128)
+        3,    0,    0,    0,    0,    0,    0,    0,    // walker slot 0: figure id 3
     };
     CHECK(w.data() == expect);
     sim::House back;
@@ -367,6 +370,7 @@ TEST_CASE("house payload: the stream layout") {
     CHECK(back.residents_64 == h.residents_64);
     CHECK(back.e == h.e);
     CHECK(back.stock == h.stock);
+    CHECK(back.walkers == h.walkers);
 }
 
 namespace {

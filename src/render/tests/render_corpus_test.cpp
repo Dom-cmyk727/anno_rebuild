@@ -587,7 +587,9 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     }
     // FrameRenderer with 4 threads, chunks built in the frame; a 1280 × 720
     // view at the centre of each zoom group, 0RGB words hashed as LE bytes.
-    // Expected: crates/render/examples/digest_scene.rs frames.
+    // Expected: first crates/render/examples/digest_scene.rs frames; since the
+    // handedness fix (2026-11-03) this renderer's own, recorded on Windows 11 with
+    // MSVC (UCRT); no GCC or Clang run with the game files since.
     const std::vector<std::string> expected = {
         "Single_01.sze g2 t0 Original 248443d0e912b365",
         "Single_01.sze g2 t900 Original 0ed9aaf8927d753d",

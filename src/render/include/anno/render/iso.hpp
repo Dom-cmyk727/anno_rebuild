@@ -195,8 +195,10 @@ inline constexpr std::uint32_t kSeaAnlage = 2801;
 inline constexpr std::int64_t kSeaLevel = 32;
 /// Waterline in HEIGHT units of the water objects: a water object (sea, river, surf) below it is
 /// drawn under the sea plane, one at or above it over the sea (prepare_objects; surf items lie at
-/// 0 or 16, P). Where the terrain is water is kShoreHeight's (docs/render/iso.md, "Water"; OQ-026
-/// b).
+/// 0 or 16, P), and a river piece at or above it is part of the river surface. Where the terrain
+/// is water is kShoreHeight's (docs/render/iso.md, "Water"; OQ-026 b). Kept at 16 when the shore
+/// moved to 16.5 (2026-11-03): which side an object at exactly 16 belongs to is not traced, and
+/// the owner's H1 pictures, made with this split at 16.5 too, are the same pixels with it at 16.
 inline constexpr std::int64_t kWaterline = 16;
 /// The shore by default: terrain below this many HEIGHT units is water, so a corner at 16 is
 /// water and one at 17 is land. P: the painted ground textures show water at every height <= 16

@@ -444,7 +444,7 @@ On the canyon island at group 0, the warm mean per chunk is 50 ms on 1 thread, 5
 ### 2026-10-21 - T1f item 2: exact shortcuts in the field and terrain stages (branch task/T1f-chunk-build-speed, 9b14840 for the numbers; 84ec121 adds only tests and named constants)
 
 **What changed.** Every output byte is identical: the digests are unchanged, and there is a golden digest from before the change in CI. Exactness was the owner's condition; the proof is in `docs/render/iso.md` "Water field: empty cells".
-- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
+- **Empty cells:** once per island, the tiles whose every position provably gets the empty water-field texel (no river nearby, and no sea in the block or every spline corner ≥ 31.1; 31.6 since the default shore moved to 16.5 on 2026-11-03, the same whole-number corners) are marked, and `water_field` writes the empty texel there without evaluating it. On the game's islands 37 % of all tiles are empty.
 - **Noise:** `height_noise` without the second noise plane, whose weight is exactly 0 at the integer z it uses.
 - **Samplers:** `smooth_height` and the noise sampled through per-tile and per-cell caches, with the same arithmetic.
 - **Terrain:** built per tile (`terrain_plane`) instead of `terrain_at` per pixel.

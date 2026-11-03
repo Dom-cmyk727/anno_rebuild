@@ -164,7 +164,7 @@ Wine check for H2, wait for the zoom log").
 
 - **(a) yes:** the orchestrator merged `task/iso-handedness-W4` into the task branch (`a150c11d`). Its two open failures
   stay open (river Q5 on `D_256x256_0045_5B`, 48.5 % against 55 %; the lan5 dev-tool pick, 1 of 8,486 pixels).
-- **(b) yes, H1 is the default** (``53101c96`, `--shore` `38af87b2``): terrain below `kShoreHeight` = 16.5 is water (the original water's test,
+- **(b) yes, H1 is the default** (`53101c96`; `--shore`: `38af87b2`): terrain below `kShoreHeight` = 16.5 is water (the original water's test,
   the enhanced water's zero, the shore distance, the empty-cell bound, the wave depth), per scene
   (`render::Scene::shore_height`, the viewer's `--shore 16` for the earlier look). The water objects' split under and over
   the sea stays at 16 (`kWaterline`). The recorded corpus tables (the scene digests, the legacy river digests, the frames)
@@ -180,4 +180,18 @@ Wine check for H2, wait for the zoom log").
   `BSH_RGBAZ` with per-pixel offsets −70 … +54, roads `BSH_RGBAH` decals tested but never written). This renderer draws
   sprites whole on top of the terrain and depth-tests only the sea and the rivers. H1 cannot close that; it is a renderer
   task of its own (OQ-026 c), not started.
+- **Package review** (independent, read-only, of `a150c11d..6793191d`): no P1; two P2, seven P3. Dispositions:
+  - P2 the water-object split stays at 16 while the experiment moved it to 16.5: measured, the shipped default renders the
+    six H1 views (`cache/o1/h1/render.sh`) pixel for pixel as the experiment's H1 build, and `--shore 16` as its base
+    (`cache/o1/h1now/`, 0 differing pixels each). Kept at 16 (it also decides which river pieces form the river surface),
+    the reason in `iso.hpp` and `docs/render/iso.md`; which side an object at exactly 16 belongs to stays open (OQ-026 b).
+  - P2 the empty-cell proof in `docs/render/iso.md` was written for a shore of 16: restated for the island's shore S
+    (31.6 at the default; the corners are whole numbers, so the marked tiles are the same), and the perf note.
+  - P3 fixed: the kept turn reworded as our choice (OQ-520 update); the status line shows `rot R (turn T)`, tested;
+    `--shore 256` and `nan` refused, tested; the frames table's provenance (this renderer's, MSVC); the markdown here.
+  - P3 not changed: `tools/map2_shape.py` / `map2_measure.py` still describe land as HEIGHT >= 16 "as the renderer":
+    the Mac MAP lane's tools, not edited here (the fairness measure's definition is that lane's, for the orchestrator);
+    `Scene::shore_height` is a plain field "set before the first render" (an island's water keeps the shore it was
+    built with); the wave-depth test covers the open sea only; the corpus at the default shore is the frames test's
+    third pass (the scene and legacy-river tables run at 16), recorded on MSVC, no Linux run with the game files.
 - **Gates of the final head:** REPORTS.

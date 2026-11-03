@@ -5,7 +5,9 @@
 // Projection rules (spec: docs/render/iso.md; derived from sprite
 // measurements and visual checks, OQ-026):
 // - Tile (x, y) is a diamond kTile[group] wide/high whose top vertex is at
-//   screen ((x − y) · w/2, (x + y) · h/2).
+//   screen ((y − x) · w/2, (x + y) · h/2): tile +x runs to the screen's lower
+//   left, +y to its lower right, as the original's camera at the default
+//   view (D: AnnoFrame.dll 0x100712c0; OQ-026, 2026-11-03).
 // - Ground: the point with tile coordinates (s, t) ∈ [0, 1)² shows
 //   GroundCell::texel (cells are 1/6 of a 256 × 256 Felder.tex texture).
 // - Objects: the sprite's anchor is put on the centre of the footprint
@@ -101,8 +103,21 @@ inline void over(Px& dst, const Px& src) {
     over(dst.data(), src.data());
 }
 
-/// Screen position of the top vertex of tile (x, y).
+/// Screen position of the top vertex of tile (x, y): ((y − x) · tw/2,
+/// (x + y) · th/2). The original projects world (tile x, height, tile y)
+/// with column 0 of Ry(a) · Rx(b) · S, Ry = [[c, 0, −s], [0, 1, 0], [s, 0, c]]
+/// at a = 135° for the default view, so screen x = 41.835 · (y − x) px at
+/// zoom 0 (D: AnnoFrame.dll 0x100712c0, 0x10071d70; AnnoDisplay.dll
+/// 0x10011e60; docs/re/annodisplay.md §5). Every tile-to-screen mapping of
+/// the renderer is this one (and screen_tile its inverse).
 std::pair<int, int> tile_top(int x, int y, std::size_t group);
+
+/// The tile position on the height-0 plane shown at screen point (sx, sy)
+/// with tiles tw × th px: the inverse of tile_top's mapping. gpu.wgsl
+/// `tile_pos` is its twin (same operations in the same order).
+inline std::pair<float, float> screen_tile(float sx, float sy, float tw, float th) {
+    return {sy / th - sx / tw, sy / th + sx / tw};
+}
 
 /// Pixels per HEIGHT unit at zoom group 0, as a fraction num / den.
 struct Lift {
@@ -619,7 +634,7 @@ DrawStats place_prepared(std::span<const Prepared> list,
         const int cy2 = 2 * int{o.y} + int{h};
         const std::int64_t z2 = 2 * std::int64_t{o.height()};
         const int raise = lift.scaled(z2, 2, group);
-        const std::pair<int, int> anchor{(cx2 - cy2) * tw / 4, (cx2 + cy2) * th / 4 - raise};
+        const std::pair<int, int> anchor{(cy2 - cx2) * tw / 4, (cx2 + cy2) * th / 4 - raise};
         const formats::figuren::FrameSet* frames = nullptr;
         for (const auto& fs : set.frame_sets) {
             if (fs.group == g) {

@@ -102,9 +102,9 @@ std::vector<Placement> layout(std::span<const IslandBox> boxes, std::size_t grou
         const auto offset = tile_top(b.x, b.y, group);
         const int w = b.width, h = b.height;
         // Same rectangle as Canvas::for_island with the margin.
-        const int left = -h * tw / 2;
+        const int left = -w * tw / 2;
         const int bottom = (w + h) * th / 2;
-        const Rect bounds{offset.first + left, offset.second - margin(group), w * tw / 2 - left,
+        const Rect bounds{offset.first + left, offset.second - margin(group), h * tw / 2 - left,
                           bottom + margin(group)};
         out.push_back(Placement{index, offset, bounds});
     }
@@ -208,7 +208,7 @@ std::optional<Px> sea_floor_colour(std::span<const insel::Island> islands,
 
 std::pair<int, int> UnitSprite::anchor(std::size_t group, Lift lift) const {
     const auto [tw, th] = kTile[group];
-    const int sx = sat_cast<int>(roundf((x - y) * static_cast<float>(tw) / 2.0F));
+    const int sx = sat_cast<int>(roundf((y - x) * static_cast<float>(tw) / 2.0F));
     const int sy = sat_cast<int>(roundf((x + y) * static_cast<float>(th) / 2.0F));
     // Height in 1/1024 units, so sloped ground lifts smoothly.
     const int raise = z ? lift.scaled(sat_cast<std::int64_t>(roundf(*z * 1024.0F)), 1024, group)

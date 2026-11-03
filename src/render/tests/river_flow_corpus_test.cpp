@@ -223,7 +223,7 @@ Q5Result q5_blocks(const render::Scene& scene, std::size_t group, const Region& 
                 continue;
             }
             const float dts = static_cast<float>(dt) * 0.001F;
-            const float sx = static_cast<float>((mux - muy) * tw * 0.5) * dts;
+            const float sx = static_cast<float>((muy - mux) * tw * 0.5) * dts;
             const float sy = static_cast<float>((mux + muy) * th * 0.5) * dts;
             auto light = [&](int x, int y, float ox, float oy, std::uint64_t t) {
                 const std::size_t o = reg.at(x, y);
@@ -988,8 +988,8 @@ OpenBlocks open_blocks(const render::Scene& scene, std::size_t group, const Regi
                     mux += reg.flow[o].vx;
                     muy += reg.flow[o].vy;
                     const double a[3] = {1.0,
-                                         static_cast<double>(x) / tw + static_cast<double>(y) / th,
-                                         static_cast<double>(y) / th - static_cast<double>(x) / tw};
+                                         static_cast<double>(y) / th - static_cast<double>(x) / tw,
+                                         static_cast<double>(y) / th + static_cast<double>(x) / tw};
                     for (std::size_t r = 0; r < 3; ++r) {
                         for (std::size_t c = 0; c < 3; ++c) {
                             ne[r][c] += a[r] * a[c];
@@ -1031,7 +1031,7 @@ OpenBlocks open_blocks(const render::Scene& scene, std::size_t group, const Regi
             // its tile displacement, and the climb of the surface under it (the
             // water plane is lifted by the level, E19).
             const double dz = (bxl * mux + byl * muy) * static_cast<double>(dts);
-            const float sx = static_cast<float>((mux - muy) * tw * 0.5) * dts;
+            const float sx = static_cast<float>((muy - mux) * tw * 0.5) * dts;
             const float sy = static_cast<float>((mux + muy) * th * 0.5) * dts -
                              static_cast<float>(dz) * rv.lambda;
             if (std::hypot(sx, sy) < min_px) {

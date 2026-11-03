@@ -316,7 +316,7 @@ namespace detail {
 int half_window(float tile_px, std::uint32_t cells_per_tile);
 
 /// The terrain point of a cell projected to island-local pixels at the
-/// zoom group of the sprite (sx = (x - y) half_w, sy = (x + y) half_h -
+/// zoom group of the sprite (sx = (y - x) half_w, sy = (x + y) half_h -
 /// lift_px terrain height), and whether the original's river depth test lets
 /// the sprite pass there (terrain height <= pass_height; always when the
 /// test is off).

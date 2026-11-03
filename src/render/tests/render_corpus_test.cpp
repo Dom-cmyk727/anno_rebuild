@@ -975,7 +975,7 @@ MaskFidelity mask_fidelity(const render::Scene& scene, std::size_t island) {
         const float x = (static_cast<float>(cx) + 0.5F) / cf,
                     y = (static_cast<float>(cy) + 0.5F) / cf;
         const float t = render::terrain_height(iw->heights, iw->w, iw->h, x, y);
-        return std::pair{off.first + static_cast<int>(std::floor((x - y) * half_w)),
+        return std::pair{off.first + static_cast<int>(std::floor((y - x) * half_w)),
                          off.second + static_cast<int>(std::floor((x + y) * half_h - lift_px * t))};
     };
     // The chunks that hold wet cells (and their neighbours), so that a sprite the raster

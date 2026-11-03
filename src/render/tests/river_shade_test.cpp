@@ -243,13 +243,18 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
         std::array<float, 2> u;
         float level;
     };
-    for (const Case c : {Case{{1.0F, 0.0F}, 32.0F}, Case{{0.3F, 0.8F}, 32.0F},
-                         Case{{-0.7F, 0.4F}, 32.0F}, Case{{1.0F, 0.0F}, 80.0F}}) {
+    // The flows of the cases before 2026-11-03 with their tile axes swapped: the
+    // projection was mirrored then (iso::tile_top) and the light axis moved from
+    // tile x to tile y to stay at the screen's top left, so these are the same
+    // screen situations.
+    for (const Case c : {Case{{0.0F, 1.0F}, 32.0F}, Case{{0.8F, 0.3F}, 32.0F},
+                         Case{{0.4F, -0.7F}, 32.0F}, Case{{0.0F, 1.0F}, 80.0F}}) {
         const render::FlowSample f = uniform(c.u, c.level);
         const std::uint64_t dt = 100;
         const float dts = static_cast<float>(dt) * 0.001F;
-        // Screen displacement of a point carried with u (tile axes -> screen).
-        const float sx = (c.u[0] - c.u[1]) * tw * 0.5F * dts;
+        // Screen displacement of a point carried with u (tile axes -> screen:
+        // iso::tile_top, +x to the lower left).
+        const float sx = (c.u[1] - c.u[0]) * tw * 0.5F * dts;
         const float sy = (c.u[0] + c.u[1]) * th * 0.5F * dts;
         auto cost = [&](float dx, float dy) {
             double sum = 0;
@@ -285,15 +290,21 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
         const float error = std::hypot(bx - sx, by - sy);
         CHECK(error <= 0.3F * std::hypot(sx, sy) + 0.15F);
         // The prediction is clearly better than standing still and than the
-        // mirrored (upstream) shift.
-        CHECK(cost(sx, sy) < 0.5 * cost(0.0F, 0.0F));
+        // mirrored (upstream) shift. The embossed light (a derivative along the
+        // light axis) is elongated across that axis, so a flow across it moves
+        // the pattern less visibly: a sweep of 24 unit flows (2026-11-03) gave
+        // cost(prediction) / cost(still) from 0.25 along the light axis to 0.57
+        // across it with the -y axis (0.21 to 0.45 with the former +x axis; the
+        // axes differ in the noise's per-axis phase offsets). (0.8, 0.3) is
+        // 0.56, hence 0.6 rather than the 0.5 of the former cases.
+        CHECK(cost(sx, sy) < 0.6 * cost(0.0F, 0.0F));
         CHECK(cost(sx, sy) < 0.5 * cost(-sx, -sy));
     }
 }
 
 TEST_CASE("river flow shading: the pattern lives on the river's own water plane") {
     // A point of the river surface at tile (tx, ty) and height Z appears at
-    // pixel ((tx - ty) tw/2, (tx + ty) th/2 - lambda Z): its light must not
+    // pixel ((ty - tx) tw/2, (tx + ty) th/2 - lambda Z): its light must not
     // depend on Z (E19). On the sea plane (the legacy shimmer) a tier 48 units
     // higher is offset by 48 * 2.059 = ~99 px against the geometry.
     const render::RiverParams p = one_layer(1);
@@ -304,7 +315,7 @@ TEST_CASE("river flow shading: the pattern lives on the river's own water plane"
             std::array<float, 3> values{};
             std::size_t k = 0;
             for (const float z : {32.0F, 64.0F, 80.0F}) {
-                const float px = (tx - ty) * v.tw * 0.5F;
+                const float px = (ty - tx) * v.tw * 0.5F;
                 const float py = (tx + ty) * v.th * 0.5F - v.lambda * z;
                 values[k++] = light_at(p, uniform({0.6F, 0.1F}, z), px, py, 777);
             }
@@ -899,7 +910,8 @@ TEST_CASE("thin rivers: a one-tile river at every zoom group stays calm, the she
         const render::RiverView v{tw, th, 2.059F * tw / 84.0F};
         river::FlowPlane plane;
         plane.stride_px = stride;
-        plane.x0 = -static_cast<std::int32_t>(tw);
+        // The river runs along tile x, which goes to the screen's lower left.
+        plane.x0 = -17 * static_cast<std::int32_t>(tw);
         plane.y0 = 0;
         plane.nx = static_cast<std::uint32_t>(18.0F * tw / static_cast<float>(stride)) + 2;
         plane.ny = static_cast<std::uint32_t>(18.0F * th / static_cast<float>(stride)) + 2;
@@ -910,7 +922,7 @@ TEST_CASE("thin rivers: a one-tile river at every zoom group stays calm, the she
         plane.shear.assign(std::size_t{plane.nx} * plane.ny, 0);
         auto tile_of = [&](float x, float y) {
             const float yw = y + v.lambda * 32.0F;
-            return std::array<float, 2>{x / tw + yw / th, yw / th - x / tw};
+            return std::array<float, 2>{yw / th - x / tw, yw / th + x / tw};
         };
         for (std::uint32_t j = 0; j < plane.ny; ++j) {
             for (std::uint32_t i = 0; i < plane.nx; ++i) {

@@ -1840,7 +1840,7 @@ render::Px expected_river_pixel(const render::Scene& scene, const render::Chunk&
                 thf = static_cast<float>(render::kTile[group].h);
     const int raise = scene.lift.scaled(render::kSeaLevel, 1, group);
     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-    const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+    const std::pair<float, float> pos = render::screen_tile(px, py, twf, thf);
     render::FlowSample fs = render::river::flow_at(chunk.flow, sx, sy);
     if (flip) {
         fs.vx = -fs.vx;

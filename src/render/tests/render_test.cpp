@@ -72,9 +72,135 @@ TEST_CASE("wave noise is deterministic and bounded") {
 
 TEST_CASE("projection") {
     CHECK(render::tile_top(0, 0, 0) == std::pair{0, 0});
-    CHECK(render::tile_top(1, 0, 0) == std::pair{42, 21});
-    CHECK(render::tile_top(0, 1, 0) == std::pair{-42, 21});
+    CHECK(render::tile_top(1, 0, 0) == std::pair{-42, 21});
+    CHECK(render::tile_top(0, 1, 0) == std::pair{42, 21});
     CHECK(render::tile_top(2, 2, 1) == std::pair{0, 42});
+    CHECK(render::tile_top(3, 1, 2) == std::pair{-20, 20});
+}
+
+namespace {
+/// The original's camera at the default view, from its own constants (D,
+/// docs/re/annodisplay.md §5): Ry(a) · Rx(b) · S with row vectors, Ry =
+/// [[c, 0, −s], [0, 1, 0], [s, 0, c]] (AnnoFrame.dll 0x100712c0), Rx = [[1, 0,
+/// 0], [0, cb, −sb], [0, sb, cb]] (0x10071240), a = 0xC0 and b = 0x2A units of
+/// π/256 (0x1008E168 · 0x1008E170), S = 59.163303 · zoom (0x1008E1A0). Screen x
+/// is column 0 of the product (AnnoDisplay.dll 0x10011e60), screen y is H minus
+/// column 1; the world point is (tile x, height, tile y) (AnnoWelt.dll
+/// 0x1009f870). Returns the screen offset of tile point (tx, ty) at height 0.
+std::pair<double, double> original_camera(double tx, double ty, double zoom) {
+    const double pi = 3.141592654;
+    const double a = 0xC0 * pi / 256.0, b = 0x2A * pi / 256.0, k = 59.163303 * zoom;
+    const double c = std::cos(a), s = std::sin(a), sb = std::sin(b);
+    // Column 0 of Ry · Rx = (c, 0, s); column 1 = (−s·sb, cb, c·sb).
+    return {k * (c * tx + s * ty), -k * (-s * sb * tx + c * sb * ty)};
+}
+
+/// Whether a tile-to-screen mapping f(x, y, group) has the original camera's
+/// handedness at every built group and its scale at group 0 (within the
+/// sprites' rounding of 83.67 × 41.24 to 84 × 42, half a pixel per tile).
+template <class F> bool fits_original_camera(F&& f) {
+    const double zoom[] = {1.0, 0.5, 0.25};
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        for (const auto [tx, ty] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{3, 1}}) {
+            const auto [ox, oy] = original_camera(tx, ty, zoom[g]);
+            const auto [sx, sy] = f(tx, ty, g);
+            if ((sx > 0) != (ox > 0) || (sx < 0) != (ox < 0) || (sy > 0) != (oy > 0)) {
+                return false;
+            }
+            if (g == 0 &&
+                (std::fabs(sx - ox) > 0.5 * (tx + ty) || std::fabs(sy - oy) > 0.5 * (tx + ty))) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+} // namespace
+
+TEST_CASE("projection: tile_top has the handedness and scale of the original's camera") {
+    // The documented numbers (annodisplay.md §5): one world unit along x or z is
+    // 41.835 px across and 20.620 px down at zoom 0, with +x to the left.
+    const auto [x1, y1] = original_camera(1, 0, 1.0);
+    const auto [x2, y2] = original_camera(0, 1, 1.0);
+    CHECK(x1 == doctest::Approx(-41.835).epsilon(1e-4));
+    CHECK(y1 == doctest::Approx(20.620).epsilon(1e-4));
+    CHECK(x2 == doctest::Approx(41.835).epsilon(1e-4));
+    CHECK(y2 == doctest::Approx(20.620).epsilon(1e-4));
+    CHECK(fits_original_camera(render::tile_top));
+    // Negative control: the mirrored projection this renderer used before
+    // 2026-11-03 ((x − y) · tw/2) has the wrong handedness and fails.
+    auto mirrored = [](int x, int y, std::size_t g) {
+        const auto [tw, th] = render::kTile[g];
+        return std::pair{(x - y) * tw / 2, (x + y) * th / 2};
+    };
+    CHECK_FALSE(fits_original_camera(mirrored));
+}
+
+TEST_CASE("projection: screen_tile inverts tile_top") {
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        const auto [tw, th] = render::kTile[g];
+        for (const auto [x, y] : {std::pair{0, 0}, std::pair{5, 2}, std::pair{2, 5},
+                                  std::pair{-7, 3}, std::pair{640, 512}}) {
+            const auto [sx, sy] = render::tile_top(x, y, g);
+            const auto [tx, ty] =
+                render::screen_tile(static_cast<float>(sx), static_cast<float>(sy),
+                                    static_cast<float>(tw), static_cast<float>(th));
+            // Group 1's 21 px tile height rounds (x + y) · 21 / 2 toward zero.
+            const float tol = th % 2 == 0 ? 0.0F : 0.5F / static_cast<float>(th);
+            CHECK(std::fabs(tx - static_cast<float>(x)) <= tol);
+            CHECK(std::fabs(ty - static_cast<float>(y)) <= tol);
+        }
+    }
+    // One tile width to the right is (x − 1, y + 1), as the original's hovered
+    // tile moves (docs/re/view.md §2.1); one tile height down is (x + 1, y + 1).
+    const auto [ax, ay] = render::screen_tile(84.0F, 0.0F, 84.0F, 42.0F);
+    CHECK(ax == -1.0F);
+    CHECK(ay == 1.0F);
+    const auto [bx, by] = render::screen_tile(0.0F, 42.0F, 84.0F, 42.0F);
+    CHECK(bx == 1.0F);
+    CHECK(by == 1.0F);
+}
+
+TEST_CASE("projection: the ground probe picks the tile drawn at a pixel") {
+    // A flat 6 × 4 island (height 0, texture 0): the probe holds the tile
+    // position of the terrain point drawn at each pixel, what picking reads.
+    const std::size_t w = 6, h = 4;
+    const std::vector<std::uint16_t> gfx(w * h, 0);
+    const std::vector<std::uint8_t> heights(w * h, 0);
+    for (std::size_t g = 0; g < render::kGroups; ++g) {
+        const auto [tw, th] = render::kTile[g];
+        render::Canvas canvas;
+        canvas.width = static_cast<std::size_t>((w + h) * tw / 2);
+        canvas.height = static_cast<std::size_t>((w + h) * th / 2);
+        canvas.origin = {-static_cast<int>(w) * tw / 2, 0};
+        canvas.pixels.assign(canvas.width * canvas.height * 4, 0);
+        render::GroundProbe probe = render::GroundProbe::for_canvas(canvas);
+        render::draw_ground_grids(canvas, w, h, gfx, heights,
+                                  anno::assets::island::GroundTextures{}, g, render::kNoLift,
+                                  &probe);
+        for (const auto [x, y] :
+             {std::pair{0, 0}, std::pair{5, 0}, std::pair{0, 3}, std::pair{4, 1}}) {
+            // The pixel at the centre of tile (x, y)'s diamond.
+            const auto [sx, sy] = render::tile_top(x, y, g);
+            const auto i = canvas.index(sx, sy + th / 2);
+            REQUIRE(i);
+            const auto [px, py] = probe.pos[*i / 4];
+            CHECK(static_cast<int>(std::floor(px)) == x);
+            CHECK(static_cast<int>(std::floor(py)) == y);
+        }
+        // The island's +x end (tile (5, 0), left vertex corner (6, 0) at
+        // screen (−3 tw, 3 th)) lies at its left edge and the +y end (tile
+        // (0, 3), right vertex corner (0, 4) at (2 tw, 2 th)) at its right
+        // edge; a quarter tile inside each vertex the diamond is th/4 high.
+        const auto left = canvas.index(-3 * tw + tw / 4, 3 * th);
+        const auto right = canvas.index(2 * tw - tw / 4, 2 * th);
+        REQUIRE(left);
+        REQUIRE(right);
+        CHECK(static_cast<int>(std::floor(probe.pos[*left / 4][0])) == 5);
+        CHECK(static_cast<int>(std::floor(probe.pos[*left / 4][1])) == 0);
+        CHECK(static_cast<int>(std::floor(probe.pos[*right / 4][0])) == 0);
+        CHECK(static_cast<int>(std::floor(probe.pos[*right / 4][1])) == 3);
+    }
 }
 
 TEST_CASE("layout: offsets, bounds and order") {
@@ -84,11 +210,12 @@ TEST_CASE("layout: offsets, bounds and order") {
     REQUIRE(p.size() == 2);
     CHECK(p[0].index == 1);
     CHECK(p[1].index == 0);
-    CHECK(p[1].offset == std::pair{(10 - 4) * 42, (10 + 4) * 21});
-    CHECK(p[1].bounds == Rect{6 * 42 - 6 * 42, 14 * 21 - render::margin(0), (8 + 6) * 42,
+    CHECK(p[1].offset == std::pair{(4 - 10) * 42, (10 + 4) * 21});
+    // The leftmost point is corner (x + w, y), the rightmost (x, y + h).
+    CHECK(p[1].bounds == Rect{-6 * 42 - 8 * 42, 14 * 21 - render::margin(0), (8 + 6) * 42,
                               (8 + 6) * 21 + render::margin(0)});
     CHECK(p[0].offset == std::pair{0, 0});
-    CHECK(render::scene_bounds(p) == Rect{-4 * 42, -render::margin(0), 4 * 42 + 6 * 42 + 8 * 42,
+    CHECK(render::scene_bounds(p) == Rect{-14 * 42, -render::margin(0), 14 * 42 + 4 * 42,
                                           14 * 21 + 14 * 21 + render::margin(0)});
     CHECK_FALSE(render::scene_bounds({}));
     // The bounds rectangle equals Canvas::for_island shifted by the offset.
@@ -96,20 +223,20 @@ TEST_CASE("layout: offsets, bounds and order") {
     const auto q = render::layout(one, 1)[0];
     const auto [tw, th] = render::kTile[1];
     CHECK(q.offset == render::tile_top(3, 5, 1));
-    CHECK(q.bounds.x - q.offset.first == -2 * tw / 2);
+    CHECK(q.bounds.x - q.offset.first == -7 * tw / 2);
     CHECK(q.bounds.w == 9 * tw / 2);
     CHECK(q.bounds.h == 9 * th / 2 + render::margin(1));
 }
 
 TEST_CASE("unit anchor projects the world point onto the sea surface") {
     render::UnitSprite u{10.5F, 4.5F, std::nullopt, {}, {}};
-    // Group 2 tile 20 × 10: ((x − y)·10, (x + y)·5).
-    CHECK(u.anchor(2, render::kNoLift) == std::pair{60, 75});
+    // Group 2 tile 20 × 10: ((y − x)·10, (x + y)·5).
+    CHECK(u.anchor(2, render::kNoLift) == std::pair{-60, 75});
     // Sea surface 32 units at 2.059 px per unit and group 0, scaled by 20/84.
-    CHECK(u.anchor(2, render::kHeightLift) == std::pair{60, 60});
+    CHECK(u.anchor(2, render::kHeightLift) == std::pair{-60, 60});
     // On the ground at height 16: half the sea-surface lift.
     u.z = 16.0F;
-    CHECK(u.anchor(2, render::kHeightLift) == std::pair{60, 68});
+    CHECK(u.anchor(2, render::kHeightLift) == std::pair{-60, 68});
 }
 
 TEST_CASE("rect operations") {

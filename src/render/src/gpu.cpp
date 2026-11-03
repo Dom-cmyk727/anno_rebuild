@@ -2505,7 +2505,7 @@ struct GpuFrame::Impl {
         const float raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
         const float px = static_cast<float>(view.x) + static_cast<float>(view.w) / 2.0F;
         const float py = static_cast<float>(view.y) + static_cast<float>(view.h) / 2.0F + raise;
-        const std::pair<float, float> centre{px / tw + py / th, py / th - px / tw};
+        const std::pair<float, float> centre = screen_tile(px, py, tw, th);
         const unsigned hw = std::thread::hardware_concurrency();
         const std::size_t threads = hw > 0 ? hw : 4;
         // The depth function is copied into the background preparation of a new window

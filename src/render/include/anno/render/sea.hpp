@@ -402,7 +402,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                 // Land points too (shore 0), so foam reaches the beach.
                 const FieldPx f = field(cy * rw + cx);
                 const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-                const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+                const std::pair<float, float> pos = screen_tile(px, py, twf, thf);
                 const float depth = (static_cast<float>(f[2]) - kDepthBias) / kDepthScale;
                 grid.push_back(wave_shade(static_cast<float>(f[1]) / kShoreScale, depth,
                                           slope_of(f[3]), pos, time_ms, detail));
@@ -432,7 +432,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                 if (sd < w.swash_depth && (flags & 2U) == 0) {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
                     run = swash_runup(static_cast<float>(f[1]) / kShoreScale, slope_of(flags),
-                                      {px / twf + py / thf, py / thf - px / twf}, time_ms);
+                                      screen_tile(px, py, twf, thf), time_ms);
                 }
                 alpha = smoothstep(-w.shore_edge, w.shore_edge, sd + run);
             }
@@ -485,7 +485,7 @@ void shade_sea_flow(T out, std::size_t stride, Rect region, F&& field, FL&& flow
                     shade = {blend(&Shade::light), blend(&Shade::foam), blend(&Shade::tint)};
                 } else {
                     const float px = static_cast<float>(sx), py = static_cast<float>(sy + raise);
-                    const std::pair<float, float> pos{px / twf + py / thf, py / thf - px / twf};
+                    const std::pair<float, float> pos = screen_tile(px, py, twf, thf);
                     // The flow shading where the lattice has a flow, else the
                     // legacy shimmer.
                     const FlowSample fs = rivers != nullptr ? flow(row * rw + col) : FlowSample{};

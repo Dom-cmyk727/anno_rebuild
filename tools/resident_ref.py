@@ -21,18 +21,24 @@ FORMULA AND UNITS CONTRACT (all integers; "/" below truncates toward zero; amoun
     R = trunc(res64/64) (signed, strict) and enabled(g). A is accepted at once (best = urg); B only if
     its urg is strictly greater than best (best starts at -1). Result: score = best or -1, goods.
   supplier avail: MarketStall = city store of g (no reservation); PublicService, School, Doctor = 256;
-    FireBrigade = 512; Inn = tavern stock; any other class 0. enabled: MarketStall flag of the output
-    slot (g == out0 -> flag0, g == out1 -> flag1, else false); every other class true.
+    FireBrigade = 512; Inn = tavern stock; any other class 0. enabled: MarketStall = flag0 when g == out0,
+    else flag1 (the bytes test `out0 != g`, so every other goods reads flag1; the ALL goods 0x8e arm and
+    the Castle flag +0x22 are not modelled); every other class true.
   bill(goods, amount, take) over [first..last] (default 26..40): outside the range -> returns amount, no
     change. Else billed[goods] += amount (the REQUESTED amount; u32 checked: an overflow refuses the whole
     call, status billed_overflow); take == 0 -> returns amount; else t = min(amount, store[goods]),
     store -= t, returns t. A goods index outside the tables is status out_of_table.
   supplier bill: MarketStall take=1; PublicService and School take=0; Doctor and FireBrigade return 0 and
-    change nothing; Inn: t = min(tavern, amount), tavern -= t, bills its input good with take=0 for the
-    requested amount, returns t; any other class returns 0.
-  deliver(goods, amount): slot = lookup[goods]; no slot -> nothing (touched 0). Else stock[slot] += amount*16
-    and, when id_sec[goods] != 0, the same amount is added once more at lookup[id_sec[goods]] if that is a
-    real slot (no further replay). Every add is checked against u32; any overflow refuses the whole call.
+    change nothing; Inn (0x100756e0): t = min(tavern, amount), tavern -= t, bills its input good with take=0
+    for the CLIPPED amount t (even t == 0: billed += 0, which still checks the range and the u32 overflow),
+    returns t (the taken-stat +0x1a is not modelled, U); any other class returns 0.
+  deliver(goods, amount) (0x10076610): slot = lookup[goods]; no slot -> nothing (touched 0). Else
+    stock[slot] += amount*16 and, when id_sec[goods] != 0, the replay is a RECURSIVE deliver of the
+    substitute (house vtable slot 0xc0 is 0x10076610 itself): it adds at the substitute's slot if it has
+    one and replays that substitute's own IdSec in turn; a substitute without a slot ends the chain. The
+    chain is followed for at most goods_count replays after the first add (the original recurses
+    unboundedly; P-3: a cycle or self-loop is cut there, its slots are raised once per step). Every add
+    is checked against u32 over the whole chain before any is applied; any overflow refuses the call.
   buy (walker step B arrival): i = first cargo slot with goods == 0 (none -> nothing). Pass: choice over the
     own cargo plus the others' cargo; score < 12 or none -> stop; amt = min(avail(g), demand(g), cap)
     (signed); amt > 0 -> bill, then slot goods = g and slot amount += returned, i += 1. Second pass only if
@@ -46,6 +52,7 @@ Vector file grammar (one record per line, '#' comments):
   choice NAME goods= house= e= res= stock=a,b out=A,B avail=a,b [enabled=1,1] [carried=g:a,..] => status= [score= goods= fault=]
   avail NAME cls= goods= [city=g:v,..] [count=N] [tavern=N] [out=A,B] [flags=f0,f1] => avail= enabled= | fault=
   bill NAME goods= amount= take= [range=first,last] [count=N] store=g:v,.. billed=g:v,.. => status= returned= store= billed=
+  sbill NAME cls= goods= amount= [tavern=N] [input=g] [range=first,last] [count=N] store=.. billed=.. => status= returned= store= billed= tavern=
   deliver NAME goods= house= goods_id= amount= stock=a,b => status= stock= touched=
   buy NAME goods= house= e= res= stock=.. cls= out=A,B [flags=] [city=] [billed=] [tavern=] [input=] cargo=g:a,..
       [others=g:a,..] cap= [range=] [count=] => status= cargo= city= billed= purchases= [tavern=] [fault=]
@@ -178,11 +185,7 @@ def supplier_avail(cls, g, city, count, tavern):
 
 def supplier_enabled(cls, g, out, flags):
     if cls == 'MarketStall':
-        if g == out[0]:
-            return flags[0]
-        if g == out[1]:
-            return flags[1]
-        return False
+        return flags[0] if g == out[0] else flags[1]
     return True
 
 
@@ -210,7 +213,7 @@ def supplier_bill(m, first, last, count, store, billed, g, amount):
         return bill(first, last, count, store, billed, g, amount, 0)
     if cls == 'Inn':
         t = min(m['tavern'][0], amount)
-        st, _ = bill(first, last, count, store, billed, m['input'], amount, 0)
+        st, _ = bill(first, last, count, store, billed, m['input'], t, 0)
         if st != 'ok':
             return st, 0
         m['tavern'][0] -= t
@@ -223,22 +226,27 @@ def deliver(goods, house, stock, g, amount):
     slot = house['lookup'].get(g, n)
     if slot >= n:
         return 'ok', 0, stock
-    add = {}
-    add[slot] = add.get(slot, 0) + amount * 16
-    sec = goods['sec'].get(g, 0)
-    if sec != 0:
+    chain = [slot]
+    cur = g
+    for _ in range(goods['count']):
+        sec = goods['sec'].get(cur, 0)
+        if sec == 0:
+            break
         s2 = house['lookup'].get(sec, n)
-        if s2 < n:
-            add[s2] = add.get(s2, 0) + amount * 16
+        if s2 >= n:
+            break
+        chain.append(s2)
+        cur = sec
+    add = {}
+    for k in chain:
+        add[k] = add.get(k, 0) + amount * 16
     for k, v in add.items():
         if stock[k] + v > U32:
             return 'refused', 0, stock
     new = list(stock)
-    touched = 0
     for k, v in add.items():
         new[k] += v
-    touched = 1 + (1 if sec != 0 and house['lookup'].get(sec, n) < n else 0)
-    return 'ok', touched, new
+    return 'ok', len(chain), new
 
 
 def buy(v):
@@ -308,6 +316,7 @@ KEYS = {
     'choice': {'status', 'score', 'goods', 'fault'},
     'avail': {'avail', 'enabled', 'fault'},
     'bill': {'status', 'returned', 'store', 'billed'},
+    'sbill': {'status', 'returned', 'store', 'billed', 'tavern'},
     'deliver': {'status', 'stock', 'touched'},
     'buy': {'status', 'cargo', 'city', 'billed', 'purchases', 'tavern', 'fault'},
 }
@@ -346,6 +355,17 @@ def run_vector(kind, kv, tables):
         st, r = bill(rng[0], rng[1], int(kv.get('count', '96')), store, billed, int(kv['goods']),
                      int(kv['amount']), int(kv['take']))
         return {'status': st, 'returned': str(r), 'store': fmt_sparse(store), 'billed': fmt_sparse(billed)}
+    if kind == 'sbill':
+        cls = kv['cls']
+        if cls not in CLASSES:
+            raise Malformed('unknown class ' + cls)
+        rng = ints(kv.get('range', '26,40'))
+        store, billed = sparse(kv['store']), sparse(kv['billed'])
+        m = {'cls': cls, 'tavern': [int(kv.get('tavern', '0'))], 'input': int(kv.get('input', '0'))}
+        st, r = supplier_bill(m, rng[0], rng[1], int(kv.get('count', '96')), store, billed, int(kv['goods']),
+                              int(kv['amount']))
+        return {'status': st, 'returned': str(r), 'store': fmt_sparse(store), 'billed': fmt_sparse(billed),
+                'tavern': str(m['tavern'][0])}
     if kind == 'deliver':
         stock = ints(kv['stock'])
         st, touched, new = deliver(G[kv['goods']], H[kv['house']], stock, int(kv['goods_id']), int(kv['amount']))
@@ -400,7 +420,7 @@ def run(path):
                     raise Malformed('empty or unknown result key')
                 if kind == 'choice' and 'status' not in exp:
                     raise Malformed('a choice vector must name status')
-                if kind in ('choice', 'bill', 'deliver', 'buy') and 'status' not in exp and kind != 'avail':
+                if kind in ('choice', 'bill', 'sbill', 'deliver', 'buy') and 'status' not in exp and kind != 'avail':
                     raise Malformed('vector must name status')
                 got = run_vector(kind, kv, tables)
                 nvec += 1

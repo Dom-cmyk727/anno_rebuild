@@ -10,9 +10,12 @@ goods GC count=96 sec=26:27,27:26
 goods GD count=96 sec=26:27,27:28
 goods GL count=96 sec=26:26
 goods GX count=96 sec=40:27
+goods GC3 count=3 sec=26:27,27:26
+goods GL3 count=3 sec=26:26
 house H1 needs=26:16,27:16,28:16 lookup=26:0,27:1,28:2
 house H2 needs=26:16,27:16 lookup=26:0,27:1
 house H26 needs=26:16 lookup=26:0
+house H3 needs=26:16,28:16 lookup=26:0,28:1
 house H00 needs=26:16 lookup=26:0,27:0
 house H41 needs=26:41 lookup=26:0
 house H77 needs=26:16,77:16 lookup=26:0,77:1
@@ -27,6 +30,9 @@ demand D-stock-1 menge=16 e=128 stock=31 => demand=10
 demand D-stock-10 menge=16 e=128 stock=160 => demand=1
 demand D-negative menge=16 e=128 stock=4096 => demand=-245
 demand D-big menge=100 e=640 stock=0 => demand=370
+# P3 (review, adaptation): menge*E*256 = 4096000000 > 2^31; the engine widens (the original's 32-bit
+# register would wrap). 4096000000 = 92594*44236 + 11816.
+demand D-wide menge=16 e=1000000 stock=0 => demand=92594
 demand D-e0 menge=16 e=0 stock=32 => demand=-2
 
 # --- amount = signed min(avail, demand, capacity)
@@ -45,6 +51,13 @@ choice X1-hundred goods=G0 house=H41 e=128 res=640 stock=0 out=26,0 avail=100,0 
 # zero residents: thr 0, an offer of 0 is not strictly greater
 choice X1-zero goods=G0 house=H41 e=128 res=0 stock=0 out=26,0 avail=0,0 => status=none score=-1 goods=0
 choice X1-one goods=G0 house=H41 e=128 res=0 stock=0 out=26,0 avail=1,0 => status=chosen score=128 goods=26
+
+# P3 (review): the residents R = trunc(res64/64) truncates toward zero for a negative count. res=-1: R=0,
+# thr 0, an offer of 0 is not strictly greater; res=-65: R=-1, thr = trunc(-1*41*256/4096) = trunc(-2.56) = -2,
+# even an offer of 0 is accepted.
+choice X1-neg-1-rej goods=G0 house=H41 e=128 res=-1 stock=0 out=26,0 avail=0,0 => status=none score=-1 goods=0
+choice X1-neg-1-acc goods=G0 house=H41 e=128 res=-1 stock=0 out=26,0 avail=1,0 => status=chosen score=128 goods=26
+choice X1-neg-65 goods=G0 house=H41 e=128 res=-65 stock=0 out=26,0 avail=0,0 => status=chosen score=128 goods=26
 
 # --- X2 tie order: s = trunc(1536*38/2048) = 28 for stock 38, urg 100; stock 30 gives s 22, urg 106.
 choice X2-tie goods=G0 house=H2 e=128 res=0 stock=38,38 out=26,27 avail=300,300 => status=chosen score=100 goods=26
@@ -97,7 +110,10 @@ avail V-stall goods=26 cls=MarketStall city=26:777 out=26,27 => avail=777 enable
 avail V-stall-outside-range goods=76 cls=MarketStall city=76:5 out=76,0 => avail=5 enabled=1
 avail V-stall-flag0 goods=26 cls=MarketStall city=26:50 out=26,27 flags=0,1 => avail=50 enabled=0
 avail V-stall-flag1 goods=27 cls=MarketStall city=27:50 out=26,27 flags=0,1 => avail=50 enabled=1
-avail V-stall-not-output goods=28 cls=MarketStall city=28:50 out=26,27 => avail=50 enabled=0
+# P2-1 (review): the bytes read flag[out0 != g]; any goods that is not output 0 reads flag1
+avail V-stall-not-output goods=28 cls=MarketStall city=28:50 out=26,27 => avail=50 enabled=1
+avail V-stall-not-output-flag1 goods=28 cls=MarketStall city=28:50 out=26,27 flags=1,0 => avail=50 enabled=0
+avail V-stall-out1-flag0 goods=27 cls=MarketStall city=27:50 out=26,27 flags=0,1 => avail=50 enabled=1
 avail V-stall-no-table goods=200 cls=MarketStall city=26:1 out=26,27 => fault=goods_out_of_table
 avail V-public goods=77 cls=PublicService => avail=256 enabled=1
 avail V-school goods=77 cls=School => avail=256 enabled=1
@@ -108,6 +124,18 @@ avail V-plain goods=26 cls=Plain city=26:9 => avail=0 enabled=1
 avail V-market goods=26 cls=Market city=26:9 => avail=0 enabled=1
 avail V-house goods=26 cls=House city=26:9 => avail=0 enabled=1
 avail V-castle goods=26 cls=Castle city=26:9 => avail=0 enabled=1
+
+# --- supplier bills (P1-2, review): the Inn bills its input good with the CLIPPED amount t = min(tavern, amount)
+# (take = 0), even when t = 0; it returns t. Direct bill vectors, the amount is not capped by avail here.
+sbill I-clipped cls=Inn goods=77 amount=11 tavern=5 input=27 store=none billed=none => status=ok returned=5 store=none billed=27:5 tavern=0
+sbill I-fits cls=Inn goods=77 amount=11 tavern=100 input=27 store=none billed=27:3 => status=ok returned=11 store=none billed=27:14 tavern=89
+sbill I-empty cls=Inn goods=77 amount=11 tavern=0 input=27 store=none billed=27:4294967295 => status=ok returned=0 store=none billed=27:4294967295 tavern=0
+sbill I-out-of-range cls=Inn goods=77 amount=11 tavern=5 input=76 store=none billed=none => status=ok returned=5 store=none billed=none tavern=0
+sbill I-overflow cls=Inn goods=77 amount=11 tavern=5 input=27 store=none billed=27:4294967291 => status=billed_overflow returned=0 store=none billed=27:4294967291 tavern=5
+sbill S-stall cls=MarketStall goods=26 amount=300 store=26:100 billed=none => status=ok returned=100 store=none billed=26:300 tavern=0
+sbill S-public cls=PublicService goods=26 amount=300 store=26:100 billed=none => status=ok returned=300 store=26:100 billed=26:300 tavern=0
+sbill S-doctor cls=Doctor goods=26 amount=300 store=26:100 billed=none => status=ok returned=0 store=26:100 billed=none tavern=0
+sbill S-plain cls=Plain goods=26 amount=300 store=26:100 billed=none => status=ok returned=0 store=26:100 billed=none tavern=0
 
 # --- X6 / X7 billing. Outside 26..40 nothing is billed and nothing taken, even with take.
 bill X6 goods=76 amount=300 take=1 store=76:100 billed=none => status=ok returned=300 store=76:100 billed=none
@@ -134,7 +162,16 @@ bill O-table goods=100 amount=10 take=1 store=none billed=none range=26,120 => s
 deliver L-one-ton goods=G0 house=H1 goods_id=26 amount=256 stock=0,0,0 => status=ok stock=4096,0,0 touched=1
 deliver L-100 goods=G0 house=H1 goods_id=27 amount=100 stock=1,2,3 => status=ok stock=1,1602,3 touched=1
 deliver L-replay goods=GS house=H2 goods_id=26 amount=100 stock=5,7 => status=ok stock=1605,1607 touched=2
-deliver L-replay-once goods=GD house=H1 goods_id=26 amount=100 stock=0,0,0 => status=ok stock=1600,1600,0 touched=2
+# P1-1 (review): the replay is a RECURSIVE deliver of the substitute (vtable 0xc0 = 0x10076610), so a
+# chain 26->27->28 raises all three slots; 100*16 = 1600 each.
+deliver L-replay-chain goods=GD house=H1 goods_id=26 amount=100 stock=0,0,0 => status=ok stock=1600,1600,1600 touched=3
+# the chain ends at the first substitute without a need slot (27 has none in H3: 28 is not reached)
+deliver L-chain-stops goods=GD house=H3 goods_id=26 amount=100 stock=0,0 => status=ok stock=1600,0 touched=1
+deliver L-chain-short goods=GD house=H2 goods_id=26 amount=100 stock=0,0 => status=ok stock=1600,1600 touched=2
+deliver L-chain-overflow-last goods=GD house=H1 goods_id=26 amount=100 stock=0,0,4294967000 => status=refused stock=0,0,4294967000 touched=0
+# a cycle 26->27->26 and a self-loop 26->26 are cut after goods_count (3) replays: 4 adds of 16 (amount 1)
+deliver L-cycle-cut goods=GC3 house=H2 goods_id=26 amount=1 stock=0,0 => status=ok stock=32,32 touched=4
+deliver L-selfloop-cut goods=GL3 house=H26 goods_id=26 amount=1 stock=0 => status=ok stock=64 touched=4
 deliver L-replay-not-needed goods=GS house=H26 goods_id=26 amount=100 stock=0 => status=ok stock=1600 touched=1
 deliver L-not-needed goods=G0 house=H1 goods_id=40 amount=100 stock=1,2,3 => status=ok stock=1,2,3 touched=0
 deliver L-first-not-needed goods=GX house=H2 goods_id=40 amount=100 stock=0,0 => status=ok stock=0,0 touched=0

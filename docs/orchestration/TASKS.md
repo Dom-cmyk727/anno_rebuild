@@ -41,6 +41,11 @@ Open:
 - the NOT_RUN window and sanitizer gates;
 - three owner decisions: projection merge, waterline H1, founding start rotation. The next Windows steps are its §5; the candidate's own final acceptance is
 unchanged.
+
+**Evening update (owner: "Push", "And merge").** The projection fix `task/iso-handedness-W4` (`d73c58b9`) was reviewed:
+no blocker, but its gate is FAIL on two tests (river Q5 on one island, a 1-pixel lan5 pick). It is now **merged into the
+task branch**, `task/W4-opening-1` = `a150c11d`, published. Nothing went to `main`. The merged tree is not yet built or
+tested. The next Windows steps are the review's §6.
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
@@ -92,7 +97,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: PLAYTEST ROUNDS 1–7 REVIEWED, FOLLOW-UPS OPEN.** Continue `task/W4-opening-1` from `c1bf35cc` with §5 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): rounds 1–5 findings first, then the NOT_RUN gates. Ask the owner the three decisions; do not assume them. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: PLAYTEST ROUNDS REVIEWED; PROJECTION FIX MERGED INTO THE TASK BRANCH.** Continue `task/W4-opening-1` from `a150c11d` with §6 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): full gates on the merged head, then Q5 and the lan5 pixel, then the P3 items. Ask the owner decisions (b) H1 and (c) the start rotation; do not assume them. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-READY-1 ACCEPTED; MAP-POP-IMPL-1 READY, RELEASED.** Complete P0 and A–F below as one implementation bundle; internal reviews unlock the next package automatically. Deliver scenario inputs, derived population tables, a tested pure House kernel and real-input integration, then stop once for combined review. Windows keeps exact `0c401c8d`. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW

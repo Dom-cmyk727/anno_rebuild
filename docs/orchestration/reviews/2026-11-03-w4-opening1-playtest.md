@@ -203,3 +203,88 @@ island, and the lan5 dev-tool pick, 1 of 8,486 pixels.
    owner's OK. Nothing goes to `main`. A local orchestrator reads the branch without it.
 
 No merge into `main` is authorised by this review.
+
+## 6. Update, 2026-11-03 evening: published, projection fix reviewed and merged into the task branch
+
+**Owner instructions:** "Push", then "And merge" (the projection fix into the task branch, not `main`).
+
+**Pushed.** `task/W4-opening-1` went to `c1bf35cc` by fast-forward, then to the merge below. Both remote hashes were
+checked.
+
+**The executor's follow-ups since this review.** Committed on the branch, not reviewed here:
+
+| Commit | Content |
+|---|---|
+| `cd459bba` | P1: the derived lift |
+| `d5b8b30e` | P2: give up only on a failed build |
+| `231640c0` | a CPU reference for the wave carry; the wake tuning as configuration |
+| `201a3990` | the low items |
+| `5afc14a7` | docs |
+| `ed821f42` | the re-review's test points; the two Unix warnings |
+| `9ed05d75` | docs: H2 settled in the Wine runner, H1 against the GOG original |
+
+They need this review's focused re-review: §3's P1, P2 and P3 items, against the executor's own re-review record.
+
+**Projection fix review** (`task/iso-handedness-W4` at `d73c58b9`, its 14 own commits). Reviewer: an independent
+read-only review agent of the Claude orchestrator session, briefed with the diff, the project rules and the original's
+handedness facts only.
+
+**No blocker.** The handedness change is complete and consistent across every CPU, GPU, picking and app path traced:
+- forward projection, sea lattice, wave and river mapping, picking (the exact inverse, floor correct for negative
+  tiles), terrain split, ship facing (`frame = dir16`), dev-tool and tool helpers;
+- no leftover `(x − y)` form except the intended negative control;
+- the hand-derived values match the tests: pick (−210, 336) → (10, 5), `tile_top(1,0,0)` = (−42, 21), and others;
+- every re-baselined digest has an independent reason to change;
+- the Kontor frame `k` = rotation `r` matches the original (dock lower right / lower left / upper left / upper right).
+
+Findings:
+- **[P2] The branch's gate is FAIL.** `cache/gates/accept-04.log` ran at `d73c58b9` on a clean tree: 549 executed,
+  6 failed. Four were memory-budget refusals (`low-memory stop`) and pass in the 4-test rerun `accept-05`. Two are
+  real:
+  - **Q5:** `river_flow_corpus_test.cpp` fails with share `0.4848 >= 0.55` on island `D_256x256_0045_5B`.
+    - Reviewer: not a sign or axis defect. The other islands score 79–100 %, overall 82.8 % against 82.9 % before,
+      and the stem test passes.
+    - The likely cause is changed inputs: the river mask comes from sprite alpha, the sprites now stand in the correct
+      handedness, and the island's window count went from 41 to 33. The island was already marginal (63.4 %).
+    - Remedy: compare D's mask and flow before and after (`river_qa`). The orchestrator then decides the per-island
+      bar; do not lower it silently.
+  - **lan5 pick:** `dev_tool_test.cpp` has 1 wrong pixel of 8,486.
+    - Likely a gap in the test's interior filter that predates the branch: pixels just beyond a triangle's B–C
+      diagonal on a ridge silhouette. The filter skips only the tile edges, while the rasteriser draws a 0.04-px
+      tolerance band.
+    - Print the failing pixel to confirm. Fix: also skip within 0.06 of the diagonal, or rasterise with an exact
+      fill rule.
+
+  The docs (`docs/render/iso.md:23`, `docs/open-questions.md:209`, commit `3c13077e`) imply that Q5 passes with the
+  kept −x light, and mention neither failure. Record both as FAIL/open.
+- **[P3] Smaller items:**
+  - the GCC/Clang `-Werror` check was not re-run after `b7aab0ff` fixed its Clang error, so it is NOT_RUN at the head;
+  - `docs/PLAN.md:198` is a stale "needs the same change when it merges";
+  - the Linux and Apple digests of the enhanced lines are not measured, which affects only runs with game files;
+  - the playtest card has no checks for the fix: Kontor piles in the water, continuous fences, ship bows, the light,
+    the reversed tie-break;
+  - the projection formula is written out inline in about 12 places despite "every mapping is this one"
+    (`iso.hpp:111`), a hazard for a future view rotation (OQ-026);
+  - `river_flow_corpus_test.cpp:1116` prints a pointer instead of the island name.
+- **Light, as input for the owner's decision.** In 239 of 266 sprite/shadow frame pairs of `Anlagen.dat` (group 2), the
+  shadow centroid lies left of and below the sprite's, and right of it in none. The original's baked sun is on the
+  screen's right, so the kept −x light (now from the top right) agrees with it.
+
+**Merged.** `a150c11d` = `Merge task/iso-handedness-W4 into task/W4-opening-1` (parents `9ed05d75` and `d73c58b9`):
+- made in the executor's worktree while it was clean, with no build or test process running;
+- the textual merge had no conflicts, in 40 files;
+- the W4 commits after `b49438b9` use the shared `tile_top`/`screen_tile`, with no new inline projection arithmetic;
+- the merged tree has **not** been built or tested yet.
+
+Nothing went to `main`.
+
+**Next for the Windows executor**, before the owner's next playtest build:
+1. Run the full gates on `a150c11d`:
+   - native app, GPU and render lanes;
+   - GCC 13 and Clang 18 `-Werror` (WSL), viewer with and without the GPU;
+   - the window tests, and the WSL sanitizer lane when the PC is free.
+2. Settle Q5 and the lan5 pixel as above, with the failing pixel printed and D's before/after flow. Record both
+   honestly in the docs.
+3. Fix or disposition the P3 items, and add the projection checks to the playtest card.
+4. Then the owner's playtest. Decisions (b) H1 and (c) the start rotation of §5 remain the owner's. Decision (a) is
+   done: the owner chose this merge.

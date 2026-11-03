@@ -112,7 +112,7 @@ Format: rule -> primary evidence -> smallest wrong reading -> distinguishing inp
 
 A research or reference helper may write only the files in its row; the parent keeps headers, config, digest, version and the final merge of results. Complexity (task E.4): registry metadata is built once; the lookup is indexed by goods id; a kernel call is O(needs) and reads no world; there is no per-house rebuild and no whole-world scan.
 
-## 7. Delivered (MAP-POP-IMPL-1, frozen-gate record in docs/orchestration/REPORTS.md)
+## 7. Delivered (MAP-POP-IMPL-1; the frozen-gate record is the REPORTS entry the orchestrator receives and, locally, cache/map2-pop-impl1/final/)
 
 | Package | API and files |
 |---|---|
@@ -126,4 +126,4 @@ Config: `docs/sim/state.md` 3.1 is not edited here; this document and `config.hp
 
 ## 8. Limits
 
-This contract changes no code. The Create stamp (OD-2), the zero-resident count, below-64 reachability and every live-effect rule (walker spawn and draw, upgrade/downgrade/removal, taxes, unlocks) stay open exactly as in the readiness document. Windows/MSVC, Linux/WSL, original-runtime and GPU checks are NOT_RUN.
+This document defines the delivered API; live effects remain open. Arithmetic is widened by decision 3, so "faithful" holds only within the original's 16-bit ranges (E, stocks u16, residents i16, `Wohnmax << 6` in a 16-bit shift); every shipped value is inside them (largest Wohnmax 42), but vectors such as D6 (stock 2818221), O-over/O-ctrl and a Wohnmax of 1024 or more are states the original cannot hold. `HouseGroupDerived::lookup`/`forced` are verified against the oracle and the disassembly but no kernel step reads them yet (mood reads each need's own Force, as the original does). The real-input canary evaluated 541 houses (masks 0x1, 0x3, 0xf only; every imported `last` is 0; no NotEvaluated outcome occurred on real data), so Overflow, ZeroDivisor and the high stage bits are covered by synthetic vectors only. The Create stamp (OD-2), the zero-resident count, below-64 reachability and every live-effect rule (walker spawn and draw, upgrade/downgrade/removal, taxes, unlocks) stay open exactly as in the readiness document. Windows/MSVC, Linux/WSL, original-runtime and GPU checks are NOT_RUN.

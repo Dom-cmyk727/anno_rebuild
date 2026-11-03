@@ -575,6 +575,10 @@ class Viewer {
     /// 2026-11-03, round 5: the overview "needs a moment" and islands flicker at the farthest
     /// zoom).
     std::size_t missing_frames_ = 0, missing_most_ = 0, missing_most_group_ = 0;
+    /// Frames of the interval that drew chunks dissolving in over their stand-in (built, then
+    /// uploaded: GpuStats::chunks_fading, GpuLimits::chunk_fade_ms) and the most at once (round 6:
+    /// a zoom back in showed the coarser level magnified until the real chunks had come in).
+    std::size_t fading_frames_ = 0, fading_most_ = 0;
     /// The wave windows made and carried over since the last report.
     std::uint64_t windows_new_ = 0, resamples_new_ = 0;
 #ifdef ANNO_VIEWER_GPU
@@ -2283,6 +2287,10 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
         windows_seen_ = s.fluid_windows;
         resamples_seen_ = s.fluid_resamples;
     }
+    if (s.chunks_fading > 0) {
+        ++fading_frames_;
+        fading_most_ = std::max(fading_most_, s.chunks_fading);
+    }
     if (s.chunks_missing > 0) {
         ++missing_frames_;
         if (s.chunks_missing > missing_most_) {
@@ -2561,11 +2569,13 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
         std::fprintf(
             stderr,
             "  not ready: %zu of %zu frames drew a visible chunk not built yet (at most %zu "
-            "at once, zoom group %zu); wave windows %llu new, %llu carried over\n",
-            missing_frames_, frames_n_, missing_most_, missing_most_group_,
-            static_cast<unsigned long long>(windows_new_),
+            "at once, zoom group %zu), %zu dissolved chunks in over a stand-in (at most %zu); "
+            "wave windows %llu new, %llu carried over\n",
+            missing_frames_, frames_n_, missing_most_, missing_most_group_, fading_frames_,
+            fading_most_, static_cast<unsigned long long>(windows_new_),
             static_cast<unsigned long long>(resamples_new_));
         missing_frames_ = missing_most_ = missing_most_group_ = 0;
+        fading_frames_ = fading_most_ = 0;
         windows_new_ = resamples_new_ = 0;
     }
     if (play_ != nullptr) {

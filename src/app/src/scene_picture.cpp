@@ -241,7 +241,8 @@ PictureResult build_result(const PictureJob& job, const std::vector<bool>& is_bu
     };
     std::vector<std::string> notes;
     std::vector<OmittedObject> omitted;
-    apply_island_buildings(island, job.buildings, objects, storage, notes, omitted);
+    apply_island_buildings(island, job.buildings, objects, storage, notes, omitted,
+                           &job.base->anlagen);
     auto lists = render::Scene::build_island_lists(island, job.base->anlagen,
                                                    render::PayloadKind::Incremental);
     result.base_lists = job.base->island_lists_handle(job.index);

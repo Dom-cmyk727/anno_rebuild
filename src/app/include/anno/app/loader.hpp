@@ -97,12 +97,25 @@ struct SceneObjects {
 /// One island's buildings written into its records (play mode): the per-island form of
 /// apply_world_buildings, used by ScenePicture (docs/app/game-shell.md). `buildings` are the
 /// sim's buildings of this island; the payloads it writes go to `owned_out`, whose buffers keep
-/// their addresses when moved; notes and omitted objects go to `notes` and `omitted`.
+/// their addresses when moved; notes and omitted objects go to `notes` and `omitted`. With
+/// `anlagen` (the scene's Anlagen.dat), a scenery item whose anchor tile lies under a building is
+/// dropped, as the sim's tile layer overwrites it (scenery_under_building); without, scenery is
+/// copied unchanged.
 void apply_island_buildings(formats::insel::Island& island,
                             const std::vector<SceneBuilding>& buildings,
                             const SceneObjects& objects,
                             std::vector<std::vector<std::uint8_t>>& owned_out,
-                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted);
+                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted,
+                            const formats::anlagen::AnlagenFile* anlagen = nullptr);
+
+/// Whether a scenery item of type `item` at island tile (`x`, `y`) (its anchor, the footprint's
+/// top-left tile) is overwritten by building `b`: the tile lies in b's footprint (Anlagen HEAD
+/// bytes 0 and 1, swapped for an odd rotation), unless both types carry flag 0x10, whose anchored
+/// object the original keeps (AnnoWelt.dll 0x1008218f; sim::place_object_record). False when a
+/// type is not in `anlagen`.
+[[nodiscard]] bool scenery_under_building(const formats::anlagen::AnlagenFile& anlagen,
+                                          const SceneBuilding& b, std::uint16_t item,
+                                          std::uint16_t x, std::uint16_t y);
 
 /// The game directory: `explicit_dir`, else `env_dir` (the value of
 /// ANNO1503_GAME_DIR, read by the caller), else the nearest ancestor of

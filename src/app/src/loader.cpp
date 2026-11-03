@@ -15,6 +15,7 @@
 #include <anno/assets/island.hpp>
 #include <anno/assets/unit.hpp>
 #include <anno/formats/anlagen.hpp>
+#include <anno/formats/bytes.hpp>
 #include <anno/formats/chunk.hpp>
 #include <anno/formats/figuren.hpp>
 #include <anno/formats/insel.hpp>
@@ -267,10 +268,49 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
 /// `omitted`. The island's records must be the ones of the scene the buildings belong to;
 /// re-applying to records already rewritten gives the same records as applying to the file's,
 /// because buildings the sim no longer places are dropped and the new ones are added.
+namespace {
+
+/// HEAD's flag word (bytes 0x1c-0x1d, as sim/types.cpp reads it), or nullopt without a HEAD of
+/// that length.
+std::optional<std::uint16_t> head_flags(const formats::anlagen::AnlagenFile& anlagen,
+                                        std::uint32_t id) {
+    const auto* e = anlagen.entry(id);
+    if (e == nullptr) {
+        return std::nullopt;
+    }
+    const auto head = e->record("HEAD");
+    if (!head || head->size() < 0x1e) {
+        return std::nullopt;
+    }
+    return formats::u16_le(*head, 0x1c);
+}
+
+} // namespace
+
+bool scenery_under_building(const formats::anlagen::AnlagenFile& anlagen, const SceneBuilding& b,
+                            std::uint16_t item, std::uint16_t x, std::uint16_t y) {
+    const auto size = anlagen.footprint(b.type);
+    const auto placed = head_flags(anlagen, b.type);
+    const auto existing = head_flags(anlagen, item);
+    if (!size || !placed || !existing) {
+        return false;
+    }
+    const bool odd = (b.rotation & 1U) != 0;
+    const std::uint32_t w = odd ? size->second : size->first;
+    const std::uint32_t h = odd ? size->first : size->second;
+    if (x < b.x || y < b.y || x >= std::uint32_t{b.x} + w || y >= std::uint32_t{b.y} + h) {
+        return false;
+    }
+    // A type with flag 0x10 is written over the tiles but keeps an anchored flag-0x10 object
+    // (AnnoWelt.dll 0x1008218f, place_object_record's overlay skip).
+    return (*placed & 0x10U) == 0 || (*existing & 0x10U) == 0;
+}
+
 void apply_island_buildings(insel::Island& island, const std::vector<SceneBuilding>& buildings,
                             const SceneObjects& objects,
                             std::vector<std::vector<std::uint8_t>>& owned_out,
-                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted) {
+                            std::vector<std::string>& notes, std::vector<OmittedObject>& omitted,
+                            const formats::anlagen::AnlagenFile* anlagen) {
     using Key = std::tuple<std::uint32_t, std::uint32_t, std::uint16_t, std::uint16_t>;
     std::set<Key> placed;
     for (const SceneBuilding& b : buildings) {
@@ -319,6 +359,19 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         for (std::size_t o = 0; o < block.data.size(); o += insel::kItemLen) {
             const insel::PlacedObject obj =
                 insel::PlacedObject::parse(block.data.subspan(o, insel::kItemLen), block);
+            // Scenery under a building is not drawn (owner playtest 2026-11-03, round 6: trees
+            // stood in a founded Kontor). The original writes the building over every footprint
+            // tile without testing what is there (AnnoWelt.dll 0x100823ed, docs/re/ship-founding.md
+            // §11.3; the sim's place_object_record): the item whose anchor it covers is neither
+            // stored nor drawn. An item anchored outside stays whole (the shipped scenarios keep
+            // such rocks beside Kontors; how the original draws its covered tiles is not traced).
+            if (anlagen != nullptr && name == "GELAENDE" && !objects.is_building(obj.anlage) &&
+                std::any_of(buildings.begin(), buildings.end(), [&](const SceneBuilding& b) {
+                    return scenery_under_building(*anlagen, b, obj.anlage, obj.x, obj.y);
+                })) {
+                changed = true;
+                continue;
+            }
             if (objects.is_building(obj.anlage)) {
                 const Key key{slot, obj.anlage, obj.x, obj.y};
                 if (placed.count(key) == 0) {
@@ -414,7 +467,8 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
 }
 
 void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out,
-                           const SceneObjects& objects) {
+                           const SceneObjects& objects,
+                           const formats::anlagen::AnlagenFile& anlagen) {
     std::map<std::uint32_t, std::vector<SceneBuilding>> by_slot;
     for (const SceneBuilding& b : objects.buildings) {
         // PROD2 stores the Anlagen id in 12 bits (kPictureAnlageIds). A wider id must not be
@@ -428,7 +482,7 @@ void apply_world_buildings(std::vector<insel::Island>& islands, LoadedScene& out
     }
     for (insel::Island& island : islands) {
         apply_island_buildings(island, by_slot[island.number], objects, out.buffers, out.notes,
-                               out.omitted);
+                               out.omitted, &anlagen);
     }
 }
 
@@ -543,9 +597,6 @@ Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string
                                                 formats::Bytes unit_source, LoadedScene out,
                                                 std::vector<insel::Island> all,
                                                 const SceneObjects* objects) {
-    if (objects != nullptr && objects->is_building) {
-        apply_world_buildings(all, out, *objects);
-    }
     auto load = [&](const fs::path& p) -> std::optional<formats::Bytes> {
         auto b = read_all(p);
         if (!b) {
@@ -562,6 +613,10 @@ Result<LoadedScene, std::string> complete_scene(const fs::path& dir, std::string
     auto anlagen = formats::anlagen::AnlagenFile::parse(*anl_bytes);
     if (!anlagen) {
         return "Anlagen.dat: " + anlagen.error();
+    }
+    // The buildings go in with Anlagen.dat at hand: the scenery under them is dropped.
+    if (objects != nullptr && objects->is_building) {
+        apply_world_buildings(all, out, *objects, anlagen.value());
     }
     auto felder = formats::tex::TexFile::parse(*felder_bytes);
     if (!felder) {

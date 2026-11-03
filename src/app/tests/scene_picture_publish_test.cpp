@@ -105,7 +105,7 @@ std::vector<std::vector<std::uint8_t>> fresh_payloads(const render::Scene& base,
     objects.is_building = [](std::uint16_t id) { return id < 0x1000; };
     std::vector<std::string> notes;
     std::vector<app::OmittedObject> omitted;
-    app::apply_island_buildings(island, mine, objects, storage, notes, omitted);
+    app::apply_island_buildings(island, mine, objects, storage, notes, omitted, &base.anlagen);
     std::vector<std::vector<std::uint8_t>> out;
     for (const anno::formats::chunk::Chunk& rec : island.records) {
         out.emplace_back(rec.payload.begin(), rec.payload.end());

@@ -415,16 +415,11 @@ TEST_CASE("prewarm: a resident chunk that cannot be built does not stop the rest
 // queued or running. A job that finishes between update_chunks' take_done and its submit is skipped
 // by that submit (done, not taken yet), so the target's last missing child arrived one frame after
 // the target was given up, and the chunk was never prewarmed again. The gate holds that child's
-// build; the before-submit seam lets it finish inside the gap.
-TEST_CASE("prewarm: a child finished between take_done and submit does not give the target up "
-          "(game files)" *
-          doctest::test_suite("derived_freshness")) {
-    const auto dir = anno::test::game_dir();
-    if (!dir) {
-        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
-        return;
-    }
-    const auto scene = island_scene(*dir);
+// build; the before-submit seam lets it finish inside the gap. The case runs on a synthetic island
+// (CI) and on a real one (game files).
+namespace {
+
+void prewarm_gap(const std::shared_ptr<render::Scene>& scene) {
     const std::size_t first_derived = scene->levels().built_count();
     std::vector<render::ChunkKey> overview;
     for (std::size_t g = first_derived; g < scene->levels().size(); ++g) {
@@ -455,7 +450,25 @@ TEST_CASE("prewarm: a child finished between take_done and submit does not give 
     }
     REQUIRE(target.has_value());
     const render::Rect away{-200000, -200000, 64, 64};
+    // The gate's state outlives the workers (declared before the renderer that owns them), and the
+    // guard opens the gate whatever ends the test (destroyed before the renderer), so a failing
+    // check never leaves a worker waiting on it.
+    std::mutex mu;
+    std::condition_variable cv;
+    bool held = false, open = false;
     render::FrameRenderer frames(2);
+    struct OpenGate {
+        std::mutex& mu;
+        std::condition_variable& cv;
+        bool& open;
+        ~OpenGate() {
+            {
+                const std::lock_guard lock(mu);
+                open = true;
+            }
+            cv.notify_all();
+        }
+    } const guard{mu, cv, open};
     auto workers = std::make_unique<render::ChunkWorkers>(4);
     render::ChunkWorkers* w = workers.get();
     frames.set_workers(std::move(workers));
@@ -474,9 +487,6 @@ TEST_CASE("prewarm: a child finished between take_done and submit does not give 
     const std::size_t rebuilds_before = frames.chunk_rebuilds(*target);
     // The child's rebuild for the next generation waits in the gate until it is opened.
     const auto next = scene->with_islands({});
-    std::mutex mu;
-    std::condition_variable cv;
-    bool held = false, open = false;
     w->set_test_gate([&](const render::ChunkKey& k, std::uint64_t generation) {
         if (k != *child || generation != next->generation()) {
             return;
@@ -514,6 +524,39 @@ TEST_CASE("prewarm: a child finished between take_done and submit does not give 
     REQUIRE(frames.chunk(*target) != nullptr);
     CHECK(frames.chunk(*target)->generation == next->generation());
     CHECK(frames.chunk_rebuilds(*target) - rebuilds_before == 1); // once, no loop
+}
+
+} // namespace
+
+TEST_CASE("prewarm: a child finished between take_done and submit does not give the target up" *
+          doctest::test_suite("derived_freshness")) {
+    // A 40 x 30 island without terrain records: its chunks build (ground without tiles), and its
+    // first derived level has a chunk whose children lie on it.
+    auto bytes = std::make_shared<std::vector<std::vector<std::uint8_t>>>();
+    bytes->push_back(std::vector<std::uint8_t>(64, 0));
+    anno::formats::insel::Island island;
+    island.head = (*bytes)[0];
+    island.number = 0;
+    island.x = 100;
+    island.y = 40;
+    island.width = 40;
+    island.height = 30;
+    auto scene =
+        render::Scene::create("prewarm gap", {island}, anno::assets::island::GroundTextures{},
+                              anno::formats::anlagen::AnlagenFile{}, render::kHeightLift, bytes);
+    scene->set_levels(render::ZoomLevels::with_derived(2));
+    prewarm_gap(scene);
+}
+
+TEST_CASE("prewarm: a child finished between take_done and submit does not give the target up "
+          "(game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    prewarm_gap(island_scene(*dir));
 }
 
 namespace {

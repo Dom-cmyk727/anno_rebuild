@@ -185,7 +185,8 @@ TEST_CASE("ship motion: the wakes are the moving ships as drawn, the nearest one
     for (std::size_t i = 0; i < n; ++i) {
         app::ShipView s;
         s.id = sim::FigureId{i + 1};
-        s.pos.x = static_cast<std::int32_t>(std::lround((100.0 + 10.0 * i) * 256.0));
+        s.pos.x =
+            static_cast<std::int32_t>(std::lround((100.0 + 10.0 * static_cast<double>(i)) * 256.0));
         s.pos.y = 0;
         a.ships.push_back(s);
         s.pos.y = 256; // one tile on

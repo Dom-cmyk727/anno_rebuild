@@ -260,3 +260,12 @@ Each fix has a test that fails without it (mutation checks: the fix reverted, th
   (`scene_vertex_height`) and requires both verdicts to agree at every origin and rotation (they do: 25,205 coast sites each).
   It showed the window had no height on an island's far column and row, where the sim reads its boundary height 0; the window
   reads it now (test `founding preview heights: the island's far column and row read the sim's boundary`).
+- *Re-review of these fixes* (independent, read-only: no P1/P2). Acted on: the P2 test also runs on a synthetic island (CI;
+  the game-files case stays), and its gate state outlives the workers with a guard that opens the gate whatever ends the test;
+  the ship solver test runs with tuned wake settings and a slow ship as well (a literal left in the shader fails it: three
+  mutants); the carry test's bound is 1e-5 (measured 7e-7 and 3e-8) and it requires foam in the old window into finer cells.
+  Recorded, not changed: the wake settings are `FluidConfig` fields, not a runtime option (the compositor creates the solver
+  with the defaults, as for every other field); a ship slower than `ship_min_speed` still takes a wake slot; the Rust
+  reference `crates/render/src/gpu_fluid.rs` loads the same `fluid.wgsl` but binds only 0-4 of its 0-7 bindings (since
+  `8cae6f71`, before this branch), so its GPU fluid pipelines cannot validate against it: to drop with the Rust code
+  (ADR 0001).

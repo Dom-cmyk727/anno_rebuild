@@ -2580,7 +2580,7 @@ TEST_CASE("the wave window at a derived zoom level is centred as at its built an
         return st.fluid_centre;
     };
     const auto built = centre_at(2, 0);
-    for (const auto [group, k] : {std::pair{std::size_t{3}, 1}, std::pair{std::size_t{4}, 2}}) {
+    for (const auto& [group, k] : {std::pair{std::size_t{3}, 1}, std::pair{std::size_t{4}, 2}}) {
         const auto derived = centre_at(group, k);
         MESSAGE("group " << group << ": centre (" << derived.first << ", " << derived.second
                          << "), group 2 (" << built.first << ", " << built.second << ")");
@@ -5735,56 +5735,73 @@ TEST_CASE("the scene grid is kept at the window floor when idle, never dropped")
 // A ship acts on the GPU waves as on the CPU reference: the same elevation source
 // (fluid::ship_term, the shader's twin) in the same steps (W4-OPENING-1, owner playtest
 // 2026-11-03).
+// The wake's settings reach the shader (review 2026-11-03): with the defaults and with tuned ones
+// (the minimum speed above the slow ship's, another stern share, another full depth), the GPU's
+// waves equal the CPU reference's; a literal left in the shader or two uniform slots swapped would
+// make them differ.
 TEST_CASE("the GPU wave solver with a ship matches the CPU reference") {
     auto ctx = device_or_skip();
     if (!ctx) {
         return;
     }
     namespace fluid = anno::render::fluid;
-    fluid::FluidConfig cfg;
-    cfg.size = 64;
-    cfg.cells_per_tile = {4, 4, 4};
-    cfg.recentre_cells = 4;
-    const fluid::DepthFn depth = [](float, float) { return 16.0F; };
-    auto made = gpu::FluidGpu::create(*ctx, cfg);
-    REQUIRE(made);
-    gpu::FluidGpu& g = made.value();
-    const FluidRun run{*ctx, g, depth};
-    std::uint64_t time_ms = 1000;
-    run(0, {8.0F, 8.0F}, 0.0F, time_ms);
-    fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
-    fluid::FluidGrid quiet = cpu;
-    fluid::ShipWake ship;
-    ship.x = 4.0F;
-    ship.y = 8.0F;
-    ship.vx = 6.0F;
-    ship.vy = 0.0F;
-    for (int frame = 0; frame < 20; ++frame) {
-        // The ship's list is held for the steps of a frame, as the compositor does.
-        g.set_ships({ship});
-        cpu.ships = {ship};
-        quiet.ships.clear();
-        const double before = g.sim_time();
-        time_ms += 33;
-        run(0, {8.0F, 8.0F}, 0.0F, time_ms);
-        for (double t = before; t + 1e-9 < g.sim_time();) {
-            t += static_cast<double>(cfg.dt);
-            cpu.step(static_cast<float>(t));
-            quiet.step(static_cast<float>(t));
+    for (const bool tuned : {false, true}) {
+        fluid::FluidConfig cfg;
+        cfg.size = 64;
+        cfg.cells_per_tile = {4, 4, 4};
+        cfg.recentre_cells = 4;
+        if (tuned) {
+            cfg.ship_min_speed = 0.5F;   // the slow ship (0.3 tiles/s) leaves no wake
+            cfg.ship_stern_share = 0.3F; // default 0.6
+            cfg.ship_full_depth = 20.0F; // default 40: 0.8 of the source at depth 16, not 0.4
         }
-        ship.x += ship.vx * 0.033F;
+        const fluid::DepthFn depth = [](float, float) { return 16.0F; };
+        auto made = gpu::FluidGpu::create(*ctx, cfg);
+        REQUIRE(made);
+        gpu::FluidGpu& g = made.value();
+        const FluidRun run{*ctx, g, depth};
+        std::uint64_t time_ms = 1000;
+        run(0, {8.0F, 8.0F}, 0.0F, time_ms);
+        fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+        fluid::FluidGrid quiet = cpu;
+        fluid::ShipWake ship;
+        ship.x = 4.0F;
+        ship.y = 8.0F;
+        ship.vx = 6.0F;
+        ship.vy = 0.0F;
+        fluid::ShipWake slow;
+        slow.x = 8.0F;
+        slow.y = 4.0F;
+        slow.vx = 0.3F;
+        for (int frame = 0; frame < 20; ++frame) {
+            // The ships' list is held for the steps of a frame, as the compositor does.
+            g.set_ships({ship, slow});
+            cpu.ships = {ship, slow};
+            quiet.ships.clear();
+            const double before = g.sim_time();
+            time_ms += 33;
+            run(0, {8.0F, 8.0F}, 0.0F, time_ms);
+            for (double t = before; t + 1e-9 < g.sim_time();) {
+                t += static_cast<double>(cfg.dt);
+                cpu.step(static_cast<float>(t));
+                quiet.step(static_cast<float>(t));
+            }
+            ship.x += ship.vx * 0.033F;
+            slow.x += slow.vx * 0.033F;
+        }
+        // The ship changed the water (a lot more than float noise) ...
+        float moved = 0.0F;
+        for (std::size_t i = 0; i < cpu.state.size(); ++i) {
+            moved = std::max(moved, std::abs(cpu.state[i][0] - quiet.state[i][0]));
+        }
+        CHECK(moved > 0.05F);
+        // ... and the GPU agrees with the CPU reference.
+        const auto [max, flow] = compare_state(*ctx, g, cpu, 64);
+        MESSAGE(std::string(tuned ? "tuned" : "default")
+                << " wake: GPU vs CPU max " << max << ", the ships moved the water by " << moved);
+        CHECK(max < 1e-2F);
+        CHECK(ctx->errors->load() == 0);
     }
-    // The ship changed the water (a lot more than float noise) ...
-    float moved = 0.0F;
-    for (std::size_t i = 0; i < cpu.state.size(); ++i) {
-        moved = std::max(moved, std::abs(cpu.state[i][0] - quiet.state[i][0]));
-    }
-    CHECK(moved > 0.05F);
-    // ... and the GPU agrees with the CPU reference.
-    const auto [max, flow] = compare_state(*ctx, g, cpu, 64);
-    MESSAGE("ship wake: GPU vs CPU max " << max << ", ship moved the water by " << moved);
-    CHECK(max < 1e-2F);
-    CHECK(ctx->errors->load() == 0);
 }
 
 // A window switch (a zoom across a detail level) used to restart the waves at rest, so a moving
@@ -6140,10 +6157,21 @@ TEST_CASE("the GPU wave carry over a window switch matches the CPU reference") {
                 moved = std::max(moved, std::abs(cpu.state[i][c] - fresh.state[i][c]));
             }
         }
+        // Foam in the old window: into finer cells it is not carried, and the GPU's foam would
+        // differ from the CPU's if it were (the coarser switch starts from the finer window, which
+        // has none: no step runs in between).
+        float foam = 0.0F;
+        for (const fluid::Cell& c : before.state) {
+            foam = std::max(foam, c[3]);
+        }
         MESSAGE("carry into " << to << " cells per tile: GPU vs CPU max " << worst
-                              << ", carried against a fresh start max " << moved);
+                              << ", carried against a fresh start max " << moved
+                              << ", old foam max " << foam);
         CHECK(moved > 0.01F); // the carry did something
-        CHECK(worst < 1e-4F);
+        if (to == 4) {
+            CHECK(foam > 0.01F);
+        }
+        CHECK(worst < 1e-5F); // measured: 7e-7 and 3e-8 (MSVC, RTX 4090)
     }
     CHECK(ctx->errors->load() == 0);
 }

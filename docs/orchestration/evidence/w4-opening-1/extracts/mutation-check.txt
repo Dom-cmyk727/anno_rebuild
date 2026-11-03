@@ -1,0 +1,7 @@
+suppress-move              exit 1 KILLED: FAIL line 57 (expect): latest_kind is 'none', expected == move
+retarget-move              exit 1 KILLED: FAIL line 58 (wait): not over after 60000 ms (outcome none, visibility NoVisualChange, latest is 'refused')
+premature-success          exit 1 KILLED: FAIL line 67 (expect): latest is 'arrived', expected != arrived
+pan-is-a-click             exit 1 KILLED: FAIL line 31 (expect): tracked is '1', expected == 0
+other-owner-controllable   exit 1 KILLED: FAIL line 21 (expect): tracked is '2', expected == 0
+mutation check: 5 of 5 killed; work dir cache\o1\mut2
+rc=0

@@ -79,6 +79,15 @@ The founding and unload numbers are advisory ("would move 5 t"): the sim decides
 - One local participant per window; another seat is a separate process. No network, no trade routes, no AI.
 - Resume is a launch option (no in-game load); a save from other game data or another map is refused with its reason.
 - Sailing the first 550 tiles takes minutes; this is the sim's pace, not a rendering limit.
+- The title bar is the HUD and a window caption is cut off at the window's width (about 190 characters were
+  there with nothing selected): the command state, the advisory and the pointer come first, so a long cargo
+  line is what gets cut. Widen the window if you want to read the stores.
+- You see every ship of the world, whatever the map's visibility policy says (candidate A shares information; a
+  map that hides ships is not honoured by this window yet).
+- The window uses the GPU the system picks (the RTX 4090 on this PC); there is no switch for another adapter.
+- Where a ship is drawn and which way it faces is looked at in screenshots, not asserted by a test; the pointer
+  picks a ship by the same projection the sprite is drawn with.
+- Saves go to `saves\` in the checkout (`ANNO_SAVE_DIR` changes it), not to the folder you started from.
 - Verified here: the production window on the RTX 4090 (Vulkan) and on the CPU renderer, replayed in fresh
   processes. Not verified: native 4K, a Radeon window, physical display latency, five-player scale, late-game
   load, original-runtime fidelity of the ship sprites' facings.

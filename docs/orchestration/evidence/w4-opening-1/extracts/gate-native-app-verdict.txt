@@ -1,0 +1,5 @@
+SKIPPED(opt-in): anno_app_tests.probe: per-island object-list build, commit and a 50-build burst (ScenePicture)
+SKIPPED(opt-in): anno_app_tests.probe: whole-scene rebuild and a coalesced 50-build burst on the fixed map
+COUNTS: selected=248 executed=246 failed=0 empty=0 skipped=2 (required-asset=0 platform=0 opt-in=2 gpu=0 other=0) incomplete=0 sanitizer_lines=0
+VERDICT: PASS
+Evidence: E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\native-n7a.log

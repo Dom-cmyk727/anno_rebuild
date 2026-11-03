@@ -1,0 +1,2 @@
+viewer_wiring: PASS opening_gpu_window: window exit 0 after 12.8 s, every step of the script recorded in order with the whole script's identity; session E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\gpuwin-d129-opening_gpu_window
+viewer_wiring: PASS opening_controls: window exit 0 after 7.8 s, every step of the script recorded in order with the whole script's identity; session E:\anno1503-worktrees\anno1503-W4-opening-1\cache\gates\gpuwin-d129-opening_controls

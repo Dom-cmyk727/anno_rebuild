@@ -2591,6 +2591,146 @@ TEST_CASE("the wave window at a derived zoom level is centred as at its built an
     CHECK(g.errors() == 0);
 }
 
+// Review 2026-11-03 (test gap): a window switch that carries the old waves over (5d25f823) shows
+// them at their full weight; only a new window fades in from the analytic waves over wave_fade_ms.
+TEST_CASE("a wave window switch that carries the waves over does not fade them in again") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer frames(1, false);
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    limits.wave_fade_ms = 250;
+    limits.background_fluid = true; // the window's path: a switch is prepared, then carried over
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    std::uint64_t clock = 5000;
+    g.set_fade_clock([&] { return clock; });
+    const auto target = g.offscreen_target(256, 256);
+    std::uint64_t t = 100;
+    auto frame = [&](double scale) {
+        const auto rv =
+            gpu::resampled_view(2048.0, 2048.0, 256, 256, scale, gpu::ResampleFilter::Box);
+        t += 16;
+        return g.render(frames, *es.scene, rv.view, 2, t, render::WaterStyle::Enhanced,
+                        target.second.get(), &rv.resample);
+    };
+    // The first window fades in (the fade clock stands still while it is prepared).
+    gpu::GpuStats st;
+    REQUIRE(poll_until([&] { st = frame(1.0); },
+                       [&] { return st.wave_simulation && st.fluid_cells_per_tile == 4; }, 20.0));
+    CHECK(st.fluid_fade == doctest::Approx(0.0F));
+    clock += 125;
+    CHECK(frame(1.0).fluid_fade == doctest::Approx(0.5F));
+    clock += 200;
+    st = frame(1.0);
+    CHECK(st.fluid_fade == 1.0F);
+    // A zoom out to the far end of the level: a window of 2 cells per tile, the waves carried over
+    // into it, at full weight from its first frame.
+    const std::uint64_t windows = st.fluid_windows, carried = st.fluid_resamples;
+    REQUIRE(
+        poll_until([&] { st = frame(0.475); }, [&] { return st.fluid_cells_per_tile == 2; }, 20.0));
+    CHECK(st.fluid_windows > windows);
+    CHECK(st.fluid_resamples > carried);
+    CHECK(st.fluid_fade == 1.0F);
+    CHECK(g.errors() == 0);
+}
+
+// Review 2026-11-03 (test gap): the ships set on a frame (GpuFrame::set_wakes, what the window
+// passes from ShipMotion::wakes) reach its wave simulation. Two compositors draw the same view of a
+// map's sea at the same times; on one a ship sails through deep water near the middle of the view.
+TEST_CASE("the ships set on a frame stir its simulated waves (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    constexpr int kW = 1280, kH = 720;
+    const char* name = "Single_24.sze";
+    const Loaded loaded = load_scene(*dir, name);
+    const auto& scene = loaded.scene;
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    auto calm = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    auto sail = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(calm);
+    REQUIRE(sail);
+    render::FrameRenderer fc(4, false), fs(4, false);
+    const auto tc = calm.value()->offscreen_target(kW, kH);
+    const auto ts = sail.value()->offscreen_target(kW, kH);
+    const render::Rect first = digest_view(*scene, name, 1, kW, kH);
+    std::uint64_t t = 1000;
+    const gpu::GpuStats st = calm.value()->render(fc, *scene, first, 1, t,
+                                                  render::WaterStyle::Enhanced, tc.second.get());
+    REQUIRE(st.wave_simulation);
+    // The nearest start to the view's centre whose 6 tiles of course (+x) are all open water (12 of
+    // the depth's 16 HEIGHT units at most: Scene::fluid_depth is below the waterline), and the view
+    // moved to put the course in its middle.
+    const int cx = static_cast<int>(std::lround(st.fluid_centre.first));
+    const int cy = static_cast<int>(std::lround(st.fluid_centre.second));
+    std::optional<std::pair<int, int>> start;
+    for (int r = 0; r <= 60 && !start; ++r) {
+        for (int dy = -r; dy <= r && !start; ++dy) {
+            for (int dx = -r; dx <= r && !start; ++dx) {
+                if (std::max(std::abs(dx), std::abs(dy)) != r) {
+                    continue;
+                }
+                bool deep = true;
+                for (int k = 0; k <= 6; ++k) {
+                    deep = deep && scene->fluid_depth(static_cast<float>(cx + dx + k),
+                                                      static_cast<float>(cy + dy)) >= 12.0F;
+                }
+                if (deep) {
+                    start = std::pair{cx + dx, cy + dy};
+                }
+            }
+        }
+    }
+    REQUIRE(start.has_value());
+    const auto [ax, ay] = render::tile_top(cx, cy, 1);
+    const auto [bx, by] = render::tile_top(start->first + 3, start->second, 1);
+    const render::Rect view{first.x + bx - ax, first.y + by - ay, kW, kH};
+    for (int i = 0; i < 8; ++i) { // both settle on the moved view without a ship
+        t += 33;
+        calm.value()->render(fc, *scene, view, 1, t, render::WaterStyle::Enhanced, tc.second.get());
+        sail.value()->render(fs, *scene, view, 1, t, render::WaterStyle::Enhanced, ts.second.get());
+    }
+    anno::render::fluid::ShipWake ship;
+    ship.x = static_cast<float>(start->first);
+    ship.y = static_cast<float>(start->second);
+    ship.vx = 6.0F;
+    for (int i = 0; i < 24; ++i) { // 0.8 s: 4.8 tiles
+        t += 33;
+        ship.x += 6.0F * 0.033F;
+        sail.value()->set_wakes({ship});
+        calm.value()->set_wakes({});
+        calm.value()->render(fc, *scene, view, 1, t, render::WaterStyle::Enhanced, tc.second.get());
+        sail.value()->render(fs, *scene, view, 1, t, render::WaterStyle::Enhanced, ts.second.get());
+    }
+    const auto pc = calm.value()->read_back(tc.first.get(), kW, kH);
+    const auto ps = sail.value()->read_back(ts.first.get(), kW, kH);
+    REQUIRE(pc.size() == ps.size());
+    std::size_t differ = 0;
+    for (std::size_t i = 0; i < pc.size(); i += 4) {
+        int m = 0;
+        for (std::size_t k = 0; k < 3; ++k) {
+            m = std::max(m, std::abs(int{pc[i + k]} - int{ps[i + k]}));
+        }
+        differ += m > 8 ? 1U : 0U;
+    }
+    MESSAGE("pixels the ship changed: " << differ << " of " << pc.size() / 4);
+    CHECK(differ > 200);
+    CHECK(calm.value()->errors() == 0);
+    CHECK(sail.value()->errors() == 0);
+}
+
 TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed picture") {
     auto ctx = device_or_skip();
     if (!ctx) {
@@ -5925,5 +6065,85 @@ TEST_CASE("a zoom in carries the waves smooth and leaves the far levels' surf be
     CHECK(share < 0.002);
     REQUIRE(fine.inner > 0.0);
     CHECK(fine.edge < 2.0 * fine.inner);
+    CHECK(ctx->errors->load() == 0);
+}
+
+// Review 2026-11-03: the wave carry over a window switch (resample_state) had no CPU reference;
+// every GPU-vs-CPU comparison turned it off. FluidGrid::carry_from is that reference: the GPU's
+// state right after a switch is the CPU's carry of the GPU's state right before it, into finer
+// cells (the B-spline, no foam) and into coarser ones (bilinear), over a beach with a ship's wake
+// on it.
+TEST_CASE("the GPU wave carry over a window switch matches the CPU reference") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 128;
+    cfg.recentre_cells = 8;
+    cfg.sponge_cells = 8;
+    // Deep (12) at x < 6, a beach rising to dry land past x = 14.
+    const fluid::DepthFn depth = [](float x, float) {
+        return x < 6.0F ? 12.0F : 12.0F - 1.5F * (x - 6.0F);
+    };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    g.set_background(true);
+    const FluidRun run{*ctx, g, depth};
+    auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+    REQUIRE(frame);
+    const auto read = [&](const fluid::FluidWindow& w) {
+        fluid::FluidGrid grid(cfg, w, depth, 0.0F);
+        const auto n = static_cast<std::uint32_t>(w.size);
+        const auto bytes = frame.value()->read_back(g.state_texture(), n, n, 16);
+        REQUIRE(bytes.size() == grid.state.size() * 16);
+        for (std::size_t i = 0; i < grid.state.size(); ++i) {
+            std::memcpy(grid.state[i].data(), bytes.data() + 16 * i, 16);
+        }
+        return grid;
+    };
+    std::uint64_t time_ms = 2000;
+    const std::pair<float, float> centre{8.0F, 8.0F};
+    REQUIRE(poll_until(
+        [&] { run(1, centre, 20.0F, time_ms, 2); },
+        [&] { return g.window() && g.window()->cells_per_tile == 2 && !g.setting_up(); }, 20.0));
+    fluid::ShipWake ship;
+    ship.x = 2.0F;
+    ship.y = 8.0F;
+    ship.vx = 6.0F;
+    for (int i = 0; i < 30; ++i) { // the swell on the beach and a wake across the deep water
+        g.set_ships({ship});
+        time_ms += 33;
+        run(1, centre, 20.0F, time_ms, 2);
+        ship.x += 6.0F * 0.033F;
+    }
+    g.set_ships({});
+    for (const std::uint32_t to : {4U, 1U}) { // into finer cells, then coarser ones
+        const fluid::FluidGrid before = read(*g.window());
+        const std::uint64_t carried = g.resamples();
+        // The clock stands still: no step between the switch and the read-back.
+        REQUIRE(poll_until(
+            [&] { run(1, centre, 20.0F, time_ms, to); },
+            [&] { return g.window() && g.window()->cells_per_tile == to && !g.setting_up(); },
+            20.0));
+        REQUIRE(g.resamples() == carried + 1);
+        const fluid::FluidGrid after = read(*g.window());
+        fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(time_ms) / 1000.0F);
+        const fluid::FluidGrid fresh = cpu;
+        cpu.carry_from(before);
+        float worst = 0.0F, moved = 0.0F;
+        for (std::size_t i = 0; i < cpu.state.size(); ++i) {
+            for (std::size_t c = 0; c < 4; ++c) {
+                worst = std::max(worst, std::abs(after.state[i][c] - cpu.state[i][c]));
+                moved = std::max(moved, std::abs(cpu.state[i][c] - fresh.state[i][c]));
+            }
+        }
+        MESSAGE("carry into " << to << " cells per tile: GPU vs CPU max " << worst
+                              << ", carried against a fresh start max " << moved);
+        CHECK(moved > 0.01F); // the carry did something
+        CHECK(worst < 1e-4F);
+    }
     CHECK(ctx->errors->load() == 0);
 }

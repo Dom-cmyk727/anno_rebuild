@@ -15,7 +15,7 @@ struct Params {
     c: vec4<f32>,
     // force_rate, sponge_cells, infiltration, deep_speed / depth_cap
     d: vec4<f32>,
-    // max_speed, swash_foam, break_min_depth, 0
+    // max_speed, swash_foam, break_min_depth, ship_full_depth
     e: vec4<f32>,
     // per swell component: (kx, ky, omega, phase), (amplitude, 0, 0, 0)
     comps: array<vec4<f32>, 16>,
@@ -36,7 +36,8 @@ struct Step {
 @group(0) @binding(3) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(4) var bathy: texture_2d<f32>;
 
-// Ships acting on the water (fluid.hpp ShipWake): head = (count, wave gain, 0, 0); per ship
+// Ships acting on the water (fluid.hpp ShipWake): head = (count, wave gain, min speed, stern
+// share); per ship
 // items[2 i] = (x, y, vx, vy) in tiles and tiles / s, items[2 i + 1] = (half length, half width, 0, 0).
 struct Ships {
     head: vec4<f32>,
@@ -106,7 +107,7 @@ fn ship_term(p: vec2<f32>) -> f32 {
         let a0 = SH.items[2 * i];
         let a1 = SH.items[2 * i + 1];
         let speed = length(a0.zw);
-        if speed < 0.05 {
+        if speed < SH.head.z {
             continue;
         }
         let dir = a0.zw / speed;
@@ -122,7 +123,7 @@ fn ship_term(p: vec2<f32>) -> f32 {
         let w = b / wb;
         var lengthwise = 4.0 * u * (1.0 - u * u);
         if u <= 0.0 {
-            lengthwise *= 0.6; // fluid::kShipSternShare
+            lengthwise *= SH.head.w;
         }
         r += SH.head.y * speed / la * lengthwise * exp(-w * w);
     }
@@ -241,7 +242,7 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
         eta -= dt * P.d.z;
     }
     if SH.head.x > 0.5 && h > WET {
-        eta += dt * clamp(h / 40.0, 0.0, 1.0) * ship_term(cell_centre(x, y));
+        eta += dt * clamp(h / P.e.w, 0.0, 1.0) * ship_term(cell_centre(x, y));
     }
     eta = max(eta, -h);
     let d = eta + h;

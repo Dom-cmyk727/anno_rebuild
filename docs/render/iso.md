@@ -149,7 +149,9 @@ Owner decision 2026-10-17: a real fluid simulation instead of parametric waves (
   cell's edge, which the relief lighting drew as steps a coarse cell wide, and the far levels' surf (1-2 cells per tile) came in
   as blobs off the shore (owner playtest round 6). Test `a zoom in carries the waves smooth and leaves the far levels' surf
   behind` (1 -> 16 cells per tile on a beach: foam on 0 % of the wet cells, 3.2 % before; the surface's second difference at the
-  old cells' edges 1.15 x the one between them, 6.5 x before). While a new window is still being prepared (10-40 ms of CPU on the
+  old cells' edges 1.15 x the one between them, 6.5 x before). CPU reference: `FluidGrid::carry_from` (review 2026-11-03), test
+  `the GPU wave carry over a window switch matches the CPU reference` (GPU vs CPU at most 7e-7 into finer cells, 3e-8 into
+  coarser ones, with a ship's wake on a beach). While a new window is still being prepared (10-40 ms of CPU on the
   opening map), the old one keeps drawing the finer view, with its coarser cells; not changed. Known limits (review
   2026-11-03): the B-spline's 4 x 4 old cells reach two cells inland, where a dry cell holds its bed, so a shallow fine cell
   near the shore can start a few tenths of a unit high (bilinear did so over 2 x 2); it approximates rather than

@@ -116,6 +116,13 @@ struct FluidConfig {
     /// depth (ship_depth_factor) so that the bow wave stays well under the breaking limit
     /// (break_ratio 0.8): no foam, the owner does not want a trail.
     float ship_wave_gain = 30.0F;
+    /// Slower than this (tiles per second) a ship leaves no wake.
+    float ship_min_speed = 0.05F;
+    /// The stern's trough against the bow's crest (a ship's stern wave is the weaker; tuning).
+    float ship_stern_share = 0.6F;
+    /// The still-water depth (HEIGHT units) from which a ship's whole source acts
+    /// (ship_depth_factor).
+    float ship_full_depth = 40.0F;
 
     /// Cells per side for a view spanning span_tiles tiles (screen width /
     /// tile width + screen height / tile height) at zoom `group` (<
@@ -166,7 +173,7 @@ Forcing forcing(const FluidConfig& cfg, const Swell& comps, std::pair<float, flo
 /// water as a moving body). Render-side only, like the rest of the simulation: it never reaches the
 /// game state. The hull piles the water up at its bow and lets it fall back at its stern: with
 /// u = a / half_length along and w = b / half_width across the heading, the elevation source is
-/// S = gain * |v| / half_length * 4 u (1 - u^2) * exp(-w^2), times kShipSternShare behind the
+/// S = gain * |v| / half_length * 4 u (1 - u^2) * exp(-w^2), times ship_stern_share behind the
 /// middle, and nothing outside the hull's length (|u| >= 1). Owner playtest 2026-11-03: the
 /// gaussian of the first version reached ahead of the stem, so the water rose in front of the ship;
 /// the waves are to build up at the bow and run off to the sides, which the shallow-water equations
@@ -177,20 +184,21 @@ struct ShipWake {
     float half_length = 1.3F, half_width = 0.5F; // tiles
     bool operator==(const ShipWake&) const = default;
 };
-/// The stern's trough against the bow's crest (a ship's stern wave is the weaker; tuning).
-inline constexpr float kShipSternShare = 0.6F;
-/// At most this many ships act on the water at once (the shader's uniform array has this size).
+/// At most this many ships act on the water at once, the nearest to the view's centre first
+/// (ShipMotion::wakes); the others leave no wake. The reason: fluid.wgsl reads the ships from a
+/// uniform array of this size (2 vec4 each, 528 bytes in all), which every adapter holds. To raise
+/// it, make the array a read-only storage buffer sized from the ship count (the binding layout and
+/// its bind groups recreated when the count outgrows it); 16 covers the LAN openings' ships in
+/// view.
 inline constexpr std::size_t kMaxShipWakes = 16;
-/// Slower than this (tiles per second) a ship leaves no wake.
-inline constexpr float kShipWakeMinSpeed = 0.05F;
 
 /// Elevation rate (HEIGHT units per second) of the ships at tile position (px, py).
 float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, float px, float py);
 /// The share of that rate that acts over still water of depth `h` (HEIGHT units): none on a beach,
 /// proportional to the depth in the shallows (a ship's wave would only break there and churn foam),
-/// all from 40 deep, so the bow wave is never more than about half the depth.
-inline float ship_depth_factor(float h) {
-    return h <= 0.0F ? 0.0F : (h >= 40.0F ? 1.0F : h / 40.0F);
+/// all from cfg.ship_full_depth (40) deep, so the bow wave is never more than about half the depth.
+inline float ship_depth_factor(const FluidConfig& cfg, float h) {
+    return h <= 0.0F ? 0.0F : (h >= cfg.ship_full_depth ? 1.0F : h / cfg.ship_full_depth);
 }
 
 /// A rectangle of world cells [x0, x1) × [y0, y1).
@@ -314,6 +322,13 @@ class FluidGrid {
 
     /// One time step at simulation time t (s, after the step).
     void step(float t);
+
+    /// Takes the waves over from `old`, the window this one replaces (a zoom: other cells per tile
+    /// or another size): the CPU reference of fluid.wgsl's resample_state (review 2026-11-03: the
+    /// carry ran on the GPU only). A wet cell over the old window's cells (two in from its edge)
+    /// takes the old state there: into finer cells a cubic B-spline of the elevation and the
+    /// velocities and no foam, otherwise bilinear; every other cell keeps its own initial state.
+    void carry_from(const FluidGrid& old);
 
   private:
     /// Relaxation factor towards the swell for world cell (x, y) of depth h

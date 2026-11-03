@@ -358,7 +358,7 @@ TEST_CASE("fluid ship term: bow wave ahead, trough behind, nothing when still") 
     const float beam = fluid::ship_term(cfg, ships, 10.0F, 10.0F);
     CHECK(ahead > 0.0F);  // the bow piles the water up
     CHECK(behind < 0.0F); // the stern lets it fall back, less
-    CHECK(-behind == doctest::Approx(fluid::kShipSternShare * ahead).epsilon(1e-4));
+    CHECK(-behind == doctest::Approx(cfg.ship_stern_share * ahead).epsilon(1e-4));
     CHECK(std::abs(beam) < 1e-4F); // at the hull's middle
     // Nothing ahead of the stem (half_length 1.3 tiles ahead of the middle) or behind the stern:
     // the water does not rise in front of the ship (owner playtest 2026-11-03).
@@ -369,7 +369,7 @@ TEST_CASE("fluid ship term: bow wave ahead, trough behind, nothing when still") 
           doctest::Approx(fluid::ship_term(cfg, ships, 10.8F, 9.6F)).epsilon(1e-4));
     CHECK(fluid::ship_term(cfg, ships, 20.0F, 10.0F) ==
           doctest::Approx(0.0F).epsilon(1e-6)); // far away
-    s.vx = 0.01F;                               // slower than kShipWakeMinSpeed
+    s.vx = 0.01F;                               // slower than ship_min_speed
     CHECK(fluid::ship_term(cfg, {s}, 10.8F, 10.0F) == 0.0F);
     // The speed scales it; the heading turns it.
     fluid::ShipWake fast = ships[0];
@@ -412,8 +412,8 @@ TEST_CASE(
     CHECK(foam_diff == 0.0F);       // and left no foam: the bow wave stays under the breaking limit
     CHECK(max_diff < 0.6F * 16.0F); // the bow wave stays under the depth's breaking limit (0.8)
     // Over a beach or the shallows the ships act on nothing.
-    CHECK(fluid::ship_depth_factor(-1.0F) == 0.0F);
-    CHECK(fluid::ship_depth_factor(0.0F) == 0.0F);
-    CHECK(fluid::ship_depth_factor(20.0F) == doctest::Approx(0.5F));
-    CHECK(fluid::ship_depth_factor(50.0F) == 1.0F);
+    CHECK(fluid::ship_depth_factor(cfg, -1.0F) == 0.0F);
+    CHECK(fluid::ship_depth_factor(cfg, 0.0F) == 0.0F);
+    CHECK(fluid::ship_depth_factor(cfg, 20.0F) == doctest::Approx(0.5F));
+    CHECK(fluid::ship_depth_factor(cfg, 50.0F) == 1.0F);
 }

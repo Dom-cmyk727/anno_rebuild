@@ -321,6 +321,8 @@ struct GpuFrame::Impl {
     bool fluid_off = false;
     /// The tile position the last update_fluid centred the wave window on (GpuStats::fluid_centre).
     std::pair<float, float> fluid_centre{0.0F, 0.0F};
+    /// The cross-fade weight of the last frame uniform (GpuStats::fluid_fade).
+    float fluid_fade_drawn = 1.0F;
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -2485,6 +2487,7 @@ struct GpuFrame::Impl {
                 f.fluid_cpt = static_cast<float>(w->cells_per_tile);
             }
         }
+        fluid_fade_drawn = f.fluid_fade;
         const auto u = frame_uniform_bytes(f);
         wgpuQueueWriteBuffer(queue(), frame_uniform.get(), 0, u.data(), u.size());
     }
@@ -3222,6 +3225,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
     const bool river_flow = style == WaterStyle::Enhanced &&
                             frames.river_flow == RiverFlowMode::Flow && scene.river_active();
     m.write_frame_uniform(view, group, time_ms, style, scene, fluid_on, river_flow);
+    stats.fluid_fade = m.fluid_fade_drawn;
     {
         RiverParams rp = scene.river_cfg.params();
         rp.quality = m.quality;

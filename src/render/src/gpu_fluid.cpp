@@ -56,7 +56,7 @@ std::vector<std::uint8_t> params_bytes(const fluid::FluidConfig& cfg, const flui
                           cfg.force_rate,        static_cast<float>(cfg.sponge_cells),
                           cfg.infiltration,      cfg.deep_speed / cfg.depth_cap,
                           cfg.max_speed,         cfg.swash_foam,
-                          cfg.break_min_depth,   0.0F};
+                          cfg.break_min_depth,   cfg.ship_full_depth};
     std::vector<std::uint8_t> out;
     out.reserve(kParamsBytes);
     for (const float f : v) {
@@ -76,7 +76,8 @@ std::vector<std::uint8_t> ships_bytes(const fluid::FluidConfig& cfg,
     std::vector<std::uint8_t> out;
     out.reserve(kShipsBytes);
     const std::size_t n = std::min(ships.size(), fluid::kMaxShipWakes);
-    for (const float f : {static_cast<float>(n), cfg.ship_wave_gain, 0.0F, 0.0F}) {
+    for (const float f :
+         {static_cast<float>(n), cfg.ship_wave_gain, cfg.ship_min_speed, cfg.ship_stern_share}) {
         put_f32(out, f);
     }
     for (std::size_t i = 0; i < fluid::kMaxShipWakes; ++i) {

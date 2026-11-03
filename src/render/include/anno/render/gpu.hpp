@@ -145,6 +145,9 @@ struct GpuStats {
     std::uint32_t fluid_cells_per_tile = 0;
     /// The tile position the wave window was asked to centre on (the view's centre at sea level).
     std::pair<float, float> fluid_centre{0.0F, 0.0F};
+    /// The simulated waves' weight against the analytic ones in this frame (the wave_fade_ms
+    /// cross-fade of a new window; 1 = the simulation alone).
+    float fluid_fade = 1.0F;
     /// Visible chunks drawn from another zoom group's chunks because their own
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.

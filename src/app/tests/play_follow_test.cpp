@@ -187,7 +187,7 @@ render::Rect view_at(const render::Scene& scene, std::uint32_t number, std::int3
             if (pl.index == i) {
                 const auto [tw, th] = render::kTile[2];
                 const int cx2 = 2 * x + 1, cy2 = 2 * y + 1;
-                const int sx = (cx2 - cy2) * tw / 4 + pl.offset.first;
+                const int sx = (cy2 - cx2) * tw / 4 + pl.offset.first;
                 const int sy = (cx2 + cy2) * th / 4 + pl.offset.second;
                 return render::Rect{sx - 512, sy - 384, 1024, 768};
             }

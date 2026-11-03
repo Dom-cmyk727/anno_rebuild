@@ -37,21 +37,25 @@ TEST_CASE("ship motion: the 16 headings of a world direction") {
     CHECK(app::ShipMotion::dir16_of(0, 1) == 4);
     CHECK(app::ShipMotion::dir16_of(1, 0) == 8);
     CHECK(app::ShipMotion::dir16_of(0, -1) == 12);
-    // Screen right is (+x, -y): between +x (8) and -y (12).
-    CHECK(app::ShipMotion::dir16_of(1, -1) == 10);
+    // Screen right is (-x, +y) in the original's handedness: between -x (0) and +y (4); screen
+    // left (+x, -y) between +x (8) and -y (12).
     CHECK(app::ShipMotion::dir16_of(-1, 1) == 2);
+    CHECK(app::ShipMotion::dir16_of(1, -1) == 10);
     CHECK(app::ShipMotion::dir16_of(-1, -0.4) == 15);
 }
 
 TEST_CASE("ship motion: the sprite frame of a heading is the measured one") {
-    // Measured: frame k shows its bow towards compass 45 + 22.5 k degrees, dir16 d heads 315 - 22.5
-    // d.
-    CHECK(app::ShipLayer::facing_frame(0, 16) == 12);
-    CHECK(app::ShipLayer::facing_frame(4, 16) == 8);
-    CHECK(app::ShipLayer::facing_frame(8, 16) == 4);
-    CHECK(app::ShipLayer::facing_frame(12, 16) == 0);
-    // A ship sailing to the screen's right heads (+x, -y) = dir16 10 and shows frame 2 (bow east).
-    CHECK(app::ShipLayer::facing_frame(10, 16) == 2);
+    // Measured (2026-11-03): frame k shows its bow towards screen compass 45 + 22.5 k degrees. In
+    // the original's handedness dir16 d heads towards screen compass 45 + 22.5 d (-x is north-east,
+    // +y south-east): frame = dir16. The former mapping (12 - d) mod 16 belonged to the mirrored
+    // picture; it fails every check below except d = 6 and 14 (its fixed points).
+    for (std::uint8_t d = 0; d < 16; ++d) {
+        CHECK(app::ShipLayer::facing_frame(d, 16) == d);
+    }
+    // A ship sailing to the screen's right heads (-x, +y) = dir16 2 and shows frame 2 (bow east).
+    CHECK(app::ShipLayer::facing_frame(app::ShipMotion::dir16_of(-1, 1), 16) == 2);
+    // ... and one sailing to the screen's left (+x, -y) = dir16 10, frame 10 (bow west).
+    CHECK(app::ShipLayer::facing_frame(app::ShipMotion::dir16_of(1, -1), 16) == 10);
     std::set<std::size_t> frames;
     for (std::uint8_t d = 0; d < 16; ++d) {
         frames.insert(app::ShipLayer::facing_frame(d, 16));

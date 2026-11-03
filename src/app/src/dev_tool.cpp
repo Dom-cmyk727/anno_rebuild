@@ -22,7 +22,7 @@ std::pair<double, double> placement_rounding(const render::Scene& scene, std::si
         }
         const auto [tw, th] = render::kTile[built];
         const double x = static_cast<double>(island.x), y = static_cast<double>(island.y);
-        const double ex = p.offset.first - (x - y) * tw / 2.0;
+        const double ex = p.offset.first - (y - x) * tw / 2.0;
         const double ey = p.offset.second - (x + y) * th / 2.0;
         const double scale = group < render::kGroups ? 1.0 : tile_w / tw;
         return {ex * scale, ey * scale};

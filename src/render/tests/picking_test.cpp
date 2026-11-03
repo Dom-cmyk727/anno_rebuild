@@ -153,14 +153,15 @@ TEST_CASE("picking: hand-derived tile centres from tile_top and the lift pick th
                 REQUIRE(picked.has_value());
                 CHECK(picked->first == x);
                 CHECK(picked->second == y);
-                // One step of +u is (tw / 2, th / 2) on screen: 0.6 of it crosses into x + 1,
-                // 0.4 stays (the diamond's edge is at 0.5); -v is (tw / 2, -th / 2).
+                // One step of +u is (-tw / 2, th / 2) on screen (the original's handedness):
+                // 0.6 of it crosses into x + 1, 0.4 stays (the diamond's edge is at 0.5); -v is
+                // (-tw / 2, -th / 2).
                 const auto across =
-                    anno::render::pick_tile(cx + 0.6 * tw / 2.0, cy + 0.6 * th / 2.0, g, flat);
+                    anno::render::pick_tile(cx - 0.6 * tw / 2.0, cy + 0.6 * th / 2.0, g, flat);
                 const auto inside =
-                    anno::render::pick_tile(cx + 0.4 * tw / 2.0, cy + 0.4 * th / 2.0, g, flat);
+                    anno::render::pick_tile(cx - 0.4 * tw / 2.0, cy + 0.4 * th / 2.0, g, flat);
                 const auto back_v =
-                    anno::render::pick_tile(cx + 0.6 * tw / 2.0, cy - 0.6 * th / 2.0, g, flat);
+                    anno::render::pick_tile(cx - 0.6 * tw / 2.0, cy - 0.6 * th / 2.0, g, flat);
                 REQUIRE(across);
                 REQUIRE(inside);
                 REQUIRE(back_v);

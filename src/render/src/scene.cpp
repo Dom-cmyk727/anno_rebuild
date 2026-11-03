@@ -696,7 +696,7 @@ std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
     const int cy2 = 2 * int{o.first.y} + int{h};
     const std::int64_t z2 = 2 * std::int64_t{o.first.height()};
     const int raise = lift.scaled(z2, 2, group);
-    const std::pair<int, int> anchor{(cx2 - cy2) * tw / 4 + offset->first,
+    const std::pair<int, int> anchor{(cy2 - cx2) * tw / 4 + offset->first,
                                      (cx2 + cy2) * th / 4 - raise + offset->second};
     std::optional<Rect> out;
     auto grow = [&](const formats::figuren::FrameSet& fs, bool shadow) {

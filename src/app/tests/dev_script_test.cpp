@@ -72,7 +72,7 @@ app::DevToolSetup setup() {
 /// A group-1 frame of 1600 x 1000 drawable pixels centred on the island's middle tile.
 app::PointerFrame frame(const std::shared_ptr<const render::Scene>& s) {
     const auto [tw, th] = render::kTile[1];
-    const int cx = (kX0 - kY0) * tw / 2;
+    const int cx = (kY0 - kX0) * tw / 2;
     const int cy = (kX0 + kY0 + kSize) * th / 2 + th / 2;
     return app::pointer_frame(render::Rect{cx - 800, cy - 500, 1600, 1000}, nullptr, 1, tw, th, s,
                               1600, 1000);

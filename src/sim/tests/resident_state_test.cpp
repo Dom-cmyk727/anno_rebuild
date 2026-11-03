@@ -460,8 +460,8 @@ Populated populate(bool save_billed) {
     f.home_counter = 1;
     f.job = 0x35;
     sim::ResidentState r;
-    r.step = sim::ResidentStep::Wait;
-    r.wait = 3;
+    r.step = sim::ResidentStep::ToHome; // a walking step: the job validators allow a route here
+    r.wait = 0;
     r.route = {sim::FixedPos{256 * 111, 256 * 111}};
     r.next = 1;
     r.along = 7;
@@ -499,7 +499,7 @@ TEST_CASE("stream 128: a populated world saves and loads with billed saved (the 
     const sim::Figure* f = sim::find_figure(w2.figures(), p.figure);
     REQUIRE(f != nullptr);
     REQUIRE(f->resident.has_value());
-    CHECK(f->resident->step == sim::ResidentStep::Wait);
+    CHECK(f->resident->step == sim::ResidentStep::ToHome);
     CHECK(f->resident->cargo.size() == 3);
     CHECK(f->resident->cargo[2] == sim::ResidentCargo{27, 0});
     // Each new field is hashed: changing it moves the world hash.

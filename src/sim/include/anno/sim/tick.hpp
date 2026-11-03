@@ -285,9 +285,12 @@ struct FigureMove {
 /// merge in issue order after the store deltas. Claim sets bit 29 (kTileClaim; under
 /// Rules::forestry_claim_hygiene also Island::claims[tile] = actor), Unclaim clears it (and the
 /// entry), Cut turns the tile object `id` into `id - 1` with phase `& 0x80` when the type `id - 1`
-/// is ROHSTWACHS (AnnoWelt 0x10087340; the merge re-applies that predicate).
+/// is ROHSTWACHS (AnnoWelt 0x10087340; the merge re-applies that predicate). Release
+/// (MAP-ECON-1-CLOSE-1, the shared end path, docs/sim/forestry.md 3.5): under
+/// Rules::forestry_claim_hygiene only, clears the bit and the entry when `Island::claims[tile]` is
+/// still `actor` (never another worker's claim); under the faithful rules it writes nothing.
 struct TileEdit {
-    enum class Kind : std::uint8_t { Claim, Unclaim, Cut };
+    enum class Kind : std::uint8_t { Claim, Unclaim, Cut, Release };
     Kind kind = Kind::Claim;
     IslandId island;
     TileXY tile;
@@ -310,6 +313,9 @@ struct Effects {
     std::vector<DrawRecord> draws;
     /// MAP-ECON-1 E3: the harvest body's tile writes, in issue order.
     std::vector<TileEdit> tile_edits;
+    /// Diagnostic (TransportStats::forestry.raw_lost_88, never state): the cargo of harvest workers
+    /// that the shared end path ended before their delivery (MAP-ECON-1-CLOSE-1).
+    std::uint64_t harvest_lost_88 = 0;
 };
 
 /// The world as a serial-phase seam sees it (event handlers, figure behaviour,
@@ -365,8 +371,9 @@ class SerialWorld {
     [[nodiscard]] const FigureRegistry& figures() const { return figures_; }
     /// The list layout of the world's configuration.
     [[nodiscard]] const ListLayout& layout() const { return layout_; }
-    /// Ends the figure a behaviour seam is ticking (end_figure on its fields: the
-    /// release goes into `fx`, home none, the stamp u16(t)); the registry appends it to
+    /// Ends the figure a behaviour seam is ticking (end_figure on its fields: an active
+    /// harvest job is finished first, the release goes into `fx`, home none, the stamp
+    /// u16(t)); the registry appends it to
     /// the expiry list after the seam returns (sync_figure_lists). Returns false when the
     /// figure had ended already.
     bool end_figure(Figure& figure, std::uint32_t t) {

@@ -351,6 +351,13 @@ std::optional<Figure> remove_figure(FigureRegistry& registry, FigureId id);
 /// already (it has a stamp) is left alone. Returns true when it ended the figure now.
 /// The original's last walk between the release and the Remove (0x1003af00: 0 or 15.0
 /// at rate 0.01) belongs to a behaviour body (O-8); here both happen at `t`.
+/// MAP-ECON-1-CLOSE-1 (docs/sim/forestry.md 3.5, "W ends by any path"): before the release
+/// a harvest job that is not Done is finished while the home id still names its island:
+/// the step becomes Done with no walk, wait or first delay owed (target and cargo stay
+/// as history); in ToTree/Cut `fx` gets a TileEdit::Release of the target, which the
+/// merge applies only under Rules::forestry_claim_hygiene and only to the worker's own
+/// entry (the faithful rules write nothing beyond the traced cut/abort). A Done job, the
+/// body's own end, is left exactly as it is.
 bool end_figure(Figure& figure, std::uint32_t t, Effects& fx);
 
 /// end_figure on a figure of `registry`, which also appends it to the expiry list
@@ -362,9 +369,10 @@ void end_figure(FigureRegistry& registry, Figure& figure, std::uint32_t t, Effec
 /// docs/sim/state.md §4.11 C2), the registry follows: a figure that gained an
 /// expiry_stamp is appended to the expiry list and one that lost it leaves it; a
 /// figure that has a stamp but still a home (a seam that set the stamp instead of
-/// calling SerialWorld::end_figure) releases its counter into `fx` as end_figure does,
-/// so the counter goes back once (own design: the seam protocol, which keeps the facts
-/// of validate_figures). `had_stamp` is the flag before the call.
+/// calling SerialWorld::end_figure) finishes its harvest job and releases its counter
+/// into `fx` as end_figure does, so the counter goes back once (own design: the seam
+/// protocol, which keeps the facts of validate_figures). `had_stamp` is the flag before
+/// the call.
 void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp, Effects& fx);
 
 /// The structural facts of a figure registry (docs/sim/state.md §9.6; MAP-2 added the

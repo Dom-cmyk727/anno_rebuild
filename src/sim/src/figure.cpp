@@ -193,6 +193,30 @@ void erase_id(std::vector<FigureId>& list, FigureId id) {
     }
 }
 
+/// MAP-ECON-1-CLOSE-1: the harvest job's terminal state on the shared end path (docs/sim/
+/// forestry.md 2.1, 3.5). Runs before release_home clears the home id, which names the island of
+/// the target. Done (the body's own end, already normalized) is left untouched, so the ordinary
+/// completion's bytes do not change; repeated calls do nothing.
+void finish_harvest(Figure& figure, Effects& fx) {
+    if (!figure.harvest.has_value() || figure.harvest->step == HarvestStep::Done) {
+        return;
+    }
+    HarvestState& h = *figure.harvest;
+    if (h.step == HarvestStep::ToTree || h.step == HarvestStep::Cut) {
+        // Only these steps hold a claim (Start has not selected, the cut arrival released it before
+        // ToHome). Owner-conditional and hygiene-gated at the merge: never another worker's claim.
+        fx.tile_edits.push_back(
+            TileEdit{TileEdit::Kind::Release, island_of(figure.home), h.target, figure.id});
+    }
+    fx.harvest_lost_88 += figure.cargo_88; // the cargo stays on the figure as history
+    h.step = HarvestStep::Done;
+    h.start_delay = 0;
+    h.wait = 0;
+    h.route.clear();
+    h.next = 0;
+    h.along = 0;
+}
+
 /// D 0x1003b6e0's release: the home counter through the figure, once (the unit's +0x78
 /// is cleared after the home's slot +0x2c).
 void release_home(Figure& figure, Effects& fx) {
@@ -225,6 +249,7 @@ bool end_figure(Figure& figure, std::uint32_t t, Effects& fx) {
     if (figure.expiry_stamp.has_value()) {
         return false;
     }
+    finish_harvest(figure, fx);
     release_home(figure, fx);
     figure.expiry_stamp = static_cast<std::uint16_t>(t);
     return true;
@@ -240,7 +265,9 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
     const bool has_stamp = figure.expiry_stamp.has_value();
     if (has_stamp) {
         // A stamp means the figure has ended: its counter goes back now if the seam did
-        // not end it through SerialWorld::end_figure (own design, the seam protocol).
+        // not end it through SerialWorld::end_figure (own design, the seam protocol); an active
+        // harvest job is finished first, as end_figure does.
+        finish_harvest(figure, fx);
         release_home(figure, fx);
     }
     if (has_stamp && !had_stamp) {
@@ -369,6 +396,11 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
             if (h.step == HarvestStep::Done && !f.expiry_stamp.has_value()) {
                 return hw + ".step: Done, but the figure has not ended (Done is resolved in the "
                             "same call by its end)";
+            }
+            // MAP-ECON-1-CLOSE-1: and every end path finishes the job first (Done <=> ended).
+            if (f.expiry_stamp.has_value() && h.step != HarvestStep::Done) {
+                return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +
+                       ", but the figure has ended (every end path finishes the job: Done)";
             }
         }
     }

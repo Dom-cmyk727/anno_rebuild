@@ -276,6 +276,17 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
                 is->claims.erase(e.tile);
             }
             break;
+        case TileEdit::Kind::Release:
+            // The shared end path (MAP-ECON-1-CLOSE-1): enhanced only, and only the ending
+            // worker's own entry; the faithful rules write nothing here.
+            if (w.rules_.forestry_claim_hygiene) {
+                const auto it = is->claims.find(e.tile);
+                if (it != is->claims.end() && it->second == e.actor) {
+                    is->tiles.set_aux(idx, is->tiles.aux(idx) & ~kTileClaim);
+                    is->claims.erase(it);
+                }
+            }
+            break;
         case TileEdit::Kind::Cut: {
             const std::uint32_t id = is->tiles.object(idx);
             if (harvest_cuttable(*w.types_, id)) {
@@ -287,6 +298,9 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             break;
         }
         }
+    }
+    if (fx.harvest_lost_88 != 0 && w.transport_stats_ != nullptr) {
+        w.transport_stats_->forestry.raw_lost_88 += fx.harvest_lost_88; // diagnostic only
     }
     // 7. Timed events.
     for (const EnqueueEvent& e : fx.events) {

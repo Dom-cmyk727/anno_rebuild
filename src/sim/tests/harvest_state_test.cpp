@@ -514,6 +514,25 @@ TEST_CASE("harvest state: validators refuse impossible states and never repair v
             CHECK(contains(load_problem(w), b.text));
         }
     }
+    SUBCASE("an ended worker is Done: every end path finishes the job (CLOSE-1)") {
+        // docs/sim/forestry.md 2.1: Done <=> ended. An ended figure (stamp, on the expiry list,
+        // home none, its counter back) whose job is still on the way out is refused; the same
+        // figure in Done is the valid control.
+        sim::World w = make(false);
+        sim::Figure& f = worker(w);
+        to_tree(f);
+        set_claim(w, true);
+        REQUIRE(w.check_invariants() == "");
+        f.home = sim::BuildingId{};
+        f.expiry_stamp = 1;
+        sim::WorldTestAccess::figures(w).expiry.push_back(f.id);
+        farm_at(w, 0, kForester).workers_out = 0;
+        CHECK(contains(w.check_invariants(), "but the figure has ended"));
+        CHECK(contains(load_problem(w), "but the figure has ended"));
+        f.harvest->step = sim::HarvestStep::Done;
+        CHECK(w.check_invariants() == "");
+        CHECK(load_problem(w) == "");
+    }
     SUBCASE("a home that resolves must be a Farm; a demolished home is valid") {
         sim::World w = make(false);
         sim::Figure& f = worker(w);

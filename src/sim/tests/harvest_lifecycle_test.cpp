@@ -559,3 +559,306 @@ TEST_CASE("harvest lifecycle: end, counter release once, expiry, and a switched-
     CHECK(sim::find_figure(w.figures(), id) == nullptr);
     CHECK(forester(w).workers_out == 0);
 }
+
+// MAP-ECON-1-CLOSE-1 C1: the supported public end path (docs/sim/forestry.md 3.5 "W ends by any
+// path of this sim"). A behaviour body ends its figure through SerialWorld::end_figure (or sets the
+// stamp itself, which sync_figure_lists completes); the end must leave a valid, reloadable world in
+// both rule sets, release the home counter exactly once, keep the historical cargo, and under the
+// enhanced rules release only the ending worker's own claim. Expected values are derived from the
+// contract's rows, not read back from the C++.
+namespace {
+
+/// A figure-tick seam that ends one figure (`victim`) and leaves every other figure as it is
+/// (while installed the seam replaces the default bodies, so the others are frozen). `direct`:
+/// the seam writes the stamp itself instead of calling SerialWorld::end_figure.
+struct Ender {
+    sim::FigureId victim;
+    bool direct = false;
+};
+
+void install_ender(sim::World& w, Ender* e) {
+    auto& seam = sim::WorldTestAccess::seams(w).figure_tick;
+    seam.name = "test_harvest_ender";
+    seam.ctx = e;
+    seam.fn = [](void* p, const sim::TickContext& ctx, sim::SerialWorld& sw, sim::Figure& g) {
+        const Ender& en = *static_cast<const Ender*>(p);
+        if (g.id != en.victim) {
+            return;
+        }
+        if (en.direct) {
+            if (!g.expiry_stamp.has_value()) {
+                g.expiry_stamp = static_cast<std::uint16_t>(ctx.t);
+            }
+        } else {
+            sw.end_figure(g, ctx.t);
+        }
+    };
+}
+
+void remove_ender(sim::World& w) {
+    sim::WorldTestAccess::seams(w).figure_tick = {};
+}
+
+/// Save, then load with the world's own (same-named) seams; the reload must succeed and give the
+/// same bytes and hash.
+void check_reload(sim::World& w, const std::shared_ptr<const sim::TypeRegistry>& types) {
+    const std::vector<std::uint8_t> bytes = w.save();
+    auto back = sim::World::load(bytes, types, sim::WorldTestAccess::seams(w));
+    CHECK_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    if (!back.ok()) {
+        return; // reported; the caller's remaining checks still run
+    }
+    CHECK(back.value().save() == bytes);
+    CHECK(back.value().state_hash() == w.state_hash());
+}
+
+const char* step_name(sim::HarvestStep s) {
+    switch (s) {
+    case sim::HarvestStep::Start:
+        return "Start (first delay owed)";
+    case sim::HarvestStep::ToTree:
+        return "ToTree";
+    case sim::HarvestStep::Cut:
+        return "Cut";
+    case sim::HarvestStep::ToHome:
+        return "ToHome (carrying)";
+    case sim::HarvestStep::Done:
+        return "Done";
+    }
+    return "?";
+}
+
+} // namespace
+
+TEST_CASE("harvest end: the public end in every active step leaves a valid, reloadable world") {
+    for (const bool hygiene : {false, true}) {
+        for (const sim::HarvestStep at : {sim::HarvestStep::Start, sim::HarvestStep::ToTree,
+                                          sim::HarvestStep::Cut, sim::HarvestStep::ToHome}) {
+            for (const bool direct : {false, true}) {
+                INFO("hygiene " << hygiene << ", step " << std::string(step_name(at)) << ", "
+                                << std::string(direct ? "stamp set by the seam"
+                                                      : "SerialWorld::end_figure"));
+                sim::Rules rules;
+                rules.forestry_claim_hygiene = hygiene;
+                Forest f = make_forest({{115, 111}}, kTree, rules);
+                sim::World& w = f.w;
+                w.set_transport_stats(&f.stats);
+                const sim::FigureId id = first_worker(w);
+                forester(w).switched_on = false; // no second worker: the one ended is the only one
+                if (at == sim::HarvestStep::Start) {
+                    w.advance(2); // the lone worker is visited: 1 of its 5 first-delay ticks
+                    REQUIRE(fig_of(w, id).harvest->start_delay == 4);
+                } else {
+                    REQUIRE(
+                        tick_until(w, [&] { return fig_of(w, id).harvest->step == at; }, 12000));
+                }
+                REQUIRE(fig_of(w, id).harvest->step == at);
+                // Before the end: a valid world that reloads with the same seam names (the
+                // control that the after-end checks are not failing for another reason).
+                Ender en{id, direct};
+                install_ender(w, &en);
+                REQUIRE(w.check_invariants() == "");
+                check_reload(w, f.types);
+                const sim::Figure before = fig_of(w, id);
+                const std::uint32_t out_before = forester(w).workers_out;
+                REQUIRE(out_before == 1);
+                const bool held = at == sim::HarvestStep::ToTree || at == sim::HarvestStep::Cut;
+                REQUIRE(claimed_at(w, 115, 111) == held);
+                if (hygiene && held) {
+                    REQUIRE(w.islands()[0]->claims.at(sim::TileXY{115, 111}) == id);
+                }
+                // The end, through the seam at the worker's next visit.
+                REQUIRE(tick_until(w, [&] { return fig_of(w, id).expiry_stamp.has_value(); }, 200));
+                const sim::Figure& g = fig_of(w, id);
+                // Counter released once, home none (validate_figures' ended-figure facts).
+                CHECK(forester(w).workers_out == out_before - 1);
+                CHECK_FALSE(g.home.valid());
+                // The terminal harvest state: Done, no walk, no wait, nothing owed (forestry.md
+                // 2.1: Done <=> ended); the target and the cargo stay as history.
+                REQUIRE(g.harvest.has_value());
+                CHECK(g.harvest->step == sim::HarvestStep::Done);
+                CHECK(g.harvest->route.empty());
+                CHECK(g.harvest->next == 0);
+                CHECK(g.harvest->along == 0);
+                CHECK(g.harvest->wait == 0);
+                CHECK(g.harvest->start_delay == 0);
+                CHECK(g.harvest->target == before.harvest->target);
+                CHECK(g.cargo_88 == before.cargo_88);
+                CHECK(g.cargo_goods == before.cargo_goods);
+                // The claim (forestry.md 3.5, "W ends by any path"): faithful writes nothing beyond
+                // the traced cut/abort, so a held bit stays (a stray bit, an accepted faithful
+                // state); enhanced releases the worker's own entry and bit.
+                CHECK(claimed_at(w, 115, 111) == (held && !hygiene));
+                CHECK(w.islands()[0]->claims.empty());
+                // Valid and reloadable at once (the defect: the target check and the reload
+                // refused this state).
+                CHECK(w.check_invariants() == "");
+                check_reload(w, f.types);
+                // The raw ledger: the ended cargo is lost history (256 only when carrying).
+                CHECK(f.stats.forestry.raw_lost_88 == before.cargo_88);
+                CHECK(f.stats.forestry.raw_credited_88 - f.stats.forestry.raw_delivered_88 -
+                          f.stats.forestry.raw_lost_88 ==
+                      0);
+                // Repeated end: the direct call is a no-op, and later visits of the ender change
+                // nothing (no second release, no tile write).
+                {
+                    sim::Figure copy = fig_of(w, id);
+                    sim::Effects fx;
+                    CHECK_FALSE(sim::end_figure(copy, 12345, fx));
+                    CHECK(fx.releases.empty());
+                    CHECK(fx.tile_edits.empty());
+                    CHECK(copy.expiry_stamp == fig_of(w, id).expiry_stamp);
+                    CHECK(copy.harvest == fig_of(w, id).harvest);
+                    CHECK_FALSE(copy.home.valid());
+                }
+                const sim::HarvestState ended = *g.harvest;
+                for (int i = 0; i < 300; ++i) {
+                    w.advance(2);
+                }
+                CHECK(forester(w).workers_out == out_before - 1);
+                CHECK(w.check_invariants() == "");
+                CHECK(*fig_of(w, id).harvest == ended);
+                // Expiry: phase C removes the figure figure_expiry_ticks (7500) after its end; the
+                // counter stays released, the world stays valid.
+                REQUIRE(tick_until(
+                    w, [&] { return sim::find_figure(w.figures(), id) == nullptr; }, 8000));
+                CHECK(forester(w).workers_out == 0);
+                CHECK(w.check_invariants() == "");
+                CHECK(claimed_at(w, 115, 111) == (held && !hygiene));
+                check_reload(w, f.types);
+            }
+        }
+    }
+}
+
+TEST_CASE("harvest end: an old worker's late end never clears a newer worker's claim") {
+    // The state the enhanced rules reach after an invalidation and a re-claim (as in "an old job
+    // never clears a newer worker's claim"): worker A still targets T in ToTree without an entry
+    // (E-iii) while worker B owns T. A ends through the public path: B's bit and entry survive.
+    // Faithful has no owner: the shared target is an accepted state, and A's end writes nothing, so
+    // the one bit stays for B.
+    for (const bool hygiene : {true, false}) {
+        INFO("hygiene " << hygiene);
+        sim::Rules rules;
+        rules.forestry_claim_hygiene = hygiene;
+        Forest f = make_forest({{115, 111}, {111, 115}}, kTree, rules);
+        sim::World& w = f.w;
+        w.set_transport_stats(&f.stats);
+        REQUIRE(tick_until(w, [&] { return workers(w).size() == 2; }, 3000));
+        REQUIRE(tick_until(
+            w,
+            [&] {
+                const auto v = workers(w);
+                return v.size() == 2 && v[0]->harvest->step == sim::HarvestStep::ToTree &&
+                       v[1]->harvest->step == sim::HarvestStep::ToTree;
+            },
+            400));
+        auto ws = workers(w);
+        const bool first_has_t = ws[0]->harvest->target == sim::TileXY{115, 111};
+        sim::Figure& a = first_has_t ? *ws[0] : *ws[1];
+        sim::Figure& b = first_has_t ? *ws[1] : *ws[0];
+        REQUIRE(a.harvest->target == sim::TileXY{115, 111});
+        sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+        const sim::Slot other = is.tile_index(b.harvest->target.x, b.harvest->target.y);
+        is.tiles.set_aux(other, is.tiles.aux(other) & ~sim::kTileClaim);
+        b.harvest->target = sim::TileXY{115, 111};
+        if (hygiene) {
+            is.claims.clear();
+            is.claims[sim::TileXY{115, 111}] = b.id;
+        }
+        const sim::FigureId aid = a.id, bid = b.id;
+        Ender en{aid, false};
+        install_ender(w, &en);
+        REQUIRE(w.check_invariants() == "");
+        check_reload(w, f.types);
+        const std::uint32_t out_before = forester(w).workers_out;
+        REQUIRE(out_before == 2);
+        REQUIRE(tick_until(w, [&] { return fig_of(w, aid).expiry_stamp.has_value(); }, 200));
+        CHECK(forester(w).workers_out == 1);
+        CHECK(claimed_at(w, 115, 111));
+        if (hygiene) {
+            REQUIRE(w.islands()[0]->claims.size() == 1);
+            CHECK(w.islands()[0]->claims.at(sim::TileXY{115, 111}) == bid);
+        } else {
+            CHECK(w.islands()[0]->claims.empty());
+        }
+        CHECK(fig_of(w, bid).harvest->step == sim::HarvestStep::ToTree);
+        CHECK(w.check_invariants() == "");
+        check_reload(w, f.types);
+        // B goes on with the default body and cuts T with its claim intact.
+        remove_ender(w);
+        REQUIRE(tick_until(w, [&] { return f.stats.forestry.cuts >= 1; }, 12000));
+        CHECK(object_at(w, 115, 111) == kSapling.v);
+        CHECK(f.stats.forestry.drops == 0);
+        CHECK(w.check_invariants() == "");
+    }
+}
+
+TEST_CASE("harvest end: ordinary completion keeps its Done state (control)") {
+    // The normal path: the cut arrival released the claim, the delivery reached Farm.raw, the body
+    // ended the figure in Done. Its terminal fields: target kept, cargo 256 kept, no walk.
+    for (const bool hygiene : {false, true}) {
+        INFO("hygiene " << hygiene);
+        sim::Rules rules;
+        rules.forestry_claim_hygiene = hygiene;
+        Forest f = make_forest({{115, 111}}, kTree, rules);
+        sim::World& w = f.w;
+        w.set_transport_stats(&f.stats);
+        const sim::FigureId id = first_worker(w);
+        forester(w).switched_on = false;
+        REQUIRE(tick_until(w, [&] { return fig_of(w, id).expiry_stamp.has_value(); }, 20000));
+        const sim::Figure& g = fig_of(w, id);
+        REQUIRE(g.harvest.has_value());
+        CHECK(g.harvest->step == sim::HarvestStep::Done);
+        CHECK(g.harvest->target == sim::TileXY{115, 111});
+        CHECK(g.harvest->route.empty());
+        CHECK(g.harvest->wait == 0);
+        CHECK(g.harvest->start_delay == 0);
+        CHECK(g.cargo_88 == 256);
+        CHECK(forester(w).workers_out == 0);
+        CHECK(f.stats.forestry.raw_delivered_88 == 256);
+        CHECK(f.stats.forestry.raw_lost_88 == 0);
+        CHECK_FALSE(claimed_at(w, 115, 111));
+        CHECK(w.islands()[0]->claims.empty());
+        CHECK(w.check_invariants() == "");
+        check_reload(w, f.types);
+    }
+}
+
+TEST_CASE("harvest end: a non-harvest figure's end is unchanged by the shared helper") {
+    // The shared end helpers (figure.cpp) also end carts and carriers: one ReleaseCounter, home
+    // none, the stamp, and no tile edit; a second end does nothing; a seam-set stamp releases once.
+    sim::Figure cart;
+    cart.id = sim::FigureId{7};
+    cart.job = sim::kJobMarketCart;
+    cart.home = sim::make_building_id(sim::IslandId{0}, 3);
+    cart.home_counter = 1;
+    cart.cargo_88 = 300;
+    sim::Effects fx;
+    REQUIRE(sim::end_figure(cart, 0x12345, fx));
+    REQUIRE(fx.releases.size() == 1);
+    CHECK(fx.releases[0].home == sim::make_building_id(sim::IslandId{0}, 3));
+    CHECK(fx.releases[0].home_counter == 1);
+    CHECK(fx.tile_edits.empty());
+    CHECK_FALSE(cart.home.valid());
+    CHECK(cart.expiry_stamp == std::optional<std::uint16_t>(0x2345));
+    CHECK(cart.cargo_88 == 300);
+    sim::Effects again;
+    CHECK_FALSE(sim::end_figure(cart, 0x12346, again));
+    CHECK(again.releases.empty());
+    // The seam-set stamp (sync_figure_lists): one release, onto the expiry list once.
+    sim::FigureRegistry reg;
+    sim::Figure carrier;
+    carrier.id = sim::FigureId{9};
+    carrier.home = sim::make_building_id(sim::IslandId{0}, 4);
+    carrier.expiry_stamp = 5;
+    sim::Effects s1;
+    sim::sync_figure_lists(reg, carrier, false, s1);
+    CHECK(s1.releases.size() == 1);
+    CHECK(s1.tile_edits.empty());
+    CHECK(reg.expiry == std::vector<sim::FigureId>{sim::FigureId{9}});
+    sim::Effects s2;
+    sim::sync_figure_lists(reg, carrier, true, s2);
+    CHECK(s2.releases.empty());
+    CHECK(reg.expiry.size() == 1);
+}

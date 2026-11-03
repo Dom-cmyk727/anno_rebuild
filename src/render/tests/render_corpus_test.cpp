@@ -457,18 +457,12 @@ const std::vector<std::string> kExpected = {
 // pixels move) on Windows 11 with MSVC (UCRT) only; the Apple and glibc values
 // are not measured since, so a run there may differ in the enhanced lines and
 // then needs its own override table here (the former UCRT override is folded
-// into kExpected). Fallback if more libms diverge: libm-free exp/pow in the
-// enhanced water (docs/render/iso.md, "Fidelity").
-const std::vector<std::pair<std::size_t, std::string>> kUcrt = {};
+// into kExpected; restore a per-library table and its selection in
+// expected_lines() when one is measured). Fallback if more libms diverge:
+// libm-free exp/pow in the enhanced water (docs/render/iso.md, "Fidelity").
 
 std::vector<std::string> expected_lines() {
-    std::vector<std::string> out = kExpected;
-#if defined(_MSC_VER)
-    for (const auto& [i, line] : kUcrt) {
-        out.at(i) = line;
-    }
-#endif
-    return out;
+    return kExpected;
 }
 
 } // namespace

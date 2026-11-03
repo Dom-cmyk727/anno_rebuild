@@ -25,6 +25,7 @@
 #include <anno/app/opening_view.hpp>
 #include <anno/app/play.hpp>
 #include <anno/app/ship_layer.hpp>
+#include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
 #include <anno/sim/clock.hpp>
 #include <anno/sim/command.hpp>
@@ -36,6 +37,7 @@
 #include <anno/test/game_dir.hpp>
 
 namespace app = anno::app;
+namespace render = anno::render;
 namespace sim = anno::sim;
 namespace fs = std::filesystem;
 
@@ -859,6 +861,42 @@ TEST_CASE("founding probe, real files: the preview's answer is what the sim does
     CHECK(accepted > 0);
     CHECK(agree == clicks);
     CHECK(vetoed <= 4);
+}
+
+// Owner playtest 2026-11-03, round 6: the viewer kept derived levels of at most 96 chunks built,
+// assuming 91 at level 4; the map's level 4 has 98, so every zoom through it rebuilt it. The
+// levels as the window sets them up (main.cpp: derived down to where the map fits 640 x 360).
+TEST_CASE("the opening map's far levels down to level 4 stay built (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    auto loaded = app::load_opening(*dir, manifest_path(), 0);
+    REQUIRE(loaded.ok());
+    app::OpeningLoad& load = loaded.value();
+    auto picture = app::load_placed_scene(*dir, load.play.name, load.play.placed, nullptr);
+    REQUIRE(picture.ok());
+    render::Scene& scene = *picture.value().scene;
+    const auto b2 = scene.bounds(2);
+    REQUIRE(b2.has_value());
+    scene.set_levels(render::ZoomLevels::with_derived(
+        render::ZoomLevels::derived_to_fit(b2->w, b2->h, 640.0, 360.0, 8)));
+    const render::ZoomLevels& levels = scene.levels();
+    REQUIRE(levels.size() > 5);
+    std::vector<std::size_t> chunks;
+    for (std::size_t g = 0; g < levels.size(); ++g) {
+        const auto b = scene.bounds(g);
+        REQUIRE(b.has_value());
+        chunks.push_back(render::visible_chunks(*b).size());
+    }
+    MESSAGE("chunks per level: level 3 " << chunks[3] << ", level 4 " << chunks[4] << ", level 5 "
+                                         << chunks[5]);
+    for (std::size_t g = 4; g < levels.size(); ++g) {
+        CHECK_MESSAGE(chunks[g] <= app::kOpeningResidentLevelChunks, "level " << g);
+    }
+    // Level 3 stays out (the memory measured for it bought nothing, zoom.hpp).
+    CHECK(chunks[3] > app::kOpeningResidentLevelChunks);
 }
 
 // The original's own Kontors (owner playtest 2026-11-03: the founded warehouse looked turned and

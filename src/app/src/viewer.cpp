@@ -891,10 +891,8 @@ std::string Viewer::run() {
         // levels are built while the player is busy with something else.
         frames_.prewarm_far_levels = opening_ != nullptr;
         if (opening_ != nullptr) {
-            // The levels from the whole map down to ~100 chunks stay built (a few hundred MB at
-            // most; the map is mostly sea): the lan5 map has 91 / 28 / 6 chunks at levels 4 / 5
-            // / 6.
-            frames_.resident_level_chunks = 96;
+            // The levels from the whole map down to level 4 stay built (zoom.hpp).
+            frames_.resident_level_chunks = kOpeningResidentLevelChunks;
         }
     }
     while (running_) {

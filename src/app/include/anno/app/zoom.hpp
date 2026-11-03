@@ -28,6 +28,17 @@ inline constexpr double kLevelCoarseMargin = 0.95;
 /// 0.01 % of a tile width, far below a pixel.
 inline constexpr double kZoomSnap = 1e-4;
 
+/// Derived zoom levels with at most this many chunks stay built for the whole session of the
+/// ship-start opening (FrameRenderer::resident_level_chunks), built in the background while the
+/// view needs nothing. The lan5 opening map has 338 / 98 / 32 / 8 / 2 / 2 chunks at levels 3 to 8
+/// (test `the opening map's far levels down to level 4 stay built`): 128 keeps level 4 and the
+/// coarser ones. The earlier 96 missed level 4 by two chunks, so every zoom through it rebuilt
+/// it from level 2 (owner playtest 2026-11-03, round 6: water and islands "need a moment" at the
+/// farthest zoom). Measured over a zoom out and back in: 470-665 MiB of chunk cache and no frame
+/// with a visible chunk missing; keeping level 3 as well doubled the cache (~1.25 GB) for no
+/// frame fewer (level 3 is built in time as the neighbouring group of level 4).
+inline constexpr std::size_t kOpeningResidentLevelChunks = 128;
+
 /// The wanted tile width after a wheel notch (or key) of `factor`, kept inside
 /// the range: from the last group's tile width / kZoomEndFactor to the first
 /// group's * kZoomEndFactor.

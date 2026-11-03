@@ -1,0 +1,90 @@
+# House transition vectors (MAP-POP-LIVE-1 L3). Every expected value was derived by hand from
+# docs/sim/population-live.md sections 5 and 10 (cases X9-X13, X19-X21), docs/re/population.md 5 and 12.4 and the
+# disassembly of SetGroup 0x10076b90 BEFORE any C++ existed. Grammar and formula contract: tools/house_transition_ref.py.
+# Tables are 21 entries in run-length form "value*count,...".
+goods G count=96 sec=26:27
+grp C num=1 needs=26:80:1,27:40:1,76:20:1 lookup=26:0,27:1,76:2 goods_end=2 infra_end=3
+grp C2 num=1 needs=26:80:1,27:40:1,76:20:1,77:20:1 lookup=26:0,27:1,76:2,77:3 goods_end=2 infra_end=4
+grp N num=2 needs=26:100:1,27:60:1,76:50:1 goods_end=2 infra_end=3
+grp N2 num=2 needs=26:100:1,27:60:1,76:50:1,77:50:1 goods_end=2 infra_end=4
+grp NF num=2 needs=26:100:1,27:60:0,76:50:1 goods_end=2 infra_end=3
+grp NM num=2 needs=26:100:1,29:60:1 goods_end=2 infra_end=2
+
+# --- X9 type ladder: next = id - id%stride + stride (must exist); previous = id - id%stride - stride,
+# else id - id%stride - stride + 1, else none.
+ladder X9-up-down id=45 stride=20 have=20,21,60 => next=60 prev=20
+ladder X9-prev-plus1 id=45 stride=20 have=21,60 => next=60 prev=21
+ladder X9-prev-none id=45 stride=20 have=60 => next=60 prev=none
+ladder X9-next-missing id=45 stride=20 have=20,21 => next=none prev=20
+ladder L-base-501 id=501 stride=20 have=500,501,520 => next=520 prev=none
+ladder L-base-520 id=520 stride=20 have=501,540 => next=540 prev=501
+ladder L-variant-525 id=525 stride=20 have=500,501,540 => next=540 prev=500
+ladder L-variant-525-b id=525 stride=20 have=501,540 => next=540 prev=501
+ladder L-stride-10 id=45 stride=10 have=30,50 => next=50 prev=30
+ladder L-stride-10-plus1 id=45 stride=10 have=31,50 => next=50 prev=31
+ladder L-top-of-block id=19 stride=20 have=20 => next=20 prev=none
+ladder L-block-start id=20 stride=20 have=0,40 => next=40 prev=0
+ladder L-itself-not-prev id=61 stride=20 have=61,80 => next=80 prev=none
+
+# --- X10 variant: idx = r mod count (unsigned), type = base + idx*step; count 0 = no draw.
+variant X10 count=3 step=2 base=60 r=7 => draw=1 idx=1 type=62
+variant V-idx0 count=3 step=2 base=60 r=6 => draw=1 idx=0 type=60
+variant V-idx2 count=3 step=2 base=60 r=8 => draw=1 idx=2 type=64
+variant V-no-variants count=0 step=2 base=60 r=7 => draw=0 idx=0 type=60
+variant V-wide-r count=7 step=2 base=520 r=65535 => draw=1 idx=1 type=522
+variant V-one count=1 step=0 base=513 r=1234 => draw=1 idx=0 type=513
+variant V-step1 count=8 step=1 base=540 r=15 => draw=1 idx=7 type=547
+
+# --- X19/X20 materials gate: amount_k <= store_k - setting_k (signed) for every non-zero amount; on success
+# spent_k += amount_k and store_k -= min(amount_k, store_k); on failure nothing changes.
+matgate X19-exact amounts=0,512,0,0,0 store=0,512,0,0,0 setting=0,0,0,0,0 spent=0,0,0,0,0 => ok=1 store=0,0,0,0,0 spent=0,512,0,0,0
+matgate X19-short-by-1 amounts=0,512,0,0,0 store=0,511,0,0,0 setting=0,0,0,0,0 spent=0,0,0,0,0 => ok=0 store=0,511,0,0,0 spent=0,0,0,0,0
+matgate X20-spent-not-read amounts=0,512,0,0,0 store=0,512,0,0,0 setting=0,0,0,0,0 spent=0,1000,0,0,0 => ok=1 store=0,0,0,0,0 spent=0,1512,0,0,0
+matgate M-reserve-blocks amounts=0,512,0,0,0 store=0,600,0,0,0 setting=0,100,0,0,0 spent=0,0,0,0,0 => ok=0 store=0,600,0,0,0 spent=0,0,0,0,0
+matgate M-reserve-exact amounts=0,512,0,0,0 store=0,600,0,0,0 setting=0,88,0,0,0 spent=0,0,0,0,0 => ok=1 store=0,88,0,0,0 spent=0,512,0,0,0
+matgate M-zero-amount-skipped amounts=0,0,0,0,0 store=0,0,0,0,0 setting=50,50,50,50,50 spent=0,0,0,0,0 => ok=1 store=0,0,0,0,0 spent=0,0,0,0,0
+matgate M-signed-negative amounts=0,0,1,0,0 store=0,0,10,0,0 setting=0,0,500,0,0 spent=0,0,0,0,0 => ok=0 store=0,0,10,0,0 spent=0,0,0,0,0
+matgate M-second-short amounts=256,256,0,0,0 store=256,255,0,0,0 setting=0,0,0,0,0 spent=0,0,0,0,0 => ok=0 store=256,255,0,0,0 spent=0,0,0,0,0
+matgate M-all-five amounts=256,512,768,1024,1280 store=256,512,768,1024,1280 setting=0,0,0,0,0 spent=1,2,3,4,5 => ok=1 store=0,0,0,0,0 spent=257,514,771,1028,1285
+matgate M-fifth-short amounts=256,512,768,1024,1280 store=256,512,768,1024,1279 setting=0,0,0,0,0 spent=0,0,0,0,0 => ok=0 store=256,512,768,1024,1279 spent=0,0,0,0,0
+
+# --- UpgradeCheck (0x10075dd0). E = 640. Food: stock0 4167 -> 4167*1536/(640*100) = 100 (next Menge0)
+# -> index (100+4)>>3 = 13. Goods: stock1 614 -> 614*1536/(640*40) = 36 (current Menge) -> index 5. Infra: stock2 2000 ->
+# 2000*1536/(640*20) = 240, capped 128 -> index 16.
+upcheck U1-pass e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=0*5,3*16 inf=9*17,0*4 => result=1 f=7 b=3 i=9
+upcheck U2-infra-entry-zero e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=0*5,3*16 inf=9*16,0*5 => result=0 f=7 b=3 i=0
+upcheck U3-food-entry-zero e=640 stock=4167,614,2000 cur=C next=N nah=0*14,7*7 bed=0*5,3*16 inf=9*17,0*4 => result=0 f=0 b=3 i=9
+upcheck U4-goods-entry-zero e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=3*5,0*16 inf=9*17,0*4 => result=0 f=7 b=0 i=9
+upcheck X12-next-menge e=640 stock=4167,614,2000 cur=C next=N nah=0*16,7*5 bed=0*5,3*16 inf=9*17,0*4 => result=0 f=0 b=3 i=9
+upcheck X13-strict e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=3*16,0*5 inf=0*21 => result=0 f=7 b=3 i=0
+upcheck U6-forced-goods e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=3*16,0*5 inf=9*17,0*4 => result=1 f=7 b=3 i=9
+upcheck U7-non-forced-ignored e=640 stock=4167,614,2000 cur=C next=NF nah=0*13,7*8 bed=3*16,0*5 inf=9*17,0*4 => result=0 f=7 b=0 i=9
+upcheck U8-missing-current-slot e=640 stock=4167,614,2000 cur=C next=NM nah=0*13,7*8 bed=0*5,3*16 inf=9*17,0*4 => fault=missing_slot
+upcheck U9-zero-e e=0 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=0*5,3*16 inf=9*17,0*4 => fault=zero_divisor
+upcheck U10-tavern-joins tavern=76 e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=0*5,3*5,6*11 inf=9*17,0*4 => result=1 f=7 b=6 i=9
+upcheck U10-no-tavern e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=0*5,3*5,6*11 inf=9*17,0*4 => result=1 f=7 b=3 i=9
+upcheck U11-goods-cap e=640 stock=4167,40000,2000 cur=C next=N nah=0*13,7*8 bed=0*16,4*5 inf=9*17,0*4 => result=1 f=7 b=4 i=9
+upcheck U12-food-cap e=640 stock=100000,614,2000 cur=C next=N nah=0*16,5*5 bed=0*5,3*16 inf=9*17,0*4 => result=1 f=5 b=3 i=9
+upcheck U13-min-infra-low e=640 stock=4167,614,2000,1000 cur=C2 next=N2 nah=0*13,7*8 bed=0*5,3*16 inf=9*15,0*6 => result=0 f=7 b=3 i=0
+upcheck U13-min-infra-ok e=640 stock=4167,614,2000,1000 cur=C2 next=N2 nah=0*13,7*8 bed=0*5,3*16 inf=9*16,0*5 => result=1 f=7 b=3 i=9
+upcheck U14-no-upgrade noup=1 e=640 stock=4167,614,2000 cur=C next=N nah=0*13,7*8 bed=0*5,3*16 inf=9*17,0*4 => result=0
+
+# --- SetGroup (0x10076b90). s = min(stock*1536/(E*Menge_old), 160); new stock = Menge_new*s*E/1536.
+grp SO num=1 needs=26:100:1,28:50:1 infra_end=2 wohn=8
+grp SN num=2 needs=26:120:1,27:80:1,28:200:1,30:10:1 infra_end=4 wohn=15
+grp SD num=1 needs=26:100:1,28:50:1,29:40:1 infra_end=3 wohn=8
+grp SF num=2 needs=26:100:1,28:50:0,29:40:1 infra_end=3 wohn=15
+grp SG num=2 needs=26:100:0,28:50:0,29:40:1 infra_end=3 wohn=15
+grp SP num=0 needs=26:41:1,28:50:1 infra_end=2 wohn=5
+# upgrade: s(26) = 2500*1536/64000 = 60, s(28) = 2000*1536/32000 = 96; E and residents kept
+setgroup SG1-upgrade goods=G old=SO new=SN e=640 res64=1000 stock=2500,2000 draws=none => stock=3000,0,8000,0 e=640 res64=1000 used=0
+# s(26) = 102 propagates along IdSec 26 -> 27 (a new, unfilled ware): 120*102*640/1536 = 5100, 80*102*640/1536 = 3400
+setgroup SG2-idsec-102 goods=G old=SO new=SN e=640 res64=1000 stock=4250,2000 draws=none => stock=5100,3400,8000,0 e=640 res64=1000 used=0
+# s(26) = 101: no propagation
+setgroup SG2b-idsec-101 goods=G old=SO new=SN e=640 res64=1000 stock=4249,2000 draws=none => stock=5050,0,8000,0 e=640 res64=1000 used=0
+# downgrade: old SN (E 640), E' = trunc(1000/64) << 7 = 1920; the new ware 29 starts at s = 102
+setgroup SG3-downgrade goods=G old=SN new=SD e=640 res64=1000 stock=3000,0,8000,0 draws=none => stock=7500,6000,5100 e=1920 res64=1000 used=0
+# first assignment (no old group, group number 2): residents = 15<<6, E = 15<<7, one draw per forced need
+setgroup SG4-first goods=G old=none new=SF e=640 res64=320 stock=none draws=5,40 => stock=15375,0,6000 e=1920 res64=960 used=2
+setgroup SG5-first-food-unforced goods=G old=none new=SG e=640 res64=320 stock=none draws=40 => stock=16000,0,6000 e=1920 res64=960 used=1
+setgroup SG6-first-pioneer goods=G old=none new=SP e=640 res64=320 stock=none draws=none => stock=2186,0 e=640 res64=320 used=0

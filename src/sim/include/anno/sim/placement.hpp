@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 
 #include <anno/sim/building.hpp>
 #include <anno/sim/config.hpp>
@@ -73,6 +74,11 @@ struct PlacementParams {
     /// Rules values; a direct caller states them.
     bool road_require_land_level = false;
     bool road_preserve_nonroad_pieces = false;
+    /// MAP-ROAD-CLOSE-2: the latest object per island-local tile index (y * width + x) that earlier
+    /// records of an atomic dry run write (a land road replaces the tile's object), or null. The
+    /// occupancy step reads it BEFORE the physical layer, so the dry run sees the same latest
+    /// object the live run reads from the tile it wrote. The pointee must outlive the call.
+    const std::map<std::uint64_t, TypeId>* object_overlay = nullptr;
 };
 
 /// The facts that make a type an ordinary land road (docs/sim/road-placement.md section 2). A

@@ -65,8 +65,11 @@ struct Kit {
     sim::TypeId road4{9803};      // 0x4186, 5 gold, pair (4, 3) -> code 4
     sim::TypeId road_ext{9804};   // a second data-defined road: 0x4186, 7 gold, pair (0, 3)
     sim::TypeId bridge{9805};     // PRODTYPE 198 (BRUECKE), 0x4386: not a land road
-    sim::TypeId ramp{9806};  // PRODTYPE 194 (RAMPE), 0x4186: a group-0xc1 piece, not a land road
-    sim::TypeId road2{9807}; // a data-defined land road, widened to 2 x 1 in its own test
+    sim::TypeId ramp{9806};    // PRODTYPE 194 (RAMPE), 0x4186: a group-0xc1 piece, not a land road
+    sim::TypeId road2{9807};   // a data-defined land road, widened to 2 x 1 in its own test
+    sim::TypeId road_ov{9808}; // 0x41a6 = 0x4186 | 0x20: a land road other pieces may overlap
+    sim::TypeId road_slope_ov{9809}; // 0x11a6: the slope class with the overlap bit
+    sim::TypeId road_mode0{9810};    // 0x4184: mode 0 (maximum of the cell minima)
 
     Kit() {
         sim::TypeRegistry::Builder b;
@@ -116,6 +119,9 @@ struct Kit {
         road_copy(bridge, 198, 0x4386, 5, 0, 3);
         road_copy(ramp, 194, 0x4186, 5, 0, 3);
         road_copy(road2, 193, 0x4186, 8, 0, 3);
+        road_copy(road_ov, 193, 0x41a6, 6, 0, 3);
+        road_copy(road_slope_ov, 193, 0x11a6, 6, 0, 3);
+        road_copy(road_mode0, 193, 0x4184, 6, 0, 3);
         b.add_plain(fixed, 291).add_plain(stone, 323).add_plain(tree, 225);
         b.flags_word(stone, 0x3a).flags_word(tree, 0x29);
         auto built = b.build();
@@ -1577,4 +1583,181 @@ TEST_CASE("road policy: atomic and live batches decide alike under every setting
     }
     // The setting really changes outcomes in this generator (a copied default cannot pass).
     CHECK(differ_by_setting >= 15);
+}
+
+TEST_CASE("road atomic: a later record sees the latest object, not the physical one underneath") {
+    // MAP-ROAD-CLOSE-2 A. A valid data-defined road with flags 0x4186 | 0x20 = 0x41a6 (no coverage
+    // bit) is overlappable by other pieces. On an existing ramp, with both extra road options off
+    // (so the road may replace the ramp), the batch [road, house] on one tile is accepted record
+    // by record; the atomic dry run must agree. The old dry run tested the house against the ramp
+    // still lying under the road and answered AtomicAbort / Occupied.
+    const Kit& k = kit();
+    const sim::BuildingType& rt = *k.reg->find(k.road_ov);
+    REQUIRE(rt.flags_word == 0x41a6);
+    REQUIRE(sim::is_land_road(rt));
+    const sim::PlacementWire road = ct::at(k.road_ov, kX0 + 5, kY0 + 5);
+    const sim::PlacementWire house = ct::at(k.house, kX0 + 5, kY0 + 5);
+    for (const bool floor : {false, true}) {
+        for (const bool preserve : {false, true}) {
+            INFO("floor " << floor << " preserve " << preserve);
+            sim::Rules live;
+            live.road_require_land_level = floor;
+            live.road_preserve_nonroad_pieces = preserve;
+            sim::Rules atomic = live;
+            atomic.build_atomic = true;
+            Site s;
+            s.object(5, 5, k.ramp);
+            for (const bool road_first : {true, false}) {
+                INFO((road_first ? "road, then house" : "house, then road"));
+                const std::vector<sim::PlacementWire> batch =
+                    road_first ? std::vector{road, house} : std::vector{house, road};
+                sim::World a = s.world(atomic);
+                sim::World b = s.world(live);
+                const std::vector<std::uint8_t> initial = a.save();
+                const sim::ApplyResult dry = a.apply(ct::build(0, kC0, batch));
+                const sim::ApplyResult run = b.apply(ct::build(0, kC0, batch));
+                bool live_all = true;
+                for (const sim::RecordResult& r : run.records) {
+                    live_all = live_all && r.status == sim::Reject::None;
+                }
+                if (road_first && !preserve) {
+                    // The road replaces the ramp, then the house stands on the road (flag 0x20).
+                    REQUIRE(live_all);
+                    CHECK(dry.ok());
+                    CHECK(dry.records[0].status == sim::Reject::None);
+                    CHECK(dry.records[1].status == sim::Reject::None);
+                    // Same final state, the Rules header excepted (build_atomic differs).
+                    const std::size_t fa = island_test::flat_offset(a, "clock_rng");
+                    const std::size_t fb = island_test::flat_offset(b, "clock_rng");
+                    const auto sa = island_test::flat_stream(a);
+                    const auto sb = island_test::flat_stream(b);
+                    CHECK(std::vector<std::uint8_t>(sa.begin() + static_cast<std::ptrdiff_t>(fa),
+                                                    sa.end()) ==
+                          std::vector<std::uint8_t>(sb.begin() + static_cast<std::ptrdiff_t>(fb),
+                                                    sb.end()));
+                    CHECK(money_of(a) == money_of(b));
+                    CHECK(money_of(a) == 10000 - 6 - 100);
+                } else if (road_first) {
+                    // preserve: the road may not replace the ramp -> refused in both runs
+                    CHECK_FALSE(live_all);
+                    CHECK(run.records[0].status == sim::Reject::Occupied);
+                    CHECK(dry.status == sim::Reject::AtomicAbort);
+                    CHECK(dry.records[0].status == sim::Reject::Occupied);
+                    CHECK(a.save() == initial);
+                } else {
+                    // house first: the house takes the tile (over the ramp? no: a ramp is not
+                    // compatible with a house), so the first record fails in both runs
+                    CHECK(run.records[0].status == dry.records[0].status);
+                    if (!live_all) {
+                        CHECK(dry.status == sim::Reject::AtomicAbort);
+                        CHECK(a.save() == initial);
+                    }
+                }
+                CHECK(a.check_invariants() == "");
+                CHECK(b.check_invariants() == "");
+            }
+        }
+    }
+    // Control: without the road the house over the ramp is Occupied in both runs, so it is the
+    // road's replacement that makes the house legal (the outcome depends on the latest object).
+    Site s;
+    s.object(5, 5, k.ramp);
+    sim::Rules atomic;
+    atomic.build_atomic = true;
+    sim::World a = s.world(atomic);
+    const sim::ApplyResult alone = a.apply(ct::build(0, kC0, {house}));
+    CHECK(alone.status == sim::Reject::AtomicAbort);
+    REQUIRE(alone.records.size() == 1);
+    CHECK(alone.records[0].status == sim::Reject::Occupied);
+}
+
+TEST_CASE("road atomic: dry run and live run agree over varied road type properties") {
+    // The earlier random cases drew from fixed flag words; the defect needed a road whose flag
+    // word makes it overlappable. The type pool here varies the meaningful properties: class
+    // (0x4000 / 0x1000), the overlap bit 0x20, the mode (0 / 2), a ramp and a house, over existing
+    // ramp / bridge / road / tree pieces and four policy settings.
+    const Kit& k = kit();
+    const sim::TypeId types[] = {k.road,       k.road_ov, k.road_slope, k.road_slope_ov,
+                                 k.road_mode0, k.house,   k.ramp};
+    const sim::TypeId pieces[] = {k.road, k.road_ov, k.ramp, k.bridge, k.tree};
+    const std::uint8_t levels[] = {0x00, 0x10, 0x20, 0x30, 0x30, 0x41};
+    Lcg rng{0x2f9be6cc44d1a7e3ULL};
+    std::size_t all_pass = 0, aborted = 0, replaced_then_placed = 0;
+    for (int round = 0; round < 400; ++round) {
+        Site s;
+        s.fill(0, 0, kSize, kSize, levels[rng.next() % 6]);
+        for (int p = 0; p < 3; ++p) {
+            s.fill(rng.next() % kSize, rng.next() % kSize, 1 + rng.next() % 5, 1 + rng.next() % 5,
+                   levels[rng.next() % 6]);
+        }
+        for (int o = 0; o < 4; ++o) {
+            s.object(rng.next() % 8, rng.next() % 8, pieces[rng.next() % 5]);
+        }
+        std::vector<sim::PlacementWire> placements;
+        const std::uint32_t n = 2 + rng.next() % 3;
+        for (std::uint32_t i = 0; i < n; ++i) {
+            placements.push_back(ct::at(types[rng.next() % 7],
+                                        kX0 + static_cast<std::int32_t>(rng.next() % 8),
+                                        kY0 + static_cast<std::int32_t>(rng.next() % 8)));
+            if (i > 0 && rng.next() % 2 == 0) { // same tile as the previous record
+                placements.back().x = placements[i - 1].x;
+                placements.back().y = placements[i - 1].y;
+            }
+        }
+        const sim::Command c = ct::build(0, kC0, placements);
+        for (const bool floor : {false, true}) {
+            for (const bool preserve : {false, true}) {
+                sim::Rules live;
+                live.road_require_land_level = floor;
+                live.road_preserve_nonroad_pieces = preserve;
+                sim::Rules atomic = live;
+                atomic.build_atomic = true;
+                sim::World a = s.world(atomic);
+                sim::World b = s.world(live);
+                const std::vector<std::uint8_t> initial = a.save();
+                const sim::ApplyResult dry = a.apply(c);
+                const sim::ApplyResult run = b.apply(c);
+                INFO("round " << round << " floor " << floor << " preserve " << preserve);
+                bool live_all = true;
+                for (const sim::RecordResult& r : run.records) {
+                    live_all = live_all && r.status == sim::Reject::None;
+                }
+                if (live_all) {
+                    ++all_pass;
+                    CHECK(dry.ok());
+                    const std::size_t fa = island_test::flat_offset(a, "clock_rng");
+                    const std::size_t fb = island_test::flat_offset(b, "clock_rng");
+                    const auto sa = island_test::flat_stream(a);
+                    const auto sb = island_test::flat_stream(b);
+                    CHECK(std::vector<std::uint8_t>(sa.begin() + static_cast<std::ptrdiff_t>(fa),
+                                                    sa.end()) ==
+                          std::vector<std::uint8_t>(sb.begin() + static_cast<std::ptrdiff_t>(fb),
+                                                    sb.end()));
+                    CHECK(money_of(a) == money_of(b));
+                    for (std::size_t i = 1; i < placements.size(); ++i) {
+                        if (placements[i].x == placements[i - 1].x &&
+                            placements[i].y == placements[i - 1].y) {
+                            ++replaced_then_placed;
+                            break;
+                        }
+                    }
+                } else {
+                    ++aborted;
+                    CHECK(dry.status == sim::Reject::AtomicAbort);
+                    CHECK(a.save() == initial);
+                    for (std::size_t i = 0; i < run.records.size(); ++i) {
+                        INFO("record " << i);
+                        CHECK(dry.records[i].status == (run.records[i].status == sim::Reject::None
+                                                            ? sim::Reject::AtomicAbort
+                                                            : run.records[i].status));
+                    }
+                }
+                CHECK(a.check_invariants() == "");
+                CHECK(b.check_invariants() == "");
+            }
+        }
+    }
+    CHECK(all_pass >= 200);
+    CHECK(aborted >= 200);
+    CHECK(replaced_then_placed >= 40);
 }

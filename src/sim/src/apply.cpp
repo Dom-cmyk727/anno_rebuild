@@ -208,8 +208,10 @@ void run_building_seam(Env& env, const Seam<Seams::PlaceHook>& seam, Island& is,
 
 /// The placement rule's data for this world: the original constants and the world's enhanced road
 /// choices (Rules::road_require_land_level / road_preserve_nonroad_pieces, stream 125).
-PlacementParams placement_params(const Rules& rules) {
+PlacementParams placement_params(const Rules& rules,
+                                 const std::map<std::uint64_t, TypeId>* overlay = nullptr) {
     PlacementParams p;
+    p.object_overlay = overlay;
     p.road_require_land_level = rules.road_require_land_level;
     p.road_preserve_nonroad_pieces = rules.road_preserve_nonroad_pieces;
     return p;
@@ -332,9 +334,12 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             out.status = Reject::Occupied;
             return out;
         }
-        // The objects earlier ROAD records of the dry run write: the same compatibility the live
-        // run applies to the written tile (the placement rule reads the live layer only).
-        if (budget != nullptr && !budget->objects.empty()) {
+        // The default rule reads the latest objects through PlacementParams::object_overlay (one
+        // view: an earlier record's road supersedes the physical object). A placement seam takes no
+        // overlay, so for an installed seam only, the earlier records' objects are tested here
+        // against the physical-layer verdict (the pre-MAP-ROAD-CLOSE-2 behaviour, test seams only).
+        if (env.seams.placement_rule.fn != nullptr && budget != nullptr &&
+            !budget->objects.empty()) {
             bool blocked = false;
             for_each_footprint_tile(is, *type, rec, [&](std::uint64_t idx) {
                 const auto it = budget->objects.find(idx);
@@ -357,7 +362,11 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             env.seams.placement_rule.fn != nullptr
                 ? env.seams.placement_rule.fn(env.seams.placement_rule.ctx, is, env.types, *type,
                                               rec)
-                : placement_rule(is, env.types, *type, rec, placement_params(env.rules));
+                : placement_rule(
+                      is, env.types, *type, rec,
+                      placement_params(env.rules, budget != nullptr && !budget->objects.empty()
+                                                      ? &budget->objects
+                                                      : nullptr));
         if (placed.reject != Reject::None) {
             out.status = placed.reject;
             return out;

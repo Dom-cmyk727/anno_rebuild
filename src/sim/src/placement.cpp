@@ -113,8 +113,16 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
         for (std::int64_t dx = 0; dx < fw; ++dx) {
             const std::int64_t lx = rec.x - std::int64_t{tiles.x0()} + dx;
             const std::int64_t ly = rec.y - std::int64_t{tiles.y0()} + dy;
-            const std::uint32_t id = tiles.object(static_cast<std::uint64_t>(ly) * tiles.width() +
-                                                  static_cast<std::uint64_t>(lx));
+            const std::uint64_t local =
+                static_cast<std::uint64_t>(ly) * tiles.width() + static_cast<std::uint64_t>(lx);
+            // The latest object: an earlier record of the dry run supersedes the physical one.
+            std::uint32_t id = tiles.object(local);
+            if (params.object_overlay != nullptr) {
+                if (const auto it = params.object_overlay->find(local);
+                    it != params.object_overlay->end()) {
+                    id = it->second.v;
+                }
+            }
             if (id == 0) {
                 continue;
             }

@@ -366,8 +366,12 @@ class FrameRenderer {
     /// Builds the resident derived levels (see resident_level_chunks) in the background, one chunk
     /// at a time, whenever nothing visible is missing: the first zoom out to the whole map then
     /// finds them built instead of waiting for 4^k group-2 chunks (owner playtest 2026-11-03:
-    /// islands were cut off for a while on the first zoom out, never again after it). Off by
-    /// default.
+    /// islands were cut off for a while on the first zoom out, never again after it). A resident
+    /// chunk that a change marked stale (invalidate: a founding or a building marks the chunks over
+    /// its island at every level) is rebuilt the same way: it kept drawing the old picture, and
+    /// was rebuilt only once shown again, a rebuild down to the island's group-2 chunks at the next
+    /// zoom out (owner playtest 2026-11-03, round 5: after the founding the overview needed a
+    /// moment again). Off by default.
     bool prewarm_far_levels = false;
     /// Most chunks the margin around the view grows in the direction the view is
     /// moving (lookahead_rect). Each chunk-wide strip is (view height / kChunk + 2)
@@ -446,7 +450,8 @@ class FrameRenderer {
 
     /// The resident derived chunk being built for prewarm_far_levels, until it is cached.
     std::optional<ChunkKey> prewarm_target_;
-    /// The first resident derived chunk of the scene that is not cached (the farthest level first).
+    /// The first resident derived chunk of the scene that is not cached or is marked stale (the
+    /// farthest level first).
     [[nodiscard]] std::optional<ChunkKey> next_prewarm_key(const Scene& scene) const;
 
     std::map<ChunkKey, ChunkPtr> cache_;

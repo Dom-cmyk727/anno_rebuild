@@ -934,7 +934,8 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
         // The resident overview levels, one chunk at a time and only when the view needs nothing:
         // appended last, so every job of the view comes first (the job list is replaced each
         // frame).
-        if (prewarm_target_ && cache_.contains(*prewarm_target_)) {
+        if (prewarm_target_ && cache_.contains(*prewarm_target_) &&
+            !dirty_.contains(*prewarm_target_)) {
             prewarm_target_.reset();
         }
         if (!prewarm_target_ && todo.empty()) {
@@ -965,7 +966,7 @@ std::optional<ChunkKey> FrameRenderer::next_prewarm_key(const Scene& scene) cons
             continue;
         }
         for (const auto& [cx, cy] : visible_chunks(*bounds)) {
-            if (!cache_.contains({g, cx, cy})) {
+            if (!cache_.contains({g, cx, cy}) || dirty_.contains({g, cx, cy})) {
                 return ChunkKey{g, cx, cy};
             }
         }

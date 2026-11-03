@@ -288,3 +288,60 @@ TEST_CASE("prewarm: the resident overview levels are built in the background, an
     CHECK(run(false) < overview.size()); // nothing asked for them
     CHECK(run(true) == overview.size()); // every chunk of every overview level is cached
 }
+
+// Owner playtest 2026-11-03, round 5: after the founding the overview needed a moment again. A
+// change marks the chunks over its island stale at every level (invalidate); a stale chunk keeps
+// drawing until its replacement arrives, and before this nothing rebuilt a resident one until it
+// was shown.
+TEST_CASE(
+    "prewarm: a resident overview chunk marked stale is rebuilt in the background (game files)" *
+    doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    std::vector<render::ChunkKey> overview;
+    for (std::size_t g = scene->levels().built_count(); g < scene->levels().size(); ++g) {
+        const auto b = scene->bounds(g);
+        REQUIRE(b.has_value());
+        const auto keys = render::chunk_keys_touching(*scene, *b, g);
+        overview.insert(overview.end(), keys.begin(), keys.end());
+    }
+    REQUIRE(!overview.empty());
+    const render::Rect away{-200000, -200000, 64, 64};
+    render::FrameRenderer frames(2);
+    auto workers = std::make_unique<render::ChunkWorkers>(4);
+    render::ChunkWorkers* w = workers.get();
+    frames.set_workers(std::move(workers));
+    frames.prewarm_far_levels = true;
+    frames.resident_level_chunks = 64;
+    const auto settle = [&](const std::shared_ptr<const render::Scene>& s) {
+        for (int round = 0; round < 400; ++round) {
+            frames.update_chunks(s, away, 2);
+            w->wait_idle();
+        }
+    };
+    settle(scene);
+    for (const render::ChunkKey& k : overview) {
+        REQUIRE(frames.chunk(k) != nullptr);
+    }
+    // A change over the whole island: the next generation, its keys marked with it, as the
+    // picture's commit does (SceneLoader: with_islands, then invalidate with its generation).
+    const auto next = scene->with_islands({});
+    REQUIRE(next->generation() > scene->generation());
+    frames.invalidate(overview, next->generation());
+    settle(next);
+    std::size_t fresh = 0, rebuilt = 0;
+    for (const render::ChunkKey& k : overview) {
+        const auto chunk = frames.chunk(k);
+        fresh += chunk != nullptr && frames.stale_generation(k) == 0 &&
+                         chunk->generation == next->generation()
+                     ? 1U
+                     : 0U;
+        rebuilt += frames.chunk_rebuilds(k) > 0 ? 1U : 0U;
+    }
+    CHECK(fresh == overview.size());
+    CHECK(rebuilt == overview.size());
+}

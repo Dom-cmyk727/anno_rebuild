@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-03: Windows live opening; Mac population implementation bundle
+## Current dispatch — 2026-11-03: Windows live opening; Mac resident supply and population gameplay
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -80,14 +80,17 @@ correction or broad test round is assigned.
 `b77860e2`. The goods-id lookup has one entry per registry good, with need count
 as its sentinel; zero needs does not mean a zero-length lookup. Read the
 [direct review, correction and binding decisions](reviews/2026-11-03-map-pop-ready1.md).
-**MAP-POP-IMPL-1 below is READY and RELEASED** on the existing Mac branch. It
-combines the mask import, metadata/config, derived groups, independently tested
-pure House calculations, real-input integration and bounded readiness research.
-The owner requests a larger delivery: independent internal package approvals
-unlock subsequent subtasks automatically; return for one final orchestrator
-review after the whole bundle. House dispatch remains a no-op until its walker
-and lifecycle effects are implemented in a later task. No old prerequisite branch
-merge is authorized. Windows' fixed input and assignment are unchanged.
+**MAP-POP-IMPL-1 is ACCEPTED** at `73e7ab1a129c4712747333d9f34a225be03f063f`:
+executor gates `a5186375`, reviewed candidate `7939b958`, bounded test/reference
+correction and focused gates `4438d7f2`. Read the
+[direct review and validation limits](reviews/2026-11-03-map-pop-impl1.md).
+Stream is now 127, PRNG timeline 4; House dispatch remains a no-op.
+**MAP-POP-LIVE-1 below is READY, RELEASED**: implement resident supply and the
+reachable population effects as one larger headless gameplay bundle. Internal
+independent approvals unlock subsequent packages automatically; return once for
+the final orchestrator review. Activate the tick only after its complete effect
+contract is satisfied; an unresolved activation is incomplete, never a reason to
+substitute numeric-only ticking. Windows' exact input and assignment are unchanged.
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
@@ -98,7 +101,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: PLAYTEST ROUNDS REVIEWED; PROJECTION FIX MERGED INTO THE TASK BRANCH.** Continue `task/W4-opening-1` from `a150c11d` with §6 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): full gates on the merged head, then Q5 and the lan5 pixel, then the P3 items. Ask the owner decisions (b) H1 and (c) the start rotation; do not assume them. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-READY-1 ACCEPTED; MAP-POP-IMPL-1 READY, RELEASED.** Complete P0 and A–F below as one implementation bundle; internal reviews unlock the next package automatically. Deliver scenario inputs, derived population tables, a tested pure House kernel and real-input integration, then stop once for combined review. Windows keeps exact `0c401c8d`. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-IMPL-1 ACCEPTED; MAP-POP-LIVE-1 READY, RELEASED.** Complete L0–L5 below: resident transactions, real supply walkers, House transitions, then conditionally activate complete live behavior and progression. Internal reviews auto-continue; one final combined handoff. No numeric-only live tick. Windows keeps exact `0c401c8d`. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1143,7 +1146,212 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-POP-IMPL-1 — population input pipeline and House calculation bundle · READY, RELEASED
+### MAP-POP-LIVE-1 — resident supply and population gameplay bundle · READY, RELEASED
+
+**Owner:** existing Mac gameplay executor, `task/MAP-2-original-like`.
+**Start:** accepted `73e7ab1a129c4712747333d9f34a225be03f063f`, including
+orchestrator correction `4438d7f2` (stream 127, PRNG timeline 4).
+Read the [acceptance](reviews/2026-11-03-map-pop-impl1.md).
+
+**Goal:** residents obtain goods/services through real supply jobs, House updates
+apply their full reachable effects, and a headless town demonstrates supply,
+resident change and progression. Deliver L0–L5 as one larger candidate. Every
+component is independently reviewed; approvals unlock the next automatically.
+Do not stop for an orchestrator handoff after a contract or first code unit.
+If a genuinely new owner policy is needed, stop that dependent activation only,
+finish independent components and report the exact unresolved choice. An inactive
+tick or untested progression cannot be reported as full bundle completion.
+
+#### Read order, ownership and preflight
+
+1. Fetch `origin/main`, read current AGENTS/CLAUDE, PLAN §§0.1–0.6, this packet,
+   linked acceptance, evidence contract and testing README with `git show` or the
+   established read-only workflow checkout. Do not merge main into the MAP branch.
+   Preserve any newer owned commits; do not reset to a historical pin.
+2. Read `docs/sim/population-contract.md`, population readiness/inputs,
+   `docs/re/population.md` §§3–7, 13–16 and Open, `docs/sim/state.md` §§4.7c/5.9,
+   `docs/re/transport.md`, the current
+   movement/figure contracts and MAP-POP-IMPL-1 reports. Old P2–P5 labels are
+   history; this packet is the release. Reconcile stale text in the sections you use.
+3. Follow current `src/sim` producers/readers: House/group/registry metadata,
+   `house_kernel`, driver/scheduler/city passes, create/remove/apply, figures/jobs,
+   transport/walk search, CityStock, Rules/config and serialization/digests.
+   Read original_registry loading, relevant tests, replay tools and
+   `tools/sim_stream.py`. Discover exact paths with rg rather than inventing APIs.
+4. Reuse host calibration; inspect current CPU, RAM, disk and contention, keep
+   admission enabled, and use the existing tools. Keep the screen awake for owned
+   jobs, preserving the owner's assertion. Release only your own exact PIDs.
+   No broad kills, coordinator repairs, runner rewrites or whole-home scans.
+5. Allowed: relevant sim/import/registry code, tests, synthetic fixtures,
+   independent references, CMake registration and scoped specs/RE/reports. Do not
+   change W4/app/render, active/candidate maps, assets, game/, shared test_support,
+   TASKS or AGENTS. No merge/rebase/prune/force push. Windows input stays exact
+   `0c401c8d084cfd9feb8aec846595291f87f22cce`; this authorizes no UI integration.
+
+#### L0 — close the live contract, then continue automatically
+
+1. Make one effect map from the original House tick: update order, spawn/draw,
+   resident supply, upgrade queue/materials/variant choice, downgrade/removal,
+   city/player counters and unlocks. Separate established facts, existing owner
+   decisions, checked-arithmetic adaptations and unread edges. Reuse the reviewed
+   arithmetic kernel; do not reimplement a competing formula.
+2. Resolve narrowly named remaining reads: PublicService +0xa4 for infrastructure
+   supply; stall waiting `0x10030090`, +0x28/+0x2c and the three-slot purchase/billing
+   arguments; queued-upgrade fill/drain around `0x1002d350`; actual removal target;
+   player-built Create timestamp forwarding callers in §16; city unlock timestamp
+   and the extra player-mask OR where reached. Prioritize implementation blockers,
+   not a full economy/fire/networking research campaign. Parallelize independent
+   reads in disjoint notes while parent owns shared schemas.
+3. Pin each decisive predicate to primary instructions/file data and one smallest
+   hand-derived distinguishing case before implementation. Verify bits, integer
+   widths, units, rounding, strict bounds, iterator order and draw timing. Establish
+   zero-time and smallest-positive caller visits and preserved partial delays.
+4. Carry existing decisions: exact own-save/resync; widened checked arithmetic;
+   configurable content roles; `save_billed_goods` default **true** (owner decision
+   2026-10-25), false mode explicitly reproducing the original's dropped scratch.
+   The contradictory old default-drop paragraph does not override that decision.
+   Keep accounting and scratch ownership explicit; test both rule values.
+5. Define the live treatment of every reachable kernel NotEvaluated condition
+   from evidence/existing decisions. Do not silently freeze, clamp or skip a house.
+   If choosing that behavior needs new policy, keep activation gated and continue
+   L1–L3. No zero-resident import is not proof that play/mods cannot reach one.
+6. A read-only independent reviewer checks this effect contract and distinguishing
+   examples against primary evidence. Fix/re-review findings, then proceed. Use
+   internal component boundaries for resolved parts; do not turn every unread
+   helper into a new owner handoff or stop all implementation behind it.
+
+#### L1 — resident/supplier transactions and persistent job state
+
+1. Load/derive actual house walker facts, supplier facts and figure behavior from
+   registry data. Original counts, figure ids, group ids and goods roles are defaults,
+   not allowlists. Reuse supported behavior mappings; no new scripting framework.
+2. Implement checked demand/urgency/choice, supplier availability/billing/take and
+   house delivery as separately testable operations. Preserve substitute goods,
+   repeat goods and IdSec ordering according to traced rules; handle chains/cycles
+   with explicit validation or established behavior, not unbounded recursion.
+3. Implement the actual cargo-slot semantics (the original uses three slots),
+   active-walker ownership and required wait/selection state. Keep data-driven
+   counts where the engine can widen them; distinguish original layout facts from
+   engine limits. Do not reuse the cart's single-cargo delivery as a shortcut.
+4. Pin debit/credit/billed/taken/house-stock unit conversions independently. Test
+   insufficient stock, duplicate offers, substitution, refusal order, overflow and
+   two competing buyers. A delivery must not manufacture goods or silently lose
+   an unexplained ledger term. Public services with take=0 are distinct from stalls.
+5. Persist/hash every authoritative field; derived indexes are rebuilt. Use one
+   combined unpublished state increment (128 if unused; otherwise next unused)
+   and one appropriate PRNG timeline increment when new draw sites are activated.
+   Record the choice, update the independent byte oracle and resealed-version
+   positive/negative controls. Do not reset current identities to historical P4/P5.
+6. Independent review covers facts, transaction ordering/units, mod-defined data,
+   state bytes and the targeted controls. Focused checks green -> continue to L2.
+
+#### L2 — actual resident fetch job 0x35
+
+1. Implement normal spawn, candidate search, walk, waiting/purchase, return,
+   delivery and end through the existing figure lifecycle. Selection uses the
+   house's action area and highest reachable need score with traced tie order,
+   not nearest-stall distance. Use the figure's actual walk layer: original
+   residents can traverse open ground; roads are cheaper, not mandatory.
+2. Respect source/target ids and owner state at each transition. Test home or
+   supplier removal, blocked route, no stock, competing buyers, ending twice,
+   replacement and save/reload while waiting and while carrying. Terminal work
+   must reload as a valid world; no dangling jobs, counter leaks or newer-owner
+   state cleared by an old job. Reuse the harvesting/transport lifecycle lessons.
+3. Preserve draw timing even on a refused send where the original already drew.
+   Verify a hand-derived draw/site trace, not just the final draw count. Supply
+   must run through real suppliers and routes; no direct warehouse-to-house fill.
+4. Check shortest visits, zero elapsed and partitioned waits. Demonstrate a real
+   resident debits a supplier, carries cargo, and changes its home's need stock
+   exactly. Add a blocked/no-stock control that stays short of that success.
+5. Independent package review checks lifecycle, selection, units, draws and the
+   test that would catch the most plausible wrong implementation. Continue to L3.
+
+#### L3 — House upgrade, downgrade and removal effects
+
+1. Implement SetGroup/reset/carry-over behavior, upgrade eligibility and queue,
+   materials reservation/charging, variant selection and index updates. Derive
+   prerequisites from the actual groups/lookup/forced data, not five shipped ids.
+2. Make the same-tick ordering explicit. Two houses cannot spend the same material;
+   queue entries cannot revive removed/replaced houses. Preserve original draws
+   and transaction ordering unless an existing approved adaptation supersedes it.
+3. Implement downgrade/removal through the production path, including active
+   walkers, ownership/counters and serialization invariants. The numeric below-64
+   correction remains downgrade-only. Do not bypass unsupported effects to turn
+   the pure kernel's deferred labels into an apparently successful live tick.
+4. Use positive/one-predicate near-miss cases for forced needs/materials, strict
+   cap/floor, queue invalidation, group transition, signed correction and removal
+   while carrying. Compare state/counters/draws after each operation; save/reload
+   and replay through transitions must agree.
+5. Independent review validates the reachable lifecycle paths, retained partial
+   state and expected values from evidence. Fix and re-review, then continue.
+
+#### L4 — activate complete live updates and population progression
+
+1. Activation requires the L0 contract approved under existing decisions and all
+   reached L1–L3 effects implemented. Wire the production scheduler/driver to the
+   existing kernel and effect handlers with the original order. Never enable a
+   reduced numeric tick that omits ordinary spawning or lifecycle effects.
+2. Resolve/set play-created House timestamps from the closed caller evidence.
+   Keep original-import last=0 and exact own-save/resync distinct; do not reset
+   a loaded partial gate. Verify one skipped/taken gate, overdue repeated calls,
+   minimal cadence and a nonzero saved last through the actual scheduler.
+3. Implement the scoped city resident/house accounting and documented stage/unlock
+   updates needed for progression, including player mask propagation. Taxes,
+   upkeep booking, fire/plague, military and scenario win/loss remain outside this
+   task; do not claim a complete income economy. Supplier billing counters still
+   obey L1's exact semantics/persistence decision.
+4. Check supported/unsupported content and arithmetic domains before publishing
+   partial effects. Surface a genuinely unresolved live policy as an activation
+   blocker; keep House dispatch disabled in that case and report L4 incomplete.
+   Do not invent a new rules default or call that state full bundle completion.
+5. Independent review traces one full shortage -> spawn -> purchase -> delivery
+   -> next House gate and one transition/unlock through production code, with
+   exact resource/draw/state effects. Approved integration -> proceed to L5.
+
+#### L5 — gameplay canary, bounded scale checks and one final handoff
+
+1. Run one short headless real-registry scenario with available original supplies:
+   real resident supply, a measured resident change and a progression transition.
+   Use loaded original stocks or normal production/commands for the real canary;
+   synthetic fixture setup belongs in separate component proofs. Do not silently
+   add grants, relocate workers or rewrite the candidate to force success.
+2. Assert a per-goods ledger, actual supplier/cargo/House changes, transition
+   identity and unlock outcome. Save/reload at wait/cargo/queued-transition cuts;
+   fresh-process replay must reproduce checkpoints, and a changed relevant command
+   or starting input must diverge. Unchanged hashes alone do not prove execution.
+3. Make work proportional to active houses/jobs and spatial candidates. Test a
+   mod-defined group/figure/supplier and growth of unrelated content with operation
+   counts; no full world scan per house visit or quadratic resident selection.
+   Record the bounded workload and timings without claiming late-game multiplayer
+   performance. Authoritative order must be deterministic across supported worker
+   configurations; say explicitly where the path is serial.
+4. Restore mutants, rebuild and freeze all writers once. Use the canonical workflow
+   with explicit source/build/game dir, required reference/CLI contracts, immutable
+   logs and source/fixture/binary identities. Run affected Debug and ASan/UBSan,
+   serialization/replay references and the real canary. Broaden only for concrete
+   changed dependencies; no routine rerun of sailing/heavy-render/GPU matrices.
+   Skips, NOT_RUN hosts, failures and reused evidence remain separate.
+5. A fresh read-only integration reviewer checks the whole production path,
+   meaningful assertions, primary-source derivations, state bytes, draw trace,
+   frozen gate verdicts and claimed scope. Fix blockers and rerun only affected
+   proofs, then obtain focused re-review at the final head. Package approvals
+   alone are not the integration review. Keep actual reviewer ids, reviewed pins,
+   verdicts and finding dispositions in a compact tracked review ledger; do not
+   label unnamed approvals as independently reproducible evidence.
+6. Commit one final report with code/gate/docs pins, delivered gameplay, API and
+   Windows delta, actual selected/executed/failed/empty/skipped/incomplete counts,
+   initial failures, controls, reuse and remaining policies. Stop once for the
+   orchestrator, clean tree, no owned jobs. No executor push/merge or next task.
+   Full completion requires L0–L5 including the real live canary. If activation is
+   blocked, report the finished components and exact blocker as a partial result;
+   do not discard independent implementation or disguise the no-op as live play.
+
+### MAP-POP-IMPL-1 — population input pipeline and House calculation bundle · ACCEPTED; LIVE BUNDLE ABOVE IS CURRENT
+
+**Acceptance, 2026-11-03:** `73e7ab1a`, executor source `a5186375`, bounded
+test/reference correction `4438d7f2`. Read the [direct review](reviews/2026-11-03-map-pop-impl1.md).
+The following is assignment history; do not repeat A–F or stop the new bundle
+after its first contract/component.
 
 **Owner:** existing Mac gameplay executor, `task/MAP-2-original-like`.
 **Start:** accepted corrected docs head

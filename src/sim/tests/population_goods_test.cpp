@@ -40,7 +40,7 @@ std::string read_waren(const std::string& text, std::vector<sim::GoodsInfo>& goo
 
 } // namespace
 
-TEST_CASE("population B: BauFirst and IdSec of a hand-written [WAREN] section") {
+TEST_CASE("population B: BauFirst and IdSec of a hand-written WAREN section") {
     // Legal control first: a section with both keys on a non-original goods table.
     std::vector<sim::GoodsInfo> g = tiny_goods();
     CHECK(

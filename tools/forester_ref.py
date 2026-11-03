@@ -16,8 +16,12 @@ Rules transcribed (D = disassembly of AnnoWelt.dll / AnnoGame.dll, GOG 2.0.0.5):
   candskip A: the candidate list of the enhanced rule forestry_skip_uncuttable (cand + the cut's own id-1 test)
   visit    A: ONE figure call of the harvest body (overlay semantics, section 3.2 of docs/sim/forestry.md); the
            walk is an abstract line (500 ticks per tile) standing in for the existing tile walker
-  claims   A/D: one tile's claim bit under the faithful (bit only) and enhanced (owner-keyed) rules
+  claims   A/D: one tile's claim bit under the faithful (bit only) and enhanced (owner derived from the target)
+           rules. E2.0: placement and clearing KEEP bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff`, clear arm 0x10082f05)
   draws    D: eligible dispatch attempts (= world draws) over a list of farm steps
+  visits   A (E2.0): several calls of the harvest body with the saved first-delay remainder (5 ticks, consumed once
+           across visits, surplus carried on, never re-armed); `S` between visits saves and reloads the state through
+           an explicit field list
 """
 import sys
 
@@ -197,23 +201,148 @@ def _visit_result(cargo, step_name, left, claim, cuts, edits, stale):
 
 
 def claims(mode, ops):
-    """One tile's claim under the two rule sets. ops: `W+` select-and-claim (refused when the bit is set),
-    `W-` unclaim, `P` placement (clears the bit: D 0x100824a7). faithful: only the bit exists, every clear is
-    unconditional (D 0x100545c0, 0x10054530). enhanced: the bit is mirrored by an owner (the worker's figure id);
-    a worker clears only its own claim. Returns (bit, owner)."""
+    """One tile's claim under the two rule sets (docs/sim/forestry.md 3.5, E-16). ops:
+      `W+` W selects and claims (refused while the bit is set: candidate filter, D 0x10092320)
+      `W-` W's own cut arrival or abort: faithful clears unconditionally (D 0x10054530, 0x100545c0);
+           enhanced clears only when W is the owner (the worker that targets the tile)
+      `P`  placement over the tile, `C` clearing of the tile: the bit is KEPT under both rule sets
+           (D 0x100824a7 `and 0x3fffffff` clears bits 30-31 only; clear arm 0x10082f05 keeps bits 25-31)
+      `W~` enhanced only: the owner's revalidation found the tile no longer a candidate and releases it
+    Returns (bit, owner); the owner prints `-` in faithful mode (the original stores none)."""
+    if mode not in ("faithful", "enhanced"):
+        raise ValueError("bad claim mode " + mode)
     bit, owner = 0, None
     for op in ops:
-        if op == "P":
-            bit, owner = 0, None
+        if op in ("P", "C"):
+            pass                                    # placement / clearing keep bit 29 (E2.0)
         elif op.endswith("+"):
             if bit == 0:
                 bit, owner = 1, op[:-1]
         elif op.endswith("-"):
             if mode == "faithful" or owner == op[:-1]:
                 bit, owner = 0, None
+        elif op.endswith("~"):
+            if mode != "enhanced":
+                raise ValueError("revalidation op %s needs enhanced mode" % op)
+            if owner == op[:-1]:
+                bit, owner = 0, None
         else:
             raise ValueError("bad claim op " + op)
     return bit, ("-" if (mode == "faithful" or owner is None) else owner)
+
+
+START_DELAY = 5     # the first micro-step: 0.001 / 0.001 = 1.0 time unit = 5 ticks (D 0x10035ce0, 0x10034760)
+SAVE_FIELDS = ("delay", "step", "pos", "tgt", "need", "cargo", "cuts", "alive", "claim")
+
+
+def _encode(st):
+    """The save: an explicit field list (like the C++ field-by-field stream), text, decoded again by _decode."""
+    parts = []
+    for f in SAVE_FIELDS:
+        v = st[f]
+        if isinstance(v, dict):
+            v = ";".join("%d=%d" % (k, int(x)) for k, x in sorted(v.items()))
+        elif isinstance(v, list):
+            v = ";".join(map(str, v))
+        parts.append("%s:%s" % (f, v))
+    return "|".join(parts)
+
+
+def _decode(text, template):
+    st = dict(template)                 # fields absent from the save keep the template's value (a spawn's defaults)
+    for part in text.split("|"):
+        f, _, v = part.partition(":")
+        if f in ("alive", "claim"):
+            st[f] = {int(k): bool(int(x)) for k, x in (kv.split("=") for kv in v.split(";") if kv)}
+        elif f == "cuts":
+            st[f] = [int(x) for x in v.split(";") if x]
+        elif f == "step":
+            st[f] = v
+        elif f == "tgt":
+            st[f] = None if v == "None" else int(v)
+        else:
+            st[f] = int(v)
+    return st
+
+
+def _spawn(trees, delay):
+    return {"delay": delay, "step": "Start", "pos": 0, "tgt": None, "need": 0, "cargo": 0, "cuts": [],
+            "alive": {p: True for p in trees}, "claim": {p: False for p in trees}}
+
+
+def _call(st, cap, wait, ticks, per_tile=500):
+    """ONE call of the harvest body on the persisted state `st` (figure + island), with the per-call overlay
+    (edits visible to later transitions of the same call, merged into the island at the end). Returns the
+    unused ticks of the call when the figure reached Done, else None."""
+    if ticks == 0 or st["step"] == "Done":
+        return None                                 # D 0x10034760 step 3: no elapsed time, no work
+    ov_alive, ov_claim = {}, {}
+    alive = lambda p: ov_alive.get(p, st["alive"][p])
+    claimed = lambda p: ov_claim.get(p, st["claim"][p])
+    left = ticks
+    try:
+        while True:
+            step = st["step"]
+            if step == "Start":
+                if st["delay"] > 0:                 # the saved first micro-step remainder (E2.0), owed once
+                    used = min(st["delay"], left)
+                    st["delay"] -= used
+                    left -= used
+                    if st["delay"] > 0:
+                        return None
+                cands = [p for p in sorted(st["alive"]) if alive(p) and not claimed(p)]
+                if not cands:
+                    st["step"], st["need"] = "ToHome", abs(st["pos"]) * per_tile
+                    continue
+                tgt = min(cands, key=lambda p: (abs(p - st["pos"]), p))
+                ov_claim[tgt] = True
+                st["tgt"], st["step"], st["need"] = tgt, "ToTree", abs(tgt - st["pos"]) * per_tile
+            elif step in ("ToTree", "Cut", "ToHome"):
+                if left < st["need"]:
+                    st["need"] -= left
+                    return None
+                left -= st["need"]
+                st["need"] = 0
+                if step == "ToTree":
+                    st["pos"] = st["tgt"]
+                    st["step"], st["need"] = "Cut", wait
+                elif step == "Cut":
+                    tgt = st["tgt"]
+                    ok = alive(tgt)
+                    ov_claim[tgt] = False
+                    ov_alive[tgt] = False
+                    st["cuts"].append(tgt)
+                    if ok:
+                        st["cargo"] += 256
+                    st["tgt"] = None
+                    st["step"] = "Start" if cap > st["cargo"] else "ToHome"
+                    st["need"] = 0 if st["step"] == "Start" else abs(st["pos"]) * per_tile
+                else:
+                    st["pos"] = 0
+                    st["step"] = "Done"
+                    return left
+    finally:                                         # the merge after the call: overlay -> island, in order
+        st["alive"].update(ov_alive)
+        st["claim"].update(ov_claim)
+
+
+def visits(cap, wait, delay, trees, seq):
+    """Several calls on one worker; `S` saves and reloads (explicit field list). Returns the printed fields:
+    start_delay cargo step owed claimed cuts (owed = the current walk/wait still owed, or the unused ticks of the
+    call that reached Done)."""
+    st = _spawn(trees, delay)
+    owed_done = 0
+    for tok in seq:
+        if tok == "S":
+            st = _decode(_encode(st), _spawn(trees, START_DELAY))
+            continue
+        r = _call(st, cap, wait, int(tok))
+        if r is not None:
+            owed_done = r
+    held = ",".join(str(p) for p in sorted(p for p, v in st["claim"].items() if v)) or "-"
+    owed = owed_done if st["step"] == "Done" else (st["need"] if st["delay"] == 0 else 0)
+    return [str(st["delay"]), str(st["cargo"]), st["step"], str(owed), held,
+            ",".join(map(str, st["cuts"])) or "-"]
 
 
 def draws(steps):
@@ -270,6 +399,14 @@ def run_line(line, types):
     elif cmd == "claims":
         bit, owner = claims(args[0], args[1:])
         got = [str(bit), owner]
+    elif cmd == "visits":
+        cap, wait, delay = int(args[0]), int(args[1]), int(args[2])
+        parts = " ".join(args[3:]).split("|")
+        trees = [int(a) for a in parts[1].split()]
+        seq = parts[2].split()
+        if not seq:
+            raise ValueError("visits needs at least one visit")
+        got = visits(cap, wait, delay, trees, seq)
     elif cmd == "draws":
         steps = [tuple(map(int, a.split(","))) for a in args]
         got = [str(draws(steps))]

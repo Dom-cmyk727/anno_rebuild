@@ -114,13 +114,58 @@ visit 256 6500 40000 | 3 7 -> 256 Done 30500 - 3
 #   cuts it again at 14500 and a third time at 21000: cargo 768 from ONE tree; home 3*500 = 1500 -> 22500; 17500 unused.
 visitstale 768 6500 40000 | 3 7 -> 768 Done 17500 - 3,3,3
 #
-# claims faithful|enhanced ops...  -> bit owner     (W+ select-and-claim, refused when set; W- unclaim; P placement clears the bit)
-#   faithful stores only the bit, every clear is unconditional (D 0x100545c0 / 0x10054530 / 0x100824a7): A's late abort erases B's claim.
+# claims faithful|enhanced ops... -> bit owner   (E2.0 rewrite, docs/sim/forestry.md E-16; derived by hand from the D facts)
+#   W+ select-and-claim (refused while the bit is set); W- W's own cut arrival/abort (faithful: unconditional clear;
+#   enhanced: only the owner); P placement and C clearing KEEP bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff` clears
+#   bits 30-31 only; the clear arm 0x10082f05 keeps bits 25-31); W~ enhanced owner revalidation releases its tile.
+#   THE DISCRIMINATING CASE: claim then placement leaves the faithful claim set (the withdrawn mask reading gives 0).
+claims faithful A+ P -> 1 -
+#   clearing keeps it too; the legal worker unclaim clears it (the control that must stay green under the mutant).
+claims faithful A+ C -> 1 -
+claims faithful A+ A- -> 0 -
+#   placement does not free the tile for a second worker: B is refused, A still holds it.
+claims faithful A+ P B+ -> 1 -
+#   regression only: ends at 0 under BOTH mask readings (does not discriminate on its own).
 claims faithful A+ P B+ A- -> 0 -
-#   enhanced: owner-keyed; A's late unclaim is a no-op, B keeps the tile.
-claims enhanced A+ P B+ A- -> 1 B
-#   B cannot select a claimed tile (candidate filter): refused, A keeps it.
 claims faithful A+ B+ -> 1 -
+#   faithful one-bit model: a clear by another worker at the tile is unconditional (an accepted loaded state only).
+claims faithful A+ B- -> 0 -
+#   enhanced: the same writer keeps the bit at placement/clearing; the owner A is unchanged.
+claims enhanced A+ P -> 1 A
+claims enhanced A+ C -> 1 A
+#   enhanced: the owner's revalidation after a placement releases the tile (lazy invalidation).
+claims enhanced A+ P A~ -> 0 -
+#   enhanced: a non-owner's clear is refused; the owner's own clear works; then B may claim.
+claims enhanced A+ B- -> 1 A
+claims enhanced A+ P B+ A- -> 0 -
 claims enhanced A+ A- B+ -> 1 B
-#   after B releases its own claim, A may claim again.
-claims enhanced A+ P B+ B- A+ -> 1 A
+claims enhanced A+ A~ B+ B- A+ -> 1 A
+#
+# visits cap wait start_delay | trees | elapsed ticks per visit (S = save and reload) -> start_delay cargo step owed claimed cuts
+#   (E2.0, docs/sim/forestry.md E-21; the first micro-step is a saved remainder of 5 ticks consumed once across visits,
+#   surplus carried on, never re-armed.) Home and start at 0, 500 ticks per position, tree 3 unless stated.
+#   five 1-tick visits: the fifth takes the remainder to 0 with no surplus; Start claims 3; the walk owes 1500.
+visits 256 6500 5 | 3 | 1 1 1 1 1 -> 0 0 ToTree 1500 3 -
+#   one 5-tick visit: the same state.
+visits 256 6500 5 | 3 | 5 -> 0 0 ToTree 1500 3 -
+#   zero elapsed time does nothing; a 2-tick visit then a 0-tick visit leaves 3 owed.
+visits 256 6500 5 | 3 | 0 -> 5 0 Start 0 - -
+visits 256 6500 5 | 3 | 2 0 -> 3 0 Start 0 - -
+#   surplus: 50 ticks = 5 for the delay + 45 walked; 3 + 50 = 2 for the delay + 48 walked.
+visits 256 6500 5 | 3 | 50 -> 0 0 ToTree 1455 3 -
+visits 256 6500 5 | 3 | 3 50 -> 0 0 ToTree 1452 3 -
+#   save and reload after two ticks: the remainder 3 survives; equals the uninterrupted runs above.
+#   the same without the save (the control of the not-saved mutant).
+visits 256 6500 5 | 3 | 2 3 -> 0 0 ToTree 1500 3 -
+visits 256 6500 5 | 3 | 2 S 3 -> 0 0 ToTree 1500 3 -
+visits 256 6500 5 | 3 | 2 S 48 -> 0 0 ToTree 1455 3 -
+#   not re-armed after a cut: delay 5, claim 3 at 5, arrive 1505, cut 8005 (256), Start again WITHOUT a delay: claim 7,
+#   walk 2000 -> 10005; the visits end at 9050 -> 955 owed (re-arming would give 960).
+visits 768 6500 5 | 3 7 | 50 9000 -> 0 256 ToTree 955 7 3
+#   E-14 shifted by the delay: Done at 20005 of 40000 -> 19995 unused.
+visits 768 6500 5 | 3 7 | 40000 -> 0 512 Done 19995 - 3,7
+#   start_delay 0 and one call reproduce the visit vector exactly (the same body).
+visits 768 6500 0 | 3 7 | 40000 -> 0 512 Done 20000 - 3,7
+#   split of the same 12000 ticks into 5000 + 7000 visits: the isolated figure/tile state equals one 12000-tick call.
+visits 768 6500 0 | 3 7 | 5000 7000 -> 0 256 Cut 4500 7 3
+visits 768 6500 0 | 3 7 | 12000 -> 0 256 Cut 4500 7 3

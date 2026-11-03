@@ -19,6 +19,11 @@ Checks (the review of 2026-11-03, C1-C3):
   malformed vector line            exit 1 (an error is a failed vector, never a skip)
   bundled vector file              exit 0; executed count == the number of vector lines in the file (>= --min-vectors),
                                    one PASS line per vector, no FAIL line
+  E2.0 mutants (a patched COPY of the reference, run as a child; the patch target must exist exactly once):
+    wrong placement clear          `claims faithful A+ P -> 1 -` FAILS (got 0) while `claims faithful A+ A- -> 0 -` PASSES
+    first delay burned per visit   `visits ... | 1 1 1 1 1` FAILS while the one 5-tick visit PASSES
+    first delay not saved          `visits ... | 2 S 3` FAILS while the unsaved `| 2 3` PASSES
+    first delay re-armed at Start  `visits 768 ... | 50 9000` FAILS (960) while `| 50` PASSES
 """
 import argparse
 import os
@@ -30,13 +35,29 @@ import unittest
 REF = None
 VECTORS = None
 TIMEOUT = 20.0
-MIN_VECTORS = 45
+MIN_VECTORS = 75
+
+# E2.0 mutation targets in tools/forester_ref.py and their wrong replacements (each target must occur exactly once).
+PLACEMENT_KEEPS = ('        if op in ("P", "C"):\n'
+                   '            pass                                    # placement / clearing keep bit 29 (E2.0)\n')
+PLACEMENT_CLEARS = ('        if op in ("P", "C"):\n'
+                    '            bit, owner = 0, None\n')
+DELAY_OWED = ('                    if st["delay"] > 0:\n'
+              '                        return None\n')
+DELAY_BURNED = ('                    if st["delay"] > 0:\n'
+                '                        st["delay"] = START_DELAY\n'
+                '                        return None\n')
+SAVED_WITH_DELAY = 'SAVE_FIELDS = ("delay", '
+SAVED_WITHOUT_DELAY = 'SAVE_FIELDS = ('
+NEXT_STEP = '                    st["step"] = "Start" if cap > st["cargo"] else "ToHome"\n'
+NEXT_STEP_REARMED = (NEXT_STEP +
+                     '                    st["delay"] = START_DELAY if st["step"] == "Start" else 0\n')
 
 
-def run_ref(path):
-    """Run the reference on `path` as an owned, bounded child. Returns (returncode, stdout, stderr).
-    Raises AssertionError on a timeout after killing exactly that child."""
-    p = subprocess.Popen([sys.executable, REF, path], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+def run_ref(path, ref=None):
+    """Run the reference (or the patched copy `ref`) on `path` as an owned, bounded child. Returns (returncode,
+    stdout, stderr). Raises AssertionError on a timeout after killing exactly that child."""
+    p = subprocess.Popen([sys.executable, ref or REF, path], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          text=True)
     try:
         out, err = p.communicate(timeout=TIMEOUT)
@@ -145,7 +166,7 @@ class ForesterRefContract(unittest.TestCase):
         self.assertEqual(sum(1 for l in out.splitlines() if l.startswith("PASS ")), 0)
         cmds = {l.split()[0] for l in lines}
         for c in ("conv", "step", "area", "harvest", "cand", "candskip", "grow", "drain", "visit", "visitstale",
-                  "claims", "draws", "walkcode", "goalfree"):
+                  "claims", "draws", "walkcode", "goalfree", "visits"):
             self.assertIn(c, cmds, "bundled vectors lack command " + c)
 
     def test_visit_overlay_and_stale_differ(self):
@@ -155,6 +176,56 @@ class ForesterRefContract(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("3 vectors, 1 failures", out)
         self.assertIn("got=768 Done 17500 - 3,3,3", out)
+
+    def mutant(self, old, new, vectors):
+        """Runs a copy of the reference with `old` replaced by `new` on `vectors` (a child process, as run_ref)."""
+        with open(REF) as f:
+            src = f.read()
+        self.assertEqual(src.count(old), 1, "mutation target not found exactly once: %r" % old)
+        ref = self.write("mutant_ref.py", src.replace(old, new))
+        return run_ref(self.write("mutant_vectors.txt", vectors), ref=ref)
+
+    def test_mutant_placement_clears_claim_is_detected(self):
+        # The withdrawn reading (placement clears bit 29) must fail the short discriminating vector while the
+        # legal worker unclaim stays green (docs/sim/forestry.md E-16; review 2026-11-03, first P2).
+        rc, out, _ = self.mutant(PLACEMENT_KEEPS, PLACEMENT_CLEARS,
+                                 "claims faithful A+ P -> 1 -\nclaims faithful A+ A- -> 0 -\n")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL claims faithful A+ P -> 1 -", out)
+        self.assertIn("got=0 -", out)
+        self.assertIn("PASS claims faithful A+ A- -> 0 -", out)
+        self.assertIn("2 vectors, 1 failures", out)
+
+    def test_mutant_first_delay_burned_per_visit_is_detected(self):
+        # The rejected rule: a visit below the delay burns its ticks and the next one owes 5 again.
+        rc, out, _ = self.mutant(DELAY_OWED, DELAY_BURNED,
+                                 "visits 256 6500 5 | 3 | 1 1 1 1 1 -> 0 0 ToTree 1500 3 -\n"
+                                 "visits 256 6500 5 | 3 | 5 -> 0 0 ToTree 1500 3 -\n")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL visits 256 6500 5 | 3 | 1 1 1 1 1", out)
+        self.assertIn("got=5 0 Start 0 - -", out)
+        self.assertIn("PASS visits 256 6500 5 | 3 | 5 ->", out)
+        self.assertIn("2 vectors, 1 failures", out)
+
+    def test_mutant_first_delay_not_saved_is_detected(self):
+        rc, out, _ = self.mutant(SAVED_WITH_DELAY, SAVED_WITHOUT_DELAY,
+                                 "visits 256 6500 5 | 3 | 2 S 3 -> 0 0 ToTree 1500 3 -\n"
+                                 "visits 256 6500 5 | 3 | 2 3 -> 0 0 ToTree 1500 3 -\n")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL visits 256 6500 5 | 3 | 2 S 3", out)
+        self.assertIn("got=2 0 Start 0 - -", out)
+        self.assertIn("PASS visits 256 6500 5 | 3 | 2 3 ->", out)
+        self.assertIn("2 vectors, 1 failures", out)
+
+    def test_mutant_first_delay_rearmed_after_cut_is_detected(self):
+        rc, out, _ = self.mutant(NEXT_STEP, NEXT_STEP_REARMED,
+                                 "visits 768 6500 5 | 3 7 | 50 9000 -> 0 256 ToTree 955 7 3\n"
+                                 "visits 256 6500 5 | 3 | 50 -> 0 0 ToTree 1455 3 -\n")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAIL visits 768 6500 5 | 3 7 | 50 9000", out)
+        self.assertIn("got=0 256 ToTree 960 7 3", out)
+        self.assertIn("PASS visits 256 6500 5 | 3 | 50 ->", out)
+        self.assertIn("2 vectors, 1 failures", out)
 
     def test_bundled_vectors_all_executed(self):
         expected = vector_lines(VECTORS)

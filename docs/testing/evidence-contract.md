@@ -33,6 +33,30 @@ meaning is violated. A test title or a list of passing tests is not that proof.
 Keep fidelity to the original, an explicit adaptation, and an unresolved rule
 separate. Never weaken a tolerance to hide an unexplained discrepancy.
 
+For a decisive decoded predicate, record its exact primary evidence, a
+hand-derived expected result and the smallest input that distinguishes the
+plausible wrong interpretation in this existing table. Verify bit position,
+width, mask, units and rounding where applicable. A previously documented fact
+newly relied on by the package needs the same check. The reviewer independently
+derives that result from the original bytes/data or the applicable API/caller;
+agreement among notes, implementation and a reference sharing those notes does
+not establish the underlying fact. Confirm the distinguishing assertion fails
+under the specific wrong interpretation while a legal control still executes.
+
+For a timed transition, establish the caller's supported interval range and
+check progress at its smallest positive interval, zero elapsed time, and a
+partitioned delay with surplus time. Preserve any partial delay across visits
+and save/reload where required. Compare the isolated transition under its
+contract; the entire simulation need not be invariant to advance partitioning.
+A typical frame interval or a documented assumption cannot justify failure on
+a supported input. Such failure requires a correction or an explicitly approved
+behavioral adaptation, rather than a wording-only disposition.
+
+These are targeted checks within the existing package review, before broad
+gates. Record their result and the reviewed scope in the same acceptance table;
+an unchecked claim remains unverified. No additional reviewer layer, standalone
+report, generic testing framework or repeated unaffected matrix is required.
+
 ## Mandatory execution workflow
 
 Use `tools/test/run_selected.py` for acceptance gates; `run_selected.sh` preserves

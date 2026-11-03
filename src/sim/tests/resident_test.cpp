@@ -237,6 +237,28 @@ Kv run_vector(const std::string& kind, const Kv& kv, const std::map<std::string,
         out["returned"] = std::to_string(r.returned);
         out["store"] = fmt_sparse(store);
         out["billed"] = fmt_sparse(billed);
+    } else if (kind == "sbill") {
+        const auto rng = ints(kv.count("range") ? kv.at("range") : "26,40");
+        const std::size_t count = kv.count("count") ? static_cast<std::size_t>(num("count")) : 96;
+        auto store = sparse(kv.at("store"), count);
+        auto billed = sparse(kv.at("billed"), count);
+        sim::BillLedger l{store, billed, static_cast<sim::GoodsId>(rng[0]),
+                          static_cast<sim::GoodsId>(rng[1])};
+        sim::SupplierModel m;
+        m.cls = class_of(kv.at("cls"));
+        m.tavern_stock = kv.count("tavern") ? static_cast<std::uint32_t>(num("tavern")) : 0;
+        m.inn_input = kv.count("input") ? static_cast<sim::GoodsId>(num("input")) : 0;
+        const sim::BillResult r = sim::supplier_bill(m, l, static_cast<sim::GoodsId>(num("goods")),
+                                                     static_cast<std::uint32_t>(num("amount")));
+        out["status"] = r.fault == sim::ResidentFault::None
+                            ? "ok"
+                            : (r.fault == sim::ResidentFault::GoodsOutOfTable
+                                   ? "out_of_table"
+                                   : sim::resident_fault_name(r.fault));
+        out["returned"] = std::to_string(r.returned);
+        out["store"] = fmt_sparse(store);
+        out["billed"] = fmt_sparse(billed);
+        out["tavern"] = std::to_string(m.tavern_stock);
     } else if (kind == "deliver") {
         const Goods& g = goods.at(kv.at("goods"));
         const House& h = houses.at(kv.at("house"));

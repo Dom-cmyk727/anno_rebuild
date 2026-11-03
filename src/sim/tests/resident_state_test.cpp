@@ -595,6 +595,19 @@ TEST_CASE("stream 128: the invariants name a broken walker or resident fact") {
         std::get<sim::House>(find_house(w)->payload).walkers.push_back(sim::FigureId{});
         CHECK(contains(w.check_invariants(), "walkers has 3 entries, the type needs 2"));
     }
+    {
+        // Too few slots is as wrong as too many (the vector is sized by the type's maximum).
+        sim::World w = p.world;
+        std::get<sim::House>(find_house(w)->payload).walkers.pop_back();
+        CHECK(contains(w.check_invariants(), "walkers has 1 entries, the type needs 2"));
+    }
+    {
+        // A live house walker without a home.
+        sim::World w = p.world;
+        std::get<sim::House>(find_house(w)->payload).walkers[1] = sim::FigureId{};
+        sim::find_figure(sim::WorldTestAccess::figures(w), p.figure)->home = sim::BuildingId{};
+        CHECK(contains(w.check_invariants(), "has no home"));
+    }
 }
 
 TEST_CASE("stream 128: make_payload sizes the walker slots by the type maximum") {

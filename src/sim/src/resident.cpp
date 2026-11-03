@@ -1,7 +1,9 @@
 // The resident/supplier transactions (resident.hpp; docs/sim/population-live.md section 2).
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <string>
+#include <vector>
 
 #include <anno/sim/resident.hpp>
 
@@ -197,13 +199,8 @@ AvailResult supplier_available(const SupplierModel& s, std::span<const std::uint
 
 bool supplier_enabled(const SupplierModel& s, GoodsId g) {
     if (s.cls == RuntimeClass::MarketStall) {
-        if (g == s.out[0]) {
-            return s.flag[0];
-        }
-        if (g == s.out[1]) {
-            return s.flag[1];
-        }
-        return false;
+        // D: the bytes test `out0 != g`: output 0 reads flag +0x18, every other goods flag +0x19.
+        return g == s.out[0] ? s.flag[0] : s.flag[1];
     }
     return true;
 }
@@ -241,8 +238,9 @@ BillResult supplier_bill(SupplierModel& s, BillLedger& ledger, GoodsId g, std::u
     case RuntimeClass::School:
         return bill(ledger, g, amount, false);
     case RuntimeClass::Inn: {
+        // D 0x100756e0: the input good is billed with the CLIPPED amount t (take = 0), even t = 0.
         const std::uint32_t t = std::min(s.tavern_stock, amount);
-        BillResult r = bill(ledger, s.inn_input, amount, false);
+        BillResult r = bill(ledger, s.inn_input, t, false);
         if (r.fault != ResidentFault::None) {
             r.returned = 0;
             return r;
@@ -265,33 +263,38 @@ DeliverResult house_deliver(const HouseFacts& house, std::span<std::uint32_t> st
         return r;
     }
     const std::uint64_t add = std::uint64_t{amount} * kStockPerDelivered;
-    const GoodsId sec = g < house.goods.size() ? house.goods[g].id_sec : 0;
-    std::size_t slot2 = n;
-    if (sec != 0) {
-        slot2 = slot_of(house, sec);
-        if (slot2 >= n || slot2 >= stock.size()) {
-            slot2 = n;
+    // D 0x10076610: the replay is a recursive deliver of the IdSec substitute (house vtable slot
+    // 0xc0 is the function itself): every substitute that has a need slot is raised and replays its
+    // own IdSec; a substitute without a slot ends the chain. P-3: at most goods.size() replays.
+    std::vector<std::size_t> chain{slot};
+    GoodsId cur = g;
+    for (std::size_t step = 0; step < house.goods.size(); ++step) {
+        const GoodsId sec = cur < house.goods.size() ? house.goods[cur].id_sec : 0;
+        if (sec == 0) {
+            break;
+        }
+        const std::size_t next = slot_of(house, sec);
+        if (next >= n || next >= stock.size()) {
+            break;
+        }
+        chain.push_back(next);
+        cur = sec;
+    }
+    // Check every add of the chain (slots may repeat) before any is made.
+    std::map<std::size_t, std::uint64_t> total;
+    for (const std::size_t k : chain) {
+        total[k] += add;
+    }
+    for (const auto& [k, v] : total) {
+        if (stock[k] + v > static_cast<std::uint64_t>(kU32Max)) {
+            r.fault = ResidentFault::StockOverflow;
+            return r;
         }
     }
-    // Check every add (the two may land on one slot) before any is made.
-    std::uint64_t total = stock[slot] + add;
-    if (slot2 == slot) {
-        total += add;
+    for (const auto& [k, v] : total) {
+        stock[k] += static_cast<std::uint32_t>(v);
     }
-    if (total > static_cast<std::uint64_t>(kU32Max)) {
-        r.fault = ResidentFault::StockOverflow;
-        return r;
-    }
-    if (slot2 < n && slot2 != slot && stock[slot2] + add > static_cast<std::uint64_t>(kU32Max)) {
-        r.fault = ResidentFault::StockOverflow;
-        return r;
-    }
-    stock[slot] += static_cast<std::uint32_t>(add);
-    r.touched = 1;
-    if (slot2 < n) {
-        stock[slot2] += static_cast<std::uint32_t>(add);
-        r.touched = 2;
-    }
+    r.touched = static_cast<std::uint32_t>(chain.size());
     return r;
 }
 

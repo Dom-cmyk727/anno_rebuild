@@ -67,7 +67,8 @@ inline constexpr std::int64_t kPurchaseScoreGate = 12;
 /// D delivery 0x10076610: a delivery adds amount * 16 to the stock.
 inline constexpr std::uint64_t kStockPerDelivered = 16;
 /// D: the constant availability of the infrastructure suppliers (PublicService, School, Doctor
-/// 256; FireBrigade 512), 8.8 tons.
+/// 256; FireBrigade 512), 8.8 tons. Original behaviour defaults of those classes' slot +0xa4, not
+/// limits of the engine.
 inline constexpr std::uint64_t kServiceAvailability = 256;
 inline constexpr std::uint64_t kFireBrigadeAvailability = 512;
 
@@ -152,12 +153,14 @@ struct AvailResult {
 /// tavern stock; every other class 0.
 [[nodiscard]] AvailResult supplier_available(const SupplierModel& s,
                                              std::span<const std::uint32_t> city_store, GoodsId g);
-/// D slot +0xc4: MarketStall the flag of the output slot g names (false for a goods that is none
-/// of its outputs); every other class true.
+/// D slot +0xc4: MarketStall reads `flag[out0 != g]` (output 0 its flag +0x18, every other goods
+/// flag +0x19; the ALL arm 0x8e and the Castle flag +0x22 are not modelled); every other class
+/// true.
 [[nodiscard]] bool supplier_enabled(const SupplierModel& s, GoodsId g);
 
 /// The city's consumer-goods record: the store (8.8), the billed counter, and the goods range that
 /// is billed (D 0x1002dac0 tests 0x1a..0x28; configuration, SimConfig::billed_goods_first/last).
+/// The member defaults are those original values; a caller with a World passes the SimConfig's.
 struct BillLedger {
     std::span<std::uint32_t> store;
     std::span<std::uint32_t> billed;
@@ -176,9 +179,9 @@ struct BillResult {
 [[nodiscard]] BillResult bill(BillLedger& ledger, GoodsId g, std::uint32_t amount, bool take);
 
 /// The supplier wrappers: MarketStall take = 1; PublicService and School take = 0; Doctor and
-/// FireBrigade return 0 and change nothing; Inn takes min(tavern, amount) from its own stock and
-/// bills its input good for the requested amount with take = 0 (the billed amount is a reading, P);
-/// any other class returns 0.
+/// FireBrigade return 0 and change nothing; Inn (D 0x100756e0) takes t = min(tavern, amount) from
+/// its own stock and bills its input good for the CLIPPED amount t with take = 0 (even t = 0),
+/// returning t (its taken-stat +0x1a is not modelled, U); any other class returns 0.
 [[nodiscard]] BillResult supplier_bill(SupplierModel& s, BillLedger& ledger, GoodsId g,
                                        std::uint32_t amount);
 
@@ -188,9 +191,12 @@ struct DeliverResult {
     ResidentFault fault = ResidentFault::None;
 };
 
-/// D 0x10076610: slot = lookup[g]; none -> nothing. Else stock[slot] += amount * 16 and, when g has
-/// an IdSec whose lookup is a slot, the same amount once more there (no further replay). Every add
-/// is checked against u32; any overflow refuses the whole call and changes nothing.
+/// D 0x10076610: slot = lookup[g]; none -> nothing. Else stock[slot] += amount * 16 and the IdSec
+/// replay, which is a RECURSIVE deliver of the substitute (house vtable slot 0xc0 is this
+/// function): each substitute with a need slot is raised and replays its own IdSec; a substitute
+/// without a slot ends the chain (g 26 -> 27 -> 28 raises three slots, touched = 3). The original
+/// recurses unboundedly; P-3: at most goods.size() replays, so a cycle or self-loop is cut there.
+/// Every add of the chain is checked against u32 first; any overflow refuses the whole call.
 [[nodiscard]] DeliverResult house_deliver(const HouseFacts& house, std::span<std::uint32_t> stock,
                                           GoodsId g, std::uint32_t amount);
 

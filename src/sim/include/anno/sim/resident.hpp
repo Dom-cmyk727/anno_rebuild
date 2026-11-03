@@ -63,6 +63,7 @@ inline constexpr std::int64_t kUrgencyBase = 128;
 inline constexpr std::int64_t kThresholdNum = 256;
 inline constexpr std::int64_t kThresholdDen = 4096;
 /// D step B arrival 0x10056480: a choice score below this buys nothing (the callers' gate 0xc).
+// Original default; the configurable path is a SimConfig field (not added in this task).
 inline constexpr std::int64_t kPurchaseScoreGate = 12;
 /// D delivery 0x10076610: a delivery adds amount * 16 to the stock.
 inline constexpr std::uint64_t kStockPerDelivered = 16;

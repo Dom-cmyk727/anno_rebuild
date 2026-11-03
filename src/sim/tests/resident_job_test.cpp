@@ -653,6 +653,31 @@ TEST_CASE(
         CHECK(seen == near_id);
         CHECK(seen != far_id);
     }
+    SUBCASE("equal scores: path-cost discovery, not candidate-list order, keeps the tie") {
+        // rect_query orders candidates by (y, x, id): the FAR stall (110, 104) sorts first and has
+        // the lower id; the NEAR stall (113, 110) is discovered first by the walk search.
+        Rig r = make_rig();
+        r.place(kHouse, 110, 110, fresh_house(2));
+        r.place(kStall, 110, 104); // far, north, first in (y, x, id) order, lowest id
+        r.place(kStall, 113, 110); // near, east
+        sim::World w = create(r, types);
+        city0(w).stock.stock[kFood] = 5000;
+        const sim::BuildingId far_id = at(w, 110, 104)->id;
+        const sim::BuildingId near_id = at(w, 113, 110)->id;
+        CHECK(far_id.v < near_id.v);
+        Sender sender;
+        const sim::FigureId id = spawn_one(w, sender);
+        sim::BuildingId seen;
+        until(w, [&] {
+            const sim::Figure* f = sim::find_figure(w.figures(), id);
+            if (f != nullptr && f->resident && f->resident->target.valid()) {
+                seen = f->resident->target;
+            }
+            return ended(w, id);
+        });
+        CHECK(seen == near_id);
+        CHECK(seen != far_id);
+    }
 }
 
 TEST_CASE("resident job: two competing buyers, the second sees the reduced store") {
@@ -950,4 +975,159 @@ TEST_CASE("resident job: the figure validators name a broken job fact") {
     }
     CHECK(has(broken([](sim::Figure& f) { f.resident->step = static_cast<sim::ResidentStep>(9); }),
               "is no step"));
+}
+
+// ------------------------------------------------------------------ direct resident_tick calls
+
+namespace {
+
+/// One direct call of the resident body on a COPY of a figure at world tick `t`; the effects go
+/// to `fx` and are never merged, so the world stays as it is.
+bool direct_call(sim::World& w, sim::Figure& fig, std::uint32_t t, sim::Effects& fx) {
+    sim::GlobalDraw global(sim::WorldTestAccess::rng(w));
+    sim::CountingDraw draw(global);
+    const sim::TickContext ctx{t,
+                               t,
+                               w.config(),
+                               w.rules(),
+                               w.settings(),
+                               w.types(),
+                               sim::PlayersView(w.players()),
+                               sim::IslandsView(w.islands()),
+                               draw,
+                               w.seams()};
+    sim::SerialWorld serial(sim::WorldTestAccess::islands(w), w.config().layout, w.figures(),
+                            w.players(), fx);
+    return sim::resident_tick(ctx, serial, fig);
+}
+
+struct Snap {
+    std::optional<sim::ResidentState> resident;
+    sim::FixedPos pos;
+    std::uint16_t stamp = 0;
+    bool operator==(const Snap&) const = default;
+};
+Snap snap(const sim::Figure& f) {
+    return Snap{f.resident, f.pos, f.stamp};
+}
+
+/// A fresh walker (stock 5000, stall adjacent east) and a copy of it with the stamp at `stamp`.
+struct Direct {
+    sim::World w;
+    sim::Figure fig;
+};
+Direct direct_rig(std::uint16_t stamp) {
+    const auto types = registry();
+    Rig r = standard_rig();
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kFood] = 5000;
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    sim::Figure f = *sim::find_figure(w.figures(), id);
+    f.stamp = stamp;
+    return Direct{std::move(w), std::move(f)};
+}
+
+} // namespace
+
+TEST_CASE("resident job: direct calls, zero elapsed ticks change nothing") {
+    Direct d = direct_rig(1000);
+    const Snap before = snap(d.fig);
+    const std::uint64_t hash = d.w.state_hash();
+    sim::Effects fx;
+    CHECK(direct_call(d.w, d.fig, 1000, fx));
+    CHECK(direct_call(d.w, d.fig, 1000, fx));
+    CHECK(snap(d.fig) == before);
+    CHECK(fx.goods_moves.empty());
+    CHECK(fx.house_deliveries.empty());
+    CHECK(fx.releases.empty());
+    CHECK(d.w.state_hash() == hash);
+}
+
+TEST_CASE("resident job: direct calls are partition invariant, also across the u16 wrap") {
+    for (const std::uint16_t base : {std::uint16_t{1000}, std::uint16_t{65500}}) {
+        CAPTURE(base);
+        // One tick at a time until the walker is Done.
+        Direct a = direct_rig(base);
+        sim::Effects fa;
+        std::uint32_t done_at = 0;
+        for (std::uint32_t k = 1; k <= 60000 && done_at == 0; ++k) {
+            REQUIRE(direct_call(a.w, a.fig, base + k, fa));
+            if (a.fig.resident->step == sim::ResidentStep::Done) {
+                done_at = k;
+            }
+        }
+        REQUIRE(done_at > 2);
+        // One large call at the same final tick (and a split in two) gives the same state.
+        for (const std::uint32_t split : {0U, 1U, done_at / 2, done_at - 1}) {
+            CAPTURE(split);
+            Direct b = direct_rig(base);
+            sim::Effects fb;
+            if (split != 0) {
+                REQUIRE(direct_call(b.w, b.fig, base + split, fb));
+            }
+            REQUIRE(direct_call(b.w, b.fig, base + done_at, fb));
+            CHECK(snap(b.fig) == snap(a.fig));
+            CHECK(fb.goods_moves.size() == fa.goods_moves.size());
+            CHECK(fb.house_deliveries.size() == fa.house_deliveries.size());
+            CHECK(fb.billed_deltas.size() == fa.billed_deltas.size());
+        }
+        // The minimum: one tick fewer is not Done in a single call either.
+        Direct c = direct_rig(base);
+        sim::Effects fc;
+        REQUIRE(direct_call(c.w, c.fig, base + done_at - 1, fc));
+        CHECK(c.fig.resident->step != sim::ResidentStep::Done);
+        // Exactly one purchase and one delivery over the whole run.
+        CHECK(fa.goods_moves.size() == 1);
+        CHECK(fa.house_deliveries.size() == 1);
+        CHECK(a.fig.resident->cargo[0].goods == kFood);
+    }
+}
+
+TEST_CASE("resident job: a Wait split across calls buys exactly once") {
+    Direct a = direct_rig(2000);
+    sim::Effects fx;
+    bool saw_wait = false;
+    std::size_t moves_in_wait = 0;
+    for (std::uint32_t k = 1; k <= 60000 && a.fig.resident->step != sim::ResidentStep::Done; ++k) {
+        REQUIRE(direct_call(a.w, a.fig, 2000 + k, fx));
+        if (a.fig.resident->step == sim::ResidentStep::Wait) {
+            // The wait survives the call boundary with its full length and nothing was bought yet.
+            CHECK(a.fig.resident->wait == sim::kResidentWaitTicks);
+            moves_in_wait = fx.goods_moves.size();
+            saw_wait = true;
+        }
+    }
+    CHECK(saw_wait);
+    CHECK(moves_in_wait == 0);
+    CHECK(fx.goods_moves.size() == 1);
+    CHECK(a.fig.resident->cargo[0].goods == kFood);
+    CHECK(a.fig.resident->cargo[1] == sim::ResidentCargo{});
+}
+
+TEST_CASE("resident job: a crafted house (E == 0) is a counted fault and changes nothing") {
+    const auto types = registry();
+    Rig r = standard_rig();
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kFood] = 5000;
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    {
+        sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+        const sim::BuildingKey key = is.cache.by_id.at(at(w, 110, 110)->id);
+        auto& house = std::get<sim::House>(
+            is.cities[0]->index.lists[key.list].slots[key.slot].value().payload);
+        house.e = 0; // crafted: the choice divides by E * Menge
+    }
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    until(w, [&] { return ended(w, id); });
+    CHECK(stats.residents.faults == 1);
+    CHECK(stats.residents.purchases == 0);
+    CHECK(stats.residents.deliveries == 0);
+    CHECK(city0(w).stock.stock[kFood] == 5000);
+    CHECK(city0(w).billed[kFood] == 0);
+    CHECK(house_of(w).stock[0] == 0);
+    CHECK(house_of(w).walkers[0] == sim::FigureId{});
+    CHECK(w.check_invariants() == "");
 }

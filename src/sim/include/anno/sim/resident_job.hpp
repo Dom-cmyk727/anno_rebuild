@@ -32,6 +32,7 @@ namespace anno::sim {
 inline constexpr std::uint32_t kJobResident = kJobResidentCode;
 
 /// D 0x10076341-0x10076371: a House sends a walker only while its lowest need score is below this.
+// Original default; the configurable path is a SimConfig field (not added in this task).
 inline constexpr std::int64_t kWalkerSpawnBelow = 102;
 
 /// P-8 (population-live.md section 12): the stall wait (+0xe0, float) is unread, the engine waits

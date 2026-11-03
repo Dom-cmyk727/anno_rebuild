@@ -819,10 +819,10 @@ TEST_CASE("house transition: removal through the production path, counters deriv
     // Remove arm: the kernel result carries the final residents (no correction on this arm).
     Spy spy;
     const auto k =
-        evaluated(sim::DeferredEffect::Remove, sim::HouseArm::Remove, 640, {30000, 8000}, 64);
+        evaluated(sim::DeferredEffect::Remove, sim::HouseArm::Remove, 640, {30000, 8000}, 300);
     const auto o = sim::apply_house_effects(env_of(w, spy), island0(w), key_at(w, 110, 110), k);
     CHECK(o.kind == sim::HouseOutcomeKind::Removed);
-    CHECK(o.counter_sub == 1);
+    CHECK(o.counter_sub == 4); // trunc(300 / 64): no below-64 correction on the remove arm
     CHECK(at(w, 110, 110) == nullptr);
     CHECK(object_at(w, 110, 110) == 0);
     CHECK(city0(w).index.house_counts == std::vector<std::uint32_t>{1, 0});

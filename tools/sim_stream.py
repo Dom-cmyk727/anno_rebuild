@@ -76,6 +76,11 @@ figure gains an optional harvest state and each figure type a u32 route (the tra
 hold no figure and no figure type). PRNG timeline 4 ports the farm dispatch draw FarmWorkerDispatch;
 the transcribed goldens' production gate stays closed, so no farm step and no such draw happens.
 
+Stream 127 (task MAP-POP-IMPL-1, docs/sim/population-contract.md) is one combined increment for
+packages A-C. Package A changes no layout: an original scenario's created players carry the imported
+stage mask (flags), which the transcribed goldens (no SPIELER head) never hold, so only the version
+word moves their hashes.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -96,7 +101,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 126
+STATE_HASH_VERSION = 127
 PRNG_TIMELINE_VERSION = 4
 
 

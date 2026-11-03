@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -319,6 +320,80 @@ TEST_CASE("scenario HEAD byte map") {
     CHECK(e.spec.settings.prop6 == 0x8401);
     // No HEAD at all.
     CHECK(refusal(scene("ANNO", chunk("SKTIMER", Buf(40, 0)))) == "scene.HEAD: missing");
+}
+
+/// A player HEAD with the stage-mask inputs written by hand: the u32 at +0x48 and the byte at
+/// +0x5c (D AnnoWelt 0x1001d389-0x1001d3df). Everything else as player_head.
+Buf player_head_mask(std::uint32_t head48, std::uint8_t head5c) {
+    Buf b = player_head(8, 1000, "M", 1);
+    for (int i = 0; i < 4; ++i) {
+        b[0x48 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(head48 >> (8 * i));
+    }
+    b[0x5c] = head5c;
+    return b;
+}
+
+TEST_CASE("population A: the player stage mask is restored through the created world") {
+    // MAP-POP-IMPL-1 A. Expected values are hand-derived from the instruction spans (population-
+    // contract.md P-A1..P-A4): flags = (HEAD48 & 0x7fffff) | (+0x5c bit3 -> 1<<24) | (bit2 ->
+    // 1<<27) | (bit4 -> 1<<29) | (bit5 -> 1<<30); nothing else survives.
+    struct Row {
+        std::uint32_t head48;
+        std::uint8_t head5c;
+        std::uint32_t want;
+    };
+    const Row rows[] = {
+        {0x1f, 0x00, 0x1f},              // A1: the low bits (the legal control)
+        {0x1, 0x3c, 0x69000001},         // A2: all four reconstructed bits
+        {0x1f, 0x20, 0x4000001f},        // A2: bit 5 alone -> bit 30
+        {0x0, 0x08, 0x01000000},         // bit 3 -> bit 24
+        {0x0, 0x04, 0x08000000},         // bit 2 -> bit 27
+        {0x0, 0x10, 0x20000000},         // bit 4 -> bit 29
+        {0xffffffffU, 0xc3, 0x007fffff}, // A3: other packed bits and the high half are dropped
+        {0x00800000, 0x00, 0x00000000},  // A3: bit 23 is dropped
+        {0x00000000, 0x00, 0x00000000},  // A4: a stored zero is zero, not the constructor's 1
+        {0x00000001, 0x00, 0x00000001},  // INFRA_EVER only
+        {0x007fffff, 0x3c, 0x697fffff},  // everything that can survive
+    };
+    Buf kids = chunk("HEAD", head_bytes());
+    std::uint32_t slot = 0;
+    for (const Row& r : rows) {
+        append(kids, chunk("SPIELER",
+                           spieler(slot++, record("HEAD", player_head_mask(r.head48, r.head5c)))));
+    }
+    const sim::LoadedScenario s = load(scene("ANNO", kids));
+    REQUIRE(s.spec.players.size() == std::size(rows));
+    auto w = sim::World::create(s.spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    for (std::size_t i = 0; i < std::size(rows); ++i) {
+        CAPTURE(i);
+        REQUIRE(s.spec.players[i].flags.has_value());
+        CHECK(*s.spec.players[i].flags == rows[i].want);
+        // The created world, not just the importer: the final assignment is checked too.
+        REQUIRE(w.value().players().slots[i].has_value());
+        CHECK(w.value().players().slots[i]->flags == rows[i].want);
+    }
+}
+
+TEST_CASE("population A: a spec without a mask keeps the constructor value") {
+    // The optional semantics (P-A4): no flags -> 1 (synthetic, fixed-map and ship-start specs);
+    // an explicit value, zero included, is taken as is.
+    sim::ScenarioSpec spec;
+    for (std::uint32_t i = 0; i < 3; ++i) {
+        sim::ScenarioSpec::PlayerSpec ps;
+        ps.id = sim::PlayerId{i};
+        spec.players.push_back(ps);
+    }
+    spec.players[1].flags = 0U;
+    spec.players[2].flags = 0x4000001fU;
+    auto w = sim::World::create(spec, registry());
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    REQUIRE(w.value().players().slots[0].has_value());
+    CHECK(w.value().players().slots[0]->flags == 1U);
+    REQUIRE(w.value().players().slots[1].has_value());
+    CHECK(w.value().players().slots[1]->flags == 0U);
+    REQUIRE(w.value().players().slots[2].has_value());
+    CHECK(w.value().players().slots[2]->flags == 0x4000001fU);
 }
 
 TEST_CASE("scenario player series") {

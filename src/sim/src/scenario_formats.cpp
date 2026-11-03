@@ -990,6 +990,28 @@ std::optional<std::string> read_head(Bytes record, sze::Edition edition, WorldSe
     return std::nullopt;
 }
 
+/// The stage mask at `player +0x90` (D AnnoWelt 0x1001d389-0x1001d3df, T32.5 accepted,
+/// docs/re/population.md section 15). `head_48` is HEAD+0x48 (u32), of which only the low 23 bits
+/// are kept (`and eax,0x7fffff`); `head_5c` is HEAD+0x5c (u8): bit 3 sets bit 24, bit 2 sets bit
+/// 27, bit 4 sets bit 29, bit 5 sets bit 30. Every other bit of either field, bit 23 included, is
+/// dropped. OQ-460 (the extra OR at 0x1001bda3) is not imported.
+std::uint32_t decode_player_mask(std::uint32_t head_48, std::uint8_t head_5c) {
+    std::uint32_t mask = head_48 & 0x7fffffU;
+    if ((head_5c & 0x08U) != 0) {
+        mask |= 0x01000000U;
+    }
+    if ((head_5c & 0x04U) != 0) {
+        mask |= 0x08000000U;
+    }
+    if ((head_5c & 0x10U) != 0) {
+        mask |= 0x20000000U;
+    }
+    if ((head_5c & 0x20U) != 0) {
+        mask |= 0x40000000U;
+    }
+    return mask;
+}
+
 /// The player fields of a HEAD record (108 bytes; D AnnoWelt 0x1001d2b9–0x1001d430,
 /// docs/re/annoscene.md §6, docs/formats/sze.md "Players").
 void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
@@ -1001,6 +1023,8 @@ void read_player_head(Bytes h, ScenarioSpec::PlayerSpec& p) {
     // +0xA0 = u16 [0x4e] & 0xFFBF, a value >= 0x100 read as 0.
     const std::uint32_t a0 = formats::u16_le(h, 0x4e);
     p.flags_a0 = a0 >= 0x100 ? 0U : (a0 & 0xFFBFU);
+    // The caller passes a full 108-byte HEAD, so +0x48 and +0x5c exist. A stored 0 stays 0.
+    p.flags = decode_player_mask(formats::u32_le(h, 0x48), h[0x5c]);
 }
 
 /// Whether an INSELLNK path names a dummy: its last 9 characters are "DUMMY.scp" in

@@ -1885,18 +1885,18 @@ TEST_CASE("load refuses a damaged frame") {
         CHECK(contains(err, "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
                                 " is not supported"));
     }
-    SUBCASE("a valid stream 125 control: the old version is refused with its own text, 126 loads") {
-        // The stream before MAP-ECON-1 E2 (no forestry Rules, harvest state, claim owners or
-        // figure-type route) is version 125. The control is a valid save of this build; only the
-        // version word is changed and the frame resealed, so the refusal is the version text and
-        // not checksum damage.
-        static_assert(sim::kStateHashVersion == 126, "update this test with the next stream bump");
+    SUBCASE("a valid stream 126 control: the old version is refused with its own text, 127 loads") {
+        // The stream before MAP-POP-IMPL-1 (stream 126: forestry Rules, harvest state, claim
+        // owners and figure-type route; no population inputs) is version 126. The control is a
+        // valid save of this build; only the version word is changed and the frame resealed, so the
+        // refusal is the version text and not checksum damage.
+        static_assert(sim::kStateHashVersion == 127, "update this test with the next stream bump");
         CHECK(island_test::load_error(good).empty()); // the control loads
         std::vector<std::uint8_t> old = good;
-        island_test::put32(old, 8, 125);
+        island_test::put32(old, 8, 126);
         island_test::reseal(old);
         const std::string err = island_test::load_error(old);
-        CHECK(contains(err, "state stream version 125 is not supported (this build reads 126)"));
+        CHECK(contains(err, "state stream version 126 is not supported (this build reads 127)"));
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;

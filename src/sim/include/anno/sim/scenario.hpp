@@ -41,6 +41,11 @@ struct ScenarioSpec {
         std::uint32_t kind = 8, volk = 1;
         std::int64_t money = 10000;
         std::uint32_t flags_a0 = 0;
+        /// MAP-POP-IMPL-1 A (stream 127, docs/sim/population-contract.md): the player's stage mask
+        /// (`Player::flags`, original +0x90), restored from an original SPIELER head
+        /// (AnnoWelt 0x1001d389-0x1001d3df). nullopt = no head: the constructor's 1 stays (a
+        /// synthetic, fixed-map or ship-start spec); a stored 0 is kept as 0.
+        std::optional<std::uint32_t> flags;
         /// The start colour; 0xff = none (becomes kNoColour).
         std::uint8_t colour = 0xff;
         std::vector<std::uint8_t> name;

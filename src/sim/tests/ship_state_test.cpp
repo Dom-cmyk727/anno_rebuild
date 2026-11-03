@@ -594,8 +594,8 @@ TEST_CASE("ship holds: a stream of the whole-ton layout or a truncated hold fail
     // refused by the version checks (the bytes are this build's layout with only the number
     // changed).
     island_test::check_unsupported_versions(good, types,
-                                            {116, 117, 118, 119, 120, 121, 122, 123, 125});
-    CHECK(sim::kStateHashVersion == 126);
+                                            {116, 117, 118, 119, 120, 121, 122, 123, 125, 126});
+    CHECK(sim::kStateHashVersion == 127);
 
     // Truncation of the flat stream inside a hold amount fails and the error names the figure.
     std::vector<std::uint8_t> flat = island_test::flat_stream(w);

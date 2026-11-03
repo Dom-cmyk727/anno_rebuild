@@ -122,15 +122,15 @@
 # digests are byte-identical to stream 118. scenario_corpus.txt differs from 118 only in the version
 # header, create_hash, UnknownRecord (the KONTORID record is known now) and MarketNumberNotKept (the
 # market KONTID is kept now, so the warning is gone). Other lines are the C++ values at 119.
-g0_step1 S1 126 57aff829aacfb162
-g0_step100 S1 126 346f72c2b854e2df
-g0_step1000 S1 126 9353c2c0a36579fc
-g1_players_step100 S4 126 4ea0fe8f523fe639
-g1_players_step700 S4 126 aeb0a804a9a9b385
-s5_islands_create S5 126 3da91dba97f5929c
-s5_islands_step100 S5 126 fc0b62a27d5bba46
-s5_islands_locked_create S5 126 00fffb1a25f5f897
-s5_islands_city_created S5 126 c07f74f095444bff
+g0_step1 S1 127 c7f224171a9029ee
+g0_step100 S1 127 1017cb97f88a570b
+g0_step1000 S1 127 0beb30d7f9b411e0
+g1_players_step100 S4 127 b3b54021e47f078d
+g1_players_step700 S4 127 48b862d1e44d53a1
+s5_islands_create S5 127 a2da6cde956789f8
+s5_islands_step100 S5 127 ed30f86318ea6f72
+s5_islands_locked_create S5 127 3e69dec14507affb
+s5_islands_city_created S5 127 9b03d7c8c5c66d1b
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -138,8 +138,8 @@ s5_islands_city_created S5 126 c07f74f095444bff
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 126 d1a0abbf15262332
-s6_g1_step100 S6 126 c7eefde2d0a5c19a
+s6_g1_create S6 127 91b4efda832858dd
+s6_g1_step100 S6 127 0cf264e90bc88291
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).

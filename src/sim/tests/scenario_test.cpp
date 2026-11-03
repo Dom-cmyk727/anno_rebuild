@@ -393,6 +393,83 @@ bool update_requested() {
 
 } // namespace
 
+TEST_CASE(
+    "population A: the created players of every shipped scenario carry the independent masks") {
+    // MAP-POP-IMPL-1 A. The expectation is fixtures/synthetic/sim/player_masks.txt, written by
+    // tools/player_mask_ref.py from the raw SPIELER heads without any C++ (373 heads, 263 of
+    // them mask 1). The created world, not the importer alone, is compared.
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    std::map<std::string, std::string> want;
+    {
+        std::ifstream in(fs::path(ANNO_FIXTURES_DIR) / "sim" / "player_masks.txt");
+        REQUIRE(in.good());
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty() || line[0] == '#') {
+                continue;
+            }
+            const std::size_t sp = line.find(' ');
+            want[line.substr(0, sp)] = sp == std::string::npos ? "" : line.substr(sp + 1);
+        }
+    }
+    const auto types = original_registry(*dir);
+    const std::vector<fs::path> files = scenario_files(*dir);
+    REQUIRE(files.size() == 50);
+    REQUIRE(want.size() == 50);
+    const anno::sim_load::IslandTemplates templates = anno::sim_load::scan_island_templates(*dir);
+    struct Got {
+        std::string name, text, error;
+        std::size_t heads = 0, ones = 0;
+    };
+    const auto results = anno::test::parallel_indexed(
+        files.size(),
+        [&](std::size_t i) {
+            Got g;
+            g.name = rel_name(*dir, files[i]);
+            const sim::SimConfig cfg;
+            auto resolved = anno::sim_load::load_scenario_with_links(
+                anno::test::read_file(files[i]), templates, *types, cfg, {});
+            if (!resolved) {
+                g.error = resolved.error();
+                return g;
+            }
+            auto w = sim::World::create(resolved.value().loaded.spec, types, cfg);
+            if (!w) {
+                g.error = w.error();
+                return g;
+            }
+            for (const sim::ScenarioSpec::PlayerSpec& ps : resolved.value().loaded.spec.players) {
+                const auto& slot = w.value().players().slots[ps.id.v];
+                if (!slot.has_value()) {
+                    g.error = "player slot missing";
+                    return g;
+                }
+                char buf[32];
+                std::snprintf(buf, sizeof buf, "%u:%08x", ps.id.v, slot->flags);
+                g.text += (g.text.empty() ? "" : " ") + std::string(buf);
+                ++g.heads;
+                g.ones += slot->flags == 1U ? 1U : 0U;
+            }
+            return g;
+        },
+        anno::test::parallel_options());
+    std::size_t heads = 0, ones = 0;
+    for (const Got& g : results) {
+        INFO(g.name);
+        CHECK(g.error == "");
+        REQUIRE(want.contains(g.name));
+        CHECK(g.text == want[g.name]);
+        heads += g.heads;
+        ones += g.ones;
+    }
+    CHECK(heads == 373);
+    CHECK(ones == 263);
+}
+
 TEST_CASE("scenario corpus: every .sze loads, creates and runs five minutes") {
     const auto dir = anno::test::game_dir();
     if (!dir) {

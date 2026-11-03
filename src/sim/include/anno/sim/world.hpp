@@ -133,7 +133,12 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // digest's figure types gain `route` (u32) after the navigation facts. The tile aux admits bit 29
 // (the claim). A world without harvest workers moves only through the version and the Rules and
 // Island bytes (two Rules bytes, one u64 count 0 per island).
-inline constexpr std::uint32_t kStateHashVersion = 126;
+// Stream at 127 (task MAP-POP-IMPL-1, docs/sim/population-contract.md section 1): one combined,
+// unpublished increment for the population input pipeline. Package A: a scenario import stores the
+// full player stage mask, so a created player of an original scenario may hash with a mask other
+// than 1 (no layout change). Packages B and C add to this same version: four SimConfig population
+// roles in the config scope and the goods BauFirst/IdSec in the registry digest.
+inline constexpr std::uint32_t kStateHashVersion = 127;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

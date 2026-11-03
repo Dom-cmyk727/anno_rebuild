@@ -474,6 +474,9 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         p.volk = ps.volk;
         p.money = ps.money;
         p.flags_a0 = ps.flags_a0;
+        if (ps.flags.has_value()) {
+            p.flags = *ps.flags; // an explicit 0 stays 0 (population-contract.md P-A4)
+        }
         p.default_colour = ps.colour == 0xff ? kNoColour : static_cast<std::uint32_t>(ps.colour);
         p.name = ps.name;
         p.relations = ps.relations;

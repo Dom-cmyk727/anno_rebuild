@@ -5698,3 +5698,192 @@ TEST_CASE("the GPU waves carry over a window switch: a ship's wake survives a ch
     CHECK(after_on > 0.5 * before_on);   // carried over
     CHECK(after_off < 0.2 * before_off); // the control: a restart at rest leaves almost nothing
 }
+
+// A zoom in (finer cells per tile) carries the waves too: a ship's wake survives the switch.
+TEST_CASE("the GPU waves carry over a zoom in: a ship's wake survives finer cells per tile") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 128;
+    cfg.cells_per_tile = {4, 2, 4};
+    cfg.recentre_cells = 8;
+    cfg.sponge_cells = 8;
+    cfg.swell_amplitude = 0.0F; // a calm sea: everything on the surface is the ship's
+    const fluid::DepthFn depth = [](float, float) { return 12.0F; };
+    // The mean |eta| over the tiles both windows cover, farther than 2.5 tiles from the ship.
+    const auto scenario = [&](bool carry) -> std::pair<double, double> {
+        auto made = gpu::FluidGpu::create(*ctx, cfg);
+        REQUIRE(made);
+        gpu::FluidGpu& g = made.value();
+        g.set_background(true);
+        g.carry_waves_over = carry;
+        const FluidRun run{*ctx, g, depth};
+        std::uint64_t time_ms = 2000;
+        REQUIRE(poll_until([&] { run(1, {8.0F, 8.0F}, 20.0F, time_ms); },
+                           [&] { return g.window().has_value() && !g.setting_up(); }, 20.0));
+        REQUIRE(g.window()->cells_per_tile == 2);
+        fluid::ShipWake ship;
+        ship.x = 4.0F;
+        ship.y = 8.0F;
+        ship.vx = 6.0F;
+        for (int frame = 0; frame < 30; ++frame) { // the ship sails +x for a second
+            g.set_ships({ship});
+            time_ms += 33;
+            run(1, {8.0F, 8.0F}, 20.0F, time_ms);
+            ship.x += ship.vx * 0.033F;
+        }
+        auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+        REQUIRE(frame);
+        const auto wake = [&](const fluid::FluidWindow& w) {
+            const auto n = static_cast<std::uint32_t>(w.size);
+            const auto bytes = frame.value()->read_back(g.state_texture(), n, n, 16);
+            double sum = 0.0;
+            std::size_t cells = 0;
+            const fluid::CellRect r = w.rect();
+            for (std::int64_t y = r.y0; y < r.y1; ++y) {
+                for (std::int64_t x = r.x0; x < r.x1; ++x) {
+                    const auto [px, py] = w.cell_centre(x, y);
+                    if (std::hypot(px - ship.x, py - ship.y) < 2.5F || px < 0.0F || px > 16.0F ||
+                        py < 0.0F || py > 16.0F) {
+                        continue;
+                    }
+                    const auto [cx, cy] = w.storage(x, y);
+                    float eta = 0.0F;
+                    std::memcpy(&eta, bytes.data() + 16 * (cy * n + cx), 4);
+                    sum += std::abs(eta);
+                    ++cells;
+                }
+            }
+            return sum / static_cast<double>(std::max<std::size_t>(cells, 1));
+        };
+        const double before = wake(*g.window());
+        g.set_ships({});
+        REQUIRE(poll_until(
+            [&] {
+                time_ms += 5;
+                run(0, {8.0F, 8.0F}, 20.0F, time_ms);
+            },
+            [&] { return g.window() && g.window()->cells_per_tile == 4 && !g.setting_up(); },
+            20.0));
+        run(0, {8.0F, 8.0F}, 20.0F, time_ms);
+        CHECK(g.resamples() == (carry ? 1U : 0U));
+        CHECK(ctx->errors->load() == 0);
+        return {before, wake(*g.window())};
+    };
+    const auto [before_on, after_on] = scenario(true);
+    const auto [before_off, after_off] = scenario(false);
+    MESSAGE("wake (mean |eta|) into finer cells: carried " << before_on << " -> " << after_on
+                                                           << ", restarted " << before_off << " -> "
+                                                           << after_off);
+    REQUIRE(before_on > 0.01);
+    CHECK(after_on > 0.5 * before_on);
+    CHECK(after_off < 0.2 * before_off);
+}
+
+// Owner playtest 2026-11-03, round 6: after a zoom back in, whitish patches with stepped edges in
+// the water. A beach simulated at 1 cell per tile (the far levels' bound) and the switch to 16
+// (group 0): bilinear, the carried surface had a kink at every old cell's edge (the lighting drew
+// steps a tile wide) and the coarse surf came in as blobs off the shore. Now: no foam carried, and
+// the surface's second difference is no larger at the old cells' edges than between them.
+TEST_CASE("a zoom in carries the waves smooth and leaves the far levels' surf behind") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 384;
+    // A beach along x with a wavy shore: deep (16) at x < 6, dry past x ~ 14.
+    const fluid::DepthFn depth = [](float x, float y) {
+        return 16.0F - 2.0F * std::max(x - 6.0F - 1.5F * std::sin(y * 0.25F), 0.0F);
+    };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    g.set_background(true);
+    const FluidRun run{*ctx, g, depth};
+    const std::pair<float, float> centre{10.0F, 0.0F};
+    std::uint64_t t = 1000;
+    auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
+    REQUIRE(frame);
+    // Wet cells with foam above 0.1, and of the deep cells (depth > 4) the mean |second difference
+    // of eta along x| at the old cells' edges (fine x = 16 i + 7, 16 i + 8) and between them.
+    struct Read {
+        std::size_t wet = 0, foamy = 0;
+        double edge = 0.0, inner = 0.0;
+    };
+    const auto read = [&] {
+        const fluid::FluidWindow w = *g.window();
+        const auto n = static_cast<std::uint32_t>(w.size);
+        const auto bytes = frame.value()->read_back(g.state_texture(), n, n, 16);
+        const auto at = [&](std::int64_t x, std::int64_t y, std::size_t c) {
+            const auto [sx, sy] = w.storage(x, y);
+            float v = 0.0F;
+            std::memcpy(&v, bytes.data() + 16 * (sy * n + sx) + 4 * c, 4);
+            return static_cast<double>(v);
+        };
+        Read r;
+        std::size_t edges = 0, inners = 0;
+        const fluid::CellRect rect = w.rect();
+        for (std::int64_t y = rect.y0 + 4; y < rect.y1 - 4; ++y) {
+            for (std::int64_t x = rect.x0 + 4; x < rect.x1 - 4; ++x) {
+                const auto [px, py] = w.cell_centre(x, y);
+                const float d = depth(px, py);
+                if (d <= 0.05F) {
+                    continue;
+                }
+                ++r.wet;
+                r.foamy += at(x, y, 3) > 0.1 ? 1U : 0U;
+                if (d > 4.0F && w.cells_per_tile == 16) {
+                    const double d2 =
+                        std::abs(at(x + 1, y, 0) - 2.0 * at(x, y, 0) + at(x - 1, y, 0));
+                    const std::int64_t m = ((x % 16) + 16) % 16;
+                    if (m == 7 || m == 8) {
+                        r.edge += d2;
+                        ++edges;
+                    } else {
+                        r.inner += d2;
+                        ++inners;
+                    }
+                }
+            }
+        }
+        r.edge /= static_cast<double>(std::max<std::size_t>(edges, 1));
+        r.inner /= static_cast<double>(std::max<std::size_t>(inners, 1));
+        return r;
+    };
+    // Ten seconds at 1 cell per tile: surf builds on the shore.
+    REQUIRE(poll_until(
+        [&] {
+            run(0, centre, 120.0F, t, 1);
+            t += 16;
+        },
+        [&] { return g.window() && g.window()->cells_per_tile == 1 && !g.setting_up(); }, 30.0));
+    for (const std::uint64_t end = t + 10000; t < end; t += 16) {
+        run(0, centre, 120.0F, t, 1);
+    }
+    const Read coarse = read();
+    MESSAGE("coarse: foam > 0.1 on " << coarse.foamy << " of " << coarse.wet << " wet cells");
+    REQUIRE(coarse.foamy > 0);
+    // The zoom in to 16 cells per tile, carried over.
+    REQUIRE(poll_until(
+        [&] {
+            run(0, centre, 20.0F, t, 16);
+            t += 16;
+        },
+        [&] { return g.window() && g.window()->cells_per_tile == 16 && !g.setting_up(); }, 30.0));
+    REQUIRE(g.resamples() == 1);
+    const Read fine = read();
+    const double share = static_cast<double>(fine.foamy) / static_cast<double>(fine.wet);
+    MESSAGE("after the zoom in: foam > 0.1 on " << 100.0 * share << " % of " << fine.wet
+                                                << " wet cells; second difference at the old "
+                                                   "cells' edges "
+                                                << fine.edge << ", between them " << fine.inner);
+    CHECK(share < 0.002);
+    REQUIRE(fine.inner > 0.0);
+    CHECK(fine.edge < 2.0 * fine.inner);
+    CHECK(ctx->errors->load() == 0);
+}

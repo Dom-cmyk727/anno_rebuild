@@ -270,10 +270,23 @@ fn prev_at(x: i32, y: i32) -> vec4<f32> {
     return textureLoad(prev, vec2<i32>(wrapi(x, OLD.size), wrapi(y, OLD.size)), 0);
 }
 
+// Uniform cubic B-spline weights of the four samples around a point at fraction t past the second.
+fn bspline(t: f32) -> vec4<f32> {
+    let s = 1.0 - t;
+    return vec4<f32>(s * s * s, 3.0 * t * t * t - 6.0 * t * t + 4.0,
+                     -3.0 * t * t * t + 3.0 * t * t + 3.0 * t + 1.0, t * t * t) / 6.0;
+}
+
 // A window replaced by one of other cells per tile or size (a zoom): the new window starts from the
-// state of the old one, bilinear in the tile plane, where the old one has cells (two cells in from its
-// edge); elsewhere, and on land, from the new window's own initial state (`src`, a copy of what the
-// host uploaded). Without this every zoom restarted the waves at rest and a ship's wake vanished.
+// state of the old one where the old one has cells (two cells in from its edge); elsewhere, and on
+// land, from the new window's own initial state (`src`, a copy of what the host uploaded). Without
+// this every zoom restarted the waves at rest and a ship's wake vanished.
+// Into finer cells (a zoom in) the elevation and the velocities are a cubic B-spline of the old
+// cells, smooth with its slope, and no foam is carried: bilinear, the surface had a kink at every
+// old cell's edge, which the lighting drew as steps a coarse cell wide, and the far levels' surf
+// (one cell per tile) came in as white blobs off the shore (owner playtest 2026-11-03, round 6).
+// The fine window's own surf starts where its waves break. Into cells as fine or coarser, bilinear
+// (at equal cells it is the old state exactly).
 @compute @workgroup_size(8, 8)
 fn resample_state(@builtin(global_invocation_id) id: vec3<u32>) {
     if i32(id.x) >= S.size || i32(id.y) >= S.size {
@@ -289,12 +302,26 @@ fn resample_state(@builtin(global_invocation_id) id: vec3<u32>) {
         let lo = OLD.origin + vec2<i32>(2);
         let hi = OLD.origin + vec2<i32>(OLD.size - 3);
         if i0.x >= lo.x && i0.y >= lo.y && i0.x <= hi.x && i0.y <= hi.y {
-            let a = prev_at(i0.x, i0.y);
-            let b = prev_at(i0.x + 1, i0.y);
-            let c = prev_at(i0.x, i0.y + 1);
-            let d = prev_at(i0.x + 1, i0.y + 1);
-            let m = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-            out = vec4<f32>(max(m.x, -h), m.y, m.z, max(m.w, 0.0));
+            if OLD.cpt < S.cpt {
+                let wx = bspline(f.x);
+                let wy = bspline(f.y);
+                var m = vec4<f32>(0.0);
+                for (var j = 0; j < 4; j++) {
+                    var row = vec4<f32>(0.0);
+                    for (var i = 0; i < 4; i++) {
+                        row += wx[i] * prev_at(i0.x + i - 1, i0.y + j - 1);
+                    }
+                    m += wy[j] * row;
+                }
+                out = vec4<f32>(max(m.x, -h), m.y, m.z, out.w);
+            } else {
+                let a = prev_at(i0.x, i0.y);
+                let b = prev_at(i0.x + 1, i0.y);
+                let c = prev_at(i0.x, i0.y + 1);
+                let d = prev_at(i0.x + 1, i0.y + 1);
+                let m = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                out = vec4<f32>(max(m.x, -h), m.y, m.z, max(m.w, 0.0));
+            }
         }
     }
     textureStore(dst, vec2<i32>(id.xy), out);

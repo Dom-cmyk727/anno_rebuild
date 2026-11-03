@@ -532,9 +532,9 @@ fn river_flow_shade(px: vec2<f32>, f: FlowSample, depth: f32, slope: f32, t: f32
     let pyw = px.y + frame.river_lambda * f.level;
     let x = tile_pos(vec2<f32>(px.x, pyw));
     let u = f.v;
-    // Light from the screen's top left: the -y tile axis.
+    // Light direction: the -x tile axis (as fluid_shade).
     let probe = 0.15;
-    let x2 = vec2<f32>(x.x, x.y - probe);
+    let x2 = vec2<f32>(x.x - probe, x.y);
     let psi = flow_psi(x);
     let rapids = sstep(5.0, 14.0, slope);
     var light = 0.0;
@@ -672,7 +672,8 @@ fn fluid_sample(w: vec2<f32>) -> FluidSample {
 }
 
 // Shading (light, foam, tint) from the simulated surface: relief lit from
-// the screen's top left (the -y tile axis), elevation brightens crests,
+// the -x tile axis (the screen's top right since the handedness fix, top left
+// before), elevation brightens crests,
 // foam from breaking, a foam edge where the swash runs up, depth tint.
 fn fluid_shade(fl: vec4<f32>, depth: f32, run: f32, w: vec2<f32>, t: f32, detail: f32) -> vec3<f32> {
     let s1 = noise3(w.x * 0.22 + t * 0.00011, w.y * 0.22 - t * 0.00004, t * 0.00006);
@@ -680,7 +681,7 @@ fn fluid_shade(fl: vec4<f32>, depth: f32, run: f32, w: vec2<f32>, t: f32, detail
     var light = SWELL * (0.65 * s1 + 0.35 * s2 - 0.5);
     // Relief: subtle on the open sea (long swell), stronger in the surf.
     let k = mix(0.06, 0.16, sstep(12.0, 3.0, depth));
-    light += k * clamp(fl.z * 0.6, -1.0, 1.0) + 0.02 * clamp(fl.x, -2.0, 2.0);
+    light += k * clamp(fl.y * 0.6, -1.0, 1.0) + 0.02 * clamp(fl.x, -2.0, 2.0);
     // Foam texture: two scales of noise that churn quickly, so foam
     // bubbles and tears instead of standing still.
     let fine = 0.6 * noise3(w.x * 3.0, w.y * 3.0, t * 0.0025)

@@ -777,10 +777,10 @@ Shade river_flow_shade(float px, float py, const FlowSample& f, float depth, flo
     const auto [tx, ty] = screen_tile(px, pyw, view.tw, view.th);
     const std::array<float, 2> x{tx, ty};
     const std::array<float, 2> u{f.vx, f.vy};
-    // Light from the screen's top left: the −y tile axis (as fluid_shade),
-    // probe offset e.
+    // Light direction: the tile −x axis (as fluid_shade; the screen's top
+    // right since the handedness fix, docs/render/iso.md), probe offset e.
     constexpr float kProbe = 0.15F;
-    const std::array<float, 2> x2{x[0], x[1] - kProbe};
+    const std::array<float, 2> x2{x[0] - kProbe, x[1]};
     const float psi = flow_psi(x);
     const float rapids = smoothstep(kRapidsFrom, kRapidsFull, slope);
     float light = 0.0F;

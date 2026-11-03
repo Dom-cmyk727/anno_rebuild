@@ -243,12 +243,8 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
         std::array<float, 2> u;
         float level;
     };
-    // The flows of the cases before 2026-11-03 with their tile axes swapped: the
-    // projection was mirrored then (iso::tile_top) and the light axis moved from
-    // tile x to tile y to stay at the screen's top left, so these are the same
-    // screen situations.
-    for (const Case c : {Case{{0.0F, 1.0F}, 32.0F}, Case{{0.8F, 0.3F}, 32.0F},
-                         Case{{0.4F, -0.7F}, 32.0F}, Case{{0.0F, 1.0F}, 80.0F}}) {
+    for (const Case c : {Case{{1.0F, 0.0F}, 32.0F}, Case{{0.3F, 0.8F}, 32.0F},
+                         Case{{-0.7F, 0.4F}, 32.0F}, Case{{1.0F, 0.0F}, 80.0F}}) {
         const render::FlowSample f = uniform(c.u, c.level);
         const std::uint64_t dt = 100;
         const float dts = static_cast<float>(dt) * 0.001F;
@@ -290,14 +286,8 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
         const float error = std::hypot(bx - sx, by - sy);
         CHECK(error <= 0.3F * std::hypot(sx, sy) + 0.15F);
         // The prediction is clearly better than standing still and than the
-        // mirrored (upstream) shift. The embossed light (a derivative along the
-        // light axis) is elongated across that axis, so a flow across it moves
-        // the pattern less visibly: a sweep of 24 unit flows (2026-11-03) gave
-        // cost(prediction) / cost(still) from 0.25 along the light axis to 0.57
-        // across it with the -y axis (0.21 to 0.45 with the former -x axis; the
-        // axes differ in the noise's per-axis phase offsets). (0.8, 0.3) is
-        // 0.56, hence 0.6 rather than the 0.5 of the former cases.
-        CHECK(cost(sx, sy) < 0.6 * cost(0.0F, 0.0F));
+        // mirrored (upstream) shift.
+        CHECK(cost(sx, sy) < 0.5 * cost(0.0F, 0.0F));
         CHECK(cost(sx, sy) < 0.5 * cost(-sx, -sy));
     }
 }
@@ -1482,14 +1472,15 @@ TEST_CASE("river quality: Low takes one noise tap per phase and keeps the light 
     }
 }
 
-TEST_CASE("river flow shading: the emboss is lit from the screen's top left (the -y tile axis)") {
+TEST_CASE("river flow shading: the emboss is lit along the -x tile axis") {
     // The light of a ripple layer is its noise field's difference towards the light,
-    // (N(x) - N(x - e L)) / e (rivers.md 2.8). Since the handedness fix (iso.md,
-    // "Handedness") the tile -y axis is the screen's top left: tile (0, -1) lies up-left of
-    // (0, 0). The light computed here with L = -y must be river_flow_shade's, and the one
-    // with the former L = -x (now the screen's top right) must not.
-    const auto [ux, uy] = render::tile_top(0, -1, 0);
-    CHECK(ux < 0);
+    // (N(x) - N(x - e L)) / e (rivers.md 2.8), L = -x in tile space: the screen's top right
+    // since the handedness fix (iso.md, "Handedness"; tile (-1, 0) lies up-right of (0, 0)).
+    // Moving L to -y (the screen's top left) was tried and dropped: it weakened the flow's
+    // visible motion on real rivers (Q5). The light computed here with L = -x must be
+    // river_flow_shade's, and the one with L = -y must not.
+    const auto [ux, uy] = render::tile_top(-1, 0, 0);
+    CHECK(ux > 0);
     CHECK(uy < 0);
     render::RiverParams p;
     p.count = 1;
@@ -1520,11 +1511,11 @@ TEST_CASE("river flow shading: the emboss is lit from the screen's top left (the
             const float nx =
                 field(render::flow_phases({x[0] - kProbe, x[1]}, u, t, p.layers[0], psi));
             const float light = light_at(p, f, px, py, t);
-            CHECK(light == doctest::Approx(p.layers[0].amp * (na - ny) / kProbe).epsilon(1e-5));
-            differs += std::fabs(light - p.layers[0].amp * (na - nx) / kProbe) > 1e-4F ? 1 : 0;
+            CHECK(light == doctest::Approx(p.layers[0].amp * (na - nx) / kProbe).epsilon(1e-5));
+            differs += std::fabs(light - p.layers[0].amp * (na - ny) / kProbe) > 1e-4F ? 1 : 0;
             ++n;
         }
     }
-    // The former axis gives another light at nearly every pixel (the check discriminates).
+    // The other axis gives another light at nearly every pixel (the check discriminates).
     CHECK(differs > n * 9 / 10);
 }

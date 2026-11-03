@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-03: Windows live opening; Mac road-policy closeout and forester research
+## Current dispatch — 2026-11-03: Windows live opening; Mac atomic-road correction and forester contract finalization
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -43,10 +43,16 @@ combined reload cut are closed. **MAP-ROAD-1 is reviewed with one bounded policy
 correction**, local candidate `242c3433d879537dbaba8162da852a48109b6635`, tested
 source `6e7214686788d3d6f852e2ab4784f6c3b3ba73da`; see the
 [direct road review](reviews/2026-11-03-map-road1.md). The tile-object behavior
-and valid evidence are retained. **MAP-ROAD-CLOSE-1** below separates the new
-restrictions from faithful rules and performs focused verification. A separate
-subagent may start **MAP-ECON-1 E1 research only** in parallel. Harvest engine
-implementation remains gated on the corrected road unit and reviewed contract.
+and valid evidence are retained. **MAP-ROAD-CLOSE-1's two-policy correction is
+fixed**, with clean gate source `eae9f4aeff6030c1886970fe3271160c538f15af` and
+comment/doc increment `aad1735bc00612695eb49ce356a4e0a42eb17d5d`. The combined
+local candidate/forester draft is `c82608bd22a8a86ff50dddc039143b46e658467c`.
+The [full direct review](reviews/2026-11-03-roadclose-forestry.md) reproduces an
+atomic latest-object defect and two reference-runner failures, and identifies
+specific contract inconsistencies. **MAP-ROAD-CLOSE-2 / MAP-ECON-1 E1-FINAL**
+below is the current Mac task. The forester packet has received its full read;
+it needs corrections and focused re-review, not another approval line alone.
+Harvest implementation remains gated on both exact accepted input pins.
 Owner continuation, 2026-11-03: **MAP-ECON-1 E2–E6 below is authorized
 conditionally** to implement and test harvesting, wood production and warehouse
 delivery after those approvals. It is queued, not released by this board update;
@@ -61,7 +67,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ROAD-CLOSE-1 READY; MAP-ECON-1 E1 RESEARCH may run in parallel. E2–E6 QUEUED pending the exact approved road and contract pins.** After release, implement the full harvesting/production/delivery loop with independent package reviews. No harvesting engine work before release. Windows keeps exact `0c401c8d`; its assignment is unchanged. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ROAD-CLOSE-2 / MAP-ECON-1 E1-FINAL READY.** Fix latest-object atomic validation, finalize the specific forester lifecycle rules and harden the small reference runner. E2–E6 remain queued pending both accepted pins. No harvest engine work yet. Windows keeps exact `0c401c8d`; its assignment is unchanged. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1101,7 +1107,145 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-ROAD-CLOSE-1 — separate the enhanced road policies; parallel forester contract · READY
+### MAP-ROAD-CLOSE-2 / MAP-ECON-1 E1-FINAL — finite corrections before implementation · READY
+
+**Start:** existing Mac branch/worktree at local
+`c82608bd22a8a86ff50dddc039143b46e658467c`; preserve newer owned work. Read the
+[full direct review](reviews/2026-11-03-roadclose-forestry.md). The original road
+policy findings are closed. Preserve both Rules fields, stream 125, the sealed
+version controls and valid C1-1 evidence; do not restart P0–P3 or R0–R5.
+
+**Outcome:** atomic validation observes the same latest objects as execution;
+the small forester reference refuses empty runs and cannot stall at full output;
+the forester contract is internally consistent and ready for implementation.
+No harvest engine, new state fields, stream/PRNG bump, Windows/app/render work,
+coordinator repair, main merge/rebase, task-code push or original/map edit belongs
+in this correction. E2–E6 below stays conditional.
+
+#### A — reproduce and fix the latest-object mismatch
+
+1. Read `apply.cpp::check_record`, `Budget::objects`, default placement occupancy,
+   `site::overlap_with_existing`, road eligibility and existing mixed-batch tests.
+   The reviewer repro is `cache/review-road-close-forestry/atomic_overlay_probe.cpp`
+   in the main checkout, with `probe.out`. It uses existing test helpers and
+   links current production libraries without changing the candidate.
+2. Add the deterministic regression to the real suite. Create a valid data-defined
+   road with flags `0x4186 | 0x20 = 0x41a6`; assert registry/road eligibility.
+   On an existing ramp, with both extra road options false, place that road and
+   then a house on its tile in one BuildCmd. Sequential controls accept both;
+   current atomic execution incorrectly reports `AtomicAbort / Occupied`.
+3. Use one coherent latest-object view for default occupancy validation: an
+   earlier virtual road supersedes the physical object. A separate virtual
+   precheck followed by stale physical occupancy is insufficient. Preserve
+   row-major refusal order, existing building-occupancy priority and other
+   placement/affordability rules. Avoid a full-island copy per record or an
+   eligibility blacklist that merely hides the valid flag combination.
+4. Cover the applicable four policy combinations using existing-road/ramp
+   controls, replacement and inverse record order. Verify outcomes AND final
+   gold/goods/serial/building/tile state when both runs succeed, excluding only
+   the intentional `build_atomic` rule difference. Rejected atomic batches
+   remain byte-identical. Broaden the small input domain by meaningful type
+   properties; more rounds choosing the same fixed flags cannot find this defect.
+
+#### B — finalize the forester contract in a separate research subagent
+
+Parent owns A and shared gate registration/reporting. A separate child may own
+only `docs/{re,sim}/forestry.md`, the pure reference/vectors and research evidence.
+During frozen gates it writes ignored cache drafts only; promote at an agreed
+checkpoint. No engine edits by that child and no shared REPORTS/TASKS edits.
+
+1. Read the review and current E1 evidence. The complete packet has now been
+   reviewed independently by the orchestrator. Correct the named findings and
+   obtain focused re-review of corrections/new claims, rather than redoing the
+   full original-resource research.
+2. Define same-figure read-your-own effects for search/claim/cut/repeat. Work an
+   example with two trees, capacity greater than 256 and enough elapsed ticks
+   to perform more than one harvest in a visit. Later transitions must see prior
+   planned changes, and credited cargo must match successful consumption. State
+   whether a local overlay/transaction provides that view; do not confuse merge
+   after each figure with merge between transitions or discard elapsed ticks.
+3. Make claim validity, placement/clearing, target replacement, job termination
+   and cleanup policy coherent. An old job must not clear a newer worker's claim
+   after replacement, including same-type replacement. Validators/loaders never
+   silently repair authoritative state. Define permitted stable/transitional
+   states separately under faithful and enhanced rules; remove conflicting
+   unconditional bijection, leakage and auto-repair statements.
+4. Orchestrator permits explicit false-default hashed enhanced choices for
+   claim hygiene and skipping data-defined uncuttable resources. Specify their
+   exact scope and enhanced values; no hardcoded tree-261 exception. Do not call
+   untraced cleanup absence a proven original leak. Keep raw-store limits based
+   on actual type/configuration; the 801/two-worker bound is not a new global
+   u16 cap on all Farm or mod states. Engine fields wait for released E2.
+5. Reconcile full-output dispatch: for the evidenced two-worker forester, full
+   output need not stop a rate/count-eligible dispatch. Correct the contrary
+   section 4.3 statement. Define draws in terms of eligible attempts, including
+   refused sends, not successful spawns. Pin the first-job and home-counter
+   release transitions using the bounded named paths (`0x10072dce–0x10072de5`,
+   `0x10034760`, `0x1003af00`, common end/unlink callers). They affect future
+   sends and PRNG state. Trace only the needed common forester paths, not a new
+   combat/figure-lifecycle campaign.
+6. Reusing the current deterministic tile-level walker is allowed for the first
+   slice. State the inherited fine-route veto/retry gap accurately; it can alter
+   acceptance/selection as well as timing. Do not treat `complete=true` as proof
+   that the omitted stage passed. No new fine-pathfinding implementation or
+   broad fine-route RE is required to finish this contract.
+7. Align the canary plan with E5 below: one unchanged-candidate public-command
+   opening, separate small tree/no-tree fixture controls, complete material
+   ledger, and tree transitions derived for all eligible N -> N-1 types rather
+   than only 105 -> 104. Derive starting wood from the current manifest/founding/
+   unloading sequence, not an old HUD example. Include carrying/returning saves
+   as well as outbound/cut states. Do not multiply expensive opening variants.
+8. Document precise cut/growth writes and reuse existing `StoreDelta::Input` for
+   Farm.raw where its semantics fit. Do not require a redundant Raw effect enum
+   without need. The future dispatch draw must have its proper DrawSite and PRNG
+   timeline treatment, not a claim that only version bytes change. Keep the
+   proposed E2–E6 staging subordinate to this board's authorized packages.
+
+#### C — make the pure reference a reliable public-command check
+
+1. Reproduce `forester_ref.py` on an empty and a type-directive-only file: current
+   exit 0 / zero vectors is wrong. Refuse zero executed vectors. Keep a non-empty
+   passing control and a deliberately incorrect expected-answer failure.
+2. Reproduce `drain 4096 -> 1152 1288`: after 92 full steps output is 1288 and
+   raw is 1152; status 2 thereafter makes the current loop stall. Stop at the
+   full-output terminal state (or define the bounded helper domain explicitly)
+   without changing the established step arithmetic. Add the hand-derived vector.
+3. Add a small public-command contract with bounded owned child processes for
+   empty input, the full-output case, a correct case and an incorrect expectation.
+   The correct full-output case must complete and match amounts, not pass by
+   timing out. Check the bundled vector coverage explicitly. Parent may register
+   these Python checks in test build metadata; that is not harvest engine work.
+   Preserve all 44 existing outcomes unless a specific evidenced correction is
+   required. Parameterize paths needed by the checks; no general tool framework.
+
+#### D — focused verification, independent corrections review and stop
+
+1. Run the new deterministic counterexamples/positive controls and pure reference
+   checks before a gate. Freeze the parent/child inputs together. Use the canonical
+   workflow and require the small public reference contract once registered.
+2. Gate affected atomic/default placement, build/road, policy and replay cases in
+   Debug and ASan/UBSan. Reuse unaffected C1-1 evidence with a source-dependency
+   explanation. No format/state change or golden rebaseline is assigned. The
+   real canary uses non-atomic commands; if its path is unchanged, retain its
+   pinned 103/103 result instead of rerunning sailing. Expand only for an actual
+   affected dependency/failure and label old versus new evidence accurately.
+3. Independent read-only reviews check A's production caller/latest-object view,
+   B's corrected/new contract claims, and C's public failure behavior. Fix
+   findings and obtain narrow re-review. One final correction review reconciles
+   the pins, evidence and prerequisite status; no repeated unrelated matrix.
+4. Commit locally and report the original failures, exact code/docs/gate pins,
+   executed counts and remaining limitations. Stop for orchestrator acceptance.
+   E2–E6 remains queued until both accepted pins are recorded in its release
+   table. No Windows, renderer, coordinator or new planting feature starts here.
+
+### MAP-ROAD-CLOSE-1 — separate the enhanced road policies; parallel forester contract · REVIEWED, FOLLOW-UP ABOVE
+
+**Checkpoint:** policy correction `eae9f4ae`, comment/doc increment `aad1735b`,
+forester draft/report `c82608bd`. Both original road-policy findings are fixed;
+the valid 46/46, 153/154 and 1061/1063 gate evidence is retained with named
+opt-in skips. Full acceptance remains pending the atomic latest-object correction
+and the E1 findings in the [direct review](reviews/2026-11-03-roadclose-forestry.md).
+Do not repeat this historical packet or treat its research draft as approval.
 
 **Start:** existing Mac branch/worktree `task/MAP-2-original-like`, current local
 road candidate `242c3433d879537dbaba8162da852a48109b6635`, tested code
@@ -1265,8 +1409,8 @@ independent review of every substantive package and a final integration review.
 
    | Required input | Orchestrator acceptance / exact pin |
    |---|---|
-   | MAP-ROAD-CLOSE-1 local code/tests and policy/state contract | **PENDING** |
-   | MAP-ECON-1 E1 forester evidence, contract and reference | **PENDING** |
+   | Corrected road local code/tests and policy/state contract | **PENDING** — policy fixed; latest-object atomic correction still required |
+   | MAP-ECON-1 E1 forester evidence, contract and reference | **PENDING** — full read completed; E1-FINAL corrections required |
 
    A subagent/package approval alone does not fill these inputs. Until both are
    recorded and this task is released, complete the current road/E1 assignments
@@ -1280,10 +1424,11 @@ independent review of every substantive package and a final integration review.
    Windows W4-OPENING-1 stays on exact
    `0c401c8d084cfd9feb8aec846595291f87f22cce` until a separate integration task.
 3. Scope is the reviewed forester worker and existing eligible trees, connected
-   to existing farm production and carts. Other resource-worker families, full
-   economic progression and sustainable forestry are separate. If E1 establishes
-   planting/regeneration or another rule as inseparable, resolve that exact scope
-   dependency before release; do not silently trim the original lifecycle.
+   to existing farm production and carts. The evidenced cut-to-young transition
+   and its existing growth sweep are included in the lifecycle and tests. Other
+   resource-worker families, separate planting systems, full progression and
+   sustainable forestry balance are separate. Resolve any further inseparable
+   scope dependency before release; do not silently trim the original lifecycle.
 
 #### Read order after release
 
@@ -1318,6 +1463,9 @@ independent review of every substantive package and a final integration review.
    transcriptions/goldens with a field-level explanation. A valid positive control
    and correctly resealed old-version negative must distinguish version refusal
    from checksum damage. Do not rewrite expected hashes from C++ output alone.
+   The approved dispatch draw also needs its named DrawSite and appropriate
+   PRNG-timeline identity/reference updates; a changed draw order is not merely
+   a stream-layout change or a reason to blindly regenerate unrelated goldens.
 4. Keep the design data-driven and bounded by the existing content/configuration.
    Test another data-defined type and owner without engine edits. No generic job
    scripting framework, new hardcoded type/player limits or unrelated farm port.
@@ -1422,7 +1570,7 @@ independent review of every substantive package and a final integration review.
 through the normal simulation, with the real opening, required failure cases,
 active-job save/reload and fresh-process replay demonstrated. This is a first
 complete harvest/production/delivery loop, not acceptance of every worker family,
-planting/regeneration, sustainable forestry, full economic progression, multiplayer
+other planting systems, sustainable forestry balance, full progression, multiplayer
 scale or target-host performance. Further gameplay/UI work waits for its own task.
 
 ### MAP-ROAD-1 — construct and remove ordinary land roads · REVIEWED, POLICY FOLLOW-UP ABOVE

@@ -45,6 +45,15 @@ and `R` water, `B` the building tool, `Esc` / `Q` quit (Esc first cancels what i
 | `F5` | quick-save (written off the window thread to `saves\quicksave-seat<N>.sav`) |
 | `Esc` | cancel the gesture, then the mode, then the selection, then quit |
 
+Founding (`F`): the warehouse is drawn where you would found it. It must stand on a coast and the preview applies the sim's own
+coast rule to the terrain, trying the four rotations in the sim's order from the one you set with `T`: it turns until the building and
+its landing stage face the shore. The title says `turned to face the shore` or, where no rotation fits, `not on a coast` (the sim would
+answer `NoRotationFits`). Occupancy and ownership are still only checked by the sim.
+
+`Space` pauses the sim and the water; the title then starts with `PAUSED (Space resumes)`.
+
+On the GPU the opening starts with enhanced water (`E` toggles): moving ships raise a bow wave and leave a wake.
+
 The title (the window's caption: it is cut off at the window's width, so what you need comes first) shows, in this order:
 the mode, the last message, the **latest command's own state** and the real refusal, the unload / founding advisory, the
 pointer's tile (sea/land, to aim), then your gold, the selected ship (id, seat, tile, cargo by hold), your city and its store,

@@ -21,7 +21,22 @@ decides no rule; the sim refuses.
 
 Identity of ships, cities and warehouses is the stable id; the controls re-read it from the newest snapshot when
 a command is made, and a selection or a target whose id is not in the newest view is dropped with a message.
-Interpolation is not used: a ship is drawn at its published position (10 turns a second).
+**Between two turns** (owner playtest 2026-11-03: the ship looked as if it teleported from tile to tile): the window
+does not draw the published position. `ShipMotion` (`ship_motion.cpp`, render-side, unit-tested) keeps, per ship, the segment
+from where the ship was drawn when a turn arrived to where that turn put it and draws the point of that segment the wall clock
+has reached, one publication interval behind and never past the newest turn (no overshoot at a stop; a jump over 6 tiles is
+shown at once). The facing follows the direction of that segment and turns by at most one of the sprite's 16 steps per 60 ms;
+a ship that does not move shows the sim's own `dir16`. The hit test uses the drawn position (`FrameProjection`); the facts, the
+commands and the HUD tile stay on the sim's positions.
+
+**Facing frame.** The figure's 16 facing frames run the other way round from `dir16` (measured on screenshots of one ship sailing
+the eight directions, and by the owner's report that a ship sailing to the right showed its bow to the left): `dir16` d is frame
+`(12 - d) mod 16` (`ShipLayer::facing_frame`; the original's own mapping is still untraced, `docs/render/iso.md`).
+
+**The water.** The opening starts with enhanced water on the GPU (`E` toggles). Each moving ship is a source in the wave
+simulation (`fluid::ShipWake`, `FluidGpu::set_ships`, `GpuFrame::set_wakes`; render-only): the hull raises the water ahead of it and
+lets it fall behind it, the shallow-water equations carry the bow wave and the wake away (a ship faster than the wave speed
+leaves a V). No foam trail (owner). The source fades out over shallow water. Original water and the CPU renderer show no wake.
 
 ## 2. Controls
 
@@ -113,5 +128,5 @@ checkpoint. The recorded hashes are the state hash after each turn that ran comm
 See the playtest card. Additionally: the controls and the publication are tested through the production window on
 the CPU renderer (SDL's dummy driver) and on the RTX 4090 (Vulkan); native 4K, a Radeon window, physical display
 latency, five-seat load and original-runtime fidelity of the ship facings are not claimed. The sprite for a
-facing is the frame `dir16` of the figure's first sprite set (assumed in `docs/render/iso.md`); the opening's
+facing is frame `(12 - dir16) mod 16` of the figure's first sprite set (measured, section 1); the opening's
 colours are a stand-in. Reporting a ship's arrival as "shown" is the delivery of a frame, not the display.

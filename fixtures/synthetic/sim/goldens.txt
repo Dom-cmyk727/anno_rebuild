@@ -167,10 +167,10 @@ s6_g1_step100 S6 127 406bd85285315fac
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 126 d60cc3485dc094f4
-s7_g1_mp_end S7 126 8e4d790e65cea1c3
-s7_g1_events S7 126 d705f409820828d2
-s7_g1_sp_end S7 126 12163c0bcf9a5dde
+s7_g1_mp_checkpoints S7 127 5800124b26388cae
+s7_g1_mp_end S7 127 c91a13e41867c5f5
+s7_g1_events S7 127 d705f409820828d2
+s7_g1_sp_end S7 127 8ab33000b9380df8
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -385,7 +385,7 @@ p1_g7_create P1 127 60b9c2472cf562e5
 # Re-baselined inside version 123 (MAP-BUILD-1 C): the fixture registry's free workshop 9201 has the
 # ordinary-land flag word 0x84 (registry digest) and the session's ordinary Build stores the terrain
 # level 0x40 as byte0f. The value before was 359cf48e134bdcf1.
-m2_found_session M2 126 d216451ebbf807ef
+m2_found_session M2 127 29c0a3ee147d473d
 
 # Re-baselined at stream version 124 (task MAP-CARGO-1): Rules gained `cargo` (CargoRules: the
 # eligible warehouse PRODTYPEs and the dock half-widths, two u64-counted u32 lists) after nav. Every

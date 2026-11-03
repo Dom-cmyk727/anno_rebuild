@@ -122,7 +122,7 @@ A research or reference helper may write only the files in its row; the parent k
 | D | `house_kernel.hpp` (`house_kernel`, `house_mood_combine`, typed results); `tools/house_kernel_ref.py`, `house_kernel_ref_contract_test.py`, `house_kernel_vectors.txt` (70 vectors, hand-derived before the C++) |
 | E | `population_canary_test.cpp`; research in `docs/re/population.md` section 16 |
 
-Config: `docs/sim/state.md` 3.1 lists the four `population_*` fields by this document. No driver or tick change: House dispatch is still `return;`.
+Config: `docs/sim/state.md` 3.1 is not edited here; this document and `config.hpp` are the field list of the four `population_*` fields. No driver or tick change: House dispatch is still `return;`.
 
 ## 8. Limits
 

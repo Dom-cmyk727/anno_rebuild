@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-03: Windows live opening; Mac forestry accepted, population readiness
+## Current dispatch — 2026-11-03: Windows live opening; Mac population implementation bundle
 
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
@@ -60,11 +60,19 @@ units = 1.75 t** of new wood, with 28/28 fresh-process replay checkpoints;
 that valid evidence is retained at its original pin. Stream 126 and PRNG timeline
 4 remain the accepted Mac identity, unchanged by CLOSE-1. No further forestry
 correction or broad test round is assigned.
-**MAP-POP-READY-1 below is READY** on the existing Mac branch: reconcile the
-existing population audits/prerequisites against this accepted baseline and
-produce the bounded next immutable-input/house-calculation contract. This is
-preparation for gameplay, not authorization for a live House tick or merging old
-prerequisite branches. Windows' fixed input and assignment are unchanged.
+**MAP-POP-READY-1 is ACCEPTED after one corrected documentation finding** at
+`2f876af5a44fc3395819134e79a9595a13d9f7d9`; executor draft `dc949172`, report
+`b77860e2`. The goods-id lookup has one entry per registry good, with need count
+as its sentinel; zero needs does not mean a zero-length lookup. Read the
+[direct review, correction and binding decisions](reviews/2026-11-03-map-pop-ready1.md).
+**MAP-POP-IMPL-1 below is READY and RELEASED** on the existing Mac branch. It
+combines the mask import, metadata/config, derived groups, independently tested
+pure House calculations, real-input integration and bounded readiness research.
+The owner requests a larger delivery: independent internal package approvals
+unlock subsequent subtasks automatically; return for one final orchestrator
+review after the whole bundle. House dispatch remains a no-op until its walker
+and lifecycle effects are implemented in a later task. No old prerequisite branch
+merge is authorized. Windows' fixed input and assignment are unchanged.
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
@@ -75,7 +83,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-ECON-1/CLOSE-1 ACCEPTED; MAP-POP-READY-1 READY.** Reconcile existing population prerequisites and draft the bounded next input/calculation contract with independent review. Documentation/evidence only; no new engine work or old branch integration. Windows keeps exact `0c401c8d`. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-READY-1 ACCEPTED; MAP-POP-IMPL-1 READY, RELEASED.** Complete P0 and A–F below as one implementation bundle; internal reviews unlock the next package automatically. Deliver scenario inputs, derived population tables, a tested pure House kernel and real-input integration, then stop once for combined review. Windows keeps exact `0c401c8d`. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -1115,7 +1123,269 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-POP-READY-1 — population prerequisites and next implementation contract · READY
+### MAP-POP-IMPL-1 — population input pipeline and House calculation bundle · READY, RELEASED
+
+**Owner:** existing Mac gameplay executor, `task/MAP-2-original-like`.
+**Start:** accepted corrected docs head
+`2f876af5a44fc3395819134e79a9595a13d9f7d9`, on accepted forestry
+`f40a76022c609092156c457509f0c49e7905f96e` (stream 126, PRNG timeline 4).
+Preserve newer owned work if present; identify it before starting. Read the
+[acceptance and binding decisions](reviews/2026-11-03-map-pop-ready1.md).
+
+**Goal:** implement the complete, data-driven population input/calculation slice
+as one larger candidate. An original scenario must supply the real player mask
+and goods/group data to a checked pure House calculation, with independently
+derived numeric results and exact persistence. This is substantial engine work,
+not another documentation-only readiness round. It prepares the needs, walkers
+and population progression line; it does not claim that towns now grow in play.
+
+**Autonomy:** P0 and A–F are all authorized now. After an internal independent
+review approves a package, proceed automatically to the next. Routine fixes,
+focused re-review, type/API design and the identity choice specified below do
+not require an orchestrator handoff. Report once at F. If evidence contradicts a
+binding decision or a new gameplay-policy choice is unavoidable, stop only that
+dependent path, state the conflict and continue independent work. Do not stop
+after the first unit merely because it is separately reviewable.
+
+#### Read order, scope and host preflight
+
+1. Fetch `origin/main`; read its AGENTS, CLAUDE, PLAN §§0.1–0.6, this current
+   packet, linked acceptance, `docs/testing/evidence-contract.md` and
+   `docs/testing/README.md` using `git show` or the read-only workflow checkout.
+   Do not merge main into your branch. Read `docs/plan/lan-endless.md` W6.2 and
+   `docs/plan/lan-mvp.md` MVP-B for the gameplay dependency, not permission to
+   implement unrelated networking.
+2. On the MAP branch read `docs/sim/population-readiness.md`,
+   `docs/sim/population-inputs.md`, `docs/re/population.md` (especially §15),
+   `docs/sim/state.md` §4.7c, and the MAP-POP-READY-1/CLOSE-1 reports. The new
+   acceptance decisions override unresolved proposals and stale DRAFT text.
+3. Read current producers and consumers: `src/sim/src/scenario_formats.cpp`,
+   `scenario.cpp`, `player.cpp`, `goods_table.cpp`, `house_groups.cpp`,
+   `types.cpp`, `config.cpp`, their public headers under
+   `src/sim/include/anno/sim/`, and
+   `src/sim_load/src/{original_registry,scenario_load}.cpp`. Follow the House
+   payload, `state_fields.hpp`, `create.cpp`, scheduler and `driver.cpp` enough
+   to keep the calculation/effect boundary explicit.
+4. Read `src/sim/tests/{scenario_formats,scenario,player,house,types,config}_test.cpp`,
+   relevant corpus/replay/serialization tests and CMake registration,
+   `tools/sim_stream.py`, and existing Python reference CLI contracts. For prior
+   evidence only, use `git show 075ede70166cc1272fd0fff9b4f2ac17d831a5d6:docs/sim/house-tick-readiness.md`
+   and P2.1 code `62b14254f211b97b2195baaa863eb6f151f73528` / report
+   `0964729c0c9a7d51977da3a1c27a577a695a703f`. Do not merge/cherry-pick those
+   branches or import their old stream identities/goldens as accepted results.
+5. Reuse existing host/tool calibration. Record current CPU/core count, RAM,
+   available disk, contention and game-dir/tool paths; choose build/test jobs
+   from measured current capacity. Keep admission control on. No hardware survey
+   or benchmark campaign is needed. Keep the display awake for owned work;
+   preserve the owner's assertion and release only your own recorded PID.
+6. Allowed work: population-related sim/import code, tests, synthetic fixtures,
+   independent references, their CMake registrations, docs and REPORTS. Do not
+   edit TASKS/AGENTS, shared coordinator/runner semantics, W4/app/render files,
+   candidate/active maps, assets or `game/`. No merge, rebase, force push or pruning.
+   Windows remains on exact `0c401c8d084cfd9feb8aec846595291f87f22cce`.
+
+#### P0 — bind the reviewed contract and partition the work
+
+1. Apply all nine binding decisions from the acceptance to the branch contract.
+   Resolve the existing proposal wording; distinguish original facts from approved
+   safe-domain adaptations. Own saves/resync preserve exact `last`; arithmetic
+   stays widened/checked; undefined operations are typed NotEvaluated results.
+2. Specify the actual registry/config binding for derived groups. `TypeRegistry::build`
+   already takes SimConfig: never construct under defaults and silently consume
+   under different infrastructure/tavern roles. Bind and validate the immutable
+   view, or key it by both identities. Keep empty non-population registries valid.
+3. Use one combined identity increment: stream 127 if still unused on this
+   branch, otherwise the next unused value, recorded before implementation.
+   PRNG timeline remains 4; command wire unchanged. A–C share this increment;
+   derived caches and a pure function do not require further bumps.
+4. Write a short rule-to-proof table for the decisive rules below: primary
+   evidence -> wrong reading -> distinguishing input -> intended assertion.
+   Reuse the accepted tables; do not invent a second general evidence framework.
+   Include the goods-domain lookup, removal bypass, Force/endpoints and smallest
+   caller cadence. A rule copied into both code and oracle is not independent proof.
+5. An independent read-only reviewer checks this bound design and the source-derived
+   decisive examples. Fix/re-review actual findings, then proceed without an
+   orchestrator request. A research/reference helper may work in disjoint owned
+   files; parent owns shared headers, config, digest, version and final integration.
+
+#### A — full player-mask import through created worlds
+
+1. Add an optional full mask to `ScenarioSpec::PlayerSpec`; decode original
+   SPIELER HEAD +0x48/+0x5c by the accepted T32.5 formula; assign it in
+   `World::create`. Preserve absent -> constructor 1 and explicit 0 -> 0.
+   Fixed-map/ship-start synthetic specs keep their existing default.
+2. Test low bits, each high reconstructed bit, ignored packed bits and bit 23,
+   all the way through the resulting world's players, not just a helper. A valid
+   low-mask control must pass beside the high-bit case.
+3. Independently read all 50 original scenario files to compare the complete
+   imported masks/histograms. Record actual file/head counts rather than assuming
+   the historical 373. Update only identity-affected corpus outputs with explained
+   deltas; do not rebaseline unexplained world changes.
+4. Prove that dropping high reconstruction and dropping the final assignment
+   each fail the intended checks with a legal control first. Restore, rebuild
+   and verify the source binary before further evidence.
+5. Independent package review covers decode, optional-zero semantics, created-world
+   assertions and corpus independence. Focused checks green -> continue to B.
+
+#### B — goods metadata, configurable roles and exact identity
+
+1. Parse `[WAREN]` BauFirst and IdSec beside the existing group reader; carry
+   stage index and widened goods id in GoodsInfo. Defaults remain 0. Resolve
+   stage names through the checked original 0–31 mapping; unknown names,
+   GOTT/SPIELER and unresolved goods are diagnostic errors under the approved
+   parser domain. Do not expand into prices, taxes or other WAREN keys.
+2. Add the four reviewed infrastructure/tavern SimConfig fields with original
+   defaults; validate their population use against the actual goods domain.
+   Hash/serialize inputs and check config/registry mismatch explicitly. A minimal
+   non-population registry must not fail because original default ids are absent.
+3. Test the 23 shipped BauFirst keys, four IdSec keys, absent/explicit defaults,
+   unknown/out-of-domain names and non-original goods tables. Expectations come
+   from the raw files/name table, not a dump of the new C++ reader.
+4. Extend registry/config identity and `tools/sim_stream.py`. Independently specify
+   new canonical bytes. Pair a valid current stream with a correctly resealed
+   older-version stream: prove rejection is at the version check, not checksum,
+   truncated layout or missing prerequisite. Metadata/config perturbations must
+   move the intended digest; unchanged semantic defaults must stay consistent.
+5. Review this package independently, including golden/corpus diffs and their
+   independent oracle. Do not regenerate expected values solely from production.
+   Retain stream-126 recordings at their original pins; do not claim a new binary
+   replays them or rewrite large opening logs without executing the new version.
+
+#### C — immutable derived group tables with mod-sized domains
+
+1. Build once from actual needs, goods IdSec and bound config: goods_end,
+   infra_end, dynamic forced-infrastructure bits, goods-id lookup, tavern alias
+   and ascending one-pass substitution. Keep derived data out of authoritative
+   serialization; its inputs are hashed. No mutable global or per-house rebuild.
+2. Use a lookup of **goods_count** entries with **need_count** sentinel. Cover
+   the six-need PIONIER lookup of goods 76 and zero needs with nonempty goods.
+   Preserve duplicate needs and the last-slot lookup; tavern alias uses the first
+   eligible tavern until a real alias entry supersedes it.
+3. Test all five shipped groups slot by slot against an independent transcription,
+   plus C1–C12: endpoint updates independent of Force, reordered/duplicate needs,
+   missing/real aliases, higher/lower substitution chains, and no fixed-point
+   substitution. Reject active UNUSED/zero demand as the approved adaptation.
+4. Add a synthetic registry exceeding original goods, need and forced-bit counts
+   (including more than 255 needs and more than 32 infrastructure ids), with
+   non-original role ids. No shipped id allowlist or original-count allocation.
+   Current stage-mask width remains the documented 32-bit domain, not an excuse
+   for other caps. Assert config changes cannot reuse stale derived tables.
+5. Independent review checks index domains, sentinel/order rules, cache binding,
+   digest coverage and original/synthetic provenance. Focused tests -> continue.
+
+#### D — independent numeric reference and checked pure House kernel
+
+1. Before matching C++ outputs, build a small integer Python reference and a
+   durable synthetic vector file from primary instruction spans and hand-derived
+   D1–D14 examples. Supply an explicit standalone formula/units contract. The CLI
+   must reject zero vectors, wrong expectations and malformed input with nonzero
+   status; bound child time. A reference that merely echoes expected results must
+   fail a tiny public-command contract. Register both in CTest and require them.
+2. Implement `house_kernel(inputs) -> typed outputs` without World access,
+   mutation, I/O, PRNG or live dispatch. Inputs include actual group/config view,
+   mask, House values, t/last, class gate period, mood flags and explicitly
+   available previous capacity/walker facts. Return numeric predictions, domain
+   results and labelled deferred effects; never claim a walker was spawned or a
+   house upgraded/removed. Missing required data is not successful unchanged output.
+3. Implement the audited order: unsigned u16 gate; one `last += period` per
+   taken call; toward-zero smoothing; only stage-enabled stock decay; lowest on
+   decayed stock; optional spawn predicate; original mood precedence; growth,
+   signed strict cap/floor and the numeric counter/correction outputs. Keep slot 0
+   positional; do not impose a hardcoded food id or reorder needs.
+4. Test no elapsed time AND an overdue repeated call: t=5000,last=0 takes one
+   step, another call at the same t takes one, the third skips. Also test one-tick
+   calls, boundary/wrap, caller partition and save/reload of partial `last`.
+   No whole-world schedule-invariance claim follows from this per-call behavior.
+5. Pin the removal guard: the below-64 correction is on the downgrade arm only;
+   the remove arm bypasses it. Include two inputs with the same below-64 value
+   and different arm selection, in addition to signed-negative versus unsigned
+   controls. Negative mood wins over flag 0x10; flag 0x20 forces -2 as documented.
+6. Check intermediate/output ranges before operations. A reached zero divisor,
+   negative smoothed E, unavailable previous capacity or out-of-table mood returns
+   a specific typed domain result. E=0 mood short-circuits, but a selected need
+   may reach its divide earlier: distinguish those paths. Empty metadata remains
+   valid even when a requested calculation needs a missing first slot. Widened
+   stocks must not multiply in 32 bits. No native fault, silent wrap or guessed clamp.
+7. Use cheap distinguishing controls for the highest-risk rules: last=t, wrong
+   mask, Force-based endpoints, always-average mood, wrong signed correction and
+   a function that returns nominal success without calculating. Require the exact
+   intended assertion, not any crash/timeout. Reuse earlier package controls;
+   no exhaustive mutant campaign or expensive opening per mutation.
+8. Independent reviewer re-derives the decisive expected values from primary
+   evidence, inspects C++/Python differences and runs focused controls. Approval
+   plus focused Debug/ASan checks unlocks E; do not stop for orchestrator review.
+
+#### E — real-input integration and bounded live-readiness evidence
+
+1. Research may run in parallel with A–D: follow the named Create callers for
+   construction and original load, count zero-resident houses in the 50 scenarios,
+   and trace below-64 reachability including removal/NoDowngrade guards. Record
+   module identity, address, argument provenance and one exact worked path.
+   Stop a trace at a precise unread edge after a bounded local investigation;
+   do not repeat broad directory scans or wait on Windows captures. Unresolved
+   live-effect evidence does not block the pure pipeline.
+2. Build a short real-file canary: original registry + original scenario ->
+   actual imported players/House/group/config inputs -> pure calculations ->
+   checked numeric outputs matching the independent reference. Include nontrivial
+   masks, stocks and at least one skipped/taken gate. Count actual calculations
+   and domain outcomes; an unchanged world hash alone is not proof of execution.
+3. Read the world through const interfaces. Save/reload must reproduce exact
+   extracted inputs and calculations at the same supplied time; no resetting last,
+   synthetic stock grants, hidden World mutation or fake invocation of live ticks.
+   Use a bounded scenario load rather than rerunning hours of sailing. Keep
+   House dispatch a no-op and demonstrate that boundary in one focused check.
+4. Document actual complexity: registry metadata once, lookup by goods id,
+   calculation proportional to needs, no whole-world scan per House. Do not claim
+   late-game/multiplayer performance from a small canary. Record the next live
+   effect dependencies precisely; taxes, walkers, unlocks and transitions remain
+   deferred, with no assumption that ordinary towns avoid those branches.
+5. Independent review covers real producer-to-calculation wiring, numeric oracle,
+   save/reload identity and the bounded research claims. Fix findings locally;
+   then proceed directly to the combined F closeout.
+
+#### F — one frozen-source gate, final integration review and stop
+
+1. Commit completed packages and freeze every helper/source writer before final
+   acceptance. Use the canonical workflow with explicit workflow/source/build
+   identities, current game dir, required reference/CLI contracts and immutable
+   logs. Restore all mutants and rebuild clean source before the gate.
+2. Run one affected Debug gate spanning player/scenario import, goods/config/
+   groups, kernel, state bytes and replay/reference tests; include the original
+   50-file creation corpus and E's real-input canary. Run the corresponding
+   affected ASan/UBSan selection. Record complete selections and selected,
+   executed, failed, empty, skipped and incomplete counts; required asset checks
+   must execute. Use the supported wrapper/timeouts, not a private verdict reader.
+3. Run formatting and cheap workflow preflights required by the evidence contract.
+   Do not repeat full sailing/forestry/heavy render/GPU gates whose call paths
+   are unchanged. Explain reuse by dependency and source identity, not by an
+   unchanged file-count claim. Windows/MSVC, Linux warnings/sanitizers and
+   original runtime are NOT_RUN on this host, not local blockers or passes.
+4. A fresh independent integration reviewer traces raw scenario/WAREN inputs
+   through the created world, bound tables, pure kernel and persistence. It also
+   checks assertion provenance, positive controls, new domain/version rejection,
+   saved gate verdicts and that no live effect is implicitly claimed. It must
+   inspect rather than just repeat package approvals. Fix blockers and re-run
+   only affected proofs; review fixes at the final source. Avoid another broad
+   campaign unless a concrete new failure justifies it.
+5. Append one REPORTS entry with exact code/gate/docs pins, delivered API,
+   rule-to-proof index, actual counts, initial failures, independent reviewer
+   identities/verdicts, reuse arguments, Windows delta and remaining live-effect
+   dependencies. Distinguish implemented calculations from gameplay now active.
+   Commit locally, leave a clean tree and stop once for orchestrator acceptance;
+   no task-code push or merge is assigned to the executor.
+6. Completion means all A–E implementation and checks are integrated, mandatory
+   local gate outcomes are complete and green, and independent final review has
+   no blocking finding. A stub/always-NotEvaluated kernel, metadata-only delivery,
+   zero-case reference or unexecuted real-input canary does not complete this
+   bundle. An exact unread live-research edge may remain disclosed because no
+   live tick is released. No further task is self-started after F.
+
+### MAP-POP-READY-1 — population prerequisites and next implementation contract · ACCEPTED; IMPLEMENTATION ABOVE IS CURRENT
+
+**Acceptance, 2026-11-03:** corrected planning input `2f876af5`, executor draft
+`dc949172`, report `b77860e2`. Read the [direct review](reviews/2026-11-03-map-pop-ready1.md).
+The following is assignment history, not a reason to repeat readiness or stop
+the larger implementation bundle after its first package.
 
 **Owner:** existing Mac gameplay executor, `task/MAP-2-original-like`, preserving
 newer owned work. Accepted baseline:

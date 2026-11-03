@@ -11970,3 +11970,7 @@ Round 7 is documented, not implemented, at the owner's request: the Kontor's tur
 `task/iso-handedness-W4`, not merged, two open failures there); the dock stands on dry sand because the waterline treats
 height 16 as land; zoom artifacts reduced, not gone, no log. Details and the suggested order:
 `docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md`.
+After the orchestrator's review (`reviews/2026-11-03-w4-opening1-playtest.md`): P1 and P2 fixed with tests, the low items fixed or
+dispositioned, an independent re-review (no P1/P2), H2 settled in the Wine runner (placement does not reshape the ground: the
+runtime height grids of all 20 islands unchanged over 17 placements), H1 shown against the GOG original (corners at 16 are
+water there; H1 closes part of the gap at a Kontor, not all), the three owner decisions asked. Same hand-over note, section 4.

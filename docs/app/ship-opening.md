@@ -269,3 +269,7 @@ Each fix has a test that fails without it (mutation checks: the fix reverted, th
   reference `crates/render/src/gpu_fluid.rs` loads the same `fluid.wgsl` but binds only 0-4 of its 0-7 bindings (since
   `8cae6f71`, before this branch), so its GPU fluid pipelines cannot validate against it: to drop with the Rust code
   (ADR 0001).
+- *Round 7's waterline (H1/H2), after the review.* The original does not reshape the ground when it places buildings (Wine
+  runner: the runtime height grids unchanged over 17 placements); it draws corners at 16 as water at a Kontor's piles. With
+  16 as water our Kontors gain water at their water edge, but not all the way to the piles the original shows in water: an
+  owner decision with before/after pictures (hand-over note, section 4), not changed here.

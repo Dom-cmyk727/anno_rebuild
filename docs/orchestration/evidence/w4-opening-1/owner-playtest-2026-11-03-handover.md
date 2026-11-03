@@ -113,3 +113,49 @@ adjust the shoreline)". Screenshots (not in git): `cache/o1/r7/owner_round7_ours
 2. H1 as an experiment with before/after images for the owner; then the default.
 3. H2: the RE trace or the Wine capture.
 4. C with the owner's next log; a GPU-side replay on the opening map if the log points at uploads or dissolves.
+
+## 4. After the orchestrator's review (2026-11-03, evening)
+
+The review `docs/orchestration/reviews/2026-11-03-w4-opening1-playtest.md` (on `main`, `4c21b5e9`) and the owner's go-ahead
+("fix P1 and P2 with tests, handle the low items, run the NOT_RUN gates when the PC is free, ask the three decisions, do the
+Wine check for H2, wait for the zoom log").
+
+- **Fixes**, each with a test that fails with the fix reverted (mutation checks): P1 `cd459bba`, P2 `d5b8b30e`, the low items
+  `231640c0` and `201a3990`, docs `5afc14a7`; the re-review's test points and two Unix warnings `ed821f42`. Details:
+  `docs/app/ship-opening.md`, "Review follow-ups".
+- **Reviews:** an independent read-only re-review of `c1bf35cc..5afc14a7`: no P1/P2; its P3 test points acted on in
+  `ed821f42`, the rest recorded there.
+- **Gates at `5afc14a7`:** native app 256 executed / 0 failed (2 opt-in skips), GPU 115/0, render 185/0
+  (`cache/gates/native-n19{a,g,r}.txt`); WSL warnings failed on two test lines (`unix-warnings-n20.log`), fixed in
+  `ed821f42`. The gate of the final head follows in REPORTS.
+- **H2 settled (D, dynamic): the original does not reshape the ground when it places a building.** Wine runner, a new Citizen
+  game (`cache/orig/h2-w4-opening1/d91-20261103-193852/` in the main checkout, not in git):
+  - the runtime height grid (island `+0x14`, `(H + 2) x (W + 1)` bytes, `docs/re/ship-founding.md` 12.3) of all 20 islands
+    equals the quicksave's `HEIGHT` records byte for byte, its far column and two far rows 0 (the section's reading, now
+    seen at run time; a first run gave the same on another generated map);
+  - the playbook opening placed 17 objects through `City::Place` on the player's island (4 foresters, the market hall,
+    2 hunting lodges, the tannery, 2 weaving huts, 4 sheep farms, road tiles), each verified by the stores: the runtime grids
+    of all 20 islands are unchanged byte for byte, and so are the two quicksaves' `HEIGHT` records;
+  - not run: a founding by a ship (no macro for it yet). The founding reaches the same `City::Place` and tile writes
+    (12.1) as these placements, and the static search of 12.3 found no height write on its path; that a Kontor founding
+    alone reshapes is therefore not supported by anything found.
+  So the water edge of a founded Kontor keeps the coast's heights: at `0x18` it stays above a waterline at 16.5.
+- **H1 evidence (GOG reference, as the review asked):** the game's own start Kontor of that run (rotation 0, water edge
+  `10 10 10 08 08`, land edge `30` x 5) is drawn by the original with every pile of its water edge standing in the water and
+  the water up to the deck (`cache/o1/r7/gog_start_kontor_x4.png`). Corners at exactly 16 are water in the original's
+  picture; ours draws them as sand.
+- **H1 before/after** (`cache/o1/h1/`, not committed): the projection fix `d73c58b9` built as is and with the shore at 16.5
+  (`h1exp.py` in the session scratchpad: `kShore` in the field, the wave depth, the object test and the shore distance;
+  throw-away worktree `E:nno1503-worktreesnno1503-W4-h1exp`). Our viewer opens the original's quicksave, so the same
+  island renders on both sides:
+  - `sheet_start_g1.png`: the original's start view against ours now and with H1, at the original's zoom;
+  - `sheet_kontors.png`: the four `S01_02_01.sze` Kontors (4,286 / 495 / 1,746 / 856 pixels change; rotation 0 gains water
+    under its piles);
+  - `sheet_coast.png`: the start island's coast at group 1 (481 pixels change: the 16-high shelves).
+  Finding: H1 moves the waterline the way the original draws it but closes only part of the gap at the start Kontor: in the
+  original the water touches the piles along the whole water edge, in ours (with or without H1) sand and gravel remain under
+  part of it. The rest is not the waterline's height; candidates (not measured): the screen height at which our water is
+  drawn against the terrain near the shore (the original's painted water lies at the terrain's height, its sea sprites at
+  32; ours draws the water area at 32), and the ground texture under the piles.
+- **Owner decisions** asked now: (a) the projection merge, (b) H1 as the default, (c) the rotate key as the founding start
+  rotation. Window tests and the WSL sanitizer lane run when the owner is away from the PC.

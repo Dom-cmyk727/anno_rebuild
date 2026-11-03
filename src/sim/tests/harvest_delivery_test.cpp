@@ -86,6 +86,7 @@ struct Ledger {
     std::uint64_t cuts = 0, credited = 0, worker_active = 0, delivered = 0, lost_raw = 0;
     std::uint64_t raw = 0, consumed = 0, made = 0, out = 0;
     std::uint64_t loaded = 0, cart_active = 0, offered = 0, lost_cart = 0;
+    std::uint64_t reserved = 0, reserved_by_carts = 0;
     std::int64_t received = 0;
 };
 
@@ -104,6 +105,7 @@ Ledger ledger(const Chain& c, std::uint32_t wood0) {
     const sim::Farm& f = farm_of(c.w, c.forester_id);
     l.raw = f.raw;
     l.out = f.out;
+    l.reserved = f.reserved;
     const auto lt = c.stats.loaded_from.find(c.forester_id);
     l.loaded = lt != c.stats.loaded_from.end() ? lt->second : 0;
     const auto at = [](const std::map<sim::GoodsId, std::uint64_t>& m, sim::GoodsId g) {
@@ -118,8 +120,13 @@ Ledger ledger(const Chain& c, std::uint32_t wood0) {
         }
         if (s->harvest.has_value()) {
             l.worker_active += s->cargo_88;
-        } else if (s->job == sim::kJobMarketCart && s->cargo_goods == goods_id("HOLZ")) {
-            l.cart_active += s->cargo_88;
+        } else if (s->job == sim::kJobMarketCart) {
+            if (s->cargo_goods == goods_id("HOLZ")) {
+                l.cart_active += s->cargo_88;
+            }
+            if (s->transport.target == c.forester_id) {
+                l.reserved_by_carts += s->transport.reserved_88; // inside Farm.out, not a store
+            }
         }
     }
     l.received = std::int64_t{city_wood(c.w)} - wood0;
@@ -133,6 +140,8 @@ void check_balanced(const Ledger& l) {
     CHECK(std::int64_t(l.delivered) - std::int64_t(l.consumed) - std::int64_t(l.raw) == 0); // farm
     CHECK(l.consumed * 14 == l.made * 32); // full steps only here
     CHECK(std::int64_t(l.made) - std::int64_t(l.out) - std::int64_t(l.loaded) == 0); // output
+    CHECK(l.reserved == l.reserved_by_carts); // every reservation names an active cart's claim
+    CHECK(l.reserved <= l.out);               // and lies inside the output store
     CHECK(std::int64_t(l.loaded) - std::int64_t(l.cart_active) - std::int64_t(l.offered) -
               std::int64_t(l.lost_cart) ==
           0);                                         // carts
@@ -242,5 +251,36 @@ TEST_CASE("forester chain controls: no tree, unreachable trees, no road, a full 
         const std::int64_t clip = std::int64_t(l.offered) - l.received;
         CHECK(clip > 0); // the named loss term of the city clip (transport.cpp unload)
         CHECK(std::int64_t(l.made) - std::int64_t(l.out) - std::int64_t(l.loaded) == 0);
+        // Upstream of the clip everything balances, so the clip is not absorbing another error.
+        CHECK(std::int64_t(l.loaded) - std::int64_t(l.cart_active) - std::int64_t(l.offered) -
+                  std::int64_t(l.lost_cart) ==
+              0);
+        CHECK(l.lost_cart == 0);
+        CHECK(l.reserved == l.reserved_by_carts);
+        CHECK(std::int64_t(l.delivered) - std::int64_t(l.consumed) - std::int64_t(l.raw) == 0);
+    }
+    SUBCASE("a full output store: production stops, harvesting and raw delivery go on") {
+        // A control, not the chain: the output starts 10 below the capacity (1280) and no road
+        // lets a cart empty it. The first step with raw makes 14 (out 1284, `cap <= out` is tested
+        // before adding, E-5); every later step is StorageFull: nothing is consumed, the raw stock
+        // keeps the deliveries, and the dispatch stays eligible while raw / 32 <= 27 (E-5, 3.1).
+        Chain c = make_chain({{115, 111}, {111, 115}, {107, 111}}, false);
+        sim::Island& is = *sim::WorldTestAccess::islands(c.w)[0];
+        const sim::BuildingKey key = is.cache.by_id.at(c.forester_id);
+        sim::Farm& f = std::get<sim::Farm>(
+            is.cities[key.city.city.v]->index.lists[key.list].slots[key.slot]->payload);
+        f.out = 1270;
+        c.w.set_transport_stats(&c.stats);
+        for (int k = 0; k < 12000; ++k) {
+            c.w.advance(20);
+        }
+        const Ledger l = ledger(c, 0);
+        CHECK(l.cuts == kTrees);
+        CHECK(l.delivered == kCredited);
+        CHECK(l.made == 14);
+        CHECK(l.consumed == 32);
+        CHECK(l.out == 1284);
+        CHECK(l.raw == kCredited - 32);
+        CHECK(std::int64_t(l.delivered) - std::int64_t(l.consumed) - std::int64_t(l.raw) == 0);
     }
 }

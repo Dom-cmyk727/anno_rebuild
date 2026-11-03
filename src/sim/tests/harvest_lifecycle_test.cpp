@@ -106,7 +106,8 @@ TEST_CASE("harvest lifecycle: one worker cuts the tree, carries 256 home, Farm.r
     sim::Figure* worker = workers(w)[0];
     const sim::FigureId id = worker->id;
     // Run until that worker has ended (expiry stamp) or a generous bound: 5 + walk (< 3 000) + 6
-    // 500 + walk home (< 3 000) ticks, plus the visit lag once the registry has grown.
+    // 500 + walk home (< 3 000) ticks, plus the visit lag once the registry has grown (the bound
+    // was widened when the fixture's footprint and entrance changed the walk distances).
     const auto ended = [&] {
         const sim::Figure* g = sim::find_figure(w.figures(), id);
         return g != nullptr && g->expiry_stamp.has_value();

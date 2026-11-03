@@ -98,9 +98,8 @@ inline sim::BuildingType wall_type() {
 inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_capacity = 256) {
     sim::TypeRegistry::Builder b;
     b.add_farm(kForester, "HOLZ", "BAUM", 14, 32, 5, 2)
-        // (0.5, 0.5): the anchor tile, the one footprint tile the synthetic walk tables open to the
-        // cart's layer 3 (as the G6 farm's); 801's own entrance (1.8333, 1.5) is also inside 3 x 3.
-        .entrances(kForester, {{3, 3}})
+        .footprint(kForester, 3, 3)      // 801's 3 x 3
+        .entrances(kForester, {{11, 9}}) // (1.8333, 1.5): 801's entrance, its centre tile
         .action_radius(kForester, 5)
         .figure_ids(kForester, {kWorker})
         .add_farm(kGrainFarm, "KORN", "GETREIDE", 37, 80, 7, 1)

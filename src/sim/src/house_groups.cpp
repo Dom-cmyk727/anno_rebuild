@@ -252,7 +252,10 @@ std::string derive_group(const HouseGroup& group, std::span<const GoodsInfo> goo
                          const PopulationRoles& roles, HouseGroupDerived& out) {
     out = HouseGroupDerived{};
     if (roles.infra_first > roles.infra_last || roles.infra_last >= goods.size() ||
-        roles.tavern_alias_goods >= goods.size()) {
+        roles.tavern_alias_goods >= goods.size() || roles.tavern_goods < roles.infra_first ||
+        roles.tavern_goods > roles.infra_last ||
+        (roles.tavern_alias_goods >= roles.infra_first &&
+         roles.tavern_alias_goods <= roles.infra_last)) {
         return "the population roles are outside the goods table";
     }
     const std::size_t n = group.needs.size();

@@ -14,6 +14,7 @@
 
 #include <anno/formats/bytes.hpp>
 #include <anno/sim/goods_metadata.hpp>
+#include <anno/sim/hash.hpp>
 #include <anno/sim/house_groups.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim_load/original_registry.hpp>
@@ -217,4 +218,47 @@ TEST_CASE("population B: the metadata is in the registry digest") {
     CHECK(make(1, 0) != base);
     CHECK(make(0, 2) != base);
     CHECK(make(1, 0) != make(0, 2));
+}
+
+TEST_CASE("population B: the digest layout of nonzero metadata, hand-written") {
+    // bau_first then id_sec, u32 each, after forsch, per goods (stream 127). The expected value is
+    // the FNV-1a 64 of an independent byte transcription, not TypeRegistry::digest of itself.
+    auto goods = sim::original_goods();
+    goods[26].bau_first = 5;
+    goods[28].id_sec = 33;
+    sim::TypeRegistry::Builder b;
+    b.goods(goods);
+    auto built = b.build();
+    REQUIRE(built.ok());
+    sim::StateHasher h;
+    h.u64(0); // no types
+    h.u64(goods.size());
+    for (const sim::GoodsInfo& g : goods) {
+        h.u64(g.name.size());
+        for (const char c : g.name) {
+            h.u8(static_cast<std::uint8_t>(c));
+        }
+        h.u32(g.forsch);
+        h.u32(g.bau_first);
+        h.u32(g.id_sec);
+    }
+    const auto classes = sim::original_class_table();
+    h.u64(classes.size());
+    for (const sim::ClassInfo& c : classes) {
+        h.u8(static_cast<std::uint8_t>(c.cls));
+        h.u8(static_cast<std::uint8_t>(c.tick));
+        h.u8(static_cast<std::uint8_t>(c.payload));
+        h.u32(c.gate_period);
+    }
+    h.u64(0); // no figure types
+    h.u64(0); // no group table
+    CHECK(built.value()->digest() == h.value());
+    // A swapped order (id_sec first) would hash differently, so the order above is pinned.
+    sim::StateHasher swapped;
+    swapped.u32(33);
+    swapped.u32(5);
+    sim::StateHasher straight;
+    straight.u32(5);
+    straight.u32(33);
+    CHECK(swapped.value() != straight.value());
 }

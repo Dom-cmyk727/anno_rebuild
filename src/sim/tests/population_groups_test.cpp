@@ -225,11 +225,42 @@ TEST_CASE("population C: a registry larger than the original, with other role id
     CHECK(r.d.lookup[10] == 9 + 198); // the real alias-goods need, not the tavern's slot 260
     CHECK(r.d.lookup[0] == 301);      // the sentinel is n
     CHECK(r.d.lookup[399] == 301);
-    // The same group under the original roles is refused: the original ids are not goods here
-    // beyond the table? (0x5a < 400 fits) - so it derives, differently: it must not equal.
+    // The same group under the original roles (0x4c..0x5a fit this table) derives differently.
     const Row original_roles = derive(g, goods);
     REQUIRE(original_roles.error == "");
     CHECK_FALSE(original_roles.d == r.d);
+}
+
+TEST_CASE("population C: non-default tavern and alias roles are honoured") {
+    // Roles: infrastructure 100..105, tavern 102, alias 10. Goods 10 is a plain id with no need.
+    std::vector<sim::GoodsInfo> goods;
+    for (int i = 0; i < 200; ++i) {
+        goods.push_back(sim::GoodsInfo{i == 0 ? "UNUSED" : "G" + std::to_string(i), 0});
+    }
+    goods[104].id_sec = 101; // a non-original substitute at a non-original infrastructure id
+    const sim::PopulationRoles roles{100, 105, 102, 10};
+    // Two taverns: the first takes the alias, the second only its own slot.
+    Row r = derive(group_of({{5, false}, {102, false}, {101, false}, {102, false}}), goods, roles);
+    REQUIRE(r.error == "");
+    CHECK(r.d.lookup[10] == 1);  // the first tavern's slot
+    CHECK(r.d.lookup[102] == 3); // the last duplicate
+    CHECK(r.d.lookup[104] == 2); // substituted from 101 (one ascending pass: 101 is already set)
+    CHECK(r.d.goods_end == 1);
+    CHECK(r.d.infra_end == 4);
+    // The original tavern id 0x4c is just a plain goods id under these roles: no alias from it.
+    Row plain = derive(group_of({{0x4c, false}}), goods, roles);
+    REQUIRE(plain.error == "");
+    CHECK(plain.d.lookup[10] == 1); // sentinel n
+    CHECK(plain.d.goods_end == 1);
+    // A real need on the alias goods blocks the alias.
+    Row blocked = derive(group_of({{10, false}, {102, false}}), goods, roles);
+    REQUIRE(blocked.error == "");
+    CHECK(blocked.d.lookup[10] == 0);
+    // Roles that break the contract are refused by the derivation too.
+    CHECK(derive(group_of({{5, false}}), goods, sim::PopulationRoles{100, 105, 99, 10}).error !=
+          "");
+    CHECK(derive(group_of({{5, false}}), goods, sim::PopulationRoles{100, 105, 102, 101}).error !=
+          "");
 }
 
 TEST_CASE("population C: shipped groups equal the independent oracle slot for slot") {

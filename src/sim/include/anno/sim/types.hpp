@@ -294,7 +294,6 @@ struct BuildingType {
     std::uint8_t walk_class = 0;
 };
 
-/// The immutable type data of a world.
 /// The immutable inputs of one population calculation: a group, its derived tables, the goods table
 /// and the roles they were derived under (MAP-POP-IMPL-1 C, docs/sim/population-contract.md
 /// section 3). Obtained only from TypeRegistry::population_view, which refuses a config whose
@@ -311,6 +310,7 @@ struct PopulationView {
     std::optional<std::uint32_t> previous_wohnmax;
 };
 
+/// The immutable type data of a world.
 class TypeRegistry {
   public:
     class Builder;

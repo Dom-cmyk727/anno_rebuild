@@ -910,6 +910,15 @@ std::string population_roles_problem(const SimConfig& cfg, std::size_t goods_cou
         return "SimConfig.population_infra_last " + std::to_string(cfg.population_infra_last) +
                " is not a goods id (the table has " + std::to_string(goods_count) + " goods)";
     }
+    if (cfg.population_tavern_goods < cfg.population_infra_first ||
+        cfg.population_tavern_goods > cfg.population_infra_last) {
+        return "SimConfig.population_tavern_goods " + std::to_string(cfg.population_tavern_goods) +
+               " is outside the infrastructure range";
+    }
+    if (cfg.population_tavern_alias_goods >= cfg.population_infra_first &&
+        cfg.population_tavern_alias_goods <= cfg.population_infra_last) {
+        return "SimConfig.population_tavern_alias_goods lies inside the infrastructure range";
+    }
     if (cfg.population_tavern_alias_goods >= goods_count) {
         return "SimConfig.population_tavern_alias_goods " +
                std::to_string(cfg.population_tavern_alias_goods) +

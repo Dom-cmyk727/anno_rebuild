@@ -36,7 +36,7 @@ struct HouseNeed {
 /// §1), BauFirst, BauLast, Hiscore and Wissen (unread), and the derived tables
 /// whose first reader is P2 (the id -> need slot lookup with its substitution
 /// pass, the ends of the goods and infrastructure needs, the forced-infrastructure
-/// bit set); they come with that reader.
+/// bit set); they are derived data of the registry (HouseGroupDerived, derive_group).
 struct HouseGroup {
     /// The slot BGruppeNr names (PIONIER 0 ... ARISTOKRATEN 4): the index in the table.
     std::uint32_t number = 0;

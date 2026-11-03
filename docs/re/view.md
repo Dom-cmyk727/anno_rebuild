@@ -40,9 +40,12 @@ Along a horizontal sweep at a fixed screen y (32 px steps, 192 px in all) they w
 | one tile width to the right | (x − 1, y + 1) | about 40 px wide (192 px ≈ 4–5 tiles) |
 | one tile height down | (x + 1, y + 1) | about 20 px high (96 px ≈ 5 tiles) |
 
-i.e. the usual 2:1 isometric projection with +x towards the lower right and +y towards the lower
-left of the screen (the same orientation `docs/render/` uses for our renderer; the exact pixel
-pitch per zoom group is still to be measured against OQ-026). The value is written when a mouse
+i.e. the usual 2:1 isometric projection with +x towards the lower **left** and +y towards the lower
+**right** of the screen: one tile width right is one step down in x and up in y, one tile height
+down is one step up in both. (Corrected 2026-11-03: this sentence said +x towards the lower right,
+which contradicts the table; the table is the measurement. The renderer drew that mirrored
+orientation until 2026-11-03 and now uses this one, `docs/render/iso.md` "Handedness"; the camera
+matrix gives the same, `docs/re/annodisplay.md` §5. The exact pixel pitch per zoom group: §2.5.) The value is written when a mouse
 event is processed: after a keyboard scroll with the mouse still it read (0, 0) until the next
 mouse move. The coordinates are world tile coordinates (the player's start island sat around
 tile (670, 500)).

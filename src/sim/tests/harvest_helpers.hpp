@@ -41,6 +41,7 @@ inline constexpr sim::TypeId kOddTree{9313};   // ROHSTOFF, WARE[0] BAUM: an unc
 inline constexpr sim::TypeId kStalks{9320};    // ROHSTWACHS, the young stage of kGrain
 inline constexpr sim::TypeId kGrain{9321};     // ROHSTOFF, WARE[0] GETREIDE: a ripe field
 inline constexpr sim::TypeId kSmallFarm{9330}; // a small farm: its line-0 worker is job 0x2a too
+inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer
 
 inline constexpr std::uint32_t kWorker = 102;  // the forester's worker (route MAEHER 0x2a)
 inline constexpr std::uint32_t kReaper = 9401; // another data-defined harvester (route ERNTE 0x29)
@@ -84,12 +85,22 @@ inline sim::BuildingType resource_type(sim::TypeId id, std::uint32_t prodtype, s
     return t;
 }
 
+/// A tile object closed on every layer of the synthetic walk tables (walk code 3: only codes 0, 2
+/// and 4 are open there, walk_cells.cpp synthetic_walk_tables).
+inline sim::BuildingType wall_type() {
+    sim::BuildingType t = resource_type(kWall, 225, 0);
+    t.head_raw[0x2f] = 3;
+    return t;
+}
+
 /// The registry. `worker_capacity` is the forester worker's capacity (a larger data-defined
 /// capacity repeats the harvest, docs/sim/forestry.md E-14).
 inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_capacity = 256) {
     sim::TypeRegistry::Builder b;
     b.add_farm(kForester, "HOLZ", "BAUM", 14, 32, 5, 2)
-        .entrances(kForester, {{11, 9}}) // (1.8333, 1.5): 801's single entrance, inside 3 x 3
+        // (0.5, 0.5): the anchor tile, the one footprint tile the synthetic walk tables open to the
+        // cart's layer 3 (as the G6 farm's); 801's own entrance (1.8333, 1.5) is also inside 3 x 3.
+        .entrances(kForester, {{3, 3}})
         .action_radius(kForester, 5)
         .figure_ids(kForester, {kWorker})
         .add_farm(kGrainFarm, "KORN", "GETREIDE", 37, 80, 7, 1)
@@ -112,6 +123,7 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .add(resource_type(kOddTree, 225, goods_id("BAUM")))
         .add(resource_type(kStalks, 226, 0))
         .add(resource_type(kGrain, 225, goods_id("GETREIDE")))
+        .add(wall_type())
         .figure_type(worker_type(kWorker, worker_capacity, 0x2a))
         .figure_type(worker_type(kReaper, 3 * 256, 0x29))
         .figure_type(worker_type(kHerder, 256, 46))

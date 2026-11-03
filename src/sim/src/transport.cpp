@@ -723,6 +723,8 @@ struct Job {
     const Building* home;
     const BuildingType* home_type;
     std::optional<CityRef> home_city;
+    /// E4 ledger (diagnostic): the cargo went to a home in this call.
+    bool unloaded = false;
 };
 
 /// Step C's start (0x10057ae0): inside the home's footprint the step is done at once;
@@ -835,6 +837,9 @@ void load(Job& j) {
     }
     j.fig.cargo_88 += take;
     tr.reserved_88 = 0; // cargo +0x20 takes the reservation
+    if (j.ctx.transport_stats != nullptr && target != nullptr && take > 0) {
+        j.ctx.transport_stats->loaded_from[target->id] += take; // E4 ledger (diagnostic)
+    }
 }
 
 /// Step C's arrival (0x10057bd0): with a home and goods, home +0xc0(g, amount): a market
@@ -849,10 +854,15 @@ void unload(Job& j) {
         if (j.home_city) {
             j.world.fx.goods_moves.push_back(
                 GoodsMove{*j.home_city, j.fig.cargo_goods, std::int64_t{j.fig.cargo_88}});
+            j.unloaded = true;
+            if (j.ctx.transport_stats != nullptr) {
+                j.ctx.transport_stats->unload_offered[j.fig.cargo_goods] += j.fig.cargo_88;
+            }
         }
         return;
     }
     if (std::holds_alternative<Workshop>(j.home->payload) && j.fig.cargo_88 > 0) {
+        j.unloaded = true;
         const GoodsId g = j.fig.cargo_goods;
         const std::uint32_t index =
             j.home_type->input_goods.size() > 1 && g == j.home_type->input_goods[1] ? 1U : 0U;
@@ -921,7 +931,8 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
         fig.stamp = static_cast<std::uint16_t>(t);
     }
     Job j{ctx,       world, fig,       ft,
-          ft->layer, home,  home_type, home != nullptr ? city_of(world, home->id) : std::nullopt};
+          ft->layer, home,  home_type, home != nullptr ? city_of(world, home->id) : std::nullopt,
+          false};
     // Every pass waits for time or moves to a later step (Start, ToSource, Load, ToHome,
     // Done), so a call ends after at most five passes.
     for (int pass = 0; pass < 8; ++pass) {
@@ -970,6 +981,9 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             // No step left (0x10034380 deletes the job): the end path 0x1003af00 inside the
             // home is a walk of 0 (the release and the Remove at t; outside it the original
             // walks 15.0 first, which end_figure does not model).
+            if (!j.unloaded && fig.cargo_88 > 0 && ctx.transport_stats != nullptr) {
+                ctx.transport_stats->cart_lost[fig.cargo_goods] += fig.cargo_88; // E4 ledger
+            }
             world.end_figure(fig, t);
             return true;
         }

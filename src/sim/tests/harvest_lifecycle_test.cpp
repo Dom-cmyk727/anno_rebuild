@@ -105,13 +105,13 @@ TEST_CASE("harvest lifecycle: one worker cuts the tree, carries 256 home, Farm.r
     REQUIRE(tick_until(w, [&] { return !workers(w).empty(); }, 2000));
     sim::Figure* worker = workers(w)[0];
     const sim::FigureId id = worker->id;
-    // Run until that worker has ended (expiry stamp) or a generous bound: 5 + walk (< 2 000) + 6
-    // 500 + walk home (< 2 000) ticks.
+    // Run until that worker has ended (expiry stamp) or a generous bound: 5 + walk (< 3 000) + 6
+    // 500 + walk home (< 3 000) ticks, plus the visit lag once the registry has grown.
     const auto ended = [&] {
         const sim::Figure* g = sim::find_figure(w.figures(), id);
         return g != nullptr && g->expiry_stamp.has_value();
     };
-    REQUIRE(tick_until(w, ended, 12000));
+    REQUIRE(tick_until(w, ended, 20000));
     const sim::Figure* g = sim::find_figure(w.figures(), id);
     // The tree became its young stage (id - 1) with phase & 0x80 (0 here), unclaimed.
     CHECK(object_at(w, 115, 111) == kSapling.v);
@@ -538,7 +538,7 @@ TEST_CASE("harvest lifecycle: end, counter release once, expiry, and a switched-
     // Switch the farm off: the worker already out finishes and delivers; no new send (no draw).
     forester(w).switched_on = false;
     std::uint32_t draws = 0;
-    for (int i = 0; i < 6000; ++i) {
+    for (int i = 0; i < 9000; ++i) { // 18 000 ticks: through the delivery
         w.advance(4);
         draws += draws_at(w.last_output(), sim::DrawSite::FarmWorkerDispatch);
         REQUIRE(w.check_invariants() == "");

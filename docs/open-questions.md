@@ -2120,3 +2120,10 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **What is known:** the click needs a non-zero selected goods (`0x1005a8e4`); the hold hint avoids a hold with other goods when an empty one exists (`0x1005a92b`-`0x1005a98a`); the arm itself is state-free.
 - **Port:** the command accepts any goods in the table for which the city holds at least one whole ton; a UI that offers fewer goods is a presentation choice, not an original rule. A restriction would be a gameplay policy for the owner.
 - **How to resolve:** read the writers of the list control's property `0x1bf` (the builder around `0x1005e5xx`) and the enabling code of the tab, or watch the running original.
+
+## OQ-522: A farm-family harvest home without an input goods (MAP-ECON-1 E3, 2026-11-03)
+- **Status:** open (no shipped data reaches it).
+- **Area:** simulation / harvest worker.
+- **What was read.** The farm tick sets the new worker's cargo goods to the type's input 0 (AnnoWelt `0x1006ee06`). A data-defined Farm whose type has no input gives cargo goods 0; the harvest candidate test then compares tile types' WARE[0] with 0, and step C hands nothing over (the arrival needs goods != 0, `0x10057bd0`). Every shipped PLANTAGE/UNIVERSAL harvest home has an input.
+- **How to resolve:** decide whether the registry seal should refuse a Farm-class type with a harvest-route figure and no input (a mod error), or whether the original's behaviour (a worker that may cut tiles whose WARE[0] is UNUSED and then drops the cargo) is to be kept; read the original's goods-0 handling in `0x10092320` first.
+

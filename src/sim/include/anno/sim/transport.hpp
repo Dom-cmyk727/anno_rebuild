@@ -168,6 +168,12 @@ struct TransportStats {
     std::uint64_t start_outside_rect = 0;
     /// MAP-ECON-1: the harvest workers' tally (same sink, same rules: diagnostic only).
     ForestryStats forestry;
+    /// MAP-ECON-1 E4 ledger (diagnostic only): what the carts and carriers took at their load, per
+    /// source building; what they offered at their unload into a market's city (before the city's
+    /// capacity clip), and the cargo of those that ended without an unload, per goods.
+    std::map<BuildingId, std::uint64_t> loaded_from;
+    std::map<GoodsId, std::uint64_t> unload_offered;
+    std::map<GoodsId, std::uint64_t> cart_lost;
 };
 
 /// Step A's choice for a cart of market `home` (D 0x1005ad10 with the callback

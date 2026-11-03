@@ -294,7 +294,7 @@ TEST_CASE("river flow shading: a feature moves downstream with exactly the flow"
         // light axis) is elongated across that axis, so a flow across it moves
         // the pattern less visibly: a sweep of 24 unit flows (2026-11-03) gave
         // cost(prediction) / cost(still) from 0.25 along the light axis to 0.57
-        // across it with the -y axis (0.21 to 0.45 with the former +x axis; the
+        // across it with the -y axis (0.21 to 0.45 with the former -x axis; the
         // axes differ in the noise's per-axis phase offsets). (0.8, 0.3) is
         // 0.56, hence 0.6 rather than the 0.5 of the former cases.
         CHECK(cost(sx, sy) < 0.6 * cost(0.0F, 0.0F));
@@ -1024,7 +1024,8 @@ std::array<float, 2> noise_coord(const render::RiverLayer& layer, const render::
                                  float px, float py, std::uint64_t t) {
     const render::RiverView v = view0();
     const float pyw = py + v.lambda * f.level;
-    const std::array<float, 2> x{px / v.tw + pyw / v.th, pyw / v.th - px / v.tw};
+    const auto [tx, ty] = render::screen_tile(px, pyw, v.tw, v.th);
+    const std::array<float, 2> x{tx, ty};
     return render::flow_phases(x, {f.vx, f.vy}, t, layer, render::flow_psi(x)).c[0];
 }
 
@@ -1479,4 +1480,51 @@ TEST_CASE("river quality: Low takes one noise tap per phase and keeps the light 
             CHECK(std::fabs(v) < 0.2);
         }
     }
+}
+
+TEST_CASE("river flow shading: the emboss is lit from the screen's top left (the -y tile axis)") {
+    // The light of a ripple layer is its noise field's difference towards the light,
+    // (N(x) - N(x - e L)) / e (rivers.md 2.8). Since the handedness fix (iso.md,
+    // "Handedness") the tile -y axis is the screen's top left: tile (0, -1) lies up-left of
+    // (0, 0). The light computed here with L = -y must be river_flow_shade's, and the one
+    // with the former L = -x (now the screen's top right) must not.
+    const auto [ux, uy] = render::tile_top(0, -1, 0);
+    CHECK(ux < 0);
+    CHECK(uy < 0);
+    render::RiverParams p;
+    p.count = 1;
+    p.quality = render::RiverQuality::High;
+    p.layers[0] = render::RiverLayer{1.3F, 2000.0F, 0.05F, 0.0F, 0.0F};
+    const render::FlowSample f = uniform({0.3F, -0.2F});
+    const render::RiverView v = view0();
+    const std::uint64_t t = 1234;
+    auto field = [](const render::FlowPhases& ph) {
+        const float m0 = render::noise3(ph.c[0][0], ph.c[0][1], 0.5F) - 0.5F;
+        const float m1 = render::noise3(ph.c[1][0], ph.c[1][1], 0.5F) - 0.5F;
+        const float norm = std::sqrt(ph.w[0] * ph.w[0] + ph.w[1] * ph.w[1]);
+        return (ph.w[0] * m0 + ph.w[1] * m1) / norm;
+    };
+    constexpr float kProbe = 0.15F;
+    int differs = 0, n = 0;
+    for (int j = 0; j < 12; ++j) {
+        for (int i = 0; i < 12; ++i) {
+            const float px = 300.0F + 7.0F * static_cast<float>(i);
+            const float py = 500.0F + 5.0F * static_cast<float>(j);
+            const auto [tx, ty] = render::screen_tile(px, py + v.lambda * f.level, v.tw, v.th);
+            const std::array<float, 2> x{tx, ty};
+            const std::array<float, 2> u{f.vx, f.vy};
+            const float psi = render::flow_psi(x);
+            const float na = field(render::flow_phases(x, u, t, p.layers[0], psi));
+            const float ny =
+                field(render::flow_phases({x[0], x[1] - kProbe}, u, t, p.layers[0], psi));
+            const float nx =
+                field(render::flow_phases({x[0] - kProbe, x[1]}, u, t, p.layers[0], psi));
+            const float light = light_at(p, f, px, py, t);
+            CHECK(light == doctest::Approx(p.layers[0].amp * (na - ny) / kProbe).epsilon(1e-5));
+            differs += std::fabs(light - p.layers[0].amp * (na - nx) / kProbe) > 1e-4F ? 1 : 0;
+            ++n;
+        }
+    }
+    // The former axis gives another light at nearly every pixel (the check discriminates).
+    CHECK(differs > n * 9 / 10);
 }

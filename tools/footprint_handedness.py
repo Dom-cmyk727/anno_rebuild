@@ -10,6 +10,9 @@ for even rotations, (h, w) for odd ones, the sim's convention):
   old projection (screen x = (x - y) tw/2):  dx = (w' - h') tw/4
   new projection (screen x = (y - x) tw/2):  dx = (h' - w') tw/4
 
+It then counts the tiles that PROD2 footprints of the scenario files cover
+twice under the sim's footprint convention and under the swapped one.
+
 The renderer's test "non-square buildings: every rotation block fits its
 footprint in the original's handedness" (src/render/tests/
 sprite_fidelity_test.cpp) asserts the counts this prints (docs/render/iso.md,
@@ -85,3 +88,46 @@ old = sum(v.count('old') for *_, v in rows)
 majority = sum(v.count('new') >= 3 for *_, v in rows)
 print(f'types={len(rows)} blocks={blocks} fit_new={new} fit_old={old} '
       f'unanimous={fits["new"]} majority={majority}')
+
+# The footprint convention this measure assumes (the sim's: (w, h) for even
+# rotations, (h, w) for odd ones) against the swapped one: the mirrored
+# projection with the swapped convention fits the sprites exactly as well as
+# the original's projection with the sim's, so the sprites alone cannot tell
+# them apart. The scenario files can: PROD2 objects must not overlap. Count
+# the tiles covered by more than one PROD2 footprint, one of them non-square
+# (square footprints are the same under both conventions), in every scenario.
+import glob
+import insel as I  # noqa: E402
+heads = {}
+for n, p in F.records(anl, 0, len(anl)):
+    e = F.entry(p)
+    head = next((rp for rn, rp in e['records'] if rn == 'HEAD'), None)
+    if head is not None:
+        heads[e['id']] = (head[0], head[1])
+scenes = sorted(glob.glob(os.path.join(game, 'Scenes', '**', '*.sze'), recursive=True))
+overlap = {'sim': 0, 'swapped': 0}
+items = 0
+for path in scenes:
+    try:
+        isls = I.islands(open(path, 'rb').read())
+    except Exception:
+        continue
+    for isl in isls:
+        cover = {'sim': {}, 'swapped': {}}
+        for bx, by, bw, bh, data in I.blocks(isl, 'PROD2'):
+            for k in range(0, len(data) - 5, 6):
+                idw, _, x, y = struct.unpack_from('<HHBB', data, k)
+                w, h = heads.get(idw & 0xFFF, (1, 1))
+                r = idw >> 14
+                items += 1
+                for conv, (fw, fh) in (('sim', (h, w) if r % 2 else (w, h)),
+                                       ('swapped', (w, h) if r % 2 else (h, w))):
+                    for j in range(fh):
+                        for i in range(fw):
+                            t = (bx + x + i, by + y + j)
+                            n, odd = cover[conv].get(t, (0, False))
+                            cover[conv][t] = (n + 1, odd or w != h)
+        for conv in cover:
+            overlap[conv] += sum(1 for n, odd in cover[conv].values() if n > 1 and odd)
+print(f'scenes={len(scenes)} prod2_items={items} overlap_tiles_sim={overlap["sim"]} '
+      f'overlap_tiles_swapped={overlap["swapped"]}')

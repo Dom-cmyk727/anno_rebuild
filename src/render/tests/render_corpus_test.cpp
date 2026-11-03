@@ -628,8 +628,9 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
             fr.river_flow = mode;
             for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {
                 const auto b = *scene.bounds(group);
-                // Single_24's centre at group 0 is all land: move to a coast.
-                const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
+                // Single_24's centre at group 0 is all land: move to a coast (to the
+                // left: +2000 before the handedness fix of 2026-11-03, the same coast).
+                const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? -2000 : 0;
                 const render::Rect view{b.x + b.w / 2 - 640 + dx, b.y + b.h / 2 - 360, 1280, 720};
                 for (const auto& [time, style] :
                      {std::pair{std::uint64_t{0}, render::WaterStyle::Original},

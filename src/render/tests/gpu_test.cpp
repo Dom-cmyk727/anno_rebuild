@@ -179,7 +179,8 @@ std::optional<gpu::Context> device_or_skip() {
 render::Rect digest_view(const render::Scene& scene, const char* name, std::size_t group, int w,
                          int h) {
     const auto b = *scene.bounds(group);
-    const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? 2000 : 0;
+    // The same coast as the CPU digests (to the left since the handedness fix).
+    const int dx = std::string_view(name) == "Single_24.sze" && group == 0 ? -2000 : 0;
     return {b.x + b.w / 2 - w / 2 + dx, b.y + b.h / 2 - h / 2, w, h};
 }
 

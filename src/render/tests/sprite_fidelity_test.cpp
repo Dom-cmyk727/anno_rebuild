@@ -362,7 +362,7 @@ TEST_CASE("ground texels: the edge-colour error selects GroundCell::texel among 
             for (std::size_t y = 0; y < h; ++y) {
                 for (std::size_t x = 0; x < w; ++x) {
                     const auto a = cell(x, y);
-                    for (const auto [nx, ny] : {std::pair{x + 1, y}, std::pair{x, y + 1}}) {
+                    for (const auto& [nx, ny] : {std::pair{x + 1, y}, std::pair{x, y + 1}}) {
                         if (nx >= w || ny >= h || a.texture == 0) {
                             continue;
                         }

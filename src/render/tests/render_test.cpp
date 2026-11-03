@@ -85,8 +85,10 @@ namespace {
 /// 0], [0, cb, −sb], [0, sb, cb]] (0x10071240), a = 0xC0 and b = 0x2A units of
 /// π/256 (0x1008E168 · 0x1008E170), S = 59.163303 · zoom (0x1008E1A0). Screen x
 /// is column 0 of the product (AnnoDisplay.dll 0x10011e60), screen y is H minus
-/// column 1; the world point is (tile x, height, tile y) (AnnoWelt.dll
-/// 0x1009f870). Returns the screen offset of tile point (tx, ty) at height 0.
+/// column 1; the world point is (tile x, height, tile y) (AnnoWelt.dll terrain
+/// builder 0x1009b920, vertex at 0x1009bba5-0x1009bbf3: x = the stride-1 column
+/// of the row-major island grid, 0x1009e740). Returns the screen offset of tile
+/// point (tx, ty) at height 0.
 std::pair<double, double> original_camera(double tx, double ty, double zoom) {
     const double pi = 3.141592654;
     const double a = 0xC0 * pi / 256.0, b = 0x2A * pi / 256.0, k = 59.163303 * zoom;
@@ -101,7 +103,7 @@ std::pair<double, double> original_camera(double tx, double ty, double zoom) {
 template <class F> bool fits_original_camera(F&& f) {
     const double zoom[] = {1.0, 0.5, 0.25};
     for (std::size_t g = 0; g < render::kGroups; ++g) {
-        for (const auto [tx, ty] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{3, 1}}) {
+        for (const auto& [tx, ty] : {std::pair{1, 0}, std::pair{0, 1}, std::pair{3, 1}}) {
             const auto [ox, oy] = original_camera(tx, ty, zoom[g]);
             const auto [sx, sy] = f(tx, ty, g);
             if ((sx > 0) != (ox > 0) || (sx < 0) != (ox < 0) || (sy > 0) != (oy > 0)) {
@@ -139,8 +141,8 @@ TEST_CASE("projection: tile_top has the handedness and scale of the original's c
 TEST_CASE("projection: screen_tile inverts tile_top") {
     for (std::size_t g = 0; g < render::kGroups; ++g) {
         const auto [tw, th] = render::kTile[g];
-        for (const auto [x, y] : {std::pair{0, 0}, std::pair{5, 2}, std::pair{2, 5},
-                                  std::pair{-7, 3}, std::pair{640, 512}}) {
+        for (const auto& [x, y] : {std::pair{0, 0}, std::pair{5, 2}, std::pair{2, 5},
+                                   std::pair{-7, 3}, std::pair{640, 512}}) {
             const auto [sx, sy] = render::tile_top(x, y, g);
             const auto [tx, ty] =
                 render::screen_tile(static_cast<float>(sx), static_cast<float>(sy),
@@ -170,21 +172,24 @@ TEST_CASE("projection: the ground probe picks the tile drawn at a pixel") {
     for (std::size_t g = 0; g < render::kGroups; ++g) {
         const auto [tw, th] = render::kTile[g];
         render::Canvas canvas;
-        canvas.width = static_cast<std::size_t>((w + h) * tw / 2);
-        canvas.height = static_cast<std::size_t>((w + h) * th / 2);
+        const int wi = static_cast<int>(w), hi = static_cast<int>(h);
+        canvas.width = static_cast<std::size_t>((wi + hi) * tw / 2);
+        canvas.height = static_cast<std::size_t>((wi + hi) * th / 2);
         canvas.origin = {-static_cast<int>(w) * tw / 2, 0};
         canvas.pixels.assign(canvas.width * canvas.height * 4, 0);
         render::GroundProbe probe = render::GroundProbe::for_canvas(canvas);
         render::draw_ground_grids(canvas, w, h, gfx, heights,
                                   anno::assets::island::GroundTextures{}, g, render::kNoLift,
                                   &probe);
-        for (const auto [x, y] :
+        for (const auto& [x, y] :
              {std::pair{0, 0}, std::pair{5, 0}, std::pair{0, 3}, std::pair{4, 1}}) {
             // The pixel at the centre of tile (x, y)'s diamond.
             const auto [sx, sy] = render::tile_top(x, y, g);
             const auto i = canvas.index(sx, sy + th / 2);
             REQUIRE(i);
             const auto [px, py] = probe.pos[*i / 4];
+            REQUIRE(std::isfinite(px));
+            REQUIRE(std::isfinite(py));
             CHECK(static_cast<int>(std::floor(px)) == x);
             CHECK(static_cast<int>(std::floor(py)) == y);
         }
@@ -196,6 +201,8 @@ TEST_CASE("projection: the ground probe picks the tile drawn at a pixel") {
         const auto right = canvas.index(2 * tw - tw / 4, 2 * th);
         REQUIRE(left);
         REQUIRE(right);
+        REQUIRE(std::isfinite(probe.pos[*left / 4][0]));
+        REQUIRE(std::isfinite(probe.pos[*right / 4][0]));
         CHECK(static_cast<int>(std::floor(probe.pos[*left / 4][0])) == 5);
         CHECK(static_cast<int>(std::floor(probe.pos[*left / 4][1])) == 0);
         CHECK(static_cast<int>(std::floor(probe.pos[*right / 4][0])) == 0);

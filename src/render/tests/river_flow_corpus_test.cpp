@@ -456,8 +456,10 @@ TEST_CASE(
         CHECK(valid_apron > 0);
 
         // A region built on its own (an odd offset to the chunk grid) holds
-        // the same texels as the chunks at the same pixels.
-        const render::Rect area{view.x + 3, view.y + 5, 700, 450};
+        // the same texels as the chunks at the same pixels. At the view's right
+        // edge: the mirror image of the left-edge region used before the
+        // handedness fix of 2026-11-03, so it shows the same rivers.
+        const render::Rect area{view.x + view.w - 703, view.y + 5, 700, 450};
         const auto probe = scene.ground_with_probe(area, group).second;
         const river::FlowPlane plane = scene.flow_plane(area, group, probe, area, true, nullptr);
         REQUIRE_FALSE(plane.empty());
@@ -567,7 +569,8 @@ TEST_CASE("flow lattice: the pattern coordinate stays on the water plane across 
                 // and on the sea plane the legacy shimmer uses.
                 auto plane = [&](float level) {
                     const float pyw = py + v.lambda * level;
-                    return std::array<float, 2>{px / v.tw + pyw / v.th, pyw / v.th - px / v.tw};
+                    const auto [tx, ty] = render::screen_tile(px, pyw, v.tw, v.th);
+                    return std::array<float, 2>{tx, ty};
                 };
                 const auto own = plane(f.level), sea = plane(32.0F);
                 const float tx = probe.pos[o][0] + static_cast<float>(isl.x);
@@ -822,7 +825,8 @@ std::array<float, 2> noise_coord(const render::RiverLayer& layer, const render::
                                  const render::RiverView& v, int x, int y, std::uint64_t t) {
     const float px = static_cast<float>(x);
     const float pyw = static_cast<float>(y) + v.lambda * f.level;
-    const std::array<float, 2> xw{px / v.tw + pyw / v.th, pyw / v.th - px / v.tw};
+    const auto [tx, ty] = render::screen_tile(px, pyw, v.tw, v.th);
+    const std::array<float, 2> xw{tx, ty};
     return render::flow_phases(xw, {f.vx, f.vy}, t, layer, render::flow_psi(xw)).c[0];
 }
 

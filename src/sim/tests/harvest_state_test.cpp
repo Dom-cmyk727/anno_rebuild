@@ -271,7 +271,38 @@ TEST_CASE("farm dispatch: ineligible steps draw nothing; a full store and a refu
     }
 }
 
-TEST_CASE("farm dispatch: another data-defined harvester and owner, another route, a small farm") {
+TEST_CASE("farm dispatch: the small farm's line-0 worker (job 0x2a) gets no harvest state") {
+    // Job 0x2a is shared (docs/sim/forestry.md 2, selection rule): the small farm sends its line-0
+    // worker with kJobSmallFarmWorker = 0x2a once line 0's raw stock is gone (here at once: the
+    // fixture's raw stock is empty), even with the figure type the forester uses (kWorker, route
+    // 0x2a). Its home is a SmallFarm payload, so the spawn gives it no harvest state.
+    Rig r = make_rig();
+    r.place(kSmallFarm, 110, 110, sim::make_small_farm(registry()->find(kSmallFarm)->prod));
+    sim::World w = create(r, registry());
+    const auto counter = [&]() -> std::uint32_t {
+        for (const auto& list : w.islands()[0]->cities[0]->index.lists) {
+            for (const auto& b : list.slots) {
+                if (b.has_value() && b->type == kSmallFarm) {
+                    return std::get<sim::SmallFarm>(b->payload).figures_out.at(0);
+                }
+            }
+        }
+        return 0;
+    };
+    advance_until(w, [&] { return counter() >= 1; }, 20000);
+    const sim::Figure* worker = nullptr;
+    for (const sim::Figure* f : figures(w)) {
+        if (f->job == 0x2a) {
+            worker = f;
+        }
+    }
+    REQUIRE(worker != nullptr);
+    CHECK(worker->kind == kWorker);
+    CHECK_FALSE(worker->harvest.has_value());
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("farm dispatch: another data-defined harvester and owner, another route") {
     // Engine behaviour comes from the data: a grain farm of player 1 on island 1 whose figure type
     // has ROUTETYPE ERNTE (0x29) gets a harvest worker carrying GETREIDE; a farm whose figure has
     // the WEIDETIER route (46) sends a job-46 figure without a harvest state (no body of that job

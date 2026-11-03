@@ -36,10 +36,11 @@ inline constexpr sim::TypeId kMarket{9304};  // a market with one cart of kCart
 inline constexpr sim::TypeId kRoad{9305};    // a road (flag 0x4000)
 inline constexpr sim::TypeId kSapling{9310}; // ROHSTWACHS, the young stage of kTree
 inline constexpr sim::TypeId kTree{9311};    // ROHSTOFF, WARE[0] BAUM: a mature tree
-inline constexpr sim::TypeId kDeadWood{9312}; // ROHSTOFF, WARE[0] UNUSED: the `id - 1` of kOddTree
-inline constexpr sim::TypeId kOddTree{9313};  // ROHSTOFF, WARE[0] BAUM: an uncuttable tree
-inline constexpr sim::TypeId kStalks{9320};   // ROHSTWACHS, the young stage of kGrain
-inline constexpr sim::TypeId kGrain{9321};    // ROHSTOFF, WARE[0] GETREIDE: a ripe field
+inline constexpr sim::TypeId kDeadWood{9312};  // ROHSTOFF, WARE[0] UNUSED: the `id - 1` of kOddTree
+inline constexpr sim::TypeId kOddTree{9313};   // ROHSTOFF, WARE[0] BAUM: an uncuttable tree
+inline constexpr sim::TypeId kStalks{9320};    // ROHSTWACHS, the young stage of kGrain
+inline constexpr sim::TypeId kGrain{9321};     // ROHSTOFF, WARE[0] GETREIDE: a ripe field
+inline constexpr sim::TypeId kSmallFarm{9330}; // a small farm: its line-0 worker is job 0x2a too
 
 inline constexpr std::uint32_t kWorker = 102;  // the forester's worker (route MAEHER 0x2a)
 inline constexpr std::uint32_t kReaper = 9401; // another data-defined harvester (route ERNTE 0x29)
@@ -98,6 +99,9 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .add_farm(kHerdFarm, "WOLLE", "GETREIDE", 37, 80, 5, 1)
         .entrances(kHerdFarm, {{9, 9}})
         .figure_ids(kHerdFarm, {kHerder})
+        .add_small_farm(kSmallFarm, "KORN", "WOLLE", "GETREIDE", "GRAS", 13, 4, 128, 50, 4)
+        .entrances(kSmallFarm, {{9, 9}})
+        .figure_ids(kSmallFarm, {kWorker})
         .add_market(kMarket, kCart, 1, 8)
         .entrances(kMarket, {{9, 15}})
         .add_plain(kRoad, 193)

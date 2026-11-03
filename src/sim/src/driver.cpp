@@ -417,7 +417,9 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
             const std::uint32_t kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
             SpawnRequest s =
                 spawn_request(island, city, b, type, 0, send_figure_job(type.cls), kind);
-            if (type.cls == RuntimeClass::Farm) {
+            // The farm family is the class whose tick is the farm tick (the one test used for the
+            // dispatch draw in tick_building too, so a class table cannot split the two).
+            if (ctx.types.class_info(type.cls).tick == TickKind::Farm) {
                 // MAP-ECON-1 E2 (D 0x1006ee06-0x1006ee56): the job is the figure type's slot +0x54
                 // (its ROUTETYPE), and the new figure's cargo carries the farm's input 0. A harvest
                 // job (0x29/0x2a) of a Farm-payload home gets the harvest state

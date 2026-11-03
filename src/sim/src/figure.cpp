@@ -217,6 +217,22 @@ void finish_harvest(Figure& figure, Effects& fx) {
     h.along = 0;
 }
 
+/// MAP-POP-LIVE-1 L2: the resident job's terminal state on the shared end path (docs/sim/
+/// population-live.md section 3). Done (the body's own end, already normalized) is left untouched;
+/// the cargo stays on the figure as history. Repeated calls do nothing.
+void finish_resident(Figure& figure) {
+    if (!figure.resident.has_value() || figure.resident->step == ResidentStep::Done) {
+        return;
+    }
+    ResidentState& r = *figure.resident;
+    r.step = ResidentStep::Done;
+    r.wait = 0;
+    r.target = BuildingId{};
+    r.route.clear();
+    r.next = 0;
+    r.along = 0;
+}
+
 /// D 0x1003b6e0's release: the home counter through the figure, once (the unit's +0x78
 /// is cleared after the home's slot +0x2c).
 void release_home(Figure& figure, Effects& fx) {
@@ -226,6 +242,7 @@ void release_home(Figure& figure, Effects& fx) {
     ReleaseCounter r;
     r.home = figure.home;
     r.home_counter = figure.home_counter;
+    r.holder = figure.id;
     fx.releases.push_back(r);
     figure.home = BuildingId{};
 }
@@ -250,6 +267,7 @@ bool end_figure(Figure& figure, std::uint32_t t, Effects& fx) {
         return false;
     }
     finish_harvest(figure, fx);
+    finish_resident(figure);
     release_home(figure, fx);
     figure.expiry_stamp = static_cast<std::uint16_t>(t);
     return true;
@@ -268,6 +286,7 @@ void sync_figure_lists(FigureRegistry& registry, Figure& figure, bool had_stamp,
         // not end it through SerialWorld::end_figure (own design, the seam protocol); an active
         // harvest job is finished first, as end_figure does.
         finish_harvest(figure, fx);
+        finish_resident(figure);
         release_home(figure, fx);
     }
     if (has_stamp && !had_stamp) {
@@ -402,6 +421,47 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
                 return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +
                        ", but the figure has ended (every end path finishes the job: Done)";
             }
+        }
+    }
+    // MAP-POP-LIVE-1 L2: the resident job's own facts (docs/sim/population-live.md section 3); the
+    // facts that need the buildings (the home's payload and walker slot) are
+    // World::check_invariants'.
+    for (std::size_t s = 0; s < l.slots.size(); ++s) {
+        if (!l.slots[s].has_value() || !l.slots[s]->resident.has_value()) {
+            continue;
+        }
+        const Figure& f = *l.slots[s];
+        const ResidentState& r = *f.resident;
+        const std::string rw = "figures.list.slots[" + std::to_string(s) + "].resident";
+        if (f.job != kJobResidentCode) {
+            return rw + ": present on a figure of job " + std::to_string(f.job) +
+                   " (only the house walker job 0x35 has one)";
+        }
+        if (static_cast<std::uint8_t>(r.step) > static_cast<std::uint8_t>(ResidentStep::Done)) {
+            return rw + ".step: " + std::to_string(static_cast<unsigned>(r.step)) + " is no step";
+        }
+        if ((r.step == ResidentStep::Wait) != (r.wait > 0)) {
+            return rw + ".wait: " + std::to_string(r.wait) + " in step " +
+                   std::to_string(static_cast<unsigned>(r.step)) +
+                   " (a wait is owed exactly in Wait, and a finished wait is resolved at once)";
+        }
+        if (!r.route.empty() && (r.next == 0 || r.next > r.route.size())) {
+            return rw + ".next: " + std::to_string(r.next) + " is not in 1 .. " +
+                   std::to_string(r.route.size());
+        }
+        if (r.route.empty() && (r.next != 0 || r.along != 0)) {
+            return rw + ": no route, but next " + std::to_string(r.next) + " and along " +
+                   std::to_string(r.along);
+        }
+        if (!r.route.empty() && r.step != ResidentStep::ToStall && r.step != ResidentStep::ToHome) {
+            return rw + ".route: a walk outside the walking steps ToStall and ToHome";
+        }
+        if ((r.step == ResidentStep::Done) != f.expiry_stamp.has_value()) {
+            return rw + ".step: " + std::to_string(static_cast<unsigned>(r.step)) +
+                   (f.expiry_stamp.has_value()
+                        ? ", but the figure has ended (every end path finishes the job: Done)"
+                        : ", Done but the figure has not ended (Done is resolved in the same call "
+                          "by its end)");
         }
     }
     // MAP-2: the facing, the parent links and the crew slots. Every figure of the registry

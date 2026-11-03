@@ -167,6 +167,11 @@ struct SpawnRequest {
     /// 0x1006ee06) and whether it gets the harvest state (docs/sim/forestry.md 2).
     GoodsId cargo_goods = 0;
     bool harvest = false;
+    /// MAP-POP-LIVE-1 L2 (docs/sim/population-live.md section 3): the new figure is a house walker
+    /// (job 0x35). The merge gives it its ResidentState (empty cargo slots) and writes its id into
+    /// the home House's walker slot `home_counter`; a request whose slot is not an empty slot of a
+    /// House creates no figure.
+    bool resident = false;
 };
 
 /// A counter of figures out goes down by one (if the building still exists and the
@@ -179,6 +184,10 @@ struct ReleaseCounter {
     BuildingId home;
     std::uint32_t home_counter = 0;
     FigureId figure;
+    /// MAP-POP-LIVE-1 L2: the figure that held the slot (set by the end path). A House keeps its
+    /// walkers as ids: the slot `home_counter` is cleared only while it still names `holder`, so an
+    /// old job never clears a newer owner's slot. Invalid for the counters of the other payloads.
+    FigureId holder;
 };
 
 /// A change of a player's money (i64; saturating at the ends of the type).
@@ -237,6 +246,27 @@ struct StoreDelta {
     std::int64_t delta_88 = 0;
 };
 
+/// MAP-POP-LIVE-1 L2 (docs/sim/population-live.md section 2 "Billing"): `amount` is ADDED to the
+/// city's billed counter of `goods` (the REQUESTED amount, saturating at u32). A city that is gone
+/// or a goods beyond the table changes nothing.
+struct BilledDelta {
+    CityRef city;
+    GoodsId goods = 0;
+    std::uint32_t amount = 0;
+};
+
+/// MAP-POP-LIVE-1 L2 (section 2 "House delivery"): a resident hands `amount_88` of `goods` to its
+/// home house (house_deliver: stock += amount * 16 and the IdSec replay). Applied only while the
+/// building still exists, is a House, and `figure` still holds one of its walker slots (so it is
+/// merged BEFORE the releases of the same buffer, which the figure's end pushes); a refused
+/// delivery (stock overflow) changes nothing and is counted.
+struct HouseDelivery {
+    BuildingId home;
+    FigureId figure;
+    GoodsId goods = 0;
+    std::uint32_t amount_88 = 0;
+};
+
 enum class SimEventKind : std::uint8_t {
     StatusMessage,
     Notice,
@@ -272,8 +302,8 @@ struct SimEvent {
 };
 
 /// Filled by an island tick or a serial-phase seam, merged by the world (§5.3). Merge
-/// order inside one buffer: spawns, releases, money, goods_moves, reserves,
-/// deliveries, store_deltas, events, ui; each vector in order.
+/// order inside one buffer: spawns, house_deliveries, releases, money, goods_moves, billed_deltas,
+/// reserves, deliveries, store_deltas, tile_edits, events, ui; each vector in order.
 /// A figure moved by its carrier (MAP-NAV-2): a ship's crew (children, grandchildren) is written
 /// from the ship's position by the world after the ship's visit, never by the ship's own call.
 struct FigureMove {
@@ -302,6 +332,8 @@ struct Effects {
     std::vector<ReleaseCounter> releases;
     std::vector<MoneyDelta> money;
     std::vector<GoodsMove> goods_moves;
+    /// MAP-POP-LIVE-1 L2: applied right after the goods moves.
+    std::vector<BilledDelta> billed_deltas;
     std::vector<Reserve> reserves;
     std::vector<Deliver> deliveries;
     std::vector<StoreDelta> store_deltas;
@@ -313,6 +345,9 @@ struct Effects {
     std::vector<DrawRecord> draws;
     /// MAP-ECON-1 E3: the harvest body's tile writes, in issue order.
     std::vector<TileEdit> tile_edits;
+    /// MAP-POP-LIVE-1 L2: the residents' deliveries to their houses, applied right after the spawns
+    /// and before the releases.
+    std::vector<HouseDelivery> house_deliveries;
     /// Diagnostic (TransportStats::forestry.raw_lost_88, never state): the cargo of harvest workers
     /// that the shared end path ended before their delivery (MAP-ECON-1-CLOSE-1).
     std::uint64_t harvest_lost_88 = 0;

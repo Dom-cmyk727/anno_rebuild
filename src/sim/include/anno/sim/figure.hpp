@@ -124,6 +124,10 @@ struct HarvestState {
 /// walk home and the delivery of every cargo slot), then Done (the figure ends).
 enum class ResidentStep : std::uint8_t { Start = 0, ToStall = 1, Wait = 2, ToHome = 3, Done = 4 };
 
+/// The job code of the house walker (resident_job.hpp's kJobResident; spelled here for the figure
+/// validators, which do not include the job).
+inline constexpr std::uint32_t kJobResidentCode = 0x35;
+
 /// What a resident job keeps between calls (MAP-POP-LIVE-1 L1, stream 128; the job itself is L2).
 /// Present on a figure exactly when a House spawned it (never chosen by the job id alone). The
 /// walk is TransportState's: waypoints, the next one and the distance along the segment.

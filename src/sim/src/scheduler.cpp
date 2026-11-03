@@ -16,6 +16,7 @@
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
+#include <anno/sim/resident_job.hpp>
 #include <anno/sim/scheduler.hpp>
 #include <anno/sim/ship.hpp>
 #include <anno/sim/ship_mover.hpp>
@@ -107,6 +108,17 @@ void Scheduler::release_counter(World& w, BuildingId home, std::uint32_t home_co
     }
 }
 
+void Scheduler::release_walker(World& w, BuildingId home, std::uint32_t slot, FigureId figure) {
+    // A House holds its walkers as ids: the slot is cleared only while it still names this figure
+    // (an old job never clears a newer owner's slot).
+    Island* is = island_of_id(w, island_of(home));
+    Building* b = is != nullptr ? find_building_mut(*is, home) : nullptr;
+    House* h = b != nullptr ? std::get_if<House>(&b->payload) : nullptr;
+    if (h != nullptr && slot < h->walkers.size() && h->walkers[slot] == figure) {
+        h->walkers[slot] = FigureId{};
+    }
+}
+
 void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t, bool in_advance) {
     // 1. Spawns: a figure per request, id from the world counter, slot by the group
     // list's policy (A6), and a FigureSpawned event.
@@ -126,6 +138,20 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         if (s.harvest) {
             f.harvest = HarvestState{}; // Start, the first delay owed (docs/sim/forestry.md 2)
         }
+        if (s.resident) {
+            // A house walker needs an empty walker slot of a House (L2): else no figure, and
+            // nothing was taken at the tick, so there is nothing to give back.
+            Island* hi = island_of_id(w, island_of(s.home));
+            Building* hb = hi != nullptr ? find_building_mut(*hi, s.home) : nullptr;
+            House* hh = hb != nullptr ? std::get_if<House>(&hb->payload) : nullptr;
+            if (hh == nullptr || s.home_counter >= hh->walkers.size() ||
+                hh->walkers[s.home_counter].valid()) {
+                continue;
+            }
+            ResidentState rs;
+            rs.cargo.assign(w.config_.resident_cargo_slots, ResidentCargo{});
+            f.resident = std::move(rs);
+        }
         f.born = t;
         f.stamp = static_cast<std::uint16_t>(t); // the unit's +8 from its creation
         if (add_figure(w.figures_, f, w.config_, w.rules_) == kNoSlot) {
@@ -136,6 +162,11 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             continue;
         }
         ++w.ids_.next_figure;
+        if (s.resident) {
+            Island* hi = island_of_id(w, island_of(s.home));
+            House* hh = std::get_if<House>(&find_building_mut(*hi, s.home)->payload);
+            hh->walkers[s.home_counter] = f.id;
+        }
         SimEvent e;
         e.kind = SimEventKind::FigureSpawned;
         e.tick = tick;
@@ -153,11 +184,35 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             nav_place(*f, m.pos); // also keeps the fine position of a carried navigating figure
         }
     }
+    // 1c. The residents' deliveries (L2), before the releases the figure's end pushed: a delivery
+    // is applied only while the house exists and the figure still holds one of its walker slots.
+    for (const HouseDelivery& d : fx.house_deliveries) {
+        Island* is = island_of_id(w, island_of(d.home));
+        Building* b = is != nullptr ? find_building_mut(*is, d.home) : nullptr;
+        House* h = b != nullptr ? std::get_if<House>(&b->payload) : nullptr;
+        const BuildingType* type = b != nullptr ? w.types_->find(b->type) : nullptr;
+        const Figure* f = find_figure(w.figures_, d.figure);
+        if (h == nullptr || type == nullptr || f == nullptr ||
+            f->home_counter >= h->walkers.size() || h->walkers[f->home_counter] != d.figure) {
+            continue;
+        }
+        const std::optional<HouseFacts> facts = house_facts_of(w.config_, *w.types_, *type, *h);
+        if (!facts) {
+            continue;
+        }
+        const DeliverResult r = house_deliver(*facts, h->stock, d.goods, d.amount_88);
+        if (r.fault != ResidentFault::None && w.transport_stats_ != nullptr) {
+            ++w.transport_stats_->residents.deliveries_refused; // diagnostic only
+        }
+    }
     // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
     // unit's home +0x78 is set, which it then clears), so a figure releases once.
     for (const ReleaseCounter& r : fx.releases) {
         if (!r.figure.valid()) {
             release_counter(w, r.home, r.home_counter);
+            if (r.holder.valid()) {
+                release_walker(w, r.home, r.home_counter, r.holder);
+            }
             continue;
         }
         Figure* f = find_figure(w.figures_, r.figure);
@@ -165,6 +220,7 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             const BuildingId home = f->home;
             f->home = BuildingId{};
             release_counter(w, home, f->home_counter);
+            release_walker(w, home, f->home_counter, f->id);
         }
     }
     // 3. Money.
@@ -185,6 +241,16 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         } else if (g.delta_88 < 0) {
             static_cast<void>(c->stock.remove(g.goods, magnitude32(g.delta_88)));
         }
+    }
+    // 4b. Billed counters (L2): the requested amounts, saturating at u32.
+    for (const BilledDelta& d : fx.billed_deltas) {
+        City* c = city_of_ref(w, d.city);
+        if (c == nullptr || d.goods >= c->billed.size()) {
+            continue;
+        }
+        const std::uint64_t sum = std::uint64_t{c->billed[d.goods]} + d.amount;
+        c->billed[d.goods] = static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(sum, std::numeric_limits<std::uint32_t>::max()));
     }
     // 5. Reserves.
     for (const Reserve& r : fx.reserves) {
@@ -389,6 +455,19 @@ void Scheduler::run_figures(World& w, const TickContext& ctx, CountingDraw& draw
                         {
                             SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
                             ran = harvest_tick(ctx, serial, fig);
+                        }
+                        if (ran) {
+                            sync_figure_lists(reg, fig, had_stamp, fx);
+                            merge(w, fx, ctx.tick, t); // may grow the list: `fig` is not used
+                        }
+                    } else if (resident_runs_job(fig.job)) {
+                        // MAP-POP-LIVE-1 L2: the house walker (docs/sim/population-live.md
+                        // section 3), the same protocol as the transport.
+                        const bool had_stamp = fig.expiry_stamp.has_value();
+                        Effects fx;
+                        {
+                            SerialWorld serial(w.islands_, w.config_.layout, reg, w.players_, fx);
+                            ran = resident_tick(ctx, serial, fig);
                         }
                         if (ran) {
                             sync_figure_lists(reg, fig, had_stamp, fx);

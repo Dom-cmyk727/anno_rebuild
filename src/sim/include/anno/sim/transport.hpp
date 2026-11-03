@@ -127,6 +127,22 @@ struct ForestryStats {
     std::map<BuildingId, FarmLedger> farms;
 };
 
+/// MAP-POP-LIVE-1 L2: a diagnostic tally of the resident (house walker) jobs; measurement and test
+/// ledger only, never sim state, never hashed or saved. Filled through the TransportStats sink.
+struct ResidentStats {
+    std::uint64_t searches = 0;           ///< step A starts with a home
+    std::uint64_t searches_failed = 0;    ///< no candidate or no route: straight to step C
+    std::uint64_t arrivals = 0;           ///< step B arrivals
+    std::uint64_t arrivals_empty = 0;     ///< an arrival with no building of the stand lists
+    std::uint64_t purchases = 0;          ///< cargo slots filled
+    std::uint64_t bought_88 = 0;          ///< what the suppliers returned
+    std::uint64_t faults = 0;             ///< a typed ResidentFault in a choice, bill or add (P-3)
+    std::uint64_t deliveries = 0;         ///< cargo slots handed to a home (job side)
+    std::uint64_t delivered_88 = 0;       ///< their amounts
+    std::uint64_t deliveries_refused = 0; ///< merge side: a stock overflow, nothing changed
+    std::uint64_t lost_88 = 0;            ///< cargo of residents that ended without a delivery
+};
+
 /// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
 /// non-null pointer (task T27, measurement only; not sim state, not hashed, not drawn).
 /// Exactly one outcome counter is bumped per call that reaches the candidate stage.
@@ -168,6 +184,8 @@ struct TransportStats {
     std::uint64_t start_outside_rect = 0;
     /// MAP-ECON-1: the harvest workers' tally (same sink, same rules: diagnostic only).
     ForestryStats forestry;
+    /// MAP-POP-LIVE-1 L2: the residents' tally (same sink, same rules).
+    ResidentStats residents;
     /// MAP-ECON-1 E4 ledger (diagnostic only): what the carts and carriers took at their load, per
     /// source building; what they offered at their unload into a market's city (before the city's
     /// capacity clip), and the cargo of those that ended without an unload, per goods.

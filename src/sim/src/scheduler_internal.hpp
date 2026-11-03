@@ -22,6 +22,7 @@ struct PopResult;
 struct Scheduler {
     static std::uint64_t advance(World& w, std::uint32_t game_ms);
     static void release_counter(World& w, BuildingId home, std::uint32_t home_counter);
+    static void release_walker(World& w, BuildingId home, std::uint32_t slot, FigureId figure);
     /// Merges `fx` in the order of §5.3 (spawns, releases, money, goods moves,
     /// reserves, deliveries, events, UI) at `tick`. Inside an advance (`in_advance`)
     /// the UI events and the draws are also part of the advance's SimOutput; between

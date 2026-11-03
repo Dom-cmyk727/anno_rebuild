@@ -2240,3 +2240,17 @@ The taste options D1b-D16 of `rivers.md` §12 that earlier stages did not list, 
 - **Status:** closed 2026-11-02 (coordinator decision).
 - **Area:** simulation / ship cargo / rules.
 - **Resolution:** `CargoRules { warehouse_prodtypes = {35}, dock_half_widths = {5,5,5,4,3,2} }` is a hashed, saved member of `Rules` from stream version 124, validated on create and load; the eligibility test uses it (no dependence on `founding_types`). See docs/sim/state.md (stream 124) and docs/sim/ship-cargo.md section 11.
+
+## OQ-551: How the original draws a scenery object whose anchor tile a building did not cover (W4-OPENING-1, 2026-11-03)
+- **Status:** open.
+- **Area:** app (the play picture) / render.
+- **Question:** A building is written over every tile of its footprint (AnnoWelt.dll `0x100823ed`). A multi-tile scenery object
+  (a 2 x 2 rock) whose anchor tile lies outside the footprint keeps its other tiles' object words outside, and loses the ones
+  inside. Does the original draw it whole, in part, or not at all?
+- **What we know:** the play picture drops a scenery item whose anchor tile lies under a building and keeps the others whole
+  (`scenery_under_building`, `loader.cpp`). The shipped scenarios store four Kontors with a 2 x 2 `STEIN`/`FELSEN` (1550, 1574,
+  1595) whose anchor lies outside and one column inside (e.g. `single34.sze`, island 18): the files keep such objects. The
+  chunk drawer positions an object from its tile's cell minus the footprint sub-offset (`docs/re/annowelt.md`), which suggests
+  it draws from the tile layer, but that is not traced to the end.
+- **How to resolve:** trace the chunk drawer `0x1009f870` for a tile whose anchor bit is clear, or capture the original drawing
+  `single34.sze` island 18 and compare the rock.

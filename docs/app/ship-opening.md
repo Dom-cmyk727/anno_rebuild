@@ -192,3 +192,26 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
   all of "water and islands need a moment, islands flicker at the farthest zoom" is not known: the report line of the window
   now says how many frames drew a visible chunk not built yet (and at which level) and how many wave windows were made or
   carried over, so the next log can tell.
+
+**Fifth round** (owner playtest 2026-11-03: zooming while the ship sails works; artifacts at the farthest zoom and, new, after
+zooming back in; trees over the founded Kontor). Root causes measured headlessly (the viewer's cache on the opening map through a
+zoom out and back in; GPU frames of the same path; a synthetic beach for the waves), then fixed one by one:
+- *Trees in the Kontor.* The shipped scenarios hold no vegetation under any of 65,619 buildings (175 Kontors); the original writes
+  a building over every footprint tile (AnnoWelt.dll `0x100823ed`), the sim does too, but the picture copied the file's scenery
+  unchanged. `apply_island_buildings` drops a scenery item whose anchor lies under a building (flag-0x10 exception as the
+  original's, `0x1008218f`); an item anchored outside stays whole (OQ-551).
+- *Open sea built over and over.* 39,000 chunk builds in two seconds at the farthest zoom were open sea around the map: a far
+  chunk was reduced from its 4^n children wherever it lay. A chunk outside the scene is now open sea at once (the first 12 s of
+  the replay: 1,953 builds, 10,953 before; none while resting at the farthest level).
+- *Level 4 never kept.* The viewer kept far levels of at most 96 chunks, assuming 91 at level 4; the map has 98, so every zoom
+  through level 4 rebuilt it from group 2 (up to 14 visible chunks missing in the owner's log). `kOpeningResidentLevelChunks`
+  = 128 (levels 4-8, 470-665 MiB of cache): the replay then has no frame with a visible chunk missing, out or back in.
+- *White stepped patches after zooming in.* The far levels' waves (1-2 cells per tile) carried into the close window
+  bilinearly: steps in the lighting a coarse cell wide, the coarse surf as blobs off the shore. Into finer cells the carry is
+  now a cubic B-spline without foam (docs/render/iso.md, "A zoom carries the waves").
+- *The report line* also counts frames that dissolved chunks in over a stand-in (built, then uploaded), which "not ready"
+  did not show.
+- Not changed: a chunk reaching the GPU dissolves in over its stand-in (the nearest level magnified) for 150 ms
+  (`chunk_fade_ms`); the old wave window draws the finer view for the 10-40 ms its successor takes to prepare; surf over the
+  offshore shoals is our simulation's (the original shows lighter water there), a look the owner decides; the mirrored
+  projection (the Kontor's turn) is its own task.

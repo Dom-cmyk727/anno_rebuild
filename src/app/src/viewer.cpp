@@ -569,6 +569,13 @@ class Viewer {
     /// machine, so nothing is printed per frame (hitch lines excepted: they are
     /// printed in the frame after the hitch, outside its own busy time).
     std::size_t chunks_received_ = 0;
+    /// The report's view of what was not ready (GPU): frames of the interval that drew a visible
+    /// chunk not built yet (GpuStats::chunks_missing), the most at once and at which zoom level,
+    /// and the wave windows made and carried over since the last report (owner playtest
+    /// 2026-11-03, round 5: the overview "needs a moment" and islands flicker at the farthest
+    /// zoom).
+    std::size_t missing_frames_ = 0, missing_most_ = 0, missing_most_group_ = 0;
+    std::uint64_t windows_reported_ = 0, resamples_reported_ = 0;
     void back_off() {
         retry_at_ = Clock::now() + std::chrono::milliseconds(100);
         dirty_ = true;
@@ -2263,6 +2270,13 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
                                    resample, overlay, live_units_);
     fluid_windows_ = s.fluid_windows;
     fluid_resamples_ = s.fluid_resamples;
+    if (s.chunks_missing > 0) {
+        ++missing_frames_;
+        if (s.chunks_missing > missing_most_) {
+            missing_most_ = s.chunks_missing;
+            missing_most_group_ = group_;
+        }
+    }
     // What the pointer is over from now on: this frame's map, zoom level and scene.
     pointer_frame_ = pointer_frame(view, resample, group_, levels().tile_w(group_),
                                    levels().tile_h(group_), gen, out_w, out_h);
@@ -2529,6 +2543,18 @@ void Viewer::measure(double chunks_ms, const std::array<double, 4>& stages) {
     if (chunks_received_ > 0) {
         std::fprintf(stderr, "  chunk(s) received in this interval: %zu\n", chunks_received_);
         chunks_received_ = 0;
+    }
+    if (on_gpu()) {
+        std::fprintf(
+            stderr,
+            "  not ready: %zu of %zu frames drew a visible chunk not built yet (at most %zu "
+            "at once, zoom group %zu); wave windows %llu new, %llu carried over\n",
+            missing_frames_, frames_n_, missing_most_, missing_most_group_,
+            static_cast<unsigned long long>(fluid_windows_ - windows_reported_),
+            static_cast<unsigned long long>(fluid_resamples_ - resamples_reported_));
+        missing_frames_ = missing_most_ = missing_most_group_ = 0;
+        windows_reported_ = fluid_windows_;
+        resamples_reported_ = fluid_resamples_;
     }
     if (play_ != nullptr) {
         const std::string failed = play_->picture().error();

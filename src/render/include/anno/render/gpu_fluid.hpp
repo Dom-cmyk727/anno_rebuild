@@ -75,6 +75,11 @@ class FluidGpu {
     std::size_t upload_bytes_per_frame = std::size_t{16} << 20;
     double upload_budget_ms = 2.0;
 
+    /// The ships that act on the water from the next update() on (fluid::ShipWake; at most
+    /// fluid::kMaxShipWakes, the rest are ignored). Their positions are held for the steps of that
+    /// update; call every frame with the positions as drawn.
+    void set_ships(const std::vector<fluid::ShipWake>& ships);
+
     /// Brings the simulation to `time_ms` for a view at zoom `group` centred
     /// on tile position `centre` and spanning `span_tiles` tiles (sizes the
     /// window, FluidConfig::window_size_for): recentres the window (new cells get
@@ -132,7 +137,8 @@ class FluidGpu {
     std::optional<fluid::FluidWindow> window_;
     std::uint64_t window_serial_ = 0;
     BindGroupLayout layout_;
-    Buffer params_, steps_;
+    Buffer params_, steps_, ships_;
+    std::vector<fluid::ShipWake> ship_list_;
     std::uint64_t align_ = 0;
     ComputePipeline vel_pipe_, eta_pipe_;
     Grid grid_;

@@ -43,6 +43,12 @@ std::optional<SDL_Keycode> keycode(const std::string& name) {
     if (name == "esc") {
         return SDLK_ESCAPE;
     }
+    if (name == "e") {
+        return SDLK_E; // the water style
+    }
+    if (name == "space") {
+        return SDLK_SPACE; // pause
+    }
     if (name == "f") {
         return SDLK_F;
     }

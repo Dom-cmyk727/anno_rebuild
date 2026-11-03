@@ -12,17 +12,25 @@ namespace anno::app {
 
 class FrameProjection final : public ScreenProjection {
   public:
-    /// `frame` and `ships` outlive the projection.
-    FrameProjection(const PointerFrame& frame, const ShipLayer& ships)
-        : frame_(frame), ships_(ships) {}
+    /// `frame`, `ships` and `drawn` outlive the projection. `drawn` is the view the ships are drawn
+    /// from (positions as shown, ShipMotion::display): a click lands on the sprite that is drawn.
+    FrameProjection(const PointerFrame& frame, const ShipLayer& ships,
+                    const OpeningView* drawn = nullptr)
+        : frame_(frame), ships_(ships), drawn_(drawn) {}
     [[nodiscard]] std::optional<PickedPoint> pick(double px, double py) const override;
     [[nodiscard]] std::optional<ScreenBox> ship_box(const ShipView& ship) const override {
+        if (drawn_ != nullptr) {
+            if (const ShipView* shown = drawn_->ship(ship.id)) {
+                return ships_.box(*shown, frame_);
+            }
+        }
         return ships_.box(ship, frame_);
     }
 
   private:
     const PointerFrame& frame_;
     const ShipLayer& ships_;
+    const OpeningView* drawn_;
 };
 
 /// The pixel (drawable) at which a world point on the sea surface is drawn in `frame`: the forward

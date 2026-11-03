@@ -648,6 +648,8 @@ struct GpuFrame::Impl {
     /// The wave simulation, created on the first enhanced frame.
     std::optional<FluidGpu> fluid;
     bool fluid_failed = false;
+    /// The ships acting on the waves this frame (GpuFrame::set_wakes).
+    std::vector<fluid::ShipWake> wakes;
     /// The window serial the cross-fade has seen, and the fade-clock time (ms) it changed.
     std::uint64_t fluid_seen_serial = 0, fluid_arrival = 0;
 
@@ -2530,6 +2532,7 @@ struct GpuFrame::Impl {
             fluid_off = false;
             fluid->drop_window();
         }
+        fluid->set_ships(wakes);
         if (fluid->update(enc, group, centre, span, time_ms, depth, threads, cpt, stamps) &&
             stamps != nullptr) {
             ts_mark(TimedPass::Fluid);
@@ -3015,6 +3018,10 @@ WGPUTextureFormat GpuFrame::format() const {
 
 std::uint64_t GpuFrame::errors() const {
     return impl_->ref->errors->load();
+}
+
+void GpuFrame::set_wakes(const std::vector<fluid::ShipWake>& wakes) {
+    impl_->wakes = wakes;
 }
 
 GpuStats GpuFrame::render(FrameRenderer& frames, const std::shared_ptr<const Scene>& scene,

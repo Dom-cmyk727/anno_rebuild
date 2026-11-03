@@ -12,7 +12,11 @@ expect fact selected == 1
 # A founding refused by the sim leaves everything as it was: a water tile of the island's rectangle...
 lookw 255 138
 wait frames 20
+# The preview applies the sim's coast rule: this tile is not on a coast (the sim refuses it below).
 key f
+hover-land 257 134
+wait frames 10
+wait fact found.coast == no within 5000
 click-land 257 134
 wait fact latest_kind == found within 10000
 wait fact latest == refused within 10000
@@ -36,6 +40,8 @@ wait frames 20
 key f
 hover-land 255 138
 wait frames 10
+# Here the sim accepts a rotation: the preview shows the rotation that faces the shore.
+wait fact found.coast == yes within 5000
 screenshot 3-founding-preview
 click-land 255 138
 wait fact tracked == 3 within 10000

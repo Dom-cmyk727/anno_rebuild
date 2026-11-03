@@ -1,6 +1,7 @@
 // Tests of the coastal wave simulation (anno::render::fluid; no game files
 // needed): the tests of crates/render/src/fluid.rs, and parity with the Rust
 // reference via crates/render/examples/digest_fluid.rs.
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -340,4 +341,74 @@ TEST_CASE("fluid matches the Rust reference") {
     }
     static_cast<void>(digests);
 #endif
+}
+
+// A ship acts on the water as a moving body (W4-OPENING-1): the water rises ahead of the hull and
+// falls behind it, symmetrically across the heading, and a ship that is not moving does nothing.
+TEST_CASE("fluid ship term: bow wave ahead, trough behind, nothing when still") {
+    const FluidConfig cfg;
+    fluid::ShipWake s;
+    s.x = 10.0F;
+    s.y = 10.0F;
+    s.vx = 6.0F; // heading +x
+    s.vy = 0.0F;
+    const std::vector<fluid::ShipWake> ships{s};
+    const float ahead = fluid::ship_term(cfg, ships, 10.8F, 10.0F);
+    const float behind = fluid::ship_term(cfg, ships, 9.2F, 10.0F);
+    const float beam = fluid::ship_term(cfg, ships, 10.0F, 10.0F);
+    CHECK(ahead > 0.0F);
+    CHECK(behind < 0.0F);
+    CHECK(ahead == doctest::Approx(-behind).epsilon(1e-4)); // the dipole is antisymmetric
+    CHECK(std::abs(beam) < 1e-4F);                          // at the hull's middle
+    CHECK(fluid::ship_term(cfg, ships, 10.8F, 10.4F) ==
+          doctest::Approx(fluid::ship_term(cfg, ships, 10.8F, 9.6F)).epsilon(1e-4));
+    CHECK(fluid::ship_term(cfg, ships, 20.0F, 10.0F) ==
+          doctest::Approx(0.0F).epsilon(1e-6)); // far away
+    s.vx = 0.01F;                               // slower than kShipWakeMinSpeed
+    CHECK(fluid::ship_term(cfg, {s}, 10.8F, 10.0F) == 0.0F);
+    // The speed scales it; the heading turns it.
+    fluid::ShipWake fast = ships[0];
+    fast.vx = 12.0F;
+    CHECK(fluid::ship_term(cfg, {fast}, 10.8F, 10.0F) ==
+          doctest::Approx(2.0F * ahead).epsilon(1e-4));
+    fluid::ShipWake north = ships[0];
+    north.vx = 0.0F;
+    north.vy = -6.0F; // heading -y
+    CHECK(fluid::ship_term(cfg, {north}, 10.0F, 9.2F) > 0.0F);
+    CHECK(fluid::ship_term(cfg, {north}, 10.0F, 10.8F) < 0.0F);
+}
+
+TEST_CASE(
+    "fluid ship wake: a ship crossing deep water raises it ahead and leaves a wake, no foam") {
+    FluidConfig cfg = small({4, 4, 4});
+    const FluidWindow window = FluidWindow::centred(cfg, 0, {8.0F, 8.0F});
+    const fluid::DepthFn deep = [](float, float) { return 16.0F; };
+    FluidGrid still(cfg, window, deep, 0.0F);
+    FluidGrid sail = still;
+    // The same swell in both; only `sail` has a ship, moving +x at 6 tiles/s.
+    fluid::ShipWake s;
+    s.x = 5.0F;
+    s.y = 8.0F;
+    s.vx = 6.0F;
+    float t = 0.0F;
+    for (int i = 0; i < 90; ++i) { // 0.75 s
+        t += cfg.dt;
+        s.x += 6.0F * cfg.dt;
+        sail.ships = {s};
+        still.step(t);
+        sail.step(t);
+    }
+    float max_diff = 0.0F, foam_diff = 0.0F;
+    for (std::size_t i = 0; i < sail.state.size(); ++i) {
+        max_diff = std::max(max_diff, std::abs(sail.state[i][0] - still.state[i][0]));
+        foam_diff = std::max(foam_diff, std::abs(sail.state[i][3] - still.state[i][3]));
+    }
+    CHECK(max_diff > 0.05F);  // the ship moved the water
+    CHECK(foam_diff == 0.0F); // and left no foam: the bow wave stays under the breaking limit
+    CHECK(max_diff < 0.5F * 16.0F);
+    // Over a beach or the shallows the ships act on nothing.
+    CHECK(fluid::ship_depth_factor(-1.0F) == 0.0F);
+    CHECK(fluid::ship_depth_factor(0.0F) == 0.0F);
+    CHECK(fluid::ship_depth_factor(4.0F) == doctest::Approx(0.5F));
+    CHECK(fluid::ship_depth_factor(30.0F) == 1.0F);
 }

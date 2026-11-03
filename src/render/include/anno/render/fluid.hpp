@@ -107,6 +107,12 @@ struct FluidConfig {
     std::uint32_t seed = 1503;
     /// The window recentres when the view centre moves this many cells.
     std::uint32_t recentre_cells = 64;
+    /// Ships as moving sources (ShipWake; not in the original, tuning): the elevation source per
+    /// tile/s of speed (HEIGHT units per second, scaled by the hull's gaussian). Tuned by eye on
+    /// screenshots of a ship at 6 tiles/s (2026-11-03): 3 shows nothing, 30 a visible V at the bow
+    /// but a bow wave of 16 HEIGHT units that breaks (foam), so 10 (about 5 units, under the
+    /// breaking limit of deep water). There is no foam trail: the owner does not want one.
+    float ship_wave_gain = 10.0F;
 
     /// Cells per side for a view spanning span_tiles tiles (screen width /
     /// tile width + screen height / tile height) at zoom `group` (<
@@ -152,6 +158,32 @@ struct Forcing {
 /// depth-averaged velocity of a progressive wave in deep water
 /// (η · deep_speed / depth_cap along its direction).
 Forcing forcing(const FluidConfig& cfg, const Swell& comps, std::pair<float, float> pos, float t);
+
+/// A ship moving through the water (W4-OPENING-1, owner playtest 2026-11-03: a ship must act on the
+/// water as a moving body). Render-side only, like the rest of the simulation: it never reaches the
+/// game state. The hull displaces water ahead of it and lets it fall back behind it: the elevation
+/// source is -d/dt of a gaussian hull profile, S = gain * |v| * (2 a / half_length^2) * exp(-(a^2 /
+/// half_length^2 + b^2 / half_width^2)) with a along and b across the heading, so the shallow-water
+/// equations carry the bow wave and the V-shaped wake (a ship faster than the wave speed leaves a
+/// Mach cone) away on their own.
+struct ShipWake {
+    float x = 0.0F, y = 0.0F;                    // tile position
+    float vx = 0.0F, vy = 0.0F;                  // tiles per second
+    float half_length = 1.3F, half_width = 0.5F; // tiles
+    bool operator==(const ShipWake&) const = default;
+};
+/// At most this many ships act on the water at once (the shader's uniform array has this size).
+inline constexpr std::size_t kMaxShipWakes = 16;
+/// Slower than this (tiles per second) a ship leaves no wake.
+inline constexpr float kShipWakeMinSpeed = 0.05F;
+
+/// Elevation rate (HEIGHT units per second) of the ships at tile position (px, py).
+float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, float px, float py);
+/// The share of that rate that acts over still water of depth `h` (HEIGHT units): none on a beach
+/// or in the shallows (a ship's wave would only break there and churn foam), all from 8 deep.
+inline float ship_depth_factor(float h) {
+    return h <= 0.0F ? 0.0F : (h >= 8.0F ? 1.0F : h / 8.0F);
+}
 
 /// A rectangle of world cells [x0, x1) × [y0, y1).
 struct CellRect {
@@ -261,6 +293,8 @@ class FluidGrid {
     std::vector<float> depth;
     /// (η, u, v, foam) per storage cell.
     std::vector<Cell> state;
+    /// The ships acting on the water in the next steps (a frame's worth: positions are held).
+    std::vector<ShipWake> ships;
 
     /// A grid over `window` with depth `depth(x, y)` (tile position → depth
     /// below the waterline in HEIGHT units, ≤ 0 on land), initialised to the

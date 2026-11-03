@@ -102,7 +102,15 @@ struct UiResult {
 struct FoundPreview {
     sim::TypeId type;
     sim::TileXY origin;
+    /// The rotation the warehouse is drawn at: the first of the sim's rotation trials (the cursor's
+    /// rotation, then the next three) that the coast rule accepts, so the building and its landing
+    /// stage turn to face the shore; the cursor's own when the terrain is not known or none fits.
     std::uint8_t rotation = 0;
+    /// The cursor's rotation (key T): what the command carries, the sim derives the origin and the
+    /// trials from it.
+    std::uint8_t cursor_rotation = 0;
+    /// The coast rule accepted `rotation` (false: not decided here, or no rotation fits).
+    bool coast_ok = false;
     std::uint32_t w = 0, h = 0;
     sim::TileXY click;
     /// The sim's own reason, as far as the controls can tell without the world (advisory); empty
@@ -115,6 +123,9 @@ struct FoundPreview {
 struct UiFeed {
     const OpeningView* view = nullptr;
     std::function<CommandOutcome(CommandId)> outcome;
+    /// The terrain height byte at a vertex of the world (tile corner), nullopt where there is no
+    /// island: what the founding preview applies the sim's coast rule to (site::coast_height_rule).
+    std::function<std::optional<std::uint8_t>(std::int64_t, std::int64_t)> vertex_height;
     std::optional<std::uint64_t> shown_tick;
 };
 
@@ -226,8 +237,8 @@ class OpeningUi {
     [[nodiscard]] const ShipView* hit_ship(double px, double py, const ScreenProjection& frame,
                                            const UiFeed& feed) const;
     [[nodiscard]] const ShipView* own_selected(const UiFeed& feed, std::string& why) const;
-    [[nodiscard]] std::optional<FoundPreview> make_found(const ShipView& ship,
-                                                         sim::TileXY click) const;
+    [[nodiscard]] std::optional<FoundPreview> make_found(const ShipView& ship, sim::TileXY click,
+                                                         const UiFeed& feed) const;
     [[nodiscard]] std::optional<sim::BuildingId> default_target(const ShipView& ship,
                                                                 const OpeningView& view) const;
     void clamp_unload(const ShipView& ship);

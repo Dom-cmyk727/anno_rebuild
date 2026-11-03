@@ -57,6 +57,10 @@ class ShipLayer {
 
     [[nodiscard]] std::size_t sets() const { return sets_.size(); }
 
+    /// The facing frame (0..count-1) of a ship's dir16: the figure's 16 frames run the other way
+    /// round (measured, see ship_layer.cpp).
+    [[nodiscard]] static std::size_t facing_frame(std::uint8_t dir16, std::size_t count);
+
   private:
     std::map<Wanted, std::vector<render::UnitSprite>> sets_;
     /// The rings of the selected ship, own (index 0) and foreign (1), one frame per zoom group.

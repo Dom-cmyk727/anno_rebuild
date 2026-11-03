@@ -20,6 +20,7 @@
 #include <anno/app/frame_projection.hpp>
 #include <anno/app/png.hpp>
 #include <anno/app/sdl_input.hpp>
+#include <anno/app/ship_motion.hpp>
 #include <anno/app/window_capture.hpp>
 #include <anno/app/zoom.hpp>
 #include <anno/render/frame.hpp>
@@ -527,6 +528,17 @@ class Viewer {
     /// succeeded) was drawn from.
     std::shared_ptr<const PlaySnapshot> opening_snapshot_;
     std::vector<render::UnitSprite> live_units_;
+    /// What is drawn between two published turns (ships moved along their segment, turning in
+    /// steps) and the wall clock it is drawn at; the sim's own positions stay in opening_snapshot_.
+    ShipMotion motion_;
+    OpeningView display_view_;
+    /// The opening on the GPU starts with enhanced water (ships stir the simulated waves); E
+    /// toggles.
+    bool opening_water_set_ = false;
+    [[nodiscard]] static double wall_seconds() {
+        static const Clock::time_point epoch = Clock::now();
+        return std::chrono::duration<double>(Clock::now() - epoch).count();
+    }
     std::uint64_t frame_view_tick_ = 0;
     std::optional<std::uint64_t> shown_tick_;
     std::size_t ships_missing_ = 0;
@@ -1175,6 +1187,28 @@ UiFeed Viewer::opening_feed() const {
         };
     }
     feed.shown_tick = shown_tick_;
+    // The terrain's height bytes at the tile corners of the scene being drawn (the island files'
+    // own HEIGHT grids, what the sim's coast rule reads), for the founding preview.
+    feed.vertex_height = [scene = current()](std::int64_t x,
+                                             std::int64_t y) -> std::optional<std::uint8_t> {
+        if (!scene) {
+            return std::nullopt;
+        }
+        for (std::size_t k = 0; k < scene->islands.size(); ++k) {
+            const auto& island = scene->islands[k];
+            if (x < island.x || y < island.y ||
+                x > island.x + static_cast<std::int64_t>(island.width) ||
+                y > island.y + static_cast<std::int64_t>(island.height)) {
+                continue;
+            }
+            if (const auto h =
+                    scene->island_ground_height(k, static_cast<float>(x), static_cast<float>(y))) {
+                const long v = std::lround(*h);
+                return static_cast<std::uint8_t>(std::clamp(v, 0L, 255L));
+            }
+        }
+        return std::nullopt;
+    };
     return feed;
 }
 
@@ -1190,7 +1224,14 @@ void Viewer::opening_refresh() {
     const bool changed = !opening_snapshot_ || opening_snapshot_->opening != snap->opening;
     opening_snapshot_ = std::move(snap);
     const OpeningView& view = *opening_snapshot_->opening;
+    const double now = wall_seconds();
+    if (!opening_water_set_ && on_gpu()) {
+        opening_water_set_ = true;
+        water_ = render::WaterStyle::Enhanced;
+        update_title();
+    }
     if (changed) {
+        motion_.observe(view, now);
         opening_->ui->on_view(opening_feed());
         // The participant's first city exists (founded after launch): the building tool builds
         // there from now on (the city is derived from the published view, never assumed).
@@ -1213,10 +1254,14 @@ void Viewer::opening_refresh() {
     const auto selected = opening_->ui->selected();
     const ShipView* ship = selected ? view.ship(*selected) : nullptr;
     ships_missing_ = 0;
+    display_view_ = motion_.display(view, now);
     live_units_ = opening_->ships->units(
-        view, selected, ship != nullptr && ship->owner == opening_->ui->setup().local,
+        display_view_, selected, ship != nullptr && ship->owner == opening_->ui->setup().local,
         &ships_missing_);
     frame_view_tick_ = view.tick;
+    if (motion_.animating(now)) {
+        dirty_ = true; // the next frame draws the ships a little further along
+    }
 }
 
 void Viewer::opening_apply(const UiResult& result) {
@@ -1240,7 +1285,7 @@ bool Viewer::opening_handle(const SDL_Event& e) {
     const bool tool_on = dev_ != nullptr && dev_->enabled();
     std::optional<FrameProjection> projection;
     if (pointer_frame_) {
-        projection.emplace(*pointer_frame_, *opening_->ships);
+        projection.emplace(*pointer_frame_, *opening_->ships, &display_view_);
     }
     const ScreenProjection* frame = projection ? &*projection : nullptr;
     const UiFeed feed = opening_feed();
@@ -1381,6 +1426,13 @@ std::map<std::string, std::string> Viewer::opening_facts() const {
             ui.mode() == OpeningMode::Unload ? ui.unload_plan(opening_feed()) : std::nullopt;
         f["request"] = plan ? std::to_string(plan->tons) : "none";
     }
+    {
+        const auto fp =
+            ui.mode() == OpeningMode::Found ? ui.found_preview(opening_feed()) : std::nullopt;
+        f["found.coast"] = fp ? (fp->coast_ok ? "yes" : "no") : "none";
+        f["found.rotation"] = fp ? std::to_string(fp->rotation) : "none";
+        f["found.cursor"] = fp ? std::to_string(fp->cursor_rotation) : "none";
+    }
     f["tracked"] = std::to_string(ui.tracked().size());
     f["save"] = opening_->save_status ? opening_->save_status() : "";
     if (f["save"].empty()) {
@@ -1463,6 +1515,7 @@ void Viewer::toggle_pause() {
     if (hooks_ != nullptr && hooks_->on_pause) {
         hooks_->on_pause(paused_at_.has_value());
     }
+    update_title();
 }
 
 void Viewer::pan(double dx, double dy) {
@@ -1655,6 +1708,10 @@ void Viewer::update_title() {
         // The opening's own line comes first: a caption shows about 150 characters of a 1280 px
         // window, and the command state, the advisory and the pointer are what the owner reads.
         std::string lead = opening_->ui->status_line(opening_feed());
+        if (paused_at_) {
+            // Space pauses the sim and the water: say so where it cannot be missed.
+            lead = "PAUSED (Space resumes) | " + lead;
+        }
         if (!save_note_.empty()) {
             lead += " | " + save_note_;
         }
@@ -1795,7 +1852,7 @@ void Viewer::script_tick() {
             if (!opening_snapshot_ || !opening_snapshot_->opening || !pointer_frame_) {
                 return std::nullopt;
             }
-            const ShipView* ship = opening_snapshot_->opening->ship(sim::FigureId{id});
+            const ShipView* ship = display_view_.ship(sim::FigureId{id});
             const float density = SDL_GetWindowPixelDensity(window_);
             if (ship == nullptr || !(density > 0.0F)) {
                 return std::nullopt;
@@ -2155,6 +2212,9 @@ void Viewer::draw_gpu(const std::shared_ptr<const render::Scene>& gen, render::R
             }
         }
     }
+    // The ships stir the simulated waves (enhanced water): a bow wave and a wake.
+    g.frame->set_wakes(opening_ != nullptr ? motion_.wakes(wall_seconds())
+                                           : std::vector<render::fluid::ShipWake>{});
     const auto s = g.frame->render(frames_, gen, view, group_, time_ms(), water_, target.get(),
                                    resample, overlay, live_units_);
     // What the pointer is over from now on: this frame's map, zoom level and scene.

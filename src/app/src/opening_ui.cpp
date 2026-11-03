@@ -5,6 +5,7 @@
 #include <anno/app/opening_ui.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/ship_cargo.hpp>
+#include <anno/sim/site_checks.hpp>
 
 namespace anno::app {
 
@@ -236,7 +237,8 @@ UiResult OpeningUi::click_right(double px, double py, const ScreenProjection* fr
     return out;
 }
 
-std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::TileXY click) const {
+std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::TileXY click,
+                                                  const UiFeed& feed) const {
     if (setup_.founding_types.empty() || !setup_.registry) {
         return std::nullopt;
     }
@@ -248,6 +250,7 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
     FoundPreview p;
     p.type = type;
     p.rotation = found_rotation_;
+    p.cursor_rotation = found_rotation_;
     p.click = click;
     const auto [w, h] = sim::footprint(*bt, found_rotation_);
     p.w = w;
@@ -279,6 +282,48 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
                                  std::int64_t{p.origin.y} + h - 1)) {
         add("footprint leaves the island");
     }
+    // The coast rule (docs/sim/ship-founding.md P11.4, site::coast_height_rule: the sim's own pure
+    // function) over the terrain's height bytes, for each rotation the sim tries in turn from the
+    // cursor's: the origin stays, the first rotation whose footprint is on the island and whose
+    // shore edge is the beach (0x30) with water opposite is the one the sim builds. This is where
+    // the warehouse turns to the coast. Occupancy and ownership are still not checked.
+    if (island != nullptr && feed.vertex_height &&
+        sim::site::coast_class_supported(bt->flags_word)) {
+        bool decided = true;
+        std::optional<std::uint8_t> accepted;
+        for (const std::uint8_t rot : sim::site::rotation_trials(found_rotation_)) {
+            const auto [fw, fh] = sim::footprint(*bt, rot);
+            if (!island->contains(p.origin.x, p.origin.y) ||
+                !island->contains(std::int64_t{p.origin.x} + fw - 1,
+                                  std::int64_t{p.origin.y} + fh - 1)) {
+                continue;
+            }
+            const auto verdict = sim::site::coast_height_rule(
+                bt->width, bt->height, rot, [&](std::uint64_t dx, std::uint64_t dy) {
+                    return feed.vertex_height(
+                        std::int64_t{p.origin.x} + static_cast<std::int64_t>(dx),
+                        std::int64_t{p.origin.y} + static_cast<std::int64_t>(dy));
+                });
+            if (verdict.result == sim::site::TerrainResult::Accepted) {
+                accepted = rot;
+                break;
+            }
+            if (verdict.result == sim::site::TerrainResult::Unreadable) {
+                decided = false;
+            }
+        }
+        if (accepted) {
+            p.rotation = *accepted;
+            p.coast_ok = true;
+            if (*accepted != found_rotation_) {
+                add("turned to face the shore");
+            }
+        } else if (decided) {
+            add("not on a coast: the shore must be a beach with water on the opposite side (the "
+                "sim "
+                "answers NoRotationFits)");
+        }
+    }
     p.advisory = a;
     return p;
 }
@@ -300,7 +345,7 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
             message_ = "no founding: nothing under the pointer";
             return out;
         }
-        const auto preview = make_found(*ship, p->tile);
+        const auto preview = make_found(*ship, p->tile, feed);
         if (!preview) {
             message_ = "no founding: no building type is offered";
             return out;
@@ -308,7 +353,7 @@ UiResult OpeningUi::click_left(double px, double py, const ScreenProjection* fra
         sim::FoundCmd cmd;
         cmd.ship = ship->id;
         cmd.placement.type = preview->type;
-        cmd.placement.rotation = preview->rotation;
+        cmd.placement.rotation = preview->cursor_rotation; // the sim tries the rotations from here
         cmd.placement.x = preview->origin.x;
         cmd.placement.y = preview->origin.y;
         cmd.click_x = p->tile.x;
@@ -741,7 +786,7 @@ std::optional<FoundPreview> OpeningUi::found_preview(const UiFeed& feed) const {
     if (ship == nullptr) {
         return std::nullopt;
     }
-    return make_found(*ship, *hover_tile_);
+    return make_found(*ship, *hover_tile_, feed);
 }
 
 std::string OpeningUi::status_line(const UiFeed& feed) const {

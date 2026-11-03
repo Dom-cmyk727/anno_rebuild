@@ -5549,3 +5549,58 @@ TEST_CASE("the scene grid is kept at the window floor when idle, never dropped")
     CHECK(g.offscreen_bytes() == big);
     CHECK(g.errors() == 0);
 }
+
+// A ship acts on the GPU waves as on the CPU reference: the same elevation source
+// (fluid::ship_term, the shader's twin) in the same steps (W4-OPENING-1, owner playtest
+// 2026-11-03).
+TEST_CASE("the GPU wave solver with a ship matches the CPU reference") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    namespace fluid = anno::render::fluid;
+    fluid::FluidConfig cfg;
+    cfg.size = 64;
+    cfg.cells_per_tile = {4, 4, 4};
+    cfg.recentre_cells = 4;
+    const fluid::DepthFn depth = [](float, float) { return 16.0F; };
+    auto made = gpu::FluidGpu::create(*ctx, cfg);
+    REQUIRE(made);
+    gpu::FluidGpu& g = made.value();
+    const FluidRun run{*ctx, g, depth};
+    std::uint64_t time_ms = 1000;
+    run(0, {8.0F, 8.0F}, 0.0F, time_ms);
+    fluid::FluidGrid cpu(cfg, *g.window(), depth, static_cast<float>(g.sim_time()));
+    fluid::FluidGrid quiet = cpu;
+    fluid::ShipWake ship;
+    ship.x = 4.0F;
+    ship.y = 8.0F;
+    ship.vx = 6.0F;
+    ship.vy = 0.0F;
+    for (int frame = 0; frame < 20; ++frame) {
+        // The ship's list is held for the steps of a frame, as the compositor does.
+        g.set_ships({ship});
+        cpu.ships = {ship};
+        quiet.ships.clear();
+        const double before = g.sim_time();
+        time_ms += 33;
+        run(0, {8.0F, 8.0F}, 0.0F, time_ms);
+        for (double t = before; t + 1e-9 < g.sim_time();) {
+            t += static_cast<double>(cfg.dt);
+            cpu.step(static_cast<float>(t));
+            quiet.step(static_cast<float>(t));
+        }
+        ship.x += ship.vx * 0.033F;
+    }
+    // The ship changed the water (a lot more than float noise) ...
+    float moved = 0.0F;
+    for (std::size_t i = 0; i < cpu.state.size(); ++i) {
+        moved = std::max(moved, std::abs(cpu.state[i][0] - quiet.state[i][0]));
+    }
+    CHECK(moved > 0.05F);
+    // ... and the GPU agrees with the CPU reference.
+    const auto [max, flow] = compare_state(*ctx, g, cpu, 64);
+    MESSAGE("ship wake: GPU vs CPU max " << max << ", ship moved the water by " << moved);
+    CHECK(max < 1e-2F);
+    CHECK(ctx->errors->load() == 0);
+}

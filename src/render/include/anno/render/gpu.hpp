@@ -479,6 +479,11 @@ class GpuFrame {
     GpuFrame(const GpuFrame&) = delete;
     GpuFrame& operator=(const GpuFrame&) = delete;
 
+    /// The ships that act on the simulated waves in the next render() (enhanced water only; a bow
+    /// wave and a wake, fluid::ShipWake). Replaces the previous list: call each frame with the
+    /// positions and velocities as drawn, an empty list when no ship moves.
+    void set_wakes(const std::vector<fluid::ShipWake>& wakes);
+
     /// Composes `view` at `group` and `time_ms` into `target` (view.w ×
     /// view.h, in the frame's format) and submits the commands. With
     /// `resample` (not the identity) `view` is the scene grid the picture is

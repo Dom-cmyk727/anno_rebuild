@@ -24,6 +24,8 @@ namespace {
 constexpr std::uint64_t kStepBytes = 32;
 /// Bytes of Params in fluid.wgsl: 5 vec4 + 16 vec4 swell components.
 constexpr std::uint64_t kParamsBytes = 80 + 16 * 16;
+/// Bytes of Ships in fluid.wgsl: one vec4 head and 2 vec4 per ship.
+constexpr std::uint64_t kShipsBytes = 16 + 2 * 16 * fluid::kMaxShipWakes;
 
 void put_u32(std::vector<std::uint8_t>& b, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) {
@@ -62,6 +64,24 @@ std::vector<std::uint8_t> params_bytes(const fluid::FluidConfig& cfg, const flui
     }
     for (const auto& c : comps) {
         for (const float f : {c.k[0], c.k[1], c.omega, c.phase, c.amplitude, 0.0F, 0.0F, 0.0F}) {
+            put_f32(out, f);
+        }
+    }
+    return out;
+}
+
+/// Ships of fluid.wgsl.
+std::vector<std::uint8_t> ships_bytes(const fluid::FluidConfig& cfg,
+                                      const std::vector<fluid::ShipWake>& ships) {
+    std::vector<std::uint8_t> out;
+    out.reserve(kShipsBytes);
+    const std::size_t n = std::min(ships.size(), fluid::kMaxShipWakes);
+    for (const float f : {static_cast<float>(n), cfg.ship_wave_gain, 0.0F, 0.0F}) {
+        put_f32(out, f);
+    }
+    for (std::size_t i = 0; i < fluid::kMaxShipWakes; ++i) {
+        const fluid::ShipWake s = i < n ? ships[i] : fluid::ShipWake{};
+        for (const float f : {s.x, s.y, s.vx, s.vy, s.half_length, s.half_width, 0.0F, 0.0F}) {
             put_f32(out, f);
         }
     }
@@ -168,8 +188,9 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     storage.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
     storage.storageTexture.format = WGPUTextureFormat_RGBA32Float;
     storage.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
-    const std::array entries = {uniform_entry(0, false), uniform_entry(1, true), tex_entry(2),
-                                storage, tex_entry(4)};
+    const std::array entries = {
+        uniform_entry(0, false), uniform_entry(1, true), tex_entry(2), storage, tex_entry(4),
+        uniform_entry(5, false)};
     WGPUBindGroupLayoutDescriptor ld = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
     ld.label = sv("fluid");
     ld.entryCount = entries.size();
@@ -201,6 +222,11 @@ formats::Result<FluidGpu, std::string> FluidGpu::create(const DeviceRef& dev,
     wgpuQueueWriteBuffer(dev.queue.get(), f.params_.get(), 0, pb.data(), pb.size());
     f.align_ = align_bytes;
     f.steps_ = uniform_buffer(d, "fluid steps", ring);
+    f.ships_ = uniform_buffer(d, "fluid ships", kShipsBytes);
+    {
+        const auto zero = ships_bytes(cfg, {});
+        wgpuQueueWriteBuffer(dev.queue.get(), f.ships_.get(), 0, zero.data(), zero.size());
+    }
     f.cfg_ = std::move(cfg);
     // Small until the first update sizes it to the view.
     f.grid_ = f.make_grid(64);
@@ -222,7 +248,7 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
                            WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
     g.bathy_view = view_of(g.bathy.get());
     auto bind = [&](WGPUTextureView src, WGPUTextureView dst) {
-        std::array<WGPUBindGroupEntry, 5> e{};
+        std::array<WGPUBindGroupEntry, 6> e{};
         for (std::size_t i = 0; i < e.size(); ++i) {
             e[i] = WGPU_BIND_GROUP_ENTRY_INIT;
             e[i].binding = static_cast<std::uint32_t>(i);
@@ -234,6 +260,8 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
         e[2].textureView = src;
         e[3].textureView = dst;
         e[4].textureView = g.bathy_view.get();
+        e[5].buffer = ships_.get();
+        e[5].size = kShipsBytes;
         WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
         desc.label = sv("fluid");
         desc.layout = layout_.get();
@@ -244,6 +272,10 @@ FluidGpu::Grid FluidGpu::make_grid(std::uint32_t n) const {
     g.bind_a = bind(g.views[0].get(), g.views[1].get());
     g.bind_b = bind(g.views[1].get(), g.views[0].get());
     return g;
+}
+
+void FluidGpu::set_ships(const std::vector<fluid::ShipWake>& ships) {
+    ship_list_ = ships;
 }
 
 bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<float, float> centre,
@@ -306,6 +338,10 @@ bool FluidGpu::update(WGPUCommandEncoder encoder, std::size_t group, std::pair<f
         std::memcpy(bytes.data() + align_ * k, step.data(), step.size());
     }
     wgpuQueueWriteBuffer(ref_->queue.get(), steps_.get(), 0, bytes.data(), bytes.size());
+    {
+        const auto sb = ships_bytes(cfg_, ship_list_);
+        wgpuQueueWriteBuffer(ref_->queue.get(), ships_.get(), 0, sb.data(), sb.size());
+    }
     sim_t_ += dt * static_cast<double>(n);
     const std::uint32_t groups = (grid_.n + 7) / 8;
     WGPUComputePassDescriptor cd = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;

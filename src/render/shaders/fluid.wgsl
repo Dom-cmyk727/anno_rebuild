@@ -36,6 +36,14 @@ struct Step {
 @group(0) @binding(3) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(4) var bathy: texture_2d<f32>;
 
+// Ships acting on the water (fluid.hpp ShipWake): head = (count, wave gain, 0, 0); per ship
+// items[2 i] = (x, y, vx, vy) in tiles and tiles / s, items[2 i + 1] = (half length, half width, 0, 0).
+struct Ships {
+    head: vec4<f32>,
+    items: array<vec4<f32>, 32>,
+}
+@group(0) @binding(5) var<uniform> SH: Ships;
+
 // Euclidean remainder (n > 0) with non-negative operands only: WGSL defines
 // % for negative operands, but backends that translate to GLSL (wgpu's GL
 // backend) inherit GLSL's undefined result, which llvmpipe got wrong for all
@@ -77,6 +85,29 @@ fn forcing(p: vec2<f32>, t: f32) -> vec3<f32> {
         let e = amp * cos(k.x * p.x + k.y * p.y - k.z * t + k.w);
         let kn = max(sqrt(k.x * k.x + k.y * k.y), 1e-6);
         r += vec3<f32>(e, e * P.d.w * k.x / kn, e * P.d.w * k.y / kn);
+    }
+    return r;
+}
+
+// fluid::ship_term: elevation rate of the ships at tile position p.
+fn ship_term(p: vec2<f32>) -> f32 {
+    var r = 0.0;
+    let n = i32(SH.head.x);
+    for (var i = 0; i < n; i++) {
+        let a0 = SH.items[2 * i];
+        let a1 = SH.items[2 * i + 1];
+        let speed = length(a0.zw);
+        if speed < 0.05 {
+            continue;
+        }
+        let dir = a0.zw / speed;
+        let rel = p - a0.xy;
+        let a = dot(rel, dir);
+        let b = -rel.x * dir.y + rel.y * dir.x;
+        let la = a1.x;
+        let wb = a1.y;
+        let gh = exp(-(a * a / (la * la) + b * b / (wb * wb)));
+        r += SH.head.y * speed * (2.0 * a / (la * la)) * gh;
     }
     return r;
 }
@@ -191,6 +222,9 @@ fn eta_step(@builtin(global_invocation_id) id: vec3<u32>) {
     eta -= dt * div / (1.0 / S.cpt);
     if h <= 0.0 {
         eta -= dt * P.d.z;
+    }
+    if SH.head.x > 0.5 && h > WET {
+        eta += dt * clamp(h / 8.0, 0.0, 1.0) * ship_term(cell_centre(x, y));
     }
     eta = max(eta, -h);
     let d = eta + h;

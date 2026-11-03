@@ -25,6 +25,7 @@ add_library(anno_app_core
   src/publication_hold.cpp
   src/scene_picture.cpp
   src/ship_layer.cpp
+  src/ship_motion.cpp
   src/still.cpp
   src/visibility.cpp
   src/window_trace.cpp
@@ -71,7 +72,7 @@ if(ANNO_BUILD_TESTS)
     tests/credit_test.cpp tests/picture_check_test.cpp tests/legal_workload_test.cpp
     tests/picture_trace_test.cpp tests/window_trace_test.cpp tests/command_outcome_test.cpp
     tests/visibility_test.cpp tests/dev_occupancy_test.cpp tests/dev_visibility_test.cpp
-    tests/opening_ui_test.cpp tests/opening_test.cpp)
+    tests/opening_ui_test.cpp tests/opening_test.cpp tests/ship_motion_test.cpp)
   target_link_libraries(anno_app_tests PRIVATE anno_app_core anno_test_support doctest::doctest)
   target_compile_definitions(anno_app_tests PRIVATE
     ANNO_FIXTURES_DIR="${PROJECT_SOURCE_DIR}/fixtures/synthetic"

@@ -241,6 +241,26 @@ float FluidGrid::force_factor(std::int64_t x, std::int64_t y, float h, float dt)
     return fmaxf(fminf(deep * c.force_rate * dt, 1.0F), sponge);
 }
 
+float ship_term(const FluidConfig& cfg, const std::vector<ShipWake>& ships, float px, float py) {
+    float eta = 0.0F;
+    const std::size_t n = std::min(ships.size(), kMaxShipWakes);
+    for (std::size_t i = 0; i < n; ++i) {
+        const ShipWake& s = ships[i];
+        const float speed = std::sqrt(s.vx * s.vx + s.vy * s.vy);
+        if (speed < kShipWakeMinSpeed) {
+            continue;
+        }
+        const float dx = s.vx / speed, dy = s.vy / speed;
+        const float rx = px - s.x, ry = py - s.y;
+        const float a = rx * dx + ry * dy;
+        const float b = -rx * dy + ry * dx;
+        const float la = s.half_length, wb = s.half_width;
+        const float gh = std::exp(-(a * a / (la * la) + b * b / (wb * wb)));
+        eta += cfg.ship_wave_gain * speed * (2.0F * a / (la * la)) * gh;
+    }
+    return eta;
+}
+
 void FluidGrid::step(float t) {
     const FluidConfig& c = cfg;
     const std::size_t n = to_size(window.size);
@@ -321,6 +341,10 @@ void FluidGrid::step(float t) {
             eta -= dt * div / dx;
             if (h <= 0.0F) {
                 eta -= dt * c.infiltration;
+            }
+            if (!ships.empty() && h > kWet) {
+                const auto [px, py] = w.cell_centre(x, y);
+                eta += dt * ship_depth_factor(h) * ship_term(c, ships, px, py);
             }
             eta = fmaxf(eta, -h);
             const float d = eta + h;

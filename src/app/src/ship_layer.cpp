@@ -12,6 +12,25 @@ namespace {
 
 constexpr std::uint32_t kRingFigure = 0xFFFFU; // no FigurenHeader entry has this id (u16 max)
 
+} // namespace
+
+/// The sprite frame of a ship's facing (sim::Figure::dir16: 0 is -x, 4 is +y, 8 is +x, 12 is -y, so
+/// the step grows counter-clockwise on the screen, tile x running right-down and y left-down).
+/// MEASURED 2026-11-03 (owner playtest: a ship sailing to the right showed its bow to the left;
+/// frames of one ship captured sailing the eight directions): the figure's 16 facing frames run the
+/// other way round, frame k shows its bow towards compass 45 + 22.5 k degrees (frame 0 north-east,
+/// 4 south-east, 8 south-west, 12 north-west), so dir16 d is frame (12 - d) mod 16. The original's
+/// own mapping is not traced (docs/render/iso.md: "assumed"); a set that does not have 16 frames
+/// keeps the plain index.
+std::size_t ShipLayer::facing_frame(std::uint8_t dir16, std::size_t count) {
+    if (count == 16) {
+        return static_cast<std::size_t>((12 + 16 - (dir16 & 15U)) & 15U);
+    }
+    return static_cast<std::size_t>(dir16) % count;
+}
+
+namespace {
+
 /// A ring (an ellipse outline of the tile diamond's proportions) as a unit frame of zoom `group`.
 /// Anchor at the ellipse's centre, which is where a ship's anchor (its waterline) stands.
 render::UnitFrame make_ring(std::size_t group, std::uint32_t rgb) {
@@ -133,7 +152,7 @@ std::vector<render::UnitSprite> ShipLayer::units(const OpeningView& view,
             ring.y = y;
             out.push_back(std::move(ring));
         }
-        render::UnitSprite sprite = it->second[ship.dir16 % it->second.size()];
+        render::UnitSprite sprite = it->second[facing_frame(ship.dir16, it->second.size())];
         sprite.x = x;
         sprite.y = y;
         out.push_back(std::move(sprite));
@@ -149,7 +168,7 @@ std::optional<ScreenBox> ShipLayer::box(const ShipView& ship, const PointerFrame
     if (it == sets_.end() || it->second.empty()) {
         return std::nullopt;
     }
-    const render::UnitSprite& proto = it->second[ship.dir16 % it->second.size()];
+    const render::UnitSprite& proto = it->second[facing_frame(ship.dir16, it->second.size())];
     const render::Scene& scene = *frame.scene;
     // A derived zoom level draws the ship of its built ancestor reduced by 2^shift.
     const render::ZoomLevels& levels = scene.levels();

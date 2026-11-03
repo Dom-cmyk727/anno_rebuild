@@ -290,10 +290,26 @@ Chunk render_derived_chunk(const Scene& scene, const std::array<ChunkPtr, 4>& ki
     return c;
 }
 
+bool chunk_outside_scene(const Scene& scene, std::size_t group, int cx, int cy) {
+    const auto b = scene.bounds(group);
+    return !b || !chunk_rect(cx, cy).intersect(*b);
+}
+
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
                    const ChunkBuildOptions& options) {
     const ZoomLevels& levels = scene.levels();
-    if (group >= levels.built_count() && group < levels.size()) {
+    const bool derived = group >= levels.built_count() && group < levels.size();
+    if (options.skip_outside && chunk_outside_scene(scene, group, cx, cy)) {
+        // Open sea, as the build gives it: no island and no unit reaches it (render_chunk_data's
+        // open-sea case), and at a derived level the reduction of four such chunks, which keeps
+        // reduce_chunks_2x's builder (Cpu).
+        Chunk c;
+        c.ships = options.ships;
+        c.built_by = derived ? ChunkBuilder::Cpu : options.builder;
+        c.serial = next_serial();
+        return c;
+    }
+    if (derived) {
         // A derived level (iso.md, stage 3): the four chunks of the level above,
         // each reduced 2x into a quadrant. This is the reference for one chunk from
         // nothing (tests, tools): they are built recursively, down to the built
@@ -966,7 +982,7 @@ std::size_t FrameRenderer::request_chunks(const Scene& scene, std::size_t group,
     }
     // A derived chunk is reduced from its four children as the cache holds them; the
     // missing ones are jobs before it (and kept, with it, past the trim below).
-    const std::vector<ChunkJob> jobs = plan_jobs(todo, keep);
+    const std::vector<ChunkJob> jobs = plan_jobs(scene, todo, keep);
     pending_ = workers_->submit(jobs, job_scene_ ? job_scene_ : non_owning(scene), ships_,
                                 chunk_builder, bin_px);
     const std::set<ChunkKey> retain = stand_in_retain(group, visible);
@@ -1061,10 +1077,21 @@ void FrameRenderer::trim(std::size_t group, Rect view, const std::set<ChunkKey>&
     }
 }
 
-std::vector<ChunkJob> FrameRenderer::plan_jobs(const std::vector<ChunkKey>& wanted,
+std::vector<ChunkJob> FrameRenderer::plan_jobs(const Scene& scene,
+                                               const std::vector<ChunkKey>& wanted,
                                                std::set<ChunkKey>& keep) const {
     std::vector<ChunkJob> jobs;
     std::set<ChunkKey> seen;
+    // chunk_outside_scene with each level's Scene::bounds taken once per plan (the plan runs on
+    // the window thread every frame).
+    std::map<std::size_t, std::optional<Rect>> bounds_of;
+    const auto outside = [&](std::size_t g, int x, int y) {
+        auto it = bounds_of.find(g);
+        if (it == bounds_of.end()) {
+            it = bounds_of.emplace(g, scene.bounds(g)).first;
+        }
+        return !it->second || !chunk_rect(x, y).intersect(*it->second);
+    };
     // A key of a deep level has 4^k descendants and the plan is made every frame on the
     // window thread: it looks at this many keys at most (a level 6 view with nothing built
     // took 9-11 ms before this), the most urgent first; the rest follow in the frames after
@@ -1078,8 +1105,10 @@ std::vector<ChunkJob> FrameRenderer::plan_jobs(const std::vector<ChunkKey>& want
             return;
         }
         keep.insert(key);
-        const std::size_t group = std::get<0>(key);
-        if (group < levels_.built_count() || group >= levels_.size() || !derive_from_cache) {
+        const auto [group, kx, ky] = key;
+        // Outside the scene: open sea without its children (render_chunk returns it at once).
+        if (group < levels_.built_count() || group >= levels_.size() || !derive_from_cache ||
+            outside(group, kx, ky)) {
             jobs.push_back({key, {}, nullptr});
             return;
         }
@@ -1144,7 +1173,7 @@ std::size_t FrameRenderer::fill_cache(const Scene& scene, std::size_t group,
     std::set<ChunkKey> planned;
     while (!missing.empty()) {
         std::set<ChunkKey> keep_unused;
-        const std::vector<ChunkJob> jobs = plan_jobs(missing, keep_unused);
+        const std::vector<ChunkJob> jobs = plan_jobs(scene, missing, keep_unused);
         if (jobs.empty()) {
             break;
         }

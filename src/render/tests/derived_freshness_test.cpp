@@ -22,6 +22,8 @@
 #include <anno/render/scene.hpp>
 #include <anno/test/game_dir.hpp>
 
+#include "corpus_scene.hpp"
+
 namespace render = anno::render;
 
 namespace {
@@ -400,4 +402,142 @@ TEST_CASE("prewarm: a resident chunk that cannot be built does not stop the rest
     }
     CHECK(frames.chunk(broken) == nullptr);
     CHECK(built == overview.size() - 1);
+}
+
+namespace {
+
+/// Every field of two chunks but the serial and the generation.
+bool same_chunk(const render::Chunk& a, const render::Chunk& b) {
+    const bool draws = a.draws.has_value() == b.draws.has_value() &&
+                       (!a.draws || a.draws->object_count() == b.draws->object_count());
+    return a.ground == b.ground && a.objects == b.objects && a.field == b.field &&
+           a.terrain == b.terrain && a.water_below == b.water_below &&
+           a.water_above == b.water_above && a.ships == b.ships && a.base == b.base && draws &&
+           a.built_by == b.built_by && a.flow.uv == b.flow.uv && a.flow.aux == b.flow.aux &&
+           a.flow.shear == b.flow.shear && a.flow_waiting == b.flow_waiting;
+}
+
+/// The keys of `group` in a ring of `width` chunks around the scene's bounds: none touches them.
+std::vector<std::pair<int, int>> ring_outside(const render::Scene& scene, std::size_t group,
+                                              int width) {
+    std::vector<std::pair<int, int>> out;
+    const auto b = scene.bounds(group);
+    REQUIRE(b.has_value());
+    const int pad = width * render::kChunk;
+    for (const auto& [cx, cy] :
+         render::visible_chunks({b->x - pad, b->y - pad, b->w + 2 * pad, b->h + 2 * pad})) {
+        if (!render::chunk_rect(cx, cy).intersect(*b)) {
+            out.emplace_back(cx, cy);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+// Owner playtest 2026-11-03, round 6: most chunk builds of a zoom out were open sea around the map,
+// each far chunk built from the 4^n chunks below it. A chunk outside Scene::bounds is now returned
+// as open sea at once; this checks it is what the full build gives, on a scenario with ships and
+// soldiers (units widen the bounds), at every level, for both builders and both ship settings.
+TEST_CASE("a chunk outside the scene is the open sea a full build gives, at every level (game "
+          "files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const render::test::Game game(*dir);
+    auto loaded = game.scene(*dir / "Scenes" / "0200Single" / "Single_01.sze");
+    REQUIRE_FALSE(loaded->units.empty());
+    loaded->river_cfg.enabled = false;
+    loaded->set_levels(render::ZoomLevels::with_derived(4));
+    const render::Scene& scene = *loaded;
+    std::size_t compared = 0;
+    for (std::size_t g = 0; g < scene.levels().size(); ++g) {
+        // The ring next to the bounds; at a derived level a full build reaches down to group 2
+        // (4^(g-2) chunks each), so a few keys of it there.
+        auto keys = ring_outside(scene, g, 1);
+        if (g >= scene.levels().built_count() && keys.size() > 6) {
+            keys = {keys.front(), keys[keys.size() / 3], keys[keys.size() / 2],
+                    keys[2 * keys.size() / 3], keys.back()};
+        }
+        REQUIRE_FALSE(keys.empty());
+        for (const auto& [cx, cy] : keys) {
+            CHECK(render::chunk_outside_scene(scene, g, cx, cy));
+            for (const bool ships : {true, false}) {
+                for (const auto builder :
+                     {render::ChunkBuilder::Cpu, render::ChunkBuilder::GpuList}) {
+                    render::ChunkBuildOptions quick;
+                    quick.ships = ships;
+                    quick.builder = builder;
+                    render::ChunkBuildOptions full = quick;
+                    full.skip_outside = false;
+                    const render::Chunk a = render::render_chunk(scene, g, cx, cy, quick);
+                    const render::Chunk b = render::render_chunk(scene, g, cx, cy, full);
+                    CHECK_MESSAGE(same_chunk(a, b), "group " << g << " chunk " << cx << "," << cy
+                                                             << " ships " << ships);
+                    CHECK(a.serial != 0);
+                    ++compared;
+                }
+            }
+        }
+        // The chunks that touch the bounds are not outside.
+        const auto b = scene.bounds(g);
+        for (const auto& [cx, cy] : render::visible_chunks(*b)) {
+            CHECK_FALSE(render::chunk_outside_scene(scene, g, cx, cy));
+        }
+    }
+    MESSAGE(compared << " chunk builds outside the scene compared with the full build");
+}
+
+// The planner: a view of a far level wholly outside the scene asks for its chunks only, never for
+// the chunks below them (before: 4^n children each, down to group 2).
+TEST_CASE("the planner builds a far chunk outside the scene without its children (game files)" *
+          doctest::test_suite("derived_freshness")) {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto scene = island_scene(*dir);
+    const std::size_t top = scene->levels().size() - 1;
+    const auto b = scene->bounds(top);
+    REQUIRE(b.has_value());
+    // A view of the farthest level, three of its chunks to the right of the scene.
+    const render::Rect view{b->x + b->w + 3 * render::kChunk, b->y, 600, 400};
+    const auto visible = render::visible_chunks(view);
+    render::FrameRenderer frames(2);
+    auto workers = std::make_unique<render::ChunkWorkers>(2);
+    render::ChunkWorkers* w = workers.get();
+    frames.set_workers(std::move(workers));
+    for (int round = 0; round < 20; ++round) {
+        frames.update_chunks(scene, view, top);
+        w->wait_idle();
+    }
+    for (const auto& [cx, cy] : visible) {
+        REQUIRE(frames.chunk({top, cx, cy}) != nullptr);
+        CHECK(frames.chunk_builds({top, cx, cy}) == 1);
+    }
+    // Nothing two levels or more below the view was built (the level just below is the zoom's
+    // prefetch of the neighbouring group, outside too): before, every visible chunk was reduced
+    // from its children, and they from theirs, down to group 2.
+    std::size_t below = 0, depth = 0;
+    std::vector<render::ChunkKey> layer;
+    for (const auto& [cx, cy] : visible) {
+        layer.push_back({top, cx, cy});
+    }
+    while (!layer.empty() && std::get<0>(layer.front()) >= scene->levels().built_count()) {
+        std::vector<render::ChunkKey> next;
+        for (const auto& k : layer) {
+            for (const auto& kid : render::derived_children(k, scene->levels())) {
+                below += depth >= 1 ? frames.chunk_builds(kid) : 0U;
+                next.push_back(kid);
+            }
+        }
+        layer = std::move(next);
+        ++depth;
+    }
+    REQUIRE(depth >= 2);
+    CHECK(below == 0);
 }

@@ -127,7 +127,18 @@ struct ChunkBuildOptions {
     ChunkBuilder builder = ChunkBuilder::Cpu;
     /// Pixels of a bin edge in the draw list (ChunkDraws::bin_px).
     std::uint32_t bin_px = kDefaultBinPx;
+    /// A chunk outside the scene's bounds (chunk_outside_scene) is open sea: it is returned as a
+    /// build would give it, without building it (and, at a derived level, without the 4^n chunks
+    /// below it). False builds it (the test that checks the two agree).
+    bool skip_outside = true;
 };
+
+/// Whether chunk (cx, cy) of `group` lies wholly outside Scene::bounds(group), which holds every
+/// island layout and unit of the level (a derived level's bounds are its source's, halved and
+/// rounded outwards, so the chunks below an outside chunk are outside too). Such a chunk draws
+/// nothing of the scene: open sea (owner playtest 2026-11-03, round 6: most chunk builds of a
+/// zoom out were open sea around the map, each far chunk built from 4^n chunks below it).
+[[nodiscard]] bool chunk_outside_scene(const Scene& scene, std::size_t group, int cx, int cy);
 Chunk render_chunk(const Scene& scene, std::size_t group, int cx, int cy,
                    const ChunkBuildOptions& options);
 
@@ -474,7 +485,9 @@ class FrameRenderer {
     /// children are cached, the children; a missing child is a job of its own,
     /// before its parent, and the parent waits for the next frame in which all four
     /// are cached. Every key that is a job or waits is added to `keep`.
-    std::vector<ChunkJob> plan_jobs(const std::vector<ChunkKey>& wanted,
+    /// A derived key outside the scene (chunk_outside_scene) is a job without children: the
+    /// worker returns open sea for it at once.
+    std::vector<ChunkJob> plan_jobs(const Scene& scene, const std::vector<ChunkKey>& wanted,
                                     std::set<ChunkKey>& keep) const;
     std::unique_ptr<ChunkWorkers> workers_;
     bool pending_ = false;

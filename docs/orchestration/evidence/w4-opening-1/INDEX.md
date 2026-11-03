@@ -132,3 +132,6 @@ incomplete type). They are fixed here with guards that change no behaviour on a 
 `-DANNO_REPO_DIR` define the merged tests read.
 
 The extract list with the original hashes is in `extract-table.md`.
+
+The owner's playtest rounds of 2026-11-03 after the candidate (rounds 1-7), the branch state and the round 7 findings for the
+next executor: `owner-playtest-2026-11-03-handover.md`.

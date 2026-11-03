@@ -11963,3 +11963,10 @@ Branch `task/W4-opening-1` from the Windows publication `26107db0`, the accepted
 **Outside this package, for the Mac lane.** The Mac pin already failed `tools/check_unix_warnings.sh` (GCC 13 `-O3 -Werror`: `route_plan.cpp`, `figure.cpp`, four sim tests; Clang 18: `json::Value`). Fixed here by behaviour-preserving guards (`ae7dfcc`) — please take them or restate them upstream. The merged MAP-BUILD-1 terrain rule refuses the old island-relative lan5 test tiles; the lan5 test worlds now install the named stand-in placement seam through the opt-in `FixedPlayOptions::stand_in_placement` (never the default; the lan5 viewer scripts use legal tiles and the real rule).
 
 **Owner launch.** From the checkout: `.\tools\play_ship_opening.ps1 -GameDir E:\anno1503\game\app` (add `-Resume .\saves\quicksave-seat0.sav` later; saves go to `saves\` of the checkout). The card lists keys, a walk-through with the coordinates the automated session used, and the limits.
+
+**Owner playtest rounds 2026-11-03 (after the candidate).** Rounds 1-6 fixed in local commits up to `28f548c8` (gates at that
+head: app 252/0, GPU 111/0, render 184/0; WSL warnings clean; window tests and the WSL sanitizer lane NOT_RUN; nothing pushed).
+Round 7 is documented, not implemented, at the owner's request: the Kontor's turn is the mirrored picture (fixed on
+`task/iso-handedness-W4`, not merged, two open failures there); the dock stands on dry sand because the waterline treats
+height 16 as land; zoom artifacts reduced, not gone, no log. Details and the suggested order:
+`docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md`.

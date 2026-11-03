@@ -37,7 +37,7 @@ the eight directions, and by the owner's report that a ship sailing to the right
 simulation (`fluid::ShipWake`, `FluidGpu::set_ships`, `GpuFrame::set_wakes`; render-only): the hull raises the water ahead of it and
 lets it fall behind it, the shallow-water equations carry the bow wave and the wake away (a ship faster than the wave speed
 leaves a V). No foam trail (owner). The source is 30 HEIGHT units per second per tile/s of speed (3 shows nothing, 10 was too
-faint) and fades with the depth (none on a beach, full from 32 deep) so the bow wave stays under the breaking limit. Original water
+faint) and fades with the depth (none on a beach, full from 40 deep: `FluidConfig::ship_full_depth`) so the bow wave stays under the breaking limit. Original water
 and the CPU renderer show no wake.
 
 **Zooming** (owner playtest 2026-11-03). (1) The wave window used to be replaced whenever the view's span crossed a 64-cell step, and
@@ -161,7 +161,7 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
   turned the way the sim would turn it, and the title names the reason otherwise (fact `found.sim`). Test: `founding probe, real files`
   (probe and apply agree on all 1458 clicks but 2, where the figure veto after the trials refuses; the veto is not probed).
 - *Wake shape.* The gaussian hull reached ahead of the stem, so the water rose in front of the ship. The source is now confined to
-  the hull's length: it piles the water up at the bow and lets it fall back at the stern (`kShipSternShare` 0.6), nothing outside.
+  the hull's length: it piles the water up at the bow and lets it fall back at the stern (`FluidConfig::ship_stern_share` 0.6), nothing outside.
 - *Waves blinking on repeated zooms.* Every window switch restarted the 250 ms cross-fade from the analytic waves, also when the old
   waves were carried over; a carried switch no longer fades.
 
@@ -222,3 +222,41 @@ zoom out and back in; GPU frames of the same path; a synthetic beach for the wav
   projection (the Kontor's turn) is its own task.
 - Known, from the reviews (low): `sync_scene` in the compositor is set and reset by hand around the chunk sync (no scope
   guard); the GPU path ignores `build_outside_chunks`; a malformed item outside its island is kept by the tile mask.
+
+**Review follow-ups** (orchestrator review of rounds 1-7, `docs/orchestration/reviews/2026-11-03-w4-opening1-playtest.md` §3).
+Each fix has a test that fails without it (mutation checks: the fix reverted, the test run, the file restored).
+- *P1, out-of-bounds read.* `update_fluid` raised the wave window's centre by `Lift::scaled(kSeaLevel, 1, group)`, which reads
+  `kTile[group]`: past its three entries at every derived level, where the waves run since round 2. It takes
+  `ZoomLevels::lift_scaled` now, as the frame uniform does. `GpuStats::fluid_centre` reports the centre; test `the wave window at
+  a derived zoom level is centred as at its built ancestor` (levels 3 and 4 against level 2, a large lift: 0.1 tile apart, the
+  derived lift's rounding).
+- *P2, prewarm give-up.* The prewarm gave its target up whenever the last submit left nothing pending; a child finishing between
+  `take_done` and `submit` is skipped by the submit (done, not taken), so the target was given up one frame before it could be
+  built. It is given up now only when a job of its plan has failed (`ChunkWorkers::any_failed`, never retried). Test `prewarm: a
+  child finished between take_done and submit does not give the target up` (the seam `ChunkWorkers::set_test_before_submit`
+  lets the gated child finish inside the gap; the target is rebuilt once).
+- *Turn clock.* A new target in the middle of a turn restarted the turning clock; targets that change on every publication held
+  the facing back for good. The clock starts only when a ship showing its facing is asked to turn.
+- *Chunk count.* The report line's `levels.chunks` truncated its division (negative scene x); it counts with
+  `render::visible_chunks` now, as the renderer. The "91 at level 4" above was that count; the resident bound was set from the
+  test's 98.
+- *Probe drift.* Not changed here: one const probe belongs in `sim` (the MAP lane's), `Founding::apply` calling it before the
+  figure veto and `probe_founding` forwarding to it. Until then the real-file comparison (1458 clicks) guards it; it is skipped
+  without the game files. The checks it leaves out are listed in its doc (`opening.hpp`), `NotAShip` now among them.
+- *Wave carry without a CPU reference.* `FluidGrid::carry_from` is the CPU reference of `resample_state`; test `the GPU wave carry
+  over a window switch matches the CPU reference` (GPU against CPU 7e-7 into finer cells, 3e-8 into coarser ones).
+- *Wake limit and constants.* `kMaxShipWakes` (16) has its reason and the path to raise it in its comment (a storage buffer); of
+  more ships the 16 nearest to the wave window's centre stir the waves (`ShipMotion::wakes`, which also no longer lists ships
+  that do not move). The shader's copies of the minimum speed, the stern share and the full depth are `FluidConfig` fields it
+  reads from its uniforms (`ship_min_speed`, `ship_stern_share`, `ship_full_depth`).
+- *Doc and code.* This document said the wake is full from 32 deep; it is 40 (`ship_full_depth`). The enhanced depth is at most
+  16 (below the waterline), so on the maps a ship's source acts at up to 0.4 of its gain: tuned that way by eye.
+- *Water override.* An explicit `--water` is kept by the opening (`Args::water_given`, `OpeningHooks::enhanced_water`); without
+  it the opening still starts with enhanced water on the GPU.
+- *Test gaps.* New: the carried switch keeps the waves at full weight (`GpuStats::fluid_fade`; test `a wave window switch that
+  carries the waves over does not fade them in again`); `GpuFrame::set_wakes` reaches the waves (`the ships set on a frame stir
+  its simulated waves`); `ShipMotion::wakes`; the founding preview's branches (`controls: the founding preview's advisories, the
+  coast rule and the sim's answer`). The real-file founding-sites test reads the preview's heights as the window does
+  (`scene_vertex_height`) and requires both verdicts to agree at every origin and rotation (they do: 25,205 coast sites each).
+  It showed the window had no height on an island's far column and row, where the sim reads its boundary height 0; the window
+  reads it now (test `founding preview heights: the island's far column and row read the sim's boundary`).

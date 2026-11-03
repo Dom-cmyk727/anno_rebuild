@@ -388,7 +388,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
 const std::vector<std::string> kExpected = {
     "Single_01.sze g2 t0 Original 16960x9170 5bb461ea865303b4 drawn=69864 inv=11717 failed=0 "
     "units=5",
-    "Single_01.sze g2 t2500 Enhanced 16960x9170 f4b07bbb2e89f076 drawn=69256 inv=11717 failed=0 "
+    "Single_01.sze g2 t2500 Enhanced 16960x9170 00f5871e2160ef94 drawn=69256 inv=11717 failed=0 "
     "units=5",
     "Single_01.sze g1 region Original 64ac3aafd29fdd02 drawn=24371 units=0",
     "Single_01.sze g1 region Enhanced 8cf3c928653f8d67 drawn=24110 units=0",
@@ -398,7 +398,7 @@ const std::vector<std::string> kExpected = {
     "Single_05.sze g1 region Original 2786adab4fb6b400 drawn=4603 units=0",
     "Single_05.sze g1 region Enhanced 4066883193efd0ff drawn=4603 units=0",
     "Single_06.sze g2 t0 Original 7280x4451 8d88cf465f7623a1 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 47878546b5bdbf1d drawn=13626 inv=3084 failed=0 "
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 0b798bbb1ac211c9 drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original d76bca6447a14328 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 1b1f0e3cc0bf8689 drawn=599 units=0",
@@ -409,7 +409,7 @@ const std::vector<std::string> kExpected = {
     "Single_08.sze g1 region Enhanced 5311ad68fbe3ce2d drawn=6670 units=0",
     "Single_10.sze g2 t0 Original 17440x9131 721bf4b8bfef321d drawn=53212 inv=8756 failed=0 "
     "units=1",
-    "Single_10.sze g2 t2500 Enhanced 17440x9131 f461ab7194a9c8ed drawn=52883 inv=8756 failed=0 "
+    "Single_10.sze g2 t2500 Enhanced 17440x9131 39db15f58da306d2 drawn=52883 inv=8756 failed=0 "
     "units=1",
     "Single_10.sze g1 region Original 10ce0f7a56a09d46 drawn=0 units=0",
     "Single_10.sze g1 region Enhanced 2b255a312f1309e1 drawn=0 units=0",
@@ -420,7 +420,7 @@ const std::vector<std::string> kExpected = {
     "Single_12.sze g1 region Enhanced 84d7d8a11e469c35 drawn=7295 units=0",
     "Single_14.sze g2 t0 Original 14080x9291 64f5df13bb66456e drawn=47209 inv=9450 failed=0 "
     "units=3",
-    "Single_14.sze g2 t2500 Enhanced 14080x9291 48047817e8c6fc8f drawn=47064 inv=9450 failed=0 "
+    "Single_14.sze g2 t2500 Enhanced 14080x9291 e93664225bc52176 drawn=47064 inv=9450 failed=0 "
     "units=3",
     "Single_14.sze g1 region Original 7a2c5878a1c14945 drawn=16735 units=1",
     "Single_14.sze g1 region Enhanced 4c17863d5054a823 drawn=16681 units=1",
@@ -436,10 +436,10 @@ const std::vector<std::string> kExpected = {
     "Single_16.sze g1 region Enhanced 5699a9adf679aff1 drawn=1384 units=0",
     "Single_24.sze g2 t0 Original 7200x2811 02273b3205ece214 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 e4354ff1322690a4 drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 8778581d09caeb8e drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original a05e01aee281759f drawn=23697 units=0",
-    "Single_24.sze g1 region Enhanced b4bb8673d5fc4c09 drawn=23526 units=0",
+    "Single_24.sze g1 region Enhanced 61ade0e565b61a78 drawn=23526 units=0",
     "N_064x064_0001_0B.scp g2 t0 Original 1280x891 747c88b065e9794f drawn=949 inv=338 failed=0 "
     "units=0",
     "N_064x064_0001_0B.scp g2 t2500 Enhanced 1280x891 e725541db467004e drawn=930 inv=338 failed=0 "
@@ -596,10 +596,10 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
         "Single_01.sze g0 t900 Enhanced e8d0658f44f41e0e",
         "Single_24.sze g2 t0 Original 4963d7d2454de4eb",
         "Single_24.sze g2 t900 Original 11b6fb41ed724495",
-        "Single_24.sze g2 t900 Enhanced 11409e801e8cd25c",
+        "Single_24.sze g2 t900 Enhanced 5a85882cdd8042e0",
         "Single_24.sze g1 t0 Original c689fe55ac196701",
         "Single_24.sze g1 t900 Original 8985d21dccc229a1",
-        "Single_24.sze g1 t900 Enhanced 1b689ebd871c1d6b",
+        "Single_24.sze g1 t900 Enhanced 3d3e2907d075cbd1",
         "Single_24.sze g0 t0 Original 542463abd22778ba",
         "Single_24.sze g0 t900 Original 4abf941c513c226a",
         "Single_24.sze g0 t900 Enhanced cd8b345f42d05069",

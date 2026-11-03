@@ -31,6 +31,16 @@ executors do not choose a newer moving tip or merge it into main.
 Windows/MSVC, Linux gates and live-window validation of this Mac code remain
 pending and are covered by the Windows integration packet where affected.
 **W4-OPENING-1** is the Windows executor's current assignment.
+**Its owner playtest rounds 1–7 are reviewed but not yet accepted.** The review covers local `55e4ee61..c1bf35cc` and
+was written by the Claude orchestrator session on the owner's instruction of 2026-11-03: read the
+[direct playtest review](reviews/2026-11-03-w4-opening1-playtest.md). Retained: the gates at `28f548c8` (app 252/0,
+GPU 111/0, render 184/0) and the round-7 diagnosis (the sim's Kontor rotation is right, the drawing is mirrored).
+Open:
+- the rounds 1–5 findings, which must be fixed before acceptance: **P1**, a `kTile` out-of-bounds read in
+  `update_fluid` at derived zoom levels; **P2**, a prewarm give-up race;
+- the NOT_RUN window and sanitizer gates;
+- three owner decisions: projection merge, waterline H1, founding start rotation. The next Windows steps are its §5; the candidate's own final acceptance is
+unchanged.
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
@@ -82,7 +92,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-WIN-VERIFY ACCEPTED; W4-OPENING-1 READY.** Start the live opening on `task/W4-opening-1` from exact Windows `26107db089f558bc374208a4f414ca70f562e6f0`, merging only accepted Mac `0c401c8d084cfd9feb8aec846595291f87f22cce` as specified below. Preserve valid verifier/corpus/adapter evidence. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: PLAYTEST ROUNDS 1–7 REVIEWED, FOLLOW-UPS OPEN.** Continue `task/W4-opening-1` from `c1bf35cc` with §5 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): rounds 1–5 findings first, then the NOT_RUN gates. Ask the owner the three decisions; do not assume them. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-READY-1 ACCEPTED; MAP-POP-IMPL-1 READY, RELEASED.** Complete P0 and A–F below as one implementation bundle; internal reviews unlock the next package automatically. Deliver scenario inputs, derived population tables, a tested pure House kernel and real-input integration, then stop once for combined review. Windows keeps exact `0c401c8d`. |
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
@@ -430,7 +440,12 @@ uncertainty; missing submit-only/in-flight-only mutants are not new blockers.
 That boundary is now satisfied by the acceptance records above and below.
 No extra owner permission is needed between V1–V3.
 
-### W4-OPENING-1 — live ship-start opening for an owner playtest · READY, RELEASED
+### W4-OPENING-1 — live ship-start opening for an owner playtest · RELEASED; PLAYTEST ROUNDS REVIEWED, FOLLOW-UPS OPEN
+
+**Review checkpoint, 2026-11-03 (Claude orchestrator, owner instruction).** The owner playtest rounds after the
+published candidate `55e4ee61`, up to branch head `c1bf35cc`, are reviewed in
+[the playtest review](reviews/2026-11-03-w4-opening1-playtest.md). Its §5 is the current Windows instruction. The packet
+below stays the requirements and acceptance history; I1–I6 are not restarted.
 
 **Owner instruction, 2026-11-02:** once the Mac gameplay work is reviewed, wire
 ship selection, sailing, founding and unloading into the live Windows window so

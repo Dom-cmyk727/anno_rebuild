@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 #include <anno/app/opening_ui.hpp>
 #include <anno/sim/building.hpp>
@@ -249,10 +250,10 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
     }
     FoundPreview p;
     p.type = type;
-    p.rotation = kFoundingCursorRotation;
-    p.cursor_rotation = kFoundingCursorRotation;
+    p.rotation = found_rotation_;
+    p.cursor_rotation = found_rotation_;
     p.click = click;
-    const auto [w, h] = sim::footprint(*bt, kFoundingCursorRotation);
+    const auto [w, h] = sim::footprint(*bt, found_rotation_);
     p.w = w;
     p.h = h;
     // docs/sim/ship-founding.md section 3: ox = max(0, cx - (w - 1) / 2), the same for y, with the
@@ -291,7 +292,7 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
         sim::site::coast_class_supported(bt->flags_word)) {
         bool decided = true;
         std::optional<std::uint8_t> accepted;
-        for (const std::uint8_t rot : sim::site::rotation_trials(kFoundingCursorRotation)) {
+        for (const std::uint8_t rot : sim::site::rotation_trials(found_rotation_)) {
             const auto [fw, fh] = sim::footprint(*bt, rot);
             if (!island->contains(p.origin.x, p.origin.y) ||
                 !island->contains(std::int64_t{p.origin.x} + fw - 1,
@@ -323,7 +324,7 @@ std::optional<FoundPreview> OpeningUi::make_found(const ShipView& ship, sim::Til
     }
     p.cmd.ship = ship.id;
     p.cmd.placement.type = type;
-    p.cmd.placement.rotation = kFoundingCursorRotation;
+    p.cmd.placement.rotation = found_rotation_;
     p.cmd.placement.x = p.origin.x;
     p.cmd.placement.y = p.origin.y;
     p.cmd.click_x = click.x;
@@ -615,11 +616,16 @@ UiResult OpeningUi::key(OpeningKey key, bool shift, const UiFeed& feed) {
         return out;
     }
     case OpeningKey::Rotate:
+    case OpeningKey::RotateBack:
         if (mode_ != OpeningMode::Found) {
             return out; // T is the building tool's
         }
         out.taken = true;
-        message_ = "the warehouse has no manual turn: it turns to the shore by itself";
+        found_rotation_ = static_cast<std::uint8_t>(
+            (found_rotation_ + (key == OpeningKey::Rotate ? 1U : 3U)) & 3U);
+        message_ = "founding turn " + std::to_string(found_rotation_) +
+                   ": the warehouse still turns to the shore, starting from this turn (it decides "
+                   "where two turns fit)";
         return out;
     case OpeningKey::NextHold: {
         if (mode_ == OpeningMode::Found) {

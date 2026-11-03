@@ -1329,7 +1329,11 @@ bool Viewer::opening_handle(const SDL_Event& e) {
             key = OpeningKey::Halt;
             break;
         case SDLK_T:
+        case SDLK_PERIOD:
             key = OpeningKey::Rotate;
+            break;
+        case SDLK_COMMA:
+            key = OpeningKey::RotateBack;
             break;
         case SDLK_TAB:
             key = OpeningKey::NextHold;

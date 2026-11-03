@@ -4,6 +4,7 @@
 // every expectation is hand-derived. The real window path is tested through the production window
 // (tools/test/viewer_wiring.py, the opening cases) and the real-file cases of opening_test.cpp.
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <map>
 #include <optional>
@@ -246,8 +247,8 @@ TEST_CASE("controls: a stop is for the selected own ship, Esc cancels gesture, m
     CHECK_FALSE(f.ui.has_pending());
 }
 
-TEST_CASE("controls: founding derives the sim's origin from the click, has no manual turn, and is "
-          "one click") {
+TEST_CASE("controls: founding derives the sim's origin from the click, carries the cursor's turn, "
+          "and is one click") {
     Fixture f;
     auto s = setup();
     s.registry = kontor_registry();
@@ -280,9 +281,9 @@ TEST_CASE("controls: founding derives the sim's origin from the click, has no ma
     // One click, one command: the mode ended; the next click selects instead of founding.
     CHECK(f.ui.mode() == app::OpeningMode::Select);
     CHECK(f.click(app::PointerButton::Left, 500, 500).commands.empty());
-    // The warehouse has no manual turn (owner 2026-11-03): T is taken inside the mode but the
-    // command keeps kFoundingCursorRotation, the sim turns it to the coast; the origin is clamped
-    // at 0.
+    // The cursor's turn (owner 2026-11-03, restored): T turns it on, `,` back; the command carries
+    // it, the sim's trials start there and still turn the warehouse to the coast. The origin is
+    // clamped at 0.
     f.click(app::PointerButton::Left, 100, 100);
     f.key(app::OpeningKey::Found);
     CHECK(f.key(app::OpeningKey::Rotate).taken);
@@ -290,15 +291,71 @@ TEST_CASE("controls: founding derives the sim's origin from the click, has no ma
     REQUIRE(rotated.commands.size() == 1);
     const auto* edge = std::get_if<sim::FoundCmd>(&rotated.commands[0].body);
     REQUIRE(edge != nullptr);
-    CHECK(edge->placement.rotation == app::kFoundingCursorRotation);
+    CHECK(edge->placement.rotation == 1);
     CHECK(edge->placement.x == 0);
     CHECK(edge->placement.y == 0);
+    // Kept for the next founding: `,` turns it back, from 1 to 0, then from 0 to 3.
+    for (const std::uint8_t want : {std::uint8_t{0}, std::uint8_t{3}}) {
+        f.click(app::PointerButton::Left, 100, 100);
+        f.key(app::OpeningKey::Found);
+        CHECK(f.key(app::OpeningKey::RotateBack).taken);
+        const auto back = f.click(app::PointerButton::Left, 500, 500);
+        REQUIRE(back.commands.size() == 1);
+        const auto* turned = std::get_if<sim::FoundCmd>(&back.commands[0].body);
+        REQUIRE(turned != nullptr);
+        CHECK(turned->placement.rotation == want);
+    }
     // Esc cancels the mode without a command.
     f.click(app::PointerButton::Left, 100, 100);
     f.key(app::OpeningKey::Found);
     f.key(app::OpeningKey::Escape);
     CHECK(f.ui.mode() == app::OpeningMode::Select);
     CHECK(f.key(app::OpeningKey::Rotate).taken == false); // T is the building tool's again
+}
+
+// Where two turns fit (a convex corner: the beach on two edges, water opposite each), the cursor's
+// turn decides, as the original's cursor byte does (owner 2026-11-03: restore it); elsewhere the
+// warehouse still turns to the shore by itself.
+TEST_CASE("controls: on a corner where two turns fit, the founding cursor's turn decides") {
+    Fixture f;
+    auto s = setup();
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType kontor;
+    kontor.id = sim::TypeId{1302};
+    kontor.prodtype = 35;
+    kontor.width = 4;
+    kontor.height = 4;
+    kontor.flags_word = 0x2007; // the coast class
+    b.add(kontor);
+    auto built = b.build();
+    REQUIRE(built.ok());
+    s.registry = built.value();
+    f.ui = app::OpeningUi(s);
+    f.click(app::PointerButton::Left, 100, 100); // ship 1
+    f.key(app::OpeningKey::Found);
+    REQUIRE(f.ui.mode() == app::OpeningMode::Found);
+    // The click (60, 60) puts the origin at (59, 59). Beach (0x30) where dx + dy <= 4 from the
+    // origin, water (0x10) beyond: turn 0 (beach edge y = 0, water at y = 4) and turn 1 (beach
+    // edge x = 0, water at x = 4) both fit, 2 and 3 do not.
+    app::UiFeed feed = f.feed();
+    feed.vertex_height = [](std::int64_t x, std::int64_t y) {
+        return std::optional<std::uint8_t>((x - 59) + (y - 59) <= 4 ? 0x30 : 0x10);
+    };
+    const auto preview = [&] {
+        f.ui.pointer_move(605, 605, &f.proj, feed);
+        return f.ui.found_preview(feed);
+    };
+    const std::array<std::uint8_t, 4> want{0, 1, 0, 0}; // trials from 2: 2, 3, 0; from 3: 3, 0
+    for (std::uint8_t turn = 0; turn < 4; ++turn) {
+        const auto p = preview();
+        REQUIRE(p);
+        CAPTURE(int{turn});
+        CHECK(p->cursor_rotation == turn);
+        CHECK(p->cmd.placement.rotation == turn);
+        CHECK(p->coast_ok);
+        CHECK(p->rotation == want[turn]);
+        f.key(app::OpeningKey::Rotate);
+    }
 }
 
 // The founding preview's branches (OpeningUi::make_found; review 2026-11-03: only the window script
@@ -627,9 +684,8 @@ TEST_CASE("controls: a click's work is local to the ships of the view, and a mov
     CHECK(f.proj.boxes == 0);
 }
 
-TEST_CASE(
-    "controls: founding derives the origin per axis for a footprint that is not square, and T "
-    "does not turn it") {
+TEST_CASE("controls: founding derives the origin per axis for a footprint that is not square, at "
+          "each of the cursor's turns") {
     sim::TypeRegistry::Builder b;
     sim::BuildingType wide;
     wide.id = sim::TypeId{1302};
@@ -642,11 +698,11 @@ TEST_CASE(
     auto s = setup();
     s.registry = built.value();
     s.islands = {app::IslandRect{0, 0, 0, 200, 200}};
-    // ox = max(0, cx - (w - 1) / 2), oy likewise, with the footprint of the command's rotation
-    // (kFoundingCursorRotation 0: 3 x 5 -> half 1, 2), however often T was pressed.
+    // ox = max(0, cx - (w - 1) / 2), oy likewise, with the footprint of the command's rotation,
+    // the cursor's turn after `rot` presses of T: 3 x 5 (half 1, 2) at even turns, 5 x 3 at odd.
     static_assert(app::kFoundingCursorRotation == 0);
-    const int expect_dx = 1, expect_dy = 2;
     for (int rot = 0; rot < 4; ++rot) {
+        const int expect_dx = rot % 2 == 0 ? 1 : 2, expect_dy = rot % 2 == 0 ? 2 : 1;
         Fixture f;
         f.ui = app::OpeningUi(s);
         f.click(app::PointerButton::Left, 100, 100);
@@ -659,7 +715,7 @@ TEST_CASE(
         const auto* found = std::get_if<sim::FoundCmd>(&r.commands[0].body);
         REQUIRE(found != nullptr);
         CAPTURE(rot);
-        CHECK(found->placement.rotation == app::kFoundingCursorRotation);
+        CHECK(found->placement.rotation == rot);
         CHECK(found->placement.x == 50 - expect_dx);
         CHECK(found->placement.y == 70 - expect_dy);
         // Near the edge the origin is clamped at 0 on each axis separately.

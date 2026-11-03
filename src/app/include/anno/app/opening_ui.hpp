@@ -75,28 +75,34 @@ class ScreenProjection {
 };
 
 enum class OpeningKey : std::uint8_t {
-    Found,    ///< F
-    Unload,   ///< U
-    Halt,     ///< H
-    Rotate,   ///< T (in the founding mode: taken, the warehouse has no manual turn)
-    NextHold, ///< Tab
-    QtyDown,  ///< [
-    QtyUp,    ///< ]
-    Send,     ///< Enter
-    Save,     ///< F5
-    Escape,   ///< Esc
+    Found,      ///< F
+    Unload,     ///< U
+    Halt,       ///< H
+    Rotate,     ///< T or . (in the founding mode: the cursor's turn on, kFoundingCursorRotation)
+    RotateBack, ///< , (in the founding mode: the cursor's turn back)
+    NextHold,   ///< Tab
+    QtyDown,    ///< [
+    QtyUp,      ///< ]
+    Send,       ///< Enter
+    Save,       ///< F5
+    Escape,     ///< Esc
 };
 
 enum class OpeningMode : std::uint8_t { Select, Found, Unload };
 
-/// The rotation every founding command carries. The warehouse turns to the coast by itself (owner
-/// 2026-11-03, from the original: "there is no manual rotation of Kontors since they align with the
-/// coastline automatically"): the sim tries the four rotations from this one and builds at the
-/// first whose footprint is on the island, neutral and free and whose land edge is the beach with
-/// water opposite (Founding::apply, site::rotation_trials). The original's
-/// Kontor cursor (AnnoFrame 0x10048e60) was not shown to read a rotation
-/// (docs/sim/ship-founding.md 3.5); which rotation its command carries is not traced, so where two
-/// rotations fit the sim's first in 0, 1, 2, 3 order wins.
+/// The founding cursor's turn before the player turns it. The warehouse turns to the coast by
+/// itself (owner 2026-11-03, from the original): the sim tries the four rotations from the
+/// command's one and builds at the first whose footprint is on the island, neutral and free and
+/// whose land edge is the beach with water opposite (Founding::apply, site::rotation_trials). The
+/// command carries the cursor's turn, so where two rotations fit (a convex corner: 8 of 115 shipped
+/// sites) the cursor decides, as in the original: its Kontor cursor's footprint helper returns the
+/// cursor's rotation byte +0x46 (AnnoFrame 0x10049340, 0x100493e0), the first of the four trials in
+/// every mouse path (0x10048f06, 0x1004900c, 0x100490d8), written by the cursor's property-5 setter
+/// 0x10049166, the rotation the ordinary cursor's turn keys set (review 2026-11-03 section 4).
+/// T and `.` turn it on, `,` back: the original's keys are `.` and `,`, which way each turns is
+/// not traced, and that they reach this cursor while founding is supported, not yet checked in
+/// the Wine runner. The owner chose to restore it (2026-11-03). On a straight coast one rotation
+/// fits and the turn changes nothing.
 inline constexpr std::uint8_t kFoundingCursorRotation = 0;
 enum class PointerButton : std::uint8_t { Left, Right };
 
@@ -116,8 +122,8 @@ struct FoundPreview {
     /// rotation, then the next three) that the coast rule accepts, so the building and its landing
     /// stage turn to face the shore; the cursor's own when the terrain is not known or none fits.
     std::uint8_t rotation = 0;
-    /// The rotation the command carries (always kFoundingCursorRotation: a warehouse has no manual
-    /// turn, owner 2026-11-03); the sim derives the origin and the trials from it.
+    /// The rotation the command carries: the cursor's turn (kFoundingCursorRotation until the
+    /// player turns it); the sim derives the origin and the trials from it.
     std::uint8_t cursor_rotation = 0;
     /// The coast rule accepted `rotation` (false: not decided here, or no rotation fits).
     bool coast_ok = false;
@@ -273,6 +279,9 @@ class OpeningUi {
     std::optional<std::pair<sim::TileXY, bool>> hover_point_;
     bool hover_changed_ = false;
     std::size_t found_type_ = 0;
+    /// The founding cursor's turn (0..3): the first of the sim's rotation trials. Kept between
+    /// foundings, as the original's cursor object keeps its byte.
+    std::uint8_t found_rotation_ = kFoundingCursorRotation;
     std::uint32_t unload_hold_ = 0, unload_tons_ = 0;
     std::optional<sim::BuildingId> unload_target_;
     std::string message_;

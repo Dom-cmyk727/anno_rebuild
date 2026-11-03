@@ -8,9 +8,11 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -801,4 +803,147 @@ TEST_CASE("scenery under a building: the island rewrite drops the tree a warehou
         return;
     }
     FAIL("no island template with a tree in " << dir->string());
+}
+
+// Every island of the shipped scenarios rewritten with its own buildings: the rewrite drops exactly
+// the scenery items that scenery_under_building names for some building over their anchor (the
+// rewrite marks the island's tiles once, review 2026-11-03: a test per item and building took 63 s
+// on endless02.sze's island 1), including the flag-0x10 objects a flag-0x10 type keeps (rocks under
+// mines).
+TEST_CASE("scenery under a building: the shipped scenarios' islands drop exactly the covered "
+          "scenery (game files)") {
+    const auto dir = anno::test::game_dir();
+    if (!dir) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
+    auto parsed = anno::formats::anlagen::AnlagenFile::parse(anl_buf);
+    REQUIRE(parsed);
+    const auto& anlagen = parsed.value();
+    std::vector<fs::path> files;
+    for (const auto& entry : fs::recursive_directory_iterator(*dir / "Scenes")) {
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (entry.is_regular_file() && ext == ".sze") {
+            files.push_back(entry.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    REQUIRE_FALSE(files.empty());
+    using Item = std::tuple<std::uint16_t, std::uint16_t, std::uint16_t>; // id, x, y
+    const auto items_of = [](const anno::formats::insel::Island& island, const char* name) {
+        std::vector<anno::formats::insel::PlacedObject> out;
+        for (const auto& rec : island.records) {
+            if (rec.name() != name) {
+                continue;
+            }
+            auto block = anno::formats::insel::Block::parse(rec.payload);
+            if (!block) {
+                continue;
+            }
+            const auto& data = block.value().data;
+            for (std::size_t o = 0; o + anno::formats::insel::kItemLen <= data.size();
+                 o += anno::formats::insel::kItemLen) {
+                out.push_back(anno::formats::insel::PlacedObject::parse(
+                    data.subspan(o, anno::formats::insel::kItemLen), block.value()));
+            }
+        }
+        return out;
+    };
+    std::size_t islands_n = 0, dropped = 0, kept_by_exception = 0;
+    double total_ms = 0, worst_ms = 0;
+    for (const fs::path& file : files) {
+        const auto buf = anno::test::read_file(file);
+        auto islands = anno::formats::insel::islands(buf);
+        if (!islands) {
+            continue;
+        }
+        for (const auto& source : islands.value()) {
+            if (source.number > 0xFFFF) {
+                continue;
+            }
+            std::vector<anno::app::SceneBuilding> buildings;
+            std::set<std::uint16_t> ids;
+            for (const auto& obj : items_of(source, "PROD2")) {
+                anno::app::SceneBuilding b;
+                b.island = source.number;
+                b.type = obj.anlage;
+                b.x = obj.x;
+                b.y = obj.y;
+                b.rotation = obj.rotation;
+                b.height = obj.height();
+                buildings.push_back(b);
+                ids.insert(obj.anlage);
+            }
+            if (buildings.empty()) {
+                continue;
+            }
+            // The buildings over each tile (by their footprint boxes), then the expected drops.
+            std::map<std::pair<std::uint32_t, std::uint32_t>, std::vector<std::size_t>> over;
+            for (std::size_t i = 0; i < buildings.size(); ++i) {
+                const auto& b = buildings[i];
+                const auto fp = anlagen.footprint(b.type);
+                if (!fp) {
+                    continue;
+                }
+                const bool odd = (b.rotation & 1U) != 0;
+                const std::uint32_t w = odd ? fp->second : fp->first;
+                const std::uint32_t h = odd ? fp->first : fp->second;
+                for (std::uint32_t y = b.y; y < std::uint32_t{b.y} + h; ++y) {
+                    for (std::uint32_t x = b.x; x < std::uint32_t{b.x} + w; ++x) {
+                        over[{x, y}].push_back(i);
+                    }
+                }
+            }
+            std::multiset<Item> expected;
+            for (const auto& it : items_of(source, "GELAENDE")) {
+                if (ids.contains(it.anlage)) {
+                    expected.insert({it.anlage, it.x, it.y});
+                    continue;
+                }
+                const auto found = over.find({it.x, it.y});
+                const bool drop =
+                    found != over.end() &&
+                    std::any_of(found->second.begin(), found->second.end(), [&](std::size_t i) {
+                        return anno::app::scenery_under_building(anlagen, buildings[i], it.anlage,
+                                                                 it.x, it.y);
+                    });
+                if (drop) {
+                    ++dropped;
+                } else {
+                    expected.insert({it.anlage, it.x, it.y});
+                    kept_by_exception += found != over.end() ? 1U : 0U;
+                }
+            }
+            anno::app::SceneObjects objects;
+            objects.is_building = [&ids](std::uint16_t id) { return ids.contains(id); };
+            anno::formats::insel::Island island = source;
+            std::vector<std::vector<std::uint8_t>> storage;
+            std::vector<std::string> notes;
+            std::vector<anno::app::OmittedObject> omitted;
+            const auto t0 = std::chrono::steady_clock::now();
+            anno::app::apply_island_buildings(island, buildings, objects, storage, notes, omitted,
+                                              &anlagen);
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0)
+                    .count();
+            total_ms += ms;
+            worst_ms = std::max(worst_ms, ms);
+            std::multiset<Item> got;
+            for (const auto& it : items_of(island, "GELAENDE")) {
+                got.insert({it.anlage, it.x, it.y});
+            }
+            CHECK_MESSAGE(got == expected, file.filename().string() << " island " << source.number);
+            ++islands_n;
+        }
+    }
+    MESSAGE(islands_n << " islands with buildings: " << dropped << " scenery items dropped, "
+                      << kept_by_exception
+                      << " anchored under a building and kept (flag 0x10); rewrites " << total_ms
+                      << " ms in all, at most " << worst_ms << " ms");
+    CHECK(islands_n > 100);
+    CHECK(dropped > 0);
+    CHECK(kept_by_exception > 0);
 }

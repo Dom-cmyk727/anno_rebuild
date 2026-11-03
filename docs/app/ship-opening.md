@@ -199,7 +199,11 @@ zoom out and back in; GPU frames of the same path; a synthetic beach for the wav
 - *Trees in the Kontor.* The shipped scenarios hold no vegetation under any of 65,619 buildings (175 Kontors); the original writes
   a building over every footprint tile (AnnoWelt.dll `0x100823ed`), the sim does too, but the picture copied the file's scenery
   unchanged. `apply_island_buildings` drops a scenery item whose anchor lies under a building (flag-0x10 exception as the
-  original's, `0x1008218f`); an item anchored outside stays whole (OQ-551).
+  original's, `0x1008218f`); an item anchored outside stays whole (OQ-551). The island's covered tiles are marked once per
+  rewrite: a test per item and building took 63 s on `endless02.sze`'s island 1 (1,854 buildings, 84,486 scenery items),
+  509 s over the 226 shipped islands with buildings; now at most 10 ms, 148 ms in all (review). Over those islands 14
+  scenery items are dropped and 123 kept by the flag-0x10 exception (test `the shipped scenarios' islands drop exactly the
+  covered scenery`).
 - *Open sea built over and over.* 39,000 chunk builds in two seconds at the farthest zoom were open sea around the map: a far
   chunk was reduced from its 4^n children wherever it lay. A chunk outside the scene is now open sea at once (the first 12 s of
   the replay: 1,953 builds, 10,953 before; none while resting at the farthest level).

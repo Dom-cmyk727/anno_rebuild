@@ -258,16 +258,6 @@ std::optional<fs::path> find_ci(const fs::path& base, const std::string& rel) {
     return cur;
 }
 
-/// Building items become the sim's set. A file building the sim also placed
-/// keeps its bytes (phase and draw order). One the sim did not place is listed
-/// and dropped. One the sim placed that the file lacks is appended.
-/// One island's buildings rewritten into its records (play mode, round du: the per-island form of
-/// apply_world_buildings). `buildings` are the sim's buildings of this island; the payloads of
-/// the records it writes are stored in `owned_out` (each buffer keeps its address when moved,
-/// so the spans stay valid while the owner lives). Notes and omitted objects go to `notes` and
-/// `omitted`. The island's records must be the ones of the scene the buildings belong to;
-/// re-applying to records already rewritten gives the same records as applying to the file's,
-/// because buildings the sim no longer places are dropped and the new ones are added.
 namespace {
 
 /// HEAD's flag word (bytes 0x1c-0x1d, as sim/types.cpp reads it), or nullopt without a HEAD of
@@ -285,27 +275,57 @@ std::optional<std::uint16_t> head_flags(const formats::anlagen::AnlagenFile& anl
     return formats::u16_le(*head, 0x1c);
 }
 
-} // namespace
+/// A building's footprint (island tiles, half-open) and whether its type carries flag 0x10.
+struct Cover {
+    std::uint32_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool overlay = false;
+    [[nodiscard]] bool holds(std::uint32_t x, std::uint32_t y) const {
+        return x >= x0 && y >= y0 && x < x1 && y < y1;
+    }
+};
 
-bool scenery_under_building(const formats::anlagen::AnlagenFile& anlagen, const SceneBuilding& b,
-                            std::uint16_t item, std::uint16_t x, std::uint16_t y) {
+/// The cover of `b`: Anlagen HEAD bytes 0 and 1, swapped for an odd rotation (sim::footprint);
+/// nullopt for a type without a footprint or flag word.
+std::optional<Cover> cover_of(const formats::anlagen::AnlagenFile& anlagen,
+                              const SceneBuilding& b) {
     const auto size = anlagen.footprint(b.type);
-    const auto placed = head_flags(anlagen, b.type);
-    const auto existing = head_flags(anlagen, item);
-    if (!size || !placed || !existing) {
-        return false;
+    const auto flags = head_flags(anlagen, b.type);
+    if (!size || !flags) {
+        return std::nullopt;
     }
     const bool odd = (b.rotation & 1U) != 0;
     const std::uint32_t w = odd ? size->second : size->first;
     const std::uint32_t h = odd ? size->first : size->second;
-    if (x < b.x || y < b.y || x >= std::uint32_t{b.x} + w || y >= std::uint32_t{b.y} + h) {
-        return false;
-    }
-    // A type with flag 0x10 is written over the tiles but keeps an anchored flag-0x10 object
-    // (AnnoWelt.dll 0x1008218f, place_object_record's overlay skip).
-    return (*placed & 0x10U) == 0 || (*existing & 0x10U) == 0;
+    return Cover{b.x, b.y, std::uint32_t{b.x} + w, std::uint32_t{b.y} + h, (*flags & 0x10U) != 0};
 }
 
+/// Whether a cover overwrites an object whose flag word is `existing`: a type with flag 0x10 is
+/// written over the tiles but keeps an anchored flag-0x10 object (AnnoWelt.dll 0x1008218f,
+/// place_object_record's overlay skip).
+bool overwrites(const Cover& c, std::uint16_t existing) {
+    return !c.overlay || (existing & 0x10U) == 0;
+}
+
+} // namespace
+
+bool scenery_under_building(const formats::anlagen::AnlagenFile& anlagen, const SceneBuilding& b,
+                            std::uint16_t item, std::uint16_t x, std::uint16_t y) {
+    const auto c = cover_of(anlagen, b);
+    const auto existing = head_flags(anlagen, item);
+    return c && existing && c->holds(x, y) && overwrites(*c, *existing);
+}
+
+/// Building items become the sim's set. A file building the sim also placed
+/// keeps its bytes (phase and draw order). One the sim did not place is listed
+/// and dropped. One the sim placed that the file lacks is appended.
+/// One island's buildings rewritten into its records (play mode, round du: the per-island form of
+/// apply_world_buildings). `buildings` are the sim's buildings of this island; the payloads of
+/// the records it writes are stored in `owned_out` (each buffer keeps its address when moved,
+/// so the spans stay valid while the owner lives). Notes and omitted objects go to `notes` and
+/// `omitted`. The island's records must be the ones of the scene the buildings belong to;
+/// re-applying the same buildings to records already rewritten gives the same records. Scenery a
+/// building covered stays dropped when the building goes (the sim's tile layer keeps no object
+/// there either: clear_object_record), so applying to the file's records again can differ.
 void apply_island_buildings(insel::Island& island, const std::vector<SceneBuilding>& buildings,
                             const SceneObjects& objects,
                             std::vector<std::vector<std::uint8_t>>& owned_out,
@@ -342,6 +362,47 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
         return;
     }
     const std::uint32_t slot = island.number;
+    // The island's tiles under a building, marked once: bit 0 under a type without flag 0x10,
+    // bit 1 under one with it; and each scenery type's flag word looked up once (review
+    // 2026-11-03: a test per item and building took 63 s on endless02.sze's island 1, 1,854
+    // buildings and 84,486 scenery items). Footprint tiles off the island are not marked: no item
+    // lies there.
+    const std::uint32_t iw = island.width, ih = island.height;
+    std::vector<std::uint8_t> under;
+    if (anlagen != nullptr && !buildings.empty()) {
+        under.assign(std::size_t{iw} * ih, 0);
+        for (const SceneBuilding& b : buildings) {
+            const auto c = cover_of(*anlagen, b);
+            if (!c) {
+                continue;
+            }
+            const std::uint8_t bit = c->overlay ? 2U : 1U;
+            for (std::uint32_t y = c->y0; y < std::min(c->y1, ih); ++y) {
+                for (std::uint32_t x = c->x0; x < std::min(c->x1, iw); ++x) {
+                    under[std::size_t{y} * iw + x] |= bit;
+                }
+            }
+        }
+    }
+    std::map<std::uint16_t, std::optional<std::uint16_t>> scenery_flags;
+    const auto covered = [&](const insel::PlacedObject& obj) {
+        if (obj.x >= iw || obj.y >= ih) {
+            return false;
+        }
+        const std::uint8_t m = under[std::size_t{obj.y} * iw + obj.x];
+        if (m == 0) {
+            return false;
+        }
+        auto it = scenery_flags.find(obj.anlage);
+        if (it == scenery_flags.end()) {
+            it = scenery_flags.emplace(obj.anlage, head_flags(*anlagen, obj.anlage)).first;
+        }
+        if (!it->second) {
+            return false;
+        }
+        // overwrites(): a type without 0x10 always, one with it unless the object has it too.
+        return (m & 1U) != 0 || ((m & 2U) != 0 && (*it->second & 0x10U) == 0);
+    };
     std::set<Key> drawn;
     std::vector<SceneBuilding> pending = buildings;
     for (formats::chunk::Chunk& rec : island.records) {
@@ -365,10 +426,8 @@ void apply_island_buildings(insel::Island& island, const std::vector<SceneBuildi
             // §11.3; the sim's place_object_record): the item whose anchor it covers is neither
             // stored nor drawn. An item anchored outside stays whole (the shipped scenarios keep
             // such rocks beside Kontors; how the original draws its covered tiles is not traced).
-            if (anlagen != nullptr && name == "GELAENDE" && !objects.is_building(obj.anlage) &&
-                std::any_of(buildings.begin(), buildings.end(), [&](const SceneBuilding& b) {
-                    return scenery_under_building(*anlagen, b, obj.anlage, obj.x, obj.y);
-                })) {
+            if (!under.empty() && name == "GELAENDE" && !objects.is_building(obj.anlage) &&
+                covered(obj)) {
                 changed = true;
                 continue;
             }

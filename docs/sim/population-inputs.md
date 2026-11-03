@@ -100,7 +100,7 @@ Each card: source and ownership / width, sign, units / default, absent, explicit
 
 1. Resolve the goods table, then the group needs (existing parse).
 2. Per group, per need in file order with `n = slot + 1`: update `goods_end` (2.6).
-3. Per group: initialise `lookup` to the sentinel (the vector length `n`, value `n`); walk the needs: set `lookup[ware] = slot`, update `infra_end` (2.7) and the forced bit (2.8), apply the tavern alias (2.9).
+3. Per group: size `lookup` by the registry goods count and initialise every entry to the sentinel `n` (the need count); walk the needs: set `lookup[ware] = slot`, update `infra_end` (2.7) and the forced bit (2.8), apply the tavern alias (2.9). The goods domain determines the vector length; `n` determines only the missing-need value.
 4. Per group: the one-pass `IdSec` substitution over the infrastructure range (2.10).
 5. Per group: `infra_end = max(infra_end, goods_end)`.
 6. Groups are processed independently. (The original also processes an unnamed hole between named slots as a cleared, empty group; the current parser rejects skipped slots, so that case never reaches the registry and applies only to a future change.)
@@ -142,7 +142,7 @@ Shipped rows come from an independent script over the raw `BGruppen.dat` (it rep
 | C8 | One-pass substitution, ascending: KIRCHE (83) is processed before KATHETRALE (84) (`0x10014b78`-`0x10014bab`) | direct needs only, or descending | PIONIER: KIRCHE→KAPELLE slot 5, KATHETRALE→that same slot 5 (shipped); a descending or single-lookup pass leaves KATHETRALE at the sentinel | |
 | C9 | A substitute with a higher id is **not** followed | two passes | modded `IdSec`: HOCHSCHULE(81)→KIRCHE(83) (KIRCHE→KAPELLE and KATHETRALE→KIRCHE inherited from the shipped data), need [KAPELLE] only → `lookup[81]` stays the sentinel; `lookup[83] = lookup[84] = 0` | synthetic, not a file row |
 | C10 | `Ware` naming goods 0 | accepted | refused at registry build (adaptation: `lookup[0]` is the IdSec-none sentinel) | refusal test |
-| C11 | Empty group | crash or garbage | no needs → n 0, `goods_end` 0, `infra_end` 0, empty lookup | |
+| C11 | Empty group | crash, garbage, or a zero-length lookup despite a non-empty goods table | no needs → n 0, `goods_end` 0, `infra_end` 0; lookup has one entry per goods id, all sentinel 0 (empty only when the goods domain is empty) | |
 | C12 | `ware > infra_last` arm | n unconditional | with `goods_end` 0 → `n`; with `goods_end` non-zero → unchanged (instruction fact; no shipped example) | synthetic only |
 
 Timed behaviour does not occur in this document: all of it is registry construction. The timed gate, its smallest interval (a call with d = 0 returns unchanged), the one-step-per-call rule and the single partial state `last` are in `population-readiness.md` (package D).

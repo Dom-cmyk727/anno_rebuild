@@ -8790,3 +8790,7 @@ Documentation and read-only evidence only. Start: board `origin/main` `214f994d`
 **Limitations.** Not re-derived: property `0x21` copy and HEAD buffer base (T32.5/P2.1), corpus histograms, Create's callers, `UpgradeCheck`/unlock/fire code. Windows/MSVC, Linux/WSL, original-runtime, GPU and scale checks are NOT_RUN. Documentation `state.md` §4.7c is stale (marks P1 as "DRAFT / Not implemented"); not edited (outside the allowed files).
 
 **Proposed first code unit:** package A (full player-mask import), awaiting an explicit orchestrator release and the version decision.
+
+### Orchestrator documentation correction before publication — MAP-POP-READY-1
+
+Direct review found that `population-inputs.md` section 3 used the need count as the lookup length, contradicting section 2.9 and the original goods-indexed post-pass. Corrected the length to the registry goods count, kept the need count only as the sentinel, and corrected C11 for an empty need list. Also clarified that acceptance of a task branch does not imply a merge into main. These are documentation corrections only; no engine, state identity, test or asset changed. The original report and reviewed draft pins remain historical evidence.

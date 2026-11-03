@@ -2551,6 +2551,46 @@ TEST_CASE("the wave window is bounded in cells per screen pixel at far zoom") {
     CHECK(st.fluid_cells_per_tile == 2);
 }
 
+// Review 2026-11-03 (P1): at a derived zoom level the wave window's centre took the lift from
+// kTile[group], past its end (Lift::scaled is for the built groups). A derived level's view is its
+// built ancestor's view reduced, so both centre the window on the same tile; with a lift this large
+// a wrong lift moves the centre by tens of tiles.
+TEST_CASE("the wave window at a derived zoom level is centred as at its built ancestor") {
+    auto ctx = device_or_skip();
+    if (!ctx) {
+        return;
+    }
+    const EmptyScene es = empty_scene();
+    render::Scene& scene = *es.scene;
+    scene.set_levels(render::ZoomLevels::with_derived(2));
+    scene.lift = render::Lift{100, 1}; // the sea level (32 HEIGHT units) is 761 px up at group 2
+    render::FrameRenderer frames(1, false);
+    gpu::GpuLimits limits;
+    limits.uploads_per_frame = SIZE_MAX;
+    auto made = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, limits);
+    REQUIRE(made);
+    gpu::GpuFrame& g = *made.value();
+    const auto target = g.offscreen_target(256, 256);
+    // The view centred on the scene pixel (4096, 2048) of group 2, reduced 2^k times.
+    const auto centre_at = [&](std::size_t group, int k) {
+        const render::Rect view{(4096 >> k) - 128, (2048 >> k) - 128, 256, 256};
+        const gpu::GpuStats st = g.render(frames, scene, view, group, 100,
+                                          render::WaterStyle::Enhanced, target.second.get());
+        CHECK(st.wave_simulation);
+        return st.fluid_centre;
+    };
+    const auto built = centre_at(2, 0);
+    for (const auto [group, k] : {std::pair{std::size_t{3}, 1}, std::pair{std::size_t{4}, 2}}) {
+        const auto derived = centre_at(group, k);
+        MESSAGE("group " << group << ": centre (" << derived.first << ", " << derived.second
+                         << "), group 2 (" << built.first << ", " << built.second << ")");
+        // The derived lift is rounded at its own scale: under a pixel there, a tenth of a tile.
+        CHECK(std::abs(derived.first - built.first) < 0.25F);
+        CHECK(std::abs(derived.second - built.second) < 0.25F);
+    }
+    CHECK(g.errors() == 0);
+}
+
 TEST_CASE("every pass of a frame is timed, and the timed frame is the untimed picture") {
     auto ctx = device_or_skip();
     if (!ctx) {

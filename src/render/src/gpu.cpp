@@ -319,6 +319,8 @@ struct GpuFrame::Impl {
     /// the bound turned it off in the last frame that asked for it.
     double fluid_cells_cap = 0.0;
     bool fluid_off = false;
+    /// The tile position the last update_fluid centred the wave window on (GpuStats::fluid_centre).
+    std::pair<float, float> fluid_centre{0.0F, 0.0F};
     bool atlas_full_reported = false;
     WGPUTextureFormat format = WGPUTextureFormat_RGBA8Unorm;
     ShaderModule module;
@@ -2511,7 +2513,9 @@ struct GpuFrame::Impl {
         }
         const float tw = static_cast<float>(levels->tile_w(group));
         const float th = static_cast<float>(levels->tile_h(group));
-        const float raise = static_cast<float>(scene.lift.scaled(kSeaLevel, 1, group));
+        // ZoomLevels' lift: a derived group has no kTile entry (Lift::scaled is for built ones).
+        const float raise =
+            static_cast<float>(levels->lift_scaled(scene.lift, kSeaLevel, 1, group));
         const float px = static_cast<float>(view.x) + static_cast<float>(view.w) / 2.0F;
         const float py = static_cast<float>(view.y) + static_cast<float>(view.h) / 2.0F + raise;
         const std::pair<float, float> centre{px / tw + py / th, py / th - px / tw};
@@ -2556,6 +2560,7 @@ struct GpuFrame::Impl {
             fluid->drop_window();
         }
         fluid->set_ships(wakes);
+        fluid_centre = centre;
         if (fluid->update(enc, cells_group, centre, span, time_ms, depth, threads, cpt, stamps) &&
             stamps != nullptr) {
             ts_mark(TimedPass::Fluid);
@@ -3207,6 +3212,7 @@ GpuStats GpuFrame::render(FrameRenderer& frames, const Scene& scene, Rect view, 
         stats.fluid_steps = m.fluid->last_steps();
         stats.fluid_windows = m.fluid->window_serial();
         stats.fluid_resamples = m.fluid->resamples();
+        stats.fluid_centre = m.fluid_centre;
         if (const auto win = m.fluid->window()) {
             stats.fluid_cells = static_cast<std::uint64_t>(win->size * win->size);
             stats.fluid_cells_per_tile = win->cells_per_tile;

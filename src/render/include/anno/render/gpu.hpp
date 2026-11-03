@@ -143,6 +143,8 @@ struct GpuStats {
     std::uint64_t fluid_resamples = 0;
     std::uint64_t fluid_cells = 0;
     std::uint32_t fluid_cells_per_tile = 0;
+    /// The tile position the wave window was asked to centre on (the view's centre at sea level).
+    std::pair<float, float> fluid_centre{0.0F, 0.0F};
     /// Visible chunks drawn from another zoom group's chunks because their own
     /// are not built or not uploaded yet (GpuLimits::stand_ins), and the parts
     /// (draws) they took.

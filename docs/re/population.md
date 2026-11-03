@@ -743,6 +743,24 @@ Range read: city events `0x1002ba80`–`0x1002bc09`; helpers `0x1002b700`–`0x1
 
 **Not D** for who sets bits 4/5. Next address: the rest of `0x1002b700` and `0x1002b840` for a store or a slot that writes house `+0x0c`, and the fire path already noted at `0x10072a60` (`population.md` §8 / `production.md`).
 
+## 16. Live-readiness reads (MAP-POP-IMPL-1 E, 2026-11-03)
+
+Bounded reads for the questions the live House tick still depends on. Module `AnnoWelt.dll` sha256 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`. Nothing here chooses a policy and nothing enables a tick.
+
+**(1) Create's third argument (OD-2, candidate OQ-473).** A rel32 scan of the whole `.text` finds exactly four call sites of Create `0x10024010` and no function-pointer use of the address. The pushes before each call are `[rec, slot = -1, arg3, &out]`:
+
+| Call site | In | arg3 |
+|---|---|---|
+| `0x100265b7` | the PROD ENTRY loader `0x100264a0` | the constant 0 (`push $0` at `0x100265a4`) |
+| `0x10027c4c`, `0x10027cb8` | city vtable `0x100c2f40` slot `+0xac` = `0x100279a0` (`ret 0xc`) | its second stack argument, unmodified (`0x10027c36`, `0x10027ca2`) |
+| `0x10028245` | city slot `+0xb0` = `0x10027f70` (`ret 0x14`) | its fourth stack argument (`0x1002822b`) |
+
+Worked path for a scenario or savegame house: ENTRY -> `0x100265b7` `Create(rec, -1, 0, &out)` -> house `+0x0a = 0` (the House constructor also writes 0, and the house Load `0x10076e60` does not write `+0x0a`). So the original-format import path starts `last` at 0, matching the engine. **Unresolved: a house built by the player in play.** The only city-receiver caller of slot `+0xac` found is `0x10036459` in `0x100362e0` (slot `+0xc0` of the class with vtable `0x100c3758`), which forwards its own second stack argument. Unread edges: every caller of that slot (the `call *0xc0` sites were not triaged), callers of the batch slot `+0xb0`, and the other DLLs (AnnoGame, AnnoScene). Upgrade and downgrade create no replacement house through Create (UpgradeCheck's only call is Mood at `0x10075fba`; the tick calls city slots `+0x98`/`+0x9c` with the house), so `+0x0a` is unchanged by them (the slot bodies `0x1002cbe0`/`0x1002cdd0` were not re-read line by line).
+
+**(2) Zero-resident houses in the 50 shipped scenarios.** Reproducing the importer's rule (an ENTRY record `{0, residents, n, 2, 0,0,0,0}` of length `8 + n`) with a Python container parser gives 3283 houses and 43162 residents (equal to the engine corpus summary) in 34 of the 50 files (16 files hold none): **0 houses with zero residents**, minimum 1, maximum 42. By group: PIONIER 1874 houses (1-8 residents), SIEDLER 688 (all 15), BUERGER 631 (16-28), KAUFLEUTE 90 (34-42), ARISTOKRATEN none. All 50 are single-player or campaign scenarios. The class check of the importer (PROD2 type is a house) was replaced by the record signature, which matches the engine totals but is not a per-file type check. The OD-4 divide (E' = 0 with a stage-enabled need) therefore does not occur at import in shipped data; it needs a house reaching E = 0 in play or a crafted state.
+
+**(3) The below-64 correction on the downgrade arm.** Code `0x10076519`-`0x1007656a`: NoDowngrade (`testb $2, 1(group)`) or house flags `0x30` select floor 64 and the removal arm; otherwise the floor is `48 * Wohnmax(previous group)`, and the correction (`cmpw $0x40`, signed) applies only on that arm. With the shipped tables (Wohnmax 8, 15, 28, 42, 30; NoDowngrade on PIONIER and ARISTOKRATEN; largest negative VermehrTab steps -16, -25, -32, -38, -51) the downgradable groups are SIEDLER, BUERGER and KAUFLEUTE with floors 384, 720 and 1344; a house there is downgraded as soon as it falls below the floor, so it can never be seen below `floor - |step|` (359, 688, 1306), and every entry value (load residents, first assignment `Wohnmax * 64`, upgrade clamp, downgrade keeping residents) is far above 64 + |step|. **The correction is unreachable for shipped data.** A modded table needs a floor at or below `63 + |step|` (a preceding Wohnmax of 1, or 2 with a step of -33 or worse), or a state entering a downgradable group below `64 + |step|`. Unread: the growth line above `0x10076490` was taken from §11.
+
 ## Open
 - T32.1 closed the house field layout; T32.2 closed the house-tick order, mood, upgrade/downgrade bodies, materials check and booking; T32.3 closed the `take = 1` class (MarketStall `+0xac`) and wrote the DRAFT (`state.md` §4.7c); T32.4 closed the stand → house path (job `0x35`, OQ-187) and the owner's house/stand clauses (OQ-103); **T32.5 closed the stage mask** (player `+0x90` / property `0x21` is saved state; city `+0x618` is derived). Still open below.
 - Who dispatches house Save slot `+0x80` on a world save (OQ-185, §15.7): world save has no `call [reg+0x80]`; the list walk `0x10023470` is the city **load** path. Next: player writer `0x1001e920` / city writer `0x1002ec00` for a house-`this` `+0x80`.

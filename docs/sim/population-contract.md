@@ -112,6 +112,18 @@ Format: rule -> primary evidence -> smallest wrong reading -> distinguishing inp
 
 A research or reference helper may write only the files in its row; the parent keeps headers, config, digest, version and the final merge of results. Complexity (task E.4): registry metadata is built once; the lookup is indexed by goods id; a kernel call is O(needs) and reads no world; there is no per-house rebuild and no whole-world scan.
 
-## 7. Limits
+## 7. Delivered (MAP-POP-IMPL-1, frozen-gate record in docs/orchestration/REPORTS.md)
+
+| Package | API and files |
+|---|---|
+| A | `ScenarioSpec::PlayerSpec::flags` (optional u32), `decode_player_mask` in `scenario_formats.cpp`, assignment in `World::create`; oracle `tools/player_mask_ref.py` + `fixtures/synthetic/sim/player_masks.txt` |
+| B | `GoodsInfo::{bau_first, id_sec}`, `goods_metadata.hpp` (`stage_index_of`, `apply_goods_metadata`), `SimConfig::population_{infra_first,infra_last,tavern_goods,tavern_alias_goods}`, registry validation; oracle `tools/waren_ref.py` + `waren_metadata.txt` |
+| C | `PopulationRoles`, `HouseGroupDerived`, `derive_group`, `TypeRegistry::{derived_groups, population_roles, roles_of, population_view}`, `PopulationView`; oracle `tools/group_derived_ref.py` + `group_derived.txt` |
+| D | `house_kernel.hpp` (`house_kernel`, `house_mood_combine`, typed results); `tools/house_kernel_ref.py`, `house_kernel_ref_contract_test.py`, `house_kernel_vectors.txt` (70 vectors, hand-derived before the C++) |
+| E | `population_canary_test.cpp`; research in `docs/re/population.md` section 16 |
+
+Config: `docs/sim/state.md` 3.1 lists the four `population_*` fields by this document. No driver or tick change: House dispatch is still `return;`.
+
+## 8. Limits
 
 This contract changes no code. The Create stamp (OD-2), the zero-resident count, below-64 reachability and every live-effect rule (walker spawn and draw, upgrade/downgrade/removal, taxes, unlocks) stay open exactly as in the readiness document. Windows/MSVC, Linux/WSL, original-runtime and GPU checks are NOT_RUN.

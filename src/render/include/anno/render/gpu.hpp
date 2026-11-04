@@ -429,6 +429,10 @@ inline constexpr std::uint32_t kChunkFlagFlow = 1U << 5;
 /// by RiverConfig::validate; widening it means moving to the free bits 16-31.
 inline constexpr std::uint32_t kChunkStrideShift = 8;
 inline constexpr std::uint32_t kFlowVelocityBinding = 6, kFlowAuxBinding = 7, kFlowShearBinding = 8;
+/// Chunk uniform flag and binding of the submerged plane (frame::Chunk::submerged, R8Uint):
+/// Original water draws the sea once more over those object pixels (docs/render/depth.md §2.3).
+inline constexpr std::uint32_t kChunkFlagSubmerged = 1U << 6;
+inline constexpr std::uint32_t kSubmergedBinding = 9;
 inline constexpr std::uint32_t kRiverParamsBinding = 7;
 /// Bytes of the river parameter uniform (struct RiverParams in gpu.wgsl).
 inline constexpr std::size_t kRiverParamsBytes = 32 + 32 * kMaxRiverLayers;
@@ -471,6 +475,8 @@ using render::ResampleFilter;
 struct ChunkPlanes {
     std::vector<Px> objects;
     std::vector<std::uint8_t> base;
+    /// frame::Chunk::submerged of the build (0 / 1 per pixel; all 0 without depth).
+    std::vector<std::uint8_t> submerged;
     bool bases = false;
 };
 
@@ -616,12 +622,15 @@ class GpuFrame {
     /// Builds a chunk's objects and base planes from its draw list on the GPU
     /// (the binned compute pass, docs/render/gpu-chunks.md 5.1), making the
     /// frames resident in the chunk atlas, and reads the planes back. The result
-    /// equals replay(draws, frames) (chunk_draws.hpp) bit for bit. For the
-    /// GPU = CPU tests and tools; the viewer keeps GpuList chunks on the GPU.
-    /// Waits for the GPU; nullopt if the compute pipeline could not be made or
-    /// the frames overflow the atlas budget (the caller then uses the CPU).
-    std::optional<ChunkPlanes> build_chunk_planes(const ChunkDraws& draws,
-                                                  const FrameTable& frames);
+    /// equals replay(draws, frames) (chunk_draws.hpp) bit for bit; with depth
+    /// (draws.depth_test) it equals replay(draws, frames, target) with the target
+    /// from `terrain` (Chunk::terrain of the chunk; empty = no terrain) and the
+    /// submerged plane of that target. For the GPU = CPU tests and tools; the
+    /// viewer keeps GpuList chunks on the GPU. Waits for the GPU; nullopt if the
+    /// compute pipeline could not be made or the frames overflow the atlas budget
+    /// (the caller then uses the CPU).
+    std::optional<ChunkPlanes> build_chunk_planes(const ChunkDraws& draws, const FrameTable& frames,
+                                                  std::span<const std::uint16_t> terrain = {});
     /// The clock the chunk dissolves run on (GpuLimits::chunk_fade_ms), in
     /// milliseconds: by default a steady clock of the compositor's own, not
     /// render()'s animation time, which the viewer freezes on pause (a chunk

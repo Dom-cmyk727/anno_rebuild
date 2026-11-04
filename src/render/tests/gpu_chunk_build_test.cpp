@@ -292,11 +292,12 @@ namespace {
 
 using anno::assets::Rgba;
 using anno::formats::figuren::Frame;
+namespace fig = anno::formats::figuren;
 namespace flags = render::object_flags;
 
 /// A w x h image of one straight-alpha colour.
 Rgba solid(std::uint16_t w, std::uint16_t h, Px c) {
-    Rgba img{w, h, {}};
+    Rgba img{w, h, {}, {}};
     img.pixels.resize(std::size_t{w} * h * 4);
     for (std::size_t i = 0; i < std::size_t{w} * h; ++i) {
         img.pixels[i * 4 + 0] = c[0];
@@ -479,7 +480,82 @@ TEST_CASE("GPU chunk build: synthetic frames the original corpus never sends (no
         CHECK(got.base[static_cast<std::size_t>(10) * 256 + 10] == 255);
     }
 
-    SUBCASE("colour and depth fields are ignored (reserved)") {
+    SUBCASE("depth: Z, V and H draws on a terrain slope, half-level pixels, a unit, the sea") {
+        // GPU = CPU for the depth replay (depth.md 2.2): the terrain rises to the top of the chunk
+        // (h64 = 64 * (60 - y / 4)), with draws of every class at heights 0..40, so some rows
+        // pass and some fail; an RGBAZ frame with level-1 pixels; a unit (no class) over a Z draw;
+        // the submerged plane at the sea 16.5.
+        render::FrameTable ft;
+        namespace depth = render::depth;
+        const depth::Params dp = depth::params(0, render::kHeightLift);
+        Rgba zimg = solid(24, 30, opaque_red);
+        zimg.z.resize(std::size_t{24} * 30);
+        for (std::size_t i = 0; i < zimg.z.size(); ++i) {
+            zimg.z[i] = static_cast<std::uint8_t>(static_cast<int>(i % 24) * 9 - 100);
+        }
+        Rgba half = solid(16, 16, Px{0, 200, 0, 255});
+        for (std::size_t i = 0; i < std::size_t{16} * 16; i += 2) {
+            half.pixels[i * 4 + 3] = 128;
+        }
+        half.z.assign(std::size_t{16} * 16, 0xF0);
+        const auto zf = add(ft, 1, std::move(zimg), header(0, 30, 24, 30));
+        const auto hf = add(ft, 2, std::move(half), header(0, 16, 16, 16));
+        const auto vf = add(ft, 3, solid(12, 40, white), header(0, 40, 12, 40));
+        const auto unit = add(ft, 4, solid(6, 6, Px{10, 10, 10, 255}), header(0, 6, 6, 6));
+        render::ChunkDrawsBuilder b(rect, 0, true, 0, 16);
+        b.begin_unclipped();
+        auto put = [&](render::FrameId id, int x, int y, int ay, std::uint8_t h,
+                       fig::FrameFormat f) {
+            const depth::Rule r = depth::rule(f);
+            b.add({x, y, id, flags::kTrackBase | flags::depth_bits(r), 0, 0,
+                   depth::at(dp, 2 * std::int64_t{y + ay}, 64 * std::int64_t{h})});
+        };
+        for (int k = 0; k < 6; ++k) {
+            put(zf, 10 + 30 * k, 20 + 25 * k, 30, static_cast<std::uint8_t>(8 * k),
+                fig::FrameFormat::RgbZ);
+            put(hf, 18 + 30 * k, 30 + 25 * k, 16, static_cast<std::uint8_t>(5 * k),
+                fig::FrameFormat::RgbAZ);
+            put(vf, 40 + 30 * k, 60 + 20 * k, 40, static_cast<std::uint8_t>(6 * k),
+                fig::FrameFormat::RgbV);
+            put(vf, 60 + 25 * k, 10 + 30 * k, 40, static_cast<std::uint8_t>(7 * k),
+                fig::FrameFormat::RgbH);
+        }
+        b.add({30, 40, unit, flags::kTrackBase, 0, 0, 0}); // a unit: no class, clears "tested"
+        render::ChunkDraws d = b.finish(ft);
+        d.depth_test = true;
+        d.depth = dp;
+        d.sea_h64 = depth::sea_h64(16.5F);
+        std::vector<std::uint16_t> terrain(std::size_t{256} * 256);
+        for (std::size_t i = 0; i < terrain.size(); ++i) {
+            const int y = static_cast<int>(i / 256);
+            terrain[i] = (i % 256) < 8 ? render::kNoTerrain
+                                       : static_cast<std::uint16_t>(64 * std::max(0, 60 - y / 4));
+        }
+        auto t = depth::Target::from_terrain(rect, dp, terrain);
+        const render::Canvas cpu = render::replay(d, ft, t);
+        const std::vector<std::uint8_t> sub = t.submerged(d.sea_h64);
+        auto got = g.build_chunk_planes(d, ft, terrain);
+        REQUIRE(got);
+        CHECK(diff(*got, cpu) == 0);
+        std::size_t sub_diff = 0, sub_set = 0;
+        for (std::size_t i = 0; i < got->submerged.size(); ++i) {
+            const std::uint8_t want = sub.empty() ? 0 : sub[i];
+            sub_diff += got->submerged[i] != want ? 1 : 0;
+            sub_set += want;
+        }
+        MESSAGE("submerged pixels: " << sub_set);
+        CHECK(sub_diff == 0);
+        CHECK(sub_set > 0);
+        // Negative control: the same list without depth draws more pixels.
+        const render::Canvas flat = render::replay(d, ft);
+        std::size_t more = 0;
+        for (std::size_t i = 0; i < flat.pixels.size() / 4; ++i) {
+            more += (flat.pixels[i * 4 + 3] != 0 && cpu.pixels[i * 4 + 3] == 0) ? 1 : 0;
+        }
+        CHECK(more > 0);
+    }
+
+    SUBCASE("colour and depth fields are ignored without a depth class") {
         render::FrameTable ft;
         const auto obj = add(ft, 1, solid(8, 8, white), header(0, 8, 8, 8));
         render::ChunkDrawsBuilder plain(rect, 0, true, 0, 16);

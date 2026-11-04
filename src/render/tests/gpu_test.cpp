@@ -1374,42 +1374,49 @@ TEST_CASE("enhanced water meets objects standing in it (game files)") {
     // A river mouth of Single_01 with rocks in the water (tile 274, 447):
     // the same frame with and without object_waterline differs with
     // enhanced water (rock bases sink in) and is identical with original
-    // water; no GPU errors.
+    // water; no GPU errors. With the per-pixel depth (depth.md) the rocks'
+    // feet are hidden by the bank and the river bed before the shading sees
+    // them, so fewer pixels change: measured once without depth (the bar of
+    // the effect, > 100) and once with it (still some).
     const Loaded loaded = load_scene(*dir, "Single_01.sze");
     const auto& scene = loaded.scene;
-    gpu::GpuLimits on, off;
-    on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
-    off.object_waterline = false;
-    auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
-    auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
-    REQUIRE(a);
-    REQUIRE(b);
-    constexpr int kW = 640, kH = 400;
-    const auto ta = a.value()->offscreen_target(kW, kH);
-    const auto tb = b.value()->offscreen_target(kW, kH);
-    render::FrameRenderer fa(4, false), fb(4, false);
-    const auto [cx, cy] = render::tile_top(274, 447, 0);
-    const render::Rect view{cx - kW / 2, cy - kH / 2, kW, kH};
-    for (const auto style : {render::WaterStyle::Enhanced, render::WaterStyle::Original}) {
-        a.value()->render(fa, *scene, view, 0, 2000, style, ta.second.get());
-        b.value()->render(fb, *scene, view, 0, 2000, style, tb.second.get());
-        const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
-        const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
-        REQUIRE(pa.size() == pb.size());
-        std::size_t differ = 0;
-        for (std::size_t i = 0; i < pa.size(); i += 4) {
-            differ +=
-                (pa[i] != pb[i] || pa[i + 1] != pb[i + 1] || pa[i + 2] != pb[i + 2]) ? 1U : 0U;
+    for (const bool depth : {false, true}) {
+        CAPTURE(depth);
+        scene->depth_test = depth;
+        gpu::GpuLimits on, off;
+        on.uploads_per_frame = off.uploads_per_frame = SIZE_MAX;
+        off.object_waterline = false;
+        auto a = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, on);
+        auto b = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm, off);
+        REQUIRE(a);
+        REQUIRE(b);
+        constexpr int kW = 640, kH = 400;
+        const auto ta = a.value()->offscreen_target(kW, kH);
+        const auto tb = b.value()->offscreen_target(kW, kH);
+        render::FrameRenderer fa(4, false), fb(4, false);
+        const auto [cx, cy] = render::tile_top(274, 447, 0);
+        const render::Rect view{cx - kW / 2, cy - kH / 2, kW, kH};
+        for (const auto style : {render::WaterStyle::Enhanced, render::WaterStyle::Original}) {
+            a.value()->render(fa, *scene, view, 0, 2000, style, ta.second.get());
+            b.value()->render(fb, *scene, view, 0, 2000, style, tb.second.get());
+            const auto pa = a.value()->read_back(ta.first.get(), kW, kH);
+            const auto pb = b.value()->read_back(tb.first.get(), kW, kH);
+            REQUIRE(pa.size() == pb.size());
+            std::size_t differ = 0;
+            for (std::size_t i = 0; i < pa.size(); i += 4) {
+                differ +=
+                    (pa[i] != pb[i] || pa[i + 1] != pb[i + 1] || pa[i + 2] != pb[i + 2]) ? 1U : 0U;
+            }
+            INFO((style == render::WaterStyle::Enhanced ? "enhanced" : "original")
+                 << ": " << differ << " pixels differ");
+            if (style == render::WaterStyle::Enhanced) {
+                CHECK(differ > (depth ? 0U : 100U));
+            } else {
+                CHECK(differ == 0);
+            }
         }
-        INFO((style == render::WaterStyle::Enhanced ? "enhanced" : "original")
-             << ": " << differ << " pixels differ");
-        if (style == render::WaterStyle::Enhanced) {
-            CHECK(differ > 100);
-        } else {
-            CHECK(differ == 0);
-        }
+        CHECK(a.value()->errors() == 0);
     }
-    CHECK(a.value()->errors() == 0);
 }
 
 namespace {

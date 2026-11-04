@@ -99,7 +99,7 @@ waterfalls keep their height + 10 test (`kRiverTolerance`) in this package: thei
 - The CPU builds the depth plane per chunk from the terrain plane it already has; the GPU builds it in the same
   compute pass (one i32 per pixel in registers). Measurements: `docs/perf/README.md`, "W4-DEPTH-1".
 - Limit: the GPU's `V` ramp multiplies in i32 (WGSL has no i64); it equals the CPU's i64 product while
-  |row − anchor row| · sv < 2³¹, i.e. up to 32 325 rows from the anchor at group 2 (sv 66 435). Every frame of
+  |row − anchor row| · sv < 2³¹, i.e. up to 32 324 rows from the anchor at group 2 (sv 66 435). Every frame of
   the original data is far inside; a modded frame beyond it would wrap on the GPU only. Path to lift it: split the
   product into high and low halves in the shader.
 - Switch: `Scene::depth_test` (`--depth off` for the former painter-only picture, a comparison and fallback; kept by

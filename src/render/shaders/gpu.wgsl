@@ -1522,7 +1522,7 @@ fn chunk_build_cs(@builtin(global_invocation_id) gid: vec3<u32>) {
                     pd = base + 256 * (bitcast<i32>(zb << 24u) >> 24u);
                 } else if cls == 2u {
                     // The upright ramp from the frame's anchor row (depth::pixel). i32: equal to the CPU's
-                    // i64 product up to 32 325 rows from the anchor at group 2 (depth.md 2.4, limit).
+                    // i64 product up to 32 324 rows from the anchor at group 2 (depth.md 2.4, limit).
                     pd = base + ((cb.d_sv * (ly - anchor_y)) >> 8u);
                 } else {
                     // The flat plane through the anchor at the pixel centre (depth::pixel).

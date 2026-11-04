@@ -63,6 +63,7 @@ struct Opt {
     std::uint32_t high_stage = 0; // [BAUSTUFEN]: this one stage (24..28) = group 0 with 5 residents
     bool stall_next = false;      // house type 9560 (group 0) whose ladder next 9580 is a stall
     bool orphan = false;          // an extra House type whose PRODTYPE names no group of the table
+    std::uint16_t g1_menge_food = 0; // MAP-POP-CLOSE-1 C2: group 1 food Menge and Wohnmax 65535 (0 = shipped)
 };
 constexpr sim::TypeId kPioneer{
     9560}; // PRODTYPE 97, ladder next 9580 = a market stall (real: 3852 -> 3860)
@@ -115,6 +116,10 @@ std::shared_ptr<const sim::TypeRegistry> registry(Opt o = {},
         g1.needs.clear();
     }
     g1.vermehr = g0.vermehr;
+    if (o.g1_menge_food != 0) {
+        g1.wohnmax = 65535;
+        g1.needs[0].menge = o.g1_menge_food;
+    }
     for (std::size_t i = 0; i < 21; ++i) {
         g1.nahrung[i] = i < 10 ? -2 : 2;
         g1.bedarf[i] = 2;
@@ -1264,4 +1269,199 @@ TEST_CASE("goods G2: a shared need slot through IdSec substitution is legal and 
     auto cyc = build(83, 82); // 82 -> 83 -> 82 through the shared slot
     REQUIRE_FALSE(cyc.ok());
     CHECK(cyc.error().find("IdSec cycle") != std::string::npos);
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C2 (G1)
+
+namespace {
+
+constexpr std::uint16_t kEdgeOk = 6144, kEdgeBad = 6145;
+
+sim::ApplyResult build_cmd(sim::World& w, std::vector<sim::PlacementWire> placements) {
+    return w.apply(sim::Command{sim::PlayerId{0}, sim::BuildCmd{sim::CityRef{sim::IslandId{0}, sim::CityNo{0}},
+                                                                std::move(placements)}});
+}
+
+sim::World build_world(const std::shared_ptr<const sim::TypeRegistry>& types, bool live,
+                       bool atomic = false) {
+    Rig r = make_rig();
+    syn::give_flat_terrain(r.spec);
+    sim::Rules rules;
+    rules.house_updates = live;
+    rules.build_atomic = atomic;
+    auto w = sim::World::create(r.spec, types, syn::population_config(), rules);
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    sim::World world = std::move(w).value();
+    city0(world).stock.stock[kTools] = 5000;
+    city0(world).stock.stock[kWood] = 5000;
+    return world;
+}
+
+const sim::House& house_at(const sim::World& w, std::int32_t x, std::int32_t y) {
+    const sim::Building* b = at(w, x, y);
+    REQUIRE(b != nullptr);
+    const auto* h = std::get_if<sim::House>(&b->payload);
+    REQUIRE(h != nullptr);
+    return *h;
+}
+
+} // namespace
+
+TEST_CASE("house create G1: BuildCmd runs first assignment for a group 1 house") {
+    // PRNG table T[i] = 7 i + 1, cursor 13: the draws are T[14] = 99 and T[15] = 106. Group 1
+    // (Wohnmax 15, forced food Menge 60, forced goods 27 Menge 40): residents_64 = 15 << 6 = 960,
+    // E = 15 << 7 = 1920; sat = 128 - (99 & 31) = 125 and 128 - (106 & 31) = 118; stock =
+    // trunc(60*125*1920/1536) = 9375 and trunc(40*118*1920/1536) = 5900. Payment: tools 512 and
+    // wood 1024 once; the draws follow the creation (original: Place charge, then Create).
+    const auto types = registry();
+    sim::World w = build_world(types, true);
+    const std::size_t cur = w.rng().cursor();
+    REQUIRE(cur == 13);
+    sim::ApplyResult res = build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0}});
+    REQUIRE_MESSAGE(res.ok(), std::string(sim::reject_name(res.status)));
+    const sim::House& h = house_at(w, 120, 120);
+    CHECK(h.residents_64 == 960);
+    CHECK(h.e == 1920);
+    CHECK((h.stock == std::vector<std::uint32_t>{9375, 5900}));
+    CHECK(w.rng().cursor() == cur + 2);
+    CHECK(city0(w).stock.stock[kTools] == 5000 - 512);
+    CHECK(city0(w).stock.stock[kWood] == 5000 - 1024);
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("house create G1: group 0 keeps the constructor numbers and gets its food stock") {
+    // Group 0 skips the draw block and the E / residents stores (320 / 640 are the constructor's);
+    // slot 0 (food) gets trunc(41 * 640 / 12) = 2186, the unforced others 0. No draw.
+    const auto types = registry();
+    sim::World w = build_world(types, true);
+    const std::size_t cur = w.rng().cursor();
+    REQUIRE(build_cmd(w, {sim::PlacementWire{kP, 120, 120, 0, 0, 0}}).ok());
+    const sim::House& h = house_at(w, 120, 120);
+    CHECK(h.residents_64 == 320);
+    CHECK(h.e == 640);
+    CHECK((h.stock == std::vector<std::uint32_t>{2186, 0}));
+    CHECK(w.rng().cursor() == cur);
+}
+
+TEST_CASE("house create G1: rule off and imported payloads are unchanged") {
+    const auto types = registry();
+    // Rule off: the baseline numbers, no draw.
+    {
+        sim::World w = build_world(types, false);
+        REQUIRE(build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0}}).ok());
+        const sim::House& h = house_at(w, 120, 120);
+        CHECK(h.residents_64 == 320);
+        CHECK(h.e == 640);
+        CHECK((h.stock == std::vector<std::uint32_t>{0, 0}));
+        CHECK(w.rng().cursor() == 13);
+    }
+    // Rule on, scenario houses: an explicit payload and a payload-less record are both imported.
+    {
+        Rig r = make_rig();
+        r.place(kS0, 110, 110, make_house(kS0, 300, 512, {1000, 800}));
+        r.place(kS0, 120, 110); // no payload: the constructor default, not a built house
+        sim::World w = create(r, types);
+        CHECK(house_at(w, 110, 110).residents_64 == 300);
+        CHECK(house_at(w, 110, 110).e == 512);
+        CHECK((house_at(w, 110, 110).stock == std::vector<std::uint32_t>{1000, 800}));
+        CHECK(house_at(w, 120, 110).residents_64 == 320);
+        CHECK(house_at(w, 120, 110).e == 640);
+        CHECK(w.rng().cursor() == 13);
+        // An own save keeps the numbers.
+        auto back = sim::World::load(w.save(), types);
+        REQUIRE(back.ok());
+        CHECK(back.value().state_hash() == w.state_hash());
+    }
+}
+
+TEST_CASE("house create G1: a refused initialization draws nothing charges nothing and takes no id") {
+    Opt bad;
+    bad.g1_menge_food = kEdgeBad;
+    Opt ok;
+    ok.g1_menge_food = kEdgeOk;
+    // The overflowing mod input (edge Menge 6145 with Wohnmax 65535): refused, state untouched.
+    {
+        const auto types = registry(bad);
+        sim::World w = build_world(types, true);
+        const std::uint64_t hash = w.state_hash();
+        const std::uint32_t serial = w.islands()[0]->next_serial;
+        const sim::ApplyResult res = build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0}});
+        CHECK_FALSE(res.ok());
+        CHECK(res.status == sim::Reject::HouseDomain);
+        CHECK(w.rng().cursor() == 13);
+        CHECK(w.state_hash() == hash);
+        CHECK(w.islands()[0]->next_serial == serial);
+        CHECK(city0(w).stock.stock[kTools] == 5000);
+        CHECK(at(w, 120, 120) == nullptr);
+        // A group 0 house of the same registry is still accepted.
+        CHECK(build_cmd(w, {sim::PlacementWire{kP, 120, 120, 0, 0, 0}}).ok());
+    }
+    // The neighbouring input (Menge 6144): accepted, two draws, charged once.
+    {
+        const auto types = registry(ok);
+        sim::World w = build_world(types, true);
+        REQUIRE(build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0}}).ok());
+        CHECK(w.rng().cursor() == 15);
+        const sim::House& h = house_at(w, 120, 120);
+        CHECK(h.residents_64 == 65535 * 64);
+        CHECK(h.e == 65535U * 128U);
+        CHECK(city0(w).stock.stock[kTools] == 5000 - 512);
+    }
+}
+
+TEST_CASE("house create G1: batches and the atomic dry run draw and charge once") {
+    Opt bad;
+    bad.g1_menge_food = kEdgeBad;
+    const auto good_types = registry();
+    const auto bad_types = registry(bad);
+    // Atomic success: two group 1 houses draw 2 + 2 in record order, charged once each.
+    {
+        sim::World w = build_world(good_types, true, true);
+        REQUIRE(build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0},
+                              sim::PlacementWire{kS0, 126, 120, 0, 0, 0}})
+                    .ok());
+        CHECK(w.rng().cursor() == 17);
+        // second house: T[0] = 1 -> sat 128 - 1 = 127 and T[1] = 8 -> 120 (cursor wraps after 15)
+        // stock0 = trunc(60 * 127 * 1920 / 1536) = 9525, stock1 = trunc(40 * 120 * 1920 / 1536) = 6000
+        CHECK((house_at(w, 126, 120).stock == std::vector<std::uint32_t>{9525, 6000}));
+        CHECK(city0(w).stock.stock[kTools] == 5000 - 2 * 512);
+    }
+    // Atomic abort: the refused second record aborts the first; nothing drawn, charged or taken.
+    {
+        sim::World w = build_world(bad_types, true, true);
+        const std::uint64_t hash = w.state_hash();
+        const sim::ApplyResult res = build_cmd(w, {sim::PlacementWire{kP, 120, 120, 0, 0, 0},
+                                                   sim::PlacementWire{kS0, 126, 120, 0, 0, 0}});
+        CHECK(res.status == sim::Reject::AtomicAbort);
+        CHECK(res.records[0].status == sim::Reject::AtomicAbort);
+        CHECK(res.records[1].status == sim::Reject::HouseDomain);
+        CHECK(w.state_hash() == hash);
+        CHECK(w.rng().cursor() == 13);
+    }
+    // Non-atomic: the legal record is built, the refused one is not and costs nothing.
+    {
+        sim::World w = build_world(bad_types, true, false);
+        const sim::ApplyResult res = build_cmd(w, {sim::PlacementWire{kP, 120, 120, 0, 0, 0},
+                                                   sim::PlacementWire{kS0, 126, 120, 0, 0, 0}});
+        CHECK(res.ok());
+        CHECK(res.records[0].status == sim::Reject::None);
+        CHECK(res.records[1].status == sim::Reject::HouseDomain);
+        CHECK(at(w, 126, 120) == nullptr);
+        CHECK(w.rng().cursor() == 13);
+        CHECK(city0(w).stock.stock[kTools] == 5000);
+    }
+}
+
+TEST_CASE("house create G1: the built house is stamped with the world tick and an own save keeps it") {
+    // P-6 replacement (population-live.md 21.5): the engine stamps the clock tick at the command.
+    const auto types = registry();
+    sim::World w = build_world(types, true);
+    sim::WorldTestAccess::clock(w).ms = 2 * 3000 - 2;
+    w.advance(2); // tick 3000
+    REQUIRE(w.clock().tick() == 3000);
+    REQUIRE(build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0}}).ok());
+    CHECK(house_at(w, 120, 120).last == 3000);
+    auto back = sim::World::load(w.save(), types);
+    REQUIRE(back.ok());
+    CHECK(back.value().state_hash() == w.state_hash());
 }

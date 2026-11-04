@@ -426,7 +426,7 @@ TEST_CASE("resident dispatch: the draw trace of the spawn block") {
     }
 }
 
-TEST_CASE("resident job: a walker fetches food at a stall and the house gains exactly amount*16") {
+TEST_CASE("resident job: a walker fetches food at a stall and the house gains exactly amount times 16") {
     const auto types = registry();
     Rig r = standard_rig();
     sim::World w = create(r, types);

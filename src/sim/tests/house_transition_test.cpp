@@ -691,7 +691,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "house transition: the kernel result is committed first; skipped and unevaluated are typed") {
+    "house transition: the kernel result is committed first, skipped and unevaluated are typed") {
     const auto types = registry();
     sim::World w = create(upgrade_rig(1900), types);
     stock_materials(w);

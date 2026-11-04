@@ -265,7 +265,7 @@ TEST_CASE("population B: the digest layout of nonzero metadata, hand-written") {
 }
 
 TEST_CASE(
-    "population L3: shipped [BAUSTUFEN] equals the independent oracle and is in the registry") {
+    "population L3: shipped BAUSTUFEN equals the independent oracle and is in the registry") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");

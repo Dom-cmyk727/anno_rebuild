@@ -60,7 +60,7 @@ struct SearchResult {
 /// index of the first refused step (1-based) or 0.
 struct RouteCheck {
     bool legal = false;
-    std::size_t bad_step = 0;
+    std::uint64_t bad_step = 0;
     std::string reason;
 };
 /// `leave_exempt` / `enter_exempt` (the resident endpoint adapter): the first / last step is only

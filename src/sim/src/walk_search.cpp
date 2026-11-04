@@ -375,7 +375,7 @@ RouteCheck route_legal(const WalkCells& input, const WalkTables& tables, std::ui
                        const WalkPoint& start, std::span<const TileXY> route, bool leave_exempt,
                        bool enter_exempt) {
     RouteCheck out;
-    const auto refuse = [&](std::size_t step, std::string why) {
+    const auto refuse = [&](std::uint64_t step, std::string why) {
         out.legal = false;
         out.bad_step = step;
         out.reason = std::move(why);

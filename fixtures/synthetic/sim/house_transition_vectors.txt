@@ -79,6 +79,9 @@ grp SX num=2 needs=26:65535:1 infra_end=1 wohn=65535
 grp SY num=2 needs=26:255:1 infra_end=1 wohn=100
 grp SZ1 num=2 needs=26:6144:1 infra_end=1 wohn=65535
 grp SZ2 num=2 needs=26:6145:1 infra_end=1 wohn=65535
+grp SW1 num=2 needs=26:1:0,27:6145:1 infra_end=2 wohn=65535
+grp SW2 num=2 needs=26:1:0,27:6144:1 infra_end=2 wohn=65535
+grp SW3 num=2 needs=26:65535:0,27:1:1 infra_end=2 wohn=65535
 grp SP num=0 needs=26:41:1,28:50:1 infra_end=2 wohn=5
 # upgrade: s(26) = 2500*1536/64000 = 60, s(28) = 2000*1536/32000 = 96; E and residents kept
 setgroup SG1-upgrade goods=G old=SO new=SN e=640 res64=1000 stock=2500,2000 draws=none => stock=3000,0,8000,0 e=640 res64=1000 used=0
@@ -99,6 +102,11 @@ setgroup SG6-first-pioneer goods=G old=none new=SP e=640 res64=320 stock=none dr
 setgroup SG7-first-edge-accepted goods=G old=none new=SZ1 e=640 res64=320 stock=none draws=0 => stock=4294901760 e=8388480 res64=4194240 used=1
 setgroup SG7b-first-edge-refused goods=G old=none new=SZ2 e=640 res64=320 stock=none draws=0 => fault=overflow used=0
 setgroup SG7c-first-huge-refused goods=G old=none new=SX e=640 res64=320 stock=none draws=0 => fault=overflow used=0
+# the forced need in slot 1 is bounded by the drawn term alone (6145 refused, 6144 accepted); slot 0 unforced gets
+# trunc(E*menge/12) = 8388480*1/12 = 699040; an unforced slot 0 with menge 65535 needs 45.8e9 > u32: refused, used=0
+setgroup SG7e-forced-slot1-refused goods=G old=none new=SW1 e=640 res64=320 stock=none draws=0,0 => fault=overflow used=0
+setgroup SG7f-forced-slot1-accepted goods=G old=none new=SW2 e=640 res64=320 stock=none draws=0 => stock=699040,4294901760 e=8388480 res64=4194240 used=1
+setgroup SG7g-unforced-food-refused goods=G old=none new=SW3 e=640 res64=320 stock=none draws=0 => fault=overflow used=0
 # neighbouring legal input: wohn 100 -> E = 12800, res64 = 6400; draw 7 -> sat 121: 255*121*12800/1536 = 257125
 setgroup SG7d-first-neighbour goods=G old=none new=SY e=640 res64=320 stock=none draws=7 => stock=257125 e=12800 res64=6400 used=1
 

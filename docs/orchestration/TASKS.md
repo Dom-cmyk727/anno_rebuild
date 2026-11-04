@@ -111,10 +111,22 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
   rather than a logic bug — `wait turns 3` is sim-turn-gated, not wall-clock, so the earlier quit-deadline class of
   bug does not explain it directly. This failure was never reached before tonight, because every prior WSL ASan run
   failed earlier at the `opening_session_replay` required-contract gate (fixed above) before reaching the full
-  parallel batch — so this is new evidence, not a regression from `3a2da9b9`. A same-binaries, no-rebuild repro-only
-  rerun of just the app lane is in flight now (`wsl-w19`) to establish whether it reproduces. **The closeout is not
-  yet clear; do not mark W4-OPENING-1-CLOSE's gate chain done until `wsl-w19`'s result is read and, if it reproduces,
-  this is root-caused (or deliberately accepted with a disposition, as the closeout's own evidence policy requires).**
+  parallel batch — so this is new evidence, not a regression from `3a2da9b9`.
+  **`wsl-w19` (same binaries, no rebuild, app lane only) came back clean**: 266/266 executed, 0 failed, 0 sanitizer
+  lines — `viewer_wiring_opening_controls` passed this time, confirming the contention-flake read.
+  **Gates 5.2–5.4, at head `3a2da9b9` (clean, dirty 0), all done:**
+  - Native app (`^anno_app_tests\.|^anno_app_input_tests\.|^anno_app_alloc_tests\.`, `--exclude-label heavy`):
+    PASS, 260/262 executed, 0 failed (`cache/gates/native-close1a.txt`).
+  - Native GPU (`^anno_render_gpu_tests\.`): PASS, 116/116 (`native-close1g.txt`).
+  - Native render (`^anno_render_tests\.`, full corpus incl. `heavy`): FAIL, but the one failure is the known,
+    accepted River Q5 disposition itself — `river_flow_corpus_test.cpp`, `D_256x256_0045_5B`, `CHECK( 0.485714 >=
+    0.55 )`, the exact score item 1 already recorded — not a new or different failure (`native-close1r.txt/.log`).
+  - Window tests on the real RTX 4090 (`--gpu`, not the dummy driver): `opening_gpu_window` and `opening_controls`
+    both PASS (`gpuwin-close1-*`).
+  - WSL warnings (GCC 13 + Clang 18, `-O3 -Werror`, viewer+GPU on and off): clean on both compilers, both
+    configurations (`unix-warnings-closeout-final.log`).
+  **Item 6 (review + publish) in progress:** an independent read-only review of the full closeout package
+  (`02133ade`..`3a2da9b9`, all 11 commits) is running now. Push is pending that review and a REPORTS entry.
 - **New finding, for the orchestrator (depth session, in passing).** With the depth on, `--play` on a *fixed* map
   draws no start Kontor: `fixed_map.cpp:299` creates it with item byte0f 0, so the depth puts it under the land and
   the 26.5 sea (`--depth off`, or `--shore 16.5`/`26.5`, makes no difference; verified with `--png`, sheet

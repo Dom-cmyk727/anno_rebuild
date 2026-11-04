@@ -1564,7 +1564,7 @@ TEST_CASE("resident job P-15: a walled-in stand has no route home (disconnected)
     CHECK_FALSE(h.route.has_value());
 }
 
-TEST_CASE("resident job P-15: the forward replay refuses a jump, a wall step and a wrong end") {
+TEST_CASE("resident job P-15: the forward replay refuses a jump, a wall step and a wrong start") {
     const HomeRoute h = home_route([](Rig& r) { r.wall(112, 110); });
     const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
     const auto legal = [&](std::vector<sim::TileXY> route, bool adapter = true) {
@@ -1583,4 +1583,40 @@ TEST_CASE("resident job P-15: the forward replay refuses a jump, a wall step and
     // The real route is accepted.
     REQUIRE(h.route.has_value());
     CHECK(legal(*h.route).legal);
+}
+
+TEST_CASE("resident job P-15: the endpoint adapter is scoped to a building start and an entrance end") {
+    // Stall at (114, 110), house (110, 110) with its entrance tile; walls at (112, 110) and (113, 112).
+    const HomeRoute h = home_route([](Rig& r) {
+        r.wall(112, 110);
+        r.wall(113, 112);
+    });
+    REQUIRE(h.route.has_value());
+    const sim::FixedPos stand = sim::tile_centre(sim::TileXY{114, 110});
+    const auto legal = [&](const sim::FixedPos from, std::vector<sim::TileXY> route, bool adapter) {
+        return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type, from,
+                                         0, route, adapter);
+    };
+    // The real route is accepted with the adapter (the start tile holds the stall).
+    CHECK(legal(stand, *h.route, true).legal);
+    // A wrong END: a legal open-ground prefix that stops short of the entrance is refused whether
+    // or not the adapter is on (the route must end on an entrance tile of the home).
+    std::vector<sim::TileXY> shortened(h.route->begin(), h.route->end() - 1);
+    for (const bool adapter : {false, true}) {
+        const sim::RouteCheck c = legal(stand, shortened, adapter);
+        CHECK_FALSE(c.legal);
+        CHECK(c.reason.find("entrance") != std::string::npos);
+    }
+    // A wall as the LAST tile: it is no entrance tile, so the last step is not exempt (refused).
+    CHECK_FALSE(legal(stand, {{114, 110}, {113, 110}, {112, 110}}, true).legal);
+    // A wrong START with the adapter DISABLED (and enabled): the route must begin on the walker's tile.
+    for (const bool adapter : {false, true}) {
+        CHECK_FALSE(legal(stand, {{113, 110}, {112, 110}}, adapter).legal);
+    }
+    // The FIRST step out of a non-building tile is not exempt: a walker standing on open ground
+    // that is told to step into the wall at (113, 112) is refused with the adapter on.
+    const sim::FixedPos open_tile = sim::tile_centre(sim::TileXY{113, 111});
+    const sim::RouteCheck into_wall = legal(open_tile, {{113, 111}, {113, 112}}, true);
+    CHECK_FALSE(into_wall.legal);
+    CHECK(into_wall.bad_step == 1);
 }

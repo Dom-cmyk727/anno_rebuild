@@ -525,8 +525,31 @@ RouteCheck resident_route_legal(const Island& island, const TypeRegistry& types,
         return c;
     }
     WalkCells cells(island, types, *tables, area.square(), 4, area);
-    return route_legal(cells, *tables, layer, walk_point_of(from), route, endpoint_adapter,
-                       endpoint_adapter);
+    // The adapter is scoped (C3 review P3-1): the first step is exempt only when the walker's tile
+    // really holds a building (a stand it leaves), the last only when the route's last tile is an
+    // entrance tile of the home. A route that does not end on an entrance tile is never legal here.
+    bool leave_exempt = false;
+    if (endpoint_adapter && !route.empty()) {
+        const TileXY t = route.front();
+        if (const Slot idx = island.tile_index(t.x, t.y); idx != kNoSlot) {
+            const BuildingType* ty = types.find(TypeId{island.tiles.object(idx)});
+            leave_exempt = ty != nullptr && ty->walk_class == 2;
+        }
+    }
+    bool ends_at_entrance = false;
+    if (!route.empty()) {
+        for (const WalkPoint& p : entrance_walk_points(home, home_type)) {
+            ends_at_entrance = ends_at_entrance || p.tile == route.back();
+        }
+    }
+    RouteCheck out = route_legal(cells, *tables, layer, walk_point_of(from), route, leave_exempt,
+                                 endpoint_adapter && ends_at_entrance);
+    if (out.legal && !ends_at_entrance) {
+        out.legal = false;
+        out.bad_step = route.size();
+        out.reason = "the route does not end on an entrance tile of the home";
+    }
+    return out;
 }
 
 std::optional<std::vector<TileXY>>

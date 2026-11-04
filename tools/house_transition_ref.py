@@ -200,6 +200,7 @@ def setgroup(goods, old, new, e, res64, stock, draws):
 
 KEYS = {
     'ladder': {'next', 'prev'},
+    'adjacent': {'ok'},
     'variant': {'draw', 'idx', 'type'},
     'matgate': {'ok', 'store', 'spent'},
     'upcheck': {'result', 'f', 'b', 'i', 'fault'},
@@ -233,6 +234,11 @@ def parse_group(kv):
 
 
 def run_vector(kind, kv, groups, goods):
+    if kind == 'adjacent':
+        # SetGroup(cur + 0x118) on upgrade, (cur - 0x118) on downgrade: the new group is the adjacent record
+        old, new = int(kv['old']), int(kv['new'])
+        want = old + 1 if kv['dir'] == 'up' else old - 1
+        return {'ok': str(int(new == want and new >= 0))}
     if kind == 'ladder':
         n, p = ladder(int(kv['id']), int(kv['stride']), set(ints(kv['have'])))
         return {'next': 'none' if n is None else str(n), 'prev': 'none' if p is None else str(p)}

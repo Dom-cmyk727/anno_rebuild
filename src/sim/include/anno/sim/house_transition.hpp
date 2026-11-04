@@ -46,6 +46,8 @@ enum class HouseFault : std::uint8_t {
     Overflow,          ///< a result does not fit the widened field
     NotEvaluated,      ///< the kernel result was NotEvaluated (apply_house_effects only)
     NoSerialContext,   ///< the live update ran without TickContext::serial (L4)
+    GroupNotAdjacent,  ///< the new type's group is not old group +1 (upgrade) / -1 (downgrade)
+    CountMismatch,     ///< the city's house count of the old group is zero (a broken derived index)
 };
 [[nodiscard]] const char* house_fault_name(HouseFault fault);
 
@@ -152,7 +154,7 @@ struct HouseOutcome {
     std::uint16_t variant_draw = 0;
     std::uint32_t variant_index = 0;
     std::uint32_t first_assignment_draws = 0;
-    std::uint32_t walkers_ended = 0;
+    std::uint32_t walkers_detached = 0; ///< removal: walkers whose home became none (not ended)
     UpgradeScores scores; ///< filled by apply_house_effects' UpgradeCheck arm
 };
 

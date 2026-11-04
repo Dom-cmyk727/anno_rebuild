@@ -67,15 +67,27 @@ HouseFault view_of(const HouseEnv& env, const BuildingType& type, std::uint32_t&
     return HouseFault::None;
 }
 
-void end_walker(const HouseEnv& env, FigureId id, std::uint32_t& ended) {
+/// The house destructor's detach (D 0x10075bc0: house.detach(fig) 0x10075b70 clears the slot, then
+/// fig.vt+0x2c(house)): the figure is NOT ended; it lives on with home = none (as the workshop and
+/// farm figures do, OQ-131) and its body ends it at its next arrival or visit without a home.
+void detach_walker(const HouseEnv& env, FigureId id, std::uint32_t& detached) {
     Figure* f = id.valid() ? find_figure(env.figures, id) : nullptr;
     if (f == nullptr) {
         return;
     }
-    Effects fx; // the releases it would carry are applied by the caller (the house slot) or moot
-    if (!f->expiry_stamp.has_value()) {
-        end_figure(env.figures, *f, env.t, fx);
-        ++ended;
+    f->home = BuildingId{};
+    ++detached;
+}
+
+/// Lazy trimming (the original keeps 4 slots and only gates the spawn by the type's maximum): the
+/// table grows to the new maximum and drops only EMPTY trailing slots beyond it; an occupied slot
+/// stays until its walker releases it.
+void trim_walkers(House& h, std::size_t max) {
+    while (h.walkers.size() > max && !h.walkers.back().valid()) {
+        h.walkers.pop_back();
+    }
+    if (h.walkers.size() < max) {
+        h.walkers.resize(max, FigureId{});
     }
 }
 
@@ -115,6 +127,16 @@ HouseFault validate_targets(const HouseEnv& env, const BuildingType& old_type,
     return HouseFault::None;
 }
 
+/// The derived house count of the old group must be non-zero and the new group inside the table:
+/// a break of the derived index is reported before anything changes, never clamped.
+HouseFault count_problem(const City& city, std::uint32_t old_group, std::uint32_t new_group) {
+    if (old_group >= city.index.house_counts.size() ||
+        new_group >= city.index.house_counts.size() || city.index.house_counts[old_group] == 0) {
+        return HouseFault::CountMismatch;
+    }
+    return HouseFault::None;
+}
+
 HouseOutcome fault_outcome(HouseFault f) {
     HouseOutcome o;
     o.kind = HouseOutcomeKind::Fault;
@@ -145,25 +167,16 @@ HouseOutcome transition(const HouseEnv& env, Island& island, const BuildingKey& 
     House& h = *loc.house;
     City& city = *loc.city;
     out.counter_sub = tdiv(h.residents_64, 64);
-    if (old_group < city.index.house_counts.size() && city.index.house_counts[old_group] > 0) {
-        --city.index.house_counts[old_group];
-    }
+    --city.index.house_counts[old_group]; // checked non-zero before anything changed
     // detach old type, attach the new one, SetGroup (stock, E, residents), walker slots.
     loc.building->type = target->id;
     h.stock = sg.stock;
     h.e = sg.e;
     h.residents_64 = sg.residents_64;
     out.first_assignment_draws = sg.draws;
-    const std::size_t walkers = house_walker_facts(*target).walker_max;
-    for (std::size_t k = walkers; k < h.walkers.size(); ++k) {
-        const FigureId id = h.walkers[k];
-        end_walker(env, id, out.walkers_ended);
-    }
-    h.walkers.resize(walkers, FigureId{});
+    trim_walkers(h, house_walker_facts(*target).walker_max);
     out.counter_add = tdiv(h.residents_64, 64); // read AFTER SetGroup
-    if (new_group < city.index.house_counts.size()) {
-        ++city.index.house_counts[new_group];
-    }
+    ++city.index.house_counts[new_group]; // checked inside the table before anything changed
     // The re-stamp of the footprint tiles with the new type (0x1002c790 -> 0x1008ec90 ->
     // 0x10082040).
     std::vector<std::uint64_t> written;
@@ -206,6 +219,10 @@ const char* house_fault_name(HouseFault fault) {
         return "not_evaluated";
     case HouseFault::NoSerialContext:
         return "no_serial_context";
+    case HouseFault::GroupNotAdjacent:
+        return "group_not_adjacent";
+    case HouseFault::CountMismatch:
+        return "count_mismatch";
     }
     return "unknown";
 }
@@ -283,6 +300,10 @@ UpgradeScores upgrade_scores(const PopulationView& cur, const PopulationView& ne
                              std::span<const std::uint32_t> stock) {
     UpgradeScores r;
     if (cur.group->no_upgrade) {
+        return r;
+    }
+    if (cur.group->needs.empty()) {
+        r.fault = HouseFault::MissingGroup;
         return r;
     }
     if (stock.size() != cur.group->needs.size()) {
@@ -508,6 +529,12 @@ HouseOutcome upgrade_house(const HouseEnv& env, Island& island, const BuildingKe
     if (const HouseFault f = view_of(env, *ladder.next, new_group, next); f != HouseFault::None) {
         return fault_outcome(f);
     }
+    if (new_group != old_group + 1) { // SetGroup(cur + 0x118) (0x1002cd0e..0x1002cd77)
+        return fault_outcome(HouseFault::GroupNotAdjacent);
+    }
+    if (const HouseFault f = count_problem(*loc.city, old_group, new_group); f != HouseFault::None) {
+        return fault_outcome(f);
+    }
     // The materials gate (0x1002c030) of the BASE next type; a failure changes nothing at all.
     const std::vector<std::uint32_t> amounts = house_material_amounts(env.cfg, *ladder.next);
     if (!house_materials_available(env.cfg, *loc.city, amounts)) {
@@ -551,6 +578,12 @@ HouseOutcome downgrade_house(const HouseEnv& env, Island& island, const Building
         f != HouseFault::None) {
         return fault_outcome(f);
     }
+    if (old_group == 0 || new_group != old_group - 1) { // SetGroup(cur - 0x118) (0x1002ceb1..0x1002cf06)
+        return fault_outcome(HouseFault::GroupNotAdjacent);
+    }
+    if (const HouseFault f = count_problem(*loc.city, old_group, new_group); f != HouseFault::None) {
+        return fault_outcome(f);
+    }
     if (const HouseFault f = validate_targets(env, *loc.type, *ladder.previous, new_group);
         f != HouseFault::None) {
         return fault_outcome(f);
@@ -578,10 +611,10 @@ HouseOutcome remove_house(const HouseEnv& env, Island& island, const BuildingKey
         out.old_group = *g;
     }
     out.counter_sub = tdiv(loc.house->residents_64, 64);
-    // The walkers end through the standard end path (home none, expiry list) and their slots are
-    // released exactly once (the slot is cleared here; the house is gone right after).
+    // The walkers are detached, not ended (0x10075bc0): the slot is cleared, the figure's home
+    // becomes none and it lives on.
     for (FigureId& slot : loc.house->walkers) {
-        end_walker(env, slot, out.walkers_ended);
+        detach_walker(env, slot, out.walkers_detached);
         slot = FigureId{};
     }
     if (!remove_building(env.cfg, env.rules, env.types, env.players, island, key)) {

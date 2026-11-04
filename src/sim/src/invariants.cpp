@@ -84,10 +84,8 @@ std::string World::resident_problem() const {
                        " is beyond the route (" + std::to_string(r.route.size()) + " waypoints)";
             }
         }
-        if (f.resident.has_value() && !f.expiry_stamp.has_value() && !f.home.valid()) {
-            return where + ".resident: a walker that has not ended has no home (a house walker "
-                           "holds its house's walker slot until its end)";
-        }
+        // A walker without a home (its house was removed: the destructor detaches, 0x10075bc0)
+        // lives on until its body ends it.
         if (f.home.valid()) {
             const Island* is = island_ptr(island_of(f.home));
             const Building* b = is != nullptr ? is->find_building(f.home) : nullptr;

@@ -88,3 +88,11 @@ setgroup SG3-downgrade goods=G old=SN new=SD e=640 res64=1000 stock=3000,0,8000,
 setgroup SG4-first goods=G old=none new=SF e=640 res64=320 stock=none draws=5,40 => stock=15375,0,6000 e=1920 res64=960 used=2
 setgroup SG5-first-food-unforced goods=G old=none new=SG e=640 res64=320 stock=none draws=40 => stock=16000,0,6000 e=1920 res64=960 used=1
 setgroup SG6-first-pioneer goods=G old=none new=SP e=640 res64=320 stock=none draws=none => stock=2186,0 e=640 res64=320 used=0
+
+# --- L3 review P2-2: the new group is the ADJACENT record (SetGroup cur +/- 0x118, 0x1002cd0e..cd77, 0x1002ceb1..cf06)
+adjacent A1-up-adjacent old=0 new=1 dir=up => ok=1
+adjacent A2-up-same old=1 new=1 dir=up => ok=0
+adjacent A3-up-skip old=0 new=2 dir=up => ok=0
+adjacent A4-down-adjacent old=2 new=1 dir=down => ok=1
+adjacent A5-down-from-zero old=0 new=0 dir=down => ok=0
+adjacent A6-down-skip old=3 new=1 dir=down => ok=0

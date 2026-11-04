@@ -193,7 +193,9 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         if (h->stock.size() != r.stock.size()) {
             return sizes("stock", h->stock.size(), r.stock.size());
         }
-        if (h->walkers.size() != r.walkers.size()) {
+        // Lazy trimming (population-live.md section 18): the table is at least the type's
+        // maximum; slots beyond it stay while a walker occupies them.
+        if (h->walkers.size() < r.walkers.size()) {
             return sizes("walkers", h->walkers.size(), r.walkers.size());
         }
     } else if (std::holds_alternative<Mine>(payload)) {

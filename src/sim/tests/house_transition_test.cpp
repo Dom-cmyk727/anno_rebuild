@@ -337,6 +337,7 @@ struct Mode {
     bool no_upgrade_group0 = false;
     bool group1_food_only = false; // group 1 needs only goods 26 (a missing-slot probe is not this)
     bool group1_needs_28 = false;  // group 1 needs goods 28 the house group does not have
+    bool s_in_group0 = false;      // the 9520 family is PRODTYPE 97 (not the adjacent group)
 };
 
 sim::BuildingType house_t(sim::TypeId id, std::uint32_t prodtype, std::uint32_t w,
@@ -385,12 +386,12 @@ std::shared_ptr<const sim::TypeRegistry> registry(Mode m = {}) {
     b.add(house_t(kP1, 97, 2, 2, static_cast<std::uint8_t>(2 | (2 << 6))));
     b.add(house_t(kP3, 97, 2, 2, 0));
     sim::BuildingType s0 =
-        house_t(kS0, 98, m.footprint_mismatch ? 3 : 2, 1, static_cast<std::uint8_t>(3 | (1 << 6)));
+        house_t(kS0, m.s_in_group0 ? 97 : 98, m.footprint_mismatch ? 3 : 2, 1, static_cast<std::uint8_t>(3 | (1 << 6)));
     s0.cost_goods = {{kTools, 512}, {kWood, 1024}};
     b.add(s0);
-    b.add(house_t(kS1, 98, 2, 1, 0));
+    b.add(house_t(kS1, m.s_in_group0 ? 97 : 98, 2, 1, 0));
     if (!m.no_variant_9522) {
-        b.add(house_t(kS2, 98, 2, 1, 0));
+        b.add(house_t(kS2, m.s_in_group0 ? 97 : 98, 2, 1, 0));
     }
     sim::BuildingType stall;
     stall.id = kStallT;
@@ -939,18 +940,28 @@ TEST_CASE("house transition: removal with an active walker carrying cargo ends i
     Spy spy;
     const auto o = sim::remove_house(env_of(w, spy, 5000), island0(w), key_at(w, 110, 110));
     REQUIRE(o.kind == sim::HouseOutcomeKind::Removed);
-    CHECK(o.walkers_ended == 1);
+    CHECK(o.walkers_detached == 1);
     CHECK(at(w, 110, 110) == nullptr);
     f = sim::find_figure(w.figures(), id);
     REQUIRE(f != nullptr);
-    CHECK(f->expiry_stamp.has_value());
+    // The destructor detaches (0x10075bc0): the walker is NOT ended; it lives on without a home.
+    CHECK_FALSE(f->expiry_stamp.has_value());
     CHECK_FALSE(f->home.valid());
     REQUIRE(f->resident.has_value());
-    CHECK(f->resident->step == sim::ResidentStep::Done);
-    CHECK(std::count(w.figures().expiry.begin(), w.figures().expiry.end(), id) == 1);
+    CHECK(f->resident->step == sim::ResidentStep::ToHome);
+    CHECK(f->resident->cargo[0].goods == kFood);
+    CHECK(std::count(w.figures().expiry.begin(), w.figures().expiry.end(), id) == 0);
     CHECK(city0(w).stock.stock[kFood] == stock_after);
     CHECK(w.check_invariants() == "");
-    // The world keeps running; the figure is destroyed by the expiry list and nothing leaks.
+    // The world keeps running; the homeless walker finishes its walk, delivers nothing (its cargo
+    // is lost), ends, and the expiry list destroys it.
+    for (int i = 0; i < 40000 && !sim::find_figure(w.figures(), id)->expiry_stamp.has_value() &&
+                    sim::find_figure(w.figures(), id) != nullptr;
+         ++i) {
+        w.advance(2);
+        REQUIRE_MESSAGE(w.check_invariants() == "", w.check_invariants());
+    }
+    CHECK(city0(w).stock.stock[kFood] == stock_after);
     for (int i = 0; i < 30000 && sim::find_figure(w.figures(), id) != nullptr; ++i) {
         w.advance(2);
     }
@@ -959,7 +970,7 @@ TEST_CASE("house transition: removal with an active walker carrying cargo ends i
     CHECK(w.check_invariants() == "");
 }
 
-TEST_CASE("house transition: a shrinking walker table ends the walkers of the dropped slots") {
+TEST_CASE("house transition: a smaller walker maximum keeps occupied slots and trims only empty ones") {
     const auto types = registry();
     Rig r = make_rig();
     r.place(kP1, 110, 110, make_house(kP1, 8 * 64, 640, {0, 3200}));
@@ -988,9 +999,11 @@ TEST_CASE("house transition: a shrinking walker table ends the walkers of the dr
     spy.values = {0};
     const auto o = sim::upgrade_house(env_of(w, spy, 777), island0(w), key_at(w, 110, 110));
     REQUIRE(o.kind == sim::HouseOutcomeKind::Upgraded); // 9520 allows one walker
-    CHECK(o.walkers_ended == 1);
-    CHECK(house_at(w, 110, 110).walkers.size() == 1);
-    CHECK(sim::find_figure(w.figures(), second)->expiry_stamp.has_value());
+    // The original keeps its slots; the type maximum only gates the spawn (lazy trimming).
+    CHECK(house_at(w, 110, 110).walkers.size() == 2);
+    CHECK(house_at(w, 110, 110).walkers[1] == second);
+    CHECK_FALSE(sim::find_figure(w.figures(), second)->expiry_stamp.has_value());
+    CHECK(sim::find_figure(w.figures(), second)->home.valid());
     CHECK(w.check_invariants() == "");
 }
 
@@ -1036,4 +1049,34 @@ TEST_CASE("house transition: save, reload and the same operations give identical
             sim::HouseOutcomeKind::Downgraded);
     CHECK(d.state_hash() == a.state_hash());
     CHECK(d.save() == a.save());
+}
+
+TEST_CASE("house transition: the new group must be the adjacent record (SetGroup cur +/- 1)") {
+    // 0x1002cd0e..0x1002cd77 (upgrade: cur + 0x118), 0x1002ceb1..0x1002cf06 (downgrade: cur - 0x118).
+    Mode m;
+    m.s_in_group0 = true; // the next type of 9501 is in the SAME group
+    const auto types = registry(m);
+    {
+        sim::World w = create(upgrade_rig(), types);
+        stock_materials(w);
+        const std::uint64_t before = w.state_hash();
+        Spy spy;
+        spy.values = {0};
+        const auto o = sim::upgrade_house(env_of(w, spy), island0(w), key_at(w, 110, 110));
+        CHECK(o.kind == sim::HouseOutcomeKind::Fault);
+        CHECK(o.fault == sim::HouseFault::GroupNotAdjacent);
+        CHECK(spy.sites.empty());                 // nothing drawn
+        CHECK(w.state_hash() == before);          // nothing spent, nothing changed
+    }
+    {
+        // a downgrade from group 0 has no previous record
+        sim::World w = create(upgrade_rig(2000, kS0), types);
+        const std::uint64_t before = w.state_hash();
+        Spy spy;
+        spy.values = {0};
+        const auto o = sim::downgrade_house(env_of(w, spy), island0(w), key_at(w, 110, 110));
+        CHECK(o.kind == sim::HouseOutcomeKind::Fault);
+        CHECK(o.fault == sim::HouseFault::GroupNotAdjacent);
+        CHECK(w.state_hash() == before);
+    }
 }

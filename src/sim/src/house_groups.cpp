@@ -315,22 +315,24 @@ std::string derive_group(const HouseGroup& group, std::span<const GoodsInfo> goo
     // id that has a need slot and continues through substitutes that have one; visiting a goods id
     // twice (a cycle or self-loop) is a content error. Only that relevant walk is checked, so an
     // unrelated cycle among goods nobody needs is not an error, and the goods count is irrelevant.
+    std::vector<std::uint32_t> visited(goods.size(), 0); // stamp = start + 1: no clearing per walk
     for (GoodsId start = 0; start < goods.size(); ++start) {
         if (out.lookup[start] == count) {
             continue;
         }
-        std::vector<GoodsId> seen{start};
+        const std::uint32_t stamp = start + 1U;
+        visited[start] = stamp;
         GoodsId cur = start;
         for (;;) {
             const GoodsId sec = goods[cur].id_sec;
             if (sec == 0 || sec >= goods.size() || out.lookup[sec] == count) {
                 break;
             }
-            if (std::find(seen.begin(), seen.end(), sec) != seen.end()) {
+            if (visited[sec] == stamp) {
                 return "IdSec cycle through goods " + std::to_string(sec) + " (reached from goods " +
                        std::to_string(start) + "): a delivery would credit the cycle repeatedly";
             }
-            seen.push_back(sec);
+            visited[sec] = stamp;
             cur = sec;
         }
     }

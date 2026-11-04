@@ -1210,6 +1210,38 @@ TEST_CASE("house set group G3: a refused first assignment draws nothing and chan
             CHECK(draw.sites.empty());
         }
     }
+    // A repeated ware (derive_group lets the last slot win): the forced draw of slot 0 satisfies every
+    // slot of ware 26, so the UNFORCED slot 1 is bounded at sat = 128 too (review P2).
+    {
+        const auto rep = [&](std::uint16_t m1) {
+            DomainGroup d;
+            d.group.number = 2;
+            d.group.wohnmax = 65535;
+            d.group.needs = {{26, true, 1}, {26, false, m1}};
+            const std::string problem =
+                sim::derive_group(d.group, goods, sim::PopulationRoles{}, d.derived);
+            REQUIRE_MESSAGE(problem.empty(), problem);
+            return d;
+        };
+        {
+            const DomainGroup d = rep(65535);
+            Scripted draw;
+            draw.values = {0};
+            const sim::SetGroupResult r = run(d, draw);
+            CHECK(r.fault == sim::HouseFault::Overflow);
+            CHECK(draw.sites.empty());
+            CHECK(r.draws == 0);
+        }
+        {
+            const DomainGroup d = rep(6144);
+            Scripted draw;
+            draw.values = {0};
+            const sim::SetGroupResult r = run(d, draw);
+            CHECK(r.fault == sim::HouseFault::None);
+            CHECK(draw.sites.size() == 1);
+            CHECK(r.stock == std::vector<std::uint32_t>{699040U, 4294901760U});
+        }
+    }
     // Group number 0 never draws and keeps the constructor numbers: the huge group is accepted by
     // the first-assignment path (it does not use Wohnmax there).
     {

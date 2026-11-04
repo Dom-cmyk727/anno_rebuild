@@ -1232,3 +1232,36 @@ TEST_CASE("goods G2: a cyclic IdSec is a registry error and a legal chain is not
     CHECK(build(27, 0, true).ok());
     CHECK(build(27, 26, false).ok());
 }
+
+TEST_CASE("goods G2: a shared need slot through IdSec substitution is legal and a cycle through it is not") {
+    // KAPELLE (82) is the only need; goods 83 (KIRCHE) has no slot of its own, so the derived
+    // lookup gives it KAPELLE's slot 0 (the one-pass IdSec substitution, AnnoGame 0x10014b78). Two
+    // goods then share one slot: legal. 82 <-> 83 closes a cycle through the shared slot: refused.
+    const auto build = [&](sim::GoodsId sec82, sim::GoodsId sec83) {
+        std::vector<sim::GoodsInfo> goods = sim::original_goods();
+        goods[82].id_sec = sec82;
+        goods[83].id_sec = sec83;
+        sim::HouseGroup g0;
+        g0.number = 0;
+        g0.wohnmax = 8;
+        g0.no_downgrade = true;
+        g0.needs = {{26, true, 41}, {82, true, 41}};
+        sim::HouseGroup g1 = g0;
+        g1.number = 1;
+        g1.no_downgrade = false;
+        sim::TypeRegistry::Builder bld;
+        bld.config(syn::population_config());
+        bld.walk_tables(sim::synthetic_walk_tables());
+        bld.goods(goods);
+        bld.house_groups({g0, g1});
+        bld.add(house_t(kP, 97, 2, 0));
+        return bld.build();
+    };
+    auto legal = build(0, 82); // 83 -> 82: two goods, one slot
+    REQUIRE_MESSAGE(legal.ok(), (legal.ok() ? std::string() : legal.error()));
+    CHECK(legal.value()->derived_groups()[0].lookup[83] == 1);
+    CHECK(legal.value()->derived_groups()[0].lookup[82] == 1);
+    auto cyc = build(83, 82); // 82 -> 83 -> 82 through the shared slot
+    REQUIRE_FALSE(cyc.ok());
+    CHECK(cyc.error().find("IdSec cycle") != std::string::npos);
+}

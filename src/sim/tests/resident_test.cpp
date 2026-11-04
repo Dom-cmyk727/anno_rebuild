@@ -280,7 +280,7 @@ Kv run_vector(const std::string& kind, const Kv& kv, const std::map<std::string,
         const Goods& g = goods.at(kv.at("goods"));
         const House& h = houses.at(kv.at("house"));
         sim::HouseGroup grp;
-        grp.needs = h.needs;
+        grp.needs = h.needs; // the vector's lookup= field is the reference's input; the C++ derives its own
         // derive_group binds the population roles (infrastructure goods 0x4c..0x5a), which need a
         // table of the original's size; a vector with a smaller goods table is padded (the padding
         // goods have no IdSec and no need).

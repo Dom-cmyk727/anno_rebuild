@@ -471,9 +471,18 @@ SetGroupResult house_set_group(DrawSource& draw, std::span<const GoodsInfo> good
             }
             const std::size_t chk_count =
                 std::min<std::size_t>(new_group.derived->infra_end, needs.size());
+            // A forced draw satisfies EVERY slot of that ware (the flag is per ware, and derive_group
+            // lets a ware repeat), so a slot is bounded at sat = 128 when ANY forced slot below
+            // chk_count carries its ware, forced itself or not.
+            std::vector<std::uint8_t> drawn_ware(goods.size(), 0);
+            for (std::size_t j = 0; j < chk_count; ++j) {
+                if (needs[j].force) {
+                    drawn_ware[needs[j].ware] = 1;
+                }
+            }
             for (std::size_t j = 0; j < needs.size(); ++j) {
                 const std::int64_t menge = needs[j].menge;
-                const bool drawn = j < chk_count && needs[j].force;
+                const bool drawn = drawn_ware[needs[j].ware] != 0;
                 if ((drawn && tdiv(menge * 128 * e_chk, 1536) > kU32Max) ||
                     (j == 0 && tdiv(e_chk * menge, 12) > kU32Max)) {
                     r.fault = HouseFault::Overflow;

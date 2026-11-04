@@ -97,6 +97,16 @@ The founding and unload numbers are advisory ("would move 5 t"): the sim decides
    (PIONIER), click land near the warehouse (for example `(251,137)` and `(250,141)`). Gold 29 350 after HANDWERK.
 6. `F5`, quit, and later start with `-Resume .\saves\quicksave-seat0.sav`.
 
+## Depth checks (W4-DEPTH-1, docs/render/depth.md)
+
+Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/S01_02_01.sze --at 421,605`):
+1. Its land-side wall and the feet of its piles end in the sloping bank; nothing of it stands on top of the sand.
+2. Where the water reaches the piles, their lower parts show the water's checkerboard over them.
+3. Grass, trees and roads behind the Kontor do not draw over it.
+4. `--depth off` gives the former picture (piles on top of everything), for comparison.
+5. The water level: `--shore 26.5` is the original's measured plane (the water covers the beach up to about 27);
+   the default stays 16.5 until you choose.
+
 ## Known limits (say so rather than guess)
 
 - A developer playtest UI: title-bar HUD, no text overlay, no sounds, no minimap, no ship names.

@@ -2,7 +2,7 @@
 
 **Status:** draft — rules derived from sprite measurements, visual checks and static analysis of the original ([`docs/re/annodisplay.md`](../re/annodisplay.md), [`docs/re/annowelt.md`](../re/annowelt.md)); not yet compared with screenshots of the original. Open points in OQ-026.
 
-The original renders differently in structure: ground is a mesh of Gouraud-shaded, depth-buffered textured triangles, and sprites are depth-tested per pixel (`z` bytes are depth offsets). This renderer is a painter's-algorithm approximation that uses the same projection constants.
+The original renders differently in structure: ground is a mesh of Gouraud-shaded, depth-buffered textured triangles, and sprites are depth-tested per pixel (`z` bytes are depth offsets). This renderer draws in painter's order with the same projection constants and, since W4-DEPTH-1, tests every object pixel against a per-pixel depth of the terrain and the objects drawn before it, and draws the sea over object pixels behind its plane: [`depth.md`](depth.md).
 
 Implementation: `anno_render::iso` (CPU reference renderer), `anno_render::scene` (scenario composition), `anno-extract view`, `anno1503 --view`.
 
@@ -28,7 +28,7 @@ What changed (all paths, CPU and GPU alike): `tile_top`, the ground rasteriser's
 |---|---|---|
 | Position | the sprite's anchor (`Frame::anchor_x/y`) lies on the centre of the footprint diamond, raised by the item's own height byte (`PlacedObject::height`) | P: palace 4 × 7: anchor y 243 + half the diamond height 115.5 = 358.5 ≈ sprite height 359 (bottom vertex); flat 1 × 1 sprites have their anchor at the diamond centre (42, 21); visual: towns, rocks and trees stand on their tiles |
 | Frame | `rotation · animation frames` (first animation frame); `ANIM` u16 at offset 2 = animation frames; frames per set = animation frames × 1 or × 4 rotations | P: in all sets, total frames / (`ANIM` value) is 1 or 4; visual |
-| Draw order | ground first; objects by footprint far corner `x + w + y + h`, then `x` | visual; simplification of the original's per-pixel depth buffer (D: `AnnoDisplay.dll` §3), ? OQ-026 |
+| Draw order | ground first; objects by footprint far corner `x + w + y + h`, then `x`; each object pixel is depth-tested and written by its format's rule ([`depth.md`](depth.md) §2.2), so opaque pixels occlude as in the original whatever the order | D: `AnnoDisplay.dll` §3, §9; the order of blended pixels and of the original's cache lists ? OQ-026 c |
 | Invisible objects | entries without sprite sets (ids 1 and 2 on the islands checked) are skipped | P |
 | Anchor | signed 16-bit; the frame pixel that lands on the projected object point | D: `AnnoDisplay.dll` `0x1000ac80` |
 | Shadows | the set's `SHADOW` frame with the same index, own anchor, drawn before the sprite; each covered pixel becomes `dst/2 + dst/8` (5/8 brightness), shadows compound | D: `0x10019f80` (`tBrushShadR`); the original also depth-tests them |
@@ -48,7 +48,7 @@ The chunk cache's objects layer is built as a draw list that is then replayed (T
 |---|---|---|
 | Sea surface | animated sprites of `Anlagen.dat` entry 2801 (`MEER`, `Meer\Meer01_001.tga`, 64 `BSH_RGBWZ` frames, 3 × 3 footprint) | D: `AnnoWelt.dll` `0x1009f4c0`; P: entry 2801 as described |
 | Lattice | one sprite at tile `(x, y)` with `y` even and `x ≡ 2·((y/2) mod 2) (mod 4)` | D: `0x1009f4c0` |
-| Height | sea level 1.28 world units = 32 `HEIGHT` units (≈ 65.9 px at zoom 0), plus a small per-sprite offset (`(x mod 5)·0.01 − (y mod 3)·0.01357` world units, not applied) | D: `0x100E3A20`, set at `0x1009d010` |
+| Height | sea level 1.28 world units = 32 `HEIGHT` units (≈ 65.9 px at zoom 0), plus a small per-sprite offset (`(x mod 5)·0.01 − (y mod 3)·0.01357` world units, not applied). The original draws the sprites 1.15 world units lower (the sprite set's prefix offset) and its frames' `z` put the water plane at ≈ 26.5 `HEIGHT` ([`annodisplay.md`](../re/annodisplay.md) §9.3); the pattern here stays at 32 (a periodic image: the shift only moves its phase) | D: `0x100E3A20`, set at `0x1009d010`; M: live sea items |
 | Frame | rotation 0; animation step `(time / 50 ms + (5x + 3y) mod 32) mod 16`: phase from the original, speed from the sprite's `ANIM` record (16 frames × 50 ms) | D: phase formula `0x1009f4c0`; the original's tick unit is not traced, so the `ANIM` duration is used |
 | Transparency | `BSH_RGBWZ` is a 50 % checkerboard, so the sea floor shows through | D: brush `0x100161c0`; that this produces the water look is likely |
 | Where | 8 × 8 tile chunks with a "sea" bit (`+0x32`, not traced). **Approximation:** inside an island, chunks containing a non-land tile (corner average ≤ 19, the original's land classifier `0x100900c0`); outside all islands, everywhere | ? OQ-026 b |

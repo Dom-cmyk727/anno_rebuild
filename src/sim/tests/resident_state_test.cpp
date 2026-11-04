@@ -60,7 +60,7 @@ TEST_CASE("stream 128: versions, defaults and the three declared draw sites") {
     CHECK(c.billed_goods_last == 0x28);
     CHECK(c.resident_cargo_slots == 3);
     // The sites are appended after FarmWorkerDispatch (19), in this order, drawn in the advance
-    // phase, and ported since L4 (they draw only with Rules::house_updates on).
+    // phase, and ported (the first two) only while Rules::house_updates is on.
     CHECK(static_cast<int>(sim::DrawSite::HouseWalkerTarget) == 20);
     CHECK(static_cast<int>(sim::DrawSite::HouseVariant) == 21);
     CHECK(static_cast<int>(sim::DrawSite::HouseFirstAssignment) == 22);
@@ -70,8 +70,11 @@ TEST_CASE("stream 128: versions, defaults and the three declared draw sites") {
         CHECK(sim::draw_site_phase(s) == sim::DrawPhase::Advance);
         CHECK(sim::may_draw(s, sim::DrawPhase::Advance));
         CHECK_FALSE(sim::may_draw(s, sim::DrawPhase::Load));
-        CHECK(sim::draw_site_ported(
-            s)); // ported with the L4 activation (draws only with house_updates)
+        // The sites draw only with Rules::house_updates: the static answer (default rules) is
+        // "not ported", so the replay manifest of a default log still lists them.
+        CHECK_FALSE(sim::draw_site_ported(s));
+        CHECK_FALSE(sim::draw_site_ported(s, false));
+        CHECK(sim::draw_site_ported(s, true) == (s != sim::DrawSite::HouseFirstAssignment));
     }
     CHECK(std::string(sim::draw_site_name(sim::DrawSite::HouseWalkerTarget)) ==
           "HouseWalkerTarget");

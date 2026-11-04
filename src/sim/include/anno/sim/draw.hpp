@@ -210,8 +210,15 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
            site == DrawSite::LinkRawMaterial || site == DrawSite::LinkOre ||
            site == DrawSite::LinkTemplatePick || site == DrawSite::LinkSpecialMark ||
            site == DrawSite::LinkTreasure || site == DrawSite::CityName ||
-           site == DrawSite::FarmWorkerDispatch || site == DrawSite::HouseWalkerTarget ||
-           site == DrawSite::HouseVariant || site == DrawSite::HouseFirstAssignment;
+           site == DrawSite::FarmWorkerDispatch;
+}
+/// The same with the rule that switches a site on: the House walker and variant draws exist only
+/// while Rules::house_updates is on (with it off nothing draws there, so the cursor is short of the
+/// original's: the sites stay in the manifest). HouseFirstAssignment has no production caller (no
+/// path passes a null old group, docs/sim/population-live.md section 18) and stays missing.
+[[nodiscard]] constexpr bool draw_site_ported(DrawSite site, bool house_updates) {
+    return draw_site_ported(site) || (house_updates && (site == DrawSite::HouseWalkerTarget ||
+                                                        site == DrawSite::HouseVariant));
 }
 
 /// A source of world draws. The world PRNG behind it is consumed in the

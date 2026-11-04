@@ -82,11 +82,11 @@ std::uint64_t seams_digest(const Seams& seams) {
     return h.value();
 }
 
-std::vector<std::string> prng_timeline_missing() {
+std::vector<std::string> prng_timeline_missing(bool house_updates) {
     std::vector<std::string> missing;
     for (std::size_t i = 0; i < kDrawSiteCount; ++i) {
         const auto site = static_cast<DrawSite>(i);
-        if (!draw_site_ported(site)) {
+        if (!draw_site_ported(site, house_updates)) {
             missing.emplace_back(draw_site_name(site));
         }
     }
@@ -119,7 +119,7 @@ Recorder::Recorder(World& world) : world_(world) {
         world_.types().walk_tables() ? walk_tables_digest(*world_.types().walk_tables()) : 0;
     log_.seams_digest = seams_digest(world_.seams());
     log_.prng_timeline_version = kPrngTimelineVersion;
-    log_.prng_timeline_missing = prng_timeline_missing();
+    log_.prng_timeline_missing = prng_timeline_missing(world_.rules().house_updates);
     log_.initial_save = world_.save();
 }
 
@@ -373,7 +373,7 @@ formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog
                            std::to_string(log.prng_timeline_version) + " is not this build's " +
                            std::to_string(kPrngTimelineVersion));
     }
-    if (log.prng_timeline_missing != prng_timeline_missing()) {
+    if (log.prng_timeline_missing != prng_timeline_missing(world.rules().house_updates)) {
         // The same version with another set of unported draw sites: a site was ported
         // (or dropped) without a version bump, so the draws would silently differ.
         return std::string("replay refused: the PRNG timeline's missing draw sites differ "

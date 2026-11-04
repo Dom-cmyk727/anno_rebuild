@@ -326,10 +326,19 @@ TEST_CASE("log header records the prng timeline") {
 
     CHECK(log.prng_timeline_version == sim::kPrngTimelineVersion);
     const std::vector<std::string> expected{
-        "CityRandomEvents", "WildlifeSweep",     "Ai",           "LinkOrePlace", "LinkNativeName",
-        "LinkTreasureKind", "LinkTreasurePlace", "ComputerName", "CityNameLoad"};
-    // (the three House draw sites are ported since MAP-POP-LIVE-1 L4)
+        "CityRandomEvents",  "WildlifeSweep",  "Ai",
+        "LinkOrePlace",      "LinkNativeName", "LinkTreasureKind",
+        "LinkTreasurePlace", "ComputerName",   "CityNameLoad",
+        "HouseWalkerTarget", "HouseVariant",   "HouseFirstAssignment"};
     CHECK(log.prng_timeline_missing == expected);
+    // With Rules::house_updates the walker and variant draws exist; the first assignment has no
+    // production caller and stays missing (population-live.md section 19).
+    CHECK(sim::prng_timeline_missing(false) == expected);
+    const std::vector<std::string> live{"CityRandomEvents",    "WildlifeSweep",  "Ai",
+                                        "LinkOrePlace",        "LinkNativeName", "LinkTreasureKind",
+                                        "LinkTreasurePlace",   "ComputerName",   "CityNameLoad",
+                                        "HouseFirstAssignment"};
+    CHECK(sim::prng_timeline_missing(true) == live);
 
     // The digests pin the world the log was recorded against.
     CHECK(log.config_digest == w.config().digest());

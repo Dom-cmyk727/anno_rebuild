@@ -75,8 +75,9 @@ struct ReplayLog {
 [[nodiscard]] std::uint64_t seams_digest(const Seams& seams);
 
 /// The names of the original draw sites the sim does not reproduce yet, in DrawSite
-/// order (docs/sim/state.md §6). Recorded in the replay-log header.
-[[nodiscard]] std::vector<std::string> prng_timeline_missing();
+/// order (docs/sim/state.md §6). Recorded in the replay-log header. The House walker and variant
+/// sites are listed unless `house_updates` (Rules::house_updates) is on.
+[[nodiscard]] std::vector<std::string> prng_timeline_missing(bool house_updates = false);
 
 /// The one door a session drives a World through: every command it applies and every
 /// advance it makes becomes an entry of its log, so the log is the ground truth of what

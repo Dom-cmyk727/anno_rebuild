@@ -20,7 +20,9 @@
 
 #include <anno/formats/bytes.hpp>
 #include <anno/sim/archive.hpp>
+#include <anno/sim/building.hpp>
 #include <anno/sim/field_count.hpp>
+#include <anno/sim/house_transition.hpp>
 #include <anno/sim/types.hpp>
 #include <anno/sim/walk_cells.hpp>
 
@@ -263,7 +265,7 @@ static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
 // T33.2: walk_class is derived; walk_mask is a side input until T33.4.
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
-static_assert(field_count<BuildingType>() == 23,
+static_assert(field_count<BuildingType>() == 24,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
@@ -326,6 +328,9 @@ template <class A> void digest_type(A& a, const BuildingType& t) {
     });
     a.boolean(t.has_prod);
     digest_production(a, t.prod);
+    if (t.special_successor) {
+        a.boolean(true); // C3: only a declared type adds the byte, so no other digest moves
+    }
 }
 
 std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<const GoodsInfo> goods,
@@ -970,7 +975,8 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
                      std::vector<ClassInfo> classes, const SimConfig& cfg,
                      std::vector<FigureType> figures,
                      std::shared_ptr<const formats::annowelt::WalkTables> tables,
-                     std::vector<HouseGroup> groups, std::vector<StageRecord> stages) {
+                     std::vector<HouseGroup> groups, std::vector<StageRecord> stages,
+                     bool declare_irregular_successors) {
     for (std::size_t i = 0; i < stages.size(); ++i) {
         // The stage mask is 32 bits wide (Player::flags / City::stage_mask: a stage index is a
         // shift count); the table is ascending and unique; a group beyond the group table is a
@@ -1007,6 +1013,24 @@ TypeRegistry::finish(std::vector<BuildingType> types, std::vector<GoodsInfo> goo
     }
     std::sort(types.begin(), types.end(),
               [](const BuildingType& a, const BuildingType& b) { return a.id.v < b.id.v; });
+    if (declare_irregular_successors) {
+        // The original data profile: declare every House type whose ladder successor exists and is
+        // no regular successor (the audited families, population-live.md 21.3).
+        for (BuildingType& t : types) {
+            if (t.cls != RuntimeClass::House || cfg.house_type_stride == 0) {
+                continue;
+            }
+            const std::uint64_t next_id = t.id.v - t.id.v % cfg.house_type_stride +
+                                          std::uint64_t{cfg.house_type_stride};
+            const auto it = std::lower_bound(
+                types.begin(), types.end(), next_id,
+                [](const BuildingType& a, std::uint64_t v) { return a.id.v < v; });
+            if (it != types.end() && it->id.v == next_id &&
+                !house_successor_is_regular(cfg, t, *it)) {
+                t.special_successor = true;
+            }
+        }
+    }
     std::uint32_t footprint = 1;
     for (std::size_t i = 0; i < types.size(); ++i) {
         const BuildingType& t = types[i];
@@ -1164,7 +1188,8 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string>
 TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> goods_in,
                     const SimConfig& cfg, std::span<const fig::Entry> figure_entries,
                     std::shared_ptr<const formats::annowelt::WalkTables> tables,
-                    std::vector<HouseGroup> groups, std::vector<StageRecord> stages) {
+                    std::vector<HouseGroup> groups, std::vector<StageRecord> stages,
+                    bool declare_irregular_successors) {
     std::vector<BuildingType> types;
     types.reserve(entries.size());
     for (const fig::Entry& e : entries) {
@@ -1184,7 +1209,8 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
         figures.push_back(f.value());
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
-                  std::move(figures), std::move(tables), std::move(groups), std::move(stages));
+                  std::move(figures), std::move(tables), std::move(groups), std::move(stages),
+                  declare_irregular_successors);
 }
 
 std::shared_ptr<const TypeRegistry> TypeRegistry::empty() {
@@ -1205,6 +1231,13 @@ TypeRegistry::Builder::walk_tables(std::shared_ptr<const formats::annowelt::Walk
 
 TypeRegistry::Builder& TypeRegistry::Builder::house_groups(std::vector<HouseGroup> groups) {
     house_groups_ = std::move(groups);
+    return *this;
+}
+
+TypeRegistry::Builder& TypeRegistry::Builder::special_successor(TypeId id) {
+    if (BuildingType* t = last_with(id)) {
+        t->special_successor = true;
+    }
     return *this;
 }
 

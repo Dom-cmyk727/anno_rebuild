@@ -224,8 +224,33 @@ const char* house_fault_name(HouseFault fault) {
         return "group_not_adjacent";
     case HouseFault::CountMismatch:
         return "count_mismatch";
+    case HouseFault::BadSuccessor:
+        return "bad_successor";
     }
     return "unknown";
+}
+
+bool house_successor_is_regular(const SimConfig& cfg, const BuildingType& cur,
+                                const BuildingType& next) {
+    if (next.cls != RuntimeClass::House) {
+        return false;
+    }
+    const std::optional<std::uint32_t> cg = house_group(cfg, cur.prodtype);
+    const std::optional<std::uint32_t> ng = house_group(cfg, next.prodtype);
+    return cg && ng && house_group_adjacent(*cg, *ng, true) && next.width == cur.width &&
+           next.height == cur.height;
+}
+
+HouseSuccessor house_successor(const SimConfig& cfg, const TypeRegistry& types,
+                               const BuildingType& type) {
+    const TypeLadder ladder = house_type_ladder(cfg, types, type);
+    if (ladder.next == nullptr) {
+        return HouseSuccessor::EndOfLadder;
+    }
+    if (house_successor_is_regular(cfg, type, *ladder.next)) {
+        return HouseSuccessor::Ladder;
+    }
+    return type.special_successor ? HouseSuccessor::Special : HouseSuccessor::Malformed;
 }
 
 TypeLadder house_type_ladder(const SimConfig& cfg, const TypeRegistry& types,
@@ -739,22 +764,33 @@ HouseOutcome apply_house_effects(const HouseEnv& env, Island& island, const Buil
     case DeferredEffect::UpgradeCheck:
         break;
     }
+    // MAP-POP-CLOSE-1 C3 (replaces the L5 policy P-14): the successor is classified, not silently
+    // skipped. The original needs only an existing next type with materials (0x1002e000) and swaps
+    // the type unchecked (0x1002cbe0); the engine does not replay that. An end of the ladder and a
+    // declared special successor are named outcomes; an undeclared irregular successor is a content
+    // error (the registry refuses it at activation, house_updates_problem) and a typed fault here.
     const TypeLadder ladder = house_type_ladder(env.cfg, env.types, *loc.type);
-    if (ladder.next == nullptr) {
-        return HouseOutcome{};
-    }
-    // P-14 (population-live.md section 12, L5 review P2-D; a POLICY, not an evidence-backed rule):
-    // UpgradeCheck is "not eligible" unless the next type is a House of the next group. The
-    // original's handling of an existing non-house next type (the PIONIER types 3851-3854, 3960,
-    // 3972 have 3860 = PRODTYPE 289 or 3980 = a stall at id - id % 20 + 20) is unread; failing the
-    // world for it made 12 of 35 original scenarios unrunnable.
-    {
-        const std::optional<std::uint32_t> cur_group = house_group(env.cfg, loc.type->prodtype);
-        const std::optional<std::uint32_t> next_group = house_group(env.cfg, ladder.next->prodtype);
-        if (ladder.next->cls != RuntimeClass::House || !cur_group || !next_group ||
-            !house_group_adjacent(*cur_group, *next_group, true)) {
-            return HouseOutcome{};
+    switch (house_successor(env.cfg, env.types, *loc.type)) {
+    case HouseSuccessor::EndOfLadder: {
+        HouseOutcome o;
+        o.kind = HouseOutcomeKind::NotEligibleTerminal;
+        if (env.work != nullptr) {
+            ++env.work->upgrade_terminal;
         }
+        return o;
+    }
+    case HouseSuccessor::Special: {
+        HouseOutcome o;
+        o.kind = HouseOutcomeKind::NotEligibleSpecial;
+        if (env.work != nullptr) {
+            ++env.work->upgrade_special;
+        }
+        return o;
+    }
+    case HouseSuccessor::Malformed:
+        return fault_outcome(HouseFault::BadSuccessor);
+    case HouseSuccessor::Ladder:
+        break;
     }
     std::uint32_t g0 = 0, g1 = 0;
     PopulationView cur, next;

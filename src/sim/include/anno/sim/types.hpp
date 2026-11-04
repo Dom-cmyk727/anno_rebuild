@@ -245,6 +245,12 @@ inline constexpr std::uint32_t kRoadFlag = 0x4000;
 
 struct BuildingType {
     TypeId id;
+    /// MAP-POP-CLOSE-1 C3 (P-14 replacement): a House type whose id ladder successor
+    /// (`id - id % stride + stride`) exists but is no House of the next group with the same
+    /// footprint is accepted only when declared here. The original loader declares exactly the
+    /// audited irregular types (3851-3854, 3951-3954, 3960-3979); a mod must say so itself.
+    /// Digested only when set, so a registry without any declaration keeps its digest.
+    bool special_successor = false;
     /// The PRODTYPE number (D AnnoGame 0x100138e0), 0 = UNUSED.
     std::uint32_t prodtype = 0;
     RuntimeClass cls = RuntimeClass::Plain;
@@ -412,7 +418,8 @@ class TypeRegistry {
     build(std::span<const formats::figuren::Entry> entries, std::vector<GoodsInfo> goods_in,
           const SimConfig& cfg, std::span<const formats::figuren::Entry> figure_entries,
           std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
-          std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {});
+          std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
+          bool declare_irregular_successors = false);
 
     /// A registry without types (the original goods and class tables): what a
     /// default-constructed World holds. Shared, immutable.
@@ -428,7 +435,8 @@ class TypeRegistry {
            std::vector<ClassInfo> classes, const SimConfig& cfg,
            std::vector<FigureType> figures = {},
            std::shared_ptr<const formats::annowelt::WalkTables> tables = {},
-           std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {});
+           std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
+           bool declare_irregular_successors = false);
 
     std::vector<BuildingType> types_;      // ascending id; lookup by binary search
     std::vector<FigureType> figure_types_; // ascending id
@@ -486,6 +494,8 @@ class TypeRegistry::Builder {
     Builder& house_groups(std::vector<HouseGroup> groups);
     /// The [BAUSTUFEN] stage table.
     Builder& stage_table(std::vector<StageRecord> stages);
+    /// Declares the House type `id` a special successor type (BuildingType::special_successor).
+    Builder& special_successor(TypeId id);
     Builder& goods(std::vector<GoodsInfo> table);
     Builder& classes(std::vector<ClassInfo> table);
     Builder& config(const SimConfig& cfg);

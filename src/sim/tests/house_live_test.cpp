@@ -64,6 +64,7 @@ struct Opt {
     bool stages = false;          // [BAUSTUFEN]: stage 1 = group 0 with 5 residents, stage 2 = 50
     std::uint32_t high_stage = 0; // [BAUSTUFEN]: this one stage (24..28) = group 0 with 5 residents
     bool stall_next = false;      // house type 9560 (group 0) whose ladder next 9580 is a stall
+    bool declare_special = false; // C3: ... and 9560 is declared a special successor
     bool orphan = false;          // an extra House type whose PRODTYPE names no group of the table
     std::uint16_t g1_menge_food = 0; // MAP-POP-CLOSE-1 C2: group 1 food Menge and Wohnmax 65535 (0 = shipped)
 };
@@ -153,6 +154,9 @@ std::shared_ptr<const sim::TypeRegistry> registry(Opt o = {},
     }
     if (o.stall_next) {
         b.add(house_t(kPioneer, 97, 2, 0));
+        if (o.declare_special) {
+            b.special_successor(kPioneer);
+        }
         sim::BuildingType next_stall;
         next_stall.id = kPioneerNext;
         next_stall.prodtype = 161;
@@ -1059,6 +1063,7 @@ TEST_CASE("house live: a next type that is no house of the next group is not eli
     // runs on.
     Opt o;
     o.stall_next = true;
+    o.declare_special = true; // C3: an irregular successor must be declared
     const auto types = registry(o);
     Rig r = make_rig();
     r.place(kPioneer, 110, 110, make_house(kP, 512, 640, {2000, 500}));
@@ -1646,4 +1651,94 @@ TEST_CASE("house live F3: stage-bit vectors through the engine agree with the re
         ++rows;
     }
     CHECK(rows == 7);
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C3 (P-14)
+
+TEST_CASE("house live P-14: the successor of a House type is classified Ladder EndOfLadder Special or Malformed") {
+    const sim::SimConfig cfg = syn::population_config();
+    // Ladder: 9501 (group 0) -> 9520 (group 1, the same 2 x 2 footprint). EndOfLadder: 9520 -> 9540
+    // does not exist. Special: 9560 -> 9580 (a stall) when declared. Malformed: the same undeclared.
+    Opt plain;
+    const auto t1 = registry(plain);
+    CHECK(sim::house_successor(cfg, *t1, *t1->find(kP)) == sim::HouseSuccessor::Ladder);
+    CHECK(sim::house_successor(cfg, *t1, *t1->find(kS0)) == sim::HouseSuccessor::EndOfLadder);
+    Opt undeclared;
+    undeclared.stall_next = true;
+    // an undeclared irregular successor is a content error at world creation (see below), but the
+    // pure classifier answers Malformed
+    {
+        sim::TypeRegistry::Builder b;
+        const auto types = registry(undeclared); // the registry itself builds
+        CHECK(sim::house_successor(cfg, *types, *types->find(kPioneer)) ==
+              sim::HouseSuccessor::Malformed);
+    }
+    Opt declared;
+    declared.stall_next = true;
+    declared.declare_special = true;
+    const auto t3 = registry(declared);
+    CHECK(sim::house_successor(cfg, *t3, *t3->find(kPioneer)) == sim::HouseSuccessor::Special);
+    // the declaration is digested only when made
+    CHECK(t3->digest() != registry(undeclared)->digest());
+}
+
+TEST_CASE("house live P-14: an undeclared irregular successor is a content error at creation and load") {
+    Opt o;
+    o.stall_next = true; // 9560 -> 9580 (a market stall), not declared
+    const auto types = registry(o);
+    Rig r = make_rig();
+    r.place(kPioneer, 110, 110, make_house(kP, 512, 640, {2000, 500}));
+    sim::Rules rules;
+    rules.house_updates = true;
+    auto refused = sim::World::create(r.spec, types, syn::population_config(), rules);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().find("9560") != std::string::npos);
+    CHECK(refused.error().find("9580") != std::string::npos);
+    CHECK(refused.error().find("PRODTYPE 161") != std::string::npos);
+    CHECK(refused.error().find("declared as a special successor") != std::string::npos);
+    // With the rule off the registry is accepted (nothing evaluates the ladder).
+    CHECK(sim::World::create(r.spec, types, syn::population_config(), sim::Rules{}).ok());
+}
+
+TEST_CASE("house live P-14: end of ladder and a declared special successor are named outcomes") {
+    // End of ladder: kS0 (group 1, Wohnmax 15) at its cap with a satisfied table: no type 9540.
+    // Special: kPioneer at its cap with the declared stall successor. Both keep their type, spend
+    // nothing, draw no variant, do not fault, and are counted under their own name.
+    {
+        const auto types = registry();
+        Rig r = make_rig();
+        r.place(kS0, 110, 110, make_house(kS0, 960, 1920, {20000, 20000}));
+        sim::World w = create(r, types);
+        sim::TransportStats stats;
+        w.set_transport_stats(&stats);
+        city0(w).stock.stock[kTools] = 1000;
+        city0(w).stock.stock[kWood] = 2000;
+        until(w, [&] { return house_of(w).last != 0; }, 3000);
+        CHECK_FALSE(w.faulted());
+        CHECK(at(w, 110, 110)->type == kS0);
+        CHECK(stats.population.total().upgrade_terminal >= 1);
+        CHECK(stats.population.total().upgrade_special == 0);
+        CHECK(city0(w).stock.stock[kTools] == 1000);
+        CHECK(draws_at(w, sim::DrawSite::HouseVariant) == 0);
+    }
+    {
+        Opt o;
+        o.stall_next = true;
+        o.declare_special = true;
+        const auto types = registry(o);
+        Rig r = make_rig();
+        r.place(kPioneer, 110, 110, make_house(kP, 512, 640, {2000, 500}));
+        sim::World w = create(r, types);
+        sim::TransportStats stats;
+        w.set_transport_stats(&stats);
+        city0(w).stock.stock[kTools] = 1000;
+        city0(w).stock.stock[kWood] = 2000;
+        until(w, [&] { return house_of(w).last != 0; }, 3000);
+        CHECK_FALSE(w.faulted());
+        CHECK(at(w, 110, 110)->type == kPioneer);
+        CHECK(stats.population.total().upgrade_special >= 1);
+        CHECK(stats.population.total().upgrade_terminal == 0);
+        CHECK(city0(w).stock.stock[kTools] == 1000);
+        CHECK(draws_at(w, sim::DrawSite::HouseVariant) == 0);
+    }
 }

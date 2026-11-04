@@ -180,6 +180,8 @@ struct HouseWork {
     std::uint64_t walk_searches = 0;       ///< walk searches run
     std::uint64_t walk_expansions = 0;     ///< cells popped by those searches
     std::uint64_t upgrade_scores = 0;      ///< upgrade_scores evaluations
+    std::uint64_t upgrade_terminal = 0;    ///< C3: end-of-ladder houses at their cap (named outcome)
+    std::uint64_t upgrade_special = 0;     ///< C3: declared special successors at their cap
 };
 
 /// One growth step that changed a house's residents (the kernel's result, committed).
@@ -255,6 +257,8 @@ struct PopulationStats {
             t.walk_searches += w.walk_searches;
             t.walk_expansions += w.walk_expansions;
             t.upgrade_scores += w.upgrade_scores;
+            t.upgrade_terminal += w.upgrade_terminal;
+            t.upgrade_special += w.upgrade_special;
         }
         return t;
     }

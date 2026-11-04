@@ -363,6 +363,30 @@ std::string house_updates_problem(const SimConfig& cfg, const Rules& rules,
                    std::to_string(t.prodtype) + ") names no house group";
         }
     }
+    // Second pass (after every type is known to name a group):
+    for (const BuildingType& t : types.types()) {
+        if (t.cls != RuntimeClass::House) {
+            continue;
+        }
+        const std::optional<std::uint32_t> g = house_group(cfg, t.prodtype);
+        // C3: an irregular ladder successor must be declared (BuildingType::special_successor);
+        // an undeclared one is a content error, not a silent "not eligible".
+        if (house_successor(cfg, types, t) == HouseSuccessor::Malformed) {
+            const TypeLadder ladder = house_type_ladder(cfg, types, t);
+            const std::optional<std::uint32_t> ng = house_group(cfg, ladder.next->prodtype);
+            return "house updates: house type " + std::to_string(t.id.v) + " (group " +
+                   std::to_string(*g) + ") has the ladder successor " +
+                   std::to_string(ladder.next->id.v) + " (PRODTYPE " +
+                   std::to_string(ladder.next->prodtype) + ", " +
+                   (ladder.next->cls == RuntimeClass::House
+                        ? "group " + (ng ? std::to_string(*ng) : std::string("none")) +
+                              (ladder.next->width == t.width && ladder.next->height == t.height
+                                   ? std::string()
+                                   : std::string(", another footprint"))
+                        : std::string("no House")) +
+                   "): it is neither the next group's House nor declared as a special successor";
+        }
+    }
     return {};
 }
 

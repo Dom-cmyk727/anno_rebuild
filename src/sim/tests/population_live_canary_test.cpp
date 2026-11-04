@@ -955,3 +955,46 @@ TEST_CASE("population live canary: recorded log replays, and a changed log or in
         export_log("pop_live_ruleoff.log", changed);
     }
 }
+
+TEST_CASE("population live P-14: the successor classes of the shipped house types") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::SimConfig cfg;
+    std::map<int, std::size_t> count;
+    std::set<std::uint32_t> special;
+    for (const sim::BuildingType& t : o->types->types()) {
+        if (t.prodtype < 97 || t.prodtype > 128) {
+            continue;
+        }
+        const sim::HouseSuccessor c = sim::house_successor(cfg, *o->types, t);
+        ++count[static_cast<int>(c)];
+        if (c == sim::HouseSuccessor::Special) {
+            special.insert(t.id.v);
+            CHECK(t.special_successor); // declared by the original loader
+        } else {
+            CHECK_FALSE(t.special_successor);
+        }
+        if (c == sim::HouseSuccessor::Ladder) {
+            const sim::TypeLadder l = sim::house_type_ladder(cfg, *o->types, t);
+            REQUIRE(l.next != nullptr);
+            CHECK(l.next->width == t.width); // a ladder pair never lands in Special by its footprint
+            CHECK(l.next->height == t.height);
+        }
+    }
+    CHECK(count[static_cast<int>(sim::HouseSuccessor::Ladder)] == 30);       // 501-513 ... 560-567
+    CHECK(count[static_cast<int>(sim::HouseSuccessor::EndOfLadder)] == 39); // 33 scenery + 580-585
+    CHECK(count[static_cast<int>(sim::HouseSuccessor::Special)] == 12);
+    CHECK(count[static_cast<int>(sim::HouseSuccessor::Malformed)] == 0);
+    // The audited irregular families (docs 21.3): 3851-3854 -> 3860 (PRODTYPE 289), 3951-3954 -> 3960
+    // (a group-0 house), 3960 / 3969 / 3972 / 3979 -> 3980 (a stall). 3960 is both a successor and
+    // itself irregular: the declaration is per type.
+    CHECK(special == std::set<std::uint32_t>{3851, 3852, 3853, 3854, 3951, 3952, 3953, 3954, 3960,
+                                              3969, 3972, 3979});
+    // The world accepts the registry with house updates on (every type is classified).
+    CHECK(sim::house_updates_problem(cfg, [] { sim::Rules r; r.house_updates = true; return r; }(),
+                                     *o->types)
+              .empty());
+}

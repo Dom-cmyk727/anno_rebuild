@@ -77,7 +77,8 @@ OriginalRegistryLoad load_original_registry(const fs::path& game_dir, FigureEntr
     auto built = sim::TypeRegistry::build(
         anlagen.value().entries, goods, sim::SimConfig{}, figure_entries,
         std::make_shared<const formats::annowelt::WalkTables>(std::move(walk).value()),
-        std::move(groups).value(), std::move(stages).value());
+        std::move(groups).value(), std::move(stages).value(),
+        /*declare_irregular_successors=*/true);
     if (!built) {
         out.error = built.error();
         return out;

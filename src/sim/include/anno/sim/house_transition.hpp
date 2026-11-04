@@ -50,6 +50,7 @@ enum class HouseFault : std::uint8_t {
     NoSerialContext,   ///< the live update ran without TickContext::serial (L4)
     GroupNotAdjacent,  ///< the new type's group is not old group +1 (upgrade) / -1 (downgrade)
     CountMismatch,     ///< the city's house count of the old group is zero (a broken derived index)
+    BadSuccessor,      ///< the ladder successor exists, is no regular successor and is not declared
 };
 [[nodiscard]] const char* house_fault_name(HouseFault fault);
 
@@ -59,6 +60,21 @@ enum class HouseFault : std::uint8_t {
                                                   bool upgrade) {
     return upgrade ? new_group == old_group + 1 : old_group >= 1 && new_group == old_group - 1;
 }
+
+/// The regular successor of a House type (MAP-POP-CLOSE-1 C3, the P-14 replacement): the ladder's
+/// next type is a House of the next group with the same footprint. Pure on the two types.
+[[nodiscard]] bool house_successor_is_regular(const SimConfig& cfg, const BuildingType& cur,
+                                              const BuildingType& next);
+
+/// What UpgradeCheck makes of a House type's ladder successor (D 0x1002e000 only needs the next
+/// type to exist and its materials to be in store; it never checks its kind or group - population.md
+/// 17(c)). Ladder: a regular successor. EndOfLadder: no next type exists (the original returns 0).
+/// Special: the successor exists but is irregular and the type is declared (BuildingType::
+/// special_successor); the engine does not replay the original's unchecked type swap, it is a named
+/// not-eligible outcome. Malformed: irregular and undeclared - a content error, never "not eligible".
+enum class HouseSuccessor : std::uint8_t { Ladder, EndOfLadder, Special, Malformed };
+[[nodiscard]] HouseSuccessor house_successor(const SimConfig& cfg, const TypeRegistry& types,
+                                             const BuildingType& type);
 
 /// The type ladder: `id - id % stride + stride` and `id - id % stride - stride`, else `+ 1`
 /// (D: AnnoWelt 0x1002cc22 `div 0x14`; 0x1002ce21-0x1002ce3b). nullptr = no such type.
@@ -167,6 +183,8 @@ enum class HouseOutcomeKind : std::uint8_t {
     Downgraded,
     Removed,
     Fault,
+    NotEligibleTerminal, ///< C3: no successor type exists (end of the ladder): named, not a fault
+    NotEligibleSpecial,  ///< C3: a declared special successor: named, not a fault
 };
 
 struct HouseOutcome {

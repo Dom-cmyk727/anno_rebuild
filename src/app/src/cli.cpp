@@ -183,6 +183,14 @@ std::optional<Args> parse_args(const std::vector<std::string>& args) {
                 return std::nullopt;
             }
             out.shore = *s;
+        } else if (a == "--depth") {
+            if (v == "on") {
+                out.depth = true;
+            } else if (v == "off") {
+                out.depth = false;
+            } else {
+                return std::nullopt;
+            }
         } else if (a == "--river-speed") {
             if (v == "median") {
                 out.river_speed = render::river::RiverConfig::Reference::MedianCell;

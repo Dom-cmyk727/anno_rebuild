@@ -5,6 +5,7 @@
 //                              [--zoom-factor <scale>] [--resample nearest|bilinear|box|area]]
 //            [--water original|enhanced] [--river-flow legacy|flow] [--river-gain <x>]
 //            [--river-speed median|fastest] [--river-gap-patch <tiles>] [--shore <height>]
+//            [--depth on|off]
 //            [--renderer auto|gpu|cpu] [--lookahead-chunks <n>]
 //            [--zoom-mode continuous|stepped] [--zoom-step <factor>] [--zoom-ease <ms>]
 //            [--min-zoom <tile width>] [--max-derived-levels <n>]
@@ -373,6 +374,7 @@ int run(const std::vector<std::string>& raw) {
     scene.river_cfg.reference = args->river_speed;
     scene.river_cfg.gap_patch_tiles = args->river_gap_patch;
     scene.shore_height = args->shore;
+    scene.depth_test = args->depth;
     if (args->png) {
         const std::size_t group = args->group.value_or(2);
         if (const std::string err =

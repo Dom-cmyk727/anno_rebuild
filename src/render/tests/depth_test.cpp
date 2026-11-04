@@ -236,7 +236,7 @@ TEST_CASE("depth: replay hides a pile's rows below its foot in flat ground, the 
     }
 }
 
-TEST_CASE("depth: an RGBV pile is cut at its anchor row; an H decal on its own ground is drawn") {
+TEST_CASE("depth: an RGBV pile is cut at its anchor row, an H decal on its own ground is drawn") {
     // The pile of the test above as RGBV (4 x 40, anchor row 39 at scene row 50, flat ground at h
     // 0): its row y has depth base + floor(15818 (y - 50) / 256), the ground at(2y + 1, 0) =
     // kZero - floor(24198 (2y + 1) / 256), the base at(100, 0) = kZero - 9452. For y < 50 the pile

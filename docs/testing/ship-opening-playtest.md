@@ -106,8 +106,9 @@ Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/
    rises above the road's own height, that part of the road is hidden (the depth rule); say whether that matches the
    original's roads.
 4. `--depth off` gives the former picture (piles on top of everything), for comparison.
-5. The water level: `--shore 26.5` is the original's measured plane (the water covers the beach up to about 27);
-   the default stays 16.5 until you choose.
+5. The water level: the default is now 26.5, the original's measured plane (the water covers the beach up to about
+   27; owner 2026-11-04, to try). Compare with `--shore 16.5`, the default before. Wide beaches show blocky water
+   edges at 26.5 (the sea regions' 8×8-tile blocks): say whether that is acceptable for now.
 
 ## Known limits (say so rather than guess)
 

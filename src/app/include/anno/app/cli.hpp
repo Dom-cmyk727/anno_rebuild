@@ -157,8 +157,9 @@ struct Args {
     /// River pieces at most this many tiles apart are joined (OQ-068; 0 = the
     /// gaps of the original data). The viewer joins gaps up to 8 tiles.
     float river_gap_patch = 8.0F;
-    /// --shore: terrain below this many HEIGHT units is water (render::Scene::shore_height; 16
-    /// draws corners at 16 as land, the renderer's choice until 2026-11-03).
+    /// --shore: terrain below this many HEIGHT units is water (render::Scene::shore_height; the
+    /// default 26.5 is the original's sea plane, 16.5 the default of 2026-11-03, 16 draws corners
+    /// at 16 as land, the renderer's choice until then).
     float shore = render::kShoreHeight;
     /// --depth: per-pixel depth of objects against the terrain and the sea (render::Scene::
     /// depth_test, docs/render/depth.md); off draws them whole, as before W4-DEPTH-1.

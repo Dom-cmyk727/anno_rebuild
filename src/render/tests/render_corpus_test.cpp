@@ -653,21 +653,34 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     expected_legacy[11] = "Single_24.sze g2 t900 Enhanced c5cf6617e7b915b9";
     expected_legacy[14] = "Single_24.sze g1 t900 Enhanced 31d4cfcf925c4640";
     // Both tables are at the shore of 16, the renderer's until 2026-11-03 (still selectable,
-    // Scene::shore_height). At the default shore (kShoreHeight 16.5, owner 2026-11-03) corners at
-    // 16 are water: the frames with such corners in view move (Single_01's group 2 view in the
-    // enhanced water only, every Single_24 view), the others stay. Recorded on Windows 11 with
-    // MSVC (UCRT) on 2026-11-03, the flow shading.
-    std::vector<std::string> expected_default = expected;
-    expected_default[2] = "Single_01.sze g2 t900 Enhanced 722717aef0870f20";
-    expected_default[9] = "Single_24.sze g2 t0 Original 4e877bad8fd46a94";
-    expected_default[10] = "Single_24.sze g2 t900 Original 49e5f31a731d2e96";
-    expected_default[11] = "Single_24.sze g2 t900 Enhanced e4b9c0e9bc74f319";
-    expected_default[12] = "Single_24.sze g1 t0 Original 698e98972f183bcd";
-    expected_default[13] = "Single_24.sze g1 t900 Original 6822a07c77b3f02c";
-    expected_default[14] = "Single_24.sze g1 t900 Enhanced 53c9031654b1fa44";
-    expected_default[15] = "Single_24.sze g0 t0 Original 7f995c8e184fa308";
-    expected_default[16] = "Single_24.sze g0 t900 Original 199c8acdc0eff6f3";
-    expected_default[17] = "Single_24.sze g0 t900 Enhanced c8f2cdb53c0d7f29";
+    // Scene::shore_height). At the shore of 16.5 (the default from 2026-11-03, --shore 16.5)
+    // corners at 16 are water: the frames with such corners in view move (Single_01's group 2
+    // view in the enhanced water only, every Single_24 view), the others stay. Recorded on
+    // Windows 11 with MSVC (UCRT) on 2026-11-03, the flow shading.
+    std::vector<std::string> expected_16_5 = expected;
+    expected_16_5[2] = "Single_01.sze g2 t900 Enhanced 722717aef0870f20";
+    expected_16_5[9] = "Single_24.sze g2 t0 Original 4e877bad8fd46a94";
+    expected_16_5[10] = "Single_24.sze g2 t900 Original 49e5f31a731d2e96";
+    expected_16_5[11] = "Single_24.sze g2 t900 Enhanced e4b9c0e9bc74f319";
+    expected_16_5[12] = "Single_24.sze g1 t0 Original 698e98972f183bcd";
+    expected_16_5[13] = "Single_24.sze g1 t900 Original 6822a07c77b3f02c";
+    expected_16_5[14] = "Single_24.sze g1 t900 Enhanced 53c9031654b1fa44";
+    expected_16_5[15] = "Single_24.sze g0 t0 Original 7f995c8e184fa308";
+    expected_16_5[16] = "Single_24.sze g0 t900 Original 199c8acdc0eff6f3";
+    expected_16_5[17] = "Single_24.sze g0 t900 Enhanced c8f2cdb53c0d7f29";
+    // At the default shore (kShoreHeight 26.5, the original's sea plane; owner 2026-11-04) the
+    // water covers the beach up to 26: every Single_24 view moves again; Single_01's views give
+    // the same digests as at 16.5. Recorded on Windows 11 with MSVC (UCRT) on 2026-11-04.
+    std::vector<std::string> expected_default = expected_16_5;
+    expected_default[9] = "Single_24.sze g2 t0 Original 1d77702b80474c0d";
+    expected_default[10] = "Single_24.sze g2 t900 Original 613b7f1d33f8b222";
+    expected_default[11] = "Single_24.sze g2 t900 Enhanced d3a64a227407f12b";
+    expected_default[12] = "Single_24.sze g1 t0 Original ecb32309b57fe7c9";
+    expected_default[13] = "Single_24.sze g1 t900 Original bb804b061eb9aa5f";
+    expected_default[14] = "Single_24.sze g1 t900 Enhanced 8828f5a7c42a992d";
+    expected_default[15] = "Single_24.sze g0 t0 Original aac296b014deadd6";
+    expected_default[16] = "Single_24.sze g0 t900 Original b4c67ac6f4849c24";
+    expected_default[17] = "Single_24.sze g0 t900 Enhanced 655f0dde6c07d3da";
     // With Scene::depth_test off (--depth off) the frames are the pictures before W4-DEPTH-1:
     // the shore-16 table as recorded before the depth (pins that the switch restores them).
     std::vector<std::string> expected_no_depth = expected;
@@ -691,6 +704,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     for (const Pass& pass :
          {Pass{render::RiverFlowMode::Flow, 16.0F, &expected},
           Pass{render::RiverFlowMode::Legacy, 16.0F, &expected_legacy},
+          Pass{render::RiverFlowMode::Flow, 16.5F, &expected_16_5},
           Pass{render::RiverFlowMode::Flow, render::kShoreHeight, &expected_default},
           Pass{render::RiverFlowMode::Flow, 16.0F, &expected_no_depth, false}}) {
         CAPTURE(pass.shore);

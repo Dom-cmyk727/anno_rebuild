@@ -240,10 +240,14 @@ TEST_CASE("command line") {
     REQUIRE(wo);
     CHECK(wo->water == anno::render::WaterStyle::Original);
     CHECK(wo->water_given); // an explicit choice the opening keeps (review 2026-11-03)
-    CHECK(d->shore == anno::render::kShoreHeight); // corners at 16 are water by default
+    CHECK(d->shore == anno::render::kShoreHeight); // the original's sea plane, 26.5
+    CHECK(d->shore == 26.5F);
     const auto sh = parse_args({"--view", "x.scp", "--shore", "16"});
     REQUIRE(sh);
     CHECK(sh->shore == 16.0F);
+    const auto sh165 = parse_args({"--view", "x.scp", "--shore", "16.5"});
+    REQUIRE(sh165);
+    CHECK(sh165->shore == 16.5F); // the default of 2026-11-03
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "-1"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "256"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "nan"}));

@@ -218,7 +218,9 @@ Sources abbreviated: GFA = `docs/research/game-files-analysis.md`, CL = `docs/re
   Kontor's water edge gains water, but in the original's start view the water reaches all its piles and in ours it still does
   not: the screen height of our water near the shore against the original's painted water is a candidate, not measured.
   The original does not change the heights when it places buildings (the runtime grid unchanged over 17 placements).
-  Owner decision the same day: the shore at 16.5 is the default (`kShoreHeight`, `--shore 16` for the earlier look). What
+  Owner decision the same day: the shore at 16.5 is the default (`kShoreHeight`, `--shore 16` for the earlier look); on
+  2026-11-04 the owner chose the original's measured plane, 26.5, as the default to try (`--shore 16.5` for the look
+  before; update 2026-11-04 above). What
   still differs (the Kontor's poles and land side drawn over the water and the slope) is (c): the original depth-tests every
   sprite pixel (the Kontor's frames are `BSH_RGBAZ` with per-pixel offsets −70…+54, roads `BSH_RGBAH` decals) against the
   terrain triangles and the water, this renderer draws sprites whole on top.

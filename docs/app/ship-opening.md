@@ -286,6 +286,8 @@ Each fix has a test that fails without it (mutation checks: the fix reverted, th
   16 as water our Kontors gain water at their water edge, but not all the way to the piles the original shows in water
   (hand-over note, section 4). The owner chose it as the default (2026-11-03): terrain below `kShoreHeight` = 16.5 is water
   (the field, the wave depth, the shore distance, the empty-cell bound; the water objects' split under and over the sea stays at
-  16), per scene (`Scene::shore_height`), and `--shore 16` draws corners at 16 as land again. Why the Kontor still floats (its
+  16), per scene (`Scene::shore_height`), and `--shore 16` draws corners at 16 as land again. On 2026-11-04 the owner
+  chose the original's measured sea plane, 26.5, as the default to try (W4-DEPTH-1, `docs/render/depth.md` §2.3;
+  `--shore 16.5` for the look before). Why the Kontor still floats (its
   sprite is drawn whole over the terrain and the water, where the original depth-tests every pixel against them) is a renderer
   task of its own (OQ-026 c).

@@ -224,16 +224,18 @@ inline constexpr std::int64_t kSeaLevel = 32;
 /// drawn under the sea plane, one at or above it over the sea (prepare_objects; surf items lie at
 /// 0 or 16, P), and a river piece at or above it is part of the river surface. Where the terrain
 /// is water is kShoreHeight's (docs/render/iso.md, "Water"; OQ-026 b). Kept at 16 when the shore
-/// moved to 16.5 (2026-11-03): which side an object at exactly 16 belongs to is not traced, and
-/// the owner's H1 pictures, made with this split at 16.5 too, are the same pixels with it at 16.
+/// moved to 16.5 (2026-11-03) and to 26.5 (2026-11-04): which side an object at exactly 16
+/// belongs to is not traced, and the owner's H1 pictures, made with this split at 16.5 too, are
+/// the same pixels with it at 16.
 inline constexpr std::int64_t kWaterline = 16;
-/// The shore by default: terrain below this many HEIGHT units is water, so a corner at 16 is
-/// water and one at 17 is land. P: the painted ground textures show water at every height <= 16
-/// and sand from 17 on; the original draws a Kontor's water-edge corners at 16 as water (Wine
-/// runner, docs/orchestration/evidence/w4-opening-1/owner-playtest-2026-11-03-handover.md
-/// section 4). This renderer drew corners at 16 as land until 2026-11-03; Scene::shore_height
-/// keeps that selectable (16, the viewer's --shore); the owner chose 16.5 as the default.
-inline constexpr float kShoreHeight = 16.5F;
+/// The shore by default: terrain below this many HEIGHT units is water, so a corner at 26 is
+/// water and one at 27 is land. M, D: the original's sea frames put its water plane at about 26.5
+/// (measured 26.25-28.25 over zoom groups 0-2 and view rotations 0-3, docs/re/annodisplay.md
+/// section 9.3); its sea covers the painted sand between 16 and 27. The owner chose 26.5 as the
+/// default to try on 2026-11-04 (W4-DEPTH-1). Scene::shore_height keeps the earlier defaults
+/// selectable (the viewer's --shore): 16.5, the painted textures' shore (P: water at every height
+/// <= 16, sand from 17 on; the default from 2026-11-03), and 16, this renderer's until then.
+inline constexpr float kShoreHeight = 26.5F;
 /// A tile counts as land when the average of its corner heights exceeds this
 /// (D: AnnoWelt.dll classifier 0x100900c0).
 inline constexpr std::int64_t kLandAverage = 19;

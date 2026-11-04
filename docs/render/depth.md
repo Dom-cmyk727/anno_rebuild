@@ -77,15 +77,16 @@ does. Not reproduced (unchanged looks, follow-ups): `RGBAZ` levels 0 and 2 are d
 brush, `RGBZM`'s melt blend, depth for shadows and units, and the order of the original's cache lists.
 
 ### 2.3 Water over the scene
-The sea is a horizontal plane at the **shore height** H (`Scene::shore_height`, `--shore`, default 16.5 = the current
-look). Where the scene's depth at a pixel lies behind the plane (terrain or a written object pixel), the sea is drawn
+The sea is a horizontal plane at the **shore height** H (`Scene::shore_height`, `--shore`; default 26.5, the
+original's plane, since 2026-11-04; 16.5 before). Where the scene's depth at a pixel lies behind the plane (terrain or a written object pixel), the sea is drawn
 over it. Over terrain this is exactly the existing shore rule (at a fixed pixel, depth falls with height), so the
 ground does not change. Over objects it is new: the chunk build marks each object pixel whose final depth lies behind
 the plane in a `submerged` plane (one byte per pixel), and the compositor draws the sea a second time, after the
 objects, on those pixels only: the sea sprite's checkerboard over the object, without the open-water fade (our
 stand-in for the floor of texture-0 water, not the original's). Original water only; Enhanced water keeps its own
 `object_in_water`. The original's plane
-is ≈ 26.5 (`annodisplay.md` §9.3): `--shore 26.5` shows it; the default is the owner's call. Rivers, surf and
+is ≈ 26.5 (`annodisplay.md` §9.3); the owner chose it as the default to try (2026-11-04, `kShoreHeight`), and
+`--shore 16.5` gives the default before it. Rivers, surf and
 waterfalls keep their height + 10 test (`kRiverTolerance`) in this package: their frames' `z` (≈ −22 at the anchor,
 +10.7 `HEIGHT`) is what the tolerance approximates.
 

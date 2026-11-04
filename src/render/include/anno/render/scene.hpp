@@ -470,9 +470,9 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// the first render or river_flow call; not to be changed while chunks
     /// are being built.
     river::RiverConfig river_cfg;
-    /// Terrain below this many HEIGHT units is water (kShoreHeight; 16 draws corners at 16 as
-    /// land, as this renderer did until 2026-11-03). Set before the first render: each island's
-    /// water is built once with it.
+    /// Terrain below this many HEIGHT units is water (kShoreHeight 26.5; 16.5 is the default of
+    /// 2026-11-03, 16 draws corners at 16 as land, as this renderer did until then). Set before
+    /// the first render: each island's water is built once with it.
     float shore_height = kShoreHeight;
     /// Objects are depth-tested per pixel against the terrain and each other, and the sea is
     /// drawn over object pixels behind its plane (docs/render/depth.md); false draws them whole in

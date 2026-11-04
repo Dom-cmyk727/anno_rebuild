@@ -1375,8 +1375,9 @@ TEST_CASE("the sea over submerged objects: GPU = CPU on a Kontor in the water (g
     // The Kontor of S01_02_01 at tile (421, 605) (rotation 1, its piles towards the sea): with
     // depth its object pixels behind the sea plane are submerged, and Original water draws the
     // sea over them after the objects, on the CPU (FrameRenderer::render) and on the GPU
-    // (sea_submerged_fs). Within 1 per channel at the default shore and at the original's plane
-    // (26.5), with submerged pixels in view (not vacuous); depth off draws a different picture.
+    // (sea_submerged_fs). Within 1 per channel at the default shore (the original's plane, 26.5)
+    // and at 16.5 (the default of 2026-11-03), with submerged pixels in view (not vacuous); depth
+    // off draws a different picture.
     const Loaded loaded = load_scene(*dir, "S01_02_01.sze", "0100Kampagne01");
     auto& scene = *loaded.scene;
     gpu::GpuLimits limits;
@@ -1386,7 +1387,7 @@ TEST_CASE("the sea over submerged objects: GPU = CPU on a Kontor in the water (g
     const render::Rect view{cx - kW / 2, cy - kH / 2, kW, kH};
     std::vector<std::uint8_t> with_depth;
     for (const auto& [shore, depth] :
-         {std::pair{render::kShoreHeight, true}, std::pair{26.5F, true},
+         {std::pair{render::kShoreHeight, true}, std::pair{16.5F, true},
           std::pair{render::kShoreHeight, false}}) {
         CAPTURE(shore);
         CAPTURE(depth);

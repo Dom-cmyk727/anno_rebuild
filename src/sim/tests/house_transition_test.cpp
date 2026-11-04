@@ -1170,6 +1170,46 @@ TEST_CASE("house set group G3: a refused first assignment draws nothing and chan
         CHECK(r.e == 12800);
         CHECK(r.residents_64 == 6400);
     }
+    // The bound is per need, not only for slot 0: a forced need in slot 1 (6145 refused, 6144
+    // accepted) and an unforced food slot 0 with a huge Menge (E * Menge / 12 > u32) while another
+    // need is forced (the draw must not happen).
+    {
+        const auto two = [&](std::uint16_t m0, bool f0, std::uint16_t m1) {
+            DomainGroup d;
+            d.group.number = 2;
+            d.group.wohnmax = 65535;
+            d.group.needs = {{26, f0, m0}, {27, true, m1}};
+            const std::string problem =
+                sim::derive_group(d.group, goods, sim::PopulationRoles{}, d.derived);
+            REQUIRE_MESSAGE(problem.empty(), problem);
+            return d;
+        };
+        {
+            const DomainGroup d = two(1, false, 6145);
+            Scripted draw;
+            draw.values = {0, 0};
+            const sim::SetGroupResult r = run(d, draw);
+            CHECK(r.fault == sim::HouseFault::Overflow);
+            CHECK(draw.sites.empty());
+        }
+        {
+            const DomainGroup d = two(1, false, 6144);
+            Scripted draw;
+            draw.values = {0};
+            const sim::SetGroupResult r = run(d, draw);
+            CHECK(r.fault == sim::HouseFault::None);
+            CHECK(draw.sites.size() == 1);
+            CHECK(r.stock == std::vector<std::uint32_t>{699040U, 4294901760U});
+        }
+        {
+            const DomainGroup d = two(65535, false, 1);
+            Scripted draw;
+            draw.values = {0};
+            const sim::SetGroupResult r = run(d, draw);
+            CHECK(r.fault == sim::HouseFault::Overflow);
+            CHECK(draw.sites.empty());
+        }
+    }
     // Group number 0 never draws and keeps the constructor numbers: the huge group is accepted by
     // the first-assignment path (it does not use Wohnmax there).
     {

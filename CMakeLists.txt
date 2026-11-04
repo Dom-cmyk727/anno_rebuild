@@ -218,6 +218,13 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_transition_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/house_transition_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_transition_vectors.txt)
+    add_test(NAME house_live_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)
+    add_test(NAME house_live_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)
     add_test(NAME population_oracles_agree
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/sim_stream.py --check)
     add_test(NAME ship_step_reference_selftest

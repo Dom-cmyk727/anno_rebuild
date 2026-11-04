@@ -1,0 +1,46 @@
+# House live vectors (MAP-POP-LIVE-1 L4). Every expected value was derived by hand from
+# docs/sim/population-live.md sections 1, 2, 6 and 10 (cases X15, X16) BEFORE the C++ wiring existed.
+# Grammar and formula contract: tools/house_live_ref.py.
+
+# --- stage pass 0x10029610 (city: gate u16(t - stamp) >= 2500, bit set, then the player-mask rule X16)
+stage S1-gate-skip table=1:0:30 mask=0x0 stamp=100 t=2599 above=0:50 player=0x1 => stamp=100 mask=0x0 player=0x1
+stage S2-gate-edge table=1:0:30 mask=0x0 stamp=100 t=2600 above=0:50 player=0x1 => stamp=2600 mask=0x2 player=0x3
+stage S3-x16-skipped table=1:0:30 mask=0x8 stamp=0 t=2500 above=0:0 player=0x10 => stamp=2500 mask=0x8 player=0x10
+stage S4-x16-performed table=1:0:30 mask=0x8 stamp=0 t=2500 above=0:0 player=0x4 => stamp=2500 mask=0x8 player=0xc
+stage S5-high-bits table=1:0:30 mask=0x0 stamp=0 t=2500 above=0:30 player=0xff800001 => stamp=2500 mask=0x2 player=0xff800003
+stage S6-equal-skips table=5:0:999 mask=0x6 stamp=0 t=2500 above=0:0 player=0x6 => stamp=2500 mask=0x6 player=0x6
+stage S7-no-idempotent-or table=5:0:999 mask=0xb stamp=0 t=2500 above=0:0 player=0x10 => stamp=2500 mask=0xb player=0x10
+stage S8-mask-zero table=5:0:999 mask=0x0 stamp=0 t=2500 above=0:0 player=0x0 => stamp=2500 mask=0x0 player=0x0
+stage S9-set-bit-stays table=1:0:30 mask=0x2 stamp=0 t=2500 above=0:0 player=0x1 => stamp=2500 mask=0x2 player=0x3
+stage S10-own-group-short table=4:1:25 mask=0x0 stamp=0 t=2500 above=0:100,1:20 player=0x1 => stamp=2500 mask=0x0 player=0x1
+stage S10b-own-group-met table=4:1:25 mask=0x0 stamp=0 t=2500 above=0:100,1:25 player=0x1 => stamp=2500 mask=0x10 player=0x11
+stage S11-wrap-taken table=1:0:30 mask=0x0 stamp=64000 t=1000 above=0:30 player=0x1 => stamp=1000 mask=0x2 player=0x3
+stage S12-wrap-skip table=1:0:30 mask=0x0 stamp=65000 t=65537 above=0:30 player=0x1 => stamp=65000 mask=0x0 player=0x1
+stage S13-stamp-u16 table=5:0:999 mask=0x0 stamp=65535 t=70000 above=0:0 player=0x1 => stamp=4464 mask=0x0 player=0x1
+stage S14-two-stages table=1:0:30,2:0:80 mask=0x0 stamp=0 t=2500 above=0:80 player=0x1 => stamp=2500 mask=0x6 player=0x7
+
+# --- one stall purchase and its billing (house choice 0x10076670, bill 0x1002dac0); menge 41, E 640, R 4
+ledger L1-store-short menge=41 e=640 res64=304 stock=0 cap=768 store=100 => demand=151 thr=10 amt=100 store2=0 billed=100 delivered=1600
+ledger L2-store-large menge=41 e=640 res64=304 stock=0 cap=768 store=5000 => demand=151 thr=10 amt=151 store2=4849 billed=151 delivered=2416
+ledger L3-threshold-strict menge=41 e=640 res64=304 stock=0 cap=768 store=10 => thr=10 amt=0 store2=10 billed=0 delivered=0
+ledger L3b-just-above menge=41 e=640 res64=304 stock=0 cap=768 store=11 => amt=11 store2=0 billed=11 delivered=176
+ledger L4-stock-reduces-demand menge=41 e=640 res64=304 stock=800 cap=768 store=5000 => demand=101 amt=101 delivered=1616
+ledger L5-capacity menge=41 e=640 res64=304 stock=0 cap=50 store=5000 => amt=50 store2=4950 delivered=800
+ledger L6-no-demand menge=41 e=640 res64=304 stock=2416 cap=768 store=5000 => demand=0 amt=0 store2=5000
+ledger L6b-negative-demand menge=41 e=640 res64=304 stock=2432 cap=768 store=5000 => demand=-1 amt=0
+
+# --- the gate of the House kernel through the scheduler's visits (X15), one step per call
+cadence C1-skip-then-take last=0 period=2500 visits=1,17,2497,2513,2529,5009,5025,7509 => takes=2513,5009,7509 last=7500
+cadence C2-overdue-one-step-per-call last=0 period=2500 visits=5000,5001,5002,5003 => takes=5000,5001 last=5000
+cadence C3-minimal-d0 last=0 period=2500 visits=2500,2500,2500 => takes=2500 last=2500
+cadence C4-loaded-last-continues last=1234 period=2500 visits=3000,3733,3734,6233,6234 => takes=3734,6234 last=6234
+cadence C5-play-created-stamp last=4464 period=2500 visits=70001,72499,72500,75000 => takes=72500,75000 last=9464
+cadence C6-unstamped-takes-at-once last=0 period=2500 visits=70001,70002 => takes=70001 last=2500
+
+# --- two taken gates around one purchase (the scheduler chain test). Needs (goods 26: menge 41, goods 27: menge 16),
+# E 640, residents 5 (res64 320), tables nah -2 below index 8 else 2. Hand derivation in the test comments.
+chain K1-idsec-replay menge=41,16 bau=0,0 nah=-2*8,2*13 bed=2*21 inf=2*21 vermehr=-16,-9,0,12,32 wohnmax=8 player=0x1 idsec=1 e=640 res64=320 stock=0,0 cap=768 store=100 => g1_e=640 g1_stock=0,0 g1_lowest=0 g1_mood=-2 g1_res=304 g1_spawn=1 amt=100 store2=0 billed=100 stock_after=1600,1600 g2_e=639 g2_stock=1587,1587 g2_lowest=93 g2_mood=2 g2_res=336 g2_spawn=1
+chain K2-large-store menge=41,16 bau=0,0 nah=-2*8,2*13 bed=2*21 inf=2*21 vermehr=-16,-9,0,12,32 wohnmax=8 player=0x1 idsec=-1 e=640 res64=320 stock=0,0 cap=768 store=5000 => amt=151 store2=4849 billed=151 stock_after=2416,0 g2_e=639 g2_stock=2397,0 g2_lowest=0 g2_mood=2 g2_res=336
+chain K3-no-replay-discriminates menge=41,16 bau=0,0 nah=-2*8,2*13 bed=-2*8,2*13 inf=2*21 vermehr=-16,-9,0,12,32 wohnmax=8 player=0x1 idsec=-1 e=640 res64=320 stock=0,0 cap=768 store=100 => amt=100 stock_after=1600,0 g2_stock=1587,0 g2_lowest=0 g2_mood=-2 g2_res=288
+chain K4-unlock-off menge=41,16 bau=0,3 nah=-2*8,2*13 bed=2*21 inf=2*21 vermehr=-16,-9,0,12,32 wohnmax=8 player=0x1 idsec=1 e=640 res64=320 stock=0,0 cap=768 store=100 => stock_after=1600,1600 g2_stock=1587,1600 g2_lowest=93 g2_mood=2 g2_res=336
+chain K4b-unlock-on menge=41,16 bau=0,3 nah=-2*8,2*13 bed=2*21 inf=2*21 vermehr=-16,-9,0,12,32 wohnmax=8 player=0x9 idsec=1 e=640 res64=320 stock=0,0 cap=768 store=100 => stock_after=1600,1600 g2_stock=1587,1587 g2_lowest=93 g2_mood=2 g2_res=336

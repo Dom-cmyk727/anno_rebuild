@@ -41,12 +41,14 @@ struct Params {
     /// D256 per h64 (1/64 HEIGHT unit) at a fixed scene row, times 256:
     /// round(256 · 4 · (2 · kPerTileSum · L / th + kPerHeight)), L = lift px per HEIGHT unit.
     std::int32_t cb = 0;
-    /// The V formats' row ramp (an upright surface): D256 per row, times 256:
-    /// round(256 · 256 · kPerHeight / L) (D: AnnoDisplay.dll 0x10014ca0, brush +4 = 0x3dc9 / 65536
-    /// = 0.24135 per row at group 0, measured).
+    /// The V formats' row ramp (an upright surface), anchored at the frame's anchor row: D256 per
+    /// row, times 256: round(256 · 256 · kPerHeight / L) (D: AnnoDisplay.dll 0x10014ca0 starts at
+    /// depth − anchor row · slope, the slope 0x1004d2d8 that 0x1000c150 computes from (0, 10, 0);
+    /// brush +4 = 0x3dc9 / 65536 = 0.24135 per row at group 0, measured).
     std::int32_t sv = 0;
-    /// The H formats' row ramp (a flat decal): the flat ground's D256 per row, times 256, −2 · ca
-    /// (likely; the original's H step was not measured, docs/render/depth.md §1).
+    /// The H formats' row ramp (a flat decal): the flat ground's D256 per row, times 256, −2 · ca.
+    /// pixel() evaluates H pixels as the flat plane through the anchor at the pixel centre, which
+    /// this is the slope of (D: 0x10015220 with the slope 0x1004d2e0; its value not measured).
     std::int32_t sh = 0;
     bool operator==(const Params&) const = default;
 };
@@ -73,9 +75,9 @@ enum class Class : std::uint8_t {
     None = 0,
     /// base + 256 · z per pixel (RGBZ, RGBAZ, RGBZM, RGBWZ).
     Z = 1,
-    /// base + the upright row ramp (RGBV, RGBAV).
+    /// base + the upright row ramp from the anchor row (RGBV, RGBAV).
     V = 2,
-    /// base + the flat row ramp (RGBH, RGBAH).
+    /// The flat plane through the anchor (RGBH, RGBAH).
     H = 3,
 };
 /// The format's class and write rule: whether its drawn pixels write (RGBZ, RGBZM, RGBV and
@@ -91,9 +93,6 @@ Rule rule(formats::figuren::FrameFormat format);
 
 /// The alpha of a level-1 pixel (figure::kLevelAlpha[1]).
 inline constexpr std::uint8_t kHalfAlpha = 128;
-
-/// A pixel's depth: `row` counts from the frame's top row, `z` is the stored byte.
-std::int32_t pixel(const Params& p, Class cls, std::int32_t base, std::int32_t row, std::uint8_t z);
 
 /// The depth buffer of a scene rectangle while objects are drawn into it.
 struct Target {
@@ -118,16 +117,27 @@ struct Target {
 /// The sea plane's height in 1/64 HEIGHT units (Scene::shore_height).
 std::int64_t sea_h64(float shore_height);
 
-/// One sprite draw's depth: the base (D256 of its anchor point) and its format's rule.
+/// One sprite draw's depth: the base (D256 of its anchor point), its format's rule, the frame's
+/// anchor row (Frame::anchor_y, where the V ramp is at the base) and the anchor's height in
+/// 1/64 HEIGHT units (the H plane).
 struct Draw {
     std::int32_t base = 0;
     Rule rule;
+    std::int32_t anchor_row = 0;
+    std::int64_t h64 = 0;
     bool operator==(const Draw&) const = default;
 };
 /// The depth of the anchor at scene row `anchor_y` of an object `height` HEIGHT units up (its
-/// item height byte), drawn with `format` (nullopt: no depth).
+/// item height byte), drawn with `format` (nullopt: no depth) from a frame whose anchor row is
+/// `frame_anchor_y`.
 Draw draw(const Params& p, int anchor_y, std::uint8_t height,
-          std::optional<formats::figuren::FrameFormat> format);
+          std::optional<formats::figuren::FrameFormat> format, int frame_anchor_y);
+
+/// The depth of image row `row` (from the frame's top) of draw `d` at twice the scene row `y2`
+/// (2 · y + 1 for the pixel centre), `z` the stored byte: Z base + 256 · z; V base + the upright
+/// ramp from the anchor row; H the flat plane through the anchor, at(p, y2, d.h64).
+std::int32_t pixel(const Params& p, const Draw& d, std::int32_t row, std::int64_t y2,
+                   std::uint8_t z);
 
 /// The test of image pixel (col, row) of a draw landing on scene pixel (sx, sy): false when the
 /// target holds something nearer there (the pixel is not drawn); otherwise the pixel is drawn,

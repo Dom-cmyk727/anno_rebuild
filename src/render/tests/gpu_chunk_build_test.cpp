@@ -520,6 +520,9 @@ TEST_CASE("GPU chunk build: synthetic frames the original corpus never sends (no
             put(vf, 60 + 25 * k, 10 + 30 * k, 40, static_cast<std::uint8_t>(7 * k),
                 fig::FrameFormat::RgbH);
         }
+        // A Z sprite standing at height 0 in the low rows (terrain 0..4 there): parts of it lie
+        // behind the sea plane, so the submerged plane is not empty.
+        put(zf, 100, 225, 30, 0, fig::FrameFormat::RgbZ);
         b.add({30, 40, unit, flags::kTrackBase, 0, 0, 0}); // a unit: no class, clears "tested"
         render::ChunkDraws d = b.finish(ft);
         d.depth_test = true;

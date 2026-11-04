@@ -54,19 +54,19 @@ Rule rule(fig::FrameFormat format) {
     return {};
 }
 
-std::int32_t pixel(const Params& p, Class cls, std::int32_t base, std::int32_t row,
+std::int32_t pixel(const Params& p, const Draw& d, std::int32_t row, std::int64_t y2,
                    std::uint8_t z) {
-    switch (cls) {
+    switch (d.rule.cls) {
     case Class::Z:
-        return base + 256 * static_cast<std::int32_t>(static_cast<std::int8_t>(z));
+        return d.base + 256 * static_cast<std::int32_t>(static_cast<std::int8_t>(z));
     case Class::V:
-        return base + div_euclid<std::int32_t>(p.sv * row, 256);
+        return d.base + div_euclid<std::int32_t>(p.sv * (row - d.anchor_row), 256);
     case Class::H:
-        return base + div_euclid<std::int32_t>(p.sh * row, 256);
+        return at(p, y2, d.h64);
     case Class::None:
         break;
     }
-    return base;
+    return d.base;
 }
 
 Target Target::from_terrain(Rect rect, const Params& params,
@@ -119,11 +119,12 @@ std::vector<std::uint8_t> Target::submerged(std::int64_t sea_h64) const {
 }
 
 Draw draw(const Params& p, int anchor_y, std::uint8_t height,
-          std::optional<fig::FrameFormat> format) {
+          std::optional<fig::FrameFormat> format, int frame_anchor_y) {
     if (!format) {
         return {};
     }
-    return {at(p, 2 * std::int64_t{anchor_y}, 64 * std::int64_t{height}), rule(*format)};
+    const std::int64_t h64 = 64 * std::int64_t{height};
+    return {at(p, 2 * std::int64_t{anchor_y}, h64), rule(*format), frame_anchor_y, h64};
 }
 
 bool test(Target& t, int sx, int sy, const Rgba& img, int col, int row, const Draw& d) {
@@ -136,7 +137,7 @@ bool test(Target& t, int sx, int sy, const Rgba& img, int col, int row, const Dr
     }
     const std::size_t k = static_cast<std::size_t>(row) * img.width + static_cast<std::size_t>(col);
     const std::uint8_t z = k < img.z.size() ? img.z[k] : std::uint8_t{0};
-    const std::int32_t pd = pixel(t.params, d.rule.cls, d.base, row, z);
+    const std::int32_t pd = pixel(t.params, d, row, 2 * std::int64_t{sy} + 1, z);
     if (pd > t.d[i]) {
         return false;
     }
@@ -174,7 +175,7 @@ DrawStats draw_prepared(Canvas& canvas, std::span<const Prepared> list,
         }
         const Draw d = sd.is_shadow() ? Draw{}
                                       : draw(t.params, sd.anchor.second + offset.second, sd.height,
-                                             sd.frame->format());
+                                             sd.frame->format(), sd.frame->anchor_y);
         const int ox = sd.anchor.first - sd.frame->anchor_x;
         const int oy = sd.anchor.second - sd.frame->anchor_y;
         const Rgba& image = *img;

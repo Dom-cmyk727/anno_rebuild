@@ -1910,7 +1910,7 @@ ChunkDraws Scene::objects_draws(Rect rect, std::size_t group, bool ships, bool b
             const bool shadow = d.is_shadow();
             const depth::Draw dd = !shadow && depth_test
                                        ? depth::draw(dparams, d.anchor.second + offset.second,
-                                                     d.height, d.frame->format())
+                                                     d.height, d.frame->format(), d.frame->anchor_y)
                                        : depth::Draw{};
             out.add(ObjectRecord{d.anchor.first + offset.first - d.frame->anchor_x,
                                  d.anchor.second + offset.second - d.frame->anchor_y, *id,

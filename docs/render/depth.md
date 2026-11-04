@@ -17,8 +17,8 @@ and covered by the water, ours stands on top of everything.
 | Test | a pixel is drawn when its depth ≤ the buffer (16-bit unsigned compare); pixel depth = sprite base + signed `z` (16-bit wrap) | D: `0x1001848e`–`0x1001849a` |
 | Sprite base | ⌊65536 · d(anchor point)⌋; anchor point = the object's world point + its sprite set's prefix offset (dx, up, dz) at `HAEUSER/ENTRY` +4…+12 | D: `0x10011e60`; M: the start Kontor's depth cache = base + z with the anchor at its footprint centre and height 48 · 0.04; the sea's items at the lattice point + (0, −1.15, 0) |
 | `Z` formats (`RGBZ`, `RGBAZ`, `RGBZM`, `RGBWZ`) | base + z per pixel | D: §3 |
-| `V` formats (`RGB`, `RGBV`, `RGBAV`) | base at the frame's top row, + 0.24135 per row at zoom group 0 (the vertical-surface slope 0.00018958 / 51.477 · 65536; × 2, × 4 at groups 1, 2) | D: `0x10014ca0` (row term × 0.0, step at brush +4); M: brush +4 = `0x3dc9` / 65536 at group 0 |
-| `H` formats (`RGBH`, `RGBAH`) | the same ramp mechanism with a horizontal step; tested, never written | D: §3 (`0x10015220`, `0x10018e70`); the step value is not measured (likely the flat-ground slope, −0.752 per row at group 0) |
+| `V` formats (`RGB`, `RGBV`, `RGBAV`) | the base at the frame's anchor row, + 0.24135 per row below it (the vertical-surface slope 0.00018958 / 51.477 · 65536 at zoom group 0; × 2, × 4 at groups 1, 2) | D: `0x10014ca0` starts at depth − anchor row · slope, the slope (`0x1004d2d8`, 0.0 in the file) written at `0x1000c302` by `0x1000c150` from the projections of (0, 10, 0) and (0, 0, 0), the brush step +4 from the same variable (`0x10015f10`); M: brush +4 = `0x3dc9` / 65536 at group 0 (independent review, 2026-11-04) |
+| `H` formats (`RGBH`, `RGBAH`) | the same mechanism with the horizontal slope: the flat plane through the anchor; tested, never written | D: `0x10015220` with the slope `0x1004d2e0` (written at `0x1000c2b4`); its value not measured |
 | Write | opaque pixels of `Z`/`V` formats write; `RGBAZ` level-1 (50 %) pixels test only; `RGBZM` writes both its opaque and its melted pixels; `H` formats and shadows never write | D: §3 |
 | Static scenery | terrain triangles, then the placed objects (trees, buildings, ground pieces, roads), drawn into 128-px cached screen tiles with test and write | D: `0x1000fdf0`; M: the depth cache holds the terrain, the trees and the Kontor |
 | Per frame | over the cached tiles, every frame: the coast pieces 2702–2704, 2708, 2709 (type class `0x163`) with test and write, then the sea, rivers, ships and figures sorted by base depth, far first, test only (ships write into the per-frame copy) | D: `0x100103c0`, `0x1000d680`, `AnnoWelt` `0x1009fb14`; M: no sea in the colour cache, the ship in the per-frame depth copy |
@@ -49,8 +49,11 @@ the same value. Evaluating at the screen point keeps a sprite's depth consistent
   no depth (the original's `0xFFFF` clear).
 - **Sprite base:** D256 of the anchor point (2 · anchor row, h64 = 64 · the item's height byte). The sprite-set prefix
   offset is not applied to land objects (their first sets have none, except a few listed in `annodisplay.md` §9.3).
-- **Pixel depth:** `Z` formats base + 256 · z; `V` and `H` formats base + the row ramp from the frame's top row, `V`
-  the vertical-surface step (B / L per pixel), `H` the flat-ground step (−2A / th per pixel; likely, not measured).
+- **Pixel depth:** `Z` formats base + 256 · z; `V` formats base + the vertical-surface step (B / L per pixel) times
+  the rows from the frame's anchor row; `H` formats the flat plane through the anchor, evaluated at the pixel centre
+  with the terrain's own function (at(2y + 1, h64 of the anchor)): a decal at the height of flat ground then has
+  the ground's depth exactly and passes the `<=` test, as the original's coplanar decals do (an adaptation of the
+  original's slope, whose value was not measured, to this renderer's sampling at pixel centres).
 
 ### 2.2 Static scenery (the chunk objects layer)
 Every object draw of a chunk (CPU `replay`, the headless `Scene::render`, the GPU `chunk_build_cs`) tests each pixel
@@ -84,10 +87,12 @@ waterfalls keep their height + 10 test (`kRiverTolerance`) in this package: thei
 
 ### 2.4 Cached chunks, derived levels, cost
 - `Chunk::submerged` (u8 per pixel, empty when no pixel is submerged); on the GPU an `R8Uint` plane like `base`
-  (+256 KiB per chunk that has one). Derived levels (the zoomed-out tiers) do not derive it, as they do not derive
+  (+256 KiB per Cpu-built chunk that has a submerged pixel, and per GpuList chunk with depth on: the compute pass
+  cannot know beforehand). Derived levels (the zoomed-out tiers) do not derive it, as they do not derive
   `base`: there the objects stay pictures over the water.
 - The sprite atlases get a parallel `R8Uint` plane of the frames' z bytes; records carry the base depth in their
   reserved `depth` word and the format's depth class in `flags`.
 - The CPU builds the depth plane per chunk from the terrain plane it already has; the GPU builds it in the same
-  compute pass (one i32 per pixel in registers). Measurements: `docs/perf/README.md` (W4-DEPTH-1 row).
-- Switch: `Scene::depth` (`--depth off` for the former painter-only picture, a comparison and fallback).
+  compute pass (one i32 per pixel in registers). Measurements: `docs/perf/README.md`, "W4-DEPTH-1".
+- Switch: `Scene::depth_test` (`--depth off` for the former painter-only picture, a comparison and fallback; kept by
+  a new scene generation as `shore_height` is).

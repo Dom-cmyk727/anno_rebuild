@@ -99,7 +99,11 @@ inline void replay_binned(const ChunkDraws& d, const FrameTable& t, std::vector<
                         const std::size_t zi = static_cast<std::size_t>(ly) * f->image->width +
                                                static_cast<std::size_t>(lx);
                         const std::uint8_t z = zi < f->image->z.size() ? f->image->z[zi] : 0;
-                        const std::int32_t pd = depth::pixel(d.depth, rule.cls, r.depth, ly, z);
+                        const depth::Draw dd{
+                            r.depth, rule, f->header.anchor_y,
+                            64 * static_cast<std::int64_t>((r.flags & flags::kHeightMask) >>
+                                                           flags::kHeightShift)};
+                        const std::int32_t pd = depth::pixel(d.depth, dd, ly, y2, z);
                         if (pd > dz) {
                             continue;
                         }

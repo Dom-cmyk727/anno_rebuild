@@ -255,7 +255,9 @@ Canvas replay_with(const ChunkDraws& draws, const FrameTable& frames, depth::Tar
             blit_sprite_keel(*target, *f->image, f->header, anchor, shadow, track, f->keel, all);
             continue;
         }
-        const depth::Draw d{r.depth, object_flags::depth_rule(r.flags)};
+        const depth::Draw d{r.depth, object_flags::depth_rule(r.flags), f->header.anchor_y,
+                            64 * static_cast<std::int64_t>((r.flags & object_flags::kHeightMask) >>
+                                                           object_flags::kHeightShift)};
         const Rgba& image = *f->image;
         Canvas& into = *target;
         blit_sprite_keel(into, image, f->header, anchor, shadow, track, f->keel,

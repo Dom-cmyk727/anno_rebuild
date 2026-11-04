@@ -1521,9 +1521,11 @@ fn chunk_build_cs(@builtin(global_invocation_id) gid: vec3<u32>) {
                     let zb = textureLoad(cb_atlas_z, vec2<i32>(ax + lx, ay + ly), layer, 0).r;
                     pd = base + 256 * (bitcast<i32>(zb << 24u) >> 24u);
                 } else if cls == 2u {
-                    pd = base + ((cb.d_sv * ly) >> 8u);
+                    // The upright ramp from the frame's anchor row (depth::pixel).
+                    pd = base + ((cb.d_sv * (ly - anchor_y)) >> 8u);
                 } else {
-                    pd = base + ((cb.d_sh * ly) >> 8u);
+                    // The flat plane through the anchor at the pixel centre (depth::pixel).
+                    pd = cb_depth_at(2 * i32(y) + 1, i32(64u * ((flags >> 8u) & 0xFFu)));
                 }
                 if pd > dz {
                     continue;

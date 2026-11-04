@@ -135,18 +135,27 @@ TEST_CASE("depth: test() draws at equal depth, adds the signed z, writes by the 
         CHECK(depth::test(t2, 0, 0, image(1, 1, 191, true, 0), 0, 0, depth::Draw{400, kAZ}));
         CHECK(t2.d[0] == 400);
     }
-    SUBCASE("H is tested, never written; V ramps from the frame's top row") {
-        auto t = one(1000);
-        const Rgba flat = image(1, 1);
-        CHECK(depth::test(t, 0, 0, flat, 0, 0, depth::Draw{500, kH}));
-        CHECK(t.d[0] == 1000);
-        // V row 10 at group 0: base + floor(15818 * 10 / 256) = base + 617.
+    SUBCASE("V ramps from the frame's anchor row; H is the flat plane through the anchor") {
+        // V at group 0, anchor row 4: row 10 is 6 rows below it, base + floor(15818 * 6 / 256) =
+        // base + 370; row 0 is 4 rows above, base + floor(-63272 / 256) = base - 248 (floor).
+        // Ramping from the top row instead (the wrong reading) would give base + 617 at row 10.
+        const depth::Params& p = one(0).params;
+        const depth::Draw v{1000, kV, 4, 0};
+        CHECK(depth::pixel(p, v, 10, 0, 0) == 1000 + 370);
+        CHECK(depth::pixel(p, v, 0, 0, 0) == 1000 - 248);
+        CHECK(depth::pixel(p, v, 4, 0, 0) == 1000);
         auto tv = one(100000);
-        const Rgba tall = image(1, 11);
-        CHECK(depth::test(tv, 0, 0, tall, 0, 10, depth::Draw{1000, kV}));
-        CHECK(tv.d[0] == 1000 + 617);
-        // H row 10: base + floor(-48396 * 10 / 256) = base - 1891 (flat ground, nearer below).
-        CHECK(depth::pixel(t.params, depth::Class::H, 1000, 10, 0) == 1000 - 1891);
+        CHECK(depth::test(tv, 0, 0, image(1, 11), 0, 10, v));
+        CHECK(tv.d[0] == 1000 + 370);
+        // H: at(y2, h64) of the anchor's height, whatever its base: at scene row 0, h 0 that is
+        // kZero - floor(24198 / 256) = 8388608 - 94; it is tested and never written.
+        const depth::Draw h{12345, kH, 21, 0};
+        CHECK(depth::pixel(p, h, 3, 1, 0) == 8388608 - 94);
+        auto th = one(8388608 - 94);
+        CHECK(depth::test(th, 0, 0, image(1, 1), 0, 0, h));
+        CHECK(th.d[0] == 8388608 - 94);
+        auto th2 = one(8388608 - 95);
+        CHECK_FALSE(depth::test(th2, 0, 0, image(1, 1), 0, 0, h));
     }
     SUBCASE("a pixel without depth (a unit) clears the mark; outside the target passes") {
         auto t = one(1000);
@@ -227,10 +236,58 @@ TEST_CASE("depth: replay hides a pile's rows below its foot in flat ground, the 
     }
 }
 
+TEST_CASE("depth: an RGBV pile is cut at its anchor row; an H decal on its own ground is drawn") {
+    // The pile of the test above as RGBV (4 x 40, anchor row 39 at scene row 50, flat ground at h
+    // 0): its row y has depth base + floor(15818 (y - 50) / 256), the ground at(2y + 1, 0) =
+    // kZero - floor(24198 (2y + 1) / 256), the base at(100, 0) = kZero - 9452. For y < 50 the pile
+    // is nearer (it rises above the ground), at y = 50 the ground is nearer by 94: so rows 11..49
+    // are drawn and none below. The top-row reading (base + 61.8 (y - 11)) would cut it at y >= 41.
+    const Rect rect{0, 0, 64, 64};
+    render::FrameTable ft;
+    const auto pile = add(ft, 1, image(4, 40), 0, 39);
+    const auto decal = add(ft, 2, image(8, 8), 4, 4);
+    const std::vector<std::uint16_t> flat(64 * 64, 0);
+    {
+        render::ChunkDrawsBuilder b(rect, 0, false, 0, 16);
+        b.begin_unclipped();
+        auto r = rec(pile, 20, 11, 50, 0, kV);
+        b.add(r);
+        render::ChunkDraws d = b.finish(ft);
+        auto t = depth::Target::from_terrain(rect, depth::params(0, render::kHeightLift), flat);
+        const render::Canvas c = render::replay(d, ft, t);
+        for (int y = 11; y < 51; ++y) {
+            CAPTURE(y);
+            CHECK((c.pixels[(y * 64 + 21) * 4 + 3] == 255) == (y < 50));
+        }
+    }
+    // An H decal (8 x 8, anchor (4, 4)) on flat ground at its own height 10: every pixel equals
+    // the ground's depth there (the same at() at the pixel centre), so all 64 are drawn; on ground
+    // one HEIGHT unit higher (11) the ground is nearer everywhere and none is.
+    for (const std::uint16_t g : {std::uint16_t{640}, std::uint16_t{704}}) {
+        CAPTURE(g);
+        render::ChunkDrawsBuilder b(rect, 0, false, 0, 16);
+        b.begin_unclipped();
+        auto r = rec(decal, 20, 20, 24, 10, kH);
+        r.flags |= std::uint32_t{10} << render::object_flags::kHeightShift;
+        b.add(r);
+        render::ChunkDraws d = b.finish(ft);
+        const std::vector<std::uint16_t> ground(64 * 64, g);
+        auto t = depth::Target::from_terrain(rect, depth::params(0, render::kHeightLift), ground);
+        const render::Canvas c = render::replay(d, ft, t);
+        std::size_t drawn = 0;
+        for (int y = 20; y < 28; ++y) {
+            for (int x = 20; x < 28; ++x) {
+                drawn += c.pixels[(y * 64 + x) * 4 + 3] == 255 ? 1U : 0U;
+            }
+        }
+        CHECK(drawn == (g == 640 ? 64U : 0U));
+    }
+}
+
 TEST_CASE("depth: draw order does not decide occlusion of opaque Z pixels, but does for H") {
     // Two 8 x 8 sprites on one spot: a near one (z -2) and a far one (z +2), both base B.
-    // In either order the near one's pixels show (it writes); an H decal drawn after the near
-    // sprite with the far base is hidden, one drawn before it is overdrawn: both hidden.
+    // In either order the near one's pixels show (it writes); an H decal on the ground (height 0)
+    // drawn after the sprite standing at height 10 is hidden where the sprite is.
     const Rect rect{0, 0, 32, 32};
     render::FrameTable ft;
     const auto nearf = add(ft, 1, image(8, 8, 255, true, 0xFE), 0, 8);
@@ -268,13 +325,11 @@ TEST_CASE("depth: draw order does not decide occlusion of opaque Z pixels, but d
         CHECK(c.pixels[(6 * 32 + 6) * 4 + 3] == 255);
     }
     {
-        // The decal after the near sprite at the far base + 2 * 256: hidden.
+        // The decal at height 0 (no height bits: the flat plane at h 0) after the sprite: hidden.
         render::ChunkDrawsBuilder b(rect, 0, false, 0, 16);
         b.begin_unclipped();
         b.add(rec(nearf, 4, 4, 12, 10, kZ));
-        auto r = rec(decal, 4, 4, 12, 10, kH);
-        r.depth += 512;
-        b.add(r);
+        b.add(rec(decal, 4, 4, 12, 10, kH));
         const render::ChunkDraws d = b.finish(ft);
         auto t = depth::Target::from_terrain(rect, depth::params(0, render::kHeightLift), {});
         const render::Canvas c = render::replay(d, ft, t);

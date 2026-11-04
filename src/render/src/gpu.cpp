@@ -1300,22 +1300,28 @@ struct GpuFrame::Impl {
             const auto n = static_cast<std::uint32_t>(kChunk);
             Plane objp = acquire_plane(WGPUTextureFormat_RGBA8Unorm, n, n);
             Plane basep = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
-            Plane subp = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
+            // The submerged plane only with depth (depth.md 2.4): the GPU cannot know beforehand
+            // whether a pixel will be submerged, so every such chunk gets one.
+            std::optional<Plane> subp;
+            if (d.depth_test) {
+                subp = acquire_plane(WGPUTextureFormat_R8Uint, n, n);
+            }
             const CbScratch& s = cb_scratch(d, st.chunk->terrain);
             WGPUCommandEncoderDescriptor ed = WGPU_COMMAND_ENCODER_DESCRIPTOR_INIT;
             CommandEncoder enc(wgpuDeviceCreateCommandEncoder(dev(), &ed));
-            cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get(), subp.texture.get());
+            cb_encode(enc.get(), s, objp.texture.get(), basep.texture.get(),
+                      subp ? subp->texture.get() : nullptr);
             submit(enc.get(), "gpu-list chunk");
             st.views[1] = objp.view.get();
             st.views[4] = basep.view.get();
             st.flags |= 2U | 16U; // objects, base present
-            if (d.depth_test) {
-                st.views[8] = subp.view.get();
-                st.flags |= kChunkFlagSubmerged;
-            }
             out.planes.push_back(std::move(objp));
             out.planes.push_back(std::move(basep));
-            out.planes.push_back(std::move(subp));
+            if (subp) {
+                st.views[8] = subp->view.get();
+                st.flags |= kChunkFlagSubmerged;
+                out.planes.push_back(std::move(*subp));
+            }
         }
         out.flow = st.has_flow;
         out.flags = st.flags;
@@ -1866,7 +1872,9 @@ struct GpuFrame::Impl {
         wgpuComputePassEncoderRelease(cp);
         cb_copy_to_plane(enc, s.objects_out.get(), s.w * 4, objects_tex, s.w, s.h);
         cb_copy_to_plane(enc, s.base_out.get(), s.w, base_tex, s.w, s.h);
-        cb_copy_to_plane(enc, s.sub_out.get(), s.w, sub_tex, s.w, s.h);
+        if (sub_tex != nullptr) {
+            cb_copy_to_plane(enc, s.sub_out.get(), s.w, sub_tex, s.w, s.h);
+        }
     }
 
     /// The chunk at `r` of a derived level: the four chunks of `src` (index

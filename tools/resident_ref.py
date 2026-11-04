@@ -60,6 +60,7 @@ Vector file grammar (one record per line, '#' comments):
   sbill NAME cls= goods= amount= [tavern=N] [input=g] [range=first,last] [count=N] store=.. billed=.. => status= returned= store= billed= tavern=
   deliver NAME goods= house= goods_id= amount= stock=a,b => status= stock= touched=   (status ok|refused|idsec_cycle)
   idsec NAME goods= house= => status=ok|cycle
+  innrec NAME rec=b0,..,b9|none => status=decoded|skipped tavern= taken=   (the Inn scenario record, MAP-POP-CLOSE-1 C2)
   buy NAME goods= house= e= res= stock=.. cls= out=A,B [flags=] [city=] [billed=] [tavern=] [input=] cargo=g:a,..
       [others=g:a,..] cap= [range=] [count=] => status= cargo= city= billed= purchases= [tavern=] [fault=]
 Exit codes: 0 all vectors agree; 1 a vector disagrees; 2 malformed input, a missing file or zero vectors.
@@ -345,6 +346,7 @@ KEYS = {
     'sbill': {'status', 'returned', 'store', 'billed', 'tavern'},
     'deliver': {'status', 'stock', 'touched'},
     'idsec': {'status'},
+    'innrec': {'status', 'tavern', 'taken'},
     'buy': {'status', 'cargo', 'city', 'billed', 'purchases', 'tavern', 'fault'},
 }
 
@@ -393,6 +395,14 @@ def run_vector(kind, kv, tables):
                               int(kv['amount']))
         return {'status': st, 'returned': str(r), 'store': fmt_sparse(store), 'billed': fmt_sparse(billed),
                 'tavern': str(m['tavern'][0])}
+    if kind == 'innrec':
+        # Inn Load 0x10075740: a record of exactly 10 bytes is read (tavern stock u16 at +2 -> Inn +0x18, taken
+        # statistic u16 at +8 -> Inn +0x1a); any other length is skipped whole (the stream's skip at 0x10075792)
+        # and the Inn keeps its constructor numbers (0, 0). The layout mirrors Save 0x100757c0.
+        rec = ints(kv['rec'])
+        if len(rec) != 10:
+            return {'status': 'skipped', 'tavern': '0', 'taken': '0'}
+        return {'status': 'decoded', 'tavern': str(rec[2] | rec[3] << 8), 'taken': str(rec[8] | rec[9] << 8)}
     if kind == 'idsec':
         return {'status': idsec(G[kv['goods']], H[kv['house']])}
     if kind == 'deliver':

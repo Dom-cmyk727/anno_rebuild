@@ -233,3 +233,16 @@ buy others-fetching goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=
 buy inn goods=G0 house=H77 e=128 res=0 stock=0,0 cls=Inn out=77,0 tavern=100 input=27 cargo=0:0,0:0,0:0 cap=768 => status=ok cargo=77:11,0:0,0:0 city=none billed=27:11 purchases=1 tavern=89
 buy billed-overflow goods=G0 house=H2 e=128 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:100 billed=26:4294967290 cargo=0:0,0:0,0:0 cap=768 => status=fault cargo=0:0,0:0,0:0 city=26:100 billed=26:4294967290 purchases=0 fault=billed_overflow
 buy fault-divisor goods=G0 house=H2 e=0 res=0 stock=0,0 cls=MarketStall out=26,0 city=26:100 cargo=0:0,0:0,0:0 cap=768 => status=fault cargo=0:0,0:0,0:0 city=26:100 billed=none purchases=0 fault=choice_divisor
+
+# --- MAP-POP-CLOSE-1 C2: the Inn scenario record (Load 0x10075740 / Save 0x100757c0), hand-derived.
+# A record of exactly 10 bytes: tavern stock = u16 at byte 2 (Inn +0x18), taken statistic = u16 at byte 8 (+0x1a).
+# bytes 2,3 = 200,0 -> 200; bytes 8,9 = 49,1 -> 49 + 256 = 305
+innrec I-ok rec=0,0,200,0,0,0,0,0,49,1 => status=decoded tavern=200 taken=305
+# a full u16: 0xffff at byte 2 and byte 8
+innrec I-max rec=0,0,255,255,0,0,0,0,255,255 => status=decoded tavern=65535 taken=65535
+# byte 2 is the LOW byte: 1,2 -> 1 + 512 = 513
+innrec I-endian rec=0,0,1,2,0,0,0,0,0,0 => status=decoded tavern=513 taken=0
+# other lengths are skipped whole (Load tests the size against 10): 9, 11 and none
+innrec I-short rec=0,0,200,0,0,0,0,0,49 => status=skipped tavern=0 taken=0
+innrec I-long rec=0,0,200,0,0,0,0,0,49,1,0 => status=skipped tavern=0 taken=0
+innrec I-none rec=none => status=skipped tavern=0 taken=0

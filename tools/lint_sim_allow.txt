@@ -109,3 +109,9 @@ src/sim/src/ship_step.cpp:constexpr unsigned kDiagShift  # the denominator expon
 src/sim/include/anno/sim/ship.hpp:inline constexpr std::uint64_t kNavChunkLimitQ32  # the original constant 1.0 + f32(1e-4) of the chunk compare (12.9), derived from the f32 bit pattern
 src/sim/src/ship_step.cpp:constexpr std::uint32_t kMaxIterations  # termination guard of one visit on a corrupt state, not game data; every iteration leaves a valid state
 src/sim/src/ship_step.cpp:constexpr std::uint32_t kStateMoving  # state word bit 0 "moving" of the original (docs/re/ship-navigation.md 7.7)
+
+# --- MAP-POP-LIVE-1 L5
+# Named bits of the player flag word (SetProperty 0x21, population-live.md section 5a): file facts.
+src/sim/include/anno/sim/house_tick.hpp:kPlayerBit2[4-8]  # bits 24-28 of the player flags (D 0x10020d51-0x10020ecb)
+# The diagnostic record cap of PopulationStats (never state); counts the records dropped past it.
+src/sim/include/anno/sim/transport.hpp:kRecordCap  # cap of the diagnostic record vectors, not sim state

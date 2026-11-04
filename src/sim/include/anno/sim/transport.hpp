@@ -141,6 +141,8 @@ struct ResidentStats {
     std::uint64_t delivered_88 = 0;       ///< their amounts
     std::uint64_t deliveries_refused = 0; ///< merge side: a stock overflow, nothing changed
     std::uint64_t lost_88 = 0;            ///< cargo of residents that ended without a delivery
+    std::uint64_t no_path_home = 0;       ///< step C found no path home (the job ends, cargo kept)
+    std::uint64_t home_gone = 0;          ///< the home was gone or lost the walker's slot
     /// The per-goods ledger of the whole live chain (MAP-POP-LIVE-1 L5; same rules, diagnostic).
     /// Job side, at the purchase: the cargo amounts the suppliers returned, the city store they
     /// took (a stall takes it, a public building only bills), and the billed deltas (the REQUESTED
@@ -157,6 +159,9 @@ struct ResidentStats {
     /// of walkers that ended without handing it over, per goods.
     std::map<GoodsId, std::uint64_t> merge_dropped_by_goods, lost_by_goods;
     std::map<GoodsId, std::uint64_t> stock_primary_by_goods, stock_replay_by_goods;
+    /// 16 x amount x (the length of the IdSec chain the delivery walked): what the stock must have
+    /// risen by in total (a chain may add twice to one slot when a substitute shares it).
+    std::map<GoodsId, std::uint64_t> stock_expected_by_goods;
 };
 
 /// MAP-POP-LIVE-1 L5: the operation counters of one house (scale and proportionality checks,

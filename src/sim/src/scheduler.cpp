@@ -227,6 +227,8 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
                 const std::uint64_t diff = h->stock[k] - stock_before[k];
                 (k == own ? primary : other) += diff;
             }
+            rs.stock_expected_by_goods[d.goods] +=
+                std::uint64_t{d.amount_88} * 16 * r.touched; // one add per chain entry
             rs.stock_primary_by_goods[d.goods] += primary;
             rs.stock_replay_by_goods[d.goods] += other;
         }

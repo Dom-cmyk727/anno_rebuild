@@ -350,6 +350,9 @@ struct Body {
         r.target = BuildingId{};
         reset_walk();
         if (home == nullptr || home_type == nullptr) {
+            if (stats != nullptr) {
+                ++stats->home_gone;
+            }
             finish();
             return;
         }
@@ -362,6 +365,9 @@ struct Body {
                               ? path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer)
                               : std::nullopt;
         if (!path) {
+            if (stats != nullptr) {
+                ++stats->no_path_home;
+            }
             finish(); // no path home (0x10057bb1)
             return;
         }
@@ -441,6 +447,9 @@ struct Body {
     /// Step C's arrival (D 0x10057d70): every non-empty cargo slot goes to the home house.
     void deliver() {
         if (home == nullptr) {
+            if (stats != nullptr) {
+                ++stats->home_gone;
+            }
             return;
         }
         for (const ResidentCargo& cg : r.cargo) {
@@ -525,6 +534,9 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             }
             ticks = *rest;
             if (home == nullptr) {
+                if (b.stats != nullptr) {
+                    ++b.stats->home_gone;
+                }
                 b.finish();
                 break;
             }
@@ -540,6 +552,9 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             ticks -= r.wait;
             r.wait = 0;
             if (home == nullptr) {
+                if (b.stats != nullptr) {
+                    ++b.stats->home_gone;
+                }
                 b.finish();
                 break;
             }

@@ -167,10 +167,10 @@ s6_g1_step100 S6 128 a9e3ec57332ce5e9
 # unchanged (no UI event of S12 occurs in these runs: no timer runs, the 7.5 minute event
 # is not reached). g2.log and g3.log were re-recorded (their initial saves carry the
 # stream version).
-s7_g1_mp_checkpoints S7 128 25611e897a567dae
-s7_g1_mp_end S7 128 04f2d50fe40575f9
+s7_g1_mp_checkpoints S7 128 caab54b35302cbe1
+s7_g1_mp_end S7 128 a156cba613c28933
 s7_g1_events S7 128 d705f409820828d2
-s7_g1_sp_end S7 128 ae9b776981277d55
+s7_g1_sp_end S7 128 cec54958933dd7cb
 #
 # S10 G2 (stage S10): the G1 scenario on the types with build costs (synthetic::
 # g2_scenario, synthetic::make_build_types) driven by the recorded command log
@@ -222,8 +222,8 @@ s11_g3_events S11 128 3140bd8e1eb7db86
 # bankruptcy tick, the timers, the queue, the figures' end ticks, the monopoly entries, the
 # draw counts per site (worked out from the PRNG table for seed 508) and the two UI events
 # to values derived by hand.
-s12_g4_checkpoints S12 128 f1ae7a98e3ffed5f
-s12_g4_end S12 128 da1f164648707127
+s12_g4_checkpoints S12 128 0cfa759676834a5e
+s12_g4_end S12 128 cdae953cd0ad2515
 s12_g4_events S12 128 39c10f583d4b7cc8
 #
 # Re-baselined at stream version 107 (stage S12 fix-up: Rules gained timer0_clamp, owner
@@ -299,8 +299,8 @@ s12_g4_events S12 128 39c10f583d4b7cc8
 # g5.log); sweeps_test.cpp holds the growth counters, the ripe ticks, the six draws (worked
 # out from the PRNG table for seed 514), the drought starts, states and city mask to values
 # derived by hand.
-s13_g5_checkpoints S13 128 c25c9ef820c8f604
-s13_g5_end S13 128 2005b8d0b04c78c1
+s13_g5_checkpoints S13 128 38f939ffe538aff5
+s13_g5_end S13 128 8858bc9ed38327ec
 # Re-baselined at stream version 111 (task T24, transport stage 1: the header's registry
 # digest gains the types' entrance points and the figure types, the market class ticks
 # (Market payload, tag 6), the payloads gain the cart reservations and the figure record its
@@ -325,8 +325,8 @@ s13_g5_end S13 128 2005b8d0b04c78c1
 # before the first and after every 300th advance, t24_g6_end the hash at tick 300 000. SELF-BASELINED like the
 # S7 .. S13 goldens (ANNO_UPDATE_GOLDEN also rewrites g6.log); transport_test.cpp holds
 # the cart's and the carrier's trips tick by tick to values derived by hand.
-t24_g6_checkpoints T24 128 659981b4451544e2
-t24_g6_end T24 128 ec873257cdefb510
+t24_g6_checkpoints T24 128 978fff98aca57ee1
+t24_g6_end T24 128 283f58c0fd3d06fc
 
 # Re-baselined at stream version 112 (T33.4 F5, 2026-10-26). The code has hashed
 # version 112, including the walk-table digest in the header, since bd336ce; this

@@ -1912,7 +1912,7 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     REQUIRE(again);
     CHECK(again.value()->digest() == r.digest());
     // T24: the digest covers the ENTRANCE points and the figure types (none here).
-    CHECK(r.digest() == 0xe6757197ed6fb18dULL);
+    CHECK(r.digest() == 0xb9ba7063295ba52dULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);

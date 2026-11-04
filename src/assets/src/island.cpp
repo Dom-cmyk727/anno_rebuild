@@ -90,8 +90,10 @@ Result<Rgba, std::string> ground_top_down(const insel::Island& island,
             }
         }
     }
-    return Rgba{static_cast<std::uint16_t>(out_w), static_cast<std::uint16_t>(out_h),
-                std::move(pixels)};
+    return Rgba{static_cast<std::uint16_t>(out_w),
+                static_cast<std::uint16_t>(out_h),
+                std::move(pixels),
+                {}};
 }
 
 } // namespace anno::assets::island

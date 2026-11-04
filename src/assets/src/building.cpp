@@ -43,7 +43,8 @@ Result<Rgba, Error> to_rgba(const formats::anlagen::AnlagenFile& file, const fig
         return Error{Error::Kind::OutsideVolume, 0, {}};
     }
     return Rgba{static_cast<std::uint16_t>(width), frame.height,
-                figure::pixels_to_rgba(px, *format, palette, std::nullopt)};
+                figure::pixels_to_rgba(px, *format, palette, std::nullopt),
+                figure::pixels_to_z(px, *format)};
 }
 
 } // namespace anno::assets::building

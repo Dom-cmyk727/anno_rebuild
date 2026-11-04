@@ -1004,3 +1004,337 @@ TEST_CASE("population live P-14: the successor classes of the shipped house type
                                      *o->types)
               .empty());
 }
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C4 (PARTIAL)
+//
+// A fresh home in a real original scenario under an explicitly enabled headless setup
+// (Rules::house_updates on in this test only; the global default stays false). The upgrade of a
+// pioneer house to settlers is NOT reached here: it needs the forced infrastructure need WIRTSHAUS
+// (76) satisfied above the InfraTab threshold, and the only supplier of goods 76 is an Inn with a
+// tavern stock; no shipped scenario carries one (docs/sim/population-live.md 21.7). Nothing here
+// manufactures a stock to get past that.
+
+namespace {
+
+constexpr const char* kClose = "0011SingleEndlosAddon/endless03.sze";
+constexpr std::uint32_t kCloseOwner = 4; // flags 0x1 in the scenario setup, 28 houses of its own
+constexpr std::int32_t kCloseX = 303, kCloseY = 234; // a free 4 x 4 site beside the city's first stall
+constexpr sim::TypeId kCloseHouse{501};               // PIONIER, PRODTYPE 97, group 0, Wohnmax 8
+constexpr std::uint64_t kCloseSteps = 1000;           // 50 000 ticks: the first delivery needs food below 116 %
+
+struct Close {
+    sim::World w;
+    sim::Island* island = nullptr;
+    sim::City* city = nullptr;
+    sim::CityRef ref;
+};
+
+Close close_world(const Original& o, const sim::ScenarioSpec& spec) {
+    Close c{make_world(o, spec), nullptr, nullptr, {}};
+    for (auto& isl : sim::WorldTestAccess::islands(c.w)) {
+        if (!isl) {
+            continue;
+        }
+        for (auto& city : isl->cities) {
+            if (city && city->owner.v == kCloseOwner) {
+                bool houses = false;
+                for (const auto& l : city->index.lists) {
+                    for (const auto& b : l.slots) {
+                        houses = houses || (b && std::holds_alternative<sim::House>(b->payload));
+                    }
+                }
+                if (houses) {
+                    c.island = &*isl;
+                    c.city = &*city;
+                }
+            }
+        }
+    }
+    REQUIRE(c.city != nullptr);
+    c.ref = sim::CityRef{c.island->index, c.city->number};
+    return c;
+}
+
+sim::Command close_build(const Close& c, std::uint8_t rotation = 0) {
+    return sim::Command{c.city->owner,
+                        sim::BuildCmd{c.ref,
+                                      {sim::PlacementWire{kCloseHouse, kCloseX, kCloseY, rotation, 0, 0}}}};
+}
+
+const sim::Building* close_house(const Close& c) {
+    return c.island->building_at(c.w.config().layout, c.city->number, kCloseX, kCloseY);
+}
+
+} // namespace
+
+TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildCmd, supplied by walkers") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::ScenarioSpec spec = scenario_spec(*o, kClose);
+    Close c = close_world(*o, spec);
+    sim::World& w = c.w;
+    const sim::Player* player = w.players().find(c.city->owner);
+    REQUIRE(player != nullptr);
+    CHECK(player->flags == 0x1); // the scenario setup, not injected
+
+    // Before: the cost, the counters and the cursor.
+    const sim::BuildingType& ty = *o->types->find(kCloseHouse);
+    REQUIRE_FALSE(ty.cost_goods.empty());
+    std::map<sim::GoodsId, std::uint32_t> store_before;
+    std::map<sim::GoodsId, std::uint64_t> spent_before;
+    for (const sim::CostEntry& e : ty.cost_goods) {
+        store_before[e.goods] = c.city->stock.stock[e.goods];
+        spent_before[e.goods] = c.city->build_goods[e.goods - o->cfg.build_goods_first].spent;
+        REQUIRE(store_before[e.goods] >= e.amount_88); // affordable from the scenario's own store
+    }
+    const std::uint32_t money_before = static_cast<std::uint32_t>(player->money);
+    const std::uint32_t houses_before = c.city->index.house_counts[0];
+    const std::size_t cursor_before = w.rng().cursor();
+    CHECK(close_house(c) == nullptr);
+
+    // The build (legal control), then the same site again (refused: Occupied).
+    const sim::ApplyResult built = w.apply(close_build(c));
+    REQUIRE_MESSAGE(built.ok(), std::string(sim::reject_name(built.status)));
+    const sim::ApplyResult twice = w.apply(close_build(c));
+    CHECK_FALSE(twice.ok());
+    CHECK(twice.records.at(0).status == sim::Reject::Occupied);
+    const sim::Building* home = close_house(c);
+    REQUIRE(home != nullptr);
+    const sim::BuildingId hid = home->id;
+    CHECK(home->type == kCloseHouse);
+    // tile identity: the footprint carries the type id
+    CHECK(c.island->tiles.object(c.island->tiles.index_of(kCloseX, kCloseY)) == kCloseHouse.v);
+    CHECK(c.island->tiles.object(c.island->tiles.index_of(kCloseX + 3, kCloseY + 3)) == kCloseHouse.v);
+    // first assignment, group 0 (hand: constructor 5 residents / E 640, slot 0 = trunc(41*640/12)
+    // = 2186, no other need stocked, no draw), exact payment once, counters, no gold
+    const auto* h0 = std::get_if<sim::House>(&home->payload);
+    REQUIRE(h0 != nullptr);
+    CHECK(h0->residents_64 == 320);
+    CHECK(h0->e == 640);
+    REQUIRE(h0->stock.size() == 6);
+    CHECK(h0->stock[0] == 2186);
+    for (std::size_t j = 1; j < h0->stock.size(); ++j) {
+        CHECK(h0->stock[j] == 0);
+    }
+    CHECK(w.rng().cursor() == cursor_before); // group 0 draws nothing
+    for (const sim::CostEntry& e : ty.cost_goods) {
+        CHECK(c.city->stock.stock[e.goods] == store_before[e.goods] - e.amount_88);
+        CHECK(c.city->build_goods[e.goods - o->cfg.build_goods_first].spent ==
+              spent_before[e.goods] + e.amount_88);
+    }
+    CHECK(static_cast<std::uint32_t>(w.players().find(c.city->owner)->money) == money_before);
+    CHECK(c.city->index.house_counts[0] == houses_before + 1);
+    CHECK(w.check_invariants() == "");
+
+    // The run.
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    std::vector<std::uint32_t> stock0_trace;
+    for (std::uint64_t i = 0; i < kCloseSteps; ++i) {
+        step_world(w, &stats, nullptr);
+        const sim::Building* b = close_house(c);
+        REQUIRE(b != nullptr);
+        REQUIRE(b->id == hid);
+        stock0_trace.push_back(std::get<sim::House>(b->payload).stock[0]);
+    }
+    CHECK(w.check_invariants() == "");
+    CHECK_FALSE(w.faulted());
+    const auto& house = std::get<sim::House>(close_house(c)->payload);
+
+    // Positive growth: only this house's records, never a decline, each step explained by the
+    // table entry or by the cap, the end value is the cap Wohnmax * 64 = 512.
+    std::vector<std::int32_t> trace{320};
+    for (const sim::HouseGrowthRecord& g : stats.population.growth) {
+        if (g.building != hid) {
+            continue;
+        }
+        CHECK(g.residents_after > g.residents_before);
+        CHECK(g.vermehr > 0);
+        const bool exact = g.residents_after == g.residents_before + g.vermehr;
+        const bool cap_clip = g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
+        CHECK((exact || cap_clip));
+        CHECK(g.residents_committed == g.residents_after);
+        CHECK(g.cap_64 == 512);
+        trace.push_back(g.residents_after);
+    }
+    CHECK(trace == std::vector<std::int32_t>{320, 352, 384, 416, 428, 440, 452, 464, 476, 488, 500, 512});
+    CHECK(house.residents_64 == 512);
+
+    // Real supply: the house sent walkers (draws), the walkers bought at a stall and delivered; a
+    // delivery shows as a rise of the food stock between two steps (the decay only lowers it).
+    const auto work = stats.population.houses.find(hid);
+    REQUIRE(work != stats.population.houses.end());
+    CHECK(work->second.spawn_draws >= 1);
+    CHECK(work->second.searches >= 1);
+    CHECK(work->second.rect_queries <= work->second.searches);
+    std::size_t rises = 0;
+    for (std::size_t i = 1; i < stock0_trace.size(); ++i) {
+        rises += stock0_trace[i] > stock0_trace[i - 1] ? 1U : 0U;
+    }
+    CHECK(rises >= 1);
+    CHECK(stats.residents.purchases >= 1);
+    CHECK(stats.residents.deliveries >= 1);
+    CHECK(stats.residents.lost_88 == 0);
+    CHECK(stats.residents.faults == 0);
+    CHECK(stats.residents.no_path_home == 0);
+    // The ledger of the job side and the merge side agree for every goods (nothing manufactured).
+    for (const auto& [g, taken] : stats.residents.taken_by_goods) {
+        CHECK(stats.residents.merged_taken_by_goods[g] == taken);
+        CHECK(stats.residents.merged_billed_by_goods[g] == stats.residents.billed_by_goods[g]);
+    }
+
+    // The stage pass changed the player's mask: the scenario setup holds 0x1; at the first pass the
+    // city has 45 residents (40 loaded + 5 of the new home) against stage 0 (count 0) and stage 1
+    // (count 30): city mask 0 -> 3, X16: low 23 bits 1 < 3 -> the OR is performed, player 0x1 -> 0x3.
+    bool saw_stage1 = false;
+    for (const sim::StageUnlockRecord& u : stats.population.unlocks) {
+        if (u.city.island.v != c.ref.island.v || u.city.city.v != c.ref.city.v) {
+            continue;
+        }
+        if (u.stage == 1) {
+            saw_stage1 = true;
+            CHECK(u.count == 30);
+            CHECK(u.residents_at_or_above >= 30);
+            CHECK(u.city_mask_before == 0);
+            CHECK(u.city_mask_after == 3);
+            CHECK(u.player_flags_before == 0x1);
+            CHECK(u.player_flags_after == 0x3);
+        }
+    }
+    CHECK(saw_stage1);
+    CHECK(w.players().find(c.city->owner)->flags == 0x3);
+}
+
+TEST_CASE("population close C4: save and reload cuts of the fresh-home run continue identically") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::ScenarioSpec spec = scenario_spec(*o, kClose);
+    // Reference: one uninterrupted run, a hash after the build and every 10th step.
+    std::vector<std::uint64_t> ref_hashes;
+    std::uint64_t ref_final = 0;
+    std::set<std::uint64_t> cuts;
+    {
+        Close c = close_world(*o, spec);
+        REQUIRE(c.w.apply(close_build(c)).ok());
+        ref_hashes.push_back(c.w.state_hash());
+        std::int32_t last_res = 320;
+        bool cargo_cut = false;
+        for (std::uint64_t i = 1; i <= kCloseSteps; ++i) {
+            step_world(c.w, nullptr, nullptr);
+            if (i % 10 == 0) {
+                ref_hashes.push_back(c.w.state_hash());
+            }
+            const std::int32_t res = std::get<sim::House>(close_house(c)->payload).residents_64;
+            if (res != last_res && cuts.size() < 2) {
+                cuts.insert(i); // right after the first and second growth step
+            }
+            last_res = res;
+            for (const auto& slot : c.w.figures().list.slots) {
+                if (!cargo_cut && slot && slot->resident && !slot->expiry_stamp &&
+                    slot->home == close_house(c)->id &&
+                    slot->resident->step == sim::ResidentStep::ToHome &&
+                    std::any_of(slot->resident->cargo.begin(), slot->resident->cargo.end(),
+                                [](const sim::ResidentCargo& g) { return g.goods != 0; })) {
+                    cargo_cut = true;
+                    cuts.insert(i); // a walker of the new home carries its cargo
+                }
+            }
+        }
+        ref_final = c.w.state_hash();
+        REQUIRE(cargo_cut);
+    }
+    cuts.insert(0);   // right after the build
+    cuts.insert(540); // just before the cap
+    std::size_t done = 0;
+    for (const std::uint64_t cut : cuts) {
+        INFO("cut " << cut);
+        Close c = close_world(*o, spec);
+        REQUIRE(c.w.apply(close_build(c)).ok());
+        for (std::uint64_t i = 1; i <= cut; ++i) {
+            step_world(c.w, nullptr, nullptr);
+        }
+        const std::uint64_t before = c.w.state_hash();
+        const std::vector<std::uint8_t> bytes = c.w.save();
+        auto back = sim::World::load(bytes, o->types);
+        REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+        sim::World w2 = std::move(back).value();
+        CHECK(w2.state_hash() == before);
+        CHECK(w2.save() == bytes);
+        for (std::uint64_t i = cut + 1; i <= kCloseSteps; ++i) {
+            step_world(w2, nullptr, nullptr);
+            if (i % 10 == 0) {
+                CHECK(w2.state_hash() == ref_hashes[i / 10]);
+            }
+        }
+        CHECK(w2.state_hash() == ref_final);
+        ++done;
+    }
+    CHECK(done == cuts.size());
+    CHECK(cuts.size() >= 4);
+}
+
+TEST_CASE("population close C4: a recorded fresh-home run replays, and an altered build diverges") {
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::ScenarioSpec spec = scenario_spec(*o, kClose);
+    Close c = close_world(*o, spec);
+    auto started = sim::Recorder::start(c.w);
+    REQUIRE_MESSAGE(started.ok(), (started.ok() ? std::string() : started.error()));
+    sim::Recorder rec = std::move(started).value();
+    REQUIRE(rec.submit(close_build(c)).ok());
+    for (std::uint64_t i = 0; i < 300; ++i) {
+        rec.advance(kStepMs);
+        if (i % 30 == 29) {
+            rec.checkpoint();
+        }
+    }
+    const sim::ReplayLog& log = rec.log();
+    export_log("pop_close.log", log);
+    const auto bytes = sim::write_log(log);
+    REQUIRE(bytes.ok());
+    const auto read = sim::read_log(bytes.value());
+    REQUIRE(read.ok());
+    {
+        auto fresh = sim::World::load(read.value().initial_save, o->types, {});
+        REQUIRE(fresh.ok());
+        auto outcome = sim::replay(fresh.value(), read.value());
+        REQUIRE_MESSAGE(outcome.ok(), (outcome.ok() ? std::string() : outcome.error()));
+        CHECK(outcome.value().checkpoints_total == 10);
+        CHECK(outcome.value().checkpoints_matched == 10);
+        CHECK(outcome.value().reproduced());
+        CHECK(fresh.value().state_hash() == c.w.state_hash());
+    }
+    // The independently altered input: the same build with rotation 1 (the 4 x 4 footprint still
+    // fits, the building's rotation differs): the first checkpoint after the build diverges.
+    {
+        sim::ReplayLog changed = read.value();
+        bool altered = false;
+        for (sim::ReplayEntry& e : changed.entries) {
+            if (e.kind == sim::ReplayEntry::Kind::Commands) {
+                for (sim::Command& cmd : e.commands) {
+                    if (auto* b = std::get_if<sim::BuildCmd>(&cmd.body)) {
+                        b->placements.at(0).rotation = 1;
+                        altered = true;
+                    }
+                }
+            }
+        }
+        REQUIRE(altered);
+        export_log("pop_close_rot1.log", changed);
+        auto fresh = sim::World::load(changed.initial_save, o->types, {});
+        REQUIRE(fresh.ok());
+        auto outcome = sim::replay(fresh.value(), changed);
+        REQUIRE(outcome.ok());
+        CHECK_FALSE(outcome.value().reproduced());
+        REQUIRE(outcome.value().diverged_entry.has_value());
+    }
+}

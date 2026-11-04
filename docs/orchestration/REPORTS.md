@@ -11987,15 +11987,19 @@ The owner's answers (2026-11-03, late evening), hand-over note section 4.1. All 
   - native app at `99437681`: 257 executed, 1 failed (the merged projection branch's lan5 dev-tool pick, 1 wrong
     pixel, unchanged), 2 opt-in skips (`native-n25a`);
   - GPU 115/115 (`native-n25g`);
-  - render at `d9704b98`: 194 selected, 193 passed, 1 failed (river Q5, 0.4857 against 0.55, as before), the scene and frame digests included (`native-n28r`);
+  - render at `d9704b98`: 194 selected, 193 passed, 1 failed (river Q5, 0.4857 against 0.55), the scene and frame digests included (`native-n28r`); the earlier render run at the merge (`native-x1r`, `a150c11d` with 13 uncommitted files) is invalid: its source changed during the selection, and its Q5 case was refused for memory (`low-memory stop`), so no valid Q5 run exists at `a150c11d` itself;
   - window tests on the RTX 4090 at `d9704b98`: `opening_gpu_window` and `opening_controls` PASS (`gpuwin-n26-*`);
   - WSL warnings at `d9704b98`: GCC 13 / Clang 18, four variants clean (`unix-warnings-n27.log`);
   - WSL ASan+UBSan at `a150c11d` (the merged head before these commits): app 261 executed, 1 failed (the same lan5
     pick), 2 opt-in skips; sim 81/81; render P1/P2 3/3; 0 sanitizer lines (`wsl-w13*.txt`). The later commits are
     covered by the native gates and the warnings only, not by a sanitizer run.
 - Open:
-  - river Q5 on `D_256x256_0045_5B` (48.6 % against 55 %, unchanged by the shore) and the lan5 pick, both from the
-    projection branch;
+  - river Q5 on `D_256x256_0045_5B` and the lan5 pick, both from the projection branch. Q5 (corrected 2026-11-04
+    after the orchestrator's review; "unchanged by the shore" had not been measured): 17 of 35 windows, 48.57 %,
+    against 55 %; with the shore at 16 (same head and configuration, the 16 run's binary with a one-line test edit that
+    is not committed) all five QA islands give the projection branch's numbers, `D_256x256_0045_5B` 16 of 33, 48.48 %
+    (`cache/o1/q5shore/`). The shore moved it by one window won and two counted (+0.09 points; the other islands'
+    counts move more, all of them pass either way); it fails either way;
   - why the Kontor still floats: the original depth-tests every sprite pixel (`docs/re/annodisplay.md`), this renderer
     draws sprites whole on top. A renderer task of its own (OQ-026 c), how to take it on is the owner's call;
   - the zoom-artifact console log (waiting for the owner);

@@ -24,7 +24,8 @@ in `docs/app/ship-opening.md` ("Playtest rounds"); this note adds round 7 and th
   (`docs/app/ship-opening.md`, `docs/open-questions.md`, `docs/render/iso.md`, `src/app/tests/opening_test.cpp`,
   `src/render/src/gpu.cpp`, `src/render/tests/gpu_test.cpp`); none of W4's new lines contains tile/screen projection
   arithmetic (checked by both sessions). Two product failures stay OPEN on that branch: the river motion check Q5 on one
-  island (48.5 % against 55 %) and the lan5 dev-tool pick (1 of 8,486 pixels: the 1-unit march steps over a ridge crest).
+  island (16 of 33 windows, 48.48 % against 55 %) and the lan5 dev-tool pick (1 of 8,486 pixels: the 1-unit march steps
+  over a ridge crest).
   Merging needs the owner's OK; the owner's round 7 build did not contain it.
 
 ## 2. Round 7: what the owner saw
@@ -163,14 +164,18 @@ Wine check for H2, wait for the zoom log").
 ### 4.1 The owner's answers and what followed (2026-11-03, late evening)
 
 - **(a) yes:** the orchestrator merged `task/iso-handedness-W4` into the task branch (`a150c11d`). Its two open failures
-  stay open (river Q5 on `D_256x256_0045_5B`, 48.5 % against 55 %; the lan5 dev-tool pick, 1 of 8,486 pixels).
+  stay open (river Q5 on `D_256x256_0045_5B`, 16 of 33 windows, 48.48 % against 55 % in that branch's own runs; the lan5
+  dev-tool pick, 1 of 8,486 pixels).
 - **(b) yes, H1 is the default** (`53101c96`; `--shore`: `38af87b2`): terrain below `kShoreHeight` = 16.5 is water (the original water's test,
   the enhanced water's zero, the shore distance, the empty-cell bound, the wave depth), per scene
   (`render::Scene::shore_height`, the viewer's `--shore 16` for the earlier look). The water objects' split under and over
   the sea stays at 16 (`kWaterline`). The recorded corpus tables (the scene digests, the legacy river digests, the frames)
   stay at the shore of 16, their recording; the frames test adds a third pass at the default shore (10 of 18 frames move:
   Single_01's group 2 enhanced view and every Single_24 view), recorded on this PC. Nine mutants of the shore setting
-  (five in `sea.cpp`, one in `iso.cpp`, three in `scene.cpp`) are killed.
+  (five in `sea.cpp`, one in `iso.cpp`, three in `scene.cpp`) are killed. H1 moves Q5 on `D_256x256_0045_5B` to 17 of 35
+  windows, 48.57 % (measured 2026-11-04 at the same head and configuration, at 16.5 and, with a one-line test edit that is
+  not committed, at 16, `cache/o1/q5shore/`; at 16 all five QA islands give the projection branch's numbers exactly); it
+  fails against 55 % either way, the other four islands pass either way.
 - **(c) restore it:** `ee6a12e0`. `T` or `.` turns the founding cursor on, `,` back; the command carries the turn and the
   trials start there. That the original's `.`/`,` reach its Kontor cursor while founding is supported (the review's
   trace), not yet checked in the Wine runner. Five mutants of the key handler and the preview are killed.

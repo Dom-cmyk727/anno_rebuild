@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -184,14 +185,17 @@ TEST_CASE("dev tool data: a second definition (another id, a non-square footprin
     key(tool, app::ToolInput::Kind::Rotate);
     const auto turned = tool.input().footprint_at({kX0 + 10, kY0 + 10}, 16);
     REQUIRE(turned.size() == 3);
-    CHECK(turned.back() == sim::TileXY{kX0 + 10, kY0 + 12}); // along y now
+    // Along y now, centred on the hovered tile ((3 - 1) / 2 = 1 before it, the original's cursor).
+    CHECK(turned.front() == sim::TileXY{kX0 + 10, kY0 + 9});
+    CHECK(turned.back() == sim::TileXY{kX0 + 10, kY0 + 11});
     CHECK(app::dev_tool_status(tool).find("(1x3, 777 gold) rotation 1") != std::string::npos);
     cmds = click(tool, f, kX0 + 10, kY0 + 10);
     REQUIRE(cmds.size() == 1);
     CHECK(std::get<sim::BuildCmd>(cmds.front().body).placements[0].rotation == 1);
 
     // Occupancy by its rotated footprint: a published mod building at local (5, 5), rotation 0,
-    // covers local x 5..7 on row 5. The turned mod at (7, 3) covers rows 3..5: occupied.
+    // covers local x 5..7 on row 5. The turned mod hovered at (7, 4) covers rows 3..5 (centred):
+    // occupied.
     app::PlacementKnowledge knows(tool.setup());
     // Before an index and without a snapshot, the text names both as unchecked.
     move(tool, f, kX0 + 8, kY0 + 3);
@@ -206,7 +210,7 @@ TEST_CASE("dev tool data: a second definition (another id, a non-square footprin
     CHECK(knows.update(published, 1, *s));
     CHECK(knows.occupied({kX0 + 7, kY0 + 5}));
     CHECK_FALSE(knows.occupied({kX0 + 8, kY0 + 5}));
-    move(tool, f, kX0 + 7, kY0 + 3);
+    move(tool, f, kX0 + 7, kY0 + 4);
     app::PlaySnapshot snap;
     snap.turn = 3;
     snap.money = 100000;
@@ -215,7 +219,7 @@ TEST_CASE("dev tool data: a second definition (another id, a non-square footprin
     CHECK(v.refused);
     CHECK(v.text.find("occupied") != std::string::npos);
     // One column further: free; its costs: gold 777, then its wood (300).
-    move(tool, f, kX0 + 8, kY0 + 3);
+    move(tool, f, kX0 + 8, kY0 + 4);
     CHECK_FALSE(knows.check(tool, &snap).refused);
     snap.money = 500;
     v = knows.check(tool, &snap);
@@ -226,8 +230,9 @@ TEST_CASE("dev tool data: a second definition (another id, a non-square footprin
     v = knows.check(tool, &snap);
     CHECK(v.refused);
     CHECK(v.text.find("300 needed, 299 held") != std::string::npos);
-    // At the island's lower edge the turned footprint leaves it.
-    move(tool, f, kX0 + 8, kY0 + kSize - 2);
+    // At the island's lower edge the turned footprint leaves it (hovered on the last row, its
+    // centred rows are kSize - 2 .. kSize).
+    move(tool, f, kX0 + 8, kY0 + kSize - 1);
     v = knows.check(tool, &snap);
     CHECK(v.refused);
     CHECK(v.text.find("leaves the city's island") != std::string::npos);
@@ -452,4 +457,67 @@ TEST_CASE("dev tool data: another player's city on another island: its commands 
     key(tool, app::ToolInput::Kind::ToggleDemolish);
     move(tool, f, x1 + 6, kY0 + 7);
     CHECK(app::preview_note(tool, *s, 1).find("no entry 501") != std::string::npos);
+}
+
+TEST_CASE("dev tool turn: the footprint is centred on the pointer, `,` and T turn on, `.` back, "
+          "and a mine or quarry keeps its turn (owner playtest 2026-11-04)" *
+          doctest::test_suite("dev_tool_mod")) {
+    // The original's cursor centres the turned footprint on the hovered tile, (w - 1) / 2 and
+    // (h - 1) / 2 before it, clamped at 0 (D: AnnoFrame.dll 0x10043e20, 0x10049340); its turn keys
+    // add -1 or +1 to the cursor's byte (D: View.dll 0x100190b3; Wine runner 2026-11-04: `.` back,
+    // `,` on); a MINE (PRODTYPE 3) or STEINBRUCH (13) builds with its deposit's turn (D:
+    // AnnoFrame.dll 0x10046300, 0x10046715), which is not ported: the tool keeps the turn.
+    const sim::TypeId kMine{1205}, kQuarry{1201}, kFisher{810};
+    std::vector<sim::BuildingType> extra{type(kMine, 3, 3, 4), type(kQuarry, 13, 3, 4),
+                                         type(kFisher, 6, 3, 4)};
+    const auto reg = registry(extra);
+    CHECK(app::deposit_turned(*reg->find(kMine)));
+    CHECK(app::deposit_turned(*reg->find(kQuarry)));
+    CHECK_FALSE(app::deposit_turned(*reg->find(kFisher)));
+    CHECK(app::coast_turned(*reg->find(kFisher)));
+    CHECK_FALSE(app::coast_turned(*reg->find(kMine)));
+    CHECK_FALSE(app::coast_turned(*reg->find(kHouse)));
+
+    const auto s = scene();
+    const Frame f = frame_over(s, kX0 + 15, kY0 + 15);
+    app::DevTool tool(setup({kHouse, kMod, kFisher, kMine}, reg));
+    key(tool, app::ToolInput::Kind::Toggle);
+    key(tool, app::ToolInput::Kind::NextType);
+    REQUIRE(tool.input().selected() == std::optional<sim::TypeId>{kMod}); // 3 x 1
+    auto origin_of = [&](std::int32_t x, std::int32_t y) {
+        const auto cmds = click(tool, f, x, y);
+        REQUIRE(cmds.size() == 1);
+        const auto& p = std::get<sim::BuildCmd>(cmds.front().body).placements.at(0);
+        return std::tuple{p.x, p.y, p.rotation};
+    };
+    // Turn 0: 3 x 1, one tile before the pointer along x.
+    CHECK(origin_of(kX0 + 10, kY0 + 10) == std::tuple{kX0 + 9, kY0 + 10, std::uint8_t{0}});
+    // `.` turns back: 3, a 1 x 3 one tile before the pointer along y.
+    key(tool, app::ToolInput::Kind::RotateBack);
+    CHECK(tool.input().rotation() == 3);
+    CHECK(origin_of(kX0 + 10, kY0 + 10) == std::tuple{kX0 + 10, kY0 + 9, std::uint8_t{3}});
+    // `,` (or T) turns on: 0 again.
+    key(tool, app::ToolInput::Kind::Rotate);
+    CHECK(tool.input().rotation() == 0);
+    // The preview's verdict uses the same centred rectangle.
+    const auto extent = tool.input().footprint_extent({kX0 + 10, kY0 + 10});
+    REQUIRE(extent.has_value());
+    CHECK(extent->x0 == kX0 + 9);
+    CHECK(extent->y0 == kY0 + 10);
+
+    // A 3 x 4 fisher inland: the coast trials find no coast and keep the cursor's turn.
+    key(tool, app::ToolInput::Kind::NextType);
+    REQUIRE(tool.input().selected() == std::optional<sim::TypeId>{kFisher});
+    move(tool, f, kX0 + 10, kY0 + 10);
+    CHECK(tool.turn() == 0);
+    CHECK(origin_of(kX0 + 10, kY0 + 10) == std::tuple{kX0 + 9, kY0 + 9, std::uint8_t{0}});
+
+    // A mine: the keys leave the turn and say why.
+    key(tool, app::ToolInput::Kind::NextType);
+    REQUIRE(tool.input().selected() == std::optional<sim::TypeId>{kMine});
+    key(tool, app::ToolInput::Kind::Rotate);
+    CHECK(tool.input().rotation() == 0);
+    CHECK(tool.message().find("takes its turn from the deposit") != std::string::npos);
+    key(tool, app::ToolInput::Kind::RotateBack);
+    CHECK(tool.input().rotation() == 0);
 }

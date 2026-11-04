@@ -28,7 +28,7 @@ UI cursor (AnnoFrame; check with 4 args rec, flags, {island, city}, commit: body
    click                 0x10047637 ... [cursor+0xc](rec, flags = 0x8000000, ..., 1)     0x1004766f
         -> type flag word bit 0x80 SET (every ordinary building): island +0xec per footprint tile (one owner), island +0xf8 -> city,
            group 0x21 only: 0x10043f70; then City::Build  city slot +0xa0 = AnnoWelt 0x100276a0 (rec, flags)       0x100473ef
-           (PRODTYPE 0x23, 6, 7, 0xf = MARKTKOMBI, FISCHER, WERFT, WALFAENGER: up to 4 tries with rec[6]+1 mod 4, UI convenience, 0x1004741e-0x1004744c)
+           (PRODTYPE 0x23, 6, 7, 0xf = KONTOR (35; MARKTKOMBI is 36, corrected 2026-11-04), FISCHER, WERFT, WALFAENGER: up to 4 tries with rec[6]+1 mod 4, UI convenience, 0x1004741e-0x1004744c)
         -> bit 0x80 CLEAR: island slot +0x6c directly (rec, flags, 0)                                                  0x1004722f, 0x10048708
    commit 0x100441f0:  sink [B+0x58] slot +0x54 = tNetClient apply 0x100589a0 (mode 6, rec, count, city, flags = 0)    0x1004420f
 apply 0x100589a0 mode 6 (single player and the network turn both end here, docs/re/tick-loop.md l.86), per 10-byte record:

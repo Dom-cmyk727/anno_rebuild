@@ -5,8 +5,25 @@
 
 #include <anno/app/dev_input.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/site_checks.hpp>
 
 namespace anno::app {
+
+bool coast_turned(const sim::BuildingType& type) {
+    switch (type.prodtype) {
+    case 6:  // FISCHER
+    case 7:  // WERFT
+    case 15: // WALFAENGER
+    case 35: // KONTOR
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool deposit_turned(const sim::BuildingType& type) {
+    return type.prodtype == 3 || type.prodtype == 13; // MINE, STEINBRUCH
+}
 
 DevInput::DevInput(std::shared_ptr<const sim::TypeRegistry> registry,
                    std::vector<sim::TypeId> types, sim::CityRef city, sim::PlayerId issuer)
@@ -32,18 +49,35 @@ bool DevInput::road_like() const {
     return type != nullptr && (type->flags_word & sim::kRoadFlag) != 0;
 }
 
-std::optional<DevInput::Extent> DevInput::footprint_extent(sim::TileXY origin) const {
+sim::TileXY DevInput::origin(sim::TileXY hover) const {
+    const sim::BuildingType* type = selected_type();
+    if (type == nullptr) {
+        return hover;
+    }
+    const auto [w, h] = sim::footprint(*type, rotation_);
+    const sim::site::Origin o = sim::site::centred_origin(hover.x, hover.y, w, h);
+    // Centred and clamped at 0, the origin lies between 0 and the hovered tile: a 32-bit tile.
+    return sim::TileXY{static_cast<std::int32_t>(o.x), static_cast<std::int32_t>(o.y)};
+}
+
+std::optional<DevInput::Extent> DevInput::footprint_extent(sim::TileXY hover) const {
+    return footprint_extent(hover, rotation_);
+}
+
+std::optional<DevInput::Extent> DevInput::footprint_extent(sim::TileXY hover,
+                                                           std::uint8_t turn) const {
     const sim::BuildingType* type = selected_type();
     if (type == nullptr) {
         return std::nullopt;
     }
-    const auto [w, h] = sim::footprint(*type, rotation_);
-    return Extent{origin.x, origin.y, w, h};
+    const sim::TileXY o = origin(hover);
+    const auto [w, h] = sim::footprint(*type, turn);
+    return Extent{o.x, o.y, w, h};
 }
 
-std::vector<sim::TileXY> DevInput::footprint_at(sim::TileXY origin, std::uint64_t max_tiles) const {
+std::vector<sim::TileXY> DevInput::footprint_at(sim::TileXY hover, std::uint64_t max_tiles) const {
     std::vector<sim::TileXY> out;
-    const auto extent = footprint_extent(origin);
+    const auto extent = footprint_extent(hover);
     if (!extent || extent->area() > max_tiles) {
         return out;
     }
@@ -84,16 +118,19 @@ std::vector<sim::TileXY> DevInput::line(sim::TileXY from, sim::TileXY to) {
     return out;
 }
 
-sim::Command DevInput::build_command(const std::vector<sim::TileXY>& tiles) const {
+sim::Command DevInput::build_command(const std::vector<sim::TileXY>& tiles,
+                                     std::optional<std::uint8_t> turn) const {
     sim::BuildCmd build;
     build.city = city_;
     const sim::TypeId type = *selected();
     for (const sim::TileXY& tile : tiles) {
+        // The footprint centred on the tile (a road's 1 x 1 stays on it).
+        const sim::TileXY o = origin(tile);
         sim::PlacementWire placement;
         placement.type = type;
-        placement.x = tile.x;
-        placement.y = tile.y;
-        placement.rotation = rotation_;
+        placement.x = o.x;
+        placement.y = o.y;
+        placement.rotation = turn.value_or(rotation_);
         build.placements.push_back(placement);
     }
     sim::Command command;
@@ -128,7 +165,14 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
         }
         break;
     case DevEvent::Kind::Rotate:
-        rotation_ = static_cast<std::uint8_t>((rotation_ + 1) % 4);
+    case DevEvent::Kind::RotateBack:
+        if (const sim::BuildingType* type = selected_type();
+            type != nullptr && deposit_turned(*type)) {
+            message_ = "a mine or quarry takes its turn from the deposit (not modelled yet)";
+            break;
+        }
+        rotation_ = static_cast<std::uint8_t>(
+            (rotation_ + (event.kind == DevEvent::Kind::Rotate ? 1U : 3U)) % 4U);
         break;
     case DevEvent::Kind::ToggleDemolish:
         demolish_ = !demolish_;
@@ -179,7 +223,7 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
                 message_ = "a drag places a road; the selected type is not one";
                 break;
             }
-            out.push_back(build_command(tiles));
+            out.push_back(build_command(tiles, tiles.size() == 1 ? event.turn : std::nullopt));
         }
         if (!sim::has_wire_form(out.back().body)) {
             out.clear();

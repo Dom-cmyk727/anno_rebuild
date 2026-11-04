@@ -54,7 +54,13 @@ TEST_CASE("dev feedback: the preview is the scene's own sprite of the type at th
         }
     }
     REQUIRE(b != nullptr);
-    const sim::TileXY tile{l->setup.island.x0 + b->x, l->setup.island.y0 + b->y};
+    // The tool centres the footprint on the hovered tile (the original's cursor, D: AnnoFrame.dll
+    // 0x10043e20): hover the building's centre tile, (w - 1) / 2 and (h - 1) / 2 from its corner.
+    const sim::BuildingType* bt = l->setup.registry->find(sim::TypeId{b->type});
+    REQUIRE(bt != nullptr);
+    const auto [bw, bh] = sim::footprint(*bt, b->rotation);
+    const sim::TileXY tile{l->setup.island.x0 + b->x + static_cast<std::int32_t>((bw - 1) / 2),
+                           l->setup.island.y0 + b->y + static_cast<std::int32_t>((bh - 1) / 2)};
     const app::DevTool tool = tool_at(*l, sim::TypeId{b->type}, tile, b->rotation);
     const auto preview = app::make_preview(tool, *l->scene, 1, 0);
     REQUIRE(preview.has_value());
@@ -219,8 +225,10 @@ TEST_CASE("dev feedback: every buildable type of lan5 at every rotation has the 
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const auto free = free_tile(*l, 8);
-    REQUIRE(free.has_value());
+    // The middle of a free 8 x 8 square: every footprint centred there starts on the island.
+    const auto corner = free_tile(*l, 8);
+    REQUIRE(corner.has_value());
+    const std::optional<sim::TileXY> free = sim::TileXY{corner->x + 4, corner->y + 4};
     std::size_t drawn = 0, noted = 0, transparent = 0, compared = 0;
     for (const sim::TypeId t : l->setup.types) {
         const sim::BuildingType* type = l->setup.registry->find(t);
@@ -247,11 +255,17 @@ TEST_CASE("dev feedback: every buildable type of lan5 at every rotation has the 
                 continue;
             }
             REQUIRE(pv.has_value());
-            // The object it draws is the type at the rotation and the hovered tile.
+            // The object it draws is the type at the rotation, its footprint centred on the
+            // hovered tile (an inland tile: a coast kind finds no coast turn and keeps r). A mine
+            // or quarry keeps turn 0: the keys do not turn it (its turn is the deposit's).
+            const auto turn = static_cast<std::uint8_t>(app::deposit_turned(*type) ? 0 : r);
+            const auto [cw, ch] = sim::footprint(*type, turn);
             CHECK(pv->object.first.anlage == t.v);
-            CHECK(pv->object.first.rotation == r);
-            CHECK(static_cast<std::int32_t>(pv->object.first.x) == free->x - l->setup.island.x0);
-            CHECK(static_cast<std::int32_t>(pv->object.first.y) == free->y - l->setup.island.y0);
+            CHECK(pv->object.first.rotation == turn);
+            CHECK(static_cast<std::int32_t>(pv->object.first.x) ==
+                  free->x - static_cast<std::int32_t>((cw - 1) / 2) - l->setup.island.x0);
+            CHECK(static_cast<std::int32_t>(pv->object.first.y) ==
+                  free->y - static_cast<std::int32_t>((ch - 1) / 2) - l->setup.island.y0);
             if (pv->sprites.empty()) {
                 ++transparent; // the entry's frames resolve to nothing at this rotation
             } else {

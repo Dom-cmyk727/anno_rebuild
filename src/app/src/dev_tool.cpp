@@ -5,7 +5,9 @@
 #include <vector>
 
 #include <anno/app/dev_tool.hpp>
+#include <anno/app/frame_projection.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/site_checks.hpp>
 
 namespace anno::app {
 
@@ -116,8 +118,41 @@ std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, d
     return t;
 }
 
+std::uint8_t DevTool::turn() const {
+    const std::uint8_t cursor = input_.rotation();
+    const sim::BuildingType* type = input_.selected_type();
+    if (!hover_ || type == nullptr || !scene_ || !coast_turned(*type) ||
+        !sim::site::coast_class_supported(type->flags_word)) {
+        return cursor;
+    }
+    const sim::TileXY o = input_.origin(*hover_);
+    const TileRect& isl = setup_.island;
+    for (const std::uint8_t rot : sim::site::rotation_trials(cursor)) {
+        const auto [w, h] = sim::footprint(*type, rot);
+        if (!isl.contains(o) ||
+            !isl.contains(sim::TileXY{static_cast<std::int32_t>(std::int64_t{o.x} + w - 1),
+                                      static_cast<std::int32_t>(std::int64_t{o.y} + h - 1)})) {
+            continue;
+        }
+        const auto verdict = sim::site::coast_height_rule(
+            type->width, type->height, rot, [&](std::uint64_t vx, std::uint64_t vy) {
+                return scene_vertex_height(*scene_,
+                                           std::int64_t{o.x} + static_cast<std::int64_t>(vx),
+                                           std::int64_t{o.y} + static_cast<std::int64_t>(vy));
+            });
+        if (verdict.result == sim::site::TerrainResult::Accepted) {
+            return rot;
+        }
+    }
+    return cursor;
+}
+
 void DevTool::forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Command>& out) {
-    for (sim::Command& c : input_.handle(DevEvent{kind, tile})) {
+    std::optional<std::uint8_t> chosen;
+    if (kind == DevEvent::Kind::Release) {
+        chosen = turn();
+    }
+    for (sim::Command& c : input_.handle(DevEvent{kind, tile, chosen})) {
         out.push_back(std::move(c));
     }
     if (!input_.message().empty()) {
@@ -183,6 +218,9 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
     case K::Rotate:
         forward(DevEvent::Kind::Rotate, {}, out);
         break;
+    case K::RotateBack:
+        forward(DevEvent::Kind::RotateBack, {}, out);
+        break;
     case K::ToggleDemolish:
         forward(DevEvent::Kind::ToggleDemolish, {}, out);
         press_.reset();
@@ -203,6 +241,8 @@ std::vector<sim::Command> DevTool::handle(const ToolInput& in, const PointerFram
         const auto tile = frame != nullptr ? pick(*frame, in.px, in.py, &why) : std::nullopt;
         if (frame == nullptr) {
             why = "no frame drawn yet";
+        } else {
+            scene_ = frame->scene;
         }
         hover_ = tile;
         if (in.kind == K::Move) {
@@ -244,10 +284,14 @@ std::string dev_tool_status(const DevTool& tool) {
     if (in.demolish_mode()) {
         s += "demolish";
     } else if (const sim::BuildingType* type = in.selected_type()) {
-        const auto [w, h] = sim::footprint(*type, in.rotation());
+        const std::uint8_t turn = tool.turn();
+        const auto [w, h] = sim::footprint(*type, turn);
         s += "build " + std::to_string(type->id.v) + " (" + std::to_string(w) + "x" +
              std::to_string(h) + ", " + std::to_string(type->cost_gold) + " gold) rotation " +
-             std::to_string(in.rotation());
+             std::to_string(turn);
+        if (turn != in.rotation()) {
+            s += " (cursor " + std::to_string(in.rotation()) + ", turned to the coast)";
+        }
     } else if (const auto id = in.selected()) {
         s += "type " + std::to_string(id->v) + " is not in the registry"; // a malformed setup
     } else {

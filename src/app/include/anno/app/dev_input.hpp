@@ -27,7 +27,11 @@ struct DevEvent {
     enum class Kind : std::uint8_t {
         NextType,
         PrevType,
+        /// The turn on (+1: `,` and T) and back (-1: `.`), as the original's keys (D: View.dll
+        /// 0x100190b3 adds -1 or +1 to the active cursor's byte +0x46, `& 3`; Wine runner
+        /// 2026-11-04: `.` back, `,` on).
         Rotate,
+        RotateBack,
         ToggleDemolish,
         Cancel,
         /// Drops a press in progress only (focus lost, a release off the island): unlike Cancel
@@ -39,7 +43,22 @@ struct DevEvent {
     };
     Kind kind = Kind::Cancel;
     sim::TileXY tile;
+    /// Release only: the turn to build with when the tool chose it by the coast trials
+    /// (DevTool::turn); none: the cursor's turn.
+    std::optional<std::uint8_t> turn;
 };
+
+/// Whether `type` takes its turn from the coast: the original's ordinary cursor tries the turns
+/// r, r+1, r+2, r+3 from the cursor's for PRODTYPE 6 FISCHER, 7 WERFT, 15 WALFAENGER and 35 KONTOR
+/// (D: AnnoFrame.dll 0x100473cf-0x1004744c) and places the first the coast accepts; the cursor's
+/// own turn stays. The PRODTYPEs are the original's data (a mod adding a coast kind adds it here).
+[[nodiscard]] bool coast_turned(const sim::BuildingType& type);
+/// Whether `type` takes its turn from a deposit: PRODTYPE 3 MINE and 13 STEINBRUCH get the mine
+/// cursor (D: View.dll 0x1002b199-0x1002b1cd), which snaps to the nearest deposit record of the
+/// island and builds with that record's turn (D: AnnoFrame.dll 0x10046300, 0x10046715); the
+/// player's turn only centres the search. The deposit records are not ported (OQ-024), so the
+/// tool keeps the turn where it is for these types and says why.
+[[nodiscard]] bool deposit_turned(const sim::BuildingType& type);
 
 class DevInput {
   public:
@@ -67,8 +86,18 @@ class DevInput {
         std::uint32_t w = 0, h = 0;
         [[nodiscard]] std::uint64_t area() const { return std::uint64_t{w} * h; }
     };
-    [[nodiscard]] std::optional<Extent> footprint_extent(sim::TileXY origin) const;
-    /// The tiles the selected type covers at `origin` with the current rotation, row by row.
+    /// `hover` is the tile under the pointer: the footprint at the cursor's turn is centred on it,
+    /// clamped at 0 per axis (sim::site::centred_origin; D: AnnoFrame.dll 0x10043e20, 0x10049340),
+    /// and `turn` (default the cursor's) gives its size; a coast trial keeps that origin (D:
+    /// 0x10048de7, the origin is not recomputed).
+    [[nodiscard]] std::optional<Extent> footprint_extent(sim::TileXY hover) const;
+    [[nodiscard]] std::optional<Extent> footprint_extent(sim::TileXY hover,
+                                                         std::uint8_t turn) const;
+    /// The north-west tile a placement at `hover` gets (the centred origin above); `hover` itself
+    /// when no type is selected.
+    [[nodiscard]] sim::TileXY origin(sim::TileXY hover) const;
+    /// The tiles the selected type covers at `hover` (centred) with the current rotation, row by
+    /// row.
     /// Empty when the rectangle has more than `max_tiles` tiles or leaves the 32-bit tile
     /// coordinates: the caller names the region it admits (the city's island), so the allocation
     /// is bounded by it and not by a definition's dimensions. The preview and the feedback do not
@@ -89,7 +118,8 @@ class DevInput {
 
   private:
     [[nodiscard]] bool road_like() const;
-    [[nodiscard]] sim::Command build_command(const std::vector<sim::TileXY>& tiles) const;
+    [[nodiscard]] sim::Command build_command(const std::vector<sim::TileXY>& tiles,
+                                             std::optional<std::uint8_t> turn) const;
     [[nodiscard]] sim::Command demolish_command(const std::vector<sim::TileXY>& tiles) const;
 
     std::shared_ptr<const sim::TypeRegistry> registry_;

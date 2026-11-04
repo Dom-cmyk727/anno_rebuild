@@ -41,7 +41,7 @@ and `R` water, `B` the building tool, `Esc` / `Q` quit (Esc first cancels what i
 | `H` | stop the selected ship |
 | `F` | founding mode: the warehouse sprite follows the pointer; `Tab` cycles the type; the warehouse turns to the coast by itself, starting its search from the cursor's turn: `,` (or `T`) turns the cursor on, `.` back, as the original's keys do, which decides only where two turns fit (a convex corner), as in the original; left click sends the founding (one click, one command) |
 | `U` | unload mode: `Tab` next hold, `-` / `+` (or `Page Down` / `Page Up`, or `[` `]`; in this mode `-` / `+` set the quantity instead of zooming, the wheel still zooms) quantity −1 / +1 ton (`Shift`: 10), `Enter` sends exactly that hold and quantity to your nearest warehouse (left click one of your warehouses to choose it) |
-| `B` | building tool: `N` / `P` type (`Shift+N` / `Shift+P`: ten at a time), `T` rotate, `X` demolish, left click place; it follows your founded city |
+| `B` | building tool: `N` / `P` type (`Shift+N` / `Shift+P`: ten at a time), `,` (or `T`) turns on, `.` back, the footprint centred on the pointer; a fisher, shipyard, whaler or warehouse turns to the coast by itself and a mine or quarry keeps its turn (it comes from the deposit, not modelled yet), as in the original; `X` demolish, left click place; it follows your founded city |
 | `F5` | quick-save (written off the window thread to `saves\quicksave-seat<N>.sav`) |
 | `Esc` | cancel the gesture, then the mode, then the selection, then quit |
 

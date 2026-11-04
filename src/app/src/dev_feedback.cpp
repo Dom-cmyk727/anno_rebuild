@@ -57,18 +57,25 @@ std::optional<Preview> make_preview(const DevTool& tool, const render::Scene& sc
     if (!index) {
         return std::nullopt;
     }
-    const auto lx = static_cast<std::uint16_t>(hover->x - rect.x0);
-    const auto ly = static_cast<std::uint16_t>(hover->y - rect.y0);
+    // The footprint centred on the hovered tile at the cursor's turn, built at the turn a click
+    // would send (a coast kind turns to the coast: DevTool::turn).
+    const sim::TileXY origin = tool.input().origin(*hover);
+    if (!rect.contains(origin)) {
+        return std::nullopt; // the footprint starts off the island (the verdict says so)
+    }
+    const std::uint8_t turn = tool.turn();
+    const auto lx = static_cast<std::uint16_t>(origin.x - rect.x0);
+    const auto ly = static_cast<std::uint16_t>(origin.y - rect.y0);
     const float h = scene.ground_height(static_cast<float>(hover->x), static_cast<float>(hover->y))
                         .value_or(0.0F);
     const auto height = static_cast<std::uint8_t>(std::clamp(std::lround(h), 0L, 255L));
     Preview p;
     p.island = *index;
-    p.sprites = scene.preview_sprites(*index, static_cast<std::uint16_t>(type->id.v),
-                                      tool.input().rotation(), lx, ly, height, group, time_ms);
+    p.sprites = scene.preview_sprites(*index, static_cast<std::uint16_t>(type->id.v), turn, lx, ly,
+                                      height, group, time_ms);
     formats::insel::PlacedObject o;
     o.anlage = static_cast<std::uint16_t>(type->id.v);
-    o.rotation = tool.input().rotation();
+    o.rotation = turn;
     o.state = static_cast<std::uint16_t>(std::uint16_t{height} << 8);
     o.x = lx;
     o.y = ly;
@@ -320,7 +327,7 @@ PlacementKnowledge::Verdict PlacementKnowledge::check(const DevTool& tool,
     // tile is looked at (round ee review, R3): an oversized or zero definition is refused in O(1)
     // and no tile list is made. What passes lies inside the island, so the occupancy test below
     // costs at most one lookup per column of the admitted region.
-    const auto extent = tool.input().footprint_extent(*hover);
+    const auto extent = tool.input().footprint_extent(*hover, tool.turn());
     // A zero-sized definition cannot come from the validating registry builder (the sim's rule,
     // F25); the branch keeps the check closed for a registry that does not validate.
     if (!extent || extent->w == 0 || extent->h == 0) {

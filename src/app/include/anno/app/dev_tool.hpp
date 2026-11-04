@@ -92,6 +92,7 @@ struct ToolInput {
         NextTypeFast,
         PrevTypeFast,
         Rotate,
+        RotateBack,
         ToggleDemolish,
         /// Esc: drop a press, leave the demolish mode.
         Cancel,
@@ -129,6 +130,11 @@ class DevTool {
     /// The last hint or local refusal ("" when none), DevInput's included.
     [[nodiscard]] const std::string& message() const { return message_; }
     [[nodiscard]] const DevInput& input() const { return input_; }
+    /// The turn a click at the hovered tile builds with: for a coast kind (coast_turned) the first
+    /// of the cursor's turn and the next three whose footprint, at the origin the cursor's turn
+    /// centres, lies on the island and passes the coast rule (sim::site::coast_height_rule over the
+    /// last drawn frame's heights); otherwise, or when none does, the cursor's turn.
+    [[nodiscard]] std::uint8_t turn() const;
     [[nodiscard]] const DevToolSetup& setup() const { return setup_; }
     /// The tool now builds in another city (a ship start founds its first one after launch): the
     /// city, its island's tiles; a press in progress and the hover are dropped, the selected type
@@ -140,6 +146,8 @@ class DevTool {
 
     DevToolSetup setup_;
     DevInput input_;
+    /// The last drawn frame's scene (the heights the coast trials read).
+    std::shared_ptr<const render::Scene> scene_;
     bool enabled_ = false;
     std::optional<sim::TileXY> hover_, press_;
     std::string message_;

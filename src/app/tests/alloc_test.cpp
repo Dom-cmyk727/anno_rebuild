@@ -431,16 +431,18 @@ TEST_CASE("footprint feedback: an oversized or absurd definition is refused befo
         CHECK_FALSE(v.refused);
         CHECK(v.text.find("unchecked") != std::string::npos);
     }
-    // Island boundaries, from independently known numbers: 12 wide from local x 18 ends at 30
-    // (the island's edge, allowed), from 19 it leaves; turned, it is 7 wide and 12 tall, so from
-    // local y 18 it ends at 30 and from 19 it leaves. (The pick only names tiles of an island, so
-    // an origin before the island cannot be hovered; the check clamps at the island's origin too.)
+    // Island boundaries, from independently known numbers. The footprint is centred on the
+    // hovered tile ((w - 1) / 2 and (h - 1) / 2 before it, the original's cursor): 12 wide and 7
+    // tall, hovered at local x 23 it starts at 18 and ends at 30 (the island's edge, allowed), at
+    // 24 it leaves; turned, it is 7 wide and 12 tall, so hovered at local y 23 it ends at 30 and
+    // at 24 it leaves. Hovered at (5, 3) it starts at the island's corner; at (4, 3) one tile
+    // before it, which leaves the island too.
     const struct {
         std::int32_t lx, ly;
         int rotations;
         bool refused;
-    } edges[] = {{18, 5, 0, false}, {19, 5, 0, true}, {5, 18, 1, false},
-                 {5, 19, 1, true},  {0, 0, 0, false}, {29, 29, 0, true}};
+    } edges[] = {{23, 5, 0, false}, {24, 5, 0, true}, {5, 23, 1, false},
+                 {5, 24, 1, true},  {5, 3, 0, false}, {4, 3, 0, true}};
     for (const auto& e : edges) {
         CAPTURE(e.lx);
         CAPTURE(e.ly);

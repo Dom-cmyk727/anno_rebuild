@@ -310,7 +310,17 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 
 - **Keys:**
   - B turns it on and off.
-  - With it on: N and P cycle the buildable types, T rotates, X toggles demolish.
+  - With it on: N and P cycle the buildable types, `,` (or T) turns on and `.` back (the original's
+    keys: View.dll `0x100190b3` adds +1 or -1 to the cursor's byte `+0x46`; Wine runner 2026-11-04),
+    X toggles demolish.
+  - The turned footprint is centred on the hovered tile, (w - 1) / 2 and (h - 1) / 2 before it,
+    clamped at 0 (`sim::site::centred_origin`; the original's cursor, AnnoFrame.dll `0x10043e20`).
+  - A coast kind (PRODTYPE 6 FISCHER, 7 WERFT, 15 WALFAENGER, 35 KONTOR) builds with the first of the
+    cursor's turn and the next three whose footprint, at the origin the cursor's turn centres, passes
+    the coast rule (`DevTool::turn`; AnnoFrame.dll `0x100473cf`-`0x1004744c`); the cursor keeps its turn.
+  - A mine or quarry (PRODTYPE 3 MINE, 13 STEINBRUCH) takes its turn from the island's nearest
+    deposit record in the original (AnnoFrame.dll `0x10046300`, `0x10046715`); the records are not
+    ported (OQ-024), so the keys leave its turn and the title says why. (Owner playtest 2026-11-04.)
   - Esc cancels a press or the demolish mode; with nothing to cancel, Esc quits as before.
   - The left button presses and releases: a click places, a drag lays a road (a straight line
     along the longer axis) or demolishes a line of tiles.
@@ -350,8 +360,9 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
 ### The tool's preview and feedback (W4.4, round ee)
 
 - **The preview** (`dev_feedback.hpp`, `Scene::preview_sprites`):
-  - It is the selected type's own sprites: its ANLAGEN entry, the selected rotation, the
-    hovered tile, and the ground height under the origin tile's corner (the sim's own height for
+  - It is the selected type's own sprites: its ANLAGEN entry, the turn a click would send
+    (`DevTool::turn`), the origin of the footprint centred on the hovered tile (nothing when that
+    origin is off the island), and the ground height under the hovered tile's corner (the sim's own height for
     the building can differ: a command-built building has height byte 0 today, OQ-550). They
     come from the renderer's own `place_prepared` on the frame's scene. Checked against the
     scene's own drawing of 18 822 placed objects of Single_01 (frame and anchor, every rotation)

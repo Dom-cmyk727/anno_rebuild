@@ -26,7 +26,10 @@ std::optional<ToolInput> tool_input_from_sdl(const SDL_Event& e, float density, 
             return ToolInput{(e.key.mod & SDL_KMOD_SHIFT) != 0 ? K::PrevTypeFast : K::PrevType, 0,
                              0};
         case SDLK_T:
+        case SDLK_COMMA:
             return ToolInput{K::Rotate, 0, 0};
+        case SDLK_PERIOD:
+            return ToolInput{K::RotateBack, 0, 0};
         case SDLK_X:
             return ToolInput{K::ToggleDemolish, 0, 0};
         case SDLK_ESCAPE:
@@ -68,6 +71,7 @@ ToolStep dev_tool_step(DevTool& tool, const SDL_Event& event, float density,
         // cancel must not reach the window's own Esc (quit; integration review of round ee, P2-1).
         const SDL_Keycode k = event.key.key;
         step.taken = k == SDLK_B || (tool.enabled() && (k == SDLK_N || k == SDLK_P || k == SDLK_T ||
+                                                        k == SDLK_COMMA || k == SDLK_PERIOD ||
                                                         k == SDLK_X || k == SDLK_ESCAPE));
         return step;
     }

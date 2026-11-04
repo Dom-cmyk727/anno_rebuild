@@ -220,8 +220,10 @@ TEST_CASE("dev tool: a click over a known tile builds there through the window's
                 REQUIRE(cmds.size() == 1);
                 const auto& b = std::get<sim::BuildCmd>(cmds[0].body);
                 REQUIRE(b.placements.size() == 1);
-                CHECK(b.placements[0].x == t.x); // world tiles, as the command file's
-                CHECK(b.placements[0].y == t.y);
+                // World tiles, as the command file's: the footprint centred on the clicked tile
+                // (the original's cursor, D: AnnoFrame.dll 0x10043e20).
+                CHECK(b.placements[0].x == tool.input().origin(t).x);
+                CHECK(b.placements[0].y == tool.input().origin(t).y);
                 CHECK(b.placements[0].type == kPlain);
                 CHECK(b.placements[0].rotation == 0);
                 CHECK(b.city == *setup().city);
@@ -261,7 +263,7 @@ TEST_CASE("dev tool: under continuous zoom a point just inside a tile's edge pic
         app::DevTool tool(setup());
         const auto cmds = feed(tool, win, {key(SDLK_B), button(true, at), button(false, at)});
         REQUIRE(cmds.size() == 1);
-        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{t});
+        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{tool.input().origin(t)});
     }
 }
 
@@ -309,7 +311,7 @@ TEST_CASE(
         app::DevTool tool(st);
         const auto cmds = feed(tool, win, {key(SDLK_B), button(true, *at), button(false, *at)});
         REQUIRE(cmds.size() == 1);
-        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{t});
+        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{tool.input().origin(t)});
     }
     // The rounding itself: half a pixel up at group 1, none at groups 0 and 2, and group 2's
     // scaled at a derived level (here there is none to scale).
@@ -405,7 +407,8 @@ TEST_CASE(
                     }
                 }
                 ++checked;
-                if (cmds.size() != 1 || placements(cmds[0]) != std::vector<sim::TileXY>{want}) {
+                if (cmds.size() != 1 ||
+                    placements(cmds[0]) != std::vector<sim::TileXY>{tool.input().origin(want)}) {
                     ++wrong;
                     // The pixel, the two tiles, the drawn triangle (A-B-C below the B-C diagonal
                     // in tile space, C-B-D beyond) and the pixel centre's signed distance in px
@@ -489,7 +492,7 @@ TEST_CASE("dev tool: a resized window maps the same tile with its new frame" *
         }
         const auto cmds = feed(tool, win, {button(true, at), button(false, at)});
         REQUIRE(cmds.size() == 1);
-        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{t});
+        CHECK(placements(cmds[0]) == std::vector<sim::TileXY>{tool.input().origin(t)});
     }
 }
 

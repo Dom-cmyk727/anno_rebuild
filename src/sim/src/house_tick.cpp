@@ -25,7 +25,8 @@ void push_fault(Effects& fx, BuildingId building, HouseFault fault,
 }
 
 bool has_serial(const TickContext& ctx) {
-    return ctx.serial != nullptr && ctx.serial->players != nullptr && ctx.serial->figures != nullptr;
+    return ctx.serial != nullptr && ctx.serial->players != nullptr &&
+           ctx.serial->figures != nullptr;
 }
 
 } // namespace
@@ -89,8 +90,8 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
         push_fault(fx, id, HouseFault::NoSuchHouse);
         return;
     }
-    const HouseEnv env{ctx.cfg,         ctx.rules,         ctx.types, *ctx.serial->players,
-                       ctx.draw,        *ctx.serial->figures, ctx.t};
+    const HouseEnv env{
+        ctx.cfg, ctx.rules, ctx.types, *ctx.serial->players, ctx.draw, *ctx.serial->figures, ctx.t};
     const BuildingKey where = key->second;
     const HouseOutcome outcome = apply_house_effects(env, island, where, kernel);
     if (outcome.kind == HouseOutcomeKind::Fault) {

@@ -176,7 +176,7 @@ HouseOutcome transition(const HouseEnv& env, Island& island, const BuildingKey& 
     out.first_assignment_draws = sg.draws;
     trim_walkers(h, house_walker_facts(*target).walker_max);
     out.counter_add = tdiv(h.residents_64, 64); // read AFTER SetGroup
-    ++city.index.house_counts[new_group]; // checked inside the table before anything changed
+    ++city.index.house_counts[new_group];       // checked inside the table before anything changed
     // The re-stamp of the footprint tiles with the new type (0x1002c790 -> 0x1008ec90 ->
     // 0x10082040).
     std::vector<std::uint64_t> written;
@@ -532,7 +532,8 @@ HouseOutcome upgrade_house(const HouseEnv& env, Island& island, const BuildingKe
     if (!house_group_adjacent(old_group, new_group, true)) {
         return fault_outcome(HouseFault::GroupNotAdjacent);
     }
-    if (const HouseFault f = count_problem(*loc.city, old_group, new_group); f != HouseFault::None) {
+    if (const HouseFault f = count_problem(*loc.city, old_group, new_group);
+        f != HouseFault::None) {
         return fault_outcome(f);
     }
     // The materials gate (0x1002c030) of the BASE next type; a failure changes nothing at all.
@@ -581,7 +582,8 @@ HouseOutcome downgrade_house(const HouseEnv& env, Island& island, const Building
     if (!house_group_adjacent(old_group, new_group, false)) {
         return fault_outcome(HouseFault::GroupNotAdjacent);
     }
-    if (const HouseFault f = count_problem(*loc.city, old_group, new_group); f != HouseFault::None) {
+    if (const HouseFault f = count_problem(*loc.city, old_group, new_group);
+        f != HouseFault::None) {
         return fault_outcome(f);
     }
     if (const HouseFault f = validate_targets(env, *loc.type, *ladder.previous, new_group);

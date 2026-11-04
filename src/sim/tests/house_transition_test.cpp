@@ -308,11 +308,12 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
                 CHECK(s == sim::DrawSite::HouseFirstAssignment);
             }
         } else if (kind == "adjacent") {
-            got["ok"] = sim::house_group_adjacent(static_cast<std::uint32_t>(std::stoul(in_kv.at("old"))),
-                                                  static_cast<std::uint32_t>(std::stoul(in_kv.at("new"))),
-                                                  in_kv.at("dir") == "up")
-                            ? "1"
-                            : "0";
+            got["ok"] =
+                sim::house_group_adjacent(static_cast<std::uint32_t>(std::stoul(in_kv.at("old"))),
+                                          static_cast<std::uint32_t>(std::stoul(in_kv.at("new"))),
+                                          in_kv.at("dir") == "up")
+                    ? "1"
+                    : "0";
         } else {
             FAIL("unknown vector kind " << kind);
         }
@@ -391,8 +392,8 @@ std::shared_ptr<const sim::TypeRegistry> registry(Mode m = {}) {
     b.house_groups({g0, g1});
     b.add(house_t(kP1, 97, 2, 2, static_cast<std::uint8_t>(2 | (2 << 6))));
     b.add(house_t(kP3, 97, 2, 2, 0));
-    sim::BuildingType s0 =
-        house_t(kS0, m.s_in_group0 ? 97 : 98, m.footprint_mismatch ? 3 : 2, 1, static_cast<std::uint8_t>(3 | (1 << 6)));
+    sim::BuildingType s0 = house_t(kS0, m.s_in_group0 ? 97 : 98, m.footprint_mismatch ? 3 : 2, 1,
+                                   static_cast<std::uint8_t>(3 | (1 << 6)));
     s0.cost_goods = {{kTools, 512}, {kWood, 1024}};
     b.add(s0);
     b.add(house_t(kS1, m.s_in_group0 ? 97 : 98, 2, 1, 0));
@@ -976,7 +977,8 @@ TEST_CASE("house transition: removal with an active walker carrying cargo ends i
     CHECK(w.check_invariants() == "");
 }
 
-TEST_CASE("house transition: a smaller walker maximum keeps occupied slots and trims only empty ones") {
+TEST_CASE(
+    "house transition: a smaller walker maximum keeps occupied slots and trims only empty ones") {
     const auto types = registry();
     Rig r = make_rig();
     r.place(kP1, 110, 110, make_house(kP1, 8 * 64, 640, {0, 3200}));
@@ -1058,7 +1060,8 @@ TEST_CASE("house transition: save, reload and the same operations give identical
 }
 
 TEST_CASE("house transition: the new group must be the adjacent record (SetGroup cur +/- 1)") {
-    // 0x1002cd0e..0x1002cd77 (upgrade: cur + 0x118), 0x1002ceb1..0x1002cf06 (downgrade: cur - 0x118).
+    // 0x1002cd0e..0x1002cd77 (upgrade: cur + 0x118), 0x1002ceb1..0x1002cf06 (downgrade: cur -
+    // 0x118).
     Mode m;
     m.s_in_group0 = true; // the next type of 9501 is in the SAME group
     const auto types = registry(m);
@@ -1071,8 +1074,8 @@ TEST_CASE("house transition: the new group must be the adjacent record (SetGroup
         const auto o = sim::upgrade_house(env_of(w, spy), island0(w), key_at(w, 110, 110));
         CHECK(o.kind == sim::HouseOutcomeKind::Fault);
         CHECK(o.fault == sim::HouseFault::GroupNotAdjacent);
-        CHECK(spy.sites.empty());                 // nothing drawn
-        CHECK(w.state_hash() == before);          // nothing spent, nothing changed
+        CHECK(spy.sites.empty());        // nothing drawn
+        CHECK(w.state_hash() == before); // nothing spent, nothing changed
     }
     {
         // a downgrade from group 0 has no previous record

@@ -13,8 +13,8 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
-#include <anno/sim/house_tick.hpp>
 #include <anno/sim/harvest.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/resident_job.hpp>

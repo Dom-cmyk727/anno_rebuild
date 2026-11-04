@@ -162,7 +162,7 @@ struct HouseOutcome {
     std::uint32_t variant_index = 0;
     std::uint32_t first_assignment_draws = 0;
     std::uint32_t walkers_detached = 0; ///< removal: walkers whose home became none (not ended)
-    UpgradeScores scores; ///< filled by apply_house_effects' UpgradeCheck arm
+    UpgradeScores scores;               ///< filled by apply_house_effects' UpgradeCheck arm
 };
 
 /// Upgrade (0x1002cbe0, immediate). Materials gate first (a failure changes nothing), then in the

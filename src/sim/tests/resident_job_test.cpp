@@ -1092,8 +1092,12 @@ TEST_CASE("resident job: a Wait split across calls buys exactly once") {
     for (std::uint32_t k = 1; k <= 60000 && a.fig.resident->step != sim::ResidentStep::Done; ++k) {
         REQUIRE(direct_call(a.w, a.fig, 2000 + k, fx));
         if (a.fig.resident->step == sim::ResidentStep::Wait) {
-            // The wait survives the call boundary with its full length and nothing was bought yet.
-            CHECK(a.fig.resident->wait == sim::kResidentWaitTicks);
+            // The wait survives the call boundary and nothing was bought yet. It is the figure
+            // type's load wait (D step B start 0x10056330 -> +0xe0 = 0x10035260: round(500 * d)
+            // ticks, here 1000 = 2.0 for figure types 203..205) and shrinks by exactly the
+            // ticks of each call.
+            CHECK(a.fig.resident->wait <= 1000);
+            CHECK(a.fig.resident->wait >= 1);
             moves_in_wait = fx.goods_moves.size();
             saw_wait = true;
         }
@@ -1194,4 +1198,104 @@ TEST_CASE("resident job: a delivery is applied only while the walker slot names 
     }
     REQUIRE_FALSE(in.armed);
     CHECK(house_of(w).stock[0] == 1600);
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C2 (the stall wait)
+
+namespace {
+
+/// Single-tick calls until the walker is in Wait; returns the tick of that call.
+std::uint32_t to_wait(Direct& d, sim::Effects& fx, std::uint32_t base) {
+    for (std::uint32_t k = 1; k <= 60000; ++k) {
+        REQUIRE(direct_call(d.w, d.fig, base + k, fx));
+        if (d.fig.resident->step == sim::ResidentStep::Wait) {
+            return base + k;
+        }
+        REQUIRE(d.fig.resident->step != sim::ResidentStep::Done);
+    }
+    FAIL("the walker never reached the wait");
+    return 0;
+}
+
+} // namespace
+
+TEST_CASE("resident job wait: the wait is the figure type load wait and shrinks by the elapsed ticks") {
+    // Figure types 203..205 of this rig have load_ticks 1000 (2.0 * 500). The arrival tick sets
+    // wait = 1000 with no tick left, so the first observation is the full wait.
+    Direct d = direct_rig(1000);
+    sim::Effects fx;
+    const std::uint32_t t = to_wait(d, fx, 1000);
+    CHECK(d.fig.resident->wait == 1000);
+    // Zero elapsed ticks: nothing changes (state and world hash).
+    const Snap before = snap(d.fig);
+    const std::uint64_t hash = d.w.state_hash();
+    CHECK(direct_call(d.w, d.fig, t, fx));
+    CHECK(snap(d.fig) == before);
+    CHECK(d.w.state_hash() == hash);
+    // The smallest positive visit: one tick leaves 999 and buys nothing yet.
+    CHECK(direct_call(d.w, d.fig, t + 1, fx));
+    CHECK(d.fig.resident->step == sim::ResidentStep::Wait);
+    CHECK(d.fig.resident->wait == 999);
+    CHECK(fx.goods_moves.empty());
+    // One tick before the end: 1 left, still no purchase; the last tick buys (once).
+    CHECK(direct_call(d.w, d.fig, t + 999, fx));
+    CHECK(d.fig.resident->step == sim::ResidentStep::Wait);
+    CHECK(d.fig.resident->wait == 1);
+    CHECK(fx.goods_moves.empty());
+    CHECK(direct_call(d.w, d.fig, t + 1000, fx));
+    CHECK(d.fig.resident->step == sim::ResidentStep::ToHome);
+    CHECK(fx.goods_moves.size() == 1);
+}
+
+TEST_CASE("resident job wait: a split delay with surplus equals one call and the surplus walks home") {
+    // From Wait (1000 ticks left): 1000 + 37 ticks in one call versus 600 then 437.
+    Direct a = direct_rig(1000);
+    Direct b = direct_rig(1000);
+    sim::Effects fa, fb;
+    const std::uint32_t ta = to_wait(a, fa, 1000);
+    const std::uint32_t tb = to_wait(b, fb, 1000);
+    REQUIRE(ta == tb);
+    REQUIRE(direct_call(a.w, a.fig, ta + 1037, fa));
+    REQUIRE(direct_call(b.w, b.fig, tb + 600, fb));
+    CHECK(b.fig.resident->step == sim::ResidentStep::Wait);
+    CHECK(b.fig.resident->wait == 400);
+    REQUIRE(direct_call(b.w, b.fig, tb + 1037, fb));
+    CHECK(snap(a.fig) == snap(b.fig));
+    CHECK(fa.goods_moves.size() == 1);
+    CHECK(fb.goods_moves.size() == 1);
+    // The 37 surplus ticks were walked: the figure left the stand and is on the way home.
+    CHECK(a.fig.resident->step == sim::ResidentStep::ToHome);
+    Direct c = direct_rig(1000);
+    sim::Effects fc;
+    const std::uint32_t tc = to_wait(c, fc, 1000);
+    REQUIRE(direct_call(c.w, c.fig, tc + 1000, fc));
+    CHECK_FALSE(snap(c.fig) == snap(a.fig)); // the same purchase one call earlier: not yet moved
+}
+
+TEST_CASE("resident job wait: save and reload in the middle of the wait continue identically") {
+    const auto types = registry();
+    Rig r = standard_rig();
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kFood] = 5000;
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    until(w, [&] {
+        const sim::Figure* f = sim::find_figure(w.figures(), id);
+        return f != nullptr && f->resident && f->resident->step == sim::ResidentStep::Wait &&
+               f->resident->wait < 600;
+    });
+    const std::uint32_t left = sim::find_figure(w.figures(), id)->resident->wait;
+    REQUIRE(left > 0);
+    auto back = sim::World::load(w.save(), types);
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    sim::World w2 = std::move(back).value();
+    CHECK(sim::find_figure(w2.figures(), id)->resident->wait == left);
+    CHECK(w2.state_hash() == w.state_hash());
+    for (int i = 0; i < 4000; ++i) {
+        w.advance(2);
+        w2.advance(2);
+    }
+    CHECK(w2.state_hash() == w.state_hash());
+    CHECK(city0(w2).stock.stock[kFood] == city0(w).stock.stock[kFood]);
+    CHECK(city0(w).stock.stock[kFood] < 5000); // the purchase happened after the reload point
 }

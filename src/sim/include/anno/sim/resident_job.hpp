@@ -35,9 +35,6 @@ inline constexpr std::uint32_t kJobResident = kJobResidentCode;
 // Original default; the configurable path is a SimConfig field (not added in this task).
 inline constexpr std::int64_t kWalkerSpawnBelow = 102;
 
-/// P-8 (population-live.md section 12): the stall wait (+0xe0, float) is unread, the engine waits
-/// this many ticks at the stand before the purchase. A simplification, not a fact of the original.
-inline constexpr std::uint32_t kResidentWaitTicks = 1;
 
 /// Whether the resident body runs figures of this job.
 [[nodiscard]] bool resident_runs_job(std::uint32_t job);

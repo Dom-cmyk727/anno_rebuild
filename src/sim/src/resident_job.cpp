@@ -567,7 +567,11 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
                 b.finish();
                 break;
             }
-            r.wait = kResidentWaitTicks; // P-8: a fixed wait, no stall state
+            // D step B start 0x10056330: the wait is the figure type's float (type slot +0x64(1), AnnoGame
+            // 0x1000fd10 = LOGIC f32 [4], 1.0 when not above 0) through figure slot +0xe0 = 0x10035260
+            // (duration to +0x3c, rate 0.01 to +0x40), the cart's load wait: round(500 * d) ticks =
+            // FigureType::load_ticks. The progress persists in r.wait across calls.
+            r.wait = ft->load_ticks;
             r.step = ResidentStep::Wait;
             break;
         }

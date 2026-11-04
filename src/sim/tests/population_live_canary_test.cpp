@@ -555,23 +555,23 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     CHECK(r.main_res.lost_88 == 0); // nothing is lost any more: every walker finds its way home
     CHECK(r.main_total.visits == 18779);
     CHECK(r.main_total.kernel_taken == 2629);
-    CHECK(r.main_total.spawn_draws == 2266);
-    CHECK(r.main_total.spawn_requests == 2266);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2266); // draws by site = counter
+    CHECK(r.main_total.spawn_draws == 2171);
+    CHECK(r.main_total.spawn_requests == 2171);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2171); // draws by site = counter
     CHECK(r.watch.draws.count(sim::DrawSite::HouseVariant) == 0);      // no upgrade or downgrade
-    CHECK(r.main_res.searches == 2255);
-    CHECK(r.main_res.searches_failed == 2118);
-    CHECK(r.main_res.arrivals == 132);
-    CHECK(r.main_res.purchases == 103);
-    CHECK(r.main_res.bought_88 == 2335); // the city store the stalls gave up
-    CHECK(r.main_res.deliveries == 100);
-    CHECK(r.main_res.delivered_88 == 5579);
+    CHECK(r.main_res.searches == 2160);
+    CHECK(r.main_res.searches_failed == 2026);
+    CHECK(r.main_res.arrivals == 119);
+    CHECK(r.main_res.purchases == 90);
+    CHECK(r.main_res.bought_88 == 2137); // the city store the stalls gave up
+    CHECK(r.main_res.deliveries == 89);
+    CHECK(r.main_res.delivered_88 == 5230);
     CHECK(r.main_res.no_path_home == 0); // the resident-specific home path (section 20.2)
     CHECK(r.main_total.rect_queries == r.main_res.searches);
-    CHECK(r.main_total.candidates_scored == 6756);
-    CHECK(r.main_total.candidates_accepted == 2731);
-    CHECK(r.main_total.walk_searches == 1204);
-    CHECK(r.main_total.walk_expansions == 901915);
+    CHECK(r.main_total.candidates_scored == 6461);
+    CHECK(r.main_total.candidates_accepted == 2616);
+    CHECK(r.main_total.walk_searches == 1154);
+    CHECK(r.main_total.walk_expansions == 865306);
     CHECK(r.main_total.upgrade_scores == 0); // no house reached its cap
     // the ledger (closed by the drain; the equations are checked in run_canary): the stall goods
     // came out of the city store and the public goods did not
@@ -622,7 +622,7 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     CHECK(u0.player_flags_after == 1761607711U);
     // cut markers used by the save/reload case
     CHECK(r.watch.wait_step.value_or(0) == 50);
-    CHECK(r.watch.cargo_step.value_or(0) == 67);
+    CHECK(r.watch.cargo_step.value_or(0) == 137);
     CHECK(r.watch.transition_step.value_or(0) == 50);
 }
 
@@ -642,15 +642,15 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     }
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
-    CHECK(r.main_total.spawn_draws == 2789);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2789);
-    CHECK(r.main_res.searches == 2789);
-    CHECK(r.main_res.purchases == 612);
-    CHECK(r.main_res.bought_88 == 30335);
-    CHECK(r.main_res.deliveries == 566);
-    CHECK(r.main_res.delivered_88 == 113445);
-    CHECK(r.main_total.candidates_scored == 25750);
-    CHECK(r.main_total.walk_expansions == 2487329);
+    CHECK(r.main_total.spawn_draws == 2512);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2512);
+    CHECK(r.main_res.searches == 2512);
+    CHECK(r.main_res.purchases == 558);
+    CHECK(r.main_res.bought_88 == 28531);
+    CHECK(r.main_res.deliveries == 506);
+    CHECK(r.main_res.delivered_88 == 103324);
+    CHECK(r.main_total.candidates_scored == 22898);
+    CHECK(r.main_total.walk_expansions == 2221841);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
     CHECK(r.up == 0);
     CHECK(r.refused == 0);
@@ -664,18 +664,18 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(t.building.v == 219043332201ULL);
     CHECK(t.tick == 90250);
     CHECK(t.from.v == 561);
-    CHECK(t.to.v == 543); // base 540 + variant index 3 (step 1)
+    CHECK(t.to.v == 547); // base 540 + variant index 7 (step 1)
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
     CHECK(t.residents_after == 1358); // SetGroup keeps the residents on a downgrade
     CHECK(t.houses_old_before == 54);
     CHECK(t.houses_old_after == 53);
-    CHECK(t.counter_old_before == 1671);
-    CHECK(t.counter_old_after == 1650);
+    CHECK(t.counter_old_before == 1656);
+    CHECK(t.counter_old_after == 1635);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 28019);
-    CHECK(t.variant_index == 3);
+    CHECK(t.variant_draw == 23199);
+    CHECK(t.variant_index == 7);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
     for (const auto& tr : stats.population.transitions) {
@@ -725,16 +725,16 @@ TEST_CASE("population live canary: save and reload at the cuts of the real run")
         ref.final_hash = w.state_hash();
         w.set_transport_stats(nullptr);
         CHECK(watch.wait_step.value_or(0) == 50);
-        CHECK(watch.cargo_step.value_or(0) == 67);
+        CHECK(watch.cargo_step.value_or(0) == 137);
         REQUIRE(ref.transition_steps.size() >= 7);
         // a walker waiting or walking to a stand at the end of step 50, a walker carrying cargo
-        // at the end of step 67, the first transition inside step 50, a later one inside step 1806
+        // at the end of step 137, the first transition inside step 50, a later one inside step 1806
         CHECK(ref.transition_steps.front() == 50);
         CHECK(std::count(ref.transition_steps.begin(), ref.transition_steps.end(), 1806U) == 1);
     }
     // The cuts: before and after the first transition (49, 50: step 50 also holds a walker in
-    // ToStall), a walker carrying cargo (67), before and after a late transition (1805, 1806).
-    const std::set<std::uint64_t> cuts{49, 50, 67, 1805, 1806};
+    // ToStall), a walker carrying cargo (137), before and after a late transition (1805, 1806).
+    const std::set<std::uint64_t> cuts{49, 50, 137, 1805, 1806};
     sim::World w = make_world(*o, spec);
     Watch watch;
     std::size_t reloads = 0;
@@ -742,7 +742,7 @@ TEST_CASE("population live canary: save and reload at the cuts of the real run")
         step_world(w, nullptr, &watch);
         if (cuts.count(watch.steps) != 0) {
             // the cut state contains what the name says
-            if (watch.steps == 50 || watch.steps == 67) {
+            if (watch.steps == 50 || watch.steps == 137) {
                 bool wait = false, cargo = false;
                 for (const auto& slot : w.figures().list.slots) {
                     if (!slot || !slot->resident || slot->expiry_stamp) {
@@ -828,7 +828,7 @@ TEST_CASE("population live canary: recorded log replays, and a changed log or in
     CHECK(std::find(log.prng_timeline_missing.begin(), log.prng_timeline_missing.end(),
                     "HouseWalkerTarget") == log.prng_timeline_missing.end());
     CHECK(std::find(log.prng_timeline_missing.begin(), log.prng_timeline_missing.end(),
-                    "HouseFirstAssignment") != log.prng_timeline_missing.end());
+                    "HouseFirstAssignment") == log.prng_timeline_missing.end()); // C2: ported
     CHECK(log.rules_digest == w.rules().digest());
     export_log("pop_live.log", log);
 

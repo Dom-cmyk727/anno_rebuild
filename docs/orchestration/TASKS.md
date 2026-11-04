@@ -82,15 +82,18 @@ of the opening may happen at any point: fixes from it go to `task/W4-opening-1` 
 delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, report `0fd1d219`.
 - **Review:** the [depth review](reviews/2026-11-04-w4-depth1.md) finds no P1. Mutation runs, sanitizer lanes, the
   idle-host performance figures and small P3s remain before acceptance; they are **W4-DEPTH-1-CLOSE**, released below.
-- **Owner decisions open:** the water level (the original's sea plane is ≈ 26.5, our default is 16.5) and the
-  `--depth` switch.
-- **Update 2026-11-04, evening (owner, in session).** Asked in the depth session's own wrap-up which default to
-  compare in the viewer, the owner clicked "Try 26.5 default", then confirmed to the parent session: "we will try
-  26.5 and see, just note it down." This is a trial, not yet a closed decision; it may revert. The executor committed
-  it on `task/W4-depth-1` on top of `0fd1d219`: `3f180c62` (`kShoreHeight = 26.5`; the `--shore 16.5` picture is kept
-  as its own pass, unchanged) and `b72595c2` (`bench_frame --shore h`). **W4-DEPTH-1-CLOSE below runs at 26.5**, not
-  16.5; its "Owner check" step (start Kontor at `--shore 16.5` and `--shore 26.5`, beside the GOG capture) still
-  covers both for the owner's own comparison.
+- **Owner decisions:**
+  1. **The water level, SETTLED 2026-11-04.** Asked in the depth session's own wrap-up which default to compare, the
+     owner clicked "Try 26.5 default"; asked again once the conflict with this page surfaced, the owner confirmed
+     ("we will try 26.5 and see, just note it down", then "Keep 26.5 in package"). `kShoreHeight = 26.5` is now the
+     depth package's default (`3f180c62`, on top of `0fd1d219`; `bench_frame --shore h` in `b72595c2`). The
+     `--shore 16.5` picture is kept as its own pass, pinned, unchanged. This overrides review §3's recommendation to
+     keep 16.5 for now; W4-SHORE-2 stays queued regardless, since 26.5's stepped beach edges remain until it draws
+     the sea per pixel.
+  2. **The `--depth` switch.** Not separately contested; review §3's recommendation (keep it, default on) stands.
+- **W4-DEPTH-1-CLOSE below runs on `task/W4-depth-1` from `b72595c2`** (so at 26.5), not from `0fd1d219`. Its "Owner
+  check" step (start Kontor at `--shore 16.5` and `--shore 26.5`, beside the GOG capture) still covers both, for the
+  owner's own comparison.
 - **The closeout:** its latest WSL ASan app gate at `1d34dd97` fails `opening_session_replay` at stage 1. Find the
   cause before that chain runs again.
 - **Merge order (review §5):** if the owner's depth check passes before the closeout's final gate chain, the depth

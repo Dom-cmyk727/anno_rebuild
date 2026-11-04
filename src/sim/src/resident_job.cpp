@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -198,6 +199,11 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
     if (!facts) {
         return std::nullopt;
     }
+    HouseWork* work =
+        ctx.transport_stats != nullptr ? &ctx.transport_stats->population.houses[home.id] : nullptr;
+    if (work != nullptr) {
+        ++work->searches;
+    }
     const SearchArea area = search_area(home, home_type);
     // Candidates: the city's buildings of the stand lists in the house's square whose choice is at
     // least the gate (D: choice >= 12), scored once.
@@ -210,6 +216,10 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
     std::vector<Candidate> candidates;
     std::vector<BuildingId> ids;
     world.rect_query(city, area.square(), resident_stand_mask(world.layout()), ids);
+    if (work != nullptr) {
+        ++work->rect_queries;
+        work->rect_hits += ids.size();
+    }
     const std::vector<ResidentCargo> others = walker != nullptr
                                                   ? others_cargo(world, *house, walker->id)
                                                   : others_cargo(world, *house, FigureId{});
@@ -231,12 +241,18 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
             continue;
         }
         const ChoiceResult r = house_choice(*facts, offer, own, others);
+        if (work != nullptr) {
+            ++work->candidates_scored;
+        }
         if (r.fault != ResidentFault::None) {
             report_fault(ctx, world.fx, r.fault, b->id, walker, 0);
             continue;
         }
         if (r.score >= kPurchaseScoreGate) {
             candidates.push_back(Candidate{b, r.score, r.goods});
+            if (work != nullptr) {
+                ++work->candidates_accepted;
+            }
         }
     }
     if (candidates.empty()) {
@@ -287,6 +303,10 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
             }
             return SearchDecision{GoalAction::Expand, false};
         });
+    if (work != nullptr) {
+        ++work->walk_searches;
+        work->walk_expansions += found.popped;
+    }
     if (!found.complete || !best || found.route.empty()) {
         return std::nullopt;
     }
@@ -375,9 +395,22 @@ struct Body {
         std::vector<std::uint32_t> billed = c->billed;
         BillLedger ledger{store, billed, ctx.cfg.billed_goods_first, ctx.cfg.billed_goods_last};
         const std::vector<ResidentCargo> others = others_cargo(world, *house, fig.id);
+        const std::vector<ResidentCargo> cargo_before = r.cargo;
         const BuyResult res = resident_buy(*facts, model, ledger, ft.capacity_88, others, r.cargo);
         if (stats != nullptr) {
             stats->purchases += res.purchases;
+            // The per-goods ledger (L5): what each slot gained.
+            for (std::size_t k = 0; k < r.cargo.size() && k < cargo_before.size(); ++k) {
+                const ResidentCargo& a = r.cargo[k];
+                const ResidentCargo& b0 = cargo_before[k];
+                if (a.goods == 0) {
+                    continue;
+                }
+                const std::uint32_t was = b0.goods == a.goods ? b0.amount_88 : 0U;
+                if (a.amount_88 > was) {
+                    stats->bought_by_goods[a.goods] += a.amount_88 - was;
+                }
+            }
         }
         if (res.fault != ResidentFault::None) {
             report_fault(ctx, world.fx, res.fault, stand->id, &fig, 0);
@@ -387,9 +420,10 @@ struct Body {
             if (store[g] < c->stock.stock[g]) {
                 const std::uint32_t taken = c->stock.stock[g] - store[g];
                 world.fx.goods_moves.push_back(
-                    GoodsMove{*city, static_cast<GoodsId>(g), -std::int64_t{taken}});
+                    GoodsMove{*city, static_cast<GoodsId>(g), -std::int64_t{taken}, true});
                 if (stats != nullptr) {
                     stats->bought_88 += taken;
+                    stats->taken_by_goods[static_cast<GoodsId>(g)] += taken;
                 }
             }
         }
@@ -397,6 +431,9 @@ struct Body {
             if (billed[g] > c->billed[g]) {
                 world.fx.billed_deltas.push_back(
                     BilledDelta{*city, static_cast<GoodsId>(g), billed[g] - c->billed[g]});
+                if (stats != nullptr) {
+                    stats->billed_by_goods[static_cast<GoodsId>(g)] += billed[g] - c->billed[g];
+                }
             }
         }
     }
@@ -415,6 +452,7 @@ struct Body {
             if (stats != nullptr) {
                 ++stats->deliveries;
                 stats->delivered_88 += cg.amount_88;
+                stats->delivered_by_goods[cg.goods] += cg.amount_88;
             }
         }
         delivered = true;

@@ -252,6 +252,9 @@ struct GoodsMove {
     CityRef city;
     GoodsId goods = 0;
     std::int64_t delta_88 = 0;
+    /// Diagnostic only (MAP-POP-LIVE-1 L5): the move is a resident purchase (counted in the
+    /// per-goods ledger of ResidentStats at the merge). Never read by the sim.
+    bool resident = false;
 };
 
 /// A cart takes up to `amount_88` from the building's output store `out_index`; the

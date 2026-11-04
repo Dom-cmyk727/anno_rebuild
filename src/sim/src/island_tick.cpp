@@ -94,7 +94,7 @@ void city_tick(const TickContext& ctx, Island& island, City& city, Effects& fx) 
     // MAP-POP-LIVE-1 L4 (population-live.md section 6.1): the stage pass follows the building
     // ticks of the city update (D 0x10029610); a fault of a House tick stops the rest.
     if (fx.faults.empty()) {
-        stage_pass(ctx, city, fx);
+        stage_pass(ctx, city, fx, island.index);
     }
     for (const Seam<Seams::CityPass>& pass : ctx.seams.city_pass) {
         if (pass.fn != nullptr) {

@@ -141,6 +141,109 @@ struct ResidentStats {
     std::uint64_t delivered_88 = 0;       ///< their amounts
     std::uint64_t deliveries_refused = 0; ///< merge side: a stock overflow, nothing changed
     std::uint64_t lost_88 = 0;            ///< cargo of residents that ended without a delivery
+    /// The per-goods ledger of the whole live chain (MAP-POP-LIVE-1 L5; same rules, diagnostic).
+    /// Job side, at the purchase: the cargo amounts the suppliers returned, the city store they
+    /// took (a stall takes it, a public building only bills), and the billed deltas (the REQUESTED
+    /// amounts).
+    std::map<GoodsId, std::uint64_t> bought_by_goods, taken_by_goods, billed_by_goods;
+    /// Job side, at the home arrival: what was handed to the house.
+    std::map<GoodsId, std::uint64_t> delivered_by_goods;
+    /// Merge side, what actually changed: the city store taken by resident purchases, the billed
+    /// counters raised, the deliveries applied (amount), the house stock raised at the delivered
+    /// goods' own slot and by the IdSec replays (stock units, 1/16 of an amount unit).
+    std::map<GoodsId, std::uint64_t> merged_taken_by_goods, merged_billed_by_goods;
+    std::map<GoodsId, std::uint64_t> merged_delivered_by_goods;
+    std::map<GoodsId, std::uint64_t> stock_primary_by_goods, stock_replay_by_goods;
+};
+
+/// MAP-POP-LIVE-1 L5: the operation counters of one house (scale and proportionality checks,
+/// docs/sim/population-live.md section 20). Diagnostic only: never state, hashed or saved.
+struct HouseWork {
+    std::uint64_t visits = 0;              ///< house_tick calls (taken or skipped)
+    std::uint64_t kernel_calls = 0;        ///< house_kernel calls (one per visit)
+    std::uint64_t kernel_taken = 0;        ///< kernel results that evaluated (gate taken)
+    std::uint64_t spawn_draws = 0;         ///< HouseWalkerTarget draws
+    std::uint64_t spawn_requests = 0;      ///< spawn requests pushed
+    std::uint64_t searches = 0;            ///< resident step A starts (choose_stand calls)
+    std::uint64_t rect_queries = 0;        ///< candidate rectangle queries
+    std::uint64_t rect_hits = 0;           ///< ids the queries returned
+    std::uint64_t candidates_scored = 0;   ///< house_choice evaluations of candidates
+    std::uint64_t candidates_accepted = 0; ///< candidates with score >= the purchase gate
+    std::uint64_t walk_searches = 0;       ///< walk searches run
+    std::uint64_t walk_expansions = 0;     ///< cells popped by those searches
+    std::uint64_t upgrade_scores = 0;      ///< upgrade_scores evaluations
+};
+
+/// One growth step that changed a house's residents (the kernel's result, committed).
+struct HouseGrowthRecord {
+    BuildingId building;
+    std::uint32_t tick = 0;
+    int mood = 0;
+    std::int32_t residents_before = 0, residents_after = 0;
+    std::int32_t vermehr = 0; ///< the group's VermehrTab entry the mood selected
+};
+
+/// One progression transition of a house, with every number the contract names.
+struct HouseTransitionRecord {
+    enum class Kind : std::uint8_t { Upgrade, UpgradeRefused, Downgrade, Remove };
+    Kind kind = Kind::Upgrade;
+    BuildingId building;
+    std::uint32_t tick = 0;
+    TypeId from, to;
+    std::uint32_t old_group = 0, new_group = 0;
+    std::int32_t residents_before = 0, residents_after = 0;
+    std::uint32_t houses_old_before = 0, houses_old_after = 0;
+    std::uint32_t houses_new_before = 0, houses_new_after = 0;
+    std::int64_t counter_old_before = 0, counter_old_after = 0;
+    std::int64_t counter_new_before = 0, counter_new_after = 0;
+    std::vector<std::int64_t> spent_by_good; ///< city build goods spent, per build good
+    std::vector<std::int64_t> stock_by_good; ///< city store change of the build goods
+    bool variant_drawn = false;
+    std::uint16_t variant_draw = 0;
+    std::uint32_t variant_index = 0;
+};
+
+/// One stage bit set by the stage pass.
+struct StageUnlockRecord {
+    std::uint32_t tick = 0;
+    CityRef city;
+    std::uint32_t stage = 0, group = 0, count = 0;
+    std::int64_t residents_at_or_above = 0;
+    std::uint32_t city_mask_before = 0, city_mask_after = 0;
+    std::uint32_t player_flags_before = 0, player_flags_after = 0;
+};
+
+/// The population path's tally: per-house work, the stage pass and the records above.
+struct PopulationStats {
+    std::map<BuildingId, HouseWork> houses;
+    std::uint64_t stage_passes = 0;      ///< stage_pass calls that took the gate
+    std::uint64_t stage_evaluations = 0; ///< stage records examined (bit not yet set)
+    std::vector<HouseGrowthRecord> growth;
+    std::vector<HouseTransitionRecord> transitions;
+    std::vector<StageUnlockRecord> unlocks;
+    /// The records above are bounded: a long run keeps the first kRecordCap of each and counts
+    /// the rest here.
+    static constexpr std::size_t kRecordCap = 1U << 20;
+    std::uint64_t records_dropped = 0;
+    [[nodiscard]] HouseWork total() const {
+        HouseWork t;
+        for (const auto& [id, w] : houses) {
+            t.visits += w.visits;
+            t.kernel_calls += w.kernel_calls;
+            t.kernel_taken += w.kernel_taken;
+            t.spawn_draws += w.spawn_draws;
+            t.spawn_requests += w.spawn_requests;
+            t.searches += w.searches;
+            t.rect_queries += w.rect_queries;
+            t.rect_hits += w.rect_hits;
+            t.candidates_scored += w.candidates_scored;
+            t.candidates_accepted += w.candidates_accepted;
+            t.walk_searches += w.walk_searches;
+            t.walk_expansions += w.walk_expansions;
+            t.upgrade_scores += w.upgrade_scores;
+        }
+        return t;
+    }
 };
 
 /// A diagnostic tally of why a search ended, filled when `choose_source` is passed a
@@ -186,6 +289,8 @@ struct TransportStats {
     ForestryStats forestry;
     /// MAP-POP-LIVE-1 L2: the residents' tally (same sink, same rules).
     ResidentStats residents;
+    /// MAP-POP-LIVE-1 L5: the House path's operation counters and records (same rules).
+    PopulationStats population;
     /// MAP-ECON-1 E4 ledger (diagnostic only): what the carts and carriers took at their load, per
     /// source building; what they offered at their unload into a market's city (before the city's
     /// capacity clip), and the cargo of those that ended without an unload, per goods.

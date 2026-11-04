@@ -208,7 +208,22 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         if (!facts) {
             continue;
         }
+        const std::vector<std::uint32_t> stock_before = h->stock;
         const DeliverResult r = house_deliver(*facts, h->stock, d.goods, d.amount_88);
+        if (w.transport_stats_ != nullptr && r.fault == ResidentFault::None) {
+            // Diagnostic ledger: the amount applied and the stock raised at the goods' own slot
+            // and by the IdSec replays (stock units).
+            ResidentStats& rs = w.transport_stats_->residents;
+            rs.merged_delivered_by_goods[d.goods] += d.amount_88;
+            std::uint64_t primary = 0, other = 0;
+            const std::size_t own = d.goods < facts->lookup.size() ? facts->lookup[d.goods] : 0;
+            for (std::size_t k = 0; k < h->stock.size() && k < stock_before.size(); ++k) {
+                const std::uint64_t diff = h->stock[k] - stock_before[k];
+                (k == own ? primary : other) += diff;
+            }
+            rs.stock_primary_by_goods[d.goods] += primary;
+            rs.stock_replay_by_goods[d.goods] += other;
+        }
         if (r.fault != ResidentFault::None) {
             if (w.transport_stats_ != nullptr) {
                 ++w.transport_stats_->residents.deliveries_refused; // diagnostic only
@@ -256,7 +271,13 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         if (g.delta_88 > 0) {
             static_cast<void>(c->stock.add(g.goods, magnitude32(g.delta_88)));
         } else if (g.delta_88 < 0) {
+            const std::uint32_t before =
+                g.goods < c->stock.stock.size() ? c->stock.stock[g.goods] : 0U;
             static_cast<void>(c->stock.remove(g.goods, magnitude32(g.delta_88)));
+            if (g.resident && w.transport_stats_ != nullptr && g.goods < c->stock.stock.size()) {
+                w.transport_stats_->residents.merged_taken_by_goods[g.goods] +=
+                    before - c->stock.stock[g.goods]; // diagnostic ledger: the store really taken
+            }
         }
     }
     // 4b. Billed counters (L2): the requested amounts, saturating at u32.
@@ -265,9 +286,14 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         if (c == nullptr || d.goods >= c->billed.size()) {
             continue;
         }
+        const std::uint32_t billed_before = c->billed[d.goods];
         const std::uint64_t sum = std::uint64_t{c->billed[d.goods]} + d.amount;
         c->billed[d.goods] = static_cast<std::uint32_t>(
             std::min<std::uint64_t>(sum, std::numeric_limits<std::uint32_t>::max()));
+        if (w.transport_stats_ != nullptr) {
+            w.transport_stats_->residents.merged_billed_by_goods[d.goods] +=
+                c->billed[d.goods] - billed_before; // diagnostic ledger
+        }
     }
     // 5. Reserves.
     for (const Reserve& r : fx.reserves) {

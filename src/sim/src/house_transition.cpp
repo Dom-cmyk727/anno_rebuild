@@ -5,6 +5,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/house_transition.hpp>
 #include <anno/sim/resident.hpp>
+#include <anno/sim/transport.hpp>
 #include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
@@ -677,6 +678,9 @@ HouseOutcome apply_house_effects(const HouseEnv& env, Island& island, const Buil
     }
     if (const HouseFault f = view_of(env, *ladder.next, g1, next); f != HouseFault::None) {
         return fault_outcome(f);
+    }
+    if (env.work != nullptr) {
+        ++env.work->upgrade_scores;
     }
     const UpgradeScores scores = upgrade_scores(cur, next, loc.house->e, loc.house->stock);
     if (scores.fault != HouseFault::None) {

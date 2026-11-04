@@ -10,6 +10,7 @@
 #include <anno/sim/house_transition.hpp>
 #include <anno/sim/resident.hpp>
 #include <anno/sim/resident_job.hpp>
+#include <anno/sim/transport.hpp>
 
 namespace anno::sim {
 
@@ -22,6 +23,14 @@ void push_fault(Effects& fx, BuildingId building, HouseFault fault,
     rec.reason = reason;
     rec.building = building;
     fx.faults.push_back(rec);
+}
+
+template <class V> void record(PopulationStats& ps, std::vector<V>& v, V rec) {
+    if (v.size() < PopulationStats::kRecordCap) {
+        v.push_back(std::move(rec));
+    } else {
+        ++ps.records_dropped;
+    }
 }
 
 bool has_serial(const TickContext& ctx) {
@@ -54,6 +63,13 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
     }
     const PopulationView pv = view.value();
     const HouseWalkerFacts walker_facts = house_walker_facts(type);
+    PopulationStats* ps =
+        ctx.transport_stats != nullptr ? &ctx.transport_stats->population : nullptr;
+    HouseWork* work = ps != nullptr ? &ps->houses[id] : nullptr;
+    if (work != nullptr) {
+        ++work->visits;
+        ++work->kernel_calls;
+    }
     // 1-2. The kernel: gate, E', the need loop, the mood, growth, cap or floor.
     HouseKernelInputs in;
     in.view = &pv;
@@ -75,6 +91,9 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
         push_fault(fx, id, HouseFault::NotEvaluated, kernel.reason);
         return;
     }
+    if (work != nullptr) {
+        ++work->kernel_taken;
+    }
     // 3. The spawn block, BEFORE the commit of the effects and before any variant draw: the draw
     // is made whether or not the send succeeds (D 0x10076397).
     if (kernel.lowest.has_value()) {
@@ -82,6 +101,10 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
                                                      *kernel.lowest, resident_walkers_used(*h));
         if (d.spawn.has_value()) {
             fx.spawns.push_back(*d.spawn);
+        }
+        if (work != nullptr) {
+            work->spawn_draws += d.drew ? 1U : 0U;
+            work->spawn_requests += d.spawn.has_value() ? 1U : 0U;
         }
     }
     // 4-6. The commit of last/E/stock/residents and the cap or floor effects.
@@ -91,15 +114,113 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
         return;
     }
     const HouseEnv env{
-        ctx.cfg, ctx.rules, ctx.types, *ctx.serial->players, ctx.draw, *ctx.serial->figures, ctx.t};
+        ctx.cfg, ctx.rules, ctx.types, *ctx.serial->players, ctx.draw, *ctx.serial->figures,
+        ctx.t,   work};
     const BuildingKey where = key->second;
+    // Diagnostic snapshot for the records (never read by the sim).
+    HouseTransitionRecord tr;
+    std::vector<std::uint64_t> spent_before;
+    std::vector<std::uint32_t> store_before;
+    const std::int32_t residents_before = h->residents_64;
+    if (ps != nullptr) {
+        const std::size_t goods = city.build_goods.size();
+        for (std::size_t k = 0; k < goods; ++k) {
+            spent_before.push_back(city.build_goods[k].spent);
+        }
+        for (std::size_t k = 0; k < goods; ++k) {
+            const std::size_t g = ctx.cfg.build_goods_first + k;
+            store_before.push_back(g < city.stock.stock.size() ? city.stock.stock[g] : 0U);
+        }
+        tr.building = id;
+        tr.tick = ctx.t;
+        tr.from = b.type;
+        tr.residents_before = residents_before;
+        if (const auto g = house_group(ctx.cfg, type.prodtype)) {
+            tr.old_group = *g;
+            if (*g < city.index.house_counts.size()) {
+                tr.houses_old_before = city.index.house_counts[*g];
+            }
+            tr.counter_old_before = residents_at_or_above(ctx.cfg, ctx.types, city, *g);
+        }
+    }
     const HouseOutcome outcome = apply_house_effects(env, island, where, kernel);
     if (outcome.kind == HouseOutcomeKind::Fault) {
         push_fault(fx, id, outcome.fault, outcome.not_evaluated);
     }
+    if (ps == nullptr) {
+        return;
+    }
+    if (kernel.residents_64.has_value() && kernel.mood.has_value() &&
+        *kernel.residents_64 != residents_before) {
+        HouseGrowthRecord gr;
+        gr.building = id;
+        gr.tick = ctx.t;
+        gr.mood = *kernel.mood;
+        gr.residents_before = residents_before;
+        gr.residents_after = *kernel.residents_64;
+        const std::size_t idx = static_cast<std::size_t>(*kernel.mood + 2);
+        gr.vermehr =
+            pv.group != nullptr && idx < pv.group->vermehr.size() ? pv.group->vermehr[idx] : 0;
+        record(*ps, ps->growth, gr);
+    }
+    using K = HouseTransitionRecord::Kind;
+    std::optional<K> kind;
+    switch (outcome.kind) {
+    case HouseOutcomeKind::Upgraded:
+        kind = K::Upgrade;
+        break;
+    case HouseOutcomeKind::UpgradeRefusedMaterials:
+        kind = K::UpgradeRefused;
+        break;
+    case HouseOutcomeKind::Downgraded:
+        kind = K::Downgrade;
+        break;
+    case HouseOutcomeKind::Removed:
+        kind = K::Remove;
+        break;
+    default:
+        break;
+    }
+    if (!kind) {
+        return;
+    }
+    tr.kind = *kind;
+    tr.to = outcome.to;
+    tr.new_group = outcome.new_group;
+    tr.variant_drawn = outcome.variant_drawn;
+    tr.variant_draw = outcome.variant_draw;
+    tr.variant_index = outcome.variant_index;
+    for (std::size_t k = 0; k < spent_before.size(); ++k) {
+        tr.spent_by_good.push_back(static_cast<std::int64_t>(city.build_goods[k].spent) -
+                                   static_cast<std::int64_t>(spent_before[k]));
+        const std::size_t g = ctx.cfg.build_goods_first + k;
+        tr.stock_by_good.push_back(
+            (g < city.stock.stock.size() ? std::int64_t{city.stock.stock[g]} : 0) -
+            std::int64_t{store_before[k]});
+    }
+    if (*kind == K::Upgrade || *kind == K::Downgrade) {
+        tr.new_group = outcome.new_group;
+        tr.residents_after = residents_before; // SetGroup keeps the residents
+        if (tr.old_group < city.index.house_counts.size()) {
+            tr.houses_old_after = city.index.house_counts[tr.old_group];
+        }
+        if (tr.new_group < city.index.house_counts.size()) {
+            tr.houses_new_after = city.index.house_counts[tr.new_group];
+        }
+        tr.counter_old_after = residents_at_or_above(ctx.cfg, ctx.types, city, tr.old_group);
+        tr.counter_new_after = residents_at_or_above(ctx.cfg, ctx.types, city, tr.new_group);
+        tr.houses_new_before = tr.houses_new_after - 1U;
+        tr.houses_old_before = tr.houses_old_after + 1U;
+    } else if (*kind == K::Remove) {
+        tr.houses_old_after = tr.old_group < city.index.house_counts.size()
+                                  ? city.index.house_counts[tr.old_group]
+                                  : 0U;
+        tr.counter_old_after = residents_at_or_above(ctx.cfg, ctx.types, city, tr.old_group);
+    }
+    record(*ps, ps->transitions, std::move(tr));
 }
 
-void stage_pass(const TickContext& ctx, City& city, Effects& fx) {
+void stage_pass(const TickContext& ctx, City& city, Effects& fx, IslandId island) {
     if (!ctx.rules.house_updates) {
         return;
     }
@@ -109,6 +230,13 @@ void stage_pass(const TickContext& ctx, City& city, Effects& fx) {
         return;
     }
     city.stage_stamp = static_cast<std::uint16_t>(ctx.t);
+    PopulationStats* ps =
+        ctx.transport_stats != nullptr ? &ctx.transport_stats->population : nullptr;
+    const std::uint32_t mask_before = city.stage_mask;
+    const std::uint32_t flags_before = ctx.players.flags(city.owner);
+    if (ps != nullptr) {
+        ++ps->stage_passes;
+    }
     for (const StageRecord& s : ctx.types.stage_table()) {
         if (s.stage >= 32) {
             continue; // the registry refuses it (the stage mask is 32 bits); defensive
@@ -117,9 +245,25 @@ void stage_pass(const TickContext& ctx, City& city, Effects& fx) {
         if ((city.stage_mask & bit) != 0) {
             continue;
         }
-        if (residents_at_or_above(ctx.cfg, ctx.types, city, s.group) >=
-            static_cast<std::int64_t>(s.count)) {
+        if (ps != nullptr) {
+            ++ps->stage_evaluations;
+        }
+        const std::int64_t have = residents_at_or_above(ctx.cfg, ctx.types, city, s.group);
+        if (have >= static_cast<std::int64_t>(s.count)) {
             city.stage_mask |= bit;
+            if (ps != nullptr) {
+                StageUnlockRecord u;
+                u.tick = ctx.t;
+                u.city = CityRef{island, city.number};
+                u.stage = s.stage;
+                u.group = s.group;
+                u.count = s.count;
+                u.residents_at_or_above = have;
+                u.city_mask_before = mask_before;
+                u.city_mask_after = city.stage_mask;
+                u.player_flags_before = flags_before;
+                record(*ps, ps->unlocks, u);
+            }
         }
     }
     // The player-mask rule (X16): an unsigned compare of the LOW 23 bits against the city mask,
@@ -131,6 +275,13 @@ void stage_pass(const TickContext& ctx, City& city, Effects& fx) {
     Player* p = ctx.serial->players->find(city.owner);
     if (p != nullptr && (p->flags & kStageCompareMask) < city.stage_mask) {
         p->flags |= city.stage_mask;
+    }
+    if (ps != nullptr && p != nullptr) {
+        for (auto it = ps->unlocks.rbegin(); it != ps->unlocks.rend() && it->tick == ctx.t &&
+                                             it->city == CityRef{island, city.number};
+             ++it) {
+            it->player_flags_after = p->flags;
+        }
     }
 }
 

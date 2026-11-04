@@ -42,7 +42,8 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
 /// The city's stage pass (D 0x10029610), after the building ticks of the city update: gate, stamp
 /// (also on the skip path of the stage loop), the stage bits and the player-mask rule. Does
 /// nothing with Rules::house_updates off.
-void stage_pass(const TickContext& ctx, City& city, Effects& fx);
+/// `island` only names the city in the diagnostic records (PopulationStats); it changes nothing.
+void stage_pass(const TickContext& ctx, City& city, Effects& fx, IslandId island = IslandId{});
 
 /// Empty when the registry fits the live House update (P-2, section 12): the House class gate
 /// period is in 1..65535, every house group has a need, group 0 sets NoDowngrade, and every House

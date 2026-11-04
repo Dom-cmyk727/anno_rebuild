@@ -30,6 +30,8 @@
 
 namespace anno::sim {
 
+struct HouseWork; // transport.hpp (diagnostic counters, not sim state)
+
 /// Why a transition could not be performed (population-live.md section 7, P-1/P-3: crafted or
 /// modded data fails loudly, never as "not eligible").
 enum class HouseFault : std::uint8_t {
@@ -137,6 +139,8 @@ struct HouseEnv {
     DrawSource& draw;
     FigureRegistry& figures;
     std::uint32_t t = 0; ///< the world tick (the expiry stamp of an ended walker)
+    /// Diagnostic only (MAP-POP-LIVE-1 L5): the house's operation counters, or null.
+    HouseWork* work = nullptr;
 };
 
 enum class HouseOutcomeKind : std::uint8_t {

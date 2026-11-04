@@ -180,6 +180,8 @@ struct Options {
     std::string cost_png;
     /// --fill-time: the first zoom-out (levels 3-5 from group 2), and --derive old|cache.
     bool fill_time = false, derive_from_cache = true;
+    /// --depth on|off: render::Scene::depth_test (docs/render/depth.md; off = before W4-DEPTH-1).
+    bool depth = true;
     /// --derived n: n derived zoom levels after group 2 (the groups 3.. of --groups).
     std::size_t derived = 0;
     /// --zoom-sweep seconds: the continuous zoom run as the viewer does (GPU).
@@ -1589,6 +1591,7 @@ int chunk_profile(const fs::path& dir, const fs::path& file, const Options& o, s
                 return 1;
             }
             loaded.value().scene->river_cfg.light_gain = o.river_gain;
+            loaded.value().scene->depth_test = o.depth;
             const render::Scene& scene = *loaded.value().scene;
             const auto place =
                 std::find_if(scene.layouts[group].begin(), scene.layouts[group].end(),
@@ -1702,7 +1705,7 @@ constexpr const char* kUsage =
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
     "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
-    "[--lookahead-chunks n] "
+    "[--lookahead-chunks n] [--depth on|off] "
     "[--zoom-dump dir]\n"
     "       bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],.. "
     "[--res ..] [--styles ..] [--cost-frames n] [--derived n] [--wave-sim on|off] "
@@ -1810,6 +1813,9 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
             ok = xy.size() == 2 && parse(xy[0], o.at.first) && parse(xy[1], o.at.second);
         } else if (a == "--settle") {
             ok = parse(v, o.settle_ms);
+        } else if (a == "--depth") {
+            ok = v == "on" || v == "off";
+            o.depth = v == "on";
         } else if (a == "--river-flow") {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
@@ -2022,6 +2028,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     loaded.value().scene->river_cfg.light_gain = o->river_gain;
+    loaded.value().scene->depth_test = o->depth;
     if (o->fill_time || o->derived > 0) {
         loaded.value().scene->set_levels(render::ZoomLevels::with_derived(
             std::max<std::size_t>(o->derived, o->fill_time ? 3 : 0)));

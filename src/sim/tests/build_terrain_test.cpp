@@ -568,6 +568,63 @@ TEST_CASE("build terrain: a world without terrain decides nothing") {
     built(c, k.house, 3, 3, 0, 0x30);
 }
 
+TEST_CASE("build terrain: the named stand-in keeps its verdict and stores the terrain's height") {
+    // docs/sim/ship-placement.md section 6, "The stand-in's height": placement_rule's byte where
+    // that rule accepts, else the highest vertex of the window, 0 without terrain. Every expected
+    // byte is derived by hand from the site; the stand-in before this stored 0 for all of them.
+    const Kit& k = kit();
+    sim::Seams stand_in;
+    stand_in.placement_rule = sim::stand_in_placement_seam();
+    const auto built_with = [&](const Site& site, sim::TypeId type, std::uint8_t height) {
+        sim::World w = site.world({}, stand_in);
+        const sim::ApplyResult r = w.apply(build_at(type, 3, 3));
+        REQUIRE_MESSAGE(r.ok(), "got " << sim::reject_name(r.status));
+        check_height(w, type, 3, 3, 0, height);
+        CHECK(w.check_invariants() == "");
+        auto loaded = sim::World::load(w.save(), kit().reg, stand_in);
+        REQUIRE_MESSAGE(loaded.ok(), (loaded.ok() ? std::string() : loaded.error()));
+        CHECK(loaded.value().state_hash() == w.state_hash());
+        check_height(loaded.value(), type, 3, 3, 0, height);
+        return w;
+    };
+    // Flat 0x30 land: the byte placement_rule derives, on the building and its four tiles.
+    Site land;
+    const sim::World flat = built_with(land, k.house, 0x30);
+    // The default rule stores the same byte; the seam name in the header still tells them apart.
+    sim::World real = land.world();
+    REQUIRE(real.apply(build_at(k.house, 3, 3)).ok());
+    check_height(real, k.house, 3, 3, 0, 0x30);
+    CHECK(real.state_hash() != flat.state_hash());
+    // Sea at 0x10: the stand-in still accepts (its verdict never reads the terrain), at 0x10.
+    Site sea;
+    sea.fill(0, 0, kSize, kSize, 0x10);
+    built_with(sea, k.house, 0x10);
+    // Vertex (5,5), the far corner of the house's window (3..5, 3..5), at 0x31: placement_rule
+    // refuses the window, the stand-in stores its highest vertex.
+    Site slope;
+    slope.set(5, 5, 0x31);
+    sim::World refusing = slope.world();
+    refused(refusing, build_at(k.house, 3, 3), sim::Reject::TerrainRefused);
+    built_with(slope, k.house, 0x31);
+    // The coast class as placement_rule handles it: the 1 x 3 coast type (window 3..4 x 3..6,
+    // n = 2: no shore test) with vertex (4,4) at 0x35 gets R5's max & 0xf0 = 0x30, not 0x35.
+    Site coast;
+    coast.set(4, 4, 0x35);
+    built_with(coast, k.coast1, 0x30);
+    // No terrain: the stand-in accepts (placement_rule answers Unsupported) with nothing to read.
+    Site none;
+    none.terrain = false;
+    built_with(none, k.house, 0);
+    // The verdict stays the stand-in's: a removable tree under the footprint refuses, although
+    // placement_rule overwrites it.
+    Site tree;
+    tree.object(3, 3, k.tree);
+    sim::World t = tree.world({}, stand_in);
+    refused(t, build_at(k.house, 3, 3), sim::Reject::Occupied);
+    sim::World over = tree.world();
+    built(over, k.house, 3, 3, 0, 0x30);
+}
+
 namespace {
 
 void rewrite_to(void* ctx, const sim::BuildingType&, sim::PlacementRecord& rec) {

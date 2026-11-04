@@ -760,6 +760,13 @@ sim::Command build_wall(std::int32_t x, std::int32_t y, std::uint32_t type = kCo
                                       {sim::PlacementWire{sim::TypeId{type}, x, y, 0, 0, 0}}}};
 }
 
+/// A placement seam that accepts every record with item height 0: the height the stand-in stored
+/// before it took the terrain's (the cause of control 2 below).
+sim::PlacementResult accept_at_height_zero(void*, const sim::Island&, const sim::TypeRegistry&,
+                                           const sim::BuildingType&, const sim::PlacementRecord&) {
+    return {sim::Reject::None, 0};
+}
+
 sim::World make_world_with(const sim::ScenarioSpec& spec, sim::Seams seams) {
     auto w = sim::World::create(spec, registry(), {}, {}, std::move(seams), sim::serial_executor());
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
@@ -802,16 +809,28 @@ TEST_CASE(
     CHECK(reaches_goal(probe(beside)));
     expect_history_independent(beside);
 
-    // Control 2 (the cause): the same command under the deliberately installed stand-in stores
-    // height 0, the same building does not close the channel.
-    sim::Seams stand_in;
-    stand_in.placement_rule = sim::stand_in_placement_seam();
-    sim::World zero = make_world_with(spec, stand_in);
+    // Control 2 (the cause): the same command through a test seam that accepts with height 0
+    // stores 0, and the same building does not close the channel ((3 + 0) = 3 <= 19).
+    sim::Seams height_zero;
+    height_zero.placement_rule = {"test_height_zero", &accept_at_height_zero, nullptr};
+    sim::World zero = make_world_with(spec, height_zero);
     REQUIRE(reaches_goal(probe(zero)));
     const sim::ApplyResult z = zero.apply(build_wall(kWallX, kChannelY0));
     REQUIRE(z.ok());
     CHECK(zero.find_building(z.records.at(0).building)->byte0f == 0);
     CHECK(reaches_goal(probe(zero)));
+
+    // Control 3: the named stand-in stores the terrain's height (docs/sim/ship-placement.md
+    // section 6, "The stand-in's height"), here placement_rule's 0x30, so it closes the channel as
+    // the default does.
+    sim::Seams stand_in;
+    stand_in.placement_rule = sim::stand_in_placement_seam();
+    sim::World named = make_world_with(spec, stand_in);
+    REQUIRE(reaches_goal(probe(named)));
+    const sim::ApplyResult n = named.apply(build_wall(kWallX, kChannelY0));
+    REQUIRE(n.ok());
+    CHECK(named.find_building(n.records.at(0).building)->byte0f == 0x30);
+    CHECK_FALSE(reaches_goal(probe(named)));
 }
 
 TEST_CASE("route objects: a BuildCmd between two Advances that share a tick is seen at once") {

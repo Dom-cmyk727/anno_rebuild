@@ -179,6 +179,16 @@ def setgroup(goods, old, new, e, res64, stock, draws):
                     flag[ware] = 0
             e = (tdiv(res64, 64)) << 7
     elif new['num'] != 0:
+        # MAP-POP-CLOSE-1 G3: the supported domain is checked BEFORE any draw (sat <= 128 for every draw, so the worst
+        # case does not depend on them): E and residents fit u32 / i32 and no stock can leave u32.
+        pe, pr = new['wohn'] << 7, new['wohn'] << 6
+        if pe > 0xFFFFFFFF or pr > 0x7FFFFFFF:
+            raise Fault('overflow')
+        for j in range(new['infra_end']):
+            if new['needs'][j][2] and tdiv(new['needs'][j][1] * 128 * pe, 1536) > 0xFFFFFFFF:
+                raise Fault('overflow')
+        if new['needs'] and tdiv(pe * new['needs'][0][1], 12) > 0xFFFFFFFF:
+            raise Fault('overflow')
         for j in range(new['infra_end']):
             ware, _, force = new['needs'][j]
             if force:
@@ -195,6 +205,8 @@ def setgroup(goods, old, new, e, res64, stock, draws):
             out.append(tdiv(e * menge, 12) if j == 0 else 0)
         else:
             out.append(tdiv(menge * sat.get(ware, 0) * e, 1536))
+        if out[-1] > 0xFFFFFFFF:
+            raise Fault('overflow')
     return out, e, res64, used
 
 
@@ -261,7 +273,7 @@ def run_vector(kind, kv, groups, goods):
             stock, e, res, used = setgroup(goods[kv['goods']], old, groups[kv['new']], int(kv['e']), int(kv['res64']),
                                            ints(kv['stock']), ints(kv['draws']))
         except Fault as f:
-            return {'fault': f.name}
+            return {'fault': f.name, 'used': '0'}   # a fault never draws (G3)
         return {'stock': fmt(stock), 'e': str(e), 'res64': str(res), 'used': str(used)}
     raise Malformed('unknown record ' + kind)
 

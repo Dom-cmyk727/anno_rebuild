@@ -75,6 +75,10 @@ grp SN num=2 needs=26:120:1,27:80:1,28:200:1,30:10:1 infra_end=4 wohn=15
 grp SD num=1 needs=26:100:1,28:50:1,29:40:1 infra_end=3 wohn=8
 grp SF num=2 needs=26:100:1,28:50:0,29:40:1 infra_end=3 wohn=15
 grp SG num=2 needs=26:100:0,28:50:0,29:40:1 infra_end=3 wohn=15
+grp SX num=2 needs=26:65535:1 infra_end=1 wohn=65535
+grp SY num=2 needs=26:255:1 infra_end=1 wohn=100
+grp SZ1 num=2 needs=26:6144:1 infra_end=1 wohn=65535
+grp SZ2 num=2 needs=26:6145:1 infra_end=1 wohn=65535
 grp SP num=0 needs=26:41:1,28:50:1 infra_end=2 wohn=5
 # upgrade: s(26) = 2500*1536/64000 = 60, s(28) = 2000*1536/32000 = 96; E and residents kept
 setgroup SG1-upgrade goods=G old=SO new=SN e=640 res64=1000 stock=2500,2000 draws=none => stock=3000,0,8000,0 e=640 res64=1000 used=0
@@ -88,6 +92,15 @@ setgroup SG3-downgrade goods=G old=SN new=SD e=640 res64=1000 stock=3000,0,8000,
 setgroup SG4-first goods=G old=none new=SF e=640 res64=320 stock=none draws=5,40 => stock=15375,0,6000 e=1920 res64=960 used=2
 setgroup SG5-first-food-unforced goods=G old=none new=SG e=640 res64=320 stock=none draws=40 => stock=16000,0,6000 e=1920 res64=960 used=1
 setgroup SG6-first-pioneer goods=G old=none new=SP e=640 res64=320 stock=none draws=none => stock=2186,0 e=640 res64=320 used=0
+
+# MAP-POP-CLOSE-1 G3 (hand-derived): the domain is checked before any draw. Forced stock worst case is
+# trunc(menge*128*E/1536) with E = wohn<<7. wohn 65535: E = 8388480, 128*E/1536 = 699040 exactly, so menge 6144 gives
+# 4294901760 <= 4294967295 (accepted, draw 0 -> sat 128) and menge 6145 gives 4295600800 > u32 (refused, used=0).
+setgroup SG7-first-edge-accepted goods=G old=none new=SZ1 e=640 res64=320 stock=none draws=0 => stock=4294901760 e=8388480 res64=4194240 used=1
+setgroup SG7b-first-edge-refused goods=G old=none new=SZ2 e=640 res64=320 stock=none draws=0 => fault=overflow used=0
+setgroup SG7c-first-huge-refused goods=G old=none new=SX e=640 res64=320 stock=none draws=0 => fault=overflow used=0
+# neighbouring legal input: wohn 100 -> E = 12800, res64 = 6400; draw 7 -> sat 121: 255*121*12800/1536 = 257125
+setgroup SG7d-first-neighbour goods=G old=none new=SY e=640 res64=320 stock=none draws=7 => stock=257125 e=12800 res64=6400 used=1
 
 # --- L3 review P2-2: the new group is the ADJACENT record (SetGroup cur +/- 0x118, 0x1002cd0e..cd77, 0x1002ceb1..cf06)
 adjacent A1-up-adjacent old=0 new=1 dir=up => ok=1

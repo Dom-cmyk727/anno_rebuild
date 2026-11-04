@@ -36,9 +36,14 @@ FORMULA AND UNITS CONTRACT (all integers; "/" below truncates toward zero; amoun
     stock[slot] += amount*16 and, when id_sec[goods] != 0, the replay is a RECURSIVE deliver of the
     substitute (house vtable slot 0xc0 is 0x10076610 itself): it adds at the substitute's slot if it has
     one and replays that substitute's own IdSec in turn; a substitute without a slot ends the chain. The
-    chain is followed for at most goods_count replays after the first add (the original recurses
-    unboundedly; P-3: a cycle or self-loop is cut there, its slots are raised once per step). Every add
-    is checked against u32 over the whole chain before any is applied; any overflow refuses the call.
+    chain is followed along substitutes that have a need slot. The original recurses unboundedly (a cycle
+    crashes it); MAP-POP-CLOSE-1 G2: when the walk would visit a goods id twice (a cycle or self-loop) the call
+    is refused whole, status idsec_cycle, stock unchanged, touched 0 (goods ids are compared, not slots: two
+    goods sharing one need slot are a legal chain). Every add is checked against u32 over the whole chain
+    before any is applied; any overflow refuses the call (status refused).
+  idsec(goods, house): registry check (derive_group): from every goods id g with lookup[g] a need slot, follow
+    id_sec[g] while the substitute also has a need slot; visiting a goods id twice is status cycle, else ok.
+    The goods count does not matter (unrelated goods cannot change the answer).
   buy (walker step B arrival): i = first cargo slot with goods == 0 (none -> nothing). Pass: choice over the
     own cargo plus the others' cargo; score < 12 or none -> stop; amt = min(avail(g), demand(g), cap)
     (signed); amt > 0 -> bill, then slot goods = g and slot amount += returned, i += 1. Second pass only if
@@ -53,7 +58,8 @@ Vector file grammar (one record per line, '#' comments):
   avail NAME cls= goods= [city=g:v,..] [count=N] [tavern=N] [out=A,B] [flags=f0,f1] => avail= enabled= | fault=
   bill NAME goods= amount= take= [range=first,last] [count=N] store=g:v,.. billed=g:v,.. => status= returned= store= billed=
   sbill NAME cls= goods= amount= [tavern=N] [input=g] [range=first,last] [count=N] store=.. billed=.. => status= returned= store= billed= tavern=
-  deliver NAME goods= house= goods_id= amount= stock=a,b => status= stock= touched=
+  deliver NAME goods= house= goods_id= amount= stock=a,b => status= stock= touched=   (status ok|refused|idsec_cycle)
+  idsec NAME goods= house= => status=ok|cycle
   buy NAME goods= house= e= res= stock=.. cls= out=A,B [flags=] [city=] [billed=] [tavern=] [input=] cargo=g:a,..
       [others=g:a,..] cap= [range=] [count=] => status= cargo= city= billed= purchases= [tavern=] [fault=]
 Exit codes: 0 all vectors agree; 1 a vector disagrees; 2 malformed input, a missing file or zero vectors.
@@ -221,22 +227,42 @@ def supplier_bill(m, first, last, count, store, billed, g, amount):
     return 'ok', 0
 
 
-def deliver(goods, house, stock, g, amount):
+def chain_walk(goods, house, g):
+    """-> (slots of the chain, cycle?)  (follows substitutes that have a need slot; a goods id seen twice = cycle)"""
     n = len(house['needs'])
     slot = house['lookup'].get(g, n)
     if slot >= n:
-        return 'ok', 0, stock
-    chain = [slot]
-    cur = g
-    for _ in range(goods['count']):
+        return [], False
+    chain, seen, cur = [slot], {g}, g
+    while True:
         sec = goods['sec'].get(cur, 0)
         if sec == 0:
             break
         s2 = house['lookup'].get(sec, n)
         if s2 >= n:
             break
+        if sec in seen:
+            return chain, True
+        seen.add(sec)
         chain.append(s2)
         cur = sec
+    return chain, False
+
+
+def idsec(goods, house):
+    n = len(house['needs'])
+    for g in sorted(house['lookup']):
+        if house['lookup'][g] < n and chain_walk(goods, house, g)[1]:
+            return 'cycle'
+    return 'ok'
+
+
+def deliver(goods, house, stock, g, amount):
+    chain, cyc = chain_walk(goods, house, g)
+    if cyc:
+        return 'idsec_cycle', 0, stock
+    if not chain:
+        return 'ok', 0, stock
     add = {}
     for k in chain:
         add[k] = add.get(k, 0) + amount * 16
@@ -318,6 +344,7 @@ KEYS = {
     'bill': {'status', 'returned', 'store', 'billed'},
     'sbill': {'status', 'returned', 'store', 'billed', 'tavern'},
     'deliver': {'status', 'stock', 'touched'},
+    'idsec': {'status'},
     'buy': {'status', 'cargo', 'city', 'billed', 'purchases', 'tavern', 'fault'},
 }
 
@@ -366,6 +393,8 @@ def run_vector(kind, kv, tables):
                               int(kv['amount']))
         return {'status': st, 'returned': str(r), 'store': fmt_sparse(store), 'billed': fmt_sparse(billed),
                 'tavern': str(m['tavern'][0])}
+    if kind == 'idsec':
+        return {'status': idsec(G[kv['goods']], H[kv['house']])}
     if kind == 'deliver':
         stock = ints(kv['stock'])
         st, touched, new = deliver(G[kv['goods']], H[kv['house']], stock, int(kv['goods_id']), int(kv['amount']))

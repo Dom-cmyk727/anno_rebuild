@@ -92,16 +92,32 @@ TEST_CASE("visibility through the pipeline: held chunk workers keep a committed 
           "a failed present shows nothing, the presented frame equals a fresh reference, and the "
           "old object-list rule would have said drawn too early (game files)" *
           doctest::test_suite("dev_visibility")) {
-    auto l = anno::test::lan5();
+    // The real placement rule, not the stand-in (item height 0: with the per-pixel depth its
+    // building would lie under the land, and the change below would rest on which building is
+    // picked): a plain type on a tile the rule accepts stands at the terrain's height, as in the
+    // app (W4-DEPTH-1-CLOSE F5).
+    auto l = anno::test::lan5(true, false);
     if (!l) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const auto plain = drawable_plain(*l);
+    std::optional<sim::TypeId> plain;
+    std::optional<sim::TileXY> legal;
+    for (const sim::TypeId t : l->setup.types) {
+        const sim::BuildingType* type = l->setup.registry->find(t);
+        if (type == nullptr || !type->cost_goods.empty() ||
+            (type->flags_word & sim::kRoadFlag) != 0 || t.v >= app::kPictureAnlageIds ||
+            l->scene->anlagen.entry(t.v) == nullptr) {
+            continue;
+        }
+        if ((legal = anno::test::legal_tile(*l, t))) {
+            plain = t;
+            break;
+        }
+    }
     REQUIRE(plain.has_value());
-    const auto free = anno::test::free_tile(*l);
-    REQUIRE(free.has_value());
-    const sim::TileXY spot = *free;
+    REQUIRE(legal.has_value());
+    const sim::TileXY spot = *legal;
     const auto [sx, sy] = anno::test::tile_centre(*l, spot);
     const render::Rect view{sx - 400, sy - 300, 800, 600};
     const std::size_t group = 1;
@@ -153,7 +169,7 @@ TEST_CASE("visibility through the pipeline: held chunk workers keep a committed 
         gate.open = false;
     }
 
-    // Command: a paid-free 2 x 2 building on the free tile, applied by turn T.
+    // Command: the plain building on the legal tile, applied by turn T.
     const app::CommandId id = [&] {
         sim::BuildCmd b;
         b.city = *setup.city;
@@ -209,7 +225,12 @@ TEST_CASE("visibility through the pipeline: held chunk workers keep a committed 
     for (std::size_t i = 0; i < shown.size(); ++i) {
         changed += shown[i] != before[i] ? 1U : 0U;
     }
-    CHECK(changed > 100); // a 2 x 2 building's sprite
+    MESSAGE("type " << plain->v << " at (" << spot.x << ", " << spot.y << "): " << changed
+                    << " pixels changed");
+    // Most of the sprite shows: type 1307 (4 x 4) at (1138, 475) changes 1706 pixels at group 1
+    // (measured 2026-11-04; the stand-in put it at height 0 on the open sea at (1050, 442), 1520,
+    // the water over its foot). A building mostly under the land fails this bound.
+    CHECK(changed > 1000);
     render::FrameRenderer reference(2);
     reference.set_workers(std::make_unique<render::ChunkWorkers>(2));
     const auto scene = picture.scene();

@@ -52,10 +52,12 @@ the same value. Evaluating at the screen point keeps a sprite's depth consistent
 - **Pixel depth:** `Z` formats base + 256 · z; `V` formats base + the vertical-surface step (B / L per pixel) times
   the rows from the frame's anchor row; `H` formats the flat plane through the anchor, evaluated at the pixel centre
   with the terrain's own function (at(2y + 1, h64 of the anchor)): a decal at the height of flat ground then has
-  the ground's depth exactly and passes the `<=` test, as the original's coplanar decals do (the slope is the
-  original's; sampling at the pixel centre, which makes the tie exact, is this renderer's). A decal is hidden where
-  the terrain under it rises above its item's height plane: faithful to the mechanism, but which point the original
-  passes for a road's height is not traced (the item height byte is assumed, as for every object).
+  the ground's depth exactly and passes the `<=` test, as the original's coplanar decals do. The mechanism is the
+  original's (the flat-ground slope); the value is this renderer's ground, −0.7385 per row at group 0 (−2 · ca: a
+  42-px tile) against the original's −0.752 (its projection, 20.62 px per half tile), so that a decal ties with
+  our terrain, and the sampling at the pixel centre is ours. A decal is hidden where the terrain under it rises
+  above its item's height plane: the mechanism, but which height the original passes for a road is not traced (the
+  item height byte is assumed, as for every object; OQ-026).
 
 ### 2.2 Static scenery (the chunk objects layer)
 Every object draw of a chunk (CPU `replay`, the headless `Scene::render`, the GPU `chunk_build_cs`) tests each pixel
@@ -96,5 +98,9 @@ waterfalls keep their height + 10 test (`kRiverTolerance`) in this package: thei
   reserved `depth` word and the format's depth class in `flags`.
 - The CPU builds the depth plane per chunk from the terrain plane it already has; the GPU builds it in the same
   compute pass (one i32 per pixel in registers). Measurements: `docs/perf/README.md`, "W4-DEPTH-1".
+- Limit: the GPU's `V` ramp multiplies in i32 (WGSL has no i64); it equals the CPU's i64 product while
+  |row − anchor row| · sv < 2³¹, i.e. up to 32 325 rows from the anchor at group 2 (sv 66 435). Every frame of
+  the original data is far inside; a modded frame beyond it would wrap on the GPU only. Path to lift it: split the
+  product into high and low halves in the shader.
 - Switch: `Scene::depth_test` (`--depth off` for the former painter-only picture, a comparison and fallback; kept by
   a new scene generation as `shore_height` is).

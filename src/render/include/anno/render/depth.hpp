@@ -48,7 +48,10 @@ struct Params {
     std::int32_t sv = 0;
     /// The H formats' row ramp (a flat decal): the flat ground's D256 per row, times 256, −2 · ca.
     /// pixel() evaluates H pixels as the flat plane through the anchor at the pixel centre, which
-    /// this is the slope of (D: 0x10015220 with the slope 0x1004d2e0; its value not measured).
+    /// this is the slope of (D: 0x10015220 with the slope 0x1004d2e0, which 0x1000c150 computes
+    /// from (10, 0, 11) and (10, 0, 10): the original's flat-ground slope, −0.752 per row at
+    /// group 0; this renderer's ground is −0.7385 per row, its tile 42 px high,
+    /// docs/render/depth.md).
     std::int32_t sh = 0;
     bool operator==(const Params&) const = default;
 };

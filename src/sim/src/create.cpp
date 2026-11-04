@@ -182,6 +182,9 @@ Reject first_assignment_problem(const SimConfig& cfg, const Rules& rules, const 
     }
     const std::optional<std::uint32_t> g = house_group(cfg, type.prodtype);
     if (!g) {
+        // A House-class type whose PRODTYPE names no group (an orphan). A live world never contains
+        // one (house_updates_problem refuses the registry at creation and load), so this is a
+        // defensive refusal that shares the HouseDomain code instead of having its own.
         return Reject::HouseDomain;
     }
     const auto view = types.population_view(*g, cfg);
@@ -260,6 +263,11 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     if (initial == nullptr) {
         stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now), rules.house_updates);
     }
+    // RESIDUAL (disclosed): the draws below happen before the list insert of step 7. The only way
+    // the insert can then refuse is ListFull (a list of 2^32 - 1 slots), which no game reaches; a
+    // creation that fails there has drawn the first-assignment values and takes no id. Everything
+    // that can really refuse (type, rotation, list, serial, footprint, overlap, the supported domain)
+    // is checked in step 1, before any draw.
     // 5b. SetGroup's first assignment (MAP-POP-CLOSE-1 G1; D Create 0x10024c3c -> 0x10076b90): after the
     // stamp and before the building is inserted. The domain was checked above, so it cannot fail and
     // has drawn nothing when it does not; a defensive fault refuses with nothing drawn.

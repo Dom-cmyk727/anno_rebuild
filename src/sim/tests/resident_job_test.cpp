@@ -1396,3 +1396,83 @@ TEST_CASE("resident job inn: the tavern stock survives save and reload") {
     CHECK(inn_of(back.value()).tavern == 49);
     CHECK(inn_of(back.value()).taken == 151);
 }
+
+namespace {
+struct InjectDebit {
+    std::vector<sim::TavernDebit> debits;
+    bool armed = false;
+};
+void inject_debit_pass(void* raw, const sim::TickContext&, sim::Island&, sim::City&,
+                       sim::Effects& fx) {
+    auto& in = *static_cast<InjectDebit*>(raw);
+    if (in.armed) {
+        in.armed = false;
+        fx.tavern_debits = in.debits;
+    }
+}
+void run_debits(sim::World& w, InjectDebit& in) {
+    sim::Seams& seams = sim::WorldTestAccess::seams(w);
+    seams.city_pass[1].name = "resident_test_inject_debit";
+    seams.city_pass[1].fn = &inject_debit_pass;
+    seams.city_pass[1].ctx = &in;
+    in.armed = true;
+    for (int k = 0; k < 64 && in.armed; ++k) {
+        w.advance(2);
+    }
+    REQUIRE_FALSE(in.armed);
+}
+} // namespace
+
+TEST_CASE("resident job inn: the TavernDebit merge clips at the stock and saturates the statistic") {
+    const auto types = registry();
+    // Clip: a debit of 250 against a stock of 100 leaves 0 (never below), taken rises by the
+    // REQUESTED 250 (the resident job only issues what the Inn gave; the merge adds what it is told).
+    {
+        sim::World w = inn_world(types, 100);
+        InjectDebit in;
+        in.debits = {sim::TavernDebit{at(w, 114, 110)->id, 250}};
+        run_debits(w, in);
+        CHECK(inn_of(w).tavern == 0);
+        CHECK(inn_of(w).taken == 250);
+    }
+    // Saturation: taken at max - 10, a debit of 100 -> max (no wrap).
+    {
+        sim::World w = inn_world(types, 100);
+        {
+            sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+            const sim::BuildingKey key = is.cache.by_id.at(at(w, 114, 110)->id);
+            std::get<sim::Inn>(is.cities[0]->index.lists[key.list].slots[key.slot].value().payload)
+                .taken = 0xFFFFFFFFU - 10U;
+        }
+        InjectDebit in;
+        in.debits = {sim::TavernDebit{at(w, 114, 110)->id, 100}};
+        run_debits(w, in);
+        CHECK(inn_of(w).tavern == 0);
+        CHECK(inn_of(w).taken == 0xFFFFFFFFU);
+    }
+    // Two debits in one buffer apply in order.
+    {
+        sim::World w = inn_world(types, 100);
+        InjectDebit in;
+        const sim::BuildingId id = at(w, 114, 110)->id;
+        in.debits = {sim::TavernDebit{id, 60}, sim::TavernDebit{id, 60}};
+        run_debits(w, in);
+        CHECK(inn_of(w).tavern == 0);
+        CHECK(inn_of(w).taken == 120);
+    }
+}
+
+TEST_CASE("resident job inn: a debit that names no Inn changes nothing") {
+    const auto types = registry();
+    sim::World w = inn_world(types, 100);
+    // The house (110, 110) is not an Inn; an unknown id names no building.
+    InjectDebit in;
+    in.debits = {sim::TavernDebit{at(w, 110, 110)->id, 50},
+                 sim::TavernDebit{sim::BuildingId{0x7777000000000001ULL}, 50}};
+    const std::uint64_t before_inn_tavern = inn_of(w).tavern;
+    run_debits(w, in);
+    CHECK(inn_of(w).tavern == before_inn_tavern);
+    CHECK(inn_of(w).taken == 0);
+    CHECK(house_of(w).stock[0] == 0);
+    CHECK(w.check_invariants() == "");
+}

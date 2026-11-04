@@ -85,6 +85,7 @@ grp SW3 num=2 needs=26:65535:0,27:1:1 infra_end=2 wohn=65535
 grp SR1 num=2 needs=26:1:1,26:65535:0 infra_end=2 wohn=65535
 grp SR2 num=2 needs=26:1:1,26:6144:0 infra_end=2 wohn=65535
 grp SR3 num=2 needs=26:1:0,26:65535:0,27:1:1 infra_end=3 wohn=65535
+grp SR4 num=2 needs=26:65535:0,26:1:1 infra_end=2 wohn=65535
 grp SP num=0 needs=26:41:1,28:50:1 infra_end=2 wohn=5
 # upgrade: s(26) = 2500*1536/64000 = 60, s(28) = 2000*1536/32000 = 96; E and residents kept
 setgroup SG1-upgrade goods=G old=SO new=SN e=640 res64=1000 stock=2500,2000 draws=none => stock=3000,0,8000,0 e=640 res64=1000 used=0
@@ -117,6 +118,9 @@ setgroup SG7h-repeated-ware-refused goods=G old=none new=SR1 e=640 res64=320 sto
 setgroup SG7i-repeated-ware-accepted goods=G old=none new=SR2 e=640 res64=320 stock=none draws=0 => stock=699040,4294901760 e=8388480 res64=4194240 used=1
 # an unforced repeated ware nobody draws is not satisfied: slot 1 has flag set, stock 0 (slot 0 is food: 699040 stays for j=0)
 setgroup SG7j-repeated-ware-undrawn goods=G old=none new=SR3 e=640 res64=320 stock=none draws=0 => stock=699040,0,699040 e=8388480 res64=4194240 used=1
+# the same repeated ware with the forced need SECOND (C1 review P3): the forced draw still satisfies both slots,
+# slot 0 (unforced, menge 65535) is bounded at sat 128 too: refused before any draw
+setgroup SG7k-repeated-ware-forced-second goods=G old=none new=SR4 e=640 res64=320 stock=none draws=0 => fault=overflow used=0
 # neighbouring legal input: wohn 100 -> E = 12800, res64 = 6400; draw 7 -> sat 121: 255*121*12800/1536 = 257125
 setgroup SG7d-first-neighbour goods=G old=none new=SY e=640 res64=320 stock=none draws=7 => stock=257125 e=12800 res64=6400 used=1
 

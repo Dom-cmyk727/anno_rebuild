@@ -82,7 +82,7 @@ std::size_t diff(const gpu::ChunkPlanes& got, const render::Canvas& cpu) {
 
 TEST_CASE("the WGSL declares the chunk-build compute bindings the compositor binds") {
     // No GPU needed: a string check that gpu.wgsl's chunk_build_cs bindings match
-    // what gpu.cpp's cb_layout / cb_scratch set up (group 0, bindings 10-19).
+    // what gpu.cpp's cb_layout / cb_scratch set up (group 0, bindings 10-22).
     const std::string_view src = anno::render::shaders::compositor();
     auto has = [&](std::string_view needle) {
         INFO("missing from gpu.wgsl: " << needle);
@@ -100,6 +100,11 @@ TEST_CASE("the WGSL declares the chunk-build compute bindings the compositor bin
     has("@group(0) @binding(17) var<storage, read_write> cb_objects: array<u32>;");
     has("@group(0) @binding(18) var<storage, read_write> cb_base: array<atomic<u32>>;");
     has("@group(0) @binding(19) var cb_atlas: texture_2d_array<f32>;");
+    // The depth (docs/render/depth.md 2.2): the frames' z bytes, the terrain plane, the
+    // submerged output.
+    has("@group(0) @binding(20) var cb_atlas_z: texture_2d_array<u32>;");
+    has("@group(0) @binding(21) var<storage, read> cb_terrain: array<u32>;");
+    has("@group(0) @binding(22) var<storage, read_write> cb_sub: array<atomic<u32>>;");
 }
 
 TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game files)") {
@@ -119,7 +124,7 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
         auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
         REQUIRE(frame);
         auto& g = *frame.value();
-        std::size_t chunks = 0, records = 0, mismatches = 0;
+        std::size_t chunks = 0, records = 0, mismatches = 0, submerged = 0;
         for (std::size_t group = 0; group < render::kGroups; ++group) {
             for (const auto& [cx, cy] : render::test::busy_chunks(*loaded, group)) {
                 const Rect rect = render::chunk_rect(cx, cy);
@@ -128,10 +133,31 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
                 if (d.object_count() == 0) {
                     continue;
                 }
-                const render::Canvas cpu = render::replay(d, loaded->frame_table);
-                const auto got = g.build_chunk_planes(d, loaded->frame_table);
+                REQUIRE(d.depth_test);
+                // With the depth (the default, depth.md 2.2): the CPU replay against the target
+                // of the chunk's terrain plane, as the chunk builder does, and its submerged
+                // plane; the GPU gets the same terrain.
+                const auto terrain =
+                    loaded->terrain_plane(loaded->ground_with_probe(rect, group, false).second);
+                auto t = render::depth::Target::from_terrain(
+                    rect, render::depth::params(group, loaded->lift), terrain);
+                const render::Canvas cpu = render::replay(d, loaded->frame_table, t);
+                const std::vector<std::uint8_t> sub = t.submerged(d.sea_h64);
+                const auto got = g.build_chunk_planes(d, loaded->frame_table, terrain);
                 REQUIRE(got);
-                const std::size_t bad = diff(*got, cpu);
+                std::size_t bad = diff(*got, cpu);
+                for (std::size_t i = 0; i < got->submerged.size(); ++i) {
+                    bad += got->submerged[i] != (sub.empty() ? 0 : sub[i]) ? 1U : 0U;
+                }
+                submerged += sub.empty() ? 0U
+                                         : static_cast<std::size_t>(
+                                               std::count(sub.begin(), sub.end(), std::uint8_t{1}));
+                // Without it (--depth off): the painter's replay.
+                render::ChunkDraws off = d;
+                off.depth_test = false;
+                const auto got_off = g.build_chunk_planes(off, loaded->frame_table, terrain);
+                REQUIRE(got_off);
+                bad += diff(*got_off, render::replay(off, loaded->frame_table));
                 if (bad != 0 && mismatches == 0) {
                     INFO("first mismatch at " << sf.name << " group " << group << " chunk (" << cx
                                               << ", " << cy << "): " << bad << " px");
@@ -144,7 +170,8 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
         }
         MESSAGE(std::string(sf.name)
                 << ": " << chunks << " chunks, " << records << " records, "
-                << loaded->frame_table.size() << " frames, " << mismatches << " mismatched pixels");
+                << loaded->frame_table.size() << " frames, " << submerged << " submerged pixels, "
+                << mismatches << " mismatched pixels (depth on and off)");
         CHECK(mismatches == 0);
     }
 }

@@ -164,6 +164,19 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
     if (ps == nullptr) {
         return;
     }
+    // MAP-POP-CLOSE-1 F2: what the House really holds now, read from the committed state (the
+    // building keeps its slot across an upgrade or downgrade); nullopt when the tick removed it.
+    std::optional<std::int32_t> committed;
+    if (const City* c = island.city(where.city.city);
+        c != nullptr && where.list < c->index.lists.size() &&
+        where.slot < c->index.lists[where.list].slots.size()) {
+        const auto& slot = c->index.lists[where.list].slots[where.slot];
+        if (slot.has_value() && slot->id == id) {
+            if (const auto* now = std::get_if<House>(&slot->payload)) {
+                committed = now->residents_64;
+            }
+        }
+    }
     if (kernel.residents_64.has_value() && kernel.mood.has_value() &&
         *kernel.residents_64 != residents_before) {
         HouseGrowthRecord gr;
@@ -175,6 +188,9 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
         const std::size_t idx = static_cast<std::size_t>(*kernel.mood + 2);
         gr.vermehr =
             pv.group != nullptr && idx < pv.group->vermehr.size() ? pv.group->vermehr[idx] : 0;
+        gr.residents_committed = committed.value_or(0);
+        gr.removed = !committed.has_value();
+        gr.cap_64 = pv.group != nullptr ? std::int32_t{pv.group->wohnmax} * 64 : 0;
         record(*ps, ps->growth, gr);
     }
     using K = HouseTransitionRecord::Kind;
@@ -212,9 +228,13 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
             (g < city.stock.stock.size() ? std::int64_t{city.stock.stock[g]} : 0) -
             std::int64_t{store_before[k]});
     }
+    // The refused upgrade keeps the house: its residents are the committed ones as well.
+    if (*kind == K::UpgradeRefused) {
+        tr.residents_after = committed.value_or(0);
+    }
     if (*kind == K::Upgrade || *kind == K::Downgrade) {
         tr.new_group = outcome.new_group;
-        tr.residents_after = residents_before; // SetGroup keeps the residents
+        tr.residents_after = committed.value_or(0); // SetGroup keeps the residents (F2: read, not assumed)
         if (tr.old_group < city.index.house_counts.size()) {
             tr.houses_old_after = city.index.house_counts[tr.old_group];
         }

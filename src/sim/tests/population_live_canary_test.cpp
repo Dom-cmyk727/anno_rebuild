@@ -529,7 +529,18 @@ void check_growth(const sim::TransportStats& stats, std::size_t& exact, std::siz
     exact = clipped = 0;
     for (const auto& g : stats.population.growth) {
         REQUIRE(g.residents_after != g.residents_before);
-        (g.residents_after == g.residents_before + g.vermehr ? exact : clipped) += 1;
+        const bool is_exact = g.residents_after == g.residents_before + g.vermehr;
+        (is_exact ? exact : clipped) += 1;
+        if (!is_exact) {
+            // F2: every claimed clip is checked against its applicable bound: the cap (the step
+            // would have crossed Wohnmax * 64 and the kernel stops at it) or the below-64
+            // correction (the floor 64 of the downgrade arm).
+            const bool cap_clip = g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
+            const bool floor_clip = g.residents_after == 64;
+            CHECK_MESSAGE((cap_clip || floor_clip), "unexplained delta of house " << g.building.v);
+        }
+        // The kernel number is what the House holds unless the tick removed the house.
+        CHECK((g.removed ? g.residents_committed == 0 : g.residents_committed == g.residents_after));
     }
 }
 
@@ -668,7 +679,10 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
-    CHECK(t.residents_after == 1358); // SetGroup keeps the residents on a downgrade
+    // F2: the House holds 1320 after the tick: the growth step of the group-3 mood -2 entry
+    // (VermehrTab -38, the largest negative step) ran BEFORE SetGroup, which keeps the residents.
+    // The old pin 1358 was the pre-tick value (the record had been self-baselined).
+    CHECK(t.residents_after == 1358 - 38);
     CHECK(t.houses_old_before == 54);
     CHECK(t.houses_old_after == 53);
     CHECK(t.counter_old_before == 1656);

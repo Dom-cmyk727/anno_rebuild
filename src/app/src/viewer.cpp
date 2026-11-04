@@ -1317,58 +1317,13 @@ bool Viewer::opening_handle(const SDL_Event& e) {
     switch (e.type) {
     case SDL_EVENT_KEY_DOWN: {
         const bool shift = (e.key.mod & SDL_KMOD_SHIFT) != 0;
-        std::optional<OpeningKey> key;
-        switch (e.key.key) {
-        case SDLK_F:
-            key = OpeningKey::Found;
-            break;
-        case SDLK_U:
-            key = OpeningKey::Unload;
-            break;
-        case SDLK_H:
-            key = OpeningKey::Halt;
-            break;
-        case SDLK_T:
-        case SDLK_PERIOD:
-            key = OpeningKey::Rotate;
-            break;
-        case SDLK_COMMA:
-            key = OpeningKey::RotateBack;
-            break;
-        case SDLK_TAB:
-            key = OpeningKey::NextHold;
-            break;
-        // [ ] are AltGr+8 / AltGr+9 on a German keyboard: minus / plus and Page Down / Page Up do
-        // the same, with the same Shift for ten tons.
-        case SDLK_LEFTBRACKET:
-        case SDLK_MINUS:
-        case SDLK_KP_MINUS:
-        case SDLK_PAGEDOWN:
-            key = OpeningKey::QtyDown;
-            break;
-        case SDLK_RIGHTBRACKET:
-        case SDLK_PLUS:
-        case SDLK_EQUALS: // the + key of a US layout, unshifted
-        case SDLK_KP_PLUS:
-        case SDLK_PAGEUP:
-            key = OpeningKey::QtyUp;
-            break;
-        case SDLK_RETURN:
-        case SDLK_KP_ENTER:
-            key = OpeningKey::Send;
-            break;
-        case SDLK_F5:
-            key = OpeningKey::Save;
-            break;
-        case SDLK_ESCAPE:
+        std::optional<OpeningKey> key = opening_key_from_sdl(e.key.key);
+        if (e.key.key == SDLK_ESCAPE) {
             if (e.key.repeat) {
                 return true; // a held Esc is never the window's quit, whatever the first one
                              // cancelled
             }
             key = ui.has_pending() ? std::optional<OpeningKey>(OpeningKey::Escape) : std::nullopt;
-            break;
-        default:
-            break;
         }
         if (!key) {
             return false;

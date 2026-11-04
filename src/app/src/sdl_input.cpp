@@ -80,4 +80,42 @@ ToolStep dev_tool_step(DevTool& tool, const SDL_Event& event, float density,
     return step;
 }
 
+std::optional<OpeningKey> opening_key_from_sdl(SDL_Keycode key) {
+    switch (key) {
+    case SDLK_F:
+        return OpeningKey::Found;
+    case SDLK_U:
+        return OpeningKey::Unload;
+    case SDLK_H:
+        return OpeningKey::Halt;
+    case SDLK_T:
+    case SDLK_COMMA:
+        return OpeningKey::Rotate;
+    case SDLK_PERIOD:
+        return OpeningKey::RotateBack;
+    case SDLK_TAB:
+        return OpeningKey::NextHold;
+    // [ ] are AltGr+8 / AltGr+9 on a German keyboard: minus / plus and Page Down / Page Up do
+    // the same, with the same Shift for ten tons.
+    case SDLK_LEFTBRACKET:
+    case SDLK_MINUS:
+    case SDLK_KP_MINUS:
+    case SDLK_PAGEDOWN:
+        return OpeningKey::QtyDown;
+    case SDLK_RIGHTBRACKET:
+    case SDLK_PLUS:
+    case SDLK_EQUALS: // the + key of a US layout, unshifted
+    case SDLK_KP_PLUS:
+    case SDLK_PAGEUP:
+        return OpeningKey::QtyUp;
+    case SDLK_RETURN:
+    case SDLK_KP_ENTER:
+        return OpeningKey::Send;
+    case SDLK_F5:
+        return OpeningKey::Save;
+    default:
+        return std::nullopt;
+    }
+}
+
 } // namespace anno::app

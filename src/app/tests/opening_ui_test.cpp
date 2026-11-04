@@ -281,9 +281,9 @@ TEST_CASE("controls: founding derives the sim's origin from the click, carries t
     // One click, one command: the mode ended; the next click selects instead of founding.
     CHECK(f.ui.mode() == app::OpeningMode::Select);
     CHECK(f.click(app::PointerButton::Left, 500, 500).commands.empty());
-    // The cursor's turn (owner 2026-11-03, restored): T turns it on, `,` back; the command carries
-    // it, the sim's trials start there and still turn the warehouse to the coast. The origin is
-    // clamped at 0.
+    // The cursor's turn (owner 2026-11-03, restored): T or `,` turns it on, `.` back; the command
+    // carries it, the sim's trials start there and still turn the warehouse to the coast. The
+    // origin is clamped at 0.
     f.click(app::PointerButton::Left, 100, 100);
     f.key(app::OpeningKey::Found);
     CHECK(f.key(app::OpeningKey::Rotate).taken);
@@ -294,7 +294,7 @@ TEST_CASE("controls: founding derives the sim's origin from the click, carries t
     CHECK(edge->placement.rotation == 1);
     CHECK(edge->placement.x == 0);
     CHECK(edge->placement.y == 0);
-    // Kept for the next founding: `,` turns it back, from 1 to 0, then from 0 to 3.
+    // Kept for the next founding: `.` turns it back, from 1 to 0, then from 0 to 3.
     for (const std::uint8_t want : {std::uint8_t{0}, std::uint8_t{3}}) {
         f.click(app::PointerButton::Left, 100, 100);
         f.key(app::OpeningKey::Found);

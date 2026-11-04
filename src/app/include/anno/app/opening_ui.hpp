@@ -78,8 +78,8 @@ enum class OpeningKey : std::uint8_t {
     Found,      ///< F
     Unload,     ///< U
     Halt,       ///< H
-    Rotate,     ///< T or . (in the founding mode: the cursor's turn on, kFoundingCursorRotation)
-    RotateBack, ///< , (in the founding mode: the cursor's turn back)
+    Rotate,     ///< T or , (in the founding mode: the cursor's turn on, kFoundingCursorRotation)
+    RotateBack, ///< . (in the founding mode: the cursor's turn back)
     NextHold,   ///< Tab
     QtyDown,    ///< [
     QtyUp,      ///< ]
@@ -99,10 +99,11 @@ enum class OpeningMode : std::uint8_t { Select, Found, Unload };
 /// cursor's rotation byte +0x46 (AnnoFrame 0x10049340, 0x100493e0), the first of the four trials in
 /// every mouse path (0x10048f06, 0x1004900c, 0x100490d8), written by the cursor's property-5 setter
 /// 0x10049166, the rotation the ordinary cursor's turn keys set (review 2026-11-03 section 4).
-/// T and `.` turn it on, `,` back: the original's keys are `.` and `,`, which way each turns is
-/// not traced, and that they reach this cursor while founding is supported, not yet checked in
-/// the Wine runner. The owner chose to restore it (2026-11-03). On a straight coast one rotation
-/// fits and the turn changes nothing.
+/// `,` turns it on (+1) and `.` back (−1), as the original's keys do while founding (D, Wine
+/// runner 2026-11-04, the first campaign mission: the live cursor's byte +0x46 went 0, 3, 2 under
+/// `.` and 2, 3, 0, 1 under `,`); T, this window's own key, turns on like `,`. The owner chose to
+/// restore the turn (2026-11-03). On a straight coast one rotation fits and the turn changes
+/// nothing.
 inline constexpr std::uint8_t kFoundingCursorRotation = 0;
 enum class PointerButton : std::uint8_t { Left, Right };
 
@@ -280,9 +281,9 @@ class OpeningUi {
     bool hover_changed_ = false;
     std::size_t found_type_ = 0;
     /// The founding cursor's turn (0..3): the first of the sim's rotation trials. Kept between
-    /// foundings: our choice; whether the original keeps or recreates its Kontor cursor, the
-    /// byte's first value and whether it shares the ordinary cursor's turn are not traced
-    /// (OQ-520).
+    /// foundings, starting at 0, as the original's (D, Wine runner 2026-11-04: one Kontor cursor
+    /// object, 0 when first opened, kept its byte when founding was closed with Esc and opened
+    /// again). Whether it shares the ordinary cursor's turn is not traced (OQ-520).
     std::uint8_t found_rotation_ = kFoundingCursorRotation;
     std::uint32_t unload_hold_ = 0, unload_tons_ = 0;
     std::optional<sim::BuildingId> unload_target_;

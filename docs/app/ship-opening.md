@@ -176,8 +176,10 @@ window's own initial state elsewhere and on land (`FluidGpu::carry_waves_over`, 
   warehouse to the shore (the first of 0, 1, 2, 3 whose land edge is the beach and whose opposite edge is in the water). Which
   rotation the original's own command carries is not traced (`docs/sim/ship-founding.md` §3.5). *Superseded the same evening:*
   the orchestrator's review traced it (the original's Kontor cursor starts the trials at its own turn byte, set by the turn keys),
-  and the owner restored it: `T` or `.` turns the founding cursor on, `,` back, the command carries that turn and the sim's
-  trials start there (`kFoundingCursorRotation` is the turn before any press). The warehouse still turns to the coast by itself;
+  and the owner restored it: `,` (or this window's `T`) turns the founding cursor on, `.` back, the command carries that turn
+  and the sim's trials start there (`kFoundingCursorRotation` is the turn before any press). The directions are the original's
+  (Wine runner, 2026-11-04, OQ-520: under `.` its cursor's turn went 0, 3, 2, under `,` 2, 3, 0, 1); the first build of the
+  key had them the other way round. The warehouse still turns to the coast by itself;
   the cursor decides only where two turns fit (8 of 115 shipped sites). Test `controls: on a corner where two turns fit, the
   founding cursor's turn decides`.
 - *Turned and placed wrong: the picture, not the sim.* Every Kontor of the original's scenario files (62) passes the sim's coast

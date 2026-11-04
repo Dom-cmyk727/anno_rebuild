@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <anno/app/dev_tool.hpp>
+#include <anno/app/opening_ui.hpp>
 #include <anno/sim/command.hpp>
 
 namespace anno::app {
@@ -31,5 +32,12 @@ struct ToolStep {
 };
 [[nodiscard]] ToolStep dev_tool_step(DevTool& tool, const SDL_Event& event, float density,
                                      const PointerFrame* frame);
+
+/// The ship-start opening's key for `key` (OpeningUi::key), or nullopt. Esc is not mapped here:
+/// the window takes it only when the opening has something to cancel. `,` turns the founding
+/// cursor on and `.` back, as the original's do (Wine runner 2026-11-04: its Kontor cursor's
+/// rotation byte went 0, 3, 2 under `.` and 2, 3, 0, 1 under `,`); T, this window's own key,
+/// turns on like `,`.
+[[nodiscard]] std::optional<OpeningKey> opening_key_from_sdl(SDL_Keycode key);
 
 } // namespace anno::app

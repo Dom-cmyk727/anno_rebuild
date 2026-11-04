@@ -654,3 +654,30 @@ TEST_CASE("dev tool: a drag longer than one record is refused before its path is
     CHECK_FALSE(tool.enabled());
     CHECK(tool.message().find("no city") != std::string::npos);
 }
+
+TEST_CASE("opening keys: `,` turns the founding cursor on and `.` back, as the original's" *
+          doctest::test_suite("dev_tool")) {
+    // Wine runner 2026-11-04 (W4-OPENING-1-CLOSE): the original's Kontor cursor byte +0x46 went
+    // 0, 3, 2 under `.` and 2, 3, 0, 1 under `,`. T is this window's own key and turns on.
+    CHECK(app::opening_key_from_sdl(SDLK_COMMA) == app::OpeningKey::Rotate);
+    CHECK(app::opening_key_from_sdl(SDLK_PERIOD) == app::OpeningKey::RotateBack);
+    CHECK(app::opening_key_from_sdl(SDLK_T) == app::OpeningKey::Rotate);
+    // The rest of the opening's keys, as the window had them.
+    CHECK(app::opening_key_from_sdl(SDLK_F) == app::OpeningKey::Found);
+    CHECK(app::opening_key_from_sdl(SDLK_U) == app::OpeningKey::Unload);
+    CHECK(app::opening_key_from_sdl(SDLK_H) == app::OpeningKey::Halt);
+    CHECK(app::opening_key_from_sdl(SDLK_TAB) == app::OpeningKey::NextHold);
+    for (const SDL_Keycode k : {SDLK_LEFTBRACKET, SDLK_MINUS, SDLK_KP_MINUS, SDLK_PAGEDOWN}) {
+        CHECK(app::opening_key_from_sdl(k) == app::OpeningKey::QtyDown);
+    }
+    for (const SDL_Keycode k :
+         {SDLK_RIGHTBRACKET, SDLK_PLUS, SDLK_EQUALS, SDLK_KP_PLUS, SDLK_PAGEUP}) {
+        CHECK(app::opening_key_from_sdl(k) == app::OpeningKey::QtyUp);
+    }
+    CHECK(app::opening_key_from_sdl(SDLK_RETURN) == app::OpeningKey::Send);
+    CHECK(app::opening_key_from_sdl(SDLK_KP_ENTER) == app::OpeningKey::Send);
+    CHECK(app::opening_key_from_sdl(SDLK_F5) == app::OpeningKey::Save);
+    // Esc is the window's (it needs the opening's state); other keys are not the opening's.
+    CHECK_FALSE(app::opening_key_from_sdl(SDLK_ESCAPE));
+    CHECK_FALSE(app::opening_key_from_sdl(SDLK_B));
+}

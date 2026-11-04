@@ -247,6 +247,13 @@ TEST_CASE("command line") {
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "-1"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "256"}));
     CHECK_FALSE(parse_args({"--view", "x.scp", "--shore", "nan"}));
+    // Per-pixel depth on by default; --depth off gives the former picture (depth.md).
+    CHECK(d->depth);
+    const auto doff = parse_args({"--view", "x.scp", "--depth", "off"});
+    REQUIRE(doff);
+    CHECK_FALSE(doff->depth);
+    CHECK(parse_args({"--view", "x.scp", "--depth", "on"})->depth);
+    CHECK_FALSE(parse_args({"--view", "x.scp", "--depth", "maybe"}));
     // The viewer shows the flow at gain 4 with the median-cell speed (OQ-083, OQ-065).
     using Ref = anno::render::river::RiverConfig::Reference;
     CHECK(d->river_gain == 4.0F);

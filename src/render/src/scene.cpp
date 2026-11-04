@@ -647,9 +647,9 @@ Scene::Scene(const Scene& base, std::vector<IslandUpdate>&& updates)
     : assets_(base.assets_), caches_(base.caches_), name(base.name), islands(base.islands),
       textures(base.textures), anlagen(base.anlagen), layouts(base.layouts), sprites(base.sprites),
       frame_table(base.frame_table), lift(base.lift), units(base.units), river_cfg(base.river_cfg),
-      shore_height(base.shore_height), flow_build_fault(base.flow_build_fault),
-      island_storage_(base.island_storage_), objects_(base.objects_), levels_(base.levels_),
-      generation_(base.generation_ + 1) {
+      shore_height(base.shore_height), depth_test(base.depth_test),
+      flow_build_fault(base.flow_build_fault), island_storage_(base.island_storage_),
+      objects_(base.objects_), levels_(base.levels_), generation_(base.generation_ + 1) {
     island_storage_.resize(islands.size());
     for (IslandUpdate& u : updates) {
         assert(u.index < objects_.size() && u.lists);

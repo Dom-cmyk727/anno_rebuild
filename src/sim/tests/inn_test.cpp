@@ -343,10 +343,17 @@ void end_to_end(sim::TypeId type, sim::GoodsId goods) {
     CHECK(inn_at(w).taken == 0);
     until(w, [&] { return carriers(w).empty(); });
     CHECK(inn_at(w).carriers_out == 0); // released at the end of the figure
-    // The gate at 10000: stock 768 >= 0x100 and >= taken / 2 = 0: no second carrier.
-    advance_to(w, 10200);
+    // The gate at 10000 found the carrier still out (stock 0, so the stock rule alone would send, but
+    // limit 1 == count 1 blocks it): no second figure, the stamp advanced. By now the carrier is back
+    // with 768 and the Inn holds it.
     CHECK(carriers(w).empty());
     CHECK(inn_at(w).last == 10000);
+    CHECK(inn_at(w).tavern == 768);
+    CHECK(city0(w).stock.stock[goods] == 12800 - 768);
+    // The gate at 15000: stock 768 >= 0x100 and >= taken / 2 = 0: still no carrier.
+    advance_to(w, 15200);
+    CHECK(carriers(w).empty());
+    CHECK(inn_at(w).last == 15000);
     CHECK(inn_at(w).tavern == 768);
     CHECK(city0(w).stock.stock[goods] == 12800 - 768);
     CHECK(w.check_invariants() == "");
@@ -391,6 +398,36 @@ TEST_CASE("inn limit: no second carrier while one is out, and a limit of two sen
         CHECK(carriers(w).size() == 2);
         CHECK(inn_at(w).carriers_out == 2);
         CHECK(w.check_invariants() == "");
+    }
+}
+
+TEST_CASE("inn removal: a demolished Inn leaves no carrier, counter or cargo behind") {
+    // Pinned behaviour (K1 review P3): the carrier of a removed home loses its home at the removal
+    // (the figure's end path, D 0x1003b6e0), ends, and its cargo is lost with it; nothing refers to the
+    // Inn afterwards and the invariants (counters equal the figures that refer to them) hold. The
+    // warehouse keeps what the carrier already took (768 at the load).
+    for (const std::uint64_t cut : {std::uint64_t{5000 + 1500}, std::uint64_t{5000 + 3300}}) {
+        // 6500: on the way out (nothing taken yet); 8300: loaded (cargo 768) and walking home.
+        const auto types = registry();
+        Rig r = make_rig();
+        r.place(kMarketT, 110, 110);
+        r.place(kInnT, 111, 115);
+        r.city().stock = stock_of(kAlcohol, 12800);
+        sim::World w = create(r, types);
+        until(w, [&] { return !carriers(w).empty(); });
+        advance_to(w, cut);
+        REQUIRE(carriers(w).size() == 1);
+        const bool loaded = city0(w).stock.stock[kAlcohol] != 12800;
+        CHECK(loaded == (cut > 5000 + 3001));
+        const sim::ApplyResult rem = w.apply(sim::Command{
+            sim::PlayerId{0}, sim::DemolishCmd{sim::CityRef{sim::IslandId{0}, sim::CityNo{0}},
+                                               {sim::TileXY{111, 115}}}});
+        REQUIRE_MESSAGE(rem.ok(), std::string(sim::reject_name(rem.status)));
+        CHECK(w.islands()[0]->building_at(w.config().layout, sim::CityNo{0}, 111, 115) == nullptr);
+        advance_to(w, cut + 6000);
+        CHECK(carriers(w).empty());
+        CHECK(w.check_invariants() == "");
+        CHECK(city0(w).stock.stock[kAlcohol] == (loaded ? 12800 - 768 : 12800));
     }
 }
 

@@ -21,4 +21,6 @@ Independent reviewers were fresh read-only subagents of the executor session. Th
 
 | MAP-POP-CLOSE-2 K0 | `1e65ea7d..69ca5a8d` | `afed89db202fcccac` | CHANGES REQUIRED (0 P1, 3 P2, 5 P3, all doc corrections; every original-binary claim for the Inn, job 0x33, locked needs and the upgrade check reproduced) | fixed in the following docs commit: stall-wait conversion is the cart precedent, the 58/58 Inn check is circular, OQ-463 re-diagnosed (mapper[0x155] = 0, not a conversion bug), pick tests output 1, signed take, limit > 2 attach case, IdSec raise and fitted growth in OQ-465, f32 offset wording, the 1C bit comes from creation residents |
 
+| MAP-POP-CLOSE-2 K1 | `5816d0da..ec0e832e` | `aa417337f9dffab22` | APPROVED (0 P1/P2, 3 P3) | P3 closed in the next commits: stale MAP-2 mutant binary rebuilt and the "never touched" sentence corrected in section 23; the end_to_end gate comment corrected and the gate at 15000 pinned; Inn removal while a carrier is out defined and pinned (`inn removal` test) and the missing mutants (limit source, tick width, release skipped) added to the K2 mutant round |
+
 Gate identities and counts are in the final entry of `docs/orchestration/REPORTS.md`.

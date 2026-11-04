@@ -1939,3 +1939,33 @@ TEST_CASE("registry build is deterministic and independent of entry order") {
     REQUIRE(backward);
     CHECK(forward.value()->digest() == backward.value()->digest());
 }
+
+TEST_CASE("registry digest: a populated stage table matches the independent transcription") {
+    // L3 review P2-4: tools/sim_stream.py writes the digest of the registry with three hand-written
+    // stage records (stage, group, wissen, count as four u32 after a u64 count) and the same with
+    // stage and group swapped (the control).
+    std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/stage_table_digest.txt");
+    REQUIRE(in.good());
+    std::map<std::string, std::uint64_t> v;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        const auto sp = line.find(' ');
+        v[line.substr(0, sp)] = std::stoull(line.substr(sp + 1), nullptr, 16);
+    }
+    REQUIRE(v.size() == 3);
+    const auto build = [](std::vector<sim::StageRecord> stages) {
+        sim::TypeRegistry::Builder b;
+        b.stage_table(std::move(stages));
+        auto built = b.build();
+        REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+        return built.value()->digest();
+    };
+    CHECK(build({}) == v.at("empty"));
+    CHECK(build({{1, 0, 0, 30}, {4, 1, 20, 25}, {31, 2, 7, 999}}) == v.at("populated"));
+    // Swapped-field control: records with stage and group exchanged hash differently.
+    CHECK(build({{0, 1, 0, 30}, {1, 4, 20, 25}, {2, 31, 7, 999}}) != v.at("populated"));
+    CHECK(v.at("populated") != v.at("swapped"));
+}

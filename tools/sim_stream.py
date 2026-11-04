@@ -184,7 +184,7 @@ CLASSES = [
 ]
 
 
-def registry_digest(names):
+def registry_digest(names, stages=(), swap=False):
     d = u64(0)  # no types
     d += u64(len(names))
     for i, n in enumerate(names):
@@ -194,8 +194,28 @@ def registry_digest(names):
         d += u8(cls) + u8(tick) + u8(payload) + u32(gate)
     d += u64(0)  # no figure types (T24)
     d += u64(0)  # no group table (P1)
-    d += u64(0)  # no stage table (stream 128, L3)
+    # The [BAUSTUFEN] stage table (stream 128, L3): u64 count, then u32 stage, group, wissen, count per
+    # record. `swap` is the control: stage and group exchanged (a different layout reading).
+    d += u64(len(stages))
+    for stage, group, wissen, count in stages:
+        a, b = (group, stage) if swap else (stage, group)
+        d += u32(a) + u32(b) + u32(wissen) + u32(count)
     return fnv(d)
+
+
+# A populated stage table (hand-written records: stage, group, wissen, count); includes the
+# FORSCH stage 31 the registry accepts and a count above 255.
+STAGES_SAMPLE = [(1, 0, 0, 30), (4, 1, 20, 25), (31, 2, 7, 999)]
+STAGE_DIGEST_FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures',
+                                    'synthetic', 'sim', 'stage_table_digest.txt')
+
+
+def stage_digest_fixture_text():
+    names = goods_names()
+    return ('# registry digest with the stage table %s (tools/sim_stream.py, L3 review P2-4)\n'
+            'populated %016x\nswapped %016x\nempty %016x\n' %
+            (STAGES_SAMPLE, registry_digest(names, STAGES_SAMPLE), registry_digest(names, STAGES_SAMPLE, True),
+             registry_digest(names)))
 
 
 def synthetic_walk_tables_digest():
@@ -974,6 +994,8 @@ def main():
     ap.add_argument('--check', action='store_true', help='compare with goldens.txt')
     ap.add_argument('--write-holds', action='store_true',
                     help='write fixtures/synthetic/sim/ship_holds.txt and exit')
+    ap.add_argument('--write-stage-digest', action='store_true',
+                    help='write fixtures/synthetic/sim/stage_table_digest.txt and exit')
     ap.add_argument('--write-cargo-rules', action='store_true',
                     help='write fixtures/synthetic/sim/cargo_rules_bytes.txt and exit')
     args = ap.parse_args()
@@ -981,6 +1003,11 @@ def main():
         with open(CARGO_RULES_FIXTURE, 'w') as f:
             f.write(cargo_rules_fixture_text())
         print('wrote', os.path.normpath(CARGO_RULES_FIXTURE))
+        return 0
+    if args.write_stage_digest:
+        with open(STAGE_DIGEST_FIXTURE, 'w') as f:
+            f.write(stage_digest_fixture_text())
+        print('wrote', os.path.normpath(STAGE_DIGEST_FIXTURE))
         return 0
     if args.write_holds:
         with open(HOLDS_FIXTURE, 'w') as f:
@@ -1017,6 +1044,9 @@ def main():
         bad += 1
     if not os.path.exists(CARGO_RULES_FIXTURE) or open(CARGO_RULES_FIXTURE).read() != cargo_rules_fixture_text():
         print('cargo_rules_bytes.txt differs from the transcription (run --write-cargo-rules)')
+        bad += 1
+    if not os.path.exists(STAGE_DIGEST_FIXTURE) or open(STAGE_DIGEST_FIXTURE).read() != stage_digest_fixture_text():
+        print('stage_table_digest.txt differs from the transcription (run --write-stage-digest)')
         bad += 1
     print('goldens agree' if bad == 0 else '%d difference(s)' % bad)
     return 1 if bad else 0

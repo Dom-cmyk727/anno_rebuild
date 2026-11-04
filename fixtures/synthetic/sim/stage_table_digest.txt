@@ -1,0 +1,4 @@
+# registry digest with the stage table [(1, 0, 0, 30), (4, 1, 20, 25), (31, 2, 7, 999)] (tools/sim_stream.py, L3 review P2-4)
+populated 40cbb981a683c66d
+swapped e51c9515c93b5c5d
+empty 22f7ee6842fdb035

@@ -508,7 +508,10 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
     // shading (the former expected lines, which were the Rust reference's
     // before the river gap fix and this C++ renderer's after it), with the
     // units drawn. [1] is the group 2 render, [3] the group 1 region; where the
-    // region has no river pixels its line did not change.
+    // region has no river pixels its line did not change. Re-recorded 2026-11-04
+    // for the per-pixel depth (docs/render/depth.md, W4-DEPTH-1): objects are
+    // depth-tested against the terrain, so the digests change while the counts
+    // (drawn, inv, failed, units) stay; the former values are those before it in git.
     struct Old {
         const char* file;
         const char* g2;
@@ -516,25 +519,25 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
     };
     const std::vector<Old> old = {
         {"Single_01.sze",
-         "Single_01.sze g2 t2500 Enhanced 16960x9170 95b5083bfb7cd929 drawn=69256 inv=11717 "
+         "Single_01.sze g2 t2500 Enhanced 16960x9170 f84c269a52822b49 drawn=69256 inv=11717 "
          "failed=0 units=5",
          nullptr},
         {"Single_06.sze",
-         "Single_06.sze g2 t2500 Enhanced 7280x4451 c8f619871bf77cfe drawn=13626 inv=3084 "
+         "Single_06.sze g2 t2500 Enhanced 7280x4451 93692d45265f5313 drawn=13626 inv=3084 "
          "failed=0 units=3",
          nullptr},
         {"Single_10.sze",
-         "Single_10.sze g2 t2500 Enhanced 17440x9131 11bc91250cff4a19 drawn=52883 inv=8756 "
+         "Single_10.sze g2 t2500 Enhanced 17440x9131 d7085e289d520601 drawn=52883 inv=8756 "
          "failed=0 units=1",
          nullptr},
         {"Single_14.sze",
-         "Single_14.sze g2 t2500 Enhanced 14080x9291 1d702bce968c7bb2 drawn=47064 inv=9450 "
+         "Single_14.sze g2 t2500 Enhanced 14080x9291 20e6be24fad8625a drawn=47064 inv=9450 "
          "failed=0 units=3",
          nullptr},
         {"Single_24.sze",
-         "Single_24.sze g2 t2500 Enhanced 7200x2811 0500861b8f0adfdc drawn=24406 inv=2880 "
+         "Single_24.sze g2 t2500 Enhanced 7200x2811 d33ce3da18b431d7 drawn=24406 inv=2880 "
          "failed=0 units=541",
-         "Single_24.sze g1 region Enhanced 317103d104e285be drawn=23526 units=0"},
+         "Single_24.sze g1 region Enhanced 7410a0bae4658270 drawn=23526 units=0"},
     };
     const std::vector<std::string> now = expected_lines();
     // All five scenarios in one call per mode (20 renders on the test threads):

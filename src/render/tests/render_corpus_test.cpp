@@ -396,13 +396,13 @@ const std::vector<std::string> kExpected = {
     "units=5",
     "Single_01.sze g1 region Original 64ac3aafd29fdd02 drawn=24371 units=0",
     "Single_01.sze g1 region Enhanced 8cf3c928653f8d67 drawn=24110 units=0",
-    "Single_05.sze g2 t0 Original 9040x3291 fec247e186ff662f drawn=12628 inv=1240 failed=0 units=2",
-    "Single_05.sze g2 t2500 Enhanced 9040x3291 e1abe1a68b280307 drawn=12628 inv=1240 failed=0 "
+    "Single_05.sze g2 t0 Original 9040x3291 8265d0c43f20558d drawn=12628 inv=1240 failed=0 units=2",
+    "Single_05.sze g2 t2500 Enhanced 9040x3291 3bdb5692e077d4d1 drawn=12628 inv=1240 failed=0 "
     "units=2",
     "Single_05.sze g1 region Original 0877229011d5a8f0 drawn=4603 units=0",
     "Single_05.sze g1 region Enhanced f3b2a3849f1de9a7 drawn=4603 units=0",
-    "Single_06.sze g2 t0 Original 7280x4451 92c0da5e0837e6a0 drawn=13778 inv=3084 failed=0 units=3",
-    "Single_06.sze g2 t2500 Enhanced 7280x4451 68bb541a4d8d03be drawn=13626 inv=3084 failed=0 "
+    "Single_06.sze g2 t0 Original 7280x4451 d7d20453f45bda0f drawn=13778 inv=3084 failed=0 units=3",
+    "Single_06.sze g2 t2500 Enhanced 7280x4451 204556382fec5b0d drawn=13626 inv=3084 failed=0 "
     "units=3",
     "Single_06.sze g1 region Original a861e1fa6197b663 drawn=599 units=0",
     "Single_06.sze g1 region Enhanced 34e37aae14db7a05 drawn=599 units=0",
@@ -433,14 +433,14 @@ const std::vector<std::string> kExpected = {
     "units=2",
     "Single_15.sze g1 region Original 10ce0f7a56a09d46 drawn=0 units=0",
     "Single_15.sze g1 region Enhanced 98396d449ab33986 drawn=0 units=0",
-    "Single_16.sze g2 t0 Original 7200x4051 7801311daf5ecd0d drawn=8743 inv=239 failed=0 units=3",
-    "Single_16.sze g2 t2500 Enhanced 7200x4051 b5a59d1df31137c7 drawn=8743 inv=239 failed=0 "
+    "Single_16.sze g2 t0 Original 7200x4051 221fb76d2144a94f drawn=8743 inv=239 failed=0 units=3",
+    "Single_16.sze g2 t2500 Enhanced 7200x4051 037705072fc7ad51 drawn=8743 inv=239 failed=0 "
     "units=3",
     "Single_16.sze g1 region Original 06250f8c9d1f4f01 drawn=1384 units=0",
     "Single_16.sze g1 region Enhanced 5699a9adf679aff1 drawn=1384 units=0",
-    "Single_24.sze g2 t0 Original 7200x2811 cface96d30fca167 drawn=24577 inv=2880 failed=0 "
+    "Single_24.sze g2 t0 Original 7200x2811 739eafaac0d77a01 drawn=24577 inv=2880 failed=0 "
     "units=541",
-    "Single_24.sze g2 t2500 Enhanced 7200x2811 7ee96e770fec496f drawn=24406 inv=2880 failed=0 "
+    "Single_24.sze g2 t2500 Enhanced 7200x2811 4d491cc4a921017d drawn=24406 inv=2880 failed=0 "
     "units=541",
     "Single_24.sze g1 region Original 927b2114d49a6d96 drawn=23697 units=0",
     "Single_24.sze g1 region Enhanced 31a0ff8bc45b6766 drawn=23526 units=0",
@@ -453,19 +453,18 @@ const std::vector<std::string> kExpected = {
 };
 
 // Re-recorded 2026-11-04 for the per-pixel depth (docs/render/depth.md, W4-DEPTH-1): 36 of the 44
-// lines change their pixels only (every size and drawn / invisible / failed / unit count is the same);
-// MSVC (UCRT) only, as below.
-// Lines that differ on MSVC's UCRT from Apple's libm and glibc: the enhanced
-// water calls std::exp and std::pow (iso.cpp), which UCRT rounds differently in
-// the last bit (as for the wave solver, fluid_test.cpp). Until 2026-11-03 one
-// line differed (Single_16 g2 Enhanced). The table above was re-baselined on
-// 2026-11-03 for the handedness fix (docs/render/iso.md, "Handedness": every
-// line keeps its size and its drawn / invisible / failed / unit counts, only the
-// pixels move) on Windows 11 with MSVC (UCRT) only; the Apple and glibc values
-// are NOT_RUN since (no run with the game files there), so a run may differ in the enhanced lines
-// and then needs its own override table here (the former UCRT override is folded into kExpected;
-// restore a per-library table and its selection in expected_lines() when one is measured). Fallback
-// if more libms diverge: libm-free exp/pow in the enhanced water (docs/render/iso.md, "Fidelity").
+// lines change their pixels only (every size and drawn / invisible / failed / unit count is the
+// same); MSVC (UCRT) only, as below. Lines that differ on MSVC's UCRT from Apple's libm and glibc:
+// the enhanced water calls std::exp and std::pow (iso.cpp), which UCRT rounds differently in the
+// last bit (as for the wave solver, fluid_test.cpp). Until 2026-11-03 one line differed (Single_16
+// g2 Enhanced). The table above was re-baselined on 2026-11-03 for the handedness fix
+// (docs/render/iso.md, "Handedness": every line keeps its size and its drawn / invisible / failed /
+// unit counts, only the pixels move) on Windows 11 with MSVC (UCRT) only; the Apple and glibc
+// values are NOT_RUN since (no run with the game files there), so a run may differ in the enhanced
+// lines and then needs its own override table here (the former UCRT override is folded into
+// kExpected; restore a per-library table and its selection in expected_lines() when one is
+// measured). Fallback if more libms diverge: libm-free exp/pow in the enhanced water
+// (docs/render/iso.md, "Fidelity").
 
 std::vector<std::string> expected_lines() {
     return kExpected;
@@ -595,7 +594,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     // 2026-11-04 for the per-pixel depth (docs/render/depth.md, W4-DEPTH-1): every
     // Single_24 view changes (objects behind the terrain are hidden, the sea is drawn
     // over object pixels behind it), the Single_01 views do not; with
-    // Scene::depth_test off all three tables give their former values (checked).
+    // Scene::depth_test off the tables give their former values (the last pass below).
     const std::vector<std::string> expected = {
         "Single_01.sze g2 t0 Original 248443d0e912b365",
         "Single_01.sze g2 t900 Original 0ed9aaf8927d753d",
@@ -606,9 +605,9 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
         "Single_01.sze g0 t0 Original 58c04f71658b5a9a",
         "Single_01.sze g0 t900 Original 2f0fcf0922a0a65b",
         "Single_01.sze g0 t900 Enhanced e8d0658f44f41e0e",
-        "Single_24.sze g2 t0 Original 838fb6477b974a9b",
-        "Single_24.sze g2 t900 Original 0ef32d16df0a1c29",
-        "Single_24.sze g2 t900 Enhanced 325d815c9411effd",
+        "Single_24.sze g2 t0 Original 020ecae3a0801729",
+        "Single_24.sze g2 t900 Original 0376b508bbccc137",
+        "Single_24.sze g2 t900 Enhanced a92a52dc0376f0ff",
         "Single_24.sze g1 t0 Original d8069c972bdcd656",
         "Single_24.sze g1 t900 Original e5ab62efc74bc05d",
         "Single_24.sze g1 t900 Enhanced 7d52d6f744269338",
@@ -620,7 +619,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     // previous enhanced digests (the flow shading changed those only; the
     // Single_01 views and Single_24's group 0 view hold no river pixels).
     std::vector<std::string> expected_legacy = expected;
-    expected_legacy[11] = "Single_24.sze g2 t900 Enhanced 7ee50344d046fb57";
+    expected_legacy[11] = "Single_24.sze g2 t900 Enhanced c5cf6617e7b915b9";
     expected_legacy[14] = "Single_24.sze g1 t900 Enhanced 31d4cfcf925c4640";
     // Both tables are at the shore of 16, the renderer's until 2026-11-03 (still selectable,
     // Scene::shore_height). At the default shore (kShoreHeight 16.5, owner 2026-11-03) corners at
@@ -629,27 +628,42 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
     // MSVC (UCRT) on 2026-11-03, the flow shading.
     std::vector<std::string> expected_default = expected;
     expected_default[2] = "Single_01.sze g2 t900 Enhanced 722717aef0870f20";
-    expected_default[9] = "Single_24.sze g2 t0 Original ec46acfe2baec156";
-    expected_default[10] = "Single_24.sze g2 t900 Original 14ded73b43e81a18";
-    expected_default[11] = "Single_24.sze g2 t900 Enhanced 7caabe3337a45727";
+    expected_default[9] = "Single_24.sze g2 t0 Original 4e877bad8fd46a94";
+    expected_default[10] = "Single_24.sze g2 t900 Original 49e5f31a731d2e96";
+    expected_default[11] = "Single_24.sze g2 t900 Enhanced e4b9c0e9bc74f319";
     expected_default[12] = "Single_24.sze g1 t0 Original 698e98972f183bcd";
     expected_default[13] = "Single_24.sze g1 t900 Original 6822a07c77b3f02c";
     expected_default[14] = "Single_24.sze g1 t900 Enhanced 53c9031654b1fa44";
     expected_default[15] = "Single_24.sze g0 t0 Original 7f995c8e184fa308";
     expected_default[16] = "Single_24.sze g0 t900 Original 199c8acdc0eff6f3";
     expected_default[17] = "Single_24.sze g0 t900 Enhanced c8f2cdb53c0d7f29";
+    // With Scene::depth_test off (--depth off) the frames are the pictures before W4-DEPTH-1:
+    // the shore-16 table as recorded before the depth (pins that the switch restores them).
+    std::vector<std::string> expected_no_depth = expected;
+    expected_no_depth[9] = "Single_24.sze g2 t0 Original 4963d7d2454de4eb";
+    expected_no_depth[10] = "Single_24.sze g2 t900 Original 11b6fb41ed724495";
+    expected_no_depth[11] = "Single_24.sze g2 t900 Enhanced 5a85882cdd8042e0";
+    expected_no_depth[12] = "Single_24.sze g1 t0 Original c689fe55ac196701";
+    expected_no_depth[13] = "Single_24.sze g1 t900 Original 8985d21dccc229a1";
+    expected_no_depth[14] = "Single_24.sze g1 t900 Enhanced 3d3e2907d075cbd1";
+    expected_no_depth[15] = "Single_24.sze g0 t0 Original 542463abd22778ba";
+    expected_no_depth[16] = "Single_24.sze g0 t900 Original 4abf941c513c226a";
+    expected_no_depth[17] = "Single_24.sze g0 t900 Enhanced cd8b345f42d05069";
     struct Pass {
         render::RiverFlowMode mode;
         float shore;
         const std::vector<std::string>* want;
+        bool depth = true;
     };
     const auto felder_buf = anno::test::read_file(*dir / "Textures" / "Felder.tex");
     const auto anl_buf = anno::test::read_file(*dir / "Anlagen.dat");
     for (const Pass& pass :
          {Pass{render::RiverFlowMode::Flow, 16.0F, &expected},
           Pass{render::RiverFlowMode::Legacy, 16.0F, &expected_legacy},
-          Pass{render::RiverFlowMode::Flow, render::kShoreHeight, &expected_default}}) {
+          Pass{render::RiverFlowMode::Flow, render::kShoreHeight, &expected_default},
+          Pass{render::RiverFlowMode::Flow, 16.0F, &expected_no_depth, false}}) {
         CAPTURE(pass.shore);
+        CAPTURE(pass.depth);
         std::vector<std::string> lines;
         for (const char* name : {"Single_01.sze", "Single_24.sze"}) {
             const auto buf = anno::test::read_file(*dir / "Scenes" / "0200Single" / name);
@@ -662,6 +676,7 @@ TEST_CASE("frames (chunk cache and composition) match the recorded digests (the 
             render::Scene scene("", anno::formats::insel::islands(buf).value(), std::move(textures),
                                 std::move(anlagen), render::kHeightLift);
             scene.shore_height = pass.shore;
+            scene.depth_test = pass.depth;
             render::FrameRenderer fr(4);
             fr.river_flow = pass.mode;
             for (const std::size_t group : {std::size_t{2}, std::size_t{1}, std::size_t{0}}) {

@@ -74,7 +74,7 @@ TEST_CASE("stream 128: versions, defaults and the three declared draw sites") {
         // "not ported", so the replay manifest of a default log still lists them.
         CHECK_FALSE(sim::draw_site_ported(s));
         CHECK_FALSE(sim::draw_site_ported(s, false));
-        CHECK(sim::draw_site_ported(s, true) == (s != sim::DrawSite::HouseFirstAssignment));
+        CHECK(sim::draw_site_ported(s, true)); // C2: the player build draws HouseFirstAssignment
     }
     CHECK(std::string(sim::draw_site_name(sim::DrawSite::HouseWalkerTarget)) ==
           "HouseWalkerTarget");

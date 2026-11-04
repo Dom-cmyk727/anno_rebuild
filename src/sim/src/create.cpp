@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/house_transition.hpp>
 #include <anno/sim/walk_cells.hpp>
 
 namespace anno::sim {
@@ -173,10 +174,30 @@ Reject creation_problem(const SimConfig& cfg, const TypeRegistry& types, const I
     return Reject::None;
 }
 
+Reject first_assignment_problem(const SimConfig& cfg, const Rules& rules, const TypeRegistry& types,
+                                const BuildingType& type) {
+    if (!rules.house_updates || type.cls != RuntimeClass::House) {
+        return Reject::None;
+    }
+    const std::optional<std::uint32_t> g = house_group(cfg, type.prodtype);
+    if (!g) {
+        return Reject::HouseDomain;
+    }
+    const auto view = types.population_view(*g, cfg);
+    if (!view.ok()) {
+        return Reject::HouseDomain;
+    }
+    return house_first_assignment_domain(view.value(), types.goods_table().size()) ==
+                   HouseFault::None
+               ? Reject::None
+               : Reject::HouseDomain;
+}
+
 formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const Rules& rules,
                                                      const TypeRegistry& types, Island& island,
                                                      City& city, const PlacementRecord& rec,
-                                                     std::uint32_t now, const Payload* initial) {
+                                                     std::uint32_t now, const Payload* initial,
+                                                     DrawSource* first_assignment) {
     // 1. Validation: no state is touched until it has passed.
     if (const Reject problem = creation_problem(cfg, types, island, city.index.lists.size(), rec);
         problem != Reject::None) {
@@ -201,6 +222,13 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
         }
     }
 
+    const bool first = initial == nullptr && first_assignment != nullptr &&
+                       rules.house_updates && ty->cls == RuntimeClass::House;
+    if (first) {
+        if (const Reject r = first_assignment_problem(cfg, rules, types, *ty); r != Reject::None) {
+            return r;
+        }
+    }
     // 2.-3. The payload of the class, every bit zero (F2); a mine's deep flag
     // (D: type attach, slot +0x28, before the position).
     Building b;
@@ -230,6 +258,26 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     // 5. The placement tick (D: property 0x23 -> 0x10073380 -> slot +0x120, F1).
     if (initial == nullptr) {
         stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now), rules.house_updates);
+    }
+    // 5b. SetGroup's first assignment (MAP-POP-CLOSE-1 G1; D Create 0x10024c3c -> 0x10076b90): after the
+    // stamp and before the building is inserted. The domain was checked above, so it cannot fail and
+    // has drawn nothing when it does not; a defensive fault refuses with nothing drawn.
+    if (first) {
+        auto* house = std::get_if<House>(&b.payload);
+        const auto g = house_group(cfg, ty->prodtype);
+        const auto view = g ? types.population_view(*g, cfg) : formats::Result<PopulationView, std::string>(std::string("no group"));
+        if (house == nullptr || !view.ok()) {
+            return Reject::BadValue;
+        }
+        const SetGroupResult sg = house_set_group(*first_assignment, types.goods_table(), nullptr,
+                                                  view.value(), house->e, house->residents_64,
+                                                  house->stock);
+        if (sg.fault != HouseFault::None) {
+            return Reject::HouseDomain;
+        }
+        house->stock = sg.stock;
+        house->e = sg.e;
+        house->residents_64 = sg.residents_64;
     }
     // 6. Attach to the city: a mine finds its deposit, position already set (D
     // slot +0x128).

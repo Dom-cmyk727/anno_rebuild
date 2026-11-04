@@ -438,6 +438,14 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
             }
         }
     }
+    // 7. MAP-POP-CLOSE-1 G1: with the live House update, a house whose group has an unsupported
+    // first-assignment domain is refused here, before any draw, charge or serial (the dry run of an
+    // atomic command draws nothing; create_building repeats the check).
+    if (const Reject h = first_assignment_problem(env.cfg, env.rules, env.types, *type);
+        h != Reject::None) {
+        out.status = h;
+        return out;
+    }
     out.type = type;
     out.rec = rec;
     return out;
@@ -485,8 +493,14 @@ RecordResult place(Env& env, Island& is, City& city, Player& owner, const Checke
         r.tile_object = true;
         return r;
     }
+    // The world draw source of a player build: inside an advance the advance's counting source
+    // (telemetry), else the world PRNG itself.
+    GlobalDraw global(env.rng);
+    DrawSource& draws = env.in_advance != nullptr && env.in_advance->draws != nullptr
+                            ? static_cast<DrawSource&>(*env.in_advance->draws)
+                            : static_cast<DrawSource&>(global);
     const auto key = create_building(env.cfg, env.rules, env.types, is, city, c.rec,
-                                     static_cast<std::uint32_t>(env.tick));
+                                     static_cast<std::uint32_t>(env.tick), nullptr, &draws);
     if (!key.ok()) {
         r.status = key.error();
         return r;

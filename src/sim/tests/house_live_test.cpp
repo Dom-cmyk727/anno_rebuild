@@ -1420,7 +1420,7 @@ TEST_CASE("house create G1: batches and the atomic dry run draw and charge once"
         REQUIRE(build_cmd(w, {sim::PlacementWire{kS0, 120, 120, 0, 0, 0},
                               sim::PlacementWire{kS0, 126, 120, 0, 0, 0}})
                     .ok());
-        CHECK(w.rng().cursor() == 17);
+        CHECK(w.rng().cursor() == 1); // 13 + 4 draws on a 16-entry table
         // second house: T[0] = 1 -> sat 128 - 1 = 127 and T[1] = 8 -> 120 (cursor wraps after 15)
         // stock0 = trunc(60 * 127 * 1920 / 1536) = 9525, stock1 = trunc(40 * 120 * 1920 / 1536) = 6000
         CHECK((house_at(w, 126, 120).stock == std::vector<std::uint32_t>{9525, 6000}));

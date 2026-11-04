@@ -380,6 +380,46 @@ UpgradeScores upgrade_scores(const PopulationView& cur, const PopulationView& ne
     return r;
 }
 
+HouseFault house_first_assignment_domain(const PopulationView& new_group,
+                                         std::size_t goods_count) {
+    if (new_group.group->number == 0) {
+        return HouseFault::None;
+    }
+    const std::vector<HouseNeed>& needs = new_group.group->needs;
+    // The original wraps silently in 16 bits (E = Wohnmax << 7 as a word, u16 stocks); the engine
+    // widens and refuses instead. Every draw gives sat = 128 - (r & 31) <= 128, so the worst case
+    // below does not depend on the draws.
+    const std::int64_t wohn = new_group.group->wohnmax;
+    const std::int64_t e = wohn << 7;
+    if (e > kU32Max || (wohn << 6) > std::int64_t{0x7fffffff}) {
+        return HouseFault::Overflow;
+    }
+    const std::size_t count = std::min<std::size_t>(new_group.derived->infra_end, needs.size());
+    // A forced draw satisfies EVERY slot of that ware (the flag is per ware, and derive_group lets
+    // a ware repeat), so a slot is bounded at sat = 128 when ANY forced slot below `count` carries
+    // its ware, forced itself or not.
+    std::vector<std::uint8_t> drawn_ware(goods_count, 0);
+    for (std::size_t j = 0; j < count; ++j) {
+        if (needs[j].ware >= goods_count) {
+            return HouseFault::MissingGroup;
+        }
+        if (needs[j].force) {
+            drawn_ware[needs[j].ware] = 1;
+        }
+    }
+    for (std::size_t j = 0; j < needs.size(); ++j) {
+        if (needs[j].ware >= goods_count) {
+            return HouseFault::MissingGroup;
+        }
+        const std::int64_t menge = needs[j].menge;
+        if ((drawn_ware[needs[j].ware] != 0 && tdiv(menge * 128 * e, 1536) > kU32Max) ||
+            (j == 0 && tdiv(e * menge, 12) > kU32Max)) {
+            return HouseFault::Overflow;
+        }
+    }
+    return HouseFault::None;
+}
+
 SetGroupResult house_set_group(DrawSource& draw, std::span<const GoodsInfo> goods,
                                const PopulationView* old_group, const PopulationView& new_group,
                                std::uint32_t e, std::int32_t residents_64,
@@ -459,35 +499,12 @@ SetGroupResult house_set_group(DrawSource& draw, std::span<const GoodsInfo> good
     } else {
         first_assignment = new_group.group->number != 0;
         if (first_assignment) {
-            // MAP-POP-CLOSE-1 G3: the supported domain is checked BEFORE the first draw. The original
-            // wraps silently in 16 bits (E = Wohnmax << 7 as a word, u16 stocks); the engine widens
-            // and refuses instead. Every draw gives sat = 128 - (r & 31) <= 128, so the worst case
-            // below does not depend on the draws: a refusal never consumes one.
-            const std::int64_t wohn_chk = new_group.group->wohnmax;
-            const std::int64_t e_chk = wohn_chk << 7;
-            if (e_chk > kU32Max || (wohn_chk << 6) > std::int64_t{0x7fffffff}) {
-                r.fault = HouseFault::Overflow;
+            // MAP-POP-CLOSE-1 G3: the supported domain is checked BEFORE the first draw (see
+            // house_first_assignment_domain); a refusal never consumes one.
+            if (const HouseFault domain = house_first_assignment_domain(new_group, goods.size());
+                domain != HouseFault::None) {
+                r.fault = domain;
                 return r;
-            }
-            const std::size_t chk_count =
-                std::min<std::size_t>(new_group.derived->infra_end, needs.size());
-            // A forced draw satisfies EVERY slot of that ware (the flag is per ware, and derive_group
-            // lets a ware repeat), so a slot is bounded at sat = 128 when ANY forced slot below
-            // chk_count carries its ware, forced itself or not.
-            std::vector<std::uint8_t> drawn_ware(goods.size(), 0);
-            for (std::size_t j = 0; j < chk_count; ++j) {
-                if (needs[j].force) {
-                    drawn_ware[needs[j].ware] = 1;
-                }
-            }
-            for (std::size_t j = 0; j < needs.size(); ++j) {
-                const std::int64_t menge = needs[j].menge;
-                const bool drawn = drawn_ware[needs[j].ware] != 0;
-                if ((drawn && tdiv(menge * 128 * e_chk, 1536) > kU32Max) ||
-                    (j == 0 && tdiv(e_chk * menge, 12) > kU32Max)) {
-                    r.fault = HouseFault::Overflow;
-                    return r;
-                }
             }
         }
     }

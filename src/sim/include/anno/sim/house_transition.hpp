@@ -120,6 +120,15 @@ struct SetGroupResult {
     std::int32_t residents_64 = 0;
     std::uint32_t draws = 0;
 };
+/// The supported domain of a FIRST assignment into `new_group` (MAP-POP-CLOSE-1 G3/G1): None, or
+/// Overflow when E = Wohnmax << 7, residents_64 = Wohnmax << 6 or a worst-case stock (sat = 128 for
+/// every slot whose ware a forced need below infra_end draws, and E * Menge / 12 for slot 0) would
+/// leave its width. Group number 0 never draws and keeps the constructor numbers: always None.
+/// Pure and independent of the draws, so a caller can refuse before drawing, charging or taking an
+/// id. house_set_group calls this very function.
+[[nodiscard]] HouseFault house_first_assignment_domain(const PopulationView& new_group,
+                                                       std::size_t goods_count);
+
 [[nodiscard]] SetGroupResult house_set_group(DrawSource& draw, std::span<const GoodsInfo> goods,
                                              const PopulationView* old_group,
                                              const PopulationView& new_group, std::uint32_t e,

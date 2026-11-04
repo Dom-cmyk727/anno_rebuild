@@ -5,11 +5,11 @@
 // the existing end path (resident_tick, the figure body). Integer only; the body draws nothing, the
 // dispatch draws exactly once.
 //
-// The House tick does NOT call resident_dispatch yet (L4): the House dispatch of the driver stays a
-// no-op and Rules::house_updates stays false. Evidence: D AnnoWelt.dll 0x10076341-0x10076397 (the
+// The House tick calls resident_dispatch under Rules::house_updates (L4; the rule stays false by
+// default). Evidence: D AnnoWelt.dll 0x10076341-0x10076397 (the
 // spawn block), the base send 0x10072d20 / 0x10072b50, the job's steps 0x1005b170 (A), 0x10056480
-// (B arrival), 0x10057ae0 / 0x10057d70 (C); the unread edges (stall wait, stall attach, flag bits
-// 4/5, first-walkable-entrance rule) are the contract's P-8 simplifications.
+// (B arrival), 0x10057ae0 / 0x10057d70 (C); the wait is FigureType::load_ticks (C2); the unread edges
+// (flag bits 4/5, first-walkable-entrance rule) stay simplifications.
 #pragma once
 
 #include <cstdint>

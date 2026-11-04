@@ -312,6 +312,27 @@ std::vector<LayoutRow> layout_rows() {
         s.u64(0xffffffffffffffffULL);
         rows.push_back({"House", common(p), s, 8 + 4 + 2 + 3});
     }
+    {
+        // MAP-POP-CLOSE-1 C2 (stream 128, tag 8): the Inert prefix, then the tavern stock and the taken
+        // statistic as u32 each. Distinct values, so a swapped pair or a narrowed width is caught here
+        // by hand-written bytes (the transcription is the spec text of population-live.md 21.5, not the
+        // C++ field list).
+        sim::Inn p;
+        p.last = 0x1234;
+        p.blocked = false;
+        p.suspended = true;
+        p.status = status(sim::Status::MissingInput, 6, 0x5678);
+        p.tavern = 0x0102'0304;
+        p.taken = 0x0a0b'0c0d;
+        Stream s = common_bytes(8);
+        s.u16(0x1234);
+        s.boolean(false);
+        s.boolean(true);
+        status_bytes(s, 1, 6, 0x5678);
+        s.u32(0x0102'0304);
+        s.u32(0x0a0b'0c0d);
+        rows.push_back({"Inn", common(p), s, 8 + 3 + 3 + 2});
+    }
     for (LayoutRow& row : rows) {
         row.primitives += 1; // the kontor_id scalar (stream 119)
     }

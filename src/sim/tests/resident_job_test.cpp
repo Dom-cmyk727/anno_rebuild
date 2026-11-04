@@ -10,6 +10,8 @@
 //    urgency with stock 0 = 128, threshold trunc(5*41*256/4096) = 12 (a supplier needs > 12).
 //  * a delivery of 151 adds 151*16 = 2416 to the stock.
 #include <algorithm>
+#include <cstdlib>
+#include <functional>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -1475,4 +1477,110 @@ TEST_CASE("resident job inn: a debit that names no Inn changes nothing") {
     CHECK(inn_of(w).taken == 0);
     CHECK(house_of(w).stock[0] == 0);
     CHECK(w.check_invariants() == "");
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C3 (P-15)
+
+namespace {
+
+struct HomeRoute {
+    sim::World w;
+    std::optional<std::vector<sim::TileXY>> route;
+    sim::ResidentPathNote note;
+    std::vector<sim::TileXY> entrance_tiles;
+    const sim::Building* home = nullptr;
+    const sim::BuildingType* home_type = nullptr;
+};
+
+/// A world with the standard house (110, 110) and stall (114, 110) and the given walls; the route
+/// from the stall tile's centre to the house.
+HomeRoute home_route(const std::function<void(Rig&)>& walls) {
+    const auto types = registry();
+    Rig r = standard_rig();
+    walls(r);
+    HomeRoute out{create(r, types), std::nullopt, {}, {}, nullptr, nullptr};
+    out.home = at(out.w, 110, 110);
+    out.home_type = out.w.types().find(out.home->type);
+    for (const sim::WalkPoint& p : sim::entrance_walk_points(*out.home, *out.home_type)) {
+        out.entrance_tiles.push_back(p.tile);
+    }
+    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
+    out.route = sim::resident_path_home(*out.w.islands()[0], out.w.types(), *out.home,
+                                        *out.home_type, from, 0, &out.note);
+    return out;
+}
+
+void expect_walk(const HomeRoute& h) {
+    REQUIRE(h.route.has_value());
+    const std::vector<sim::TileXY>& route = *h.route;
+    REQUIRE(route.size() >= 2);
+    CHECK(route.front() == sim::TileXY{114, 110}); // starts where the walker stands
+    for (std::size_t i = 1; i < route.size(); ++i) {
+        const int d = std::abs(route[i].x - route[i - 1].x) + std::abs(route[i].y - route[i - 1].y);
+        CHECK(d == 1); // one cardinal tile at a time: no teleport, no diagonal jump
+    }
+    CHECK(std::find(h.entrance_tiles.begin(), h.entrance_tiles.end(), route.back()) !=
+          h.entrance_tiles.end()); // ends on an entrance tile of the home
+}
+
+} // namespace
+
+TEST_CASE("resident job P-15: open ground, a legal directed route from the stand to the entrance") {
+    const HomeRoute h = home_route([](Rig&) {});
+    expect_walk(h);
+    // The forward replay accepts it with the endpoint adapter; the walls are not on it.
+    CHECK(sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
+                                    sim::tile_centre(sim::TileXY{114, 110}), 0, *h.route, true)
+              .legal);
+    CHECK(h.note.reverse_rejected == 0);
+}
+
+TEST_CASE("resident job P-15: a wall changes the route and never lies on it") {
+    const HomeRoute open = home_route([](Rig&) {});
+    // A wall column across the straight line (x = 112, y 105..115) forces a detour.
+    const HomeRoute detour = home_route([](Rig& r) {
+        for (int y = 105; y <= 115; ++y) {
+            r.wall(112, y);
+        }
+    });
+    expect_walk(open);
+    expect_walk(detour);
+    CHECK(detour.route->size() > open.route->size());
+    for (const sim::TileXY t : *detour.route) {
+        CHECK_FALSE((t.x == 112 && t.y >= 105 && t.y <= 115)); // no forbidden terrain
+    }
+}
+
+TEST_CASE("resident job P-15: a walled-in stand has no route home (disconnected)") {
+    const HomeRoute h = home_route([](Rig& r) {
+        for (int y = 108; y <= 112; ++y) {
+            for (int x = 112; x <= 116; ++x) {
+                if (!(x == 114 && y == 110) && (x == 112 || x == 116 || y == 108 || y == 112)) {
+                    r.wall(x, y);
+                }
+            }
+        }
+    });
+    CHECK_FALSE(h.route.has_value());
+}
+
+TEST_CASE("resident job P-15: the forward replay refuses a jump, a wall step and a wrong end") {
+    const HomeRoute h = home_route([](Rig& r) { r.wall(112, 110); });
+    const sim::FixedPos from = sim::tile_centre(sim::TileXY{114, 110});
+    const auto legal = [&](std::vector<sim::TileXY> route, bool adapter = true) {
+        return sim::resident_route_legal(*h.w.islands()[0], h.w.types(), *h.home, *h.home_type,
+                                         from, 0, route, adapter);
+    };
+    // A teleport: not a cardinal neighbour.
+    const sim::RouteCheck jump = legal({{114, 110}, {110, 110}});
+    CHECK_FALSE(jump.legal);
+    CHECK(jump.bad_step == 1);
+    // Through the wall at (112, 110): the inner step is refused by the layer's admission.
+    const sim::RouteCheck through = legal({{114, 110}, {113, 110}, {112, 110}, {111, 110}, {110, 110}});
+    CHECK_FALSE(through.legal);
+    // A route that does not start on the walker's tile.
+    CHECK_FALSE(legal({{113, 110}, {112, 110}}).legal);
+    // The real route is accepted.
+    REQUIRE(h.route.has_value());
+    CHECK(legal(*h.route).legal);
 }

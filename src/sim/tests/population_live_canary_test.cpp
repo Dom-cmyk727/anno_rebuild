@@ -473,7 +473,7 @@ void print_run(const RunResult& r, const sim::TransportStats& stats) {
               << r.main_res.searches_failed << " arrivals " << r.main_res.arrivals << " purchases "
               << r.main_res.purchases << " bought_88 " << r.main_res.bought_88 << " deliveries "
               << r.main_res.deliveries << " delivered_88 " << r.main_res.delivered_88 << " lost "
-              << r.main_res.lost_88 << " no_path " << r.main_res.no_path_home << " faults "
+              << r.main_res.lost_88 << " no_path " << r.main_res.no_path_home << " adapted " << r.main_res.endpoint_adapted << " rejected " << r.main_res.reverse_rejected << " faults "
               << r.main_res.faults << " growth " << r.main_growth << " transitions "
               << r.main_transitions << " unlocks " << r.main_unlocks << "\n";
     for (const auto& t : stats.population.transitions) {
@@ -578,6 +578,10 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     CHECK(r.main_res.deliveries == 89);
     CHECK(r.main_res.delivered_88 == 5230);
     CHECK(r.main_res.no_path_home == 0); // the resident-specific home path (section 20.2)
+    // P-15 (C3): every reversed route passed the forward replay; 8 needed the endpoint adapter
+    // (leaving the stand / entering the home), none was refused (measured, S01_01_01).
+    CHECK(r.main_res.reverse_rejected == 0);
+    CHECK(r.main_res.endpoint_adapted == 8);
     CHECK(r.main_total.rect_queries == r.main_res.searches);
     CHECK(r.main_total.candidates_scored == 6461);
     CHECK(r.main_total.candidates_accepted == 2616);
@@ -653,6 +657,8 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     }
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
+    CHECK(r.main_res.reverse_rejected == 0); // P-15 (C3): no reversed route refused by the replay
+    CHECK(r.main_res.endpoint_adapted == 255); // accepted with the endpoint adapter (measured)
     CHECK(r.main_total.spawn_draws == 2512);
     CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2512);
     CHECK(r.main_res.searches == 2512);

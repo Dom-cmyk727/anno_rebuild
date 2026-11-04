@@ -50,4 +50,25 @@ struct SearchResult {
 [[nodiscard]] SearchResult search(const WalkCells&, const WalkTables&, std::uint32_t layer,
                                   std::span<const WalkPoint> starts,
                                   std::span<const WalkPoint> goals, const SearchCallback&);
+/// MAP-POP-CLOSE-1 C3 (P-15): whether `route` (tiles, the first is the start's tile) is a route
+/// the search's own FORWARD expansion would offer from `start`: every step is one cardinal tile
+/// step (no teleport), is among the moves the arrival state offers (the same `steps` order, with the
+/// start flood for the first cell and the came-from code afterwards), enters a destination whose
+/// edge keys admit the mover (`low & geometry`), and the layer's admission table admits the
+/// destination (no forbidden terrain). It replays the forward rule; it does not search. A route found
+/// by a search from the OTHER end is legal forward only if this answers true. `bad_step` is the
+/// index of the first refused step (1-based) or 0.
+struct RouteCheck {
+    bool legal = false;
+    std::size_t bad_step = 0;
+    std::string reason;
+};
+/// `leave_exempt` / `enter_exempt` (the resident endpoint adapter): the first / last step is only
+/// required to be a cardinal neighbour step inside the rectangle, not to satisfy the arrival-state,
+/// edge-key and admission rules. A figure leaves a building it stands in (a stall) and enters its
+/// home through the entrance tile; those tiles are closed to THROUGH traffic in the layer tables, so
+/// the forward rule cannot offer the step although the walker starts or ends there.
+[[nodiscard]] RouteCheck route_legal(const WalkCells&, const WalkTables&, std::uint32_t layer,
+                                     const WalkPoint& start, std::span<const TileXY> route,
+                                     bool leave_exempt = false, bool enter_exempt = false);
 } // namespace anno::sim

@@ -371,4 +371,81 @@ SearchResult search(const WalkCells& input, const WalkTables& tables, std::uint3
     // not implemented (state5.9(6),0x100054ef..0x100055d5), as T33.3 requires.
     return result;
 }
+RouteCheck route_legal(const WalkCells& input, const WalkTables& tables, std::uint32_t layer,
+                       const WalkPoint& start, std::span<const TileXY> route, bool leave_exempt,
+                       bool enter_exempt) {
+    RouteCheck out;
+    const auto refuse = [&](std::size_t step, std::string why) {
+        out.legal = false;
+        out.bad_step = step;
+        out.reason = std::move(why);
+        return out;
+    };
+    if (route.empty()) {
+        return refuse(0, "empty route");
+    }
+    if (!(route.front() == start.tile)) {
+        return refuse(0, "the route does not start on the start's tile");
+    }
+    if (const std::string e = check_search(tables, layer, [](const SearchVisit&) {
+            return SearchDecision{};
+        });
+        !e.empty()) {
+        return refuse(0, e);
+    }
+    WalkCells cells = input;
+    if (!inside(cells.rect(), start.tile) || start.col >= 3 || start.row >= 3) {
+        return refuse(0, "the start lies outside the search rectangle");
+    }
+    const auto raw = cells.record(start.tile);
+    if (!raw.supported) {
+        return refuse(0, "unsupported start tile");
+    }
+    WalkCell cur = cells.get(start.tile);
+    cur.high = static_cast<std::uint16_t>((cur.high & 0xfc07) | 7);
+    cur.low = static_cast<std::uint16_t>(cur.low | start_keys(raw.mask9, start.col, start.row));
+    for (std::size_t i = 1; i < route.size(); ++i) {
+        std::uint32_t dir = 8;
+        for (const std::uint32_t d : {0U, 2U, 4U, 6U}) {
+            const auto n = neighbour(route[i - 1], d);
+            if (n && *n == route[i]) {
+                dir = d;
+            }
+        }
+        if (dir == 8) {
+            return refuse(i, "not a cardinal neighbour (a jump)");
+        }
+        if (!inside(cells.rect(), route[i])) {
+            return refuse(i, "the step leaves the search rectangle");
+        }
+        const bool exempt = (i == 1 && leave_exempt) || (i + 1 == route.size() && enter_exempt);
+        if (exempt) {
+            WalkCell moved = cells.get(route[i]);
+            moved.high = static_cast<std::uint16_t>((moved.high & 0xfc00) | (0x80 | dir));
+            cur = moved;
+            continue;
+        }
+        const Steps offered = steps(cur.low, cur.high);
+        const Move* move = nullptr;
+        for (std::size_t k = 0; k < offered.count; ++k) {
+            if (offered.moves[k].dir == dir) {
+                move = &offered.moves[k];
+            }
+        }
+        if (move == nullptr) {
+            return refuse(i, "the arrival state offers no move in this direction");
+        }
+        WalkCell dest = cells.get(route[i]);
+        if ((dest.low & geometry(dir)) == 0) {
+            return refuse(i, "the destination cannot be entered from this side");
+        }
+        if ((admission(tables, layer, dest.high) & move->key) == 0) {
+            return refuse(i, "the layer does not admit the destination");
+        }
+        dest.high = static_cast<std::uint16_t>((dest.high & 0xfc00) | (0x80 | dir));
+        cur = dest;
+    }
+    out.legal = true;
+    return out;
+}
 } // namespace anno::sim

@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include <anno/sim/building.hpp>
@@ -25,6 +26,7 @@
 #include <anno/sim/resident.hpp>
 #include <anno/sim/tick.hpp>
 #include <anno/sim/types.hpp>
+#include <anno/sim/walk_search.hpp>
 
 namespace anno::sim {
 
@@ -35,6 +37,31 @@ inline constexpr std::uint32_t kJobResident = kJobResidentCode;
 // Original default; the configurable path is a SimConfig field (not added in this task).
 inline constexpr std::int64_t kWalkerSpawnBelow = 102;
 
+
+/// Diagnostics of one walk-home computation (not state).
+struct ResidentPathNote {
+    std::uint32_t endpoint_adapted = 0; ///< accepted only with the endpoint adapter (first/last step exempt)
+    std::uint32_t reverse_rejected = 0; ///< the reverse search found a route even the adapter refused
+    std::uint32_t forward_used = 0;     ///< the shared forward search supplied the route
+};
+
+/// The walk home of a resident (step C, D 0x10057ae0; population-live.md 21.6, P-15): the tile
+/// route from the walker's position `from` to an entrance tile of `home`. A candidate found by the
+/// reverse search (from the entrance points to the walker, the L5 fix for enclosed goal subcells)
+/// is returned only if route_legal replays it FORWARD; otherwise the shared forward search is used;
+/// nullopt when neither reaches an entrance (disconnected). The route ends on an entrance tile.
+[[nodiscard]] std::optional<std::vector<TileXY>>
+resident_path_home(const Island& island, const TypeRegistry& types, const Building& home,
+                   const BuildingType& home_type, FixedPos from, std::uint32_t layer,
+                   ResidentPathNote* note = nullptr);
+
+/// The forward legality of `route` for a walker at `from` going home (walk_search.hpp route_legal on
+/// the home's search area). For tests and for resident_path_home.
+[[nodiscard]] RouteCheck resident_route_legal(const Island& island, const TypeRegistry& types,
+                                              const Building& home, const BuildingType& home_type,
+                                              FixedPos from, std::uint32_t layer,
+                                              std::span<const TileXY> route,
+                                              bool endpoint_adapter = false);
 
 /// Whether the resident body runs figures of this job.
 [[nodiscard]] bool resident_runs_job(std::uint32_t job);
@@ -50,9 +77,8 @@ inline constexpr std::int64_t kWalkerSpawnBelow = 102;
                                                        const BuildingType& type,
                                                        const House& house);
 
-/// The supplier model of a building type (class, the two WARE goods; the stall flags stay 1 and the
-/// Inn's tavern stock 0: nothing flips or fills them yet, contract section 2 "Enabled").
-[[nodiscard]] SupplierModel supplier_model_of(const BuildingType& type);
+/// The supplier model of a building type (class, the two WARE goods; the stall flags stay 1). An Inn
+/// offers the tavern stock of its payload (C2); the model is built inside resident_job.cpp.
 
 /// Why a walker was not sent after the draw.
 enum class ResidentRefusal : std::uint8_t {

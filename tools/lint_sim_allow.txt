@@ -137,3 +137,10 @@ src/sim/include/anno/sim/resident.hpp:kServiceAvailability  # D: PublicService, 
 src/sim/include/anno/sim/resident.hpp:kStockPerDelivered  # D 0x10076610: a delivery adds amount * 16 to the stock
 src/sim/src/house_transition.cpp:kU32Max  # the u32 width of the widened stock/counter checks (a type width, not a game limit)
 src/sim/src/resident.cpp:kU32Max  # the u32 width of the widened stock/billed checks (a type width, not a game limit)
+
+# --- Findings that lint_sim already reported at the accepted start 73e7ab1a (4 at 2f876af5, 5 at 73e7ab1a; the CTest anno_sim_tests_lint_sim_passes was failing there). Allowlisted at the MAP-POP-LIVE-1 gate; each is a documented fact, not a limit.
+src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint32_t kHarvestStartDelay  # constructor's first micro-step, 5 ticks (D 0x10035ce0, 0x10034760); a fact of the original
+src/sim/include/anno/sim/goods_metadata.hpp:inline constexpr std::uint32_t kStageIndexCount  # bit width of Player::flags (u32), a state-format fact; widening is a format change
+src/sim/include/anno/sim/harvest.hpp:inline constexpr std::uint32_t kHarvestCredit88  # cargo credit of a cut, 1 t in 8.8 (D AnnoWelt 0x10054530)
+src/sim/include/anno/sim/island.hpp:inline constexpr std::uint32_t kTileClaim  # tile word claim bit 29 of the original TileLayer format
+src/sim/src/harvest.cpp:constexpr std::uint32_t kRohstwachs  # PRODTYPE 226 ROHSTWACHS (D AnnoGame 0x100138e0)

@@ -773,6 +773,8 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     item(prod2, kWeaver, 0, 0, 0, 8, 0);
     item(prod2, kMine, 0, 0, 0, 10, 0);
     item(prod2, kSmallFarm, 0, 0, 0, 12, 0);
+    item(prod2, kInn, 0, 0, 0, 14, 0); // MAP-POP-CLOSE-1 C2: the Inn record (10 bytes: decoded)
+    item(prod2, kInn, 0, 0, 0, 14, 2); // 9 bytes: skipped whole, the Inn keeps 0 / 0
     Buf kids = chunk("HEAD", head_bytes());
     append(kids, chunk("SPIELER", spieler(0, record("HEAD", player_head(8, 1, "A", 1)))));
     append(kids, insel5(40, 60, 16, 8, 7, 2, block_record("PROD2", prod2)));
@@ -785,6 +787,8 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     append(prod, entry(8, 0, Buf{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1})); // 11 bytes: skipped
     append(prod, entry(10, 0, Buf(11, 1)));                          // over the mine's 10
     append(prod, entry(12, 0, Buf(15, 1)));                          // over the small farm's 14
+    append(prod, entry(14, 0, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49, 1})); // Inn Load 0x10075740
+    append(prod, entry(14, 2, Buf{0, 0, 200, 0, 0, 0, 0, 0, 49}));
     Buf c = {2, 0};
     put16(c, 41);
     put16(c, 61);
@@ -792,7 +796,7 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     append(kids, chunk("SPIELER", spieler(0, record("STADT2", c))));
     const sim::LoadedScenario s = load(scene("ANNO", kids));
     const auto& b = s.spec.islands[0].cities[0].buildings;
-    REQUIRE(b.size() == 7);
+    REQUIRE(b.size() == 9);
     for (const auto& bs : b) {
         REQUIRE(bs.payload.has_value());
     }
@@ -830,6 +834,15 @@ TEST_CASE("scenario city class records: two-line classes and the length rules") 
     const auto* sf2 = std::get_if<sim::SmallFarm>(&*b[6].payload);
     REQUIRE(sf2 != nullptr);
     CHECK(sf2->out == std::vector<std::uint32_t>{0, 0});
+    // The Inn (Load 0x10075740): tavern stock = u16 at byte 2, taken statistic = u16 at byte 8.
+    const auto* inn = std::get_if<sim::Inn>(&*b[7].payload);
+    REQUIRE(inn != nullptr);
+    CHECK(inn->tavern == 200);
+    CHECK(inn->taken == 305); // 49 + 256
+    const auto* inn_short = std::get_if<sim::Inn>(&*b[8].payload);
+    REQUIRE(inn_short != nullptr);
+    CHECK(inn_short->tavern == 0);
+    CHECK(inn_short->taken == 0);
     CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 2); // the mine and the small farm
     auto w = sim::World::create(s.spec, registry());
     REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
@@ -1221,7 +1234,7 @@ TEST_CASE("scenario warning kinds") {
         append(island_extra, chunk("FUTURE", Buf(4, 0)));    // UnknownRecord
         Buf more;
         item(more, kHouse, 0, 0, 0, 14, 0); // BuildingItemWithoutEntry
-        item(more, kInn, 0, 0, 0, 6, 6);    // an Inn: its Load is not mapped
+        item(more, kMine, 0, 0, 0, 6, 6);   // a mine whose record overruns the buffer
         append(island_extra, block_record("PROD2", more));
     }
     // City 2's records.
@@ -1238,7 +1251,7 @@ TEST_CASE("scenario warning kinds") {
         Buf prod = entry(0, 7);               // no item there: EntryWithoutBuildingItem
         append(prod, entry(8, 4, Buf{1, 2})); // the house with bytes
         append(prod, entry(8, 4));            // the house again: BuildingRefused
-        append(prod, entry(6, 6, Buf{1, 2})); // the Inn with bytes: UndecodedBuildingRecord
+        append(prod, entry(6, 6, Buf(11, 1))); // the mine with 11 bytes: UndecodedBuildingRecord
         append(city_records, record("PROD", prod));
     }
     Buf city_off = {1, 0};
@@ -1288,7 +1301,7 @@ TEST_CASE("scenario warning kinds") {
     CHECK(warnings_of(s, Kind::UnknownClimate) == 1);
     CHECK(warnings_of(s, Kind::EntryWithoutBuildingItem) == 1);
     CHECK(warnings_of(s, Kind::BuildingRefused) == 1);
-    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1); // the Inn
+    CHECK(warnings_of(s, Kind::UndecodedBuildingRecord) == 1); // the mine
     CHECK(warnings_of(s, Kind::HouseResetNotApplied) == 0); // the house with bytes: no group table
     CHECK(warnings_of(s, Kind::UnknownGoods) == 1);
     CHECK(warnings_of(s, Kind::OwnerTileOutsideIsland) == 1);

@@ -89,6 +89,8 @@ Payload make_payload(const BuildingType& type, const ClassInfo& cls, const SimCo
         h.walkers.assign(house_walker_facts(type).walker_max, FigureId{});
         return h;
     }
+    case PayloadTag::Inn:
+        return Inn{};
     case PayloadTag::Inert:
         break;
     }
@@ -115,6 +117,8 @@ const char* payload_name(std::size_t index) {
         return "Market";
     case 7:
         return "House";
+    case 8:
+        return "Inn";
     default:
         return "?";
     }

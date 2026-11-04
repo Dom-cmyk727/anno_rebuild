@@ -303,6 +303,18 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
                 c->billed[d.goods] - billed_before; // diagnostic ledger
         }
     }
+    // 4c. Inn debits (C2): the tavern stock falls by what was sold, the taken statistic rises.
+    for (const TavernDebit& d : fx.tavern_debits) {
+        Island* is = island_of_id(w, island_of(d.inn));
+        Building* b = is != nullptr ? find_building_mut(*is, d.inn) : nullptr;
+        auto* inn = b != nullptr ? std::get_if<Inn>(&b->payload) : nullptr;
+        if (inn == nullptr) {
+            continue;
+        }
+        inn->tavern -= std::min(inn->tavern, d.amount);
+        inn->taken = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+            std::uint64_t{inn->taken} + d.amount, std::numeric_limits<std::uint32_t>::max()));
+    }
     // 5. Reserves.
     for (const Reserve& r : fx.reserves) {
         Figure* f = find_figure(w.figures_, r.figure);

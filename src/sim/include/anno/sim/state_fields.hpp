@@ -635,6 +635,17 @@ template <class A, Same<Inert> S> void fields(A& a, S& s) {
     fields(a, s.status);
 }
 
+static_assert(field_count<Inn>() == 6, "an Inn member needs a line in fields(Inn)");
+
+template <class A, Same<Inn> S> void fields(A& a, S& s) {
+    a.u16(s.last);
+    a.boolean(s.blocked);
+    a.boolean(s.suspended);
+    fields(a, s.status);
+    a.u32(s.tavern); // stream 128 (C2)
+    a.u32(s.taken);
+}
+
 static_assert(field_count<Workshop>() == 10, "a Workshop member needs a line in fields(Workshop)");
 
 template <class A, Same<Workshop> S> void fields(A& a, S& s) {
@@ -751,8 +762,8 @@ static_assert(field_count<Building>() == 9, "a Building member needs a line in f
 
 /// The u8 tag of each Payload alternative in the stream: the PayloadTag values
 /// (Inert 0, Workshop 1, WeaponsWorkshop 2, Farm 3, SmallFarm 4, Mine 5, Market 6,
-/// House 7), append-only.
-inline constexpr std::array<std::uint8_t, 8> kPayloadTags = {
+/// House 7, Inn 8), append-only.
+inline constexpr std::array<std::uint8_t, 9> kPayloadTags = {
     static_cast<std::uint8_t>(PayloadTag::Inert),
     static_cast<std::uint8_t>(PayloadTag::Workshop),
     static_cast<std::uint8_t>(PayloadTag::WeaponsWorkshop),
@@ -760,7 +771,8 @@ inline constexpr std::array<std::uint8_t, 8> kPayloadTags = {
     static_cast<std::uint8_t>(PayloadTag::SmallFarm),
     static_cast<std::uint8_t>(PayloadTag::Mine),
     static_cast<std::uint8_t>(PayloadTag::Market),
-    static_cast<std::uint8_t>(PayloadTag::House)};
+    static_cast<std::uint8_t>(PayloadTag::House),
+    static_cast<std::uint8_t>(PayloadTag::Inn)};
 
 template <class A, Same<Building> S> void fields(A& a, S& s) {
     a.u64(s.id.v);

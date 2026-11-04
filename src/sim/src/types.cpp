@@ -672,7 +672,9 @@ std::string check_consistency(std::span<const BuildingType> types,
                    ", the table is indexed by class";
         }
         const auto payload = payload_for_tick(c.tick);
-        if (!payload || *payload != c.payload) {
+        // The Inn keeps TickKind::None (its own tick is not ported) but holds the tavern stock.
+        const bool inn = c.tick == TickKind::None && c.payload == PayloadTag::Inn;
+        if (!inn && (!payload || *payload != c.payload)) {
             return row + "tick " + std::to_string(static_cast<unsigned>(c.tick)) + " and payload " +
                    std::to_string(static_cast<unsigned>(c.payload)) + " disagree";
         }
@@ -852,7 +854,7 @@ std::vector<ClassInfo> original_class_table() {
         {C::Market, T::Market, P::Market, 500},                            // 0x1006b6d0
         {C::MarketCombi, T::None, P::Inert, 500},                          // 0x1006c2e0
         {C::MarketStall, T::None, P::Inert, 5000},                         // 0x100702d0
-        {C::Inn, T::None, P::Inert, 5000},          // 0x100755f0 (0x10075608)
+        {C::Inn, T::None, P::Inn, 5000},            // 0x100755f0 (0x10075608); payload C2
         {C::PublicService, T::None, P::Inert, 500}, // 0x1006b4e0 (0x1006b4ec)
         {C::Doctor, T::None, P::Inert, 500},        // 0x100676b0
         {C::School, T::None, P::Inert, 500},        // 0x1006b4e0 (shared with PublicService)

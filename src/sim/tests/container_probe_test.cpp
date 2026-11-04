@@ -127,6 +127,14 @@ void fp_payload(Fp& f, const sim::House& p) {
     f.add(p.e);
     fp_vec(f, p.stock);
 }
+void fp_payload(Fp& f, const sim::Inn& p) {
+    f.add(p.last);
+    f.add(p.blocked ? 1U : 0U);
+    f.add(p.suspended ? 1U : 0U);
+    fp_status(f, p.status);
+    f.add(p.tavern);
+    f.add(p.taken);
+}
 void fp_payload(Fp& f, const sim::Market& p) {
     f.add(p.last);
     f.add(p.blocked ? 1U : 0U);

@@ -44,6 +44,20 @@ struct Inert {
     StatusTracker status;
 };
 
+/// The state of an Inn (MAP-POP-CLOSE-1 C2; D vtable 0x100c96d8): the Inert prefix plus the tavern
+/// stock (+0x18, the original's u16, widened; delivered by `+0xc0` = 0x100756d0, offered by `+0xa4`
+/// = 0x10075940, debited by the bill 0x100756e0) and the taken statistic (+0x1a, the original's u16,
+/// widened; raised by the bill). The Inn's own tick (0x100755f0, every 5000 ticks) is not ported:
+/// it only decays the statistic and sends the alcohol fetch job 0x33.
+struct Inn {
+    std::uint16_t last = 0;
+    bool blocked = false;
+    bool suspended = false;
+    StatusTracker status;
+    std::uint32_t tavern = 0;
+    std::uint32_t taken = 0;
+};
+
 /// The state of a house (docs/sim/state.md §4.7c, docs/re/population.md §11.2; D house
 /// object, vtable 0x100c9958). The group is not a field: it follows from the type
 /// (house_group) and the registry's group table. Mood is computed, not stored; the
@@ -74,7 +88,7 @@ struct House {
 /// Alternative order = the save tag order of PayloadTag (types.hpp), append-only.
 /// FurTrapper uses Farm; the class comes from the type.
 using Payload =
-    std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House>;
+    std::variant<Inert, Workshop, WeaponsWorkshop, Farm, SmallFarm, Mine, Market, House, Inn>;
 
 /// The byte +0x0e of a building (D: 0x86 in the base constructor, 0x82 for a
 /// house; property 0x2b sets it from a COMP chunk; meaning open, O-38).

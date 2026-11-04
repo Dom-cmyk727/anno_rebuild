@@ -298,6 +298,14 @@ struct BilledDelta {
     std::uint32_t amount = 0;
 };
 
+/// MAP-POP-CLOSE-1 C2: a resident bought `amount` from an Inn's tavern stock (D bill 0x100756e0:
+/// `tavern -= t`, `taken += t`, t = min(tavern, requested)). Applied only while the building still
+/// exists and is an Inn; the debit is clipped at the stock (never below 0), the statistic saturates.
+struct TavernDebit {
+    BuildingId inn;
+    std::uint32_t amount = 0;
+};
+
 /// MAP-POP-LIVE-1 L2 (section 2 "House delivery"): a resident hands `amount_88` of `goods` to its
 /// home house (house_deliver: stock += amount * 16 and the IdSec replay). Applied only while the
 /// building still exists, is a House, and `figure` still holds one of its walker slots (so it is
@@ -377,6 +385,8 @@ struct Effects {
     std::vector<GoodsMove> goods_moves;
     /// MAP-POP-LIVE-1 L2: applied right after the goods moves.
     std::vector<BilledDelta> billed_deltas;
+    /// MAP-POP-CLOSE-1 C2: the Inn debits of the purchases, applied right after the billed counters.
+    std::vector<TavernDebit> tavern_debits;
     std::vector<Reserve> reserves;
     std::vector<Deliver> deliveries;
     std::vector<StoreDelta> store_deltas;

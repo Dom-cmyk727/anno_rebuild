@@ -42,6 +42,7 @@ constexpr sim::TypeId kStall{9503};      // PRODTYPE 161, WARE[0] = goods 26
 constexpr sim::TypeId kStallB{9504};     // PRODTYPE 161, WARE[0] = goods 27
 constexpr sim::TypeId kChapel{9505};     // PRODTYPE 67 (PublicService), WARE[0] = goods 27
 constexpr sim::TypeId kWall{9506};       // a tile object closed on every layer
+constexpr sim::TypeId kInn{9507};        // PRODTYPE 66 (public block), class Inn, WARE[0] = goods 26, input 27
 
 constexpr sim::GoodsId kFood = 26;
 constexpr sim::GoodsId kOther = 27;
@@ -119,6 +120,11 @@ std::shared_ptr<const sim::TypeRegistry> registry(bool second_need = false, bool
     b.add(supplier_type(kStallB, 161, sim::RuntimeClass::MarketStall, kOther));
     b.add(supplier_type(kChapel, 67, sim::RuntimeClass::PublicService, kOther));
     b.add(tile_object_wall());
+    {
+        sim::BuildingType inn = supplier_type(kInn, 66, sim::RuntimeClass::Inn, kFood);
+        inn.input_goods = {kOther};
+        b.add(inn);
+    }
     // 203..205: speed 0.012 -> 40265, capacity 3 t, layer 0 (open ground).
     b.figure_type(sim::FigureType{203, 40265, 3 * 256, 0, 1000});
     b.figure_type(sim::FigureType{204, 40265, 3 * 256, 0, 1000});
@@ -1298,4 +1304,95 @@ TEST_CASE("resident job wait: save and reload in the middle of the wait continue
     CHECK(w2.state_hash() == w.state_hash());
     CHECK(city0(w2).stock.stock[kFood] == city0(w).stock.stock[kFood]);
     CHECK(city0(w).stock.stock[kFood] < 5000); // the purchase happened after the reload point
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C2 (the Inn)
+
+namespace {
+
+/// The standard world with the stall replaced by an Inn holding `tavern` (payload imported as a
+/// scenario record would give it).
+sim::World inn_world(const std::shared_ptr<const sim::TypeRegistry>& types, std::uint32_t tavern) {
+    Rig r = make_rig();
+    r.place(kHouse, 110, 110, fresh_house());
+    sim::Inn inn;
+    inn.tavern = tavern;
+    r.place(kInn, 114, 110, sim::Payload{inn});
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kFood] = 5000;
+    return w;
+}
+
+const sim::Inn& inn_of(const sim::World& w) {
+    const sim::Building* b = at(w, 114, 110);
+    REQUIRE(b != nullptr);
+    const auto* inn = std::get_if<sim::Inn>(&b->payload);
+    REQUIRE(inn != nullptr);
+    return *inn;
+}
+
+} // namespace
+
+TEST_CASE("resident job inn: a walker buys from the tavern stock and the Inn is debited") {
+    // House kHouse: E 640, residents 320 (R = 5), need goods 26 Menge 41. demand(26) =
+    // trunc(41 * 640 * 256 / 44236) = 151; the Inn offers its tavern stock 200 (> threshold
+    // trunc(5 * 41 * 256 / 4096) = 12): amount = min(200, 151, 768) = 151. The bill (D 0x100756e0):
+    // t = min(200, 151) = 151, tavern 200 -> 49, taken 0 -> 151, and the INPUT goods 27 is billed
+    // 151 (inside 26..40). The city's food store is not touched. The delivery adds 151 * 16.
+    const auto types = registry();
+    sim::World w = inn_world(types, 200);
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    until(w, [&] { return ended(w, id); });
+    const sim::Figure* f = sim::find_figure(w.figures(), id);
+    REQUIRE(f != nullptr);
+    CHECK(f->resident->cargo[0] == sim::ResidentCargo{kFood, 151});
+    CHECK(inn_of(w).tavern == 49);
+    CHECK(inn_of(w).taken == 151);
+    CHECK(city0(w).billed[kOther] == 151);
+    CHECK(city0(w).billed[kFood] == 0);
+    CHECK(city0(w).stock.stock[kFood] == 5000);
+    CHECK(house_of(w).stock[0] == 151 * 16);
+    CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("resident job inn: an empty tavern never supplies and a small one is clipped") {
+    const auto types = registry();
+    {
+        sim::World w = inn_world(types, 0);
+        Sender sender;
+        const sim::FigureId id = spawn_one(w, sender);
+        until(w, [&] { return ended(w, id); });
+        CHECK(sim::find_figure(w.figures(), id)->resident->cargo[0] == sim::ResidentCargo{});
+        CHECK(inn_of(w).tavern == 0);
+        CHECK(inn_of(w).taken == 0);
+        CHECK(house_of(w).stock[0] == 0);
+    }
+    {
+        // tavern 100 < demand 151: amount 100, tavern 0, taken 100, billed 100.
+        sim::World w = inn_world(types, 100);
+        Sender sender;
+        const sim::FigureId id = spawn_one(w, sender);
+        until(w, [&] { return ended(w, id); });
+        CHECK(sim::find_figure(w.figures(), id)->resident->cargo[0] == sim::ResidentCargo{kFood, 100});
+        CHECK(inn_of(w).tavern == 0);
+        CHECK(inn_of(w).taken == 100);
+        CHECK(city0(w).billed[kOther] == 100);
+    }
+}
+
+TEST_CASE("resident job inn: the tavern stock survives save and reload") {
+    const auto types = registry();
+    sim::World w = inn_world(types, 200);
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    until(w, [&] { return ended(w, id); });
+    REQUIRE(inn_of(w).tavern == 49);
+    auto back = sim::World::load(w.save(), types);
+    REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
+    CHECK(back.value().state_hash() == w.state_hash());
+    CHECK(inn_of(back.value()).tavern == 49);
+    CHECK(inn_of(back.value()).taken == 151);
 }

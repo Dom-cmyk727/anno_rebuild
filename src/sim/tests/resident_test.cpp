@@ -14,6 +14,7 @@
 #include <doctest/doctest.h>
 
 #include <anno/sim/resident.hpp>
+#include <anno/sim/scenario_formats.hpp>
 
 namespace {
 
@@ -276,6 +277,15 @@ Kv run_vector(const std::string& kind, const Kv& kv, const std::map<std::string,
                             : (r.fault == sim::ResidentFault::IdSecCycle ? "idsec_cycle" : "refused");
         out["stock"] = fmt_list(stock);
         out["touched"] = std::to_string(r.touched);
+    } else if (kind == "innrec") {
+        std::vector<std::uint8_t> bytes;
+        for (const auto x : ints(kv.at("rec"))) {
+            bytes.push_back(static_cast<std::uint8_t>(x));
+        }
+        const auto d = sim::decode_inn_record(bytes);
+        out["status"] = d ? "decoded" : "skipped";
+        out["tavern"] = std::to_string(d ? d->tavern : 0);
+        out["taken"] = std::to_string(d ? d->taken : 0);
     } else if (kind == "idsec") {
         const Goods& g = goods.at(kv.at("goods"));
         const House& h = houses.at(kv.at("house"));

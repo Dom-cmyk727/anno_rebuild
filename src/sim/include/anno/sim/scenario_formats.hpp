@@ -27,6 +27,15 @@
 
 namespace anno::sim {
 
+/// The Inn's scenario record (Load 0x10075740, Save 0x100757c0; MAP-POP-CLOSE-1 C2): exactly 10
+/// bytes, tavern stock u16 at byte 2 (Inn +0x18) and the taken statistic u16 at byte 8 (+0x1a);
+/// nullopt for any other length (the original skips such a record whole and keeps 0 / 0).
+struct InnRecord {
+    std::uint16_t tavern = 0;
+    std::uint16_t taken = 0;
+};
+[[nodiscard]] std::optional<InnRecord> decode_inn_record(std::span<const std::uint8_t> record);
+
 /// What a warning reports. Data, not a limit: a new kind is added when the
 /// adapter meets a new thing it does not decode.
 enum class ScenarioWarningKind : std::uint8_t {

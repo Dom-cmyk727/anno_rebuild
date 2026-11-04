@@ -91,7 +91,9 @@ enum class PayloadTag : std::uint8_t {
     Mine = 5,
     Market = 6,
     /// The residents and the stocks of a house (docs/sim/state.md §4.7c, P1).
-    House = 7
+    House = 7,
+    /// The tavern stock and statistic of an Inn (MAP-POP-CLOSE-1 C2, stream 128).
+    Inn = 8
 };
 
 struct ClassInfo {

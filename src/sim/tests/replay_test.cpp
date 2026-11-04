@@ -331,13 +331,12 @@ TEST_CASE("log header records the prng timeline") {
         "LinkTreasurePlace", "ComputerName",   "CityNameLoad",
         "HouseWalkerTarget", "HouseVariant",   "HouseFirstAssignment"};
     CHECK(log.prng_timeline_missing == expected);
-    // With Rules::house_updates the walker and variant draws exist; the first assignment has no
-    // production caller and stays missing (population-live.md section 19).
+    // With Rules::house_updates the walker, variant and first-assignment draws exist (C2: the
+    // player build calls SetGroup with a null old group, population-live.md section 21.5).
     CHECK(sim::prng_timeline_missing(false) == expected);
     const std::vector<std::string> live{"CityRandomEvents",    "WildlifeSweep",  "Ai",
                                         "LinkOrePlace",        "LinkNativeName", "LinkTreasureKind",
-                                        "LinkTreasurePlace",   "ComputerName",   "CityNameLoad",
-                                        "HouseFirstAssignment"};
+                                        "LinkTreasurePlace",   "ComputerName",   "CityNameLoad"};
     CHECK(sim::prng_timeline_missing(true) == live);
 
     // The digests pin the world the log was recorded against.

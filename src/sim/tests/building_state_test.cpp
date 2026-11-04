@@ -343,8 +343,9 @@ TEST_CASE("field count canary per struct") {
     CHECK(sim::field_count<sim::Island>() == 20);          // cache* (claims: stream 126)
     CHECK(sim::field_count<sim::PlacementRecord>() == 6);
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
-    CHECK(std::variant_size_v<sim::Payload> == 8);
-    CHECK(sim::kPayloadTags.size() == 8);
+    CHECK(std::variant_size_v<sim::Payload> == 9);
+    CHECK(sim::kPayloadTags.size() == 9);
+    CHECK(sim::field_count<sim::Inn>() == 6); // C2: the tavern stock and statistic
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {
         CHECK(sim::kPayloadTags[i] == i);
     }
@@ -410,7 +411,7 @@ TEST_CASE("building stream layout per payload") {
 
 TEST_CASE("a building stream refuses a payload tag and a status code that do not exist") {
     LayoutRow row = layout_rows()[1]; // the Workshop
-    for (const std::uint8_t tag : {std::uint8_t{8}, std::uint8_t{9}, std::uint8_t{255}}) {
+    for (const std::uint8_t tag : {std::uint8_t{9}, std::uint8_t{10}, std::uint8_t{255}}) {
         std::vector<std::uint8_t> bad = row.expect.v;
         bad[8 + 4 + 4 + 4 + 3 + 4] = tag; // the tag byte (after id, type, x, y, 3 bytes, kontor_id)
         sim::Building b;
@@ -1103,7 +1104,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0x96fbf9c80cb07372ULL);
+    CHECK(types.value().registry->digest() == 0xd10348e2cec4c0baULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

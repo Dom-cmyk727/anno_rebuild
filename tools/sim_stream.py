@@ -172,7 +172,7 @@ CLASSES = [
     (13, 7, 6, 500),   # Market 0x1006b6d0 (T24: the cart send)
     (14, 0, 0, 500),   # MarketCombi
     (15, 0, 0, 5000),  # MarketStall
-    (16, 0, 0, 5000),  # Inn
+    (16, 0, 8, 5000),  # Inn (payload Inn 8, MAP-POP-CLOSE-1 C2)
     (17, 0, 0, 500),   # PublicService 0x1006b4ec
     (18, 0, 0, 500),   # Doctor
     (19, 0, 0, 500),   # School (0x1006b4e0, shared)
@@ -727,7 +727,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x96FBF9C80CB07372
+SYNTHETIC_REGISTRY = 0xD10348E2CEC4C0BA
 
 
 def g1_scenario(steps=0, step_ms=10):

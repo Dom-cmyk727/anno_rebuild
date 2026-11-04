@@ -118,9 +118,13 @@ std::optional<HouseFacts> house_facts_of(const SimConfig& cfg, const TypeRegistr
     return f;
 }
 
-SupplierModel supplier_model_of(const BuildingType& type) {
+SupplierModel supplier_model_of(const BuildingType& type, const Building* building = nullptr) {
     SupplierModel m;
     m.cls = type.cls;
+    // The Inn offers its tavern stock (D +0xa4 = 0x10075940 returns the u16 +0x18).
+    if (const auto* inn = building != nullptr ? std::get_if<Inn>(&building->payload) : nullptr) {
+        m.tavern_stock = inn->tavern;
+    }
     for (std::size_t k = 0; k < 2; ++k) {
         m.out[k] = k < type.output_goods.size() ? type.output_goods[k] : GoodsId{0};
     }
@@ -233,7 +237,7 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
         if (t == nullptr || b->id == home.id) {
             continue;
         }
-        const SupplierModel m = supplier_model_of(*t);
+        const SupplierModel m = supplier_model_of(*t, b);
         ResidentFault fault = ResidentFault::None;
         const SupplierOffer offer = offer_of(m, c->stock.stock, fault);
         if (fault != ResidentFault::None) {
@@ -423,7 +427,8 @@ struct Body {
             }
             return;
         }
-        SupplierModel model = supplier_model_of(*st);
+        SupplierModel model = supplier_model_of(*st, stand);
+        const std::uint32_t tavern_before = model.tavern_stock;
         std::vector<std::uint32_t> store = c->stock.stock;
         std::vector<std::uint32_t> billed = c->billed;
         BillLedger ledger{store, billed, ctx.cfg.billed_goods_first, ctx.cfg.billed_goods_last};
@@ -447,6 +452,10 @@ struct Body {
         }
         if (res.fault != ResidentFault::None) {
             report_fault(ctx, world.fx, res.fault, stand->id, &fig, 0);
+        }
+        if (model.cls == RuntimeClass::Inn && model.tavern_stock < tavern_before) {
+            world.fx.tavern_debits.push_back(
+                TavernDebit{stand->id, tavern_before - model.tavern_stock});
         }
         // The debit and the billed counters go out as deltas, merged right after this call.
         for (std::size_t g = 0; g < store.size() && g < c->stock.stock.size(); ++g) {

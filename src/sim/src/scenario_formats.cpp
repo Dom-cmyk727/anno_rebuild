@@ -223,6 +223,14 @@ ScenarioCounts count(const LoadedScenario& s) {
     return c;
 }
 
+std::optional<InnRecord> decode_inn_record(std::span<const std::uint8_t> record) {
+    if (record.size() != 10) {
+        return std::nullopt;
+    }
+    return InnRecord{static_cast<std::uint16_t>(record[2] | (record[3] << 8)),
+                     static_cast<std::uint16_t>(record[8] | (record[9] << 8))};
+}
+
 namespace {
 
 /// The warnings of one load, with the "once per scope and name" rule.
@@ -366,6 +374,15 @@ std::uint32_t le32(const std::uint8_t* p) {
 /// bit is the record's bit, mapped here unchanged.
 bool read_class_record(Payload& payload, RuntimeClass cls, Bytes rec) {
     if (rec.empty()) {
+        return true;
+    }
+    if (auto* inn = std::get_if<Inn>(&payload); inn != nullptr && cls == RuntimeClass::Inn) {
+        // 0x10075740: exactly 10 bytes are read (tavern stock u16 at byte 2 -> +0x18, taken
+        // statistic u16 at byte 8 -> +0x1a); any other length is skipped whole (0x10075792).
+        if (const auto d = decode_inn_record(rec)) {
+            inn->tavern = d->tavern;
+            inn->taken = d->taken;
+        }
         return true;
     }
     if (auto* w = std::get_if<Workshop>(&payload); w != nullptr && cls == RuntimeClass::Workshop) {

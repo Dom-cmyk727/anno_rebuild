@@ -591,10 +591,10 @@ TEST_CASE("stream 128: the invariants name a broken walker or resident fact") {
         CHECK(contains(w.check_invariants(), "billed: 55 counters"));
     }
     {
-        // A walker vector of the wrong size for the type (payload_problem).
+        // Surplus slots are legal since L4 (a type change trims lazily, never shrinks the table).
         sim::World w = p.world;
         std::get<sim::House>(find_house(w)->payload).walkers.push_back(sim::FigureId{});
-        CHECK(contains(w.check_invariants(), "walkers has 3 entries, the type needs 2"));
+        CHECK(w.check_invariants() == "");
     }
     {
         // Too few slots is as wrong as too many (the vector is sized by the type's maximum).
@@ -603,11 +603,12 @@ TEST_CASE("stream 128: the invariants name a broken walker or resident fact") {
         CHECK(contains(w.check_invariants(), "walkers has 1 entries, the type needs 2"));
     }
     {
-        // A live house walker without a home.
+        // A live house walker without a home is legal since L4: the house destructor detaches the
+        // walkers (0x10075bc0), they live on and end at their next arrival.
         sim::World w = p.world;
         std::get<sim::House>(find_house(w)->payload).walkers[1] = sim::FigureId{};
         sim::find_figure(sim::WorldTestAccess::figures(w), p.figure)->home = sim::BuildingId{};
-        CHECK(contains(w.check_invariants(), "has no home"));
+        CHECK(w.check_invariants() == "");
     }
 }
 

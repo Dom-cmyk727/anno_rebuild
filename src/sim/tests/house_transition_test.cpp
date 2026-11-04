@@ -682,9 +682,9 @@ TEST_CASE(
     const auto poor = run(1900, 511, kP1);
     CHECK(poor.first.kind == sim::HouseOutcomeKind::UpgradeRefusedMaterials);
     CHECK(poor.second == 0);
-    // a missing next type (9521 -> 9540): no change
+    // a missing next type (9521 -> 9540): the end of the ladder, a named outcome (C3), nothing changes
     const auto none = run(1900, 1000, kS1);
-    CHECK(none.first.kind == sim::HouseOutcomeKind::NoChange);
+    CHECK(none.first.kind == sim::HouseOutcomeKind::NotEligibleTerminal);
     CHECK(none.second == 0);
     // NoUpgrade on the current group: no change
     {

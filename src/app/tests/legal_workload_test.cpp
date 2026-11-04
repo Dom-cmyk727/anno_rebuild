@@ -38,6 +38,10 @@ fs::path fixed_map() {
 
 /// The fixed map's scene with `buildings` as its desired list, loaded independently of any
 /// picture (the oracle), rivers off as in the verifier (river flow is asynchronous, tested apart).
+/// Depth off: the workload builds through the stand-in placement rule (D17,
+/// stand_in_placement_seam), whose item height is 0, so with the per-pixel depth
+/// (docs/render/depth.md) its buildings would lie under the land (48) and draw nothing; these
+/// cases test the bridge's publication, not the depth.
 std::shared_ptr<const render::Scene> scene_with(const fs::path& dir, const app::PlayLoad& play,
                                                 const std::vector<app::SceneBuilding>& buildings) {
     app::SceneObjects objects;
@@ -49,6 +53,7 @@ std::shared_ptr<const render::Scene> scene_with(const fs::path& dir, const app::
     REQUIRE(loaded.ok());
     app::LoadedScene ls = std::move(loaded).value();
     ls.scene->river_cfg.enabled = false;
+    ls.scene->depth_test = false;
     return std::shared_ptr<const render::Scene>(std::move(ls.scene));
 }
 

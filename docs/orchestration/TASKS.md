@@ -84,6 +84,13 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
   idle-host performance figures and small P3s remain before acceptance; they are **W4-DEPTH-1-CLOSE**, released below.
 - **Owner decisions open:** the water level (the original's sea plane is ≈ 26.5, our default is 16.5) and the
   `--depth` switch.
+- **Update 2026-11-04, evening (owner, in session).** Asked in the depth session's own wrap-up which default to
+  compare in the viewer, the owner clicked "Try 26.5 default", then confirmed to the parent session: "we will try
+  26.5 and see, just note it down." This is a trial, not yet a closed decision; it may revert. The executor committed
+  it on `task/W4-depth-1` on top of `0fd1d219`: `3f180c62` (`kShoreHeight = 26.5`; the `--shore 16.5` picture is kept
+  as its own pass, unchanged) and `b72595c2` (`bench_frame --shore h`). **W4-DEPTH-1-CLOSE below runs at 26.5**, not
+  16.5; its "Owner check" step (start Kontor at `--shore 16.5` and `--shore 26.5`, beside the GOG capture) still
+  covers both for the owner's own comparison.
 - **The closeout:** its latest WSL ASan app gate at `1d34dd97` fails `opening_session_replay` at stage 1. Find the
   cause before that chain runs again.
 - **Merge order (review §5):** if the owner's depth check passes before the closeout's final gate chain, the depth

@@ -10,7 +10,7 @@ addresses with image base `0x10000000`.
 `AnnoFrame.dll` `0x10046300` is the mine cursor `tCursorAnlageBergwerk`.
 An earlier revision of this note called it the warehouse click. That
 attribution is withdrawn. The warehouse handler is `0x10048e60`, and its
-placement callee `0x10049340` is unread.
+placement callee `0x10049340` was unread when this was written; §8.2 and the corrections list (line ~420) close it: the function returns the rotation byte `+0x46` and writes the centred rectangle (it is not a validity test).
 
 This note separates three layers.
 
@@ -163,7 +163,7 @@ The handler refuses a zero id word (`cmp word [esi-0x1c8]` at `0x10048e89`).
 On the click path it calls `0x10049340` (`0x10048ed4`) with the placement
 coordinates. Its call list does not include `0x10046300`.
 
-**Unknown.** `0x10049340` was not opened. Coast, tile class, distance,
+**Unknown at the time (closed by §8.2: `0x10049340` returns the rotation byte and writes the centred rectangle; it is no validity test).** `0x10049340` was not opened. Coast, tile class, distance,
 rotation and payment for the warehouse are not established. The mine
 arithmetic in §3.3 is not a substitute.
 
@@ -307,7 +307,7 @@ two handlers the same predicate.
 | Question | Status |
 |---|---|
 | Class of ship-view `+0x62c` | Unknown. The call is `+0x74(0x13)`. `tFrameGame` implements that slot. The store into the field was not found. |
-| `0x10049340` | Unknown. This is the Kontor handler's placement callee. |
+| `0x10049340` | ~~Unknown~~ CLOSED in §8.2: returns the rotation byte (`+0x46`) and writes the centred rectangle; the Kontor handler's placement callee. The property-5 setter is `0x10049166` (Windows playtest review §4 and OQ-520; recorded there, not re-read here). |
 | Required ship distance | Not in the Kontor handler's opened calls. The mine window is not that distance. |
 | Coastal terrain | Coast flag `0x2000` is on type 1302. The tile test that uses it was not opened. |
 | Who pays | Unread on `0x10048e60`. The mine field `0x100468ff` is a different object. |
@@ -319,7 +319,7 @@ two handlers the same predicate.
 An AI probe in `CompLogic.dll` (`0x100154bf`) loads id `0x516` and calls
 slots `+0x70` and `+0x6c` with flag `0x2000000`. It counts a returned byte
 `0x30`. That is a computer-player scan. It is not the player menu, and it
-does not identify `0x10049340`.
+does not identify `0x10049340` (identified later in §8.2).
 
 ## 4. Current rebuild
 
@@ -399,7 +399,7 @@ When that runner is available, one session is enough:
 2. Open the ship menu and use the control whose callback is `View.dll`
    `0x10063ba0` (building 1302). Click a coast tile next to the ship, then
    a water tile, then a tile far from the ship. The distance that matters
-   is whatever `0x10049340` implements. Do not use the mine cursor's window
+   is not implemented by `0x10049340` (§8.2: it only returns the rotation and the centred rectangle). Do not use the mine cursor's window
    as that distance.
 3. Repeat with the hold totals reduced below 5 t tools, and with wood still
    12 t. Record the result. The mine goods check is not assumed to be the
@@ -812,3 +812,9 @@ Two read-only research subagents (scratch `cache/map2-research5/kind11/`, `.../o
 - Per ore object not holding the player\'s bit: world slot `+0xd0(code)` posts to the AnnoFrame `tEvent` log (body unread), then slot `+0x74(0, mask | bit)` sets the bit; objects already holding it are set again (idempotent). Readers of the mask: the ore effect-figure gates (`0x100631e0`, CRT `rand`, PRESENTATION), a dead stub (`0x10063490`); **mining needs no mask** (deposit finder `0x100787c0`) and the placement predicate reads no objects. No simulation reader found (negative search over `push 0; call [+0x78]` in 7 modules; callers of slot `+0x7c` and `player.prop5` not enumerated).
 - **Selection rule** (verified by emulating the table loop `0x10085b95`–`0x10085c36`): `r = R + 6 = 30`; centre `cx = x + ((w-1) >> 1)`, `cy = y + ((h-1) >> 1)`; query rectangle `x0 = cx - 30`, `y0 = cy - 30`, width `61 + ((w-1) & 1)`, height `61 + ((h-1) & 1)`, half-open, object tile = `ftol(position)`; per object `dy = cy - oy`, or `((h-1) & 1) + (oy - cy)` when `oy > cy`; accept `dy <= R` (24, the original radius); likewise `dx`, accept `dx <= T[dy]`, all inclusive; `T[0..24] = 30,30,30,30,30,30,29,29,29,29,28,28,27,27,27,26,25,25,24,23,22,21,20,19,18` (the midpoint-circle table of radius 30, longer than the stage-1 disc of radius 24). This is not the reveal\'s geometry (§15.4).
 - Persistence: island `DISCOVER` = 4 bytes, the loader keeps the low u16 as island `+0xa6` (all shipped values have a zero upper word); city `HEAD2[0x30]` u32 is ORed into the city mask (272 shipped cities, 181 with a single bit); object masks in `OCCUR/ENTRY2`; player `DISCO` (4 bytes into player `+0xac`; link to property 7 UNKNOWN). Treasure timer state is not saved. Shipped treasures all have mask 0.
+
+
+## Handoff note (Windows playtest review section 7, MAP docs checkpoint, MAP-POP-CLOSE-1 C5)
+
+1. The stale statements about `0x10049340` above (the summary, §3.1/§3.5, the checklist) are reconciled with §8.2: the function returns the rotation byte `+0x46` and writes the centred rectangle; it is not a validity test and implements no distance. The property-5 setter is `0x10049166` (recorded in the Windows review §4 and OQ-520).
+2. **Land definition.** The MAP tools `tools/map2_shape.py` and `tools/map2_measure.py` (`land_definition`) use a GEOMETRIC land model, `HEIGHT >= 16`, to measure candidate shapes and fairness. That is the tool's own measure, unrelated to the renderer's shore, which at its default is `render::kShoreHeight` = 16.5 (a renderer setting, per scene). The tools are deliberately NOT changed here: the candidates, the fairness numbers and the sim's terrain rules (`placement_rule`, the walk and sailing tables) are unchanged. The tools' choice (16) was made when the renderer's waterline was also 16; the decision whether to keep 16 for the tools' own reason or to follow `kShoreHeight` is the MAP lane's and is NOT taken here. No candidate, fairness figure or sim terrain rule depends on this note.

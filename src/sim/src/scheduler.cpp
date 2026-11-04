@@ -202,10 +202,16 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         const Figure* f = find_figure(w.figures_, d.figure);
         if (h == nullptr || type == nullptr || f == nullptr ||
             f->home_counter >= h->walkers.size() || h->walkers[f->home_counter] != d.figure) {
+            if (w.transport_stats_ != nullptr) {
+                w.transport_stats_->residents.merge_dropped_by_goods[d.goods] += d.amount_88;
+            }
             continue;
         }
         const std::optional<HouseFacts> facts = house_facts_of(w.config_, *w.types_, *type, *h);
         if (!facts) {
+            if (w.transport_stats_ != nullptr) {
+                w.transport_stats_->residents.merge_dropped_by_goods[d.goods] += d.amount_88;
+            }
             continue;
         }
         const std::vector<std::uint32_t> stock_before = h->stock;

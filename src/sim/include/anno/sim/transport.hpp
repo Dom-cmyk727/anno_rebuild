@@ -153,6 +153,9 @@ struct ResidentStats {
     /// goods' own slot and by the IdSec replays (stock units, 1/16 of an amount unit).
     std::map<GoodsId, std::uint64_t> merged_taken_by_goods, merged_billed_by_goods;
     std::map<GoodsId, std::uint64_t> merged_delivered_by_goods;
+    /// Deliveries the merge did not apply (the house or its walker slot was gone), and the cargo
+    /// of walkers that ended without handing it over, per goods.
+    std::map<GoodsId, std::uint64_t> merge_dropped_by_goods, lost_by_goods;
     std::map<GoodsId, std::uint64_t> stock_primary_by_goods, stock_replay_by_goods;
 };
 

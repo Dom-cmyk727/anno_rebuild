@@ -560,6 +560,9 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             if (!b.delivered && b.stats != nullptr) {
                 for (const ResidentCargo& cg : r.cargo) {
                     b.stats->lost_88 += cg.goods != 0 ? cg.amount_88 : 0U;
+                    if (cg.goods != 0) {
+                        b.stats->lost_by_goods[cg.goods] += cg.amount_88;
+                    }
                 }
             }
             world.end_figure(fig, t); // releases the walker slot exactly once

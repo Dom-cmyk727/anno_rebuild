@@ -226,3 +226,118 @@ Identity: stream 128 and PRNG timeline 5 are unchanged (no field was added; the 
 **Fault asymmetry.** A House fault (from `house_tick` or `stage_pass`) stops the world at the merge of its island; a resident fault from the figure phase is merged right after its figure call and, since L5, ends the advance right after `run_figures` (nothing of the later phases runs); before that fix only the NEXT advance stopped. `faulted()` is the same state flag as the S16 draw guard. A reloaded faulted world reports `faulted()` only and stays loadable (the text is not saved, so `check_invariants` is clean; the invariants key on the text so that save and load keep working).
 
 **Manifest and rules (L4 review P2-1).** `prng_timeline_missing(house_updates)`: a default (rule off) log lists `HouseWalkerTarget`, `HouseVariant` and `HouseFirstAssignment` as missing, exactly as before L4 (the eleven recorded logs are back at their original sizes); a log of a world with `Rules::house_updates` lists only `HouseFirstAssignment`. The replay refuses a log whose manifest does not match the world's rules. The static `draw_site_ported(site)` is false for the House sites, `draw_site_ported(site, house_updates)` is true for the walker and variant sites with the rule on.
+
+## 20. L5 delivered (real canary, scale, mutation; MAP-POP-LIVE-1)
+
+Tests: `population_live_canary_test.cpp` (original registry + original scenarios, `Rules::house_updates` on, no grants, no relocations, no candidate rewrite, no synthetic fixture), `population_scale_test.cpp` (synthetic registry with a **mod-defined** group, goods, figure ids and supplier). Counters (diagnostic, never state, in the `TransportStats` sink): `PopulationStats`/`HouseWork` (per house: visits, kernel calls and taken gates, spawn draws and requests, searches, rectangle queries and hits, candidates scored and accepted, walk searches and expansions, `upgrade_scores`), records of growth, transitions (house, old and new type, groups, residents, house counts and derived counters before and after, materials spent per build good, variant draw) and stage unlocks, and the per-goods ledger of `ResidentStats` (bought, store taken, billed, delivered, applied, dropped, lost, stock raised). Evidence files: `cache/map2-pop-live1/L5/` (git-ignored).
+
+### 20.1 The bounded scenario search
+
+Rule: every original scenario with houses, in name order, `house_updates` on, 150 000 ticks (300 s of game time) or until a typed fault, counters per file (`ANNO_POP_LIVE_SEARCH=150000`; first pass at 7000 ticks in `search_7000.txt`). The primary file is the **first in name order** that shows (a) spawns, purchases and deliveries, (b) residents changed by growth AND (c) a house-type transition (removal, downgrade or upgrade); the first non-faulting file `endless01` shows (a), (b) and only stage unlocks (all in the first stage pass, from the loaded houses), so the stricter criterion picks `S01_01_01`. The downgrade file `S01_07_01` is the first with downgrades. 35 files with houses were run:
+
+| file | houses | ticks | gates taken | spawn draws | purchases | deliveries | growth | up/down/remove | unlocks | result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0010SingleEndlos/01_1024_easy_256.sze | 46 | 42550 | 743 | 347 | 107 | 11 | 736 | 0/0/0 | 4 | FAULT missing_group at tick 42550 (house type 3960, cap crossed) |
+| 0010SingleEndlos/02_1024_easy_128.sze | 107 | 42500 | 1713 | 939 | 261 | 19 | 1712 | 0/0/0 | 4 | FAULT missing_group at tick 42500 (house type 3972, cap crossed) |
+| 0011SingleEndlosAddon/endless01.sze | 60 | 150000 | 3547 | 3028 | 195 | 120 | 164 | 0/0/0 | 15 | no fault |
+| 0011SingleEndlosAddon/endless02.sze | 160 | 2500 | 22 | 22 | 0 | 0 | 6 | 0/0/0 | 20 | FAULT missing_group at tick 2500 (house type 3852, cap crossed) |
+| 0011SingleEndlosAddon/endless03.sze | 74 | 25000 | 667 | 481 | 69 | 50 | 667 | 0/0/0 | 17 | FAULT missing_group at tick 25000 (house type 3854, cap crossed) |
+| 0100Kampagne01/S01_01_01.sze | 53 | 150000 | 2629 | 2146 | 172 | 90 | 241 | 0/0/11 | 10 | no fault |
+| 0100Kampagne01/S01_02_01.sze | 126 | 150000 | 7450 | 3095 | 879 | 136 | 10 | 0/0/0 | 43 | no fault |
+| 0100Kampagne01/S01_03_01.sze | 121 | 150000 | 6860 | 4385 | 589 | 312 | 892 | 0/0/6 | 31 | no fault |
+| 0100Kampagne01/S01_04_01.sze | 62 | 150000 | 3666 | 2385 | 260 | 253 | 437 | 0/0/0 | 13 | no fault |
+| 0100Kampagne01/S01_05_01.sze | 25 | 150000 | 1476 | 1287 | 107 | 38 | 340 | 0/0/0 | 7 | no fault |
+| 0100Kampagne01/S01_06_01.sze | 13 | 150000 | 767 | 733 | 60 | 7 | 231 | 0/0/0 | 3 | no fault |
+| 0100Kampagne01/S01_07_01.sze | 158 | 150000 | 9340 | 4953 | 1886 | 623 | 2710 | 0/44/0 | 71 | no fault |
+| 0100Kampagne01/S01_08_01.sze | 45 | 150000 | 2658 | 1573 | 205 | 201 | 419 | 0/0/0 | 17 | no fault |
+| 0100Kampagne01/S01_09_01.sze | 139 | 150000 | 8219 | 4843 | 1316 | 352 | 236 | 0/0/0 | 46 | no fault |
+| 0100Kampagne01/S01_10_01.sze | 137 | 150000 | 8101 | 4096 | 1162 | 298 | 84 | 0/0/0 | 37 | no fault |
+| 0100Kampagne01/S01_12_01.sze | 114 | 2500 | 7 | 7 | 0 | 0 | 2 | 0/0/2 | 23 | FAULT missing_group at tick 2500 (house type 3852, cap crossed) |
+| 0100Kampagne01/S01_13_01.sze | 42 | 2500 | 1 | 1 | 0 | 0 | 0 | 0/0/0 | 2 | FAULT missing_group at tick 2500 (house type 3854, cap crossed) |
+| 0200Single/Single_05.sze | 11 | 2500 | 1 | 1 | 0 | 0 | 0 | 0/0/0 | 1 | FAULT missing_group at tick 2500 (house type 3852, cap crossed) |
+| 0200Single/Single_06.sze | 7 | 42550 | 113 | 113 | 0 | 0 | 112 | 0/0/0 | 2 | FAULT missing_group at tick 42550 (house type 3851, cap crossed) |
+| 0200Single/Single_16.sze | 11 | 2500 | 1 | 1 | 0 | 0 | 0 | 0/0/0 | 0 | FAULT missing_group at tick 2500 (house type 3852, cap crossed) |
+| 0200Single/Single_24.sze | 50 | 150000 | 2955 | 970 | 293 | 96 | 8 | 0/0/0 | 27 | no fault |
+| 0201SingleAddOn/single30.sze | 44 | 150000 | 2597 | 1838 | 452 | 94 | 628 | 0/0/0 | 29 | no fault |
+| 0201SingleAddOn/single31.sze | 68 | 150000 | 4020 | 1538 | 1166 | 247 | 217 | 0/0/0 | 25 | no fault |
+| 0201SingleAddOn/single32.sze | 306 | 150000 | 18084 | 7813 | 2861 | 1358 | 1155 | 0/0/0 | 69 | no fault |
+| 0201SingleAddOn/single33.sze | 229 | 150000 | 13539 | 5465 | 1482 | 590 | 1969 | 0/0/0 | 39 | no fault |
+| 0201SingleAddOn/single34.sze | 103 | 2500 | 1 | 1 | 0 | 0 | 0 | 0/0/0 | 0 | FAULT missing_group at tick 2500 (house type 3852, cap crossed) |
+| 0201SingleAddOn/single36.sze | 388 | 22550 | 3168 | 1832 | 420 | 227 | 2245 | 0/0/0 | 45 | FAULT missing_group at tick 22550 (house type 3853, cap crossed) |
+| 0201SingleAddOn/single38.sze | 179 | 150000 | 10581 | 4343 | 2391 | 269 | 265 | 0/0/0 | 43 | no fault |
+| 0201SingleAddOn/single39.sze | 115 | 150000 | 6801 | 3605 | 982 | 653 | 182 | 0/0/0 | 26 | no fault |
+| 0201SingleAddOn/single40.sze | 77 | 150000 | 4552 | 2626 | 326 | 114 | 478 | 0/0/0 | 30 | no fault |
+| 0201SingleAddOn/single41.sze | 101 | 150000 | 5971 | 4138 | 546 | 240 | 212 | 0/0/0 | 47 | no fault |
+| 0201SingleAddOn/single42.sze | 74 | 42550 | 1193 | 988 | 100 | 46 | 343 | 0/0/0 | 21 | FAULT missing_group at tick 42550 (house type 3851, cap crossed) |
+| 0201SingleAddOn/single43.sze | 4 | 150000 | 236 | 236 | 0 | 0 | 48 | 0/0/0 | 4 | no fault |
+| Tutorial/02Trade01.sze | 32 | 150000 | 1889 | 1217 | 95 | 46 | 3 | 0/0/0 | 16 | no fault |
+| Tutorial/03T_Combat_01.sze | 2 | 150000 | 118 | 96 | 6 | 6 | 23 | 0/0/0 | 5 | no fault |
+
+No file shows an **upgrade** or a refused upgrade in 150 000 ticks. `upgrade_scores` ran 1528 times in `S01_07_01` (caps were crossed) and no house was ever eligible.
+
+### 20.2 Findings on real data (no fix applied unless stated)
+
+1. **FIXED (separate commit, test):** `check_invariants` refused a walker carrying goods 82 (a public building's infrastructure goods lies above `SimConfig::warehouse_goods`): a false invariant failure on the first real church purchase. The bound is the goods table (`resident_state_test.cpp`).
+2. **FINDING, needs policy:** 12 of the 35 files fault with `house fault missing_group` as soon as a group-0 **PIONIER** house (types 3851-3854, 3960, 3972; PRODTYPE 97) reaches its cap: the ladder `id - id % 20 + 20` finds an existing type (3860 = PRODTYPE 289, 3980 = a market stall, PRODTYPE 161) that is no house, so `view_of(next)` fails. Section 16's statement "none has a next type (3860 etc. do not exist)" is **wrong**: they exist. What the original does with a non-house next type is unread (U); the engine fails loudly (P-1/P-3) rather than convert a house into a stall. A policy is needed (for example: a next type must be a House of the next group, else no upgrade). Exact inputs: `endless02` house 103079215117 type 3852 at (937, 83), res64 512, E 1024, next 3860; `S01_12_01` 3852 at (673, 571); `S01_13_01` 3854 at (271, 42); `Single_05` 3852 at (41, 459); `Single_06` 3851 at (221, 212); `Single_16` 3852 at (273, 243); `single34` 3852 at (201, 83); `single36` 3853 at (70, 472); `single42` 3851 at (397, 376); `endless03` 3854 at (675, 674); `01_1024_easy_256` 3960 (next 3980) at (226, 321); `02_1024_easy_128` 3972 (next 3980) at (408, 389).
+3. **FINDING, needs policy (cargo is lost):** step C reports **no path home** for a large share of walkers: `S01_01_01`, 150 000 ticks: 201 arrivals, 78 with no path home (the job ends, the cargo stays with the figure: the ledger shows 62 % of the bought food and 70 % of the public goods lost). Diagnosis (`finding_return_path.txt`): `path_home` takes the home's entrance subcell as a GOAL; a blocked entrance subcell is seeded as a start but never reached as a goal, and the walker ends on the goal tile's centre subcell (which can be enclosed). The same search, run forward from the home entrance, reaches the walker (route 16, 414 pops) while the reverse explores 774 cells and finds nothing. `path_home` is shared with the carts and harvest workers (accepted baselines), so changing it is a policy decision (a resident-specific reverse search or a start/goal convention); not changed here. Consequence for the economy: stall purchases of goods that are lost are removed from the city store and billed.
+4. Pre-existing, outside this component: `tools/lint_sim.py` reports 25 findings at `ab9a7c80` (constexpr counts and size_t in L1-L4 files); L5 adds allowlist entries for its own two names only.
+
+### 20.3 The real canary (pinned counts; Debug build on the Mac)
+
+`S01_01_01.sze` (campaign, 53 houses), 3000 advances of 100 ms = 150 000 ticks, wall 48-52 s (invariants every 250 steps, a figure scan every step, a hash every 10 steps). Main phase: 18 779 house visits, 2629 taken gates, **2146** spawn draws (= the draw counter by site `HouseWalkerTarget`; no `HouseVariant`), 2146 spawn requests, 2135 searches (1927 without a candidate or path), 6343 candidates scored, 2825 accepted, 1176 walk searches, 880 918 expansions, 201 arrivals, **172 purchases, 5435 store units taken (goods 26, stalls), 90 deliveries (4863), 241 growth steps, 11 removals, 10 stage-unlock records, 0 faults**.
+
+* (a) First walker waiting or walking at step 50, first walker carrying cargo home at step 67. Ledger (closed by a drain on a copy in which no house can spawn, 298 steps): goods 26 (stall): bought 5543 = taken from the city store 5543 (job) = 5543 (merge) = billed 5543 (job) = 5543 (merge); delivered 2112 (job) = applied 2112 (merge), dropped 0, lost 3431, bought = delivered + lost; stock raised 33 792 = 16 x 2112, no replay. Goods 82 (public building): bought 10 416, taken 0, billed 0 (outside 0x1a-0x28: nothing billed, D `0x1002dac0`), delivered 3129, lost 7287, stock raised 50 064 = 16 x 3129. No manufactured goods: everything bought is delivered or lost, every store unit a stall gave is in the city store debit.
+* (b) Growth: first record house 133143986195 tick 2500 mood -2 (VermehrTab -16): residents_64 64 -> 48. 241 records, each moved the residents; the exact step `res + vermehr` explains the exact ones, the rest are cap or floor clips (both counted in the test output).
+* (c) Transitions (all removals, floor 64): the first is that house at tick 2500: type 3205 (group 0), res 64 -> removed (48 < 64), group-0 house count 13 -> 12, derived counter `residents_at_or_above(0)` 67 -> 66, no variant draw, no materials. Stage unlock: 10 records from the first pass (tick 2500; e.g. city 16.0 stages 0 and 1 with 72 residents against counts 0 and 30, city mask 0 -> 3); the player value already holds the bits (low 23 bits >= the mask, the X16 quirk), so the player flags stay 1761607711; the rule is re-derived for every record in the test.
+
+`S01_07_01.sze` (campaign, 158 houses), 1830 advances (91 500 ticks, wall 39 s): 2996 spawn draws (= counter), 1183 purchases, 49 023 store units, 383 deliveries, 1310 growth steps, **22 downgrades, each with exactly one `HouseVariant` draw** (22 draws by site), 71 unlock records, 0 faults, `upgrade_scores` 1528 (never eligible). First downgrade: house 219043332201, tick 90250, type 561 (group 3) -> **541** (group 2; base 540 + variant index 1 of draw 15145; materials spent 0), residents_64 1358 -> 1358 (SetGroup keeps them), group-3 house count 54 -> 53, derived counter 1600 -> 1579. Ledger goods 26, 28 (stalls), 77, 80, 81 (IdSec 80), 82, 83 (IdSec 82): all equations hold; goods 81 shows the IdSec replay (stock raised 514 704 + 354 960 replay).
+
+Ledger equations asserted per goods: bought = delivered + lost; store taken (job) = taken (merge) <= bought; billed (job) = billed (merge); inside the billed range billed = bought, outside 0; delivered (job) = applied + dropped; primary + replay stock raise = 16 x amount x chain length (a substitute sharing the slot adds twice, as the recursive deliver does; goods 83 here); a goods without IdSec: one add, no replay.
+
+**Not reached, said plainly:** an **upgrade** (no file, 150 000 ticks), a refused upgrade, a materials spend, the first-assignment draws. The upgrade chain is covered only by the synthetic live tests (`house_live_test.cpp`).
+
+### 20.4 Save/reload and replay
+
+Cuts in one real run of `S01_01_01` (state saved, reloaded, run continued; 5 reloads): before and after the first transition (steps 49, 50; step 50 also holds a walker in ToStall), a walker carrying cargo (67), before and after a late removal (1805, 1806). The cut states are checked to contain what their name says (a ToStall/Wait walker, a ToHome walker with cargo); a reloaded world has the same hash and the same save bytes as before; 300 hashes (every 10th step of 3000) and the final hash `a328a5fe1a6490ad` equal the uninterrupted run.
+
+Replay: a recorded log of 400 advances with 10 checkpoints (410 entries, 11 226 478 bytes, the initial save dominates) replays in a fresh world (10/10) **and in a fresh process** with `anno-sim-replay run` (the tool needed no change: `Rules::house_updates` rides in the initial save, the registry is rebuilt from the game directory by digest): `entries 410, checkpoints 10/10, reproduced`. Changed inputs diverge at a named entry: one changed byte of the log (an Advance of 1 ms more at entry 101) -> **DIVERGED at entry 122**; one house's food stock +16 units in the starting save -> **DIVERGED at entry 40** (first checkpoint); `house_updates` off in the starting save with the log's header untouched -> `replay refused` (rules digest and PRNG manifest differ: the manifest now depends on the rule, section 19), with a matching header -> **DIVERGED at entry 40**. Outputs: `fresh_process_replay.txt` (with sha256 of the four logs).
+
+### 20.5 Scale and proportionality
+
+Per-search work is a function of the house's own surroundings: in `population_scale_test.cpp` a house in a 4-block world and the same house with ten times the content (36 more blocks in its city, a second island with 20 blocks) do **identical** work for their first search: 1 rectangle query, 1 hit, 1 candidate scored and accepted, 1 walk search, 256 expansions (asserted equal; the search happens at tick 2561 versus 2673: unrelated content changes only WHEN a house is visited). One kernel call per visit in both. Doubling the houses (8 -> 16, same blocks) doubles the taken gates (32 -> 64), spawn draws (8 -> 16), searches, candidates scored and expansions (2048 -> 4096) exactly; **visits do not double** (384 -> 428): the building scheduler visits `clamp(d * n / building_div + 1, n)` slots per city visit (the original's rule, `building_div` 500), so below a few hundred buildings the "+1" dominates; the work a visit causes is what scales. Wall time of the bounded workloads: 8 houses 0.024 s, 16 houses 0.028 s for 12 000 ticks (Debug, Mac); the canary rows above for real maps; the 150 000-tick search ran 306 houses (`single32`) in 20.8 s. No claim about late-game multiplayer scale.
+
+**Mod-defined content** (`population scale: a mod-defined ...`): PRODTYPE 99 as group 2 of a three-group table, needs on goods 29 and 30, figure types 7001-7003, a MarketStall type 8890 offering 29 and 30; it spawns, buys, bills and delivers end to end with the same ledger equations; no shipped id is read.
+
+**Audit of the House and resident path for full-world or quadratic work** (grep of `house_tick`, `house_transition`, `resident_job`, `resident`, the merge, `Scheduler`): per house visit: the kernel (O(needs)), `rect_query` over the house's own square (a grid walk of at most the square, then a sort of the hits), `house_choice` per candidate, one walk search over cells of that square (`WalkCells` is built per search: O(square)), `others_cargo` over the house's walker slots. **No per-visit scan of the city, island or figure registry.** One real violation found and fixed: the stage pass called `residents_at_or_above` once per stage record (31 x every building of the city per gate); it now counts all groups in one pass (`residents_at_or_above_all`, test). Local, not world-size, costs left as they are: `choose_stand` looks up goals with a linear `find_if` per visited goal and removes duplicate entrances quadratically in the number of candidates of one square (bounded by the square: 33 x 33 tiles for the 16-tile pioneer radius); `add_figure` takes the original's hint scan (worst case O(figure slots) when the list is full, amortised small). `check_invariants` and the diagnostic records are O(world) by purpose and run only in tests.
+
+**Serial path:** the whole House path, the resident figure body and the stage pass are **serial**: `World::advance` runs the islands one after the other, `island_tick` -> `city_ring_tick` -> `city_tick` -> `building_scheduler` -> `house_tick`, and the figure phase is one serial pass; `house_tick`/`stage_pass` write the player table and the figure registry directly (section 19). The measured throughput above is single-threaded.
+
+### 20.6 Mutation controls
+
+Control first (the unmutated tree passes every selected test: `mutation/CONTROL.txt`), then each mutant, restore, sha256 before and after in `mutation/<name>.txt` (`SUMMARY.txt`):
+
+| mutant | file | result | first failing case | restored byte-identical |
+|---|---|---|---|---|
+| billed_amount_plus_one | src/sim/src/resident.cpp | KILLED (tests failed) | population scale: a mod-defined group, goods, figure ids and supplier work end to end | True |
+| canary_delivery_loses_a_unit | src/sim/src/resident.cpp | KILLED (tests failed) | - | True |
+| canary_house_updates_ignored | src/sim/src/driver.cpp | KILLED (tests failed) | - | True |
+| canary_spawn_disabled | src/sim/src/house_tick.cpp | KILLED (tests failed) | - | True |
+| canary_stage_pass_disabled | src/sim/src/house_tick.cpp | KILLED (tests failed) | population live canary: S01_01_01 live run, ledger, growth, removal and stage unlock | True |
+| candidate_scan_full_island | src/sim/src/resident_job.cpp | KILLED (tests failed) | population scale: unrelated content does not change a house's per-search work | True |
+| deliver_loses_a_unit | src/sim/src/resident.cpp | KILLED (tests failed) | population scale: a mod-defined group, goods, figure ids and supplier work end to end | True |
+| detach_keeps_home | src/sim/src/house_transition.cpp | KILLED (tests failed) | house transition: removal with an active walker carrying cargo ends it once, no leak | True |
+| fault_does_not_stop_world | src/sim/src/scheduler.cpp | KILLED (tests failed) | house live: a crafted house (E = 0, residents 0) fails the advance with the typed message | True |
+| group_not_adjacent_dropped | src/sim/src/house_transition.cpp | KILLED (tests failed) | house transition: the new group must be the adjacent record (SetGroup cur +/- 1) | True |
+| house_updates_ignored | src/sim/src/driver.cpp | KILLED (tests failed) | house live: shortage, spawn, purchase, delivery and the next gate through the scheduler | True |
+| manifest_ignores_rule | src/sim/src/replay.cpp | KILLED (tests failed) | log header records the prng timeline | True |
+| no_serial_context_silent | src/sim/src/house_tick.cpp | KILLED (tests failed) | house live: typed faults of the House tick and the P-2 type refusal | True |
+| p2_refusal_dropped | src/sim/src/scenario.cpp | SURVIVED (tests passed) | - | True |
+| p2_refusal_dropped_both_calls | ['src/sim/src/scenario.cpp', 'src/sim/src/invariants.cpp'] | KILLED (tests failed) | house live: world creation refuses what the live update cannot run (P-2) | True |
+| player_bit26_rule_dropped | src/sim/src/house_tick.cpp | KILLED (tests failed) | house live: SetProperty 0x21 also sets bit 26 for stages 25, 27 and 28 (D 0x10020d51) | True |
+| spawn_disabled | src/sim/src/house_tick.cpp | KILLED (tests failed) | house live: shortage, spawn, purchase, delivery and the next gate through the scheduler | True |
+| stage_pass_disabled | src/sim/src/house_tick.cpp | KILLED (tests failed) | house live: the stage pass runs after the building ticks and unlocks a need | True |
+
+`p2_refusal_dropped` (only the `World::create` call removed) SURVIVED: the same refusal is also made by `check_invariants`, which `create` runs, so that edit is an equivalent mutant; `p2_refusal_dropped_both_calls` removes both calls and is killed. The literal "billed counts the taken amount instead of the requested one" is **not** killable by the real canary or the scale test (no clip occurs in the loaded stocks: billed = taken = bought); the unit vectors X5/X7 of `resident_job_test`/`resident_test` cover the clip, and the canary kills `billed = amount + 1` through the per-goods equation. Each killed mutant failed on assertions (no build failure counted as a kill); `manifest_ignores_rule` first failed to build (unused parameter under `-Werror`) and was redone with `house_updates || true`. A `-` in the case column means the saved tail of a long canary output did not reach the case header (the run still failed). Sha256 before and after restore are in each file under `cache/map2-pop-live1/L5/mutation/`.
+
+
+**Hand-derived numbers in `house_live_test.cpp` (L4 review P3-6).** The C++ tests keep their hand-derived numbers inline on purpose: `fixtures/synthetic/sim/house_live_vectors.txt` is the independent oracle of `tools/house_live_ref.py` (checked by its own CTest contract test), and a C++ test that read the same file would echo it instead of deriving; the vectors and the C++ cases are two transcriptions of the same derivation (section 10) and disagree loudly if either drifts.

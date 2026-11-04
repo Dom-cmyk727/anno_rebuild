@@ -13,6 +13,7 @@
 #include <anno/sim/clock.hpp>
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
@@ -97,6 +98,13 @@ Island* Scheduler::island_of_id(World& w, IslandId id) {
 City* Scheduler::city_of_ref(World& w, CityRef ref) {
     Island* is = island_of_id(w, ref.island);
     return is != nullptr ? is->city(ref.city) : nullptr;
+}
+
+void Scheduler::record_fault(World& w, const FaultRecord& fault) {
+    if (!w.faulted_) {
+        w.faulted_ = true;
+        w.fault_message_ = fault_message(fault);
+    }
 }
 
 void Scheduler::release_counter(World& w, BuildingId home, std::uint32_t home_counter) {
@@ -201,8 +209,17 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
             continue;
         }
         const DeliverResult r = house_deliver(*facts, h->stock, d.goods, d.amount_88);
-        if (r.fault != ResidentFault::None && w.transport_stats_ != nullptr) {
-            ++w.transport_stats_->residents.deliveries_refused; // diagnostic only
+        if (r.fault != ResidentFault::None) {
+            if (w.transport_stats_ != nullptr) {
+                ++w.transport_stats_->residents.deliveries_refused; // diagnostic only
+            }
+            // P-1/P-3: a refused delivery is a typed fault, not a counted skip.
+            FaultRecord rec;
+            rec.resident = r.fault;
+            rec.building = d.home;
+            rec.figure = d.figure;
+            rec.goods = d.goods;
+            record_fault(w, rec);
         }
     }
     // 2. Releases. One that names a figure goes through it (D 0x1003b6e0: only while the
@@ -371,6 +388,10 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
     // 7. Timed events.
     for (const EnqueueEvent& e : fx.events) {
         w.events_.enqueue(w.ids_, tick, e.delay, e.e);
+    }
+    // 7b. Typed faults of the live population update (L4): the first one stops the world.
+    for (const FaultRecord& f : fx.faults) {
+        record_fault(w, f);
     }
     // 8. UI events, and the telemetry of the call (inside an advance only: between two
     // advances SimOutput belongs to the last advance and is not touched).
@@ -564,6 +585,12 @@ void Scheduler::run_ai(void* raw) {
 }
 
 std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
+    if (w.faulted_) {
+        // A recorded fault (World::fault) stops the world: nothing changes, not even the clock.
+        w.out_ = SimOutput{};
+        w.out_.rng_cursor_before = w.out_.rng_cursor_after = w.rng_.cursor();
+        return w.clock_.tick();
+    }
     w.route_cache_.begin_advance(); // derived index: compare again before the first plan
     // docs/sim/state.md §5.3. No early return for 0: the original adds 0 and still
     // runs every subsystem.
@@ -573,6 +600,9 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     const auto t = static_cast<std::uint32_t>(tick);
     GlobalDraw global(w.rng_);
     CountingDraw draw(global);
+    // MAP-POP-LIVE-1 L4: the serial resources of the live House path (house_tick.hpp). Set only
+    // with Rules::house_updates: nothing else reads them.
+    const SerialResources serial{&w.players_, &w.figures_};
     const TickContext ctx{tick,
                           t,
                           w.config_,
@@ -583,7 +613,8 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
                           IslandsView(w.islands_),
                           draw,
                           w.seams_,
-                          w.transport_stats_};
+                          w.transport_stats_,
+                          w.rules_.house_updates ? &serial : nullptr};
     // 1. The islands, in table order (D: 0x100a2e60, nulls skipped); each island's
     // Effects are merged right after its tick (C1), so figure ids, registry slots
     // and event sequence numbers follow the island order.
@@ -596,6 +627,13 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
         island_tick(ctx, *w.islands_[i], fx);
         fx.draws = draw_records_between(before, draw.counts);
         merge(w, fx, tick, t);
+        if (w.faulted_) {
+            // P-1: a fault of the live population update ends the advance after this island's
+            // merge; the clock stays where this advance put it.
+            w.clock_.end();
+            w.out_.rng_cursor_after = w.rng_.cursor();
+            return tick;
+        }
     }
     // 2. The timed events (D: 0x100add90; events.cpp).
     PopResult events = run_events(w, ctx, draw);

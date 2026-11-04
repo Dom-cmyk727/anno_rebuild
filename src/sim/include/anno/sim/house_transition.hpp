@@ -45,6 +45,7 @@ enum class HouseFault : std::uint8_t {
     IdSecCycle,        ///< an IdSec chain does not end within goods_count steps (P-3)
     Overflow,          ///< a result does not fit the widened field
     NotEvaluated,      ///< the kernel result was NotEvaluated (apply_house_effects only)
+    NoSerialContext,   ///< the live update ran without TickContext::serial (L4)
 };
 [[nodiscard]] const char* house_fault_name(HouseFault fault);
 

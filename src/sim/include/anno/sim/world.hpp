@@ -262,6 +262,13 @@ class World {
     /// Whether a draw-guard violation was recorded (docs/sim/state.md §11, stage
     /// S16). Hashed and saved; nothing sets it before S16, so it is always false.
     [[nodiscard]] bool faulted() const { return faulted_; }
+    /// MAP-POP-LIVE-1 L4 (population-live.md sections 7, 19, P-1): the first typed fault of the live
+    /// population update ("house fault not_evaluated building 4294967297 (kernel: zero_divisor)"),
+    /// empty when there is none. A fault sets `faulted()` (state: hashed and saved) and STOPS the
+    /// world: the advance that recorded it finishes no later phase and every further advance
+    /// changes nothing. The text is a diagnostic: it is not saved, so a reloaded faulted world
+    /// reports only `faulted()`. check_invariants reports it while it is set.
+    [[nodiscard]] const std::string& fault() const { return fault_message_; }
     /// What the last advance produced for the host (UI events of that advance, the
     /// draws per site, the PRNG cursor before and after). Not state, not hashed.
     [[nodiscard]] const SimOutput& last_output() const { return out_; }
@@ -336,13 +343,14 @@ class World {
     /// (state_fields.hpp) and to bump kStateHashVersion, so it cannot be left
     /// outside hash and save (docs/sim/state.md §14.4).
     static constexpr void field_list_canary(const World& w) {
-        // host_events_, out_, transport_stats_ and route_cache_ are host-facing, diagnostic or
+        // host_events_, out_, transport_stats_, fault_message_ and route_cache_ are host-facing, diagnostic or
         // derived, deliberately not in the field list (not state).
         [[maybe_unused]] const auto& [clock_member, rng_member, settings_member, config_member,
                                       rules_member, seams_member, types_member, ids_member,
                                       players_member, islands_member, figures_member, events_member,
                                       timers_member, monopoly_member, event750_acc_member,
-                                      faulted_member, host_events_member, out_member,
+                                      faulted_member, fault_message_member, host_events_member,
+                                      out_member,
                                       transport_stats_member, route_cache_member] = w;
     }
 
@@ -404,6 +412,8 @@ class World {
     MonopolyTable monopoly_;
     std::uint32_t event750_acc_ = 0;
     bool faulted_ = false;
+    // Not state (a diagnostic, never hashed or saved): the text of the fault that set faulted_.
+    std::string fault_message_;
     // Not state (never hashed or saved): the host-facing output.
     HostEventQueue host_events_;
     SimOutput out_;

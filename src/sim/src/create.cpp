@@ -103,14 +103,18 @@ bool has_status_time(const Payload& payload, RuntimeClass cls) {
 
 /// Sets `last` (D: property 0x23, 0x10073380, always writes u16 +0x0a) of any
 /// payload alternative and the status time of the classes that have the slot.
-void stamp_placement(Payload& payload, RuntimeClass cls, std::uint16_t value) {
+void stamp_placement(Payload& payload, RuntimeClass cls, std::uint16_t value, bool stamp_house) {
     const bool with_time = has_status_time(payload, cls);
     std::visit(
-        [value, with_time](auto& p) {
+        [value, with_time, stamp_house](auto& p) {
             if constexpr (std::is_same_v<std::decay_t<decltype(p)>, House>) {
-                // P1 decision 8: the house keeps last = 0; P2, its first reader, writes the
-                // creation time (the original's property 0x23 does, 0x100733ac).
-                (void)value;
+                // P1 decision 8: the house keeps last = 0 (Rules::house_updates off: the accepted
+                // behaviour). MAP-POP-LIVE-1 L4, P-6 (population-live.md section 8): with the live
+                // House update on a created house stamps last = u16(tick), the original's property
+                // 0x23 (0x100733ac); a scenario import and a saved house are not created here.
+                if (stamp_house) {
+                    p.last = value;
+                }
                 (void)with_time;
             } else {
                 p.last = value;
@@ -225,7 +229,7 @@ formats::Result<BuildingKey, Reject> create_building(const SimConfig& cfg, const
     b.kontor_id = rec.kontor_id;
     // 5. The placement tick (D: property 0x23 -> 0x10073380 -> slot +0x120, F1).
     if (initial == nullptr) {
-        stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now));
+        stamp_placement(b.payload, ty->cls, static_cast<std::uint16_t>(now), rules.house_updates);
     }
     // 6. Attach to the city: a mine finds its deposit, position already set (D
     // slot +0x128).

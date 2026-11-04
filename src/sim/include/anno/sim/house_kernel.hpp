@@ -89,6 +89,9 @@ struct HouseKernelResult {
 /// 0x30 give -2 (0x20) or -1 (0x10) and the rest trunc((f + b + i + 1) / 3).
 [[nodiscard]] int house_mood_combine(int f, int b, int i, std::uint8_t flags);
 
+/// The stable text of a reason (fault messages and test output).
+[[nodiscard]] const char* not_evaluated_name(NotEvaluatedReason reason);
+
 [[nodiscard]] HouseKernelResult house_kernel(const HouseKernelInputs& in);
 
 } // namespace anno::sim

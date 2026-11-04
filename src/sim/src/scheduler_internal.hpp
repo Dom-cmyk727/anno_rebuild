@@ -11,6 +11,7 @@ namespace anno::sim {
 
 class World;
 struct Effects;
+struct FaultRecord;
 struct Player;
 struct Island;
 struct City;
@@ -21,6 +22,8 @@ struct PopResult;
 /// The friend of World that runs advance and merges Effects (docs/sim/state.md §5.3).
 struct Scheduler {
     static std::uint64_t advance(World& w, std::uint32_t game_ms);
+    /// MAP-POP-LIVE-1 L4: records a typed fault (the first one sets World::faulted() and the text).
+    static void record_fault(World& w, const FaultRecord& fault);
     static void release_counter(World& w, BuildingId home, std::uint32_t home_counter);
     static void release_walker(World& w, BuildingId home, std::uint32_t slot, FigureId figure);
     /// Merges `fx` in the order of §5.3 (spawns, releases, money, goods moves,

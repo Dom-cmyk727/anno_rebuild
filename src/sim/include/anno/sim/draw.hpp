@@ -210,7 +210,8 @@ enum class DrawPhase : std::uint8_t { Load, Advance };
            site == DrawSite::LinkRawMaterial || site == DrawSite::LinkOre ||
            site == DrawSite::LinkTemplatePick || site == DrawSite::LinkSpecialMark ||
            site == DrawSite::LinkTreasure || site == DrawSite::CityName ||
-           site == DrawSite::FarmWorkerDispatch;
+           site == DrawSite::FarmWorkerDispatch || site == DrawSite::HouseWalkerTarget ||
+           site == DrawSite::HouseVariant || site == DrawSite::HouseFirstAssignment;
 }
 
 /// A source of world draws. The world PRNG behind it is consumed in the

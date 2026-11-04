@@ -12,6 +12,7 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/figure.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/ship.hpp>
 #include <anno/sim/world.hpp>
 
@@ -238,6 +239,9 @@ std::string World::check_invariants() const {
         }
     }
     if (problem.empty()) {
+        problem = house_updates_problem(config_, rules_, *types_);
+    }
+    if (problem.empty()) {
         problem = settings_.validate();
     }
     // The player table, the islands with their tiles, cities and buildings.
@@ -309,6 +313,11 @@ std::string World::check_invariants() const {
     problem = resident_problem();
     if (!problem.empty()) {
         return problem;
+    }
+    if (!fault_message_.empty()) {
+        // MAP-POP-LIVE-1 L4 (P-1): a recorded fault of the live population update is reported
+        // until the world is replaced; the text is a diagnostic (not saved).
+        return "world fault: " + fault_message_;
     }
     for (const auto& entry : events_.q) {
         if (entry.first.second >= ids_.next_event_seq) {

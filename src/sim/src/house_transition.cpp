@@ -204,6 +204,8 @@ const char* house_fault_name(HouseFault fault) {
         return "overflow";
     case HouseFault::NotEvaluated:
         return "not_evaluated";
+    case HouseFault::NoSerialContext:
+        return "no_serial_context";
     }
     return "unknown";
 }

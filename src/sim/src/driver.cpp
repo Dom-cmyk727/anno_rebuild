@@ -8,6 +8,7 @@
 
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/transport.hpp>
 
 namespace anno::sim {
@@ -237,8 +238,12 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
     case TickKind::None:
         return; // inert: `last` untouched (D15)
     case TickKind::House:
-        return; // P1: the house holds its state but has no update yet (P2); `last` untouched, like
-                // None
+        // MAP-POP-LIVE-1 L4: the complete live update behind Rules::house_updates (default off:
+        // P1's inert house, `last` untouched, like None). Serial path: house_tick.hpp.
+        if (ctx.rules.house_updates && fx.faults.empty()) {
+            house_tick(ctx, island, city, b, *type, fx);
+        }
+        return;
     case TickKind::Workshop: {
         auto* w = std::get_if<Workshop>(&b.payload);
         if (w == nullptr) {

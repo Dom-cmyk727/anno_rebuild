@@ -26,6 +26,34 @@ i64 score(i64 stock, i64 e, i64 menge, i64 cap) {
 
 } // namespace
 
+const char* not_evaluated_name(NotEvaluatedReason reason) {
+    switch (reason) {
+    case NotEvaluatedReason::None:
+        return "none";
+    case NotEvaluatedReason::GatePeriodOutOfDomain:
+        return "gate_period_out_of_domain";
+    case NotEvaluatedReason::MissingGroup:
+        return "missing_group";
+    case NotEvaluatedReason::StockSizeMismatch:
+        return "stock_size_mismatch";
+    case NotEvaluatedReason::StageIndexOutOfDomain:
+        return "stage_index_out_of_domain";
+    case NotEvaluatedReason::NegativeSmoothedE:
+        return "negative_smoothed_e";
+    case NotEvaluatedReason::ZeroDivisor:
+        return "zero_divisor";
+    case NotEvaluatedReason::MissingFirstNeed:
+        return "missing_first_need";
+    case NotEvaluatedReason::MoodOutOfRange:
+        return "mood_out_of_range";
+    case NotEvaluatedReason::Overflow:
+        return "overflow";
+    case NotEvaluatedReason::PreviousCapacityUnavailable:
+        return "previous_capacity_unavailable";
+    }
+    return "unknown";
+}
+
 int house_mood_combine(int f, int b, int i, std::uint8_t flags) {
     if (f < 0 || b < 0 || i < 0) {
         if ((flags & 0x20U) != 0) {

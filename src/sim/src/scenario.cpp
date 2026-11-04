@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <anno/sim/create.hpp>
+#include <anno/sim/house_tick.hpp>
 #include <anno/sim/island.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/ship.hpp>
@@ -313,6 +314,9 @@ formats::Result<World, std::string> World::create(const ScenarioSpec& spec,
         if (!problem.empty()) {
             problem = "registry does not fit the configuration: " + problem;
         }
+    }
+    if (problem.empty()) {
+        problem = house_updates_problem(config, rules, *types);
     }
     if (problem.empty()) {
         problem = spec.settings.validate();

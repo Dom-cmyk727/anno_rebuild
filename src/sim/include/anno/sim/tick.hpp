@@ -33,6 +33,39 @@ namespace anno::sim {
 
 struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 
+// Opaque declarations of the typed population faults (house_transition.hpp, resident.hpp,
+// house_kernel.hpp), so the effect buffer can carry them without including those modules.
+enum class HouseFault : std::uint8_t;
+enum class ResidentFault : std::uint8_t;
+enum class NotEvaluatedReason : std::uint8_t;
+
+/// MAP-POP-LIVE-1 L4 (docs/sim/population-live.md section 19): a typed fault of the live House
+/// update (P-1/P-3: fail loudly). `house` names the House operation that could not be performed
+/// (HouseFault::NotEvaluated carries the kernel's `reason`); `resident` is a ResidentFault of a
+/// choice, bill or add. Exactly one of the two is non-zero. The world merges it in issue order;
+/// the first one stops the world (World::fault()).
+struct FaultRecord {
+    HouseFault house{};
+    NotEvaluatedReason reason{};
+    ResidentFault resident{};
+    BuildingId building;
+    FigureId figure;
+    GoodsId goods = 0;
+};
+
+/// The serial resources the live House update and the stage pass write DIRECTLY (not through
+/// Effects, because the original order interleaves them with the other building ticks and their
+/// draws): the player table (the stage mask OR, the defeat flag of a removal) and the figure
+/// registry (a removed or shrunk house ends its walkers). The island phase of World::advance is
+/// serial today (islands in table order, each merged before the next); a parallel island phase
+/// (stage S16) must move the House path into the merge phase before it can use more than one
+/// worker. Null for a context that does not belong to an advance: the House update then reports a
+/// fault instead of running half-way.
+struct SerialResources {
+    PlayerTable* players = nullptr;
+    FigureRegistry* figures = nullptr;
+};
+
 /// The players as a tick sees them: read-only, and deliberately without a money
 /// accessor (money changes only through Effects::money, merged by the world, so
 /// that no island tick can read a balance that a serial phase is about to
@@ -55,6 +88,11 @@ class PlayersView {
     [[nodiscard]] bool researched(PlayerId id, std::uint32_t research_id) const {
         const Player* p = find(id);
         return p != nullptr && p->research.researched(research_id);
+    }
+    /// The player's stage mask (Player::flags, D +0x90); 0 for a player that is not there.
+    [[nodiscard]] std::uint32_t flags(PlayerId id) const {
+        const Player* p = find(id);
+        return p != nullptr ? p->flags : 0;
     }
     /// O-9: whether the player's build cost is waived; false when not there.
     [[nodiscard]] bool free_build(PlayerId id) const {
@@ -151,6 +189,8 @@ struct TickContext {
     /// null if island ticks ever run in parallel (stage S16): a concurrent write
     /// across islands would race on the std::map and the counters.
     TransportStats* transport_stats = nullptr;
+    /// MAP-POP-LIVE-1 L4: see SerialResources. Set by Scheduler::advance; default null.
+    const SerialResources* serial = nullptr;
 };
 
 /// A figure a building asks for. The building's own counter was already raised in
@@ -348,6 +388,9 @@ struct Effects {
     /// MAP-POP-LIVE-1 L2: the residents' deliveries to their houses, applied right after the spawns
     /// and before the releases.
     std::vector<HouseDelivery> house_deliveries;
+    /// MAP-POP-LIVE-1 L4: typed faults of the live population update, merged in order; the first
+    /// one stops the world.
+    std::vector<FaultRecord> faults;
     /// Diagnostic (TransportStats::forestry.raw_lost_88, never state): the cargo of harvest workers
     /// that the shared end path ended before their delivery (MAP-ECON-1-CLOSE-1).
     std::uint64_t harvest_lost_88 = 0;

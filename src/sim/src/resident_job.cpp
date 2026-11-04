@@ -65,6 +65,24 @@ SupplierOffer offer_of(const SupplierModel& m, const std::vector<std::uint32_t>&
     return o;
 }
 
+/// P-1/P-3 (population-live.md section 19): a typed fault of a choice, bill or add is recorded in
+/// the effect buffer (the world stops at the merge) and counted for the diagnostics; it is never a
+/// silent skip.
+void report_fault(const TickContext& ctx, Effects& fx, ResidentFault fault, BuildingId building,
+                  const Figure* figure, GoodsId goods) {
+    if (ctx.transport_stats != nullptr) {
+        ++ctx.transport_stats->residents.faults;
+    }
+    FaultRecord rec;
+    rec.resident = fault;
+    rec.building = building;
+    if (figure != nullptr) {
+        rec.figure = figure->id;
+    }
+    rec.goods = goods;
+    fx.faults.push_back(rec);
+}
+
 } // namespace
 
 bool resident_runs_job(std::uint32_t job) {
@@ -209,16 +227,12 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
         ResidentFault fault = ResidentFault::None;
         const SupplierOffer offer = offer_of(m, c->stock.stock, fault);
         if (fault != ResidentFault::None) {
-            if (ctx.transport_stats != nullptr) {
-                ++ctx.transport_stats->residents.faults;
-            }
+            report_fault(ctx, world.fx, fault, b->id, walker, 0);
             continue;
         }
         const ChoiceResult r = house_choice(*facts, offer, own, others);
         if (r.fault != ResidentFault::None) {
-            if (ctx.transport_stats != nullptr) {
-                ++ctx.transport_stats->residents.faults;
-            }
+            report_fault(ctx, world.fx, r.fault, b->id, walker, 0);
             continue;
         }
         if (r.score >= kPurchaseScoreGate) {
@@ -364,7 +378,9 @@ struct Body {
         const BuyResult res = resident_buy(*facts, model, ledger, ft.capacity_88, others, r.cargo);
         if (stats != nullptr) {
             stats->purchases += res.purchases;
-            stats->faults += res.fault != ResidentFault::None ? 1U : 0U;
+        }
+        if (res.fault != ResidentFault::None) {
+            report_fault(ctx, world.fx, res.fault, stand->id, &fig, 0);
         }
         // The debit and the billed counters go out as deltas, merged right after this call.
         for (std::size_t g = 0; g < store.size() && g < c->stock.stock.size(); ++g) {

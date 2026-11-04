@@ -60,7 +60,9 @@ std::int32_t pixel(const Params& p, const Draw& d, std::int32_t row, std::int64_
     case Class::Z:
         return d.base + 256 * static_cast<std::int32_t>(static_cast<std::int8_t>(z));
     case Class::V:
-        return d.base + div_euclid<std::int32_t>(p.sv * (row - d.anchor_row), 256);
+        // In i64: no overflow for any frame height or zoom group.
+        return d.base + static_cast<std::int32_t>(div_euclid<std::int64_t>(
+                            std::int64_t{p.sv} * (std::int64_t{row} - d.anchor_row), 256));
     case Class::H:
         return at(p, y2, d.h64);
     case Class::None:

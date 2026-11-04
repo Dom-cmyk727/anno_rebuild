@@ -64,7 +64,7 @@ Open:
 - one P3: the Q5 shore claim was not measured;
 - NOT_RUN: the sanitizer lane at the head and the Wine key check.
 
-The floating Kontor is **W4-DEPTH-1** below: queued, not released.
+The floating Kontor is **W4-DEPTH-1** below. The owner released it on 2026-11-04, and it is now reviewed (update below).
 
 **Windows sequence, owner 2026-11-04 ("Yes and merge"; chose "Main, as own package").** Three packages, run in this
 order:
@@ -77,6 +77,19 @@ order:
 Each package's own review gates the next, so no further owner approval is needed between them. The owner's playtest
 of the opening may happen at any point: fixes from it go to `task/W4-opening-1` before W4-MAIN-1 starts, and to
 `task/W4-opening-2` after.
+
+**Update 2026-11-04, evening (W4-DEPTH-1 reviewed).** The owner released W4-DEPTH-1 as its own branch. The executor
+delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, report `0fd1d219`.
+- **Review:** the [depth review](reviews/2026-11-04-w4-depth1.md) finds no P1. Mutation runs, sanitizer lanes, the
+  idle-host performance figures and small P3s remain before acceptance; they are **W4-DEPTH-1-CLOSE**, released below.
+- **Owner decisions open:** the water level (the original's sea plane is ≈ 26.5, our default is 16.5) and the
+  `--depth` switch.
+- **The closeout:** its latest WSL ASan app gate at `1d34dd97` fails `opening_session_replay` at stage 1. Find the
+  cause before that chain runs again.
+- **Merge order (review §5):** if the owner's depth check passes before the closeout's final gate chain, the depth
+  merges into `task/W4-opening-1` first. Otherwise it merges into `main` after W4-MAIN-1, as its own merge, before
+  W4-OPENING-2.
+- **Queued, not released:** W4-SHORE-2, which draws the sea against its plane per pixel.
 
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
@@ -127,6 +140,21 @@ closure and actual upward progression form one bundle. Internal independent
 approvals unlock its next package automatically; return once after the final
 integration review. Keep the global House default off pending acceptance.
 Windows' exact inputs and assignments below are unchanged.
+
+**Update 2026-11-04, evening (MAP-POP-CLOSE-1 reviewed).** The Mac executor returned CLOSE-1 as **PARTIAL** at local,
+unpublished head `1e65ea7d` (gate source `719f394a`). Read the [CLOSE-1 review](reviews/2026-11-04-map-pop-close1.md).
+- **Retained:** the corrections, first assignment on the public build path, real-data growth, reload and replay.
+- **The reported blocker is narrower than stated.** The Inn's carrier is the existing workshop carrier (job `0x33`),
+  and 28 original towns already stock the alcohol, leather, cloth and salt a settler upgrade needs. No production chain
+  or fixture stock is needed.
+- **`endless03` cannot upgrade even with a working Inn:** settlers force leather, cloth and salt, which that town does
+  not stock.
+- **Identity:** stream 128 and PRNG timeline 5 are confirmed as amended in place; they were never accepted or
+  published.
+
+**MAP-POP-CLOSE-2 below is READY, RELEASED.** The last accepted and published MAP pin stays `73e7ab1a`. Windows' inputs
+are unchanged.
+
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
 roads do not expand its assigned playtest (W4-OPENING-2 below takes them, at `73e7ab1a`, after W4-MAIN-1). Both opening inputs are reviewed, accepted and
@@ -136,8 +164,8 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE (CURRENT), THEN W4-MAIN-1, THEN W4-OPENING-2, ALL RELEASED IN THIS ORDER.** Continue `task/W4-opening-1` from `02133ade` with the closeout below. Then merge into `main` on `task/W4-main-1` (the orchestrator moves `main` after its review). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Do not start W4-DEPTH-1 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-LIVE-1 REVIEWED; MAP-POP-CLOSE-1 READY, RELEASED.** Continue local `135edf6f` through C0–C5 below, with independent package reviews and one final handoff. Fix the direct findings and complete positive real-data progression; no default flip or executor push. Windows keeps exact `0c401c8d` until W4-OPENING-2, which takes accepted `73e7ab1a`; never substitute the population tip. At the next natural checkpoint, without interrupting this bundle, run macOS `test_support` at published `task/W4-main-1` and report its exact pin/result; this is non-blocking, authorizes no merge or coordinator redesign, and stays pending if unpublished. Complete the MAP documentation handoffs in playtest review §7 at the next docs checkpoint. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE (CURRENT), THEN W4-MAIN-1, THEN W4-OPENING-2, ALL RELEASED IN THIS ORDER.** Continue `task/W4-opening-1` from `02133ade` with the closeout below. Then merge into `main` on `task/W4-main-1` (the orchestrator moves `main` after its review). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time; the closeout stays the critical path. Its merge follows the depth review §5.** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-1 REVIEWED, PARTIAL; MAP-POP-CLOSE-2 READY, RELEASED.** Continue local `1e65ea7d` through K0–K4 below, with independent package reviews and one final handoff. Add the Inn supply path, reusing job `0x33`, and prove the first real upgrade in an original town that stocks the settler goods; no production chain, no fixture stock, no default flip. At the handoff, one plain fast-forward push of the final head for review; no other push. Windows keeps exact `0c401c8d` until W4-OPENING-2, which takes accepted `73e7ab1a`; never substitute the population tip. At the next natural checkpoint, without interrupting this bundle, run macOS `test_support` at published `task/W4-main-1` and report its exact pin/result; this is non-blocking, authorizes no merge or coordinator redesign, and stays pending if unpublished. Complete the MAP documentation handoffs in playtest review §7 at the next docs checkpoint. |
 
 ### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · RELEASED, CURRENT
 
@@ -217,7 +245,8 @@ Mac commit.
    - **`CMakeLists.txt`:** the union of both sides' targets and options. Drop nothing.
    - **`tools/test/*`:** main's versions are the workflow authority the gates already use (every gate file names its
      `workflow head` on `main`). Take main's, unless the branch's version holds a fix `main` lacks. Then port that fix
-     with a test, and list it.
+     with a test, and list it. Also fix the skip classifier, which counts "skipping: no game files" as "other"
+     (depth review F6), with a test.
    - **Coordinator files:** one implementation that keeps both sides' tested behaviour (macOS spawn and process
      identity, detached stdio, the WSL-meter skips).
      - For each hunk, record both intents, the resolution and the test that covers it.
@@ -338,11 +367,83 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Out of scope:**
 - live population (MAP-POP-LIVE-1, a later integration);
-- W4-DEPTH-1;
+- W4-DEPTH-1's own work (its merge follows the depth review §5);
 - UI.2, network and trade routes;
 - the zoom artifacts (separate, once the owner's console log arrives).
 
-### W4-DEPTH-1 — per-pixel sprite depth against the terrain and the water · QUEUED, NOT RELEASED
+### W4-DEPTH-1-CLOSE — finish the depth package for acceptance · RELEASED
+
+**Owner and starting point:** the Windows executor, in the depth worktree
+`E:\anno1503\.claude\worktrees\wizardly-chatelet-f638c2`, from `task/W4-depth-1` at `0fd1d219`. Read the
+[depth review](reviews/2026-11-04-w4-depth1.md) first. The PC is shared with W4-OPENING-1-CLOSE, which stays the
+critical path: run one lane at a time.
+
+**Steps:**
+1. **Mutation runs (review F1).** Run three mutants of `depth.cpp` against the depth cases. Where `gpu.wgsl` holds the
+   same rule, run its twin too.
+   - `<` instead of `<=` in the depth test;
+   - the `z` byte ignored, so that pixel depth = base;
+   - the write rule changed: once with every format writing, once with none.
+   For each, record the case that fails and that the legal control passes. Restore the source byte for byte.
+2. **Sanitizers (F2).** At the depth head, run:
+   - the WSL ASan/UBSan app lane as the closeout runs it (`anno_app_tests` and the input and alloc tests);
+   - the `scene reclaim` case alone under ASan.
+   The GPU code stays NOT_RUN.
+3. **Performance on an idle host (F3),** following `docs/perf/README.md`. Record the host load before and after.
+   - `bench_frame --chunk-profile ... --depth on|off`;
+   - `bench_frame --renderer gpu --depth on|off`, for the extra pass's frame time;
+   - the atlas bytes with and without the z plane;
+   - the headless +16 % split into the ground probe and the per-pixel test, or the reason it cannot be split.
+4. **The anchor rule on more objects (F4).** Use the existing dumps (`cache/orig/depth1/`): check a tree and one other
+   building class. If either disagrees with "footprint centre at h · 0.04", record it in OQ-026 and say which objects
+   the renderer then draws wrongly.
+5. **Fixtures off the height-0 stand-in (F5).** Make `dev_visibility_test.cpp`:212/:228 and
+   `picture_gpu_test.cpp`:544/:561 place through the real placement rule, or assert a minimum of visible pixels. No sim
+   change. Record the stand-in question for the MAP lane in the report.
+6. **Small items (F6).** Fix lines 68–70 of the playtest card. Add a road view and a meadow view next to a building to
+   the sheets.
+7. **Gates on the final head:**
+   - render, render heavy, app, app heavy, GPU and the no-game lane;
+   - the WSL warnings for the changed files, and clang-format 23.1.3;
+   - the sanitizer lanes of step 2.
+   River Q5 stays the known failure (W4-OPENING-1-CLOSE item 1); any other failure stops the package.
+8. **Review and report.** An independent read-only review of the close items. Then a REPORTS entry with the pins, the
+   counts, the measured figures and Decisions and reasoning. No push or merge outside the merge order.
+
+**Owner check** (on `task/W4-depth-1`, at any time):
+- the card's "Depth checks" 1–4;
+- the start Kontor at `--shore 16.5` and at `--shore 26.5`, beside the GOG capture;
+- the two decisions of review §3.
+
+**Merge:** per review §5.
+
+### W4-SHORE-2 — the sea against its plane, per pixel · QUEUED, NOT RELEASED
+
+**Why:** the original's sea plane is ≈ 26.5 `HEIGHT` (depth review §3, `docs/re/annodisplay.md` §9.3).
+- **The original** draws the sea on every screen pixel with `(x + y)` even whose cached height lies below that plane,
+  so its water edge follows the terrain.
+- **Ours** decides where water may be by 8 × 8-tile sea regions with land classifier 19. At 26.5 that shows as stepped
+  water edges on wide beaches.
+
+**Start:** only after the owner's release, from the branch that holds the accepted depth.
+
+**Steps:**
+1. **Design** in `docs/render/depth.md`. Cover:
+   - how the sea is drawn over all chunks and depth-tested against its plane, in the original and the enhanced water
+     modes;
+   - what changes for the rivers, the coast pieces and the river QA;
+   - the ships' hulls below the plane, if the trace shows how (`annodisplay.md` §9.2, "Ships").
+2. **Implement** on the GPU with the CPU reference, in both water modes. GPU = CPU on real data.
+3. **Measure:**
+   - Q5 and the five QA islands at 16.5 and at 26.5;
+   - the re-recorded digests, each with its reason;
+   - performance.
+4. **Owner check:** the start Kontor and the four `S01_02_01` Kontors at 26.5, beside the GOG capture. The owner then
+   chooses the default shore.
+
+**Out of scope:** view rotation and the zoom artifacts.
+
+### W4-DEPTH-1 — per-pixel sprite depth against the terrain and the water · RELEASED BY THE OWNER 2026-11-04; REVIEWED, CLOSE ITEMS ABOVE
 
 **Origin (owner, 2026-11-03; recorded 2026-11-04).** After the H1 pictures the owner reported that:
 - the original's Kontor is embedded in the ground, while ours floats;
@@ -1464,7 +1565,212 @@ game files, stop others' jobs/keep-awake assertions, or merge/rebase/push task c
 instruction. Write executor results to `REPORTS.md`; the orchestrator updates and
 publishes this board. Preserve the owner's current keep-awake setup.
 
-### MAP-POP-CLOSE-1 — complete resident supply and prove upward town progression · READY, RELEASED
+### MAP-POP-CLOSE-2 — the Inn supply path and the first real upgrade · READY, RELEASED
+
+**Owner and starting point:** the Mac executor, in the existing `task/MAP-2-original-like` worktree, from local clean
+head `1e65ea7d` (gate source `719f394a`). Preserve any later owned work and report its identity; do not reset.
+- Read the [CLOSE-1 review](reviews/2026-11-04-map-pop-close1.md) first.
+- The accepted predecessor stays `73e7ab1a129c4712747333d9f34a225be03f063f`.
+- This continues CLOSE-1. Its C0–C3 are not repeated, and its operating boundaries (its read-order items 1–6) still
+  apply.
+
+**Deliverable:** CLOSE-1's C4 loop, completed. In an explicitly enabled headless run, on an original town that stocks
+the settler goods:
+- **Build and supply.** A fresh pioneer house is built through `BuildCmd`. Real resident jobs supply it from stalls,
+  from a chapel, and from an Inn whose own carrier (job `0x33`) fetches alcohol.
+- **Progress.** The house grows, then upgrades to settlers with an exact material debit, and a stage unlock reaches the
+  player's mask.
+- **Prove.** Add the refusal, lifecycle, reload and replay checks.
+
+Return once, after K0–K4. Independent package approvals unlock the next package. `house_updates` stays false by default;
+this is not live-window gameplay.
+
+**Decisions and reasoning (orchestrator, 2026-11-04):**
+1. **Stream 128 and PRNG timeline 5 stay amended in place.**
+   - **Why:** they were never accepted or published. The published MAP branch is stream 127, timeline 4, at `73e7ab1a`.
+   - **What to do:** add the Inn state under 128/5, again in place.
+   - **Conditions:** no artifact in a superseded 128 layout is used as a test or replay input; `tools/sim_stream.py`
+     describes the final layout; the report lists each amendment. Acceptance freezes the identity.
+2. **No production chain and no fixture stock.**
+   - **Why:** 28 original towns already hold the goods (review §5), and the Inn's carrier is the existing workshop
+     carrier (review R1).
+   - **Out of scope:** potato farm, distillery, brewery, tannery, weaver and salt works.
+3. **`endless03` player 4 is not the progression town.** Settlers force leather, cloth and salt, and it stocks none
+   (review R2). Its growth run stays as evidence.
+4. **The CLOSE-1 P3s stay accepted, except the route exemption.** The code check found it wider than "leaving the
+   stand" (review §6, P3 1), so K2 narrows it and adds its tests.
+
+**Scope:**
+- **In:** the Inn's state, tick, take, unload and persistence; reuse of job `0x33`; checks of the chapel and stall supply
+  (and narrow fixes only where a path is missing); the town choice; the upgrade loop; docs.
+- **Out:** production chains, taxes, upkeep, UI, renderer, network, the default flip, Windows code, the coordinator and
+  sailing.
+- **Data:** goods, groups and roles stay data-defined. No shipped id is special-cased in code or canaries.
+
+#### Read order
+
+1. Fetch GitHub. Read in `origin/main`:
+   - this section;
+   - the CLOSE-1 review;
+   - CLOSE-1's section below;
+   - `docs/testing/evidence-contract.md` and `docs/testing/README.md`.
+   Use `git show`; do not merge main into MAP.
+2. Your CLOSE-1 ledger and REPORTS entry; `docs/re/population.md` §§12–14; `docs/re/transport.md` §2 and §4.7;
+   `docs/re/production.md` §4.1, the workshop carrier's source filter and callback.
+3. The workshop carrier's implementation (job `0x33`, `send_figure_job`, the S11 driver) and its tests, before writing
+   any Inn code.
+4. The original files at `/Users/dom/Dev/anno1503-worktrees/anno1503/game/app`; check the module hashes against the
+   review. Use `tools/disasm.py` with the existing private environment.
+
+#### K0 — cheap checks and the town choice (no long runs)
+
+1. **Re-read every address in review §4 independently.** Record widths and units. Also record:
+   - what the two calls after the send set: figure `+0x84(0)`, and figure slot `+0` with `type+0xb0(0)`;
+   - what `type+0xb0(0)`, `type+0xb4(0,0)` and `type+0xb8(0)` return for the shipped WIRT type;
+   - in which unit the carrier unloads at the Inn's `+0xc0`, which has no `·16`.
+2. **Check whether locked needs are fetched.** Read demand (`0x100765c0`) and job `0x35`'s target choice: is a need
+   fetched while its `BauFirst` stage is not yet in the player's mask? WIRTSHAUS is stage `1B` (80 pioneers), KAPELLE
+   `1C` (125). The answer decides which towns qualify.
+3. **Choose the town.** Start from review §5, or take any other original town that meets the criteria below. Load each
+   candidate once. The town needs:
+   - **stock:** NAHRUNG, LEDER, STOFFE, SALZ, ALKOHOL and the settler house's materials in store;
+   - **suppliers:** a market hall, stands that sell food, salt, cloth and leather, a chapel and an Inn, or free land to
+     build the missing ones with `BuildCmd`;
+   - **land and reach:** free land for one new pioneer house within reach of all of them, and the Inn within carrier
+     reach of the market hall;
+   - **stages:** the stages of item 2 available;
+   - **a new stage:** a threshold that this house's growth or upgrade crosses, whose bit the player's mask does not hold
+     yet.
+   Record the chosen town's inputs in the report before the long run. If no town has a new stage to unlock, say so and
+   name the stage the loop changes instead.
+4. **Explain the first delivery.** Split the ~35,000 ticks to the first delivery on `endless03` into their terms: spawn
+   gate, route, walk, stall wait, return. Give each term's address. The wait is already cited as D (review R3). Any
+   term that is not read goes to an open question; never state it as original behavior.
+5. **Cross-check the Inn count.** Check the report's "58 city rows with an Inn" against PRODTYPE 66 (review R5).
+6. **Review.** An independent read-only reviewer checks items 1–4 against the binaries. Then continue to K1.
+
+#### K1 — the Inn
+
+1. **State:** `struct Inn` at `1e65ea7d` already holds the tavern stock and the taken statistic (widened from u16),
+   with load, save, take and unload. Check them against review §4, including the 10-byte class record (`[2]` stock,
+   `[8]` demand; shipped Inns load stock 0). Add what the tick needs:
+   - the gate's `last`;
+   - the active carriers: the original has two slots at `+0x1c`/`+0x20`, and the limit comes from the type
+     (`+0xb8(0)`). Keep that limit data.
+2. **Tick**, at its 5000-tick gate:
+   1. demand decays by 31/32, truncating;
+   2. stop when the Inn is switched off (flags bits 4/5);
+   3. stop at the carrier limit;
+   4. stop when stock ≥ `0x100` and stock ≥ demand / 2;
+   5. otherwise send job `0x33` with the type's figure type and the goods found in K0 item 1.
+3. **Carrier:** reuse the existing workshop carrier for search, filter, pickup, routes and unload.
+   - If the Inn needs something the workshop path lacks, add it as data or as a class property, not as an Inn special
+     case.
+   - The pickup reduces the city store (or a producer's output); serving a resident does not.
+4. **Take and unload.**
+   - **Take** at a resident's visit: `n = min(request, stock)`; demand `+= n`; stock `−= n`; then bill alcohol with
+     take 0. The resident's goods fill the house's WIRTSHAUS slot through the existing ALKOHOL→WIRTSHAUS lookup alias.
+   - **Unload:** stock `+= amount`.
+5. **Tests.** Derive each expected value by hand and check it against an independent reference: extend
+   `tools/resident_ref.py`, or add a small `inn_ref.py` with its own CLI contract. Cover:
+   - the gate at 4999 and 5000, and the u16 wrap;
+   - the demand decay;
+   - each stop condition, and the boundaries at stock `0xff`/`0x100` and at demand / 2;
+   - the carrier limit;
+   - a take with a request above, equal to and below the stock;
+   - an unload;
+   - save/reload with stock above 0, and with a carrier on its way;
+   - a non-original Inn type id and goods id.
+   Each wrong-behavior mutant must reach its intended assertion while the legal control passes.
+6. **Regressions:** the workshop carriers and the forestry/economy canaries keep their results (448 raw units, 28/28
+   checkpoints) unless a change is justified and recorded. Windows compares these values in W4-OPENING-2.
+7. Package review, fixes, then continue.
+
+#### K2 — chapel, stalls and route endpoints
+
+1. **Test both supply paths:**
+   - a resident's visit to a chapel credits the house's KAPELLE slot (PublicService, take 0);
+   - stalls credit LEDER, STOFFE and SALZ from the store (take 1).
+   If either path is missing, implement it narrowly with primary evidence (`population.md` §14, OQ-102 Q3).
+2. **Narrow the route exemption and test it.** The exempt first step also skips the side check and the layer
+   admission of `route[1]`, the ordinary tile outside the stand (`walk_search.cpp:421–425`; review §6, P3 1). Skip only
+   what leaving the stand needs; keep both checks for `route[1]`.
+   - Add the first-step test from CLOSE-1's accepted P3: a first step from a stall into a wall.
+   - Add a tile next to a stand that refuses entry from the stand's side.
+   - Add the Inn and the chapel as further endpoints.
+   Do not change shared cart or harvester routing without running their regressions.
+3. **Close two test gaps** (review §6, P3s 2 and 3): check every claimed floor clip against `before + VermehrTab` and
+   its floor, and test the billing bound exactly at `u32` max.
+4. Package review, then continue.
+
+#### K3 — the real upgrade
+
+1. **Build and run.** In the K0 town, build the house (and any missing supplier) with `BuildCmd`, then advance time.
+   Nothing is injected after the start.
+2. **Assert CLOSE-1 C4 item 2 in full:**
+   - before and after: type, group, population, tile identity and city counts;
+   - the exact material debit and the spent counters;
+   - the draws, including a variant draw if the type has variants;
+   - the city stage mask and a **changed player mask**.
+3. **Check the deciding tick.** At the tick the check passes, compare the engine's food, goods and infra values and their
+   table indices with the independent reference.
+4. **Controls:**
+   - **materials short:** ordinary `BuildCmd`s spend the materials first. Expect no upgrade, no spend, no draw and no
+     type change;
+   - **no Inn service:** no Inn, or the Inn switched off if the original's flag path is reachable. Expect infra below
+     84 and no upgrade;
+   - **no build:** the stage bit does not change;
+   - keep the decline/removal control.
+5. **Ledger:** trace alcohol from the store to the carrier, the Inn, the resident and the house. Trace leather, cloth and
+   salt from the store to the stall and the house. Every unexplained term must be zero.
+6. **Persistence:**
+   - save and reload with the carrier on its way, with Inn stock above 0, with a resident carrying tavern goods, and
+     just before and after the upgrade and the unlock;
+   - a fresh-process replay with exact checkpoints, in which an altered relevant command diverges for the intended
+     reason;
+   - the replay binary built and hashed separately.
+7. **If it still does not upgrade,** stop as PARTIAL. Report:
+   - the engine's check values at the best tick: the three values, their indices and table entries;
+   - the materials result;
+   - the exact rule that is not read.
+   Do not patch supplies, weaken the check or call a downgrade an upgrade.
+
+#### K4 — gates, docs and one handoff
+
+1. **Gates:**
+   - **Runner:** use main's `tools/test/run_selected.py` as in CLOSE-1 C5 items 1–4, with new logs under
+     `cache/map2-pop-close2/gates/`.
+   - **Selection:** add the Inn, carrier, transport and production suites (job `0x33` is shared) and the progression
+     canary.
+   - **Reference entries:** keep the nine required ones and add any new Inn reference.
+   - **Sanitizers:** if P-15 or this package changed shared route code, the route suites go into the sanitizer run too.
+     Name the changed files.
+2. **Docs:**
+   - an Inn section in `population.md`, with the addresses;
+   - the Inn row in the `state.md` class table;
+   - OQ-102 Q2 answered for the tavern: it has its own stock, refilled by job `0x33`;
+   - the community note "a tavern's alcohol is not saved" corrected for the Inn object: its Save writes stock and demand.
+     What happens to the carrier's cargo on save stays open;
+   - the ledger rows.
+3. **Earlier docs handoffs.** If CLOSE-1 did not do them, finish the MAP docs handoffs of Windows playtest review §7:
+   the founding text at `0x10049340`/`0x10049166`, the land model against shore 16.5, and the BEL escapes.
+4. **macOS `test_support`:** the check stays conditional on a published `task/W4-main-1`.
+5. **Final review:** a fresh read-only integration reviewer. Persist ids, revisions and dispositions.
+6. **Report:**
+   - pins and counts: selected, pass, fail, empty, skip, incomplete and sanitizer lines;
+   - Decisions and reasoning;
+   - the final 128/5 layout and its amendments;
+   - the Windows API delta.
+   Finish clean. Then publish the exact final head once, as a plain fast-forward push of `task/MAP-2-original-like`
+   with no force, as for `1e65ea7d`, so that the orchestrator can review the source. No other push, no main merge or
+   rebase, and the defaults stay off.
+
+**Stop:** one combined handoff after K0–K4, or PARTIAL with the values of K3 item 7.
+
+### MAP-POP-CLOSE-1 — complete resident supply and prove upward town progression · REVIEWED, PARTIAL; CLOSE-2 ABOVE IS CURRENT
+
+The `1e65ea7d` handoff is reviewed in [2026-11-04-map-pop-close1.md](reviews/2026-11-04-map-pop-close1.md). Its
+boundaries below still apply to CLOSE-2; its packages are history.
 
 **Owner and starting point:** Mac executor, existing `task/MAP-2-original-like`
 worktree, local clean report head `135edf6f`. Preserve any later owned work and

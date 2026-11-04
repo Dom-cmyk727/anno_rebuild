@@ -429,8 +429,27 @@ RouteCheck route_legal(const WalkCells& input, const WalkTables& tables, std::ui
         if (!inside(cells.rect(), route[i])) {
             return refuse(i, "the step leaves the search rectangle");
         }
-        const bool exempt = (i == 1 && leave_exempt) || (i + 1 == route.size() && enter_exempt);
-        if (exempt) {
+        const bool enter_step = i + 1 == route.size() && enter_exempt;
+        const bool leave_step = i == 1 && leave_exempt && !enter_step;
+        if (leave_step) {
+            // MAP-POP-CLOSE-2 K2 (review P3 1): leaving the stand skips only what the STAND'S side of
+            // the step needs (the arrival state's offer: the walker stands on a stand sub-cell whose
+            // keys do not describe where the way out leads). route[1] is an ordinary tile: it must
+            // admit entry from this side and the layer must admit its code, with the fixed key bit
+            // of the direction (up 0x40, down 0x04, left 0x01, right 0x10, state.md 5.9 clause 2).
+            WalkCell dest = cells.get(route[i]);
+            if ((dest.low & geometry(dir)) == 0) {
+                return refuse(i, "the destination cannot be entered from this side");
+            }
+            const std::uint32_t key = dir == 6 ? 0x40U : dir == 2 ? 0x04U : dir == 0 ? 0x01U : 0x10U;
+            if ((admission(tables, layer, dest.high) & key) == 0) {
+                return refuse(i, "the layer does not admit the destination");
+            }
+            dest.high = static_cast<std::uint16_t>((dest.high & 0xfc00) | (0x80 | dir));
+            cur = dest;
+            continue;
+        }
+        if (enter_step) {
             WalkCell moved = cells.get(route[i]);
             moved.high = static_cast<std::uint16_t>((moved.high & 0xfc00) | (0x80 | dir));
             cur = moved;

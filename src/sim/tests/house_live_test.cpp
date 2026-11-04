@@ -14,6 +14,8 @@
 // Spawn variant: k = ((r & 1) + y + x + serial) mod 3 = ((r & 1) + 221) mod 3: r = 99 (odd) -> 222
 // mod 3 = 0 -> figure 203; r = 106 (even) -> 221 mod 3 = 2 -> figure 205.
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -1518,4 +1520,130 @@ TEST_CASE("house create G1: one public BuildCmd leads to the first resident deli
         CHECK_FALSE(f.valid());
     }
     CHECK(w.check_invariants() == "");
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C3 (F2, F3)
+
+TEST_CASE("house live F2: a downgrade record carries the committed residents 300 to 284") {
+    // Hand derivation (the same fixture as the downgrade case above): group 1 food table is -2
+    // below index 10, mood -2, VermehrTab[0] = -16: 300 - 16 = 284, below the floor 48 * 8 = 384, so
+    // the house downgrades and SetGroup keeps the residents. The record must say 284, the number the
+    // resulting House holds, and the growth record must agree with the cap of group 1 (15 * 64).
+    Opt o;
+    o.low_negative = true;
+    const auto types = registry(o);
+    Rig r = make_rig();
+    r.place(kS0, 110, 110, make_house(kS0, 300, 512, {1000, 800}));
+    sim::World w = create(r, types);
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    until(w, [&] { return !stats.population.transitions.empty(); }, 3000);
+    REQUIRE(stats.population.transitions.size() == 1);
+    const sim::HouseTransitionRecord& t = stats.population.transitions.front();
+    CHECK(t.kind == sim::HouseTransitionRecord::Kind::Downgrade);
+    CHECK(t.residents_before == 300);
+    CHECK(t.residents_after == 300 - 16);
+    CHECK(t.residents_after == house_of(w).residents_64); // the authoritative state
+    REQUIRE(stats.population.growth.size() == 1);
+    const sim::HouseGrowthRecord& g = stats.population.growth.front();
+    CHECK(g.residents_before == 300);
+    CHECK(g.vermehr == -16);
+    CHECK(g.residents_after == 284);
+    CHECK(g.residents_committed == house_of(w).residents_64);
+    CHECK(g.cap_64 == 15 * 64);
+    CHECK_FALSE(g.removed);
+}
+
+TEST_CASE("house live F2: a cap clip is recorded against its bound and a removal separately") {
+    // Cap clip: group 0 (Wohnmax 8, cap 512), residents 500, mood 2 (+32): 532 > 512, no materials
+    // in the store, so the upgrade is refused and the committed value is the cap 512 (not 532).
+    {
+        const auto types = registry();
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 500, 640, {2000, 500}));
+        sim::World w = create(r, types);
+        sim::TransportStats stats;
+        w.set_transport_stats(&stats);
+        until(w, [&] { return house_of(w).last != 0; }, 3000);
+        REQUIRE(stats.population.growth.size() == 1);
+        const sim::HouseGrowthRecord& g = stats.population.growth.front();
+        CHECK(g.residents_before == 500);
+        CHECK(g.vermehr == 32);
+        CHECK(g.residents_before + g.vermehr > g.cap_64); // 532 > 512: the clip applies
+        CHECK(g.cap_64 == 512);
+        CHECK(g.residents_after == 512);
+        CHECK(g.residents_committed == 512);
+        CHECK(house_of(w).residents_64 == 512);
+        REQUIRE(stats.population.transitions.size() == 1);
+        CHECK(stats.population.transitions.front().kind ==
+              sim::HouseTransitionRecord::Kind::UpgradeRefused);
+        CHECK(stats.population.transitions.front().residents_after == 512);
+    }
+    // Removal (floor 64, NoDowngrade): the house is gone; the growth record says so and the
+    // transition record counts it as removed with no residents left.
+    {
+        Opt o;
+        o.low_negative = true;
+        const auto types = registry(o);
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 70, 512, {0, 0}));
+        sim::World w = create(r, types);
+        sim::TransportStats stats;
+        w.set_transport_stats(&stats);
+        until(w, [&] { return at(w, 110, 110) == nullptr; }, 3000);
+        REQUIRE(stats.population.growth.size() == 1);
+        CHECK(stats.population.growth.front().removed);
+        CHECK(stats.population.growth.front().residents_before == 70);
+        CHECK(stats.population.growth.front().residents_after == 54);
+        REQUIRE(stats.population.transitions.size() == 1);
+        const sim::HouseTransitionRecord& t = stats.population.transitions.front();
+        CHECK(t.kind == sim::HouseTransitionRecord::Kind::Remove);
+        CHECK(t.residents_after == 0);
+        CHECK(t.counter_old_after == t.counter_old_before - 1); // trunc(70/64) = 1 resident gone
+    }
+}
+
+TEST_CASE("house live F3: stage-bit vectors through the engine agree with the reference file") {
+    // The reference rows `stage hb-*` (house_live_vectors.txt): one stage record (stage s, group 0,
+    // count 5), a house of 5 residents, the player's flags as given; the real stage pass must store
+    // the file's value. A missing bit-26 implication fails here AND in house_live_ref.py.
+    std::ifstream in(std::string(ANNO_FIXTURES_DIR) + "/sim/house_live_vectors.txt");
+    REQUIRE(in.good());
+    std::size_t rows = 0;
+    for (std::string line; std::getline(in, line);) {
+        if (line.rfind("stage hb-", 0) != 0) {
+            continue;
+        }
+        std::istringstream ls(line);
+        std::string kind, name, tok;
+        ls >> kind >> name;
+        std::string table, player, want_player;
+        bool arrow = false;
+        while (ls >> tok) {
+            if (tok == "=>") {
+                arrow = true;
+            } else if (!arrow && tok.rfind("table=", 0) == 0) {
+                table = tok.substr(6);
+            } else if (!arrow && tok.rfind("player=", 0) == 0) {
+                player = tok.substr(7);
+            } else if (arrow && tok.rfind("player=", 0) == 0) {
+                want_player = tok.substr(7);
+            }
+        }
+        const std::uint32_t stage = static_cast<std::uint32_t>(std::stoul(table.substr(0, table.find(':'))));
+        INFO(name);
+        Opt o;
+        o.high_stage = stage;
+        const auto types = registry(o);
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
+        sim::World w = create(r, types);
+        sim::WorldTestAccess::players(w).find(sim::PlayerId{0})->flags =
+            static_cast<std::uint32_t>(std::stoul(player, nullptr, 0));
+        until(w, [&] { return city0(w).stage_stamp != 0; }, 3000);
+        CHECK(w.players().find(sim::PlayerId{0})->flags ==
+              static_cast<std::uint32_t>(std::stoul(want_player, nullptr, 0)));
+        ++rows;
+    }
+    CHECK(rows == 7);
 }

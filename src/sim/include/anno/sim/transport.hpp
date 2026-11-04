@@ -189,6 +189,12 @@ struct HouseGrowthRecord {
     int mood = 0;
     std::int32_t residents_before = 0, residents_after = 0;
     std::int32_t vermehr = 0; ///< the group's VermehrTab entry the mood selected
+    /// MAP-POP-CLOSE-1 F2: what the House really holds after the tick (read from the committed
+    /// state, 0 when the house was removed), the group's cap (Wohnmax * 64) and whether the tick
+    /// removed the house. `residents_after` stays the kernel's number.
+    std::int32_t residents_committed = 0;
+    std::int32_t cap_64 = 0;
+    bool removed = false;
 };
 
 /// One progression transition of a house, with every number the contract names.

@@ -9,7 +9,7 @@ serializer:
                            + u64 count(goods)  + goods
                            + u64 count(classes) + classes
                            + u64 count(figures) + figures
-                           + u64 count(groups) + groups
+                           + u64 count(groups) + groups + u64 count(stages) + stages
     FNV-1a 64 (offset 0xcbf29ce484222325, prime 0x100000001b3) over the little-endian bytes.
     One figure = u32 id, u32 speed_q24, u32 capacity_88, u32 layer, u32 load_ticks,
                  u32 bewohntype, u32 range_88, u8 hull_present (0/1), i64 hull (0 when absent),
@@ -56,6 +56,7 @@ def digest(figures):
     d += struct.pack('<Q', len(figures))
     d += b''.join(figure_bytes(f) for f in figures)
     d += struct.pack('<Q', 0)             # no groups
+    d += struct.pack('<Q', 0)             # no stage table (stream 128, L3)
     return fnv(d)
 
 

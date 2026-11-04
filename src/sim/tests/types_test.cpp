@@ -1573,13 +1573,13 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0x12dfd17e5c5ed932ULL);
+    CHECK(a.value().registry->digest() == 0x96fbf9c80cb07372ULL);
 }
 
 TEST_CASE("registry digest changes with every field") {
     // 22 since T27: the derived walk_class is the 22nd member. It is NOT in the digest,
     // so it is deliberately absent from the mutation list below ("registry digest
-    // stable" pins the synthetic digest 0x12dfd17e5c5ed932, unchanged by T27).
+    // stable" pins the synthetic digest 0x96fbf9c80cb07372 (stream 128: + the empty stage table), unchanged by T27).
     // T33.2 adds un-hashed walk_mask input; header/digest changes belong to T33.4.
     static_assert(sim::field_count<sim::BuildingType>() == 23);
     static_assert(sim::field_count<sim::ProductionType>() == 18);

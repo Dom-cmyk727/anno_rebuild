@@ -252,6 +252,7 @@ TEST_CASE("population B: the digest layout of nonzero metadata, hand-written") {
     }
     h.u64(0); // no figure types
     h.u64(0); // no group table
+    h.u64(0); // no stage table (stream 128, L3)
     CHECK(built.value()->digest() == h.value());
     // A swapped order (id_sec first) would hash differently, so the order above is pinned.
     sim::StateHasher swapped;

@@ -707,7 +707,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0x12DFD17E5C5ED932
+SYNTHETIC_REGISTRY = 0x96FBF9C80CB07372
 
 
 def g1_scenario(steps=0, step_ms=10):

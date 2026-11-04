@@ -122,15 +122,15 @@
 # digests are byte-identical to stream 118. scenario_corpus.txt differs from 118 only in the version
 # header, create_hash, UnknownRecord (the KONTORID record is known now) and MarketNumberNotKept (the
 # market KONTID is kept now, so the warning is gone). Other lines are the C++ values at 119.
-g0_step1 S1 128 0c28389752bf5180
-g0_step100 S1 128 fbdbffab61218f45
-g0_step1000 S1 128 bb5211d5c33511e2
-g1_players_step100 S4 128 ee101ae4c12e6e03
-g1_players_step700 S4 128 041943e8464cabb3
-s5_islands_create S5 128 f359b7e2938056d4
-s5_islands_step100 S5 128 f99baa8ea9ade51f
-s5_islands_locked_create S5 128 775f915fe1a534d7
-s5_islands_city_created S5 128 eac7e4f43f8d930c
+g0_step1 S1 128 0d5303b23d29f9b0
+g0_step100 S1 128 bbf5e9e1707b3755
+g0_step1000 S1 128 6633563459f2dfd2
+g1_players_step100 S4 128 ab604cde100e370a
+g1_players_step700 S4 128 a1bb842e6f1e79e2
+s5_islands_create S5 128 010f9ed6d0031364
+s5_islands_step100 S5 128 d9d0b3c72d0e092f
+s5_islands_locked_create S5 128 a1a2a18d9f79de07
+s5_islands_city_created S5 128 3e83ffe8df04867c
 #
 # S6 G1 scenario (synthetic::g1_scenario: one player, island 0 with city 0 holding
 # the weaver with 5 t of wool at (110,110) and the grain farm with 5 t of raw
@@ -138,8 +138,8 @@ s5_islands_city_created S5 128 eac7e4f43f8d930c
 # after World::create and after advance(10) x 100. tools/sim_stream.py transcribes
 # the city, the building lists and the Workshop and Farm payloads independently of
 # the C++ code; the registry digest of the synthetic types is its one literal.
-s6_g1_create S6 128 1c3d243cf6f25888
-s6_g1_step100 S6 128 677b3561e42263f7
+s6_g1_create S6 128 80a698368447105a
+s6_g1_step100 S6 128 a9e3ec57332ce5e9
 #
 # S7 G1 (stage S7): the S6 G1 scenario run through the real scheduler (synthetic::
 # g1_scenario: the weaver with 5 t of wool and the grain farm with 5 t of raw material).
@@ -186,7 +186,7 @@ s7_g1_sp_end S7 128 ae9b776981277d55
 # reads the terrain, so g2_scenario gained a flat 0x30 plateau (the terrain digest is hashed) and the
 # build types the ordinary-land flag word 0x84 plus the three scenery types (the registry digest is
 # hashed); the recorded session's builds now store byte0f 0x30. The value before was 9c0cce6ee5ceb63e.
-s10_g2_end S10 128 61cf681c4cc1f2e6
+s10_g2_end S10 128 85b99647cec7e90e
 #
 # S11 G3 (stage S11): synthetic::g3_scenario on synthetic::make_synthetic_types (two
 # players, two islands, two cities; a weaver, a grain farm, a fur trapper, a small farm, a
@@ -200,8 +200,8 @@ s10_g2_end S10 128 61cf681c4cc1f2e6
 # every building to values derived by hand from docs/sim/production.md (F2 weavers, F6
 # farm, the trapper's 20 steps, the small farm's lines, 143 bow steps on one line and 160
 # on two, the mine's 768 from the two deposits), the draw count and the notice 0x19.
-s11_g3_checkpoints S11 128 a427a79b8470404f
-s11_g3_end S11 128 11b69fcc31ba894f
+s11_g3_checkpoints S11 128 99c48be9a904df40
+s11_g3_end S11 128 bce73cba490a2e51
 s11_g3_events S11 128 3140bd8e1eb7db86
 #
 # S12 G4 (stage S12): synthetic::g4_scenario (seed 508; three players, islands in slots 0,
@@ -378,14 +378,14 @@ t24_g6_end T24 128 ec873257cdefb510
 # that holds a navigating ship (m2_found_session) also through the new bytes. The `*_events`
 # goldens hash the UI event stream, which does not contain the version, and keep their values.
 # tools/sim_stream.py agrees on g0, g1, s5 and s6. g2.log-g6.log and m2_found*.log are rewritten.
-p1_g7_create P1 128 42b664bdd7e3c526
+p1_g7_create P1 128 16e74e273882005a
 
 # M2: the recorded founding session of src/sim/tests/founding_test.cpp (a determinism pin, not an oracle:
 # the exact values of the founding are asserted by hand in that test).
 # Re-baselined inside version 123 (MAP-BUILD-1 C): the fixture registry's free workshop 9201 has the
 # ordinary-land flag word 0x84 (registry digest) and the session's ordinary Build stores the terrain
 # level 0x40 as byte0f. The value before was 359cf48e134bdcf1.
-m2_found_session M2 128 7df7d311ba42afee
+m2_found_session M2 128 49089729f883bcfb
 
 # Re-baselined at stream version 124 (task MAP-CARGO-1): Rules gained `cargo` (CargoRules: the
 # eligible warehouse PRODTYPEs and the dock half-widths, two u64-counted u32 lists) after nav. Every

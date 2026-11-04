@@ -3,11 +3,14 @@
 // reproduced by tools/placement_ref.py and by the original code's emulation) is parsed here and
 // run through anno::sim::placement_rule. The expected accept/reject/byte come from the file, never
 // from this code. The file also checks the full overlap table (site::overlap_with_existing) against
-// hand-derived rows of docs/re/ship-placement.md section 4.
+// hand-derived rows of docs/re/ship-placement.md section 4, and the named stand-in seam (its own
+// verdict, the terrain's height) against a hand-derived row per vector.
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -219,6 +222,170 @@ TEST_CASE("placement rule: every vector of the oracle file") {
     CHECK(accepts >= 15);
     CHECK(rejects >= 15);
     CHECK(unsupported >= 4);
+}
+
+TEST_CASE("stand-in seam: its own verdict and the terrain's height on every vector") {
+    // The stand-in (docs/sim/ship-placement.md section 6, "The stand-in's height"): Occupied when
+    // an object lies under the footprint (clipped to the island); else accepted, with
+    // placement_rule's byte where that rule accepts, else with the highest readable vertex of the
+    // footprint's window (column W and row H read 0, vertices beyond them are skipped). Every row
+    // below was derived by hand from the grids of placement_vectors.txt; the old stand-in stored 0
+    // for all of them.
+    const struct {
+        const char* name;
+        bool occupied;
+        unsigned height;
+    } rows[] = {
+        // The file's accepts: placement_rule's byte.
+        {"land_flat_30", false, 48},
+        {"level_20_is_the_threshold", false, 32},
+        {"level_40", false, 64},
+        {"wire_byte_is_ignored_high", false, 48},
+        {"slope_just_outside_window", false, 48},
+        {"one_tile_from_east_edge", false, 48},
+        {"outside_north_west_origin_ok", false, 48},
+        {"wide_footprint_fits", false, 48},
+        {"wide_footprint_turned_fits", false, 48},
+        {"same_vertex_outside_rot1_window", false, 48},
+        {"object_outside_footprint_ignored", false, 48},
+        {"alternate_type_farm", false, 48},
+        {"alternate_flag_word_0004", false, 32},
+        {"coast_valid_rot0", false, 48},
+        {"coast_rot2_shore_is_bottom_row", false, 48},
+        {"coast_rot1_shore_is_left_column", false, 48},
+        {"coast_two_water_vertices_enough", false, 48},
+        {"coast_narrow_type_skips_the_shore_test", false, 16},
+        {"coast_alternate_type_2x2_one_water_vertex", false, 48},
+        {"u16_edge_accept", false, 48},
+        // The verdict stays the stand-in's: any object under the footprint refuses, including
+        // the scenery and the replaceable building placement_rule accepts.
+        {"scenery_tree_under_footprint", true, 0},
+        {"scenery_stone_under_footprint", true, 0},
+        {"replaceable_same_prodtype_accepts", true, 0},
+        {"building_under_footprint", true, 0},
+        {"unknown_object_id_unsupported", true, 0},
+        // Flat windows placement_rule refuses (level, quantum): the flat level itself.
+        {"sea_level_10_same_footprint", false, 16},
+        {"wire_byte_is_ignored_low", false, 16},
+        {"sea_level_00", false, 0},
+        {"level_1f_not_multiple", false, 31},
+        {"level_2f_not_multiple", false, 47},
+        {"level_35_not_multiple", false, 53},
+        // Uneven windows: the highest vertex inside the window.
+        {"dip_inside", false, 48},                         // 0x2f at (4,3), the rest 0x30
+        {"slope_one_unit_inside", false, 49},              // 0x31 at (4,4)
+        {"slope_step_16_inside", false, 64},               // 0x40 at (5,5)
+        {"spoiled_vertex_in_rot0_window_only", false, 80}, // 0x50 at (9,2), window 5..9 x 2..5
+        {"east_edge_window_reads_zero_column", false, 48}, // column 10 reads 0
+        {"south_edge_window_reads_zero_row", false, 48},   // row 10 reads 0
+        // Coast windows the shore test refuses: the highest vertex.
+        {"coast_one_water_vertex_only", false, 48},
+        {"coast_rot0_but_shore_at_bottom", false, 48},
+        {"coast_shore_vertex_wrong", false, 48},
+        {"coast_window_max_4x_rejected", false, 64}, // 0x40 at (5,5)
+        {"same_flat_land_for_the_coast_type", false, 48},
+        {"coast_alternate_type_2x2_no_water", false, 48},
+        // Classes placement_rule does not decide: the window over flat 0x30 land.
+        {"class_3000_unsupported", false, 48},
+        {"flag_0x10_type_unsupported", false, 48},
+        {"road_type_not_a_build_class", false, 48},
+        {"wall_type_not_a_build_class", false, 48},
+        // Out of bounds (footprint_owner_rule refuses these before any seam in a command): the
+        // stand-in clips; the window's vertices beyond column W are skipped.
+        {"outside_east", false, 48},
+        {"wide_footprint_pokes_out", false, 48},
+        {"u16_edge_bounds", false, 48},
+    };
+    const Vectors v = read_vectors();
+    REQUIRE(v.cases.size() == std::size(rows));
+    sim::TypeRegistry::Builder b;
+    for (const sim::BuildingType& t : v.types) {
+        b.add(t);
+    }
+    auto built = b.build();
+    REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
+    const sim::TypeRegistry& reg = *built.value();
+    std::map<std::string, const VectorCase*> by_name;
+    for (const VectorCase& c : v.cases) {
+        by_name.emplace(c.name, &c);
+    }
+    const sim::Seam<sim::Seams::PlacementRuleFn> seam = sim::stand_in_placement_seam();
+    CHECK(std::string(seam.name) == "stand_in_placement_terrain_height");
+    std::size_t equal_to_rule = 0;
+    for (const auto& row : rows) {
+        INFO("vector " << row.name);
+        REQUIRE(by_name.count(row.name) == 1);
+        const VectorCase& c = *by_name.at(row.name);
+        const sim::BuildingType* t = reg.find(sim::TypeId{c.type});
+        REQUIRE(t != nullptr);
+        const sim::Island is = island_of(c);
+        sim::PlacementRecord rec;
+        rec.type = t->id;
+        rec.x = c.x;
+        rec.y = c.y;
+        rec.rotation = static_cast<std::uint8_t>(c.rot);
+        rec.byte0f = 0x40; // a result, never an input
+        const sim::PlacementResult r = seam.fn(seam.ctx, is, reg, *t, rec);
+        CHECK(r.reject == (row.occupied ? sim::Reject::Occupied : sim::Reject::None));
+        CHECK(r.reject == sim::stand_in_placement_rule(is, *t, rec)); // the verdict is unchanged
+        CHECK(static_cast<unsigned>(r.height) == row.height);
+        const sim::PlacementResult real = sim::placement_rule(is, reg, *t, rec);
+        if (r.reject == sim::Reject::None && real.reject == sim::Reject::None) {
+            ++equal_to_rule;
+            CHECK(r.height == real.height);
+            CHECK(c.expect.at(0) == "accept");
+            CHECK(static_cast<unsigned>(r.height) == std::stoul(c.expect.at(1)));
+        }
+    }
+    CHECK(equal_to_rule == 20);
+}
+
+TEST_CASE("stand-in seam: a world without terrain gets height 0, a terrain gets its height") {
+    sim::TypeRegistry::Builder b;
+    sim::BuildingType t;
+    t.id = sim::TypeId{1};
+    t.prodtype = 97;
+    t.width = t.height = 2;
+    t.flags_word = 0x84;
+    b.add(t);
+    auto built = b.build();
+    REQUIRE(built.ok());
+    const sim::TypeRegistry& reg = *built.value();
+    const sim::BuildingType& ty = *reg.find(sim::TypeId{1});
+    sim::PlacementRecord rec;
+    rec.type = ty.id;
+    rec.x = 2;
+    rec.y = 2;
+    sim::Island is;
+    REQUIRE(is.tiles.reset(0, 0, 8, 8, 8));
+    // No terrain: the stand-in still accepts (it never read the terrain) and nothing gives a
+    // height; placement_rule answers Unsupported here.
+    const sim::PlacementResult none = sim::stand_in_placement_seam_fn(nullptr, is, reg, ty, rec);
+    CHECK(none.reject == sim::Reject::None);
+    CHECK(none.height == 0);
+    // A digest-only placeholder reads nothing either.
+    auto ph = std::make_shared<sim::Terrain>();
+    ph->digest = 12345;
+    is.terrain = ph;
+    CHECK(sim::stand_in_placement_seam_fn(nullptr, is, reg, ty, rec) ==
+          sim::PlacementResult{sim::Reject::None, 0});
+    // Flat 0x30 under the 3 x 3 window (2..4, 2..4) and 0x70 at (5,5) just outside it: 0x30, the
+    // byte placement_rule derives.
+    std::vector<std::uint8_t> height(64, 0x30);
+    height[5 * 8 + 5] = 0x70;
+    is.terrain = sim::make_terrain(height, {}, {});
+    CHECK(sim::placement_rule(is, reg, ty, rec) == sim::PlacementResult{sim::Reject::None, 0x30});
+    CHECK(sim::stand_in_placement_seam_fn(nullptr, is, reg, ty, rec) ==
+          sim::PlacementResult{sim::Reject::None, 0x30});
+    // The same vertex inside the window (4,4): placement_rule refuses, the stand-in accepts at
+    // 0x70.
+    height[5 * 8 + 5] = 0x30;
+    height[4 * 8 + 4] = 0x70;
+    is.terrain = sim::make_terrain(height, {}, {});
+    CHECK(sim::placement_rule(is, reg, ty, rec).reject == sim::Reject::TerrainRefused);
+    CHECK(sim::stand_in_placement_seam_fn(nullptr, is, reg, ty, rec) ==
+          sim::PlacementResult{sim::Reject::None, 0x70});
+    CHECK(sim::stand_in_placement_height(is, reg, ty, rec) == 0x70);
 }
 
 TEST_CASE("placement rule: no terrain, placeholder terrain and a wrong column are Unsupported") {

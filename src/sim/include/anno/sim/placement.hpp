@@ -2,7 +2,8 @@
 // and 3, §12 O-27, §13 D17; stage S10).
 //
 // Two rules, both read-only over one island (MAP-BUILD-1 C: the second is now the contract of
-// docs/sim/ship-placement.md; the stand-in is only an explicit, named test seam):
+// docs/sim/ship-placement.md; the stand-in is only an explicit, named test seam whose verdict
+// ignores the terrain and whose height is the terrain's):
 //  - the footprint owner rule of the command layer (D: AnnoFrame.dll 0x10058890, op 6
 //    of the apply function 0x100589a0): the footprint lies on the island and its tiles
 //    belong to the target city or to nobody, at least one of them to the city;
@@ -122,17 +123,29 @@ struct RoadParams {
                                              const PlacementRecord& rec,
                                              const PlacementParams& params = {});
 
-/// The D17 stand-in as a placement result (height 0): Occupied when a tile of the footprint
-/// carries a non-zero object, None otherwise. It reads neither the flag word nor the terrain
-/// (OQ-052). Kept for the explicit, named test seam kStandInPlacementSeamName; it is NOT the
-/// default of Seams::placement_rule.
+/// The D17 stand-in's verdict: Occupied when a tile of the footprint carries a non-zero object,
+/// None otherwise. It reads neither the flag word nor the terrain (OQ-052). Kept for the explicit,
+/// named test seam kStandInPlacementSeamName; it is NOT the default of Seams::placement_rule.
 [[nodiscard]] Reject stand_in_placement_rule(const Island& island, const BuildingType& type,
                                              const PlacementRecord& rec);
 
-/// The seam name of the stand-in: the identity the header hash sees.
-inline constexpr const char* kStandInPlacementSeamName = "stand_in_placement";
+/// The item height the stand-in stores for a record it accepts (docs/sim/ship-placement.md
+/// section 6, "The stand-in's height"): placement_rule's height whenever placement_rule accepts the
+/// record (the R4 window level for ordinary land, the R5 byte for the coast class); otherwise
+/// (own design, N) the highest vertex of the footprint's (fw + 1) x (fh + 1) window that VertexGrid
+/// can read, 0 when it can read none (no terrain). Read-only, O(footprint + window).
+[[nodiscard]] std::uint8_t stand_in_placement_height(const Island& island,
+                                                     const TypeRegistry& types,
+                                                     const BuildingType& type,
+                                                     const PlacementRecord& rec);
 
-/// Seams::PlacementRuleFn form of stand_in_placement_rule (ctx and the registry unused).
+/// The seam name of the stand-in: the identity the header hash sees. A name is unique per version
+/// of a seam's behaviour (docs/sim/state.md §3), so the stand-in that stored height 0 under
+/// "stand_in_placement" was retired with its name when the height became the terrain's.
+inline constexpr const char* kStandInPlacementSeamName = "stand_in_placement_terrain_height";
+
+/// Seams::PlacementRuleFn form of the stand-in (ctx unused): the verdict of
+/// stand_in_placement_rule and, when it accepts, the height of stand_in_placement_height.
 [[nodiscard]] PlacementResult stand_in_placement_seam_fn(void* ctx, const Island& island,
                                                          const TypeRegistry& types,
                                                          const BuildingType& type,

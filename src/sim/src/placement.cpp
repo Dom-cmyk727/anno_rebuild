@@ -185,9 +185,35 @@ PlacementResult placement_rule(const Island& island, const TypeRegistry& types,
     return {Reject::None, static_cast<std::uint8_t>(v)};
 }
 
-PlacementResult stand_in_placement_seam_fn(void*, const Island& island, const TypeRegistry&,
+std::uint8_t stand_in_placement_height(const Island& island, const TypeRegistry& types,
+                                       const BuildingType& type, const PlacementRecord& rec) {
+    const PlacementResult real = placement_rule(island, types, type, rec);
+    if (real.reject == Reject::None) {
+        return real.height;
+    }
+    // Own design (N), not the original's: a site the rule refuses gets the highest vertex of its
+    // window, so the item never lies under its own terrain (equal to the R4 level on a flat
+    // window). A vertex VertexGrid cannot read is skipped; none readable gives 0.
+    const auto [fw, fh] = footprint(type, rec.rotation);
+    const VertexGrid grid = VertexGrid::of(island);
+    std::uint8_t top = 0;
+    for (std::int64_t dy = 0; dy <= fh; ++dy) {
+        for (std::int64_t dx = 0; dx <= fw; ++dx) {
+            if (const std::optional<std::uint8_t> v = grid.at(rec.x + dx, rec.y + dy)) {
+                top = std::max(top, *v);
+            }
+        }
+    }
+    return top;
+}
+
+PlacementResult stand_in_placement_seam_fn(void*, const Island& island, const TypeRegistry& types,
                                            const BuildingType& type, const PlacementRecord& rec) {
-    return {stand_in_placement_rule(island, type, rec), 0};
+    const Reject verdict = stand_in_placement_rule(island, type, rec);
+    if (verdict != Reject::None) {
+        return {verdict, 0};
+    }
+    return {Reject::None, stand_in_placement_height(island, types, type, rec)};
 }
 
 Reject footprint_owner_rule(const Island& island, const SimConfig& cfg, const BuildingType& type,

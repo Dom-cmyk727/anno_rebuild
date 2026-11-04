@@ -552,25 +552,26 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     // (a) the real supply chain, counted (pinned to this build; any change of the House path or of
     // the scenario shows here first).
     CHECK(r.main_res.faults == 0);
+    CHECK(r.main_res.lost_88 == 0); // nothing is lost any more: every walker finds its way home
     CHECK(r.main_total.visits == 18779);
     CHECK(r.main_total.kernel_taken == 2629);
-    CHECK(r.main_total.spawn_draws == 2146);
-    CHECK(r.main_total.spawn_requests == 2146);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2146); // draws by site = counter
+    CHECK(r.main_total.spawn_draws == 2266);
+    CHECK(r.main_total.spawn_requests == 2266);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2266); // draws by site = counter
     CHECK(r.watch.draws.count(sim::DrawSite::HouseVariant) == 0);      // no upgrade or downgrade
-    CHECK(r.main_res.searches == 2135);
-    CHECK(r.main_res.searches_failed == 1927);
-    CHECK(r.main_res.arrivals == 201);
-    CHECK(r.main_res.purchases == 172);
-    CHECK(r.main_res.bought_88 == 5435); // the city store the stalls gave up
-    CHECK(r.main_res.deliveries == 90);
-    CHECK(r.main_res.delivered_88 == 4863);
-    CHECK(r.main_res.no_path_home == 78); // FINDING, population-live.md section 20
+    CHECK(r.main_res.searches == 2255);
+    CHECK(r.main_res.searches_failed == 2118);
+    CHECK(r.main_res.arrivals == 132);
+    CHECK(r.main_res.purchases == 103);
+    CHECK(r.main_res.bought_88 == 2335); // the city store the stalls gave up
+    CHECK(r.main_res.deliveries == 100);
+    CHECK(r.main_res.delivered_88 == 5579);
+    CHECK(r.main_res.no_path_home == 0); // the resident-specific home path (section 20.2)
     CHECK(r.main_total.rect_queries == r.main_res.searches);
-    CHECK(r.main_total.candidates_scored == 6343);
-    CHECK(r.main_total.candidates_accepted == 2825);
-    CHECK(r.main_total.walk_searches == 1176);
-    CHECK(r.main_total.walk_expansions == 880918);
+    CHECK(r.main_total.candidates_scored == 6756);
+    CHECK(r.main_total.candidates_accepted == 2731);
+    CHECK(r.main_total.walk_searches == 1204);
+    CHECK(r.main_total.walk_expansions == 901915);
     CHECK(r.main_total.upgrade_scores == 0); // no house reached its cap
     // the ledger (closed by the drain; the equations are checked in run_canary): the stall goods
     // came out of the city store and the public goods did not
@@ -640,15 +641,16 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
         REQUIRE_MESSAGE(e.empty(), e);
     }
     CHECK(r.main_res.faults == 0);
-    CHECK(r.main_total.spawn_draws == 2996);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2996);
-    CHECK(r.main_res.searches == 2996);
-    CHECK(r.main_res.purchases == 1183);
-    CHECK(r.main_res.bought_88 == 49023);
-    CHECK(r.main_res.deliveries == 383);
-    CHECK(r.main_res.delivered_88 == 72932);
-    CHECK(r.main_total.candidates_scored == 30926);
-    CHECK(r.main_total.walk_expansions == 2833477);
+    CHECK(r.main_res.lost_88 == 0);
+    CHECK(r.main_total.spawn_draws == 2789);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2789);
+    CHECK(r.main_res.searches == 2789);
+    CHECK(r.main_res.purchases == 612);
+    CHECK(r.main_res.bought_88 == 30335);
+    CHECK(r.main_res.deliveries == 566);
+    CHECK(r.main_res.delivered_88 == 113445);
+    CHECK(r.main_total.candidates_scored == 25750);
+    CHECK(r.main_total.walk_expansions == 2487329);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
     CHECK(r.up == 0);
     CHECK(r.refused == 0);
@@ -662,18 +664,18 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(t.building.v == 219043332201ULL);
     CHECK(t.tick == 90250);
     CHECK(t.from.v == 561);
-    CHECK(t.to.v == 541); // base 540 + variant index 1 (step 1)
+    CHECK(t.to.v == 543); // base 540 + variant index 3 (step 1)
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
     CHECK(t.residents_after == 1358); // SetGroup keeps the residents on a downgrade
     CHECK(t.houses_old_before == 54);
     CHECK(t.houses_old_after == 53);
-    CHECK(t.counter_old_before == 1600);
-    CHECK(t.counter_old_after == 1579);
+    CHECK(t.counter_old_before == 1671);
+    CHECK(t.counter_old_after == 1650);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 15145);
-    CHECK(t.variant_index == 1);
+    CHECK(t.variant_draw == 28019);
+    CHECK(t.variant_index == 3);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
     for (const auto& tr : stats.population.transitions) {

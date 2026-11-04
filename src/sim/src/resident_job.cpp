@@ -320,6 +320,33 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
 
 namespace {
 
+/// The walk home of a resident (step C, L5 review P2-C). The shared path_home searches FROM the
+/// walker TO the home's entrance subcell; a blocked entrance subcell is seeded as a start but never
+/// reached as a goal, and the walker's end point (the goal tile's centre subcell) can be enclosed,
+/// so on real maps it failed for a large share of walkers (S01_01_01: 78 of 201 arrivals). The way
+/// out already proved walkable: search FROM the home's entrance points TO the walker's subcell (the
+/// direction step A took) and walk the route backwards. The shared path_home is unchanged (carts
+/// and harvest workers keep their accepted baselines).
+std::optional<std::vector<TileXY>>
+resident_path_home(const Island& island, const TypeRegistry& types, const Building& home,
+                   const BuildingType& home_type, FixedPos from, std::uint32_t layer) {
+    const SearchArea area = search_area(home, home_type);
+    const auto& tables = types.walk_tables();
+    if (!tables) {
+        return std::nullopt;
+    }
+    WalkCells cells(island, types, *tables, area.square(), 4, area);
+    const std::vector<WalkPoint> starts = entrance_walk_points(home, home_type);
+    const std::vector<WalkPoint> goals{walk_point_of(from)};
+    const SearchResult found = search(cells, *tables, layer, starts, goals, [](const SearchVisit&) {
+        return SearchDecision{GoalAction::Stop, true};
+    });
+    if (!found.complete || !found.selected || found.route.empty()) {
+        return std::nullopt;
+    }
+    return std::vector<TileXY>(found.route.rbegin(), found.route.rend());
+}
+
 struct Body {
     const TickContext& ctx;
     SerialWorld& world;
@@ -361,9 +388,9 @@ struct Body {
             return;
         }
         const Island* hi = world.island(island_of(home->id));
-        const auto path = hi != nullptr
-                              ? path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer)
-                              : std::nullopt;
+        const auto path =
+            hi != nullptr ? resident_path_home(*hi, ctx.types, *home, *home_type, fig.pos, ft.layer)
+                          : std::nullopt;
         if (!path) {
             if (stats != nullptr) {
                 ++stats->no_path_home;

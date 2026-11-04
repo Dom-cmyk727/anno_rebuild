@@ -114,11 +114,12 @@ struct PickRay {
 /// (terrain_height). The segments are walked from max_height down, the ground and the ray compared
 /// at two points inside each (not on an edge, where an island border or a step in `height` jumps)
 /// and extended linearly to the segment's ends; the first segment where the ray reaches the ground
-/// holds the hit. Exact for ground linear per triangle: a march in steps of one HEIGHT unit missed
-/// the thin sliver of a triangle in front of a crest (W4-OPENING-1-CLOSE, lan5: 0.06 px from a
-/// tile's B-C edge). The work is two `height` calls per triangle the ray crosses. Height 0 always
-/// meets the ground (no ground is below 0), so the walk ends.
-/// The tile is (floor(u), floor(v)): tile (x, y) spans the corners [x, x+1] x [y, y+1].
+/// holds the hit. Exact for ground linear per triangle, up to the float precision of `height`'s
+/// arguments (a segment shorter than one float step can be sampled in its neighbour): a march in
+/// steps of one HEIGHT unit missed the thin sliver of a triangle in front of a crest
+/// (W4-OPENING-1-CLOSE, lan5: 0.06 px from a tile's B-C edge). The work is two `height` calls per
+/// triangle the ray crosses. Height 0 always meets the ground (no ground is below 0), so the walk
+/// ends. The tile is (floor(u), floor(v)): tile (x, y) spans the corners [x, x+1] x [y, y+1].
 /// nullopt: a non-finite input or geometry, and a corner beyond +-2^30 tiles (checked before the
 /// conversion, which is then exact).
 [[nodiscard]] inline std::optional<std::pair<std::int32_t, std::int32_t>>

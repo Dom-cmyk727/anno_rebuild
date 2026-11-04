@@ -80,7 +80,7 @@ std::optional<sim::TileXY> DevTool::pick(const PointerFrame& frame, double px, d
         return fail("the city's island is not in the scene"); // never a pick without its offset
     }
     const double sx = point->first - rounding->first, sy = point->second - rounding->second;
-    // The islands the ray's segment can meet, in index order (round ee, D6): the march then asks
+    // The islands the ray's segment can meet, in index order (round ee, D6): the pick then asks
     // only those, and gets what Scene::ground_height (the first island in index order) gives.
     // A tile of margin covers the float conversion of the lookups.
     const auto ray = render::pick_ray(sx, sy, frame.geometry);

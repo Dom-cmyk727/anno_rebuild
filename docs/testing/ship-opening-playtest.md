@@ -60,7 +60,8 @@ original does. Check while you play:
 - fences and hedges are continuous lines, not combs;
 - a sailing ship's bow points the way it moves;
 - the enhanced water's relief is lit from the top right (it mirrored with the world; the sprites keep their own baked light,
-  sun on the right, and whether the water should go back to the top left is your call);
+  sun on the right (in 239 of 266 sprite/shadow frame pairs the shadow lies left of the sprite, orchestrator review
+  2026-11-03 §6), and whether the water should go back to the top left is your call);
 - where wide sprites of two neighbours with the same far-corner sum overlap, the one further right on screen is drawn first
   and the left one over it (the tie-break reversed with the mirror; the original's order is not traced, OQ-026 c).
 

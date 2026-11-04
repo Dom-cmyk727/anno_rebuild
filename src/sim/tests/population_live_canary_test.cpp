@@ -1175,6 +1175,14 @@ TEST_CASE("population close C4: a fresh home in a real scenario, built by BuildC
         rises += stock0_trace[i] > stock0_trace[i - 1] ? 1U : 0U;
     }
     CHECK(rises >= 1);
+    // The first delivery needs the food satisfaction at or below 116 % (score = 128 - s >= 12):
+    // from 2186 (127.9 %) the decay of 1/128 per gate needs at least 12 gates of 2500 ticks, so no
+    // rise can come before step 500 (25 000 ticks; a lower bound derived from the decay).
+    std::size_t first_rise = 0;
+    for (std::size_t i = 1; i < stock0_trace.size() && first_rise == 0; ++i) {
+        first_rise = stock0_trace[i] > stock0_trace[i - 1] ? i : 0;
+    }
+    CHECK(first_rise > 500);
     CHECK(stats.residents.purchases >= 1);
     CHECK(stats.residents.deliveries >= 1);
     CHECK(stats.residents.lost_88 == 0);
@@ -1276,7 +1284,8 @@ TEST_CASE("population close C4: save and reload cuts of the fresh-home run conti
         ++done;
     }
     CHECK(done == cuts.size());
-    CHECK(cuts.size() >= 4);
+    // {0 (the build), the first and the second growth step, the cargo cut, 540 (before the cap)}
+    CHECK(cuts.size() == 5);
 }
 
 TEST_CASE("population close C4: a recorded fresh-home run replays, and an altered build diverges") {
@@ -1336,5 +1345,37 @@ TEST_CASE("population close C4: a recorded fresh-home run replays, and an altere
         REQUIRE(outcome.ok());
         CHECK_FALSE(outcome.value().reproduced());
         REQUIRE(outcome.value().diverged_entry.has_value());
+        // entry 0 = the Commands entry, entries 1..30 the advances, entry 31 the first checkpoint
+        CHECK(*outcome.value().diverged_entry == 31);
     }
+}
+
+TEST_CASE("population close C4: the stage unlock is scenario state, not caused by the build") {
+    // Control without a build: the same world, no BuildCmd. At the first gate the city's 40 loaded
+    // pioneers meet stage 1 (count 30): city mask 0 -> 3 and the player's 0x1 -> 0x3 (X16), exactly
+    // as with the new home (which only adds 5 to the 45 residents of the build run).
+    const auto o = load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const sim::ScenarioSpec spec = scenario_spec(*o, kClose);
+    Close c = close_world(*o, spec);
+    sim::TransportStats stats;
+    c.w.set_transport_stats(&stats);
+    CHECK(c.w.players().find(c.city->owner)->flags == 0x1);
+    for (std::uint64_t i = 0; i < 60; ++i) { // 3000 ticks: past the first gate at 2500
+        step_world(c.w, &stats, nullptr);
+    }
+    bool saw = false;
+    for (const sim::StageUnlockRecord& u : stats.population.unlocks) {
+        if (u.city.island.v == c.ref.island.v && u.city.city.v == c.ref.city.v && u.stage == 1) {
+            saw = true;
+            CHECK(u.residents_at_or_above == 40);
+            CHECK(u.player_flags_before == 0x1);
+            CHECK(u.player_flags_after == 0x3);
+        }
+    }
+    CHECK(saw);
+    CHECK(c.w.players().find(c.city->owner)->flags == 0x3);
 }

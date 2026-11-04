@@ -24,6 +24,7 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/sim/archive.hpp>
 #include <anno/sim/building.hpp>
 #include <anno/sim/create.hpp>
 #include <anno/sim/figure.hpp>
@@ -31,6 +32,7 @@
 #include <anno/sim/house_transition.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/resident_job.hpp>
+#include <anno/sim/state_fields.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
@@ -1067,4 +1069,166 @@ TEST_CASE("house live: a next type that is no house of the next group is not eli
     }
     CHECK_FALSE(w.faulted());
     CHECK(w.check_invariants() == "");
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C1
+
+namespace {
+
+/// The review's F1 world: kP (110, 110) residents 320, E 640, stocks {0, 0}, a stall at (114, 110),
+/// city food 5000, the billed counter of food preset.
+sim::World f1_world(const std::shared_ptr<const sim::TypeRegistry>& types, std::uint32_t billed) {
+    Rig r = make_rig();
+    r.place(kP, 110, 110, make_house(kP, 320, 640, {0, 0}));
+    r.place(kStall, 114, 110);
+    sim::Rules rules;
+    rules.house_updates = true;
+    auto w = sim::World::create(r.spec, types, syn::population_config(), rules);
+    REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
+    sim::World world = std::move(w).value();
+    city0(world).stock.stock[kFood] = 5000;
+    city0(world).billed[kFood] = billed;
+    return world;
+}
+
+/// Advances until the first taken gate has passed (t > 2600) or a fault.
+void f1_run(sim::World& w) {
+    for (int i = 0; i < 4000 && !w.faulted(); ++i) {
+        w.advance(2);
+    }
+}
+
+void reseal_save(std::vector<std::uint8_t>& save) {
+    REQUIRE(save.size() > 8);
+    sim::StateHasher h;
+    h.bytes(std::span<const std::uint8_t>(save.data(), save.size() - 8));
+    const std::uint64_t v = h.value();
+    for (std::size_t i = 0; i < 8; ++i) {
+        save[save.size() - 8 + i] = static_cast<std::uint8_t>(v >> (8 * i));
+    }
+}
+
+std::vector<std::uint8_t> rules_bytes(const sim::Rules& rules) {
+    sim::WriteArchive wa;
+    fields(wa, rules);
+    return wa.take();
+}
+
+} // namespace
+
+TEST_CASE("house live F1: house updates with unsaved billed goods are refused at create and load") {
+    const auto types = registry();
+    Rig r = make_rig();
+    r.place(kP, 110, 110, make_house(kP, 320, 640, {0, 0}));
+    // The refused combination, at create: the message names both rules.
+    sim::Rules bad;
+    bad.house_updates = true;
+    bad.save_billed_goods = false;
+    auto refused = sim::World::create(r.spec, types, syn::population_config(), bad);
+    REQUIRE_FALSE(refused.ok());
+    CHECK(refused.error().find("save_billed_goods") != std::string::npos);
+    CHECK(refused.error().find("house updates") != std::string::npos);
+    // Legal controls: each rule alone, and both defaults.
+    sim::Rules only_unsaved;
+    only_unsaved.save_billed_goods = false;
+    CHECK(sim::World::create(r.spec, types, syn::population_config(), only_unsaved).ok());
+    sim::Rules both_on;
+    both_on.house_updates = true;
+    CHECK(sim::World::create(r.spec, types, syn::population_config(), both_on).ok());
+    // At load: a valid, correctly checksummed save of (house off, billed unsaved) is patched to
+    // house on. The checksum is valid, so the rules check is what refuses it.
+    auto base = sim::World::create(r.spec, types, syn::population_config(), only_unsaved);
+    REQUIRE(base.ok());
+    std::vector<std::uint8_t> save = base.value().save();
+    REQUIRE(sim::World::load(save, types).ok()); // the unpatched control loads
+    const std::vector<std::uint8_t> rb = rules_bytes(only_unsaved);
+    const auto at = std::search(save.begin(), save.end(), rb.begin(), rb.end());
+    REQUIRE(at != save.end());
+    REQUIRE(*(at + static_cast<std::ptrdiff_t>(rb.size()) - 2) == 0); // the house_updates byte
+    *(at + static_cast<std::ptrdiff_t>(rb.size()) - 2) = 1;
+    reseal_save(save);
+    auto loaded = sim::World::load(save, types);
+    REQUIRE_FALSE(loaded.ok());
+    CHECK(loaded.error().find("save_billed_goods") != std::string::npos);
+    // The cause control: the same patch with a stale checksum is a checksum error instead.
+    std::vector<std::uint8_t> stale = save;
+    stale[stale.size() - 1] ^= 1;
+    auto stale_r = sim::World::load(stale, types);
+    REQUIRE_FALSE(stale_r.ok());
+    CHECK(stale_r.error().find("save_billed_goods") == std::string::npos);
+}
+
+TEST_CASE("house live F1: saved billed counters agree after reload below the bound and at overflow") {
+    const auto types = registry();
+    // Below the bound: billed food at max - 1000, the purchase books at most 151 (hand: demand
+    // trunc(41*640*256/44236) = 151, stall store 5000, threshold 10): the purchase succeeds, no fault.
+    {
+        sim::World live = f1_world(types, 0xFFFFFFFFU - 1000U);
+        auto back = sim::World::load(live.save(), types);
+        REQUIRE(back.ok());
+        sim::World reloaded = std::move(back).value();
+        CHECK(reloaded.state_hash() == live.state_hash());
+        f1_run(live);
+        f1_run(reloaded);
+        CHECK_FALSE(live.faulted());
+        CHECK_FALSE(reloaded.faulted());
+        CHECK(city0(live).billed[kFood] == 0xFFFFFFFFU - 1000U + 151U);
+        CHECK(city0(live).stock.stock[kFood] == 5000U - 151U);
+        CHECK(live.state_hash() == reloaded.state_hash());
+    }
+    // At overflow: saved counters fault identically before and after the reload.
+    {
+        sim::World live = f1_world(types, 0xFFFFFFFFU);
+        auto back = sim::World::load(live.save(), types);
+        REQUIRE(back.ok());
+        sim::World reloaded = std::move(back).value();
+        CHECK(city0(reloaded).billed[kFood] == 0xFFFFFFFFU); // saved, not reset
+        f1_run(live);
+        f1_run(reloaded);
+        CHECK(live.faulted());
+        CHECK(reloaded.faulted());
+        CHECK(live.fault() == reloaded.fault());
+        CHECK(live.state_hash() == reloaded.state_hash());
+        CHECK(live.fault().find("billed_overflow") != std::string::npos);
+    }
+}
+
+TEST_CASE("goods G2: a cyclic IdSec is a registry error and a legal chain is not") {
+    const auto build = [&](sim::GoodsId a, sim::GoodsId b, bool needs_both) {
+        std::vector<sim::GoodsInfo> goods = sim::original_goods();
+        goods[26].id_sec = a;
+        if (b != 0) {
+            goods[27].id_sec = b;
+        }
+        sim::HouseGroup g0;
+        g0.number = 0;
+        g0.wohnmax = 8;
+        g0.no_downgrade = true;
+        g0.needs = {{26, true, 41}};
+        if (needs_both) {
+            g0.needs.push_back({27, true, 16});
+        }
+        sim::HouseGroup g1 = g0;
+        g1.number = 1;
+        g1.no_downgrade = false;
+        sim::TypeRegistry::Builder bld;
+        bld.config(syn::population_config());
+        bld.walk_tables(sim::synthetic_walk_tables());
+        bld.goods(goods);
+        bld.house_groups({g0, g1});
+        bld.add(house_t(kP, 97, 2, 0));
+        return bld.build();
+    };
+    // 26 -> 27 -> 26 with both needed: a cycle; 26 -> 26: a self-loop; both refused with the goods.
+    auto cyc = build(27, 26, true);
+    REQUIRE_FALSE(cyc.ok());
+    CHECK(cyc.error().find("IdSec cycle") != std::string::npos);
+    auto self = build(26, 0, true);
+    REQUIRE_FALSE(self.ok());
+    CHECK(self.error().find("IdSec cycle") != std::string::npos);
+    // Legal controls: the chain 26 -> 27 -> 28 (28 not needed ends it), a chain 26 -> 27, and the
+    // cycle 26 <-> 27 when 27 is not a need (the walk ends at the slotless substitute).
+    CHECK(build(27, 28, true).ok());
+    CHECK(build(27, 0, true).ok());
+    CHECK(build(27, 26, false).ok());
 }

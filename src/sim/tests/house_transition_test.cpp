@@ -297,7 +297,16 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
                 draw, goods, first ? nullptr : &ov, nv,
                 static_cast<std::uint32_t>(std::stoul(in_kv.at("e"))),
                 static_cast<std::int32_t>(std::stol(in_kv.at("res64"))), stock);
-            REQUIRE(r.fault == sim::HouseFault::None);
+            if (r.fault != sim::HouseFault::None) {
+                // a refused call: the fault name and the number of draws really made (G3: none)
+                got["fault"] = sim::house_fault_name(r.fault);
+                got["used"] = std::to_string(draw.sites.size());
+                for (const auto& [k, v] : want) {
+                    CHECK_MESSAGE(got[k] == v, where << " " << k << " expected " << v << " got " << got[k]);
+                }
+                ++executed;
+                continue;
+            }
             std::vector<std::int64_t> out(r.stock.begin(), r.stock.end());
             got["stock"] = join(out);
             got["e"] = std::to_string(r.e);
@@ -1087,5 +1096,88 @@ TEST_CASE("house transition: the new group must be the adjacent record (SetGroup
         CHECK(o.kind == sim::HouseOutcomeKind::Fault);
         CHECK(o.fault == sim::HouseFault::GroupNotAdjacent);
         CHECK(w.state_hash() == before);
+    }
+}
+
+// ------------------------------------------------------------------ MAP-POP-CLOSE-1 C1 (G3)
+
+namespace {
+
+/// A group (number 2, one forced need on goods 26) with its derived table from the real derivation.
+struct DomainGroup {
+    sim::HouseGroup group;
+    sim::HouseGroupDerived derived;
+};
+
+DomainGroup domain_group(std::uint16_t wohn, std::uint16_t menge, std::uint32_t number = 2) {
+    DomainGroup d;
+    d.group.number = number;
+    d.group.wohnmax = wohn;
+    d.group.needs = {{26, true, menge}};
+    const std::vector<sim::GoodsInfo> goods = sim::original_goods();
+    const std::string problem = sim::derive_group(d.group, goods, sim::PopulationRoles{}, d.derived);
+    REQUIRE_MESSAGE(problem.empty(), problem);
+    return d;
+}
+
+} // namespace
+
+TEST_CASE("house set group G3: a refused first assignment draws nothing and changes nothing") {
+    const std::vector<sim::GoodsInfo> goods = sim::original_goods();
+    const auto run = [&](const DomainGroup& d, Scripted& draw) {
+        sim::PopulationView v;
+        v.group = &d.group;
+        v.derived = &d.derived;
+        v.goods = goods;
+        const std::vector<std::uint32_t> none;
+        return sim::house_set_group(draw, goods, nullptr, v, 640, 320, none);
+    };
+    // Refused: Wohnmax 65535 with Menge 65535 (stock far beyond u32), and the edge Menge 6145
+    // (6145 * 699040 = 4295600800 > 4294967295). No draw, the inputs echo back, no stock.
+    for (const std::uint16_t menge : {std::uint16_t{65535}, std::uint16_t{6145}}) {
+        const DomainGroup d = domain_group(65535, menge);
+        Scripted draw;
+        draw.values = {0};
+        const sim::SetGroupResult r = run(d, draw);
+        CHECK(r.fault == sim::HouseFault::Overflow);
+        CHECK(draw.sites.empty()); // the cursor of a real source would not move
+        CHECK(r.draws == 0);
+        CHECK(r.stock.empty());
+        CHECK(r.e == 640);
+        CHECK(r.residents_64 == 320);
+    }
+    // Accepted controls: the edge Menge 6144 (4294901760, draw 0 -> sat 128) and a neighbour
+    // (Wohnmax 100, Menge 255, draw 7 -> sat 121: 257125); each draws exactly once, in order.
+    {
+        const DomainGroup d = domain_group(65535, 6144);
+        Scripted draw;
+        draw.values = {0};
+        const sim::SetGroupResult r = run(d, draw);
+        CHECK(r.fault == sim::HouseFault::None);
+        CHECK(draw.sites.size() == 1);
+        CHECK(r.stock == std::vector<std::uint32_t>{4294901760U});
+        CHECK(r.e == 8388480);
+        CHECK(r.residents_64 == 4194240);
+    }
+    {
+        const DomainGroup d = domain_group(100, 255);
+        Scripted draw;
+        draw.values = {7};
+        const sim::SetGroupResult r = run(d, draw);
+        CHECK(r.fault == sim::HouseFault::None);
+        CHECK(draw.sites.size() == 1);
+        CHECK(r.stock == std::vector<std::uint32_t>{257125U});
+        CHECK(r.e == 12800);
+        CHECK(r.residents_64 == 6400);
+    }
+    // Group number 0 never draws and keeps the constructor numbers: the huge group is accepted by
+    // the first-assignment path (it does not use Wohnmax there).
+    {
+        const DomainGroup d = domain_group(65535, 65535, 0);
+        Scripted draw;
+        const sim::SetGroupResult r = run(d, draw);
+        CHECK(draw.sites.empty());
+        CHECK(r.e == 640);
+        CHECK(r.residents_64 == 320);
     }
 }

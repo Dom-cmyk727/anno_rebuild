@@ -308,6 +308,15 @@ std::string house_updates_problem(const SimConfig& cfg, const Rules& rules,
     if (!rules.house_updates) {
         return {};
     }
+    // MAP-POP-CLOSE-1 F1: the live path writes the per-city billed counters, and a purchase is
+    // refused when one would leave u32. With save_billed_goods off the counter is neither saved nor
+    // hashed, so a reload restarts it at 0 and the same world could fault in one run and not in the
+    // other. Until a supported implementation exists the combination is refused (create and load).
+    if (!rules.save_billed_goods) {
+        return "house updates: Rules::save_billed_goods is off, so the billed counters (written by "
+               "the live House path and able to refuse a purchase) would differ after a reload; "
+               "the combination is not supported";
+    }
     const std::uint32_t period = types.class_info(RuntimeClass::House).gate_period;
     if (period < 1 || period > 0xffffU) {
         return "house updates: the House class gate period " + std::to_string(period) +

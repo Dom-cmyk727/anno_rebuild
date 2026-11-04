@@ -110,7 +110,9 @@ struct UpgradeScores {
 
 /// SetGroup (D 0x10076b90) as a function of the old group (null = first assignment), the new group,
 /// E, residents * 64 and the old stock. `draw` is used only by a first assignment (one draw per
-/// forced need, DrawSite::HouseFirstAssignment). On a fault nothing was drawn.
+/// forced need, DrawSite::HouseFirstAssignment). On a fault nothing was drawn: a first assignment
+/// checks its supported domain (E, residents and every worst-case stock fit) before the first draw
+/// (MAP-POP-CLOSE-1 G3).
 struct SetGroupResult {
     HouseFault fault = HouseFault::None;
     std::vector<std::uint32_t> stock;

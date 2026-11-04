@@ -458,6 +458,29 @@ SetGroupResult house_set_group(DrawSource& draw, std::span<const GoodsInfo> good
         }
     } else {
         first_assignment = new_group.group->number != 0;
+        if (first_assignment) {
+            // MAP-POP-CLOSE-1 G3: the supported domain is checked BEFORE the first draw. The original
+            // wraps silently in 16 bits (E = Wohnmax << 7 as a word, u16 stocks); the engine widens
+            // and refuses instead. Every draw gives sat = 128 - (r & 31) <= 128, so the worst case
+            // below does not depend on the draws: a refusal never consumes one.
+            const std::int64_t wohn_chk = new_group.group->wohnmax;
+            const std::int64_t e_chk = wohn_chk << 7;
+            if (e_chk > kU32Max || (wohn_chk << 6) > std::int64_t{0x7fffffff}) {
+                r.fault = HouseFault::Overflow;
+                return r;
+            }
+            const std::size_t chk_count =
+                std::min<std::size_t>(new_group.derived->infra_end, needs.size());
+            for (std::size_t j = 0; j < needs.size(); ++j) {
+                const std::int64_t menge = needs[j].menge;
+                const bool drawn = j < chk_count && needs[j].force;
+                if ((drawn && tdiv(menge * 128 * e_chk, 1536) > kU32Max) ||
+                    (j == 0 && tdiv(e_chk * menge, 12) > kU32Max)) {
+                    r.fault = HouseFault::Overflow;
+                    return r;
+                }
+            }
+        }
     }
     if (first_assignment) {
         const std::int64_t wohn = new_group.group->wohnmax;

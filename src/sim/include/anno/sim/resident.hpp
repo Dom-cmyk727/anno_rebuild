@@ -47,6 +47,7 @@ enum class ResidentFault : std::uint8_t {
                      // refused)
     StockOverflow,   // a house stock would leave u32
     CargoOverflow,   // a cargo slot amount would leave u32
+    IdSecCycle,      // a delivery's IdSec walk would visit a goods id twice (MAP-POP-CLOSE-1 G2)
 };
 
 /// The stable text of a fault (the vector files and test messages).

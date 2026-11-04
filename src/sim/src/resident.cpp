@@ -113,6 +113,8 @@ const char* resident_fault_name(ResidentFault f) {
         return "stock_overflow";
     case ResidentFault::CargoOverflow:
         return "overflow";
+    case ResidentFault::IdSecCycle:
+        return "idsec_cycle";
     }
     return "";
 }
@@ -265,10 +267,15 @@ DeliverResult house_deliver(const HouseFacts& house, std::span<std::uint32_t> st
     const std::uint64_t add = std::uint64_t{amount} * kStockPerDelivered;
     // D 0x10076610: the replay is a recursive deliver of the IdSec substitute (house vtable slot
     // 0xc0 is the function itself): every substitute that has a need slot is raised and replays its
-    // own IdSec; a substitute without a slot ends the chain. P-3: at most goods.size() replays.
+    // own IdSec; a substitute without a slot ends the chain. The original recurses without bound (a
+    // cycle crashes it). MAP-POP-CLOSE-1 G2: a walk that would visit a goods id twice (a cycle or a
+    // self-loop) is refused whole before any credit. Goods ids are compared, not slots: two goods
+    // sharing one need slot are a legal chain. The registry rejects such cycles (derive_group); this
+    // is the defensive guard.
     std::vector<std::size_t> chain{slot};
+    std::vector<GoodsId> seen{g};
     GoodsId cur = g;
-    for (std::size_t step = 0; step < house.goods.size(); ++step) {
+    for (;;) {
         const GoodsId sec = cur < house.goods.size() ? house.goods[cur].id_sec : 0;
         if (sec == 0) {
             break;
@@ -277,6 +284,11 @@ DeliverResult house_deliver(const HouseFacts& house, std::span<std::uint32_t> st
         if (next >= n || next >= stock.size()) {
             break;
         }
+        if (std::find(seen.begin(), seen.end(), sec) != seen.end()) {
+            r.fault = ResidentFault::IdSecCycle;
+            return r;
+        }
+        seen.push_back(sec);
         chain.push_back(next);
         cur = sec;
     }

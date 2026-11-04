@@ -433,3 +433,62 @@ The original-equivalent domain (Wohnmax < 512 so `Wohnmax<<7` fits u16, u16 stoc
 **Not done, and why.** (1) A real legal upgrade with exact material payment, (2) the materials-short refusal control and (3) the stage/player mask change driven by an upgrade: blocked by the rule above. (4) A decline / removal control: the retained LIVE-1 canaries stand as such evidence (S01_01_01: 11 removals; S01_07_01: 22 downgrades with variant draws); no new decline test was added. (5) A data-defined positive case on top of the existing ones (`population scale: a mod-defined ...`, the C2 Inn and BuildCmd tests with non-original ids) and (6) unrelated-city operation counts beyond the existing scale tests were not extended: a fresh home adds one build and the work counters above, no new world-sized work. The mutants (evidence `cache/map2-pop-close1/C4mut/`, sources restored byte-identical): first assignment off, the stage player OR dropped, spawn disabled, payment dropped, the growth sign flipped: all killed by the first test.
 
 **C4 review closures.** The scan figures and the InfraTab wording above were corrected (reviewer `ac364653f8aa83ff3`, reviewed `b5c571d6`, APPROVED as an honest PARTIAL, 0 P1). A mutant gap of the save/reload and replay tests was closed with two mutants (recorder submit not logging the command; the House `e` not saved), evidence `cache/map2-pop-close1/C4mut/summary2.txt`.
+
+## 22. MAP-POP-CLOSE-2 K0: reads, the town choice and one blocker (2026-11-04; start `1e65ea7d`, documents and scratch tools only)
+
+K0 changes no code or test. The reads are in `docs/re/population.md` section 18; the scratch tools and outputs are in the worktree's `cache/map2-pop-close2/K0/` (git-ignored): `k0_scan.cpp` (all 272 city rows), `k0_site.cpp`/`k0_route.cpp`/`k0_town.cpp` (legal sites and short runs through the real `BuildCmd`), `k0_reach.cpp` (walker-search reach), `k0_flow.cpp`, `gate_check.py`, `anl.py`/`anl2.py`/`fig.py` (independent file decodes), `scan_all.txt`, `survey_a.txt`, `reach_all.txt`.
+
+**22.1 What the reads changed.** Nothing in the CLOSE-1 review is contradicted. Precisions K1 needs: (1) the take's request is the SECOND stack argument and the unload's amount is the SECOND argument (the goods argument is ignored by both); (2) the taken statistic decays BEFORE the suspension test; (3) the two calls after the send only pre-set the carrier's cargo goods byte (`type.+0xb0(0)`), the "confirm" in the review is confirmed; (4) the Inn is the home of the BASE priority/pick (`0x10072870`, `0x100728f0`), with the tavern stock as the stock proxy (`+0xbc`), and a type with input-per-step 0 would trap in the original; (5) the unload unit is 8.8 and a full carrier brings 768; (6) the carrier slots are two fixed pointer slots filled by the Inn's own attach (`0x10075810`) for figure class `0x1500`. Two engine differences to decide in K1: the engine widens `tavern` and `taken` to u32 and saturates `taken` (`scheduler.cpp` 4c), the original adds as u16 and wraps at 65536; the K1 test of the "u16 wrap" must say which it pins (the widened rule, recorded as an ADAPT, is the CLAUDE.md default).
+
+**22.2 Locked needs (K0 item 2).** Fetched. The target choice `0x10076670` has no stage test (population.md section 18 (i)); only the house tick (decay, `lowest`) reads the mask. So WIRTSHAUS (stage 1B) and KAPELLE (1C) need not be unlocked for the house to be served; the stage decides when the Inn and the chapel can be built (not enforced by the engine's `BuildCmd`, OQ-464) and when the stock starts to decay.
+
+**22.3 BLOCKER F-K0-1: the walker search never reaches a LEDER/STOFFE stand.** In all 28 stock-qualifying towns, 0 of the 1198 houses reach a stand that sells LEDER (27) or STOFFE (33) (`reach_all.txt`: type 1314, WARE STOFFE/LEDER, 1x1, WALKMASK `101/010/101`, entrance subcells the four edge middles). Checks that locate it:
+- Whole-scenario 60,000-tick runs (`k0_flow`, all houses): goods bought are 26, 28, 80-83 only; 27 and 33 are never bought (Tutorial/02Trade01, S01_09_01 with 1548 searches, single39).
+- Not the town's topology: eight 1314 stands built with `BuildCmd` on open land near (232,246) in the Tutorial town are never reached from a test house (4 of 12 stands reached, the 4 original ones), while eight 1310 stands built the same way are (11 of 12 reached; `k0_reach` with `K0_BUILD_STALL`).
+- Not the goods rule: `house_choice` scores the 1314 stand 128 for STOFFE with the store at 30 t (`k0_choice`), the candidate passes the gate; the walk never offers its entrance.
+- Where: the search reaches the neighbour subcell (tile (222,254), col 1, row 2) of the Tutorial stand but never its own entrance (tile (222,255), col 1, row 0); the stand tile has walk code 4 and mask9 `0x155` (the cross), the reached 1310 stands have code 4 and mask9 `0x03f` (a free row). The entrance points themselves match the free subcells.
+So with the engine as it stands the SIEDLER forced needs LEDER and STOFFE (and therefore the upgrade) cannot be met in ANY town; the K2 sentence "stalls credit LEDER, STOFFE and SALZ" is not true for LEDER and STOFFE today. Whether the original behaves the same (implausible: leather and cloth stands sell in the game) is OQ-463. K0 does not touch walk code. The town choice below assumes this is closed in K2 with primary evidence.
+
+**22.4 The town choice.** Criteria from the stock scan (NAHRUNG, LEDER, STOFFE, SALZ, ALKOHOL, WERKZEUG, HOLZ, ZIEGEL all >= 1 t): the 28 rows of the review section 5 are reproduced exactly. All 28 with the building facts and the stage gaps (a gap is how many residents `group >= g` the city lacks for an UNHELD stage; a house adds 5 at creation, up to 8 grown, 15 as a settler):
+| scenario | isl | player | mask | pion / sett / burg / kauf residents | markets (MARKT+KONTOR) | stands | chapels/public | Inns | unheld stage within one house (gap) |
+|---|---|---|---|---|---|---|---|---|---|
+| endless02.sze | 1 | 8 | 0xf | 455 / 0 / 0 / 0 | 16 | 8 | 2 | 2 | - |
+| S01_02_01.sze | 4 | 2 | 0xffff | 0 / 0 / 952 / 0 | 7 | 6 | 1 | 2 | - |
+| S01_02_01.sze | 18 | 2 | 0xffff | 0 / 525 / 0 / 0 | 8 | 0 | 1 | 2 | - |
+| S01_02_01.sze | 58 | 1 | 0x7ff | 0 / 855 / 0 / 0 | 7 | 4 | 2 | 2 | - |
+| S01_07_01.sze | 51 | 0 | 0x7fffff | 0 / 0 / 0 / 2012 | 15 | 19 | 7 | 4 | - |
+| S01_07_01.sze | 52 | 1 | 0x7fff | 0 / 0 / 952 / 0 | 8 | 11 | 1 | 2 | - |
+| S01_07_01.sze | 53 | 6 | 0x3fff | 14 / 0 / 520 / 0 | 7 | 9 | 1 | 1 | - |
+| S01_09_01.sze | 4 | 1 | 0x3ff | 0 / 330 / 0 / 0 | 5 | 3 | 1 | 1 | - |
+| S01_09_01.sze | 49 | 0 | 0x1ffff | 0 / 0 / 1624 / 0 | 9 | 12 | 4 | 4 | - |
+| S01_10_01.sze | 0 | 1 | 0x7ff | 0 / 915 / 0 / 0 | 7 | 4 | 2 | 2 | - |
+| S01_12_01.sze | 63 | 2 | 0xffff | 0 / 0 / 812 / 0 | 9 | 3 | 1 | 1 | - |
+| Single_24.sze | 0 | 0 | 0x6900001f | 0 / 210 / 644 / 0 | 11 | 18 | 3 | 2 | - |
+| single30.sze | 18 | 6 | 0x1 | 40 / 0 / 0 / 0 | 1 | 5 | 1 | 1 | - |
+| single32.sze | 0 | 4 | 0x1 | 10 / 630 / 0 / 0 | 8 | 32 | 3 | 3 | - |
+| single32.sze | 1 | 2 | 0x1 | 180 / 600 / 0 / 0 | 6 | 18 | 2 | 2 | - |
+| single32.sze | 24 | 3 | 0x1 | 0 / 0 / 2324 / 1092 | 21 | 46 | 6 | 5 | 4D gap 8 |
+| single36.sze | 42 | 7 | 0x1 | 280 / 0 / 0 / 0 | 4 | 18 | 2 | 0 | - |
+| single38.sze | 9 | 4 | 0x1 | 0 / 375 / 2100 / 0 | 20 | 25 | 5 | 6 | - |
+| single38.sze | 13 | 1 | 0x1 | 0 / 870 / 0 / 0 | 7 | 9 | 1 | 2 | - |
+| single39.sze | 1 | 0 | 0x1 | 5 / 0 / 0 / 0 | 1 | 2 | 0 | 0 | - |
+| single39.sze | 4 | 3 | 0x1 | 0 / 975 / 0 / 0 | 11 | 14 | 2 | 2 | - |
+| single39.sze | 6 | 2 | 0x1 | 0 / 555 / 0 / 0 | 8 | 6 | 2 | 2 | - |
+| single40.sze | 1 | 1 | 0x1 | 115 / 0 / 0 / 0 | 3 | 2 | 0 | 0 | 1C gap 10 |
+| single40.sze | 20 | 0 | 0x7ff | 0 / 465 / 0 / 0 | 6 | 6 | 2 | 1 | - |
+| single41.sze | 0 | 1 | 0x1 | 85 / 0 / 0 / 0 | 4 | 3 | 1 | 0 | - |
+| single41.sze | 0 | 0 | 0x3fff | 0 / 165 / 504 / 0 | 8 | 9 | 2 | 2 | - |
+| single41.sze | 11 | 2 | 0x1 | 96 / 0 / 0 / 0 | 5 | 2 | 0 | 0 | - |
+| 02Trade01.sze | 3 | 2 | 0x7 | 0 / 120 / 0 / 0 | 2 | 3 | 1 | 1 | 1C gap 5 |
+
+Only three have a threshold inside the reach of one fresh house: **Tutorial/02Trade01 island 3 player 2 (1C, gap 5)**, single40 island 1 player 1 (1C, gap 10, no Inn and no chapel, needs two houses) and single32 island 24 player 3 (4D, a merchants stage). The choice is **`Tutorial/02Trade01.sze`, island 3, player 2, city 0**. Inputs (`k0_scan`, `k0_site`, `k0_reach`, loaded once per tool run; hand-checked against `Anlagen.dat`):
+- Player: flags `0x7` (stage bits 0, 1A, 1B). City stage mask 0 at load (derived by the first pass at tick 2500).
+- Houses: 8 SIEDLER houses (types 520-524), 15 residents each = 120. No pioneer house.
+- Store (tons): NAHRUNG 50, LEDER 30, SALZ 50, ALKOHOL 50, STOFFE 30, WERKZEUG 50, HOLZ 50, ZIEGEL 30, MARMOR 0. The pioneer house costs HOLZ 3 t (768); the settler house (type 520) costs WERKZEUG 1 t (256) + HOLZ 4 t (1024).
+- Suppliers: MARKT 1303 at (235,238), KONTOR 1304 at (222,257); stands 1314 (STOFFE/LEDER) at (222,255), 1310 (NAHRUNG/SALZ) at (223,255) and (224,255); KAPELLE 1320 at (228,255); WIRT 1335 at (219,238) (tavern 0, taken 0, stage 1B held). 24 buildings in all.
+- Land and reach: legal pioneer-house sites by `BuildCmd` exist near the stands, e.g. (226,251), (226,250), (227,251), (228,251) (the first four of the search), the house's square (radius 24) holds the stands, the chapel and the Inn. The Inn (radius 20) reaches both the market hall (235,238) and the Kontor (222,257) in the walker search (`k0_reach`, `K0_FROM_INN`). A first probe, house at (226,251), 120,000 ticks: residents 320 -> 512, food, salt and chapel stock delivered, the other three needs never (LEDER/STOFFE: F-K0-1, WIRTSHAUS: the Inn is empty).
+- The new stage: **1C (bit 3, `INFRA_STUFE_1C`, 125 pioneers or better)**. The city has 120; the fresh house adds 5 at creation: the stage pass at tick 2500 records `stage 3 group 0 count 125 have 125` and the player mask goes `0x7 -> 0xff`. Control, same town without the build: `0x7 -> 0xf7` (bits 4-7, 2A-2D, come from the existing 8 settler houses either way; bit 3 does not appear). So 1C is attributable to the build, the upgrade itself crosses none. (1C is also the stage of KAPELLE and SALZ.)
+- Not decided here: the house site. K3 must choose it once F-K0-1 is closed (the site changes which stands are near).
+Why not another town: every town shares F-K0-1; endless02 player 8 holds the pioneer stages (0xf) and cannot reach 2A with one house; only the Tutorial town gives a clean, attributable stage. Costs: a Tutorial scenario (the engine ignores its scripts), only 8 other houses (low noise), stock WERKZEUG/HOLZ 50 t each.
+
+**22.5 What a K0 reviewer should check against the binaries** (all in AnnoWelt except the type getters in AnnoGame): `0x100755f0`-`0x100756c8` (gate `cmp cx, 0x1388`, decay shift sequence, the flag test BEFORE the limit, the `jle` limit test, the `0x100`/`shr cx` stock test, the send arguments `0x33, type, tick` and the two post-send calls); `0x100756e0` (request = second argument, `taken += n` before `stock -= n`, the bill `+0x88` argument order goods, n, a3, 0); `0x100756d0` (second argument added, no shift); `0x10075940` (also the slot `+0xbc`); `0x10075740`/`0x100757c0` (byte 2 and byte 8); `0x10075810`/`0x10075870` (class `0x1500`, two slots); `0x1003b6d0`, `0x1002ff40` (cargo goods byte); `0x10072d20` (returns the figure, attach `+0x28`); the base `0x10072870` and `0x100728f0` (Inn vtable slots `+0xd8`/`+0xd4`); `0x1006b4e0`/`0x1006b520`; `0x10075dd0`-`0x10075fc4` (the hard-coded `0x4c`); `0x10076670` (no mask test; the house walkers' cargo scan `0x100766a2`-`0x10076734`); the AnnoGame getters `0x1000a410`-`0x1000a550` and the WIRT values of section 18 (f). And in the data: the three WIRT records, figures 204 and 298-301, `BGruppen.dat` `[BAUSTUFEN]`. Replay the numbers with `cache/map2-pop-close2/K0/*.py` and the scan tools if wanted.

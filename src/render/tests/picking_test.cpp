@@ -1,7 +1,10 @@
 // Picking (render/picking.hpp): the forward rule matches iso::tile_top, and the
 // inverse picks the tile a point lies on, at the three zoom groups and at
 // continuous zoom, with ground heights and open sea.
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -237,4 +240,92 @@ TEST_CASE("picking: non-finite input, a degenerate geometry and points beyond th
     CHECK(fraction->second == doctest::Approx(60.25));
     CHECK_FALSE(anno::render::scene_point({0.0, 0.0, 0.0}, 1.0, 1.0));
     CHECK_FALSE(anno::render::scene_point({0.0, 0.0, 1.0}, nan, 1.0));
+}
+
+TEST_CASE("picking: in front of a crest, the thin part of a triangle that a one-unit march "
+          "stepped over picks the tile the painter drew there" *
+          doctest::test_suite("picking")) {
+    // The corners of lan5's developer island where the pick took the tile behind
+    // (W4-OPENING-1-CLOSE): tile (1, 1) rises 16 units from A to C, so its A-B-C triangle faces
+    // away on screen and its C-B-D triangle reaches over tile (0, 1); in front of the B-C crest
+    // the ray is under the ground for less than one HEIGHT unit. The oracle is the painter:
+    // every triangle in the renderer's order (x + y, then x; A-B-C before C-B-D), the last one
+    // that holds the pixel centre wins, and pixels within 0.01 px of that triangle's edges are
+    // left out (where the rasteriser's tolerance decides).
+    constexpr std::size_t w = 4, h = 4;
+    const std::vector<std::uint8_t> heights = {24, 32, 48, 48, //
+                                               24, 32, 48, 48, //
+                                               24, 40, 48, 48, //
+                                               24, 40, 48, 48};
+    const auto ground = [&](float u, float v) -> std::optional<float> {
+        if (u < 0.0F || v < 0.0F || u >= static_cast<float>(w) || v >= static_cast<float>(h)) {
+            return std::nullopt;
+        }
+        return anno::render::terrain_height(heights, w, h, u, v);
+    };
+    using P = std::pair<double, double>;
+    std::size_t checked = 0, wrong = 0;
+    for (std::size_t group = 0; group < anno::render::kGroups; ++group) {
+        CAPTURE(group);
+        const auto g = anno::render::pick_geometry(group);
+        auto corner = [&](std::size_t x, std::size_t y) {
+            const auto c = std::min(x, w - 1), r = std::min(y, h - 1);
+            return anno::render::corner_point(static_cast<double>(x), static_cast<double>(y),
+                                              static_cast<double>(heights[r * w + c]), g);
+        };
+        const int x0 = static_cast<int>(-g.tile_w * 2.5), x1 = static_cast<int>(g.tile_w * 2.5);
+        const int y0 = static_cast<int>(-g.lift * 60.0), y1 = static_cast<int>(g.tile_h * 4.5);
+        for (int py = y0; py < y1; ++py) {
+            for (int px = x0; px < x1; ++px) {
+                const P q{px + 0.5, py + 0.5};
+                std::optional<std::pair<int, int>> drawn;
+                double margin = 0.0;
+                for (std::size_t v = 0; v + 1 < w + h; ++v) {
+                    for (std::size_t x = 0; x <= v && x < w; ++x) {
+                        const std::size_t y = v - x;
+                        if (y >= h) {
+                            continue;
+                        }
+                        const P a = corner(x, y), cc = corner(x + 1, y), b = corner(x, y + 1),
+                                d = corner(x + 1, y + 1);
+                        for (const std::array<P, 3>& t :
+                             {std::array<P, 3>{a, b, cc}, std::array<P, 3>{cc, b, d}}) {
+                            auto cross = [](P o, P p, P r) {
+                                return (p.first - o.first) * (r.second - o.second) -
+                                       (p.second - o.second) * (r.first - o.first);
+                            };
+                            const double area = cross(t[0], t[1], t[2]);
+                            if (std::fabs(area) < 1e-9) {
+                                continue;
+                            }
+                            double m = 1e30;
+                            for (std::size_t e = 0; e < 3; ++e) {
+                                const P p0 = t[e], p1 = t[(e + 1) % 3];
+                                const double len =
+                                    std::hypot(p1.first - p0.first, p1.second - p0.second);
+                                m = std::min(m, cross(p0, p1, q) * (area > 0 ? 1.0 : -1.0) / len);
+                            }
+                            if (m >= -0.01) {
+                                drawn = std::pair{static_cast<int>(x), static_cast<int>(y)};
+                                margin = m;
+                            }
+                        }
+                    }
+                }
+                if (!drawn || margin < 0.01) {
+                    continue;
+                }
+                const auto picked = anno::render::pick_tile(q.first, q.second, g, ground);
+                ++checked;
+                if (picked != drawn) {
+                    ++wrong;
+                    MESSAGE("pixel (" << px << ", " << py << "): drawn (" << drawn->first << ", "
+                                      << drawn->second << "), margin " << margin);
+                }
+            }
+        }
+    }
+    MESSAGE(checked << " pixels checked, " << wrong << " picked another tile");
+    CHECK(checked > 1000);
+    CHECK(wrong == 0);
 }

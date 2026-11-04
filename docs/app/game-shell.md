@@ -326,7 +326,10 @@ A test tool in the play window (the owner's round-dr decision), not UI.2. Off by
     origin and, under continuous zoom, the Resample's offset and its scale (`PointerFrame`).
   - `render::pick_tile` then finds the world tile on the frame's own scene, with heights:
     the frontmost point where the view ray meets the ground. An earlier iteration from height 0
-    picked the ground behind a raised tile.
+    picked the ground behind a raised tile. The ray is walked triangle by triangle (between its
+    crossings of u = k, v = k and u + v = k the ground is linear), exact for that ground; a march
+    in steps of one HEIGHT unit missed the thin part of a triangle in front of a crest (lan5,
+    W4-OPENING-1-CLOSE).
   - Only the developer city's island is accepted. Outside the window, open sea, another island,
     a non-finite point and a point beyond ±2^30 tiles give no command and a message.
   - Commands are in world tiles, as the command file's are.

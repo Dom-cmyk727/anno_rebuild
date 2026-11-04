@@ -407,6 +407,41 @@ TEST_CASE(
                 ++checked;
                 if (cmds.size() != 1 || placements(cmds[0]) != std::vector<sim::TileXY>{want}) {
                     ++wrong;
+                    // The pixel, the two tiles, the drawn triangle (A-B-C below the B-C diagonal
+                    // in tile space, C-B-D beyond) and the pixel centre's signed distance in px
+                    // from the drawn B-C edge (iso.cpp draw_ground_grids).
+                    const auto tx = static_cast<std::size_t>(std::floor(u));
+                    const auto ty = static_cast<std::size_t>(std::floor(v));
+                    const auto c =
+                        render::corners(heights.value(), island.width, island.height, tx, ty);
+                    const double ppu = static_cast<double>(sc->lift.num) /
+                                       static_cast<double>(sc->lift.den) * tw /
+                                       static_cast<double>(render::kTile[0].w);
+                    auto screen = [&](double cx, double cy, std::int64_t h) {
+                        return std::pair{(cy - cx) * tw / 2.0,
+                                         (cx + cy) * th / 2.0 - static_cast<double>(h) * ppu};
+                    };
+                    const auto b =
+                        screen(static_cast<double>(tx), static_cast<double>(ty) + 1.0, c[2]);
+                    const auto cc =
+                        screen(static_cast<double>(tx) + 1.0, static_cast<double>(ty), c[1]);
+                    const double qx =
+                        static_cast<double>(local.origin.first) + static_cast<double>(px) + 0.5;
+                    const double qy =
+                        static_cast<double>(local.origin.second) + static_cast<double>(py) + 0.5;
+                    const double ex = cc.first - b.first, ey = cc.second - b.second;
+                    const double dist =
+                        (ex * (qy - b.second) - ey * (qx - b.first)) / std::hypot(ex, ey);
+                    const auto picked =
+                        tool.pick(frame, static_cast<int>(px), static_cast<int>(py));
+                    MESSAGE("wrong pick: group "
+                            << group << " pixel (" << px << ", " << py << "), drawn tile ("
+                            << want.x << ", " << want.y << ") at (" << fu << ", " << fv
+                            << "), triangle " << (fu + fv <= 1.0 ? "A-B-C" : "C-B-D") << ", picked "
+                            << (picked
+                                    ? std::to_string(picked->x) + ", " + std::to_string(picked->y)
+                                    : std::string("none"))
+                            << ", " << dist << " px from B-C");
                 }
             }
         }

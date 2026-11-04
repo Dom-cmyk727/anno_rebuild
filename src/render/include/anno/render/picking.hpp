@@ -5,11 +5,13 @@
 // Header-only: it is arithmetic, and the window and the tests both use it.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include <anno/render/iso.hpp>
 
@@ -111,10 +113,16 @@ struct PickRay {
 /// at u + v = (sy + lift h) / (tile_h / 2), v - u = sx / (tile_w / 2), so a higher h is further
 /// forward in the painter's order (x + y). The visible ground is the ray's frontmost meeting with
 /// it (round ee, B2: an earlier fixed-point iteration from height 0 settled on the ground behind a
-/// raised tile): the ray is marched from kMaxGroundHeight down in steps of one HEIGHT unit (a
-/// step moves the point 2.059 * tile_w / 84 px, about a tenth of a tile, and the ground is linear
-/// within a tile triangle), and the first step that reaches the ground is refined by bisection.
-/// Height 0 always meets it (no ground is below 0), so the march ends.
+/// raised tile). Along the ray u - v is constant and u, v grow by lift / tile_h per HEIGHT unit,
+/// so the ray crosses the tile triangles' edges (u = k, v = k, and the B-C diagonal u + v = k) at
+/// heights it can list; between two crossings it stays in one triangle, where the ground is linear
+/// (terrain_height). The segments are walked from max_height down, the ground and the ray compared
+/// at two points inside each (not on an edge, where an island border or a step in `height` jumps)
+/// and extended linearly to the segment's ends; the first segment where the ray reaches the ground
+/// holds the hit. Exact for ground linear per triangle: a march in steps of one HEIGHT unit missed
+/// the thin sliver of a triangle in front of a crest (W4-OPENING-1-CLOSE, lan5: 0.06 px from a
+/// tile's B-C edge). The work is two `height` calls per triangle the ray crosses. Height 0 always
+/// meets the ground (no ground is below 0), so the walk ends.
 /// The tile is (floor(u), floor(v)): tile (x, y) spans the corners [x, x+1] x [y, y+1].
 /// nullopt: a non-finite input or geometry, and a corner beyond +-2^30 tiles (checked before the
 /// conversion, which is then exact).
@@ -123,7 +131,6 @@ pick_tile(double sx, double sy, const PickGeometry& g,
           const std::function<std::optional<float>(float, float)>& height,
           double max_height = kMaxGroundHeight) {
     constexpr double kLimit = 1073741824.0; // 2^30 tiles: far beyond any map, exact in int32
-    constexpr int kRefine = 24;
     if (!std::isfinite(sx) || !std::isfinite(sy) || !std::isfinite(g.tile_w) ||
         !std::isfinite(g.tile_h) || !std::isfinite(g.lift) || !(g.tile_w > 0.0) ||
         !(g.tile_h > 0.0) || !std::isfinite(max_height) || max_height < 0.0) {
@@ -135,33 +142,48 @@ pick_tile(double sx, double sy, const PickGeometry& g,
         return std::pair{(yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0,
                          (yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0};
     };
-    // Whether the ray at height h is at or below the ground there.
-    auto meets = [&](double h) {
-        const auto [u, v] = at(h);
-        if (!std::isfinite(u) || !std::isfinite(v) || std::fabs(u) >= kLimit ||
-            std::fabs(v) >= kLimit) {
-            return false;
+    // The ray's world point at height 0 and at the top, and the crossings in between.
+    const auto [u0, v0] = at(0.0);
+    const auto [u1, v1] = at(max_height);
+    for (const double c : {u0, v0, u1, v1}) {
+        if (!std::isfinite(c) || std::fabs(c) >= kLimit) {
+            return std::nullopt;
         }
-        return height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F) >= h;
+    }
+    const double rate = g.lift / g.tile_h; // du/dh = dv/dh
+    std::vector<double> cuts{max_height, 0.0};
+    auto crossings = [&](double c0, double c1, double per_unit) {
+        if (per_unit == 0.0) {
+            return;
+        }
+        for (double k = std::ceil(std::min(c0, c1)); k <= std::max(c0, c1); k += 1.0) {
+            const double h = (k - c0) / per_unit;
+            if (h > 0.0 && h < max_height) {
+                cuts.push_back(h);
+            }
+        }
+    };
+    crossings(u0, u1, rate);
+    crossings(v0, v1, rate);
+    crossings(u0 + v0, u1 + v1, 2.0 * rate);
+    std::sort(cuts.begin(), cuts.end(), std::greater<>());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    // The ground above the ray at height h: >= 0 where the ray is at or below the ground.
+    auto above = [&](double h) {
+        const auto [u, v] = at(h);
+        return static_cast<double>(
+                   height(static_cast<float>(u), static_cast<float>(v)).value_or(0.0F)) -
+               h;
     };
     double hit = 0.0;
-    if (meets(max_height)) {
-        hit = max_height;
-    } else {
-        for (double h = std::floor(max_height); h >= 0.0; h -= 1.0) {
-            if (h == max_height) {
-                continue;
-            }
-            if (meets(h)) {
-                // The ray is above the ground at `above` and at or below it at h: refine.
-                double lo = h, above = std::min(h + 1.0, max_height);
-                for (int i = 0; i < kRefine; ++i) {
-                    const double mid = (lo + above) / 2.0;
-                    (meets(mid) ? lo : above) = mid;
-                }
-                hit = lo;
-                break;
-            }
+    for (std::size_t i = 0; i + 1 < cuts.size(); ++i) {
+        const double hi = cuts[i], lo = cuts[i + 1];
+        const double q1 = above(lo + (hi - lo) / 4.0), q3 = above(lo + 3.0 * (hi - lo) / 4.0);
+        // Linear in the segment: at hi q3 + (q3 - q1) / 2, at lo q1 - (q3 - q1) / 2. The top
+        // reached means the hit is at hi; the ray is in the ground before lo means it is inside.
+        if (q3 + (q3 - q1) / 2.0 >= 0.0 || q1 - (q3 - q1) / 2.0 >= 0.0) {
+            hit = (lo + hi) / 2.0; // one tile for the whole segment
+            break;
         }
     }
     const auto [u, v] = at(hit);

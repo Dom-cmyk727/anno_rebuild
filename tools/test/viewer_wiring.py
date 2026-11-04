@@ -48,6 +48,12 @@ import viewer_session  # noqa: E402
 
 # The window's watchdog; ANNO_VIEWER_WIRING_WATCHDOG_S shortens it for the contract tests (a test hook).
 WATCHDOG_S = int(os.environ.get("ANNO_VIEWER_WIRING_WATCHDOG_S", "300"))
+# The window's own auto-quit deadline for a case that never reaches the script's `quit` (viewer.cpp's
+# ANNO_VIEW_QUIT_S test hook, checked once per window frame after the scene is loaded). Read from this
+# process's own environment rather than hardcoded, so a caller's environment (CMake's ENVIRONMENT on the
+# ctest case, scaled for a sanitizer build's slowdown) reaches the child; --env below still overrides it
+# per invocation, same as before.
+QUIT_S = os.environ.get("ANNO_VIEW_QUIT_S", "240")
 CASES = HERE / "tools" / "test" / "viewer_wiring"
 
 
@@ -114,7 +120,7 @@ def main(argv):
         return 2
     out.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, ANNO_DEV_SCRIPT=str(script), ANNO_DEV_SESSION=str(out),
-               ANNO_VIEW_SIZE="1280x720", ANNO_VIEW_AT="1140,516", ANNO_VIEW_QUIT_S="240")
+               ANNO_VIEW_SIZE="1280x720", ANNO_VIEW_AT="1140,516", ANNO_VIEW_QUIT_S=QUIT_S)
     if flags["app"]:
         env.pop("ANNO_VIEW_AT")  # the lan5 centre means nothing for another start (the opening centres itself)
         env["ANNO_SAVE_DIR"] = str(out.parent / f"{out.name}.saves")

@@ -151,9 +151,16 @@ if(ANNO_BUILD_TESTS)
         SKIP_RETURN_CODE 77 TIMEOUT 1800 PROCESSORS 4)
       if(ANNO_SANITIZE)
         # Every process of the session (three windows, thirteen replays) loads the game files, about 170 s
-        # each under ASan/UBSan; the voyage of stage 1 adds its 90 s of game time to that.
+        # each under ASan/UBSan; the voyage of stage 1 adds its own real time on top of that (turn p95
+        # measured at 509.5 ms under ASan here, against 0.2-0.4 ms native). viewer_wiring.py's own
+        # ANNO_VIEW_QUIT_S force-quits a window that never reaches its script's `quit`, at 240 s by
+        # default: too short for this voyage under the sanitizer slowdown (measured: stage 1 alone needs
+        # 434.4 s wall time to complete naturally here). Scale it by the same 5x as the watchdog below, to
+        # 1200 s: comfortable headroom over the measurement, and still under the watchdog so a genuine
+        # hang is still caught by name. Not loosened for the normal build (viewer_wiring.py's default stays
+        # 240 s there).
         set_tests_properties(opening_session_replay PROPERTIES
-          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500")
+          TIMEOUT 5400 ENVIRONMENT "ANNO_VIEWER_WIRING_WATCHDOG_S=1500;ANNO_VIEW_QUIT_S=1200")
       endif()
     endif()
   endif()

@@ -307,6 +307,12 @@ TEST_CASE("house transition: the hand-derived vectors (reference agrees, see CTe
             for (const sim::DrawSite s : draw.sites) {
                 CHECK(s == sim::DrawSite::HouseFirstAssignment);
             }
+        } else if (kind == "adjacent") {
+            got["ok"] = sim::house_group_adjacent(static_cast<std::uint32_t>(std::stoul(in_kv.at("old"))),
+                                                  static_cast<std::uint32_t>(std::stoul(in_kv.at("new"))),
+                                                  in_kv.at("dir") == "up")
+                            ? "1"
+                            : "0";
         } else {
             FAIL("unknown vector kind " << kind);
         }

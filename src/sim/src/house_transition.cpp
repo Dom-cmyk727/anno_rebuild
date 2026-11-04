@@ -529,7 +529,7 @@ HouseOutcome upgrade_house(const HouseEnv& env, Island& island, const BuildingKe
     if (const HouseFault f = view_of(env, *ladder.next, new_group, next); f != HouseFault::None) {
         return fault_outcome(f);
     }
-    if (new_group != old_group + 1) { // SetGroup(cur + 0x118) (0x1002cd0e..0x1002cd77)
+    if (!house_group_adjacent(old_group, new_group, true)) {
         return fault_outcome(HouseFault::GroupNotAdjacent);
     }
     if (const HouseFault f = count_problem(*loc.city, old_group, new_group); f != HouseFault::None) {
@@ -578,7 +578,7 @@ HouseOutcome downgrade_house(const HouseEnv& env, Island& island, const Building
         f != HouseFault::None) {
         return fault_outcome(f);
     }
-    if (old_group == 0 || new_group != old_group - 1) { // SetGroup(cur - 0x118) (0x1002ceb1..0x1002cf06)
+    if (!house_group_adjacent(old_group, new_group, false)) {
         return fault_outcome(HouseFault::GroupNotAdjacent);
     }
     if (const HouseFault f = count_problem(*loc.city, old_group, new_group); f != HouseFault::None) {

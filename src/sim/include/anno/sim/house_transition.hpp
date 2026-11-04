@@ -51,6 +51,13 @@ enum class HouseFault : std::uint8_t {
 };
 [[nodiscard]] const char* house_fault_name(HouseFault fault);
 
+/// SetGroup's argument is the ADJACENT group record: cur + 1 on upgrade, cur - 1 on downgrade (D
+/// 0x1002cd0e..0x1002cd77: cur + 0x118; 0x1002ceb1..0x1002cf06: cur - 0x118).
+[[nodiscard]] constexpr bool house_group_adjacent(std::uint32_t old_group, std::uint32_t new_group,
+                                                  bool upgrade) {
+    return upgrade ? new_group == old_group + 1 : old_group >= 1 && new_group == old_group - 1;
+}
+
 /// The type ladder: `id - id % stride + stride` and `id - id % stride - stride`, else `+ 1`
 /// (D: AnnoWelt 0x1002cc22 `div 0x14`; 0x1002ce21-0x1002ce3b). nullptr = no such type.
 struct TypeLadder {

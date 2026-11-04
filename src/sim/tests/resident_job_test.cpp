@@ -1120,14 +1120,78 @@ TEST_CASE("resident job: a crafted house (E == 0) is a counted fault and changes
         house.e = 0; // crafted: the choice divides by E * Menge
     }
     Sender sender;
-    const sim::FigureId id = spawn_one(w, sender);
-    until(w, [&] { return ended(w, id); });
+    sender.house = at(w, 110, 110)->id;
+    sender.armed = 1;
+    install(w, sender);
+    // (not spawn_one: its periodic invariant check would meet the very fault under test)
+    // P-1/P-3 (L4): the fault is loud: the world stops at the merge of the walker's call.
+    for (int k = 0; k < 40000 && !w.faulted(); ++k) {
+        w.advance(2);
+    }
+    REQUIRE(w.faulted());
+    CHECK(w.fault().find("resident fault choice_divisor") != std::string::npos);
+    CHECK(w.check_invariants().find("world fault: resident fault choice_divisor") == 0);
+    const std::uint64_t frozen = w.state_hash();
+    w.advance(2); // a faulted world changes nothing, not even the clock
+    CHECK(w.state_hash() == frozen);
     CHECK(stats.residents.faults == 1);
     CHECK(stats.residents.purchases == 0);
     CHECK(stats.residents.deliveries == 0);
     CHECK(city0(w).stock.stock[kFood] == 5000);
     CHECK(city0(w).billed[kFood] == 0);
     CHECK(house_of(w).stock[0] == 0);
-    CHECK(house_of(w).walkers[0] == sim::FigureId{});
-    CHECK(w.check_invariants() == "");
+}
+
+namespace {
+struct Inject {
+    sim::BuildingId home;
+    sim::FigureId figure;
+    bool armed = false;
+};
+void inject_pass(void* raw, const sim::TickContext&, sim::Island&, sim::City&, sim::Effects& fx) {
+    auto& in = *static_cast<Inject*>(raw);
+    if (in.armed) {
+        in.armed = false;
+        fx.house_deliveries.push_back(sim::HouseDelivery{in.home, in.figure, kFood, 100});
+    }
+}
+} // namespace
+
+TEST_CASE("resident job: a delivery is applied only while the walker slot names the figure") {
+    // L2 review P2-3: the slot-ownership check of the delivery merge (scheduler.cpp). A delivery
+    // for a live figure whose house slot does not name it (the slot was cleared behind its back) is
+    // refused; one for the slot's owner is applied. The effect is injected through a city pass.
+    const auto types = registry();
+    Rig r = standard_rig();
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kFood] = 5000; // the walker is still away when the effect arrives
+    Sender sender;
+    const sim::FigureId id = spawn_one(w, sender);
+    Inject in;
+    in.home = at(w, 110, 110)->id;
+    in.figure = id;
+    sim::Seams& seams = sim::WorldTestAccess::seams(w);
+    seams.city_pass[1].name = "resident_test_inject";
+    seams.city_pass[1].fn = &inject_pass;
+    seams.city_pass[1].ctx = &in;
+    // The slot names the figure: applied (100 * 16).
+    in.armed = true;
+    for (int k = 0; k < 64 && in.armed; ++k) {
+        w.advance(2);
+    }
+    REQUIRE_FALSE(in.armed);
+    CHECK(house_of(w).stock[0] == 1600);
+    // The slot is cleared (the figure still names the house): refused, the stock stays.
+    {
+        sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+        const sim::BuildingKey key = is.cache.by_id.at(at(w, 110, 110)->id);
+        std::get<sim::House>(is.cities[0]->index.lists[key.list].slots[key.slot].value().payload)
+            .walkers[0] = sim::FigureId{};
+    }
+    in.armed = true;
+    for (int k = 0; k < 64 && in.armed; ++k) {
+        w.advance(2);
+    }
+    REQUIRE_FALSE(in.armed);
+    CHECK(house_of(w).stock[0] == 1600);
 }

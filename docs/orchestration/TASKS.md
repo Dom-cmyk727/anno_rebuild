@@ -94,8 +94,21 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
 - **W4-DEPTH-1-CLOSE below runs on `task/W4-depth-1` from `b72595c2`** (so at 26.5), not from `0fd1d219`. Its "Owner
   check" step (start Kontor at `--shore 16.5` and `--shore 26.5`, beside the GOG capture) still covers both, for the
   owner's own comparison.
-- **The closeout:** its latest WSL ASan app gate at `1d34dd97` fails `opening_session_replay` at stage 1. Find the
-  cause before that chain runs again.
+- **The closeout, FIXED 2026-11-04 evening.** Its WSL ASan app gate at `1d34dd97` failed `opening_session_replay` at
+  stage 1 because `viewer_wiring.py` hardcoded the window's own auto-quit test hook (`ANNO_VIEW_QUIT_S=240`),
+  clobbering anything the caller's environment set; under ASan the voyage needs far longer (turn p95 measured 509.5 ms
+  against 0.2-0.4 ms native, stage 1 alone measured 434.4-494.9 s to finish naturally here, varying with host load).
+  Fixed in `3a2da9b9`: `viewer_wiring.py` now reads it from its own environment (default unchanged), and CMake scales
+  it 5x (1200 s, the same factor already used for the per-case watchdog) for the `ANNO_SANITIZE` build only. Rerunning
+  the lane at this head now (`wsl-w18`).
+- **New finding, for the orchestrator (depth session, in passing).** With the depth on, `--play` on a *fixed* map
+  draws no start Kontor: `fixed_map.cpp:299` creates it with item byte0f 0, so the depth puts it under the land and
+  the 26.5 sea (`--depth off`, or `--shore 16.5`/`26.5`, makes no difference; verified with `--png`, sheet
+  `cache/depth/views/lan5_seat0_kontor_sheet.png` in the depth worktree). The opening flow is unaffected (founding
+  goes through the real placement rule, not the fixed-map loader). The fix is byte0f from the placement rule at
+  load time — a loader/sim-state change (hashed byte0f, fixed-map goldens move), so it is scheduled separately (MAP
+  lane or this page), not part of DEPTH-1-CLOSE. Land it, or have the owner accept the gap, before merging the depth
+  into anything the owner plays a fixed map with.
 - **Merge order (review §5):** if the owner's depth check passes before the closeout's final gate chain, the depth
   merges into `task/W4-opening-1` first. Otherwise it merges into `main` after W4-MAIN-1, as its own merge, before
   W4-OPENING-2.

@@ -59,8 +59,12 @@ struct Opt {
     bool bau27 = false;           // goods 27 is enabled by stage 1 only
     bool stages = false;          // [BAUSTUFEN]: stage 1 = group 0 with 5 residents, stage 2 = 50
     std::uint32_t high_stage = 0; // [BAUSTUFEN]: this one stage (24..28) = group 0 with 5 residents
+    bool stall_next = false;      // house type 9560 (group 0) whose ladder next 9580 is a stall
     bool orphan = false;          // an extra House type whose PRODTYPE names no group of the table
 };
+constexpr sim::TypeId kPioneer{
+    9560}; // PRODTYPE 97, ladder next 9580 = a market stall (real: 3852 -> 3860)
+constexpr sim::TypeId kPioneerNext{9580};
 constexpr sim::TypeId kOrphan{9540}; // PRODTYPE 99: group 2, not in the two-group table
 
 sim::BuildingType house_t(sim::TypeId id, std::uint32_t prodtype, std::uint32_t walkers,
@@ -137,6 +141,16 @@ std::shared_ptr<const sim::TypeRegistry> registry(Opt o = {},
     }
     if (o.orphan) {
         b.add(house_t(kOrphan, 99, 2, 0));
+    }
+    if (o.stall_next) {
+        b.add(house_t(kPioneer, 97, 2, 0));
+        sim::BuildingType next_stall;
+        next_stall.id = kPioneerNext;
+        next_stall.prodtype = 161;
+        next_stall.cls = sim::RuntimeClass::MarketStall;
+        next_stall.entrances = {{3, 3}};
+        next_stall.output_goods = {kFood};
+        b.add(next_stall);
     }
     b.add(house_t(kP, 97, 2, static_cast<std::uint8_t>(2 | (2 << 6))));
     b.add(house_t(kP3, 97, 2, 0));
@@ -1027,4 +1041,30 @@ TEST_CASE("house live: a house built by a command stamps last with the world tic
     const auto* h = std::get_if<sim::House>(&at(w, 120, 120)->payload);
     REQUIRE(h != nullptr);
     CHECK(h->last == 4464); // u16(70000), not 0
+}
+
+TEST_CASE("house live: a next type that is no house of the next group is not eligible (P-14)") {
+    // The real PIONIER houses (3851-3854, 3960, 3972) have a non-house at id - id % 20 + 20. A
+    // house at its cap would fault with MissingGroup; under P-14 the check is "not eligible": the
+    // house keeps its type, takes its gate, nothing is spent, no variant is drawn and the world
+    // runs on.
+    Opt o;
+    o.stall_next = true;
+    const auto types = registry(o);
+    Rig r = make_rig();
+    r.place(kPioneer, 110, 110, make_house(kP, 512, 640, {2000, 500}));
+    sim::World w = create(r, types);
+    city0(w).stock.stock[kTools] = 1000;
+    city0(w).stock.stock[kWood] = 2000;
+    until(w, [&] { return house_of(w).last != 0; }, 3000);
+    CHECK_FALSE(w.faulted());
+    CHECK(at(w, 110, 110)->type == kPioneer);
+    CHECK(house_of(w).residents_64 == 512);
+    CHECK(city0(w).stock.stock[kTools] == 1000);
+    CHECK(draws_at(w, sim::DrawSite::HouseVariant) == 0);
+    for (int i = 0; i < 2600; ++i) { // a second gate
+        w.advance(2);
+    }
+    CHECK_FALSE(w.faulted());
+    CHECK(w.check_invariants() == "");
 }

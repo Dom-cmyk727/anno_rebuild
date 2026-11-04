@@ -694,6 +694,19 @@ HouseOutcome apply_house_effects(const HouseEnv& env, Island& island, const Buil
     if (ladder.next == nullptr) {
         return HouseOutcome{};
     }
+    // P-14 (population-live.md section 12, L5 review P2-D; a POLICY, not an evidence-backed rule):
+    // UpgradeCheck is "not eligible" unless the next type is a House of the next group. The
+    // original's handling of an existing non-house next type (the PIONIER types 3851-3854, 3960,
+    // 3972 have 3860 = PRODTYPE 289 or 3980 = a stall at id - id % 20 + 20) is unread; failing the
+    // world for it made 12 of 35 original scenarios unrunnable.
+    {
+        const std::optional<std::uint32_t> cur_group = house_group(env.cfg, loc.type->prodtype);
+        const std::optional<std::uint32_t> next_group = house_group(env.cfg, ladder.next->prodtype);
+        if (ladder.next->cls != RuntimeClass::House || !cur_group || !next_group ||
+            !house_group_adjacent(*cur_group, *next_group, true)) {
+            return HouseOutcome{};
+        }
+    }
     std::uint32_t g0 = 0, g1 = 0;
     PopulationView cur, next;
     if (const HouseFault f = view_of(env, *loc.type, g0, cur); f != HouseFault::None) {

@@ -665,6 +665,14 @@ std::uint64_t Scheduler::advance(World& w, std::uint32_t game_ms) {
     PopResult events = run_events(w, ctx, draw);
     // 3. The figure registry (D: 0x1009a8a0 via world +0x114, slot +0x20).
     run_figures(w, ctx, draw);
+    if (w.faulted_) {
+        // A resident fault recorded by the figure phase (its merge ran right after the call)
+        // stops the world here, like a House fault after its island's merge: the rest of the
+        // advance (second event pass, players, timers, monopoly, 7.5 minute event) does not run.
+        w.clock_.end();
+        w.out_.rng_cursor_after = w.rng_.cursor();
+        return tick;
+    }
     // D4 (OQ-039, off by default): a second event pass after the figure phase, so a
     // delayed hit a figure enqueued with delay 0 lands in this advance.
     if (w.rules_.events_flush_after_figures) {

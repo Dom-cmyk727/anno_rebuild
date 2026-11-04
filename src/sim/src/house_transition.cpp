@@ -513,6 +513,29 @@ std::int64_t residents_at_or_above(const SimConfig& cfg, const TypeRegistry& typ
     return total;
 }
 
+std::vector<std::int64_t> residents_at_or_above_all(const SimConfig& cfg, const TypeRegistry& types,
+                                                    const City& city) {
+    std::vector<std::int64_t> per_group(types.house_groups().size(), 0);
+    for (const BuildingList& list : city.index.lists) {
+        for (const auto& slot : list.slots) {
+            if (!slot.has_value()) {
+                continue;
+            }
+            const auto* h = std::get_if<House>(&slot->payload);
+            const BuildingType* t = h != nullptr ? types.find(slot->type) : nullptr;
+            const std::optional<std::uint32_t> g =
+                t != nullptr ? house_group(cfg, t->prodtype) : std::nullopt;
+            if (g && *g < per_group.size()) {
+                per_group[*g] += tdiv(h->residents_64, 64);
+            }
+        }
+    }
+    for (std::size_t g = per_group.size(); g > 1; --g) {
+        per_group[g - 2] += per_group[g - 1]; // suffix sums: "this group and all higher ones"
+    }
+    return per_group;
+}
+
 HouseOutcome upgrade_house(const HouseEnv& env, Island& island, const BuildingKey& key) {
     Located loc = locate(env, island, key);
     if (loc.fault != HouseFault::None) {

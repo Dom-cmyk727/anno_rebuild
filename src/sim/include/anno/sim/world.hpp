@@ -260,7 +260,8 @@ class World {
     /// The 7.5 minute event's accumulator in ms (stage S12; D: world +0x69e4).
     [[nodiscard]] std::uint32_t event750_acc() const { return event750_acc_; }
     /// Whether a draw-guard violation was recorded (docs/sim/state.md §11, stage
-    /// S16). Hashed and saved; nothing sets it before S16, so it is always false.
+    /// S16). Hashed and saved. This is the SAME flag the live population update sets for a typed
+    /// fault (P-1, below): one state bit for "the world is stopped", whichever guard set it.
     [[nodiscard]] bool faulted() const { return faulted_; }
     /// MAP-POP-LIVE-1 L4 (population-live.md sections 7, 19, P-1): the first typed fault of the
     /// live population update ("house fault not_evaluated building 4294967297 (kernel:

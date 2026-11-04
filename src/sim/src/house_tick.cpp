@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include <anno/sim/house_kernel.hpp>
 #include <anno/sim/house_tick.hpp>
@@ -13,6 +14,19 @@
 #include <anno/sim/transport.hpp>
 
 namespace anno::sim {
+
+std::uint32_t player_flags_set(std::uint32_t value) {
+    // D AnnoWelt 0x10020d51-0x10020ecb (docs/sim/population-live.md section 5a). The original
+    // keeps a latch at player +0x96/+0x97 that clears bits 24-28 of the incoming value and puts
+    // them back, fires an event the first time a bit is present and updates a byte at +0x95.
+    // For every value the engine can hold the clear-and-restore is a no-op (the stored value is
+    // monotone: it only ever ORs), so the stored result reduces to the two implications below.
+    // The latch bytes, the byte +0x95 and the events (0x1f, 0x1e) are not modelled (P-12).
+    if ((value & (kPlayerBit25 | kPlayerBit27 | kPlayerBit28)) != 0) {
+        value |= kPlayerBit26; // bit 25 via the +0x97 bit 5 restore, bits 27 and 28 directly
+    }
+    return value;
+}
 
 namespace {
 
@@ -237,6 +251,7 @@ void stage_pass(const TickContext& ctx, City& city, Effects& fx, IslandId island
     if (ps != nullptr) {
         ++ps->stage_passes;
     }
+    std::optional<std::vector<std::int64_t>> per_group;
     for (const StageRecord& s : ctx.types.stage_table()) {
         if (s.stage >= 32) {
             continue; // the registry refuses it (the stage mask is 32 bits); defensive
@@ -248,7 +263,10 @@ void stage_pass(const TickContext& ctx, City& city, Effects& fx, IslandId island
         if (ps != nullptr) {
             ++ps->stage_evaluations;
         }
-        const std::int64_t have = residents_at_or_above(ctx.cfg, ctx.types, city, s.group);
+        if (!per_group) {
+            per_group = residents_at_or_above_all(ctx.cfg, ctx.types, city); // once per pass
+        }
+        const std::int64_t have = s.group < per_group->size() ? (*per_group)[s.group] : 0;
         if (have >= static_cast<std::int64_t>(s.count)) {
             city.stage_mask |= bit;
             if (ps != nullptr) {
@@ -274,7 +292,7 @@ void stage_pass(const TickContext& ctx, City& city, Effects& fx, IslandId island
     }
     Player* p = ctx.serial->players->find(city.owner);
     if (p != nullptr && (p->flags & kStageCompareMask) < city.stage_mask) {
-        p->flags |= city.stage_mask;
+        p->flags = player_flags_set(p->flags | city.stage_mask);
     }
     if (ps != nullptr && p != nullptr) {
         for (auto it = ps->unlocks.rbegin(); it != ps->unlocks.rend() && it->tick == ctx.t &&

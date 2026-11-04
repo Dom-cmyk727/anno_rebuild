@@ -28,12 +28,14 @@
 #include <anno/sim/create.hpp>
 #include <anno/sim/figure.hpp>
 #include <anno/sim/house_tick.hpp>
+#include <anno/sim/house_transition.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/resident_job.hpp>
 #include <anno/sim/synthetic.hpp>
 #include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 
+#include "slice_helpers.hpp"
 #include "world_access.hpp"
 
 namespace {
@@ -52,11 +54,14 @@ constexpr sim::GoodsId kFood = 26, kOther = 27;
 constexpr std::uint32_t kTools = 0x29, kWood = 0x2a;
 
 struct Opt {
-    bool idsec = false;        // goods 26 -> 27 (the replay of a delivery)
-    bool low_negative = false; // group 0 food table: -2 below index 8, else 2 (else all 2)
-    bool bau27 = false;        // goods 27 is enabled by stage 1 only
-    bool stages = false;       // [BAUSTUFEN]: stage 1 = group 0 with 5 residents, stage 2 = 50
+    bool idsec = false;           // goods 26 -> 27 (the replay of a delivery)
+    bool low_negative = false;    // group 0 food table: -2 below index 8, else 2 (else all 2)
+    bool bau27 = false;           // goods 27 is enabled by stage 1 only
+    bool stages = false;          // [BAUSTUFEN]: stage 1 = group 0 with 5 residents, stage 2 = 50
+    std::uint32_t high_stage = 0; // [BAUSTUFEN]: this one stage (24..28) = group 0 with 5 residents
+    bool orphan = false;          // an extra House type whose PRODTYPE names no group of the table
 };
+constexpr sim::TypeId kOrphan{9540}; // PRODTYPE 99: group 2, not in the two-group table
 
 sim::BuildingType house_t(sim::TypeId id, std::uint32_t prodtype, std::uint32_t walkers,
                           std::uint8_t head11, bool entrance = true) {
@@ -67,6 +72,8 @@ sim::BuildingType house_t(sim::TypeId id, std::uint32_t prodtype, std::uint32_t 
     t.width = t.height = 2;
     t.action_radius = 8;
     t.head_raw.assign(56, 0);
+    t.flags_word =
+        0x4; // ordinary land: a Build command can place it (placement.hpp ordinary_class)
     t.head_raw[11] = head11;
     if (entrance) {
         t.entrances = {{3, 3}};
@@ -124,6 +131,12 @@ std::shared_ptr<const sim::TypeRegistry> registry(Opt o = {},
     b.house_groups({g0, g1});
     if (o.stages) {
         b.stage_table({{1, 0, 0, 5}, {2, 0, 0, 50}});
+    }
+    if (o.high_stage != 0) {
+        b.stage_table({{o.high_stage, 0, 0, 5}});
+    }
+    if (o.orphan) {
+        b.add(house_t(kOrphan, 99, 2, 0));
     }
     b.add(house_t(kP, 97, 2, static_cast<std::uint8_t>(2 | (2 << 6))));
     b.add(house_t(kP3, 97, 2, 0));
@@ -577,6 +590,8 @@ TEST_CASE(
     REQUIRE_MESSAGE(back.ok(), (back.ok() ? std::string() : back.error()));
     CHECK(back.value().faulted());
     CHECK(back.value().fault().empty());
+    CHECK(back.value().check_invariants() == ""); // the text is gone; the world stays loadable
+    CHECK(back.value().advance(2) == tick);
     CHECK(back.value().advance(2) == tick);
     CHECK(back.value().state_hash() == hash);
 }
@@ -864,4 +879,152 @@ TEST_CASE("house live: save and reload at every cut of the chain, and a replay")
         CHECK(outcome.value().checkpoints_matched == outcome.value().checkpoints_total);
         CHECK(outcome.value().checkpoints_total >= 7);
     }
+}
+
+TEST_CASE("house live: SetProperty 0x21 also sets bit 26 for stages 25, 27 and 28 (D 0x10020d51)") {
+    // The stored value: bits 25, 27 and 28 imply bit 26; 24 and 26 alone are kept; the low bits
+    // pass through. Hand-derived from the disassembly: the +0x97 bit 5 restore (stage 25) and the
+    // two "or eax, 0x4000000" at 0x10020ea8 / 0x10020eb7 (stages 27 and 28).
+    CHECK(sim::player_flags_set(0x1) == 0x1);
+    CHECK(sim::player_flags_set(0x1000001) == 0x1000001);
+    CHECK(sim::player_flags_set(0x2000000) == 0x6000000);
+    CHECK(sim::player_flags_set(0x4000000) == 0x4000000);
+    CHECK(sim::player_flags_set(0x8000000) == 0xc000000);
+    CHECK(sim::player_flags_set(0x10000000) == 0x14000000);
+    CHECK(sim::player_flags_set(0x1b000001) == 0x1f000001);
+    CHECK(sim::player_flags_set(sim::player_flags_set(0x8000000)) == 0xc000000); // idempotent
+    // Through the stage pass: house of 5 residents, one stage record (stage s = group 0, count 5),
+    // player flags 1 -> the unlock sets city bit s, the player value is the rule's result.
+    struct Case {
+        std::uint32_t stage, want;
+    };
+    for (const Case c : {Case{24, 0x1000001}, Case{25, 0x6000001}, Case{26, 0x4000001},
+                         Case{27, 0xc000001}, Case{28, 0x14000001}}) {
+        INFO("stage " << c.stage);
+        Opt o;
+        o.high_stage = c.stage;
+        const auto types = registry(o);
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
+        sim::World w = create(r, types);
+        until(w, [&] { return city0(w).stage_stamp != 0; }, 3000);
+        CHECK(city0(w).stage_mask == (std::uint32_t{1} << c.stage));
+        CHECK(w.players().find(sim::PlayerId{0})->flags == c.want);
+    }
+}
+
+TEST_CASE("house live: typed faults of the House tick and the P-2 type refusal") {
+    Opt o;
+    o.orphan = true;
+    const auto types_orphan = registry(o);
+    const auto types = registry();
+    SUBCASE("NoSerialContext: the live tick without a serial context fails loudly") {
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
+        sim::World w = create(r, types);
+        slice_test::Tick t(w, 5000);
+        sim::Effects fx;
+        sim::Building& b = const_cast<sim::Building&>(*at(w, 110, 110));
+        const std::uint64_t before = w.state_hash();
+        sim::house_tick(t.ctx, *sim::WorldTestAccess::islands(w)[0], city0(w), b,
+                        *types->find(b.type), fx);
+        REQUIRE(fx.faults.size() == 1);
+        CHECK(fx.faults[0].house == sim::HouseFault::NoSerialContext);
+        CHECK(fx.faults[0].building == b.id);
+        CHECK(w.state_hash() == before);
+        CHECK(sim::fault_message(fx.faults[0]) == "house fault no_serial_context building 1");
+        // The stage pass without a serial context after a stage was reached: the same fault.
+    }
+    SUBCASE("NoSuchHouse and MissingGroup from a direct call, CountMismatch through the world") {
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
+        sim::World w = create(r, types);
+        slice_test::Tick t(w, 5000);
+        sim::SerialResources serial{&sim::WorldTestAccess::players(w),
+                                    &sim::WorldTestAccess::figures(w)};
+        t.ctx.serial = &serial;
+        sim::Building& b = const_cast<sim::Building&>(*at(w, 110, 110));
+        sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
+        {
+            // The island's id index lost the house: the commit finds no key.
+            sim::World copy = w;
+            slice_test::Tick tc(copy, 5000);
+            sim::SerialResources sc{&sim::WorldTestAccess::players(copy),
+                                    &sim::WorldTestAccess::figures(copy)};
+            tc.ctx.serial = &sc;
+            sim::Island& ic = *sim::WorldTestAccess::islands(copy)[0];
+            sim::Building& bc = const_cast<sim::Building&>(*at(copy, 110, 110));
+            ic.cache.by_id.erase(bc.id);
+            sim::Effects fx;
+            sim::house_tick(tc.ctx, ic, city0(copy), bc, *types->find(bc.type), fx);
+            REQUIRE(fx.faults.size() == 1);
+            CHECK(fx.faults[0].house == sim::HouseFault::NoSuchHouse);
+        }
+        {
+            // A House type whose group is not in the table (world made with the rule off).
+            Rig ro = make_rig();
+            ro.place(kOrphan, 110, 110, [] {
+                sim::House h = make_house(kP, 320, 640, {});
+                return h;
+            }());
+            sim::World wo = create(ro, types_orphan, false);
+            slice_test::Tick to(wo, 5000);
+            sim::SerialResources so{&sim::WorldTestAccess::players(wo),
+                                    &sim::WorldTestAccess::figures(wo)};
+            to.ctx.serial = &so;
+            sim::Building& bo = const_cast<sim::Building&>(*at(wo, 110, 110));
+            sim::Effects fx;
+            sim::house_tick(to.ctx, *sim::WorldTestAccess::islands(wo)[0], city0(wo), bo,
+                            *types_orphan->find(bo.type), fx);
+            REQUIRE(fx.faults.size() == 1);
+            CHECK(fx.faults[0].house == sim::HouseFault::MissingGroup);
+        }
+        static_cast<void>(b);
+        static_cast<void>(is);
+    }
+    SUBCASE("CountMismatch: a broken derived house count stops the world before anything changes") {
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 512, 640, {2000, 500}));
+        sim::World w = create(r, types);
+        city0(w).stock.stock[kTools] = 1000;
+        city0(w).stock.stock[kWood] = 2000;
+        city0(w).index.house_counts[0] = 0; // the upgrade's old group count
+        for (int i = 0; i < 3000 && !w.faulted(); ++i) {
+            w.advance(2); // (no per-step invariants: the derived index is broken on purpose)
+        }
+        REQUIRE(w.faulted());
+        CHECK(w.fault() == "house fault count_mismatch building 1");
+        CHECK(at(w, 110, 110)->type == kP); // not upgraded
+        CHECK(city0(w).stock.stock[kTools] == 1000);
+    }
+    SUBCASE("a House type that names no group is refused at creation with the rule on (P-2)") {
+        Rig r = make_rig();
+        r.place(kP, 110, 110, make_house(kP, 320, 640, {0, 0}));
+        sim::Rules live;
+        live.house_updates = true;
+        const auto refused =
+            sim::World::create(r.spec, types_orphan, syn::population_config(), live);
+        REQUIRE_FALSE(refused.ok());
+        CHECK(refused.error().find("house type 9540 (PRODTYPE 99) names no house group") !=
+              std::string::npos);
+        CHECK(
+            sim::World::create(r.spec, types_orphan, syn::population_config(), sim::Rules{}).ok());
+    }
+}
+
+TEST_CASE("house live: a house built by a command stamps last with the world tick (P-6)") {
+    const auto types = registry();
+    Rig r = make_rig();
+    syn::give_flat_terrain(r.spec); // a legal site (ship-placement.md R4)
+    sim::World w = create(r, types);
+    sim::WorldTestAccess::clock(w).ms = 2 * 70000 - 2;
+    w.advance(2); // tick 70000
+    REQUIRE(w.clock().tick() == 70000);
+    const sim::ApplyResult res = w.apply(
+        sim::Command{sim::PlayerId{0}, sim::BuildCmd{sim::CityRef{sim::IslandId{0}, sim::CityNo{0}},
+                                                     {sim::PlacementWire{kP, 120, 120, 0, 0, 0}}}});
+    REQUIRE_MESSAGE(res.ok(), std::string(sim::reject_name(res.status)));
+    const auto* h = std::get_if<sim::House>(&at(w, 120, 120)->payload);
+    REQUIRE(h != nullptr);
+    CHECK(h->last == 4464); // u16(70000), not 0
 }

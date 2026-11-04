@@ -30,6 +30,18 @@ inline constexpr std::uint16_t kStagePassPeriod = 2500;
 /// city mask (the 23-bit quirk, kept, X16).
 inline constexpr std::uint32_t kStageCompareMask = 0x7fffff;
 
+/// Player flag bits 24-28 (the ones SetProperty 0x21 post-processes, D 0x10020d51-0x10020ecb).
+inline constexpr std::uint32_t kPlayerBit24 = std::uint32_t{1} << 24;
+inline constexpr std::uint32_t kPlayerBit25 = std::uint32_t{1} << 25;
+inline constexpr std::uint32_t kPlayerBit26 = std::uint32_t{1} << 26;
+inline constexpr std::uint32_t kPlayerBit27 = std::uint32_t{1} << 27;
+inline constexpr std::uint32_t kPlayerBit28 = std::uint32_t{1} << 28;
+
+/// The value the player's SetProperty 0x21 stores for the incoming `value` (the player's flags
+/// OR the city's stage mask): bits 25, 27 and 28 also set bit 26 (the original's latch restores
+/// bit 26 for a present bit 25 and ORs it for 27 and 28). Everything else is kept.
+[[nodiscard]] std::uint32_t player_flags_set(std::uint32_t value);
+
 /// The taken-or-skipped House tick of building `b` (a House of class House with the payload
 /// House). Skipped gate: nothing changes. Otherwise, in the original's order: the kernel's gate,
 /// E', need loop and mood, the spawn block (ONE world draw at DrawSite::HouseWalkerTarget when the

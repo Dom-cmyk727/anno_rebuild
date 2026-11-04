@@ -130,6 +130,12 @@ struct SetGroupResult {
 [[nodiscard]] std::int64_t residents_at_or_above(const SimConfig& cfg, const TypeRegistry& types,
                                                  const City& city, std::uint32_t group);
 
+/// The same counters for every group at once, one pass over the city's buildings: entry g is
+/// residents_at_or_above(g) (size = the registry's group count). The stage pass uses it so its
+/// cost does not grow with the number of stage records.
+[[nodiscard]] std::vector<std::int64_t>
+residents_at_or_above_all(const SimConfig& cfg, const TypeRegistry& types, const City& city);
+
 /// What the operations need besides the island and the key.
 struct HouseEnv {
     const SimConfig& cfg;

@@ -314,7 +314,9 @@ std::string World::check_invariants() const {
     }
     if (!fault_message_.empty()) {
         // MAP-POP-LIVE-1 L4 (P-1): a recorded fault of the live population update is reported
-        // until the world is replaced; the text is a diagnostic (not saved).
+        // until the world is replaced. The text is a diagnostic and is not saved: a reloaded
+        // faulted world reports faulted() only and must stay loadable (load and save validate),
+        // so the invariants key on the text, not on the flag (L5 decision, review P3-4).
         return "world fault: " + fault_message_;
     }
     for (const auto& entry : events_.q) {

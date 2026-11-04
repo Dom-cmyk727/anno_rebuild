@@ -69,10 +69,12 @@ std::string World::resident_problem() const {
             }
             for (std::size_t k = 0; k < r.cargo.size(); ++k) {
                 const ResidentCargo& c = r.cargo[k];
-                if (c.goods >= config_.warehouse_goods) {
+                // A purchase carries any goods of the table: the infrastructure goods of the public
+                // buildings (church, school, ...) lie above the warehouse goods (found by the L5
+                // canary on S01_01_01: goods 82), so the bound is the goods table, not the store.
+                if (c.goods != 0 && types_->goods(c.goods) == nullptr) {
                     return where + ".resident.cargo[" + std::to_string(k) +
-                           "].goods: " + std::to_string(c.goods) +
-                           " is not below SimConfig.warehouse_goods";
+                           "].goods: " + std::to_string(c.goods) + " is not in the goods table";
                 }
                 if (c.goods == 0 && c.amount_88 != 0) {
                     return where + ".resident.cargo[" + std::to_string(k) +

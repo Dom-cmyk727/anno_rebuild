@@ -579,8 +579,15 @@ TEST_CASE("stream 128: the invariants name a broken walker or resident fact") {
     }
     {
         sim::World w = p.world;
-        sim::find_figure(sim::WorldTestAccess::figures(w), p.figure)->resident->cargo[0].goods = 56;
-        CHECK(contains(w.check_invariants(), "is not below SimConfig.warehouse_goods"));
+        sim::find_figure(sim::WorldTestAccess::figures(w), p.figure)->resident->cargo[0].goods =
+            5000;
+        CHECK(contains(w.check_invariants(), "5000 is not in the goods table"));
+        // An infrastructure goods above the warehouse goods is a legal cargo (a public building's
+        // supply, real data: S01_01_01 carries goods 82).
+        sim::World ok = p.world;
+        sim::find_figure(sim::WorldTestAccess::figures(ok), p.figure)->resident->cargo[0].goods =
+            static_cast<sim::GoodsId>(ok.config().warehouse_goods + 1);
+        CHECK(ok.check_invariants() == "");
     }
     {
         sim::World w = p.world;

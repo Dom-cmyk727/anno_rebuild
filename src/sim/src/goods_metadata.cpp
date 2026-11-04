@@ -92,7 +92,7 @@ formats::Result<std::vector<StageRecord>, std::string> parse_stage_table(formats
         return static_cast<std::uint32_t>(*v);
     };
     std::vector<StageRecord> out;
-    std::vector<bool> have_wissen;
+    std::vector<std::uint8_t> have_wissen;
     const auto find = [&](std::uint32_t stage) -> std::optional<std::size_t> {
         for (std::size_t i = 0; i < out.size(); ++i) {
             if (out[i].stage == stage) {
@@ -129,16 +129,16 @@ formats::Result<std::vector<StageRecord>, std::string> parse_stage_table(formats
                 return where(e) + "stage " + str(f[0]) + " is listed twice";
             }
             out.push_back(StageRecord{*stage, *a, 0, *c});
-            have_wissen.push_back(false);
+            have_wissen.push_back(0);
         } else {
             const auto i = find(*stage);
             if (!i) {
                 return where(e) + "Wissen for " + str(f[0]) + " has no Stufe line before it";
             }
-            if (have_wissen[*i]) {
+            if (have_wissen[*i] != 0) {
                 return where(e) + "Wissen for " + str(f[0]) + " is given twice";
             }
-            have_wissen[*i] = true;
+            have_wissen[*i] = 1;
             out[*i].wissen = *a;
         }
     }

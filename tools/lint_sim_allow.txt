@@ -115,3 +115,25 @@ src/sim/src/ship_step.cpp:constexpr std::uint32_t kStateMoving  # state word bit
 src/sim/include/anno/sim/house_tick.hpp:kPlayerBit2[4-8]  # bits 24-28 of the player flags (D 0x10020d51-0x10020ecb)
 # The diagnostic record cap of PopulationStats (never state); counts the records dropped past it.
 src/sim/include/anno/sim/transport.hpp:kRecordCap  # cap of the diagnostic record vectors, not sim state
+
+# --- MAP-POP-LIVE-1 bundle (L1-L4): original constants of the live House path. Each is an original
+# default read from the disassembly (docs/sim/population-live.md sections 2, 3, 6, 19); the ones
+# that are tunable by a mod have the config path noted: none is state.
+src/sim/include/anno/sim/figure.hpp:kJobResidentCode  # job code 0x35 of the house walker (D: the House send 0x10072d20); a job id, not a limit
+src/sim/include/anno/sim/resident_job.hpp:kJobResident  # alias of kJobResidentCode
+src/sim/include/anno/sim/resident_job.hpp:kWalkerSpawnBelow  # D 0x10076341: spawn while lowest < 102; original default, path: a SimConfig field (not added, schema stays 128)
+src/sim/include/anno/sim/resident_job.hpp:kResidentWaitTicks  # P-8 simplification: the stall wait is unread; path: SimConfig field once the edge is read
+src/sim/include/anno/sim/house_tick.hpp:kStagePassPeriod  # D 0x10029610: stage pass gate 2500; original default, path: a SimConfig field
+src/sim/include/anno/sim/house_tick.hpp:kStageCompareMask  # D 0x10029610: the 23-bit compare (X16 quirk), a file fact
+src/sim/include/anno/sim/resident.hpp:kDemandDivisor  # D 0x100765c0: 44236 in the house demand
+src/sim/include/anno/sim/resident.hpp:kPurchaseScoreGate  # D: callers require choice >= 12; original default, path: a SimConfig field
+src/sim/include/anno/sim/resident.hpp:kThresholdDen  # D 0x10076670: availability threshold R * Menge * 256 / 4096
+src/sim/include/anno/sim/resident.hpp:kThresholdNum  # D 0x10076670: same threshold, numerator
+src/sim/include/anno/sim/resident.hpp:kUrgencyBase  # D 0x10076670: urg = 128 - s
+src/sim/include/anno/sim/resident.hpp:kUrgencySaturation  # D 0x10076670: s capped at 160
+src/sim/include/anno/sim/resident.hpp:kUrgencyScale  # D 0x10076670: 1536 * stock / (E * Menge)
+src/sim/include/anno/sim/resident.hpp:kFireBrigadeAvailability  # D: FireBrigade supplies 512 (supplier availability, section 2)
+src/sim/include/anno/sim/resident.hpp:kServiceAvailability  # D: PublicService, School, Doctor supply the constant 256
+src/sim/include/anno/sim/resident.hpp:kStockPerDelivered  # D 0x10076610: a delivery adds amount * 16 to the stock
+src/sim/src/house_transition.cpp:kU32Max  # the u32 width of the widened stock/counter checks (a type width, not a game limit)
+src/sim/src/resident.cpp:kU32Max  # the u32 width of the widened stock/billed checks (a type width, not a game limit)

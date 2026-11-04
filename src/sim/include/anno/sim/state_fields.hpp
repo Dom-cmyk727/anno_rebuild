@@ -886,7 +886,7 @@ static_assert(field_count<City>() == 13, "a City member needs a line in fields(C
 /// save them starts with (SimConfig::warehouse_goods).
 struct CityStream {
     bool save_billed = true;
-    std::size_t warehouse_goods = 0;
+    std::uint64_t warehouse_goods = 0;
 };
 
 template <class A, Same<City> S> void fields(A& a, S& s, const CityStream& ctx = CityStream{}) {

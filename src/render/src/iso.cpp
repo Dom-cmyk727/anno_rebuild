@@ -34,12 +34,11 @@ void over(std::uint8_t* dst, const std::uint8_t* src) {
 }
 
 Canvas Canvas::for_island(const insel::Island& island, std::size_t group, int margin) {
-    const auto [tw, th] = kTile[group];
     const int w = island.width, h = island.height;
     // Corner (w, 0) is the leftmost point, corner (0, h) the rightmost.
-    const int left = -w * tw / 2;
-    const int right = h * tw / 2;
-    const int bottom = (w + h) * th / 2;
+    const int left = tile_top(w, 0, group).first;
+    const int right = tile_top(0, h, group).first;
+    const int bottom = tile_top(w, h, group).second;
     Canvas c;
     c.width = static_cast<std::size_t>(right - left);
     c.height = static_cast<std::size_t>(bottom + margin);
@@ -223,8 +222,8 @@ void draw_ground_grids(Canvas& canvas, std::size_t w, std::size_t hgt,
         const auto c = corners(heights, w, hgt, t % w, t / w);
         const float x = static_cast<float>(t % w), y = static_cast<float>(t / w);
         auto screen = [&](float cx, float cy, std::int64_t h) {
-            return Vec2{(cy - cx) * tw / 2.0F,
-                        (cx + cy) * th / 2.0F - static_cast<float>(h) * px_per_unit};
+            const auto [sx, sy] = tile_screen(cx, cy, tw, th);
+            return Vec2{sx, sy - static_cast<float>(h) * px_per_unit};
         };
         // Corners A (x, y), C (x+1, y), B (x, y+1), D (x+1, y+1).
         const Vec2 a = screen(x, y, c[0]);

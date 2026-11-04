@@ -86,7 +86,6 @@ int margin(std::size_t group) {
 }
 
 std::vector<Placement> layout(std::span<const IslandBox> boxes, std::size_t group) {
-    const auto [tw, th] = kTile[group];
     std::vector<std::size_t> order(boxes.size());
     std::iota(order.begin(), order.end(), std::size_t{0});
     auto key = [&](std::size_t i) {
@@ -102,10 +101,10 @@ std::vector<Placement> layout(std::span<const IslandBox> boxes, std::size_t grou
         const auto offset = tile_top(b.x, b.y, group);
         const int w = b.width, h = b.height;
         // Same rectangle as Canvas::for_island with the margin.
-        const int left = -w * tw / 2;
-        const int bottom = (w + h) * th / 2;
-        const Rect bounds{offset.first + left, offset.second - margin(group), h * tw / 2 - left,
-                          bottom + margin(group)};
+        const int left = tile_top(w, 0, group).first;
+        const int bottom = tile_top(w, h, group).second;
+        const Rect bounds{offset.first + left, offset.second - margin(group),
+                          tile_top(0, h, group).first - left, bottom + margin(group)};
         out.push_back(Placement{index, offset, bounds});
     }
     return out;
@@ -208,8 +207,9 @@ std::optional<Px> sea_floor_colour(std::span<const insel::Island> islands,
 
 std::pair<int, int> UnitSprite::anchor(std::size_t group, Lift lift) const {
     const auto [tw, th] = kTile[group];
-    const int sx = sat_cast<int>(roundf((y - x) * static_cast<float>(tw) / 2.0F));
-    const int sy = sat_cast<int>(roundf((x + y) * static_cast<float>(th) / 2.0F));
+    const auto [fx, fy] = tile_screen(x, y, static_cast<float>(tw), static_cast<float>(th));
+    const int sx = sat_cast<int>(roundf(fx));
+    const int sy = sat_cast<int>(roundf(fy));
     // Height in 1/1024 units, so sloped ground lifts smoothly.
     const int raise = z ? lift.scaled(sat_cast<std::int64_t>(roundf(*z * 1024.0F)), 1024, group)
                         : lift.scaled(kSeaLevel, 1, group);
@@ -691,14 +691,13 @@ std::optional<Rect> Scene::object_bounds(std::size_t index, const Prepared& o,
     }
     // The anchor place_prepared computes for this object (the same formula).
     const auto g = static_cast<std::uint32_t>(group);
-    const auto [tw, th] = kTile[group];
     const auto [w, h] = o.second;
     const int cx2 = 2 * int{o.first.x} + int{w};
     const int cy2 = 2 * int{o.first.y} + int{h};
     const std::int64_t z2 = 2 * std::int64_t{o.first.height()};
     const int raise = lift.scaled(z2, 2, group);
-    const std::pair<int, int> anchor{(cy2 - cx2) * tw / 4 + offset->first,
-                                     (cx2 + cy2) * th / 4 - raise + offset->second};
+    const auto [ax, ay] = tile_top2(cx2, cy2, group);
+    const std::pair<int, int> anchor{ax + offset->first, ay - raise + offset->second};
     std::optional<Rect> out;
     auto grow = [&](const formats::figuren::FrameSet& fs, bool shadow) {
         for (const formats::figuren::Frame& frame : fs.frames) {

@@ -109,13 +109,40 @@ inline void over(Px& dst, const Px& src) {
 /// at a = 135° for the default view, so screen x = 41.835 · (y − x) px at
 /// zoom 0 (D: AnnoFrame.dll 0x100712c0, 0x10071d70; AnnoDisplay.dll
 /// 0x10011e60; docs/re/annodisplay.md §5). Every tile-to-screen mapping of
-/// the renderer is this one (and screen_tile its inverse).
+/// the C++ renderer and its tools is this one: tile_top at whole corners,
+/// tile_top2 at half-tile ones, tile_screen at any tile position (or a
+/// tile-space vector), screen_tile the inverse. Kept inline, with their reason: gpu.wgsl (another
+/// language; its `tile_pos` and the comment above it are screen_tile's twin) and the ground
+/// rasteriser's tile range in draw_ground_grids (the inverse of a screen rectangle's extent in the
+/// diamond coordinates u = y − x, v = x + y, not of a point).
 std::pair<int, int> tile_top(int x, int y, std::size_t group);
+
+/// tile_top at doubled coordinates (x2, y2), twice a position on the half-tile grid such as a
+/// footprint's centre (2x + w, 2y + h): ((y2 − x2) · tw / 4, (x2 + y2) · th / 4) in integers,
+/// truncating toward zero as the object anchor always has (place_prepared).
+inline std::pair<int, int> tile_top2(int x2, int y2, std::size_t group) {
+    const auto [tw, th] = kTile[group];
+    return {(y2 - x2) * tw / 4, (x2 + y2) * th / 4};
+}
+
+/// tile_top's mapping at tile position (x, y) on the height-0 plane, with
+/// tiles tw × th px; a tile-space vector maps the same way. The operations
+/// are tile_top's in the same order ((y − x) · tw / 2), so results do not
+/// change where an inline copy was replaced.
+inline std::pair<float, float> tile_screen(float x, float y, float tw, float th) {
+    return {(y - x) * tw / 2.0F, (x + y) * th / 2.0F};
+}
+inline std::pair<double, double> tile_screen(double x, double y, double tw, double th) {
+    return {(y - x) * tw / 2.0, (x + y) * th / 2.0};
+}
 
 /// The tile position on the height-0 plane shown at screen point (sx, sy)
 /// with tiles tw × th px: the inverse of tile_top's mapping. gpu.wgsl
 /// `tile_pos` is its twin (same operations in the same order).
 inline std::pair<float, float> screen_tile(float sx, float sy, float tw, float th) {
+    return {sy / th - sx / tw, sy / th + sx / tw};
+}
+inline std::pair<double, double> screen_tile(double sx, double sy, double tw, double th) {
     return {sy / th - sx / tw, sy / th + sx / tw};
 }
 
@@ -625,7 +652,6 @@ DrawStats place_prepared(std::span<const Prepared> list,
                          std::uint64_t time_ms, V&& visible, std::vector<SpriteDraw>& out) {
     DrawStats stats;
     const auto g = static_cast<std::uint32_t>(group);
-    const auto [tw, th] = kTile[group];
     for (const auto& [o, fp] : list) {
         const auto [w, h] = fp;
         const std::uint32_t id = o.anlage;
@@ -644,7 +670,8 @@ DrawStats place_prepared(std::span<const Prepared> list,
         const int cy2 = 2 * int{o.y} + int{h};
         const std::int64_t z2 = 2 * std::int64_t{o.height()};
         const int raise = lift.scaled(z2, 2, group);
-        const std::pair<int, int> anchor{(cy2 - cx2) * tw / 4, (cx2 + cy2) * th / 4 - raise};
+        const auto [ax, ay] = tile_top2(cx2, cy2, group);
+        const std::pair<int, int> anchor{ax, ay - raise};
         const formats::figuren::FrameSet* frames = nullptr;
         for (const auto& fs : set.frame_sets) {
             if (fs.group == g) {

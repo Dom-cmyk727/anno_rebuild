@@ -389,8 +389,10 @@ std::vector<CellPixel> project_cells(std::span<const std::uint8_t> heights, std:
             const float y = (static_cast<float>(ty0 * c + j) + 0.5F) / cf;
             const float t = terrain_height(heights, w, h, x, y);
             CellPixel& q = out[static_cast<std::size_t>(j * sw + i)];
-            q.sx = (y - x) * half_w;
-            q.sy = (x + y) * half_h - lift_px * t;
+            // tile_screen with tiles 2 half_w x 2 half_h (doubling and halving are exact).
+            const auto [sx, sy] = tile_screen(x, y, 2.0F * half_w, 2.0F * half_h);
+            q.sx = sx;
+            q.sy = sy - lift_px * t;
             q.pass = !depth_test || t <= pass_height;
         }
     }

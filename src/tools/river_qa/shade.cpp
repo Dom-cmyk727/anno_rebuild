@@ -173,8 +173,8 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
             p[0] = 255, p[1] = 0, p[2] = 255;
             continue;
         }
-        const float sx = (f.vy - f.vx) * static_cast<float>(tw) * 0.5F;
-        const float sy = (f.vx + f.vy) * static_cast<float>(th) * 0.5F;
+        const auto [sx, sy] =
+            render::tile_screen(f.vx, f.vy, static_cast<float>(tw), static_cast<float>(th));
         const float speed = std::hypot(f.vx, f.vy);
         const float hue = (std::atan2(sy, sx) / 6.2831853F) + 0.5F;
         const Px4 c =
@@ -195,8 +195,8 @@ bool run_shade(const render::Scene& scene, std::size_t group, render::Rect view,
                 continue;
             }
             const render::FlowSample& f = flows[o];
-            const float sx = (f.vy - f.vx) * static_cast<float>(tw) * 0.5F;
-            const float sy = (f.vx + f.vy) * static_cast<float>(th) * 0.5F;
+            const auto [sx, sy] =
+                render::tile_screen(f.vx, f.vy, static_cast<float>(tw), static_cast<float>(th));
             const float len = std::hypot(sx, sy);
             if (len < 1e-3F) {
                 plot(x, y);

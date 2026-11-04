@@ -74,9 +74,8 @@ struct ScreenMap {
 /// (the test checks that).
 [[nodiscard]] inline std::pair<double, double> corner_point(double u, double v, double h,
                                                             const PickGeometry& g) {
-    const double x = (v - u) * g.tile_w / 2.0;
-    const double y = (u + v) * g.tile_h / 2.0 - g.lift * h;
-    return {x, y};
+    const auto [x, y] = tile_screen(u, v, g.tile_w, g.tile_h);
+    return {x, y - g.lift * h};
 }
 
 /// The highest ground in HEIGHT units: the files store a corner height as one byte.
@@ -96,11 +95,7 @@ struct PickRay {
         !(g.tile_h > 0.0) || !std::isfinite(max_height) || max_height < 0.0) {
         return std::nullopt;
     }
-    auto at = [&](double h) {
-        const double yflat = sy + g.lift * h;
-        return std::pair{(yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0,
-                         (yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0};
-    };
+    auto at = [&](double h) { return screen_tile(sx, sy + g.lift * h, g.tile_w, g.tile_h); };
     const auto [u0, v0] = at(0.0);
     const auto [u1, v1] = at(max_height);
     return PickRay{u0, v0, u1, v1};
@@ -137,11 +132,7 @@ pick_tile(double sx, double sy, const PickGeometry& g,
         return std::nullopt;
     }
     // The world point on the ray at height h.
-    auto at = [&](double h) {
-        const double yflat = sy + g.lift * h;
-        return std::pair{(yflat / (g.tile_h / 2.0) - sx / (g.tile_w / 2.0)) / 2.0,
-                         (yflat / (g.tile_h / 2.0) + sx / (g.tile_w / 2.0)) / 2.0};
-    };
+    auto at = [&](double h) { return screen_tile(sx, sy + g.lift * h, g.tile_w, g.tile_h); };
     // The ray's world point at height 0 and at the top, and the crossings in between.
     const auto [u0, v0] = at(0.0);
     const auto [u1, v1] = at(max_height);

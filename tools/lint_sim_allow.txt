@@ -122,7 +122,6 @@ src/sim/include/anno/sim/transport.hpp:kRecordCap  # cap of the diagnostic recor
 src/sim/include/anno/sim/figure.hpp:kJobResidentCode  # job code 0x35 of the house walker (D: the House send 0x10072d20); a job id, not a limit
 src/sim/include/anno/sim/resident_job.hpp:kJobResident  # alias of kJobResidentCode
 src/sim/include/anno/sim/resident_job.hpp:kWalkerSpawnBelow  # D 0x10076341: spawn while lowest < 102; original default, path: a SimConfig field (not added, schema stays 128)
-src/sim/include/anno/sim/resident_job.hpp:kResidentWaitTicks  # P-8 simplification: the stall wait is unread; path: SimConfig field once the edge is read
 src/sim/include/anno/sim/house_tick.hpp:kStagePassPeriod  # D 0x10029610: stage pass gate 2500; original default, path: a SimConfig field
 src/sim/include/anno/sim/house_tick.hpp:kStageCompareMask  # D 0x10029610: the 23-bit compare (X16 quirk), a file fact
 src/sim/include/anno/sim/resident.hpp:kDemandDivisor  # D 0x100765c0: 44236 in the house demand

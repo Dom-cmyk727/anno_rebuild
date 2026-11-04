@@ -82,6 +82,9 @@ grp SZ2 num=2 needs=26:6145:1 infra_end=1 wohn=65535
 grp SW1 num=2 needs=26:1:0,27:6145:1 infra_end=2 wohn=65535
 grp SW2 num=2 needs=26:1:0,27:6144:1 infra_end=2 wohn=65535
 grp SW3 num=2 needs=26:65535:0,27:1:1 infra_end=2 wohn=65535
+grp SR1 num=2 needs=26:1:1,26:65535:0 infra_end=2 wohn=65535
+grp SR2 num=2 needs=26:1:1,26:6144:0 infra_end=2 wohn=65535
+grp SR3 num=2 needs=26:1:0,26:65535:0,27:1:1 infra_end=3 wohn=65535
 grp SP num=0 needs=26:41:1,28:50:1 infra_end=2 wohn=5
 # upgrade: s(26) = 2500*1536/64000 = 60, s(28) = 2000*1536/32000 = 96; E and residents kept
 setgroup SG1-upgrade goods=G old=SO new=SN e=640 res64=1000 stock=2500,2000 draws=none => stock=3000,0,8000,0 e=640 res64=1000 used=0
@@ -107,6 +110,13 @@ setgroup SG7c-first-huge-refused goods=G old=none new=SX e=640 res64=320 stock=n
 setgroup SG7e-forced-slot1-refused goods=G old=none new=SW1 e=640 res64=320 stock=none draws=0,0 => fault=overflow used=0
 setgroup SG7f-forced-slot1-accepted goods=G old=none new=SW2 e=640 res64=320 stock=none draws=0 => stock=699040,4294901760 e=8388480 res64=4194240 used=1
 setgroup SG7g-unforced-food-refused goods=G old=none new=SW3 e=640 res64=320 stock=none draws=0 => fault=overflow used=0
+# repeated ware (review P2): the forced draw of slot 0 satisfies EVERY slot of ware 26, so the unforced slot 1 is
+# computed with sat up to 128: 65535 * 128 * 8388480 / 1536 = 45811586400 > u32 -> refused BEFORE the draw (used=0);
+# menge 6144 gives 4294901760 and is accepted (draw 0, sat 128; slot 0: 1 * 128 * 8388480 / 1536 = 699040)
+setgroup SG7h-repeated-ware-refused goods=G old=none new=SR1 e=640 res64=320 stock=none draws=0 => fault=overflow used=0
+setgroup SG7i-repeated-ware-accepted goods=G old=none new=SR2 e=640 res64=320 stock=none draws=0 => stock=699040,4294901760 e=8388480 res64=4194240 used=1
+# an unforced repeated ware nobody draws is not satisfied: slot 1 has flag set, stock 0 (slot 0 is food: 699040 stays for j=0)
+setgroup SG7j-repeated-ware-undrawn goods=G old=none new=SR3 e=640 res64=320 stock=none draws=0 => stock=699040,0,699040 e=8388480 res64=4194240 used=1
 # neighbouring legal input: wohn 100 -> E = 12800, res64 = 6400; draw 7 -> sat 121: 255*121*12800/1536 = 257125
 setgroup SG7d-first-neighbour goods=G old=none new=SY e=640 res64=320 stock=none draws=7 => stock=257125 e=12800 res64=6400 used=1
 

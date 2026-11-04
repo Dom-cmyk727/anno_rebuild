@@ -38,9 +38,10 @@ class Malformed(Exception):
 
 
 class Fault(Exception):
-    def __init__(self, name):
+    def __init__(self, name, used=0):
         Exception.__init__(self, name)
         self.name = name
+        self.used = used   # draws really consumed before the fault
 
 
 def tdiv(a, b):
@@ -184,8 +185,11 @@ def setgroup(goods, old, new, e, res64, stock, draws):
         pe, pr = new['wohn'] << 7, new['wohn'] << 6
         if pe > 0xFFFFFFFF or pr > 0x7FFFFFFF:
             raise Fault('overflow')
-        for j in range(new['infra_end']):
-            if new['needs'][j][2] and tdiv(new['needs'][j][1] * 128 * pe, 1536) > 0xFFFFFFFF:
+        # a forced draw satisfies EVERY slot of that ware (flag is per ware), so each slot whose ware is drawn
+        # by any forced slot below infra_end is bounded at sat = 128, forced itself or not
+        drawn_wares = {new['needs'][j][0] for j in range(new['infra_end']) if new['needs'][j][2]}
+        for ware, menge, _ in new['needs']:
+            if ware in drawn_wares and tdiv(menge * 128 * pe, 1536) > 0xFFFFFFFF:
                 raise Fault('overflow')
         if new['needs'] and tdiv(pe * new['needs'][0][1], 12) > 0xFFFFFFFF:
             raise Fault('overflow')
@@ -206,7 +210,7 @@ def setgroup(goods, old, new, e, res64, stock, draws):
         else:
             out.append(tdiv(menge * sat.get(ware, 0) * e, 1536))
         if out[-1] > 0xFFFFFFFF:
-            raise Fault('overflow')
+            raise Fault('overflow', used)
     return out, e, res64, used
 
 
@@ -273,7 +277,7 @@ def run_vector(kind, kv, groups, goods):
             stock, e, res, used = setgroup(goods[kv['goods']], old, groups[kv['new']], int(kv['e']), int(kv['res64']),
                                            ints(kv['stock']), ints(kv['draws']))
         except Fault as f:
-            return {'fault': f.name, 'used': '0'}   # a fault never draws (G3)
+            return {'fault': f.name, 'used': str(f.used)}   # the real draw count; the preflight keeps it 0 (G3)
         return {'stock': fmt(stock), 'e': str(e), 'res64': str(res), 'used': str(used)}
     raise Malformed('unknown record ' + kind)
 

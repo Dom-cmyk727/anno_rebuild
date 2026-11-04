@@ -282,6 +282,8 @@ Goal: headless simulation that loads a scenario and advances by ticks; faithful 
 
 Acceptance M3: a 1-hour headless run of an endless scenario produces identical hashes across Windows and Linux builds and across two runs. Production/population numbers match differential fixtures where executed.
 
+Status M3 population (2026-11-04, MAP-POP-CLOSE-1): PARTIAL. A fresh home built by BuildCmd gets its first assignment, pays exactly, grows to its cap, is supplied by real resident walkers, survives save/reload and replay on a real scenario (headless, `Rules::house_updates` on only in tests; the default stays false; this is not live gameplay). A real pioneer -> settler upgrade is blocked by one unported supplier rule: goods 76 (WIRTSHAUS) comes only from an Inn's tavern stock, whose tick, alcohol carrier and chain are not ported, and no shipped scenario has a stocked Inn. Details: `docs/sim/population-live.md` section 21 and `docs/orchestration/REPORTS.md`.
+
 ## 5. Milestone M4 — Lockstep multiplayer (`crates/net`)
 
 Goal: 2–8 players (owner decision 2026-10-22: up to 8 by the end of the project, humans and computer players mixed, on a world that grows above 4 players, §0.6), robust against the known failure modes of the original (undetected asyncs, OS/fps-dependent divergence, state-size blowup).

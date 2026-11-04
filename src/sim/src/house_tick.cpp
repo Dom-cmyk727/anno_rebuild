@@ -161,6 +161,11 @@ void house_tick(const TickContext& ctx, Island& island, City& city, Building& b,
     if (outcome.kind == HouseOutcomeKind::Fault) {
         push_fault(fx, id, outcome.fault, outcome.not_evaluated);
     }
+    if (work != nullptr) {
+        // C3 P-14: the two named not-eligible outcomes are counted from the outcome itself.
+        work->upgrade_terminal += outcome.kind == HouseOutcomeKind::NotEligibleTerminal ? 1U : 0U;
+        work->upgrade_special += outcome.kind == HouseOutcomeKind::NotEligibleSpecial ? 1U : 0U;
+    }
     if (ps == nullptr) {
         return;
     }

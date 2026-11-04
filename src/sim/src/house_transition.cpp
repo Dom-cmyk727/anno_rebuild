@@ -774,17 +774,11 @@ HouseOutcome apply_house_effects(const HouseEnv& env, Island& island, const Buil
     case HouseSuccessor::EndOfLadder: {
         HouseOutcome o;
         o.kind = HouseOutcomeKind::NotEligibleTerminal;
-        if (env.work != nullptr) {
-            ++env.work->upgrade_terminal;
-        }
         return o;
     }
     case HouseSuccessor::Special: {
         HouseOutcome o;
         o.kind = HouseOutcomeKind::NotEligibleSpecial;
-        if (env.work != nullptr) {
-            ++env.work->upgrade_special;
-        }
         return o;
     }
     case HouseSuccessor::Malformed:

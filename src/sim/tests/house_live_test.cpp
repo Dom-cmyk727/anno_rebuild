@@ -1598,6 +1598,7 @@ TEST_CASE("house live F2: a cap clip is recorded against its bound and a removal
         until(w, [&] { return at(w, 110, 110) == nullptr; }, 3000);
         REQUIRE(stats.population.growth.size() == 1);
         CHECK(stats.population.growth.front().removed);
+        CHECK(stats.population.growth.front().residents_committed == 0);
         CHECK(stats.population.growth.front().residents_before == 70);
         CHECK(stats.population.growth.front().residents_after == 54);
         REQUIRE(stats.population.transitions.size() == 1);

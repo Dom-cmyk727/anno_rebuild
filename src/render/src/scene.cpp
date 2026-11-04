@@ -234,9 +234,9 @@ bool UnitSprite::draw(Canvas& canvas, std::size_t group, Lift lift, std::pair<in
         blit_sprite(canvas, *f.image, f.frame, at, false, all);
     } else {
         blit_sprite(canvas, *f.image, f.frame, at, false,
-                    [&](int x, int y, Px px) -> std::optional<Px> {
-                        if (canvas.index(x, y)) {
-                            depth::untest(*depth, x + offset.first, y + offset.second);
+                    [&](int cx, int cy, Px px) -> std::optional<Px> {
+                        if (canvas.index(cx, cy)) {
+                            depth::untest(*depth, cx + offset.first, cy + offset.second);
                         }
                         return px;
                     });

@@ -210,7 +210,9 @@ TEST_CASE("depth: replay hides a pile's rows below its foot in flat ground, the 
         auto t = depth::Target::from_terrain(rect, depth::params(0, render::kHeightLift), terrain);
         const render::Canvas with = render::replay(d, ft, t);
         const render::Canvas without = render::replay(d, ft);
-        auto drawn = [](const render::Canvas& c, int y) { return c.pixels[(y * 64 + 21) * 4 + 3]; };
+        auto drawn = [](const render::Canvas& c, int y) {
+            return c.pixels[static_cast<std::size_t>((y * 64 + 21) * 4 + 3)];
+        };
         for (int y = 11; y < 51; ++y) {
             CAPTURE(y);
             CHECK(drawn(without, y) == 255);
@@ -257,7 +259,7 @@ TEST_CASE("depth: an RGBV pile is cut at its anchor row, an H decal on its own g
         const render::Canvas c = render::replay(d, ft, t);
         for (int y = 11; y < 51; ++y) {
             CAPTURE(y);
-            CHECK((c.pixels[(y * 64 + 21) * 4 + 3] == 255) == (y < 50));
+            CHECK((c.pixels[static_cast<std::size_t>((y * 64 + 21) * 4 + 3)] == 255) == (y < 50));
         }
     }
     // An H decal (8 x 8, anchor (4, 4)) on flat ground at its own height 10: every pixel equals
@@ -277,7 +279,7 @@ TEST_CASE("depth: an RGBV pile is cut at its anchor row, an H decal on its own g
         std::size_t drawn = 0;
         for (int y = 20; y < 28; ++y) {
             for (int x = 20; x < 28; ++x) {
-                drawn += c.pixels[(y * 64 + x) * 4 + 3] == 255 ? 1U : 0U;
+                drawn += c.pixels[static_cast<std::size_t>((y * 64 + x) * 4 + 3)] == 255 ? 1U : 0U;
             }
         }
         CHECK(drawn == (g == 640 ? 64U : 0U));

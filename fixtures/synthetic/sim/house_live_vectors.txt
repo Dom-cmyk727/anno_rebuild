@@ -7,6 +7,16 @@ stage S1-gate-skip table=1:0:30 mask=0x0 stamp=100 t=2599 above=0:50 player=0x1 
 stage S2-gate-edge table=1:0:30 mask=0x0 stamp=100 t=2600 above=0:50 player=0x1 => stamp=2600 mask=0x2 player=0x3
 stage S3-x16-skipped table=1:0:30 mask=0x8 stamp=0 t=2500 above=0:0 player=0x10 => stamp=2500 mask=0x8 player=0x10
 stage S4-x16-performed table=1:0:30 mask=0x8 stamp=0 t=2500 above=0:0 player=0x4 => stamp=2500 mask=0x8 player=0xc
+# F3 (MAP-POP-CLOSE-1 C3), hand-derived from SetProperty 0x21: a stored value with bit 25 (latch restore), 27 or 28 also
+# gets bit 26 (0x4000000); 24 and 26 alone and the low stages do not. player 0x1 starts below the new mask (X16 OR performed).
+stage hb-25 table=25:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x1 => stamp=2500 mask=0x2000000 player=0x6000001
+stage hb-27 table=27:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x1 => stamp=2500 mask=0x8000000 player=0xc000001
+stage hb-28 table=28:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x1 => stamp=2500 mask=0x10000000 player=0x14000001
+stage hb-24-control table=24:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x1 => stamp=2500 mask=0x1000000 player=0x1000001
+stage hb-26-control table=26:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x1 => stamp=2500 mask=0x4000000 player=0x4000001
+stage hb-low-control table=3:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x1 => stamp=2500 mask=0x8 player=0x9
+# the OR skipped (low 23 bits already >= mask): the stored value is untouched, no implication is applied to it
+stage hb-skipped table=3:0:5 mask=0x0 stamp=0 t=2500 above=0:5 player=0x2000010 => stamp=2500 mask=0x8 player=0x2000010
 stage S5-high-bits table=1:0:30 mask=0x0 stamp=0 t=2500 above=0:30 player=0xff800001 => stamp=2500 mask=0x2 player=0xff800003
 stage S6-equal-skips table=5:0:999 mask=0x6 stamp=0 t=2500 above=0:0 player=0x6 => stamp=2500 mask=0x6 player=0x6
 stage S7-no-idempotent-or table=5:0:999 mask=0xb stamp=0 t=2500 above=0:0 player=0x10 => stamp=2500 mask=0xb player=0x10

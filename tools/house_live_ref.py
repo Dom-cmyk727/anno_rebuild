@@ -7,7 +7,7 @@ reading the C++ wiring. It runs standalone over fixtures/synthetic/sim/house_liv
 were derived by hand before the C++ wiring existed.
 
 FORMULA CONTRACT (integers; "/" truncates toward zero; u16 = modulo 65536)
-  stage (city stage pass): d = u16(t - stamp); d < 2500 -> nothing changes (the stamp stays). Else stamp = t; for each
+  stage (city stage pass; the stored player value also gets bit 26 when it holds bit 25, 27 or 28): d = u16(t - stamp); d < 2500 -> nothing changes (the stamp stays). Else stamp = t; for each
     table record (stage, group, count) whose bit is NOT set in the city mask: if above[group] >= count set the bit.
     Then if (player & 0x7fffff) >= mask (unsigned) nothing; else player |= mask (the full dword).
   ledger (one stall purchase of the house choice and the billing): demand = menge*e*256/44236 - stock/16;
@@ -81,6 +81,10 @@ def stage(kv):
             mask |= 1 << st
     if (player & 0x7FFFFF) < mask:
         player |= mask
+        # SetProperty 0x21 (AnnoWelt 0x10020d51-0x10020ecb): a stored value with bit 25 (via the latch restore of
+        # bit 26), 27 or 28 also gets bit 26; applied only when the OR was performed (the stored path)
+        if player & (1 << 25 | 1 << 27 | 1 << 28):
+            player |= 1 << 26
     return {'stamp': str(stamp), 'mask': hex(mask), 'player': hex(player)}
 
 

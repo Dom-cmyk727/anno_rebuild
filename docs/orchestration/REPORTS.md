@@ -12012,3 +12012,120 @@ The owner's answers (2026-11-03, late evening), hand-over note section 4.1. All 
   - `tools/map2_shape.py` / `map2_measure.py` describe land as HEIGHT >= 16 "as the renderer", which no longer holds;
   - `docs/PLAN.md` (4 places) and this file (line 2690) hold BEL characters where a `\a` escape ate a backslash
     (`src\app\...`, `C:\anno1503-original`), from older commits.
+
+## STAND-IN-HEIGHT — the D17 placement stand-in stores the terrain's height (2026-11-04) — status: READY FOR REVIEW (local branch; not pushed, not merged; scheduling is the orchestrator's)
+
+A side session of the W4-DEPTH-1 thread (its finding: with the per-pixel depth, the legal workload's demolished 3501 on
+island 1 at (102,36), terrain 48, height 0, changed no object key). Branch `task/stand-in-height` from `a379e06e`, the
+common base of the closeout (`task/W4-opening-1` at `1d34dd97`) and of `task/W4-depth-1` (`0fd1d219`); the seam is not
+on `main`. Worktree `E:\anno1503\.claude\worktrees\infallible-lederberg-4cfb1e`. Commits: `144b9d1f` fix(sim),
+`265ec2db` docs, `3cce78b2` fix(sim) (review P3), `b2b22783` docs (review P3). Code head `3cce78b2`, docs and gate head
+`b2b22783`. Nothing pushed, nothing merged, no other worktree touched.
+
+**Ownership.** The depth review (F5) puts the sim-side change in the MAP lane ("no sim change in W4"). This branch is a
+candidate for the orchestrator to schedule or hand to MAP. It touches `src/sim` (placement, three tests), one comment in
+`src/app/include/anno/app/play.hpp` and docs; it merges cleanly into `task/W4-depth-1` (scratch merge below).
+
+**What changed.** `stand_in_placement_seam_fn` keeps the stand-in's verdict (`stand_in_placement_rule`: an object under the
+clipped footprint is `Occupied`, else accepted). For an accepted record it now stores `stand_in_placement_height`:
+`placement_rule`'s byte whenever that rule accepts (R4 level, R5 `max & 0xf0`); otherwise, own design (N), the highest
+vertex of the footprint's `(fw+1) x (fh+1)` window that `VertexGrid` can read, walked over the window clipped to the
+grid's range; 0 when none is readable (no terrain, placeholder). Spec: `docs/sim/ship-placement.md` §6 "The stand-in's
+height"; also §3, `state.md` §8.4, OQ-052.
+
+**Identity and what moves.** A seam name is unique per behaviour version (`state.md` §3), so the seam is renamed
+`"stand_in_placement"` → `"stand_in_placement_terrain_height"`: every world that installs it has a new header hash. A
+save or log made under the old name is refused by name (`state_fields.hpp:1300-1305`, `replay.cpp:409`, both read).
+`kStateHashVersion` stays (no layout change). Worlds that move: `route_objects_test.cpp` (its height-0 control now uses a
+local test seam `test_height_zero`; a third control shows the stand-in closing the channel at 0x30),
+`commands_file_test.cpp` and the app suites with `FixedPlayOptions::stand_in_placement` (legal workload,
+`command_outcome`, `dev_feedback`, `dev_script`, `dev_tool`, `input`, `play_follow`, the lan5 helper). **No golden is
+re-recorded:** none of these holds a recorded hash, digest or log (they compare runs with each other); `goldens.txt`,
+g2-g6, `m2_found*`, `cargo_unload*` and `scenario_corpus.txt` use the default rule (checked by grep, and by the reviewer).
+
+**Acceptance table.**
+
+| Requirement | Positive proof | Negative control | Evidence | Reviewer |
+|---|---|---|---|---|
+| Height = `placement_rule`'s where it accepts | the 20 vectors both accept carry the file's hand-derived byte (48, 32, 64, 16) | M1 (old height 0): 4 cases fail | `placement_rule_test.cpp` "stand-in seam: …", mutants | accepted |
+| Verdict unchanged | all 50 vectors: verdict per a hand-derived `occupied` column (tree, stone, replaceable building `Occupied` although the rule accepts) | M4 (verdict from `placement_rule`): 3 cases fail | same; `build_terrain_test.cpp` tree case | accepted |
+| Coast class as `placement_rule` handles it | 1 x 3 coast, vertex (4,4) = 0x35: 0x30 (R5), not 0x35 | M2 (window max only): that case fails | `build_terrain_test.cpp` "the named stand-in …" | accepted |
+| Fallback where the rule refuses | hand-derived: sea 0x10 → 16, 0x1f → 31, 0x35 → 53, slope 0x31 → 49, (9,2)=0x50 → 80, column W reads 0, beyond skipped | M3 (fallback 0): 3 cases fail | both files | 3 rows re-derived by the reviewer, all 50 by its own script |
+| No terrain → 0, accepted | 0 with no terrain and with a digest placeholder | — | "a world without terrain gets height 0 …" | accepted |
+| Command path stores the byte on building and tiles, save/load keeps it | `built_with` (byte0f, every footprint tile, ring 0, load with the stand-in seams) | default-rule world differs only by the seam name in the header hash | `build_terrain_test.cpp` | accepted |
+| D3: the height decides blocking | stand-in closes the channel (0x30) | `test_height_zero` leaves it open | `route_objects_test.cpp` | accepted |
+
+Mutation runs (`cache/stand-in-depth/mutants*`, `mutants.py`): each mutant rebuilt and run against the five stand-in
+cases plus the legal control "build terrain: land and sea …" (default rule), which passed in every run; source restored
+byte for byte and rebuilt. Run at `265ec2db` and again after `3cce78b2`, same outcome.
+
+**Gates** (canonical `E:\anno1503\tools\test\run_selected.py`, workflow `c046c5a2`, MSVC Release, game files
+`E:\anno1503\game\app`, logs in `cache/gates/`):
+
+| Gate | Head | Result |
+|---|---|---|
+| sim-01 | `265ec2db` | exit 6, kept: 1033 selected, 1028 executed, 0 failed; 3 "other" skips outside the declared policy |
+| sim-02, `--allow-skip other` | `265ec2db` | PASS: 1028 executed, 0 failed, 5 skipped (2 opt-in, 3 other) |
+| app-01 | `265ec2db` | PASS: 263 selected, 261 executed, 0 failed, 2 opt-in |
+| gpu-01 `(picture GPU\|dev preview)` | `265ec2db` | PASS: 15 of 15 (RTX 4090) |
+| **sim-03**, `--allow-skip other` | `b2b22783` | PASS: 1033 selected, 1028 executed, 0 failed, 5 skipped (2 opt-in, 3 other); `anno_sim_tests` `b08da065…` |
+| **app-02** (`anno_app_tests`, `_input_`, `_alloc_`, heavy included) | `b2b22783` | PASS: 263 selected, 261 executed, 0 failed, 2 opt-in; `777b258f…`, `5db98d34…`, `043d5946…` |
+| **gpu-02** | `b2b22783` | PASS: 15 selected, 15 executed; `anno_render_gpu_tests` `085b3594…` |
+| **sim no-game**, `--asset-policy unavailable --allow-skip other` | `b2b22783` | PASS: 1000 executed, 0 failed, 28 required-asset, 2 opt-in, 3 other |
+
+The 3 "other" skips are the symlink rows of the ship-start content-path cases: Windows refuses symlink creation without
+the privilege ("Dem Client fehlt ein erforderliches Recht"), as recorded before for `test_orig.py`; unrelated loader
+code. GPU selection: the two GPU files whose worlds use the stand-in (`picture_gpu_test`, `preview_gpu_test`); the
+other GPU suites load the real rule. clang-format 23.1.3 clean on every changed `.cpp`/`.hpp`; WSL GCC 13.3 and Clang
+18.1.3 `-Werror` (CI flags, viewer and GPU on) clean on the four changed `.cpp` files, at the final head.
+
+**Depth check on a scratch merge** (local branch `scratch/stand-in-height-depth`: `task/W4-depth-1` `0fd1d219` + this
+branch, `33163810` reverted, i.e. the legal workload renders with the depth on, plus measurement messages only; not for
+merge). Same binaries with the old height 0 forced in `placement.cpp` (scratch only) as the baseline:
+
+| Site | Old height 0, depth on | This branch, depth on |
+|---|---|---|
+| legal workload bridge case, demolish 3501 at island 1 (102,36) | **fails**: `changed.objects > 0`, 0 changed object keys | passes: 1 key |
+| legal workload building heights (height:count) | 0:66 | 0:5, 24:4, 32:16, 40:1, 48:36, 80:2, 128:1, 144:1 (the 5 zeros are the start Kontors, see below) |
+| `picture_gpu_test` :544 partial frames / :561 steps 0 and 1 (changed bytes) | 11 and 278 / 1540 and **11** | 741 and 2284 / 3608 and 741 |
+| `dev_visibility_test` :212 / :228 (changed pixels) | 1601 / 1601 | 1601 / 1601 |
+
+`dev_visibility`'s building (type 1307, 1 x 1 at 1050,442) stands on a window whose vertices are all 0: its stand-in
+height is 0 before and after, which is that terrain's height (the real rule refuses the site, `TerrainRefused`). So those
+two lines look at a building at its real height, on a site only the stand-in allows. Measured at `265ec2db` and again at
+`b2b22783`, identical (`cache/stand-in-depth/depth-before`, `depth-after`, `depth-after-final`).
+
+**Review.** Independent read-only reviewer (a general-purpose review subagent of this session, no edits), at `265ec2db`:
+no P1/P2. P3s: (1) `docs/render/depth.md` cited but absent on this branch → reworded as a file of the unmerged branch;
+(2) fallback loop not clipped to the grid (unbounded work on a direct call with a huge footprint) → clipped in
+`3cce78b2`; (3) fallback unquantised (0x31, 0x1f) where the rule writes multiples of 16 → kept, see decisions; (4) a
+tautological verdict CHECK → removed; (5) OQ-052 lacked the N label → added; `state.md:2359` (historical S10 note) left as
+history; the perf legal-workload baselines were measured with height 0 → limit below. Re-review at `b2b22783`: no
+findings (clipped loop proven equal to the unclipped one for every input, including grids that are not Ok, W or H 0,
+footprints off the island). Scope: the full diff, callers of the stand-in, `apply.cpp`, `replay.cpp`,
+`state_fields.hpp`, fixtures, app/render height consumers.
+
+**Decisions and reasoning.**
+- Call `placement_rule` inside the stand-in rather than re-derive its height: equality where it accepts holds by
+  construction, and the coast class follows R5 without a copy.
+- Fallback = highest readable window vertex, unquantised: it never puts an item under any vertex of its own window
+  (what the depth needs), equals the level on a flat window the rule refuses for the quantum or threshold, and is 0 only
+  where nothing is readable. `max & 0xf0` would sink up to 15 units below the window's top. Own design, labelled N.
+- New seam name rather than keeping `"stand_in_placement"`: `state.md` §3 requires a name per behaviour version, so an
+  old save or log is refused instead of replaying with other heights.
+- Base `a379e06e` (not `main`, which lacks the seam; not the closeout's live head): merges into both W4 lines.
+- No test-side change to `dev_visibility`/`picture_gpu`/`legal_workload` here: those files belong to W4-DEPTH-1-CLOSE
+  (item 5); the scratch shows `33163810` can be reverted once both branches are merged.
+
+**Open / for the orchestrator.**
+- The fixed-map start Kontor is created with `byte0f` 0 at load (`src/sim_load/src/fixed_map.cpp:299`, `BuildingSpec`
+  default), in every world including the real app: the 5 zeros above. Not the stand-in; a sim_load question for MAP or
+  the depth thread (the "floating Kontor" topic).
+- `dev_visibility`'s site is level-0 terrain the real rule refuses; W4-DEPTH-1-CLOSE item 5 (place through the real rule
+  or assert visible pixels) still applies to it.
+- `docs/perf/README.md` legal-workload figures were measured with height-0 buildings; a re-run at this head is not
+  like-for-like.
+- NOT_RUN: ASan/UBSan (integer-only change, no allocation; CI's Clang sanitizer lane will run it), Linux/macOS full CI
+  builds (only the changed files compiled in WSL), any target-host gate.
+- Scratch worktree `E:\anno1503-worktrees\anno1503-standin-depth` removed after the measurements; its local branch
+  `scratch/stand-in-height-depth` is kept as the record.

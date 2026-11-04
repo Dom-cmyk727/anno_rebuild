@@ -1,6 +1,7 @@
 // Per-pixel depth (docs/render/depth.md): the integer depth function, the per-format rules, the
 // test and write of depth::test, and the depth replay of a chunk list. Synthetic, no game files.
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <vector>
 
@@ -53,9 +54,10 @@ TEST_CASE("depth: the group constants from the original's camera (depth.md 2.1)"
     CHECK(depth::params(0, render::kHeightLift) == depth::Params{24198, 2066, 15818, -48396});
     CHECK(depth::params(1, render::kHeightLift) == depth::Params{48397, 2066, 31636, -96794});
     CHECK(depth::params(2, render::kHeightLift) == depth::Params{101633, 2066, 66435, -203266});
-    // The V step equals the original's measured brush step at group 0: 0x3dc9 / 65536 = 0.24135
-    // u16 per row, times 256 * 256 (annodisplay.md 9.1).
-    CHECK(std::abs(depth::params(0, render::kHeightLift).sv - 0x3dc9 * 256 / 65536.0 * 256) < 1.0);
+    // The V step is the original's measured brush step at group 0 (0x3dc9 / 65536 = 0.24135 u16
+    // per row, i.e. 0x3dc9 = 15817 in these units, annodisplay.md 9.1) within one unit: our lift
+    // is 2.059 px per HEIGHT unit, the original's 51.477 * 0.04 = 2.05909 (15817.85 -> 15818).
+    CHECK(std::abs(depth::params(0, render::kHeightLift).sv - 0x3dc9) <= 1);
 }
 
 TEST_CASE("depth: at() is nearer for higher points and lower rows, origin() splits it exactly") {

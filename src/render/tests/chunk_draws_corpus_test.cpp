@@ -230,8 +230,13 @@ TEST_CASE("render_chunk: the Cpu builder keeps the planes, GpuList keeps the lis
                     r.builder_tag = r.builder_tag && list.built_by == render::ChunkBuilder::GpuList;
                     r.list_empty = list.objects.empty() && list.base.empty();
                     if (list.draws) {
-                        const render::Canvas c = render::replay(*list.draws, scene->frame_table);
-                        r.list_replays = c.pixels == old.pixels && c.base == old.base;
+                        // The depth replay against the chunk's own terrain plane (depth.md 2.2).
+                        auto target = render::depth::Target::from_terrain(
+                            list.draws->rect, list.draws->depth, list.terrain);
+                        const render::Canvas c =
+                            render::replay(*list.draws, scene->frame_table, target);
+                        r.list_replays = c.pixels == old.pixels && c.base == old.base &&
+                                         target.submerged(list.draws->sea_h64) == cpu.submerged;
                     } else {
                         r.list_replays = want_objects.empty();
                     }

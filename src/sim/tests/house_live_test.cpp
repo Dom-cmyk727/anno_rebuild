@@ -4,15 +4,15 @@
 // Every number below is hand-derived (tools/house_live_ref.py and fixtures/synthetic/sim/
 // house_live_vectors.txt carry the chain and the stage pass independently). Setup shared by the
 // tests: island 0 at (100, 100) 32 x 32, city 0 of player 0, house type 9501 (PRODTYPE 97, walker
-// maximum 2, figure ids 203..205) at (110, 110) with serial 1, a stall at (114, 110). The world PRNG
-// table is the 16 values 7 i + 1 with cursor 13 (seed 77 mod 16), so the draws are T[14] = 99,
-// T[15] = 106, T[0] = 1, ... The city ring visits city 0 on advance number 1 + 16 k, so the House of
-// city 0 is visited at ticks t = 1 + 16 k (the first advance, d = 1, one ring slot per advance); the
-// first taken gate (u16(t - last) >= 2500, last = 0) is therefore t = 2513 and the next one, with
-// last = 2500, is t = 5009.
+// maximum 2, figure ids 203..205) at (110, 110) with serial 1, a stall at (114, 110). The world
+// PRNG table is the 16 values 7 i + 1 with cursor 13 (seed 77 mod 16), so the draws are T[14] = 99,
+// T[15] = 106, T[0] = 1, ... The city ring visits city 0 on advance number 1 + 16 k, so the House
+// of city 0 is visited at ticks t = 1 + 16 k (the first advance, d = 1, one ring slot per advance);
+// the first taken gate (u16(t - last) >= 2500, last = 0) is therefore t = 2513 and the next one,
+// with last = 2500, is t = 5009.
 //
-// Spawn variant: k = ((r & 1) + y + x + serial) mod 3 = ((r & 1) + 221) mod 3: r = 99 (odd) -> 222 mod
-// 3 = 0 -> figure 203; r = 106 (even) -> 221 mod 3 = 2 -> figure 205.
+// Spawn variant: k = ((r & 1) + y + x + serial) mod 3 = ((r & 1) + 221) mod 3: r = 99 (odd) -> 222
+// mod 3 = 0 -> figure 203; r = 106 (even) -> 221 mod 3 = 2 -> figure 205.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -41,10 +41,10 @@ namespace {
 namespace sim = anno::sim;
 namespace syn = anno::sim::synthetic;
 
-constexpr sim::TypeId kP{9501};   // group 0, variants 9501 / 9503 (count 2, step 2), walker max 2
+constexpr sim::TypeId kP{9501}; // group 0, variants 9501 / 9503 (count 2, step 2), walker max 2
 constexpr sim::TypeId kP3{9503};
 constexpr sim::TypeId kPnoEnt{9505}; // group 0 without an entrance point
-constexpr sim::TypeId kS0{9520};  // group 1, variants 9520..9522, walker max 1, costs tools + wood
+constexpr sim::TypeId kS0{9520}; // group 1, variants 9520..9522, walker max 1, costs tools + wood
 constexpr sim::TypeId kS1{9521};
 constexpr sim::TypeId kS2{9522};
 constexpr sim::TypeId kStall{9530};
@@ -52,10 +52,10 @@ constexpr sim::GoodsId kFood = 26, kOther = 27;
 constexpr std::uint32_t kTools = 0x29, kWood = 0x2a;
 
 struct Opt {
-    bool idsec = false;      // goods 26 -> 27 (the replay of a delivery)
+    bool idsec = false;        // goods 26 -> 27 (the replay of a delivery)
     bool low_negative = false; // group 0 food table: -2 below index 8, else 2 (else all 2)
-    bool bau27 = false;      // goods 27 is enabled by stage 1 only
-    bool stages = false;     // [BAUSTUFEN]: stage 1 = group 0 with 5 residents, stage 2 = 50
+    bool bau27 = false;        // goods 27 is enabled by stage 1 only
+    bool stages = false;       // [BAUSTUFEN]: stage 1 = group 0 with 5 residents, stage 2 = 50
 };
 
 sim::BuildingType house_t(sim::TypeId id, std::uint32_t prodtype, std::uint32_t walkers,
@@ -213,8 +213,8 @@ const sim::House& house_of(const sim::World& w) {
     return *h;
 }
 bool same_house(const sim::House& a, const sim::House& b) {
-    return a.last == b.last && a.residents_64 == b.residents_64 && a.e == b.e && a.stock == b.stock &&
-           a.walkers == b.walkers;
+    return a.last == b.last && a.residents_64 == b.residents_64 && a.e == b.e &&
+           a.stock == b.stock && a.walkers == b.walkers;
 }
 std::uint32_t object_at(const sim::World& w, std::int32_t x, std::int32_t y) {
     const sim::Island& is = *w.islands()[0];
@@ -283,13 +283,14 @@ sim::World chain_world(const std::shared_ptr<const sim::TypeRegistry>& types,
 
 } // namespace
 
-TEST_CASE("house live: shortage, spawn, purchase, delivery and the next gate through the scheduler") {
+TEST_CASE(
+    "house live: shortage, spawn, purchase, delivery and the next gate through the scheduler") {
     // Chain K1 of house_live_vectors.txt (goods 26 -> 27 IdSec, store 100). Hand derivation:
     //  gate 1 (t = 2513, last 0): E' = 635 + 5 = 640, stock stays 0, lowest 0 < 102 -> ONE draw
     //   (T[14] = 99, figure 203); mood = min(-2, 2, 2) = -2 -> residents 320 - 16 = 304; last 2500.
     //  purchase: R = 4, threshold trunc(4*41*256/4096) = 10, store 100 > 10, demand
-    //   trunc(41*640*256/44236) = 151 -> amount min(100, 151, 768) = 100: city store 100 -> 0, billed
-    //   +100, house stock +100*16 = 1600 on slot 0 and, by the IdSec replay, on slot 1.
+    //   trunc(41*640*256/44236) = 151 -> amount min(100, 151, 768) = 100: city store 100 -> 0,
+    //   billed +100, house stock +100*16 = 1600 on slot 0 and, by the IdSec replay, on slot 1.
     //  gate 2 (t = 5009, last 2500): E' = trunc(127*640/128) + 4 = 639, stock 1587 / 1587
     //   (trunc(127*1600/128)), s0 = 93 (< 102: ONE draw, T[15] = 106, figure 205), mood
     //   (2 + 2 + 2 + 1) / 3 = 2 -> residents 304 + 32 = 336.
@@ -339,8 +340,8 @@ TEST_CASE("house live: shortage, spawn, purchase, delivery and the next gate thr
     REQUIRE(f != nullptr);
     CHECK(f->resident->cargo[0] == sim::ResidentCargo{kFood, 100});
     CHECK(f->resident->cargo[1] == sim::ResidentCargo{});
-    CHECK(city0(w).stock.stock[kFood] == 0);  // down by the bought amount
-    CHECK(city0(w).billed[kFood] == 100);     // up by the requested amount
+    CHECK(city0(w).stock.stock[kFood] == 0); // down by the bought amount
+    CHECK(city0(w).billed[kFood] == 100);    // up by the requested amount
     CHECK((house_of(w).stock == std::vector<std::uint32_t>{1600, 1600}));
     CHECK(house_of(w).walkers[0] == sim::FigureId{});
     CHECK(house_of(w).last == 2500); // the purchase does not touch the gate
@@ -356,8 +357,8 @@ TEST_CASE("house live: shortage, spawn, purchase, delivery and the next gate thr
     CHECK(w.last_output().draws[0].site == sim::DrawSite::HouseWalkerTarget);
     CHECK(w.last_output().rng_cursor_after == 15);
     REQUIRE(walkers(w).size() == 2); // the first one is still in the registry (expiry), the new one
-    // The new walker (the store is empty: no stand) has ended within its first call; it was announced
-    // with the figure type of T[15] = 106 (even): 205.
+    // The new walker (the store is empty: no stand) has ended within its first call; it was
+    // announced with the figure type of T[15] = 106 (even): 205.
     bool announced = false;
     for (const sim::SimEvent& e : w.last_output().events) {
         announced = announced || (e.kind == sim::SimEventKind::FigureSpawned && e.code == 205);
@@ -380,14 +381,15 @@ TEST_CASE("house live: a refused send still consumes the draw") {
     CHECK(house_of(w).walkers[0] == sim::FigureId{});
 }
 
-TEST_CASE("house live: the upgrade tick draws the spawn BEFORE the variant, and every effect lands") {
+TEST_CASE(
+    "house live: the upgrade tick draws the spawn BEFORE the variant, and every effect lands") {
     // A group-0 house at the cap: residents 512, E 640, stock {2000, 500}, tools 1000, wood 2000.
     //  E' = 635 + 8 = 643; stock {1984, 496}; s0 = 115, s1 = 74 -> lowest 74 < 102: spawn draw
     //  T[14] = 99 (figure 203). Mood 2 -> residents 544 > 512: cap -> 512, UpgradeCheck: food
-    //  trunc(1536*1984/(643*60)) = 78 -> table[(78+4)>>3 = 10] = 2 > 0, mean 74, infra 160: eligible;
-    //  materials (512 tools, 1024 wood) available -> Upgrade: spend (tools 488, wood 976), variant
-    //  draw T[15] = 106: 106 mod 3 = 1 -> type 9521 (the other order would draw 99 -> 9520 and give
-    //  the walker figure 205). SetGroup (upgrade): satisfaction 115 / 74, new stock
+    //  trunc(1536*1984/(643*60)) = 78 -> table[(78+4)>>3 = 10] = 2 > 0, mean 74, infra 160:
+    //  eligible; materials (512 tools, 1024 wood) available -> Upgrade: spend (tools 488, wood
+    //  976), variant draw T[15] = 106: 106 mod 3 = 1 -> type 9521 (the other order would draw 99 ->
+    //  9520 and give the walker figure 205). SetGroup (upgrade): satisfaction 115 / 74, new stock
     //  trunc(60*115*643/1536) = 2888 and trunc(40*74*643/1536) = 1239; E and residents are kept.
     const auto types = registry();
     Rig r = make_rig();
@@ -422,15 +424,16 @@ TEST_CASE("house live: the upgrade tick draws the spawn BEFORE the variant, and 
     // (the walker finds no stand and walks home within its first call: it has ended already)
     bool announced = false;
     for (const sim::SimEvent& e : w.last_output().events) {
-        announced = announced || (e.kind == sim::SimEventKind::FigureSpawned && e.building == b.id &&
-                                  e.code == 203);
+        announced = announced || (e.kind == sim::SimEventKind::FigureSpawned &&
+                                  e.building == b.id && e.code == 203);
     }
     CHECK(announced);
     CHECK(house_of(w).walkers.size() == 1); // lazy trim of the empty trailing slot
     CHECK(w.check_invariants() == "");
 }
 
-TEST_CASE("house live: a satisfied house draws nothing and a refused upgrade changes only the gate") {
+TEST_CASE(
+    "house live: a satisfied house draws nothing and a refused upgrade changes only the gate") {
     // stock {5000, 5000}: lowest 160 -> no spawn draw; the upgrade has no materials in the store.
     const auto types = registry();
     Rig r = make_rig();
@@ -450,7 +453,8 @@ TEST_CASE("house live: downgrade and removal, with the spawn draw first") {
     const auto types = registry(o);
     SUBCASE("downgrade of a group-1 house: variant of 9501 after the spawn draw") {
         // residents 300, E 512, stock {1000, 800}: E' = 508 + 4 = 512, stock {992, 793}, s0 = 49,
-        // s1 = 59, lowest 49: spawn T[14] (figure 203). Group 1 food table -2 below index 10: mood -2
+        // s1 = 59, lowest 49: spawn T[14] (figure 203). Group 1 food table -2 below index 10: mood
+        // -2
         // -> residents 284 < floor 48 * 8 = 384 -> Downgrade. Variant of 9501 (count 2, step 2):
         // T[15] = 106 even -> idx 0 -> 9501. SetGroup (downgrade): E = 4 << 7 = 512, stock
         // trunc(41*49*512/1536) = 669 and trunc(16*59*512/1536) = 314.
@@ -516,8 +520,9 @@ TEST_CASE("house live: the stage pass runs after the building ticks and unlocks 
     CHECK(w.players().find(sim::PlayerId{0})->flags == 0x3);
     until(w, [&] { return house_of(w).last != 2500; });
     CHECK(w.clock().tick() == 5009);
-    CHECK((house_of(w).stock == std::vector<std::uint32_t>{0, 992})); // the unlock reached the kernel
-    CHECK(city0(w).stage_stamp == 2513);                             // gated: 2496 < 2500
+    CHECK(
+        (house_of(w).stock == std::vector<std::uint32_t>{0, 992})); // the unlock reached the kernel
+    CHECK(city0(w).stage_stamp == 2513);                            // gated: 2496 < 2500
     until(w, [&] { return city0(w).stage_stamp != 2513; });
     CHECK(w.clock().tick() == 5025);
     CHECK(city0(w).stage_stamp == 5025);
@@ -532,10 +537,10 @@ TEST_CASE("house live: the player-mask rule compares the low 23 bits (X16)") {
         std::uint32_t player, city_mask, want;
     };
     // The pass sets stage 1 (5 residents) on top of the preset city mask 0x8 -> 0xa.
-    for (const Case c : {Case{0x10, 0x8, 0x10},       // 0x10 >= 0xa: skipped (an OR would give 0x1a)
-                         Case{0x04, 0x8, 0x0e},       // 4 < 0xa: performed (full dword OR)
+    for (const Case c : {Case{0x10, 0x8, 0x10}, // 0x10 >= 0xa: skipped (an OR would give 0x1a)
+                         Case{0x04, 0x8, 0x0e}, // 4 < 0xa: performed (full dword OR)
                          Case{0xff800001U, 0x8, 0xff80000bU}, // high bits ignored by the compare
-                         Case{0x0a, 0x8, 0x0a}}) {    // equal: skipped
+                         Case{0x0a, 0x8, 0x0a}}) {            // equal: skipped
         INFO("player " << c.player);
         Rig r = make_rig();
         r.place(kP, 110, 110, make_house(kP, 320, 640, {5000, 5000}));
@@ -548,7 +553,8 @@ TEST_CASE("house live: the player-mask rule compares the low 23 bits (X16)") {
     }
 }
 
-TEST_CASE("house live: a crafted house (E = 0, residents 0) fails the advance with the typed message") {
+TEST_CASE(
+    "house live: a crafted house (E = 0, residents 0) fails the advance with the typed message") {
     const auto types = registry();
     Rig r = make_rig();
     r.place(kP, 110, 110, make_house(kP, 0, 0, {5, 5}));
@@ -583,7 +589,8 @@ TEST_CASE("house live: world creation refuses what the live update cannot run (P
     }();
     sim::Rules live;
     live.house_updates = true;
-    const auto create_with = [&](const std::shared_ptr<const sim::TypeRegistry>& t, sim::Rules rules) {
+    const auto create_with = [&](const std::shared_ptr<const sim::TypeRegistry>& t,
+                                 sim::Rules rules) {
         return sim::World::create(r.spec, t, syn::population_config(), rules);
     };
     SUBCASE("a gate period outside 1..65535 names the class") {
@@ -649,8 +656,8 @@ TEST_CASE("house live: the stamp of a created house, the cadence and the loaded 
     SUBCASE("a stamped house waits its period; an unstamped one takes at once (t = 70000)") {
         // Stamped (last 4464): the clock is set to t = 69999, so the first advance (t = 70000, d =
         // 70000) visits every ring slot and city 0 is visited again at t = 70001 + 16 k. The first
-        // visit with elapsed >= 2500 (t >= 72500) is k = 157, t = 72513; the next one needs t >= 75000:
-        // k = 313, t = 75009.
+        // visit with elapsed >= 2500 (t >= 72500) is k = 157, t = 72513; the next one needs t >=
+        // 75000: k = 313, t = 75009.
         Rig r = make_rig();
         r.place(kP, 110, 110, make_house(kP, 320, 640, {20000, 20000}, 4464));
         sim::World w = create(r, types);
@@ -781,7 +788,8 @@ TEST_CASE("house live: save and reload at every cut of the chain, and a replay")
         {"gate taken", [](const sim::World& w) { return house_of(w).last == 2500; }},
         {"to stall", [&](const sim::World& w) { return step_is(w, sim::ResidentStep::ToStall); }},
         {"wait", [&](const sim::World& w) { return step_is(w, sim::ResidentStep::Wait); }},
-        {"to home with cargo", [&](const sim::World& w) { return step_is(w, sim::ResidentStep::ToHome); }},
+        {"to home with cargo",
+         [&](const sim::World& w) { return step_is(w, sim::ResidentStep::ToHome); }},
         {"delivered", [](const sim::World& w) { return house_of(w).stock[0] == 1600; }},
         {"second gate", [](const sim::World& w) { return house_of(w).last == 5000; }},
     };

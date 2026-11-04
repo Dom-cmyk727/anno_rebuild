@@ -1465,3 +1465,57 @@ TEST_CASE("house create G1: the built house is stamped with the world tick and a
     REQUIRE(back.ok());
     CHECK(back.value().state_hash() == w.state_hash());
 }
+
+TEST_CASE("house create G1: one public BuildCmd leads to the first resident delivery") {
+    // The causal chain a package reviewer traces: BuildCmd (group 1 house, payment, first
+    // assignment: two draws) -> the first taken gate -> the spawn draw -> the walker buys at the stall
+    // (city store debit, billed) -> the delivery raises the house stock -> the walker slot is released.
+    const auto types = registry();
+    Rig r = make_rig();
+    syn::give_flat_terrain(r.spec);
+    r.place(kStall, 114, 110);
+    sim::Rules rules;
+    rules.house_updates = true;
+    auto made = sim::World::create(r.spec, types, syn::population_config(), rules);
+    REQUIRE(made.ok());
+    sim::World w = std::move(made).value();
+    city0(w).stock.stock[kFood] = 5000;
+    city0(w).stock.stock[kTools] = 5000;
+    city0(w).stock.stock[kWood] = 5000;
+    sim::TransportStats stats;
+    w.set_transport_stats(&stats);
+    // 1. The build: payment once, E / residents / stocks from SetGroup, two draws (T[14], T[15]).
+    REQUIRE(build_cmd(w, {sim::PlacementWire{kS0, 110, 110, 0, 0, 0}}).ok());
+    CHECK(city0(w).stock.stock[kTools] == 5000 - 512);
+    CHECK(city0(w).stock.stock[kWood] == 5000 - 1024);
+    CHECK(w.rng().cursor() == 15);
+    CHECK((house_at(w, 110, 110).stock == std::vector<std::uint32_t>{9375, 5900}));
+    const sim::BuildingId home = at(w, 110, 110)->id;
+    // 2. Run until the walker that the house sent has bought and delivered.
+    std::size_t spawned = 0;
+    for (int i = 0; i < 200000 && !w.faulted(); ++i) {
+        w.advance(2);
+        spawned = std::max(spawned, walkers(w).size());
+        if (city0(w).billed[kFood] > 0 && walkers(w).empty()) {
+            break;
+        }
+    }
+    REQUIRE_FALSE(w.faulted());
+    CHECK(spawned >= 1);
+    // 3. The accounting closes from authoritative state: what the stall sold left the city store
+    // and was billed (the requested amount equals the sold one here), nothing was manufactured.
+    const std::uint32_t sold = 5000 - city0(w).stock.stock[kFood];
+    CHECK(sold > 0);
+    CHECK(city0(w).billed[kFood] == sold);
+    CHECK(stats.residents.purchases >= 1);
+    CHECK(stats.residents.deliveries >= 1);
+    CHECK(stats.residents.lost_88 == 0);
+    // 4. The walker slot was released exactly once and the world is consistent.
+    const auto* h = std::get_if<sim::House>(&at(w, 110, 110)->payload);
+    REQUIRE(h != nullptr);
+    CHECK(at(w, 110, 110)->id == home);
+    for (const sim::FigureId f : h->walkers) {
+        CHECK_FALSE(f.valid());
+    }
+    CHECK(w.check_invariants() == "");
+}

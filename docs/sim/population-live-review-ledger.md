@@ -1,0 +1,16 @@
+# MAP-POP-LIVE-1 review ledger
+
+Independent reviewers were fresh read-only subagents of the executor session. Their ids are session-local. Ids marked "not retained" were lost when the session context was compacted. Every verdict below is the reviewer's report, none is an orchestrator acceptance. Reviewers could not read the original binaries (`game/app` is absent in the worktrees), so every disassembly address in the docs is the implementers' reading and is not independently re-verified.
+
+| Package | Reviewed range / pin | Reviewer id | Verdict | Dispositions |
+|---|---|---|---|---|
+| L0 contract | `696ddcef..8011aeed` | not retained | CHANGES REQUIRED | materials check uses the +0x5d4 reserve (fixed in the contract); "A" items that were new policy relabelled P-1..P-9, `house_updates` default false (`8011aeed`, `1836ef08`); re-review APPROVED |
+| L1 | `0dd66ed4..aa7b144d` | not retained | CHANGES REQUIRED | recursive IdSec delivery, clipped Inn bill, exact stall flag, walker-size/home invariants: fixed `33d7c1dc`, `581cdc87`, `2c09792d`; re-review APPROVED |
+| L2 | `a70b34c3..2eb95f91` | not retained | CHANGES REQUIRED | missing zero-elapsed/partition tests, order-dependent tie test, untested fault path: fixed `d58c4293`; the proposed `f->home == d.home` check rejected (the end path clears home first; slot ownership is the guard) |
+| L3 | `c1584f96..d0736b6d` | not retained | CHANGES REQUIRED | walkers ended instead of detached, no adjacency check, stray empty mutant, no stage-digest oracle: fixed by the L4 writer in `dac37889`, `4f10278d`, `50021627` |
+| L4 + L3 fixes | `d0736b6d..ab9a7c80` | `a45c2c344b21f032b` | CHANGES REQUIRED (0 P1, 4 P2, 10 P3) | P2-1 manifest depends on the rule (`1c8ef581`); P2-2 SetProperty 0x21 bit 26 (`15650404`); P2-3 ZIVILIST callee cited and P2-4 not-modelled list (`439d5c6d`); declined with reasons P3-1 (stage domain stays data, P-11), P3-4 (invariants key on the fault text; a faulted save would otherwise be unloadable), P3-6 (hand-derived numbers stay inline, the vectors file is the independent oracle) |
+| L4 fixes + L5 | `ab9a7c80..ee44242a` | `aacbb5798086e9907` | CHANGES REQUIRED (0 P1, 4 P2, 5 P3) | P2-A stale section 16 (fixed); P2-C resident path home lost about 39 % of cargo, an engine defect (fixed `405dff61`, P-15); P2-D MissingGroup on pioneer houses in 12 of 35 scenarios (P-14 policy `6c8cbdcb`, not evidence); P2-B qualified delivery claim (now 35 of 35 files run); P3 wording (`089ff5e3`) |
+| L5 fixes (focused re-review) | `ee44242a..089ff5e3` | `a2c872ded81320a9b` | APPROVED (0 P1/P2, 4 P3) | P3-a ledger in-flight note and P3-b P-14 side effect documented (`867a925c`); P3-c enclosed-goal path-home and P3-d reverse-route tie-breaks left as stated limits |
+| Final integration | `73e7ab1a..aca26cea` | `a5a24c1027576764d` | APPROVED, one doc P2 | P2 this ledger; the two files outside the dispatch path list (`CMakeLists.txt` test registration, `src/sim_load/src/original_registry.cpp` stage-table parse) are disclosed in the report; P3s (upgrade and mask propagation not reached on real data, derived transition-record counters, bounded `choose_stand` scan) are stated in section 20 and the report |
+
+Gate identities and counts are in the final entry of `docs/orchestration/REPORTS.md`.

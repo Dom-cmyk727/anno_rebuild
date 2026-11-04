@@ -438,6 +438,13 @@ class FrameRenderer {
     /// displacement here before each update; the velocity of the margin follows it.
     /// nullopt (the default): the centre of the view is the motion.
     std::optional<std::pair<double, double>> motion_centre;
+    /// The scene point (of the group shown, scene pixels) a zoom step would keep fixed: the
+    /// window's wheel zoom keeps the point under the pointer where it is. The neighbouring
+    /// groups' chunks are built for the view around it (zoomed_view_at); nullopt (the pointer is
+    /// outside the window, or a caller without one): around the view's centre (zoomed_view).
+    /// Owner playtest 2026-11-04: zooming in over an island off the centre landed on chunks
+    /// nobody had built, and stand-ins dissolved in (up to 77 at once).
+    std::optional<std::pair<double, double>> zoom_anchor;
     /// The smoothed velocity of the view centre that sizes the margin, in scene
     /// pixels per second of the group shown (x, y).
     [[nodiscard]] std::pair<double, double> velocity() const { return {vx_, vy_}; }
@@ -512,6 +519,12 @@ class FrameRenderer {
 /// that `view` centres on at group `from`.
 Rect zoomed_view(Rect view, std::size_t from, std::size_t to,
                  const ZoomLevels& levels = ZoomLevels::original());
+
+/// The rectangle of view's size at group `to` in which the scene point `anchor` (scene pixels at
+/// group `from`) stays where it is in the window: what a zoom step at a pointer over `anchor`
+/// shows. The anchor is rounded to the pixel and scaled as zoomed_view scales the centre.
+Rect zoomed_view_at(Rect view, std::pair<double, double> anchor, std::size_t from, std::size_t to,
+                    const ZoomLevels& levels = ZoomLevels::original());
 
 /// The area whose chunks are kept built around `view`: a ring of one chunk, and
 /// where the view is moving (velocity vx, vy in scene pixels per second) the

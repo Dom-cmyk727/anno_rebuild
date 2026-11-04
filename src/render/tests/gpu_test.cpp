@@ -3775,6 +3775,47 @@ TEST_CASE("adjacent_keys: the view a zoom step would show, in both neighbouring 
     }
 }
 
+TEST_CASE("adjacent_keys: with a zoom anchor, the view a zoom step at the pointer would show") {
+    // Owner playtest 2026-11-04: the wheel zoom keeps the point under the pointer fixed; built
+    // around the view's centre, the finer group's chunks under a pointer near the window's edge
+    // were missing after the step and stand-ins dissolved in.
+    const EmptyScene es = empty_scene();
+    render::FrameRenderer fr(1, false);
+    const render::Rect view{1000, 600, 2400, 1400};
+    const std::pair<double, double> anchor{view.x + 2350.0, view.y + 1350.0};
+    // At group 0 (twice the tile width) the anchor is at (2 * 3350, 2 * 1950); a step there keeps
+    // it 2350 px right and 1350 px down of the view's corner.
+    const render::Rect at = render::zoomed_view_at(view, anchor, 1, 0);
+    CHECK(at.x == 2 * 3350 - 2350);
+    CHECK(at.y == 2 * 1950 - 1350);
+    CHECK(at.w == view.w);
+    CHECK(at.h == view.h);
+    // The chunk under the anchor at group 0 lies outside the centre's prediction (and its ring)
+    // and inside the anchored one.
+    const render::ChunkKey under{0, (2 * 3350) / render::kChunk, (2 * 1950) / render::kChunk};
+    fr.update_chunks(*es.scene, view, 1);
+    std::set<render::ChunkKey> centred(fr.adjacent_keys().begin(), fr.adjacent_keys().end());
+    CHECK_FALSE(centred.contains(under));
+    fr.zoom_anchor = anchor;
+    fr.update_chunks(*es.scene, view, 1);
+    std::set<render::ChunkKey> anchored(fr.adjacent_keys().begin(), fr.adjacent_keys().end());
+    CHECK(anchored.contains(under));
+    for (const std::size_t g : {std::size_t{0}, std::size_t{2}}) {
+        for (const auto& [cx, cy] :
+             render::visible_chunks(render::zoomed_view_at(view, anchor, 1, g))) {
+            CHECK(anchored.contains({g, cx, cy}));
+        }
+    }
+    // The anchor at the centre is the centre's prediction.
+    const std::pair<double, double> mid{view.x + view.w / 2.0, view.y + view.h / 2.0};
+    for (const std::size_t g : {std::size_t{0}, std::size_t{2}}) {
+        const render::Rect a = render::zoomed_view_at(view, mid, 1, g);
+        const render::Rect c = render::zoomed_view(view, 1, g);
+        CHECK(a.x == c.x);
+        CHECK(a.y == c.y);
+    }
+}
+
 TEST_CASE("prefetch: built chunks of the neighbouring groups are uploaded when nothing waits, "
           "one per frame, up to the cap") {
     auto ctx = device_or_skip();

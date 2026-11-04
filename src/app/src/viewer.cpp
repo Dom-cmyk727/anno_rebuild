@@ -2061,6 +2061,15 @@ void Viewer::draw() {
     // Scene screen position of the window's top-left pixel.
     const render::Rect view{static_cast<int>(std::lround(cam_x_ - w / 2.0)),
                             static_cast<int>(std::lround(cam_y_ - h / 2.0)), w, h};
+    // The point a wheel zoom would keep fixed: the one under the pointer (FrameRenderer::
+    // zoom_anchor builds the neighbouring groups' chunks around it).
+    if (cursor_) {
+        const double s = scale();
+        frames_.zoom_anchor = std::pair{cam_x_ + (cursor_->first - w / 2.0) / s,
+                                        cam_y_ + (cursor_->second - h / 2.0) / s};
+    } else {
+        frames_.zoom_anchor.reset();
+    }
 #ifdef ANNO_VIEWER_GPU
     if (gpu_) {
         if (continuous_) {

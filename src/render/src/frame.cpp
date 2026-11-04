@@ -880,7 +880,8 @@ std::vector<ChunkKey> FrameRenderer::plan_margin(Rect view, std::size_t group,
     for (const std::size_t g : {group - 1, group + 1}) {
         // group − 1 wraps to SIZE_MAX for group 0 and is skipped.
         if (g < levels_.size()) {
-            const Rect next = zoomed_view(view, group, g, levels_);
+            const Rect next = zoom_anchor ? zoomed_view_at(view, *zoom_anchor, group, g, levels_)
+                                          : zoomed_view(view, group, g, levels_);
             const double sx = levels_.tile_w(g) / levels_.tile_w(group);
             const double sy = levels_.tile_h(g) / levels_.tile_h(group);
             add(g,
@@ -1300,6 +1301,19 @@ Rect zoomed_view(Rect view, std::size_t from, std::size_t to, const ZoomLevels& 
     const int x = scale(cx, xn, xd);
     const int y = scale(cy, yn, yd);
     return {x - view.w / 2, y - view.h / 2, view.w, view.h};
+}
+
+Rect zoomed_view_at(Rect view, std::pair<double, double> anchor, std::size_t from, std::size_t to,
+                    const ZoomLevels& levels) {
+    const auto ax = static_cast<std::int64_t>(std::llround(anchor.first));
+    const auto ay = static_cast<std::int64_t>(std::llround(anchor.second));
+    auto scale = [](std::int64_t v, int a, int b) { return static_cast<int>(v * b / a); };
+    const auto [xn, xd] = levels.ratio_w(from, to);
+    const auto [yn, yd] = levels.ratio_h(from, to);
+    // The anchor's offset in the window stays: the view moves with the scaled anchor.
+    const int x = scale(ax, xn, xd) - static_cast<int>(ax - view.x);
+    const int y = scale(ay, yn, yd) - static_cast<int>(ay - view.y);
+    return {x, y, view.w, view.h};
 }
 
 int stand_in_source(int p, int num, int den) {

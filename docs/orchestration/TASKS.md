@@ -65,6 +65,19 @@ Open:
 - NOT_RUN: the sanitizer lane at the head and the Wine key check.
 
 The floating Kontor is **W4-DEPTH-1** below: queued, not released.
+
+**Windows sequence, owner 2026-11-04 ("Yes and merge"; chose "Main, as own package").** Three packages, run in this
+order:
+1. **W4-OPENING-1-CLOSE** (current) finishes the opening candidate for acceptance.
+2. **W4-MAIN-1** merges the accepted Windows lane into `main`. It is released, and starts once the orchestrator accepts
+   step 1. `main` moves only after the orchestrator's review.
+3. **W4-OPENING-2** brings the first wood chain into the live window. It is released, starts from the new `main`, and
+   takes the accepted Mac pin `73e7ab1a`.
+
+Each package's own review gates the next, so no further owner approval is needed between them. The owner's playtest
+of the opening may happen at any point: fixes from it go to `task/W4-opening-1` before W4-MAIN-1 starts, and to
+`task/W4-opening-2` after.
+
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
@@ -112,15 +125,218 @@ contract is satisfied; an unresolved activation is incomplete, never a reason to
 substitute numeric-only ticking. Windows' exact input and assignment are unchanged.
 CARGO-3's wording correction is closed; do not restart cargo gates or R0–R5.
 Windows' integration input stays `0c401c8d`; loading, the cargo correction and
-roads do not expand its assigned playtest. Both opening inputs are reviewed, accepted and
+roads do not expand its assigned playtest (W4-OPENING-2 below takes them, at `73e7ab1a`, after W4-MAIN-1). Both opening inputs are reviewed, accepted and
 reachable on GitHub. W4-OPENING-1 integrates selection, sailing, founding,
 unloading and building in the live window for an owner playtest. Use only the
 two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: OWNER ANSWERS (b) AND (c) IMPLEMENTED AND REVIEWED; OWNER PLAYTEST NEXT.** Continue `task/W4-opening-1` from `02133ade` with §7 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): settle the Q5 shore claim; run the Wine check of `.`/`,`; run the WSL sanitizer lane at the head, then the native render gate (never side by side); then the owner's playtest. Q5 and the lan5 pick stay open as FAIL. Do not start W4-DEPTH-1 until the owner releases it. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
-| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-IMPL-1 ACCEPTED; MAP-POP-LIVE-1 READY, RELEASED.** Complete L0–L5 below: resident transactions, real supply walkers, House transitions, then conditionally activate complete live behavior and progression. Internal reviews auto-continue; one final combined handoff. No numeric-only live tick. Windows keeps exact `0c401c8d`. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE (CURRENT), THEN W4-MAIN-1, THEN W4-OPENING-2, ALL RELEASED IN THIS ORDER.** Continue `task/W4-opening-1` from `02133ade` with the closeout below. Then merge into `main` on `task/W4-main-1` (the orchestrator moves `main` after its review). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Do not start W4-DEPTH-1 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-IMPL-1 ACCEPTED; MAP-POP-LIVE-1 READY, RELEASED.** Complete L0–L5 below: resident transactions, real supply walkers, House transitions, then conditionally activate complete live behavior and progression. Internal reviews auto-continue; one final combined handoff. No numeric-only live tick. Windows keeps exact `0c401c8d` until W4-OPENING-2, which takes the accepted `73e7ab1a`; do not publish a moving tip for it. At the next natural checkpoint, without interrupting the bundle, run the `test_support` suite on macOS at the published `task/W4-main-1` (W4-MAIN-1 step 3) and report the result. |
+
+### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · RELEASED, CURRENT
+
+**Base:** `task/W4-opening-1` at `02133ade9e66426ab093d8377992aec159367671`, the same branch.
+
+This closes the open items of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md). §6 still had items
+open at `02133ade`, and §7 added more.
+
+1. **River Q5.** In `river_flow_corpus_test.cpp`, island `D_256x256_0045_5B` scores 0.485714 against 0.55.
+   - Measure it at shore 16 on the head, to settle "unchanged by the shore".
+   - Compare D's river mask and flow with `river_qa`, before the projection fix and after it.
+   - Report the numbers. The orchestrator decides the per-island bar. Do not lower the bar or skip the island
+     yourself.
+2. **lan5 pick.** `dev_tool_test.cpp` picks the wrong tile at 1 of 8,486 pixels.
+   - Print the failing pixel: its screen position, the expected and picked tiles, its triangle, and its distance from
+     the B–C diagonal.
+   - Fix the test's interior filter (also skip within 0.06 px of the diagonal), or rasterise with an exact fill rule.
+   - Add a test that fails without the fix.
+3. **Projection P3s (§6).**
+   - `docs/testing/ship-opening-playtest.md` lines 56–58 still say the mirror fault is present "until that merges".
+     Remove that text, and add checks: Kontor piles toward the water, continuous fences, ship bows forward, the light
+     from the top right, the reversed tie-break.
+   - `river_flow_corpus_test.cpp:1214` prints a pointer instead of the island name.
+   - `iso.hpp:111` says every tile-to-screen mapping is `tile_top`, but about 12 inline copies of the formula remain.
+     Route them through the shared functions, or record a reason for each one kept.
+   - Record the Linux and Apple enhanced digests as NOT_RUN.
+   - Give Q5 one value with its head; the hand-over note says 48.5 % and REPORTS says 48.6 %.
+4. **Wine check of the founding keys.** Check that `.` and `,` reach the Kontor cursor while founding, and which way
+   each turns (property-5 setter `AnnoFrame.dll` `0x10049166`). Record the result in OQ-520 and the hand-over note.
+   Wine runner runs are pre-authorised. Keep the run silent.
+5. **Gates at the final head, in this order:**
+   1. the WSL ASan/UBSan lane;
+   2. native app, GPU and render;
+   3. the window tests;
+   4. the WSL warnings.
+
+   Never run the sanitizer lane and the native render gate side by side.
+6. **Review and publish.** Get an independent read-only review of the closeout commits, add a REPORTS entry, and
+   publish with an ordinary push.
+
+**Stop:** the candidate for the orchestrator's acceptance review. Its exact head is W4-MAIN-1's input `H`.
+
+### W4-MAIN-1 — merge the accepted Windows lane into main · RELEASED, STARTS AFTER W4-OPENING-1-CLOSE IS ACCEPTED
+
+**Owner decision, 2026-11-04** ("Yes and merge"; chose "Main, as own package").
+
+**Why.** Nothing from the Windows lane has reached `main` since 2026-10-30:
+- the merge base is `632229eac5c40a6196c4d734fe5198e77b96fe4f`;
+- `task/W4-opening-1` is 552 commits ahead of it;
+- UI.2 waits on "W4.4 merged" (round dt).
+
+The merge also brings the Mac pin `0c401c8d` into `main`, because it is part of the Windows branch. It brings no newer
+Mac commit.
+
+**Trial merge** (orchestrator, `git merge-tree` of `main` `8b37276b` against `02133ade`):
+- 675 files changed, 118,700 lines added and 1,067 removed;
+- the branch changes no board or rule file (TASKS, reviews, `AGENTS.md`, `CLAUDE.md`, the evidence contract,
+  `.github`);
+- 11 files conflict:
+  - `CMakeLists.txt` and `docs/orchestration/REPORTS.md`;
+  - **the test memory coordinator:** `src/test_support/src/{coord.cpp, coord_server.cpp, coord_wire.hpp, memory.cpp}`
+    and `src/test_support/tests/{budget_proc_harness.hpp, child_process.hpp}`. Both lanes fixed the same macOS problems
+    in different ways:
+    - `main`: `7e897fac` (run the budget coordinator on macOS) and `8550194d` (skip the WSL meter cases without a
+      meter), both 2026-10-31;
+    - the branch: `4cc0a3ad` (Darwin executable path, process identity, spawn) and `abc1f8c3` (detached stdio), both
+      2026-10-30;
+  - **add/add conflicts:** `tools/test/{ctest_verdict.py, ctest_verdict_test.py, run_selected.sh}`. Main's side is
+    `0569b804` (evidence safeguards).
+
+**Steps.**
+1. **Where to merge.** Use a separate checkout: never a live executor worktree, and never the owner's `E:\anno1503`
+   checkout. Branch `task/W4-main-1` from `origin/main`. Make an ordinary `--no-ff` merge of exact `H`, so the parents
+   are `main` and `H`. No rebase, squash or force push.
+2. **Resolve each conflict, and record each resolution in REPORTS**, with both parents:
+   - **`REPORTS.md`:** keep every entry from both sides, in date order. Edit no entry.
+   - **`CMakeLists.txt`:** the union of both sides' targets and options. Drop nothing.
+   - **`tools/test/*`:** main's versions are the workflow authority the gates already use (every gate file names its
+     `workflow head` on `main`). Take main's, unless the branch's version holds a fix `main` lacks. Then port that fix
+     with a test, and list it.
+   - **Coordinator files:** one implementation that keeps both sides' tested behaviour (macOS spawn and process
+     identity, detached stdio, the WSL-meter skips).
+     - For each hunk, record both intents, the resolution and the test that covers it.
+     - If a resolution changes wire or reservation semantics, bump `kCompatVersion` (`CLAUDE.md`).
+     - If a hunk needs a new semantic choice, stop and isolate it for the orchestrator's review. Do not invent
+       coordinator semantics, and do not start an infrastructure campaign.
+3. **Gates on the merge.**
+   - Native MSVC, all lanes: formats, sim, sim_load, app, GPU and render, plus the `test_support` and `tools/test`
+     tests.
+   - The window tests.
+   - The WSL GCC 13 / Clang 18 `-Werror` check, and the WSL ASan/UBSan lanes.
+   - `tools/agree.py`.
+   - The CI checks reproduced locally: clang-format 23.1.3 over the changed files, and the Linux GCC release lane.
+   - **macOS:** the coordinator's macOS paths cannot run on Windows. Record them as NOT_RUN. The Mac lane runs the
+     `test_support` suite at the published `task/W4-main-1` at its next checkpoint (MAP row). This does not block.
+   - **Expected failures:** none, except items accepted with a disposition in W4-OPENING-1-CLOSE.
+4. **Review.** Get an independent read-only review of the resolutions. Brief the reviewer with the conflict list and
+   both parents, not with your conclusions. Fixes get a focused re-review.
+5. **Publish and stop.** Push `task/W4-main-1` with an ordinary push, verify the remote hash, and add a REPORTS entry.
+   Then stop.
+
+   The orchestrator reviews the branch, then fast-forwards `main` to the merge commit with an ordinary push, no force.
+   If `main` has moved in the meantime (board commits), merge `origin/main` into `task/W4-main-1` again; only docs
+   conflicts are expected. Rerun the format check and the affected tests, and hand back.
+
+**After `main` moves:** the orchestrator records the merge in `docs/PLAN.md` and marks UI.2's "W4.4 merged" condition
+as met. It also checks GitHub CI on `main` and dispositions each failure.
+
+**Out of scope:** Mac commits beyond `0c401c8d`, new features, and any coordinator redesign.
+
+**Stop condition:** `main` is the reviewed merge commit, and the task branches are preserved.
+
+### W4-OPENING-2 — the first wood chain in the live window · RELEASED, STARTS AFTER W4-MAIN-1
+
+**Goal:** the owner's next playtest can run, in the real window:
+1. found;
+2. unload;
+3. build a forester and a road to the warehouse;
+4. watch the worker cut a tree;
+5. watch the market cart bring the wood to the warehouse;
+6. load the wood onto the ship.
+
+**Inputs:**
+- **`main` after W4-MAIN-1.** Record its exact hash.
+- **The accepted Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`** (MAP-POP-IMPL-1, on GitHub). It contains:
+  - loading (MAP-CARGO-2, `LoadCmd`) and the hold-bounds correction (CARGO-3);
+  - ordinary land roads as tile objects through `BuildCmd` and `DemolishCmd` (MAP-ROAD-1, CLOSE-1/2; 21 shipped road
+    types, `docs/sim/road-placement.md`);
+  - the forester chain (MAP-ECON-1, CLOSE-1; `docs/sim/forestry.md`): worker figure 102 → tree cut → `Farm.raw` →
+    `HOLZ` → the road-connected market cart → the warehouse;
+  - the population inputs (MAP-POP-READY-1, IMPL-1); House dispatch is still a no-op;
+  - saved-state stream 127 and PRNG timeline 4.
+
+  Not the moving tip: MAP-POP-LIVE-1 is still in progress.
+
+**Trial merges** (orchestrator, 2026-11-04):
+- `73e7ab1a` into `task/W4-opening-1`: the code merges cleanly. Only `docs/open-questions.md` and `REPORTS.md`
+  conflict.
+- `73e7ab1a` into `main` `8b37276b`: the same, plus the coordinator files, `CMakeLists.txt` and `docs/perf/README.md`.
+  If these reappear after W4-MAIN-1, apply its recorded resolution.
+
+**Steps.**
+1. **Merge.** Branch `task/W4-opening-2` from `main` and make an ordinary merge of exact `73e7ab1a`. Record both parents
+   and every resolution. Re-record the Windows session and replay fixtures that the stream change invalidates, with a
+   reason for each.
+2. **Build the Mac code on Windows and Linux.** This is NOT_RUN in its acceptances.
+   - Run the MSVC suites for sim, sim_load and formats, the WSL warnings and the ASan/UBSan lanes.
+   - Run the Mac lane's headless canaries on Windows:
+     - the forestry real opening: 448 raw 8.8 wood units = 1.75 t, 28/28 fresh-process replay checkpoints;
+     - loading;
+     - roads.
+   - Results and state hashes must equal the Mac's recorded ones. Any difference is P1: stop and report the first
+     checkpoint that diverges.
+3. **Road tool, in the opening's building tool.**
+   - Use `BuildCmd` and `DemolishCmd` with the types that `road_class` accepts.
+   - A drag places one road per tile along its path. A drag limit from the original
+     (`docs/research/building-placement.md` §3) may be added only as evidence-backed configuration, never as a hard
+     limit.
+   - The preview applies the sim's placement rule read-only. The sim's refusal is shown.
+   - Roads are tile objects: draw them from the tile layer, in the original's decal formats. Update them per chunk,
+     never with a whole-island rebuild.
+4. **Live land figures.**
+   - Extend the published snapshot for the forester's worker and the market cart: stable figure ids, type, owner,
+     position, facing, and animation state. Include the tile change when a tree is cut.
+   - Draw them from the original decoded figure sprites, with palette and shadows, through the existing unit renderer
+     on CPU and GPU, in painter order with the buildings.
+   - Interpolation is presentation-only. Movement must not rebuild terrain. Retained snapshots stay bounded.
+   - A marker or a static sprite is not a live figure.
+5. **Feedback.** A developer readout, not UI.2:
+   - the selected building's production state: the forester's `raw`, `out` and workers out;
+   - the warehouse stock, including the delivered wood;
+   - each value correlated to its snapshot.
+6. **Loading.** The counterpart of the unload interaction: selected own ship, own warehouse in range, hold, goods and
+   quantity.
+   - Use the accepted request granularity and partial-transfer rules (`docs/sim/ship-cargo.md`).
+   - Show the amount actually moved, and the stock before and after.
+7. **Proof.**
+   - **A full window session** through the production SDL path: found → unload → forester and road → the worker cuts →
+     the cart delivers → load onto the ship → quick-save → resume → continue. No grants.
+   - **A replay** in a fresh headless process, with matching outcomes and hashes. A changed road or load quantity must
+     diverge at a recorded checkpoint.
+   - **Adapter controls:**
+     - a road refused on water;
+     - a road refused on an occupied tile;
+     - demolishing a road;
+     - loading beyond the stock or the hold;
+     - a stale warehouse target.
+   - **Mutation checks:** a suppressed window road command, and a partial load shown as complete. Each must make its
+     check fail.
+   - **Renderer:** a GPU/CPU comparison of a small scene with a walking figure.
+   - **Wrap-up:**
+     - a playtest card section;
+     - the full gates (native, the window tests, WSL warnings and sanitizers);
+     - an independent read-only review;
+     - publish `task/W4-opening-2`.
+
+     Then stop for the orchestrator's review and the owner's playtest.
+
+**Out of scope:**
+- live population (MAP-POP-LIVE-1, a later integration);
+- W4-DEPTH-1;
+- UI.2, network and trade routes;
+- the zoom artifacts (separate, once the owner's console log arrives).
 
 ### W4-DEPTH-1 — per-pixel sprite depth against the terrain and the water · QUEUED, NOT RELEASED
 
@@ -537,7 +753,7 @@ uncertainty; missing submit-only/in-flight-only mutants are not new blockers.
 That boundary is now satisfied by the acceptance records above and below.
 No extra owner permission is needed between V1–V3.
 
-### W4-OPENING-1 — live ship-start opening for an owner playtest · RELEASED; OWNER ANSWERS REVIEWED, PLAYTEST NEXT
+### W4-OPENING-1 — live ship-start opening for an owner playtest · RELEASED; CLOSEOUT CURRENT (W4-OPENING-1-CLOSE ABOVE)
 
 **Review checkpoint, 2026-11-04 (Claude orchestrator, owner instruction).** The owner's answers are reviewed in §7 of
 [the playtest review](reviews/2026-11-03-w4-opening1-playtest.md), with no P1 or P2:

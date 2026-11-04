@@ -1943,3 +1943,21 @@ Before the hold is lifted, in this order: (1) every `coord-<port>-v4.journal` in
 
 ### Tests and provenance
 `tests/budget_f5_test.cpp`: V1/V2 (opt-in `ANNO_TEST_V4_COORD`, `ANNO_TEST_V4_PROBE`; the real published binaries; memory and CPU token; direct start, ordinary client start, recovery), V3 (11 journal states plus the unreadable directory and the unreadable mode-000 file, each start repeated three times for the refusals), V3b (both journals present; recovery by moving the file aside), V4 (another port). Ports 47900–47925, a private `HOME` per case. Red: `01-red-before-fix.txt` (the production change stashed; V1, V2, V3, V3b fail, V4 passes); green: `02-green-after-fix.txt`. Current binaries at the code head: see `06-binaries.txt` of the evidence directory.
+
+## W4-DEPTH-1 — per-pixel depth (2026-11-04)
+
+What the depth adds (docs/render/depth.md): per object draw one integer test per pixel and a write; per chunk the
+depth target from the terrain plane (one i32 per pixel, built on the builder thread; the GPU keeps it in a register of
+the compute pass) and the submerged plane (u8 per pixel, uploaded as an `R8Uint` plane only where a pixel is
+submerged, and for every GpuList chunk with depth); the chunk atlas a parallel `R8Uint` z plane (+25 % of the static
+atlas's bytes); with Original water one more full-chunk fragment pass (`sea_submerged_fs`, discarding everywhere but
+the submerged pixels); in the headless `Scene::render` one more ground probe for the objects' target.
+
+Measured (Windows 11, Ryzen 9800X3D, MSVC Release, `anno1503 --view Single_24.sze --png --group 0 --size 3000x2000`,
+two runs each, alternating, nothing else of this session running): `--depth off` 31.9 s and 29.3 s, `--depth on`
+36.0 s and 35.1 s (+16 %, most of it the extra ground probe of the headless path; the viewer's chunks reuse the probe
+they already build).
+
+NOT measured (the owner was using the PC for a game, 2026-11-04): the chunk build per stage (`bench_frame
+--chunk-profile ... --depth on|off`), the GPU frame time of the extra pass (`bench_frame --renderer gpu --depth
+on|off`), the atlas growth. To be measured on an idle host before the package is accepted for performance.

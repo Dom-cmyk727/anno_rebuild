@@ -94,13 +94,27 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
 - **W4-DEPTH-1-CLOSE below runs on `task/W4-depth-1` from `b72595c2`** (so at 26.5), not from `0fd1d219`. Its "Owner
   check" step (start Kontor at `--shore 16.5` and `--shore 26.5`, beside the GOG capture) still covers both, for the
   owner's own comparison.
-- **The closeout, FIXED 2026-11-04 evening.** Its WSL ASan app gate at `1d34dd97` failed `opening_session_replay` at
-  stage 1 because `viewer_wiring.py` hardcoded the window's own auto-quit test hook (`ANNO_VIEW_QUIT_S=240`),
-  clobbering anything the caller's environment set; under ASan the voyage needs far longer (turn p95 measured 509.5 ms
-  against 0.2-0.4 ms native, stage 1 alone measured 434.4-494.9 s to finish naturally here, varying with host load).
-  Fixed in `3a2da9b9`: `viewer_wiring.py` now reads it from its own environment (default unchanged), and CMake scales
-  it 5x (1200 s, the same factor already used for the per-case watchdog) for the `ANNO_SANITIZE` build only. Rerunning
-  the lane at this head now (`wsl-w18`).
+- **The closeout, quit-deadline bug FIXED 2026-11-04 evening, a second gate issue open.** Its WSL ASan app gate at
+  `1d34dd97` failed `opening_session_replay` at stage 1 because `viewer_wiring.py` hardcoded the window's own
+  auto-quit test hook (`ANNO_VIEW_QUIT_S=240`), clobbering anything the caller's environment set; under ASan the
+  voyage needs far longer (turn p95 measured 509.5 ms against 0.2-0.4 ms native, stage 1 alone measured 434.4-494.9 s
+  to finish naturally here, varying with host load). Fixed in `3a2da9b9`: `viewer_wiring.py` now reads it from its
+  own environment (default unchanged), and CMake scales it 5x (1200 s, the same factor already used for the per-case
+  watchdog) for the `ANNO_SANITIZE` build only. **Confirmed**: `opening_session_replay` now passes at this head, both
+  as its own required-contract check (1889.4 s) and inside the full lane (1830.4 s) — `wsl-w18`.
+  **But `wsl-w18`'s app lane still VERDICT: FAIL** (`rc=1`, 1 of 265 executed), on a different, previously-unseen
+  failure: `viewer_wiring_opening_controls` (line 72, `key h` stop order) — `tracked.1.state is 'sailing', expected
+  == stopped`. It passed cleanly as its own standalone required-contract check (187.6 s) in the same `wsl-w18` run,
+  then failed only once folded into the full `-j4` parallel batch (184.1 s there too — not slower). No sanitizer
+  report in either stdout/stderr; the failing run's stderr shows heavy frame hitches (~50-57 ms/frame, vs. the
+  budget) from 4-way ASan process contention, consistent with (not yet proven to be) a contention-sensitive flake
+  rather than a logic bug — `wait turns 3` is sim-turn-gated, not wall-clock, so the earlier quit-deadline class of
+  bug does not explain it directly. This failure was never reached before tonight, because every prior WSL ASan run
+  failed earlier at the `opening_session_replay` required-contract gate (fixed above) before reaching the full
+  parallel batch — so this is new evidence, not a regression from `3a2da9b9`. A same-binaries, no-rebuild repro-only
+  rerun of just the app lane is in flight now (`wsl-w19`) to establish whether it reproduces. **The closeout is not
+  yet clear; do not mark W4-OPENING-1-CLOSE's gate chain done until `wsl-w19`'s result is read and, if it reproduces,
+  this is root-caused (or deliberately accepted with a disposition, as the closeout's own evidence policy requires).**
 - **New finding, for the orchestrator (depth session, in passing).** With the depth on, `--play` on a *fixed* map
   draws no start Kontor: `fixed_map.cpp:299` creates it with item byte0f 0, so the depth puts it under the land and
   the 26.5 sea (`--depth off`, or `--shore 16.5`/`26.5`, makes no difference; verified with `--png`, sheet

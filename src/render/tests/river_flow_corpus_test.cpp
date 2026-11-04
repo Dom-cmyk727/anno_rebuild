@@ -76,7 +76,8 @@ std::unique_ptr<Loaded> load(const fs::path& dir, const fs::path& rel) {
 }
 
 struct QaIsland {
-    const char* name;
+    /// A string, not a char pointer: doctest prints a const char* as its address.
+    std::string name;
     const char* path;
     /// A river region of the island in tile coordinates.
     int tx, ty;

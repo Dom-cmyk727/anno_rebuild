@@ -459,11 +459,10 @@ const std::vector<std::string> kExpected = {
 // 2026-11-03 for the handedness fix (docs/render/iso.md, "Handedness": every
 // line keeps its size and its drawn / invisible / failed / unit counts, only the
 // pixels move) on Windows 11 with MSVC (UCRT) only; the Apple and glibc values
-// are not measured since, so a run there may differ in the enhanced lines and
-// then needs its own override table here (the former UCRT override is folded
-// into kExpected; restore a per-library table and its selection in
-// expected_lines() when one is measured). Fallback if more libms diverge:
-// libm-free exp/pow in the enhanced water (docs/render/iso.md, "Fidelity").
+// are NOT_RUN since (no run with the game files there), so a run may differ in the enhanced lines
+// and then needs its own override table here (the former UCRT override is folded into kExpected;
+// restore a per-library table and its selection in expected_lines() when one is measured). Fallback
+// if more libms diverge: libm-free exp/pow in the enhanced water (docs/render/iso.md, "Fidelity").
 
 std::vector<std::string> expected_lines() {
     return kExpected;

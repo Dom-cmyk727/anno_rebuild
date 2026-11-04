@@ -218,6 +218,13 @@ if(ANNO_BUILD_TESTS)
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/inn_ref_contract_test.py
                      --ref ${CMAKE_SOURCE_DIR}/tools/inn_ref.py
                      --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/inn_vectors.txt)
+    add_test(NAME walk_goal_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/walk_goal_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/walk_goal_vectors.txt)
+    add_test(NAME walk_goal_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/walk_goal_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/walk_goal_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/walk_goal_vectors.txt)
     add_test(NAME house_transition_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_transition_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_transition_vectors.txt)

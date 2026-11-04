@@ -126,6 +126,11 @@ struct StandChoice {
     GoodsId goods = 0;
     std::int64_t score = 0;
     std::vector<TileXY> path;
+    /// MAP-POP-CLOSE-2 K2: the goal sub-cell the search selected (an entrance point of the stand, on
+    /// the path's last tile). The walker ends its walk THERE (the original walks the finer sub-cell
+    /// route, state.md 5.9 clause 6, and starts its way home from its own position, transport.md
+    /// section 3), so a stand whose tile centre is walled in (the cross of stand 1314) can be left.
+    std::uint32_t end_col = 1, end_row = 1;
 };
 
 /// Step A's choice (D 0x1005b170): the candidates are the buildings of the house's city in the

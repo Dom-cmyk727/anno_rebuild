@@ -319,6 +319,10 @@ std::optional<StandChoice> choose_stand(const SerialWorld& world, const TickCont
     choice.goods = candidates[*best].goods;
     choice.score = candidates[*best].score;
     choice.path = found.route;
+    if (found.selected) {
+        choice.end_col = found.selected->point.col;
+        choice.end_row = found.selected->point.row;
+    }
     return choice;
 }
 
@@ -651,6 +655,14 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             }
             r.target = stand->building;
             start_walk(fig.pos, stand->path, WalkRef{r.route, r.next, r.along});
+            // K2: the walk ends at the selected goal sub-cell, not the tile centre (see StandChoice).
+            if (!stand->path.empty() && r.route.size() >= 2) {
+                const FixedPos tile = tile_centre(stand->path.back());
+                const auto sub = [](std::uint32_t c) {
+                    return static_cast<std::int32_t>(((2 * c + 1) * 256 + 3) / 6) - 128;
+                };
+                r.route.back() = FixedPos{tile.x + sub(stand->end_col), tile.y + sub(stand->end_row)};
+            }
             r.step = ResidentStep::ToStall;
             break;
         }

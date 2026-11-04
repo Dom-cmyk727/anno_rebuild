@@ -158,6 +158,13 @@ bill dup-second goods=26 amount=300 take=1 store=none billed=26:300 => status=ok
 bill zero-amount goods=26 amount=0 take=1 store=26:7 billed=none => status=ok returned=0 store=26:7 billed=none
 bill O-fits goods=26 amount=300 take=1 store=26:1000 billed=26:4294966995 => status=ok returned=300 store=26:700 billed=26:4294967295
 bill O-overflow goods=26 amount=300 take=1 store=26:1000 billed=26:4294966996 => status=billed_overflow returned=0 store=26:1000 billed=26:4294966996
+# MAP-POP-CLOSE-2 K2 (review P3): the billing bound exactly at u32 max, for take 0 and for the suppliers
+bill O-take0-exact goods=26 amount=300 take=0 store=26:1000 billed=26:4294966995 => status=ok returned=300 store=26:1000 billed=26:4294967295
+bill O-take0-over-by-one goods=26 amount=300 take=0 store=26:1000 billed=26:4294966996 => status=billed_overflow returned=0 store=26:1000 billed=26:4294966996
+sbill I-exact cls=Inn goods=77 amount=11 tavern=5 input=27 store=none billed=27:4294967290 => status=ok returned=5 store=none billed=27:4294967295 tavern=0
+sbill P-exact cls=PublicService goods=27 amount=5 store=none billed=27:4294967290 => status=ok returned=5 store=none billed=27:4294967295 tavern=0
+sbill P-over-by-one cls=PublicService goods=27 amount=6 store=none billed=27:4294967290 => status=billed_overflow returned=0 store=none billed=27:4294967290 tavern=0
+sbill S-exact cls=MarketStall goods=26 amount=300 store=26:1000 billed=26:4294966995 => status=ok returned=300 store=26:700 billed=26:4294967295 tavern=0
 bill O-table goods=100 amount=10 take=1 store=none billed=none range=26,120 => status=out_of_table returned=0 store=none billed=none
 
 # --- house delivery: stock += amount*16, IdSec replayed once, checked u32.

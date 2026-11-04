@@ -222,14 +222,25 @@ void expand(Open& open, SearchResult& result, WalkCells& cells, const WalkTables
 
 namespace {
 using GoalMasks = std::map<TileXY, std::uint16_t>;
-GoalMasks mark_goals(WalkCells& cells, std::span<const WalkPoint> goals) {
+GoalMasks mark_goals(WalkCells& cells, std::span<const WalkPoint> goals, SearchResult& result) {
     GoalMasks masks;
     for (const auto& point : goals) {
         if (!inside(cells.rect(), point.tile) || point.col >= 3 || point.row >= 3) {
             continue;
         }
         auto cell = cells.get(point.tile);
+        const auto raw = cells.record(point.tile);
+        if (!raw.supported) {
+            result.complete = false;
+            continue;
+        }
         cell.high = static_cast<std::uint16_t>(cell.high | 0x400); // D0x10004068
+        // MAP-POP-CLOSE-2 K2 (OQ-463, docs/re/population.md section 19): the goal cell also takes the
+        // key nibble of its goal sub-cell (D 0x1000414b: `or word [cell], ax`, ax = 0x10003aa0), the
+        // way a start cell does (0x10003f73). Without it a tile whose mapped low word is 0 (stand
+        // 1314, mask 0x155) could never be entered, so its goals were never reached.
+        cell.low =
+            static_cast<std::uint16_t>(cell.low | start_keys(raw.mask9, point.col, point.row));
         if (cells.set(point.tile, cell)) {
             masks[point.tile] =
                 static_cast<std::uint16_t>(masks[point.tile] | (1U << (point.col + 3 * point.row)));
@@ -350,7 +361,7 @@ SearchResult search(const WalkCells& input, const WalkTables& tables, std::uint3
     result.complete = cells.complete();
     Open open;
     seed(open, result, cells, starts);
-    const auto goal_masks = mark_goals(cells, goals);
+    const auto goal_masks = mark_goals(cells, goals, result);
     while (!open.empty()) {
         const Node node = open.begin()->second;
         open.erase(open.begin());

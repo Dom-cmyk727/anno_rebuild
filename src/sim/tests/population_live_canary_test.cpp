@@ -536,7 +536,8 @@ void check_growth(const sim::TransportStats& stats, std::size_t& exact, std::siz
             // would have crossed Wohnmax * 64 and the kernel stops at it) or the below-64
             // correction (the floor 64 of the downgrade arm).
             const bool cap_clip = g.residents_before + g.vermehr > g.cap_64 && g.residents_after == g.cap_64;
-            const bool floor_clip = g.residents_after == 64;
+            // K2 (review P3): the floor applies only when the step really fell below 64.
+            const bool floor_clip = g.residents_before + g.vermehr < 64 && g.residents_after == 64;
             CHECK_MESSAGE((cap_clip || floor_clip), "unexplained delta of house " << g.building.v);
         }
         // The kernel number is what the House holds unless the tick removed the house.
@@ -566,27 +567,27 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     CHECK(r.main_res.lost_88 == 0); // nothing is lost any more: every walker finds its way home
     CHECK(r.main_total.visits == 18779);
     CHECK(r.main_total.kernel_taken == 2629);
-    CHECK(r.main_total.spawn_draws == 2171);
-    CHECK(r.main_total.spawn_requests == 2171);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2171); // draws by site = counter
+    CHECK(r.main_total.spawn_draws == 2023);
+    CHECK(r.main_total.spawn_requests == 2023);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2023); // draws by site = counter
     CHECK(r.watch.draws.count(sim::DrawSite::HouseVariant) == 0);      // no upgrade or downgrade
-    CHECK(r.main_res.searches == 2160);
-    CHECK(r.main_res.searches_failed == 2026);
-    CHECK(r.main_res.arrivals == 119);
-    CHECK(r.main_res.purchases == 90);
-    CHECK(r.main_res.bought_88 == 2137); // the city store the stalls gave up
-    CHECK(r.main_res.deliveries == 89);
-    CHECK(r.main_res.delivered_88 == 5230);
+    CHECK(r.main_res.searches == 2012);
+    CHECK(r.main_res.searches_failed == 1825);
+    CHECK(r.main_res.arrivals == 170);
+    CHECK(r.main_res.purchases == 130);
+    CHECK(r.main_res.bought_88 == 3836); // the city store the stalls gave up
+    CHECK(r.main_res.deliveries == 127);
+    CHECK(r.main_res.delivered_88 == 7329);
     CHECK(r.main_res.no_path_home == 0); // the resident-specific home path (section 20.2)
     // P-15 (C3): every reversed route passed the forward replay; 8 needed the endpoint adapter
     // (leaving the stand / entering the home), none was refused (measured, S01_01_01).
     CHECK(r.main_res.reverse_rejected == 0);
-    CHECK(r.main_res.endpoint_adapted == 8);
+    CHECK(r.main_res.endpoint_adapted == 4);
     CHECK(r.main_total.rect_queries == r.main_res.searches);
-    CHECK(r.main_total.candidates_scored == 6461);
-    CHECK(r.main_total.candidates_accepted == 2616);
-    CHECK(r.main_total.walk_searches == 1154);
-    CHECK(r.main_total.walk_expansions == 865306);
+    CHECK(r.main_total.candidates_scored == 5904);
+    CHECK(r.main_total.candidates_accepted == 668);
+    CHECK(r.main_total.walk_searches == 462);
+    CHECK(r.main_total.walk_expansions == 357997);
     CHECK(r.main_total.upgrade_scores == 0); // no house reached its cap
     // the ledger (closed by the drain; the equations are checked in run_canary): the stall goods
     // came out of the city store and the public goods did not
@@ -637,7 +638,7 @@ TEST_CASE("population live canary: S01_01_01 live run, ledger, growth, removal a
     CHECK(u0.player_flags_after == 1761607711U);
     // cut markers used by the save/reload case
     CHECK(r.watch.wait_step.value_or(0) == 50);
-    CHECK(r.watch.cargo_step.value_or(0) == 137);
+    CHECK(r.watch.cargo_step.value_or(0) == 134);
     CHECK(r.watch.transition_step.value_or(0) == 50);
 }
 
@@ -658,49 +659,84 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
     CHECK(r.main_res.reverse_rejected == 0); // P-15 (C3): no reversed route refused by the replay
-    CHECK(r.main_res.endpoint_adapted == 269); // accepted with the endpoint adapter (measured)
-    CHECK(r.main_total.spawn_draws == 2407);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2407);
-    CHECK(r.main_res.searches == 2407);
-    CHECK(r.main_res.purchases == 551);
-    CHECK(r.main_res.bought_88 == 24907);
-    CHECK(r.main_res.deliveries == 496);
-    CHECK(r.main_res.delivered_88 == 100111);
-    CHECK(r.main_total.candidates_scored == 21650);
-    CHECK(r.main_total.walk_expansions == 2072738);
+    CHECK(r.main_res.endpoint_adapted == 143); // accepted with the endpoint adapter (measured)
+    CHECK(r.main_total.spawn_draws == 2287);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2287);
+    CHECK(r.main_res.searches == 2287);
+    CHECK(r.main_res.purchases == 612);
+    CHECK(r.main_res.bought_88 == 35026);
+    CHECK(r.main_res.deliveries == 550);
+    CHECK(r.main_res.delivered_88 == 104100);
+    CHECK(r.main_total.candidates_scored == 21146);
+    CHECK(r.main_total.walk_expansions == 1750834);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
-    CHECK(r.up == 0);
+    CHECK(r.up == 1); // K2: the one upgrade below
     CHECK(r.refused == 0);
-    CHECK(r.down == 13);
-    CHECK(r.main_transitions == 7);
+    CHECK(r.down == 14);
+    CHECK(r.main_transitions == 8);
     // a downgrade draws exactly one HouseVariant each
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 7);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 8);
+    // K2: the first REAL pioneer -> settler upgrade of an original scenario. With the goal cells
+    // carrying their key nibble (OQ-463) the isolated-cell stands (1314 leather and cloth, ...) are
+    // reachable, the Inn supplies the tavern, the chapel the church need, and PIONIER house 509
+    // (a mapper-0 free-cell type) upgrades at tick 72550.
+    const auto& trs = stats.population.transitions;
+    const auto up_it = std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
+        return x.kind == sim::HouseTransitionRecord::Kind::Upgrade;
+    });
+    REQUIRE(up_it != trs.end());
+    CHECK(up_it->building.v == 227633266728ULL);
+    CHECK(up_it->tick == 72550);
+    CHECK(up_it->from.v == 509);
+    CHECK(up_it->to.v == 520); // next type id - id % 20 + 20, variant index 0
+    CHECK(up_it->old_group == 0);
+    CHECK(up_it->new_group == 1);
+    CHECK(up_it->residents_before == 512);
+    CHECK(up_it->residents_after == 512);
+    CHECK(up_it->houses_old_before == 2);
+    CHECK(up_it->houses_old_after == 1);
+    CHECK(up_it->houses_new_before == 0);
+    CHECK(up_it->houses_new_after == 1);
+    CHECK(up_it->counter_old_before == 536);
+    CHECK(up_it->counter_old_after == 536);
+    CHECK(up_it->counter_new_before == 0);
+    CHECK(up_it->counter_new_after == 528);
+    CHECK(up_it->variant_drawn);
+    CHECK(up_it->variant_draw == 21945);
+    CHECK(up_it->variant_index == 0);
+    // the exact material debit of type 520: WERKZEUG 1 t (256) and HOLZ 4 t (1024), nothing else
+    REQUIRE(up_it->spent_by_good.size() >= 2);
+    CHECK(up_it->spent_by_good[0] == 256);
+    CHECK(up_it->spent_by_good[1] == 1024);
+    for (std::size_t i = 2; i < up_it->spent_by_good.size(); ++i) {
+        CHECK(up_it->spent_by_good[i] == 0);
+    }
     // exact identity of the first downgrade
-    const sim::HouseTransitionRecord& t = stats.population.transitions.front();
-    CHECK(t.kind == sim::HouseTransitionRecord::Kind::Downgrade);
+    const auto dn_it = std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
+        return x.kind == sim::HouseTransitionRecord::Kind::Downgrade;
+    });
+    REQUIRE(dn_it != trs.end());
+    const sim::HouseTransitionRecord& t = *dn_it;
     CHECK(t.building.v == 219043332203ULL);
     CHECK(t.tick == 90250);
     CHECK(t.from.v == 560);
-    CHECK(t.to.v == 546); // base 540 + variant index 6 (K1: with the Inn running)
+    CHECK(t.to.v == 542);
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
-    // F2: the House holds 1320 after the tick: the growth step of the group-3 mood -2 entry
-    // (VermehrTab -38, the largest negative step) ran BEFORE SetGroup, which keeps the residents.
-    // The old pin 1358 was the pre-tick value (the record had been self-baselined).
+    // F2: the House holds 1320 after the tick (the growth step of the group-3 mood -2 entry, VermehrTab
+    // -38, ran BEFORE SetGroup, which keeps the residents).
     CHECK(t.residents_after == 1358 - 38);
-    CHECK(t.houses_old_before == 54);
-    CHECK(t.houses_old_after == 53);
-    CHECK(t.counter_old_before == 1690);
-    CHECK(t.counter_old_after == 1669);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 27446);
-    CHECK(t.variant_index == 6);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
-    for (const auto& tr : stats.population.transitions) {
-        CHECK(tr.kind == sim::HouseTransitionRecord::Kind::Downgrade);
-        CHECK(tr.new_group + 1 == tr.old_group);
+    for (const auto& tr : trs) {
+        if (tr.kind == sim::HouseTransitionRecord::Kind::Upgrade) {
+            CHECK(tr.new_group == tr.old_group + 1);
+        } else {
+            CHECK(tr.kind == sim::HouseTransitionRecord::Kind::Downgrade);
+            CHECK(tr.new_group + 1 == tr.old_group);
+        }
         CHECK(tr.variant_drawn);
     }
     check_unlocks(stats);
@@ -745,7 +781,7 @@ TEST_CASE("population live canary: save and reload at the cuts of the real run")
         ref.final_hash = w.state_hash();
         w.set_transport_stats(nullptr);
         CHECK(watch.wait_step.value_or(0) == 50);
-        CHECK(watch.cargo_step.value_or(0) == 137);
+        CHECK(watch.cargo_step.value_or(0) == 134);
         REQUIRE(ref.transition_steps.size() >= 7);
         // a walker waiting or walking to a stand at the end of step 50, a walker carrying cargo
         // at the end of step 137, the first transition inside step 50, a later one inside step 1806

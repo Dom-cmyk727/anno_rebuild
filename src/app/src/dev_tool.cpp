@@ -152,7 +152,7 @@ void DevTool::forward(DevEvent::Kind kind, sim::TileXY tile, std::vector<sim::Co
     if (kind == DevEvent::Kind::Release) {
         chosen = turn();
     }
-    for (sim::Command& c : input_.handle(DevEvent{kind, tile, chosen})) {
+    for (sim::Command& c : input_.handle(DevEvent{kind, tile}, chosen)) {
         out.push_back(std::move(c));
     }
     if (!input_.message().empty()) {

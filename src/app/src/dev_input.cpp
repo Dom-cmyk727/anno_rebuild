@@ -149,7 +149,8 @@ sim::Command DevInput::demolish_command(const std::vector<sim::TileXY>& tiles) c
     return command;
 }
 
-std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
+std::vector<sim::Command> DevInput::handle(const DevEvent& event,
+                                           std::optional<std::uint8_t> turn) {
     message_.clear();
     std::vector<sim::Command> out;
     const std::size_t count = types_.size();
@@ -223,7 +224,7 @@ std::vector<sim::Command> DevInput::handle(const DevEvent& event) {
                 message_ = "a drag places a road; the selected type is not one";
                 break;
             }
-            out.push_back(build_command(tiles, tiles.size() == 1 ? event.turn : std::nullopt));
+            out.push_back(build_command(tiles, tiles.size() == 1 ? turn : std::nullopt));
         }
         if (!sim::has_wire_form(out.back().body)) {
             out.clear();

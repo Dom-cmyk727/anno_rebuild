@@ -43,9 +43,6 @@ struct DevEvent {
     };
     Kind kind = Kind::Cancel;
     sim::TileXY tile;
-    /// Release only: the turn to build with when the tool chose it by the coast trials
-    /// (DevTool::turn); none: the cursor's turn.
-    std::optional<std::uint8_t> turn;
 };
 
 /// Whether `type` takes its turn from the coast: the original's ordinary cursor tries the turns
@@ -68,8 +65,11 @@ class DevInput {
              sim::CityRef city, sim::PlayerId issuer);
 
     /// The commands this event produces, in order (none, or one). A drag that cannot
-    /// be sent (over the wire limit, or a non-road type dragged) sets message().
-    [[nodiscard]] std::vector<sim::Command> handle(const DevEvent& event);
+    /// be sent (over the wire limit, or a non-road type dragged) sets message(). `turn`: on a
+    /// release of one tile, the turn to build with when the tool chose it by the coast trials
+    /// (DevTool::turn); none: the cursor's turn.
+    [[nodiscard]] std::vector<sim::Command> handle(const DevEvent& event,
+                                                   std::optional<std::uint8_t> turn = std::nullopt);
 
     [[nodiscard]] std::optional<sim::TypeId> selected() const;
     [[nodiscard]] const sim::BuildingType* selected_type() const;

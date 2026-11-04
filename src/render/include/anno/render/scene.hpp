@@ -196,8 +196,10 @@ struct UnitSprite {
     /// Scene screen point of the frame anchor at `group`.
     [[nodiscard]] std::pair<int, int> anchor(std::size_t group, Lift lift) const;
     /// Draws shadow and frame with the anchor shifted by −offset; whether
-    /// the frame touched the canvas.
-    bool draw(Canvas& canvas, std::size_t group, Lift lift, std::pair<int, int> offset) const;
+    /// the frame touched the canvas. With `depth`, the frame's drawn pixels are marked untested
+    /// there (units keep their former drawing, docs/render/depth.md §2.2).
+    bool draw(Canvas& canvas, std::size_t group, Lift lift, std::pair<int, int> offset,
+              depth::Target* depth = nullptr) const;
 };
 
 /// The dynamic object lists of one island in one scene generation (round du, docs/app/
@@ -472,6 +474,14 @@ class Scene : public std::enable_shared_from_this<Scene> {
     /// land, as this renderer did until 2026-11-03). Set before the first render: each island's
     /// water is built once with it.
     float shore_height = kShoreHeight;
+    /// Objects are depth-tested per pixel against the terrain and each other, and the sea is
+    /// drawn over object pixels behind its plane (docs/render/depth.md); false draws them whole in
+    /// painter's order, as this renderer did until W4-DEPTH-1 (the viewer's --depth off). Set
+    /// before the first render.
+    bool depth_test = true;
+    /// The depth target the objects of `rect` at `group` are drawn against (the terrain seen
+    /// there, depth::Target::from_terrain); nullopt when depth_test is off.
+    [[nodiscard]] std::optional<depth::Target> depth_target(Rect rect, std::size_t group) const;
 
     /// The flow of island `index` (rivers.md 3.1: the raster, phase A, and
     /// the solve, phase B): null for an island without rivers, when
@@ -671,9 +681,10 @@ class Scene : public std::enable_shared_from_this<Scene> {
     void blend_rivers_into_sea(sea::WaterField& f, std::size_t group) const;
     std::pair<DrawStats, std::size_t> draw_island_objects(Canvas& local, const Placement& p,
                                                           std::span<const Prepared> list,
-                                                          std::size_t group) const;
+                                                          std::size_t group,
+                                                          depth::Target* depth) const;
     [[nodiscard]] std::optional<Rect> unit_rect(const UnitSprite& u, std::size_t group) const;
-    std::size_t draw_units(Canvas& canvas, std::size_t group) const;
+    std::size_t draw_units(Canvas& canvas, std::size_t group, depth::Target* depth = nullptr) const;
 
     void build_flow(std::size_t index) const;
     void queue_flow(std::size_t index) const;

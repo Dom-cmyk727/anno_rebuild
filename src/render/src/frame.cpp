@@ -208,6 +208,9 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
         over(px.data(), &ground.pixels[i * 4]);
         c.ground.push_back(rgb(px));
     }
+    // The terrain plane first: the objects are depth-tested against it (depth.md §2.2).
+    stage.emplace(profile::Stage::terrain);
+    c.terrain = scene.terrain_plane(probe);
     stage.emplace(profile::Stage::objects);
     // The objects layer: the draw list of the chunk, replayed (Cpu) or kept for
     // the compositor (GpuList).
@@ -217,13 +220,21 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
             c.draws = std::move(draws);
         }
     } else {
-        Canvas objects = replay(draws, scene.frame_table);
+        std::optional<depth::Target> dt;
+        if (scene.depth_test) {
+            dt = depth::Target::from_terrain(rect, depth::params(group, scene.lift), c.terrain);
+        }
+        Canvas objects =
+            dt ? replay(draws, scene.frame_table, *dt) : replay(draws, scene.frame_table);
         c.objects = to_px(objects);
         if (std::all_of(c.objects.begin(), c.objects.end(),
                         [](const Px& p) { return p[3] == 0; })) {
             c.objects.clear();
         } else {
             c.base = std::move(objects.base);
+            if (dt) {
+                c.submerged = dt->submerged(depth::sea_h64(scene.shore_height));
+            }
         }
     }
     stage.reset(); // water_field_from has its own stages
@@ -245,9 +256,6 @@ Chunk render_chunk_data(const Scene& scene, std::size_t group, int cx, int cy,
             }
         }
     }
-    stage.emplace(profile::Stage::terrain);
-    c.terrain = scene.terrain_plane(probe);
-    stage.reset();
     for (const std::size_t i : islands) {
         const auto [below, above] = scene.has_water_objects(i);
         c.water_below = c.water_below || below;
@@ -828,6 +836,39 @@ FrameStats FrameRenderer::render(const std::shared_ptr<const Scene>& scene_ptr, 
             }
         }
     });
+    // The sea once more over submerged object pixels (Original water, depth.md §2.3).
+    if (const sea::SeaPattern* pattern = scene.sea(group);
+        pattern != nullptr && style == WaterStyle::Original) {
+        const Lift lift = scene.lift;
+        par_bands(out, view, threads, [&](std::uint32_t* band, Rect rows) {
+            for (const auto& [cx, cy] : chunks) {
+                const Chunk& c = get(cx, cy);
+                if (c.submerged.empty() || c.field.empty() || c.objects.empty()) {
+                    continue;
+                }
+                const auto r = chunk_rect(cx, cy).intersect(rows);
+                if (!r) {
+                    continue;
+                }
+                const std::size_t d = index(rows, r->x, r->y);
+                const auto rw = to_size(r->w);
+                const int ccx = cx, ccy = cy;
+                const Rect rr = *r;
+                auto field = [&c, rw, ccx, ccy, rr](std::size_t i) -> sea::FieldPx {
+                    const std::size_t k = chunk_index(ccx, ccy, rr.x + static_cast<int>(i % rw),
+                                                      rr.y + static_cast<int>(i / rw));
+                    const std::size_t s = k * 4;
+                    if (c.submerged[k] == 0 || c.field[s] == 0) {
+                        return {0, 0, 0, 0};
+                    }
+                    // Cover 1: the sea sprite only, without the open-water fade (depth.md §2.3).
+                    return {1, c.field[s + 1], c.field[s + 2], c.field[s + 3]};
+                };
+                sea::shade_sea(sea::XrgbTarget{band + d}, to_size(view.w), *r, field, *pattern,
+                               time_ms, style, group, lift, levels_);
+            }
+        });
+    }
     stats.objects_ms = ms_since(t);
     stats.total_ms = ms_since(start);
     return stats;

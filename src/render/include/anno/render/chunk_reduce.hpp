@@ -35,7 +35,9 @@ using ChunkQuad = std::array<const Chunk*, 4>;
 ///            mean (the mean of the premultiplied colour, un-premultiplied);
 ///   water_below / water_above: OR; `ships`: true only if every source has them.
 /// Not derived, empty in the result: `base` (the compositor then draws objects
-/// over the water as pictures, as the original does), `flow`, `flow_waiting`.
+/// over the water as pictures, as the original does), `submerged` (the sea is
+/// drawn over objects at the built zoom groups only, depth.md §2.4), `flow`,
+/// `flow_waiting`.
 [[nodiscard]] Chunk reduce_chunks_2x(const ChunkQuad& quad, Px open_water);
 
 } // namespace anno::render

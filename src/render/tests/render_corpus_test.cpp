@@ -162,10 +162,10 @@ class ItemPeak {
 
 /// The digest lines of the corpus, four per scenario in file order; `only`:
 /// just the scenarios with these file names (empty: all); `river_flow`: how
-/// enhanced rivers are shaded.
+/// enhanced rivers are shaded; `depth`: Scene::depth_test.
 std::vector<std::string>
 digest_lines(const std::filesystem::path& dir, const std::vector<std::string_view>& only = {},
-             render::RiverFlowMode river_flow = render::RiverFlowMode::Flow) {
+             render::RiverFlowMode river_flow = render::RiverFlowMode::Flow, bool depth = true) {
     // Felder, Anlagen and the figure volumes are hundreds of megabytes. Loaded
     // on the way into the test, four heavy processes pin them before any
     // picture is admitted and the full map no longer fits. Load them once,
@@ -343,6 +343,7 @@ digest_lines(const std::filesystem::path& dir, const std::vector<std::string_vie
             }
             (void)picture;
             (void)render_cpu;
+            scene->depth_test = depth;
             const std::string name = p.filename().string();
             const render::WaterStyle style =
                 ci % 2 == 0 ? render::WaterStyle::Original : render::WaterStyle::Enhanced;
@@ -511,33 +512,52 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
     // region has no river pixels its line did not change. Re-recorded 2026-11-04
     // for the per-pixel depth (docs/render/depth.md, W4-DEPTH-1): objects are
     // depth-tested against the terrain, so the digests change while the counts
-    // (drawn, inv, failed, units) stay; the former values are those before it in git.
+    // (drawn, inv, failed, units) stay. With Scene::depth_test off the legacy
+    // shading still gives the hashes from before the depth (`*_no_depth`), so
+    // the link to the former lines holds bit for bit.
     struct Old {
         const char* file;
         const char* g2;
         const char* g1_region; ///< null: unchanged (the current expected line)
+        const char* g2_no_depth;
+        const char* g1_region_no_depth; ///< null: not checked (the pre-depth line is not kept)
     };
     const std::vector<Old> old = {
         {"Single_01.sze",
          "Single_01.sze g2 t2500 Enhanced 16960x9170 f84c269a52822b49 drawn=69256 inv=11717 "
          "failed=0 units=5",
+         nullptr,
+         "Single_01.sze g2 t2500 Enhanced 16960x9170 95b5083bfb7cd929 drawn=69256 inv=11717 "
+         "failed=0 units=5",
          nullptr},
         {"Single_06.sze",
          "Single_06.sze g2 t2500 Enhanced 7280x4451 93692d45265f5313 drawn=13626 inv=3084 "
+         "failed=0 units=3",
+         nullptr,
+         "Single_06.sze g2 t2500 Enhanced 7280x4451 c8f619871bf77cfe drawn=13626 inv=3084 "
          "failed=0 units=3",
          nullptr},
         {"Single_10.sze",
          "Single_10.sze g2 t2500 Enhanced 17440x9131 d7085e289d520601 drawn=52883 inv=8756 "
          "failed=0 units=1",
+         nullptr,
+         "Single_10.sze g2 t2500 Enhanced 17440x9131 11bc91250cff4a19 drawn=52883 inv=8756 "
+         "failed=0 units=1",
          nullptr},
         {"Single_14.sze",
          "Single_14.sze g2 t2500 Enhanced 14080x9291 20e6be24fad8625a drawn=47064 inv=9450 "
+         "failed=0 units=3",
+         nullptr,
+         "Single_14.sze g2 t2500 Enhanced 14080x9291 1d702bce968c7bb2 drawn=47064 inv=9450 "
          "failed=0 units=3",
          nullptr},
         {"Single_24.sze",
          "Single_24.sze g2 t2500 Enhanced 7200x2811 d33ce3da18b431d7 drawn=24406 inv=2880 "
          "failed=0 units=541",
-         "Single_24.sze g1 region Enhanced 7410a0bae4658270 drawn=23526 units=0"},
+         "Single_24.sze g1 region Enhanced 7410a0bae4658270 drawn=23526 units=0",
+         "Single_24.sze g2 t2500 Enhanced 7200x2811 0500861b8f0adfdc drawn=24406 inv=2880 "
+         "failed=0 units=541",
+         "Single_24.sze g1 region Enhanced 317103d104e285be drawn=23526 units=0"},
     };
     const std::vector<std::string> now = expected_lines();
     // All five scenarios in one call per mode (20 renders on the test threads):
@@ -549,8 +569,11 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
     }
     const auto all_legacy = digest_lines(*dir, files, render::RiverFlowMode::Legacy);
     const auto all_flow = digest_lines(*dir, files);
+    const auto all_legacy_no_depth =
+        digest_lines(*dir, files, render::RiverFlowMode::Legacy, false);
     REQUIRE(all_legacy.size() == 4 * old.size());
     REQUIRE(all_flow.size() == 4 * old.size());
+    REQUIRE(all_legacy_no_depth.size() == 4 * old.size());
     // The four lines of one scenario; every line starts with its file name.
     auto lines_of = [](const std::vector<std::string>& all, const char* file) {
         std::vector<std::string> out;
@@ -579,6 +602,13 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
         // Original water ignores the river mode.
         CHECK(flow[0] == legacy[0]);
         CHECK(flow[2] == legacy[2]);
+        // Without the depth: the lines from before it.
+        const auto no_depth = lines_of(all_legacy_no_depth, o.file);
+        REQUIRE(no_depth.size() == 4);
+        CHECK(no_depth[1] == o.g2_no_depth);
+        if (o.g1_region_no_depth != nullptr) {
+            CHECK(no_depth[3] == o.g1_region_no_depth);
+        }
     }
 }
 

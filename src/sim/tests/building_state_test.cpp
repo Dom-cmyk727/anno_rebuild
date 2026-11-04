@@ -324,6 +324,7 @@ std::vector<LayoutRow> layout_rows() {
         p.status = status(sim::Status::MissingInput, 6, 0x5678);
         p.tavern = 0x0102'0304;
         p.taken = 0x0a0b'0c0d;
+        p.carriers_out = 0x0e0f'1011; // K1: the carriers on their way (+0x1c/+0x20)
         Stream s = common_bytes(8);
         s.u16(0x1234);
         s.boolean(false);
@@ -331,7 +332,8 @@ std::vector<LayoutRow> layout_rows() {
         status_bytes(s, 1, 6, 0x5678);
         s.u32(0x0102'0304);
         s.u32(0x0a0b'0c0d);
-        rows.push_back({"Inn", common(p), s, 8 + 3 + 3 + 2});
+        s.u32(0x0e0f'1011);
+        rows.push_back({"Inn", common(p), s, 8 + 3 + 3 + 3});
     }
     for (LayoutRow& row : rows) {
         row.primitives += 1; // the kontor_id scalar (stream 119)
@@ -366,7 +368,7 @@ TEST_CASE("field count canary per struct") {
     // (* = derived, not in the stream). Every Payload alternative has a stream tag.
     CHECK(std::variant_size_v<sim::Payload> == 9);
     CHECK(sim::kPayloadTags.size() == 9);
-    CHECK(sim::field_count<sim::Inn>() == 6); // C2: the tavern stock and statistic
+    CHECK(sim::field_count<sim::Inn>() == 7); // C2: the tavern stock and statistic; K1: carriers_out
     for (std::size_t i = 0; i < sim::kPayloadTags.size(); ++i) {
         CHECK(sim::kPayloadTags[i] == i);
     }
@@ -1125,7 +1127,7 @@ TEST_CASE("golden s6 G1 city with a weaver and a farm") {
     auto types = syn::make_synthetic_types();
     REQUIRE(types.ok());
     // The one literal of tools/sim_stream.py for this golden.
-    CHECK(types.value().registry->digest() == 0xd10348e2cec4c0baULL);
+    CHECK(types.value().registry->digest() == 0x4de8c88166f5684fULL);
     auto created =
         sim::World::create(syn::g1_scenario(types.value(), 1234), types.value().registry);
     REQUIRE_MESSAGE(created.ok(), (created.ok() ? std::string() : created.error()));

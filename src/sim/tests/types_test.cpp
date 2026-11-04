@@ -320,7 +320,7 @@ TEST_CASE("class table payload tags") {
                              {C::Market, T::Market, P::Market, 500},
                              {C::MarketCombi, T::None, P::Inert, 500},
                              {C::MarketStall, T::None, P::Inert, 5000},
-                             {C::Inn, T::None, P::Inn, 5000},
+                             {C::Inn, T::Inn, P::Inn, 5000},
                              {C::PublicService, T::None, P::Inert, 500},
                              {C::Doctor, T::None, P::Inert, 500},
                              {C::School, T::None, P::Inert, 500},
@@ -339,9 +339,8 @@ TEST_CASE("class table payload tags") {
     }
     // Every ported tick has its own payload alternative; every other class is inert.
     for (const sim::ClassInfo& c : table) {
-        // The Inn keeps no tick but holds the tavern stock (C2): the one class with a payload of its own
-        // and no tick.
-        CHECK((c.tick == T::None) == (c.payload == P::Inert || c.cls == C::Inn));
+        // A class has no tick exactly when its payload is Inert (K1: the Inn ticks).
+        CHECK((c.tick == T::None) == (c.payload == P::Inert));
     }
     // The registry serves the same table.
     const auto registry = sim::TypeRegistry::empty();
@@ -1562,7 +1561,7 @@ TEST_CASE("registry digest stable") {
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x535446f109806e8dULL); // Inn payload tag 8 (C2); python transcription agrees
+    CHECK(h.value() == 0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1576,7 +1575,7 @@ TEST_CASE("registry digest stable") {
     CHECK(forward.build().value()->digest() == backward.build().value()->digest());
     // The synthetic registry's digest, pinned (a change of the type data, the
     // class or goods tables, or the digest layout moves it).
-    CHECK(a.value().registry->digest() == 0xd10348e2cec4c0baULL);
+    CHECK(a.value().registry->digest() == 0x4de8c88166f5684fULL);
 }
 
 TEST_CASE("registry digest changes with every field") {
@@ -1915,7 +1914,7 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     REQUIRE(again);
     CHECK(again.value()->digest() == r.digest());
     // T24: the digest covers the ENTRANCE points and the figure types (none here).
-    CHECK(r.digest() == 0x0858b4c5d37bcb55ULL); // C2: the Inn class row names payload 8
+    CHECK(r.digest() == 0x855fce5ed63c1090ULL); // C2: the Inn class row names payload 8
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);

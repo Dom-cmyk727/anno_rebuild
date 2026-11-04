@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <anno/sim/driver.hpp>
+#include <anno/sim/inn.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_search.hpp>
 
@@ -186,6 +187,21 @@ std::int64_t output_capacity(const BuildingType& t) {
 
 } // namespace
 
+bool pick_matches(GoodsId input, GoodsId out0, GoodsId out1) {
+    // 0x10072952-0x10072961 (output 0: ALL or the goods) and 0x100729bd-0x100729cb (output 1, only
+    // when output 0 is not ALL).
+    return out0 == kAllGoods || out0 == input || out1 == input;
+}
+
+std::int64_t pick_score(std::int32_t priority, std::int64_t avail, std::int64_t capacity) {
+    // 0x10072974-0x100729a1: the source must hold 1 t, the priority must be above 0; score =
+    // priority + avail * 192 / cap (an idiv by 0 in the original; no source type has capacity 0).
+    if (avail < kOneTon || priority <= 0 || capacity == 0) {
+        return -1;
+    }
+    return priority + avail * 192 / capacity;
+}
+
 bool transport_runs_job(std::uint32_t job) {
     return job == kJobMarketCart || job == kJobWorkshopCarrier;
 }
@@ -283,8 +299,20 @@ std::int32_t workshop_priority(const SerialWorld& world, const Building& worksho
             break;
         }
     }
+    if (!index) {
+        return -1;
+    }
+    if (const auto* inn = std::get_if<Inn>(&workshop.payload)) {
+        // MAP-POP-CLOSE-2 K1, the Inn's vtable +0xd8 is the BASE priority 0x10072870 (not the
+        // workshop's 0x10068500): the stock proxy is its slot +0xbc = the tavern stock, no carrier
+        // is counted. A need of 0 would trap in the original (the registry refuses such a type).
+        const std::int64_t n =
+            *index < type.prod.input_per_step.size() ? type.prod.input_per_step[*index] : 0;
+        const auto prio = base_priority(inn->tavern, static_cast<std::uint32_t>(n));
+        return prio.value_or(-1);
+    }
     const auto* w = std::get_if<Workshop>(&workshop.payload);
-    if (!index || w == nullptr) {
+    if (w == nullptr) {
         return -1;
     }
     // +0xbc(g) = 0x100683c0: input 1 when g is the type's input goods 1, else input 0.
@@ -318,39 +346,26 @@ std::int32_t workshop_priority(const SerialWorld& world, const Building& worksho
 std::int64_t workshop_offer(const SerialWorld& world, const TypeRegistry& types,
                             const Building& workshop, const BuildingType& type,
                             const Building& source, const City* source_city, GoodsId& goods) {
-    // D 0x100728f0 (workshop slot +0xd4).
+    // D 0x100728f0 (the sender's slot +0xd4, shared by the workshop and the Inn).
     const BuildingType* st = types.find(source.type);
     if (st == nullptr) {
         return -1;
     }
     std::int64_t best = -1;
-    auto consider = [&](GoodsId g) {
+    for (std::size_t i = 0; i < type.input_goods.size(); ++i) {
+        const GoodsId g = type.input_goods[i];
+        if (!pick_matches(g, source_output(source, *st, 0), source_output(source, *st, 1))) {
+            continue;
+        }
         const std::int64_t avail = available(source, *st, g, source_city);
         if (avail < kOneTon) {
-            return;
+            continue;
         }
         const std::int32_t p = workshop_priority(world, workshop, type, g);
-        if (p <= 0) {
-            return;
-        }
-        const std::int64_t cap = output_capacity(*st);
-        if (cap == 0) {
-            return; // idiv by 0 in the original (P: no source type has a 0 capacity)
-        }
-        const std::int64_t v = p + avail * 192 / cap;
+        const std::int64_t v = pick_score(p, avail, output_capacity(*st));
         if (v > best) {
             best = v;
             goods = g;
-        }
-    };
-    for (std::size_t i = 0; i < type.input_goods.size(); ++i) {
-        const GoodsId g = type.input_goods[i];
-        const GoodsId s0 = source_output(source, *st, 0);
-        if (s0 == kAllGoods || s0 == g) {
-            consider(g);
-        }
-        if (s0 != kAllGoods && source_output(source, *st, 1) == g) {
-            consider(g);
         }
     }
     return best;
@@ -861,6 +876,13 @@ void unload(Job& j) {
         }
         return;
     }
+    if (std::holds_alternative<Inn>(j.home->payload) && j.fig.cargo_88 > 0) {
+        // D 0x100756d0: tavern += amount (8.8, a 16-bit add), applied at the merge (scheduler 6b).
+        j.unloaded = true;
+        j.world.fx.store_deltas.push_back(StoreDelta{j.home->id, StoreDelta::Store::Input, 0,
+                                                     std::int64_t{j.fig.cargo_88}});
+        return;
+    }
     if (std::holds_alternative<Workshop>(j.home->payload) && j.fig.cargo_88 > 0) {
         j.unloaded = true;
         const GoodsId g = j.fig.cargo_goods;
@@ -923,7 +945,8 @@ bool transport_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     const Building* home = world.find_building(fig.home);
     const BuildingType* home_type = home != nullptr ? ctx.types.find(home->type) : nullptr;
     if (fig.job == kJobWorkshopCarrier && home != nullptr &&
-        !std::holds_alternative<Workshop>(home->payload)) {
+        !std::holds_alternative<Workshop>(home->payload) &&
+        !std::holds_alternative<Inn>(home->payload)) {
         return false; // the weapons workshop's carrier: stage 2 (it never leaves Start)
     }
     if (!timed) {

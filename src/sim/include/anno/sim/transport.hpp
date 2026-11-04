@@ -52,6 +52,15 @@ inline constexpr std::uint32_t kJobWorkshopCarrier = 0x33;
 /// The area of a building's figures (docs/re/transport.md §1.1, §3): the centre
 /// column(s) cx0 .. cx1 and row(s) cy0 .. cy1 of the footprint (two when the footprint
 /// is even), the type's radius and the disc's half-widths.
+/// D 0x100728f0 for one input goods against one source (MAP-POP-CLOSE-2 K1; shared by the workshop
+/// and the Inn as home): whether the source's outputs offer `input`: output 0 is ALL (0x8e) or the
+/// goods, or output 1 is the goods.
+[[nodiscard]] bool pick_matches(GoodsId input, GoodsId out0, GoodsId out1);
+/// The score `priority + avail * 192 / capacity`, or -1 when the source holds less than 1 t, the
+/// sender's priority is not above 0 or the capacity is 0.
+[[nodiscard]] std::int64_t pick_score(std::int32_t priority, std::int64_t avail,
+                                      std::int64_t capacity);
+
 struct SearchArea {
     std::int32_t cx0 = 0, cx1 = 0, cy0 = 0, cy1 = 0;
     std::uint32_t radius = 0;

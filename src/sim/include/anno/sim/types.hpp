@@ -45,7 +45,10 @@ enum class TickKind : std::uint8_t {
     Market,
     /// The house (D 0x10076230): the population update is P2's; until then the tick
     /// does nothing and touches nothing, `last` included, like TickKind::None.
-    House
+    House,
+    /// The Inn (D 0x100755f0, MAP-POP-CLOSE-2 K1): the alcohol fetch send (job 0x33). Runs only
+    /// with Rules::house_updates, like the house.
+    Inn
 };
 
 /// The runtime class of a building by PRODTYPE (D: byte table 0x1002528c, jump

@@ -15,6 +15,7 @@
 #include <anno/sim/driver.hpp>
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/house_tick.hpp>
+#include <anno/sim/inn.hpp>
 #include <anno/sim/island_tick.hpp>
 #include <anno/sim/player.hpp>
 #include <anno/sim/resident_job.hpp>
@@ -311,9 +312,8 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
         if (inn == nullptr) {
             continue;
         }
-        inn->tavern -= std::min(inn->tavern, d.amount);
-        inn->taken = static_cast<std::uint32_t>(std::min<std::uint64_t>(
-            std::uint64_t{inn->taken} + d.amount, std::numeric_limits<std::uint32_t>::max()));
+        // D 0x100756e0 on the Inn: n = min(request, stock), taken += n, tavern -= n, 16-bit wraps.
+        inn_take(*inn, std::int64_t{d.amount});
     }
     // 5. Reserves.
     for (const Reserve& r : fx.reserves) {
@@ -362,6 +362,13 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
     for (const StoreDelta& d : fx.store_deltas) {
         Island* is = island_of_id(w, island_of(d.building));
         Building* b = is != nullptr ? find_building_mut(*is, d.building) : nullptr;
+        if (b != nullptr && d.store == StoreDelta::Store::Input) {
+            if (auto* inn = std::get_if<Inn>(&b->payload)) {
+                // D 0x100756d0: a 16-bit add of the carried amount (8.8).
+                inn_unload(*inn, static_cast<std::uint32_t>(std::max<std::int64_t>(d.delta_88, 0)));
+                continue;
+            }
+        }
         std::uint32_t* store = nullptr;
         if (b != nullptr) {
             switch (d.store) {

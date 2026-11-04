@@ -9,6 +9,7 @@
 #include <anno/sim/draw.hpp>
 #include <anno/sim/driver.hpp>
 #include <anno/sim/house_tick.hpp>
+#include <anno/sim/inn.hpp>
 #include <anno/sim/transport.hpp>
 
 namespace anno::sim {
@@ -51,6 +52,9 @@ std::uint32_t* figure_counter(Payload& payload, std::uint32_t home_counter) {
         if (auto* f = std::get_if<Farm>(&payload)) {
             return &f->workers_out;
         }
+        if (auto* i = std::get_if<Inn>(&payload)) {
+            return &i->carriers_out;
+        }
     }
     if (auto* s = std::get_if<SmallFarm>(&payload)) {
         if (home_counter < s->figures_out.size()) {
@@ -74,6 +78,9 @@ const std::uint32_t* figure_counter(const Payload& payload, std::uint32_t home_c
         if (const auto* f = std::get_if<Farm>(&payload)) {
             return &f->workers_out;
         }
+        if (const auto* i = std::get_if<Inn>(&payload)) {
+            return &i->carriers_out;
+        }
     }
     if (const auto* s = std::get_if<SmallFarm>(&payload)) {
         if (home_counter < s->figures_out.size()) {
@@ -85,7 +92,8 @@ const std::uint32_t* figure_counter(const Payload& payload, std::uint32_t home_c
 
 std::uint32_t figure_counter_count(const Payload& payload) {
     if (std::holds_alternative<Market>(payload) || std::holds_alternative<Workshop>(payload) ||
-        std::holds_alternative<WeaponsWorkshop>(payload) || std::holds_alternative<Farm>(payload)) {
+        std::holds_alternative<WeaponsWorkshop>(payload) || std::holds_alternative<Farm>(payload) ||
+        std::holds_alternative<Inn>(payload)) {
         return 1;
     }
     if (const auto* s = std::get_if<SmallFarm>(&payload)) {
@@ -244,6 +252,20 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
             house_tick(ctx, island, city, b, *type, fx);
         }
         return;
+    case TickKind::Inn: {
+        // MAP-POP-CLOSE-2 K1 (D 0x100755f0): behind Rules::house_updates like the house (default
+        // off: the Inn is inert, `last` untouched). The limit is the type's max figures of group 0
+        // (+0xb8(0)); a type without production data sends nothing.
+        auto* inn = std::get_if<Inn>(&b.payload);
+        if (inn == nullptr || !ctx.rules.house_updates || !fx.faults.empty()) {
+            return;
+        }
+        const std::int32_t limit = type->has_prod && !type->prod.max_figures.empty()
+                                       ? static_cast<std::int32_t>(type->prod.max_figures[0])
+                                       : 0;
+        r.send_figure = inn_step(*inn, ctx.t, limit).send;
+        break;
+    }
     case TickKind::Workshop: {
         auto* w = std::get_if<Workshop>(&b.payload);
         if (w == nullptr) {
@@ -367,6 +389,7 @@ std::uint32_t send_figure_job(RuntimeClass cls) {
     switch (cls) {
     case RuntimeClass::Workshop:
     case RuntimeClass::WeaponsWorkshop:
+    case RuntimeClass::Inn: // D 0x10075691-0x1007569f: the constant 0x33
         return kJobWorkshopCarrier;
     case RuntimeClass::FurTrapper:
         return kJobFurTrapper;
@@ -442,6 +465,11 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
                 s.harvest = harvest_job(s.job) && std::holds_alternative<Farm>(b.payload);
+            }
+            if (type.cls == RuntimeClass::Inn) {
+                // D 0x100756a9-0x100756c3: the new figure's cargo goods byte is the Inn's input 0
+                // (type +0xb0(0)); the amount is not touched.
+                s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
             }
             fx.spawns.push_back(s);
         }

@@ -587,6 +587,8 @@ std::optional<PayloadTag> payload_for_tick(TickKind tick) {
         return PayloadTag::Market;
     case TickKind::House:
         return PayloadTag::House;
+    case TickKind::Inn:
+        return PayloadTag::Inn;
     }
     return std::nullopt;
 }
@@ -610,6 +612,7 @@ std::optional<BuildingClass> production_kind_for_tick(TickKind tick) {
         return BuildingClass::SmallFarm;
     case TickKind::Market: // reads prod.max_figures / figure_ids only when present
     case TickKind::House:  // no production data (P1: the tick does nothing yet)
+    case TickKind::Inn:    // reads prod.max_figures / figure_ids / input_per_step only when present
     case TickKind::None:
         break;
     }
@@ -677,9 +680,7 @@ std::string check_consistency(std::span<const BuildingType> types,
                    ", the table is indexed by class";
         }
         const auto payload = payload_for_tick(c.tick);
-        // The Inn keeps TickKind::None (its own tick is not ported) but holds the tavern stock.
-        const bool inn = c.tick == TickKind::None && c.payload == PayloadTag::Inn;
-        if (!inn && (!payload || *payload != c.payload)) {
+        if (!payload || *payload != c.payload) {
             return row + "tick " + std::to_string(static_cast<unsigned>(c.tick)) + " and payload " +
                    std::to_string(static_cast<unsigned>(c.payload)) + " disagree";
         }
@@ -693,6 +694,20 @@ std::string check_consistency(std::span<const BuildingType> types,
         const auto index = static_cast<std::size_t>(t.cls);
         if (index >= classes.size()) {
             return who + "class " + std::to_string(index) + " is outside the class table";
+        }
+        if (t.cls == RuntimeClass::Inn && t.has_prod) {
+            // MAP-POP-CLOSE-2 K1 (population.md 18 (g)): the base priority 0x10072870 divides by the
+            // input per step (+0xe4(i)), which traps in the original at 0. A typed refusal here, so
+            // no running Inn can meet a zero divisor.
+            for (std::size_t i = 0; i < t.input_goods.size(); ++i) {
+                const std::uint32_t need =
+                    i < t.prod.input_per_step.size() ? t.prod.input_per_step[i] : 0;
+                if (need == 0) {
+                    return who + "an Inn type's input " + std::to_string(i) +
+                           " has an input per step of 0; the carrier priority (0x10072870) divides "
+                           "by it";
+                }
+            }
         }
         if (t.cls == RuntimeClass::House) {
             // MAP-POP-LIVE-1 L1 (population-live.md 10a, P): a house that may send walkers needs a
@@ -859,7 +874,7 @@ std::vector<ClassInfo> original_class_table() {
         {C::Market, T::Market, P::Market, 500},                            // 0x1006b6d0
         {C::MarketCombi, T::None, P::Inert, 500},                          // 0x1006c2e0
         {C::MarketStall, T::None, P::Inert, 5000},                         // 0x100702d0
-        {C::Inn, T::None, P::Inn, 5000},            // 0x100755f0 (0x10075608); payload C2
+        {C::Inn, T::Inn, P::Inn, 5000},             // 0x100755f0 (0x10075608); K1
         {C::PublicService, T::None, P::Inert, 500}, // 0x1006b4e0 (0x1006b4ec)
         {C::Doctor, T::None, P::Inert, 500},        // 0x100676b0
         {C::School, T::None, P::Inert, 500},        // 0x1006b4e0 (shared with PublicService)

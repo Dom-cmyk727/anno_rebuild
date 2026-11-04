@@ -2535,7 +2535,7 @@ Names → numbers: AnnoGame 0x100138e0 maps 32-number blocks onto name arrays (0
 | 18–32 (unnamed), 37–64, 102–128, 132–160, 162–192, and 65 BRUNNEN, 75 GALGEN, 76 GERICHT, 80–96 | Plain | None | by block | default class 0x100734c0, size 0x18, vtable 0x100c92b8, tick 0x10001030 (`ret 4`) |
 | 33 HAUPT, 34 MARKT, 35 KONTOR | Market | None | 5 | 0x1006c080 / 0x50 / 0x1006b6d0 (unread) |
 | 36 MARKTKOMBI | MarketCombi | None | 5 | 0x1006c080 + vtable 0x100c2740 / 0x1006c2e0 (unread) |
-| 66 WIRT | Inn | None | 1 | 0x10075970 / 0x24 / 0x100755f0 |
+| 66 WIRT | Inn | Inn (K1: runs only with Rules::house_updates) | 1 | 0x10075970 / 0x24 / 0x100755f0 |
 | 67 KAPELLE, 68 KIRCHE, 69 BADEHAUS, 70 THEATER, 78 BIBLIOTHEK, 79 PAVILLION | PublicService | None | 1 | 0x1006b550 / 0x18 / 0x1006b4e0 |
 | 71 ARZT | Doctor | None | 1 | base ctor, vtable 0x100c2998 / 0x20 / 0x100676b0 |
 | 72 SCHULE, 73 HOCHSCHULE | School | None | 1 | 0x10070160 / 0x18 / 0x1006b4e0 |

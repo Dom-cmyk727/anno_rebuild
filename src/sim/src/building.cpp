@@ -202,6 +202,12 @@ std::string payload_problem(const Payload& payload, const BuildingType& type, co
         if (h->walkers.size() < r.walkers.size()) {
             return sizes("walkers", h->walkers.size(), r.walkers.size());
         }
+    } else if (const auto* inn = std::get_if<Inn>(&payload)) {
+        // MAP-POP-CLOSE-2 K1: the original's u16 fields (+0x18, +0x1a), held in u32.
+        if (inn->tavern > 0xffffU || inn->taken > 0xffffU) {
+            return "an Inn's tavern stock " + std::to_string(inn->tavern) + " or statistic " +
+                   std::to_string(inn->taken) + " is above 65535 (the original's u16)";
+        }
     } else if (std::holds_alternative<Mine>(payload)) {
         if (type.prod.outputs.empty()) {
             return "a Mine type has no output goods";

@@ -635,15 +635,16 @@ template <class A, Same<Inert> S> void fields(A& a, S& s) {
     fields(a, s.status);
 }
 
-static_assert(field_count<Inn>() == 6, "an Inn member needs a line in fields(Inn)");
+static_assert(field_count<Inn>() == 7, "an Inn member needs a line in fields(Inn)");
 
 template <class A, Same<Inn> S> void fields(A& a, S& s) {
     a.u16(s.last);
     a.boolean(s.blocked);
     a.boolean(s.suspended);
     fields(a, s.status);
-    a.u32(s.tavern); // stream 128 (C2)
+    a.u32(s.tavern); // stream 128 (C2): the original's u16, wrapping (inn.hpp)
     a.u32(s.taken);
+    a.u32(s.carriers_out); // stream 128 (K1): the carriers on their way (+0x1c / +0x20)
 }
 
 static_assert(field_count<Workshop>() == 10, "a Workshop member needs a line in fields(Workshop)");

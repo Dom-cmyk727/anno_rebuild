@@ -1425,32 +1425,33 @@ void run_debits(sim::World& w, InjectDebit& in) {
 }
 } // namespace
 
-TEST_CASE("resident job inn: the TavernDebit merge clips at the stock and saturates the statistic") {
+TEST_CASE("resident job inn: the TavernDebit merge clips at the stock and wraps the statistic at 16 bits") {
     const auto types = registry();
-    // Clip: a debit of 250 against a stock of 100 leaves 0 (never below), taken rises by the
-    // REQUESTED 250 (the resident job only issues what the Inn gave; the merge adds what it is told).
+    // Clip: a debit of 250 against a stock of 100 leaves 0 (never below); taken rises by n =
+    // min(250, 100) = 100 (D 0x100756e0: `taken += n`, n clipped at the stock; K1 corrected the
+    // earlier "requested amount").
     {
         sim::World w = inn_world(types, 100);
         InjectDebit in;
         in.debits = {sim::TavernDebit{at(w, 114, 110)->id, 250}};
         run_debits(w, in);
         CHECK(inn_of(w).tavern == 0);
-        CHECK(inn_of(w).taken == 250);
+        CHECK(inn_of(w).taken == 100);
     }
-    // Saturation: taken at max - 10, a debit of 100 -> max (no wrap).
+    // Wrap (the original's 16-bit add, K1): taken at 65535 - 10, a debit of 100 -> 65525 + 100 - 65536 = 89.
     {
         sim::World w = inn_world(types, 100);
         {
             sim::Island& is = *sim::WorldTestAccess::islands(w)[0];
             const sim::BuildingKey key = is.cache.by_id.at(at(w, 114, 110)->id);
             std::get<sim::Inn>(is.cities[0]->index.lists[key.list].slots[key.slot].value().payload)
-                .taken = 0xFFFFFFFFU - 10U;
+                .taken = 0xFFFFU - 10U;
         }
         InjectDebit in;
         in.debits = {sim::TavernDebit{at(w, 114, 110)->id, 100}};
         run_debits(w, in);
         CHECK(inn_of(w).tavern == 0);
-        CHECK(inn_of(w).taken == 0xFFFFFFFFU);
+        CHECK(inn_of(w).taken == 89);
     }
     // Two debits in one buffer apply in order.
     {
@@ -1460,7 +1461,7 @@ TEST_CASE("resident job inn: the TavernDebit merge clips at the stock and satura
         in.debits = {sim::TavernDebit{id, 60}, sim::TavernDebit{id, 60}};
         run_debits(w, in);
         CHECK(inn_of(w).tavern == 0);
-        CHECK(inn_of(w).taken == 120);
+        CHECK(inn_of(w).taken == 100); // n = 60, then min(60, 40) = 40
     }
 }
 

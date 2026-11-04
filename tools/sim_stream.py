@@ -90,7 +90,10 @@ after forestry_skip_uncuttable; each city appends u32 stage_mask, u16 stage_stam
 save_billed_goods is 1, the billed counters (u64 count = warehouse goods, u32 each, 0) after its
 player mask; each house gains its walker slots (u64 count, u64 ids) and each figure an optional
 resident state (the transcribed worlds hold no house and no figure). PRNG timeline 5 declares the
-House sites; nothing draws them here.
+House sites; nothing draws them here. MAP-POP-CLOSE-1/2 amended 128 IN PLACE (never accepted or
+published): an Inn payload (tag 8) is the Inert prefix (u16 last, bool blocked, bool suspended, the
+status tracker) then u32 tavern, u32 taken (the original's u16 values, wrapping) and, K1, u32
+carriers_out; the class table's Inn row is TickKind 9 (Inn). The transcribed worlds hold no Inn.
 
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
@@ -172,7 +175,7 @@ CLASSES = [
     (13, 7, 6, 500),   # Market 0x1006b6d0 (T24: the cart send)
     (14, 0, 0, 500),   # MarketCombi
     (15, 0, 0, 5000),  # MarketStall
-    (16, 0, 8, 5000),  # Inn (payload Inn 8, MAP-POP-CLOSE-1 C2)
+    (16, 9, 8, 5000),  # Inn 0x100755f0 (TickKind::Inn 9, payload Inn 8; K1: the alcohol fetch send)
     (17, 0, 0, 500),   # PublicService 0x1006b4ec
     (18, 0, 0, 500),   # Doctor
     (19, 0, 0, 500),   # School (0x1006b4e0, shared)
@@ -727,7 +730,7 @@ def islands_digest(by_slot):
 # The registry digest of synthetic::make_synthetic_types() (the golden test in
 # building_state_test.cpp checks it);
 # a literal here because the type table is not transcribed by this script.
-SYNTHETIC_REGISTRY = 0xD10348E2CEC4C0BA
+SYNTHETIC_REGISTRY = 0x4DE8C88166F5684F
 
 
 def g1_scenario(steps=0, step_ms=10):

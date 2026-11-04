@@ -658,30 +658,30 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(r.main_res.faults == 0);
     CHECK(r.main_res.lost_88 == 0);
     CHECK(r.main_res.reverse_rejected == 0); // P-15 (C3): no reversed route refused by the replay
-    CHECK(r.main_res.endpoint_adapted == 255); // accepted with the endpoint adapter (measured)
-    CHECK(r.main_total.spawn_draws == 2512);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2512);
-    CHECK(r.main_res.searches == 2512);
-    CHECK(r.main_res.purchases == 558);
-    CHECK(r.main_res.bought_88 == 28531);
-    CHECK(r.main_res.deliveries == 506);
-    CHECK(r.main_res.delivered_88 == 103324);
-    CHECK(r.main_total.candidates_scored == 22898);
-    CHECK(r.main_total.walk_expansions == 2221841);
+    CHECK(r.main_res.endpoint_adapted == 269); // accepted with the endpoint adapter (measured)
+    CHECK(r.main_total.spawn_draws == 2407);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2407);
+    CHECK(r.main_res.searches == 2407);
+    CHECK(r.main_res.purchases == 551);
+    CHECK(r.main_res.bought_88 == 24907);
+    CHECK(r.main_res.deliveries == 496);
+    CHECK(r.main_res.delivered_88 == 100111);
+    CHECK(r.main_total.candidates_scored == 21650);
+    CHECK(r.main_total.walk_expansions == 2072738);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
     CHECK(r.up == 0);
     CHECK(r.refused == 0);
-    CHECK(r.down == 22);
-    CHECK(r.main_transitions == 22);
+    CHECK(r.down == 13);
+    CHECK(r.main_transitions == 7);
     // a downgrade draws exactly one HouseVariant each
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 22);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 7);
     // exact identity of the first downgrade
     const sim::HouseTransitionRecord& t = stats.population.transitions.front();
     CHECK(t.kind == sim::HouseTransitionRecord::Kind::Downgrade);
-    CHECK(t.building.v == 219043332201ULL);
+    CHECK(t.building.v == 219043332203ULL);
     CHECK(t.tick == 90250);
-    CHECK(t.from.v == 561);
-    CHECK(t.to.v == 547); // base 540 + variant index 7 (step 1)
+    CHECK(t.from.v == 560);
+    CHECK(t.to.v == 546); // base 540 + variant index 6 (K1: with the Inn running)
     CHECK(t.old_group == 3);
     CHECK(t.new_group == 2);
     CHECK(t.residents_before == 1358);
@@ -691,11 +691,11 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(t.residents_after == 1358 - 38);
     CHECK(t.houses_old_before == 54);
     CHECK(t.houses_old_after == 53);
-    CHECK(t.counter_old_before == 1656);
-    CHECK(t.counter_old_after == 1635);
+    CHECK(t.counter_old_before == 1690);
+    CHECK(t.counter_old_after == 1669);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 23199);
-    CHECK(t.variant_index == 7);
+    CHECK(t.variant_draw == 27446);
+    CHECK(t.variant_index == 6);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
     for (const auto& tr : stats.population.transitions) {

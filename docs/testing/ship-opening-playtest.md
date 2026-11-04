@@ -53,11 +53,20 @@ here, facing the shore` or, where it would refuse, `not here: ...` / `too far fr
 (`NoRotationFits`, `OutOfRange`, ...); until the sim's answer arrives (a turn) it shows the terrain-only check (`it faces the shore`,
 `not on a coast: ...`).
 
-**Picture fault fixed (2026-11-03, `task/iso-handedness-W4`; still present on `task/W4-opening-1` until that merges):** our renderer drew the whole world as the mirror image of the original
-(the original's camera puts world +x to the lower left, ours to the lower right; found from the original's camera code and checked on
-original towns). Until that renderer fix lands, every turned building looks wrong, the Kontor included: its piles stand along the shore
-and its land-side wall faces the water, although the sim placed and turned it by the coast rule that every Kontor of the original's
-scenario files passes at its stored rotation.
+**The picture the right way round (projection fix, merged 2026-11-03, `a150c11d`):** the renderer used to draw the whole
+world as the mirror image of the original (the original's camera puts world +x to the lower left); this build draws it as the
+original does. Check while you play:
+- the Kontor's piles stand toward the water and its land-side wall faces the land;
+- fences and hedges are continuous lines, not combs;
+- a sailing ship's bow points the way it moves;
+- the enhanced water's relief is lit from the top right (it mirrored with the world; the sprites keep their own baked light,
+  sun on the right, and whether the water should go back to the top left is your call);
+- where wide sprites of two neighbours with the same far-corner sum overlap, the one further right on screen is drawn first
+  and the left one over it (the tie-break reversed with the mirror; the original's order is not traced, OQ-026 c).
+
+The Kontor still looks set on the ground rather than into it (its road too, and its piles stand out of the water): the
+original depth-tests every sprite pixel against the terrain and the water, this renderer draws sprites whole on top. That is
+W4-DEPTH-1, not in this build.
 
 `Space` pauses the sim and the water; the title then starts with `PAUSED (Space resumes)`.
 

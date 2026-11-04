@@ -288,3 +288,104 @@ Nothing went to `main`.
 3. Fix or disposition the P3 items, and add the projection checks to the playtest card.
 4. Then the owner's playtest. Decisions (b) H1 and (c) the start rotation of §5 remain the owner's. Decision (a) is
    done: the owner chose this merge.
+
+## 7. Owner answers (b) and (c): review, 2026-11-04
+
+**Identity.**
+- Reviewed: `task/W4-opening-1` from `a150c11d` to `02133ade`, eight commits. The code commits are `ee6a12e0`,
+  `53101c96`, `38af87b2` and `9173fc6e`. The docs commits are `6793191d`, `99437681`, `d9704b98` and `02133ade`.
+- Published at `02133ade` on the owner's instruction ("Yes", 2026-11-04). Remote verified.
+- Reviewer: the Claude orchestrator session. It read the diff, the tests and the gate files under `cache/gates/`. It
+  built and ran nothing.
+- The owner's answers, given to the executor on 2026-11-03:
+  - **(b)** H1 becomes the default.
+  - **(c)** the founding turn key is restored.
+
+**Verified.**
+- **Shore at 16.5 (`53101c96`, `38af87b2`).**
+  - It changes the renderer only. Nothing in `src/sim` or checksummed state changes.
+  - It is a setting per scene: `render::kShoreHeight` = 16.5, `Scene::shore_height`, carried into each new scene
+    generation.
+  - `--shore` takes values from 0 to 255. Negative values, 256 and `nan` are refused, and this is tested.
+  - Every consumer that asks "is the terrain water here" now reads the scene's shore:
+    - `shore_distance`;
+    - `IslandWater::build`, through `smooth_shore`;
+    - the empty-cell bound `empty_land_height(S)`, whose proof in `docs/render/iso.md` is restated for any shore S;
+    - `tile_ground_with`, for `original_water` and `sd`;
+    - `Scene::fluid_depth`;
+    - `river_qa`.
+  - The WGSL shaders have no waterline constant of their own. They read the field texels that the CPU computes.
+  - `kWaterline` = 16 now appears only in the split of water objects under and over the sea (`iso.cpp:379`). The reason
+    is in `iso.hpp`. The executor measured 0 differing pixels against the H1 experiment on all seven H1 views.
+- **Founding turn (`ee6a12e0`, `9173fc6e`).**
+  - The UI keeps the turn in `found_rotation_`, and the `FoundCmd` carries it. The sim's rotation trials from the
+    command's rotation are unchanged.
+  - `T` and `.` add 1 modulo 4; `,` adds 3.
+  - The origin is centred with the footprint at the cursor's turn.
+  - The test `controls: on a corner where two turns fit, the founding cursor's turn decides` builds a synthetic convex
+    corner. It expects the rotations 0, 1, 0, 0 for the turns 0 to 3. I checked this by hand against the coast rule,
+    where rotation r has its water edge at +y, +x, −y, −x.
+  - The figure "8 of 115 shipped sites" matches the orchestrator's independent corpus count. That count is in
+    `docs/research/building-placement.md` §5 (branch `docs/placement-research`, not merged): 115 Kontor placements, 107
+    with one passing rotation, 8 with two.
+- **Why the Kontor floats.** `docs/re/annodisplay.md` confirms the executor's cause:
+  - the original keeps a u16 depth buffer;
+  - `Z` sprite formats carry a signed depth offset for every pixel;
+  - a pixel is drawn when its depth is at most the buffer's;
+  - the ground triangles test and write depth.
+- **Gates.** I read the verdict lines in the executor's worktree. All match REPORTS:
+
+  | Lane | Source head | Result |
+  |---|---|---|
+  | native app (`native-n25a`) | `99437681` | 257 executed, 1 failed (lan5 pick), 2 opt-in skips |
+  | GPU (`native-n25g`) | `99437681` | 115/115 PASS |
+  | render (`native-n28r`) | `d9704b98` | 193 executed, 1 failed (Q5, `0.485714 >= 0.55`) |
+  | window, RTX 4090 (`gpuwin-n26`) | `d9704b98` | `opening_gpu_window`, `opening_controls` PASS |
+  | WSL warnings (`unix-warnings-n27`) | `d9704b98` | GCC 13 / Clang 18, four variants clean |
+
+  The commits after `99437681` change docs only, so the app and GPU lanes cover all of the code.
+
+**Findings.** No P1 and no P2.
+- **[P3] "Q5 unchanged by the shore" was not measured.**
+  - Q5 gave 0.4848 at `d73c58b9` (the projection branch alone, `accept-04`) and gives 0.485714 at `d9704b98`.
+  - `river_flow_corpus_test.cpp` sets no shore, so Q5 runs at the default 16.5.
+  - No render gate completed at `a150c11d` without the shore change: `native-n21r` was voided (next item).
+  - Either measure Q5 at shore 16 on the head, or record the claim as unmeasured.
+  - The docs give the value two ways: 48.5 % in the hand-over note §4.1 and 48.6 % in REPORTS.
+- **[Process, orchestrator] My merge voided one of the executor's gate runs.**
+  - I committed `a150c11d` in the executor's worktree at 19:55:36. Its render lane `native-n21r` started at 19:55:37,
+    between two lanes of its gate script, while no compiler or test process was running.
+  - The lane therefore ran the `9ed05d75` binaries against the merged sources, and the executor voided it
+    (`cache/gates/native-n21r.txt`).
+  - From now on, the orchestrator makes merges onto task branches in a separate checkout, never in an executor's live
+    worktree.
+- **NOT_RUN at the head:**
+  - the WSL ASan/UBSan lane (it last ran at `a150c11d`);
+  - a Linux corpus run with the game files at the new shore;
+  - the Wine check that the original's `.` and `,` reach the Kontor cursor while founding. Wine runner runs are
+    pre-authorised, so no owner approval is needed.
+
+**Items for other lanes, recorded, not edited.** The executor flagged these; I confirmed each on the named branch.
+1. `docs/re/ship-founding.md` on `task/MAP-2-original-like` still calls `0x10049340` unread or unknown, in lines 13,
+   166 and 310 and in the §3.5 table. Its own correction at lines 420–421 (§8.2) closes this: the function returns the
+   rotation byte `+0x46` and writes the centred rectangle. The property-5 setter `0x10049166` appears only in this review's
+   §4 and in OQ-520. **For the MAP lane:** align the note at its next docs checkpoint.
+2. `tools/map2_shape.py` (line 3) and `tools/map2_measure.py` (line 445, `land_definition`) on
+   `task/MAP-2-original-like` define land as `HEIGHT >= 16`, "as the renderer". That is no longer true at the default
+   shore. **For the MAP lane:** the fairness measure's land definition is its own decision. Keep 16 with a reason of
+   its own, or follow `kShoreHeight`, and say which.
+3. BEL characters (0x07) on `main`, where a `\a` escape swallowed a backslash in a Windows path (`src\app\...`,
+   `C:\anno1503-original`): `docs/PLAN.md:484` and `docs/orchestration/REPORTS.md:2690`. **For the next docs edit of
+   either file:** restore the backslashes.
+
+**New task.** The floating Kontor goes to its own Windows task, `W4-DEPTH-1` in `TASKS.md`. It is queued, not released,
+and the owner releases it after the playtest of this head. W4-OPENING-1 does not take it on.
+
+**Next for the Windows executor.**
+1. Settle the Q5 shore claim as above.
+2. Run the Wine check of `.` and `,`, and record which way each key turns.
+3. Run the WSL sanitizer lane on `02133ade` while the PC is free, then the native render gate. Never run the two at the
+   same time.
+4. The owner's playtest of `02133ade`.
+
+The owner's console log for the zoom artifacts is still pending.

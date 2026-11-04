@@ -46,6 +46,25 @@ unchanged.
 no blocker, but its gate is FAIL on two tests (river Q5 on one island, a 1-pixel lan5 pick). It is now **merged into the
 task branch**, `task/W4-opening-1` = `a150c11d`, published. Nothing went to `main`. The merged tree is not yet built or
 tested. The next Windows steps are the review's §6.
+
+**Update 2026-11-04 (owner: "Yes").** The owner answered (b) and (c):
+- **(b)** the shore at 16.5 is the default, with `--shore 16` for the earlier look;
+- **(c)** the founding turn key is restored: `T` or `.` turns the cursor one way, `,` the other.
+
+The executor implemented both on `task/W4-opening-1`, now `02133ade` and published.
+
+The [review §7](reviews/2026-11-03-w4-opening1-playtest.md) has no P1 or P2. It confirms the gates:
+- app 257 executed, 1 failed (lan5);
+- GPU 115/115;
+- render 193 executed, 1 failed (Q5);
+- window tests pass;
+- WSL warnings clean.
+
+Open:
+- one P3: the Q5 shore claim was not measured;
+- NOT_RUN: the sanitizer lane at the head and the Wine key check.
+
+The floating Kontor is **W4-DEPTH-1** below: queued, not released.
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
@@ -100,8 +119,78 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: PLAYTEST ROUNDS REVIEWED; PROJECTION FIX MERGED INTO THE TASK BRANCH.** Continue `task/W4-opening-1` from `a150c11d` with §6 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): full gates on the merged head, then Q5 and the lan5 pixel, then the P3 items. Ask the owner decisions (b) H1 and (c) the start rotation; do not assume them. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1: OWNER ANSWERS (b) AND (c) IMPLEMENTED AND REVIEWED; OWNER PLAYTEST NEXT.** Continue `task/W4-opening-1` from `02133ade` with §7 of the [playtest review](reviews/2026-11-03-w4-opening1-playtest.md): settle the Q5 shore claim; run the Wine check of `.`/`,`; run the WSL sanitizer lane at the head, then the native render gate (never side by side); then the owner's playtest. Q5 and the lan5 pick stay open as FAIL. Do not start W4-DEPTH-1 until the owner releases it. Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-IMPL-1 ACCEPTED; MAP-POP-LIVE-1 READY, RELEASED.** Complete L0–L5 below: resident transactions, real supply walkers, House transitions, then conditionally activate complete live behavior and progression. Internal reviews auto-continue; one final combined handoff. No numeric-only live tick. Windows keeps exact `0c401c8d`. |
+
+### W4-DEPTH-1 — per-pixel sprite depth against the terrain and the water · QUEUED, NOT RELEASED
+
+**Origin (owner, 2026-11-03; recorded 2026-11-04).** After the H1 pictures the owner reported that:
+- the original's Kontor is embedded in the ground, while ours floats;
+- its road floats;
+- grass is drawn over it;
+- its piles are not in the water.
+
+H1 cannot close this gap. The executor proposed a renderer task of its own, OQ-026 (c), and left the timing to the
+owner. The orchestrator recommended the following, and the owner approved recording it this way (2026-11-04: "Yes"):
+- make it its own task, not part of W4-OPENING-1;
+- start with tracing, before any design or code;
+- **start only after the owner's playtest of `02133ade` and the owner's release.**
+
+Assigned to the Windows executor, the sole rendering implementation owner. Branch from the W4-OPENING-1 head that the
+owner has playtested; `02133ade` today.
+
+**Evidence so far** (`docs/re/annodisplay.md` §2, §3, §5, §6):
+- **Depth buffer.** The original draws into a 16-bit colour surface with a parallel u16 depth buffer. A pixel is drawn
+  when `pixel_depth <= buffer`, so smaller is nearer.
+- **Sprite depth.** `Z` formats (`RGBZ`, `RGBAZ`, `RGBWZ`, `RGBZM`) add a signed 8-bit offset to the sprite's base depth
+  for every pixel. `V` and `H` formats add a ramp per row instead. `H` decals (roads, `RGBAH`) are tested but never write
+  depth.
+- **Three modes:** no depth (A), test only (B), and test plus write (C, the default). See the mode table in §2.
+- **Ground.** The terrain triangles are rasterised with Gouraud lighting and test and write depth
+  (`tTriangleGouraudZBufferRW`).
+- **Projection.** `depth = m02·x + m12·y + m22·z + oz`, with a camera depth scale of `0.000384615`.
+- **The Kontor.** Its 12 frames are `BSH_RGBAZ`, with offsets from −70 to +54 (executor, hand-over note §4.1).
+- **Ours today.** This renderer depth-tests only the sea and the rivers against the terrain. It draws every other
+  sprite whole on top.
+
+**Steps, in order. Each step's result is written down before the next starts.**
+1. **Trace first.** Close the two open items of `docs/re/annodisplay.md`, with addresses:
+   - **(a) depth units:** follow the depth argument from `0x10011e60` to item `+0x20/+0x24` to `0x1000d3d0`;
+   - **(b) modes per layer:** which mode A, B or C each layer uses (static scenery, buildings, figures, ships, decals,
+     UI), from the callers of `SetState(1|6, …)`;
+   - **(c)** which world point the game passes as each sprite's base depth (the Open item "Which world point").
+
+   Use the project's RE tools, and the Wine runner for dynamic checks (pre-authorised). Do not guess. A result that
+   stays open goes to OQ-026 (c).
+2. **Design.** Write a section in `docs/render/iso.md`, or a new `docs/render/depth.md` linked from it, covering:
+   - the depth model, with evidence for each part;
+   - how it maps onto the GPU compositor;
+   - the CPU reference path;
+   - what changes in the original and the enhanced water modes;
+   - the effect on cached chunks and performance.
+
+   Stop for the owner when the design changes the look beyond the original's behaviour (memory rule "bugs vs feeling
+   changes"). Faithful depth is the original's behaviour; any softening is an opt-in option.
+3. **Implement.**
+   - Put the depth test on the GPU, with a CPU reference.
+   - Add a test that compares GPU and CPU.
+   - Re-record the corpus digests, giving a reason for each change.
+   - Add mutation checks for the depth comparison, the per-pixel offset and the write rule.
+   - Measure performance per `docs/perf/README.md`.
+4. **Owner check.**
+   - Before/after views of the four `S01_02_01.sze` Kontors, of the start Kontor against the original's
+     `cache/o1/r7/gog_start_kontor_x4.png`, and of a road and a meadow next to a building.
+   - Add the checks to `docs/testing/ship-opening-playtest.md`.
+
+**Acceptance:**
+- the evidence contract (`docs/testing/evidence-contract.md`), with an independent read-only package review;
+- the full Windows gates, the WSL warnings and the sanitizer lanes;
+- no sim change.
+
+Out of scope:
+- view rotation;
+- the zoom artifacts (separate; the owner's console log is pending);
+- river Q5 and the lan5 pick (W4-OPENING-1).
 
 ### W4-WIN-FINAL — targeted corrections and complete sanitizer coverage · REVIEWED; VERIFIER FOLLOW-UP BELOW
 
@@ -448,7 +537,16 @@ uncertainty; missing submit-only/in-flight-only mutants are not new blockers.
 That boundary is now satisfied by the acceptance records above and below.
 No extra owner permission is needed between V1–V3.
 
-### W4-OPENING-1 — live ship-start opening for an owner playtest · RELEASED; PLAYTEST ROUNDS REVIEWED, FOLLOW-UPS OPEN
+### W4-OPENING-1 — live ship-start opening for an owner playtest · RELEASED; OWNER ANSWERS REVIEWED, PLAYTEST NEXT
+
+**Review checkpoint, 2026-11-04 (Claude orchestrator, owner instruction).** The owner's answers are reviewed in §7 of
+[the playtest review](reviews/2026-11-03-w4-opening1-playtest.md), with no P1 or P2:
+- (b) the shore at 16.5 by default;
+- (c) the founding turn key restored.
+
+The reviewed range is `a150c11d..02133ade`, published at `02133ade`. §7 is the current Windows instruction. It also
+lists three items for other lanes: the MAP lane's `ship-founding.md` and `map2_*` land definitions, and the BEL
+characters on `main`.
 
 **Review checkpoint, 2026-11-03 (Claude orchestrator, owner instruction).** The owner playtest rounds after the
 published candidate `55e4ee61`, up to branch head `c1bf35cc`, are reviewed in

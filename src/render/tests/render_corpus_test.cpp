@@ -520,7 +520,7 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
         const char* g2;
         const char* g1_region; ///< null: unchanged (the current expected line)
         const char* g2_no_depth;
-        const char* g1_region_no_depth; ///< null: not checked (the pre-depth line is not kept)
+        const char* g1_region_no_depth; ///< the pre-depth line (837590a8's table)
     };
     const std::vector<Old> old = {
         {"Single_01.sze",
@@ -529,28 +529,28 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
          nullptr,
          "Single_01.sze g2 t2500 Enhanced 16960x9170 95b5083bfb7cd929 drawn=69256 inv=11717 "
          "failed=0 units=5",
-         nullptr},
+         "Single_01.sze g1 region Enhanced 8cf3c928653f8d67 drawn=24110 units=0"},
         {"Single_06.sze",
          "Single_06.sze g2 t2500 Enhanced 7280x4451 93692d45265f5313 drawn=13626 inv=3084 "
          "failed=0 units=3",
          nullptr,
          "Single_06.sze g2 t2500 Enhanced 7280x4451 c8f619871bf77cfe drawn=13626 inv=3084 "
          "failed=0 units=3",
-         nullptr},
+         "Single_06.sze g1 region Enhanced 1b1f0e3cc0bf8689 drawn=599 units=0"},
         {"Single_10.sze",
          "Single_10.sze g2 t2500 Enhanced 17440x9131 d7085e289d520601 drawn=52883 inv=8756 "
          "failed=0 units=1",
          nullptr,
          "Single_10.sze g2 t2500 Enhanced 17440x9131 11bc91250cff4a19 drawn=52883 inv=8756 "
          "failed=0 units=1",
-         nullptr},
+         "Single_10.sze g1 region Enhanced 2b255a312f1309e1 drawn=0 units=0"},
         {"Single_14.sze",
          "Single_14.sze g2 t2500 Enhanced 14080x9291 20e6be24fad8625a drawn=47064 inv=9450 "
          "failed=0 units=3",
          nullptr,
          "Single_14.sze g2 t2500 Enhanced 14080x9291 1d702bce968c7bb2 drawn=47064 inv=9450 "
          "failed=0 units=3",
-         nullptr},
+         "Single_14.sze g1 region Enhanced 4c17863d5054a823 drawn=16681 units=1"},
         {"Single_24.sze",
          "Single_24.sze g2 t2500 Enhanced 7200x2811 d33ce3da18b431d7 drawn=24406 inv=2880 "
          "failed=0 units=541",
@@ -606,9 +606,7 @@ TEST_CASE("legacy river shading reproduces the previous enhanced digests (game f
         const auto no_depth = lines_of(all_legacy_no_depth, o.file);
         REQUIRE(no_depth.size() == 4);
         CHECK(no_depth[1] == o.g2_no_depth);
-        if (o.g1_region_no_depth != nullptr) {
-            CHECK(no_depth[3] == o.g1_region_no_depth);
-        }
+        CHECK(no_depth[3] == o.g1_region_no_depth);
     }
 }
 

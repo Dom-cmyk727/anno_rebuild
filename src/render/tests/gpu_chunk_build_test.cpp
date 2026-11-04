@@ -124,7 +124,7 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
         auto frame = gpu::GpuFrame::create(*ctx, WGPUTextureFormat_RGBA8Unorm);
         REQUIRE(frame);
         auto& g = *frame.value();
-        std::size_t chunks = 0, records = 0, mismatches = 0, submerged = 0;
+        std::size_t chunks = 0, records = 0, mismatches = 0, submerged = 0, depth_changed = 0;
         for (std::size_t group = 0; group < render::kGroups; ++group) {
             for (const auto& [cx, cy] : render::test::busy_chunks(*loaded, group)) {
                 const Rect rect = render::chunk_rect(cx, cy);
@@ -145,6 +145,7 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
                 const std::vector<std::uint8_t> sub = t.submerged(d.sea_h64);
                 const auto got = g.build_chunk_planes(d, loaded->frame_table, terrain);
                 REQUIRE(got);
+                REQUIRE(got->submerged.size() == got->objects.size());
                 std::size_t bad = diff(*got, cpu);
                 for (std::size_t i = 0; i < got->submerged.size(); ++i) {
                     bad += got->submerged[i] != (sub.empty() ? 0 : sub[i]) ? 1U : 0U;
@@ -158,6 +159,7 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
                 const auto got_off = g.build_chunk_planes(off, loaded->frame_table, terrain);
                 REQUIRE(got_off);
                 bad += diff(*got_off, render::replay(off, loaded->frame_table));
+                depth_changed += got_off->objects != got->objects ? 1U : 0U;
                 if (bad != 0 && mismatches == 0) {
                     INFO("first mismatch at " << sf.name << " group " << group << " chunk (" << cx
                                               << ", " << cy << "): " << bad << " px");
@@ -171,8 +173,12 @@ TEST_CASE("GPU-built chunk objects and base planes equal the CPU replay (game fi
         MESSAGE(std::string(sf.name)
                 << ": " << chunks << " chunks, " << records << " records, "
                 << loaded->frame_table.size() << " frames, " << submerged << " submerged pixels, "
-                << mismatches << " mismatched pixels (depth on and off)");
+                << depth_changed << " chunks the depth changes, " << mismatches
+                << " mismatched pixels (depth on and off)");
         CHECK(mismatches == 0);
+        // Not vacuous: the depth hides object pixels and finds some behind the sea.
+        CHECK(depth_changed > 0);
+        CHECK(submerged > 0);
     }
 }
 

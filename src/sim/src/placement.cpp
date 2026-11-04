@@ -119,13 +119,20 @@ std::uint8_t stand_in_placement_height(const Island& island, const TypeRegistry&
     }
     // Own design (N), not the original's: a site the rule refuses gets the highest vertex of its
     // window, so the item never lies under its own terrain (equal to the R4 level on a flat
-    // window). A vertex VertexGrid cannot read is skipped; none readable gives 0.
+    // window). A vertex VertexGrid cannot read is skipped; none readable gives 0. The loop runs
+    // over the window clipped to the grid's range (x0..x0 + W, y0..y0 + H), where `at` can answer.
     const auto [fw, fh] = footprint(type, rec.rotation);
     const VertexGrid grid = VertexGrid::of(island);
+    const std::int64_t x_lo = std::max<std::int64_t>(rec.x, grid.x0());
+    const std::int64_t x_hi =
+        std::min<std::int64_t>(std::int64_t{rec.x} + fw, std::int64_t{grid.x0()} + grid.tiles_x());
+    const std::int64_t y_lo = std::max<std::int64_t>(rec.y, grid.y0());
+    const std::int64_t y_hi =
+        std::min<std::int64_t>(std::int64_t{rec.y} + fh, std::int64_t{grid.y0()} + grid.tiles_y());
     std::uint8_t top = 0;
-    for (std::int64_t dy = 0; dy <= fh; ++dy) {
-        for (std::int64_t dx = 0; dx <= fw; ++dx) {
-            if (const std::optional<std::uint8_t> v = grid.at(rec.x + dx, rec.y + dy)) {
+    for (std::int64_t vy = y_lo; vy <= y_hi; ++vy) {
+        for (std::int64_t vx = x_lo; vx <= x_hi; ++vx) {
+            if (const std::optional<std::uint8_t> v = grid.at(vx, vy)) {
                 top = std::max(top, *v);
             }
         }

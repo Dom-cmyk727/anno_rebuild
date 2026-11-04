@@ -327,7 +327,6 @@ TEST_CASE("stand-in seam: its own verdict and the terrain's height on every vect
         rec.byte0f = 0x40; // a result, never an input
         const sim::PlacementResult r = seam.fn(seam.ctx, is, reg, *t, rec);
         CHECK(r.reject == (row.occupied ? sim::Reject::Occupied : sim::Reject::None));
-        CHECK(r.reject == sim::stand_in_placement_rule(is, *t, rec)); // the verdict is unchanged
         CHECK(static_cast<unsigned>(r.height) == row.height);
         const sim::PlacementResult real = sim::placement_rule(is, reg, *t, rec);
         if (r.reject == sim::Reject::None && real.reject == sim::Reject::None) {

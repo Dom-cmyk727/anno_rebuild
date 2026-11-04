@@ -1955,8 +1955,8 @@ the submerged pixels); in the headless `Scene::render` one more ground probe for
 
 Measured (Windows 11, Ryzen 9800X3D, MSVC Release, `anno1503 --view Single_24.sze --png --group 0 --size 3000x2000`,
 two runs each, alternating, nothing else of this session running): `--depth off` 31.9 s and 29.3 s, `--depth on`
-36.0 s and 35.1 s (+16 %, most of it the extra ground probe of the headless path; the viewer's chunks reuse the probe
-they already build).
+36.0 s and 35.1 s (+16 % in total; how it splits between the extra ground probe of the headless path, which the
+viewer's chunks do not need, and the per-pixel test was not measured).
 
 NOT measured (the owner was using the PC for a game, 2026-11-04): the chunk build per stage (`bench_frame
 --chunk-profile ... --depth on|off`), the GPU frame time of the extra pass (`bench_frame --renderer gpu --depth

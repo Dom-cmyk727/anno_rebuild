@@ -102,7 +102,9 @@ The founding and unload numbers are advisory ("would move 5 t"): the sim decides
 Look at a Kontor on a coast (your founded one, or `--view Scenes/0100Kampagne01/S01_02_01.sze --at 421,605`):
 1. Its land-side wall and the feet of its piles end in the sloping bank; nothing of it stands on top of the sand.
 2. Where the water reaches the piles, their lower parts show the water's checkerboard over them.
-3. Grass, trees and roads behind the Kontor do not draw over it.
+3. Grass, trees and roads behind the Kontor do not draw over it. Roads on a slope: where the ground under a road
+   rises above the road's own height, that part of the road is hidden (the depth rule); say whether that matches the
+   original's roads.
 4. `--depth off` gives the former picture (piles on top of everything), for comparison.
 5. The water level: `--shore 26.5` is the original's measured plane (the water covers the beach up to about 27);
    the default stays 16.5 until you choose.

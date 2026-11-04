@@ -182,6 +182,9 @@ struct Options {
     bool fill_time = false, derive_from_cache = true;
     /// --depth on|off: render::Scene::depth_test (docs/render/depth.md; off = before W4-DEPTH-1).
     bool depth = true;
+    /// --shore h: render::Scene::shore_height, 0..255 (kShoreHeight 26.5; 16.5 the default of
+    /// 2026-11-03).
+    float shore = render::kShoreHeight;
     /// --derived n: n derived zoom levels after group 2 (the groups 3.. of --groups).
     std::size_t derived = 0;
     /// --zoom-sweep seconds: the continuous zoom run as the viewer does (GPU).
@@ -1592,6 +1595,7 @@ int chunk_profile(const fs::path& dir, const fs::path& file, const Options& o, s
             }
             loaded.value().scene->river_cfg.light_gain = o.river_gain;
             loaded.value().scene->depth_test = o.depth;
+            loaded.value().scene->shore_height = o.shore;
             const render::Scene& scene = *loaded.value().scene;
             const auto place =
                 std::find_if(scene.layouts[group].begin(), scene.layouts[group].end(),
@@ -1705,13 +1709,13 @@ constexpr const char* kUsage =
     "[--pace ms] [--spike ms] [--limits default|interactive] [--settle ms] "
     "[--river-flow legacy|flow] [--river-quality auto|low|medium|high] [--river-gain x] "
     "[--river-pass] [--stand-ins on|off] [--prewarm chunks] [--prefetch chunks] [--fade ms] "
-    "[--lookahead-chunks n] [--depth on|off] "
+    "[--lookahead-chunks n] [--depth on|off] [--shore h] "
     "[--zoom-dump dir]\n"
     "       bench_frame <game_dir> <file> --renderer gpu --scale-cost group:scale[:filter],.. "
     "[--res ..] [--styles ..] [--cost-frames n] [--derived n] [--wave-sim on|off] "
     "[--fluid-cells-per-px x] [--cost-png dir]\n"
     "       bench_frame <game_dir> <file> --chunk-profile threads,.. [--chunk-limit n] "
-    "[--groups ..] [--island n]\n"
+    "[--groups ..] [--island n] [--depth on|off] [--shore h]\n"
     "       bench_frame <game_dir> <file> --zoom-factor f [--resample nearest|bilinear|box|area] "
     "[--renderer cpu,gpu] [--groups ..]\n"
     "       bench_frame <game_dir> <file> --renderer cpu,gpu --derived n --groups 0,..,2+n "
@@ -1816,6 +1820,8 @@ std::optional<Options> parse_options(const std::vector<std::string>& args) {
         } else if (a == "--depth") {
             ok = v == "on" || v == "off";
             o.depth = v == "on";
+        } else if (a == "--shore") {
+            ok = parse(v, o.shore) && o.shore >= 0.0F && o.shore <= 255.0F;
         } else if (a == "--river-flow") {
             ok = v == "legacy" || v == "flow";
             o.river_flow =
@@ -2029,6 +2035,7 @@ int main(int argc, char** argv) {
     }
     loaded.value().scene->river_cfg.light_gain = o->river_gain;
     loaded.value().scene->depth_test = o->depth;
+    loaded.value().scene->shore_height = o->shore;
     if (o->fill_time || o->derived > 0) {
         loaded.value().scene->set_levels(render::ZoomLevels::with_derived(
             std::max<std::size_t>(o->derived, o->fill_time ? 3 : 0)));

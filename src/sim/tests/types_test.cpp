@@ -1556,10 +1556,11 @@ TEST_CASE("registry digest stable") {
     }
     h.u64(0); // no figure types
     h.u64(0); // no group table (P1)
+    h.u64(0); // no stage table (stream 128, L3)
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x49dc036993c42b95ULL);
+    CHECK(h.value() == 0x22f7ee6842fdb035ULL);
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();

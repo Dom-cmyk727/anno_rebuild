@@ -11,7 +11,9 @@
 // edges, two overlapping islands with a shadow-only second island (the base
 // reset), and a soldier interleaved between objects. Every mutation of the pass
 // in gpu-chunks.md 7.2 must fail a case; see gpu_chunk_build_mutation.
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -502,13 +504,17 @@ TEST_CASE("GPU chunk build: synthetic frames the original corpus never sends (no
         const auto hf = add(ft, 2, std::move(half), header(0, 16, 16, 16));
         const auto vf = add(ft, 3, solid(12, 40, white), header(0, 40, 12, 40));
         const auto unit = add(ft, 4, solid(6, 6, Px{10, 10, 10, 255}), header(0, 6, 6, 6));
+        const Px blue{0, 0, 255, 255}; // the H draws' own colour, to count their pixels
+        const auto hv = add(ft, 5, solid(12, 40, blue), header(0, 40, 12, 40));
         render::ChunkDrawsBuilder b(rect, 0, true, 0, 16);
         b.begin_unclipped();
         auto put = [&](render::FrameId id, int x, int y, int ay, std::uint8_t h,
                        fig::FrameFormat f) {
             const depth::Rule r = depth::rule(f);
-            b.add({x, y, id, flags::kTrackBase | flags::depth_bits(r), 0, 0,
-                   depth::at(dp, 2 * std::int64_t{y + ay}, 64 * std::int64_t{h})});
+            b.add(
+                {x, y, id,
+                 flags::kTrackBase | flags::depth_bits(r) | std::uint32_t{h} << flags::kHeightShift,
+                 0, 0, depth::at(dp, 2 * std::int64_t{y + ay}, 64 * std::int64_t{h})});
         };
         for (int k = 0; k < 6; ++k) {
             put(zf, 10 + 30 * k, 20 + 25 * k, 30, static_cast<std::uint8_t>(8 * k),
@@ -517,7 +523,7 @@ TEST_CASE("GPU chunk build: synthetic frames the original corpus never sends (no
                 fig::FrameFormat::RgbAZ);
             put(vf, 40 + 30 * k, 60 + 20 * k, 40, static_cast<std::uint8_t>(6 * k),
                 fig::FrameFormat::RgbV);
-            put(vf, 60 + 25 * k, 10 + 30 * k, 40, static_cast<std::uint8_t>(7 * k),
+            put(hv, 60 + 25 * k, 10 + 30 * k, 40, static_cast<std::uint8_t>(7 * k),
                 fig::FrameFormat::RgbH);
         }
         // A Z sprite standing at height 0 in the low rows (terrain 0..4 there): parts of it lie
@@ -543,7 +549,7 @@ TEST_CASE("GPU chunk build: synthetic frames the original corpus never sends (no
         std::size_t sub_diff = 0, sub_set = 0;
         for (std::size_t i = 0; i < got->submerged.size(); ++i) {
             const std::uint8_t want = sub.empty() ? 0 : sub[i];
-            sub_diff += got->submerged[i] != want ? 1 : 0;
+            sub_diff += got->submerged[i] != want ? 1U : 0U;
             sub_set += want;
         }
         MESSAGE("submerged pixels: " << sub_set);
@@ -553,9 +559,24 @@ TEST_CASE("GPU chunk build: synthetic frames the original corpus never sends (no
         const render::Canvas flat = render::replay(d, ft);
         std::size_t more = 0;
         for (std::size_t i = 0; i < flat.pixels.size() / 4; ++i) {
-            more += (flat.pixels[i * 4 + 3] != 0 && cpu.pixels[i * 4 + 3] == 0) ? 1 : 0;
+            more += (flat.pixels[i * 4 + 3] != 0 && cpu.pixels[i * 4 + 3] == 0) ? 1U : 0U;
         }
         CHECK(more > 0);
+        // The H draws (their height in the flags, review P2): drawn where their plane is in
+        // front of the slope, hidden where it is behind.
+        auto blue_px = [&](const render::Canvas& c) {
+            std::size_t n = 0;
+            for (std::size_t i = 0; i < c.pixels.size() / 4; ++i) {
+                n += std::equal(blue.begin(), blue.end(),
+                                c.pixels.begin() + 4 * static_cast<std::ptrdiff_t>(i))
+                         ? 1U
+                         : 0U;
+            }
+            return n;
+        };
+        MESSAGE("H pixels: " << blue_px(cpu) << " of " << blue_px(flat));
+        CHECK(blue_px(cpu) > 0);
+        CHECK(blue_px(cpu) < blue_px(flat));
     }
 
     SUBCASE("colour and depth fields are ignored without a depth class") {

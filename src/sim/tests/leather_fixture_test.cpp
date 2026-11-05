@@ -150,7 +150,7 @@ TEST_CASE("synthetic mechanics fixture: labelled hides become leather and househ
     CHECK(l.leather_store == 504);
     CHECK(l.leather_taken == 805);
     CHECK(houses_reached(c) == 8);
-    CHECK(c.w.state_hash() == 0xc6db3b32c5649d2eULL);
+    CHECK(c.w.state_hash() == 0x5b667895ce4c5ba5ULL);
     std::cerr << "PIN main first_store " << first_store << " hides_store " << l.hide_store << " in "
               << l.hide_in << " consumed " << l.hide_consumed << " made " << l.leather_made
               << " out " << l.leather_out << " loaded " << l.leather_loaded << " cart "

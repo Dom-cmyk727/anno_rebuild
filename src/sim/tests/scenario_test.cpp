@@ -1135,6 +1135,10 @@ TEST_CASE(
         return;
     }
     const auto types = original_registry(*dir);
+    std::string accepted_supply_version;
+    const auto accepted_supply = read_expectations(
+        accepted_supply_version, fs::path(ANNO_FIXTURES_DIR) / "sim" / "scenario_corpus.txt");
+    REQUIRE(accepted_supply_version == "# kStateHashVersion=129 kPrngTimelineVersion=5");
     const auto templates = anno::sim_load::scan_island_templates(*dir);
     for (const auto& delta : research_production_deltas()) {
         INFO(delta.name);
@@ -1221,8 +1225,19 @@ TEST_CASE(
         }
         CHECK(activated == std::vector<std::uint64_t>{id});
         CHECK(producers == delta.total);
-        CHECK(moved == delta.new_moved);
-        CHECK(control_moved == delta.old_moved);
+        // The historical delta identifies one researched producer. Supply's farms
+        // already changed the absolute totals; retain that independent accepted baseline.
+        REQUIRE(accepted_supply.contains(delta.name));
+        const auto& baseline = accepted_supply.at(delta.name);
+        const std::string key = "producers_moved=";
+        const auto begin = baseline.find(key);
+        REQUIRE(begin != std::string::npos);
+        const auto slash = baseline.find('/', begin + key.size());
+        REQUIRE(slash != std::string::npos);
+        const auto expected_control =
+            std::stoul(baseline.substr(begin + key.size(), slash - begin - key.size()));
+        CHECK(control_moved == expected_control);
+        CHECK(moved == control_moved + 1);
         MESSAGE("research activation " << delta.name << " type=" << delta.type
                                        << " research=" << delta.research
                                        << " control=" << control_moved << " restored=" << moved);

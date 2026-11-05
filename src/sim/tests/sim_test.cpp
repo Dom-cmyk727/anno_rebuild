@@ -509,7 +509,7 @@ TEST_CASE("state_hash relational properties") {
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
     header.u32(sim::kStateHashVersion);
-    header.u64(0x0032545049524353ULL);
+    header.u64(0x0031544e494d4953ULL);
     header.u32(sim::kPrngTimelineVersion);
     header.bytes(config_bytes.data());
     header.bytes(rules_bytes.data());

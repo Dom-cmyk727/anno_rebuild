@@ -7,9 +7,11 @@ That packet supersedes the historical research-only ownership, old base and
 pre-132 identity guidance below. Engine work follows independent contract review;
 this note does not declare the remaining lifecycle/policy research complete.
 
-Status: research started; engine implementation NOT_STARTED. This is an
-orchestrator-owned parallel package, based on MAP `ec0e832e`. It does not replace
-MAP-POP-CLOSE-2, approve its unfinished gates, or enable live house updates.
+Current execution: B0 baseline inventory on `task/ECON-BOOK-1-main`, pinned to
+`3b74201f8a5eafedcb8cd928bc52e191b3b5908c`; engine implementation NOT_STARTED.
+The second Mac owns B0–B7 under the dispatch above. Historical research/ownership
+and prior identity language below retain their actual dates and source pins.
+Existing rules remain unchanged; booking will be separately default-off.
 
 The player-facing outcome is a town whose purchases earn money and whose
 buildings cost money to maintain. For example, two groups of resident purchases
@@ -234,3 +236,83 @@ AnnoGame and AnnoScene SHA-256 identities) was applied and focused re-review
 approved it and the B1–B4 plan. This is not completion of B or approval to
 integrate the engine. No source, tests, state identity, shared TASKS/REPORTS or
 other executor worktree changed in this checkpoint.
+
+
+## B0 — execution baseline and dependency ledger (2026-11-06)
+
+Exact source `3b74201f8a5eafedcb8cd928bc52e191b3b5908c` is documentation-only
+relative to accepted code `7b57ebd968445bdb8ab8f0ad3e565632a7df24ee`.
+Branch task/ECON-BOOK-1-main was created at that pin in the owned MAP-BOOTSTRAP-1
+checkout, which was clean at completed MAP-INTEGRATE-1 head5ef163a6. That branch,
+its old build/debug, build/asan and cache/integrate1 evidence remain preserved;
+ECON builds will use separate build/econ-* directories. The completed adoption
+branch/worktree0648bcab also remains unchanged. No old branch merge is needed.
+No runtime diff, other-lane implementation or assets have been copied.
+
+Current132/SIMINT1/timeline5/frame4/wire1 remains untouched in B0. Dispatch
+reserves133/ECONBK1 for this candidate; exact bytes and independent state/refusal
+proof belong to B3. No competing current allocation appears in the pinned
+canonical dispatch. Eventual combined identity remains orchestrator-owned.
+No PRNG/wire change is justified merely by booking. No new package or merge for
+the first Mac or Windows is released by this executor.
+
+Baseline receipts: ignored cache/econ-book1/B0/baseline.json, preflight-01.log,
+booking-reference-01.log and the pinned read-only analysis-tool install log.
+Canonical source preflight PASS (25 verdict-reader Python contracts separately);
+existing booking_ref research tests13/13 PASS. These are cheap Python/source
+checks, not C++/game/ASAN acceptance. No full sailing or physical corpus run.
+Original module SHA256s rechecked: AnnoWelt f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2;
+AnnoGame ac721220afd27ebca5fd2ece6a8ff452289b9d7458c4e091c68adea2012db7bc;
+AnnoScene5b521f9541332846d32b57c93eaaee9c9d8de2ac2404cd75da0fe93e0e36fd38.
+Bounded static reads use pinned Capstone5.0.6/pefile2024.8.26 in this task's ignored
+cache; original binaries are never changed or committed.
+
+Host observed18 logical CPUs,48GiB RAM,~1.5TiB free disk, AppleClang21/CMake3.31.10.
+The first Mac's jobs2 gate/two CPU-bound opening children were active and left
+alone. No admission override is set: existing admission defaults remain enabled.
+Start owned compile/gate concurrency conservatively (four build jobs, one heavy
+CTest child); refresh contention before expensive work. No process/assertion
+owned by another lane will be stopped. B0 starts no game build.
+
+### Current authoritative inventory (source3b74201f)
+
+| Area | Current field/caller and behavior | Consequence for this slice |
+|---|---|---|
+| Money | Player::money i64; construction/founding payment debit directly; scripts commit their reviewed transaction; player book_upkeep remains separate. Scheduler::merge generic MoneyDelta uses add_money_saturating. | No city income path exists. Do not use generic saturating deltas as the checked booking commit or rewrite unrelated payment/script/player policy. |
+| Purchases | resident.cpp::bill increments u32 requested bill before clipping stock; direct overflow yields BilledOverflow without that bill mutation. supplier_bill: MarketStall requested/take, services requested/no take, Inn min(request,stock) on input good/no city stock take. resident_job emits only increases as BilledDelta; return does not add a second bill. | Preserve requested-versus-delivered and service semantics. B1a must independently pin examples and direct/queued overflow distinctions. |
+| Bill merge | scheduler.cpp::merge applies BilledDelta with u64 sum then u32 saturation and diagnoses actual merged amount. Each resident figure merges immediately. | A booking helper cannot silently change this accepted saturation or claim all requested deltas were credited. |
+| Pending bills | City::billed is warehouse_goods-sized u32 vector, native/hash only with Rules::save_billed_goods (default true); false reloads zero. Original imports have no pending-bill source. | Booking must reject unsupported save_billed_goods=false or explicitly support it; pending income must survive native reload. No u16 narrowing. |
+| Existing clocks/stats | City tick_stamp/stage_stamp are u16; player upkeep_stamp/rem and stat_a/stat_b belong to player. City has no booking stamp, sales/trade statistics or maintained running-cost totals. Scenario HEAD/HEAD2 notices currently report unmodelled statistics. | Reuse neither stage stamp nor player remainder for booking. B1 resolves original init/save/stat units; B3 decides authoritative persistence versus reconstruction. |
+| Cost facts | BuildingType::running_cost[0/1] already loads PROD3 words0/2 and is digested. Payload blocked changes in production kernels; driver.consume sees blocked_changed. | B1b must prove the state selector and per-class statistic-kind getter, then maintain success-only contributions, never copy them to Player::upkeep_a/b. |
+| Lifecycle | create.cpp insertion/creation and remove_building (including apply.cpp public demolition/whole-city cleanup); scenario/native import creation and cache rebuild; house_transition.cpp shared transition swaps type for upgrade/downgrade, remove_house detaches walkers then removes. | Every actual mutation route needs a cost invariant. No existing public city/owner transfer command was found; classify absent transfer as Unsupported rather than inventing one. Load reconstruction is outside the booking hot path. |
+| Schedule | island_tick city_tick: building scheduler, stage_pass if no fault, configured city seams. One Effects buffer is shared by cities on that island; Scheduler merges after the island. Across islands merges occur in table order; resident figure purchases merge later, then player upkeep. | Same-island cities see stale external money views until merge. B1d must require ordered commit-time preflight/read-own effects, suppress booking after earlier faults and leave figure-phase bills for a later city visit. |
+| Configuration | WorldSettings::prop10 already validates0..2/imports scene HEAD[0xb]; Island::climate exists. Goods metadata currently reads BauFirst/IdSec, not Preis/Bonus/Malus/PreisLevel. | No duplicate tax/climate/cost/bill fields. Verify direct/link climate sources and price ordering before registry/state work. |
+
+### Acceptance/dependency table for the complete assigned slice
+
+Each row requires independent read-only approval at a frozen diff/pin before its
+dependent implementation. Passing research alone is never a passing engine test.
+The existing arithmetic research is approved only within its original-wrap model.
+
+| Package | Positive acceptance | Small distinguishing negative/control | Evidence and disposition |
+|---|---|---|---|
+| B0 adoption/inventory | Exact clean pin, module hashes, actual callers, cheap preflight/ref checks, unchanged old refs/evidence, scoped participating paths | No replay of old merge, no unexplained132 edit/default flip, no claim that Python baseline executes economy |13/13 reference and source preflight pass; independent review pending |
+| B1a inputs | Verified climate/tax/ordered prices, actual billing units, imported stats/stamps | Requested stall versus delivered/Inn-clipped/service-only; repeated Preis resets, partial repeated tax lists, invalid names/dimensions | Primary bounded reads and hand derivation planned; not engine-authorized |
+| B1b lifecycle | Type getter/stat-kind and every current create/load/switch/house replace/remove path table | Failed/duplicate transition unchanged; city28/player14+rem1 charged1+1, no cost mirroring | Primary/caller audit planned; absent owner-transfer remains Unsupported |
+| B1c checked policy | Signed domains, exact ordinary arithmetic, word stamps, sum-before-rounding, gross credit then debit, negative money, explicit atomic booking fault | Final net fits but gross credit overflows; no reset/stats/stamp/debit on failure | Written original/adapted split and primary examples required |
+| B1d order | Actual island/city/effect/figure/player sequence; same- and cross-island owner preflight | Two cities each individually fit but second combined credit overflows; earlier house/script fault blocks booking; save_billed_goods=false cannot lose income | Order contract and actual-boundary controls planned |
+| B2 independent references | Hand-pinned checked versus original-wrap vectors, lifecycle/order/width and smallest-positive/zero/partitioned timing | Width/order/double-charge/reset-before-fault mutants fail intended assertions; CLI empty/bad expected/incomplete refused | Public contracts registered and required before C++ implementation |
+| B3 facts/state/identity | Data-sized prices/roles; minimal authoritative stamp/stats/cost state;133/ECONBK1 populated byte oracle and native round-trip | Actual132 save/log refuses intended boundary; invalid dimensions/signed prices/unknown climate transactional; alternate generic types/roles | Independently reviewed parser/state/reference/compatibility required |
+| B4 production/lifecycle | Opt-in scheduler booking exactly once, full supported lifecycle, owner split and negative-balance continuation | Real last-city merge overflow leaves its money/bills/stats/stamp unchanged, queued prior effects accounted; default-off132 semantic controls | Focused Debug/ASAN, accounting mutants, independent engine review required |
+| B5 actual loop | Cheap original Tutorial path, new goods reach several households, bills/income/upkeep exact, public shortage/recovery, owner/city isolation | No starting-stock-as-production or grant in real arm; explicit component versus strict loader refusal; legal altered command diverges causally | Native cuts and genuine fresh replay artifacts; independent real-ledger review required |
+| B6 scaling/consumer | Three nonempty legal sizes, city/goods operation counts and modest Release samples, unrelated objects do not add global scans | Fixture legality/positive bookings first; no latency threshold or multiplayer performance claim | Host/raw manifests and Windows data/events/refusal/config contract required |
+| B7 frozen closeout | Corrected focused Debug/ASAN, relevant full coverage, required refs/CLI, real loop integrated once per configuration, format/lint | Keep first failures/known skips distinct; fresh final reviewer checks interactions and default-off/primary/replay claims | One final REPORTS+handoff, clean local candidate; no main merge/push |
+
+First participating path is the existing configured resident service model
+(MarketStall/PublicService/School/Inn), House lifecycle, SmallFarm/Farm production
+and transport into a city. Prices/roles and cost categories must be generic data,
+not a fixture id allowlist. Other currently supported building classes are part
+of the lifecycle audit; unsupported original classes/ownership transitions stay
+explicit refusals, never silently omitted. No full-game balance, ship-founded
+alcohol feasibility, planting, new tax UI, figure upkeep rewrite or default change
+is implied. B1 contract review must resolve every fact used by B3/B4 first.

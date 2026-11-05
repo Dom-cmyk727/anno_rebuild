@@ -130,6 +130,8 @@ struct StandChoice {
     /// the path's last tile). The walker ends its walk THERE (the original walks the finer sub-cell
     /// route, state.md 5.9 clause 6, and starts its way home from its own position, transport.md
     /// section 3), so a stand whose tile centre is walled in (the cross of stand 1314) can be left.
+    /// ADAPT / U: the finer-route stage 0x100054ef..0x100055d5 is unread; the sub-cell formula
+    /// ((2c+1)*256+3)/6-128 in resident_job.cpp is not tied to a read.
     std::uint32_t end_col = 1, end_row = 1;
 };
 

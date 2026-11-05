@@ -235,7 +235,9 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
     sim::TransportStats stats;
     w.set_transport_stats(&stats);
     // The fresh house's slots 1 (LEDER), 2 (STOFFE), 3 (SALZ) and 5 (KAPELLE) start at 0; each fills only
-    // by a walker's delivery. 2400 advances of 50 ticks = 120000 ticks.
+    // by a walker's delivery. One advance(100) is 100 ms = 50 ticks (a tick is 2 ms): 2400 advances =
+    // 120000 ticks (checked below against the clock). The ledger below is TOWN-WIDE (the eight settler
+    // houses buy too); what is specific to the fresh house is the slot assertions.
     std::array<bool, 6> filled{};
     for (int i = 0; i < 2400; ++i) {
         w.advance(100);
@@ -248,6 +250,7 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
             filled[j] = filled[j] || h->stock[j] > 0;
         }
     }
+    CHECK(w.clock().tick() == 120000);
     CHECK(filled[1]); // LEDER by a 1314 walker
     CHECK(filled[2]); // STOFFE by a 1314 walker
     CHECK(filled[3]); // SALZ by a 1310 walker
@@ -257,7 +260,9 @@ TEST_CASE("supply K2: a fresh pioneer house is served by the stalls and the chap
         // a stall takes the store (take 1): bought == taken, and billed raised by the requested amount
         CHECK(rs.bought_by_goods.count(g) == 1);
         CHECK(rs.taken_by_goods.at(g) == rs.bought_by_goods.at(g));
-        CHECK(rs.billed_by_goods.at(g) >= rs.bought_by_goods.at(g));
+        // the request is billed in full and the stall returns the clipped amount: here the stall store
+        // always covers the request, so billed == bought exactly (measured, town-wide)
+        CHECK(rs.billed_by_goods.at(g) == rs.bought_by_goods.at(g));
     }
     // the store fell by exactly what the stalls took (the Tutorial town holds no producer of these)
     CHECK(t.city->stock.stock[kLeder] == leder_before - rs.taken_by_goods.at(kLeder));

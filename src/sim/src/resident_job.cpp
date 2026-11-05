@@ -656,6 +656,8 @@ bool resident_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             r.target = stand->building;
             start_walk(fig.pos, stand->path, WalkRef{r.route, r.next, r.along});
             // K2: the walk ends at the selected goal sub-cell, not the tile centre (see StandChoice).
+            // ADAPT / U: finer-route stage 0x100054ef..0x100055d5 unread; the sub-cell formula
+            // ((2c+1)*256+3)/6-128 is not tied to a read.
             if (!stand->path.empty() && r.route.size() >= 2) {
                 const FixedPos tile = tile_centre(stand->path.back());
                 const auto sub = [](std::uint32_t c) {

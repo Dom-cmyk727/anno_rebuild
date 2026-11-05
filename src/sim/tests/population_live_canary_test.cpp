@@ -704,12 +704,20 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     CHECK(up_it->variant_drawn);
     CHECK(up_it->variant_draw == 21945);
     CHECK(up_it->variant_index == 0);
-    // the exact material debit of type 520: WERKZEUG 1 t (256) and HOLZ 4 t (1024), nothing else
-    REQUIRE(up_it->spent_by_good.size() >= 2);
-    CHECK(up_it->spent_by_good[0] == 256);
-    CHECK(up_it->spent_by_good[1] == 1024);
-    for (std::size_t i = 2; i < up_it->spent_by_good.size(); ++i) {
-        CHECK(up_it->spent_by_good[i] == 0);
+    // the exact material debit of type 520, read from the registry (not hardcoded): the type's cost
+    // entries, nothing else
+    {
+        const sim::BuildingType* next = o->types->find(up_it->to);
+        REQUIRE(next != nullptr);
+        std::vector<std::int64_t> want(up_it->spent_by_good.size(), 0);
+        for (const sim::CostEntry& e : next->cost_goods) {
+            REQUIRE(e.goods >= o->cfg.build_goods_first);
+            REQUIRE(e.goods - o->cfg.build_goods_first < want.size());
+            want[e.goods - o->cfg.build_goods_first] += e.amount_88;
+        }
+        CHECK(up_it->spent_by_good == want);
+        CHECK(want[0] == 256);  // WERKZEUG 1 t, the value this equals today
+        CHECK(want[1] == 1024); // HOLZ 4 t
     }
     // exact identity of the first downgrade
     const auto dn_it = std::find_if(trs.begin(), trs.end(), [](const sim::HouseTransitionRecord& x) {
@@ -727,7 +735,21 @@ TEST_CASE("population live canary: S01_07_01 live run, ledger, downgrade with va
     // F2: the House holds 1320 after the tick (the growth step of the group-3 mood -2 entry, VermehrTab
     // -38, ran BEFORE SetGroup, which keeps the residents).
     CHECK(t.residents_after == 1358 - 38);
+    // The pins the K2 re-record had dropped (review P2), re-measured on the new deterministic run: the
+    // first downgrade is still house ...203 at tick 90250 (560 -> 542), the counters and the variant
+    // draw moved with the changed purchases (houses_old 54 -> 53 as before; counter_old 1690/1669 ->
+    // 1665/1644; HouseVariant draw 27446 -> 1338, index 6 -> 2, because the draws before it differ).
+    CHECK(t.houses_old_before == 54);
+    CHECK(t.houses_old_after == 53);
+    CHECK(t.houses_new_before == 0);
+    CHECK(t.houses_new_after == 1);
+    CHECK(t.counter_old_before == 1665);
+    CHECK(t.counter_old_after == 1644);
+    CHECK(t.counter_new_before == 0);
+    CHECK(t.counter_new_after == 1664);
     CHECK(t.variant_drawn);
+    CHECK(t.variant_draw == 1338);
+    CHECK(t.variant_index == 2);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing
     for (const auto& tr : trs) {

@@ -235,6 +235,13 @@ if(ANNO_BUILD_TESTS)
     add_test(NAME house_progression_vectors_agree
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_transition_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_progression_vectors.txt)
+    add_test(NAME small_farm_reference_agrees
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/small_farm_ref.py
+                     ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/small_farm_vectors.txt)
+    add_test(NAME small_farm_reference_contract
+             COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/small_farm_ref_contract_test.py
+                     --ref ${CMAKE_SOURCE_DIR}/tools/small_farm_ref.py
+                     --vectors ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/small_farm_vectors.txt)
     add_test(NAME house_live_reference_agrees
              COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/house_live_ref.py
                      ${CMAKE_SOURCE_DIR}/fixtures/synthetic/sim/house_live_vectors.txt)

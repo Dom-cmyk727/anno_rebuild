@@ -375,8 +375,9 @@ TEST_CASE("small farm animals: the per-kind and sum limits hold while the pastur
     CHECK(p.w.check_invariants() == "");
 }
 
-TEST_CASE("small farm animals on original data: the Tutorial town's farms graze real grass; the "
-          "stop at score 20 fires") {
+TEST_CASE(
+    "small farm animals on original data: the Tutorial town's farms graze real grass, and the "
+    "stop at score 20 fires") {
     // Original scenario objects and the ORIGINAL walk-cost tables (kinds 107/109/110 walk on layer
     // 4; ground costs 10 straight / 13 diagonal): the two small farms of the player-2 town (island
     // 3) at (212,250) and (211,240) have 28 and 11 ripe grass objects in their windows and no

@@ -789,3 +789,17 @@ namespace/compatibility and relevant SCRIPT1 native/continuation cases;77 passin
 E-gate-03 entries are retained, with unchanged handler/action tests reused after
 namespace-decode guard and test-only fixture corrections. Both original failures
 remain failures in that gate; no single79/79 claim is made.
+
+E APPROVED `/root/script2_review_session` at clean
+`f6354a978902716b5646d25bf6cb741eff5523a7`. Corrected gate46/46, zero other
+outcomes; E-gate03 retains77passes/2failures. Reviewer independently derived67-byte
+scope/9-byte Startup, parsed11 archived SCRIPT1 envelopes, checked50 corpus rows
+only change create_hash, and confirmed historical references/artifacts unchanged.
+No remaining E P1/P2. Complete original compilation/INIT proven; F real conditional
+execution and construction remain separate open acceptance.
+
+F discovery uses the unchanged normal original file, initial Human ship and public
+MoveCmd to a genuinely routable water goal in the authored NEGER rectangle. No
+map/unit/resource/permission edits. Bounded1000steps×1000ms, stop before the next
+script visit after physical entry to capture a native cut. Construction, encoded
+fresh-process replay, soldier/action fixture and scale/inventory remain pending.

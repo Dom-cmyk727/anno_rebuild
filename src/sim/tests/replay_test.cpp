@@ -267,12 +267,13 @@ TEST_CASE("replay refuses a config mismatch") {
     sim::World other = bt::make_world(k, spec, {}, rules);
     auto refused = sim::replay(other, log);
     CHECK_FALSE(refused.ok());
-    CHECK(refused.error().find("rules") != std::string::npos);
+    CHECK(refused.error() == "replay refused: rules digest differs from the log's");
 
     // A world on another registry is refused too (registry digest).
     sim::World empty_reg = island_test::make_world(spec);
     auto refused_reg = sim::replay(empty_reg, log);
-    CHECK_FALSE(refused_reg.ok());
+    REQUIRE_FALSE(refused_reg.ok());
+    CHECK(refused_reg.error() == "replay refused: type registry digest differs from the log's");
 
     // The immutable walk tables are a separate compatibility input even when the
     // registry digest itself is unchanged.

@@ -1,13 +1,25 @@
-// B0 baseline before availability enforcement: original later-stage type, public build/import.
+// Construction facts, explicit-context query, identity and enabled synthetic integration.
+// B0 also preserves the unchanged player-build behavior while production wiring is blocked.
+
+#include <algorithm>
+#include <deque>
+
 #include <doctest/doctest.h>
 
+#include <anno/formats/chunk.hpp>
+#include <anno/sim/build_availability.hpp>
+#include <anno/sim/goods_metadata.hpp>
+#include <anno/sim/hash.hpp>
+#include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
 #include <anno/sim/synthetic.hpp>
+#include <anno/sim/walk_cells.hpp>
 #include <anno/sim/world.hpp>
 #include <anno/sim_load/original_registry.hpp>
 #include <anno/test/game_dir.hpp>
 
 #include "command_helpers.hpp"
+
 namespace sim = anno::sim;
 TEST_CASE("bootstrap B0: original locked build baseline and scenario exception (game files)") {
     const auto game = anno::test::game_dir();
@@ -18,6 +30,14 @@ TEST_CASE("bootstrap B0: original locked build baseline and scenario exception (
     const auto loaded =
         anno::sim_load::load_original_registry(*game, anno::sim_load::FigureEntries::Required);
     REQUIRE_MESSAGE(loaded.error.empty(), loaded.error);
+    for (const auto& [id, expected] :
+         std::vector<std::pair<std::uint32_t, std::vector<std::uint32_t>>>{
+             {1006, {4, 9}}, {1012, {12, 38}}, {1341, {49}}, {1021, {35, 36}}}) {
+        const auto* actual = loaded.types->find(sim::TypeId{id});
+        REQUIRE(actual != nullptr);
+        CHECK(actual->construction.research_any == expected);
+    }
+    CHECK(loaded.types->find(sim::TypeId{1021})->construction.stage == 17);
     const auto* inn = loaded.types->find(sim::TypeId{1335});
     REQUIRE(inn != nullptr);
     for (const auto mask : {1U, 5U}) {
@@ -53,13 +73,6 @@ TEST_CASE("bootstrap B0: original locked build baseline and scenario exception (
     }
 }
 
-#include <algorithm>
-#include <deque>
-
-#include <anno/formats/chunk.hpp>
-#include <anno/sim/build_availability.hpp>
-#include <anno/sim/goods_metadata.hpp>
-#include <anno/sim/hash.hpp>
 namespace {
 namespace fmt = anno::formats;
 fmt::chunk::Chunk rec(const char* name, std::string text, bool terminated = true) {
@@ -194,8 +207,10 @@ TEST_CASE("bootstrap facts: research output guard and data profile alternatives"
     auto ordinary = entry(90003, "INFRA_STUFE_1C");
     ordinary.records.push_back(rec("FORSCHTYPE", "BRUNNEN"));
     auto extra = entry(90004, "INFRA_STUFE_4A");
+    auto researched_type = entry(90005, "INFRA_STUFE_FORSCH");
+    researched_type.records.push_back(rec("FORSCHTYPE", "BRUNNEN"));
     const sim::BuildAvailabilityProfile profile{{200}, {{sim::TypeId{90004}, {35, 36}}}};
-    const auto r = parsed({e, other, ordinary, extra}, profile, goods);
+    const auto r = parsed({e, other, ordinary, extra, researched_type}, profile, goods);
     REQUIRE(r.ok());
     CHECK(r.value()->find(sim::TypeId{90001})->construction.research_any ==
           std::vector<std::uint32_t>{0, 7, 9});
@@ -203,6 +218,13 @@ TEST_CASE("bootstrap facts: research output guard and data profile alternatives"
           std::vector<std::uint32_t>{0});
     CHECK(r.value()->find(sim::TypeId{90003})->construction.research_any.empty());
     auto p = players();
+    CHECK_FALSE(
+        sim::build_eligibility(*r.value(), p, sim::PlayerId{0}, sim::TypeId{90005}).allowed());
+    p.slots[0]->research.state[49] = 1;
+    CHECK_FALSE(
+        sim::build_eligibility(*r.value(), p, sim::PlayerId{0}, sim::TypeId{90005}).allowed());
+    p.slots[0]->research.state[49] = 2;
+    CHECK(sim::build_eligibility(*r.value(), p, sim::PlayerId{0}, sim::TypeId{90005}).allowed());
     p.slots[0]->research.state[9] = 2;
     CHECK(sim::build_eligibility(*r.value(), p, sim::PlayerId{0}, sim::TypeId{90001}).allowed());
     CHECK_FALSE(
@@ -242,4 +264,91 @@ TEST_CASE("bootstrap identity: independent extension bytes preserve default regi
     auto extra = parsed({e}, {{}, {{sim::TypeId{90001}, {35}}}});
     REQUIRE(extra.ok());
     CHECK(extra.value()->digest() != changed.value()->digest());
+}
+
+TEST_CASE("bootstrap integration: earned synthetic unlock query build debit reload replay") {
+    // Synthetic content integration, not authoritative refusal or a ship-start progression claim.
+    auto base = sim::synthetic::make_population_types();
+    REQUIRE(base.ok());
+    auto t = base.value();
+    const auto cfg = sim::synthetic::population_config();
+    sim::TypeRegistry::Builder builder;
+    builder.config(cfg).walk_tables(sim::synthetic_walk_tables());
+    builder.house_groups(std::vector<sim::HouseGroup>(t.registry->house_groups().begin(),
+                                                      t.registry->house_groups().end()));
+    builder.stage_table({{1, 0, 0, 5}});
+    for (auto type : t.registry->types()) {
+        if (type.id == t.weaver) {
+            type.construction.stage = 1;
+            type.flags_word = 0x84; // ordinary land fixture, as the original workshop class
+            type.cost_gold = 300;
+            type.cost_goods = {{41, 768}, {42, 1024}};
+        }
+        builder.add(type);
+    }
+    const auto registry = builder.build();
+    REQUIRE(registry.ok());
+    t.registry = registry.value();
+    auto spec = sim::synthetic::g7_scenario(t);
+    std::vector<std::uint8_t> height(spec.islands[0].w * spec.islands[0].h, 0x30);
+    spec.islands[0].terrain = sim::make_terrain(height, std::vector<std::uint16_t>(height.size()),
+                                                std::vector<std::uint8_t>(height.size()));
+    sim::Rules rules;
+    rules.house_updates = true; // explicitly enabled fixture only
+    auto made = sim::World::create(spec, t.registry, cfg, rules);
+    REQUIRE_MESSAGE(made.ok(), (made.ok() ? std::string() : made.error()));
+    auto w = std::move(made).value();
+    auto started = sim::Recorder::start(w);
+    REQUIRE(started.ok());
+    auto recorder = std::move(started).value();
+    const auto query = [&](const sim::World& world) {
+        return sim::build_eligibility(world.types(), world.players(), sim::PlayerId{0}, t.weaver);
+    };
+    const auto before = w.save();
+    CHECK_FALSE(query(w).allowed());
+    CHECK(w.save() == before);
+    // No player flags are injected: the existing population stage pass earns the bit.
+    for (unsigned i = 0; i < 400 && !query(w).allowed(); ++i)
+        recorder.advance(20);
+    REQUIRE(query(w).allowed());
+    REQUIRE(w.players().find(sim::PlayerId{0})->flags == 3);
+    const auto saved = w.save();
+    auto loaded = sim::World::load(saved, t.registry, {});
+    REQUIRE(loaded.ok());
+    CHECK(query(loaded.value()).allowed());
+    CHECK(loaded.value().save() == saved);
+    const auto* type = t.registry->find(t.weaver);
+    REQUIRE(type != nullptr);
+    const auto money = w.players().find(sim::PlayerId{0})->money;
+    const auto stock = command_test::city(w, command_test::kCity0).stock.stock;
+    const auto result = recorder.submit(
+        command_test::build(0, command_test::kCity0, {command_test::at(t.weaver, 120, 120)}));
+    REQUIRE_MESSAGE(result.ok(), sim::reject_name(result.status));
+    CHECK(w.players().find(sim::PlayerId{0})->money == money - 300);
+    CHECK(command_test::city(w, command_test::kCity0).stock.stock[41] == stock[41] - 768);
+    CHECK(command_test::city(w, command_test::kCity0).stock.stock[42] == stock[42] - 1024);
+    for (const auto& cost : type->cost_goods)
+        CHECK(command_test::city(w, command_test::kCity0).stock.stock[cost.goods] ==
+              stock[cost.goods] - cost.amount_88);
+    recorder.checkpoint();
+    auto fresh = sim::World::load(recorder.log().initial_save, t.registry, {});
+    REQUIRE(fresh.ok());
+    auto outcome = sim::replay(fresh.value(), recorder.log());
+    REQUIRE(outcome.ok());
+    CHECK(outcome.value().reproduced());
+    CHECK(fresh.value().save() == w.save());
+    // A different immutable requirement gives a different identity and refuses the old save.
+    sim::TypeRegistry::Builder different;
+    different.config(cfg).walk_tables(sim::synthetic_walk_tables());
+    different.house_groups(std::vector<sim::HouseGroup>(t.registry->house_groups().begin(),
+                                                        t.registry->house_groups().end()));
+    different.stage_table({{1, 0, 0, 5}});
+    for (auto other : t.registry->types()) {
+        if (other.id == t.weaver)
+            other.construction.stage = 2;
+        different.add(other);
+    }
+    auto other = different.build();
+    REQUIRE(other.ok());
+    CHECK_FALSE(sim::World::load(saved, other.value(), {}).ok());
 }

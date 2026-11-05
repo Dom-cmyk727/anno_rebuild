@@ -311,6 +311,7 @@ static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
 // T33.2: walk_class is derived; walk_mask is a side input until T33.4.
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
+static_assert(field_count<BuildRequirement>() == 2, "construction facts need digest coverage");
 static_assert(field_count<BuildingType>() == 25,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");

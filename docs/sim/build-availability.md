@@ -116,3 +116,32 @@ Focused B2 model-02 canonical gate: selected5,executed5,failed0,empty0,skipped0,
 incomplete0. model-01 build failure is retained (test Chunk payload incorrectly
 assumed owning instead of a span). Investigation model-build-01/02 failures
 retained; model-build-03 builds. Independent B2 review pending.
+
+## Reviewed correction and integration checkpoint
+
+Read-only reviewer `/root/review_model` approved B2 and its focused corrections.
+It independently checked original instruction/data bytes and the nonzero research
+fallback, original adapter declarations, nested field-count canary and all five
+mutation logs. Legal controls passed; mutants reached named assertion failures
+without crashes or timeouts. Recipe and logs: `cache/bootstrap/mutations/`.
+The exact-byte extension test remains independent of the encoder under test.
+
+`focused-03` executes 9/9 with no failed, empty, skipped or incomplete entries,
+including the original 921-entry registry check and a synthetic integration:
+existing population pass earns a stage bit, query changes from locked to allowed,
+a public build debits exactly 300 gold/3t tools/4t wood, then reload/replay match.
+A different registry requirement rejects the saved state. House updates are
+explicitly enabled only in this fixture. This is query/command composition,
+not proof of authoritative enforcement or a real ship-start population unlock.
+
+The original direct-build registry digest intentionally changes from
+`855fce5ed63c1090` to `b62eba128fce9259`: independent original-data decoding gives
+241 nondefault rows and a 3948-byte BVA1 extension. Default synthetic identities
+are preserved. Only that affected original digest assertion changes; historical
+recordings and unrelated goldens remain untouched.
+
+The fresh prefix case passed at `prefix-02`, but its enclosing gate failed on
+the first synthetic integration setup (`Unsupported` placement flags). That
+first failure is preserved. The corrected fixture gives `focused-03` above;
+the successful prefix is retained without repeating sailing for this test-only
+correction. Production code, manifest, original files and prefix test are identical.

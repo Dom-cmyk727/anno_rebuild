@@ -1561,7 +1561,9 @@ TEST_CASE("registry digest stable") {
     CHECK(sim::TypeRegistry::empty()->digest() == h.value());
     // And the value of an independent Python transcription (tools/sim_stream.py:
     // goods names read from AnnoGame.dll, classes from Appendix C).
-    CHECK(h.value() == 0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
+    CHECK(
+        h.value() ==
+        0x3a9d19d59b4f3f58ULL); // Inn tick kind 9 + payload tag 8 (K1); python transcription agrees
     // Rebuilding gives the same digest; the order types are added in does not matter.
     auto a = sim::synthetic::make_synthetic_types();
     auto b = sim::synthetic::make_synthetic_types();
@@ -1914,7 +1916,9 @@ TEST_CASE("registry builds all 921 entries of Anlagen.dat") {
     REQUIRE(again);
     CHECK(again.value()->digest() == r.digest());
     // T24: the digest covers the ENTRANCE points and the figure types (none here).
-    CHECK(r.digest() == 0x855fce5ed63c1090ULL); // C2: the Inn class row names payload 8
+    // BVA1 extension independently decoded from original names/data:241 rows,3948bytes.
+    // Old direct-build identity855fce5ed63c1090 is preserved at the accepted base.
+    CHECK(r.digest() == 0xb62eba128fce9259ULL);
     // The growing items (ROHSTWACHS / ROHSTDUERR): grain field 712 and forest 104.
     CHECK(r.find_growing(712) == r.find(sim::TypeId{712}));
     CHECK(r.find_growing(712)->prod.growth_period == 15500);

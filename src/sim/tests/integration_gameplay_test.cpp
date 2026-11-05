@@ -56,7 +56,7 @@ sim::World authored(const tutorial_town::Original& o, bool hygiene = false) {
     spec.islands[0].cities[0].buildings.push_back(farm);
     // Three authored ripe potato fields and grass, with original resource types/production.
     for (auto [x, y, type] : std::array<std::array<unsigned, 3>, 4>{
-             {{113, 111, 709}, {113, 112, 709}, {111, 113, 709}, {114, 112, 703}}})
+             {{113, 111, 709}, {113, 112, 709}, {111, 113, 709}, {114, 112, 2}}})
         spec.islands[0].objects.push_back({(y - 100) * 32 + x - 100, type, 0});
     sim::ScenarioSpec::FigureSpec ship;
     ship.kind = 1503;
@@ -284,6 +284,16 @@ TEST_CASE("integration joint: active worker Ready script nested actors and trans
         CHECK(a.forestry.raw_delivered_88 == b.forestry.raw_delivered_88);
         CHECK(a.forestry.raw_credited_88 == b.forestry.raw_credited_88);
         CHECK(a.forestry.raw_lost_88 == b.forestry.raw_lost_88);
+        const auto& delivered = a.forestry.small_farms.at(farm_id);
+        const auto& resumed = b.forestry.small_farms.at(farm_id);
+        CHECK(delivered.consumed_88[0] > 0);
+        CHECK(delivered.made_88[0] > 0);
+        CHECK(delivered.consumed_88[1] > 0);
+        CHECK(delivered.made_88[1] > 0);
+        for (unsigned line = 0; line < 2; ++line) {
+            CHECK(delivered.consumed_88[line] == resumed.consumed_88[line]);
+            CHECK(delivered.made_88[line] == resumed.made_88[line]);
+        }
         CHECK(a.forestry.cut_mismatches == 0);
         CHECK(b.forestry.cut_mismatches == 0);
         CHECK(farm(w).out == farm(back).out);

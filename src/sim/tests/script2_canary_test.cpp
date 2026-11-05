@@ -321,14 +321,23 @@ TEST_CASE("SCRIPT2 original canary route and founding prerequisites") {
     RouteQuery query;
     query.start_x = ship->pos.x / 256;
     query.start_z = ship->pos.y / 256;
-    query.goal_x_q8 = 250 * 256 + 128;
-    query.goal_z_q8 = 700 * 256 + 128;
-    const auto route = plan_route(index, query, {}, RouteCostTable::original());
-    CHECK(route.status == RouteStatus::Planned);
-    CHECK(route.end_x >= 218);
-    CHECK(route.end_x < 285);
-    CHECK(route.end_z >= 671);
-    CHECK(route.end_z < 736);
+    bool area_route = false;
+    for (int y = 672; y <= 720 && !area_route; y += 8)
+        for (int x = 224; x <= 272; x += 8) {
+            if (!source.tile_is_water(x, y))
+                continue;
+            query.goal_x_q8 = x * 256 + 128;
+            query.goal_z_q8 = y * 256 + 128;
+            const auto route = plan_route(index, query, {}, RouteCostTable::original());
+            if (route.status != RouteStatus::Planned || route.end_x < 218 || route.end_x >= 285 ||
+                route.end_z < 671 || route.end_z >= 736)
+                continue;
+            MESSAGE("ORIGINAL_CANARY_AREA goal=" << x << "," << y << " endpoint=" << route.end_x
+                                                 << "," << route.end_z);
+            area_route = true;
+            break;
+        }
+    REQUIRE(area_route);
     struct Candidate {
         std::int32_t x, y;
         std::int64_t distance;
@@ -389,8 +398,8 @@ TEST_CASE("SCRIPT2 original canary route and founding prerequisites") {
             if (planned.status != RouteStatus::Planned || planned.end_x != c.x + dx ||
                 planned.end_z != c.y + dy)
                 continue;
-            MESSAGE("ORIGINAL_CANARY_PLAN click=" << c.x << ',' << c.y << " goal=" << c.x + dx
-                                                  << ',' << c.y + dy << " neutral_coast_candidates="
+            MESSAGE("ORIGINAL_CANARY_PLAN click=" << c.x << "," << c.y << " goal=" << c.x + dx
+                                                  << "," << c.y + dy << " neutral_coast_candidates="
                                                   << candidates.size());
             found = true;
             break;

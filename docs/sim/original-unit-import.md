@@ -422,3 +422,16 @@ its source/INIT/false-visit assertions remain. Read-only planning scans original
 neutral coast geometry and tests transactions on disposable copies only, then
 asserts the executed starting state/position are unchanged. A bounded search
 refusal is not promoted to proof that no legal site exists. No F2 acceptance yet.
+
+/root/unit_import_contract_review also APPROVED bounded B/C architecture/proof
+atd5e98d2f after inspecting frozen mutations/restoration and raw converter evidence.
+Both B/C dispositions are now approved; original D/F2 and final E/G remain OPEN.
+
+D-prerequisites-01 atd93c0686 failed workflow selection (underscores were used
+where registered names have spaces), selected0, no canary execution. Retained.
+Correct-name D-prerequisites-02 selected2/executedpasses1/failed1,32+17assertions
+(3failures): assumed target250,700 was unreachable; legal founding planner did
+findclick344,405 with watergoal350,405 among11555neutral coast candidates.
+No voyage was attempted. The area planner now queries actual water on a bounded
+7x7grid inside NEGER and requires a real planned endpoint inside its rectangle.
+This fixes an unverified test target, not production routing or area semantics.

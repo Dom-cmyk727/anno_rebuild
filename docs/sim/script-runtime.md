@@ -1,4 +1,10 @@
 # MAP-SCRIPT-1 — contract and package acceptance ledger
+Current SCRIPT2 status: A–E approved; implemented synthetic F3/F4 and F5 subsets
+approved. F2 original-world conditional/construction is OPEN because the normal
+scenario adapter drops original units. Final G sanitizer/integration closeout is
+in progress. Historical SCRIPT1 evidence and scope limits below remain attributed
+to their original pins; they are not the current full-program capability claim.
+
 
 ## S0 baseline and ownership
 
@@ -548,7 +554,7 @@ limits. No unresolved P1/P2 findings. S6 full shipped permission-program executi
 remains BLOCKED, so this is not COMPLETE LOCAL CANDIDATE for the entire packet.
 Only documentation records this disposition after the frozen gates.
 
-## MAP-SCRIPT-2 package A — complete endless01 contract (proposed)
+## MAP-SCRIPT-2 package A — approved handler contract (historical pre-implementation text)
 
 This is the continuation authorized by the exact marked packet at main27022d75,
 without merging or editing local TASKS. Baseline b19b509b is clean and preserved.
@@ -621,8 +627,9 @@ must precede the corresponding persistence claim. Default empty script scope is
 compatibility is inferred and no automatic merge is authorized.
 
 All packages require read-only approval before their dependent implementation.
-A is pending frozen contract review. This section is the current proposal, not a
-claim that the new code or complete original canary has executed.
+Historical pre-implementation status: A was pending frozen contract review here.
+The recorded scoped approvals below supersede that status. Original-world F2
+conditional/construction acceptance remains OPEN.
 
 SCRIPT2 A area review: `/root/script2_review_area` independently approved
 `fe964e24996c2e2b1ddd59bbd0a24b066c2f4910`, after frozen6214ac5e P2
@@ -902,3 +909,22 @@ references+4000byte prefix store4128 string-content bytes instead of512256, whil
 all128 emitted payloads and exactwork512384 remain identical. New focused/native/
 replay checks and ASAN follow; earlier595 non-wave/whole-world evidence is retained
 with exact source attribution, not rewritten as a post-fix run.
+
+Post-fix verification: G-focused-correction-02 at522a0a27 passed85/85, zero
+other outcomes. Bounded storage mutant retained393assertions:130 intended storage
+failures and263 passing payload/work controls; G-storage-restored-01 clean522a0a27
+rebuilt and passed7/7. Final integration reviewer independently closed this P2.
+Observed original INIT facts from raw output (not all literal-value assertions):
+gold10000000 unchanged, permissions0→462, stage1→1879047935 (0x6ffffeff), researched
+entries38 unchanged, RNGcursor1 unchanged, work463; all eight mappings bind their
+requested existing players0..6/31. Model root before/after INIT is
+5974324689600740860 /15799122836754013521, native130/SCRIPT2, with actors absent.
+Exact raw source, unchanged gold/RNG/clock and final permission count are asserted.
+
+Sanitizer selection retains the affected595-family predicate but excludes four
+long unchanged physical-component/bootstrap runs already passed in Debug. Those
+use Missing/ExplicitNone or empty/non-wave script contexts and cannot exercise
+the joined-wave storage branch. Native/query/money/output/startup/script/replay,
+original load/import controls and synthetic gameplay mechanisms remain selected.
+This scoped reuse avoids repeating the original full physical five-minute matrix;
+it does not claim post-fix execution of those four ASAN exclusions.

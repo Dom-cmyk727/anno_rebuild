@@ -211,3 +211,13 @@ The world script fault barrier is separate from original endgame stop handling.
 S1 execution review: /root/script_semantics_review APPROVED frozen5081f780;
 no P1/P2. Permission review requested one lookup/declaration clarification,
 now incorporated. Implementation tests and package reviews remain pending.
+
+S1 permission review: /root/permission_semantics_review APPROVED1bb960b2, no
+P1/P2. Together with execution approval5081f780 this releases S2–S7. S2 controls
+at a98236e6: focused02 selected6/executed6/failed0/empty0/skipped0/incomplete0.
+Focused01's work-count expectation failure is retained. Investigation build01
+lacked PATH cmake;02 exposed Result-constructor/doctest formatting errors;03/04
+build. Independent reference4/4 passes. Wrong +125 omission and root-AND ELSE
+mutants both execute and fail their intended assertions; clean source restored.
+S2 review corrections add keyword folding (preserving names), built-in query
+precedence, explicit section guard and host/budget classification/cleanup tests.

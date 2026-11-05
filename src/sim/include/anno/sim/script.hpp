@@ -80,6 +80,7 @@ struct ScriptState {
 };
 struct ScriptWork {
     std::uint32_t remaining = 0, used = 0;
+    bool exhausted = false;
     bool consume();
 };
 // Host stages only typed mutable state. Rollback is required after any refusal;

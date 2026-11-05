@@ -16,13 +16,17 @@ auto compile(std::string s, ScriptLimits limits = {}) {
 }
 struct Host final : ScriptHost {
     std::uint32_t value = 0, staged = 0, reads = 0;
-    bool refuse = false;
+    bool refuse = false, refuse_begin = false;
+    std::uint32_t rollbacks = 0;
     bool begin() override {
         staged = value;
-        return true;
+        return !refuse_begin;
     }
     void commit() override { value = staged; }
-    void rollback() override { staged = value; }
+    void rollback() override {
+        staged = value;
+        ++rollbacks;
+    }
     bool permission(std::uint32_t, TypeId, std::uint32_t v, bool, ScriptWork&) override {
         staged = v;
         return !refuse;
@@ -137,4 +141,45 @@ TEST_CASE("SCRIPT1 read on losses and timer query visibility") {
     CHECK(h.value == 7);
     REQUIRE(visit_script(p.value(), s, 250, h));
     CHECK(s.signals[1] == 0);
+}
+TEST_CASE("SCRIPT1 duplicate kernels cannot hide unsupported dependencies") {
+    auto text = source("INITBLOCK(){ PLAYWAVE(\"x\"); }\n");
+    text.insert(text.find("[SIGNALS]"), "[SCRIPT_KERNEL]\n");
+    auto p = compile(text);
+    REQUIRE_FALSE(p);
+    CHECK(p.error().message == "duplicate script section: [SCRIPT_KERNEL]");
+    CHECK_FALSE(compile("[SCRIPT_KERNEL]\n"));
+}
+TEST_CASE("SCRIPT1 grammar folds keywords but builtins precede exact signals") {
+    auto p =
+        compile(source("set Foo = false;\nset PLAYTIME = TRUE;\n"
+                       "initblock(){ Foo = true; }\nif PLAYTIME == 0 then { Foo = false; }\n"));
+    REQUIRE_MESSAGE(p, (p ? "" : p.error().message));
+    auto s = make_script_state(p.value());
+    Host h;
+    REQUIRE(visit_script(p.value(), s, 250, h));
+    CHECK(s.signals[1] == 0);
+    CHECK(s.signals[2] == 1);
+}
+
+TEST_CASE("SCRIPT1 host refusal on last unit is Host and failed begin rolls back") {
+    auto p = compile(
+        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",90001,TRUE); }", {}, "\"ME\" 0\n"),
+        {.work = 1});
+    REQUIRE(p);
+    auto s = make_script_state(p.value());
+    s.bindings = {PlayerId{0}};
+    Host h;
+    h.refuse = true;
+    REQUIRE_FALSE(visit_script(p.value(), s, 0, h));
+    CHECK(s.fault == ScriptFault::Host);
+    CHECK(h.value == 0);
+    CHECK(h.rollbacks == 1);
+    s = make_script_state(p.value());
+    s.bindings = {PlayerId{0}};
+    h.refuse_begin = true;
+    REQUIRE_FALSE(visit_script(p.value(), s, 77, h));
+    CHECK(s.fault == ScriptFault::Host);
+    CHECK(s.last_arg == 77);
+    CHECK(h.rollbacks == 2);
 }

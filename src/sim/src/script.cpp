@@ -149,9 +149,7 @@ struct Compiler {
                 fail(l.offset, "unsupported query: " + bb::describe(l));
                 return std::nullopt;
             }
-            if (auto s = symbol(l.name))
-                e.index = *s;
-            else if (upper(l.name) == "PLAYTIME")
+            if (upper(l.name) == "PLAYTIME")
                 e.query = ScriptQuery::Playtime;
             else if (upper(l.name).starts_with("TIMER_")) {
                 auto n = number(std::string_view(l.name).substr(6), l.offset);
@@ -161,7 +159,9 @@ struct Compiler {
                 }
                 e.query = ScriptQuery::Timer;
                 e.index = static_cast<std::uint32_t>(*n);
-            } else {
+            } else if (auto signal = symbol(l.name))
+                e.index = *signal;
+            else {
                 fail(l.offset, "unknown signal/query: " + l.name);
                 return std::nullopt;
             }
@@ -256,9 +256,31 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
         source.size() > limits.source_bytes || limits.nodes == 0 || limits.nodes > 65536 ||
         limits.depth == 0 || limits.depth > 128 || limits.work == 0 || limits.work > 10000000)
         return ScriptError{0, "invalid script limits/source size"};
-    auto ast = bb::parse(
-        formats::Bytes(reinterpret_cast<const std::uint8_t*>(source.data()), source.size()),
-        {.max_condition_depth = limits.depth});
+    // Normalize only grammar keywords, preserving symbol/string bytes and offsets.
+    const auto bytes = [](const std::string& text) {
+        return formats::Bytes(reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+    };
+    auto tokens = bb::lex(bytes(source));
+    if (!tokens)
+        return ScriptError{static_cast<std::uint32_t>(tokens.error().offset),
+                           tokens.error().text()};
+    std::string grammar = source;
+    const std::set<std::string> keywords{"SET", "IF", "THEN", "ELSE", "INITBLOCK", "TRUE", "FALSE"};
+    std::set<std::string> sections;
+    for (const auto& token : tokens.value()) {
+        auto name = upper(token.text);
+        if (token.kind == bb::TokenKind::Section) {
+            if (!sections.insert(name).second)
+                return ScriptError{static_cast<std::uint32_t>(token.offset),
+                                   "duplicate script section: " + name};
+            grammar.replace(token.offset, token.text.size(), name);
+        } else if (token.kind == bb::TokenKind::Name && keywords.contains(name))
+            grammar.replace(token.offset, token.text.size(), name);
+    }
+    for (const auto& section : bb::known_sections())
+        if (!sections.contains(std::string(section.name)))
+            return ScriptError{0, "missing required script section: " + std::string(section.name)};
+    auto ast = bb::parse(bytes(grammar), {.max_condition_depth = limits.depth});
     if (!ast)
         return ScriptError{static_cast<std::uint32_t>(ast.error().offset), ast.error().text()};
     Compiler c{{}, env, {}, 0};
@@ -334,8 +356,10 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
     return std::move(c.p);
 }
 bool ScriptWork::consume() {
-    if (remaining == 0)
+    if (remaining == 0) {
+        exhausted = true;
         return false;
+    }
     --remaining;
     ++used;
     return true;
@@ -381,6 +405,9 @@ bool visit_script(const ScriptProgram& p, ScriptState& state, std::uint32_t arg,
     ScriptFault fault = ScriptFault::Host;
     std::uint32_t offset = 0;
     if (!host.begin()) {
+        host.rollback();
+        state.last_arg = arg;
+        state.last_work = 0;
         state.context = ScriptContext::Fault;
         state.fault = fault;
         return false;
@@ -398,7 +425,7 @@ bool visit_script(const ScriptProgram& p, ScriptState& state, std::uint32_t arg,
                      i.action == ScriptAction::PermissionAll) {
                 if (!host.permission(i.index, i.type, i.value,
                                      i.action == ScriptAction::PermissionAll, work)) {
-                    fault = work.remaining == 0 ? ScriptFault::Budget : ScriptFault::Host;
+                    fault = work.exhausted ? ScriptFault::Budget : ScriptFault::Host;
                     return false;
                 }
             } else if (!host.timer(i.action, i.index, i.value))

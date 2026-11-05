@@ -8,7 +8,10 @@
 foreach(name
     "anno_app_tests.play: islands are the ones the sim placed"
     "anno_app_tests.play: tick 0 matches the viewer except objects the sim did not place")
-  if("${name}" IN_LIST anno_app_tests_HEAVY_TESTS)
+  # list(FIND), not if(IN_LIST): CTest reads this file with policy CMP0057 unset, where IN_LIST
+  # is not an operator and the if() is an error that stops CTest before any test runs.
+  list(FIND anno_app_tests_HEAVY_TESTS "${name}" index)
+  if(NOT index EQUAL -1)
     set_tests_properties("${name}" PROPERTIES TIMEOUT 8000)
   endif()
 endforeach()

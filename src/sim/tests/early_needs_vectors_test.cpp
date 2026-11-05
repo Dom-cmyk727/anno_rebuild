@@ -1,8 +1,9 @@
 // MAP-NEEDS-2 N1: the existing farm and workshop kernels and the harvest choice against the
 // hand-derived vectors of fixtures/synthetic/sim/early_needs_vectors.txt (checked independently by
 // tools/early_needs_ref.py). Runs the record kinds the engine already implements (gate, farm,
-// wstep, pick); `route`, `credit` (Farm), `trip`, `offer` and the `*run` records belong to N2 and
-// are only counted here (docs/sim/early-needs.md section 7).
+// wstep, pick); `route`, `credit` (Farm), `trip`, `offer`, `visit`, `arrive`, `attach`, `detach`,
+// `create`, `send`, `stepa` and the `*run` records belong to N2 and are only counted here
+// (docs/sim/early-needs.md section 7).
 #include <cstdint>
 #include <fstream>
 #include <map>
@@ -144,6 +145,6 @@ TEST_CASE("early needs vectors: the farm and workshop kernels and the harvest ch
             CHECK_MESSAGE(got.at(k) == v, t[0] << " " << t[1] << ": " << k);
         }
     }
-    CHECK(run == 36);
-    CHECK(pending == 31);
+    CHECK(run == 41);
+    CHECK(pending == 68);
 }

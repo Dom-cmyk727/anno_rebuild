@@ -35,22 +35,34 @@ def run(cmd, text, timeout):
         os.unlink(path)
 
 
+def run_path(cmd, path, timeout):
+    try:
+        return subprocess.run(cmd + [path], capture_output=True, timeout=timeout).returncode
+    except subprocess.TimeoutExpired:
+        return -1
+
+
 def run_file(cmd, path, timeout):
-    p = subprocess.run(cmd + [path], capture_output=True, text=True, timeout=timeout)
-    return p.returncode, p.stdout + p.stderr
+    try:
+        p = subprocess.run(cmd + [path], capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout + p.stderr
+    except subprocess.TimeoutExpired:
+        return -1, 'timeout'
 
 
-def check(cmd, vectors=None, timeout=20.0, min_vectors=50):
+def check(cmd, vectors=None, timeout=20.0, min_vectors=100):
     """-> list of failure messages (empty = the reference honours the contract)."""
     bad = []
 
     def expect(name, got, want):
-        if got != want:
+        if got == -1:
+            bad.append('%s: timed out after %ss (a hanging reference fails here)' % (name, timeout))
+        elif got != want:
             bad.append('%s: exit %s, wanted %s' % (name, got, want))
     expect('empty file', run(cmd, '# nothing\n', timeout)[0], 2)
     expect('malformed vector', run(cmd, HEAD + 'credit C home=farm goods=zzz in1=0 raw=0 amount=256 => raw=1\n', timeout)[0], 2)
-    expect('missing file', subprocess.run(cmd + ['/nonexistent/vectors.txt'], capture_output=True,
-                                          timeout=timeout).returncode, 2)
+    expect('malformed line beside a valid vector', run(cmd, HEAD + GOOD + 'raw=256\n' + 'credit D home=farm goods=zzz in1=0 raw=0 amount=1 => raw=1\n', timeout)[0], 2)
+    expect('missing file', run_path(cmd, '/nonexistent/vectors.txt', timeout), 2)
     code, _ = run(cmd, HEAD + GOOD + 'raw=256\n', timeout)
     expect('correct vector', code, 0)
     code, out = run(cmd, HEAD + GOOD + 'raw=257\n', timeout)
@@ -79,12 +91,17 @@ def main():
         print('FAIL', m)
     if bad:
         return 1
+    hang = [sys.executable, '-I', '-c', 'import time; time.sleep(60)']
+    hung = check(hang, a.vectors, 2.0)
+    if not any('timed out' in m for m in hung):
+        print('FAIL a hanging stand-in was not reported as a timeout by a named check')
+        return 1
     echo = [sys.executable, '-I', '-c', 'import sys; print("1 vectors, 0 disagreements"); sys.exit(0)']
     echoed = check(echo, a.vectors, a.timeout)
     if not echoed:
         print('FAIL the echo stand-in passed the contract')
         return 1
-    print('contract ok (%d checks reject the echo stand-in)' % len(echoed))
+    print('contract ok (%d checks reject the echo stand-in, %d the hanging stand-in)' % (len(echoed), len(hung)))
     return 0
 
 

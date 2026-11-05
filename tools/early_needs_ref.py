@@ -16,6 +16,18 @@ Records (key=value tokens, then `=>` and the expected keys):
   trip    cap= tiles=                                       => amount= cuts=
   wstep   susp= n_in= need= rate= cap= in= out= carriers= max=  => made= in= out= status= send=
   offer   sum= need= avail= cap= prio_in=                   => prio= score=
+  visit   delay= stamp= t=                                  => delay= surplus= worked= stamp=
+          (the figure's first micro-step: 5 ticks owed, consumed across visits; elapsed = (u16)(t - stamp); 0 elapsed = no work)
+  arrive  home= goods= in1= raw= amount=                    => raw= lost=
+          (step C's arrival: no home or cargo goods 0 delivers nothing, the cargo is lost)
+  attach  slots= fig=                                       => slots= ret=
+  detach  slots= fig= times=                                => slots=
+          (Farm attach 0x10074540 / detach 0x1006f070: five pointer slots)
+  create  flags= entrance=                                  => fig=
+          (this+0x118 = 0x10072d20 returns null when flag bits 4/5 are set or the entrance search 0x10072b50 fails)
+  send    tests= flags= entrance= input0=                   => order= draws= attached= cargo=
+          (the dispatch order: tests, one world draw, this+0x118, then the cargo goods; a null figure skips attach and cargo)
+  stepa   cand= claimed= reach=                             => result=
   farmrun raw= rate= need= cap= steps=                      => out= raw= steps=
   wrun    in= rate= need= cap= steps=                       => out= in= steps=
 
@@ -122,6 +134,77 @@ def credit(home, goods, in1, raw, amount):
     return raw
 
 
+def visit(delay, stamp, t):
+    # 0x10034760 step 3 (docs/re/forestry.md 2.13): no elapsed ticks -> no work and the stamp is NOT written; else the stamp
+    # := t, the saved first micro-step (5 ticks at the spawn) is consumed first, the surplus goes on to the body
+    e = (t - stamp) & 0xFFFF
+    if e == 0:
+        return delay, 0, 0, stamp
+    used = min(delay, e)
+    delay -= used
+    e -= used
+    if delay > 0:
+        return delay, 0, 0, t & 0xFFFF
+    return delay, e, 1, t & 0xFFFF
+
+
+def arrive(home, goods, in1, raw, amount):
+    # 0x10057bd0 arrival: with a home and cargo goods != 0 -> home +0xc0(goods, amount); else nothing, the cargo is lost
+    if home == 'none' or goods == 0:
+        return list(raw), amount
+    return credit(home, goods, in1, raw, amount), 0
+
+
+def attach(slots, fig):
+    # 0x10074540: first free of five slots; all full -> -1 (no counter exists)
+    slots = list(slots)
+    for i in range(5):
+        if slots[i] == 0:
+            slots[i] = fig
+            return slots, 0
+    return slots, -1
+
+
+def detach(slots, fig, times):
+    # 0x1006f070: clears the first slot that equals the figure; no match -> nothing
+    slots = list(slots)
+    for _ in range(times):
+        for i in range(5):
+            if slots[i] == fig:
+                slots[i] = 0
+                break
+    return slots
+
+
+def create(flags, entrance):
+    # 0x10072d20: refused while (f >> 1 & 0x10) | (f & 0x10) != 0 (flag bits 5/4) or without a reachable entrance (0x10072b50)
+    if (((flags >> 1) & 0x10) | (flags & 0x10)) != 0 or not entrance:
+        return 0
+    return 1
+
+
+def send(tests, flags, entrance, input0):
+    # 0x1006eda5-0x1006ede4 tests, 0x1006edf3-0x1006ee06 one world draw (discarded), 0x1006ee2d this+0x118, 0x1006ee4d cargo
+    order = []
+    draws = attached = cargo = 0
+    if not tests:
+        return order, draws, attached, cargo
+    order.append('tests')
+    order.append('draw')
+    draws = 1
+    order.append('create')
+    if create(flags, entrance):                  # 0x1006ee33 test eax,eax; je -> skips attach and cargo
+        order.append('cargo')
+        attached = 1
+        cargo = input0
+    return order, draws, attached, cargo
+
+
+def stepa(cand, claimed, reach):
+    # candidates minus claimed; none, or none reachable by the walk -> the trip ends empty
+    return 'take' if (cand - claimed) > 0 and reach > 0 else 'none'
+
+
 def pick(limit, nodes):
     # callback 0x10058a40: claimed -> continue; unclaimed goal -> take it, go on only while limit > score
     tile = None
@@ -214,6 +297,24 @@ def run_vector(kind, a):
         p, s = offer(int(a['sum']), int(a['need']), int(a['avail']), int(a['cap']),
                      int(a['prio_in']) if 'prio_in' in a else None)
         return {'prio': str(p), 'score': str(s)}
+    if kind == 'visit':
+        d, sur, w, st = visit(int(a['delay']), int(a['stamp']), int(a['t']))
+        return {'delay': str(d), 'surplus': str(sur), 'worked': str(w), 'stamp': str(st)}
+    if kind == 'arrive':
+        r2, lost = arrive(a['home'], int(a['goods']), int(a['in1']), ints(a['raw']), int(a['amount']))
+        return {'raw': fmt(r2), 'lost': str(lost)}
+    if kind == 'attach':
+        sl, ret = attach(ints(a['slots']), int(a['fig']))
+        return {'slots': fmt(sl), 'ret': str(ret)}
+    if kind == 'detach':
+        return {'slots': fmt(detach(ints(a['slots']), int(a['fig']), int(a['times'])))}
+    if kind == 'create':
+        return {'fig': str(create(int(a['flags'], 0), int(a['entrance'])))}
+    if kind == 'send':
+        o, dr, at, cg = send(int(a['tests']), int(a['flags'], 0), int(a['entrance']), int(a['input0']))
+        return {'order': '>'.join(o) if o else 'none', 'draws': str(dr), 'attached': str(at), 'cargo': str(cg)}
+    if kind == 'stepa':
+        return {'result': stepa(int(a['cand']), int(a['claimed']), int(a['reach']))}
     if kind == 'farmrun':
         raw, out, rate, need, cap, steps = int(a['raw']), 0, int(a['rate']), int(a['need']), int(a['cap']), 0
         while steps < min(int(a['steps']), MAX_RUN):
@@ -242,6 +343,13 @@ KEYS = {
     'trip': {'amount', 'cuts'},
     'wstep': {'made', 'in', 'out', 'status', 'send'},
     'offer': {'prio', 'score'},
+    'visit': {'delay', 'surplus', 'worked', 'stamp'},
+    'arrive': {'raw', 'lost'},
+    'attach': {'slots', 'ret'},
+    'detach': {'slots'},
+    'create': {'fig'},
+    'send': {'order', 'draws', 'attached', 'cargo'},
+    'stepa': {'result'},
     'farmrun': {'out', 'raw', 'steps'},
     'wrun': {'out', 'in', 'steps'},
 }

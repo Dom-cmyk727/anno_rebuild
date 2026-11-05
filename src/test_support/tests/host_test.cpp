@@ -82,7 +82,7 @@ TEST_CASE("host: this process has a non-zero start stamp that proc_pidinfo agree
     const std::uint64_t mine = anno::test::wire::process_started();
     CHECK(mine != 0);
     CHECK(anno::test::wire::process_started() == mine);
-    const auto info = darwin_proc_info(static_cast<int>(::getpid()));
+    const auto info = darwin_proc_info(static_cast<std::uint64_t>(::getpid()));
     CHECK(info.state == DarwinProc::Running);
     CHECK(info.started == mine);
 }
@@ -90,13 +90,13 @@ TEST_CASE("host: this process has a non-zero start stamp that proc_pidinfo agree
 TEST_CASE("host: a live child is Running with a start stamp, and Gone once killed and reaped" *
           doctest::test_suite("host")) {
     const pid_t pid = spawn_plain("/bin/sleep", "30");
-    const auto live = darwin_proc_info(static_cast<int>(pid));
+    const auto live = darwin_proc_info(static_cast<std::uint64_t>(pid));
     CHECK(live.state == DarwinProc::Running);
     CHECK(live.started != 0);
     ::kill(pid, SIGKILL);
     int status = 0;
     CHECK(::waitpid(pid, &status, 0) == pid);
-    CHECK(darwin_proc_info(static_cast<int>(pid)).state == DarwinProc::Gone);
+    CHECK(darwin_proc_info(static_cast<std::uint64_t>(pid)).state == DarwinProc::Gone);
 }
 
 TEST_CASE("host: an exited child that is not reaped is not Running" * doctest::test_suite("host")) {
@@ -108,10 +108,10 @@ TEST_CASE("host: an exited child that is not reaped is not Running" * doctest::t
     // it reads as Gone. The owner check treats Gone and Exited alike (stopped), so
     // the property tested is "not Running". Exited (pbi_status SZOMB) is a
     // defensive branch that this host does not produce.
-    CHECK(darwin_proc_info(static_cast<int>(pid)).state != DarwinProc::Running);
+    CHECK(darwin_proc_info(static_cast<std::uint64_t>(pid)).state != DarwinProc::Running);
     int status = 0;
     CHECK(::waitpid(pid, &status, 0) == pid);
-    CHECK(darwin_proc_info(static_cast<int>(pid)).state == DarwinProc::Gone);
+    CHECK(darwin_proc_info(static_cast<std::uint64_t>(pid)).state == DarwinProc::Gone);
 }
 
 TEST_CASE("host: a pid that names no process reads as Gone" * doctest::test_suite("host")) {

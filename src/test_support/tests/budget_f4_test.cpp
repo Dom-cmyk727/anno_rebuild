@@ -40,7 +40,9 @@ constexpr std::uint16_t kPortCancelAll = 47822;   // E2
 constexpr std::uint16_t kPortRawHello = 47823;    // N2, server exact-build
 constexpr std::uint16_t kPortCloexec = 47824;     // N3, sockets CLOEXEC
 constexpr std::uint16_t kPortMeterLeak = 47825;   // N4, meter closefrom
-constexpr std::uint16_t kPortClientLeak = 47826;  // N4b, client spawn closefrom
+// Used only in the Linux branch below; unused on macOS/Windows, where that branch
+// is compiled out.
+[[maybe_unused]] constexpr std::uint16_t kPortClientLeak = 47826; // N4b, client spawn closefrom
 
 std::filesystem::path f4_dir() {
     const auto dir = std::filesystem::temp_directory_path() / "anno1503-f4";

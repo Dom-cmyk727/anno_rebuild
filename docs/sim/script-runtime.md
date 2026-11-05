@@ -193,8 +193,10 @@ Signal names preserve exact bytes and compare case-sensitively. Keywords use
 ASCII case-insensitive matching. SET declarations become visible in source order;
 an earlier condition/assignment cannot refer to a later SET. Implicit
 SCHUETTIINITSIG exists first. Restored SIGNALS preserve those exact names.
-Mapper declarations likewise become visible in source order, with first matching
-ASCII-case-insensitive prefix-before-@ winning. Forward mapper references refuse.
+Mapper declarations likewise become visible in source order, with first ASCII-case-insensitive matching declaration winning. Strip the suffix at
+the first '@' from the action lookup argument only; preserve each declaration's
+complete name. Lookup Foo@x matches declaration Foo, but declaration Foo@x does
+not become Foo. Forward mapper references refuse.
 The initial binding validates a signed slot and resolves the configured neutral
 fallback only when that slot has no player; actual bindings remain persisted.
 
@@ -205,3 +207,7 @@ explicit started state and executes INIT at most once, including zero-IF program
 That continuity/safety adaptation is part of the policy identity. WON/LOST are
 unsupported: their global stop flag is therefore unreachable in accepted programs.
 The world script fault barrier is separate from original endgame stop handling.
+
+S1 execution review: /root/script_semantics_review APPROVED frozen5081f780;
+no P1/P2. Permission review requested one lookup/declaration clarification,
+now incorporated. Implementation tests and package reviews remain pending.

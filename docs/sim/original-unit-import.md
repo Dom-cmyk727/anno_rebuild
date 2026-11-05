@@ -449,3 +449,7 @@ It checks the actual branch0 wave, source money unchanged until350gold founding,
 original-hold payment, public unloads and ordinary HANDWERK1001 construction with
 300gold and exact stock debit. Continuation/denied-copy/fresh-process controls
 follow only after the unmodified-world path succeeds; no fullF2 claim yet.
+
+D-voyage-01 atf80ee29f retainedbuildFAIL: the new test narrowed u64 cargo
+tons to u32 command tons. No selection executed. Added explicit checked conversion;
+no production behavior or expected-value change.

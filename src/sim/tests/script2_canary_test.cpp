@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 
 #include <doctest/doctest.h>
 
@@ -507,9 +508,10 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
         const auto hold = find_figure(w.figures(), FigureId{1})->holds[h];
         if (!hold.goods || hold.amount_88 < 256)
             continue;
+        REQUIRE(hold.amount_88 / 256 <= std::numeric_limits<std::uint32_t>::max());
         const auto unloaded =
-            rec.submit({PlayerId{0},
-                        UnloadCmd{FigureId{1}, warehouse_id, h, hold.goods, hold.amount_88 / 256}});
+            rec.submit({PlayerId{0}, UnloadCmd{FigureId{1}, warehouse_id, h, hold.goods,
+                                               static_cast<std::uint32_t>(hold.amount_88 / 256)}});
         REQUIRE_MESSAGE(unloaded.ok(), "hold " << h << ": " << reject_name(unloaded.status));
         REQUIRE(unloaded.records.size() == 1);
         CHECK(unloaded.records[0].transferred_88 > 0);

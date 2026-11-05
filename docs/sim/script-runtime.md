@@ -646,3 +646,10 @@ B-restored-01:8/8 passes. B-correction-01 repeated unchanged code because the ed
 script refused its unmatched text; it supplies no correction evidence. Reviewer
 P2: AREA mapper omitted original `@` suffix truncation. Corrected with casefolded
 OTHER@ignored and unknown-prefix controls. B re-review remains pending.
+
+B review correction: reviewer withdrew the broad suffix-acceptance demand after
+tracing23af0 cargo-qualified AREA operand selection.992db04b/B-correction-02
+(9/9 passes) is retained as a superseded intermediate, not accepted fidelity.
+Decorated AREA FROM is now an explicit unsupported-query refusal; plain two-owner
+casefold binding remains supported. Added same-Ready-runtime membership/movement/
+owner/crew/removal controls and large false-AND no-index-work proof per B review.

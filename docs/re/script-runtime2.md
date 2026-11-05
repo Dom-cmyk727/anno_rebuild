@@ -40,3 +40,9 @@ Directory provenance: scanner`10004580` enumerates Scenes subdirectories;`100046
 Scene`100157dc..10015807` emits `{code0x13d,string-kind7,aux0,recipient0xaa,final0xff}`. Frame class0x3800 getter`10062990`, vtable`1008bc04`, enqueue`10061010` copies the string at`10061139..10061177`. Recipient0xaa explicitly broadcasts to local consumers (`10061034..10061050`), not mapped HUMAN. Event317's table at`100895d8+317*28` is `{0,0,1,0,0,0,8}`. Dispatch`10062090` skips pause/focus/UI flag branches and calls sound handling`10062380`; four host slots may drop a request when full. No script cursor, wait, timer or PRNG feedback is present. Actual audio/muting is host behavior and NOT_RUN here.
 
 The typed engine event preserves code/broadcast/order and a portable namespaced asset reference. Namespace is persisted as content input; absence is an explicit supported-context refusal for wave programs, not silent output loss. Transactionally staged output publishes only after success. Existing configurable host queue/drop-oldest behavior is the engine output adaptation, distinct from the original four audio slots. Native Ready load does not redeliver old host output; a cut before the future emission recreates it. Draining/listening/muting must not affect canonical state or random draws. No external exactly-once playback guarantee is made.
+
+B review extension (primary Scene20e45→23af0): decorated AREA FROM operands
+carry a cargo qualifier after `@`; the mapper prefix alone does not define this
+operand. SCRIPT2 explicitly refuses decorated area operands. Complete endless01
+uses undecorated HUMAN. Cargo-qualified touch remains unsupported, rather than
+quietly discarding the qualifier. Permission action prefix rules are unchanged.

@@ -156,12 +156,13 @@ struct Compiler {
                 auto area = std::find_if(p.areas.begin(), p.areas.end(), [&](const auto& a) {
                     return a.offset < l.offset && upper(a.name) == upper(l.name);
                 });
-                std::string lookup(*l.arg);
-                lookup.resize(lookup.find('@') == std::string::npos ? lookup.size()
-                                                                    : lookup.find('@'));
+                if (l.arg->find('@') != std::string::npos) {
+                    fail(l.offset, "unsupported area cargo qualifier");
+                    return std::nullopt;
+                }
                 auto mapping =
                     std::find_if(p.mappings.begin(), p.mappings.end(), [&](const auto& m) {
-                        return m.offset < l.offset && upper(m.name) == upper(lookup);
+                        return m.offset < l.offset && upper(m.name) == upper(*l.arg);
                     });
                 if (area == p.areas.end() || mapping == p.mappings.end()) {
                     fail(l.offset, "unknown area or player mapping");

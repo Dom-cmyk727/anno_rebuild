@@ -220,17 +220,77 @@ TEST_CASE("SCRIPT2 area validation and source order bindings remain strict") {
     CHECK_FALSE(compile_script(bad, {{}, 32, 5}));
 }
 
-TEST_CASE("SCRIPT2 area mapper suffix resolves casefolded prefix and exact owner") {
+TEST_CASE("SCRIPT2 area plain mapper casefold exact owner and cargo qualifier refusal") {
     AreaFixture f;
     f.figure(113, {2560, 7680}, PlayerId{1});
     f.players.slots[1] = make_player(PlayerId{1}, f.cfg);
     auto source = area_source();
     source.insert(source.find("[SCRIPT_KERNEL]"), "\"OTHER\" 1\n");
-    source.replace(source.find("FROM \"ME\""), 9, "FROM \"oThEr@ignored\"");
+    source.replace(source.find("FROM \"ME\""), 9, "FROM \"oThEr\"");
     auto r = f.runtime(source);
     REQUIRE(f.visit(r));
     CHECK(r.state.signals[1] == 1);
-    auto bad = source;
-    bad.replace(bad.find("oThEr@ignored"), 13, "UNKNOWN@ignored");
-    CHECK_FALSE(compile_script(bad, {{}, 32, 5}));
+    for (const auto name : {"OTHER@WOOD", "ME@anything", "UNKNOWN@WOOD"}) {
+        auto bad = source;
+        bad.replace(bad.find("oThEr"), 5, name);
+        auto refused = compile_script(bad, {{}, 32, 5});
+        REQUIRE_FALSE(refused);
+        CHECK(refused.error().message == "unsupported area cargo qualifier");
+    }
+}
+TEST_CASE("SCRIPT2 Ready runtime observes changed authoritative membership without touch history") {
+    AreaFixture f;
+    f.figure(108);
+    auto source = area_source("30,10,20,40", "SOLDIER");
+    source.insert(source.find("[SIGNALS]"), "");
+    source.replace(source.find("HIT=TRUE; }"), 11, "HIT=TRUE; } ELSE { HIT=FALSE; }");
+    auto r = f.runtime(source);
+    auto check = [&](bool expected) {
+        REQUIRE(f.visit(r));
+        CHECK(bool(r.state.signals[1]) == expected);
+    };
+    check(false);
+    f.figure(97);
+    auto* child = find_figure(f.figures, FigureId{2});
+    child->parent = FigureId{1};
+    child->crew_slot = 7;
+    check(true);
+    auto* parent = find_figure(f.figures, FigureId{1});
+    parent->pos.x = 5120;
+    check(false);
+    parent->pos.x = 2560;
+    check(true);
+    parent->owner = PlayerId{1};
+    check(false);
+    parent->owner = PlayerId{0};
+    check(true);
+    child->crew_slot.reset();
+    check(false);
+    child->crew_slot = 7;
+    check(true);
+    parent->parent = FigureId{2};
+    check(false);
+    parent->parent = FigureId{};
+    check(true);
+    parent->expiry_stamp = 0;
+    check(false);
+    parent->expiry_stamp.reset();
+    check(true);
+    remove_figure(f.figures, FigureId{1});
+    check(false);
+}
+TEST_CASE("SCRIPT2 false AND area guard does not construct an unrelated large index") {
+    AreaFixture f;
+    for (int i = 0; i < 1000; ++i)
+        f.figure(113);
+    auto source = area_source();
+    source.insert(source.find("IF AREA"), "SET NEVER=FALSE;\n");
+    source.replace(source.find("IF AREA"), 7, "IF NEVER && AREA");
+    auto r = f.runtime(source, {.work = 10});
+    REQUIRE(f.visit(r));
+    CHECK(r.state.signals[1] == 0);
+    CHECK(r.query_stats.slots == 0);
+    CHECK(r.query_stats.inserted == 0);
+    CHECK(r.query_stats.candidates == 0);
+    CHECK(r.state.fault == ScriptFault::None);
 }

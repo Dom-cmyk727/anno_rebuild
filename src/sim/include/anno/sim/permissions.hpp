@@ -6,8 +6,8 @@ namespace anno::sim {
 // Engine rows use widened type ids. Values preserve the original byte.
 using PermissionRows = std::vector<BuildPermission>;
 [[nodiscard]] std::string validate_permissions(const PermissionRows&, const TypeRegistry&);
-[[nodiscard]] formats::Result<PermissionRows, std::string> import_permissions(formats::Bytes,
-                                                                              const TypeRegistry&);
+[[nodiscard]] formats::Result<PermissionRows, std::string>
+import_permissions(formats::Bytes, const TypeRegistry&, PermissionRows initial = {});
 // Known, validated player/registry; raw value is deliberately NOT normalized.
 bool set_construction_permission(Player&, PermissionRows&, const TypeRegistry&, TypeId,
                                  std::uint32_t raw);

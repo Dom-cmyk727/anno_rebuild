@@ -21,8 +21,8 @@ std::string validate_permissions(const PermissionRows& rows, const TypeRegistry&
             return "invalid construction permission row";
     return {};
 }
-formats::Result<PermissionRows, std::string> import_permissions(formats::Bytes bytes,
-                                                                const TypeRegistry& types) {
+formats::Result<PermissionRows, std::string>
+import_permissions(formats::Bytes bytes, const TypeRegistry& types, PermissionRows rows) {
     if (bytes.size() % 4 != 0)
         return std::string("ANLTRG length is not a multiple of four");
     if (auto problem = validate_permissions(rows, types); !problem.empty())

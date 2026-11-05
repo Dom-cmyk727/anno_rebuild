@@ -92,7 +92,7 @@ struct ScenarioSpec {
         /// nullopt = the make_* default of the type's class (a mine finds its
         /// deposit at attach); a given payload replaces it, keeps its stocks,
         /// switches and `last`, and must satisfy payload_problem for the type.
-        std::optional<Payload> payload;
+        std::optional<Payload> payload{};
     };
     /// A city of an island. Cities are created in ascending number, so the world
     /// does not depend on the order of the vector; the buildings of a city in file

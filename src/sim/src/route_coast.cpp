@@ -444,7 +444,7 @@ std::uint16_t CoastIndex::type(std::int32_t cx, std::int32_t cz) const {
 std::uint64_t CoastIndex::allocated_sectors() const {
     std::uint64_t n = 0;
     for (const auto& s : sectors_) {
-        n += s.empty() ? 0 : 1;
+        n += s.empty() ? 0U : 1U;
     }
     return n;
 }

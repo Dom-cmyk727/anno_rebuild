@@ -149,7 +149,7 @@ std::uint64_t owned_by(const sim::World& w, std::uint32_t owner) {
     std::uint64_t n = 0;
     const sim::TileLayer& t = isl(w).tiles;
     for (std::uint64_t i = 0; i < t.tile_count(); ++i) {
-        n += t.owner(i) == owner ? 1 : 0;
+        n += t.owner(i) == owner ? 1U : 0U;
     }
     return n;
 }

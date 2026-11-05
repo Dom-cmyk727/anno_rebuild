@@ -220,7 +220,7 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
         b.add(big);
     }
     // Figure types of the OCCUR objects (BEWOHNTYPE ERZSYMBOL 145, SCHATZ 146, WALSYMBOL 147).
-    for (const std::pair<std::uint32_t, std::uint32_t> ft :
+    for (const std::pair<std::uint32_t, std::uint32_t>& ft :
          {std::pair{1560U, 145U}, std::pair{1550U, 146U}, std::pair{1570U, 147U}}) {
         sim::FigureType t;
         t.id = ft.first;

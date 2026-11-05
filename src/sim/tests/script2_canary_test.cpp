@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include <anno/formats/bigbrother.hpp>
 #include <anno/formats/sze.hpp>
 #include <anno/sim/replay.hpp>
 #include <anno/sim/scenario.hpp>
@@ -220,7 +221,8 @@ TEST_CASE("SCRIPT2 original unit import dependency is explicit") {
         return;
     }
     const auto path = *game / "Scenes/0011SingleEndlosAddon/endless01.sze";
-    auto parsed = anno::formats::sze::Scene::parse(read(path));
+    const auto raw = read(path);
+    auto parsed = anno::formats::sze::Scene::parse(raw);
     REQUIRE(parsed);
     auto players = parsed.value().players();
     REQUIRE(players);
@@ -243,8 +245,42 @@ TEST_CASE("SCRIPT2 original unit import dependency is explicit") {
     auto input = original(*game);
     CHECK(input.spec.figures.empty());
     CHECK(input.world.figures().by_id.empty());
+    auto payload = anno::formats::bigbrother::find_payload(raw);
+    REQUIRE(payload);
+    CHECK(input.spec.script_source == std::string(payload.value().begin(), payload.value().end()));
+    CHECK(input.world.script().source == input.spec.script_source);
+    const auto before = *input.world.players().find(PlayerId{0});
+    const auto initial_hash = input.world.state_hash();
+    const auto initial_rng = input.world.rng().cursor();
+    const auto researched = [](const Player& p) {
+        std::uint32_t count = 0;
+        for (std::uint32_t i = 0; i < p.research.state.size(); ++i)
+            count += p.research.researched(i) ? 1u : 0u;
+        return count;
+    };
     auto rec = Recorder::start(input.world);
     REQUIRE(rec);
+    const auto& after = *input.world.players().find(PlayerId{0});
+    CHECK(after.money == before.money);
+    CHECK(after.permissions.size() == 462);
+    CHECK(input.world.rng().cursor() == initial_rng);
+    CHECK(input.world.clock().ms == 0);
+    MESSAGE("ORIGINAL_INIT_LEDGER gold_before="
+            << before.money << " gold_after=" << after.money
+            << " permissions_before=" << before.permissions.size()
+            << " permissions_after=" << after.permissions.size() << " stage_before=" << before.flags
+            << " stage_after=" << after.flags << " researched_before=" << researched(before)
+            << " researched_after=" << researched(after) << " initial_state_hash_u64="
+            << initial_hash << " ready_state_hash_u64=" << input.world.state_hash()
+            << " rng_before_after=" << initial_rng
+            << " init_work=" << input.world.script().state.last_work);
+    const auto& program = *input.world.script().program;
+    REQUIRE(program.mappings.size() == input.world.script().state.bindings.size());
+    for (std::size_t i = 0; i < program.mappings.size(); ++i)
+        MESSAGE("ORIGINAL_MAPPING name="
+                << program.mappings[i].name << " slot=" << program.mappings[i].slot
+                << " actual_player=" << input.world.script().state.bindings[i].v);
+
     CHECK(input.world.script().state.context == ScriptContext::Ready);
     CHECK(input.world.script().program->branches.size() == 7);
     rec.value().advance(36);

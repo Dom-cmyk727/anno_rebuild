@@ -612,7 +612,8 @@ the generic namespace-aware loader; no Windows UI change is needed.
 Compatibility is planned before new fixtures: native130 + SCRIPT2 discriminator,
 script policy2, replay frame3 with explicit Startup entry (legacyframe2 can remain
 readable for framing/version-refusal inspection without reinterpreting its native
-state). SCRIPT1 native129+SCRIPT1 and its recordings/tools/goldens remain frozen.
+state). SCRIPT1 native129+SCRIPT1 recordings, goldens and pure stream/runtime references
+remain preserved; both canary wrappers later receive child-summary validation hardening.
 New fields include asset limit and optional namespace; derived program/index/work
 telemetry are not state. An independent new stream reference and literal bytes
 must precede the corresponding persistence claim. Default empty script scope is
@@ -798,11 +799,11 @@ only change create_hash, and confirmed historical references/artifacts unchanged
 No remaining E P1/P2. Complete original compilation/INIT proven; F real conditional
 execution and construction remain separate open acceptance.
 
-F discovery uses the unchanged normal original file, initial Human ship and public
-MoveCmd to a genuinely routable water goal in the authored NEGER rectangle. No
-map/unit/resource/permission edits. Bounded1000steps×1000ms, stop before the next
-script visit after physical entry to capture a native cut. Construction, encoded
-fresh-process replay, soldier/action fixture and scale/inventory remain pending.
+Historical initial F discovery plan (unexecuted): use the unchanged file's Human
+ship and public MoveCmd to seek an authored-area water goal. Both discovery
+attempts failed at actor lookup before goal selection, route planning or movement;
+no routability claim was established. Construction, real conditional and original
+fresh-process acceptance therefore remain OPEN; separate synthetic proof follows.
 
 F-discovery-01 build failed before selection: diagnostic used nonexistent Island
 number member. Fixed diagnostic to use its terrain origin; no gameplay code change.

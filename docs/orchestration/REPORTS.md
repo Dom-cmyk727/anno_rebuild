@@ -12328,3 +12328,41 @@ board's "edit no old entry" rule - the original entries above are left exactly a
    The local WSL ASan lane stays a required gate for any package that changes game-file paths,
    starting with W4-OPENING-2 - it still needs the committed gate script (review F5), not a cloud
    substitute.
+
+## W4-MAIN-1 — round R1 — 2026-11-05 — status: PUBLISHED, AWAITING ORCHESTRATOR FAST-FORWARD
+
+Round R1 (orchestrator review, 2026-11-05) done on a fresh checkout
+(`anno1503-W4-main-1-r1`, not a live executor worktree, not `E:\anno1503`), branched from
+`task/W4-main-1` at `66ea929f`:
+
+1. **Re-merge** (`98ae6898`): ordinary merge of `origin/main` (`bf321da2`, three board commits:
+   `54a53e67`, `20bd97fd`, `27022d75`), conflict-free as the trial merge predicted.
+2. **F1** (`3afbe42a`): ported the branch's source-scan test for skip-phrasing coverage, classed
+   four more "no scenario files"/"no endless scenario"/two ".sze ... is not in this game
+   directory" phrasings as required-asset, and listed the remaining four "other" phrasings with
+   their reasons (one flagged, not reclassified - see the commit).
+3. **D1** (`86bd49c5`): per-island River Q5 floor, 0.45 for `D_256x256_0045_5B`, 0.55 unchanged
+   elsewhere; `docs/render/iso.md` and OQ-026 updated from "open" to "decided".
+4. **F3** (`a240ee45`): corrected the two overstated report claims, with a new entry (old entries
+   unedited).
+
+**Gates, all pass:**
+- clang-format 23.1.3 on the one changed C++ file (`river_flow_corpus_test.cpp`): clean.
+- `ctest_verdict_test.py`: 25/25 (was 24; +1 for the ported source-scan test).
+- `workflow_test.py`: fails 13/21 identically with or without this round's changes (confirmed via
+  `git stash`) - the same pre-existing, Windows-native (non-WSL) incompatibility already recorded
+  in the W4-MAIN-1 CI incident report; it passes as `test_workflow_contract` on real CI.
+- Native MSVC, both Q5 cases (`river flow shading moves with the flow on real rivers (Q5, CPU
+  path, game files)`, `the flow shading moves with the flow in all windows...`): both PASS.
+- The sim founding-fixture tests (`site checks`, `territory`, 11 cases): 11/11 PASS.
+- WSL GCC 13 / Clang 18 `-Werror`: clean, all four configurations (full-tree run, which covers
+  the one changed file).
+- GitHub CI on the pushed head (`a240ee45`): run
+  [`42028717774`](https://github.com/Dom-cmyk727/anno_rebuild/actions/runs/42028717774) queued at
+  push time; result to follow once it completes (this entry predates it, written at hand-back
+  per the board's step 6).
+
+**Hand back.** `task/W4-main-1` pushed to `a240ee45`; remote hash verified
+(`a240ee4593a67174931cc38774c4083565539ef4`). Per the board's step 6 and round R1 item 6:
+stopping here. The orchestrator fast-forwards `main`, records it in `docs/PLAN.md`, marks UI.2's
+"W4.4 merged" condition met, and checks CI on `main`.

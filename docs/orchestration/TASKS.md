@@ -2,7 +2,7 @@
 
 **Who writes this file:** the orchestrator session (Codex, by owner instruction). **Who reads it:** the executor sessions. The executor never edits this file; it writes to [`REPORTS.md`](REPORTS.md). The orchestrator updates this file after every review, so re-read it at the start of every task and whenever a task ends.
 
-## Current dispatch — 2026-11-05: Windows opening; first Mac cloth/leather; second Mac scripting
+## Current dispatch — 2026-11-05: Windows opening; first Mac cloth/leather; second Mac integration
 
 <!-- BEGIN MAP-NEEDS-2 DISPATCH -->
 **First Mac: MAP-NEEDS-2 is READY / RELEASED.** MAP-SUPPLY-1 and CLOSE are accepted
@@ -18,24 +18,33 @@ This dispatch supersedes the older first-Mac supply assignments below and does
 not change either the second Mac's scope or Windows' inputs and assignments.
 <!-- END MAP-NEEDS-2 DISPATCH -->
 
-**Second Mac: MAP-SCRIPT-2 is READY / RELEASED.** Execute the complete packet
-between `BEGIN MAP-SCRIPT-2` and `END MAP-SCRIPT-2` below. Its starting candidate
-is local `b19b509b17d760f1ebaa41e0476af9dab767a48b`, on `task/MAP-SCRIPT-1`.
-MAP-SCRIPT-1 is accepted only as a bounded headless implementation; no complete
-shipped permission program runs yet. This dispatch releases the missing
-`endless01` handlers and complete-program proof, not general campaign support.
-The first Mac's MAP-SUPPLY-1, ECON-BOOK-1 and all Windows assignments are unchanged.
+<!-- BEGIN MAP-INTEGRATE-1 DISPATCH -->
+**Second Mac: MAP-INTEGRATE-1 is READY / RELEASED.** The bounded UNIT1/SCRIPT2
+candidate at `50aa32e38706ad3c2e4302e8fcaada9f555ba034` is accepted; read the
+[orchestrator review](reviews/2026-11-05-map-unit-import1-acceptance.md).
+Execute [I0–I6](tasks/map-integrate-1.md) in a new local `task/MAP-INTEGRATE-1`
+branch in your existing owned checkout, starting at that exact UNIT1 pin.
+This authorizes one local merge of accepted supply pin
+`67158af4d29d87fed8686dc6542ca2a9f4b1f75c` into that integration branch, with
+reviewed semantic conflict resolution, a fresh identity and combined proofs.
+Do not merge the moving MAP branch or main. The first Mac's active MAP-NEEDS-2
+and all Windows work remain separate. No push or integration into their branches.
+Read the packet from fetched main; independent package approvals release later
+packages. The old SCRIPT2 packet below is historical, not a new assignment.
+<!-- END MAP-INTEGRATE-1 DISPATCH -->
 
 **Windows update, 2026-11-05 (orchestrator):** W4-MAIN-1 is done, and `main` is at `88968580`. **W4-OPENING-2 is
 current.** Its first package is W4-OPENING-CONTROLS-FLAKE, with step 0 first. W4-DEPTH-1-CLOSE runs beside it. Read
 the "W4-MAIN-1 done" update under "Other active dispatches".
 
 <!-- BEGIN MAP-SCRIPT-2 -->
-## MAP-SCRIPT-2 — second Mac: execute the complete endless01 script
+## MAP-SCRIPT-2 — historical packet; bounded closure accepted through UNIT1
 
 ### Assignment, accepted input and boundaries
 
-**Owner:** second Mac executor. **Status:** READY / RELEASED, 2026-11-05.
+**Owner:** second Mac executor. **Status:** HISTORICAL; bounded headless closure
+accepted at `50aa32e3` through MAP-UNIT-IMPORT-1. Current work is MAP-INTEGRATE-1
+above. The original assignment below is retained as history, not re-released.
 Continue in your existing owned checkout:
 `/Users/dom/Dev/anno1503-worktrees/anno1503-worktrees/anno1503-MAP-BOOTSTRAP-1`,
 branch `task/MAP-SCRIPT-1`, from `b19b509b17d760f1ebaa41e0476af9dab767a48b`.
@@ -646,6 +655,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 |---|---|---|
 | Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-MAIN-1 DONE (`main` `88968580`); W4-OPENING-2 CURRENT.** W4-OPENING-2 from `main` `88968580`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Its first package is W4-OPENING-CONTROLS-FLAKE, with the committed WSL gate script as step 0. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time. Its merge into `main` is its own package (W4-MAIN-1 review D3).** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / gameplay | Mac, existing MAP executor | **MAP-SUPPLY-1 / CLOSE ACCEPTED; MAP-NEEDS-2 READY / RELEASED.** Continue local `67158af4` through [N0–N7](tasks/map-needs-2.md), with independent package reviews and one final handoff. Keep House updates off by default. No other-lane imports, Windows changes, merge/rebase or executor push. Older POP/SUPPLY packets are historical. |
+| Scripting / gameplay integration | Second Mac, existing MAP-BOOTSTRAP-1 checkout | **MAP-UNIT-IMPORT-1 accepted for its bounded slice; MAP-INTEGRATE-1 READY / RELEASED.** Integrate exact `50aa32e3` and `67158af4` only on new local `task/MAP-INTEGRATE-1`, following [I0–I6](tasks/map-integrate-1.md). No moving MAP input, main merge, other-lane changes or push. |
 
 ### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · ACCEPTED BY THE ORCHESTRATOR 2026-11-05 (W4-MAIN-1 review D2)
 

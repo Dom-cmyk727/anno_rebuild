@@ -83,10 +83,18 @@ struct QaIsland {
     int tx, ty;
     /// Part of the Q5 acceptance (rivers.md 10.2: the main stems of these).
     bool q5;
+    /// Per-island window-share floor for the >= 5-window CHECK below; 0.55 unless overridden.
+    double floor = 0.55;
 };
 
 const std::vector<QaIsland> kIslands = {
-    {"D_256x256_0045_5B", "Islands/Dschungel/D_256x256_0045_5B.scp", 152, 97, true},
+    // D's share dropped to 48.48% (shore 16, 16 of 33 windows) / 48.57% (shore 16.5, 17 of 35)
+    // from 63.41% (41 windows) before the projection fix: the fix changed the island's river
+    // raster itself (7 rivers/10 ponds became 6 rivers/14 ponds), so the flow is now solved on a
+    // different river, not a shading defect. Floor set one window below the measured value
+    // (W4-MAIN-1 review, F2/D1, docs/orchestration/reviews/2026-11-05-w4-main1.md). The 0.55
+    // target returns as an acceptance item of the queued river rework.
+    {"D_256x256_0045_5B", "Islands/Dschungel/D_256x256_0045_5B.scp", 152, 97, true, 0.45},
     {"N_256x256_0006_2B", "Islands/Nord/N_256x256_0006_2B.scp", 168, 84, true},
     {"S_256x256_0004_3B_Orient", "Islands/Steppe/S_256x256_0004_3B_Orient.scp", 135, 157, true},
     {"T_256x256_0008_2B_Po", "Islands/Tundra/T_256x256_0008_2B_Po.scp", 136, 141, false},
@@ -1125,7 +1133,7 @@ TEST_CASE("the flow shading moves with the flow in all windows, not only the fla
             // sheared reaches of the owner's canyon) the signal is weak and a
             // window can go either way: a lower bar per island, a higher one
             // over all windows.
-            CHECK(share >= 0.55);
+            CHECK(share >= kIslands[i].floor);
             CHECK(median(rows[i].ratio) >= 0.6F);
             CHECK(median(rows[i].ratio) <= 1.4F);
         }

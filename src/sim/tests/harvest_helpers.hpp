@@ -41,10 +41,13 @@ inline constexpr sim::TypeId kOddTree{9313};   // ROHSTOFF, WARE[0] BAUM: an unc
 inline constexpr sim::TypeId kStalks{9320};    // ROHSTWACHS, the young stage of kGrain
 inline constexpr sim::TypeId kGrain{9321};     // ROHSTOFF, WARE[0] GETREIDE: a ripe field
 inline constexpr sim::TypeId kSmallFarm{9330}; // a small farm: its line-0 worker is job 0x2a too
-inline constexpr sim::TypeId kSmallFarm2{9331}; // another small farm: ALKOHOL from KARTOFFEL, NAHRUNG from GRAS
-inline constexpr sim::TypeId kGrassYoung{9324};  // ROHSTWACHS, the young stage of kGrass
-inline constexpr sim::TypeId kGrass{9325};       // ROHSTOFF, WARE[0] GRAS: ripe grass
-inline constexpr sim::TypeId kSmallFarm4{9332};  // a small farm of radius 8 (a wide window; note this rig's walk tables are synthetic: every cost is 1, so scores stay below 20 here)
+inline constexpr sim::TypeId kSmallFarm2{
+    9331}; // another small farm: ALKOHOL from KARTOFFEL, NAHRUNG from GRAS
+inline constexpr sim::TypeId kGrassYoung{9324}; // ROHSTWACHS, the young stage of kGrass
+inline constexpr sim::TypeId kGrass{9325};      // ROHSTOFF, WARE[0] GRAS: ripe grass
+inline constexpr sim::TypeId kSmallFarm4{
+    9332}; // a small farm of radius 8 (a wide window; note this rig's walk tables are synthetic:
+           // every cost is 1, so scores stay below 20 here)
 inline constexpr sim::TypeId kPotatoYoung{9326}; // ROHSTWACHS, the young stage of kPotato
 inline constexpr sim::TypeId kPotato{9327};      // ROHSTOFF, WARE[0] KARTOFFEL: a ripe potato field
 inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer
@@ -108,7 +111,8 @@ inline sim::BuildingType wall_type() {
 
 /// The registry. `worker_capacity` is the forester worker's capacity (a larger data-defined
 /// capacity repeats the harvest, docs/sim/forestry.md E-14).
-inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_capacity = 256) {
+inline std::shared_ptr<const sim::TypeRegistry>
+registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingType>& extra = {}) {
     sim::TypeRegistry::Builder b;
     b.add_farm(kForester, "HOLZ", "BAUM", 14, 32, 5, 2)
         .footprint(kForester, 3, 3)      // 801's 3 x 3
@@ -159,6 +163,9 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .figure_type(worker_type(kReaper, 3 * 256, 0x29))
         .figure_type(worker_type(kHerder, 256, 46))
         .figure_type(sim::FigureType{kCart, 53687, 5 * 256, 3, 500});
+    for (const sim::BuildingType& t : extra) {
+        b.add(t);
+    }
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
     return built.value();

@@ -308,8 +308,8 @@ TEST_CASE("small farm animals: the home destroyed with animals out, in each phas
 }
 
 TEST_CASE("small farm animals: reload mid-trip at each phase continues identically") {
-    for (const sim::HarvestStep phase :
-         {sim::HarvestStep::ToTree, sim::HarvestStep::Cut, sim::HarvestStep::ToHome}) {
+    for (const sim::HarvestStep phase : {sim::HarvestStep::Start, sim::HarvestStep::ToTree,
+                                         sim::HarvestStep::Cut, sim::HarvestStep::ToHome}) {
         Pasture p = make([](Rig& r) {
             grass_ring(r, {{113, 111}, {113, 112}, {111, 113}});
             r.place(kSmallFarm, 110, 110,
@@ -521,10 +521,43 @@ TEST_CASE("small farm animals on original data: the Tutorial town's farms graze 
     MESSAGE("tick " << w.clock().tick() << " ripe " << ripe0 << " -> " << grass_ripe() << " raw1 "
                     << sf.raw[1] << " out1 " << sf.out[1] << " kinds " << kinds.size());
     // measured and pinned: 9 of the 28 ripe objects cut, all three animal kinds seen
+    // The tick depends on the stepping schedule (the advance(10) loop above, then advance(100)):
+    // chunking changes state hashes (pre-existing, docs/sim/state.md); do not re-pin by changing
+    // the loops.
     CHECK(w.clock().tick() == 26085);
     CHECK(sf.out[1] == 40);
     CHECK(grass_ripe() == ripe0 - 9); // real grass objects were cut (id - 1)
     CHECK(kinds.size() == 3);
     CHECK(sf.out[0] == 0); // no potatoes in reach: line 0 makes nothing
     CHECK(w.check_invariants() == "");
+}
+
+TEST_CASE("small farm animals: a small-farm type without input goods 1 sends no animal") {
+    // driver.cpp consume: the animal branch needs the farm's input goods 1 for the cargo (D
+    // type+0xb0(1)); a type that lacks it sends nothing and raises no counter (no invented
+    // fallback). The kernel still takes its draw and decides; only the send is refused. The type is
+    // a copy of 9330 with its second input goods dropped.
+    sim::BuildingType one_input = *registry(3 * 256)->find(kSmallFarm);
+    one_input.id = sim::TypeId{9333};
+    one_input.input_goods.resize(1);
+    auto types = registry(3 * 256, {one_input});
+    Rig r = make_rig();
+    grass_ring(r, {{113, 111}, {113, 112}});
+    r.place(sim::TypeId{9333}, 110, 110,
+            sim::make_small_farm(types->find(sim::TypeId{9333})->prod));
+    Pasture p{types, create(r, types), {}};
+    p.w.set_transport_stats(&p.stats);
+    std::uint32_t draws = 0;
+    for (int i = 0; i < 3000; ++i) {
+        p.w.advance(10);
+        draws += draws_at(p.w.last_output(), sim::DrawSite::SmallFarmAnimal);
+        CHECK(animals_of(p.w).empty());
+    }
+    CHECK(draws > 0); // line 1 ran and drew, the send was refused
+    const sim::SmallFarm& sf = farm_of(p.w);
+    for (std::size_t i = 1; i < sf.figures_out.size(); ++i) {
+        CHECK(sf.figures_out[i] == 0); // no animal counter was raised
+    }
+    CHECK(p.stats.forestry.cuts == 0);
+    CHECK(p.w.check_invariants() == "");
 }

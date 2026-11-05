@@ -407,3 +407,16 @@ sequences need not have identical last_work; exact native continuation retains i
 Focused scope/continuity/barrier/fault controls and corrected population vectors
 remain pending acceptance. No policy/schema field reinterpretation is required:
 this adds a declared call boundary using identical arg0 execution semantics.
+
+S7-startup01 at927fe9c3 PASS8/FAIL1 of9selected (noempty/skips/incomplete).
+All six non-replay K3 cases pass with the old timing, exact stock/score/variant
+vectors, control ledgers and save cuts unchanged. The only failure is a NEW
+startup test's incorrect single-IF dispatch expectation atarg63: q=(63+125)/250=0.
+Corrected vector usesarg125→q1; no production scheduler change. The required
+house_live_reference_contract passes separately.
+
+The SCRIPT1 corpus identity generator copies physical/movement columns from the
+published128 fixture and replaces ONLY create_hash after actual creation, with
+an explicit provenance header. It does not claim to rerun movement. The normal
+long corpus gate compares every physical/movement column with the retained128
+rows and with the new fixture, avoiding a duplicated expensive generation run.

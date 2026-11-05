@@ -292,9 +292,9 @@ TEST_CASE("SCRIPT1 explicit startup visits only the script once and preserves na
     REQUIRE(loaded);
     CHECK(loaded.value().initialize_scripts().empty());
     CHECK(loaded.value().save() == initialized);
-    w.advance(126);
-    loaded.value().advance(126);
-    w.advance(0); // oldtick63 dispatches the one IF
+    w.advance(250);
+    loaded.value().advance(250);
+    w.advance(0); // oldtick125 dispatches the one IF
     loaded.value().advance(0);
     CHECK(w.script().state.signals[1] == 0);
     CHECK(w.save() == loaded.value().save());

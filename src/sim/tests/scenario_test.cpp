@@ -961,8 +961,14 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
     }
     const auto types = original_registry(*dir);
     std::string versions;
-    const auto expected = read_expectations(versions);
-    REQUIRE(versions == version_line());
+    const bool generating = update_requested();
+    const auto expected = generating
+                              ? read_expectations(versions, fs::path(ANNO_FIXTURES_DIR) / "sim" /
+                                                                "scenario_corpus.txt")
+                              : read_expectations(versions);
+    if (!generating)
+        REQUIRE(versions == version_line());
+    std::vector<std::string> generated;
     const auto files = scenario_files(*dir);
     REQUIRE(files.size() == 50);
     const auto templates = anno::sim_load::scan_island_templates(*dir);
@@ -984,7 +990,16 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
         const auto& row = expected.at(name);
         const auto pos = row.find("create_hash=");
         REQUIRE(pos != std::string::npos);
-        CHECK(made.value().state_hash() == std::stoull(row.substr(pos + 12, 16), nullptr, 16));
+        if (generating) {
+            auto new_row = row;
+            char hex[17];
+            std::snprintf(hex, sizeof hex, "%016llx",
+                          static_cast<unsigned long long>(made.value().state_hash()));
+            new_row.replace(pos + 12, 16, hex);
+            generated.push_back(std::move(new_row));
+        } else {
+            CHECK(made.value().state_hash() == std::stoull(row.substr(pos + 12, 16), nullptr, 16));
+        }
         for (const auto& p : loaded.value().loaded.spec.players) {
             const auto* got = made.value().players().find(p.id);
             REQUIRE(got != nullptr);
@@ -995,4 +1010,17 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
     CHECK(masks == 373);
     CHECK(isolated == 39);
     CHECK(supported == 11);
+    if (generating) {
+        std::ofstream out(expectations_path(), std::ios::binary);
+        REQUIRE(out.good());
+        out << "# SCRIPT1 original-data component corpus. Creation identities generated here;\n"
+               "# physical/movement columns copied from published128, not executed by this\n"
+               "# creation-only generator. The normal long corpus gate validates those columns.\n"
+            << version_line() << "\n";
+        for (const auto& row : generated)
+            out << row << "\n";
+        out.close();
+        REQUIRE(out.good());
+        MESSAGE("SCRIPT1 creation-only generation: physical/movement acceptance remains pending");
+    }
 }

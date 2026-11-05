@@ -151,14 +151,17 @@ Buf source(const Buf& actors, std::uint32_t slots = 100) {
     append(scene, chunk("BIGBROTHER", Buf(script.begin(), script.end())));
     return chunk("ANNO", chunk("SCENE", scene));
 }
-std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t scout_max = 350,
-                                                  bool metadata = true) {
+std::shared_ptr<const sim::TypeRegistry>
+registry(std::uint32_t scout_max = 350, bool metadata = true, bool navigating_scout = false) {
     sim::TypeRegistry::Builder b;
     sim::FigureType ship{ship_kind, 0, 2560, 0, 0};
     ship.bewohntype = 113;
     ship.nav = sim::NavFacts{154618816, 472446400, 12000, 2, 2, 0, 1280};
     sim::FigureType scout{scout_kind, 0, 2560, 0, 0};
     scout.bewohntype = 97;
+    if (navigating_scout) {
+        scout.nav = ship.nav; // Legal authored type, unsupported as an original foot-role import.
+    }
     sim::FigureType donkey{donkey_kind, 0, 768, 0, 0};
     donkey.bewohntype = 53;
     b.figure_type(ship).figure_type(scout).figure_type(donkey);
@@ -196,6 +199,7 @@ TEST_CASE("UNIT1 explicit source slots preserve holes, creation hint and stable 
     CHECK(w.figures().list.slots[2]->crew_slot == 1);
     CHECK(w.figures().list.slots[37]->owner == sim::PlayerId{7});
     CHECK(w.figures().list.slots[2]->state_word == 0x88);
+    CHECK(w.figures().list.slots[37]->state_word == 0x8000);
     CHECK(w.figures().list.slots[2]->hp == 350);
     REQUIRE(w.figures().list.slots[37]->nav);
     CHECK(w.figures().list.slots[37]->nav->health == 6000);
@@ -285,7 +289,7 @@ TEST_CASE("UNIT1 original endless01 imported starting prerequisites") {
         CHECK(f.kind == kinds[i]);
         CHECK(f.owner == sim::PlayerId{0});
         CHECK(f.hp == hp[i]);
-        CHECK(f.state_word == (i == 0 ? 0U : 0x88U));
+        CHECK(f.state_word == (i == 0 ? 0x8000U : 0x88U));
         CHECK(f.pos == sim::FixedPos{89984, 98176});
         CHECK(f.dir16 == (i == 0 ? 4 : 0));
         CHECK(f.crew_slot == crew_slots[i]);
@@ -312,4 +316,39 @@ TEST_CASE("UNIT1 original endless01 imported starting prerequisites") {
     CHECK(restored.value().save() == saved);
     MESSAGE("UNIT1 early prerequisite: five original actors; source slots0..4 in100; "
             "hint4; original health/cargo/position and complete source retained; no movement yet");
+}
+
+TEST_CASE("UNIT1 scouts do not qualify as the ship HEAD abstract crew") {
+    auto types = registry();
+    for (bool abstract_crew : {false, true}) {
+        // A carried class97 scout is present in both controls; only HEAD8 distinguishes them.
+        Buf h = head(128, 0);
+        h[8] = abstract_crew ? 1 : 0;
+        Buf records = tagged("HEAD", h);
+        append(records, tagged("WAREN", holds()));
+        append(records, tagged("PRIVAT", crew()));
+        auto loaded =
+            sim::load_scenario(source(tagged("SCHIFF", unit(37, ship_kind, records))), *types, {});
+        REQUIRE(loaded);
+        REQUIRE(loaded.value().spec.figures.size() == 2);
+        CHECK(loaded.value().spec.figures[0].state_word == (abstract_crew ? 0U : 0x8000U));
+        CHECK(loaded.value().spec.figures[1].state_word == 0x88);
+        auto w = made(loaded.value().spec, types);
+        CHECK(w.figures().list.slots[37]->state_word == (abstract_crew ? 0U : 0x8000U));
+        CHECK(w.check_invariants().empty());
+    }
+}
+
+TEST_CASE("UNIT1 original foot roles refuse navigating metadata without changing authored types") {
+    const auto bytes = source(tagged("SOLDAT", unit(0, scout_kind, scout_records())));
+    auto foot = registry();
+    auto nav = registry(350, true, true);
+    auto legal = sim::load_scenario(bytes, *foot, {});
+    REQUIRE(legal);
+    CHECK(legal.value().spec.figures[0].hp == 350);
+    CHECK_FALSE(legal.value().spec.figures[0].health.has_value());
+    auto rejected = sim::load_scenario(bytes, *nav, {});
+    REQUIRE_FALSE(rejected);
+    CHECK(rejected.error().find("unsupported actor") != std::string::npos);
+    CHECK(nav->find_figure_type(scout_kind)->nav.has_value());
 }

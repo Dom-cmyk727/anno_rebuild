@@ -175,7 +175,7 @@ class Decoder {
         const auto* facts = types_.unit_import_facts(f.kind);
         const auto expected = role == Role::Ship ? 113U : role == Role::HeldDonkey ? 53U : 97U;
         if (type == nullptr || type->bewohntype != expected || facts == nullptr ||
-            (role == Role::Ship && !type->nav)) {
+            ((role == Role::Ship) != type->nav.has_value())) {
             return path + ": unsupported actor kind/class/import facts " + std::to_string(f.kind) +
                    " at offset " + std::to_string(offset);
         }
@@ -215,8 +215,10 @@ class Decoder {
                     figure.health = static_cast<std::uint32_t>(hp);
                     figure.state_word =
                         (figure.state_word & ~0x100U) | (std::uint32_t{p[10] & 1U} << 8);
-                    const bool crew =
-                        std::min<std::uint32_t>(p[8], facts->other_crew) != 0 || has_scout(index);
+                    // 0x10042b31..0x10042b34 excludes class97 scouts from the fallback:
+                    // only a non97 crew type with nonzero slot+0x9c qualifies there. This
+                    // bounded importer admits only class97 crew, so none clears 0x8000.
+                    const bool crew = std::min<std::uint32_t>(p[8], facts->other_crew) != 0;
                     figure.state_word = (figure.state_word & ~0x8000U) | (crew ? 0U : 0x8000U);
                 } else {
                     // Generic HEAD 0x1004991e: signed i16, not a ship's ratio byte.
@@ -277,13 +279,6 @@ class Decoder {
         return {};
     }
 
-    bool has_scout(std::uint32_t parent) const {
-        return std::any_of(out_.figures.begin() + parent + 1, out_.figures.end(),
-                           [parent](const FigureSpec& f) {
-                               return f.parent == parent && f.crew_slot.has_value();
-                           });
-    }
-
     // Only Ship -> CrewScout -> HeldDonkey calls actor again. Role checks precede those calls;
     // arbitrary nested tags never cause unbounded recursion or an actor to be silently skipped.
     std::string private_records(std::uint32_t index, Role role, const tagged::Record& record,
@@ -334,7 +329,6 @@ class Decoder {
                         !error.empty()) {
                         return error;
                     }
-                    out_.figures[index].state_word &= ~0x8000U; // A qualifying class97 scout.
                 }
             } else if ((role == Role::Scout || role == Role::CrewScout) && child.name == "ESEL") {
                 if (donkey || child.payload.size() < 8) {

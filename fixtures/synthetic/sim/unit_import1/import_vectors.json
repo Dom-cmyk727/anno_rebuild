@@ -96,8 +96,12 @@
       "head1": 255,
       "head9": 128,
       "head10": 0,
-      "qualifying_crew": true,
-      "expected": 0
+      "expected": 32768,
+      "crew_classes": [
+        97,
+        97
+      ],
+      "head8": 0
     },
     {
       "role": "crew_scout",
@@ -125,10 +129,28 @@
       "role": "top_ship",
       "head1": 0,
       "head10": 3,
-      "qualifying_crew": false,
       "n2_crew": 0,
       "expected": 33056,
-      "separates": "independent20/100/8000 projection"
+      "separates": "independent20/100/8000 projection",
+      "crew_classes": [
+        97,
+        97
+      ],
+      "head8": 0
+    },
+    {
+      "role": "top_ship",
+      "head1": 255,
+      "head8": 1,
+      "head9": 128,
+      "head10": 0,
+      "other_crew_capacity": 15,
+      "crew_classes": [
+        97,
+        97
+      ],
+      "expected": 0,
+      "separates": "HEAD8 abstract crew clears8000; scouts do not qualify"
     }
   ],
   "identity": [

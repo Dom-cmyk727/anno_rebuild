@@ -195,7 +195,7 @@ Scout/donkey HEAD handler100498e0, reached by their independently verified facto
 vtables: signedi16 at+8<=0→type maxHP; positive values clamp to max. Max350 with
 175→175,0/−1→350,351→350. Endless scouts350 and donkeys400 follow their own type
 maxima; ship-ratio decoding here is wrong. Generic HEAD byte1's sign sets/clears
-state0x20 (nonnegative sets it). Ship HEAD10 bit0 controls0x100. Ship crew/N2
+state0x20 (nonnegative sets it). Ship HEAD10 bit0 controls0x100. Ship N2/qualifying-non97-crew
 logic controls0x8000; do not copy HEAD bytes as a direct state word.
 
 Base constructor10035ce0 initializes state8 and facing0; its context-pointer
@@ -204,7 +204,7 @@ initial segment through10035260 clears8. Ship attach10041959..1004196c uses
 (flags&0xAE)|0x80 and stop(4,1), preserving constructor8; held donkey creation
 10036d34..10036d47 takes (scoutFlags&0xAF)|0x80. Owner binding and generic HEAD do
 not clear8. Source HEAD1 is negative, so exact immediate loaded state is:
-ship0, scouts/donkeys0x88. No imaginary state0/0x80 normalization.
+ship0x8000, scouts/donkeys0x88. No imaginary shipstate0 or heldstate0x80 normalization.
 
 Common WAREN reader10031902..100319d0 takes filegoods from lowbyte0, maps through
 WARETYPE names (reuse existing goods_remap), takes unsignedu16 tons at+2, shifts
@@ -321,3 +321,26 @@ source HP/holds and positions, then native round trip. A failure is retained and
 corrected before subsequent implementation gates. Two authored structural tests
 are also present but not part of this initial single-case selection. No runtime
 PASS or B/C approval is claimed before its terminal evidence.
+
+### Reopened/corrected A flag oracle during B review
+
+Instruction reread found a reversed JNE interpretation in earlier A:10042b31
+comparesclass97 and10042b34 reachestrue only when NOT equal, following nonzero type
+slot+0x9c. Class97 scouts are excluded from satisfying ship0x8000. Attach100419e7
+has the same inequality. Current supported CREW admits only97, so only clamped
+HEAD8 abstract-crew count can clear8000. Actual HEAD8=0 with two scouts leaves
+source shipstate8000, which is outside the movement veto mask200e but still a
+persisted authoritative flag.
+
+Affected earlier A8000 approval is withdrawn pending correction review; reviewed
+slot/identity, health/cargo/Q32/held88 are unchanged. B-prerequisites-01 atf7c31ed8
+retains rawPASS1/1,70assertions, but expected shipstate0 was a wrong oracle and is
+not state-fidelity proof. Preserve that log/source; corrected assertions plus
+scout-vs-HEAD8 controls and a wrong-qualification mutant must supersede it before
+dependent acceptance. No expensive matrix or movement/F2 claim used this oracle.
+
+A second B input-boundary finding: require navigation facts iff the imported
+role is Ship. A Builder can legitimately create a class97/53 type with nav for
+an authored world; accepting it as an original foot-role would silently install
+ship motion/full-health defaults. The importer now refuses that role/type pairing;
+a legal foot control and a still-valid authored nav registry distinguish this.

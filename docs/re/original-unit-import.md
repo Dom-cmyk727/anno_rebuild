@@ -17,7 +17,7 @@ pefile/Capstone read-only tools inspect the bounded reader/caller closure.
 |Welt10097347..1009739a|registry10097250, requested rawID argument|explicit slot/holes; grow from requestedslot, default min100; update hint tothat slot|
 |Welt10031870|root unit vtable common reader, slot+0x6c|HEAD dispatch+0x140; WAREN lowbyte mappedgoods, u16tons+2×256/capacity clamp; PRIVAT dispatch+0x12c|
 |Welt1009a110 +tables1009a7e8/1009a774|registry factory; root objects returned|53→donkeyctor10037e70/vtable100c3a30;97→scoutctor100374d0/vtable100c3758;113→shipctor10043600/vtable100c4da4;114..128 default/no actor|
-|Welt10042a40|ship root from vtable100c4da4 +0x140|byte9 HP ratio/128 (zero→max), HEAD1 sign→20, HEAD10bit0→100, derivedcrew→8000|
+|Welt10042a40|ship root from vtable100c4da4 +0x140|byte9 HP ratio/128 (zero→max), HEAD1 sign→20, HEAD10bit0→100, HEAD8/non97 qualifying crew→8000|
 |Welt100498e0|scout/donkey root vtables+0x140|signedi16HEAD+8, nonpositive→max thenclamp; HEAD1 sign→20|
 |Welt10035ce0|base root constructor used by scout/donkey chain|flags8; facing0; +14/+18/+1c are zeroed context pointers, not ownxyz|
 |Welt1001dde5→10035260|top-level SOLDAT initialsegment+e0|newmode0 vsconstructormode19 clears8 at10035336; not called for nestedCREW|
@@ -33,7 +33,7 @@ IDs0..4, registry100/hint4/cursor0, five same-owner actors; ship/scout ownpos351
 383.5; held donkey parent scout, with original ownxyz uninitialized on this path;
 modern cached childposition normalized to knownparentposition (explicit nonspatial
 normalization, not a primary originalposition fact); shipdir4, nestedface0; shipnavHP12000,
-scoutHP350/donkeyHP400; shipstate0, held actors88; eight ship holds50t in source
+scoutHP350/donkeyHP400; shipstate8000, held actors88; eight ship holds50t in source
 order. The ledger distinguishes source file traversal, slot order and modern
 stable engine IDs. No simultaneous flat-list/parent reinterpretation is assumed.
 
@@ -46,3 +46,10 @@ Unresolved/outside closure: nonempty auto-route/task execution, other actor clas
 unheld ESEL placement, hostile-avoidance stance behavior and later global postload
 passes not comprehensively traced. Refusal/warning boundaries are explicit; no
 COMPLETE original scenario or audible playback claim follows from this contract.
+
+Flag correction during B review:10042b34 JNE class97 reaches moval1 at10042ae7;
+class97 falls through tocontinue. Qualifying fallback needs nonzero slot+9c AND
+class!=97; attach100419e7 repeats the inequality. Earlier A/source0 was incorrect
+and its flag approval retracted. Source HEAD8=0 retains8000 with scouts. A legal
+HEAD8=1 within other-crew capacity clears8000. The class97-only crew closure needs
+no extra qualifying-fact metadata; do not normalize this bit away.

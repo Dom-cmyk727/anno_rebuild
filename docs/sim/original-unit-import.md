@@ -185,7 +185,8 @@ maxima; ship-ratio decoding here is wrong. Generic HEAD byte1's sign sets/clears
 state0x20 (nonnegative sets it). Ship HEAD10 bit0 controls0x100. Ship crew/N2
 logic controls0x8000; do not copy HEAD bytes as a direct state word.
 
-Base constructor10035ce0 initializes state8 and facing0. Top-level soldier caller
+Base constructor10035ce0 initializes state8 and facing0; its context-pointer
+zeroing is not a position initializer (walker coordinates are at+24/+28/+2c). Top-level soldier caller
 initial segment through10035260 clears8. Ship attach10041959..1004196c uses
 (flags&0xAE)|0x80 and stop(4,1), preserving constructor8; held donkey creation
 10036d34..10036d47 takes (scoutFlags&0xAF)|0x80. Owner binding and generic HEAD do
@@ -209,10 +210,16 @@ alreadydir16=4; top-level scout facing uses8directions and converts to existing
 dir16 by multiplying by2. Nested records contain no facing, retaining constructor0.
 Ship CREW reader10042f88 passes the ship position to each scout before its common
 record load. ESEL held reader10036ca0 creates with nullposition, ignores prefix
-x/y and uses the parent link; base constructor10035d18..10035d1e zeros ownposition.
-Thus source scout positions equal ship351.5,383.5; held donkeys have ownposition0,0
-and parent links to those scouts, not a fabricated teleported point. The current
-query's existing parent exclusion remains unchanged. Unheld ESEL placement is an explicit unsupported-state refusal until
+x/y and uses the parent link. The walker constructor's+14/+18/+1c zeros are type/
+world/island context, not position; neither this constructor chain nor the held
+reader initializes ownxyz at+24/+28/+2c. Therefore no definite original stored
+point0 may be claimed. Source scout positions equal ship351.5,383.5. For a held
+donkey, normalize the modern nonspatial cached position to its parent's known
+position, using the established parent/carrier model. This explicit normalization
+represents effective carried location; it is not an original initialized-xyz fact
+or a relocation of a spatial actor. Parent links and existing query parent
+exclusion remain authoritative; test that this cached child coordinate never
+becomes a spatial area candidate and movement/native reload preserve the hierarchy. Unheld ESEL placement is an explicit unsupported-state refusal until
 its separately traced branch is accepted; no held-prefix zero is treated
 as a live world spawn point.
 

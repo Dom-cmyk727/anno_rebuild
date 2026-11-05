@@ -228,6 +228,12 @@ struct Body {
                 }
             }
         }
+        if (stats != nullptr) {
+            stats->search_tiles_scanned +=
+                static_cast<std::uint64_t>(std::max<std::int64_t>(x_hi - x_lo, 0)) *
+                static_cast<std::uint64_t>(std::max<std::int64_t>(y_hi - y_lo, 0));
+            stats->search_candidates += candidates.size();
+        }
         if (candidates.empty()) {
             return std::nullopt;
         }
@@ -251,6 +257,9 @@ struct Body {
                 }
                 return SearchDecision{};
             });
+        if (stats != nullptr) {
+            stats->search_popped += found.popped;
+        }
         if (!found.complete || !found.selected || !chosen || found.route.empty()) {
             return std::nullopt;
         }

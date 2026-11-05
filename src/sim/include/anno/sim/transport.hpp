@@ -125,6 +125,9 @@ struct ForestryStats {
     std::uint64_t raw_credited_88 = 0;  ///< cargo credited by successful cuts
     std::uint64_t raw_delivered_88 = 0; ///< cargo handed to a home's raw store (StoreDelta::Input)
     std::uint64_t raw_lost_88 = 0;      ///< cargo of workers that ended without a delivery
+    /// MAP-SUPPLY-1 S5 operation counters (diagnostic): per search, the window tiles examined, the candidate
+    /// tiles found, and the walk-search nodes popped (zero when no candidate exists: the walk search is skipped).
+    std::uint64_t search_tiles_scanned = 0, search_candidates = 0, search_popped = 0;
     std::uint64_t aborts = 0;           ///< home gone at an arrival
     std::uint64_t drops = 0;            ///< enhanced revalidation dropped a target
     std::uint64_t cut_mismatches = 0;   ///< merge-time re-check of a planned cut failed (must be 0)

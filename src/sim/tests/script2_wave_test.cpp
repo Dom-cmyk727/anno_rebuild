@@ -134,3 +134,21 @@ TEST_CASE("SCRIPT2 PLAYWAVE validates portable context assets and configurable p
     REQUIRE(events.size() == 1);
     CHECK(events[0].wave->asset == "scenes/mod/sub/A.WAV");
 }
+TEST_CASE("SCRIPT2 PLAYWAVE query Host failure discards staged output and prior money") {
+    auto w = wave_world("INITBLOCK(){ MONEY_ADD(\"ME\",5); PLAYWAVE(\"A.WAV\"); }");
+    auto source = w.script().source;
+    source.insert(source.find("[PLAYERMAPPER_DEFINE]"), "\"FIELD\" 0,0,16,16\n");
+    source.insert(source.find("[SIGNALS]"),
+                  "IF AREA \"FIELD\" TOUCHED_BY_SHIP_FROM \"ME\" THEN {}\n");
+    auto r =
+        prepare_script(source, *TypeRegistry::empty(), w.players(), w.config(), {}, "scenes/mod");
+    REQUIRE(r);
+    auto players = w.players();
+    auto timers = w.timers();
+    std::vector<SimEvent> events;
+    REQUIRE_FALSE(advance_script(r.value(), players, timers, *TypeRegistry::empty(), 250, nullptr,
+                                 nullptr, &events, 17));
+    CHECK(r.value().state.fault == ScriptFault::Host);
+    CHECK(events.empty());
+    CHECK(players.find(PlayerId{0})->money == w.players().find(PlayerId{0})->money);
+}

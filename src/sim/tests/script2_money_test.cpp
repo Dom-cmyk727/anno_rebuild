@@ -75,7 +75,7 @@ TEST_CASE("SCRIPT2 MONEY_ADD i32 operand and established i64 saturating boundari
                                    {{}, 32, 5}));
     CHECK_FALSE(compile_script(money_source("MONEY_ADD(\"ABSENT\",1);"), {{}, 32, 5}));
 }
-TEST_CASE("SCRIPT2 MONEY_ADD failed visit never leaks credit or prior timer writes") {
+TEST_CASE("SCRIPT2 MONEY_ADD failed visit never leaks credit or executes later timer writes") {
     auto w = money_world("MONEY_ADD(\"ME\",5); MONEY_ADD(\"OTHER\",7); TIMER_SET(1,7);", 100, 200,
                          {.work = 2});
     auto before0 = player_bytes(*w.players().find(PlayerId{0}));

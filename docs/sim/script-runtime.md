@@ -715,3 +715,9 @@ namespace for wave support; normal file-loader wiring is E. D gate/review pendin
 D-gate-01 failed during build (no selected tests executed): wave queue test used
 singular event_dropped instead of the existing events_dropped API. Corrected the
 test caller; retained original build failure and fresh re-run path.
+
+D-gate-02 cleanacc6541e passed24/24 area/money/wave/reference entries, zero
+failed/empty/skipped/incomplete/sanitizer. Added a distinct Host refusal after
+staged money+wave; output vector must remain empty. C budget test title now states
+its precise ordering (later timer never executes); C Host control covers staged
+timer rollback.

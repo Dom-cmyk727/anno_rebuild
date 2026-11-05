@@ -49,7 +49,7 @@ and player permission rows are explicit state, not renderer/UI state.
 | S5 path separation | create/found/house callers | later building import/founding | restrict every create_building | caller regressions | APPROVED86abd3e1; generated adapter APPROVED790921b7 |
 | S6 real vs synthetic | all50 AST inventory | executed supported complete program | fragment claimed as fullscenario | capability inventory/canaries | bounded proof APPROVEDdb13e91e / review_canaries; full original BLOCKED |
 | S6 scale | deterministic counters/Release | moreplayers/types/statements | query city/figure rescan | modest benchmark | APPROVEDdb13e91e; Release9da32085 |
-| S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | corrected Debug and ASan complete at0001a020; final handoff review pending |
+| S7 evidence | canonical runner + independent reviews | nonempty frozen-source gates | skipped/incomplete relabelled pass | retained raw logs/manifests | APPROVED0001a020 / final_integration_review; docs reviewed12569eaf; full original claim BLOCKED |
 
 ## S1 approved execution contract
 
@@ -526,3 +526,14 @@ this final checkpoint and the ledger dispositions. The precise S6 full-original
 permission-program blocker remains; do not report COMPLETE LOCAL CANDIDATE.
 
 Forwardable handoff: orchestration/reviews/2026-11-05-map-script1.md.
+
+Final integration disposition: **APPROVED for the bounded local implementation**,
+/root/final_integration_review. Code/tests/fixtures reviewed and gated at
+0001a020a8e1025e8531fa0e22358b5c166afce8; handoff reviewed at
+12569eaf0e8083a2eb2700127da7bce2621fbe58; canonical workflow20bd97fd.
+Reviewer independently reconciled final ASan1316/1316 and five separate required
+contracts, clean tested source, executable and fresh-process artifact hashes,
+distinct successful PIDs, corrected Debug reuse and accurate scope/platform
+limits. No unresolved P1/P2 findings. S6 full shipped permission-program execution
+remains BLOCKED, so this is not COMPLETE LOCAL CANDIDATE for the entire packet.
+Only documentation records this disposition after the frozen gates.

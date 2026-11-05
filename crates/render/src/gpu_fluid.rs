@@ -18,6 +18,12 @@ use crate::fluid::{
 /// Bytes of the per-step uniform (`Step` in `fluid.wgsl`).
 const STEP_BYTES: u64 = 32;
 
+/// Bytes of the ships uniform (`Ships` in `fluid.wgsl`: a `vec4<f32>` head
+/// plus 32 `vec4<f32>` items). This reference never models ships, so the
+/// buffer is left zeroed (`head.x` is the ship count, so `ship_term` is a
+/// no-op); it only exists so `eta_step`'s binding 5 resolves.
+const SHIPS_BYTES: u64 = 16 + 32 * 16;
+
 /// The simulation on the GPU.
 pub struct FluidGpu {
     pub cfg: FluidConfig,
@@ -28,6 +34,7 @@ pub struct FluidGpu {
     layout: wgpu::BindGroupLayout,
     params: Buffer,
     steps: Buffer,
+    ships: Buffer,
     align: u64,
     vel_pipe: ComputePipeline,
     eta_pipe: ComputePipeline,
@@ -56,6 +63,7 @@ impl Grid {
         layout: &wgpu::BindGroupLayout,
         params: &Buffer,
         steps: &Buffer,
+        ships: &Buffer,
         n: u32,
     ) -> Self {
         let size = Extent3d {
@@ -122,6 +130,10 @@ impl Grid {
                     wgpu::BindGroupEntry {
                         binding: 4,
                         resource: BindingResource::TextureView(&bathy_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: ships.as_entire_binding(),
                     },
                 ],
             })
@@ -191,6 +203,7 @@ impl FluidGpu {
                     count: None,
                 },
                 tex_entry(4),
+                uniform_entry(5, false),
             ],
         });
         let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -224,8 +237,19 @@ impl FluidGpu {
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let ships = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("fluid ships"),
+            size: SHIPS_BYTES,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(
+            &ships,
+            0,
+            &vec![0u8; usize::try_from(SHIPS_BYTES).expect("fits")],
+        );
         // Small until the first update sizes it to the view.
-        let grid = Grid::new(device, &layout, &params, &steps, 64);
+        let grid = Grid::new(device, &layout, &params, &steps, &ships, 64);
         Self {
             cfg,
             comps,
@@ -235,6 +259,7 @@ impl FluidGpu {
             layout,
             params,
             steps,
+            ships,
             align,
             vel_pipe,
             eta_pipe,
@@ -284,7 +309,14 @@ impl FluidGpu {
         let target = time_ms as f64 / 1000.0;
         let size = self.cfg.window_size(group, span_tiles);
         if size != self.grid.n {
-            self.grid = Grid::new(device, &self.layout, &self.params, &self.steps, size);
+            self.grid = Grid::new(
+                device,
+                &self.layout,
+                &self.params,
+                &self.steps,
+                &self.ships,
+                size,
+            );
             self.window = None;
         }
         let new_rects = match &mut self.window {

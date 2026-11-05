@@ -48,6 +48,10 @@ struct ConnectArgs {
 struct ConnectProgress {
     std::chrono::steady_clock::time_point next_spawn{};
     std::uint64_t attempts = 0;
+    /// When this client last started a coordinator (file clock): a refusal notice older than
+    /// that belongs to an earlier start-up and is not this client's answer.
+    bool spawned = false;
+    std::filesystem::file_time_type spawned_at{};
 };
 
 struct ConnectOutcome {

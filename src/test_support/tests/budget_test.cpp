@@ -350,6 +350,14 @@ TEST_CASE("two file clients cannot reserve the same free bytes" * doctest::test_
     std::filesystem::remove(path);
     auto left = anno::test::Budget::file(path, hooks_free(), 0);
     auto right = anno::test::Budget::file(path, hooks_free(), 0);
+    // try_reserve makes one connection attempt: against a port nobody listens on it starts a
+    // coordinator and returns refused at once. The case is about two clients of one live
+    // coordinator, so the first blocking reserve (which waits for the connection) brings it up.
+    // Run alone on a cold port, the case failed on `first` without this (MAP-2).
+    {
+        auto warm = left->reserve(1);
+        REQUIRE(warm);
+    }
     const auto first = left->try_reserve(80);
     anno::test::Admit info;
     const auto second = right->try_reserve(80, &info);

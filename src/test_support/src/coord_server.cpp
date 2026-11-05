@@ -681,6 +681,137 @@ class Journal {
     std::uint64_t max_hold_id_ = 0;
 };
 
+/// What the previously published compat-4 coordinator left behind: it kept its promises in
+/// coord-<port>-v4.journal, a file this build never reads (MAP-2 repair 3 made the unsuffixed
+/// journal the only one). Both builds advertise compat 4, so the number cannot tell them apart;
+/// the persisted state can. A start-up that finds an outstanding or unprovable promise there
+/// refuses, before it announces anything, admits anything or rewrites any journal. Read-only.
+struct PredecessorReport {
+    enum class Kind { Absent, Empty, Released, Open, Unreadable, Malformed };
+    Kind kind = Kind::Absent;
+    std::filesystem::path path;
+    std::string detail;
+    bool blocks() const noexcept {
+        return kind == Kind::Open || kind == Kind::Unreadable || kind == Kind::Malformed;
+    }
+};
+
+PredecessorReport inspect_predecessor(const std::filesystem::path& path) {
+    PredecessorReport report;
+    report.path = path;
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    if (status.type() == std::filesystem::file_type::not_found) {
+        return report;
+    }
+    if (error) {
+        report.kind = PredecessorReport::Kind::Unreadable;
+        report.detail = "cannot examine it: " + error.message();
+        return report;
+    }
+    std::FILE* in = fopen_cloexec(path.string().c_str(), "r");
+    if (in == nullptr || std::filesystem::is_directory(path, error)) {
+        if (in != nullptr) {
+            std::fclose(in);
+        }
+        report.kind = PredecessorReport::Kind::Unreadable;
+        report.detail = "cannot open it for reading";
+        return report;
+    }
+    std::map<std::pair<std::uint64_t, std::uint64_t>, Owner> holds;
+    std::map<std::pair<std::uint64_t, Owner>, std::uint64_t> cpu;
+    std::uint64_t records = 0;
+    std::uint64_t line_number = 0;
+    char line[512];
+    while (std::fgets(line, sizeof(line), in) != nullptr) {
+        line_number += 1;
+        const std::size_t length = std::strlen(line);
+        const bool terminated = length > 0 && line[length - 1] == '\n';
+        bool blank = true;
+        for (std::size_t i = 0; i < length; ++i) {
+            if (line[i] != ' ' && line[i] != '\t' && line[i] != '\r' && line[i] != '\n') {
+                blank = false;
+            }
+        }
+        if (blank) {
+            continue;
+        }
+        unsigned long long b = 0, h = 0, bytes = 0, pid = 0, started = 0;
+        unsigned ns = 0, domain = 0;
+        char kind = 0;
+        if (std::sscanf(line, "A %llu %llu %llu %u %llu %llu %u", &b, &h, &bytes, &ns, &pid,
+                        &started, &domain) == 7) {
+            kind = 'A';
+        } else if (std::sscanf(line, "R %llu %llu", &b, &h) == 2) {
+            kind = 'R';
+        } else if (std::sscanf(line, "C %llu %u %llu %llu", &b, &ns, &pid, &started) == 4) {
+            kind = 'C';
+        } else if (std::sscanf(line, "D %llu %u %llu %llu", &b, &ns, &pid, &started) == 4) {
+            kind = 'D';
+        }
+        // A last line without its newline may be cut anywhere, even where it still parses
+        // (a pid or stamp with digits missing): safety cannot be proved. Records are only ever
+        // appended whole, newline included.
+        if (kind == 0 || !terminated) {
+            report.kind = PredecessorReport::Kind::Malformed;
+            report.detail = "line " + std::to_string(line_number) +
+                            (terminated ? " is not a journal record"
+                                        : " is not newline-terminated (a truncated file)") +
+                            "; safety cannot be proved";
+            std::fclose(in);
+            return report;
+        }
+        records += 1;
+        const Owner owner{ns, pid, started};
+        if (kind == 'A') {
+            holds[{b, h}] = owner;
+        } else if (kind == 'R') {
+            holds.erase({b, h});
+        } else if (kind == 'C') {
+            cpu[{b, owner}] += 1;
+        } else {
+            auto found = cpu.find({b, owner});
+            if (found != cpu.end() && --found->second == 0) {
+                cpu.erase(found);
+            }
+        }
+    }
+    const bool read_failed = std::ferror(in) != 0;
+    std::fclose(in);
+    if (read_failed) {
+        report.kind = PredecessorReport::Kind::Unreadable;
+        report.detail = "a read failed part-way";
+        return report;
+    }
+    if (!holds.empty() || !cpu.empty()) {
+        std::uint64_t tokens = 0;
+        for (const auto& [key, count] : cpu) {
+            tokens += count;
+        }
+        report.kind = PredecessorReport::Kind::Open;
+        report.detail = std::to_string(holds.size()) + " memory hold(s) and " +
+                        std::to_string(tokens) + " CPU token(s) are still recorded as promised";
+        std::size_t shown = 0;
+        for (const auto& [key, owner] : holds) {
+            if (shown++ < 4) {
+                report.detail += "; hold " + std::to_string(key.second) + " of owner " +
+                                 std::to_string(owner.ns) + ":" + std::to_string(owner.pid) + ":" +
+                                 std::to_string(owner.started);
+            }
+        }
+        for (const auto& [key, count] : cpu) {
+            if (shown++ < 4) {
+                report.detail += "; CPU token(s) of owner " + std::to_string(key.second.ns) + ":" +
+                                 std::to_string(key.second.pid) + ":" +
+                                 std::to_string(key.second.started);
+            }
+        }
+        return report;
+    }
+    report.kind = records == 0 ? PredecessorReport::Kind::Empty : PredecessorReport::Kind::Released;
+    return report;
+}
+
 struct Server {
     std::vector<SClient> clients;
     std::vector<SBudget> budgets;
@@ -1385,7 +1516,13 @@ void pull_client(Server& server, std::size_t index) {
 /// Whether the owner of an orphan still runs. Nullopt: cannot tell (the
 /// orphan is kept: fail closed).
 std::optional<bool> owner_alive(Server& server, const Owner& owner) {
-    if (owner.ns == this_namespace()) {
+#if defined(__APPLE__)
+    const bool own_space =
+        owner.ns == this_namespace() || is_legacy_darwin_owner(owner.ns, owner.started);
+#else
+    const bool own_space = owner.ns == this_namespace();
+#endif
+    if (own_space) {
 #if defined(_WIN32)
         const HANDLE process =
             OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, static_cast<DWORD>(owner.pid));
@@ -1418,7 +1555,8 @@ std::optional<bool> owner_alive(Server& server, const Owner& owner) {
         if (proc.state != DarwinProc::Running) {
             return false;
         }
-        if (proc.started == 0) {
+        // A stamp of 0 on either side cannot tell this process from a reused pid.
+        if (proc.started == 0 || owner.started == 0) {
             return std::nullopt;
         }
         return proc.started == owner.started;
@@ -1437,9 +1575,11 @@ std::optional<bool> owner_alive(Server& server, const Owner& owner) {
         return started == owner.started;
 #endif
     }
-    if (owner.ns == 1) {
+    if (owner.ns == kNamespaceWindows) {
         return server.meters.windows_alive(owner.pid, owner.started);
     }
+    // Another OS's pid space, or a namespace-2 record this host cannot attribute (see
+    // is_legacy_darwin_owner): never judged from /proc and never read as a stop.
     return std::nullopt;
 }
 
@@ -1494,7 +1634,11 @@ std::vector<std::string> journal_state(const Server& server) {
     return lines;
 }
 
-std::filesystem::path default_journal(std::uint16_t port) {
+/// One journal per port for every compatibility version: coord-<port>.journal. A second,
+/// versioned file loses promises across a handoff (a coordinator of one version cannot see what
+/// the other admitted later); one file keeps every outstanding promise, and the record format
+/// is unchanged. docs/perf/README.md, "MAP-2 repair 3".
+std::filesystem::path default_journal_impl(std::uint16_t port) {
     // ANNO_TEST_BUDGET_JOURNAL (tests only): one journal for a coordinator and
     // the successor a client starts with the same environment (T10c F3).
     if (const char* env = std::getenv("ANNO_TEST_BUDGET_JOURNAL")) {
@@ -1517,6 +1661,13 @@ std::filesystem::path default_journal(std::uint16_t port) {
     }
 #endif
     return std::filesystem::temp_directory_path() / "anno1503" / name;
+}
+
+/// The journal the previously published compat-4 coordinator used for `port` in the storage
+/// root of `journal`: a sibling named coord-<port>-v4.journal.
+std::filesystem::path predecessor_journal(const std::filesystem::path& journal,
+                                          std::uint16_t port) {
+    return journal.parent_path() / ("coord-" + std::to_string(port) + "-v4.journal");
 }
 
 Native listen_on(std::uint16_t port, bool all_interfaces) {
@@ -1560,6 +1711,14 @@ Native listen_on(std::uint16_t port, bool all_interfaces) {
 
 } // namespace
 
+std::filesystem::path coordinator_default_journal(std::uint16_t port) {
+    return default_journal_impl(port);
+}
+
+std::filesystem::path coordinator_refusal_notice(const std::filesystem::path& journal) {
+    return journal.string() + ".refused";
+}
+
 std::uint64_t coordinator_build() {
 #if defined(ANNO_COORD_BUILD)
     return ANNO_COORD_BUILD;
@@ -1590,7 +1749,42 @@ int run_budget_server(const BudgetServerOptions& options) {
             (static_cast<std::uint64_t>(std::random_device{}()) << 32) ^ std::random_device{}();
     }
     const std::filesystem::path journal =
-        options.journal.empty() ? default_journal(port) : options.journal;
+        options.journal.empty() ? default_journal_impl(port) : options.journal;
+    // Before anything is announced, admitted or rewritten: the predecessor's journal. A refusal
+    // leaves every journal byte as it was, tells the operator what to do, and leaves a notice
+    // beside the canonical journal that a client which started this process can show its caller
+    // (its stdio is /dev/null). Absent, empty and fully released predecessors start normally.
+    {
+        const PredecessorReport previous = inspect_predecessor(predecessor_journal(journal, port));
+        const std::filesystem::path notice = coordinator_refusal_notice(journal);
+        if (previous.blocks()) {
+            const std::string text =
+                "startup refused: the previous compatibility-4 coordinator's journal " +
+                previous.path.string() + " " +
+                (previous.kind == PredecessorReport::Kind::Open
+                     ? "holds promises that are not released"
+                 : previous.kind == PredecessorReport::Kind::Unreadable
+                     ? "cannot be read"
+                     : "is malformed or truncated") +
+                " (" + previous.detail +
+                "). Nothing was changed. Recovery: see docs/perf/README.md, \"MAP-2 repair 4\": "
+                "run tools/test/journal_report.py on it, confirm with the owners that every "
+                "listed process is gone, then move that file aside (never delete it) and "
+                "start again.";
+            std::printf("JOURNAL-REFUSED %s\n", text.c_str());
+            std::fflush(stdout);
+            std::error_code ignored;
+            std::filesystem::create_directories(notice.parent_path(), ignored);
+            if (std::FILE* out = fopen_cloexec(notice.string().c_str(), "w")) {
+                std::fputs((text + "\n").c_str(), out);
+                std::fclose(out);
+            }
+            close_fd(listen_fd);
+            return 5;
+        }
+        std::error_code ignored;
+        std::filesystem::remove(notice, ignored);
+    }
     if (!server.journal.open(journal, server.orphans)) {
         std::printf("JOURNAL-FAILED %s\n", journal.string().c_str());
         std::fflush(stdout);

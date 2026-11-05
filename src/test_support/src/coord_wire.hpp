@@ -38,11 +38,11 @@
 #include <spawn.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#endif
 #if defined(__APPLE__)
 #include <libproc.h>
 #include <sys/proc.h>
 #include <sys/proc_info.h>
+#endif
 #endif
 
 namespace anno::test::wire {
@@ -62,7 +62,17 @@ constexpr std::uint32_t kMagic = 0x32434E41u;
 /// replayed (an A or R line), so a journaled promise survives two restarts. An
 /// older successor numbers a budget's holds from 1 and can reuse an id, losing
 /// the promise. Pinned by the test "F3 (D1, pin)".
-constexpr std::uint32_t kCompatVersion = 3;
+/// It is 4 since MAP-2 repair 2: a journaled owner may be a Darwin process (namespace 3,
+/// microsecond start stamp). A compatibility-3 coordinator keeps such a record as unattributable
+/// forever (a dead owner's reservation is never released), and it accepted the client under
+/// version 3 (evidence: cache/map2-repair2-evidence/06-mixed-old-successor.txt), so a version-3
+/// coordinator and a version-4 client must refuse each other (the idle one steps aside, a busy
+/// one is waited for with a diagnostic). Journals: every version uses the one coord-<port>.journal
+/// since MAP-2 repair 3. The coord-<port>-v4.journal of the compat-4 build published before that
+/// repair is never read or rewritten; a start-up that finds promises in it refuses (MAP-2
+/// repair 4, coord_server.cpp inspect_predecessor). Both builds advertise compat 4, so the number
+/// alone cannot tell their persisted state apart.
+constexpr std::uint32_t kCompatVersion = 4;
 constexpr std::size_t kFrameBytes = 96;
 constexpr std::uint16_t kSharedPort = 47631;
 constexpr std::uint16_t kLocalPort = 47632;
@@ -549,14 +559,37 @@ inline std::uint64_t this_pid() {
 #endif
 }
 
-/// The OS a process id belongs to: 1 Windows, 2 Linux.
+/// The OS a process id belongs to: 1 Windows, 2 Linux, 3 Darwin. Each names its own pid space and
+/// its own start-stamp unit (FILETIME, /proc starttime ticks, proc_pidinfo microseconds), so a
+/// record is only ever judged by the OS that wrote it. A coordinator that meets a namespace it
+/// cannot judge keeps the orphan (fail closed, owner_alive in coord_server.cpp).
+inline constexpr std::uint32_t kNamespaceWindows = 1;
+inline constexpr std::uint32_t kNamespaceLinux = 2;
+inline constexpr std::uint32_t kNamespaceDarwin = 3;
+
 inline std::uint32_t this_namespace() {
 #if defined(_WIN32)
-    return 1;
+    return kNamespaceWindows;
+#elif defined(__APPLE__)
+    return kNamespaceDarwin;
 #else
-    return 2;
+    return kNamespaceLinux;
 #endif
 }
+
+#if defined(__APPLE__)
+/// Records written by the Darwin coordinators that existed before namespace 3 (task/MAC-1-host-
+/// support, 4cc0a3a, and nothing else with a stamp) carry namespace 2 and a start stamp in
+/// microseconds since 1970. A Linux /proc starttime is in clock ticks since boot (about 10^7 a
+/// day), far below this floor (10^15 us is 2001-09-09), so on a Mac such a record is a Darwin
+/// one and is judged by Darwin. Any other namespace-2 record, in particular the zero stamp
+/// that the first macOS build (8002ae8) wrote because it had no start time, is NOT
+/// reinterpreted: it is unknown, kept, and never read as a stopped owner.
+inline constexpr std::uint64_t kLegacyDarwinStampFloor = 1000000000000000ull;
+inline bool is_legacy_darwin_owner(std::uint32_t ns, std::uint64_t started) {
+    return ns == kNamespaceLinux && started >= kLegacyDarwinStampFloor;
+}
+#endif
 
 #if !defined(_WIN32)
 /// starttime (field 22) of /proc/<pid>/stat, 0 when unreadable.

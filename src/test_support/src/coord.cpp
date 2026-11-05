@@ -13,6 +13,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
@@ -33,9 +34,6 @@
 #if !defined(_WIN32)
 #include <spawn.h>
 extern char** environ;
-#endif
-#if defined(__APPLE__)
-#include <libproc.h>
 #endif
 
 namespace anno::test {
@@ -163,20 +161,28 @@ bool spawn_local(const std::filesystem::path& exe, std::uint16_t port, bool all_
         return false;
     }
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
-    // The coordinator is detached: it keeps no descriptor of the starting client
-    // (T10c F3, D2). Its stdio is /dev/null, below.
+    // The coordinator is detached: it keeps no descriptor of the starting client (T10c F3, D2),
+    // and that includes stdin, stdout and stderr. It outlives the client that starts it (until
+    // it has been idle for 30 s), so an inherited stdout pipe would stay open after the client
+    // exited and whatever reads the client's output (a shell pipeline, a ctest capture) would
+    // wait for end-of-file until the coordinator died (MAP-2 review, measured: 32 s for a
+    // client that took 2 s). The three are /dev/null, which also keeps the file actions below
+    // from leaving 0..2 unopened. Its own lines (LISTENING, BIND-FAILED) reach no reader on this
+    // path; a coordinator that a test starts itself (Child::start) has its own pipes and is not
+    // started here. Every action is checked: a coordinator that could not be detached is not
+    // started with the starter's streams.
     posix_spawn_file_actions_t actions;
     if (posix_spawn_file_actions_init(&actions) != 0) {
         posix_spawnattr_destroy(&attr);
         return false;
     }
-    // The coordinator outlives the test that starts it, so it must not keep the
-    // starter's stdout: an inherited pipe kept ctest waiting for end-of-file (the
-    // Mac, 2026-10-30: the render corpus case finished and ctest hung until the
-    // orphan was killed). The coordinator's own lines reach no reader here.
-    posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0);
+    if (posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0) != 0 ||
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0) != 0 ||
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0) != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        posix_spawnattr_destroy(&attr);
+        return false;
+    }
     if (!close_descriptors_from_3(&actions)) {
         posix_spawn_file_actions_destroy(&actions);
         posix_spawnattr_destroy(&attr);
@@ -821,6 +827,31 @@ detail::ConnectOutcome detail::coord_connect_once(const ConnectArgs& args,
     Native fd = connect_loopback(port);
     if (fd == kInvalid) {
         out.kind = Attempt::NotReady;
+        if (progress.spawned) {
+            // The coordinator this client started may have refused to start (the previous
+            // version's journal holds promises): its stdio is /dev/null, so it left a notice
+            // beside the journal. Terminal for this connect: starting it again cannot change
+            // the answer, and waiting for the admission deadline would only hide it.
+            const std::filesystem::path notice =
+                coordinator_refusal_notice(coordinator_default_journal(port));
+            std::error_code error;
+            const auto written = std::filesystem::last_write_time(notice, error);
+            if (!error && written >= progress.spawned_at) {
+                std::string text;
+                if (std::FILE* in = std::fopen(notice.string().c_str(), "r")) {
+                    char buffer[2048];
+                    const std::size_t got = std::fread(buffer, 1, sizeof(buffer) - 1, in);
+                    text.assign(buffer, got);
+                    std::fclose(in);
+                }
+                while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+                    text.pop_back();
+                }
+                out.kind = Attempt::Failed;
+                out.diagnostic = "infrastructure blocker: " + where + " did not start: " + text;
+                return out;
+            }
+        }
         if (!may_spawn()) {
             out.diagnostic = "no test budget coordinator is listening on port " +
                              std::to_string(port) + " (ANNO_TEST_BUDGET_SPAWN=0)";
@@ -833,6 +864,8 @@ detail::ConnectOutcome detail::coord_connect_once(const ConnectArgs& args,
             return out;
         }
         progress.next_spawn = now + std::chrono::seconds(2);
+        progress.spawned = true;
+        progress.spawned_at = std::filesystem::file_time_type::clock::now();
         if (!start_coordinator_process(shared, port)) {
             out.kind = Attempt::Failed;
             out.diagnostic =

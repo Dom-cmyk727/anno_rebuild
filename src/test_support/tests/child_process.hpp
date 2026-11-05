@@ -226,6 +226,19 @@ class Child {
         }
     }
 
+    /// True when the child's output reached end-of-file within `timeout`: every process that
+    /// holds the write end of the pipe has closed it, not only this child (a process the child
+    /// started and left running keeps the pipe open). Buffered lines stay readable.
+    bool wait_eof(std::chrono::milliseconds timeout) {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (!read_some(deadline - std::chrono::steady_clock::now())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void send(const std::string& text) {
 #if defined(_WIN32)
         if (in_ != nullptr) {

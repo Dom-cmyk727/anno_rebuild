@@ -77,7 +77,7 @@ TEST_CASE("F3 (D1): two compatible builds share one busy coordinator" *
     Child coord =
         start_coordinator(kPortAccept, journal, 0xa0a0a0a0a0a0a0a0ULL, std::nullopt, listening);
     CHECK(has(listening, "build=a0a0a0a0a0a0a0a0"));
-    CHECK(has(listening, " compat=3"));
+    CHECK(has(listening, " compat=4"));
     const auto budget_path = (f3_dir() / "a.budget").string();
     const Vars vars = client_vars(kPortAccept, "f3-a", "30");
 
@@ -509,7 +509,7 @@ TEST_CASE("F3 (D1, silent): a coordinator that never answers ends at the admissi
 }
 
 TEST_CASE(
-    "F3 (D1, pin): the coordinator reports its compatibility version 3, separately from its build" *
+    "F3 (D1, pin): the coordinator reports its compatibility version 4, separately from its build" *
     doctest::test_suite("budget")) {
     // The compatibility version is pinned. A change of the wire format, or of the
     // reservation, journal, residency or recovery semantics, must change this
@@ -518,7 +518,7 @@ TEST_CASE(
     remove_file(journal);
     std::string listening;
     Child coord = start_coordinator(kPortPin, journal, std::nullopt, std::nullopt, listening);
-    CHECK(has(listening, " compat=3"));
+    CHECK(has(listening, " compat=4"));
     CHECK(has(listening, " build="));
     CHECK(has(listening, " incarnation="));
 }

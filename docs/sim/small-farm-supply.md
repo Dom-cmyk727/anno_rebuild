@@ -23,8 +23,8 @@ contract the S2-S5 packages implement; no behaviour here is guessed.
 | three unit domains | the **warehouse** counts 8.8 tons (1 t = 256); the farm's raw and output stocks are the same 8.8 units but u16 (`+0x24/+0x26`, `+0x18/+0x1a`); the **figure cargo** is a u16 amount (`+6`) raised by 256 per cut. One cut = 1 t; one worker or animal trip = 3 cuts = 768 |
 
 **Where the resources exist (P, 515 island and scenario files).** Grass objects: 1 279 352 placed objects in 445 files. Potato
-objects (709): only 2 388 in **18** scenario files (the add-on `0201SingleAddOn/single31-34, 38-41`, the campaign
-`S01_02/03/04/07/10/12`, `Single_24`, `Tutorial/02Trade01`); the files that place both a farm 809 and potatoes include `S01_07_01`
+objects (709): only 2 388 in **16** scenario files (the add-on `0201SingleAddOn/single31-34, 38-41`, the campaign
+`S01_02/03/04/07/10/12`, `Single_24`, `Tutorial/02Trade01`; 18 files hold potatoes or a farm 809, `endless02` and `S01_08_01` only the farm); the files that place both a farm 809 and potatoes include `S01_07_01`
 (11 farms, 115 + 90 young potatoes) and `single33` (16 farms, 478). In the Tutorial town of K0-K3 (island 3, player 2) two small
 farms stand at (212,250) and (211,240) with 50 and 33 grass objects in reach and **no potato object in reach**; the neighbouring
 island 7 holds farms at (261,344) with 32 potatoes in reach. **U (OQ-491):** nothing traced puts a potato object on an island

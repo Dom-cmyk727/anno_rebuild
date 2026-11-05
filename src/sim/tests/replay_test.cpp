@@ -177,8 +177,9 @@ TEST_CASE("write_log matches the documented frame byte for byte") {
     for (const char c : std::string("A3RP")) {
         s.u8(static_cast<std::uint8_t>(c)); // magic
     }
-    s.u32(2);                     // kReplayLogVersion
+    s.u32(3);                     // kReplayLogVersion
     s.u32(1);                     // kCommandWireVersion, once
+    s.u64(0);                     // script content digest in this wire-only specimen
     s.u64(0x1111111111111111ULL); // config digest
     s.u64(0x2222222222222222ULL); // rules digest
     s.u64(0x3333333333333333ULL); // registry digest
@@ -334,9 +335,9 @@ TEST_CASE("log header records the prng timeline") {
     // With Rules::house_updates the walker, variant and first-assignment draws exist (C2: the
     // player build calls SetGroup with a null old group, population-live.md section 21.5).
     CHECK(sim::prng_timeline_missing(false) == expected);
-    const std::vector<std::string> live{"CityRandomEvents",    "WildlifeSweep",  "Ai",
-                                        "LinkOrePlace",        "LinkNativeName", "LinkTreasureKind",
-                                        "LinkTreasurePlace",   "ComputerName",   "CityNameLoad"};
+    const std::vector<std::string> live{"CityRandomEvents",  "WildlifeSweep",  "Ai",
+                                        "LinkOrePlace",      "LinkNativeName", "LinkTreasureKind",
+                                        "LinkTreasurePlace", "ComputerName",   "CityNameLoad"};
     CHECK(sim::prng_timeline_missing(true) == live);
 
     // The digests pin the world the log was recorded against.

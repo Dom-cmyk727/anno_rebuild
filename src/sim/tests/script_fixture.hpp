@@ -18,7 +18,8 @@ inline std::string permission(std::string owner, sim::TypeId id, bool value) {
            (value ? "TRUE" : "FALSE") + ");";
 }
 inline Fixture make(bool atomic = false, std::optional<std::string> kernel = {},
-                    sim::Seams seams = {}, sim::ScriptLimits limits = {}) {
+                    sim::Seams seams = {}, sim::ScriptLimits limits = {},
+                    std::optional<std::string> ns = {}) {
     auto types = command_test::build_types();
     sim::TypeRegistry::Builder builder;
     builder.walk_tables(types.registry->walk_tables());
@@ -41,6 +42,7 @@ inline Fixture make(bool atomic = false, std::optional<std::string> kernel = {},
     for (auto& city : spec.islands[0].cities)
         (*city.stock)[43] = 20 * sim::kTon;
     spec.script_limits = limits;
+    spec.script_asset_namespace = std::move(ns);
     spec.script_context = sim::ScriptContext::Pending;
     if (!kernel)
         kernel = "INITBLOCK(){" + permission("ME", types.weaver, false) +

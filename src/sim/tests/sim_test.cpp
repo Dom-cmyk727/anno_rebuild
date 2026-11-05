@@ -509,7 +509,7 @@ TEST_CASE("state_hash relational properties") {
     fields(rules_bytes, base.rules());
     sim::StateHasher header;
     header.u32(sim::kStateHashVersion);
-    header.u64(0x0031545049524353ULL);
+    header.u64(0x0032545049524353ULL);
     header.u32(sim::kPrngTimelineVersion);
     header.bytes(config_bytes.data());
     header.bytes(rules_bytes.data());
@@ -588,8 +588,10 @@ TEST_CASE("state_hash relational properties") {
     CHECK(tree.root.children[8].hash == timers.value());
     sim::StateHasher script;
     script.u64(0);
-    for (auto v : {1048576u, 65536u, 128u, 100000u, 1u})
+    for (auto v : {1048576u, 65536u, 128u, 100000u, 4096u})
         script.u32(v);
+    script.u8(0);  // namespace absent
+    script.u32(2); // execution policy
     script.u8(0);
     script.u8(0);
     for (int i = 0; i < 4; ++i)
@@ -614,8 +616,8 @@ TEST_CASE("state_hash relational properties") {
     // names, clock_rng, settings, ids, players, islands, figures, events,
     // timers_monopoly).
     CHECK(sim::World().state_hash() ==
-          0x708747823698a4acULL); // SCRIPT1 empty_world; independent sim_stream_script1.py
-    CHECK(sim::kStateHashVersion == 129);
+          0x6598d00ddc83aca6ULL); // SCRIPT2 empty_world; independent sim_stream_script2.py
+    CHECK(sim::kStateHashVersion == 130);
     CHECK(sim::kPrngTimelineVersion == 5);
 }
 
@@ -897,13 +899,13 @@ TEST_CASE("world core stream layout round trip and rejects") {
     constexpr std::size_t kIdsBytes = 25 + 16; // + next_order_id, next_ticket (stream 122)
     constexpr std::size_t kPlayersBytes = 8 + 32 + 2 + 4;
     constexpr std::size_t kIslandsBytes = 8;
-    constexpr std::size_t kTailBytes = 31 + 8 + 193 + 62;
+    constexpr std::size_t kTailBytes = 31 + 8 + 193 + 67;
     REQUIRE(bytes.size() >
             8 + 36 + kSettingsBytes + kIdsBytes + kPlayersBytes + kIslandsBytes + kTailBytes);
     const std::size_t at = bytes.size() - kTailBytes - kIslandsBytes - kPlayersBytes - kIdsBytes -
                            kSettingsBytes - 36; // clock_rng starts
     CHECK(std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16) ==
-          std::vector<std::uint8_t>{129, 0, 0, 0, 0x53, 0x43, 0x52, 0x49, 0x50, 0x54, 0x31, 0, 5, 0,
+          std::vector<std::uint8_t>{130, 0, 0, 0, 0x53, 0x43, 0x52, 0x49, 0x50, 0x54, 0x32, 0, 5, 0,
                                     0, 0});
     CHECK(bytes[at] == 17);    // ms = 17
     CHECK(bytes[at + 8] == 8); // last_tick = 8

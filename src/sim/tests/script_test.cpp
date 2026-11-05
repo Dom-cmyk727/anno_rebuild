@@ -96,10 +96,10 @@ TEST_CASE("SCRIPT1 INIT restoration cursor and same visit writes") {
 }
 TEST_CASE("SCRIPT1 compiler refuses whole unsupported and forward symbols") {
     auto p = compile(
-        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",\"90001\",TRUE); PLAYWAVE(\"x\"); }",
+        source("INITBLOCK(){ SETCONSTRUCTION_DRAWSTATE(\"ME\",\"90001\",TRUE); PLAYVIDEO(\"x\"); }",
                {}, "\"ME\" 0\n"));
     REQUIRE_FALSE(p);
-    CHECK(p.error().message == "unsupported action: PLAYWAVE");
+    CHECK(p.error().message == "unsupported action: PLAYVIDEO");
     CHECK_FALSE(compile(source("IF LATER THEN {}\nSET LATER = FALSE;\n")));
     CHECK_FALSE(compile(source("SET Foo = TRUE;\nIF FOO THEN {}\n")));
     CHECK(compile(source("SET Foo = TRUE;\nSET FOO = FALSE;\nIF Foo THEN {}\n")));
@@ -144,7 +144,7 @@ TEST_CASE("SCRIPT1 read on losses and timer query visibility") {
     CHECK(s.signals[1] == 0);
 }
 TEST_CASE("SCRIPT1 duplicate kernels cannot hide unsupported dependencies") {
-    auto text = source("INITBLOCK(){ PLAYWAVE(\"x\"); }\n");
+    auto text = source("INITBLOCK(){ PLAYVIDEO(\"x\"); }\n");
     text.insert(text.find("[SIGNALS]"), "[SCRIPT_KERNEL]\n");
     auto p = compile(text);
     REQUIRE_FALSE(p);

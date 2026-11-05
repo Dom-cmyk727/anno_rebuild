@@ -4,6 +4,7 @@
 #include <set>
 #include <utility>
 
+#include <anno/sim/hash.hpp>
 #include <anno/sim/script_runtime.hpp>
 namespace anno::sim {
 namespace {
@@ -231,6 +232,24 @@ prepare_script(std::string source, const TypeRegistry& types, const PlayerTable&
     }
     r.program = std::make_shared<const ScriptProgram>(std::move(program).value());
     return r;
+}
+std::uint64_t script_content_digest(const ScriptRuntime& r) {
+    StateHasher h;
+    const auto text = [&](std::string_view value) {
+        h.u64(value.size());
+        h.bytes(std::span(reinterpret_cast<const std::uint8_t*>(value.data()), value.size()));
+    };
+    h.u32(r.policy);
+    h.u32(r.limits.source_bytes);
+    h.u32(r.limits.nodes);
+    h.u32(r.limits.depth);
+    h.u32(r.limits.work);
+    h.u32(r.limits.asset_bytes);
+    text(r.source);
+    h.u8(r.asset_namespace ? 1 : 0);
+    if (r.asset_namespace)
+        text(*r.asset_namespace);
+    return h.value();
 }
 std::string validate_script(const ScriptRuntime& r, const TypeRegistry& types,
                             const PlayerTable& players, const SimConfig& cfg) {

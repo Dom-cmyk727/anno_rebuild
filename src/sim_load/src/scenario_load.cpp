@@ -110,4 +110,26 @@ load_scenario_with_links(formats::Bytes file, const IslandTemplates& templates,
     return out;
 }
 
+formats::Result<ResolvedScenario, std::string>
+load_scenario_file(const fs::path& file, const fs::path& game_dir, const IslandTemplates& templates,
+                   const sim::TypeRegistry& types, const sim::SimConfig& config,
+                   const sim::Rules& rules) {
+    std::error_code ec;
+    const auto relative = fs::relative(file, game_dir / "Scenes", ec);
+    if (ec || relative.empty() || relative.is_absolute())
+        return std::string("scenario file has no scene-relative namespace");
+    for (const auto& part : relative)
+        if (part == "..")
+            return std::string("scenario file lies outside Scenes");
+    auto bytes = read_bytes(file);
+    if (!bytes)
+        return "cannot read scenario: " + file.string();
+    auto loaded = load_scenario_with_links(*bytes, templates, types, config, rules);
+    if (!loaded)
+        return loaded.error();
+    auto folder = relative.parent_path().generic_string();
+    loaded.value().loaded.spec.script_asset_namespace =
+        "scenes" + (folder.empty() ? std::string{} : "/" + folder);
+    return std::move(loaded).value();
+}
 } // namespace anno::sim_load

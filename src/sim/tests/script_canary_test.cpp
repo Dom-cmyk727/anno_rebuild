@@ -69,16 +69,16 @@ Canary produce() {
             sim::Reject::ConstructionDenied); // 11
     CHECK(w.state_hash() == hash);
     rec.checkpoint(); // 12
-    REQUIRE(rec.log().entries.size() == 13);
+    REQUIRE(rec.log().entries.size() == 14);
     auto normal = rec.log();
     auto wrong = normal;
-    std::get<sim::BuildCmd>(wrong.entries[7].commands[0].body).placements[0].x = 121;
+    std::get<sim::BuildCmd>(wrong.entries[8].commands[0].body).placements[0].x = 121;
     auto initial = sim::World::load(normal.initial_save, f.types.registry);
     REQUIRE(initial);
     const auto hashes = sim::hash_per_entry(initial.value(), normal);
     const auto wrong_hashes = sim::hash_per_entry(initial.value(), wrong);
-    REQUIRE(hashes.size() == 13);
-    CHECK(sim::first_divergent_entry(hashes, wrong_hashes) == std::optional<std::size_t>{7});
+    REQUIRE(hashes.size() == 14);
+    CHECK(sim::first_divergent_entry(hashes, wrong_hashes) == std::optional<std::size_t>{8});
     return {std::move(normal), std::move(wrong), f.types.registry, w.state_hash()};
 }
 void verify(const sim::ReplayLog& log, const sim::ReplayLog& wrong,
@@ -94,10 +94,10 @@ void verify(const sim::ReplayLog& log, const sim::ReplayLog& wrong,
     REQUIRE(changed);
     auto divergent = sim::replay(changed.value(), wrong);
     REQUIRE(divergent);
-    CHECK(divergent.value().diverged_entry == std::optional<std::uint64_t>{8});
+    CHECK(divergent.value().diverged_entry == std::optional<std::uint64_t>{9});
     CHECK(divergent.value().checkpoints_matched == 3);
     // Native cuts at pending, afterINIT, afterpermission change, afterlegalbuild and afterdeny.
-    for (std::size_t cut : {0u, 1u, 5u, 7u, 10u}) {
+    for (std::size_t cut : {0u, 2u, 6u, 8u, 11u}) {
         auto prefix = log;
         prefix.entries.resize(cut + 1);
         auto fresh = sim::World::load(log.initial_save, types);
@@ -310,6 +310,6 @@ TEST_CASE("SCRIPT1 published128 recordings stay unchanged and reach version refu
         auto refused = sim::World::load(log.value().initial_save, sim::TypeRegistry::empty());
         REQUIRE_FALSE(refused);
         CHECK(refused.error() ==
-              "save: state stream version 128 is not supported (this build reads 129)");
+              "save: state stream version 128 is not supported (this build reads 130)");
     }
 }

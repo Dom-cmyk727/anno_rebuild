@@ -32,12 +32,12 @@ void rechecksum(std::vector<std::uint8_t>& bytes) {
         bytes[bytes.size() - 8 + k] = static_cast<std::uint8_t>(value >> (8 * k));
 }
 } // namespace
-TEST_CASE("SCRIPT1 native header and empty runtime have hand written bytes") {
+TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     WriteArchive header;
     StateHeader h;
     fields(header, h);
-    const std::vector<std::uint8_t> expected_header{129,  0,    0,    0, 0x53, 0x43, 0x52, 0x49,
-                                                    0x50, 0x54, 0x31, 0, 5,    0,    0,    0};
+    const std::vector<std::uint8_t> expected_header{130,  0,    0,    0, 0x53, 0x43, 0x52, 0x49,
+                                                    0x50, 0x54, 0x32, 0, 5,    0,    0,    0};
     CHECK(header.data() == expected_header);
     auto wrong = expected_header;
     wrong[4] ^= 1;
@@ -51,12 +51,13 @@ TEST_CASE("SCRIPT1 native header and empty runtime have hand written bytes") {
     WriteArchive out;
     fields(out, r);
     const std::vector<std::uint8_t> expected{
-        0, 0, 0,  0, 0, 0, 0, 0,                                  // source length
-        0, 0, 16, 0, 0, 0, 1, 0, 128, 0, 0, 0, 0xa0, 0x86, 1, 0,  // four limits
-        1, 0, 0,  0,                                              // execution policy
-        1, 0,                                                     // ExplicitNone, no fault
-        0, 0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0,    0,    0, 0,  // continuation
-        0, 0, 0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0,    0,    0, 0}; // signals, bindings
+        0, 0,  0,  0, 0, 0, 0, 0,                                 // source length
+        0, 0,  16, 0, 0, 0, 1, 0, 128, 0, 0, 0, 0xa0, 0x86, 1, 0, // four limits
+        0, 16, 0,  0, 0, // asset_bytes4096 and absent namespace
+        2, 0,  0,  0,    // execution policy
+        1, 0,            // ExplicitNone, no fault
+        0, 0,  0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0,    0,    0, 0,  // continuation
+        0, 0,  0,  0, 0, 0, 0, 0, 0,   0, 0, 0, 0,    0,    0, 0}; // signals, bindings
     CHECK(out.data() == expected);
 }
 TEST_CASE("SCRIPT1 normal advance save reload preserves initialization and deferred IF") {
@@ -114,7 +115,7 @@ TEST_CASE("SCRIPT1 repaired checksum version and same version schema refusals ar
     auto refused = World::load(old, TypeRegistry::empty());
     REQUIRE_FALSE(refused);
     CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 129)");
+          "save: state stream version 128 is not supported (this build reads 130)");
     auto foreign = bytes;
     foreign[12] ^= 1;
     rechecksum(foreign);
@@ -151,7 +152,8 @@ TEST_CASE("SCRIPT1 nonempty continuation and widened permission rows have litera
     // Wire-only specimen: distinctive values expose swapped fields. It is not a playable runtime.
     ScriptRuntime r;
     r.source = "X";
-    r.limits = {3, 4, 5, 6};
+    r.limits = {3, 4, 5, 6, 7};
+    r.asset_namespace = "z";
     r.policy = 0x01020304;
     r.state.context = ScriptContext::Fault;
     r.state.fault = ScriptFault::Host;
@@ -167,9 +169,12 @@ TEST_CASE("SCRIPT1 nonempty continuation and widened permission rows have litera
         2,    0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55, 0x78, 0x56, 0x34, 0x12, 0x89, 0x67,
         0x45, 0x23, 3,    0,    0,    0,    0,    0,    0,    0,    1,    0,    1,    2,    0,
         0,    0,    0,    0,    0,    0,    3,    2,    1,    0,    70,   0,    0,    0};
+    auto current_expected = expected;
+    current_expected.insert(current_expected.begin() + 25,
+                            {7, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 'z'});
     WriteArchive out;
     fields(out, r);
-    CHECK(out.data() == expected);
+    CHECK(out.data() == current_expected);
     auto p = make_player(PlayerId{0}, SimConfig{});
     p.permissions = {{TypeId{70000}, 0}, {TypeId{90001}, 255}};
     WriteArchive player;
@@ -204,7 +209,7 @@ TEST_CASE("SCRIPT1 native restore refuses malformed continuation and unrelated b
             r.state.bindings[0] = PlayerId{1};
             break;
         case 3:
-            r.policy = 2;
+            r.policy = 3;
             break;
         case 4:
             r.limits.depth = 129;

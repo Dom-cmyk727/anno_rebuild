@@ -152,7 +152,7 @@ TEST_CASE("SCRIPT1 missing context and unsupported program cannot authorize cons
           sim::Reject::PermissionContext);
     CHECK(w.state_hash() == hash);
     spec.script_context = sim::ScriptContext::Pending;
-    spec.script_source = script_test::source("INITBLOCK(){ PLAYWAVE(\"x\"); }");
+    spec.script_source = script_test::source("INITBLOCK(){ PLAYVIDEO(\"x\"); }");
     auto refused = sim::World::create(spec, types.registry);
     REQUIRE_FALSE(refused);
     CHECK(refused.error().find("unsupported action") != std::string::npos);
@@ -205,7 +205,7 @@ TEST_CASE(
     auto types = command_test::build_types();
     auto spec = command_test::two_city_spec(types);
     spec.script_context = sim::ScriptContext::Pending;
-    spec.script_source = script_test::source("INITBLOCK(){ MONEY_ADD(\"ME\",1); }");
+    spec.script_source = script_test::source("INITBLOCK(){ PLAYVIDEO(\"x\"); }");
     auto original = sim::World::create(spec, types.registry);
     REQUIRE_FALSE(original);
     auto component = original_component::import_only(spec, types.registry);

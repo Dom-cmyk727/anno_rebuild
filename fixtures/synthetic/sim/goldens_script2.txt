@@ -1,0 +1,13 @@
+# SCRIPT2 native130 + SCRIPT2 schema/policy2. Published128 and SCRIPT1 files preserved.
+# Eleven independent default-field transcriptions: tools/sim_stream_script2.py.
+g0_step1 S1 130 3713f0451e4938ad
+g0_step100 S1 130 3837a2ba6062f2a8
+g0_step1000 S1 130 6c8d6e7e1398f0ef
+g1_players_step100 S4 130 eb9d414b055eb605
+g1_players_step700 S4 130 e3c85d665a492e7d
+s5_islands_create S5 130 52fd37f14144268b
+s5_islands_step100 S5 130 08164ef696ca1ac6
+s5_islands_city_created S5 130 165be8c347ae836b
+s5_islands_locked_create S5 130 c448d20b461cb574
+s6_g1_create S6 130 6bc89941521728a7
+s6_g1_step100 S6 130 61361a9c332492a3

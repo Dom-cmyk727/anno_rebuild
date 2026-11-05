@@ -49,4 +49,9 @@ load_scenario_with_links(formats::Bytes file, const IslandTemplates& templates,
                          const sim::TypeRegistry& types, const sim::SimConfig& config,
                          const sim::Rules& rules);
 
+/// Normal file import supplies its scene-relative asset namespace as content input.
+formats::Result<ResolvedScenario, std::string>
+load_scenario_file(const std::filesystem::path& file, const std::filesystem::path& game_dir,
+                   const IslandTemplates&, const sim::TypeRegistry&, const sim::SimConfig&,
+                   const sim::Rules&);
 } // namespace anno::sim_load

@@ -1530,7 +1530,7 @@ TEST_CASE("state stream header and settings scopes") {
     // timers, 28 empty monopoly entries).
     Stream expected;
     expected.u32(sim::kStateHashVersion);
-    expected.u64(0x0031545049524353ULL); // SCRIPT1 schema
+    expected.u64(0x0032545049524353ULL); // SCRIPT2 schema
     expected.u32(sim::kPrngTimelineVersion);
     expected_config(expected);
     expected.u64(sim::TypeRegistry::empty()->digest());
@@ -1582,8 +1582,10 @@ TEST_CASE("state stream header and settings scopes") {
         expected.u8(0);  // no player
     }
     expected.u64(0); // script: source length
-    for (auto v : {1048576u, 65536u, 128u, 100000u, 1u})
-        expected.u32(v); // limits/policy
+    for (auto v : {1048576u, 65536u, 128u, 100000u, 4096u})
+        expected.u32(v);
+    expected.u8(0);  // namespace absent
+    expected.u32(2); // execution policy // limits/policy
     expected.u8(0);
     expected.u8(0); // Missing/no fault
     for (int i = 0; i < 4; ++i)
@@ -1591,7 +1593,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(0);
     expected.u64(0); // signals/bindings
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 129);
+    CHECK(sim::kStateHashVersion == 130);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);
@@ -1604,7 +1606,7 @@ TEST_CASE("state stream header and settings scopes") {
     CHECK(scope_offset(w, "events") == header_size + 36 + 38 + 41 + 46 + 8 + 31);
     CHECK(scope_offset(w, "timers_monopoly") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8);
     CHECK(scope_offset(w, "script") == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193);
-    CHECK(bytes.size() == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193 + 62);
+    CHECK(bytes.size() == header_size + 36 + 38 + 41 + 46 + 8 + 31 + 8 + 193 + 67);
 }
 
 TEST_CASE("state hash moves with every config rules settings and seam field") {

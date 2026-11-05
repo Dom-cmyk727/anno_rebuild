@@ -35,7 +35,7 @@ std::uint8_t kind_byte(ReplayEntry::Kind k) {
     return static_cast<std::uint8_t>(k);
 }
 
-void apply_entry(World& w, const ReplayEntry& e) {
+std::string apply_entry(World& w, const ReplayEntry& e) {
     switch (e.kind) {
     case ReplayEntry::Kind::Advance:
         w.advance(e.ms);
@@ -47,7 +47,13 @@ void apply_entry(World& w, const ReplayEntry& e) {
         break;
     case ReplayEntry::Kind::Checkpoint:
         break;
+    case ReplayEntry::Kind::Startup:
+        if (e.tick != 0 || w.clock().ms != 0 || w.clock().last_tick != 0 ||
+            w.script().state.context != ScriptContext::Pending)
+            return "startup entry requires a fresh Pending world at tick0";
+        return w.initialize_scripts();
     }
+    return {};
 }
 
 std::string segment(const HashNode& n) {
@@ -108,10 +114,20 @@ formats::Result<Recorder, std::string> Recorder::start(World& world) {
                                "flat state stream is for hashing only, World::save)");
         }
     }
-    return Recorder(world);
+    Recorder rec(world); // preserve pre-INIT save; startup is a replayable entry
+    if (world.script().state.context == ScriptContext::Pending) {
+        if (auto error = world.initialize_scripts(); !error.empty())
+            return "cannot record: " + error;
+        ReplayEntry entry;
+        entry.kind = ReplayEntry::Kind::Startup;
+        entry.tick = 0;
+        rec.log_.entries.push_back(std::move(entry));
+    }
+    return rec;
 }
 
 Recorder::Recorder(World& world) : world_(world) {
+    log_.script_digest = script_content_digest(world_.script());
     log_.config_digest = world_.config().digest();
     log_.rules_digest = world_.rules().digest();
     log_.registry_digest = world_.types().digest();
@@ -176,6 +192,9 @@ void submit_or_apply(World& world, Recorder* rec, const Command& c) {
 } // namespace
 
 void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps) {
+    if (world.script().state.context == ScriptContext::Pending &&
+        !world.initialize_scripts().empty())
+        return;
     for (const Command& c : turn.commands) {
         submit_or_apply(world, rec, c);
     }
@@ -190,6 +209,9 @@ void run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_t steps
 
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms) {
+    if (world.script().state.context == ScriptContext::Pending &&
+        !world.initialize_scripts().empty())
+        return;
     for (const Command& c : commands) {
         submit_or_apply(world, rec, c);
     }
@@ -207,6 +229,7 @@ formats::Result<std::vector<std::uint8_t>, std::string> write_log(const ReplayLo
     w.bytes(kMagic);
     w.u32(kReplayLogVersion);
     w.u32(kCommandWireVersion); // once, not per record (§8.5)
+    w.u64(log.script_digest);
     w.u64(log.config_digest);
     w.u64(log.rules_digest);
     w.u64(log.registry_digest);
@@ -247,6 +270,11 @@ formats::Result<std::vector<std::uint8_t>, std::string> write_log(const ReplayLo
             w.bytes(blob);
             break;
         }
+        case ReplayEntry::Kind::Startup:
+            if (e.tick != 0)
+                return std::string("startup entry tick must be0");
+            w.u64(e.tick);
+            break;
         case ReplayEntry::Kind::Checkpoint:
             w.u64(e.tick);
             w.u64(e.hash);
@@ -265,7 +293,7 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
     }
     std::uint32_t version = 0;
     r.u32(version);
-    if (!r.failed() && version != kReplayLogVersion) {
+    if (!r.failed() && version != kReplayLogVersion && version != 2) {
         r.fail("replay-log version " + std::to_string(version) + " is not " +
                std::to_string(kReplayLogVersion));
     }
@@ -277,6 +305,8 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
     }
 
     ReplayLog log;
+    if (version >= 3)
+        r.u64(log.script_digest);
     r.u64(log.config_digest);
     r.u64(log.rules_digest);
     r.u64(log.registry_digest);
@@ -312,7 +342,8 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
         ReplayEntry e;
         std::uint8_t kind = 0;
         r.u8(kind);
-        if (!r.failed() && kind > kind_byte(ReplayEntry::Kind::Checkpoint)) {
+        if (!r.failed() && kind > kind_byte(version >= 3 ? ReplayEntry::Kind::Startup
+                                                         : ReplayEntry::Kind::Checkpoint)) {
             r.fail("unknown replay-entry kind " + std::to_string(kind));
             break;
         }
@@ -345,6 +376,11 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
             }
             break;
         }
+        case ReplayEntry::Kind::Startup:
+            r.u64(e.tick);
+            if (!r.failed() && e.tick != 0)
+                r.fail("startup entry tick must be0");
+            break;
         case ReplayEntry::Kind::Checkpoint:
             r.u64(e.tick);
             r.u64(e.hash);
@@ -367,7 +403,10 @@ formats::Result<ReplayLog, std::string> read_log(std::span<const std::uint8_t> b
 
 // ---- replay / divergence -----------------------------------------------------------
 
-formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog& log) {
+formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog& log,
+                                                   ReplayObserver observer) {
+    if (log.script_digest != script_content_digest(world.script()))
+        return std::string("replay refused: script content digest differs from the log's");
     if (log.prng_timeline_version != kPrngTimelineVersion) {
         return std::string("replay refused: PRNG timeline version " +
                            std::to_string(log.prng_timeline_version) + " is not this build's " +
@@ -414,7 +453,12 @@ formats::Result<ReplayOutcome, std::string> replay(World& world, const ReplayLog
                 return out;
             }
         } else {
-            apply_entry(world, e);
+            if (auto error = apply_entry(world, e); !error.empty())
+                return "entry " + std::to_string(i) + ": " + error;
+            if (observer.events) {
+                auto events = world.drain_events();
+                observer.events(observer.ctx, events);
+            }
             ++out.entries_applied;
         }
     }
@@ -426,7 +470,8 @@ std::vector<std::uint64_t> hash_per_entry(World initial, const ReplayLog& log) {
     std::vector<std::uint64_t> hashes;
     hashes.reserve(log.entries.size());
     for (const ReplayEntry& e : log.entries) {
-        apply_entry(initial, e);
+        if (!apply_entry(initial, e).empty())
+            return {};
         hashes.push_back(initial.state_hash());
     }
     return hashes;
@@ -448,7 +493,8 @@ std::optional<std::size_t> first_divergent_entry(std::span<const std::uint64_t> 
 
 HashTree tree_at(World initial, const ReplayLog& log, std::size_t entry, std::uint32_t depth) {
     for (std::size_t i = 0; i < log.entries.size() && i <= entry; ++i) {
-        apply_entry(initial, log.entries[i]);
+        if (!apply_entry(initial, log.entries[i]).empty())
+            break;
     }
     HashTree tree;
     static_cast<void>(initial.state_hash(tree, depth));

@@ -1895,7 +1895,7 @@ TEST_CASE("load refuses a damaged frame") {
         island_test::put32(old, 8, 128);
         island_test::reseal(old);
         const std::string err = island_test::load_error(old);
-        CHECK(contains(err, "state stream version 128 is not supported (this build reads 129)"));
+        CHECK(contains(err, "state stream version 128 is not supported (this build reads 130)"));
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;

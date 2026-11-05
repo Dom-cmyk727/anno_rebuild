@@ -206,7 +206,7 @@ inline constexpr std::size_t kTimersMonopolyBytes = 193;
 /// u64 slot count, one empty slot byte, u16 stamp, the empty expiry list = 8 + 4 + 8 +
 /// 1 + 2 + 8 = 31 bytes; 39 before T22 dropped the deferred list), the events scope
 /// (the u64 count 0 = 8 bytes) and the timers_monopoly scope (stage S12).
-inline constexpr std::size_t kTailBytes = 31 + 8 + kTimersMonopolyBytes + 62; // empty SCRIPT1 scope
+inline constexpr std::size_t kTailBytes = 31 + 8 + kTimersMonopolyBytes + 67; // empty SCRIPT2 scope
 
 /// The flat stream of `w` with the bytes of its islands scope replaced by `table`;
 /// the scopes before it and the scopes after it (figures, events) stay as they are.

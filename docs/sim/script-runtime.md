@@ -721,3 +721,27 @@ failed/empty/skipped/incomplete/sanitizer. Added a distinct Host refusal after
 staged money+wave; output vector must remain empty. C budget test title now states
 its precise ordering (later timer never executes); C Host control covers staged
 timer rollback.
+
+D APPROVED `/root/script2_review_actions` at clean
+`e668fca9da43b14de03fca7c5236fc2412cfeff3`: typed code317/broadcast/namespace/
+source-offset/old-tick emission, work/path limits, transaction rollback, scheduler
+publication/reset, startup append, queue/drain and native cuts. D-restored-01
+passed25/25 with zero other outcomes; code318 mutation failed precisely3 intended
+assertions while28 legal assertions passed. Actual audio/window delivery NOT_RUN.
+
+E implementation freezes native130 + SCRIPT2 schema0x0032545049524353, policy2,
+saveframe1, commandwire1, PRNGtimeline5; replay frame3 adds script-content digest
+and kind3 Startup (u8+u64 tick0 =9bytes, existing minimum-entry guard retained).
+Recorder captures Pending save before INIT then records startup, so INIT events
+can be observed in fresh replay. Ready sessions emit no repeated startup. Normal
+unrecorded run_turn/run_frame initialize before first commands without a zero
+world advance; failed initialization stops the session call. The generic file
+loader derives a portable namespace relative to game/Scenes, and normal CLI
+scenario/join/measure paths use it. Low-level byte API requires its caller to
+supply the namespace. Content digest covers source/namespace/policy/all limits,
+not continuation, permitting suffix replay but refusing changed programs/content.
+Read-only replay event observer receives output without gameplay access. Legacy
+frame2 envelopes remain readable for explicit old-native refusal; no old native
+state is reinterpreted. SCRIPT1 fixtures/references remain unchanged; new default
+SCRIPT2 goldens are independently transcribed, remaining current self-baselines
+await labelled regeneration. E gate/review pending.

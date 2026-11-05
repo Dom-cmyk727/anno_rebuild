@@ -24,6 +24,7 @@ struct ScriptRuntime {
 [[nodiscard]] formats::Result<ScriptRuntime, std::string>
 prepare_script(std::string source, const TypeRegistry&, const PlayerTable&, const SimConfig&,
                ScriptLimits = {}, std::optional<std::string> asset_namespace = {});
+[[nodiscard]] std::uint64_t script_content_digest(const ScriptRuntime&);
 // Native reload rebuilds immutable instructions, preserving and validating execution
 // state/bindings.
 [[nodiscard]] std::string restore_script(ScriptRuntime&, const TypeRegistry&, const PlayerTable&,

@@ -22,8 +22,15 @@ import_only(const sim::ScenarioSpec& original,
     std::vector<sim::TypeId> ids;
     for (const auto& type : types->types())
         ids.push_back(type.id);
-    auto program = sim::compile_script(
-        original.script_source, {ids, cfg.player_slots, cfg.script_timers}, original.script_limits);
+    std::vector<std::string_view> goods;
+    for (const auto& g : types->goods_table())
+        goods.push_back(g.name);
+    std::optional<std::string_view> ns;
+    if (original.script_asset_namespace)
+        ns = *original.script_asset_namespace;
+    auto program = sim::compile_script(original.script_source,
+                                       {ids, cfg.player_slots, cfg.script_timers, goods, ns},
+                                       original.script_limits);
     if (program)
         return out;
     const auto refused = sim::World::create(original, types, cfg);

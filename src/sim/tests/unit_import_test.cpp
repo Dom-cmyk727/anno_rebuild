@@ -1,13 +1,16 @@
 // Authored original-format records and primary-derived expectations. Never copy original assets.
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <doctest/doctest.h>
@@ -113,10 +116,10 @@ Buf unit(std::uint16_t id, std::uint16_t kind, const Buf& records,
     append(b, records);
     return b;
 }
-Buf source(const Buf& actors, std::uint32_t slots = 100) {
+Buf source(const Buf& actors, std::uint32_t slots = 100, std::uint32_t width = 512) {
     Buf scene;
     Buf h;
-    u32(h, 512);
+    u32(h, width);
     u32(h, 512);
     h.resize(32, 0);
     append(scene, chunk("HEAD", h));
@@ -151,9 +154,18 @@ Buf source(const Buf& actors, std::uint32_t slots = 100) {
     append(scene, chunk("BIGBROTHER", Buf(script.begin(), script.end())));
     return chunk("ANNO", chunk("SCENE", scene));
 }
-std::shared_ptr<const sim::TypeRegistry>
-registry(std::uint32_t scout_max = 350, bool metadata = true, bool navigating_scout = false) {
+std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t scout_max = 350,
+                                                  bool metadata = true,
+                                                  bool navigating_scout = false,
+                                                  bool remapped_goods = false) {
     sim::TypeRegistry::Builder b;
+    if (remapped_goods) {
+        auto goods = sim::original_goods();
+        goods[41].name = "OLD_TOOL_NAME";
+        goods.resize(90002);
+        goods[90001].name = "WERKZEUG";
+        b.goods(std::move(goods));
+    }
     sim::FigureType ship{ship_kind, 0, 2560, 0, 0};
     ship.bewohntype = 113;
     ship.nav = sim::NavFacts{154618816, 472446400, 12000, 2, 2, 0, 1280};
@@ -351,4 +363,345 @@ TEST_CASE("UNIT1 original foot roles refuse navigating metadata without changing
     REQUIRE_FALSE(rejected);
     CHECK(rejected.error().find("unsupported actor") != std::string::npos);
     CHECK(nav->find_figure_type(scout_kind)->nav.has_value());
+}
+
+namespace {
+Buf crew_entry(std::uint16_t raw, std::uint8_t slot, std::uint16_t kind = scout_kind,
+               const Buf& priv = {}) {
+    Buf b;
+    u16(b, raw);
+    u16(b, kind);
+    b.push_back(slot);
+    b.push_back(0);
+    append(b, scout_records(350, priv));
+    return tagged("ENTRY", b);
+}
+Buf esel(std::uint16_t raw = 4, std::uint16_t kind = donkey_kind) {
+    Buf b;
+    u16(b, kind);
+    u16(b, raw);
+    u16(b, 6000);
+    u16(b, 7000); // Held coordinates are ignored, even outside this world's bounds.
+    append(b, tagged("HEAD", walker_head(400)));
+    return tagged("ESEL", b);
+}
+void refused(const Buf& file, std::string_view reason, sim::UnitImportOptions options = {}) {
+    const auto types = registry();
+    auto loaded = sim::load_scenario(file, *types, {}, options);
+    REQUIRE_FALSE(loaded);
+    CAPTURE(loaded.error());
+    CHECK(loaded.error().find(reason) != std::string::npos);
+}
+} // namespace
+
+TEST_CASE("UNIT1 authored health and independent HEAD state vectors") {
+    const auto types = registry();
+    const std::array<std::pair<std::uint8_t, std::uint32_t>, 4> ratios{
+        std::pair{std::uint8_t{0}, 12000U}, {1, 93}, {64, 6000}, {128, 12000}};
+    for (const auto [ratio, hp] : ratios) {
+        auto loaded = sim::load_scenario(
+            source(tagged("SCHIFF", unit(0, ship_kind, ship_records({}, ratio)))), *types, {});
+        REQUIRE(loaded);
+        CHECK(loaded.value().spec.figures[0].health == hp);
+    }
+    refused(source(tagged("SCHIFF", unit(0, ship_kind, ship_records({}, 129)))), "health exceeds");
+    const std::array<std::pair<std::uint16_t, std::uint32_t>, 5> health{
+        std::pair{std::uint16_t{175}, 175U}, {0, 350}, {0xffff, 350}, {350, 350}, {351, 350}};
+    for (const auto [raw, hp] : health) {
+        auto loaded = sim::load_scenario(
+            source(tagged("SOLDAT", unit(0, scout_kind, scout_records(raw)))), *types, {});
+        REQUIRE(loaded);
+        CHECK(loaded.value().spec.figures[0].hp == hp);
+        CHECK(loaded.value().spec.figures[0].state_word == 0);
+        CHECK(loaded.value().spec.figures[0].dir16 == 8);
+    }
+    for (std::uint8_t sign :
+         {std::uint8_t{0}, std::uint8_t{127}, std::uint8_t{128}, std::uint8_t{255}}) {
+        Buf r = tagged("HEAD", walker_head(350, sign));
+        append(r, tagged("WAREN", Buf(16, 0)));
+        auto loaded =
+            sim::load_scenario(source(tagged("SOLDAT", unit(0, scout_kind, r))), *types, {});
+        REQUIRE(loaded);
+        CHECK(loaded.value().spec.figures[0].state_word == (sign < 128 ? 0x20U : 0U));
+    }
+    Buf h = head(128, 0, 0, 3);
+    Buf r = tagged("HEAD", h);
+    append(r, tagged("WAREN", holds()));
+    auto flags = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, r))), *types, {});
+    REQUIRE(flags);
+    CHECK(flags.value().spec.figures[0].state_word == 0x8120);
+}
+
+TEST_CASE("UNIT1 authored positions retain Q32 fractions and round ties to even") {
+    const auto types = registry();
+    struct Point {
+        std::uint32_t bits;
+        std::int32_t q8;
+        std::int64_t q32;
+    };
+    const std::array<Point, 6> points{{{0x3f8ccccd, 281, 4724464128LL},
+                                       {0x2f000000, 0, 0},
+                                       {0x2fc00000, 0, 2},
+                                       {0x2f800000, 0, 1},
+                                       {0, 0, 0},
+                                       {0x80000000, 0, 0}}};
+    for (const auto p : points) {
+        auto loaded = sim::load_scenario(
+            source(tagged("SCHIFF", unit(0, ship_kind, ship_records(), p.bits))), *types, {});
+        REQUIRE(loaded);
+        const auto& f = loaded.value().spec.figures[0];
+        CHECK(f.pos.x == p.q8);
+        CHECK(f.pos.y == 640);
+        CHECK(f.dir16 == 4);
+        REQUIRE(f.nav_position_q32);
+        CHECK((*f.nav_position_q32)[0] == p.q32);
+        auto w = made(loaded.value().spec, types);
+        const auto* actor = sim::find_figure(w.figures(), sim::FigureId{1});
+        REQUIRE(actor);
+        REQUIRE(actor->nav);
+        CHECK(actor->nav->pos_u[0] == p.q32 * 500);
+        auto copy = sim::World::load(w.save(), types);
+        REQUIRE(copy);
+        CHECK(copy.value().save() == w.save());
+    }
+    for (const auto bits :
+         {0xbf800000U, 0x80000001U, 0x7f800000U, 0x7fc00000U, 0x7f7fffffU, 0x44000000U}) {
+        refused(source(tagged("SCHIFF", unit(0, ship_kind, ship_records(), bits))), "position");
+    }
+}
+
+TEST_CASE("UNIT1 cargo remaps the low goods byte and preserves ordered empty and named slots") {
+    const auto custom = registry(350, true, false, true);
+    auto decoded = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, ship_records()))),
+                                      *custom, {});
+    REQUIRE(decoded);
+    CHECK(decoded.value().spec.figures[0].holds ==
+          std::vector<sim::ShipHold>{{90001, 768}, {0, 0}});
+    auto w = made(decoded.value().spec, custom);
+    CHECK(sim::find_figure(w.figures(), sim::FigureId{1})->holds[0].goods == 90001);
+    Buf r = tagged("HEAD", head(128, 0));
+    append(r, tagged("WAREN", holds(50)));
+    auto clamped = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, r))), *custom, {});
+    REQUIRE(clamped);
+    CHECK(clamped.value().spec.figures[0].holds[0].amount_88 == 2560);
+    r = tagged("HEAD", head(128, 0));
+    append(r, tagged("WAREN", holds(0)));
+    auto zero = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, r))), *custom, {});
+    REQUIRE(zero);
+    CHECK(zero.value().spec.figures[0].holds[0].goods == 90001);
+    CHECK(zero.value().spec.figures[0].holds[0].amount_88 == 0);
+    Buf unknown = holds(3);
+    unknown[0] = 42;
+    r = tagged("HEAD", head(128, 0));
+    append(r, tagged("WAREN", unknown));
+    refused(source(tagged("SCHIFF", unit(0, ship_kind, r))), "unknown/unmapped goods");
+    unknown = holds(0);
+    unknown[0] = 42;
+    r = tagged("HEAD", head(128, 0));
+    append(r, tagged("WAREN", unknown));
+    auto empty = sim::load_scenario(source(tagged("SCHIFF", unit(0, ship_kind, r))), *custom, {});
+    REQUIRE(empty);
+    CHECK(empty.value().spec.figures[0].holds[0].goods == 0);
+    CHECK(empty.value().spec.figures[0].holds[0].amount_88 == 0);
+    CHECK(std::any_of(
+        empty.value().warnings.begin(), empty.value().warnings.end(),
+        [](const auto& x) { return x.message.find("empty unknown") != std::string::npos; }));
+}
+
+TEST_CASE("UNIT1 held donkey hierarchy uses the nonspatial parent cache through native reload") {
+    const auto types = registry();
+    auto decoded = sim::load_scenario(
+        source(tagged("SCHIFF", unit(37, ship_kind, ship_records(crew(2, 1, 350, esel()))))),
+        *types, {});
+    REQUIRE(decoded);
+    REQUIRE(decoded.value().spec.figures.size() == 3);
+    auto& spec = decoded.value().spec;
+    CHECK(spec.figures[2].parent == 1);
+    CHECK_FALSE(spec.figures[2].crew_slot);
+    CHECK(spec.figures[2].pos == spec.figures[1].pos);
+    CHECK(spec.figures[2].hp == 400);
+    CHECK(spec.figures[2].state_word == 0x88);
+    CHECK(spec.figures[2].dir16 == 0);
+    auto w = made(spec, types);
+    CHECK(w.figures().by_id.at(sim::FigureId{3}) == 4);
+    CHECK(w.figures().children.at(sim::FigureId{1}) ==
+          std::vector<sim::FigureId>{sim::FigureId{2}});
+    CHECK(w.figures().children.at(sim::FigureId{2}) ==
+          std::vector<sim::FigureId>{sim::FigureId{3}});
+    CHECK(w.figures().list.hint == 4);
+    auto players = w.players();
+    auto timers = sim::make_script_timers(w.config());
+    const std::string query =
+        "[OBJECT_DEFINE]\n[AREA_DEFINE]\n\"PATCH\" 2,1,2,3\n"
+        "[PLAYERMAPPER_DEFINE]\n\"ME\" 7\n[SCRIPT_KERNEL]\nSET HIT=FALSE;\n"
+        "IF AREA \"PATCH\" TOUCHED_BY_SOLDIER_FROM \"ME\" THEN { HIT=TRUE; }\n"
+        "[SIGNALS]\n[CAMARAPOS]\n0,0\n";
+    auto runtime = sim::prepare_script(query, *types, players, w.config());
+    REQUIRE(runtime);
+    REQUIRE(sim::advance_script(runtime.value(), players, timers, *types, 250, &w.figures(),
+                                &w.settings()));
+    CHECK_FALSE(runtime.value().state.signals[1]);
+    CHECK(runtime.value().query_stats.inserted ==
+          1); // Only unparented ship, not its cached children.
+    auto restored = sim::World::load(w.save(), types);
+    REQUIRE(restored);
+    CHECK(restored.value().save() == w.save());
+    CHECK(restored.value().check_invariants().empty());
+}
+
+TEST_CASE("UNIT1 malformed and unsupported actors refuse the complete import") {
+    const auto legal = source(tagged("SCHIFF", unit(37, ship_kind, ship_records(crew()))));
+    auto positive = sim::load_scenario(legal, *registry(), {});
+    REQUIRE(positive);
+    struct Bad {
+        std::string name;
+        Buf records;
+        std::string reason;
+    };
+    std::vector<Bad> cases;
+    cases.push_back({"short prefix", tagged("SCHIFF", Buf(15, 0)), "prefix"});
+    cases.push_back({"duplicate raw across parent",
+                     tagged("SCHIFF", unit(37, ship_kind, ship_records(crew(37)))),
+                     "duplicate raw"});
+    Buf entries = crew_entry(2, 1);
+    append(entries, crew_entry(3, 1));
+    cases.push_back({"duplicate crew slot",
+                     tagged("SCHIFF", unit(37, ship_kind, ship_records(tagged("CREW", entries)))),
+                     "crew slot"});
+    cases.push_back({"unavailable crew slot",
+                     tagged("SCHIFF", unit(37, ship_kind, ship_records(crew(2, 2)))), "crew slot"});
+    cases.push_back({"ship in SOLDAT", tagged("SOLDAT", unit(37, ship_kind, ship_records())),
+                     "unsupported actor"});
+    cases.push_back(
+        {"ship in CREW",
+         tagged("SCHIFF",
+                unit(37, ship_kind, ship_records(tagged("CREW", crew_entry(2, 1, ship_kind))))),
+         "unsupported actor"});
+    cases.push_back(
+        {"scout in ESEL",
+         tagged("SCHIFF", unit(37, ship_kind, ship_records(crew(2, 1, 350, esel(4, scout_kind))))),
+         "unsupported actor"});
+    cases.push_back({"unheld ESEL",
+                     tagged("SOLDAT", unit(2, scout_kind, scout_records(350, esel()))),
+                     "unheld ESEL"});
+    Buf r = ship_records();
+    append(r, tagged("HEAD", head(128, 0)));
+    cases.push_back({"duplicate HEAD", tagged("SCHIFF", unit(37, ship_kind, r)), "HEAD"});
+    cases.push_back({"missing HEAD",
+                     tagged("SCHIFF", unit(37, ship_kind, tagged("WAREN", holds()))),
+                     "missing required"});
+    r = tagged("HEAD", Buf(15, 0));
+    append(r, tagged("WAREN", holds()));
+    cases.push_back({"short HEAD", tagged("SCHIFF", unit(37, ship_kind, r)), "record length"});
+    cases.push_back({"missing WAREN",
+                     tagged("SCHIFF", unit(37, ship_kind, tagged("HEAD", head(128, 0)))),
+                     "missing required"});
+    for (std::size_t bytes : {15U, 24U}) {
+        r = tagged("HEAD", head(128, 0));
+        append(r, tagged("WAREN", Buf(bytes, 0)));
+        cases.push_back(
+            {"wrong WAREN length", tagged("SCHIFF", unit(37, ship_kind, r)), "hold record length"});
+    }
+    r = ship_records();
+    append(r, tagged("WAREN", holds()));
+    cases.push_back({"duplicate WAREN", tagged("SCHIFF", unit(37, ship_kind, r)), "WAREN"});
+    r = ship_records();
+    append(r, tagged("PRIVAT", {}));
+    append(r, tagged("PRIVAT", {}));
+    cases.push_back(
+        {"duplicate PRIVAT", tagged("SCHIFF", unit(37, ship_kind, r)), "duplicate record"});
+    r = ship_records();
+    append(r, tagged("TASK", Buf{1}));
+    cases.push_back({"task not silently omitted", tagged("SCHIFF", unit(37, ship_kind, r)),
+                     "unsupported unit record"});
+    cases.push_back({"route not silently omitted",
+                     tagged("SCHIFF", unit(37, ship_kind, ship_records(tagged("ROUTE", Buf{1})))),
+                     "unsupported required"});
+    cases.push_back({"nested role depth",
+                     tagged("SOLDAT", unit(2, scout_kind, scout_records(350, crew()))),
+                     "unsupported required"});
+    auto prefix = unit(37, ship_kind, ship_records());
+    prefix[6] = 1;
+    cases.push_back({"unported activation", tagged("SCHIFF", prefix), "activation flags"});
+    cases.push_back(
+        {"bad ship facing",
+         tagged("SCHIFF", unit(37, ship_kind, ship_records(), 0x3f8ccccd, 0x40200000, 16)),
+         "facing"});
+    cases.push_back(
+        {"bad scout facing",
+         tagged("SOLDAT", unit(37, scout_kind, scout_records(), 0x3f8ccccd, 0x40200000, 8)),
+         "facing"});
+    cases.push_back({"unknown required type", tagged("SOLDAT", unit(37, 59999, scout_records())),
+                     "unsupported actor"});
+    for (const auto& bad : cases) {
+        CAPTURE(bad.name);
+        refused(source(bad.records), bad.reason);
+    }
+    // Zero lies outside a zero-width world too; canonical -0 must not bypass bounds.
+    refused(source(tagged("SCHIFF", unit(0, ship_kind, ship_records(), 0)), 100, 0), "position");
+}
+
+TEST_CASE("UNIT1 import allocation budgets refuse required growth without clipping") {
+    const auto legal = source(tagged("SCHIFF", unit(37, ship_kind, ship_records())), 100);
+    sim::UnitImportOptions options;
+    options.max_registry_slots = 100;
+    auto loaded = sim::load_scenario(legal, *registry(), {}, options);
+    REQUIRE(loaded);
+    refused(source(tagged("SCHIFF", unit(100, ship_kind, ship_records())), 100), "growth exceeds",
+            options);
+    options.max_registry_slots = 124;
+    refused(source(tagged("SCHIFF", unit(100, ship_kind, ship_records())), 100), "growth exceeds",
+            options);
+    options.max_registry_slots = 125;
+    auto exact =
+        sim::load_scenario(source(tagged("SCHIFF", unit(100, ship_kind, ship_records())), 100),
+                           *registry(), {}, options);
+    REQUIRE(exact);
+    auto w = made(exact.value().spec, registry());
+    CHECK(w.figures().list.slots.size() == 125);
+    refused(source({}, UINT32_MAX), "MAIN registry length");
+    options = {};
+    options.max_actors = 1;
+    refused(source(tagged("SCHIFF", unit(37, ship_kind, ship_records(crew())))), "actor budget",
+            options);
+    options = {};
+    options.max_registry_slots = 0;
+    refused(legal, "invalid allocation", options);
+    options = {};
+    options.max_actors = sim::kListSizeBound + 1;
+    refused(legal, "invalid allocation", options);
+}
+
+TEST_CASE("UNIT1 actor-free component projection is explicit and never a refusal fallback") {
+    const auto bytes = source(tagged("SOLDAT", unit(0, 59999, scout_records())));
+    refused(bytes, "unsupported actor");
+    sim::UnitImportOptions options;
+    options.projection = sim::OriginalActorProjection::ActorFreeComponent;
+    auto component = sim::load_scenario(bytes, *registry(), {}, options);
+    REQUIRE(component);
+    CHECK(component.value().spec.figures.empty());
+    CHECK_FALSE(component.value().spec.original_figure_slots);
+    CHECK(std::any_of(component.value().warnings.begin(), component.value().warnings.end(),
+                      [](const auto& x) { return x.record == "SOLDAT"; }));
+    CHECK(std::any_of(component.value().warnings.begin(), component.value().warnings.end(),
+                      [](const auto& x) { return x.record == "MAIN"; }));
+    options.projection = static_cast<sim::OriginalActorProjection>(255);
+    refused(bytes, "unknown actor projection", options);
+}
+
+TEST_CASE("UNIT1 import catalogs reject orphan and duplicate type metadata") {
+    sim::TypeRegistry::Builder orphan;
+    orphan.unit_import_facts(12345, {350, 2, 0, 1});
+    auto missing = orphan.build();
+    REQUIRE_FALSE(missing);
+    CHECK(missing.error().find("unknown figure") != std::string::npos);
+    sim::TypeRegistry::Builder duplicate;
+    sim::FigureType scout{scout_kind, 0, 2560, 0, 0};
+    scout.bewohntype = 97;
+    duplicate.figure_type(scout)
+        .unit_import_facts(scout_kind, {350, 2, 0, 1})
+        .unit_import_facts(scout_kind, {351, 2, 0, 1});
+    auto repeated = duplicate.build();
+    REQUIRE_FALSE(repeated);
+    CHECK(repeated.error().find("duplicate unit import facts") != std::string::npos);
 }

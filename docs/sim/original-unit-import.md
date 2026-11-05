@@ -344,3 +344,19 @@ role is Ship. A Builder can legitimately create a class97/53 type with nav for
 an authored world; accepting it as an original foot-role would silently install
 ship motion/full-health defaults. The importer now refuses that role/type pairing;
 a legal foot control and a still-valid authored nav registry distinguish this.
+
+Corrected A8000 contract/code finding is independently closed atbbcb7c53 by
+/root/unit_import_state_review. Canonical B-corrected-02 passes5/5 (176assertions),
+zero failed/empty/skipped/incomplete/sanitizer, with old runtime/stream contracts
+separate. /root/unit_import_contract_review closed the nav-on-foot role finding
+at the same pin. Full B/C approval still waits for malformed/vector/mutant proof.
+
+C focused authored vectors now cover HP signed/ratio/overflowdomain, HEAD state
+bits, Q32 fractions/ties/signedzero/nonfinite/worldbounds, goods remap90001/cap/
+namedzero/unknownempty, held donkey parentcache/index exclusion/native roundtrip,
+strict record/role/activation/facing errors, duplicate IDs/slots, missing metadata,
+MAIN/actualgrowth/actor allocation budgets and explicit component-only projection.
+A new zero-width-world/zero-coordinate counterexample probes a suspected early
+canonical-zero bounds bypass. Preserve the first resulting gate, even if this
+new assertion exposes it, before correcting the input guard. No broader matrix
+or actual movement canary has run at this point.

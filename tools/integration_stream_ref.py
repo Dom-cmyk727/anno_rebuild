@@ -12,6 +12,9 @@ import importlib.util
 from pathlib import Path
 import struct
 import unittest
+import subprocess
+import sys
+import tempfile
 ROOT=Path(__file__).resolve().parent.parent
 M=(1<<64)-1
 
@@ -78,6 +81,18 @@ class Contracts(unittest.TestCase):
     def test_sparse_registry_has_four_actors(self):
         self.assertEqual(len(records()['figures'][0]),20+40+200+133+129+150+10)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
+    def test_public_command_rejects_changed_or_missing_fixture(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/'fields.txt';path.write_text(fixture())
+            command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
+            result=subprocess.run(command,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0);self.assertIn('4 populated combined scopes agree',result.stdout)
+            path.write_text(fixture().replace('83000000','82000000',1))
+            result=subprocess.run(command,capture_output=True,text=True)
+            self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
+            path.unlink();result=subprocess.run(command,capture_output=True,text=True)
+            self.assertEqual(result.returncode,1);self.assertIn('fixture unavailable',result.stdout)
+
     def test_wrong_seams_distinguishable(self):
         a=figure(4,106,animal=True)
         self.assertNotEqual(a,figure(4,106))
@@ -86,10 +101,12 @@ class Contracts(unittest.TestCase):
         self.assertNotEqual(fnv(pack('4I',70001,0,90001,257)),fnv(pack('4I',70001,0,90001,1)))
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=ROOT/'fixtures/synthetic/sim/integrate1/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/integrate1/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
-    if path.read_text()!=fixture():print('combined oracle differs');return 1
+    try: actual=path.read_text()
+    except OSError as error: print('fixture unavailable: '+str(error));return 1
+    if actual!=fixture():print('combined oracle differs');return 1
     print('4 populated combined scopes agree');return 0
 if __name__=='__main__':raise SystemExit(main())

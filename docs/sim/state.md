@@ -1892,6 +1892,7 @@ The `MonopolyTable` entries match `MONOPOL2`: 28 × {u32 time, player or −1}.
 - `Inert`: `u16 last, bool blocked, bool suspended, Status`.
 - `Workshop`: `u16 last, bool switched_on, bool suspended, bool blocked`, `u32` vectors `out`, `in`, `activity`, `u32 carriers_out`, `Status`.
 - `WeaponsWorkshop`: `u16 last`, bools `line_on`, `bool suspended, bool blocked`, `u32` vectors `out`, `in`, `u16` vector `activity`, `u32 carriers_out`, `Status` (`unlocked` is derived).
+- `Inn` (MAP-POP-CLOSE-2 K1, stream 128 amendment): `u16 last`, bools `blocked`, `suspended`, `Status`, `u32 tavern` (8.8 units, holds the original's u16 and wraps modulo 65536, range-checked), `u32 taken` (the decaying 31/32 counter, also u16), `u32 carriers_out`. Its tick (`TickKind::Inn`, period 5000, `inn_step`, `docs/re/population.md` section 18) runs only with `Rules::house_updates` and sends the existing job 0x33 (cargo goods byte `type+0xb0`, limit = `max_figures[0]`); the take (`inn_take`) and unload (`inn_unload`) are the Workshop carrier's shared arms.
 - `Farm`: `u16 last, bool switched_on, bool suspended, bool blocked, u32 out, u32 raw, u16 activity, u32 workers_out, Status`.
 - `SmallFarm`: `u16 last`, bools `line_on`, `bool suspended, bool blocked`, `u32` vectors `out`, `raw`, `u16` vector `activity`, `u32` vector `figures_out`, `Status`.
 - `Mine`: `u16 last, bool switched_on, bool deep, bool blocked, u32 out, u16 activity`, optional `u64 deposit`, `Status`.

@@ -245,7 +245,6 @@ namespace {
 struct FoodArm {
     std::uint64_t taken = 0, farm_made = 0;
     std::uint32_t store_end = 0, store_start = 0;
-    std::uint32_t houses_food_up = 0;
 };
 FoodArm run_food_arm(const Original& o, bool producers, std::uint32_t store_raw) {
     auto A = start(o, producers);
@@ -295,4 +294,10 @@ TEST_CASE(
     CHECK(with.taken > kStore);
     CHECK(with.taken > without.taken);
     CHECK(with.farm_made > 0);
+    // Both arms start with the requested stock; the control bought something (it is not vacuous)
+    // and no small farm made food in it.
+    CHECK(with.store_start == kStore);
+    CHECK(without.store_start == kStore);
+    CHECK(without.taken > 0);
+    CHECK(without.farm_made == 0);
 }

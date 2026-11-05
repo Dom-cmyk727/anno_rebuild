@@ -462,3 +462,22 @@ to repair the test. Updated ledger computes exact available room, checks clipped
 transfers and byte-stable StockFull refusals. A separate denied-copy fixture now
 sets only type1001 permission0 and expectsConstructionDenied with unchangedsave;
 the real original build keeps its actual INIT permission rows.
+
+D-voyage-03 at6227b6b2 passes1/1,3897assertions,zeroother,17.44s.
+Actualbranch0 emitsoneHAWAIMUCKE atoldtick48000; shipvoyages98/93advances,
+HANDWERK1001 site318,401, gold10000000→9999650→9999350; no soldier-moneybranch
+executes. This first path is not yet fullF2. Review refinement now correlates
+ShipArrived with figure1/orderID and actualendpoint, captures the pre-visit
+point insideNEGER, checks all foundingholds and zero citystock, exact capped
+unloads and actual returnedbuilding/type/city/site.
+
+D continuity extension uses the same existing canary wrapper with an explicit
+--original mode and distinct producer/worker cases/environment. It encodes the
+normal log, legal alternateHANDWERK placement and valid-native changedprogram.
+Nativecuts cover pending/startup, immediately before/after actualcondition,
+founding, unloading, building andnextvisit; segment replay crosses allcuts once,
+checks checkpoints and exactfinalsave/eventsequence. A freshworker validates
+whole originalsource, literalwave/branch/money/construction ledger, alternate
+Build's expected nextcheckpoint divergence and programidentity refusal.
+Publicwrapperchild-summary/artifact/sanitizer contracts remain required;
+9 cheap wrappercontracts pass before the canonicalgate. No fullF2 approval yet.

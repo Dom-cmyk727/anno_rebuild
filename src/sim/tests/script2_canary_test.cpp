@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <sstream>
 
 #include <doctest/doctest.h>
 
@@ -429,10 +430,13 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
     rec.checkpoint();
     REQUIRE(rec.submit({PlayerId{0}, SetSpeedCmd{100}}).ok());
     std::vector<SimEvent> waves;
+    const auto source_holds = find_figure(w.figures(), FigureId{1})->holds;
+    std::vector<std::size_t> cuts{0, 1};
     const auto sail = [&](int x, int y) {
         const auto ordered =
             rec.submit({PlayerId{0}, MoveCmd{FigureId{1}, x * 256 + 128, y * 256 + 128}});
         REQUIRE_MESSAGE(ordered.ok(), reject_name(ordered.status));
+        const auto order_id = find_figure(w.figures(), FigureId{1})->nav->order->order_id;
         bool arrived = false;
         std::uint32_t advances = 0;
         // 1000ms =500ticks, well inside the supported u16 visit interval. Bound4000s
@@ -440,22 +444,40 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
         for (; advances < 4000 && !arrived; ++advances) {
             const auto old_tick = w.clock().tick();
             const auto signal = w.script().state.signals[1];
+            const auto point = find_figure(w.figures(), FigureId{1})->pos;
+            const auto before_visit = rec.log().entries.size();
             rec.advance(1000);
             REQUIRE_FALSE(w.faulted());
             const auto events = w.drain_events();
             for (const auto& e : events) {
                 REQUIRE(e.kind != SimEventKind::ShipRouteFailed);
-                if (e.kind == SimEventKind::ShipArrived)
+                if (e.kind == SimEventKind::ShipArrived) {
+                    CHECK(e.figure == FigureId{1});
+                    CHECK(e.order_id == order_id);
                     arrived = true;
+                }
                 if (e.kind == SimEventKind::ScriptWave) {
+                    CHECK(point.x / 256 >= 218);
+                    CHECK(point.x / 256 < 285);
+                    CHECK(point.y / 256 >= 671);
+                    CHECK(point.y / 256 < 736);
+                    CHECK(w.script().state.cursor == 1);
                     CHECK(signal == 1);
                     CHECK(w.script().state.signals[1] == 0);
                     CHECK(e.tick == old_tick);
                     waves.push_back(e);
                 }
             }
+            rec.checkpoint();
+            if (signal != w.script().state.signals[1]) {
+                cuts.push_back(before_visit);
+                cuts.push_back(rec.log().entries.size());
+            }
         }
         REQUIRE(arrived);
+        CHECK(find_figure(w.figures(), FigureId{1})->pos.x / 256 == x);
+        CHECK(find_figure(w.figures(), FigureId{1})->pos.y / 256 == y);
+        CHECK(find_figure(w.figures(), FigureId{1})->holds == source_holds);
         MESSAGE("ORIGINAL_VOYAGE goal=" << x << "," << y << " advances=" << advances
                                         << " tick=" << w.clock().tick());
         rec.checkpoint();
@@ -475,9 +497,11 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
     }
     REQUIRE(waves.size() == 1);
     CHECK(waves[0].code == 317);
+    CHECK(waves[0].tick == 48000);
     REQUIRE(waves[0].wave);
     CHECK(waves[0].wave->asset == "scenes/0011SingleEndlosAddon/HAWAIMUCKE.WAV");
     CHECK(waves[0].wave->audience == WaveAudience::AllLocal);
+    CHECK(waves[0].wave->source_offset == 1068);
     CHECK_FALSE(waves[0].player.valid());
     CHECK(w.script().state.signals == std::vector<std::uint8_t>{0, 0, 1, 1, 1, 1, 1, 1});
     CHECK(w.players().find(PlayerId{0})->money == 10000000);
@@ -495,6 +519,12 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
     REQUIRE(holds.size() == before_holds.size());
     CHECK(holds[0].amount_88 == before_holds[0].amount_88 - 1280);
     CHECK(holds[3].amount_88 == before_holds[3].amount_88 - 3072);
+    auto expected_holds = before_holds;
+    expected_holds[0].amount_88 -= 1280;
+    expected_holds[3].amount_88 -= 3072;
+    CHECK(holds == expected_holds);
+    rec.checkpoint();
+    cuts.push_back(rec.log().entries.size());
     std::optional<CityRef> city;
     for (std::uint32_t i = 0; i < w.islands().size(); ++i)
         if (w.islands()[i])
@@ -504,6 +534,8 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
                     city = CityRef{IslandId{i}, c->number};
                 }
     REQUIRE(city);
+    const auto& initial_stock = w.islands()[city->island.v]->city(city->city)->stock.stock;
+    CHECK(std::all_of(initial_stock.begin(), initial_stock.end(), [](auto n) { return n == 0; }));
     for (std::uint32_t h = 0; h < holds.size(); ++h) {
         const auto hold = find_figure(w.figures(), FigureId{1})->holds[h];
         if (!hold.goods || hold.amount_88 < 256)
@@ -528,23 +560,32 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
         CHECK(store.stock[hold.goods] == old_stock + expected);
         CHECK(find_figure(w.figures(), FigureId{1})->holds[h].amount_88 ==
               hold.amount_88 - expected);
+        CHECK(w.players().find(PlayerId{0})->money == 9999650);
     }
+    rec.checkpoint();
+    cuts.push_back(rec.log().entries.size());
     const auto& is = *w.islands()[city->island.v];
     const auto* handwerk = w.types().find(TypeId{1001});
     REQUIRE(handwerk);
     std::optional<PlacementWire> placement;
+    std::optional<PlacementWire> alternate;
     for (std::int32_t y = is.tiles.y0();
-         std::int64_t{y} < std::int64_t{is.tiles.y0()} + is.tiles.height() && !placement; ++y)
+         std::int64_t{y} < std::int64_t{is.tiles.y0()} + is.tiles.height() && !alternate; ++y)
         for (std::int32_t x = is.tiles.x0();
              std::int64_t{x} < std::int64_t{is.tiles.x0()} + is.tiles.width(); ++x) {
             const PlacementRecord p{TypeId{1001}, x, y};
             if (footprint_owner_rule(is, w.config(), *handwerk, p, city->city) == Reject::None &&
                 placement_rule(is, w.types(), *handwerk, p).reject == Reject::None) {
-                placement = PlacementWire{TypeId{1001}, x, y};
-                break;
+                if (!placement)
+                    placement = PlacementWire{TypeId{1001}, x, y};
+                else {
+                    alternate = PlacementWire{TypeId{1001}, x, y};
+                    break;
+                }
             }
         }
     REQUIRE(placement);
+    REQUIRE(alternate);
     const Command build{PlayerId{0}, BuildCmd{*city, {*placement}}};
     // Explicitly separate permission-denied fixture. Only this copy changes a
     // permission; the unchanged original canary still has its actual INIT rows.
@@ -558,11 +599,21 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
     const auto denied_save = denied.save();
     CHECK(denied.apply(build).status == Reject::ConstructionDenied);
     CHECK(denied.save() == denied_save);
+    const Command changed_build{PlayerId{0}, BuildCmd{*city, {*alternate}}};
+    auto legal_changed = w;
+    REQUIRE(legal_changed.apply(changed_build).ok());
     const auto stock = is.city(city->city)->stock.stock;
+    const auto build_entry = rec.log().entries.size();
     const auto built = rec.submit(build);
     REQUIRE_MESSAGE(built.ok(), reject_name(built.status));
     REQUIRE(built.records.size() == 1);
     CHECK(built.records[0].building.valid());
+    const auto* building = w.find_building(built.records[0].building);
+    REQUIRE(building);
+    CHECK(building->type == TypeId{1001});
+    CHECK(building->x == placement->x);
+    CHECK(building->y == placement->y);
+    CHECK(w.building_at(*city, placement->x, placement->y) == building);
     CHECK(w.players().find(PlayerId{0})->money == 9999350);
     for (std::size_t g = 0; g < stock.size(); ++g) {
         std::uint64_t cost = 0;
@@ -574,9 +625,149 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
     CHECK(w.script().source == input.spec.script_source);
     CHECK(w.check_invariants().empty());
     rec.checkpoint();
+    cuts.push_back(rec.log().entries.size());
+    (void)w.drain_events();
+    rec.advance(0); // next visit must not repeat the completed one-shot effect
+    std::vector<SimEvent> next_waves;
+    observe(&next_waves, w.drain_events());
+    CHECK(next_waves.empty());
+    rec.checkpoint();
+    const auto final_save = w.save();
+    cuts.push_back(rec.log().entries.size());
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    auto continued = World::load(rec.log().initial_save, input.types);
+    REQUIRE(continued);
+    std::vector<SimEvent> continued_waves;
+    std::size_t previous = 0;
+    for (const auto cut : cuts) {
+        auto segment = rec.log();
+        segment.entries = {rec.log().entries.begin() + static_cast<std::ptrdiff_t>(previous),
+                           rec.log().entries.begin() + static_cast<std::ptrdiff_t>(cut)};
+        const auto replayed = replay(continued.value(), segment, {&continued_waves, observe});
+        REQUIRE(replayed);
+        REQUIRE(replayed.value().reproduced());
+        const auto native = continued.value().save();
+        auto reloaded = World::load(native, input.types);
+        REQUIRE(reloaded);
+        CHECK(reloaded.value().save() == native);
+        CHECK(reloaded.value().drain_events().empty());
+        continued = std::move(reloaded);
+        previous = cut;
+    }
+    CHECK(continued.value().save() == final_save);
+    CHECK(continued_waves == waves);
+    auto wrong_command = rec.log();
+    REQUIRE(wrong_command.entries[build_entry].commands.size() == 1);
+    wrong_command.entries[build_entry].commands[0] = changed_build;
+    auto wrong_program = rec.log();
+    auto changed = World::load(rec.log().initial_save, input.types);
+    REQUIRE(changed);
+    auto& runtime = WorldTestAccess::script(changed.value());
+    const std::string asset = "HAWAIMUCKE.WAV";
+    const auto at = runtime.source.find(asset);
+    REQUIRE(at != std::string::npos);
+    runtime.source.replace(at, asset.size(), "WRONG.WAV");
+    REQUIRE(
+        restore_script(runtime, *input.types, changed.value().players(), changed.value().config())
+            .empty());
+    wrong_program.initial_save =
+        changed.value().save(); // valid framing, different program identity
+    if (const char* dir = std::getenv("ANNO_SCRIPT2_ORIGINAL_CANARY_DIR"); dir && *dir) {
+        for (const auto& [name, log] :
+             {std::pair{"normal.log", &rec.log()}, std::pair{"wrong-command.log", &wrong_command},
+              std::pair{"wrong-program.log", &wrong_program}}) {
+            auto bytes = write_log(*log);
+            REQUIRE(bytes);
+            write(fs::path(dir) / name, bytes.value());
+        }
+        const auto expected =
+            std::to_string(w.state_hash()) + " " + std::to_string(waves[0].tick) + " " +
+            std::to_string(build_entry + 1) + " " + std::to_string(built.records[0].building.v) +
+            " " + std::to_string(city->island.v) + " " + std::to_string(city->city.v) + " " +
+            std::to_string(placement->x) + " " + std::to_string(placement->y) + "\n";
+        write(fs::path(dir) / "expected.txt", {expected.begin(), expected.end()});
+    }
     MESSAGE("ORIGINAL_CONSTRUCTION type=1001 site="
             << placement->x << "," << placement->y << " wave_tick=" << waves[0].tick
             << " gold=10000000->9999650->9999350 final_hash=" << w.state_hash());
+}
+TEST_CASE("SCRIPT2 original encoded canary replay worker") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const char* dir = std::getenv("ANNO_SCRIPT2_ORIGINAL_CANARY_DIR");
+    if (!dir || !*dir) {
+        MESSAGE("skipped: opt-in ANNO_SCRIPT2_ORIGINAL_CANARY_DIR required for encoded worker");
+        return;
+    }
+    const auto registry =
+        anno::sim_load::load_original_registry(*game, anno::sim_load::FigureEntries::Required);
+    REQUIRE(registry.error.empty());
+    auto normal = read_log(read(fs::path(dir) / "normal.log"));
+    auto wrong = read_log(read(fs::path(dir) / "wrong-command.log"));
+    auto program = read_log(read(fs::path(dir) / "wrong-program.log"));
+    REQUIRE(normal);
+    REQUIRE(wrong);
+    REQUIRE(program);
+    const auto expected = read(fs::path(dir) / "expected.txt");
+    std::istringstream values(std::string(expected.begin(), expected.end()));
+    std::uint64_t hash = 0, wave_tick = 0, divergence = 0, building_id = 0;
+    std::uint32_t island = 0, city = 0;
+    std::int32_t x = 0, y = 0;
+    values >> hash >> wave_tick >> divergence >> building_id >> island >> city >> x >> y;
+    REQUIRE_FALSE(values.fail());
+    values >> std::ws;
+    REQUIRE(values.eof());
+    REQUIRE(wave_tick == 48000);
+    REQUIRE(divergence > 0);
+    REQUIRE(divergence < normal.value().entries.size());
+    REQUIRE(normal.value().entries[divergence].kind == ReplayEntry::Kind::Checkpoint);
+    REQUIRE(normal.value().entries[divergence - 1].kind == ReplayEntry::Kind::Commands);
+    REQUIRE(std::holds_alternative<BuildCmd>(
+        normal.value().entries[divergence - 1].commands.at(0).body));
+    auto w = World::load(normal.value().initial_save, registry.types);
+    REQUIRE(w);
+    const auto raw = read(*game / "Scenes/0011SingleEndlosAddon/endless01.sze");
+    const auto payload = anno::formats::bigbrother::find_payload(raw);
+    REQUIRE(payload);
+    CHECK(w.value().script().source == std::string(payload.value().begin(), payload.value().end()));
+    CHECK(find_figure(w.value().figures(), FigureId{1})->pos == FixedPos{89984, 98176});
+    std::vector<SimEvent> waves;
+    const auto replayed = replay(w.value(), normal.value(), {&waves, observe});
+    REQUIRE(replayed);
+    REQUIRE(replayed.value().reproduced());
+    CHECK(w.value().state_hash() == hash);
+    CHECK(w.value().players().find(PlayerId{0})->money == 9999350);
+    CHECK(w.value().script().state.signals == std::vector<std::uint8_t>{0, 0, 1, 1, 1, 1, 1, 1});
+    REQUIRE(waves.size() == 1);
+    CHECK(waves[0].tick == wave_tick);
+    CHECK(waves[0].code == 317);
+    REQUIRE(waves[0].wave);
+    CHECK(waves[0].wave->asset == "scenes/0011SingleEndlosAddon/HAWAIMUCKE.WAV");
+    CHECK(waves[0].wave->audience == WaveAudience::AllLocal);
+    CHECK_FALSE(waves[0].player.valid());
+    const auto* building = w.value().find_building(BuildingId{building_id});
+    REQUIRE(building);
+    CHECK(building->type == TypeId{1001});
+    CHECK(building->x == x);
+    CHECK(building->y == y);
+    CHECK(w.value().building_at({IslandId{island}, CityNo{city}}, x, y) == building);
+    CHECK(w.value().check_invariants().empty());
+    auto changed = World::load(wrong.value().initial_save, registry.types);
+    REQUIRE(changed);
+    const auto divergent = replay(changed.value(), wrong.value());
+    REQUIRE(divergent);
+    CHECK(divergent.value().diverged_entry == std::optional<std::uint64_t>{divergence});
+    auto different_program = World::load(program.value().initial_save, registry.types);
+    REQUIRE(different_program);
+    const auto refused = replay(different_program.value(), program.value());
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error() == "replay refused: script content digest differs from the log's");
+    MESSAGE("ORIGINAL_ENCODED_REPLAY final_hash=" << hash << " wave_tick=" << wave_tick
+                                                  << " wrong_build_checkpoint=" << divergence);
 }
 TEST_CASE("SCRIPT2 synthetic complete original program canary producer") {
     const auto game = anno::test::game_dir();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SCRIPT2 complete-program SYNTHETIC-world canary: independent producer/replayer processes.
+"""SCRIPT2 complete-program canaries: independent producer/replayer processes.
 
 Each invocation retains its logs, encoded inputs and exact executable identity.
 An ordinary in-process test is not classified as fresh-process evidence.
@@ -49,6 +49,13 @@ def validate_input_identity(inputs):
 
 class Contracts(unittest.TestCase):
     good = '[doctest] test cases: 1 | 1 passed | 0 failed\n[doctest] assertions: 17 | 17 passed | 0 failed\n[doctest] Status: SUCCESS!\n'
+    def test_modes_use_distinct_inputs_and_cases(self):
+        old_env, old_cases = protocol(False)
+        new_env, new_cases = protocol(True)
+        self.assertNotEqual(old_env, new_env)
+        self.assertEqual(new_cases, [('producer','SCRIPT2 original public voyage founding and construction'), ('worker','SCRIPT2 original encoded canary replay worker')])
+        self.assertFalse(set(old_cases) & set(new_cases))
+
     def test_original_input_identity(self):
         validate_input_identity(EXPECTED_INPUTS)
         for key in EXPECTED_INPUTS:
@@ -105,18 +112,26 @@ def commit_manifest(directory, manifest):
 
 def emit_success(directory, manifest):
     commit_manifest(directory, manifest)
-    print('SCRIPT2_SYNTHETIC_FRESH_PROCESS PASS '+str(directory))
+    print(('SCRIPT2_ORIGINAL_FRESH_PROCESS' if manifest.get('mode') == 'original' else 'SCRIPT2_SYNTHETIC_FRESH_PROCESS')+' PASS '+str(directory))
 
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(executable, repo):
-    root = repo / 'cache/script2/replays'
+def protocol(original):
+    if original:
+        return ('ANNO_SCRIPT2_ORIGINAL_CANARY_DIR', [('producer','SCRIPT2 original public voyage founding and construction'), ('worker','SCRIPT2 original encoded canary replay worker')])
+    return ('ANNO_SCRIPT2_CANARY_DIR', [('producer','SCRIPT2 synthetic complete original program canary producer'), ('worker','SCRIPT2 synthetic encoded canary replay worker')])
+
+
+def run(executable, repo, original=False):
+    root = repo / ('cache/unit-import1/replays' if original else 'cache/script2/replays')
     root.mkdir(parents=True, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix='fresh-', dir=root))
-    env = dict(os.environ, ANNO_SCRIPT2_CANARY_DIR=str(directory))
+    env_key, cases = protocol(original)
+    env = dict(os.environ)
+    env[env_key] = str(directory)
     game=Path(os.environ.get('ANNO1503_GAME_DIR',''))
     scenario=game/'Scenes/0011SingleEndlosAddon/endless01.sze'
     sys.path.insert(0,str(repo/'tools'))
@@ -128,9 +143,10 @@ def run(executable, repo):
     manifest = dict(executable=str(executable), sha256=digest(executable), processes=records,
                     source_revision=subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'], text=True).strip(),
                     verdict='INCOMPLETE', directory=str(directory),
-                    inputs=inputs, scope='Synthetic world executing entire unchanged endless01 source; original-world F2 OPEN: unit import absent')
+                    inputs=inputs, mode='original' if original else 'synthetic',
+                    scope=('Original scenario/source/resources; public voyage, branch0 wave, founding, unloading, HANDWERK1001; other branches separate' if original else 'Synthetic world executing entire unchanged endless01 source; separate from original-world canary'))
     try:
-        for role, case in [('producer','SCRIPT2 synthetic complete original program canary producer'),('worker','SCRIPT2 synthetic encoded canary replay worker')]:
+        for role, case in cases:
             command = [str(executable), '--test-case='+case]
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        cwd=repo, env=env)
@@ -159,7 +175,7 @@ def run(executable, repo):
             commit_manifest(directory, manifest)
         except (OSError, ValueError) as artifact_error:
             print('manifest unavailable: '+str(artifact_error))
-        print('SCRIPT2_SYNTHETIC_FRESH_PROCESS FAIL '+str(directory)+': '+str(error))
+        print(('SCRIPT2_ORIGINAL_FRESH_PROCESS' if original else 'SCRIPT2_SYNTHETIC_FRESH_PROCESS')+' FAIL '+str(directory)+': '+str(error))
         return 1
     return 0
 
@@ -168,10 +184,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--exe', type=Path)
+    parser.add_argument('--original', action='store_true', help='Run the original-world public-command canary')
     args = parser.parse_args()
     if args.self_test:
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)
         raise SystemExit(0 if unittest.TextTestRunner().run(suite).wasSuccessful() else 1)
     if not args.exe:
         parser.error('--exe is required')
-    raise SystemExit(run(args.exe.resolve(), Path(__file__).resolve().parents[1]))
+    raise SystemExit(run(args.exe.resolve(), Path(__file__).resolve().parents[1], args.original))

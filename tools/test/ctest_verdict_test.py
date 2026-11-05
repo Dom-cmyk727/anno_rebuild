@@ -175,6 +175,20 @@ class ReviewOfA(unittest.TestCase):
         self.assertEqual(code, 9)
         self.assertIn("selected=3", self.counts(out))
 
+    def test_the_cmake_4_summary_without_a_failed_count_is_a_summary(self):
+        # ctest 4.x writes "100% tests passed out of N" when nothing failed (the macOS runner).
+        lines = log(("t.case", 1, [], "Passed"))[:-1] + ["100% tests passed out of 1"]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 0)
+        self.assertIn("selected=1 executed=1", self.counts(out))
+
+    def test_a_cmake_4_summary_counting_more_tests_than_the_log_shows_is_cut(self):
+        lines = PRE + ["      Start 1: a.one", "1/1 Test #1: a.one .........   Passed    0.1 sec",
+                       "100% tests passed out of 3"]
+        code, out = cv.verdict(lines)
+        self.assertEqual(code, 9)
+        self.assertIn("selected=3", self.counts(out))
+
     def test_a_selection_without_the_summary_line_is_cut(self):
         code, out = cv.verdict(log(("t.case", 1, [], "Passed"), finished=True)[:-1])
         self.assertEqual(code, 9)
@@ -214,6 +228,9 @@ class ReviewOfA(unittest.TestCase):
             "skipping: the wave simulation did not start a background preparation here",
             # A part of an executed case whose data has no road type.
             "skipping the road part: the registry has no road type",
+            # The symlink rows of an executed case, where the platform refuses to create a
+            # directory symlink (Windows without the privilege); the other rows still run.
+            "skipping the symlink rows: ",
         }
         root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src")
         literal = re.compile(r'"((?:skipping|skipped)[^"]*)"')

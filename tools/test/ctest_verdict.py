@@ -44,7 +44,9 @@ import sys
 SANITIZER = re.compile(r"AddressSanitizer|LeakSanitizer|ThreadSanitizer|runtime error:|UndefinedBehaviorSanitizer")
 RESULT = re.compile(r"^\s*\d+/(\d+) Test\s+#(\d+): (.*?) \.+\s*(\*\*\*)?\s*(Passed|Skipped|Failed|Exception|"
                     r"Timeout|Not Run|SEGFAULT|Interrupted|Child aborted|Bus error|Illegal|Other)[^\n]*$")
-SUMMARY = re.compile(r"^\s*\d+% tests passed, \d+ tests? failed out of (\d+)\s*$")
+# CMake 3: "100% tests passed, 0 tests failed out of 3". CMake 4 leaves the failed count out
+# when it is zero: "100% tests passed out of 3" (ctest 4.x, the macOS runner).
+SUMMARY = re.compile(r"^\s*\d+% tests passed(?:, \d+ tests? failed)? out of (\d+)\s*$")
 START = re.compile(r"^\s*Start\s+(\d+): (.*)$")
 PREFIX = re.compile(r"^(\d+): ?(.*)$")
 DOCTEST = re.compile(r"\[doctest\] test cases:\s*(\d+)\s*\|")

@@ -636,7 +636,7 @@ TEST_CASE("scenario player DISCO on the shipped scenes: restored sets, sharing o
     // right after BONUS (file offset 1814; docs/sim/shared-visibility.md 9).
     const fs::path file = *dir / "Scenes" / "0201SingleAddOn" / "single39.sze";
     if (!fs::exists(file)) {
-        MESSAGE("skipping: " << file.string() << " not present");
+        MESSAGE("skipping: single39.sze is not in this game directory (" << file.string() << ")");
         return;
     }
     const std::vector<std::uint8_t> bytes = read_all(file);

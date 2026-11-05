@@ -1,4 +1,12 @@
 # MAP-SCRIPT-1 — contract and package acceptance ledger
+
+MAP-INTEGRATE-1 branch-local follow-up: accepted scripts/import and supply are
+combined under131/SIMINT1 and replay4, policy2/timeline5/wire1/save1. Whole unchanged
+endless01 public voyage/construction and fresh replay pass in Debug and ASAN;
+historical SCRIPT1/SCRIPT2 records below remain attributed to their input pins.
+Later canonical main uses132, separately tested by its orchestrator. See the
+[combined handoff](../orchestration/reviews/2026-11-05-map-integrate1.md) for exact scope and preserved failures.
+
 Current follow-up: MAP-UNIT-IMPORT-1 resolves the original missing-actor dependency
 and bounded SCRIPT2 F2 proof. The complete unchanged source now drives a real
 ship-area event, founding, unloading and HANDWERK construction through public

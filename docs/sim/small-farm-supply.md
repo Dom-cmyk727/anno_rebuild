@@ -1,5 +1,13 @@
 # The small farm supply contract (MAP-SUPPLY-1 S1, 2026-11-05)
 
+MAP-INTEGRATE-1 branch-local follow-up: accepted supply composes with strict
+original actors and normal script INIT under131/SIMINT1/replay4. The complete
+supported Tutorial kernel remains Ready; original permission permits paid809
+rebuild, without an authored override. Debug and affected ASAN preserve the
+K4/CLOSE2/recovery/native/replay proofs. Historical statements below about missing
+script/INFRAMIN support describe the earlier supply pin, not this integration.
+Later canonical main132 is separately owned. See the [combined handoff](../orchestration/reviews/2026-11-05-map-integrate1.md).
+
 Frozen before any engine change. Evidence marks: **D** read in the disassembly (module and address given), **P** read from an
 original file, **ADAPT** a disclosed engine adaptation, **U** unread. Modules: `AnnoWelt.dll` sha256
 `f220a878510f740c4cfb7224ade0a260e9a0fd7e99113e1201e7a37c0dfa6ae2`, `AnnoGame.dll` sha256

@@ -24,9 +24,12 @@ player-record and researched-producer corrections. The three researched-line
 changes add one producer to supply's102/222/42, yielding103/223/43, rather than
 reusing UNIT's pre-supply98/215/39 totals. The creation generator now uses that
 same accepted baseline. The schema label was corrected to SIMINT1 without
-remeasuring unchanged creation bytes. The full physical/movement corpus gate
-must independently verify these combined expectations; generation alone does
-not do so. Final gate provenance belongs to the consolidated integration review.
+remeasuring unchanged creation bytes. The full physical/movement corpus entries executed successfully in broad Debug
+at aa06d6db; that gate remains overall FAIL because four separate stale test
+expectations failed. Their corrected55-entry gate passes at cafc1a7c, and affected
+ASAN716/716 also passes, including50 creation identities/raw-unit/parser checks.
+Generation alone is not proof. Exact provenance and scoped reuse belong to the
+consolidated integration review.
 
 `predecessors.json` identifies four exact native save slices from accepted
 128, supply129, SCRIPT1-schema129 and UNIT130 logs. Tests check their checksums

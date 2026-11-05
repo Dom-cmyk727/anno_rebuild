@@ -1,5 +1,12 @@
 # MAP-UNIT-IMPORT-1 — contract and acceptance ledger
 
+MAP-INTEGRATE-1 branch-local follow-up: strict original import and startup now
+compose with accepted crop/animal supply under131/SIMINT1/replay4. The original
+endless01 canary and joint nested-actor/worker continuation pass in Debug and ASAN.
+No new actor class or import fallback was added. The accepted UNIT130 evidence
+below remains historical; later canonical132 belongs to its separate consolidation.
+See the [combined handoff](../orchestration/reviews/2026-11-05-map-integrate1.md).
+
 Current status: A–E and the bounded original SCRIPT2 F2 proof independently APPROVED.
 Affected Debug/ASAN and isolated opening gates PASS. Final integration APPROVED
 at e61ab52096040ff8e7903d616bea448f4d969ccd: COMPLETE LOCAL CANDIDATE for this bounded headless slice.

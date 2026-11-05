@@ -158,3 +158,15 @@ empty kernel remains present and Ready. No authored permission override or
 recovery substitute is required. These facts supersede historical supply notes
 that the engine ignores scripts or lacks INFRAMIN; those notes remain attributed
 input history. `house_updates` remains false by default.
+
+## I4–I6 consolidated checkpoint
+
+Both original-data achievements pass on the combined binary, with explicit
+component projection/refusal controls. I5 broad Debug retains1513passes/4 failed
+stale expectations; correction gate55/55 and affected ASAN716/716 pass with zero
+other outcomes. Runtime-equivalent reuse is independently reviewed; the original
+Debug fresh canary169.84s and ASAN587.38s produce identical recording artifacts.
+Final I6 APPROVED documentation0e10a303 / runtime-testcafc1a7c; all I0–I6
+packages are locally satisfied. Exact ledgers,
+compatibility, source/workflow hashes, preserved failures and future canonical132
+consumer delta are in the [consolidated handoff](../orchestration/reviews/2026-11-05-map-integrate1.md).

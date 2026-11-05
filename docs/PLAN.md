@@ -9,6 +9,14 @@ original-runtime parity or late-game multiplayer performance complete.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done. Update this file as work lands.
 
+MAP-INTEGRATE-1 local checkpoint (2026-11-05): accepted UNIT1 + supply combined
+through code/test `cafc1a7c`; corrected Debug55/55 and affected ASAN716/716 pass.
+The broad Debug attempt remains FAIL1513passes/4 stale-expectation failures, with
+reviewed scoped reuse rather than a fictitious clean rerun. Final I6 independently APPROVED
+documentation0e10a303 / runtime-testcafc1a7c; I0–I6 COMPLETE LOCAL CANDIDATE. Branch-local131/SIMINT1 is retained;
+canonical main later uses132 and must keep that identity.
+[Consolidated handoff](orchestration/reviews/2026-11-05-map-integrate1.md).
+
 ## 0. Starting point (verified 2026-10-16)
 
 - Source material: GOG "Anno 1503 A.D." 2.0.0.5, extracted with innoextract to `game/app/` (5,951 files in the game folder, ~1.5 GB; the 6,040 counted earlier included the installer's extras, `docs/research/analysis-2026-10-24.md`). Königsedition-level build; all game DLLs dated 2006-07-21, 32-bit, MSVC 6 (see `docs/research/game-files-analysis.md`).

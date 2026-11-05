@@ -13244,3 +13244,35 @@ failed runs remain failed. Target-host and long-corpus limitations remain open.
 Independent reviewers: `/root/audit_completed_refs` and
 `/root/review_consolidation_plan`; source approved at `7b57ebd9`. Active N3+
 cloth/hunting and unavailable unpublished Windows work are not claimed included.
+
+
+## MAP-INTEGRATE-1 — 2026-11-05 — COMPLETE LOCAL CANDIDATE
+
+Owned task/MAP-INTEGRATE-1 started clean at UNIT50aa32e, then one authorized
+merge a81d6c95 of supply67158af4 (basea50aec3a). Code/test head cafc1a7c retains
+strict actors/INIT/permissions and crop/animal supply with fresh131/SIMINT1/frame4,
+wire1/save1/timeline5. Both129 histories and128/130 artifacts remain exact and
+refuse explicitly. No main/active NEEDS merge, push, rebase, asset edit, TASKS
+overwrite or other-lane job intervention by this executor.
+
+I0–I5 independently approved. Broad Debug remains FAIL1517selected/1513passes/4
+stale-expectation failures,0empty/skipped/incomplete/SAN; corrected focused
+Debug55/55 and affected ASAN716/716 PASS, all other outcomes0. Unaffected runtime
+evidence is reused with independently verified token equivalence and unchanged
+causal assertions. Required contracts are separate; no summed uniform gate claim.
+Original fresh canary Debug169.84s/ASAN587.38s,3988+45 assertions each, produces
+identical normal/changed-command/changed-program/expected artifacts. Main supply
+K4/CLOSE2/recovery/native/replay proofs and original Tutorial paid809 permission
+pass. Both food stores256; four target farms1183made/756bought versus live control
+237bought/zero target-farm production. These remain two original-data proofs plus
+an authored joint fixture, not a balanced ship-founded town.
+
+[Consolidated acceptance/review handoff](reviews/2026-11-05-map-integrate1.md) has
+parent/merge/source/workflow/executable/artifact identities, exact gates, retained
+failures, package reviewers and NOT_RUN platform/runtime scopes. Fresh final I6 reviewer /root/integrate1_final_review APPROVED documentation
+0e10a303754e58f421c75c65ce91ca8280faf1e3 / runtime-testcafc1a7c, with no actionable
+finding. All I0–I6 packages are locally satisfied; the next docs-only commit
+records this disposition.
+Canonical main944cec89 already includes code throughcafc under132; remaining
+delta is documentation/evidence only. Preserve canonical132 on reconciliation.
+No moving-main rerun or Windows pin change is requested.

@@ -8,6 +8,13 @@ and `src/sim/include/anno/sim/world.hpp`. Current fixtures are under
 implementation notes below are historical. Parallel stream-130 layouts and the
 combined stream-131 predecessor are refused, not silently reinterpreted.
 
+Branch-local integration note (2026-11-05): MAP-INTEGRATE-1 freezes native131 /
+SIMINT1 (`0x0031544e494d4953`), replay4 with explicit native identity, save1,
+command1 and PRNG timeline5. Both historical129 lineages,128 and130 are retained
+and refused explicitly. The later canonical main consolidation uses132; preserve
+that distinct identity when applying documentation. See [integration evidence](../orchestration/reviews/2026-11-05-map-integrate1.md).
+The chronological implementation records below retain their original versions.
+
 Spec for the M3 state model of `src/sim` (`anno_sim`). It extends [`core.md`](core.md) (clock, PRNG, hash v1) and [`production.md`](production.md) (the step functions, which stay as they are except for one fix, §7.4). Evidence: [`docs/re/`](../re/) plus four disassembly reports of 2026-10-18 (building creation, group lists, world tick, command set) whose corrections to `docs/re` are collected in §16.
 
 Evidence tags used throughout:

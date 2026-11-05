@@ -46,7 +46,18 @@ not change either the second Mac's scope or Windows' inputs and assignments.
 <!-- END MAP-NEEDS-2 DISPATCH -->
 
 <!-- BEGIN MAP-INTEGRATE-1 DISPATCH -->
-**Second Mac: MAP-INTEGRATE-1 is READY / RELEASED.** The bounded UNIT1/SCRIPT2
+**Checkpoint update:** I0–I6 completed at docs `5ef163a6`, tested code
+`cafc1a7c`: corrected Debug 55/55 and affected ASan/UBSan 716/716.
+The final handoff is now retained on main; these remain stream-131 results.
+Canonical main already contains the source under separately tested stream 132.
+The old assignment below is completed, not a request to repeat its merge or gates.
+Adopt the canonical baseline at this checkpoint using a successor branch while
+preserving the completed branch and evidence. No new gameplay package is released
+by this documentation update. See the
+[final handoff](reviews/2026-11-05-map-integrate1.md).
+
+
+**Second Mac: MAP-INTEGRATE-1 is COMPLETE / ACCEPTED within its bounded scope.** The bounded UNIT1/SCRIPT2
 candidate at `50aa32e38706ad3c2e4302e8fcaada9f555ba034` is accepted; read the
 [orchestrator review](reviews/2026-11-05-map-unit-import1-acceptance.md).
 Execute [I0–I6](tasks/map-integrate-1.md) in a new local `task/MAP-INTEGRATE-1`

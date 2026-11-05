@@ -125,6 +125,9 @@ struct ForestryStats {
     std::uint64_t raw_credited_88 = 0;  ///< cargo credited by successful cuts
     std::uint64_t raw_delivered_88 = 0; ///< cargo handed to a home's raw store (StoreDelta::Input)
     std::uint64_t raw_lost_88 = 0;      ///< cargo of workers that ended without a delivery
+    /// MAP-SUPPLY-1 S5 operation counters (diagnostic): per search, the window tiles examined, the candidate
+    /// tiles found, and the walk-search nodes popped (zero when no candidate exists: the walk search is skipped).
+    std::uint64_t search_tiles_scanned = 0, search_candidates = 0, search_popped = 0;
     std::uint64_t aborts = 0;           ///< home gone at an arrival
     std::uint64_t drops = 0;            ///< enhanced revalidation dropped a target
     std::uint64_t cut_mismatches = 0;   ///< merge-time re-check of a planned cut failed (must be 0)
@@ -134,6 +137,12 @@ struct ForestryStats {
         std::uint64_t consumed_88 = 0, made_88 = 0;
     };
     std::map<BuildingId, FarmLedger> farms;
+    /// MAP-SUPPLY-1 S4: the same for a small farm, per line (what each production step used of the raw
+    /// stock and made of the output; credits and loads are other terms).
+    struct SmallFarmLedger {
+        std::uint64_t consumed_88[2] = {0, 0}, made_88[2] = {0, 0};
+    };
+    std::map<BuildingId, SmallFarmLedger> small_farms;
 };
 
 /// MAP-POP-LIVE-1 L2: a diagnostic tally of the resident (house walker) jobs; measurement and test
@@ -175,6 +184,10 @@ struct ResidentStats {
     /// 16 x amount x (the length of the IdSec chain the delivery walked): what the stock must have
     /// risen by in total (a chain may add twice to one slot when a substitute shares it).
     std::map<GoodsId, std::uint64_t> stock_expected_by_goods;
+    /// MAP-SUPPLY-1 S4 (diagnostic): the city store really taken by resident purchases, per city and goods,
+    /// and the tavern stock really taken from each Inn (what a purchase removed, after the clip to its stock).
+    std::map<std::pair<CityRef, GoodsId>, std::uint64_t> merged_taken_by_city;
+    std::map<BuildingId, std::uint64_t> inn_taken_by_building;
 };
 
 /// MAP-POP-LIVE-1 L5: the operation counters of one house (scale and proportionality checks,

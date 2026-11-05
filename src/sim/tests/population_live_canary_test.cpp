@@ -691,22 +691,22 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(r.main_res.lost_88 == 0);
     CHECK(r.main_res.reverse_rejected == 0);   // P-15 (C3): no reversed route refused by the replay
     CHECK(r.main_res.endpoint_adapted == 143); // accepted with the endpoint adapter (measured)
-    CHECK(r.main_total.spawn_draws == 2287);
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2287);
-    CHECK(r.main_res.searches == 2287);
-    CHECK(r.main_res.purchases == 612);
-    CHECK(r.main_res.bought_88 == 35026);
-    CHECK(r.main_res.deliveries == 550);
-    CHECK(r.main_res.delivered_88 == 104100);
-    CHECK(r.main_total.candidates_scored == 21146);
-    CHECK(r.main_total.walk_expansions == 1750834);
+    CHECK(r.main_total.spawn_draws == 2282);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseWalkerTarget) == 2282);
+    CHECK(r.main_res.searches == 2282);
+    CHECK(r.main_res.purchases == 608);
+    CHECK(r.main_res.bought_88 == 34729);
+    CHECK(r.main_res.deliveries == 547);
+    CHECK(r.main_res.delivered_88 == 103388);
+    CHECK(r.main_total.candidates_scored == 21097);
+    CHECK(r.main_total.walk_expansions == 1743166);
     CHECK(r.main_total.upgrade_scores > 0); // caps were crossed; no house was eligible to upgrade
     CHECK(r.up == 1);                       // K2: the one upgrade below
     CHECK(r.refused == 0);
     CHECK(r.down == 14);
-    CHECK(r.main_transitions == 8);
+    CHECK(r.main_transitions == 9);
     // a downgrade draws exactly one HouseVariant each
-    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 8);
+    CHECK(r.watch.draws.at(sim::DrawSite::HouseVariant) == 9);
     // K2: the first REAL pioneer -> settler upgrade of an original scenario. With the goal cells
     // carrying their key nibble (OQ-463) the isolated-cell stands (1314 leather and cloth, ...) are
     // reachable, the Inn supplies the tavern, the chapel the church need, and PIONIER house 509
@@ -720,7 +720,7 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(up_it->building.v == 227633266728ULL);
     CHECK(up_it->tick == 72550);
     CHECK(up_it->from.v == 509);
-    CHECK(up_it->to.v == 520); // next type id - id % 20 + 20, variant index 0
+    CHECK(up_it->to.v == 522); // next type id - id % 20 + 20, variant index 0
     CHECK(up_it->old_group == 0);
     CHECK(up_it->new_group == 1);
     CHECK(up_it->residents_before == 512);
@@ -734,8 +734,8 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(up_it->counter_new_before == 520); // 528 - the house's 8 (derived, diagnostic only)
     CHECK(up_it->counter_new_after == 528);
     CHECK(up_it->variant_drawn);
-    CHECK(up_it->variant_draw == 21945);
-    CHECK(up_it->variant_index == 0);
+    CHECK(up_it->variant_draw == 22619);
+    CHECK(up_it->variant_index == 2);
     // the exact material debit of type 520, read from the registry (not hardcoded): the type's cost
     // entries, nothing else
     {
@@ -777,13 +777,13 @@ TEST_CASE("population original-data mechanism canary: S01_07_01 live run, ledger
     CHECK(t.houses_old_after == 53);
     CHECK(t.houses_new_before == 0);
     CHECK(t.houses_new_after == 1);
-    CHECK(t.counter_old_before == 1665);
-    CHECK(t.counter_old_after == 1644);
+    CHECK(t.counter_old_before == 1664);
+    CHECK(t.counter_old_after == 1643);
     CHECK(t.counter_new_before ==
-          1665); // 1664 - (20 - 21): SetGroup took the house from 1358 to 1320
-    CHECK(t.counter_new_after == 1664);
+          1664); // 1664 - (20 - 21): SetGroup took the house from 1358 to 1320
+    CHECK(t.counter_new_after == 1663);
     CHECK(t.variant_drawn);
-    CHECK(t.variant_draw == 1338);
+    CHECK(t.variant_draw == 19882);
     CHECK(t.variant_index == 2);
     CHECK(std::all_of(t.spent_by_good.begin(), t.spent_by_good.end(),
                       [](std::int64_t v) { return v == 0; })); // a downgrade spends nothing

@@ -1,0 +1,10 @@
+# Historical128/timeline5 K3 checkpoints, preserved as compatibility metadata.
+# Original registry1bd52ba547c3878a; retained accepted log SHA256:
+# 56e389b172d45a7f08df85e82b3f7ac735e7204b9c692d929f7b4f1921dd8765
+# No SCRIPT1 projection or current-generation execution claims are made by these rows.
+2450 65d13922f5a15383
+2500 46ea29b9ad8169b7
+54950 666f938018336639
+55000 4b3943d7569830cf
+55050 f171056cdedaa7f2
+70000 39644392a84ce22b

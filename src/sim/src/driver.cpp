@@ -156,6 +156,14 @@ std::uint32_t* input_store(Payload& payload, std::uint32_t index) {
     return nullptr;
 }
 
+std::uint32_t input_slot_for(const BuildingType& type, GoodsId goods) {
+    return type.input_goods.size() > 1 && goods == type.input_goods[1] ? 1U : 0U;
+}
+
+std::uint32_t harvest_credit_slot(const Payload& payload, const BuildingType& type, GoodsId goods) {
+    return std::holds_alternative<SmallFarm>(payload) ? input_slot_for(type, goods) : 0U;
+}
+
 bool payload_blocked(const Payload& payload) {
     return std::visit(
         [](const auto& alternative) {
@@ -357,7 +365,22 @@ void tick_building(const TickContext& ctx, Island& island, City& city, Building&
         // Line 1's animal kind is a world PRNG draw (D 0x1006f810-0x1006f838, §7.4),
         // through the advance's DrawSource as the site SmallFarmAnimal.
         SiteDraw site{ctx.draw, DrawSite::SmallFarmAnimal};
+        std::vector<std::uint32_t> raw_before,
+            out_before; // the diagnostic ledger only (no sink: no copy)
+        if (ctx.transport_stats != nullptr) {
+            raw_before = f->raw;
+            out_before = f->out;
+        }
         r = small_farm_step(*f, type->prod, ctx.t, DrawRef::of(site), ctx.cfg.small_farm_animals);
+        if (ctx.transport_stats != nullptr && r.stepped) {
+            // MAP-SUPPLY-1 S4 ledger (diagnostic): per line, what this step used and made.
+            ForestryStats::SmallFarmLedger& l = ctx.transport_stats->forestry.small_farms[b.id];
+            for (std::size_t line = 0; line < 2 && line < raw_before.size() && line < f->raw.size();
+                 ++line) {
+                l.consumed_88[line] += raw_before[line] - f->raw[line];
+                l.made_88[line] += f->out[line] - out_before[line];
+            }
+        }
         break;
     }
     }
@@ -466,6 +489,14 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
                 s.harvest = harvest_job(s.job) && std::holds_alternative<Farm>(b.payload);
             }
+            if (std::holds_alternative<SmallFarm>(b.payload)) {
+                // MAP-SUPPLY-1 S2 (D 0x1006f78d-0x1006f7c2): the small farm passes the literal job
+                // 0x2a (not the figure type's route) and sets the new figure's cargo goods to its
+                // input 0; the 0x2a body is the shared harvest job
+                // (docs/sim/small-farm-supply.md 2.3).
+                s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
+                s.harvest = harvest_job(s.job);
+            }
             if (type.cls == RuntimeClass::Inn) {
                 // D 0x100756a9-0x100756c3: the new figure's cargo goods byte is the Inn's input 0
                 // (type +0xb0(0)); the amount is not touched.
@@ -480,10 +511,19 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
         if (r.animal_kind >= base) {
             const std::uint32_t index = static_cast<std::uint32_t>(r.animal_kind - base);
             std::uint32_t* counter = figure_counter(b.payload, index);
-            if (counter != nullptr && std::holds_alternative<SmallFarm>(b.payload)) {
+            // A small-farm type without input goods 1 has no animal line to feed: no animal is sent
+            // (the original reads type+0xb0(1) unchecked; there is no invented goods fallback
+            // here).
+            if (counter != nullptr && std::holds_alternative<SmallFarm>(b.payload) &&
+                type.input_goods.size() > 1) {
                 ++*counter;
-                fx.spawns.push_back(spawn_request(island, city, b, type, index, kJobSmallFarmAnimal,
-                                                  r.animal_kind));
+                SpawnRequest s =
+                    spawn_request(island, city, b, type, index, kJobSmallFarmAnimal, r.animal_kind);
+                // D 0x1006f8ed-0x1006f920: the animal's cargo goods are the farm's input goods 1
+                // (type+0xb0(1)); job 0x2e is the shared harvest job with the animal search limit.
+                s.cargo_goods = type.input_goods[1];
+                s.harvest = harvest_state_job(s.job);
+                fx.spawns.push_back(s);
             }
         }
     }

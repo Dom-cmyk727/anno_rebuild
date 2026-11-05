@@ -1,0 +1,70 @@
+# Small farm supply vectors (MAP-SUPPLY-1 S1). Every expected value was derived BY HAND from the disassembly of
+# AnnoWelt.dll (sha256 f220a878510f740c...) before any engine change; tools/small_farm_ref.py is the independent check
+# (docs/sim/small-farm-supply.md section 4 names the address behind each rule). Small farm 809 constants for `tick`:
+# rates 13 / 4, needs 128 / 50, capacity 1024 per line, 3 figures, animal table 107 110 107 109 107 109 107 109,
+# limits 1 2 0 1 1 0 0 32 (index kind - 106), 384 / 13 = 29 and 384 / 4 = 96 (integer division).
+
+# --- gate 0x1006f66c: (u16)(t - last) >= 500, then last := (last + 500) as a word ---
+gate G-zero      last=0 t=0 => run=0 last=0
+gate G-499       last=0 t=499 => run=0 last=0
+gate G-500       last=0 t=500 => run=1 last=500
+gate G-behind    last=0 t=1000 => run=1 last=500
+gate G-wrap      last=65500 t=70000 => run=1 last=464
+gate G-stale     last=1000 t=66736 => run=0 last=1000
+
+# --- line step 0x1006f440: capacity first; q = (raw << 7) / need, cap 128, below 64 starved; used = q*need >> 7 ---
+line L-empty     raw=0 out=0 cap=1024 rate=13 need=128 => made=0 raw=0 out=0 status=1
+line L-63        raw=63 out=0 cap=1024 rate=13 need=128 => made=0 raw=63 out=0 status=1
+line L-64        raw=64 out=0 cap=1024 rate=13 need=128 => made=6 raw=0 out=6 status=0
+line L-128       raw=128 out=0 cap=1024 rate=13 need=128 => made=13 raw=0 out=13 status=0
+line L-clamp     raw=200 out=10 cap=1024 rate=13 need=128 => made=13 raw=72 out=23 status=0
+line L-full      raw=500 out=1024 cap=1024 rate=13 need=128 => made=0 raw=500 out=1024 status=2
+line L-last-fit  raw=128 out=1011 cap=1024 rate=13 need=128 => made=13 raw=0 out=1024 status=0
+line L-scarce    raw=100 out=0 cap=1024 rate=13 need=128 => made=10 raw=0 out=10 status=0
+line L-out-wrap  raw=128 out=65530 cap=65535 rate=13 need=128 => made=13 raw=0 out=7 status=0
+line L-grass-25  raw=25 out=0 cap=1024 rate=4 need=50 => made=2 raw=0 out=2 status=0
+line L-grass-24  raw=24 out=0 cap=1024 rate=4 need=50 => made=0 raw=24 out=0 status=1
+
+# --- the whole tick 0x1006f660 (gate, switches, suspension, the two dispatch tests, the one draw) ---
+tick T-fresh        s0=1 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => run=1 made=0,0 raw=0,0 out=0,0 act=0,0 last=500 worker=1 animal=107 draws=1
+tick T-not-due      s0=1 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=499 draw=0 => run=0 made=0,0 last=0 worker=0 animal=0 draws=0
+tick T-both-off     s0=0 s1=0 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=5,5 last=0 t=500 draw=0 => run=1 act=5,5 last=500 worker=0 animal=0 draws=0
+tick T-suspended    s0=1 s1=0 susp=1 c=0,0,0,0,0 raw=0,0 out=0,0 act=1000,2000 last=0 t=500 draw=0 => run=1 act=996,1992 last=500 worker=0 animal=0 draws=0
+tick T-worker-out   s0=1 s1=0 susp=0 c=1,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => worker=0 animal=0 draws=0
+tick T-made         s0=1 s1=1 susp=0 c=0,0,0,0,0 raw=128,0 out=0,0 act=0,0 last=0 t=500 draw=0 => made=13,0 raw=0,0 out=13,0 act=208,0 worker=0 animal=107 draws=1
+tick T-full-3839    s0=1 s1=0 susp=0 c=0,0,0,0,0 raw=3839,0 out=1024,0 act=0,0 last=0 t=500 draw=0 => made=0,0 raw=3839,0 out=1024,0 worker=1 draws=0
+tick T-full-3840    s0=1 s1=0 susp=0 c=0,0,0,0,0 raw=3840,0 out=1024,0 act=0,0 last=0 t=500 draw=0 => made=0,0 raw=3840,0 out=1024,0 worker=0 draws=0
+tick T-grass-4849   s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,4849 out=0,1024 act=0,0 last=0 t=500 draw=0 => made=0,0 animal=107 draws=1
+tick T-grass-4850   s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,4850 out=0,1024 act=0,0 last=0 t=500 draw=0 => made=0,0 animal=0 draws=1
+tick T-kind-limit   s0=0 s1=1 susp=0 c=0,2,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => animal=0 draws=1
+tick T-limit-made   s0=0 s1=1 susp=0 c=0,2,0,0,0 raw=0,64 out=0,0 act=0,0 last=0 t=500 draw=0 => made=0,4 raw=0,14 out=0,4 act=0,64 animal=107 draws=1
+tick T-sum-limit    s0=0 s1=1 susp=0 c=0,1,0,1,1 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => animal=0 draws=1
+tick T-sum-no-worker s0=0 s1=1 susp=0 c=1,1,0,1,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => animal=107 draws=1 counters=1,2,0,1,0 cargo=69
+tick T-send-fail-w  s0=1 s1=0 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 fail=1 => worker=1 counters=0,0,0,0,0 cargo=0 draws=0
+tick T-send-ok-w    s0=1 s1=0 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 => worker=1 counters=1,0,0,0,0 cargo=68 draws=0
+tick T-send-fail-a  s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=0 fail=1 => animal=107 counters=0,0,0,0,0 cargo=0 draws=1
+tick T-act-near-max s0=1 s1=0 susp=0 c=1,0,0,0,0 raw=128,0 out=0,0 act=65535,0 last=0 t=500 draw=0 => made=13,0 act=65487,0 worker=0
+tick T-draw-9       s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=9 => animal=110 draws=1
+tick T-draw-3       s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=3 => animal=109 draws=1
+tick T-draw-2       s0=0 s1=1 susp=0 c=0,0,0,0,0 raw=0,0 out=0,0 act=0,0 last=0 t=500 draw=2 => animal=107 draws=1
+
+# --- the raw credit 0x1006f960: slot 1 when the goods equal input goods 1 (GRAS 69), else slot 0 (no goods test), u16 add ---
+credit C-potato  goods=68 in1=69 raw=0,0 amount=256 => raw=256,0
+credit C-grass   goods=69 in1=69 raw=0,0 amount=256 => raw=0,256
+credit C-other   goods=5 in1=69 raw=0,0 amount=256 => raw=256,0
+credit C-wrap    goods=68 in1=69 raw=65000,0 amount=1000 => raw=464,0
+credit C-accum   goods=69 in1=69 raw=7,300 amount=256 => raw=7,556
+
+# --- the tile choice: callback 0x10058a40 (claimed tile: continue; unclaimed goal: take it, stop unless limit > score) ---
+pick P-worker-first   mode=worker limit=0 nodes=5:5:3:1;6:5:4:0;7:5:5:0 => tile=6:5
+pick P-worker-zero    mode=worker limit=0 nodes=5:5:0:0;6:5:0:0 => tile=5:5
+pick P-animal-far     mode=animal limit=20 nodes=5:5:3:0;6:5:12:0;7:5:19:0;8:5:25:0;9:5:30:0 => tile=8:5
+pick P-animal-near    mode=animal limit=20 nodes=5:5:3:0;6:5:12:0 => tile=6:5
+pick P-animal-edge    mode=animal limit=20 nodes=5:5:19:0;6:5:20:0;7:5:21:0 => tile=6:5
+pick P-animal-claimed mode=animal limit=20 nodes=5:5:3:0;6:5:25:1;7:5:26:0 => tile=7:5
+pick P-none           mode=worker limit=0 nodes=5:5:3:1 => tile=none
+
+# --- the cut 0x10087340: predecessor id-1 must be PRODTYPE 226 (ROHSTWACHS); id := id-1, phase &= 0x80 ---
+cut K-potato      id=709 pred_prod=226 phase=0xc5 => ok=1 id=708 phase=0x80
+cut K-grass       id=355 pred_prod=226 phase=0x3f => ok=1 id=354 phase=0x0
+cut K-not-growing id=705 pred_prod=225 phase=0x10 => ok=0 id=705 phase=0x10

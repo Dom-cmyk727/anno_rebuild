@@ -95,6 +95,10 @@ published): an Inn payload (tag 8) is the Inert prefix (u16 last, bool blocked, 
 status tracker) then u32 tavern, u32 taken (the original's u16 values, wrapping) and, K1, u32
 carriers_out; the class table's Inn row is TickKind 9 (Inn). The transcribed worlds hold no Inn.
 
+Stream 129 (task MAP-SUPPLY-1 S2): 128 / timeline 5 was published at a50aec3a. 129 changes no field and no draw
+site (timeline stays 5): the small farm's line-0 worker becomes a harvest worker, which changes the evolution
+of worlds with a small farm; the version word moves every hash.
+
   sim_stream.py            print the values
   sim_stream.py --check    compare them with fixtures/synthetic/sim/goldens.txt
                            (g0_*, g1_*, s5_*, s6_*) and the version header line of
@@ -115,7 +119,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MASK = (1 << 64) - 1
-STATE_HASH_VERSION = 128
+STATE_HASH_VERSION = 129
 PRNG_TIMELINE_VERSION = 5
 
 

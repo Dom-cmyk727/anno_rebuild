@@ -14,6 +14,8 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 #include <anno/sim/figure.hpp>
 #include <anno/sim/tick.hpp>
@@ -34,6 +36,23 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig);
 /// the cut's own predicate holds (`harvest_cuttable`).
 [[nodiscard]] bool harvest_candidate_type(const TypeRegistry& types, std::uint32_t id,
                                           GoodsId goods, bool skip_uncuttable);
+/// The step-A callback (D 0x10058a40) as a pure function: does the search go on after an unclaimed
+/// goal of this score? (`limit > score`, the unsigned 16-bit score at node+8 = the open list's ordering
+/// score, D 0x10004918.) A claimed tile never stops it and is never taken.
+[[nodiscard]] constexpr bool harvest_search_goes_on(std::uint16_t limit, std::uint16_t score) {
+    return limit > score;
+}
+/// A goal node of the search in pop order, for the pure form of the choice below.
+struct HarvestGoalNode {
+    std::int32_t x = 0, y = 0;
+    std::uint16_t score = 0;
+    bool claimed = false;
+};
+/// The tile the callback ends with: the last unclaimed goal taken, the search stopping at the first one
+/// with `limit <= score`. Nullptr-like (nullopt) when every goal is claimed.
+[[nodiscard]] std::optional<TileXY> harvest_pick_tile(std::uint16_t limit,
+                                                      const std::vector<HarvestGoalNode>& nodes);
+
 /// The cut's predicate (AnnoWelt 0x10087340): `id != 0` and the type `id - 1` exists with
 /// PRODTYPE 226 (ROHSTWACHS).
 [[nodiscard]] bool harvest_cuttable(const TypeRegistry& types, std::uint32_t id);

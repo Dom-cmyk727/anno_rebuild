@@ -149,3 +149,4 @@ src/sim/include/anno/sim/inn.hpp:kInnRefillStock  # the stock threshold 0x100 (1
 # SCRIPT1 fixed compatibility identities, not content limits.
 src/sim/include/anno/sim/script.hpp:inline constexpr std::uint32_t kScriptPolicy = 1;  # execution policy version, persisted and checked before rebuilding immutable instructions
 src/sim/include/anno/sim/script_runtime.hpp:inline constexpr std::uint64_t kScriptSchema = 0x0031545049524353ULL;  # fixed SCRIPT1 stream discriminator prevents independent version129 branches aliasing layouts
+src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint16_t kAnimalSearchLimit  # step A's callback limit of the animal job (D 0x1005932d = 0x14 vs 0x10058bfd = 0): a rule constant of the original job, not a count or limit

@@ -1,0 +1,171 @@
+# Hand-derived discriminating vectors for the forester chain (draft for fixtures/synthetic/sim/forester_vectors.txt).
+# Every "->" value below was derived by hand (arithmetic written in docs-sim-forestry.md section "Hand-derived
+# examples") BEFORE tools/forester_ref.py was run on them. Evidence tags: docs-re-forestry.md.
+#
+# conv T0 I0 -> rate0 need0         (AnnoGame 0x10009627..0x10009717: rate = ftol(256/T0 + 0.5), need = ftol(256/T0 * I0))
+conv 18.0 2.25 -> 14 32
+conv 7.0 2.1875 -> 37 80
+conv 10.0 0.9765625 -> 26 25
+#
+# step raw out workers_out -> raw' out' status send     (farm tick 0x1006ea90 for 801: rate 14, need 32, cap 1280 (5 t), max_figures 2)
+# status: 0 none, 1 missing input, 2 storage full. send: a worker is due.
+step 0 0 0 -> 0 0 1 1
+step 0 0 1 -> 0 0 1 1
+step 0 0 2 -> 0 0 1 0
+step 15 0 0 -> 15 0 1 1
+step 16 0 0 -> 0 7 0 1
+step 20 0 0 -> 0 8 0 1
+step 31 0 0 -> 0 13 0 1
+step 32 0 0 -> 0 14 0 1
+step 927 0 0 -> 895 14 0 1
+step 928 0 0 -> 896 14 0 0
+step 64 1280 0 -> 64 1280 2 1
+step 32 1270 0 -> 0 1284 0 1
+step 32 1279 0 -> 0 1293 0 1
+step 32 1280 0 -> 32 1280 2 1
+#
+# area x y w h r -> x0 y0 width height      (step A 0x10058ae0; x0,y0 are u16 words, see wrap rule)
+area 100 200 3 3 5 -> 96 196 11 11
+area 10 10 2 2 5 -> 5 5 12 12
+area 10 10 3 2 5 -> 6 5 11 12
+area 3 3 3 3 5 -> 65535 65535 11 11
+#
+# harvest id phase -> id' phase' ok     (island slot +0x110 = 0x10087340; type table in the header lines "type")
+type 104 ROHSTWACHS
+type 105 ROHSTOFF BAUM
+type 107 ROHSTOFF BAUM
+type 258 ROHSTWACHS
+type 259 ROHSTOFF BAUM
+type 260 ROHSTOFF UNUSED
+type 261 ROHSTOFF BAUM
+type 712 ROHSTWACHS
+type 713 ROHSTOFF GETREIDE
+harvest 105 0x00 -> 104 0x00 1
+harvest 105 0x45 -> 104 0x00 1
+harvest 105 0xC5 -> 104 0x80 1
+harvest 259 0x13 -> 258 0x00 1
+harvest 261 0x13 -> 261 0x13 0
+harvest 0 0x00 -> 0 0x00 0
+harvest 713 0x00 -> 712 0x00 1
+#
+# candidates: eligible = WARE[0] == goods and claim bit clear; row-major (y outer, x inner), rect clipped to the island.
+# cand goods island(x0 y0 w h) rect(x y w h) tiles "x,y,id,claim ..." -> "x,y ..."
+cand BAUM 0 0 8 8 | 1 1 4 4 | 1,1,105,0 2,1,104,0 3,1,105,1 4,1,105,0 1,2,259,0 2,3,261,0 3,3,713,0 4,4,107,0 | 1,1 4,1 1,2 2,3 4,4
+cand BAUM 10 10 4 4 | 8 8 4 4 | 9,9,105,0 10,10,105,0 11,10,105,0 13,13,105,0 | 10,10 11,10
+#
+# grow S k P id phase visits(start,step,end) -> first visit tick at which the object id changes, and the new id
+# (grow 0x1008b5f0; half = P/2; parity=(t/half)&1; flips until counter == S<<k)
+grow 5 2 24000 104 0x00 100000 2000 400000 -> 336000 105
+grow 5 2 24000 104 0x00 108000 2000 400000 -> 336000 105
+grow 5 2 24000 104 0x00 109000 2000 400000 -> 337000 105
+#
+# drain raw -> raw_left made   (farm steps with rate 14, need 32 until raw < 16 [ratio < 64], nothing else changing)
+drain 256 -> 0 112
+drain 512 -> 0 224
+drain 768 -> 0 336
+drain 250 -> 0 109
+drain 15 -> 15 0
+#
+# walkcode first second -> code      (state.md 1448 / AnnoGame 0x100091f0: both 0 -> 4; first < 8 -> first)
+walkcode 2 3 -> 2
+walkcode 4 3 -> 4
+walkcode 0 0 -> 4
+# goalfree blocked9 -> free9         (tile-goal sub-cell mask 0x1ff - tile mask, AnnoWelt 0x100033b2..0x100033c8, island +0x12c default arm 0x10092262)
+goalfree 0x010 -> 0x1ef
+goalfree 0x0ba -> 0x145
+goalfree 0x000 -> 0x1ff
+#
+# ===== E1-FINAL additions (every "->" value derived on paper first; see docs-sim-forestry.md section 5, E-13..E-19) =====
+# drain terminals. Full output ends the drain WITHOUT changing the step arithmetic: cap 1280, rate 14, need 32.
+#   92 steps make 14*92 = 1288 (step 92 starts at out 1274 < 1280); raw 4096 - 92*32 = 1152; step 93 is status 2.
+drain 4096 -> 1152 1288
+#   raw exactly 92*32 = 2944: raw 0 and full output together; the full-output check (cap <= out) precedes the ratio, status 2.
+drain 2944 -> 0 1288
+#   2976 - 2944 = 32 left when output fills.
+drain 2976 -> 32 1288
+#   starving first: 91 steps (2912 raw) make 1274 < 1280; step 92 has raw 0 -> ratio 0 < 64 -> status 1.
+drain 2912 -> 0 1274
+#
+# enhanced candidate list (forestry_skip_uncuttable): cand minus tiles whose id-1 is not ROHSTWACHS (derived from the types).
+# E-8's island: 261 (260 is ROHSTOFF) drops out; 259 stays (258 is ROHSTWACHS: cuttable, a stump afterwards); 107 stays (106).
+type 106 ROHSTWACHS
+type 260 ROHSTOFF UNUSED
+candskip BAUM 0 0 8 8 | 1 1 4 4 | 1,1,105,0 2,1,104,0 3,1,105,1 4,1,105,0 1,2,259,0 2,3,261,0 3,3,713,0 4,4,107,0 | 1,1 4,1 1,2 4,4
+#
+# draws steps(raw,out,workers) -> number of eligible dispatch attempts (= world draws). Full output (64,1280,0) is eligible.
+#   (0,0,0) send; (0,0,1) send; (0,0,2) 2 workers out -> no; (928,0,0) raw 896/32 = 28 > 27 -> no; (64,1280,0) status 2 yet send.
+draws 0,0,0 0,0,1 0,0,2 928,0,0 64,1280,0 -> 3
+#
+# visit cap wait ticks | tree positions -> cargo step left claimed cuts      (ONE call of the harvest body; walk = 500 ticks per
+#   position from the home at 0; cargo credited only for a successful planned cut; left = wait/walk ticks still owed, or unused
+#   ticks for Done). Two trees at 3 and 7, capacity 768 (3 t, data-defined, > 256).
+#   t=1500 arrive 3, t=8000 cut 3 (cargo 256); search sees 3 dead -> 7: walk 2000 -> 10000, wait -> 16500 cut 7 (512);
+#   512 < 768 -> search: none -> home 7*500 = 3500 -> 20000. Done, 40000 - 20000 unused.
+visit 768 6500 40000 | 3 7 -> 512 Done 20000 - 3,7
+#   same, 12000 ticks: cut 3 at 8000; claim 7; at 7 at 10000; 2000 ticks of the 6500 wait used -> 4500 left; 7 still claimed.
+visit 768 6500 12000 | 3 7 -> 256 Cut 4500 7 3
+#   3000 ticks: 1500 walk, 1500 of the wait -> 5000 left; 3 claimed; nothing cut.
+visit 768 6500 3000 | 3 7 -> 0 Cut 5000 3 -
+#   18000 ticks: cut 7 at 16500; 1500 of the 3500 home walk used -> 2000 left, carrying 512.
+visit 768 6500 18000 | 3 7 -> 512 ToHome 2000 - 3,7
+#   capacity 256 (figure 102): one cut fills it, no repeat: 8000 + home 3*500 = 1500 -> 9500; 30500 unused.
+visit 256 6500 40000 | 3 7 -> 256 Done 30500 - 3
+#   THE DEFECT (stale reads: edits queued to the end of the call): the second search sees tree 3 alive and unclaimed (distance 0),
+#   cuts it again at 14500 and a third time at 21000: cargo 768 from ONE tree; home 3*500 = 1500 -> 22500; 17500 unused.
+visitstale 768 6500 40000 | 3 7 -> 768 Done 17500 - 3,3,3
+#
+# claims faithful|enhanced ops... -> bit owner   (E2.0, docs/sim/forestry.md E-16; derived by hand from the D facts)
+#   W+ select-and-claim (refused while the bit is set); W- W's own cut arrival/abort (faithful: unconditional clear;
+#   enhanced: only the owner); P placement, C clearing: faithful KEEPS bit 29 (AnnoWelt 0x100824a7 `and 0x3fffffff`
+#   clears bits 30-31 only; the clear arm 0x10082f05 keeps bits 25-31); enhanced: the hygiene-only invalidation (A)
+#   clears bit and owner entry (as specified in E1-FINAL).
+#   THE DISCRIMINATING CASE: claim then placement leaves the faithful claim set (the withdrawn mask reading gives 0).
+claims faithful A+ P -> 1 -
+#   clearing keeps it too; the legal worker unclaim clears it (the control that must stay green under the mutant).
+claims faithful A+ C -> 1 -
+claims faithful A+ A- -> 0 -
+#   regressions only: these two do NOT discriminate (the second ends at 0 under both mask readings; the first cannot show
+#   that B was refused, because faithful mode prints no owner).
+claims faithful A+ P B+ -> 1 -
+claims faithful A+ P B+ A- -> 0 -
+claims faithful A+ B+ -> 1 -
+#   faithful one-bit model: a clear by another worker at the tile is unconditional (an accepted loaded state only).
+claims faithful A+ B- -> 0 -
+#   enhanced (owner-keyed, hygiene only): placement/clearing invalidate bit and entry.
+claims enhanced A+ P -> 0 -
+claims enhanced A+ C -> 0 -
+#   enhanced: B claims after the invalidation; A's late clear is refused because the owner is B.
+claims enhanced A+ P B+ A- -> 1 B
+#   enhanced: a non-owner's clear is refused; the owner's own clear works; then B may claim; after B releases, A again.
+claims enhanced A+ B- -> 1 A
+claims enhanced A+ A- B+ -> 1 B
+claims enhanced A+ P B+ B- A+ -> 1 A
+#
+# visits cap wait start_delay | trees | elapsed ticks per visit (S = save and reload) -> start_delay cargo step owed claimed cuts
+#   (E2.0, docs/sim/forestry.md E-21; the first micro-step is a saved remainder of 5 ticks consumed once across visits,
+#   surplus carried on, never re-armed.) Home and start at 0, 500 ticks per position, tree 3 unless stated.
+#   five 1-tick visits: the fifth takes the remainder to 0 with no surplus; Start claims 3; the walk owes 1500.
+visits 256 6500 5 | 3 | 1 1 1 1 1 -> 0 0 ToTree 1500 3 -
+#   one 5-tick visit: the same state.
+visits 256 6500 5 | 3 | 5 -> 0 0 ToTree 1500 3 -
+#   zero elapsed time does nothing; a 2-tick visit then a 0-tick visit leaves 3 owed.
+visits 256 6500 5 | 3 | 0 -> 5 0 Start 0 - -
+visits 256 6500 5 | 3 | 2 0 -> 3 0 Start 0 - -
+#   surplus: 50 ticks = 5 for the delay + 45 walked; 3 + 50 = 2 for the delay + 48 walked.
+visits 256 6500 5 | 3 | 50 -> 0 0 ToTree 1455 3 -
+visits 256 6500 5 | 3 | 3 50 -> 0 0 ToTree 1452 3 -
+#   save and reload after two ticks: the remainder 3 survives; equals the uninterrupted runs above.
+#   the same without the save (the control of the not-saved mutant).
+visits 256 6500 5 | 3 | 2 3 -> 0 0 ToTree 1500 3 -
+visits 256 6500 5 | 3 | 2 S 3 -> 0 0 ToTree 1500 3 -
+visits 256 6500 5 | 3 | 2 S 48 -> 0 0 ToTree 1455 3 -
+#   not re-armed after a cut: delay 5, claim 3 at 5, arrive 1505, cut 8005 (256), Start again WITHOUT a delay: claim 7,
+#   walk 2000 -> 10005; the visits end at 9050 -> 955 owed (re-arming would give 960).
+visits 768 6500 5 | 3 7 | 50 9000 -> 0 256 ToTree 955 7 3
+#   E-14 shifted by the delay: Done at 20005 of 40000 -> 19995 unused.
+visits 768 6500 5 | 3 7 | 40000 -> 0 512 Done 19995 - 3,7
+#   start_delay 0 and one call reproduce the visit vector exactly (the same body).
+visits 768 6500 0 | 3 7 | 40000 -> 0 512 Done 20000 - 3,7
+#   split of the same 12000 ticks into 5000 + 7000 visits: the isolated figure/tile state equals one 12000-tick call.
+visits 768 6500 0 | 3 7 | 5000 7000 -> 0 256 Cut 4500 7 3
+visits 768 6500 0 | 3 7 | 12000 -> 0 256 Cut 4500 7 3

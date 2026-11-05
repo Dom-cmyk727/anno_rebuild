@@ -1,0 +1,563 @@
+# cargo_load_vectors.txt - hand-derived cases of the manual own-warehouse -> ship LOAD (MAP-CARGO-2 L1).
+# Format and reference: tools/cargo_ref.py (docstring). Contract: docs/sim/ship-cargo.md section 12; evidence:
+# docs/re/ship-cargo.md section 11. This file is separate from cargo_vectors.txt (the unload, read by the C++ unload test)
+# so the two expectations cannot be confused. EVERY expected value was derived by hand from section 11.3 / 12 BEFORE
+# tools/cargo_ref.py plan_load or orig_load computed anything (the derivation is in the comment above each case).
+#
+# Units: raw 1/256 ton ("units"); a request is in whole tons (T = 256). Goods: 26 food, 41 tools, 42 wood.
+# Defaults: holdcap 12800 (50 t per hold, LOGIC[0x11] << 8 of the shipped 1502), goods_count 56, storecap 12800 (unload steps),
+# nholds = the number of `hold` lines of the first ship (the type's n0; `nholds none` = the type has no cargo facts).
+#   load   SHIP IDX G TONS -> ok MOVED RESOLVED | reject REASON     (IDX = the named/preferred hold, RESOLVED = the hold used)
+#   unload SHIP IDX G TONS -> ok MOVED | reject REASON              (the existing unload rule, for round trips; IDX >= nholds is BadIndex,
+#       MAP-CARGO-3 C1: the original bounds the unload by n0 alone, 0x100ac476)
+#   nholds_b N : the type's second hold group (hold_count_b), default 0; never a transfer bound
+#   orig RET RESOLVED HOLD STOCK : the ORIGINAL arm (0x100ac360 flag 0, 32-bit semantics, hold amount a u16, signed compares) for the FIRST
+#       `load` of the case: return value (signed), the hold it used (-1 when it returned 0), that hold afterwards (goods:units; hold 0 when -1) and the
+#       stock of the requested goods afterwards. Evidence of agreement or of a defect, never an engine expectation.
+# Rebuild rule (restated for the hand derivation): preferred = the named hold if it holds G and has >= 256 units free, else the search
+# over holds 0..n0-1: the first EMPTY hold (goods 0 and amount 0) unless a hold of G with free > 0 exists, then the one with the most free
+# (strictly greater, lowest index on ties); x = min(tons*256, holdcap - amount, floor256(stock)); StockShort when floor256(stock) = 0.
+
+# C1: pref hold 0 is empty -> search -> cand 0. req 5*256 = 1280, room 12800, avail 2560 -> 1280. stock 2560 - 1280 = 1280.
+loadcase empty_hold_whole_request
+  stock 42 2560
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 5 -> ok 1280 0
+  endhold A 42:1280 0:0 0:0 0:0
+  endstock 42 1280
+  orig 1280 0 42:1280 1280
+
+# C2: hold 0 holds 42 with 12800-5120 = 7680 free >= 256 -> preferred. req 2560, avail 5120 -> 2560. hold 5120+2560 = 7680, stock 2560.
+loadcase same_goods_top_up
+  stock 42 5120
+  hold A 42 5120
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 2560 0
+  endhold A 42:7680 0:0 0:0 0:0
+  endstock 42 2560
+  orig 2560 0 42:7680 2560
+
+# C3: hold 0 holds food (other goods) -> NOT a refusal, search: k0 food skip, k1 empty -> cand 1, k2 tools skip, k3 empty ignored.
+# req 1280; avail floor(3000/256)=11 -> 2816; x = 1280. stock 3000-1280 = 1720.
+loadcase different_goods_in_named_hold_goes_to_first_empty
+  stock 42 3000
+  hold A 26 2560
+  hold A 0 0
+  hold A 41 1000
+  hold A 0 0
+  load A 0 42 5 -> ok 1280 1
+  endhold A 26:2560 42:1280 41:1000 0:0
+  endstock 42 1720
+  orig 1280 1 42:1280 1720
+
+# C4: every hold carries other goods -> no candidate: HoldsFull; nothing changes. The original returns 0.
+loadcase no_hold_can_take_the_goods
+  stock 42 5000
+  hold A 26 100
+  hold A 41 100
+  hold A 41 100
+  hold A 26 100
+  load A 0 42 5 -> reject HoldsFull
+  endhold A 26:100 41:100 41:100 26:100
+  endstock 42 5000
+  orig 0 -1 26:100 5000
+
+# C5: pref hold 0 is empty (not preferred: goods 0 != 42). Search: k0 empty cand 0; k1 42 free 12800-2560 = 10240 > 0 -> cand 1 best 10240;
+# k2 empty ignored (cand set); k3 42 free 5120 not > 10240. x = min(12800, 10240, floor(20000/256)*256 = 19968) = 10240.
+# hold 1 = 2560+10240 = 12800; stock 20000-10240 = 9760.
+loadcase same_goods_with_room_beats_an_empty_named_hold
+  stock 42 20000
+  hold A 0 0
+  hold A 42 2560
+  hold A 0 0
+  hold A 42 7680
+  load A 0 42 50 -> ok 10240 1
+  endhold A 0:0 42:12800 0:0 42:7680
+  endstock 42 9760
+  orig 10240 1 42:12800 9760
+
+# C6: named hold 0 has 42 and 12800-7680 = 5120 free >= 256 -> preferred although hold 1 is roomier. req 2560 -> x = 2560.
+# hold 0 = 10240, stock 20000-2560 = 17440.
+loadcase named_same_goods_hold_wins_over_a_roomier_one
+  stock 42 20000
+  hold A 42 7680
+  hold A 42 2560
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 2560 0
+  endhold A 42:10240 42:2560 0:0 0:0
+  endstock 42 17440
+  orig 2560 0 42:10240 17440
+
+# C7: hold 0 free = 100 < 256 -> not preferred; search: k0 42 free 100 > 0 -> cand 0 best 100; k1 empty ignored. x = min(1280, 100, 4864) = 100.
+# hold 0 = 12800; stock 5000-100 = 4900. (A same-goods hold with room beats the empty holds, even a fractional room.)
+loadcase nearly_full_named_hold_is_still_filled_by_the_search
+  stock 42 5000
+  hold A 42 12700
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 5 -> ok 100 0
+  endhold A 42:12800 0:0 0:0 0:0
+  endstock 42 4900
+  orig 100 0 42:12800 4900
+
+# C8: hold 0 free 800 >= 256 -> preferred. req 2560, room 800, avail 12800 -> x = 800 (hold limited). stock 12800-800 = 12000.
+loadcase hold_limited
+  stock 42 12800
+  hold A 42 12000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 800 0
+  endhold A 42:12800 0:0 0:0 0:0
+  endstock 42 12000
+  orig 800 0 42:12800 12000
+
+# C9: stock 1000 -> floor(1000/256) = 3 -> avail 768. req 12800, room 12800 -> x = 768 (stock limited, whole tons). stock 1000-768 = 232.
+loadcase stock_limited_whole_tons
+  stock 42 1000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 50 -> ok 768 0
+  endhold A 42:768 0:0 0:0 0:0
+  endstock 42 232
+  orig 768 0 42:768 232
+
+# C10: stock 255 < one ton -> avail 0 -> nothing moves (the original: esi = 0, return 0). Reason StockShort.
+loadcase stock_below_one_ton
+  stock 42 255
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> reject StockShort
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 255
+  orig 0 -1 0:0 255
+
+# C11: stock exactly 256 -> avail 256 -> x = 256; stock 0.
+loadcase stock_exactly_one_ton
+  stock 42 256
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> ok 256 0
+  endhold A 42:256 0:0 0:0 0:0
+  endstock 42 0
+  orig 256 0 42:256 0
+
+# C12: stock 600 (2.34 t): first load req 2560, avail floor(600/256)=2 -> 512; x = 512; stock 88, hold 0 = 42:512.
+# second load (hold 0 holds 42, free 12288 -> preferred): avail floor(88/256) = 0 -> StockShort; the 88 units stay in the city.
+loadcase fractional_stock_remainder_stays_in_the_city
+  stock 42 600
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 512 0
+  load A 0 42 1 -> reject StockShort
+  endhold A 42:512 0:0 0:0 0:0
+  endstock 42 88
+  orig 512 0 42:512 88
+
+# C13: hold 0 free 128 (0.5 t) < 256 -> search -> cand 0 (same goods, free 128). req 256, avail floor(5000/256)=19 -> 4864.
+# x = min(256, 128, 4864) = 128: the hold is filled exactly and the city is debited exactly 128 (no loss, unlike the unload). stock 4872.
+loadcase fractional_hold_room_moves_a_fraction
+  stock 42 5000
+  hold A 42 12672
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> ok 128 0
+  endhold A 42:12800 0:0 0:0 0:0
+  endstock 42 4872
+  orig 128 0 42:12800 4872
+
+# C14: a zero request is refused before anything (the original computes esi = 0 and returns 0).
+loadcase zero_request
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 0 -> reject BadValue
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 5000
+  orig 0 -1 0:0 5000
+
+# C15: hold index 4 with n0 = 4 holds -> BadIndex (the original: rec[1] >= n0 -> return 0).
+loadcase hold_index_out_of_range
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 4 42 1 -> reject BadIndex
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 5000
+  orig 0 -1 0:0 5000
+
+# C16: the type has n0 = 4 cargo holds but the ship record has 6 (n1 slots 4,5 empty). Index 4 -> BadIndex; index 0 -> the search
+# ignores holds 4 and 5 (only 0..n0-1) -> HoldsFull. (The original: rec[1] >= n0, loop k < n0.)
+loadcase unit_slots_beyond_n0_are_never_used
+  nholds 4
+  stock 42 5000
+  hold A 26 100
+  hold A 41 100
+  hold A 41 100
+  hold A 26 100
+  hold A 0 0
+  hold A 0 0
+  load A 4 42 1 -> reject BadIndex
+  load A 0 42 1 -> reject HoldsFull
+  endhold A 26:100 41:100 41:100 26:100 0:0 0:0
+  endstock 42 5000
+  orig 0 -1 26:100 5000
+
+# C17-C20: the goods bound. The rebuild refuses goods 0 and goods >= goods_count before any write (the original accepts any byte: defect E1).
+loadcase goods_zero_refused
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 0 1 -> reject UnsupportedGoods
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 5000
+
+loadcase goods_first_unsupported
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 56 1 -> reject UnsupportedGoods
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 5000
+
+# C19: goods 55 (the last of 56): stock 2560; req 2560 -> x = 2560; stock 0.
+loadcase last_supported_goods
+  stock 55 2560
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 55 10 -> ok 2560 0
+  endhold A 55:2560 0:0 0:0 0:0
+  endstock 55 0
+  orig 2560 0 55:2560 0
+
+# C20: a data-defined goods table of 30: goods 41 is outside it (refused, state unchanged), goods 26 is inside: x = min(256, 12800, 2560) = 256.
+loadcase goods_table_smaller_than_default
+  goods_count 30
+  stock 26 2560
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 41 1 -> reject UnsupportedGoods
+  load A 0 26 1 -> ok 256 0
+  endhold A 26:256 0:0 0:0 0:0
+  endstock 26 2304
+
+# C21: per-hold capacity 0 (a type that carries nothing): the empty hold is a candidate but its room is 0 -> HoldsFull (the original: esi = 0).
+loadcase capacity_zero_type
+  holdcap 0
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> reject HoldsFull
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 5000
+  orig 0 -1 0:0 5000
+
+# C22: the ship type has no hold-count fact (not a navigating type): explicit refusal, no guessed limit. (No original line: the
+# original reads LOGIC[0x13] of any figure type.)
+loadcase no_cargo_facts
+  nholds none
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> reject NoCargoFacts
+  endhold A 0:0 0:0
+  endstock 42 5000
+
+# C23: hold 0 holds 42 OVER capacity (13000 > 12800, free -200): not preferred, not a candidate (free > 0 fails); empty hold 1 is.
+# x = min(256, 12800, 4864) = 256. stock 4744. (Neither side ever sees a negative free.)
+loadcase overfull_same_goods_hold_is_skipped
+  stock 42 5000
+  hold A 42 13000
+  hold A 0 0
+  hold A 41 12800
+  hold A 41 12800
+  load A 0 42 1 -> ok 256 1
+  endhold A 42:13000 42:256 41:12800 41:12800
+  endstock 42 4744
+  orig 256 1 42:256 4744
+
+loadcase overfull_only_hold
+  stock 42 5000
+  hold A 42 13000
+  hold A 26 100
+  hold A 41 100
+  hold A 26 100
+  load A 0 42 1 -> reject HoldsFull
+  endhold A 42:13000 26:100 41:100 26:100
+  endstock 42 5000
+  orig 0 -1 42:13000 5000
+
+# C25: hold 0 free = 12800-12544 = 256 -> exactly one ton -> preferred (>= 256). x = min(256, 256, 4864) = 256. hold 0 = 12800, stock 4744.
+loadcase preferred_threshold_exactly_one_ton
+  stock 42 5000
+  hold A 42 12544
+  hold A 42 100
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> ok 256 0
+  endhold A 42:12800 42:100 0:0 0:0
+  endstock 42 4744
+  orig 256 0 42:12800 4744
+
+# C26: hold 0 free 255 -> not preferred; search: k0 free 255 -> cand 0 best 255; k1 free 12700 > 255 -> cand 1; k2 empty ignored.
+# x = min(256, 12700, 4864) = 256; hold 1 = 100+256 = 356; stock 4744.
+loadcase preferred_threshold_one_unit_short
+  stock 42 5000
+  hold A 42 12545
+  hold A 42 100
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 1 -> ok 256 1
+  endhold A 42:12545 42:356 0:0 0:0
+  endstock 42 4744
+  orig 256 1 42:356 4744
+
+# C27: named hold 2 is empty -> search: k0 42 free 7680 -> cand 0; k1 same free 7680 is not > 7680 -> cand stays 0 (lowest index on ties).
+# x = min(256, 7680, 19968) = 256; hold 0 = 5376; stock 19744.
+loadcase tie_goes_to_the_lowest_index
+  stock 42 20000
+  hold A 42 5120
+  hold A 42 5120
+  hold A 0 0
+  hold A 0 0
+  load A 2 42 1 -> ok 256 0
+  endhold A 42:5376 42:5120 0:0 0:0
+  endstock 42 19744
+  orig 256 0 42:5376 19744
+
+# C28: hold 0 has goods 0 but 300 units (a state the original's own unload never makes). ORIGINAL: it is the "first empty hold"; the
+# 300 unnamed units become wood: hold 0 = 42:556 (ret 256, stock 4744). REBUILD: only goods 0 AND amount 0 is empty -> hold 1: x = 256.
+loadcase empty_goods_with_amount_is_not_empty
+  stock 42 5000
+  hold A 0 300
+  hold A 0 0
+  hold A 41 100
+  hold A 41 100
+  load A 0 42 1 -> ok 256 1
+  endhold A 0:300 42:256 41:100 41:100
+  endstock 42 4744
+  orig 256 0 42:556 4744
+
+# C29: holds with other goods and amount 0 are not empty (the original and the rebuild agree): HoldsFull.
+loadcase other_goods_hold_with_amount_zero_is_not_usable
+  stock 42 5000
+  hold A 26 0
+  hold A 41 0
+  hold A 26 0
+  hold A 41 0
+  load A 0 42 1 -> reject HoldsFull
+  endhold A 26:0 41:0 26:0 41:0
+  endstock 42 5000
+  orig 0 -1 26:0 5000
+
+# C30: hold 0 = 42:0 (goods id kept, amount 0): same goods, free 12800 -> preferred. x = min(512, 12800, 4864) = 512; stock 4488.
+loadcase same_goods_hold_with_amount_zero_is_preferred
+  stock 42 5000
+  hold A 42 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 2 -> ok 512 0
+  endhold A 42:512 0:0 0:0 0:0
+  endstock 42 4488
+  orig 512 0 42:512 4488
+
+# C31: the largest wire request, 65535 t = 16776960 units: x = min(16776960, 12800, 19968) = 12800; stock 7200.
+loadcase request_u16_maximum
+  stock 42 20000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 65535 -> ok 12800 0
+  endhold A 42:12800 0:0 0:0 0:0
+  endstock 42 7200
+  orig 12800 0 42:12800 7200
+
+# C32: boundary of the u16 hold (holdcap 65280 = 255 t, hold 65279, free 1) and of the u32 stock (4294967295). REBUILD (wide):
+# search cand 0, x = min(256, 1, 4294967040) = 1; hold 65280, stock 4294967294.
+# ORIGINAL (defect E2): avail = 0xFFFFFFFF & 0xFFFFFF00 = 0xFFFFFF00 = -256 signed; esi = min(1, -256) = -256 (!); hold add ax=0xFF00:
+# (65279 + 65280) mod 65536 = 65023; remove(0xFFFFFF00) of 0xFFFFFFFF leaves 255; return -256.
+loadcase u16_hold_and_u32_stock_boundary
+  holdcap 65280
+  stock 42 4294967295
+  hold A 42 65279
+  load A 0 42 1 -> ok 1 0
+  endhold A 42:65280
+  endstock 42 4294967294
+  orig -256 0 42:65023 255
+
+# C33: stock 2^31 (signed negative in the original): REBUILD x = min(256, 12800, 2147483648) = 256, stock 2147483392.
+# ORIGINAL (E2): avail = -2147483648, esi = -2147483648; add ax = 0 leaves the amount 0 with goods 42; remove clamps to the stock: 0.
+loadcase stock_at_the_signed_boundary
+  stock 42 2147483648
+  hold A 0 0
+  load A 0 42 1 -> ok 256 0
+  endhold A 42:256
+  endstock 42 2147483392
+  orig -2147483648 0 42:0 0
+
+# C34: widths beyond the original (holdcap 2^32-1, hold 4294967040 = free 255): x = min(256, 255, 19968) = 255; hold 2^32-1; stock 19745.
+loadcase holdcap_u32_maximum
+  holdcap 4294967295
+  stock 42 20000
+  hold A 42 4294967040
+  load A 0 42 1 -> ok 255 0
+  endhold A 42:4294967295
+  endstock 42 19745
+
+# C35: three goods in the store, three kinds of holds: only hold 2 (the named empty hold -> search -> k2 empty, k0 food and k1 tools skipped)
+# and the wood stock change. x = min(1280, 12800, floor(3000/256)*256 = 2816) = 1280; wood 1720; food 500 and tools 900 unchanged.
+loadcase other_goods_and_holds_unchanged
+  stock 26 500
+  stock 41 900
+  stock 42 3000
+  hold A 26 2560
+  hold A 41 100
+  hold A 0 0
+  hold A 0 0
+  load A 2 42 5 -> ok 1280 2
+  endhold A 26:2560 41:100 42:1280 0:0
+  endstock 42 1720
+  orig 1280 2 42:1280 1720
+
+# C36: two ships, one city, stock 3000. A: req 2048, avail 2816 -> 2048 (stock 952). B: avail floor(952/256) = 3 -> 768 (stock 184).
+# A again: hold 0 holds 42 (free 10752) -> preferred, avail floor(184/256) = 0 -> StockShort. Total 3000 = 2048 + 768 + 184.
+loadcase competing_two_ships_first_wins
+  stock 42 3000
+  hold A 0 0
+  hold B 0 0
+  load A 0 42 8 -> ok 2048 0
+  load B 0 42 8 -> ok 768 0
+  load A 0 42 1 -> reject StockShort
+  endhold A 42:2048
+  endhold B 42:768
+  endstock 42 184
+  orig 2048 0 42:2048 952
+
+loadcase competing_two_ships_order_swapped
+  stock 42 3000
+  hold A 0 0
+  hold B 0 0
+  load B 0 42 8 -> ok 2048 0
+  load A 0 42 8 -> ok 768 0
+  load B 0 42 1 -> reject StockShort
+  endhold A 42:768
+  endhold B 42:2048
+  endstock 42 184
+  orig 2048 0 42:2048 952
+
+# C38: load then unload with NO Advance in between (the same hold, same tons): load x = min(2560, 12800, 9984) = 2560 (stock 7440);
+# unload (existing rule, store 12800): free 5360, credit min(2560, 2560, 5360) = 2560 -> hold 0:0, stock 10000. Combined goods conserved.
+loadcase round_trip_whole
+  stock 42 10000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 2560 0
+  unload A 0 42 10 -> ok 2560
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 10000
+  orig 2560 0 42:2560 7440
+
+# C39: fractional stock 600: load 512 (stock 88); unload takes the 512 back (store free 12712): stock 600, hold 0:0.
+loadcase round_trip_fractional_stock
+  stock 42 600
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 512 0
+  unload A 0 42 10 -> ok 512
+  endhold A 0:0 0:0 0:0 0:0
+  endstock 42 600
+  orig 512 0 42:512 88
+
+# C40: stock 5000: load 10 t -> 2560 (avail 4864), stock 2440; unload 4 t -> 1024, hold 1536, stock 3464; load 3 t = 768 (avail
+# floor(3464/256) = 13 -> 3328): hold 2304, stock 2696. 2304 + 2696 = 5000.
+loadcase round_trip_partial_then_reload
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 2560 0
+  unload A 0 42 4 -> ok 1024
+  load A 0 42 3 -> ok 768 0
+  endhold A 42:2304 0:0 0:0 0:0
+  endstock 42 2696
+  orig 2560 0 42:2560 2440
+
+# C41: a store whose capacity (3000) is below the stock (5000): load 2560 -> stock 2440; unload 10 t: free = 3000-2440 = 560 -> credit 560
+# (partial, rest stays aboard), hold 2000, stock 3000. 2000 + 3000 = 5000.
+loadcase round_trip_into_a_smaller_store
+  storecap 3000
+  stock 42 5000
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  hold A 0 0
+  load A 0 42 10 -> ok 2560 0
+  unload A 0 42 10 -> ok 560
+  endhold A 42:2000 0:0 0:0 0:0
+  endstock 42 3000
+  orig 2560 0 42:2560 2440
+
+# C42: a completely full hold of the requested goods: pref free 0 < 256; search: same goods free 0 is not > 0 -> no candidate: HoldsFull.
+loadcase hold_full_of_the_same_goods
+  stock 42 5000
+  hold A 42 12800
+  load A 0 42 1 -> reject HoldsFull
+  endhold A 42:12800
+  endstock 42 5000
+  orig 0 -1 42:12800 5000
+
+# C43 (MAP-CARGO-3 C1, F-L1): the type has n0 = 2 cargo holds (a) and a second group of 2 (b), the ship record carries 4. Original unload
+# (0x100ac476): valid indices end at n0 - 1 = 1. Hold 1 (= a - 1) tools 5120: 2 t = 512 -> ok 512, hold 4608; hold 0 wood 5120: 2 t -> ok 512,
+# hold 4608. Hold 2 (food) and hold 3 (wood) are second-group / extra records: BadIndex (a + b = 4 would have allowed both). Conserved:
+# 4 x 5120 = 20480 = 4608 + 4608 + 5120 + 5120 + 512 + 512 (the stock of tools 41 and wood 42).
+loadcase unload_bound_is_a_not_a_plus_b
+  nholds 2
+  nholds_b 2
+  hold A 42 5120
+  hold A 41 5120
+  hold A 26 5120
+  hold A 42 5120
+  unload A 1 41 2 -> ok 512
+  unload A 2 26 2 -> reject BadIndex
+  unload A 3 42 2 -> reject BadIndex
+  unload A 0 42 2 -> ok 512
+  endhold A 42:4608 41:4608 26:5120 42:5120
+  endstock 41 512
+  endstock 42 512

@@ -56,6 +56,17 @@ void refresh_unlocked(WeaponsWorkshop& w, const BuildingType& type, const TypeRe
 /// and Inert.
 [[nodiscard]] std::uint32_t* input_store(Payload& payload, std::uint32_t index);
 
+/// The raw (input) slot a delivery of `goods` to this building credits (D SmallFarm `0x1006f960`:
+/// slot 1 when the goods are the type's input goods 1, else slot 0 with no further goods test; the
+/// workshop family uses the same rule, a Farm has the one slot). MAP-SUPPLY-1 S2.
+[[nodiscard]] std::uint32_t input_slot_for(const BuildingType& type, GoodsId goods);
+
+/// The slot a harvest worker's delivery credits at its home: `input_slot_for` for a SmallFarm, slot 0 for
+/// every other payload (a Farm has the one raw store; a second input goods must never name a store it
+/// lacks).
+[[nodiscard]] std::uint32_t harvest_credit_slot(const Payload& payload, const BuildingType& type,
+                                                GoodsId goods);
+
 /// The player-visible blocked flag of any payload.
 [[nodiscard]] bool payload_blocked(const Payload& payload);
 

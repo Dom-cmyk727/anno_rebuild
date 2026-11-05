@@ -1885,17 +1885,16 @@ TEST_CASE("load refuses a damaged frame") {
         CHECK(contains(err, "state stream version " + std::to_string(sim::kStateHashVersion - 1) +
                                 " is not supported"));
     }
-    SUBCASE("a valid SCRIPT1 stream129 refuses published128 specifically") {
-        // Published128 has no SCRIPT1 discriminator, script continuation or permission rows. The
-        // control is a valid save of this build; only the version word is changed and the frame
-        // resealed, so the refusal is the version text and not checksum damage.
-        static_assert(sim::kStateHashVersion == 130, "update this test with the next stream bump");
-        CHECK(island_test::load_error(good).empty()); // the control loads
-        std::vector<std::uint8_t> old = good;
-        island_test::put32(old, 8, 128);
-        island_test::reseal(old);
-        const std::string err = island_test::load_error(old);
-        CHECK(contains(err, "state stream version 128 is not supported (this build reads 130)"));
+    SUBCASE("a valid current control refuses both published predecessor versions") {
+        CHECK(island_test::load_error(good).empty());
+        for (const auto version : {127u, 128u, 129u}) {
+            auto old = good;
+            island_test::put32(old, 8, version);
+            island_test::reseal(old);
+            CHECK(contains(island_test::load_error(old),
+                "state stream version " + std::to_string(version) +
+                " is not supported (this build reads " + std::to_string(sim::kStateHashVersion) + ")"));
+        }
     }
     SUBCASE("the PRNG table kind") {
         std::vector<std::uint8_t> bad = good;

@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include <anno/sim/driver.hpp>
 #include <anno/sim/harvest.hpp>
 #include <anno/sim/transport.hpp>
 #include <anno/sim/walk_cells.hpp>
@@ -207,9 +208,11 @@ struct Body {
             std::min<std::int64_t>(std::int64_t{sq.y0} + sq.h, std::int64_t{ir.y0} + ir.h);
         std::set<TileXY> candidates;
         std::vector<WalkPoint> goals;
+        std::uint64_t scanned = 0;
         for (std::int64_t y = y_lo; y < y_hi; ++y) {
             for (std::int64_t x = x_lo; x < x_hi; ++x) {
                 const TileXY t{static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)};
+                ++scanned;
                 if (claimed(t) ||
                     !harvest_candidate_type(ctx.types, object(t), fig.cargo_goods, skip)) {
                     continue;
@@ -227,6 +230,10 @@ struct Body {
                 }
             }
         }
+        if (stats != nullptr) {
+            stats->search_tiles_scanned += scanned; // one per examined tile
+            stats->search_candidates += candidates.size();
+        }
         if (candidates.empty()) {
             return std::nullopt;
         }
@@ -240,11 +247,19 @@ struct Body {
         const SearchResult found =
             anno::sim::search(cells, *tables, ft.layer, starts, goals, [&](const SearchVisit& v) {
                 if (candidates.contains(v.point.tile) && !claimed(v.point.tile)) {
+                    // D 0x10058a40: take the goal (best := node), go on only while limit > score.
                     chosen = v.point.tile;
-                    return SearchDecision{GoalAction::Stop, true};
+                    return SearchDecision{
+                        harvest_search_goes_on(harvest_search_limit(fig.job), v.score)
+                            ? GoalAction::Expand
+                            : GoalAction::Stop,
+                        true};
                 }
                 return SearchDecision{};
             });
+        if (stats != nullptr) {
+            stats->search_popped += found.popped;
+        }
         if (!found.complete || !found.selected || !chosen || found.route.empty()) {
             return std::nullopt;
         }
@@ -253,6 +268,21 @@ struct Body {
 };
 
 } // namespace
+
+std::optional<TileXY> harvest_pick_tile(std::uint16_t limit,
+                                        const std::vector<HarvestGoalNode>& nodes) {
+    std::optional<TileXY> tile;
+    for (const HarvestGoalNode& n : nodes) {
+        if (n.claimed) {
+            continue;
+        }
+        tile = TileXY{n.x, n.y};
+        if (!harvest_search_goes_on(limit, n.score)) {
+            break;
+        }
+    }
+    return tile;
+}
 
 bool harvest_cuttable(const TypeRegistry& types, std::uint32_t id) {
     if (id == 0) {
@@ -302,7 +332,8 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
     }
     const Building* home = world.find_building(fig.home);
     const BuildingType* home_type = home != nullptr ? ctx.types.find(home->type) : nullptr;
-    if (home != nullptr && !std::holds_alternative<Farm>(home->payload)) {
+    if (home != nullptr && !std::holds_alternative<Farm>(home->payload) &&
+        !std::holds_alternative<SmallFarm>(home->payload)) {
         home = nullptr; // validated away (World::harvest_problem); never a stand-in home
         home_type = nullptr;
     }
@@ -416,8 +447,13 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig) {
             // Step C's arrival (0x10057bd0 -> home +0xc0 = 0x1006ee70: raw += amount, u16 add, no
             // clip; here the u32 store with the merge's clamp, docs/sim/forestry.md 2.2).
             if (home != nullptr && fig.cargo_goods != 0 && fig.cargo_88 > 0) {
-                world.fx.store_deltas.push_back(
-                    StoreDelta{home->id, StoreDelta::Store::Input, 0, std::int64_t{fig.cargo_88}});
+                // The credit slot (D SmallFarm 0x1006f960): raw 1 when the goods are the home's
+                // input goods 1, else raw 0 with no further goods test; a Farm has the one raw
+                // store.
+                const std::uint32_t slot =
+                    harvest_credit_slot(home->payload, *home_type, fig.cargo_goods);
+                world.fx.store_deltas.push_back(StoreDelta{home->id, StoreDelta::Store::Input, slot,
+                                                           std::int64_t{fig.cargo_88}});
                 b.delivered = true;
                 if (b.stats != nullptr) {
                     b.stats->raw_delivered_88 += fig.cargo_88;

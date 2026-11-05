@@ -41,6 +41,15 @@ inline constexpr sim::TypeId kOddTree{9313};   // ROHSTOFF, WARE[0] BAUM: an unc
 inline constexpr sim::TypeId kStalks{9320};    // ROHSTWACHS, the young stage of kGrain
 inline constexpr sim::TypeId kGrain{9321};     // ROHSTOFF, WARE[0] GETREIDE: a ripe field
 inline constexpr sim::TypeId kSmallFarm{9330}; // a small farm: its line-0 worker is job 0x2a too
+inline constexpr sim::TypeId kSmallFarm2{
+    9331}; // another small farm: ALKOHOL from KARTOFFEL, NAHRUNG from GRAS
+inline constexpr sim::TypeId kGrassYoung{9324}; // ROHSTWACHS, the young stage of kGrass
+inline constexpr sim::TypeId kGrass{9325};      // ROHSTOFF, WARE[0] GRAS: ripe grass
+inline constexpr sim::TypeId kSmallFarm4{
+    9332}; // a small farm of radius 8 (a wide window; note this rig's walk tables are synthetic:
+           // every cost is 1, so scores stay below 20 here)
+inline constexpr sim::TypeId kPotatoYoung{9326}; // ROHSTWACHS, the young stage of kPotato
+inline constexpr sim::TypeId kPotato{9327};      // ROHSTOFF, WARE[0] KARTOFFEL: a ripe potato field
 inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer
 
 inline constexpr std::uint32_t kWorker = 102;  // the forester's worker (route MAEHER 0x2a)
@@ -54,6 +63,13 @@ inline sim::FigureType worker_type(std::uint32_t id = kWorker, std::uint32_t cap
                                    std::uint32_t route = 0x2a) {
     sim::FigureType f{id, 33554, capacity, 2, 6500};
     f.route = route;
+    return f;
+}
+
+/// An animal of the small farm (route WEIDETIER = job 0x2e): 3 t, layer 2, a 5000-tick graze.
+inline sim::FigureType animal_type(std::uint32_t id) {
+    sim::FigureType f{id, 33554, 3 * 256, 2, 5000};
+    f.route = 46;
     return f;
 }
 
@@ -95,7 +111,9 @@ inline sim::BuildingType wall_type() {
 
 /// The registry. `worker_capacity` is the forester worker's capacity (a larger data-defined
 /// capacity repeats the harvest, docs/sim/forestry.md E-14).
-inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_capacity = 256) {
+inline std::shared_ptr<const sim::TypeRegistry>
+registry(std::uint32_t worker_capacity = 256, const std::vector<sim::BuildingType>& extra = {},
+         const std::vector<sim::FigureType>& extra_figures = {}) {
     sim::TypeRegistry::Builder b;
     b.add_farm(kForester, "HOLZ", "BAUM", 14, 32, 5, 2)
         .footprint(kForester, 3, 3)      // 801's 3 x 3
@@ -110,8 +128,20 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .entrances(kHerdFarm, {{9, 9}})
         .figure_ids(kHerdFarm, {kHerder})
         .add_small_farm(kSmallFarm, "KORN", "WOLLE", "GETREIDE", "GRAS", 13, 4, 128, 50, 4)
+        .footprint(kSmallFarm, 3, 3)
         .entrances(kSmallFarm, {{9, 9}})
+        .action_radius(kSmallFarm, 3)
         .figure_ids(kSmallFarm, {kWorker})
+        .add_small_farm(kSmallFarm4, "KORN", "WOLLE", "GETREIDE", "GRAS", 13, 4, 128, 50, 4)
+        .footprint(kSmallFarm4, 3, 3)
+        .entrances(kSmallFarm4, {{9, 9}})
+        .action_radius(kSmallFarm4, 8)
+        .figure_ids(kSmallFarm4, {kWorker})
+        .add_small_farm(kSmallFarm2, "ALKOHOL", "NAHRUNG", "KARTOFFEL", "GRAS", 13, 4, 128, 50, 4)
+        .footprint(kSmallFarm2, 3, 3)
+        .entrances(kSmallFarm2, {{9, 9}})
+        .action_radius(kSmallFarm2, 3)
+        .figure_ids(kSmallFarm2, {kWorker})
         .add_market(kMarket, kCart, 1, 8)
         .entrances(kMarket, {{9, 15}})
         .add_plain(kRoad, 193)
@@ -122,11 +152,24 @@ inline std::shared_ptr<const sim::TypeRegistry> registry(std::uint32_t worker_ca
         .add(resource_type(kOddTree, 225, goods_id("BAUM")))
         .add(resource_type(kStalks, 226, 0))
         .add(resource_type(kGrain, 225, goods_id("GETREIDE")))
+        .add(resource_type(kGrassYoung, 226, 0))
+        .add(resource_type(kGrass, 225, goods_id("GRAS")))
+        .add(resource_type(kPotatoYoung, 226, 0))
+        .add(resource_type(kPotato, 225, goods_id("KARTOFFEL")))
         .add(wall_type())
         .figure_type(worker_type(kWorker, worker_capacity, 0x2a))
+        .figure_type(animal_type(107))
+        .figure_type(animal_type(109))
+        .figure_type(animal_type(110))
         .figure_type(worker_type(kReaper, 3 * 256, 0x29))
         .figure_type(worker_type(kHerder, 256, 46))
         .figure_type(sim::FigureType{kCart, 53687, 5 * 256, 3, 500});
+    for (const sim::BuildingType& t : extra) {
+        b.add(t);
+    }
+    for (const sim::FigureType& f : extra_figures) {
+        b.figure_type(f);
+    }
     auto built = b.build();
     REQUIRE_MESSAGE(built.ok(), (built.ok() ? std::string() : built.error()));
     return built.value();

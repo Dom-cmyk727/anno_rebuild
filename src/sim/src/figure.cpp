@@ -400,9 +400,9 @@ std::string validate_figures(const FigureRegistry& registry, const IdCounters& i
         if (f.harvest.has_value()) {
             const HarvestState& h = *f.harvest;
             const std::string hw = where + ".harvest";
-            if (!harvest_job(f.job)) {
+            if (!harvest_state_job(f.job)) {
                 return hw + ": present on a figure of job " + std::to_string(f.job) +
-                       " (only the harvest jobs 0x29 and 0x2a have one)";
+                       " (only the harvest jobs 0x29 and 0x2a and the animal job 0x2e have one)";
             }
             if (static_cast<std::uint8_t>(h.step) > static_cast<std::uint8_t>(HarvestStep::Done)) {
                 return hw + ".step: " + std::to_string(static_cast<unsigned>(h.step)) +

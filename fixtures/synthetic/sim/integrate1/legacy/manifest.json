@@ -1,0 +1,800 @@
+[
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/baustufen_table.txt",
+    "sha256": "443169daa197cd5e9816452b6dd592e79a943f5125d943a3e93b73ec282c1143"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_load.log",
+    "sha256": "db9323feaa616db53c0192fa09f8a34129341ca16584499eeb0d83de33ba78a3"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_load_vectors.txt",
+    "sha256": "dab67b3b9d888c1cf09dcecc16f195f3fd7db79832cde533c575ac8aaa585c4b"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_load_wrong.log",
+    "sha256": "8bbec637263054fb260eca0552be254c41f1e6946af476869db55426a0a4ff7e"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_rules_bytes.txt",
+    "sha256": "319aed78702c4ce1e562806dc4964cac5212ebcabcafbce599ce76a0a287aee9"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_unload.log",
+    "sha256": "70da9f6c9fad28f13af6070d967e71c448c968ebaf6e970314ea63801b908547"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_unload_wrong.log",
+    "sha256": "90ec38e19e03e2f9168e6decf52b0baac03236c6c6af917b1f2e699facc6c3f7"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/cargo_vectors.txt",
+    "sha256": "e2f1f517e23b198b872833b46292cbc0bbba9c7882852d1e5894d059e9cf0390"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/figure_digest_vectors.txt",
+    "sha256": "a1aa62497e0959811a9cb17cf32a876e0f638b82aebbf6df98b6c156a1d4f1fa"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/forester_vectors.txt",
+    "sha256": "e46f34a4fc80513c82ae0f5b9ca5f1470a9539866409b3fc257a22ee6d75ae80"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/g2.log",
+    "sha256": "5aec84ad97ffec7ed9a901a0bfc4d0ce199631bede78287ce0db56055b404ae5"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/g3.log",
+    "sha256": "0cef47a4388417e50a45861c7ffe05f5e743fa4a36fe00f3a201a15f06e5c646"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/g4.log",
+    "sha256": "dcbf50959ab77855e280ffcf6359f92d47747bfffd50c523cecf4db4f00d548e"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/g5.log",
+    "sha256": "690d8d4517e80ad16490dbfa37857bc941a9a0c81f4c38dc0810d2e18c2f0603"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/g6.log",
+    "sha256": "e1129d0f15348fd4f94b8773512d4ec311daf87b6f094bd8427eace608cbf541"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/goldens.txt",
+    "sha256": "b47c1c470d27cfe34dc4a96710b0e68aff901ece404788105ec792d4a54002cf"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/group_derived.txt",
+    "sha256": "b5ae159eadab0ac769dcc0c2ccdadd0187f645f065fbdd0ff762709c788e36f0"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/house_kernel_vectors.txt",
+    "sha256": "d877fefa87eab76d11725c1e50e6debd0dfe37e04bdb3a5202fe19e503cc8262"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/house_live_vectors.txt",
+    "sha256": "fe91ec214cc15f870ae754b95d323a78909b20945fb0252cf167efdf59c2f3bb"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/house_progression_vectors.txt",
+    "sha256": "0337d4dbf28cb296f7d247450467212430533d2766a43a34e82fce35a79d3ccb"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/house_transition_vectors.txt",
+    "sha256": "e5121df9a1b9c14403e5c5633b223152e8c88fbcfe889820b7cbd7be27be6d67"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/inn_vectors.txt",
+    "sha256": "dffcde849a0e8c3ec5f3bce63112e9b5e076fdf7ef9a093d8aee01940046cb70"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/m2_found.log",
+    "sha256": "a64476f445f1f2af2aa781d7884aec53dee8872652a524b90370e4c8ca3aa07d"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/m2_found_wrong.log",
+    "sha256": "135c61e6a4936a7d0e5d4ed87f288772246967cb06c7bcecea6f363434647486"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/placement_vectors.txt",
+    "sha256": "5a77e563c6118dfca5cf7c3c823b0790cf1ae1f34d6f3ee5bc38ec9914fb0049"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/player_masks.txt",
+    "sha256": "9d2f93e3b22888e9940c01e117fcbe728a7c87c5bf53e791112772cf975a7459"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/resident_vectors.txt",
+    "sha256": "a7132207b37c3df0d1468ce4e62c0ecaebf76a4ca0208b3de521c29cb4f20e42"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/scenario_corpus.txt",
+    "sha256": "374c5a4c7a5ccfa7d9ffacad0f43d4deb7aa9aacbf5429cce7213cfca79bc507"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/ship_holds.txt",
+    "sha256": "48504545c52524a0478758790518e38ef0e8f65ab101b6955b94f8fa3aae8dd7"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/stage_table_digest.txt",
+    "sha256": "42eb469d13f162e6b2b771fb1c1b3827e0cbe9deefa1e8e1df103e77ef4463a3"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/walk_goal_vectors.txt",
+    "sha256": "1b139052d03efc25fa8146307d4c4adfc0fe6648d5132c55aa9477beb1c4ba53"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "fixtures/synthetic/sim/waren_metadata.txt",
+    "sha256": "1f318584bc5b875c4f8677277145cc831d0448dad5742a57f6755dae245b5211"
+  },
+  {
+    "lineage": "published128",
+    "source": "a50aec3a6b0f6bbeb90fee5525c757f2b58b4da0",
+    "path": "tools/sim_stream.py",
+    "sha256": "b0a6a91af3cac6173a182b64a3ab8a50b00482eb107caa8cf28f7a2d88386a66"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/baustufen_table.txt",
+    "sha256": "443169daa197cd5e9816452b6dd592e79a943f5125d943a3e93b73ec282c1143"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_load.log",
+    "sha256": "3a19a6ce4399f95ea34ae07bc740e25dc98cc245db9733d6e0b29cacb8c6bde8"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_load_vectors.txt",
+    "sha256": "dab67b3b9d888c1cf09dcecc16f195f3fd7db79832cde533c575ac8aaa585c4b"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_load_wrong.log",
+    "sha256": "3f0a06bad1ab20afefad10047dd34b42d7b9828f9b2202a6085d33997c0b5739"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_rules_bytes.txt",
+    "sha256": "11913517350cedd81dd4fc0666a705e5d6f167c3fc7925e3a60cf7c0ed07c48b"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_unload.log",
+    "sha256": "271a2e921aab2ffb53e84c62a131f7fd410ded4e9ec581fa4f837b5b00df53e4"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_unload_wrong.log",
+    "sha256": "97a913b47968ffe023fabab846ca7b1ac971a83ec2d925e68a677fd212e8479d"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/cargo_vectors.txt",
+    "sha256": "e2f1f517e23b198b872833b46292cbc0bbba9c7882852d1e5894d059e9cf0390"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/figure_digest_vectors.txt",
+    "sha256": "a1aa62497e0959811a9cb17cf32a876e0f638b82aebbf6df98b6c156a1d4f1fa"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/forester_vectors.txt",
+    "sha256": "e46f34a4fc80513c82ae0f5b9ca5f1470a9539866409b3fc257a22ee6d75ae80"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/g2.log",
+    "sha256": "a24287f8fd45db91e19a24d2d5167b1285664f8a9e39ff8d556f2076cea4b4e3"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/g3.log",
+    "sha256": "02d540149a8d1ae4b0cda3443c39ca5d981b397c82f290088b746ace5344dc73"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/g4.log",
+    "sha256": "05979b8bb025e1ef6240e3d330c9d821d0bd02bd1e59b18c1c56fa037d2581f8"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/g5.log",
+    "sha256": "986678e820b80f4784990fe7161f6c81a48ed9478195173e9776e48bbcdd6760"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/g6.log",
+    "sha256": "a56b04abe0b26247cab745e5f6c8e4699fdafaea015543761be1fd030987f55c"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/goldens.txt",
+    "sha256": "0a172ddcdd753f61dd643f5fb2f98fd5ad08f4416fa34cd0c424ee55c1339362"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/group_derived.txt",
+    "sha256": "b5ae159eadab0ac769dcc0c2ccdadd0187f645f065fbdd0ff762709c788e36f0"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/house_kernel_vectors.txt",
+    "sha256": "d877fefa87eab76d11725c1e50e6debd0dfe37e04bdb3a5202fe19e503cc8262"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/house_live_vectors.txt",
+    "sha256": "fe91ec214cc15f870ae754b95d323a78909b20945fb0252cf167efdf59c2f3bb"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/house_progression_vectors.txt",
+    "sha256": "0337d4dbf28cb296f7d247450467212430533d2766a43a34e82fce35a79d3ccb"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/house_transition_vectors.txt",
+    "sha256": "e5121df9a1b9c14403e5c5633b223152e8c88fbcfe889820b7cbd7be27be6d67"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/inn_vectors.txt",
+    "sha256": "dffcde849a0e8c3ec5f3bce63112e9b5e076fdf7ef9a093d8aee01940046cb70"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/m2_found.log",
+    "sha256": "1f603b6610ad259d2738811666e779aee2469ecf6c449fecddad6cae8f7eff9b"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/m2_found_wrong.log",
+    "sha256": "af041fbb1703ff8037f1918b10d414024bf13c235ff74b0090e060865b032de6"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/placement_vectors.txt",
+    "sha256": "5a77e563c6118dfca5cf7c3c823b0790cf1ae1f34d6f3ee5bc38ec9914fb0049"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/player_masks.txt",
+    "sha256": "9d2f93e3b22888e9940c01e117fcbe728a7c87c5bf53e791112772cf975a7459"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/resident_vectors.txt",
+    "sha256": "a7132207b37c3df0d1468ce4e62c0ecaebf76a4ca0208b3de521c29cb4f20e42"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/scenario_corpus.txt",
+    "sha256": "6edc4d8e4945f08c94d1a63a2250e2d4ed6b87ef35f20e5d1595aa4ef6912168"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/ship_holds.txt",
+    "sha256": "0cc33b04d68abdad80d027ec8d9dcde1463d97c2219a1dc367c5deea7a1a84d2"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/small_farm_vectors.txt",
+    "sha256": "ba75d84df27cfc012f83e50d6e282bcbff124d7ec001e3792bc57ca9f9c78d4f"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/stage_table_digest.txt",
+    "sha256": "42eb469d13f162e6b2b771fb1c1b3827e0cbe9deefa1e8e1df103e77ef4463a3"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/walk_goal_vectors.txt",
+    "sha256": "1b139052d03efc25fa8146307d4c4adfc0fe6648d5132c55aa9477beb1c4ba53"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "fixtures/synthetic/sim/waren_metadata.txt",
+    "sha256": "1f318584bc5b875c4f8677277145cc831d0448dad5742a57f6755dae245b5211"
+  },
+  {
+    "lineage": "supply129",
+    "source": "67158af4d29d87fed8686dc6542ca2a9f4b1f75c",
+    "path": "tools/sim_stream.py",
+    "sha256": "7fa97a427e457b066886ce01b08b1f5e8f55e1098897730866debf0f05b67ef3"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/baustufen_table.txt",
+    "sha256": "443169daa197cd5e9816452b6dd592e79a943f5125d943a3e93b73ec282c1143"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_load.log",
+    "sha256": "db9323feaa616db53c0192fa09f8a34129341ca16584499eeb0d83de33ba78a3"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_load_vectors.txt",
+    "sha256": "dab67b3b9d888c1cf09dcecc16f195f3fd7db79832cde533c575ac8aaa585c4b"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_load_wrong.log",
+    "sha256": "8bbec637263054fb260eca0552be254c41f1e6946af476869db55426a0a4ff7e"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_rules_bytes.txt",
+    "sha256": "319aed78702c4ce1e562806dc4964cac5212ebcabcafbce599ce76a0a287aee9"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_unload.log",
+    "sha256": "70da9f6c9fad28f13af6070d967e71c448c968ebaf6e970314ea63801b908547"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_unload_wrong.log",
+    "sha256": "90ec38e19e03e2f9168e6decf52b0baac03236c6c6af917b1f2e699facc6c3f7"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/cargo_vectors.txt",
+    "sha256": "e2f1f517e23b198b872833b46292cbc0bbba9c7882852d1e5894d059e9cf0390"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/figure_digest_vectors.txt",
+    "sha256": "a1aa62497e0959811a9cb17cf32a876e0f638b82aebbf6df98b6c156a1d4f1fa"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/forester_vectors.txt",
+    "sha256": "e46f34a4fc80513c82ae0f5b9ca5f1470a9539866409b3fc257a22ee6d75ae80"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/g2.log",
+    "sha256": "5aec84ad97ffec7ed9a901a0bfc4d0ce199631bede78287ce0db56055b404ae5"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/g3.log",
+    "sha256": "0cef47a4388417e50a45861c7ffe05f5e743fa4a36fe00f3a201a15f06e5c646"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/g4.log",
+    "sha256": "dcbf50959ab77855e280ffcf6359f92d47747bfffd50c523cecf4db4f00d548e"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/g5.log",
+    "sha256": "690d8d4517e80ad16490dbfa37857bc941a9a0c81f4c38dc0810d2e18c2f0603"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/g6.log",
+    "sha256": "e1129d0f15348fd4f94b8773512d4ec311daf87b6f094bd8427eace608cbf541"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/goldens.txt",
+    "sha256": "b47c1c470d27cfe34dc4a96710b0e68aff901ece404788105ec792d4a54002cf"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/goldens_script1.txt",
+    "sha256": "8033787959665d5db068992be0e33f9934b1230f10a73dc59d02eb4d6b560a90"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/goldens_script2.txt",
+    "sha256": "8ad0f640642a6a5fcee15ba3cf77d57a8614d6a0e30f4edd245cee76f325e598"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/group_derived.txt",
+    "sha256": "b5ae159eadab0ac769dcc0c2ccdadd0187f645f065fbdd0ff762709c788e36f0"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/house_kernel_vectors.txt",
+    "sha256": "d877fefa87eab76d11725c1e50e6debd0dfe37e04bdb3a5202fe19e503cc8262"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/house_live_vectors.txt",
+    "sha256": "fe91ec214cc15f870ae754b95d323a78909b20945fb0252cf167efdf59c2f3bb"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/house_progression_vectors.txt",
+    "sha256": "0337d4dbf28cb296f7d247450467212430533d2766a43a34e82fce35a79d3ccb"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/house_transition_vectors.txt",
+    "sha256": "e5121df9a1b9c14403e5c5633b223152e8c88fbcfe889820b7cbd7be27be6d67"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/inn_vectors.txt",
+    "sha256": "dffcde849a0e8c3ec5f3bce63112e9b5e076fdf7ef9a093d8aee01940046cb70"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/m2_found.log",
+    "sha256": "a64476f445f1f2af2aa781d7884aec53dee8872652a524b90370e4c8ca3aa07d"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/m2_found_wrong.log",
+    "sha256": "135c61e6a4936a7d0e5d4ed87f288772246967cb06c7bcecea6f363434647486"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/placement_vectors.txt",
+    "sha256": "5a77e563c6118dfca5cf7c3c823b0790cf1ae1f34d6f3ee5bc38ec9914fb0049"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/player_masks.txt",
+    "sha256": "9d2f93e3b22888e9940c01e117fcbe728a7c87c5bf53e791112772cf975a7459"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/resident_vectors.txt",
+    "sha256": "a7132207b37c3df0d1468ce4e62c0ecaebf76a4ca0208b3de521c29cb4f20e42"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/scenario_corpus.txt",
+    "sha256": "374c5a4c7a5ccfa7d9ffacad0f43d4deb7aa9aacbf5429cce7213cfca79bc507"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/ship_holds.txt",
+    "sha256": "48504545c52524a0478758790518e38ef0e8f65ab101b6955b94f8fa3aae8dd7"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/stage_table_digest.txt",
+    "sha256": "42eb469d13f162e6b2b771fb1c1b3827e0cbe9deefa1e8e1df103e77ef4463a3"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/walk_goal_vectors.txt",
+    "sha256": "1b139052d03efc25fa8146307d4c4adfc0fe6648d5132c55aa9477beb1c4ba53"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/waren_metadata.txt",
+    "sha256": "1f318584bc5b875c4f8677277145cc831d0448dad5742a57f6755dae245b5211"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "tools/sim_stream.py",
+    "sha256": "b0a6a91af3cac6173a182b64a3ab8a50b00482eb107caa8cf28f7a2d88386a66"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "tools/sim_stream_script1.py",
+    "sha256": "070090702638845a27e21e2efe19d8e64fb10d65708c284260583be6c06e8484"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "tools/sim_stream_script2.py",
+    "sha256": "90993153fbef737052c3e38a81271fcfd7a1ab7a8a36644ef6e848d093461381"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/README.md",
+    "sha256": "6e8394f76221cb0c962ea93eada623237649ce9de8c03b409c776c9e9e47edac"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/cargo_load.log",
+    "sha256": "512235f29dd2b99b37d019367c73e09eb9b6eaf6948aeafe211123a33b969685"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/cargo_load_wrong.log",
+    "sha256": "41bd74fb85b09688746d5c00a508ee942c4966348c234e49b49bdc391f6e326d"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/cargo_unload.log",
+    "sha256": "def63a90e3e2b455c20a46f291a77be8393f1221aaf528d7e0cb2e85497f4f98"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/cargo_unload_wrong.log",
+    "sha256": "59ce276dbb10c8dbd2f931f42b54be48ae63c21b9a09e1d80d33fcfa0fdd32f0"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/g2.log",
+    "sha256": "dbddfccc4066960cae8a60e1ba4c7e7e74b3d282f5d9bc4759f104821e7c2312"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/g3.log",
+    "sha256": "33ac01f0e808a75cdf5e8059dfc2a43152f868ed8b0d31c46a1e16b0236aee61"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/g4.log",
+    "sha256": "17f7f727869f845b18c1cc2c24b982ac20b17b97514d211aef387d5db62bf2a2"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/g5.log",
+    "sha256": "223c60d24bd384a9e5cc1e5791c92912ef292f132cfb67c69899eef41facfad4"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/g6.log",
+    "sha256": "dfe5e162f52c2484c4898daa184fd63a31919bd0cd89054bb4551c85c08ba8d1"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/k3_historical128.txt",
+    "sha256": "059839a01996ebb623665f6822c97077ed89eb7dc995d1612496819acad196f0"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/m2_found.log",
+    "sha256": "b8cba4d23154316193ac0435d4460c32d4bc8f8fc15ca254c65e691f2b48aa88"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/m2_found_wrong.log",
+    "sha256": "6259ebab445408fc76d577e2dbe1feb85abe0c190a654ab8d5807ac8bc7694ae"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/player_research_record_counts.txt",
+    "sha256": "d1f7a767192909f7653b05d4542b28fa77f423aa4e05b6172acb2d58291bba3a"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/research_production_delta.txt",
+    "sha256": "21be0ced743953adac7f31fc7451eb42ec096b300ae32eea449aaf088988caff"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script1/scenario_corpus.txt",
+    "sha256": "71e751c4cf7297ac8086c5a2839f04d289658ef83de45a4f4b7f8c6f75d5d016"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/cargo_load.log",
+    "sha256": "b89920d7b3c5bb65a33e398e6d517e9e8ecba5a7576f846ba1739a1073eb3956"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/cargo_load_wrong.log",
+    "sha256": "00d8e0000914e7d19ad6e9a2f55e4558ac8fd22dcc223d7b2cbb39e0bae1cc70"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/cargo_unload.log",
+    "sha256": "56b48a672529fa1e027cdb061df3a63b8960b85a8be44d258ef80eed25d5359a"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/cargo_unload_wrong.log",
+    "sha256": "d66b6147ac61be97efd443dd8a998b9f4dcafdbbea4f2bc29113bddace896876"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/g2.log",
+    "sha256": "ebfaa4d66cf6b4d81d191ad0839dab12b7beeb4bdabb68e06d6c6f179d473a5b"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/g3.log",
+    "sha256": "58db7512327a9a139122e76b237787eb283ad37f02e7e9a78d8a6df186ac0e9d"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/g4.log",
+    "sha256": "c520d15358781071f46901d4d13480cb3e0a1045d5b077c8287013880c09e546"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/g5.log",
+    "sha256": "79f76f858a47e9ada1cb402fadfc51cc9e1896b3a05f2b90b36a660340140b52"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/g6.log",
+    "sha256": "b28f600e8dd9456733f613ef84b5a41fd2f5b599c4b6b3a66f6183a614b53287"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/handler_vectors.json",
+    "sha256": "258e40c768a0a3211ee84594f151144811f2cfcb0ab32258f367a109b282982a"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/m2_found.log",
+    "sha256": "410e5504a8aecfdcd64d4e23ac0106931891fdb07d09c8ce0c1825000b6cf481"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/m2_found_wrong.log",
+    "sha256": "bfbd04eef786210757cb3423f0d21d1d2bdbeaa785d836c0c439f017c2d50185"
+  },
+  {
+    "lineage": "unit130",
+    "source": "50aa32e38706ad3c2e4302e8fcaada9f555ba034",
+    "path": "fixtures/synthetic/sim/script2/scenario_corpus.txt",
+    "sha256": "2a9fbff9c045def8b2cf7ea859986495913efbe9435dc1bce11e0a663993a462"
+  }
+]

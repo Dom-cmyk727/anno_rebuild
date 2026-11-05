@@ -1,0 +1,95 @@
+# Inn vectors (MAP-POP-CLOSE-2 K1). Every expected value was derived by hand from docs/re/population.md
+# section 18 BEFORE any C++ existed; tools/inn_ref.py (independent code) must agree, and the C++ test
+# src/sim/tests/inn_test.cpp reads this same file. Units: 8.8 tons (256 = 1 t); u16 fields wrap at 65536.
+#
+# ---- tick: the 5000-tick gate on the 16-bit difference (0x100755f0, cmp cx,0x1388) -------------------
+# 4999 closed, 5000 open; closed changes nothing (not even the decay).
+tick G-4999 last=0 tick=4999 taken=100 stock=0 flags=0 limit=1 count=0 => gate=closed last=0 taken=100 send=0
+tick G-5000 last=0 tick=5000 taken=100 stock=0 flags=0 limit=1 count=0 => gate=open last=5000 taken=96 send=1
+tick G-5001 last=0 tick=5001 taken=100 stock=0 flags=0 limit=1 count=0 => gate=open last=5000 taken=96 send=1
+# the 16-bit wrap: 4464 - 65000 + 65536 = 5000 (open), one less is 4999 (closed); last+5000 wraps to 4464
+tick G-wrap-open last=65000 tick=4464 taken=0 stock=0 flags=0 limit=1 count=0 => gate=open last=4464 taken=0 send=1
+tick G-wrap-closed last=65000 tick=4463 taken=0 stock=0 flags=0 limit=1 count=0 => gate=closed last=65000 taken=0 send=0
+# the tick argument is 16 bit in effect: tick 70000 = 4464 mod 65536
+tick G-big-tick last=65000 tick=70000 taken=0 stock=0 flags=0 limit=1 count=0 => gate=open last=4464 taken=0 send=1
+# ---- tick: the decay (31*taken)/32, truncating, from the u16 ------------------------------------------
+tick D-0 last=0 tick=5000 taken=0 stock=300 flags=0 limit=1 count=0 => gate=open last=5000 taken=0 send=0
+tick D-1 last=0 tick=5000 taken=1 stock=300 flags=0 limit=1 count=0 => gate=open last=5000 taken=0 send=0
+tick D-31 last=0 tick=5000 taken=31 stock=300 flags=0 limit=1 count=0 => gate=open last=5000 taken=30 send=0
+tick D-32 last=0 tick=5000 taken=32 stock=300 flags=0 limit=1 count=0 => gate=open last=5000 taken=31 send=0
+tick D-64 last=0 tick=5000 taken=64 stock=300 flags=0 limit=1 count=0 => gate=open last=5000 taken=62 send=0
+tick D-max last=0 tick=5000 taken=65535 stock=300 flags=0 limit=1 count=0 => gate=open last=5000 taken=63487 send=1
+# D-max: the decayed taken 63487 has half 31743 > 300, so the Inn sends (a stock below taken/2)
+# ---- tick: the switched-off test is AFTER the decay (a switched-off Inn still decays) -----------------
+tick O-bit4 last=0 tick=5000 taken=64 stock=0 flags=16 limit=1 count=0 => gate=open last=5000 taken=62 send=0
+tick O-bit5 last=0 tick=5000 taken=64 stock=0 flags=32 limit=1 count=0 => gate=open last=5000 taken=62 send=0
+tick O-both last=0 tick=5000 taken=64 stock=0 flags=48 limit=1 count=0 => gate=open last=5000 taken=62 send=0
+tick O-other-bit3 last=0 tick=5000 taken=64 stock=0 flags=8 limit=1 count=0 => gate=open last=5000 taken=62 send=1
+tick O-other-bits last=0 tick=5000 taken=64 stock=0 flags=207 limit=1 count=0 => gate=open last=5000 taken=62 send=1
+# ---- tick: the carrier limit, signed: a send needs limit > count -------------------------------------
+tick L-full last=0 tick=5000 taken=0 stock=0 flags=0 limit=1 count=1 => gate=open last=5000 taken=0 send=0
+tick L-free last=0 tick=5000 taken=0 stock=0 flags=0 limit=2 count=1 => gate=open last=5000 taken=0 send=1
+tick L-none last=0 tick=5000 taken=0 stock=0 flags=0 limit=0 count=0 => gate=open last=5000 taken=0 send=0
+tick L-over last=0 tick=5000 taken=0 stock=0 flags=0 limit=3 count=2 => gate=open last=5000 taken=0 send=1
+tick L-equal2 last=0 tick=5000 taken=0 stock=0 flags=0 limit=2 count=2 => gate=open last=5000 taken=0 send=0
+# ---- tick: the stock test, boundaries at 0xff / 0x100 and at taken/2 (decayed taken) -----------------
+tick S-255 last=0 tick=5000 taken=0 stock=255 flags=0 limit=1 count=0 => gate=open last=5000 taken=0 send=1
+tick S-256 last=0 tick=5000 taken=0 stock=256 flags=0 limit=1 count=0 => gate=open last=5000 taken=0 send=0
+tick S-max last=0 tick=5000 taken=0 stock=65535 flags=0 limit=1 count=0 => gate=open last=5000 taken=0 send=0
+# taken 531 decays to 514 (16461/32), half = 257: stock 256 sends, stock 257 does not
+tick H-256-of-514 last=0 tick=5000 taken=531 stock=256 flags=0 limit=1 count=0 => gate=open last=5000 taken=514 send=1
+tick H-257-of-514 last=0 tick=5000 taken=531 stock=257 flags=0 limit=1 count=0 => gate=open last=5000 taken=514 send=0
+# taken 530 decays to 513 (16430/32), half = 256: stock 256 does not send, 255 does
+tick H-256-of-513 last=0 tick=5000 taken=530 stock=256 flags=0 limit=1 count=0 => gate=open last=5000 taken=513 send=0
+tick H-255-of-513 last=0 tick=5000 taken=530 stock=255 flags=0 limit=1 count=0 => gate=open last=5000 taken=513 send=1
+# the DECAYED taken counts: taken 1100 decays to 1065 (34100/32), half = 532; the undecayed half would be 550
+tick H-decayed-532 last=0 tick=5000 taken=1100 stock=532 flags=0 limit=1 count=0 => gate=open last=5000 taken=1065 send=0
+tick H-decayed-531 last=0 tick=5000 taken=1100 stock=531 flags=0 limit=1 count=0 => gate=open last=5000 taken=1065 send=1
+tick H-decayed-540 last=0 tick=5000 taken=1100 stock=540 flags=0 limit=1 count=0 => gate=open last=5000 taken=1065 send=0
+# an odd taken: 1067 -> 33077/32 = 1033, half (shr 1) = 516
+tick H-odd-516 last=0 tick=5000 taken=1067 stock=516 flags=0 limit=1 count=0 => gate=open last=5000 taken=1033 send=0
+tick H-odd-515 last=0 tick=5000 taken=1067 stock=515 flags=0 limit=1 count=0 => gate=open last=5000 taken=1033 send=1
+# ---- take: n = min(request, stock) SIGNED; taken += n; stock -= n; both u16 ---------------------------
+take T-below stock=1000 taken=0 request=400 => returned=400 stock=600 taken=400
+take T-equal stock=1000 taken=5 request=1000 => returned=1000 stock=0 taken=1005
+take T-above stock=1000 taken=5 request=1500 => returned=1000 stock=0 taken=1005
+take T-zero-request stock=1000 taken=5 request=0 => returned=0 stock=1000 taken=5
+take T-empty stock=0 taken=7 request=50 => returned=0 stock=0 taken=7
+take T-one stock=1 taken=0 request=1 => returned=1 stock=0 taken=1
+take T-taken-wrap stock=1000 taken=65000 request=600 => returned=600 stock=400 taken=64
+take T-taken-exact stock=1000 taken=65000 request=536 => returned=536 stock=464 taken=0
+take T-negative stock=100 taken=3 request=-5 => returned=-5 stock=105 taken=65534
+take T-stock-max stock=65535 taken=0 request=65535 => returned=65535 stock=0 taken=65535
+# ---- unload: stock += amount, a u16 add in 8.8 units (a full carrier brings 768) -----------------------
+unload U-768 stock=100 amount=768 => stock=868
+unload U-zero stock=100 amount=0 => stock=100
+unload U-from-empty stock=0 amount=768 => stock=768
+unload U-wrap stock=65000 amount=768 => stock=232
+unload U-exact-wrap stock=65535 amount=1 => stock=0
+unload U-max stock=0 amount=65535 => stock=65535
+# ---- priority: the BASE priority 0x10072870, steps = stock / need ---------------------------------------
+priority P-0 stock=0 need=48 => prio=128
+priority P-29 stock=1439 need=48 => prio=128
+priority P-30 stock=1440 need=48 => prio=96
+priority P-59 stock=2879 need=48 => prio=96
+priority P-60 stock=2880 need=48 => prio=-1
+priority P-51-29 stock=1529 need=51 => prio=128
+priority P-51-30 stock=1530 need=51 => prio=96
+priority P-need-zero stock=100 need=0 => prio=refused
+priority P-need-one stock=29 need=1 => prio=128
+priority P-need-one-30 stock=30 need=1 => prio=96
+# ---- offer: the base pick 0x100728f0 against one source -----------------------------------------------
+# market (output 0 ALL = 142), 50 t = 12800 units, capacity 5 t = 1280: 128 + 12800*192/1280 = 2048
+offer F-market stock=0 need=48 input=29 avail=12800 cap=1280 out=142,0 => score=2048
+offer F-market-96 stock=1440 need=48 input=29 avail=12800 cap=1280 out=142,0 => score=2016
+offer F-just-1t stock=0 need=48 input=29 avail=256 cap=1280 out=142,0 => score=166
+offer F-below-1t stock=0 need=48 input=29 avail=255 cap=1280 out=142,0 => score=-1
+offer F-full stock=2880 need=48 input=29 avail=12800 cap=1280 out=142,0 => score=-1
+offer F-other-goods stock=0 need=48 input=29 avail=12800 cap=1280 out=30,0 => score=-1
+offer F-out0-matches stock=0 need=48 input=29 avail=1280 cap=1280 out=29,0 => score=320
+offer F-out1-matches stock=0 need=48 input=29 avail=1280 cap=1280 out=30,29 => score=320
+offer F-out1-after-all stock=0 need=48 input=29 avail=1280 cap=1280 out=142,29 => score=320
+offer F-out1-other stock=0 need=48 input=29 avail=1280 cap=1280 out=30,31 => score=-1
+offer F-cap-zero stock=0 need=48 input=29 avail=1280 cap=0 out=142,0 => score=-1
+offer F-need-zero stock=0 need=0 input=29 avail=1280 cap=1280 out=142,0 => score=-1
+offer F-nonoriginal-goods stock=10 need=7 input=91 avail=640 cap=640 out=91,0 => score=320

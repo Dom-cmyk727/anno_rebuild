@@ -1,0 +1,43 @@
+# Goal-cell key vectors (MAP-POP-CLOSE-2 K2, OQ-463). Derived by hand from the contract in
+# tools/walk_goal_ref.py BEFORE any C++; src/sim/tests/walk_search_test.cpp reads this same file.
+# mask9: bit (col + 3 * row) set = blocked. 0x155 = corners and centre blocked (stand 1314, the cross).
+# ---- keys: the flood from the seed sub-cell ---------------------------------------------------------
+# the cross: each edge-middle sub-cell is isolated, so its flood is itself -> one key
+keys K-cross-top mask9=0x155 col=1 row=0 => keys=0x8000
+keys K-cross-left mask9=0x155 col=0 row=1 => keys=0x1000
+keys K-cross-right mask9=0x155 col=2 row=1 => keys=0x4000
+keys K-cross-bottom mask9=0x155 col=1 row=2 => keys=0x2000
+# open ground: everything reached -> all four keys
+keys K-open-centre mask9=0 col=1 row=1 => keys=0xf000
+keys K-open-corner mask9=0 col=0 row=0 => keys=0xf000
+# stand 1310: rows 0 and 1 blocked (0x03f), row 2 free: the flood runs along the bottom row
+keys K-1310-bottom-middle mask9=0x03f col=1 row=2 => keys=0x7000
+keys K-1310-bottom-left mask9=0x03f col=0 row=2 => keys=0x7000
+# a blocked seed counts as reached (0x10003b98 writes 10 into it): centre of a full block touches no edge
+keys K-full-centre mask9=0x1ff col=1 row=1 => keys=0x0000
+keys K-full-corner mask9=0x1ff col=0 row=0 => keys=0x9000
+keys K-full-top-middle mask9=0x1ff col=1 row=0 => keys=0x8000
+keys K-full-bottom-right mask9=0x1ff col=2 row=2 => keys=0x6000
+# blocked centre seed of the 1310 shape: its free neighbour below carries the flood to the bottom row
+keys K-1310-centre-seed mask9=0x03f col=1 row=1 => keys=0x7000
+# ring: only the centre blocked (0x010), seed on the top edge: everything else is connected
+keys K-ring-top mask9=0x010 col=1 row=0 => keys=0xf000
+# centre blocked and the seed at the centre with free neighbours: all edges
+keys K-ring-centre-seed mask9=0x010 col=1 row=1 => keys=0xf000
+# a vertical wall (middle column blocked, 0x092): the left half is closed off from the right
+keys K-wall-left mask9=0x092 col=0 row=1 => keys=0xb000
+keys K-wall-right mask9=0x092 col=2 row=1 => keys=0xe000
+# ---- cell: low | keys, and which steps may enter (up 0x2111, down 0x8444, left 0x4888, right 0x1222) ---
+# the stand 1314 with a mapper value of 0 (mapper[0x155] = 0, as the full block): only the key admits
+cell C-1314-top low=0x0000 mask9=0x155 col=1 row=0 => low=0x8000 up=0 down=1 left=0 right=0
+cell C-1314-left low=0x0000 mask9=0x155 col=0 row=1 => low=0x1000 up=0 down=0 left=0 right=1
+cell C-1314-right low=0x0000 mask9=0x155 col=2 row=1 => low=0x4000 up=0 down=0 left=1 right=0
+cell C-1314-bottom low=0x0000 mask9=0x155 col=1 row=2 => low=0x2000 up=1 down=0 left=0 right=0
+# without the goal pass the same cell admits nothing (the pre-K2 behaviour, documented as a control)
+cell C-full-block-seed-centre low=0x0000 mask9=0x1ff col=1 row=1 => low=0x0000 up=0 down=0 left=0 right=0
+# a mapped low word keeps its own bits: 0x0007 admits up (0x01), down (0x04) and right (0x02) by itself
+cell C-keep-low low=0x0007 mask9=0x155 col=1 row=0 => low=0x8007 up=1 down=1 left=0 right=1
+# 1310: a mapper value that already admits steps keeps admitting them, the keys add to it
+cell C-1310 low=0x0777 mask9=0x03f col=1 row=2 => low=0x7777 up=1 down=1 left=1 right=1
+# open ground goal: every step admitted
+cell C-open low=0x0000 mask9=0 col=1 row=1 => low=0xf000 up=1 down=1 left=1 right=1

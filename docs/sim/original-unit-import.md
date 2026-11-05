@@ -280,3 +280,13 @@ permissions. Attach/source ownership/parent facts enter the existing model only.
 Immediate post-reader flag derivations are static evidence, not an original-runtime
 capture or a claim that every later post-load pass was audited. This boundary is
 explicit in the primary [RE record](../re/original-unit-import.md).
+
+## A review record
+
+`/root/unit_import_contract_review` APPROVED slot/ownership/traversal/identity/
+metadata architecture and input-domain scope at clean6097d30e. Primary inventory,
+source-slot rather than file-order semantics, MAIN capacity, allocation hint,
+FigureId64/Slot32 distinction, finite role pairings and growth-before-allocation
+findings are closed. No B/C code or F2/G acceptance follows from this contract.
+State reviewer disposition follows after restoring its separating HEAD flag vectors;
+no engine run or production edit has occurred during A.

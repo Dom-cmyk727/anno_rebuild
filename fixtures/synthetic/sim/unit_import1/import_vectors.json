@@ -108,6 +108,27 @@
       "role": "held_donkey",
       "head1": 255,
       "expected": 136
+    },
+    {
+      "role": "top_scout",
+      "head1": 255,
+      "expected": 0,
+      "separates": "top-level initial segment clears constructor8"
+    },
+    {
+      "role": "top_scout",
+      "head1": 0,
+      "expected": 32,
+      "separates": "nonnegative signedHEAD1 sets20"
+    },
+    {
+      "role": "top_ship",
+      "head1": 0,
+      "head10": 3,
+      "qualifying_crew": false,
+      "n2_crew": 0,
+      "expected": 33056,
+      "separates": "independent20/100/8000 projection"
     }
   ],
   "identity": [

@@ -22,6 +22,7 @@
 #include <anno/app/play.hpp>
 #include <anno/render/scene.hpp>
 #include <anno/sim/building.hpp>
+#include <anno/sim/scenario_formats.hpp>
 #include <anno/test/dev_lan5.hpp>
 #include <anno/test/game_dir.hpp>
 
@@ -466,14 +467,23 @@ TEST_CASE("dev feedback: the developer start's resources are the fixed map's onl
     const sim::Player* dev = l->play.world.players().find(app::developer_player());
     REQUIRE(dev != nullptr);
     CHECK(dev->money == app::FixedPlayOptions{}.gold);
-    auto original = app::load_play(*dir, *dir / "Scenes/0011SingleEndlosAddon/endless01.sze");
-    REQUIRE(original.ok());
-    std::size_t players = 0;
-    for (const auto& player : original.value().world.players().slots) {
-        if (player) {
-            ++players;
-            CHECK(player->money != app::FixedPlayOptions{}.gold);
-        }
+    const auto file = *dir / "Scenes/0011SingleEndlosAddon/endless01.sze";
+    auto original = app::load_play(*dir, file);
+    REQUIRE_MESSAGE(original.ok(), (original ? "" : original.error()));
+    // Compare authored balances before the app's loader, not an inequality with
+    // the developer grant: an original player legitimately starts with that amount.
+    const auto bytes = anno::test::read_file(file);
+    const auto authored = sim::load_scenario(bytes, *original.value().registry, {});
+    REQUIRE_MESSAGE(authored.ok(), (authored ? "" : authored.error()));
+    std::size_t players = 0, balances_distinct_from_grant = 0;
+    for (const auto& expected : authored.value().spec.players) {
+        const sim::Player* player = original.value().world.players().find(expected.id);
+        REQUIRE(player != nullptr);
+        ++players;
+        CHECK(player->money == expected.money);
+        balances_distinct_from_grant += expected.money != app::FixedPlayOptions{}.gold;
     }
     CHECK(players > 0);
+    // The fixture must distinguish incorrectly applying the developer grant.
+    CHECK(balances_distinct_from_grant > 0);
 }

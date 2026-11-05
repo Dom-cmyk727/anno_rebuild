@@ -157,3 +157,73 @@ source hashes are retained under ignored `cache/economy-booking/`. No C++,
 registry, state format or engine tests were changed or run. No original runtime,
 Windows/Linux, GPU or scale result is claimed. No source job or keep-awake
 assertion owned by another executor was touched.
+
+## B checkpoint and implementation shape, 2026-11-05
+
+The primary-evidence follow-up is `docs/re/economy-booking.md`. It resolves the
+money dispatch slots and confirms the scheduling position and distinct city /
+player accounting. The price loader's actual unchecked writes make malformed
+input validation a required adaptation. B remains in progress: upkeep lifecycle,
+all import paths and the modern arithmetic policy are not yet closed.
+
+Reuse before adding data:
+
+- `WorldSettings::prop10` already persists the validated tax index; no new tax
+  field or command is needed for the first loop.
+- `Island::climate` already exists; verify original source mapping and use it.
+- `BuildingType::running_cost` already parses and digests inactive/active costs;
+  expose verified selection rules instead of parsing a second table.
+- `City::billed` is already a persisted u32 vector. Original u16 wrap is research
+  evidence, not permission to narrow that accepted representation.
+- Player upkeep already exists and has its own remainder. City booking has no
+  such remainder. Never mirror city running costs into player upkeep fields.
+
+Complete B with these small subunits, each independently reviewable:
+
+**B1: input decoding.** Verify scenario climate/tax source fields and complete
+ordered Preis/Bonus/Malus/PreisLevel semantics. Fixtures must distinguish an
+ordered reset from accumulation, two successive bonuses, repeated tax lists,
+unknown climate, extra columns, and a mod registry beyond original sizes.
+Reject malformed input transactionally, with the offending field named. The
+runtime registry stores resolved prices indexed by configured climate/tax roles;
+original fixed layout dimensions belong only to the source decoder.
+
+**B2: lifecycle.** Trace and table each building cost contribution at create,
+load, switch, upgrade, remove and owner transfer. Use the existing type costs;
+resolve stat-kind meanings without assuming every class has identical rules.
+Specify exactly which transitions replace a contribution and which do nothing.
+Prove a duplicate switch/remove cannot debit twice. Keep figure/player accounting
+separate; a city with costs 28 and a player with costs 14 plus remainder 1 yields
+charges 1 and 1, with each charged once. Resolve remaining primary callees before
+implementing their transitions.
+
+**B3: modern contract.** Propose a checked widened calculation with a typed fault
+before any bill reset or money effect on invalid input/overflow, following the
+existing deterministic effects model. Set an explicit policy for signed prices
+and for balances near i64 limits. Compare ordinary supported inputs against the
+original oracle; label wider-domain differences as adaptations. Do not silently
+choose original wrapping, saturation, a new tax UI, or a house_updates default
+flip. Keep the income/upkeep feature separately controllable until accepted.
+
+**B4: state/order acceptance table.** Record the booking stamp and authoritative
+statistics needed for future visits, expected byte order, hash scope, effect
+merge ordering, and original-import versus modern-reload rules. Changes after
+MAP's now-pushed stream-128 pin must use a new compatible identity; the prior
+unpublished-amendment exception does not apply. Decide the actual version at
+integration, not in this research branch. A purchase before a due booking is
+charged once; one after booking remains owed; reload at either boundary preserves
+that distinction.
+
+Only after B1–B4 review should C/D engine work begin. C/D can be handed over as a
+single implementation bundle with internal package reviews, then E's loop/replay
+and F's final gate. This checkpoint does not authorize engine changes or claim
+those dependencies complete.
+
+B checkpoint review: `/root/econ_booking_contract/review_booking_b` independently
+read the named original dispatch/price/accounting/scheduler bytes, checked the
+existing fields and reran 13/13 reference tests. Verdict: approved as a bounded
+static-research checkpoint, no P1/P2. Its sole provenance correction (recording
+AnnoGame and AnnoScene SHA-256 identities) was applied and focused re-review
+approved it and the B1–B4 plan. This is not completion of B or approval to
+integrate the engine. No source, tests, state identity, shared TASKS/REPORTS or
+other executor worktree changed in this checkpoint.

@@ -678,3 +678,18 @@ first match and added repeated-UNUSED legal control.
 B-final-04 passed13/13. The same bounded23af0 closure splits colon operands;
 colon as well as at-sign forms now explicitly refuse cargo semantics. Added HOLZ:1
 and ME:1 refusal controls. Final focused re-review requested.
+
+B APPROVED `/root/script2_review_area` at clean
+`d159b141f57ce1e160b0c62ca12fb30f34e904e8`: compiler/query host/callers, primary
+predicates, work, continuation and native foundations. B-final-05 passed13/13,
+zero failed/empty/skipped/incomplete/sanitizer. All reported B P2 closed; boundary
+mutant failed intended assertion with124 legal assertions passing. C–G excluded.
+
+C implementation: typed signed32 MONEY_ADD stages only scalar money unless the
+same player already has a staged permission copy; moving a scalar into that copy
+preserves instruction order. Commit writes each recipient once, rollback clears
+all staged effects. Shared add_money_saturating is extracted from the existing
+scheduler effect merge (F35); no account/statistic events added. Tests compare
+complete Player bytes against independently adjusted expected recipients, signed
+boundaries, aliases, permission mixing, Ready/reload idempotence and budget abort.
+C review/gates pending.

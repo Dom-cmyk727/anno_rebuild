@@ -105,6 +105,25 @@ struct Compiler {
                 if (!b)
                     return false;
                 i.value = *b;
+            } else if (name == "MONEY_ADD") {
+                if (c.args.size() != 2 || c.args[0].kind != bb::ValueKind::String ||
+                    c.args[1].kind != bb::ValueKind::Number)
+                    return fail(at, "money action argument types/count");
+                auto lookup = std::string(c.args[0].contents());
+                lookup.resize(lookup.find('@') == std::string::npos ? lookup.size()
+                                                                    : lookup.find('@'));
+                auto mapped =
+                    std::find_if(p.mappings.begin(), p.mappings.end(), [&](const auto& m) {
+                        return m.offset < at && upper(m.name) == upper(lookup);
+                    });
+                if (mapped == p.mappings.end())
+                    return fail(at, "unknown player mapping: " + lookup);
+                auto amount = number(c.args[1].text, at);
+                if (!amount)
+                    return false;
+                i.action = ScriptAction::MoneyAdd;
+                i.index = static_cast<std::uint32_t>(mapped - p.mappings.begin());
+                i.value = std::bit_cast<std::uint32_t>(*amount);
             } else if (name == "TIMER_SET" || name == "TIMER_START" || name == "TIMER_STOP") {
                 const bool set = name == "TIMER_SET";
                 if (c.args.size() != (set ? 2u : 1u) || c.args[0].kind != bb::ValueKind::Number)
@@ -483,6 +502,9 @@ bool visit_script(const ScriptProgram& p, ScriptState& state, std::uint32_t arg,
                     fault = work.exhausted ? ScriptFault::Budget : ScriptFault::Host;
                     return false;
                 }
+            } else if (i.action == ScriptAction::MoneyAdd) {
+                if (!host.money(i.index, std::bit_cast<std::int32_t>(i.value)))
+                    return false;
             } else if (!host.timer(i.action, i.index, i.value))
                 return false;
         }

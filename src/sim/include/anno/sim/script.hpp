@@ -56,7 +56,8 @@ enum class ScriptAction : std::uint8_t {
     PermissionAll,
     TimerSet,
     TimerStart,
-    TimerStop
+    TimerStop,
+    MoneyAdd
 };
 struct ScriptInstruction {
     ScriptAction action = ScriptAction::Assign;
@@ -103,6 +104,7 @@ struct ScriptHost {
     virtual bool permission(std::uint32_t mapping, TypeId, std::uint32_t value, bool all,
                             ScriptWork&) = 0;
     virtual bool timer(ScriptAction, std::uint32_t index, std::uint32_t value) = 0;
+    virtual bool money(std::uint32_t, std::int32_t) { return false; }
     virtual bool touch(const ScriptArea&, std::uint32_t, bool, ScriptWork&, bool&) { return false; }
     virtual std::uint32_t timer_seconds(std::uint32_t index) const = 0;
 };

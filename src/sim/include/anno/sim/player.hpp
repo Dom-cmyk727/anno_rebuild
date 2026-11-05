@@ -29,6 +29,8 @@
 #include <anno/sim/ids.hpp>
 
 namespace anno::sim {
+// Shared F35 authoritative money-effect policy; no account/statistic side effects.
+std::int64_t add_money_saturating(std::int64_t balance, std::int64_t delta);
 
 /// D: player +0x28d, an open byte: the property setter (0x1001be0d..0x1001be1f)
 /// stores any value, the record loader maps 7 to 8, and the tick only tests

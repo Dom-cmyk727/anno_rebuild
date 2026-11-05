@@ -53,16 +53,6 @@ struct AiCtx {
     CountingDraw* draws = nullptr;
 };
 
-std::int64_t add_saturating(std::int64_t a, std::int64_t b) {
-    if (b > 0 && a > std::numeric_limits<std::int64_t>::max() - b) {
-        return std::numeric_limits<std::int64_t>::max();
-    }
-    if (b < 0 && a < std::numeric_limits<std::int64_t>::min() - b) {
-        return std::numeric_limits<std::int64_t>::min();
-    }
-    return a + b;
-}
-
 /// |delta| as a u32, cut at 0xFFFFFFFF.
 std::uint32_t magnitude32(std::int64_t delta) {
     const std::uint64_t m = delta < 0 ? std::uint64_t{0} - static_cast<std::uint64_t>(delta)
@@ -268,7 +258,7 @@ void Scheduler::merge(World& w, Effects& fx, std::uint64_t tick, std::uint32_t t
     for (const MoneyDelta& m : fx.money) {
         Player* p = w.players_.find(m.player);
         if (p != nullptr) {
-            p->money = add_saturating(p->money, m.delta);
+            p->money = add_money_saturating(p->money, m.delta);
         }
     }
     // 4. Goods moves.

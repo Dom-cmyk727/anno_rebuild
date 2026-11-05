@@ -265,8 +265,14 @@ struct BuildAvailabilityProfile {
     std::vector<BuildResearchAlternatives> extra_research;
 };
 
+struct PermissionFacts {
+    std::vector<std::uint32_t> folks;
+    bool bulk_excluded = false;
+    std::vector<std::uint32_t> grant_research;
+};
 struct BuildingType {
     BuildRequirement construction;
+    PermissionFacts permissions;
 
     TypeId id;
     /// MAP-POP-CLOSE-1 C3 (P-14 replacement): a House type whose id ladder successor
@@ -417,6 +423,7 @@ class TypeRegistry {
     /// Empty when it fits, else one message naming the type.
     [[nodiscard]] std::string validate_against(const SimConfig& cfg) const;
     /// All types in ascending id order.
+    [[nodiscard]] std::span<const TypeId> permission_types(std::uint32_t folk) const;
     [[nodiscard]] std::span<const BuildingType> types() const { return types_; }
     [[nodiscard]] std::span<const GoodsInfo> goods_table() const { return goods_; }
     [[nodiscard]] std::span<const ClassInfo> class_table() const { return classes_; }
@@ -463,6 +470,7 @@ class TypeRegistry {
            std::vector<HouseGroup> groups = {}, std::vector<StageRecord> stages = {},
            bool declare_irregular_successors = false);
 
+    std::vector<std::pair<std::uint32_t, std::vector<TypeId>>> permission_types_;
     std::vector<BuildingType> types_;      // ascending id; lookup by binary search
     std::vector<FigureType> figure_types_; // ascending id
     std::vector<GoodsInfo> goods_;

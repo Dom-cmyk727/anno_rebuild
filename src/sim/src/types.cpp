@@ -189,6 +189,11 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
     t.rubble = h[0x0a];
     t.action_radius = h[0x11];
     t.flags_word = formats::u16_le(h, 0x1c);
+    const auto folk_mask = formats::u32_le(h, 0x0c);
+    for (std::uint32_t folk = 0; folk < 32; ++folk)
+        if ((folk_mask & (std::uint32_t{1} << folk)) != 0)
+            t.permissions.folks.push_back(folk);
+    t.permissions.bulk_excluded = (h[0x2e] & 3u) != 0;
     t.max_hp = formats::u16_le(h, 0x2c);
     t.can_burn = h[0x31];
     // ENTRANCE (D AnnoGame 0x10009a48-0x10009aa8): length / 8 points of two f32 (x, y)
@@ -270,6 +275,14 @@ type_from_entry(const fig::Entry& e, const std::vector<GoodsInfo>& goods, const 
                 t.construction.research_any.push_back(goods[t.output_goods[1]].forsch);
             }
         }
+        t.permissions.grant_research.push_back(t.research_id);
+        if (!t.output_goods.empty() &&
+            std::find(availability.research_outputs.begin(), availability.research_outputs.end(),
+                      t.output_goods[0]) != availability.research_outputs.end() &&
+            goods[t.output_goods[0]].forsch != 0 &&
+            goods[t.output_goods[0]].forsch != t.research_id)
+            t.permissions.grant_research.push_back(goods[t.output_goods[0]].forsch);
+        std::sort(t.permissions.grant_research.begin(), t.permissions.grant_research.end());
         // Id0 is meaningful to the original research-state bit test, too.
         t.construction.research_any.push_back(t.research_id);
     }
@@ -311,8 +324,9 @@ static_assert(field_count<ProductionType>() == 18,
               "a ProductionType member needs a line in digest_production");
 // T33.2: walk_class is derived; walk_mask is a side input until T33.4.
 // digest_type skips both, preserving every existing digest byte. (cls is hashed.)
+static_assert(field_count<PermissionFacts>() == 3, "permission facts need digest coverage");
 static_assert(field_count<BuildRequirement>() == 2, "construction facts need digest coverage");
-static_assert(field_count<BuildingType>() == 25,
+static_assert(field_count<BuildingType>() == 26,
               "a BuildingType member needs a line in digest_type (walk_class derived; walk_mask "
               "unhashed until T33.4)");
 static_assert(field_count<EntrancePoint>() == 2,
@@ -466,6 +480,22 @@ std::uint64_t digest_registry(std::span<const BuildingType> types, std::span<con
             a.u32(t.construction.stage);
             ar::seq(a, t.construction.research_any, 4, [&](auto r) { a.u32(r); });
         }
+    }
+    const auto has_permission = [](const BuildingType& t) {
+        return !t.permissions.folks.empty() || t.permissions.bulk_excluded ||
+               !t.permissions.grant_research.empty();
+    };
+    if (std::any_of(types.begin(), types.end(), has_permission)) {
+        a.u32(0x314d5250U); // PRM1; distinct from availability's OR facts
+        a.u64(
+            static_cast<std::uint64_t>(std::count_if(types.begin(), types.end(), has_permission)));
+        for (const auto& t : types)
+            if (has_permission(t)) {
+                a.u32(t.id.v);
+                ar::seq(a, t.permissions.folks, 4, [&](auto f) { a.u32(f); });
+                a.boolean(t.permissions.bulk_excluded);
+                ar::seq(a, t.permissions.grant_research, 4, [&](auto r) { a.u32(r); });
+            }
     }
     return a.finish();
 }
@@ -702,6 +732,13 @@ std::string check_against_config(std::span<const BuildingType> types, const SimC
             if (research >= cfg.research_entries) {
                 return "entry " + std::to_string(t.id.v) + ": construction research id " +
                        std::to_string(research) + " is outside research_entries";
+            }
+        }
+        for (const auto* ids : {&t.permissions.folks, &t.permissions.grant_research}) {
+            for (std::size_t i = 0; i < ids->size(); ++i) {
+                if ((i != 0 && (*ids)[i - 1] >= (*ids)[i]) ||
+                    (ids == &t.permissions.grant_research && (*ids)[i] >= cfg.research_entries))
+                    return who + "invalid permission facts";
             }
         }
         // Every bit of a public-need mask is a counter of BuildingIndex
@@ -1179,6 +1216,17 @@ formats::Result<std::shared_ptr<const TypeRegistry>, std::string> TypeRegistry::
     r.house_groups_ = std::move(groups);
     r.stages_ = std::move(stages);
     r.walk_tables_ = std::move(tables);
+    for (const auto& t : types)
+        if (!t.permissions.bulk_excluded) {
+            for (auto folk : t.permissions.folks) {
+                auto it =
+                    std::lower_bound(r.permission_types_.begin(), r.permission_types_.end(), folk,
+                                     [](const auto& row, auto f) { return row.first < f; });
+                if (it == r.permission_types_.end() || it->first != folk)
+                    it = r.permission_types_.insert(it, {folk, {}});
+                it->second.push_back(t.id);
+            }
+        }
     r.types_ = std::move(types);
     r.figure_types_ = std::move(figures);
     r.goods_ = std::move(goods_in);
@@ -1192,6 +1240,13 @@ TypeRegistry::digest_of(std::span<const BuildingType> types, std::span<const Goo
                         std::span<const ClassInfo> classes, std::span<const FigureType> figures,
                         std::span<const HouseGroup> groups, std::span<const StageRecord> stages) {
     return digest_registry(types, goods, classes, figures, groups, stages);
+}
+
+std::span<const TypeId> TypeRegistry::permission_types(std::uint32_t folk) const {
+    auto it = std::lower_bound(permission_types_.begin(), permission_types_.end(), folk,
+                               [](const auto& row, auto f) { return row.first < f; });
+    return it != permission_types_.end() && it->first == folk ? std::span<const TypeId>(it->second)
+                                                              : std::span<const TypeId>{};
 }
 
 const FigureType* TypeRegistry::find_figure_type(std::uint32_t id) const {

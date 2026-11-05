@@ -436,3 +436,10 @@ variant semantic vectors. New50creation rows use39explicitMissing components and
 unchanged from128 await the normal longgate. Prior full11recordings were parsed
 independently by script_semantics_review: validA3RP/log2, wire1,timeline5,
 A3SV/save1/native129+SCRIPT1 checksums, exactEOF.
+
+Startup wrong-interpretation control at f52f82b8: insert one whole-world advance(0)
+after the otherwise correct startup visit. Canonical S7-startup-mutant selected2,
+legal construction control passed9assertions; scope-isolation test executed42
+assertions and failed exactly3 non-script scope comparisons (39passes), no crash,
+timeout or unrelated refusal. Clean scheduler restored byte-for-byte (git diff
+empty) and normal full Debug rebuild completed; corrected final control pending.

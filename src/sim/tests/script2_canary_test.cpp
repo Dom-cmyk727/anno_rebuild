@@ -508,13 +508,26 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
         const auto hold = find_figure(w.figures(), FigureId{1})->holds[h];
         if (!hold.goods || hold.amount_88 < 256)
             continue;
+        const auto& store = w.islands()[city->island.v]->city(city->city)->stock;
+        const auto old_stock = store.stock[hold.goods];
+        const auto room = store.capacity > old_stock ? store.capacity - old_stock : 0;
+        const auto expected = std::min<std::uint64_t>(hold.amount_88, room);
+        const auto old_hash = w.state_hash();
         REQUIRE(hold.amount_88 / 256 <= std::numeric_limits<std::uint32_t>::max());
         const auto unloaded =
             rec.submit({PlayerId{0}, UnloadCmd{FigureId{1}, warehouse_id, h, hold.goods,
                                                static_cast<std::uint32_t>(hold.amount_88 / 256)}});
+        if (!expected) {
+            CHECK(unloaded.status == Reject::StockFull);
+            CHECK(w.state_hash() == old_hash);
+            continue;
+        }
         REQUIRE_MESSAGE(unloaded.ok(), "hold " << h << ": " << reject_name(unloaded.status));
         REQUIRE(unloaded.records.size() == 1);
-        CHECK(unloaded.records[0].transferred_88 > 0);
+        CHECK(unloaded.records[0].transferred_88 == expected);
+        CHECK(store.stock[hold.goods] == old_stock + expected);
+        CHECK(find_figure(w.figures(), FigureId{1})->holds[h].amount_88 ==
+              hold.amount_88 - expected);
     }
     const auto& is = *w.islands()[city->island.v];
     const auto* handwerk = w.types().find(TypeId{1001});
@@ -533,6 +546,18 @@ TEST_CASE("SCRIPT2 original public voyage founding and construction") {
         }
     REQUIRE(placement);
     const Command build{PlayerId{0}, BuildCmd{*city, {*placement}}};
+    // Explicitly separate permission-denied fixture. Only this copy changes a
+    // permission; the unchanged original canary still has its actual INIT rows.
+    auto denied = w;
+    auto& permissions = WorldTestAccess::players(denied).slots[0]->permissions;
+    const auto permission = std::find_if(permissions.begin(), permissions.end(),
+                                         [](const auto& p) { return p.type == TypeId{1001}; });
+    REQUIRE(permission != permissions.end());
+    REQUIRE(permission->value != 0);
+    permission->value = 0;
+    const auto denied_save = denied.save();
+    CHECK(denied.apply(build).status == Reject::ConstructionDenied);
+    CHECK(denied.save() == denied_save);
     const auto stock = is.city(city->city)->stock.stock;
     const auto built = rec.submit(build);
     REQUIRE_MESSAGE(built.ok(), reject_name(built.status));

@@ -453,3 +453,12 @@ follow only after the unmodified-world path succeeds; no fullF2 claim yet.
 D-voyage-01 atf80ee29f retainedbuildFAIL: the new test narrowed u64 cargo
 tons to u32 command tons. No selection executed. Added explicit checked conversion;
 no production behavior or expected-value change.
+
+D-voyage-02 at9c8f84e3 retainedFAIL1selected/1failed,3808legal assertions/
+1fatal: both public voyages succeeded (98advances toNEGER,93return), the source
+branch0 wave and350gold founding passed; repeatedtools filled the existing
+warehouse so hold5 correctly refusedStockFull. No resource/position was changed
+to repair the test. Updated ledger computes exact available room, checks clipped
+transfers and byte-stable StockFull refusals. A separate denied-copy fixture now
+sets only type1001 permission0 and expectsConstructionDenied with unchangedsave;
+the real original build keeps its actual INIT permission rows.

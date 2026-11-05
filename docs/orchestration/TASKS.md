@@ -35,6 +35,13 @@ accepted or required by the Mac supply packet.
 **Windows assignments, review dispositions and exact integration inputs below
 are unchanged by this Mac update.**
 
+**Planning queue, not released:** the [next gameplay chain](gameplay-next-chain.md)
+maps availability/startup budget, renewable cloth/leather, salt extraction,
+ship-start town integration, construction supplies, second-island resupply and
+citizen progression. Original data and implementation gaps have been checked.
+It does not replace MAP-SUPPLY-1 or ECON-BOOK-1; a concrete packet and accepted
+base are required before any queued bundle starts.
+
 **Read this dispatch before the historical rounds below.** Executors receive new
 assignments through this tracked file on GitHub
 (`Dom-cmyk727/anno_rebuild`, `origin/main`). This dispatch supersedes the old

@@ -753,3 +753,14 @@ reviewer independently identified the same error. Original failure retained.
 E-gate-02 also failed build before selection: test corruption helper named a
 nonexistent formats u64_le convenience. It now reads the two explicit u32 halves
 of the existing u64 section length; production code unchanged by this correction.
+
+E-gate-03 atdd95d291 retained FAIL:79 selected,77 executed passes,2 failures,
+zero empty/skipped/incomplete/sanitizer. Failures: startup validator assertion
+omitted archive stream-offset prefix (intended validator did run); creation corpus
+fixture still named native129/SCRIPT1. Exact reason suffix now checked. New native130
+component fixture lives separately under script2; original script1 stays untouched.
+Newly supported area-only programs change raw-byte component classification from
+11supported/39isolated to13/37; complete original file-context support remains F.
+Independent E reviewer P2 decode bound fixed before namespace allocation with a
+valid-frame/checksum oversized-namespace test. P3 duplicate CLI I/O corrected by
+generic bytes-with-source-context adapter, preserving existing read/parse timing.

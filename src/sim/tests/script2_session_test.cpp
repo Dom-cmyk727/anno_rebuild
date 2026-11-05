@@ -99,7 +99,7 @@ TEST_CASE("SCRIPT2 startup and replay reject repeated or nonfresh initialization
     encoded.value().back() = 1;
     auto bad_tick = read_log(encoded.value());
     REQUIRE_FALSE(bad_tick);
-    CHECK(bad_tick.error() == "startup entry tick must be0");
+    CHECK(bad_tick.error().ends_with("startup entry tick must be0"));
     auto ready = World::load(f.world.save(), f.types.registry);
     REQUIRE(ready);
     const auto saved = ready.value().save();
@@ -191,4 +191,14 @@ TEST_CASE("SCRIPT2 normal file loader supplies original namespace and unchanged 
     CHECK(made.value().clock().ms == 0);
     CHECK_FALSE(anno::sim_load::load_scenario_file(file, *game / "elsewhere", templates,
                                                    *registry.types, SimConfig{}, Rules{}));
+}
+
+TEST_CASE("SCRIPT2 framed oversized namespace refuses before allocation") {
+    auto f = session_world();
+    WorldTestAccess::script(f.world).asset_namespace = std::string(65537, 'n');
+    auto invalid = f.world.save(); // serializer supplies valid section framing and checksum
+    auto refused = World::load(invalid, f.types.registry);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("script namespace exceeds hard limit") != std::string::npos);
+    CHECK(refused.error().find("checksum") == std::string::npos);
 }

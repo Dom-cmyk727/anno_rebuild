@@ -1385,7 +1385,22 @@ template <class A, Same<ScriptRuntime> S> void fields(A& a, S& r) {
     a.u32(r.limits.depth);
     a.u32(r.limits.work);
     a.u32(r.limits.asset_bytes);
-    ar::opt(a, r.asset_namespace, [&](auto& ns) { a.str(ns); });
+    ar::opt(a, r.asset_namespace, [&](auto& ns) {
+        std::uint64_t length = ns.size();
+        a.count(length, 1);
+        if constexpr (A::kReading) {
+            if (!a.failed() && length > 65536)
+                a.fail("script namespace exceeds hard limit");
+            if (!a.failed())
+                ns.resize(static_cast<std::size_t>(length));
+        }
+        for (auto& c : ns) {
+            auto byte = static_cast<std::uint8_t>(c);
+            a.u8(byte);
+            if constexpr (A::kReading)
+                c = static_cast<char>(byte);
+        }
+    });
     a.u32(r.policy);
     auto& s = r.state;
     a.enumv(s.context);

@@ -52,7 +52,7 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "script1" / "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "script2" / "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -156,7 +156,7 @@ void house_totals(const sim::World& w, std::uint64_t& residents, std::uint64_t& 
 std::string version_line() {
     return "# kStateHashVersion=" + std::to_string(sim::kStateHashVersion) +
            " kPrngTimelineVersion=" + std::to_string(sim::kPrngTimelineVersion) +
-           " schema=SCRIPT1 component=import-only";
+           " schema=SCRIPT2 component=import-only";
 }
 
 std::shared_ptr<const sim::TypeRegistry> original_registry(const fs::path& game) {
@@ -1049,7 +1049,7 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
     const bool generating = update_requested();
     const auto expected = generating
                               ? read_expectations(versions, fs::path(ANNO_FIXTURES_DIR) / "sim" /
-                                                                "scenario_corpus.txt")
+                                                                "script1" / "scenario_corpus.txt")
                               : read_expectations(versions);
     if (!generating)
         REQUIRE(versions == version_line());
@@ -1093,12 +1093,12 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
         }
     }
     CHECK(masks == 373);
-    CHECK(isolated == 39);
-    CHECK(supported == 11);
+    CHECK(isolated == 37);
+    CHECK(supported == 13);
     if (generating) {
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
-        out << "# SCRIPT1 original-data component corpus. Creation identities generated here;\n"
+        out << "# SCRIPT2 original-data component corpus. Creation identities generated here;\n"
                "# physical/movement columns copied from published128, not executed by this\n"
                "# creation-only generator. The normal long corpus gate validates those columns.\n"
             << version_line() << "\n";
@@ -1106,7 +1106,7 @@ TEST_CASE("SCRIPT1 original-data corpus creation identities and imported masks")
             out << row << "\n";
         out.close();
         REQUIRE(out.good());
-        MESSAGE("SCRIPT1 creation-only generation: physical/movement acceptance remains pending");
+        MESSAGE("SCRIPT2 creation-only generation: physical/movement acceptance remains pending");
     }
 }
 

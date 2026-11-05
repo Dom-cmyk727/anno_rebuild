@@ -129,3 +129,32 @@ Windows/Linux/live-original/render/network checks. Describe future Windows and
 accepted NEEDS2 reconciliation from supply67158af4 without importing its active
 work. Stop at a reviewed passing combined local candidate, or report PARTIAL
 with a precise unresolved contract dependency while finishing independent work.
+
+## I0–I3 reviewed checkpoint
+
+I0 approved by `/root/integrate1_contract_review` at `c41ea1fe`; I1 by
+`/root/integrate1_merge_review` at merge `a81d6c95` (parents `c41ea1fe`, supply
+`67158af4`); I2 by `/root/integrate1_identity_review` at `392d3989` after fixing
+an invalid oracle continuation and extending actual predecessor log coverage.
+I2 canonical Debug:17/17 passes, zero other outcomes. Archive now has136 exact
+input blobs, including retained reference goods tables, plus four exact native
+save slices with separate provenance.
+
+I3 approved by `/root/integrate1_joint_review` at `12424236`. Initial Debug and
+ASAN gates each22/22; correction gates each13/13 (overlapping selections, not
+35 unique cases). All zero other outcomes/sanitizer reports. Four targeted
+mutants fail intended slot-hint, raw1, Pending barrier and repeated-end
+assertions; source hashes restored, clean Debug rebuilt. Review corrected an
+incorrect authored resource703 to independently verified GRAS2 -> growing1,
+and the singular animal selector to plural, adding six actual animal cases.
+The corrected complete native fixture proves positive crop and animal-line
+consumption/production after load,120 animal-site draws over60000ticks and exact
+continuation with the nested actors intact. The initial fixture/build/probe
+failures remain under `cache/integrate1/`.
+
+The original Tutorial prerequisite is **Allowed**, verified by public paid
+Demolish/Build809 at261,344:250gold,512raw tools,1024raw wood. Its whole supported
+empty kernel remains present and Ready. No authored permission override or
+recovery substitute is required. These facts supersede historical supply notes
+that the engine ignores scripts or lacks INFRAMIN; those notes remain attributed
+input history. `house_updates` remains false by default.

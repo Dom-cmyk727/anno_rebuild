@@ -400,3 +400,33 @@ TEST_CASE("integration joint: repeated public worker end releases once and prese
         actors_intact(w);
     }
 }
+TEST_CASE("integration original components: strict actor refusal and explicit component projection "
+          "stay separate") {
+    auto o = tutorial_town::load_original();
+    if (!o) {
+        MESSAGE("skipping: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto file = o->dir / "Scenes/0200Single/Single_24.sze";
+    const auto normal =
+        anno::sim_load::load_scenario_file(file, o->dir, o->templates, *o->types, o->cfg, {});
+    REQUIRE_FALSE(normal);
+    CHECK(normal.error().find("unsupported") != std::string::npos);
+    CHECK(normal.error().find("players[") != std::string::npos);
+    // This second fixture explicitly declares projection before parsing; the normal result
+    // above is never reused as a fallback. Preserve the complete source in this imported spec.
+    const auto projected = anno::sim_load::load_scenario_file(
+        file, o->dir, o->templates, *o->types, o->cfg, {}, original_component::actor_free_units());
+    REQUIRE_MESSAGE(projected, (projected ? "" : projected.error()));
+    CHECK(projected.value().loaded.spec.figures.empty());
+    const auto component =
+        original_component::import_only(projected.value().loaded.spec, o->types, o->cfg);
+    REQUIRE_MESSAGE(component, (component ? "" : component.error()));
+    if (component.value().isolated) {
+        const auto refused = sim::World::create(projected.value().loaded.spec, o->types, o->cfg);
+        REQUIRE_FALSE(refused);
+        CHECK_FALSE(component.value().diagnostic.empty());
+        CHECK(component.value().spec.script_context == sim::ScriptContext::Missing);
+    } else
+        CHECK(component.value().spec.script_source == projected.value().loaded.spec.script_source);
+}

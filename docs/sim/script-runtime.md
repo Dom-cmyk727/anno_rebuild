@@ -772,3 +772,10 @@ now also has an explicit script2-only path assertion and a SCRIPT2 test name.
 Archive checksums are recorded before generation and compared afterwards. This
 is authorized creation of a separate SCRIPT2 fixture, not replacement of SCRIPT1.
 Added actual archived SCRIPT1 frame2/native129 load/refusal controls for E3.
+
+Safe generation was approved after the explicit new-path guard. Generation02
+failed509/510 assertions before writing its output: the old creation generator
+tried to apply SCRIPT1 research/presence deltas a second time to the already
+corrected SCRIPT1 input. Corrected generation to copy those physical columns
+unchanged and replace only creation identity. Archived checksums remained identical.
+This is generation evidence, not an acceptance pass.

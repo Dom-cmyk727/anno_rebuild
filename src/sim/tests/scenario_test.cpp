@@ -1076,7 +1076,8 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
         const auto pos = row.find("create_hash=");
         REQUIRE(pos != std::string::npos);
         if (generating) {
-            auto new_row = with_restored_research_production(with_recognized_player_records(row));
+            auto new_row =
+                row; // SCRIPT1 input already includes reviewed research/presence corrections
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx",
                           static_cast<unsigned long long>(made.value().state_hash()));

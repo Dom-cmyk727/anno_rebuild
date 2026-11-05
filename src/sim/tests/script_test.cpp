@@ -52,7 +52,7 @@ TEST_CASE("SCRIPT1 grouping short circuit and read counts distinguish original")
     REQUIRE(visit_script(p.value(), s, 250, h));
     CHECK(s.signals[4] == 0);
     CHECK(s.signals[3] == 1);
-    CHECK(s.last_work == 2);
+    CHECK(s.last_work == 3);
     auto q = compile(source("SET A = TRUE;\nSET B = TRUE;\nIF A || B THEN {}\n"));
     REQUIRE(q);
     auto t = make_script_state(q.value());

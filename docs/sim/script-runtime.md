@@ -890,3 +890,14 @@ remain identical. New goldens keep11 independent transcriptions separate from23
 self-baselines; schema130/frame3 explains their migration. Normal gates will run
 with update mode unset. No original scenario/script content is committed in these
 recordings; full-original-source synthetic canary artifacts stay ignored in cache.
+
+G-debug-affected-01 at454a83e4 passed595/595 in783.49s, zero failed/empty/skipped/
+incomplete/sanitizer. Fresh final integration then found P2: compiler duplicated
+common namespace into every wave instruction, permitting multiplicative derived
+allocation within otherwise valid limits. Fixed by storing one normalized prefix
+and source-bounded relative names; joining occurs only after full byte charging
+at emission. No wire/policy/payload/work change. Small separating control:128
+references+4000byte prefix store4128 string-content bytes instead of512256, while
+all128 emitted payloads and exactwork512384 remain identical. New focused/native/
+replay checks and ASAN follow; earlier595 non-wave/whole-world evidence is retained
+with exact source attribution, not rewritten as a post-fix run.

@@ -152,3 +152,33 @@ TEST_CASE("SCRIPT2 PLAYWAVE query Host failure discards staged output and prior 
     CHECK(events.empty());
     CHECK(players.find(PlayerId{0})->money == w.players().find(PlayerId{0})->money);
 }
+
+TEST_CASE("SCRIPT2 PLAYWAVE compiled asset storage does not multiply a shared namespace") {
+    const std::string ns(4000, 'n');
+    std::string body = "INITBLOCK(){";
+    for (int i = 0; i < 128; ++i)
+        body += "PLAYWAVE(\"a\");";
+    body += "}";
+    const auto source = wave_source(body);
+    auto compiled = compile_script(source, {{}, 32, 5, {}, ns}, {.work = 1000000});
+    REQUIRE(compiled);
+    CHECK(compiled.value().asset_namespace == ns);
+    REQUIRE(compiled.value().assets.size() == 128);
+    std::size_t stored = 0;
+    for (const auto& asset : compiled.value().assets) {
+        CHECK(asset == "a");
+        stored += asset.size();
+    }
+    CHECK(stored == 128); // previous joined representation used512256bytes here
+    CHECK(stored + compiled.value().asset_namespace.size() == 4128);
+    auto w = wave_world(body, {.work = 1000000}, ns);
+    REQUIRE(w.initialize_scripts().empty());
+    auto events = w.drain_events();
+    REQUIRE(events.size() == 128);
+    for (const auto& event : events) {
+        REQUIRE(event.wave);
+        CHECK(event.wave->asset == ns + "/a");
+    }
+    CHECK(w.script().state.last_work ==
+          128 * (4000 + 1 + 1 + 1)); // full payload plus statement, unchanged
+}

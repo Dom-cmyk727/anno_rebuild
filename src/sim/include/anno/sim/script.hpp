@@ -80,7 +80,8 @@ struct ScriptProgram {
     std::vector<std::uint8_t> initial;
     std::vector<ScriptMapping> mappings;
     std::vector<ScriptArea> areas;
-    std::vector<std::string> assets; // validated portable scenario-relative references
+    std::string asset_namespace;     // one normalized derived prefix per program
+    std::vector<std::string> assets; // relative names; total bytes bounded by source bytes
     std::vector<ScriptExpr> expressions;
     std::vector<ScriptInstruction> init;
     std::vector<ScriptIf> branches;
@@ -109,7 +110,9 @@ struct ScriptHost {
     virtual bool permission(std::uint32_t mapping, TypeId, std::uint32_t value, bool all,
                             ScriptWork&) = 0;
     virtual bool timer(ScriptAction, std::uint32_t index, std::uint32_t value) = 0;
-    virtual bool wave(std::string_view, std::uint32_t, ScriptWork&) { return false; }
+    virtual bool wave(std::string_view, std::string_view, std::uint32_t, ScriptWork&) {
+        return false;
+    }
     virtual bool money(std::uint32_t, std::int32_t) { return false; }
     virtual bool touch(const ScriptArea&, std::uint32_t, bool, ScriptWork&, bool&) { return false; }
     virtual std::uint32_t timer_seconds(std::uint32_t index) const = 0;

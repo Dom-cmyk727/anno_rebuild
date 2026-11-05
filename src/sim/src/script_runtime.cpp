@@ -26,17 +26,24 @@ struct Host final : ScriptHost {
     std::vector<SimEvent>* output;
     std::uint64_t event_tick;
     std::vector<SimEvent> staged_events;
-    bool wave(std::string_view asset, std::uint32_t offset, ScriptWork& work) override {
+    bool wave(std::string_view asset_namespace, std::string_view relative, std::uint32_t offset,
+              ScriptWork& work) override {
         if (!output)
             return false;
-        for (std::size_t i = 0; i < asset.size(); ++i)
+        const auto bytes = asset_namespace.size() + 1 + relative.size();
+        for (std::size_t i = 0; i < bytes; ++i)
             if (!work.consume())
                 return false;
+        std::string asset;
+        asset.reserve(bytes);
+        asset.append(asset_namespace);
+        asset.push_back('/');
+        asset.append(relative);
         SimEvent e;
         e.kind = SimEventKind::ScriptWave;
         e.tick = event_tick;
         e.code = 317;
-        e.wave = ScriptWave{std::string(asset), offset, WaveAudience::AllLocal};
+        e.wave = ScriptWave{std::move(asset), offset, WaveAudience::AllLocal};
         staged_events.push_back(std::move(e));
         return true;
     }

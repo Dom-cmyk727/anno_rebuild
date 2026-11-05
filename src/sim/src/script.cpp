@@ -135,8 +135,7 @@ struct Compiler {
                 auto asset = portable(c.args[0].contents());
                 if (!relative_asset(asset))
                     return fail(at, "invalid relative wave asset");
-                asset = portable(*env.asset_namespace) + "/" + asset;
-                if (asset.size() > p.limits.asset_bytes)
+                if (p.asset_namespace.size() + 1 + asset.size() > p.limits.asset_bytes)
                     return fail(at, "wave asset reference exceeds limit");
                 i.action = ScriptAction::PlayWave;
                 i.index = static_cast<std::uint32_t>(p.assets.size());
@@ -382,6 +381,8 @@ compile_script(std::string source, const ScriptEnvironment& env, ScriptLimits li
     Compiler c{{}, env, {}, 0};
     c.p.source = std::move(source);
     c.p.limits = limits;
+    if (env.asset_namespace)
+        c.p.asset_namespace = portable(*env.asset_namespace);
     const auto& a = ast.value();
     c.p.kernel_empty = a.kernel.empty();
     for (const auto& section : a.sections)
@@ -543,7 +544,7 @@ bool visit_script(const ScriptProgram& p, ScriptState& state, std::uint32_t arg,
                     return false;
                 }
             } else if (i.action == ScriptAction::PlayWave) {
-                if (!host.wave(p.assets[i.index], i.offset, work)) {
+                if (!host.wave(p.asset_namespace, p.assets[i.index], i.offset, work)) {
                     fault = work.exhausted ? ScriptFault::Budget : ScriptFault::Host;
                     return false;
                 }

@@ -12,8 +12,9 @@ shipped permission program runs yet. This dispatch releases the missing
 `endless01` handlers and complete-program proof, not general campaign support.
 The first Mac's MAP-SUPPLY-1, ECON-BOOK-1 and all Windows assignments are unchanged.
 
-**Windows update, 2026-11-05 (orchestrator):** W4-MAIN-1 is reviewed and accepted, and its **Round R1** is current.
-Read the W4-MAIN-1 update under "Other active dispatches" and the [review](reviews/2026-11-05-w4-main1.md).
+**Windows update, 2026-11-05 (orchestrator):** W4-MAIN-1 is done, and `main` is at `88968580`. **W4-OPENING-2 is
+current.** Its first package is W4-OPENING-CONTROLS-FLAKE, with step 0 first. W4-DEPTH-1-CLOSE runs beside it. Read
+the "W4-MAIN-1 done" update under "Other active dispatches".
 
 <!-- BEGIN MAP-SCRIPT-2 -->
 ## MAP-SCRIPT-2 — second Mac: execute the complete endless01 script
@@ -538,6 +539,26 @@ delivered it on local, unpublished `task/W4-depth-1`: gates at `63867115`, repor
 - **Board writes:** the executor writes REPORTS and its own review files on its task branch. TASKS.md changes come from
   an orchestrator (review F4).
 
+**Update 2026-11-05 (W4-MAIN-1 done; orchestrator).** Round R1 is accepted, and `main` is fast-forwarded to
+`88968580b7128ef3b8d1cbdc708e68493f8f707f` (ordinary push, `bf321da2..88968580`). This is the first time the Windows lane has reached `main`
+since 2026-10-30.
+- **R1, checked against the source** (`98ae6898..88968580`):
+  - the re-merge `98ae6898` changes only the five board files of `origin/main` against its first parent;
+  - F1: the source scan and the four `required-asset` cases are in;
+  - D1: the per-island floor is in, with every other bar unchanged;
+  - F3: both corrections are made in a new entry.
+- **Gates:**
+  - CI is 10/10 on `0368a4e5` (run `42028810051`) and on `88968580` (run `42031477838`);
+  - the orchestrator reran `ctest_verdict_test.py` on an export of the head: 25/25.
+- **One P3 left, assigned to W4-OPENING-CONTROLS-FLAKE step 0:** `founding_assets_test.cpp:639` builds
+  `"skipping: " << file << " not present"`. At runtime that message is still classed `other`, although it names a
+  missing original file. Because its bare literal prefix `"skipping: "` is on the scan's allow list, any future
+  concatenated `"skipping: "` message would also pass the scan unclassified.
+- **Now current:**
+  - **W4-OPENING-2,** from `main` `88968580`. Its first package is W4-OPENING-CONTROLS-FLAKE, with step 0 first.
+  - **W4-DEPTH-1-CLOSE** continues beside it, one lane at a time.
+- **UI.2's "W4.4 merged" condition is met.** UI.2 still needs UI.1.F2 part F2.1 accepted and ADR 0004.
+
 **MAP-CARGO-2** loading is now accepted locally at code/tests
 `80f9eeacd1012cd58f3a010b8d5c6018810dedad`, gate source `abe568d6`, docs
 `0aed8ec0334e9bfbdbb137d3662ac9e958c83887`; see the
@@ -611,7 +632,7 @@ two exact accepted pins; this does not accept a newer Mac gameplay head.
 
 | Lane | Host and ownership | Current instruction |
 |---|---|---|
-| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-OPENING-1-CLOSE ACCEPTED; W4-MAIN-1 REVIEWED, ROUND R1 CURRENT; THEN W4-OPENING-2.** Do R1 on `task/W4-main-1` (W4-MAIN-1 section, "Round R1"; the orchestrator moves `main` after it). Then W4-OPENING-2 from the new `main`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Its first package is W4-OPENING-CONTROLS-FLAKE, with the committed WSL gate script as step 0. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time. Its merge into `main` is its own package (W4-MAIN-1 review D3).** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
+| Rendering / W4.4 | Windows workstation with RTX 4090; sole rendering implementation owner | **W4-MAIN-1 DONE (`main` `88968580`); W4-OPENING-2 CURRENT.** W4-OPENING-2 from `main` `88968580`, with the Mac pin `73e7ab1a129c4712747333d9f34a225be03f063f`. Its first package is W4-OPENING-CONTROLS-FLAKE, with the committed WSL gate script as step 0. **W4-DEPTH-1-CLOSE (released) runs beside them on `task/W4-depth-1`, one lane at a time. Its merge into `main` is its own package (W4-MAIN-1 review D3).** Do not start W4-SHORE-2 until the owner releases it. Until W4-OPENING-2, the Mac input stays exact `0c401c8d084cfd9feb8aec846595291f87f22cce`. Preserve valid verifier/corpus/adapter evidence. |
 | MAP.2 / gameplay | Mac, existing MAP executor | **MAP-POP-CLOSE-2 ACCEPTED for enabled headless scope; MAP-SUPPLY-1 READY / RELEASED.** Continue `a50aec3a` through [S0–S6](tasks/map-supply-1.md), with independent package reviews and one final handoff. Keep House updates off by default. No ECON-BOOK work, Windows changes, merge/rebase or executor push. The older POP closeout packets are historical. The separate macOS test_support check at published task/W4-main-1 remains a non-blocking checkpoint; no coordinator redesign. |
 
 ### W4-OPENING-1-CLOSE — finish the opening candidate for acceptance · ACCEPTED BY THE ORCHESTRATOR 2026-11-05 (W4-MAIN-1 review D2)
@@ -655,7 +676,7 @@ open at `02133ade`, and §7 added more.
 
 **Stop:** the candidate for the orchestrator's acceptance review. Its exact head is W4-MAIN-1's input `H`.
 
-### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · RELEASED; FIRST PACKAGE OF W4-OPENING-2, STEP 0 ADDED
+### W4-OPENING-CONTROLS-FLAKE — root-cause and fix the `opening_controls` real-time race under ASan · CURRENT; FIRST PACKAGE OF W4-OPENING-2, STEP 0 ADDED
 
 **Why:** `viewer_wiring_opening_controls` failed `wsl-w18` and `wsl-w20` (not `wsl-w19`) at the same assertion —
 `src/app/src/dev_script.cpp` line ~464 area, script line 72, `tracked.1.state is 'sailing', expected == stopped`
@@ -687,6 +708,11 @@ leave as a vague low-priority note.
    - no GPU-adapter suite in the ASan lane. A GPU lane, when one runs, uses lavapipe and `ANNO_REQUIRE_GPU=1` as CI
      does (`docs/testing/gpu-tests.md`);
    - its lane times recorded in the gate file.
+   - **the skip guard (W4-MAIN-1 R1 P3; `tools/test` and one test message only):** class the runtime message of
+     `founding_assets_test.cpp:639` (`"skipping: " << file << " not present"`) as `required-asset`, with a regression
+     case, and remove the bare `"skipping: "` entry from the scan's allow list. That makes every concatenated message
+     carry a literal the scan can class: either make the literal self-describing, or list each such site by file and
+     line.
 
    Building on the WSL file system instead of `/mnt/e` may be measured; record the numbers before adopting it.
 1. Read the actual command dispatch path from an SDL key event through to the `PlayRunner`'s command queue (not
@@ -709,7 +735,7 @@ leave as a vague low-priority note.
 **Stop:** a WSL ASan rerun log showing the case green at least 3 times in a row inside the full batch, a REPORTS
 entry, and an independent review before claiming it closed.
 
-### W4-MAIN-1 — merge the accepted Windows lane into main · REVIEWED AND ACCEPTED 2026-11-05; ROUND R1 CURRENT (BELOW)
+### W4-MAIN-1 — merge the accepted Windows lane into main · DONE 2026-11-05 (`main` fast-forwarded to `88968580`)
 
 **Owner decision, 2026-11-04** ("Yes and merge"; chose "Main, as own package").
 
@@ -780,7 +806,7 @@ as met. It also checks GitHub CI on `main` and dispositions each failure.
 
 **Stop condition:** `main` is the reviewed merge commit, and the task branches are preserved.
 
-#### Round R1 — re-merge and three small items · CURRENT (orchestrator, 2026-11-05)
+#### Round R1 — re-merge and three small items · DONE, ACCEPTED 2026-11-05 (head `88968580`)
 
 Read the [W4-MAIN-1 review](reviews/2026-11-05-w4-main1.md). The branch is accepted. `main` cannot be fast-forwarded:
 it gained three board commits after the merge. The trial merge of `origin/main` is conflict-free.
@@ -817,7 +843,7 @@ it gained three board commits after the merge. The trial merge of `origin/main` 
 6. **Hand back.** Push with an ordinary push, verify the remote hash, add a REPORTS entry, and stop. The orchestrator
    fast-forwards `main`, records it in PLAN, marks UI.2's "W4.4 merged" condition as met, and checks CI on `main`.
 
-### W4-OPENING-2 — the first wood chain in the live window · RELEASED, STARTS AFTER W4-MAIN-1
+### W4-OPENING-2 — the first wood chain in the live window · CURRENT (from `main` `88968580`)
 
 **Goal:** the owner's next playtest can run, in the real window:
 1. found;
@@ -6127,7 +6153,7 @@ Status values: `READY`, `IN PROGRESS` (set by the orchestrator when a report say
 - **F2.2 — the reachable screens not yet captured.** The Kontor trade sliders (OQ-547), help on a placed building (OQ-548), the options statistics, quit confirm and the unused option icons (OQ-549), the ship panel opened from the ship list, an in-game message. Diplomacy and messages need a second player: start an endless game with computer opponents in the Wine runner (the original's AI is fine here; our MVP's "no AI" applies to the rebuild only). A later settlement stage for the lock pixels (OQ-539): try the original's scenarios, campaign starts and endless presets with a richer start, or grow a city with the runner at top speed. Each with captures and the same depth as F1.3.
 - **F2.3 — what only the owner's desktop can capture.** The Wine runner cannot switch display modes, so the HUD at 800 × 600, 1152 × 864, 1280 × 960 and 1280 × 1024 (OQ-535) needs the owner's dgVoodoo2 desktop harness. Do not drive it. Write the exact capture list and steps as an owner checklist (`docs/testing/checklist.md`), so the owner can run it in one sitting, and give the expected anchoring per mode as a prediction to check.
 - **Gates:** the UI.1 gates; `check-files`; `validate --game-dir`; `mock` + `compare` of the idle HUD and all eight construction categories with the reduced masks and the new negative tests; no `src/` change; no original pixels, strings or shots in git. Report `## UI.1.F2 — ... — status: FINISHED | QUESTION` with a table of every element of the build-test surface (bound / open) and every screen (captured / open); stop for review.
-#### UI.2 — The in-game UI with every menu, placeholders where the sim has no feature · `PLANNED` (round dr; dependency updated round dt) · needs UI.1.F2 part F2.1 accepted, W4.4 merged and ADR 0004
+#### UI.2 — The in-game UI with every menu, placeholders where the sim has no feature · `PLANNED` (round dr; dependency updated round dt) · needs UI.1.F2 part F2.1 accepted, W4.4 merged (met 2026-11-05: `main` `88968580`, W4-MAIN-1) and ADR 0004
 - **Scope:** ADR `docs/adr/0004-ui-toolkit.md` (D4: our own small widget set drawn by the GPU compositor with the original's fonts and `ToolGfx` textures); the HUD, the construction menu and every other menu and submenu of UI.1's spec, built from `data/ui/`; implemented entries drive W4.4's command path (Build, Demolish); every other entry exists and leads nowhere yet (a placeholder, as the owner decided); pixel checks against UI.1's oracle mocks. **OWNER-CHECK:** the owner builds and demolishes through it.
 #### P1 — Population stage 1: the house payload, the group table, scenario import · `DONE` (round cx; merged locally as `b173d02`, P1 branch unchanged at `416993fa`; combined tested head `ef6121a`, report tip `5b10ed3`) · the main executor · branch `task/P1-house-payload` from local `main` at the round-cm board commit or later · worktree `E:\anno1503-worktrees\anno1503-P1` · new OQs OQ-450..459
 - **Why:** W6 is the LAN plan's critical path (`docs/plan/lan-endless.md` §5 W6.2, §6), and population is the first W6 stage. A house is an `Inert` payload today: the residents and stocks in the scenario files are dropped (`HouseRecordNotModelled`), and T26's three pure functions are tested but not applied. P1 gives the house its state and loads it. It adds no house tick (that is P2).

@@ -38,5 +38,27 @@
     "save_sha256": "f30999bff10b3d561f3fa9a4f52990517657902861b50ab7bb23f3a71d8dae90",
     "native_version": 130,
     "replay_version": 3
+  },
+  {
+    "lineage": "needs130",
+    "source_commit": "8ff6d1cae8ef8fd0024813257b8abf4ff436a4bc",
+    "archived_log": "fixtures/synthetic/sim/integrate1/legacy/needs130/fixtures/synthetic/sim/g2.log",
+    "log_sha256": "4ed2386ac118d9d31c1659647ffc3eef92df4b3c1a805d40626f81a058227678",
+    "save_offset": 331,
+    "length": 115018,
+    "save_sha256": "0152b7c21123e0b73e082cfb27f02731a558d89cbe66329c140aac51ad8e74a9",
+    "native_version": 130,
+    "replay_version": 2
+  },
+  {
+    "lineage": "combined131",
+    "source_commit": "cafc1a7c047536f83fe537572a571662c41910f3",
+    "archived_log": "fixtures/synthetic/sim/integrate1/legacy/combined131/fixtures/synthetic/sim/g2.log",
+    "log_sha256": "b30d3b067d8d16f201c7f85c48323a1aad889d4ae04989daa06f3521cfd18921",
+    "save_offset": 351,
+    "length": 115117,
+    "save_sha256": "ac1e9a80c683d97698678a1c890fc564fe5e508d992b4a2d552c1f06f32e758d",
+    "native_version": 131,
+    "replay_version": 4
   }
 ]

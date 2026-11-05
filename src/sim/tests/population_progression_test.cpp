@@ -227,7 +227,7 @@ std::unique_ptr<Session> start(const Original& o, const Opts& op) {
 }
 
 constexpr std::uint64_t kStep = 50; // one advance(100) is 100 ms = 50 ticks
-constexpr std::uint64_t kUnlockTick = 2500, kUpgradeTick = 55000, kEndTick = 70000;
+constexpr std::uint64_t kUnlockTick = 2500, kUpgradeTick = 57500, kEndTick = 70000;
 
 /// The lines of the committed reference vectors (comments and blanks dropped).
 std::vector<std::string> fixture_lines() {
@@ -396,10 +396,10 @@ TEST_CASE(
     // the variant draw: idx = r mod count, type = base + idx * step, one draw
     const sim::VariantFacts vf = sim::house_variant_facts(*ladder.next);
     REQUIRE(r.variant_drawn);
-    CHECK(r.variant_draw == 31418);
+    CHECK(r.variant_draw == 21313);
     CHECK(r.variant_index == sim::house_variant_index(vf, r.variant_draw));
     CHECK(r.to.v == ladder.next->id.v + r.variant_index * vf.step);
-    CHECK(r.to.v == 522);
+    CHECK(r.to.v == 525);
     CHECK(vf.count > 0);
     // type, group, population, tile identity
     CHECK(after.type == r.to);
@@ -508,11 +508,11 @@ TEST_CASE("progression K3: the deciding-tick values equal the independent refere
     REQUIRE(r.check_ran);
     CHECK(r.check_eligible);
     // the engine's own numbers at the deciding tick
-    CHECK(r.check_e == 668);
-    CHECK(join_ints(r.check_stock) == "1830,875,875,392,968,2173");
-    CHECK(r.check_food == 113);
-    CHECK(r.check_mean == 122);
-    CHECK(r.check_infra == 121);
+    CHECK(r.check_e == 670);
+    CHECK(join_ints(r.check_stock) == "1815,868,868,388,968,2156");
+    CHECK(r.check_food == 112);
+    CHECK(r.check_mean == 121);
+    CHECK(r.check_infra == 120);
     CHECK(r.check_f == 1);
     CHECK(r.check_b == 2);
     CHECK(r.check_i == 2);
@@ -612,8 +612,8 @@ TEST_CASE("progression K3 controls: no build, short materials, no Inn service an
         REQUIRE(refused != nullptr);
         CHECK(refused->tick == kUpgradeTick);
         CHECK(refused->check_eligible); // the three scores pass, as in the upgrade run
-        CHECK(refused->check_e == 668);
-        CHECK(join_ints(refused->check_stock) == "1830,875,875,392,968,2173");
+        CHECK(refused->check_e == 670);
+        CHECK(join_ints(refused->check_stock) == "1815,868,868,388,968,2156");
         for (const auto& t : S.stats.population.transitions) {
             if (t.building != S.house) {
                 continue;
@@ -841,8 +841,8 @@ TEST_CASE("progression K3 ledger: alcohol store -> carrier -> Inn -> resident ->
     // the chain really ran: alcohol left the store, reached the Inn and a resident bought from it
     CHECK(loads == 1);
     CHECK(drawn == 768);
-    CHECK(inn().tavern == 576);
-    CHECK(at(rs.bought_by_goods, kTavernRole) == 192);
+    CHECK(inn().tavern == 577);
+    CHECK(at(rs.bought_by_goods, kTavernRole) == 191);
     CHECK(rs.faults == 0);
     CHECK(rs.lost_88 == 0);
     CHECK(S.world.check_invariants() == "");
@@ -938,7 +938,7 @@ TEST_CASE("progression K3 persistence: save and reload at the cuts of the real r
             } else if (name == "just before the upgrade") {
                 CHECK(snap(A).type == kPioneer);
             } else if (name == "just after the upgrade") {
-                CHECK(snap(A).type.v == 522);
+                CHECK(snap(A).type.v == 525);
             } else if (name == "just before the unlock") {
                 CHECK(A.town.city->stage_mask == 0);
             } else if (name == "just after the unlock") {
@@ -979,7 +979,7 @@ TEST_CASE("progression K3 persistence: save and reload at the cuts of the real r
     }
     CHECK(next_cut == cuts.size());
     CHECK(compared == cuts.size());
-    CHECK(snap(A).type.v == 522);
+    CHECK(snap(A).type.v == 525);
     CHECK(A.world.check_invariants() == "");
 }
 
@@ -1006,7 +1006,7 @@ std::string hex64(std::uint64_t v) {
 }
 
 /// The checkpoint ticks of the recorded run and the state hash the run reached at each.
-constexpr std::array<std::uint64_t, 6> kCheckpointTicks{2450, 2500, 54950, 55000, 55050, 70000};
+constexpr std::array<std::uint64_t, 6> kCheckpointTicks{2450, 2500, 57450, 57500, 57550, 70000};
 
 } // namespace
 
@@ -1032,7 +1032,7 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
             rec.checkpoint();
             const auto* house = t.island->building_at(w.config().layout, t.city->number, kX, kY);
             REQUIRE(house != nullptr);
-            CHECK(house->type.v == (next_cp < 3 ? 501 : 522));
+            CHECK(house->type.v == (next_cp < 3 ? 501 : 525));
             CHECK(t.city->stage_mask == (next_cp == 0 ? 0 : 0xff));
             CHECK(w.players().find(t.city->owner)->flags == (next_cp == 0 ? 0x7 : 0xff));
             if (next_cp == 0) {
@@ -1094,7 +1094,7 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
         const sim::Building* hb =
             ft.island->building_at(fresh.value().config().layout, ft.city->number, kX, kY);
         REQUIRE(hb != nullptr);
-        CHECK(hb->type.v == 522);
+        CHECK(hb->type.v == 525);
         CHECK(ft.city->stage_mask == 0xff);
     }
     // 2. the relevant command changed: a stand instead of the house at the same site. The first
@@ -1143,7 +1143,7 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
         export_log("progression_k3_changed_command.log", changed);
     }
     // 3. one recorded checkpoint hash changed: the replay itself reproduces the world up to it and
-    // reports the divergence at exactly that entry (the upgrade checkpoints are 55000 and 55050)
+    // reports the divergence at exactly that entry (the upgrade checkpoints are 57500 and 57550)
     {
         sim::ReplayLog changed = read.value();
         changed.entries[cp_entries[4]].hash ^= 1;

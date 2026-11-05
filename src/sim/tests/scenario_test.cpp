@@ -52,7 +52,7 @@ constexpr int kAdvances = 3000;
 constexpr std::uint32_t kStepMs = 100;
 
 fs::path expectations_path() {
-    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "scenario_corpus.txt";
+    return fs::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" / "scenario_corpus.txt";
 }
 
 std::vector<fs::path> scenario_files(const fs::path& game) {
@@ -1111,7 +1111,7 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     CHECK(supported == 13);
     if (generating) {
         REQUIRE(expectations_path() ==
-                fs::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" / "scenario_corpus.txt");
+                fs::path(ANNO_FIXTURES_DIR) / "sim" / "consolidated132" / "scenario_corpus.txt");
         std::ofstream out(expectations_path(), std::ios::binary);
         REQUIRE(out.good());
         out << "# SIMINT1 original-data component corpus. Creation identities generated here;\n"
@@ -1138,7 +1138,7 @@ TEST_CASE(
     std::string accepted_supply_version;
     const auto accepted_supply = read_expectations(
         accepted_supply_version, fs::path(ANNO_FIXTURES_DIR) / "sim" / "scenario_corpus.txt");
-    REQUIRE(accepted_supply_version == "# kStateHashVersion=129 kPrngTimelineVersion=5");
+    REQUIRE(accepted_supply_version == "# kStateHashVersion=130 kPrngTimelineVersion=5");
     const auto templates = anno::sim_load::scan_island_templates(*dir);
     for (const auto& delta : research_production_deltas()) {
         INFO(delta.name);

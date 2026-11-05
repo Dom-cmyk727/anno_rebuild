@@ -471,9 +471,22 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
     // r.made: nothing; the output stays in the building's store.
     if (r.send_figure) {
         std::uint32_t* counter = figure_counter(b.payload, 0);
+        const std::uint32_t first_kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
+        if (counter != nullptr && ctx.types.class_info(type.cls).tick == TickKind::Farm) {
+            // MAP-NEEDS-2 N2: a route the engine does not implement is refused explicitly (no
+            // figure, no counter, no cargo); the dispatch draw was already taken by the tick (it is
+            // not conditional on the send).
+            const FigureType* rt = ctx.types.find_figure_type(first_kind);
+            if (rt != nullptr && farm_figure_route(rt->route) == FarmFigureRoute::Unsupported) {
+                if (ctx.transport_stats != nullptr) {
+                    ++ctx.transport_stats->forestry.unsupported_routes;
+                }
+                counter = nullptr;
+            }
+        }
         if (counter != nullptr) {
             ++*counter;
-            const std::uint32_t kind = type.prod.figure_ids.empty() ? 0 : type.prod.figure_ids[0];
+            const std::uint32_t kind = first_kind;
             SpawnRequest s =
                 spawn_request(island, city, b, type, 0, send_figure_job(type.cls), kind);
             // The farm family is the class whose tick is the farm tick (the one test used for the
@@ -481,13 +494,15 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
             if (ctx.types.class_info(type.cls).tick == TickKind::Farm) {
                 // MAP-ECON-1 E2 (D 0x1006ee06-0x1006ee56): the job is the figure type's slot +0x54
                 // (its ROUTETYPE), and the new figure's cargo carries the farm's input 0. A harvest
-                // job (0x29/0x2a) of a Farm-payload home gets the harvest state
-                // (docs/sim/forestry.md 2: chosen by the spawn, never by the job alone). An unknown
-                // figure type has no route: job 0, as before.
+                // job (0x29/0x2a worker, 0x2e animal: N2) of a Farm-payload home gets the harvest
+                // state (docs/sim/forestry.md 2: chosen by the spawn, never by the job alone). An
+                // unknown figure type has no route: job 0, as before.
                 const FigureType* ft = ctx.types.find_figure_type(kind);
                 s.job = ft != nullptr ? ft->route : 0;
                 s.cargo_goods = type.input_goods.empty() ? GoodsId{0} : type.input_goods[0];
-                s.harvest = harvest_job(s.job) && std::holds_alternative<Farm>(b.payload);
+                s.harvest = (farm_figure_route(s.job) == FarmFigureRoute::Worker ||
+                             farm_figure_route(s.job) == FarmFigureRoute::Animal) &&
+                            std::holds_alternative<Farm>(b.payload);
             }
             if (std::holds_alternative<SmallFarm>(b.payload)) {
                 // MAP-SUPPLY-1 S2 (D 0x1006f78d-0x1006f7c2): the small farm passes the literal job

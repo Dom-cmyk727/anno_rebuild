@@ -1593,7 +1593,7 @@ TEST_CASE("state stream header and settings scopes") {
     expected.u64(0);
     expected.u64(0); // signals/bindings
     CHECK(bytes == expected.v);
-    CHECK(sim::kStateHashVersion == 131);
+    CHECK(sim::kStateHashVersion == 132);
     // The scopes open where the transcription says.
     CHECK(scope_offset(w, "header") == 0);
     CHECK(scope_offset(w, "clock_rng") == header_size);

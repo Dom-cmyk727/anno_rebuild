@@ -154,7 +154,9 @@ struct TransportStats; // transport.hpp (T29, measurement only; not sim state)
 // compiled program is derived once. Published128 is never reinterpreted.
 // Supply129 independently enables SmallFarm harvest workers/animals and raw-slot credit.
 // Stream131 combines accepted UNIT130 and supply129; SIMINT1 schema distinguishes this lineage.
-inline constexpr std::uint32_t kStateHashVersion = 131;
+// Stream132 adds the reviewed NEEDS2 route-selected Farm animal lifecycle to SIMINT1.
+// No extra fields or draw sites; changed trajectories require a distinct identity.
+inline constexpr std::uint32_t kStateHashVersion = 132;
 /// The version of the save frame (docs/sim/state.md §9.5): the layout around the
 /// state stream. A save written by version v is rejected by v + 1.
 inline constexpr std::uint32_t kSaveVersion = 1;

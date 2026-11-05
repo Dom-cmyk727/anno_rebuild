@@ -16,8 +16,13 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
     auto f = script_test::make();
     const auto current = f.world.save();
     REQUIRE(sim::World::load(current, f.types.registry));
-    for (const auto& [name, version] : std::array<std::pair<const char*, unsigned>, 4>{
-             {{"published128", 128}, {"supply129", 129}, {"script129", 129}, {"unit130", 130}}}) {
+    for (const auto& [name, version] :
+         std::array<std::pair<const char*, unsigned>, 6>{{{"published128", 128},
+                                                          {"supply129", 129},
+                                                          {"script129", 129},
+                                                          {"unit130", 130},
+                                                          {"needs130", 130},
+                                                          {"combined131", 131}}}) {
         INFO(name);
         std::ifstream file(std::filesystem::path(ANNO_FIXTURES_DIR) / "sim" / "integrate1" /
                                (std::string(name) + ".save"),
@@ -35,15 +40,27 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
         REQUIRE(original_log.good());
         const std::vector<std::uint8_t> historical{std::istreambuf_iterator<char>(original_log),
                                                    {}};
-        const auto log_refused = sim::read_log(historical);
-        REQUIRE_FALSE(log_refused);
-        CHECK(log_refused.error().find(std::string("replay-log version ") +
+        const auto decoded = sim::read_log(historical);
+        if (std::string(name) == "combined131") {
+            REQUIRE(decoded); // Current framing; refuse its actual state identity.
+            auto target = sim::World::load(current, f.types.registry);
+            REQUIRE(target);
+            const auto before = target.value().save();
+            const auto result = sim::replay(target.value(), decoded.value());
+            REQUIRE_FALSE(result);
+            CHECK(result.error() ==
+                  "replay refused: state stream version differs from this build's");
+            CHECK(target.value().save() == before);
+        } else {
+            REQUIRE_FALSE(decoded);
+            CHECK(decoded.error().find(std::string("replay-log version ") +
                                        (std::string(name) == "unit130" ? "3" : "2") +
                                        " is not 4") != std::string::npos);
+        }
         const auto refused = sim::World::load(bytes, f.types.registry);
         REQUIRE_FALSE(refused);
         CHECK(refused.error() == "save: state stream version " + std::to_string(version) +
-                                     " is not supported (this build reads 131)");
+                                     " is not supported (this build reads 132)");
     }
     auto rec = sim::Recorder::start(f.world);
     REQUIRE(rec);
@@ -54,7 +71,7 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
     const auto before = w.value().save();
     REQUIRE(sim::replay(w.value(), log));
     CHECK(w.value().save() == before);
-    for (auto version : {128u, 129u, 130u}) {
+    for (auto version : {128u, 129u, 130u, 131u}) {
         auto old = log;
         old.state_stream_version = version;
         auto out = sim::replay(w.value(), old);

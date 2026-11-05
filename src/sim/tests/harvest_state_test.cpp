@@ -315,8 +315,8 @@ TEST_CASE("farm dispatch: the small farm's line-0 worker (job 0x2a) is a harvest
 TEST_CASE("farm dispatch: another data-defined harvester and owner, another route") {
     // Engine behaviour comes from the data: a grain farm of player 1 on island 1 whose figure type
     // has ROUTETYPE ERNTE (0x29) gets a harvest worker carrying GETREIDE; a farm whose figure has
-    // the WEIDETIER route (46) sends a job-46 figure without a harvest state (no body of that job
-    // exists here); nothing names 801 or 102.
+    // the WEIDETIER route (46) sends a job-46 animal WITH a harvest state (MAP-NEEDS-2 N2: the
+    // animal job 0x2e of a Farm home, limit 20); nothing names 801 or 102.
     Rig r = make_rig();
     r.place(kGrainFarm, 203, 103, sim::Farm{}, 1);
     r.place(kHerdFarm, 110, 110, sim::Farm{});
@@ -338,7 +338,9 @@ TEST_CASE("farm dispatch: another data-defined harvester and owner, another rout
     REQUIRE(reaper->harvest.has_value());
     CHECK(reaper->harvest->start_delay == 5);
     CHECK(herder->job == 46);
-    CHECK_FALSE(herder->harvest.has_value());
+    REQUIRE(
+        herder->harvest.has_value()); // N2: the animal job of a Farm home carries the harvest state
+    CHECK(herder->harvest->start_delay == 5);
     CHECK(w.check_invariants() == "");
 }
 

@@ -1887,7 +1887,7 @@ TEST_CASE("load refuses a damaged frame") {
     }
     SUBCASE("a valid current control refuses both published predecessor versions") {
         CHECK(island_test::load_error(good).empty());
-        for (const auto version : {127u, 128u, 129u}) {
+        for (const auto version : {127u, 128u, 129u, 130u, 131u}) {
             auto old = good;
             island_test::put32(old, 8, version);
             island_test::reseal(old);

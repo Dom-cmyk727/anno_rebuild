@@ -110,6 +110,23 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
 [[nodiscard]] constexpr bool harvest_state_job(std::uint32_t job) {
     return harvest_job(job) || animal_job(job);
 }
+/// What the engine does with the figure a Farm-tick home sends, by the figure type's ROUTETYPE (the
+/// job). MAP-NEEDS-2 N2: the farm family sends the type's route as the job (D 0x1006ee27); the job
+/// factory (D 0x1003b0e0, byte table 0x1003b480) gives 0x29/0x2a the worker case, 0x2d/0x2e the
+/// animal case. The engine implements the worker case and the animal case of 0x2e; 0x2d (FISCHER)
+/// shares the animal case in the original but is not implemented: such a send is REFUSED explicitly
+/// (no figure, no counter, counted in ForestryStats::unsupported_routes), never left as an inert
+/// figure. Every other route keeps its meaning (no harvest state).
+enum class FarmFigureRoute : std::uint8_t { Other, Worker, Animal, Unsupported };
+[[nodiscard]] constexpr FarmFigureRoute farm_figure_route(std::uint32_t job) {
+    if (harvest_job(job)) {
+        return FarmFigureRoute::Worker;
+    }
+    if (animal_job(job)) {
+        return FarmFigureRoute::Animal;
+    }
+    return job == 0x2d ? FarmFigureRoute::Unsupported : FarmFigureRoute::Other;
+}
 /// The step-A callback limit of a job (D `[esp+0x34]` of 0x10058ae0 = 0, of 0x10059210 = 0x14): the
 /// search goes on past an unclaimed goal while `limit > score` (docs/sim/small-farm-supply.md 2.3).
 inline constexpr std::uint16_t kAnimalSearchLimit = 20;

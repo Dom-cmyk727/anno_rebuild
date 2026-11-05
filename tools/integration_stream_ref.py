@@ -67,17 +67,17 @@ def records():
     tail=u16(19)+u64(0)
     raw=prefix+b''.join(b'\1'+figures[i] if i in figures else b'\0' for i in range(40))+tail
     hierarchical=prefix+b''.join(u64(fnv(b'\1'+figures[i] if i in figures else b'\0')) for i in range(40))+tail
-    return {'header':(u32(131)+b'SIMINT1\0'+u32(5),None),
+    return {'header':(u32(132)+b'SIMINT1\0'+u32(5),None),
             'player':(old.player_bytes(old.new_player(0))+u64(2)+pack('4I',70001,0,90001,255),None),
             'figures':(raw,fnv(hierarchical)), 'script':(script(),None)}
 
 def fixture():
-    return '# Independent combined131 structural scopes: name hex hierarchical_fnv64\n'+''.join(
+    return '# Independent combined132 structural scopes: name hex hierarchical_fnv64\n'+''.join(
         f'{name} {data.hex()} {(fnv(data) if digest is None else digest):016x}\n'
         for name,(data,digest) in records().items())
 
 class Contracts(unittest.TestCase):
-    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8300000053494d494e54310005000000')
+    def test_identity_literal(self):self.assertEqual(records()['header'][0].hex(),'8400000053494d494e54310005000000')
     def test_sparse_registry_has_four_actors(self):
         self.assertEqual(len(records()['figures'][0]),20+40+200+133+129+150+10)
         self.assertNotEqual(records()['figures'][1],fnv(records()['figures'][0]))
@@ -87,7 +87,7 @@ class Contracts(unittest.TestCase):
             command=[sys.executable,'-I',str(Path(__file__).resolve()),'--fixture',str(path)]
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,0);self.assertIn('4 populated combined scopes agree',result.stdout)
-            path.write_text(fixture().replace('83000000','82000000',1))
+            path.write_text(fixture().replace('84000000','83000000',1))
             result=subprocess.run(command,capture_output=True,text=True)
             self.assertEqual(result.returncode,1);self.assertIn('combined oracle differs',result.stdout)
             path.unlink();result=subprocess.run(command,capture_output=True,text=True)
@@ -103,7 +103,7 @@ class Contracts(unittest.TestCase):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--write',action='store_true');p.add_argument('--self-test',action='store_true');p.add_argument('--fixture',type=Path);a=p.parse_args()
     if a.self_test:return 0 if unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts)).wasSuccessful() else 1
-    path=a.fixture or ROOT/'fixtures/synthetic/sim/integrate1/populated_fields.txt'
+    path=a.fixture or ROOT/'fixtures/synthetic/sim/consolidated132/populated_fields.txt'
     if a.write:path.write_text(fixture());return 0
     try: actual=path.read_text()
     except OSError as error: print('fixture unavailable: '+str(error));return 1

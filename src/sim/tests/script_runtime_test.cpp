@@ -36,7 +36,7 @@ TEST_CASE("SCRIPT2 native header and empty runtime have hand written bytes") {
     WriteArchive header;
     StateHeader h;
     fields(header, h);
-    const std::vector<std::uint8_t> expected_header{131,  0,    0,    0, 0x53, 0x49, 0x4d, 0x49,
+    const std::vector<std::uint8_t> expected_header{132,  0,    0,    0, 0x53, 0x49, 0x4d, 0x49,
                                                     0x4e, 0x54, 0x31, 0, 5,    0,    0,    0};
     CHECK(header.data() == expected_header);
     auto wrong = expected_header;
@@ -115,7 +115,7 @@ TEST_CASE("SCRIPT1 repaired checksum version and same version schema refusals ar
     auto refused = World::load(old, TypeRegistry::empty());
     REQUIRE_FALSE(refused);
     CHECK(refused.error() ==
-          "save: state stream version 128 is not supported (this build reads 131)");
+          "save: state stream version 128 is not supported (this build reads 132)");
     auto foreign = bytes;
     foreign[12] ^= 1;
     rechecksum(foreign);

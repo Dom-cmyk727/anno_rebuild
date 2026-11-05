@@ -179,7 +179,7 @@ TEST_CASE("supply chain K4/S4: the Tutorial island-7 town, farms -> carriers and
           static_cast<std::int64_t>(food_loaded_only) - static_cast<std::int64_t>(food_in_flight) -
               static_cast<std::int64_t>(stall_taken));
     CHECK(stall_taken == 757);
-    CHECK(c.city->stock.stock[kFood] == 17250);
+    CHECK(c.city->stock.stock[kFood] == 17585);
     CHECK(stall_taken > 0);
     CHECK(fs.raw_lost_88 == 0);
     CHECK(c.w.check_invariants() == "");
@@ -235,7 +235,7 @@ TEST_CASE("supply chain K4/S4: the Tutorial island-7 town, farms -> carriers and
     CHECK(d.city->stock.stock[kAlcohol] == 0);
     CHECK(d.inn_state().tavern == inn0); // no alcohol was made anywhere: the Inn never receives any
     CHECK(b_inn_taken == 0);
-    CHECK(d.city->stock.stock[kFood] == 16654);
+    CHECK(d.city->stock.stock[kFood] == 16653);
     CHECK(d.city->stock.stock[kFood] < N_checkpoint); // with the farms the store ends higher
     CHECK(d.w.check_invariants() == "");
 }

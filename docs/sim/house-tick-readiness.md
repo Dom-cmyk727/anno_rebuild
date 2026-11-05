@@ -1,5 +1,7 @@
 # House-tick inputs, lifecycle and calculation contract
 
+**Historical research:** this note records T32.6 at its named inspected revision. For current implementation and acceptance, read [population-live.md](population-live.md), [small-farm-supply.md](small-farm-supply.md) and the orchestration task board; statements here that House dispatch is unimplemented describe that older revision.
+
 T32.6 F1 (round di). This note replaces the round-cy audit at `cfd85ec59d38f986bf1f0bde7d2ddcc5e6e2db88`. Inspected engine code is that tree (P1 integrated; `TickKind::House` still returns at `driver.cpp`). Stage-mask facts are the accepted T32.5 F1 text at `1fc598eb0b57f0d487fb50d315d7c4ad9c0d8af2` (`docs/re/population.md` §15, including §15.7 S9a / OQ-185 and §15.8 S9b / OQ-462), read only. Original files were read under `E:\anno1503\game\app` and were not copied. Scratch disassembly and the arithmetic script are under this worktree's ignored `cache/t326-f1/`. No source, test, golden, shared OQ or spec edit, and no P2 implementation.
 
 The round-cy note is wrong in four places this document corrects. Both need endpoints are not post-pass products, and Force does not decide them. The proposed kernel must not return a "would fire" flag for a transition whose inputs it does not have. Mood overrides are not unconditional. A missing billing cross-reference does not make every callee store-free.

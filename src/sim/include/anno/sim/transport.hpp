@@ -129,6 +129,8 @@ struct ForestryStats {
     /// candidate tiles found, and the walk-search nodes popped (zero when no candidate exists: the
     /// walk search is skipped).
     std::uint64_t search_tiles_scanned = 0, search_candidates = 0, search_popped = 0;
+    std::uint64_t unsupported_routes =
+        0; ///< MAP-NEEDS-2: sends refused because the figure's route (job 0x2d) is not implemented
     std::uint64_t aborts = 0;         ///< home gone at an arrival
     std::uint64_t drops = 0;          ///< enhanced revalidation dropped a target
     std::uint64_t cut_mismatches = 0; ///< merge-time re-check of a planned cut failed (must be 0)

@@ -645,7 +645,8 @@ TEST_CASE("scenario player DISCO original-data component: restored sets, sharing
     }
     const std::vector<std::uint8_t> bytes = read_all(file);
     const auto types = original_types(*dir);
-    auto l = sim::load_scenario(bytes, *types, sim::SimConfig{});
+    auto l =
+        sim::load_scenario(bytes, *types, sim::SimConfig{}, original_component::actor_free_units());
     REQUIRE_MESSAGE(l.ok(), (l.ok() ? std::string() : l.error()));
     bool found = false;
     for (const sim::ScenarioSpec::PlayerSpec& p : l.value().spec.players) {

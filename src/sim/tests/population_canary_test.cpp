@@ -244,8 +244,9 @@ TEST_CASE("population canary: original-data components feed the pure House kerne
             break;
         }
         ++examined;
-        auto resolved = anno::sim_load::load_scenario_with_links(anno::test::read_file(file),
-                                                                 templates, *types, cfg, {});
+        auto resolved = anno::sim_load::load_scenario_with_links(
+            anno::test::read_file(file), templates, *types, cfg, {},
+            original_component::actor_free_units());
         REQUIRE(resolved);
         auto component = original_component::import_only(resolved.value().loaded.spec, types, cfg);
         REQUIRE_MESSAGE(component, (component ? "" : component.error()));

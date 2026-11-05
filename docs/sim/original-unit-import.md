@@ -496,3 +496,27 @@ and the misleading one-per-call comment; exactsignal, sourceoffset1068, captured
 insideNEGERpoint, oneeventat48000 andallresource/constructionchecks passed.
 Failedmanifest/artifacts remainfresh-jwg7oj31; worker didnotexecute because the
 producer failed. No runtime rule change.
+
+D-fresh-04 at clean4e0ff63e95cbb9800580cee8bf9adc7d62719396 passes
+1selected wrapper/1executedpass,0other,156.39s; required9fresh-process
+contracts and referencecontracts separate. ProducerPID52073 has3988/3988
+assertions; workerPID52209 has45/45; distinct successfulprocesses, source/exe
+joined by cache/unit-import1/replays/fresh-eh2eyma3/manifest.json.
+ExeSHA4efc98a9d553c74d2e4d1b5bcab516d6b918e0fe64a9670db470adc797023c88.
+Native finalhash3022869862516125275; legalalternateBuild diverges atcheckpoint408;
+changed valid-native program refuses with the exactscript-content-digest error.
+Reviewers are checking finalraw/artifact joins; no fullGclaim.
+
+## E affected integration scope (before changes/gates)
+
+| Requirement | Positive proof | Negative control | Evidence | Review |
+|---|---|---|---|---|
+| Historical components remain components | explicitly request ActorFreeComponent at geometry/population/transport fixture callers, preserve allgoldens and whole-program checks | normal ImportRequired refuses unsupported actors; never fallback afterfailure | existing immutable ledgers plus focused affected tests | pending |
+| Corpus import is complete or explicit refusal | all50 hashed original inputs reconcile importedactorcount with independently reviewed A inventory | silent actor drop changes count; unknown requiredclass/state must refuse withpath | new corpus count/reason test; nofullscenario claim | pending |
+| Published capabilities current | compilation separate from strict import/startup, and realbranch0 coverage joined to same-source/exe fresh artifacts | missing/mismatched/failedmanifest refused before output | existing inventorytool extended, publiccontracts | pending |
+| Affected checks | focused contracts/canary first, then Debug/ASAN selected by changed dependencies | preserve first failures/timeouts, no broad unrelated campaign | canonical explicit source/build, admissionON | pending |
+
+Actor-free options are caller declarations for existing separately labelled
+components, never an automatic recovery path for a failed playable scenario.
+Generated fixed-map/ship-start loadouts already exclude base actors by their
+original manifest policy and use that explicit projection; no loadout changes.

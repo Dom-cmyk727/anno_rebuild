@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // The scenario adapter on synthetic scenarios (docs/sim/state.md §10, stage S14):
 // the HEAD byte map, a player series, one INSEL5 island with terrain, tile objects
 // and building items, a STADT2 city with its records (T23: HEAD2, WARE, ID3,
@@ -232,8 +233,8 @@ std::shared_ptr<const sim::TypeRegistry> registry() {
     return r.value();
 }
 
-sim::LoadedScenario load(const Buf& file) {
-    auto r = sim::load_scenario(file, *registry(), sim::SimConfig{});
+sim::LoadedScenario load(const Buf& file, const sim::UnitImportOptions& units = {}) {
+    auto r = sim::load_scenario(file, *registry(), sim::SimConfig{}, units);
     REQUIRE_MESSAGE(r.ok(), (r.ok() ? std::string() : r.error()));
     return std::move(r).value();
 }
@@ -1258,7 +1259,7 @@ TEST_CASE("scenario warning kinds") {
     put16(city_off, 500); // no island there: CityOffIsland
     put16(city_off, 500);
     Buf state = record("STADT2", city_off);
-    append(state, record("SCHIFF", Buf(16, 0))); // UnknownRecord (players)
+    append(state, record("SCHIFF", Buf(16, 0))); // explicit component-only UnknownRecord (players)
     Buf file = base_scene(island_extra, state, city_records);
     // Add: an INSELLNK, an unknown SCENE child, a native player with VOLK, an unnamed
     // computer, an island without a climate mask.
@@ -1285,7 +1286,9 @@ TEST_CASE("scenario warning kinds") {
     // Splice the extra children into the SCENE (after its own children).
     Buf scene_kids(file.begin() + 32, file.end());
     append(scene_kids, kids);
-    const sim::LoadedScenario s = load(scene("ANNO", scene_kids));
+    const auto input = scene("ANNO", scene_kids);
+    CHECK_FALSE(sim::load_scenario(input, *registry(), {}));
+    const sim::LoadedScenario s = load(input, original_component::actor_free_units());
     CHECK(warnings_of(s, Kind::UnknownRecord) == 3);  // FUTURE, SCHIFF, SKTIMER
     CHECK(warnings_of(s, Kind::LinkUnresolved) == 1); // no ERZE: the selection never runs
     CHECK(warnings_of(s, Kind::UnknownObject) == 1);
@@ -1646,7 +1649,8 @@ TEST_CASE("scenario warnings name their path and the record's offset, unknown re
     append(kids, chunk("SPIELER", spieler(0, record("SCHIFF", Buf(16, 0))))); // child 5
     append(kids, chunk("SKTIMER", Buf(40, 0)));                               // child 6
     const Buf file = scene("ANNO", kids);
-    const sim::LoadedScenario s = load(file);
+    CHECK_FALSE(sim::load_scenario(file, *registry(), {}));
+    const sim::LoadedScenario s = load(file, original_component::actor_free_units());
     // One UnknownRecord per scope and name: SKTIMER, FUTURE, SCHIFF (twice in the file
     // each). STAT2 is its own kind since T26 (StatisticsNotModelled).
     REQUIRE(warnings_of(s, Kind::UnknownRecord) == 3);

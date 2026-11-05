@@ -106,7 +106,8 @@ std::optional<Original> load_original() {
 sim::ScenarioSpec scenario_spec(const Original& o, const std::string& relative,
                                 std::string* capability = nullptr) {
     auto resolved = anno::sim_load::load_scenario_with_links(
-        anno::test::read_file(o.dir / "Scenes" / relative), o.templates, *o.types, o.cfg, {});
+        anno::test::read_file(o.dir / "Scenes" / relative), o.templates, *o.types, o.cfg, {},
+        original_component::actor_free_units());
     REQUIRE(resolved);
     auto component = original_component::import_only(resolved.value().loaded.spec, o.types, o.cfg);
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
@@ -401,8 +402,9 @@ TEST_CASE("population original-data mechanism canary: bounded scenario search ta
     }
     std::sort(files.begin(), files.end());
     for (const fs::path& file : files) {
-        auto resolved = anno::sim_load::load_scenario_with_links(anno::test::read_file(file),
-                                                                 templates, *types, cfg, {});
+        auto resolved = anno::sim_load::load_scenario_with_links(
+            anno::test::read_file(file), templates, *types, cfg, {},
+            original_component::actor_free_units());
         if (!resolved) {
             continue;
         }

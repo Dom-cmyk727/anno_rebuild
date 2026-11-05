@@ -1,3 +1,4 @@
+#include "original_component.hpp"
 // Shared by the K2/K3 tests of MAP-POP-CLOSE-2: the Tutorial town on ORIGINAL data (needs
 // ANNO1503_GAME_DIR).
 #pragma once
@@ -54,7 +55,8 @@ inline std::optional<Original> load_original() {
 
 inline sim::World tutorial_world(const Original& o, bool live) {
     auto resolved = anno::sim_load::load_scenario_with_links(
-        anno::test::read_file(o.dir / "Scenes" / kTutorial), o.templates, *o.types, o.cfg, {});
+        anno::test::read_file(o.dir / "Scenes" / kTutorial), o.templates, *o.types, o.cfg, {},
+        original_component::actor_free_units());
     REQUIRE(resolved);
     sim::Rules rules;
     rules.house_updates = live;

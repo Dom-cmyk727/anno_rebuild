@@ -213,22 +213,25 @@ TEST_CASE("SCRIPT2 original capability inventory distinguishes parsing compilati
         if (program) {
             auto resolved =
                 anno::sim_load::load_scenario_file(file, *game, templates, *loaded.types, {}, {});
-            REQUIRE(resolved);
-            auto made = sim::World::create(resolved.value().loaded.spec, loaded.types);
-            if (made) {
-                auto started = sim::Recorder::start(made.value());
-                if (started) {
-                    startup = true;
-                    started.value().advance(36);
-                    for (std::size_t i = 0; i < program.value().branches.size(); ++i) {
-                        started.value().advance(0);
-                        ++visits;
-                    }
-                    REQUIRE_FALSE(made.value().faulted());
+            if (!resolved) {
+                diagnostic = "actor_import: " + resolved.error();
+            } else {
+                auto made = sim::World::create(resolved.value().loaded.spec, loaded.types);
+                if (made) {
+                    auto started = sim::Recorder::start(made.value());
+                    if (started) {
+                        startup = true;
+                        started.value().advance(36);
+                        for (std::size_t i = 0; i < program.value().branches.size(); ++i) {
+                            started.value().advance(0);
+                            ++visits;
+                        }
+                        REQUIRE_FALSE(made.value().faulted());
+                    } else
+                        diagnostic = started.error();
                 } else
-                    diagnostic = started.error();
-            } else
-                diagnostic = made.error();
+                    diagnostic = made.error();
+            }
         }
         MESSAGE("CAPABILITY2 " << fs::relative(file, *game).generic_string()
                                << " compiled=" << (program ? 1 : 0)

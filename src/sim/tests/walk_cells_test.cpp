@@ -461,7 +461,8 @@ TEST_CASE("walk_cells: original-data component S01_07_01 road and house cells" *
     auto tables = anno::formats::annowelt::read_walk_tables(wb);
     REQUIRE(tables);
     const auto sb = anno::test::read_file(*game / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
-    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{},
+                                     original_component::actor_free_units());
     REQUIRE(loaded);
     auto component = original_component::import_only(loaded.value().spec, types.value());
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
@@ -699,7 +700,8 @@ TEST_CASE("S01_07_01 original-data component tick 0 tile records match placement
     REQUIRE(types);
     const auto sb = anno::test::read_file(*game / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
     const sim::SimConfig cfg;
-    auto loaded = sim::load_scenario(sb, *types.value(), cfg);
+    auto loaded =
+        sim::load_scenario(sb, *types.value(), cfg, original_component::actor_free_units());
     REQUIRE(loaded);
     auto component = original_component::import_only(loaded.value().spec, types.value(), cfg);
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));
@@ -932,7 +934,8 @@ TEST_CASE(
     for (const auto& path : files) {
         const std::string name = std::filesystem::relative(path, *game / "Scenes").generic_string();
         const auto sb = anno::test::read_file(path);
-        auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+        auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{},
+                                         original_component::actor_free_units());
         REQUIRE_MESSAGE(loaded.ok(), name);
         auto component = original_component::import_only(loaded.value().spec, types.value());
         REQUIRE_MESSAGE(component, (component ? "" : component.error()));

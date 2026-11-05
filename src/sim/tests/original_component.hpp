@@ -1,10 +1,18 @@
 // Test-only original-data component fixtures. Never use this in production loading.
 #pragma once
 #include <anno/sim/scenario.hpp>
+#include <anno/sim/scenario_formats.hpp>
 #include <anno/sim/world.hpp>
 
 namespace original_component {
 namespace sim = anno::sim;
+// Explicitly preserve the historical actor-free input of these subsystem fixtures.
+// Callers choose this before loading; a failed normal import never falls back here.
+inline sim::UnitImportOptions actor_free_units() {
+    sim::UnitImportOptions options;
+    options.projection = sim::OriginalActorProjection::ActorFreeComponent;
+    return options;
+}
 struct Scenario {
     sim::ScenarioSpec spec;
     std::string diagnostic;

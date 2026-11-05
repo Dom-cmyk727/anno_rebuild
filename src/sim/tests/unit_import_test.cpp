@@ -8,6 +8,8 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -786,4 +788,70 @@ TEST_CASE("UNIT1 raw figure LOGIC distinguishes abstract crew from cannon capaci
         auto w = made(loaded.value().spec, built.value());
         CHECK(w.figures().list.slots[0]->state_word == (counts.second == 0 ? 0x8000U : 0U));
     }
+}
+
+TEST_CASE("UNIT1 original corpus imports complete actor counts or explicitly refuses") {
+    const auto game = anno::test::game_dir();
+    if (!game) {
+        MESSAGE("skipped: ANNO1503_GAME_DIR not set");
+        return;
+    }
+    const auto registry =
+        anno::sim_load::load_original_registry(*game, anno::sim_load::FigureEntries::Required);
+    REQUIRE(registry.error.empty());
+    std::ifstream inventory(std::filesystem::path(ANNO_FIXTURES_DIR) /
+                            "sim/unit_import1/corpus_counts.txt");
+    REQUIRE(inventory.good());
+    std::set<std::string> expected_files;
+    std::uint64_t actors = 0, imported_actors = 0;
+    std::uint32_t accepted = 0, refused = 0;
+    bool endless01 = false;
+    for (std::string line; std::getline(inventory, line);) {
+        if (line.empty() || line[0] == '#')
+            continue;
+        std::istringstream row(line);
+        std::string file, hash;
+        std::uint64_t count = 0;
+        row >> file >> hash >> count;
+        REQUIRE_FALSE(row.fail());
+        row >> std::ws;
+        REQUIRE(row.eof());
+        REQUIRE(expected_files.insert(file).second);
+        INFO(file);
+        std::ifstream in(*game / file, std::ios::binary);
+        REQUIRE(in.good());
+        const Buf bytes{std::istreambuf_iterator<char>(in), {}};
+        REQUIRE(anno::formats::sha256_hex(bytes) == hash);
+        actors += count;
+        const auto loaded = sim::load_scenario(bytes, *registry.types, {});
+        if (!loaded) {
+            ++refused;
+            CHECK(loaded.error().find("players[") != std::string::npos);
+            CHECK(loaded.error().find("unsupported") != std::string::npos);
+            MESSAGE("UNIT1_CORPUS " << file << " accepted=0 raw_actors=" << count
+                                    << " dependency=" << loaded.error());
+            continue;
+        }
+        ++accepted;
+        CHECK(loaded.value().spec.figures.size() == count);
+        imported_actors += loaded.value().spec.figures.size();
+        if (file == "Scenes/0011SingleEndlosAddon/endless01.sze") {
+            endless01 = true;
+            CHECK(count == 5);
+        }
+        MESSAGE("UNIT1_CORPUS " << file << " accepted=1 raw_actors=" << count
+                                << " imported=" << loaded.value().spec.figures.size());
+    }
+    REQUIRE(inventory.eof());
+    std::set<std::string> actual_files;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(*game / "Scenes"))
+        if (entry.is_regular_file() && entry.path().extension() == ".sze")
+            actual_files.insert(std::filesystem::relative(entry.path(), *game).generic_string());
+    CHECK(expected_files == actual_files);
+    CHECK(expected_files.size() == 50);
+    CHECK(actors == 3473);
+    CHECK(accepted + refused == 50);
+    CHECK(endless01);
+    MESSAGE("UNIT1_CORPUS_TOTAL accepted=" << accepted << " refused=" << refused << " raw_actors="
+                                           << actors << " imported_actors=" << imported_actors);
 }

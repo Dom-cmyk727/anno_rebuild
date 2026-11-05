@@ -921,7 +921,8 @@ TEST_CASE("S01_07_01 original-data component tick 0 search store is complete" *
         std::move(groups).value());
     REQUIRE(types);
     const auto sb = anno::test::read_file(*dir / "Scenes" / "0100Kampagne01" / "S01_07_01.sze");
-    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{});
+    auto loaded = sim::load_scenario(sb, *types.value(), sim::SimConfig{},
+                                     original_component::actor_free_units());
     REQUIRE(loaded);
     auto component = original_component::import_only(loaded.value().spec, types.value());
     REQUIRE_MESSAGE(component, (component ? "" : component.error()));

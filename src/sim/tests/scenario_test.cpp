@@ -269,7 +269,8 @@ FileResult run_file(const fs::path& game, const fs::path& p,
     r.name = rel_name(game, p);
     const auto buf = anno::test::read_file(p);
     const sim::SimConfig cfg;
-    auto resolved = anno::sim_load::load_scenario_with_links(buf, templates, *types, cfg, {});
+    auto resolved = anno::sim_load::load_scenario_with_links(
+        buf, templates, *types, cfg, {}, original_component::actor_free_units());
     if (!resolved) {
         r.load_error = resolved.error();
         return r;
@@ -523,7 +524,8 @@ TEST_CASE(
             g.name = rel_name(*dir, files[i]);
             const sim::SimConfig cfg;
             auto resolved = anno::sim_load::load_scenario_with_links(
-                anno::test::read_file(files[i]), templates, *types, cfg, {});
+                anno::test::read_file(files[i]), templates, *types, cfg, {},
+                original_component::actor_free_units());
             if (!resolved) {
                 g.error = resolved.error();
                 return g;
@@ -764,7 +766,8 @@ TEST_CASE("scenario corpus original-data components: the ten scenarios with the 
     std::vector<std::pair<std::uint64_t, std::size_t>> base, addon;
     for (std::size_t i = 0; i < files.size(); ++i) {
         const auto buf = anno::test::read_file(files[i]);
-        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{},
+                                    original_component::actor_free_units());
         REQUIRE(l);
         const auto c = sim::count(l.value());
         (l.value().spec.settings.prop14 == 3 ? addon : base).push_back({c.buildings, i});
@@ -820,7 +823,8 @@ TEST_CASE("scenario corpus original-data components: a shipped town's economy ru
     std::optional<sim::LoadedScenario> loaded;
     for (std::size_t i = 0; i < files.size(); ++i) {
         const auto buf = anno::test::read_file(files[i]);
-        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{},
+                                    original_component::actor_free_units());
         REQUIRE(l);
         const std::uint64_t n = sim::count(l.value()).buildings;
         if (n > most) {
@@ -979,7 +983,8 @@ TEST_CASE("transport search statistics (ANNO_SIM_TRANSPORT_STATS)") {
             continue;
         }
         const auto buf = anno::test::read_file(*it);
-        auto l = sim::load_scenario(buf, *types, sim::SimConfig{});
+        auto l = sim::load_scenario(buf, *types, sim::SimConfig{},
+                                    original_component::actor_free_units());
         REQUIRE(l);
         auto w = sim::World::create(l.value().spec, types, sim::SimConfig{});
         REQUIRE_MESSAGE(w.ok(), (w.ok() ? std::string() : w.error()));
@@ -1061,8 +1066,9 @@ TEST_CASE("SCRIPT2 original-data corpus creation identities and imported masks")
     for (const auto& file : files) {
         const auto name = rel_name(*dir, file);
         INFO(name);
-        auto loaded = anno::sim_load::load_scenario_with_links(anno::test::read_file(file),
-                                                               templates, *types, {}, {});
+        auto loaded = anno::sim_load::load_scenario_with_links(
+            anno::test::read_file(file), templates, *types, {}, {},
+            original_component::actor_free_units());
         REQUIRE(loaded);
         auto component = original_component::import_only(loaded.value().loaded.spec, types);
         REQUIRE_MESSAGE(component, (component ? "" : component.error()));
@@ -1125,7 +1131,8 @@ TEST_CASE(
     for (const auto& delta : research_production_deltas()) {
         INFO(delta.name);
         auto loaded = anno::sim_load::load_scenario_with_links(
-            anno::test::read_file(*dir / "Scenes" / delta.name), templates, *types, {}, {});
+            anno::test::read_file(*dir / "Scenes" / delta.name), templates, *types, {}, {},
+            original_component::actor_free_units());
         REQUIRE(loaded);
         auto component = original_component::import_only(loaded.value().loaded.spec, types);
         REQUIRE(component);

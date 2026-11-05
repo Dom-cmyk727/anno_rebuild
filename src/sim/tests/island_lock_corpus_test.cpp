@@ -52,7 +52,8 @@ TEST_CASE("island lock: original-data components keep every shipped LOCKED byte 
     for (const fs::path& f : files) {
         INFO(f.string());
         const auto buf = anno::test::read_file(f);
-        auto scenario = sim::load_scenario(buf, *loaded_types.types, sim::SimConfig{});
+        auto scenario = sim::load_scenario(buf, *loaded_types.types, sim::SimConfig{},
+                                           original_component::actor_free_units());
         REQUIRE(scenario);
         auto raw = anno::formats::insel::islands(buf);
         REQUIRE(raw);

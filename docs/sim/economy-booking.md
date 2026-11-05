@@ -322,3 +322,30 @@ B0 approval: `/root/econ_b0_review` independently reviewed clean
 logs and current billing/lifecycle/order callers. The missing manual production
 switch route was added and re-reviewed; no actionable B0 finding remains. This
 releases B1 contract work, not C++ implementation before B1/B2 approval.
+
+### B1a input contract in progress
+
+Direct input/billing follow-up is in docs/re/economy-booking.md, ExecutorB1a.
+Original ordered price directives and partial source tax-prefix writes are
+retained. Proposed modern price domain: accumulate signed directives with checked
+i64 operations, allow ordered Malus and temporary negative climate intermediates,
+then require resolved climate prices and tax surcharges to fit nonnegative u32.
+Effective price is their checked widened sum. Original source defaults have seven
+climates/three tax levels; modern registry/config dimensions are data-sized and
+validated separately, not bounded by the original format's record size. Runtime
+resolved vectors must have exact configured dimensions; source partial writes
+are not malformed runtime rows. Malus negation at I64_MIN, unknown climate,
+empty/excess source tax lists, invalid final prices or incomplete runtime rows
+must name the field and leave the destination unchanged. No signed-price wrapping
+or clipping is approved. Ordinary unsigned-word/nonoverflow inputs match the
+original; the modern wider domain is an opt-in safeguard, to be finalized in B1c.
+
+Decisive examples to hand-pin in B2: Preis45; Bonus5 STEPPE; Bonus2 STEPPE =>52
+there/45elsewhere; later Preis40 resets all climates40. Tax[1,2,3] then[7] =>[7,2,3].
+Preis40; Malus45 STEPPE; Bonus10 STEPPE =>5there (valid final); omit the last
+bonus => negative final price refused. Stall request300/store50 at price50 bills
+300 and earns rounded59, whereas Inn clips50 and earns10. U32_MAX-5+10 direct
+bill faults, but an accepted queued delta saturates and credits5. These are
+contract examples, not a claim that new engine cases already execute. Remaining
+B1a direct island INFO/save/init reads and B1b–d lifecycle/arithmetic/order work
+must close before B1 authorizes B2/B3 implementation.

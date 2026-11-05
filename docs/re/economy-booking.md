@@ -140,3 +140,74 @@ accepted adaptation, not a reason to restore the original's loss of pending inco
 
 These are available static or design tasks, not external blockers. No runtime,
 C++ build, sanitizer, renderer or performance result is claimed by this note.
+
+## Executor B1a — inputs, billing and import follow-up (2026-11-06)
+
+Bounded original reads, same three module hashes above. The task-local decoder
+is cache/econ-book1/re-tools (Capstone5.0.6/pefile2024.8.26); raw ranges are in
+cache/econ-book1/B1/raw. Exploratory ranges with misaligned prefixes are retained
+as *exploratory*, never authority for those bytes. Aligned/basic-block addresses
+below were checked separately. These facts do not authorize engine work until
+the B1/B2 reviews and policy contract are complete.
+
+**Climate/tax source cross-check.** AnnoScene's inline table at1003b328 contains
+seven FOUR-BYTE strings, not seven pointers:706f5f00(po_),745f0000(t_),6e5f0000(n_),
+70725f00(pr_),645f0000(d_),735f0000(s_),775f0000(w_). Its selection loop
+10009ec6..10009f73 initializes climate0 and tests the last path component in
+that order; no matching prefix retains original0. That is a decoded valid
+original default, not an unknown numeric climate. The chosen link copy starts
+at stack+74 (100084c2..100084d0); its climate at+0xc is read at stack+80,
+maskedffff and passed to island setter(property7) at10008532..10008545. The
+current parser's link_climate order and resolve_links assignment match. Ordinary
+INSEL5 uses INFO[0] (scenario_formats.cpp1121..1140); the original island INFO
+load path is a remaining direct-byte cross-check before final B1a approval.
+Tax property10's original byte getter/setter and scene header read10009dd1..e6
+agree with current HEAD[0xb] import and configured validation0..2. Fresh settings
+use the existing default; no new tax field or command is needed.
+
+**Prices.** AnnoGame10014e4d..88 fills every climate word on Preis;10014eca..
+10014f15 overwrites exactly the supplied PreisLevel prefix;100151e5..1001543e
+handles Bonus/Malus and repeated climate names, preserving directive order.
+The previous checkpoint's climate names/order and these basic blocks were
+re-read. The shipped Data/BGruppen.dat has48 Preis,11 PreisLevel and11 Bonus
+records, with no Malus; e.g. NAHRUNG45 plus5 in STEPPE/PRAERIE/DSCHUNGEL,
+ALKOHOL50 plus5 there and tax surcharges0/5/10. Two GEWUERZE bonus directives
+accumulate in repeated climates; a later Preis resets climate prices but does
+not clear already written tax columns. Empty source tax lists, too many original
+columns and unknown climate names require explicit modern refusal rather than
+the original's out-of-record/index-minus-one writes. A nonempty partial source
+list is legal and retains previous/default values in unmentioned columns.
+
+**Bills (new direct reads).** City1002dac0..1002daff checks inclusive goods1a..28,
+adds the requested low word at+4 *before* testing take and clipping the actual
+stock debit. Out-of-range goods returns request unchanged and adds no bill.
+PublicService1006b520..540/School10070120..154 pass take0; MarketStall100702f0..
+30c passes take1 (their actual vtable slots identify the caller). Inn100756e0..
+10075730 first clips request to tavern u16 stock, debits that stock and books
+its type's input0 through the same city call with take0. A return/delivery does
+not call that bill again. With request300 and stock50, stall bills300/delivers50;
+service bills300 without stock debit; Inn bills50 on input0/delivers50. At price50
+with no other bills, rounded booking income is59 versus10; choosing delivered
+stall quantity would therefore fail a nonempty distinguishing example.
+
+The accepted engine widens original wrapping u16 bills to u32. resident.cpp::bill
+refuses U32_MAX-5+10 transactionally; scheduler.cpp BilledDelta merge instead
+saturates that same sum to MAX and records actual credited5. Both are existing
+accepted semantics, not a license for this package to silently unify/change them.
+Consumer selection remains configured first..last; extra services can be billed
+only if the configured role/domain includes their goods. No second tax/credit is
+added at resident return, home delivery or booking preparation.
+
+**Imported statistics and stamps (new direct reads).** City constructor
+1002fa46..1002fa5e zeroes u16 stamps+8,+a,+10,+12,+14,+e,+c. Booking reads+a at
+10029959 and stamps current low word at10029a96..9d; it must not reuse+8 or+10.
+HEAD2 reader1002e40d..1002e4a4 takes saved dwords[28]/[38]/[3c] to sales/trade
+statistics+60c/+5fc/+600 using low-dword multiply105 followed by unsigned /15
+(magic88888889,high>>3). In the nonoverflow domain this equals saved*7. It is
+not universally equivalent at original dword overflow; that earlier shorthand
+is corrected here. Modern checked/widened import policy must be explicit in B1c.
+Original saves omit pending bills and stamps; original fresh/import initializes
+those to0. Modern native saved bills remain the accepted adaptation and cannot
+be lost when booking is enabled. Exact HEAD versus HEAD2 and save branches will
+be included in the remaining B1 lifecycle/import cross-check, not inferred from
+this partial range alone.

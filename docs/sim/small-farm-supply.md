@@ -181,24 +181,28 @@ the claim, the cut, the growth, the end path and the counter release are shared 
 asserted in the pasture test: raw 1 and NAHRUNG, raw 0 and ALKOHOL untouched). Farm-class sheep farms (807, 820, ... with `ROUTETYPE WEIDETIER`) are **not** given the animal state: the body
 is wired to the small farm's animals only, as scoped; whether those farms graze the same way is open (they send a job-46 figure with no body, unchanged).
 
-**Score units: shown, with one limit.** The callback compares `limit` with the u16 at `node+8` (D `0x10003200`); the node pointer it receives is the open-list node plus 0x10 (`0x10004760`), so
-`node+8` is the list node's word at `+0x18`, the very field the open list orders by (`0x10004918`: `cmp di, [ecx+0x18]`). The engine's `SearchVisit::score` is its ordering score (`walk_search.cpp`),
-so the quantity is the same by construction; the engine's per-step increments are the decoded ones (docs/sim/state.md 5.9). **Consequence found:** in the engine, a window of radius 8 reaches
-scores of at most 7 (72 visits in the test), so the stop at 20 never fires within the shipped radius 3 (nor at 8): the animal takes **the last unclaimed goal popped**, i.e. the farthest-by-pop-order field,
-not the nearest. The stop branch is covered by the pure vectors (`P-animal-far`, `P-animal-edge`, `P-animal-claimed`), not by an engine run; if the original's increments were larger it would fire there, which is not shown.
+**Score units.** *Same field* (D): the callback compares `limit` with the u16 at `node+8` (`0x10003200`); the node pointer it receives is the open-list node plus 0x10 (`0x10004760`),
+so `node+8` is the list node's word at `+0x18`, the field the open list orders by (`0x10004918`: `cmp di, [ecx+0x18]`). *Same scale* (inference, not shown): the engine's `SearchVisit::score` is its ordering score
+and its increments are the decoded ones through the T33 port (docs/sim/state.md 5.9); that the port reproduces the original's absolute values is as strong as that port. **On the shipped tables the stop at 20 fires** (engine run,
+original `WalkTables`, kinds 107/109/110 on layer 4, ground code 2 costs 10 straight / 13 diagonal): the ripe grass in reach of the Tutorial farm (212,250) has scores 10, 13, 16, 19, 20, 23, 26, ... 36 (9 distinct values),
+the search goes on past 10..19, takes the goal of score **exactly 20** (`20 > 20` is false) and stops; the first animal's target is (212,248), where the worker's rule would have taken the first goal popped. The pasture test with the
+synthetic rig (every cost 1, scores at most 7) proves only that the callback's use of the search equals the pure function on a unit-cost window (the animal ends at the last goal popped, (118,112), where the worker takes (114,111));
+it says nothing about the original scale. (An earlier version of this section claimed the stop never fires on shipped data; that was a unit-cost artefact of the rig and is withdrawn.)
 
-**Evidence** (`small_farm_animal_test.cpp`, `small_farm_vectors_test.cpp`). (1) Pasture: five ripe grass fields, no grain: 5 cuts, 1280 credited and delivered to raw 1, all five fields young, 102 NAHRUNG made
+**Evidence** (`small_farm_animal_test.cpp`, `small_farm_vectors_test.cpp`; the sanitizer run is the 95-case selection of `cache/map2-supply1/gates/S3_asan.log`, 95 of 95 passed; the S3 reviewer's own ASan run was a 68-case subset). (1) Pasture: five ripe grass fields, no grain: 5 cuts, 1280 credited and delivered to raw 1, all five fields young, 102 NAHRUNG made
 (credit worked off: raw 1 left = 1 < 25, `out = 4 * (used / 50)` within one tail step), kinds only 107 / 109 / 110, every animal carries GRAS, all counters released, never more than 3 animals out.
-(2) The animal's first target equals `harvest_pick_tile(20, visits)` computed from an independent run of the same walk search from the home's entrance (target (118,112), the worker's pick would be (114,111)).
+(2) The animal's first target equals `harvest_pick_tile(20, visits)` computed from a second run of the SAME walk search (not independent of the engine's search) from the home's entrance; on the unit-cost rig the target is (118,112) and the worker's pick would be (114,111).
 (3) The home destroyed with animals out, before a cut and carrying: nothing delivered, the carried amount lost as history, no claim left, `check_invariants` and a reload with a 2000-tick continuation. (4) Reload at each of the
 walking, waiting and returning phases, each with the continuation. (5) Limits: at most 3 animals out and per kind at most limit + 1 (the producing-step allowance of D `0x1006f855-0x1006f86b`, which the kernel vectors pin).
-(6) Original data: the Tutorial town's farm (212,250), 28 ripe grass objects in its window and no potatoes: 9 of them cut and 40 NAHRUNG made by tick 28 550, all three kinds seen, line 0 untouched.
+(6) Original data and original cost tables: the Tutorial town's farm (212,250), 28 ripe grass objects in its window and no potatoes. Asserted (pinned): first target (212,248) at exact score 20, scores 10..36 (9 values), and at tick 26 085 exactly 9 of the 28 fields cut (28 -> 19), 40 NAHRUNG made, all three kinds seen, line 0 untouched. The `>=` mutant now dies on the pinned target and score.
 Mutants (scratch checkout, legal control first, `cache/map2-supply1/S3mut/`): cargo goods not set, harvest state not attached, limit 0, `>=` instead of `>`, animal not a harvest-state job, credit slot always 0,
 pick never stops: 7 of 7 killed.
 
-**Identity.** No new field and no new draw site: 129 / timeline 5 is amended in place, because 129 is not published (S2 and S3 travel together); the pins it moved are G3 (golden and log), the Tutorial K3 replay checkpoints
-and 15 lines of `scenario_corpus.txt`. The S01_07_01 canary did not move for the animals. If 129 is pushed before this, the next change needs 130.
+**Identity.** No new field and no new draw site: 129 / timeline 5 is amended in place, because 129 is NOT published (S2 and S3 travel together, nothing is pushed). **129 as of `ab40919b` (S2 only) is superseded and was never published**; its values, for the record:
+G3 `s11_g3_checkpoints d904dd576bbf45c8`, `s11_g3_end e69a0b509c99bf74`; the Tutorial K3 replay checkpoints `bedae9dd2e1a44cd 1de337941cadec47 28cf97e36e3b0e21 e85b6fb7cce9be38 9c76d456ea5de184 c52f3a9fe3df8357`; `scenario_corpus.txt` as committed at `ab40919b`.
+The pins that S3 moved on top of it (`c5507ee4`): G3 `fe8975dd37cf07fd` / `b23878ae3170fbd9` (golden and log), the K3 checkpoints `72d54f5e636dcb8d f4e803347579882c c3357e0790ca2f42 cafe715ca879e80f 217c16e0d244b685 0a4278ce6f071e93`,
+and 15 lines of `scenario_corpus.txt`. The S01_07_01 canary did not move for the animals. **If 129 is ever pushed before another incompatible change, that change is 130.** The g0/g1/s5/s6 goldens are reproduced by the independent
+`tools/sim_stream.py`; the G3 / s11 goldens and the corpus are NOT (no new field or draw site, so the transcription has nothing to add): they are the engine's own values.
 
-**Not done / limits.** Walking, graze waits and the fine route are the engine's integer model (as for the worker); the Farm-class sheep farms and the hunter (108) are untouched; refusal of a send (no figure created)
-is covered by the kernel's `fail=` vectors only at reference level and by the scheduler's existing release path, not by an engine test of a refused spawn (the stand-in spawn cannot fail for a typed small farm); the stop at 20 is not
-exercised by an engine run (above). The output of both lines is collected by the market cart in S4.
+**Not done / limits.** (A small-farm type without input goods 1 sends no animal: no invented goods fallback.) Walking, graze waits and the fine route are the engine's integer model (as for the worker); the Farm-class sheep farms and the hunter (108) are untouched; refusal of a send (no figure created)
+is covered by the kernel's `fail=` vectors only at reference level and by the scheduler's existing release path, not by an engine test of a refused spawn (the stand-in spawn cannot fail for a typed small farm); the Farm-class sheep farms are not wired to the animal body. The output of both lines is collected by the market cart in S4.

@@ -1044,12 +1044,14 @@ TEST_CASE("progression K3 replay: the recorded run replays from bytes, and a cha
         MESSAGE("checkpoint tick " << kCheckpointTicks[i] << " entry " << cp_entries[i] << " hash "
                                    << hex64(cp_hashes[i]));
     }
-    // the pinned checkpoints (stream 129, PRNG timeline 5; at 128 they were 65d13922f5a15383,
-    // 46ea29b9ad8169b7, 666f938018336639, 4b3943d7569830cf, f171056cdedaa7f2, 39644392a84ce22b):
-    // re-pinned after a legitimate behaviour change
-    constexpr std::array<std::uint64_t, 6> kPinned{0xbedae9dd2e1a44cdULL, 0x1de337941cadec47ULL,
-                                                   0x28cf97e36e3b0e21ULL, 0xe85b6fb7cce9be38ULL,
-                                                   0x9c76d456ea5de184ULL, 0xc52f3a9fe3df8357ULL};
+    // the pinned checkpoints (stream 129, PRNG timeline 5; at S2's first 129 they were
+    // bedae9dd2e1a44cd, 1de337941cadec47, 28cf97e36e3b0e21, e85b6fb7cce9be38, 9c76d456ea5de184,
+    // c52f3a9fe3df8357; at 128 they were 65d13922f5a15383, 46ea29b9ad8169b7, 666f938018336639,
+    // 4b3943d7569830cf, f171056cdedaa7f2, 39644392a84ce22b): re-pinned after a legitimate behaviour
+    // change
+    constexpr std::array<std::uint64_t, 6> kPinned{0x72d54f5e636dcb8dULL, 0xf4e803347579882cULL,
+                                                   0xc3357e0790ca2f42ULL, 0xcafe715ca879e80fULL,
+                                                   0x217c16e0d244b685ULL, 0x0a4278ce6f071e93ULL};
     for (std::size_t i = 0; i < kPinned.size(); ++i) {
         CHECK_MESSAGE(cp_hashes[i] == kPinned[i],
                       "checkpoint tick " << kCheckpointTicks[i] << " is " << hex64(cp_hashes[i]));

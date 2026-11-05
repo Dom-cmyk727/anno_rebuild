@@ -145,3 +145,4 @@ src/sim/include/anno/sim/island.hpp:inline constexpr std::uint32_t kTileClaim  #
 src/sim/src/harvest.cpp:constexpr std::uint32_t kRohstwachs  # PRODTYPE 226 ROHSTWACHS (D AnnoGame 0x100138e0)
 src/sim/include/anno/sim/inn.hpp:kInnGatePeriod  # the Inn tick compare constant 0x1388 (D 0x10075603): a rule constant of the original, not a count or limit
 src/sim/include/anno/sim/inn.hpp:kInnRefillStock  # the stock threshold 0x100 (1 t) of the Inn tick (D 0x10075670): a rule constant, not a limit
+src/sim/include/anno/sim/figure.hpp:inline constexpr std::uint16_t kAnimalSearchLimit  # step A's callback limit of the animal job (D 0x1005932d = 0x14 vs 0x10058bfd = 0): a rule constant of the original job, not a count or limit

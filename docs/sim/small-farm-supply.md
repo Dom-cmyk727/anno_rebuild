@@ -170,3 +170,35 @@ validator refusing a SmallFarm home: 6 of 6 killed.
 **Adaptations and limits (named, not original).** The credit is a u32 add clamped at the u32 maximum (the original's raw stock is a u16 add that wraps; identical below 65536, vector `C-wrap`);
 walking and the cut wait use the engine's integer move model (the fine route is unread); the worker's capacity comes from the figure type (3 t for 106 on the shipped data; the synthetic cases use it too).
 Not done in S2: animals (S3); the `Rules::house_updates` default stays false. A field replaced under the worker (the cut fails, nothing is credited, the claim is cleared, the worker goes on) and the reload at each walking/waiting/returning phase with a 2000-tick continuation are tested for the small farm (review P3). The full-stock case is open: the raw stock is a u32 here and cannot fill, and the original's u16 wrap is the named adaptation; a mod with a small raw capacity is not covered. The slot rule applies to the SmallFarm payload only (`harvest_credit_slot`), so a Farm type with two input goods cannot lose a credit into a store it lacks (unit test).
+
+## 9. S3 delivered: the animals (2026-11-05)
+
+**Change.** `consume` (driver.cpp) spawns the animal (job `0x2e`, kind from the draw table) with cargo goods = input 1 and the harvest state (D `0x1006f8ed-0x1006f920`);
+`animal_job` / `harvest_state_job` (figure.hpp) let the shared body and the validators accept job `0x2e`; the body's step-A callback now follows D `0x10058a40` exactly:
+an unclaimed goal is taken (the search result is replaced), and the search goes on only while `limit > score` (`harvest_search_goes_on`), with `limit` = 0 for the worker and
+`kAnimalSearchLimit` = 20 for the animal (`harvest_search_limit(job)`; D `0x10058bfd` vs `0x1005932d`). The pure form `harvest_pick_tile` runs the S1 `pick` vectors. The credit,
+the claim, the cut, the growth, the end path and the counter release are shared with the worker; the credit goes to raw 1 because the animal's cargo goods are input 1 (the real merge path,
+asserted in the pasture test: raw 1 and NAHRUNG, raw 0 and ALKOHOL untouched). Farm-class sheep farms (807, 820, ... with `ROUTETYPE WEIDETIER`) are **not** given the animal state: the body
+is wired to the small farm's animals only, as scoped; whether those farms graze the same way is open (they send a job-46 figure with no body, unchanged).
+
+**Score units: shown, with one limit.** The callback compares `limit` with the u16 at `node+8` (D `0x10003200`); the node pointer it receives is the open-list node plus 0x10 (`0x10004760`), so
+`node+8` is the list node's word at `+0x18`, the very field the open list orders by (`0x10004918`: `cmp di, [ecx+0x18]`). The engine's `SearchVisit::score` is its ordering score (`walk_search.cpp`),
+so the quantity is the same by construction; the engine's per-step increments are the decoded ones (docs/sim/state.md 5.9). **Consequence found:** in the engine, a window of radius 8 reaches
+scores of at most 7 (72 visits in the test), so the stop at 20 never fires within the shipped radius 3 (nor at 8): the animal takes **the last unclaimed goal popped**, i.e. the farthest-by-pop-order field,
+not the nearest. The stop branch is covered by the pure vectors (`P-animal-far`, `P-animal-edge`, `P-animal-claimed`), not by an engine run; if the original's increments were larger it would fire there, which is not shown.
+
+**Evidence** (`small_farm_animal_test.cpp`, `small_farm_vectors_test.cpp`). (1) Pasture: five ripe grass fields, no grain: 5 cuts, 1280 credited and delivered to raw 1, all five fields young, 102 NAHRUNG made
+(credit worked off: raw 1 left = 1 < 25, `out = 4 * (used / 50)` within one tail step), kinds only 107 / 109 / 110, every animal carries GRAS, all counters released, never more than 3 animals out.
+(2) The animal's first target equals `harvest_pick_tile(20, visits)` computed from an independent run of the same walk search from the home's entrance (target (118,112), the worker's pick would be (114,111)).
+(3) The home destroyed with animals out, before a cut and carrying: nothing delivered, the carried amount lost as history, no claim left, `check_invariants` and a reload with a 2000-tick continuation. (4) Reload at each of the
+walking, waiting and returning phases, each with the continuation. (5) Limits: at most 3 animals out and per kind at most limit + 1 (the producing-step allowance of D `0x1006f855-0x1006f86b`, which the kernel vectors pin).
+(6) Original data: the Tutorial town's farm (212,250), 28 ripe grass objects in its window and no potatoes: 9 of them cut and 40 NAHRUNG made by tick 28 550, all three kinds seen, line 0 untouched.
+Mutants (scratch checkout, legal control first, `cache/map2-supply1/S3mut/`): cargo goods not set, harvest state not attached, limit 0, `>=` instead of `>`, animal not a harvest-state job, credit slot always 0,
+pick never stops: 7 of 7 killed.
+
+**Identity.** No new field and no new draw site: 129 / timeline 5 is amended in place, because 129 is not published (S2 and S3 travel together); the pins it moved are G3 (golden and log), the Tutorial K3 replay checkpoints
+and 15 lines of `scenario_corpus.txt`. The S01_07_01 canary did not move for the animals. If 129 is pushed before this, the next change needs 130.
+
+**Not done / limits.** Walking, graze waits and the fine route are the engine's integer model (as for the worker); the Farm-class sheep farms and the hunter (108) are untouched; refusal of a send (no figure created)
+is covered by the kernel's `fail=` vectors only at reference level and by the scheduler's existing release path, not by an engine test of a refused spawn (the stand-in spawn cannot fail for a typed small farm); the stop at 20 is not
+exercised by an engine run (above). The output of both lines is collected by the market cart in S4.

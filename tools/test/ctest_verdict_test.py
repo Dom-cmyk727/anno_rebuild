@@ -237,7 +237,13 @@ class Contract(unittest.TestCase):
             for f in files:
                 if f.endswith(".cpp"):
                     with open(os.path.join(d, f), errors="replace") as h:
-                        for text in literal.findall(h.read()):
+                        source = h.read()
+                        # This is an asserted decoder outcome in a reference-vector map,
+                        # not a test skip message. Keep the exemption local to its exact
+                        # expression; a new MESSAGE("skipped") must still fail this audit.
+                        if os.path.relpath(os.path.join(d, f), root) == "sim/tests/resident_test.cpp":
+                            source = source.replace('out["status"] = d ? "decoded" : "skipped";', "")
+                        for text in literal.findall(source):
                             found.setdefault(text, os.path.join(d, f))
         self.assertGreater(len(found), 10)
         for text, where in sorted(found.items()):

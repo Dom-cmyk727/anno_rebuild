@@ -434,8 +434,9 @@ TEST_CASE("F4 (N3): every socket of a running coordinator is close-on-exec" *
 TEST_CASE("F4 (N4): a descriptor the coordinator holds without close-on-exec does not reach its "
           "meter child" *
           doctest::test_suite("budget")) {
-    if (!wsl_available()) {
-        MESSAGE("skipping: WSL (Ubuntu) is not available; the meter path is WSL");
+    if (!wsl_meter_available()) {
+        MESSAGE("skipping: WSL (Ubuntu) is not available with the Windows PowerShell "
+                "reachable; the real PowerShell meter runs only from there");
         return;
     }
     const std::string port = std::to_string(kPortMeterLeak);

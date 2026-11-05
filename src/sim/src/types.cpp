@@ -1384,15 +1384,16 @@ TypeRegistry::build(std::span<const fig::Entry> entries, std::vector<GoodsInfo> 
         }
         figures.push_back(f.value());
         // AnnoGame figure-type LOGIC reader (0x1000fe00), getters +0x90/+0x88:
-        // max HP at 0x1e, ordered cargo/crew/other-crew counts at 0x13..0x15.
+        // max HP at 0x1e, cargo/crew counts at 0x13/0x14. Slot+0x88(mode2) reads
+        // +0xf8, written from LOGIC[0x26] at 0x10010352 (not cannon byte 0x15).
         // The existing reader zero-fills short LOGIC records. These values are used only
         // by original_units.cpp; they do not extend the simulation's type content.
-        std::array<std::uint8_t, 32> logic{};
+        std::array<std::uint8_t, 44> logic{};
         if (const auto bytes = e.record("LOGIC")) {
             std::copy_n(bytes->begin(), std::min(bytes->size(), logic.size()), logic.begin());
         }
         unit_import.emplace(e.id, UnitImportFacts{formats::u16_le(logic, 0x1e), logic[0x13],
-                                                  logic[0x14], logic[0x15]});
+                                                  logic[0x14], logic[0x26]});
     }
     return finish(std::move(types), std::move(goods_in), original_class_table(), cfg,
                   std::move(figures), std::move(tables), std::move(groups), std::move(stages),

@@ -393,3 +393,12 @@ control, then15/0 to distinguish the fields through TypeRegistry::build and
 HEAD8=1 import. Preserve its first failure under the old field mapping before
 correcting extraction. Other reviewed health/state/slot/position semantics remain
 unchanged; source endless01 HEAD8=0 means the corrected source flag8000 is unaffected.
+
+C-type-catalog-probe-04 at clean32803bba retainedFAIL1selected/1failed,
+25passing legal assertions/3intended failures (catalog value, spec flag, World
+flag), zero empty/skipped/incomplete/sanitizer. Equal6/6 legal input executed first;
+distinguishing15/0 failed at exactly the metadata source/flag consequences. The
+extractor now uses44 zero-filled bytes andLOGIC26. Original prerequisite also
+asserts1503 counts8/3/6 and717 othercrew0 from the hashed original type input,
+so it no longer bypasses converter fidelity with Builder-only declarations.
+This is a field correction with no native format/runtime-handler change.

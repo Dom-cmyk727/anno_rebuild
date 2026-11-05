@@ -274,6 +274,15 @@ TEST_CASE("UNIT1 original endless01 imported starting prerequisites") {
     auto original =
         anno::sim_load::load_original_registry(*game, anno::sim_load::FigureEntries::Required);
     REQUIRE_MESSAGE(original.error.empty(), original.error);
+    const auto* ship_facts = original.types->unit_import_facts(1503);
+    const auto* scout_facts = original.types->unit_import_facts(717);
+    REQUIRE(ship_facts);
+    REQUIRE(scout_facts);
+    CHECK(ship_facts->max_hp == 12000);
+    CHECK(ship_facts->cargo_slots == 8);
+    CHECK(ship_facts->crew_slots == 3);
+    CHECK(ship_facts->other_crew == 6);  // LOGIC26, not cannon-capacity byte15 (15).
+    CHECK(scout_facts->other_crew == 0); // LOGIC15 is 1, a different property.
     auto templates = anno::sim_load::scan_island_templates(*game);
     auto loaded =
         anno::sim_load::load_scenario_file(file, *game, templates, *original.types, {}, {});

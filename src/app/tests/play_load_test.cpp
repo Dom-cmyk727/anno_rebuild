@@ -2,6 +2,7 @@
 // fixed map (load_fixed_map, with the developer start and the developer's test
 // resources); anything else is a scenario file. The lan5 case loads the file by path
 // and does not depend on its islands (MAP.2 may change them).
+#include <algorithm>
 #include <fstream>
 #include <string>
 
@@ -9,6 +10,7 @@
 
 #include <anno/app/commands_file.hpp>
 #include <anno/app/play.hpp>
+#include <anno/sim/synthetic.hpp>
 #include <anno/test/game_dir.hpp>
 
 namespace fs = std::filesystem;
@@ -81,15 +83,15 @@ TEST_CASE("play loader: a malformed .txt names the file and the line") {
     fs::remove(bad, ec);
 }
 
-TEST_CASE("play loader: a .sze loads as a scenario file, as before") {
+TEST_CASE("play loader: original endless scenario keeps script context and starting actors") {
     const auto dir = anno::test::game_dir();
     if (!dir) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
         return;
     }
-    const fs::path file = *dir / "Scenes" / "0200Single" / "Single_01.sze";
+    const fs::path file = *dir / "Scenes/0011SingleEndlosAddon/endless01.sze";
     if (!fs::exists(file)) {
-        MESSAGE("skipping: Single_01.sze is not in this game directory");
+        MESSAGE("skipping: endless01.sze is not in this game directory");
         return;
     }
     auto loaded = anno::app::load_play(*dir, file);
@@ -97,4 +99,37 @@ TEST_CASE("play loader: a .sze loads as a scenario file, as before") {
     REQUIRE_MESSAGE(ok, error_of(loaded));
     CHECK_FALSE(loaded.value().fixed_map);
     CHECK(loaded.value().placed.empty());
+    CHECK(loaded.value().world.script().asset_namespace.has_value());
+    CHECK(loaded.value().world.script().state.context == anno::sim::ScriptContext::Pending);
+    CHECK(std::count_if(loaded.value().world.figures().list.slots.begin(),
+                        loaded.value().world.figures().list.slots.end(),
+                        [](const auto& slot) { return slot.has_value(); }) == 5);
+}
+
+TEST_CASE("play: startup fault pauses and repeated synchronous turns cannot consume commands") {
+    using namespace anno::sim;
+    auto spec = synthetic::basic_scenario(77);
+    spec.script_context = ScriptContext::Pending;
+    spec.script_source = "[OBJECT_DEFINE]\n[AREA_DEFINE]\n[PLAYERMAPPER_DEFINE]\n\"ME\" 0\n"
+                         "[SCRIPT_KERNEL]\nINITBLOCK(){ TIMER_SET(1,7); TIMER_START(1); }\n"
+                         "[SIGNALS]\n[CAMARAPOS]\n0,0\n";
+    spec.script_limits.work = 1;
+    auto made = World::create(spec, TypeRegistry::empty());
+    REQUIRE(made);
+    anno::app::PlayRunner runner(std::move(made).value());
+    auto first = runner.post_command({PlayerId{0}, SetSpeedCmd{200}});
+    auto second = runner.post_command({PlayerId{0}, SetSpeedCmd{300}});
+    runner.run_n(3);
+    const auto frozen = runner.state_hash();
+    REQUIRE(runner.snapshot());
+    CHECK(runner.snapshot()->paused);
+    CHECK(runner.snapshot()->game_ms == 0);
+    CHECK_FALSE(runner.snapshot()->last_rejection.empty());
+    for (auto id : {first, second}) {
+        CHECK(runner.outcome(id).state == anno::app::CommandOutcome::State::Refused);
+        CHECK(runner.outcome(id).status == Reject::PermissionContext);
+    }
+    runner.set_paused(false);
+    runner.run_n(2);
+    CHECK(runner.state_hash() == frozen);
 }

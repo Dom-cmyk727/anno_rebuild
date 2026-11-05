@@ -325,7 +325,7 @@ TEST_CASE(
     CHECK_FALSE(missing.initialize_scripts().empty());
     CHECK(missing.state_hash() == missing_hash);
     for (bool last : {false, true}) {
-        auto made = setup("INITBLOCK(){ TIMER_SET(1,7); }");
+        auto made = setup("INITBLOCK(){ TIMER_SET(1,7); TIMER_START(1); }");
         REQUIRE(made);
         auto w = std::move(made).value();
         if (last)
@@ -352,4 +352,50 @@ TEST_CASE(
     const auto saved = w.save();
     CHECK_FALSE(w.initialize_scripts().empty());
     CHECK(w.save() == saved);
+}
+
+TEST_CASE("script session: faulted startup refuses every command including retries and reload") {
+    auto made = setup("INITBLOCK(){ TIMER_SET(1,7); TIMER_START(1); }", {.work = 1});
+    REQUIRE(made);
+    auto world = std::move(made).value();
+    Turn turn{0, 100, {{PlayerId{0}, SetSpeedCmd{200}}, {PlayerId{0}, SetSpeedCmd{300}}}};
+    std::vector<ApplyResult> results;
+    REQUIRE_FALSE(run_turn(world, nullptr, turn, 1, &results).empty());
+    REQUIRE(world.faulted());
+    CHECK(world.settings().speed_percent == 100);
+    CHECK(world.clock().ms == 0);
+    const auto frozen = world.save();
+    REQUIRE(results.size() == 2);
+    for (const auto& r : results)
+        CHECK(r.status == Reject::PermissionContext);
+    REQUIRE_FALSE(run_turn(world, nullptr, turn, 1, &results).empty());
+    CHECK(world.save() == frozen);
+    run_frame(world, nullptr, turn.commands, 100);
+    CHECK(world.save() == frozen);
+    auto loaded = World::load(frozen, TypeRegistry::empty());
+    REQUIRE(loaded);
+    REQUIRE_FALSE(run_turn(loaded.value(), nullptr, turn, 1, &results).empty());
+    CHECK(loaded.value().save() == frozen);
+    REQUIRE(results.size() == 2);
+    for (const auto& r : results)
+        CHECK(r.status == Reject::PermissionContext);
+}
+
+TEST_CASE("script session: successful INIT runs once and command outcomes remain real") {
+    auto made = setup("INITBLOCK(){ TIMER_SET(1,7); TIMER_START(1); }");
+    REQUIRE(made);
+    auto world = std::move(made).value();
+    Turn turn{0, 100, {{PlayerId{0}, SetSpeedCmd{200}}}};
+    std::vector<ApplyResult> results;
+    REQUIRE(run_turn(world, nullptr, turn, 1, &results).empty());
+    REQUIRE(results.size() == 1);
+    CHECK(results[0].status == Reject::None);
+    CHECK(world.script().state.context == ScriptContext::Ready);
+    CHECK(world.timers().counter[1] == 3550);
+    auto loaded = World::load(world.save(), TypeRegistry::empty());
+    REQUIRE(loaded);
+    REQUIRE(run_turn(world, nullptr, turn, 1, &results).empty());
+    REQUIRE(run_turn(loaded.value(), nullptr, turn, 1, &results).empty());
+    CHECK(world.save() == loaded.value().save());
+    CHECK(world.timers().counter[1] == 3600);
 }

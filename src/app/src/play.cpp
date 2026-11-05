@@ -192,8 +192,8 @@ formats::Result<PlayLoad, std::string> load_play(const fs::path& game_dir, const
         return out;
     }
     const sim::SimConfig cfg;
-    auto resolved =
-        anno::sim_load::load_scenario_with_context(buf, file, game_dir, templates, *registry.types, cfg, {});
+    auto resolved = anno::sim_load::load_scenario_with_context(buf, file, game_dir, templates,
+                                                               *registry.types, cfg, {});
     if (!resolved) {
         return resolved.error();
     }
@@ -443,7 +443,7 @@ void PlayRunner::set_catchup_turns(unsigned turns) {
 }
 
 void PlayRunner::run_n(std::uint32_t turns) {
-    for (std::uint32_t i = 0; i < turns; ++i) {
+    for (std::uint32_t i = 0; i < turns && simulation_error_.empty(); ++i) {
         one_turn();
     }
 }

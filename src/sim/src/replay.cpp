@@ -202,15 +202,22 @@ std::string run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_
         results->clear();
         results->reserve(turn.commands.size());
     }
+    const auto refuse_turn = [&](std::string error) {
+        if (results != nullptr) {
+            ApplyResult refused;
+            refused.status = Reject::PermissionContext;
+            results->assign(turn.commands.size(), refused);
+        }
+        return error.empty() ? std::string("simulation is faulted") : error;
+    };
+    // Fault text is diagnostic and is not saved. The persisted fault flag still
+    // prevents commands after a reload or a caller's retry.
+    if (world.faulted()) {
+        return refuse_turn(world.fault());
+    }
     if (world.script().state.context == ScriptContext::Pending) {
         if (auto error = world.initialize_scripts(); !error.empty()) {
-            // A failed startup cannot consume commands without observable outcomes.
-            if (results != nullptr) {
-                ApplyResult refused;
-                refused.status = Reject::PermissionContext;
-                results->assign(turn.commands.size(), refused);
-            }
-            return error;
+            return refuse_turn(std::move(error));
         }
     }
     for (const Command& c : turn.commands) {
@@ -226,11 +233,16 @@ std::string run_turn(World& world, Recorder* rec, const Turn& turn, std::uint32_
             world.advance(turn.step_ms);
         }
     }
-    return world.faulted() ? world.fault() : std::string{};
+    if (world.faulted()) {
+        return world.fault().empty() ? std::string("simulation is faulted") : world.fault();
+    }
+    return {};
 }
 
 void run_frame(World& world, Recorder* rec, std::span<const Command> commands,
                std::uint32_t step_ms) {
+    if (world.faulted())
+        return;
     if (world.script().state.context == ScriptContext::Pending &&
         !world.initialize_scripts().empty())
         return;

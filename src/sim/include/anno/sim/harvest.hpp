@@ -37,8 +37,8 @@ bool harvest_tick(const TickContext& ctx, SerialWorld& world, Figure& fig);
 [[nodiscard]] bool harvest_candidate_type(const TypeRegistry& types, std::uint32_t id,
                                           GoodsId goods, bool skip_uncuttable);
 /// The step-A callback (D 0x10058a40) as a pure function: does the search go on after an unclaimed
-/// goal of this score? (`limit > score`, the unsigned 16-bit score at node+8 = the open list's ordering
-/// score, D 0x10004918.) A claimed tile never stops it and is never taken.
+/// goal of this score? (`limit > score`, the unsigned 16-bit score at node+8 = the open list's
+/// ordering score, D 0x10004918.) A claimed tile never stops it and is never taken.
 [[nodiscard]] constexpr bool harvest_search_goes_on(std::uint16_t limit, std::uint16_t score) {
     return limit > score;
 }
@@ -48,8 +48,8 @@ struct HarvestGoalNode {
     std::uint16_t score = 0;
     bool claimed = false;
 };
-/// The tile the callback ends with: the last unclaimed goal taken, the search stopping at the first one
-/// with `limit <= score`. Nullptr-like (nullopt) when every goal is claimed.
+/// The tile the callback ends with: the last unclaimed goal taken, the search stopping at the first
+/// one with `limit <= score`. Nullptr-like (nullopt) when every goal is claimed.
 [[nodiscard]] std::optional<TileXY> harvest_pick_tile(std::uint16_t limit,
                                                       const std::vector<HarvestGoalNode>& nodes);
 

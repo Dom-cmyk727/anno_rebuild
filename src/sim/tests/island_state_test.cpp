@@ -1892,8 +1892,9 @@ TEST_CASE("load refuses a damaged frame") {
             island_test::put32(old, 8, version);
             island_test::reseal(old);
             CHECK(contains(island_test::load_error(old),
-                "state stream version " + std::to_string(version) +
-                " is not supported (this build reads " + std::to_string(sim::kStateHashVersion) + ")"));
+                           "state stream version " + std::to_string(version) +
+                               " is not supported (this build reads " +
+                               std::to_string(sim::kStateHashVersion) + ")"));
         }
     }
     SUBCASE("the PRNG table kind") {

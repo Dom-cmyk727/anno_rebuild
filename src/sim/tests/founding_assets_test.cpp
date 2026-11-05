@@ -3818,8 +3818,8 @@ TEST_CASE("bootstrap prefix: unchanged ship sails founds unloads builds then exp
     CHECK(gold() == 29250 - static_cast<std::int64_t>(5 * plan->road.size()));
     CHECK(stock(42) == 34 * 256);
     CHECK(stock(41) == 46 * 256);
-    // No stage injection: the content query refuses salt at stage1C. BuildCmd's existing
-    // placement refusal is separately demonstrated, because authoritative wiring is blocked.
+    // No stage injection: the content query refuses salt at stage1C. The public command below
+    // reaches structural Unsupported before permission checks; wiring is enforced elsewhere.
     CHECK(eligible(1203).status == sim::BuildEligibilityStatus::StageLocked);
     bool salt_unsupported = false;
     const auto& island = *w.islands()[ref->island.v];

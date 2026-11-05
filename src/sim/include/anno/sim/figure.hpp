@@ -99,10 +99,10 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
     return job == 0x29 || job == 0x2a;
 }
 
-/// The small farm's animal job (0x2e = ROUTETYPE WEIDETIER, 46): the job factory gives 0x2d and 0x2e the
-/// same object (D 0x1003b314); only 0x2e is sent by a traced building. It shares the run, arrival,
-/// abort, the cut step and the walk-home step with 0x29/0x2a; step A's start differs by one search
-/// constant (D 0x10059210 vs 0x10058ae0): the callback's limit is 20 instead of 0.
+/// The small farm's animal job (0x2e = ROUTETYPE WEIDETIER, 46): the job factory gives 0x2d and
+/// 0x2e the same object (D 0x1003b314); only 0x2e is sent by a traced building. It shares the run,
+/// arrival, abort, the cut step and the walk-home step with 0x29/0x2a; step A's start differs by
+/// one search constant (D 0x10059210 vs 0x10058ae0): the callback's limit is 20 instead of 0.
 [[nodiscard]] constexpr bool animal_job(std::uint32_t job) {
     return job == 0x2e;
 }
@@ -110,8 +110,8 @@ inline constexpr std::uint32_t kHarvestStartDelay = 5;
 [[nodiscard]] constexpr bool harvest_state_job(std::uint32_t job) {
     return harvest_job(job) || animal_job(job);
 }
-/// The step-A callback limit of a job (D `[esp+0x34]` of 0x10058ae0 = 0, of 0x10059210 = 0x14): the search
-/// goes on past an unclaimed goal while `limit > score` (docs/sim/small-farm-supply.md 2.3).
+/// The step-A callback limit of a job (D `[esp+0x34]` of 0x10058ae0 = 0, of 0x10059210 = 0x14): the
+/// search goes on past an unclaimed goal while `limit > score` (docs/sim/small-farm-supply.md 2.3).
 inline constexpr std::uint16_t kAnimalSearchLimit = 20;
 [[nodiscard]] constexpr std::uint16_t harvest_search_limit(std::uint32_t job) {
     return animal_job(job) ? kAnimalSearchLimit : std::uint16_t{0};

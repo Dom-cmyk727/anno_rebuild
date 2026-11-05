@@ -16,7 +16,8 @@ enum class BuildEligibilityStatus {
     InvalidPermissions,
     ScenarioDenied,
     StageLocked,
-    ResearchRequired
+    ResearchRequired,
+    ContextUnavailable
 };
 struct BuildEligibility {
     BuildEligibilityStatus status = BuildEligibilityStatus::UnknownPlayer;

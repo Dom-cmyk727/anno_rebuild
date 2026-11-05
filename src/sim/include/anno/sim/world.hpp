@@ -244,6 +244,7 @@ class World {
     [[nodiscard]] const Rules& rules() const { return rules_; }
     [[nodiscard]] const Seams& seams() const { return seams_; }
     [[nodiscard]] const TypeRegistry& types() const { return *types_; }
+    [[nodiscard]] BuildEligibility construction_eligibility(PlayerId, TypeId) const;
     [[nodiscard]] const ScriptRuntime& script() const { return script_; }
     [[nodiscard]] const PlayerTable& players() const { return players_; }
     /// The counters of the ids assigned in the serial merge (figures, event sequence

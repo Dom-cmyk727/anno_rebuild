@@ -386,6 +386,19 @@ Checked check_record(const Env& env, const Island& is, const City& city, const P
         }
         break;
     }
+    // SCRIPT1: authoritative apply-time context and exact-type policy. Rewrites
+    // must satisfy both requested and effective content requirements.
+    for (auto id : {p.type, rec.type}) {
+        const auto eligible = env.w.construction_eligibility(city.owner, id);
+        if (!eligible.allowed()) {
+            out.status = eligible.status == BuildEligibilityStatus::ContextUnavailable
+                             ? Reject::PermissionContext
+                             : Reject::ConstructionDenied;
+            return out;
+        }
+        if (p.type == rec.type)
+            break;
+    }
     // 5. Research (Rules::enforce_research, O-30; default off: the original has no
     // sim-side research gate on Build).
     if (env.rules.enforce_research && type->research_id != 0 &&

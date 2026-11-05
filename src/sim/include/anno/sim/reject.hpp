@@ -101,9 +101,11 @@ enum class Reject : std::uint16_t {
     StockShort,
     // MAP-POP-CLOSE-1 C2 (BuildCmd, docs/sim/population-live.md section 21.5), appended in order.
     /// BuildCmd: with Rules::house_updates, the house type's group has a first-assignment domain
-    /// the engine cannot represent (E, residents or a worst-case stock would leave its width). Refused
-    /// before any draw, charge or serial.
-    HouseDomain
+    /// the engine cannot represent (E, residents or a worst-case stock would leave its width).
+    /// Refused before any draw, charge or serial.
+    HouseDomain,
+    PermissionContext,
+    ConstructionDenied
 };
 
 /// What one record of a command did (docs/sim/state.md §8.3): the status and, for
@@ -225,6 +227,10 @@ struct ApplyResult {
         return "HoldsFull";
     case Reject::StockShort:
         return "StockShort";
+    case Reject::PermissionContext:
+        return "PermissionContext";
+    case Reject::ConstructionDenied:
+        return "ConstructionDenied";
     case Reject::HouseDomain:
         return "HouseDomain";
     }

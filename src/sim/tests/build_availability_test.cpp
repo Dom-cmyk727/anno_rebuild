@@ -21,7 +21,8 @@
 #include "command_helpers.hpp"
 
 namespace sim = anno::sim;
-TEST_CASE("bootstrap B0: original locked build baseline and scenario exception (game files)") {
+TEST_CASE(
+    "bootstrap B0 successor: authoritative locked build and scenario exception (game files)") {
     const auto game = anno::test::game_dir();
     if (!game) {
         MESSAGE("SKIP: ANNO1503_GAME_DIR is unset");
@@ -69,7 +70,7 @@ TEST_CASE("bootstrap B0: original locked build baseline and scenario exception (
         REQUIRE(world.building_at(command_test::kCity0, 102, 102) != nullptr);
         const auto result = world.apply(command_test::build(
             0, command_test::kCity0, {command_test::at(sim::TypeId{1335}, 112, 112)}));
-        CHECK_MESSAGE(result.ok(), sim::reject_name(result.status));
+        CHECK(result.status == (mask == 1 ? sim::Reject::ConstructionDenied : sim::Reject::None));
     }
 }
 

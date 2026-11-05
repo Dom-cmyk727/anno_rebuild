@@ -1,6 +1,16 @@
 #include <anno/sim/build_availability.hpp>
 #include <anno/sim/goods_metadata.hpp>
+#include <anno/sim/world.hpp>
 namespace anno::sim {
+BuildEligibility World::construction_eligibility(PlayerId owner, TypeId type) const {
+    if (script_.state.context != ScriptContext::Ready &&
+        script_.state.context != ScriptContext::ExplicitNone)
+        return {BuildEligibilityStatus::ContextUnavailable};
+    const auto* player = players_.find(owner);
+    if (!player)
+        return {BuildEligibilityStatus::UnknownPlayer};
+    return stored_build_eligibility(*types_, players_, owner, type, player->permissions);
+}
 BuildEligibility build_eligibility(const TypeRegistry& types, const PlayerTable& players,
                                    PlayerId owner, TypeId type,
                                    BuildPermissionContext permissions) {

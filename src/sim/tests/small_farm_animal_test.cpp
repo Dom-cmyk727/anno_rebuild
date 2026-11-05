@@ -3,6 +3,8 @@
 // only: its cargo goods are the farm's input 1 (GRAS) and its tile choice goes on past an unclaimed
 // goal while 20 > score. Nothing is seeded: the grass fields are placed tile objects; the raw
 // stock, the output and every counter start at zero; no timer grants stock.
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -196,7 +198,10 @@ TEST_CASE("small farm animals: the search goes on past an unclaimed goal while 2
     }));
     const sim::Figure* a = animals_of(p.w).front();
     const sim::TileXY target = a->harvest->target;
-    // the independent visit list from the animal's start point
+    // The visit list comes from a second run of the SAME walk search (not independent of the
+    // engine's search; it checks that the callback's use of it equals the pure function). Costs:
+    // this rig's synthetic tables, every cost 1 (scores <= 7), so the stop at 20 does not fire here
+    // and the animal ends at the last goal popped.
     const sim::Island& is = *p.w.islands()[0];
     const sim::Building* home = is.find_building(a->home);
     REQUIRE(home != nullptr);
@@ -370,10 +375,12 @@ TEST_CASE("small farm animals: the per-kind and sum limits hold while the pastur
     CHECK(p.w.check_invariants() == "");
 }
 
-TEST_CASE("small farm animals on original data: the Tutorial town's farms graze real grass") {
-    // Original scenario objects only: the two small farms of the player-2 town (island 3) at
-    // (212,250) and (211,240) have 28 and 11 ripe grass objects in their windows
-    // (docs/sim/small-farm-supply.md 1) and no potatoes. Rules::house_updates stays false.
+TEST_CASE("small farm animals on original data: the Tutorial town's farms graze real grass; the "
+          "stop at score 20 fires") {
+    // Original scenario objects and the ORIGINAL walk-cost tables (kinds 107/109/110 walk on layer
+    // 4; ground costs 10 straight / 13 diagonal): the two small farms of the player-2 town (island
+    // 3) at (212,250) and (211,240) have 28 and 11 ripe grass objects in their windows and no
+    // potatoes. Rules::house_updates false.
     const auto o = tutorial_town::load_original();
     if (!o) {
         MESSAGE("skipping: ANNO1503_GAME_DIR not set");
@@ -389,45 +396,135 @@ TEST_CASE("small farm animals on original data: the Tutorial town's farms graze 
     REQUIRE(fb != nullptr);
     REQUIRE(fb->type.v == 809);
     const sim::BuildingId fid = fb->id;
-    const auto window = [&](std::uint32_t id) {
-        std::uint32_t n = 0;
-        for (int y = 248; y <= 254; ++y) {
-            for (int x = 210; x <= 216; ++x) {
-                n += isl->tiles.object(isl->tile_index(x, y)) == id ? 1U : 0U;
-            }
-        }
-        return n;
+    const std::vector<std::uint32_t> grass_ids{2U,  21U, 23U, 25U, 27U, 69U,
+                                               71U, 73U, 79U, 81U, 83U, 355U};
+    const auto is_grass = [&](std::uint32_t id) {
+        return std::find(grass_ids.begin(), grass_ids.end(), id) != grass_ids.end();
     };
     const auto grass_ripe = [&] {
         std::uint32_t n = 0;
-        for (const std::uint32_t id :
-             {2U, 21U, 23U, 25U, 27U, 69U, 71U, 73U, 79U, 81U, 83U, 355U}) {
-            n += window(id);
+        for (int y = 248; y <= 254; ++y) {
+            for (int x = 210; x <= 216; ++x) {
+                n += is_grass(isl->tiles.object(isl->tile_index(x, y))) ? 1U : 0U;
+            }
         }
         return n;
     };
     const std::uint32_t ripe0 = grass_ripe();
     CHECK(ripe0 == 28);
+    // the first animal's first target, against the visit list of the real tables from its start
+    const auto animals_now = [&] {
+        std::vector<const sim::Figure*> out;
+        for (const auto& s : w.figures().list.slots) {
+            if (s.has_value() && sim::animal_job(s->job) && s->home == fid &&
+                !s->expiry_stamp.has_value()) {
+                out.push_back(&*s);
+            }
+        }
+        return out;
+    };
+    const sim::Figure* first = nullptr;
+    for (int i = 0; i < 4000 && first == nullptr; ++i) {
+        w.advance(10);
+        for (const sim::Figure* a : animals_now()) {
+            if (a->harvest && a->harvest->step == sim::HarvestStep::ToTree) {
+                first = a;
+            }
+        }
+    }
+    REQUIRE(first != nullptr);
+    const sim::TileXY target = first->harvest->target;
+    const sim::Building* home = isl->find_building(fid);
+    const sim::BuildingType& ht = *o->types->find(home->type);
+    const sim::SearchArea area = sim::search_area(*home, ht);
+    const auto& tables = o->types->walk_tables();
+    REQUIRE(tables != nullptr);
+    sim::WalkCells cells(*isl, *o->types, *tables, area.square(), 4, area);
+    std::set<sim::TileXY> grass;
+    std::vector<sim::WalkPoint> goals;
+    const sim::TileRect sq = area.square();
+    for (int y = sq.y0; y < sq.y0 + static_cast<int>(sq.h); ++y) {
+        for (int x = sq.x0; x < sq.x0 + static_cast<int>(sq.w); ++x) {
+            if (!is_grass(isl->tiles.object(isl->tile_index(x, y)))) {
+                continue;
+            }
+            const sim::TileXY t{x, y};
+            grass.insert(t);
+            for (std::uint32_t row = 0; row < 3; ++row) {
+                for (std::uint32_t col = 0; col < 3; ++col) {
+                    if ((isl->tiles.walk_mask(isl->tile_index(x, y)) & 0x1ffU &
+                         (1U << (row * 3 + col))) == 0) {
+                        goals.push_back(sim::WalkPoint{t, col, row});
+                    }
+                }
+            }
+        }
+    }
+    std::vector<sim::HarvestGoalNode> nodes;
+    const auto layer = o->types->find_figure_type(first->kind)->layer;
+    const sim::SearchResult all =
+        sim::search(cells, *tables, layer, sim::entrance_walk_points(*home, ht), goals,
+                    [&](const sim::SearchVisit& v) {
+                        if (grass.contains(v.point.tile)) {
+                            nodes.push_back({v.point.tile.x, v.point.tile.y, v.score, false});
+                        }
+                        return sim::SearchDecision{};
+                    });
+    REQUIRE(all.complete);
+    // the real scores of the ripe grass in reach (a second run of the same search: not independent
+    // of it)
+    std::set<std::uint16_t> scores;
+    for (const auto& n : nodes) {
+        scores.insert(n.score);
+    }
+    const auto pick = sim::harvest_pick_tile(sim::kAnimalSearchLimit, nodes);
+    REQUIRE(pick.has_value());
+    std::uint16_t stop_score = 0;
+    for (const auto& n : nodes) {
+        if (n.x == pick->x && n.y == pick->y) {
+            stop_score = n.score; // the (first) visit of the picked tile
+        }
+    }
+    MESSAGE("layer " << layer << " target " << target.x << "," << target.y << " pick " << pick->x
+                     << "," << pick->y << " stop score " << stop_score << " distinct scores "
+                     << scores.size() << " min " << *scores.begin() << " max " << *scores.rbegin());
+    CHECK((target.x == pick->x && target.y == pick->y));
+    CHECK(*scores.rbegin() >= sim::kAnimalSearchLimit); // the stop can fire on the real tables
+    CHECK(*scores.begin() <
+          sim::kAnimalSearchLimit); // and the search first goes on past cheaper goals
+    CHECK(stop_score >= sim::kAnimalSearchLimit);
+    // Pinned from the real tables (a legitimate change of the walk costs re-pins them): the search
+    // stops at the goal of EXACT score 20 (`20 > 20` is false), so `>=` instead of `>` would run on
+    // to the next goal; the pure function above shares the predicate, so only these literals
+    // separate the two.
+    CHECK(stop_score == 20);
+    CHECK(target.x == 212);
+    CHECK(target.y == 248);
+    CHECK(scores.size() == 9);
+    CHECK(*scores.begin() == 10);
+    CHECK(*scores.rbegin() == 36);
+    // the worker's rule (limit 0) would have taken the first goal popped instead
+    const auto worker = sim::harvest_pick_tile(0, nodes);
+    CHECK((worker->x != pick->x || worker->y != pick->y));
+    // the run
     std::set<std::uint32_t> kinds;
     const auto farm_now = [&]() -> const sim::SmallFarm& {
         return std::get<sim::SmallFarm>(isl->find_building(fid)->payload);
     };
     for (int i = 0; i < 8000 && farm_now().out[1] < 40; ++i) {
         w.advance(100);
-        for (const auto& s : w.figures().list.slots) {
-            if (s.has_value() && sim::animal_job(s->job) && s->home == fid) {
-                kinds.insert(s->kind);
-            }
+        for (const sim::Figure* a : animals_now()) {
+            kinds.insert(a->kind);
         }
     }
     const sim::SmallFarm& sf = farm_now();
     MESSAGE("tick " << w.clock().tick() << " ripe " << ripe0 << " -> " << grass_ripe() << " raw1 "
-                    << sf.raw[1] << " out1 " << sf.out[1] << " kinds " << kinds.size()
-                    << " counters " << sf.figures_out[0] << sf.figures_out[1] << sf.figures_out[2]
-                    << sf.figures_out[3] << sf.figures_out[4]);
-    CHECK(sf.out[1] >= 40);      // NAHRUNG made from grazed grass
-    CHECK(grass_ripe() < ripe0); // real grass objects were cut (id - 1)
-    CHECK(sf.out[0] == 0);       // no potatoes in reach: line 0 makes nothing
-    CHECK_FALSE(kinds.empty());
+                    << sf.raw[1] << " out1 " << sf.out[1] << " kinds " << kinds.size());
+    // measured and pinned: 9 of the 28 ripe objects cut, all three animal kinds seen
+    CHECK(w.clock().tick() == 26085);
+    CHECK(sf.out[1] == 40);
+    CHECK(grass_ripe() == ripe0 - 9); // real grass objects were cut (id - 1)
+    CHECK(kinds.size() == 3);
+    CHECK(sf.out[0] == 0); // no potatoes in reach: line 0 makes nothing
     CHECK(w.check_invariants() == "");
 }

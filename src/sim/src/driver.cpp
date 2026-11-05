@@ -496,13 +496,16 @@ void consume(const TickContext& ctx, const Island& island, const City& city, Bui
         if (r.animal_kind >= base) {
             const std::uint32_t index = static_cast<std::uint32_t>(r.animal_kind - base);
             std::uint32_t* counter = figure_counter(b.payload, index);
-            if (counter != nullptr && std::holds_alternative<SmallFarm>(b.payload)) {
+            // A small-farm type without input goods 1 has no animal line to feed: no animal is sent (the
+            // original reads type+0xb0(1) unchecked; there is no invented goods fallback here).
+            if (counter != nullptr && std::holds_alternative<SmallFarm>(b.payload) &&
+                type.input_goods.size() > 1) {
                 ++*counter;
                 SpawnRequest s = spawn_request(island, city, b, type, index, kJobSmallFarmAnimal,
                                                r.animal_kind);
                 // D 0x1006f8ed-0x1006f920: the animal's cargo goods are the farm's input goods 1
                 // (type+0xb0(1)); job 0x2e is the shared harvest job with the animal search limit.
-                s.cargo_goods = type.input_goods.size() > 1 ? type.input_goods[1] : GoodsId{0};
+                s.cargo_goods = type.input_goods[1];
                 s.harvest = harvest_state_job(s.job);
                 fx.spawns.push_back(s);
             }

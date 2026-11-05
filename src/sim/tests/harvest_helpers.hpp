@@ -44,7 +44,7 @@ inline constexpr sim::TypeId kSmallFarm{9330}; // a small farm: its line-0 worke
 inline constexpr sim::TypeId kSmallFarm2{9331}; // another small farm: ALKOHOL from KARTOFFEL, NAHRUNG from GRAS
 inline constexpr sim::TypeId kGrassYoung{9324};  // ROHSTWACHS, the young stage of kGrass
 inline constexpr sim::TypeId kGrass{9325};       // ROHSTOFF, WARE[0] GRAS: ripe grass
-inline constexpr sim::TypeId kSmallFarm4{9332};  // a small farm of radius 8 (scores of 20 and more are inside its window)
+inline constexpr sim::TypeId kSmallFarm4{9332};  // a small farm of radius 8 (a wide window; note this rig's walk tables are synthetic: every cost is 1, so scores stay below 20 here)
 inline constexpr sim::TypeId kPotatoYoung{9326}; // ROHSTWACHS, the young stage of kPotato
 inline constexpr sim::TypeId kPotato{9327};      // ROHSTOFF, WARE[0] KARTOFFEL: a ripe potato field
 inline constexpr sim::TypeId kWall{9340}; // a tile object of walk code 3: closed on every layer

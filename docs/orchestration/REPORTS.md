@@ -12367,3 +12367,58 @@ Round R1 (orchestrator review, 2026-11-05) done on a fresh checkout
 **Hand back.** `task/W4-main-1` pushed to `0368a4e5`; remote hash verified. Per the board's step
 6 and round R1 item 6: stopping here. The orchestrator fast-forwards `main`, records it in
 `docs/PLAN.md`, marks UI.2's "W4.4 merged" condition met, and checks CI on `main`.
+
+## W4-OPENING-2 — W4-OPENING-CONTROLS-FLAKE step 0 — 2026-11-05 — status: FINISHED
+
+- Branch: `task/W4-opening-2` at `729e842a`; input `main` `88968580`; worktree:
+  `E:\anno1503-worktrees\anno1503-W4-opening-2`.
+- Built:
+  - `tools/test/wsl_gate.sh` (new, committed; `6380f9f1`): the one canonical WSL (Ubuntu, GCC 13)
+    ASan+UBSan viewer-enabled gate script, replacing the historical pattern of a fresh, gitignored
+    `cache/` script per gate. Carries forward the autocrlf override and the Windows-worktree
+    `.git`-pointer-file-to-`/mnt/<drive>` translation (both proven in earlier ad-hoc scripts, now
+    generalized instead of hardcoded to one worktree), refuses to run on a dirty autocrlf-view
+    checkout, never runs `anno_render_gpu_tests` in the default (ASan) lanes, supports an explicit
+    `--gpu-lane` opt-in (lavapipe + `ANNO_REQUIRE_GPU=1`), and records each lane's elapsed time in
+    its `$S` summary file. Documented in `docs/testing/README.md`'s new "The WSL ASan/UBSan gate"
+    section.
+  - `src/app/tests/founding_assets_test.cpp:639` (`729e842a`): reworded the skip `MESSAGE` so its
+    leading string literal alone (before the stream-concatenated file path) is a self-describing,
+    already-recognized required-asset phrase ("...scenario file is not in this game directory:"),
+    instead of the bare, unclassifiable `"skipping: "`.
+  - `tools/test/ctest_verdict_test.py` (`729e842a`): added the new phrasing to
+    `test_every_existing_missing_asset_phrasing_fails`'s `forms`; removed the now-unused bare
+    `"skipping: "` entry from `test_every_skip_phrasing_in_the_sources_has_a_known_class`'s
+    `allowed_other` set (confirmed via `grep -rn '"skipping: "' src` that no other site produces
+    that exact literal).
+- Gates:
+  - `python -I tools/test/ctest_verdict_test.py`: 25/25.
+  - `python -I tools/test/workflow_test.py`: 21/21.
+  - Native MSVC build of `anno_sim_tests` (`cmake --build build/msvc --preset msvc --target
+    anno_sim_tests -j 16`): clean; targeted case run (`-tc="*DISCO on the shipped scenes*"`): 1
+    passed, 6 assertions.
+  - Full WSL ASan/UBSan gate via the committed script against this same worktree/commit
+    (`wsl -d Ubuntu -- bash tools/test/wsl_gate.sh /mnt/e/anno1503-worktrees/anno1503-W4-opening-2
+    --tag o2b`), summary `cache/gates/wsl-o2b.txt` (gitignored, evidence kept in this entry):
+    - source head `729e842a`; dirty (raw, no autocrlf override) 979; dirty (autocrlf=true view)
+      **0** — the "clean checkout counts 0 dirty files" check the task asked for, confirmed.
+    - `app` lane: selected=268 executed=266 failed=0 skipped=2 (opt-in=2, everything else 0)
+      VERDICT: PASS, elapsed 7998s.
+    - `sim` lane: selected=1029 executed=1027 failed=0 skipped=2 (opt-in=2) VERDICT: PASS, elapsed
+      1650s.
+    - `formats` lane: selected=92 executed=92 failed=0 skipped=0 VERDICT: PASS, elapsed 1102s.
+    - `render` lane (non-GPU `anno_render_tests` only): selected=185 executed=185 failed=0
+      skipped=0 VERDICT: PASS, elapsed 2334s.
+    - `tsupport` lane: selected=66 executed=66 failed=0 skipped=0 VERDICT: PASS, elapsed 239s.
+    - `anno_render_gpu_tests` did not run in any of the above (grep of the summary file confirms
+      no `gpu lane` line, since `--gpu-lane` was not passed) — the task's "no GPU-adapter suite in
+      the ASan lane" requirement, confirmed by omission.
+- Evidence: `cache/gates/wsl-o2b.txt` and the per-lane `.log`/`.out` files under
+  `cache/gates/` in the worktree (gitignored, not pushed; paths recorded here per the evidence
+  contract).
+- Reviewers: none yet — independent read-only package review for this step is still open.
+- Left open / questions for the orchestrator or owner: W4-OPENING-CONTROLS-FLAKE steps 1-4 (the
+  flake's actual root-cause trace and fix) are next, on this same branch. Independent review of
+  step 0 has not happened yet; not pushed beyond the local branch as of this entry.
+- Time spent / subagents used: single session, no subagents; two build/test cycles (MSVC native,
+  WSL ASan full gate ~2h45m wall clock dominated by the `app`/`render` lanes).

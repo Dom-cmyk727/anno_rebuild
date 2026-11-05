@@ -42,15 +42,8 @@ TEST_CASE("integration identity: actual predecessor saves and logs refuse at int
                                                    {}};
         const auto decoded = sim::read_log(historical);
         if (std::string(name) == "combined131") {
-            REQUIRE(decoded); // Current framing; refuse its actual state identity.
-            auto target = sim::World::load(current, f.types.registry);
-            REQUIRE(target);
-            const auto before = target.value().save();
-            const auto result = sim::replay(target.value(), decoded.value());
-            REQUIRE_FALSE(result);
-            CHECK(result.error() ==
-                  "replay refused: state stream version differs from this build's");
-            CHECK(target.value().save() == before);
+            REQUIRE_FALSE(decoded); // Current framing, refused at its state identity.
+            CHECK(decoded.error() == "replay state stream version differs from this build's");
         } else {
             REQUIRE_FALSE(decoded);
             CHECK(decoded.error().find(std::string("replay-log version ") +

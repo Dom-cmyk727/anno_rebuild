@@ -114,7 +114,7 @@ config_test.cpp transcribes byte by byte. A change of the stream (a field of
 SimConfig, Rules, WorldSettings, a seam, the class table) changes both this file
 and the C++ code, and goldens.txt is re-baselined with the values printed here.
 """
-# MAP-INTEGRATE-1 current lineage:131 + SIMINT1 schema, player permission rows,
+# MAP-INTEGRATE-1 current lineage:132 + SIMINT1 schema, player permission rows,
 # and SCRIPT2 source/limits/namespace/policy/continuation scope after timers.
 # Published128 and both129 histories are retained separately under integrate1/legacy.
 # Supply activates existing harvest semantics, with no new native field or timeline site.

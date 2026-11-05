@@ -128,6 +128,14 @@ full scenario hash plus program hash and exact artifact/child outcomes. Original
 true-branch coverage[0] is separate from synthetic[0,5,6]; fullscenario/campaign
 completion is not claimed. Pre-UNIT SCRIPT2 publication is preserved historically.
 
+The unchanged F5 indexed-query Release measurement is reused at its actual pin
+69380a73 / cache/script2/F-scale-release-01.log (1/1), as documented in the earlier
+SCRIPT2 handoff. It varies 8/64/128 players, 4/32/128 areas, 16/128/512 statements
+and 100/10,000/50,000 unrelated figures, reporting build/query work and allocation
+requests separately. UNIT1 changes cold actor import; indexed construction/query
+code is unchanged, and current Debug/ASAN scale controls pass. This reuse is
+architectural one-host evidence, not a new performance or late-game measurement.
+
 ## Evidence and review
 
 A/B/C reviewed atd5e98d2f (15/15 cases, 841 assertions; later corpus proof: 340 assertions).

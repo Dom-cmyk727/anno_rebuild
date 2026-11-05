@@ -285,7 +285,8 @@ Acceptance M3: a 1-hour headless run of an endless scenario produces identical h
 Status M3 population (2026-11-04, MAP-POP-CLOSE-1): PARTIAL. A fresh home built by BuildCmd gets its first assignment, pays exactly, grows to its cap, is supplied by real resident walkers, survives save/reload and replay on a real scenario (headless, `Rules::house_updates` on only in tests; the default stays false; this is not live gameplay). A real pioneer -> settler upgrade is blocked by one unported supplier rule: goods 76 (WIRTSHAUS) comes only from an Inn's tavern stock, whose tick, alcohol carrier and chain are not ported, and no shipped scenario has a stocked Inn. Details: `docs/sim/population-live.md` section 21 and `docs/orchestration/REPORTS.md`.
 Status M3 population (2026-11-05, MAP-POP-CLOSE-2): headless progression reached. The Inn is ported (tick, carrier, take, unload; `Rules::house_updates` only), OQ-463 is closed (goal-cell key nibble), and a pioneer house built by `BuildCmd` in the original Tutorial town upgrades 501 -> 522 at tick 55000 with the exact debit, masks, ledger, controls, save/reload cuts and replay (fresh process included). Not live gameplay; default `house_updates` false. Details: `docs/sim/population-live.md` sections 22-26.
 
-Status M3 scripting (2026-11-05, MAP-SCRIPT-2): PARTIAL / BLOCKED original-world
+**Historical, superseded by MAP-UNIT-IMPORT-1 below:** Status M3 scripting
+(2026-11-05, pre-import MAP-SCRIPT-2): PARTIAL / BLOCKED original-world
 acceptance. The complete unchanged endless01 source compiles and initializes;
 reviewed indexed area queries, money/wave actions, normal session startup and
 native/replay continuity have separate synthetic proof. Original SCHIFF/SOLDAT/
@@ -294,6 +295,16 @@ real area condition and founding. Human has no original city; construction needs
 an owned city. A separate unit-import
 contract is required. Final scoped gate/review closeout is recorded in the
 [handoff](orchestration/reviews/2026-11-05-map-script2.md); no M3 completion claim.
+
+Current bounded M3 scripting slice (2026-11-05, MAP-UNIT-IMPORT-1 / SCRIPT2): the
+normal adapter imports all five original endless01 actors. Its complete unchanged
+script reaches a real branch0 wave and public founding/unload/HANDWERK consequence,
+with exact resources, native cuts and fresh-process proof. Independent package
+reviews and current Debug256/256, ASAN256/256, isolated prior opening ASAN1/1 and
+corrected-reader1/1 pass. Final integration review of the tracked handoff is pending.
+[Current handoff](orchestration/reviews/2026-11-05-map-unit-import1.md). This does not
+complete M3's one-hour Windows/Linux acceptance or all scenario/game behavior.
+
 
 ## 5. Milestone M4 — Lockstep multiplayer (`crates/net`)
 

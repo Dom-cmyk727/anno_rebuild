@@ -635,3 +635,8 @@ Current G and corrected-reader gates record canonical workflow
 workflow pins in their provenance; the original270assignment pin is not relabelled
 as the current runner revision. Final publication takes workflow identity from
 the frozen Debug gate.
+
+Final integration review at197865af found one stale current PLAN scripting
+paragraph claiming actor import absent. It is now explicitly historical/superseded
+with a current bounded status/link; no engine evidence rerun is warranted. The
+new handoff also names unchanged F5 Release evidence at its actual69380a73 pin.
